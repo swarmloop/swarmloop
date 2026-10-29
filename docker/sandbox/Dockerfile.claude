@@ -1,0 +1,23 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends bash ca-certificates curl git \
+  && rm -rf /var/lib/apt/lists/* \
+  && useradd --create-home --uid 1000 --shell /usr/sbin/nologin sandbox \
+  && mkdir -p /work \
+  && chown sandbox:sandbox /work
+
+USER sandbox
+ENV HOME=/home/sandbox
+RUN curl -fsSL https://claude.ai/install.sh | bash
+USER root
+# /home/sandbox is a tmpfs at run time, so the install has to live outside it. No system language runtime.
+RUN set -eu \
+  && src="$(readlink -f /home/sandbox/.local/bin/claude 2>/dev/null || echo /home/sandbox/.local/bin/claude)" \
+  && dir="$(dirname "$src")" \
+  && mkdir -p /opt/claude \
+  && cp -a "$dir"/. /opt/claude/ \
+  && chmod -R a+rX /opt/claude \
+  && ln -sfn "/opt/claude/$(basename "$src")" /usr/local/bin/claude
+USER sandbox
+WORKDIR /work

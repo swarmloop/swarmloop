@@ -1,0 +1,82 @@
+name: swarmloop
+
+services:
+  sandbox-cursor:
+    image: swarmloop-agent-cursor
+    build:
+      context: ./docker/sandbox
+      dockerfile: Dockerfile.cursor
+    command: ["true"]
+    restart: "no"
+
+  sandbox-claude:
+    image: swarmloop-agent-claude
+    build:
+      context: ./docker/sandbox
+      dockerfile: Dockerfile.claude
+    command: ["true"]
+    restart: "no"
+
+  # PhpStorm starts bin/sloop on the host. That script needs nest/dist, which the image build does not leave on disk.
+  sloop:
+    image: swarmloop-nest
+    command: ["sh", "-c", "mkdir -p /out && cp -a /app/nest/dist/. /out/ && chown -R ${UID:-1000} /out"]
+    volumes:
+      - ./nest/dist:/out
+    restart: "no"
+    depends_on:
+      nest:
+        condition: service_started
+
+  nest:
+    image: swarmloop-nest
+    build:
+      context: .
+      dockerfile: docker/nest/Dockerfile
+    ports:
+      - "127.0.0.1:3920:3920"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      SWARMLOOP_ROOT: /app
+      CHECKOUTS_ROOT: /checkouts
+      SWARMLOOP_API_HOST: 0.0.0.0
+      SWARMLOOP_API_PORT: 3920
+      SWARMLOOP_UID: ${UID:-1000}
+    volumes:
+      - ./data:/app/data
+      - ./worktrees:/app/worktrees
+      - ${CHECKOUTS_ROOT:-..}:/checkouts
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      sandbox-cursor:
+        condition: service_completed_successfully
+      sandbox-claude:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3920/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  next:
+    build:
+      context: .
+      dockerfile: docker/next/Dockerfile
+    ports:
+      - "127.0.0.1:3921:3921"
+    environment:
+      SWARMLOOP_API_URL: http://nest:3920
+    volumes:
+      - ./data:/app/public/run-logs:ro
+    depends_on:
+      nest:
+        condition: service_healthy

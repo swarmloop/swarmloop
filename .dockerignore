@@ -1,0 +1,13 @@
+.git
+**/.git
+**/node_modules
+**/dist
+**/.next
+data
+worktrees
+runs
+.idea
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.env

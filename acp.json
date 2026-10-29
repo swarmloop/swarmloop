@@ -1,0 +1,13 @@
+{
+  "default_mcp_settings": {
+    "use_custom_mcp": true,
+    "use_idea_mcp": true
+  },
+  "agent_servers": {
+    "sloop": {
+      "command": "/ABSOLUTE/PATH/TO/swarmloop/bin/sloop",
+      "args": ["acp"],
+      "env": {}
+    }
+  }
+}

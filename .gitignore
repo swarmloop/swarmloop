@@ -1,0 +1,15 @@
+.env
+node_modules/
+dist/
+/runs/
+worktrees/
+data/
+nest/dist/
+nest/node_modules/
+next/node_modules/
+next/.next/
+*.tsbuildinfo
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.idea/

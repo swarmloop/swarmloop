@@ -1,0 +1,24 @@
+FROM debian:bookworm-slim
+
+# No language runtime and no VPN. The repository brings what it runs.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends bash ca-certificates curl git \
+  && rm -rf /var/lib/apt/lists/* \
+  && useradd --create-home --uid 1000 --shell /usr/sbin/nologin sandbox \
+  && mkdir -p /work \
+  && chown sandbox:sandbox /work
+
+USER sandbox
+ENV HOME=/home/sandbox
+RUN curl -fsSL https://cursor.com/install | bash
+USER root
+# The launcher looks for node beside itself. /home/sandbox is a tmpfs at run time, so the install has to live outside it.
+RUN set -eu \
+  && src="$(readlink -f /home/sandbox/.local/bin/agent)" \
+  && dir="$(dirname "$src")" \
+  && mkdir -p /opt/cursor-agent \
+  && cp -a "$dir"/. /opt/cursor-agent/ \
+  && chmod -R a+rX /opt/cursor-agent \
+  && ln -sfn /opt/cursor-agent/cursor-agent /usr/local/bin/agent
+USER sandbox
+WORKDIR /work

@@ -1,0 +1,13 @@
+{
+  "name": "swarmloop",
+  "private": true,
+  "license": "Apache-2.0",
+  "bin": {
+    "swarmloop": "./bin/swarmloop"
+  },
+  "scripts": {
+    "build": "npm run build --prefix nest",
+    "test": "npm test --prefix nest",
+    "swarmloop": "node nest/dist/main.js"
+  }
+}

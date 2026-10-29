@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+MAIN="$ROOT/nest/dist/main.js"
+if [ ! -f "$MAIN" ]; then
+  echo "swarmloop: build the nest app first (npm run build --prefix nest)" >&2
+  exit 1
+fi
+exec node "$MAIN" "$@"

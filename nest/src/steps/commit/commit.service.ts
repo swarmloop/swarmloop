@@ -1,0 +1,431 @@
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { existsSync, statSync } from 'fs';
+import { readEnv, SwarmloopEnv } from '../../config/env';
+import { RunEntity } from '../../history/entities';
+import { HistoryService } from '../../history/history.service';
+import { sampleSelf, VisitDraft } from '../../history/visit';
+import { PipelineResult, visitStatus } from '../../pipeline/pipeline-result';
+import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
+import { SwarmloopError } from '../../swarmloop-error';
+import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
+import { git, gitDetail, gitMissing, gitRaw } from '../git';
+import { recordHandoff, textDocument } from '../model-step';
+import { repoNames, worktreePath } from '../repo-names';
+import { remoteProject } from '../merge-request/merge-request-record';
+import { selectedHost } from '../../providers/host-credentials';
+import { allowedPaths, isDenied, parsePaths, PlannedPath, porcelainPaths, renderPaths } from './commit-paths';
+
+interface Tree {
+  repo: string;
+  path: string;
+}
+
+export const CI_SKIPPED = 'CI skipped: there is no origin to push.';
+
+export function gitlabPushUrl(origin: string, baseUrl: string, token: string): string | null {
+  if (!token.trim()) {
+    return null;
+  }
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    const remote = remoteProject(origin);
+    if (remote.host.toLowerCase() !== host) {
+      return null;
+    }
+    return `https://oauth2:${token}@${host}/${remote.project}.git`;
+  } catch {
+    return null;
+  }
+}
+
+export function githubPushUrl(origin: string, baseUrl: string, token: string): string | null {
+  if (!token.trim()) {
+    return null;
+  }
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    const remote = remoteProject(origin);
+    if (remote.host.toLowerCase() !== host) {
+      return null;
+    }
+    return `https://x-access-token:${encodeURIComponent(token)}@${host}/${remote.project}.git`;
+  } catch {
+    return null;
+  }
+}
+
+@Injectable()
+export class CommitService {
+  constructor(
+    private readonly history: HistoryService,
+    private readonly config: ConfigService,
+  ) {}
+
+  async execute(key: string): Promise<PipelineResult> {
+    const opened = await openStep(this.history, key, 'commit');
+    try {
+      const requirements = await this.history.latestBody(key, 'requirements');
+      if (!requirements?.trim()) {
+        throw new SwarmloopError('requirements is missing');
+      }
+      const summary = summaryForBranch(requirements, key);
+      const branch = branchName(key, summary);
+      const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
+      const trees = this.trees(key, names);
+      await this.assertBranch(trees, branch);
+      const phases = await this.history.activePhases(opened.run.id);
+      const stored = await this.history.latestBody(key, 'commit');
+      const again = await this.resume(opened, stored);
+      if (!phases.includes('ci') && !again) {
+        const body = await this.preview(trees, branch);
+        return this.end(opened, 'waiting', 0, `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
+      }
+      const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, await this.history.listDenyPaths());
+      if (planned.length === 0 && !(await this.somethingToPush(trees, branch))) {
+        if (await this.publishedHead(trees, branch)) {
+          return this.end(opened, 'ok', 0, `${opened.startedAt} commit done\n${branch}`);
+        }
+        throw new SwarmloopError('nothing to commit');
+      }
+      const pushed = await this.publish(trees, planned, branch, commitMessage(key, summary), readEnv(this.config), opened.run.codeHost);
+      const listed = planned.length > 0 ? renderPaths(planned).trimEnd() : '';
+      if (!pushed) {
+        await this.history.putDocument(opened.run, 'ci_skip', `${CI_SKIPPED}\n`);
+        const line = listed ? `${opened.startedAt} ${CI_SKIPPED}\n${listed}` : `${opened.startedAt} ${CI_SKIPPED}`;
+        return this.end(opened, 'ok', 0, line, listed ? `${listed}\n` : undefined);
+      }
+      const recorded = await this.rememberRefs(opened.run, trees, branch);
+      if (recorded) {
+        const skip = await this.history.latestBody(key, 'ci_skip');
+        if (skip?.trim()) {
+          await this.history.putDocument(opened.run, 'ci_skip', '');
+        }
+      }
+      const line = listed ? `${opened.startedAt} commit done\n${branch}\n${listed}` : `${opened.startedAt} commit done\n${branch}`;
+      return this.end(opened, 'ok', 0, line, listed ? `${listed}\n` : undefined);
+    } catch (error) {
+      const message = error instanceof SwarmloopError ? error.message : 'commit failed';
+      return this.end(opened, 'failed', 1, `${opened.startedAt} ${message}`);
+    }
+  }
+
+  /** A failed or still-open commit retries its own path list. Arriving from the previous phase reads the tree again. */
+  private async resume(opened: OpenedStep, stored: string | null): Promise<boolean> {
+    if (!stored?.trim() || opened.previousStep !== 'commit') {
+      return false;
+    }
+    if (opened.previousStatus === 'failed' || opened.previousStatus === 'running') {
+      return true;
+    }
+    if (opened.previousStatus !== 'waiting') {
+      return false;
+    }
+    const stats = await this.history.listStats(opened.run.id);
+    const last = [...stats].reverse().find((item) => item.step === 'commit');
+    return last?.status === 'waiting';
+  }
+
+  private trees(key: string, names: string[]): Tree[] {
+    return names.map((repo) => {
+      const path = worktreePath(this.history.root(), key, repo);
+      if (!existsSync(path) || !statSync(path).isDirectory()) {
+        throw new SwarmloopError(`${repo} is not a worktree`);
+      }
+      return { repo, path };
+    });
+  }
+
+  private async assertBranch(trees: Tree[], branch: string): Promise<void> {
+    for (const tree of trees) {
+      const current = await this.gitAt(tree, ['branch', '--show-current'], 'branch failed');
+      if (current === 'main' || current === 'master') {
+        throw new SwarmloopError(`${tree.repo} branch is protected`);
+      }
+      if (current !== branch) {
+        throw new SwarmloopError(`${tree.repo} branch is missing`);
+      }
+    }
+  }
+
+  private async preview(trees: Tree[], branch: string): Promise<string> {
+    const planned = await this.plan(trees, await this.history.listDenyPaths());
+    if (planned.length > 0) {
+      return renderPaths(planned);
+    }
+    const pending: string[] = [];
+    for (const tree of trees) {
+      if (await this.ahead(tree, branch)) {
+        pending.push(tree.repo);
+      }
+    }
+    if (pending.length === 0) {
+      throw new SwarmloopError('nothing to commit');
+    }
+    return `${pending.join('\n')}\n`;
+  }
+
+  private async plan(trees: Tree[], denied: string[]): Promise<PlannedPath[]> {
+    const planned: PlannedPath[] = [];
+    for (const tree of trees) {
+      planned.push(...allowedPaths(tree.repo, await this.status(tree), denied));
+    }
+    return planned;
+  }
+
+  private async ahead(tree: Tree, branch: string): Promise<boolean> {
+    const head = await this.gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
+    const remote = await this.optionalRev(tree, `refs/remotes/origin/${branch}`);
+    if (remote) {
+      return remote !== head;
+    }
+    const base = (await this.optionalRev(tree, 'refs/remotes/origin/main')) ?? (await this.optionalRev(tree, 'refs/remotes/origin/master'));
+    return base !== head;
+  }
+
+  private async optionalRev(tree: Tree, ref: string): Promise<string | null> {
+    try {
+      return await git(['-C', tree.path, 'rev-parse', '--verify', '--quiet', ref]);
+    } catch (error) {
+      if (gitMissing(error)) {
+        return null;
+      }
+      throw new SwarmloopError(`${tree.repo} branch failed: ${gitDetail(error)}`);
+    }
+  }
+
+  private async publishedHead(trees: Tree[], branch: string): Promise<boolean> {
+    for (const tree of trees) {
+      if (!(await this.originUrl(tree))) {
+        continue;
+      }
+      const remote = await this.optionalRev(tree, `refs/remotes/origin/${branch}`);
+      if (!remote) {
+        continue;
+      }
+      const head = await this.gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
+      if (remote === head) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async somethingToPush(trees: Tree[], branch: string): Promise<boolean> {
+    for (const tree of trees) {
+      if ((await this.originUrl(tree)) && (await this.ahead(tree, branch))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async publish(
+    trees: Tree[],
+    planned: PlannedPath[],
+    branch: string,
+    message: string,
+    env: SwarmloopEnv,
+    codeHost: string,
+  ): Promise<boolean> {
+    const denied = await this.history.listDenyPaths();
+    const pushed = await Promise.all(trees.map((tree) => this.publishTree(tree, planned, branch, message, denied, env, codeHost)));
+    return pushed.some(Boolean);
+  }
+
+  private async publishTree(
+    tree: Tree,
+    planned: PlannedPath[],
+    branch: string,
+    message: string,
+    denied: string[],
+    env: SwarmloopEnv,
+    codeHost: string,
+  ): Promise<boolean> {
+    const wanted = planned.filter((item) => item.repo === tree.repo).map((item) => item.path);
+    const dirty = new Set(porcelainPaths(await this.status(tree)));
+    const stage = wanted.filter((path) => dirty.has(path) && !isDenied(path, denied));
+    if (stage.length > 0) {
+      await this.gitAt(tree, ['add', '--', ...stage], 'commit failed');
+      await this.gitAt(tree, [...(await this.authorArgs(tree)), 'commit', '--no-verify', '-m', message], 'commit failed');
+    }
+    const origin = await this.originUrl(tree);
+    if (!origin) {
+      return false;
+    }
+    const published = await this.optionalRev(tree, `refs/remotes/origin/${branch}`);
+    return this.pushRef(tree, branch, published, env, codeHost, origin);
+  }
+
+  /** Push a rewritten branch with the tip captured before the base fetch. Does not stage or commit. */
+  async publishRebased(key: string, branch: string, leases: { repo: string; tip: string | null }[]): Promise<void> {
+    const run = await this.history.findRun(key);
+    if (!run) {
+      throw new SwarmloopError(`${key} is missing`);
+    }
+    const trees = this.trees(key, leases.map((lease) => lease.repo));
+    const env = readEnv(this.config);
+    for (const tree of trees) {
+      const origin = await this.originUrl(tree);
+      if (!origin) {
+        continue;
+      }
+      const captured = leases.find((lease) => lease.repo === tree.repo)?.tip ?? null;
+      await this.pushRef(tree, branch, captured, env, run.codeHost, origin);
+    }
+    await this.rememberRefs(run, trees, branch);
+  }
+
+  private async pushRef(
+    tree: Tree,
+    branch: string,
+    published: string | null,
+    env: SwarmloopEnv,
+    codeHost: string,
+    origin: string,
+  ): Promise<boolean> {
+    const lease = published ? [`--force-with-lease=refs/heads/${branch}:${published}`] : [];
+    const named = codeHost === 'gitlab' || codeHost === 'github';
+    if (!named) {
+      if (origin.startsWith('git@') || origin.startsWith('ssh://')) {
+        throw new SwarmloopError('code host is missing');
+      }
+      await this.gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed');
+      return true;
+    }
+    const host = selectedHost(env, codeHost);
+    const url = host.name === 'github' ? githubPushUrl(origin, host.baseUrl, host.token) : gitlabPushUrl(origin, host.baseUrl, host.token);
+    if (url) {
+      await this.gitAt(tree, ['-c', `remote.origin.pushurl=${url}`, 'push', ...lease, 'origin', `HEAD:refs/heads/${branch}`], 'push failed', { GIT_TERMINAL_PROMPT: '0' }, host.token);
+      await this.gitAt(tree, ['update-ref', `refs/remotes/origin/${branch}`, 'HEAD'], 'push failed');
+      return true;
+    }
+    if (origin.startsWith('git@') || origin.startsWith('ssh://')) {
+      if (!host.token.trim()) {
+        throw new SwarmloopError(`${tree.repo} push failed: ${host.tokenKey} is missing`);
+      }
+      if (!host.baseUrl.trim()) {
+        throw new SwarmloopError(`${tree.repo} push failed: ${host.baseKey} is missing`);
+      }
+      throw new SwarmloopError(`${tree.repo} origin is not ${host.baseKey}`);
+    }
+    await this.gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed');
+    return true;
+  }
+
+  private async originUrl(tree: Tree): Promise<string | null> {
+    try {
+      const url = await git(['-C', tree.path, 'remote', 'get-url', 'origin']);
+      return url.trim() ? url : null;
+    } catch (error) {
+      if (gitDetail(error).includes('No such remote')) {
+        return null;
+      }
+      throw new SwarmloopError(`${tree.repo} origin failed: ${gitDetail(error)}`);
+    }
+  }
+
+  /** True when this push recorded a host project. A filesystem origin does not. */
+  private async rememberRefs(run: RunEntity, trees: Tree[], branch: string): Promise<boolean> {
+    const blocks: string[] = [];
+    for (const tree of trees) {
+      const url = await this.originUrl(tree);
+      if (!url) {
+        continue;
+      }
+      let project = '';
+      try {
+        project = remoteProject(url).project;
+      } catch {
+        continue;
+      }
+      const sha = await this.gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
+      blocks.push(`project: ${project}\nref: ${branch}\nsha: ${sha}`);
+    }
+    if (blocks.length === 0) {
+      return false;
+    }
+    await this.history.putDocument(run, 'pipeline_ref', `${blocks.join('\n\n')}\n`);
+    return true;
+  }
+
+  private async status(tree: Tree): Promise<string> {
+    try {
+      return await gitRaw(['-C', tree.path, 'status', '--porcelain=v1', '-z', '-uall']);
+    } catch (error) {
+      throw new SwarmloopError(`${tree.repo} status failed: ${gitDetail(error)}`);
+    }
+  }
+
+  private async authorArgs(tree: Tree): Promise<string[]> {
+    if (await this.gitConfig(tree, 'user.email')) {
+      return [];
+    }
+    const name = process.env.GIT_AUTHOR_NAME?.trim() ?? '';
+    const email = process.env.GIT_AUTHOR_EMAIL?.trim() ?? '';
+    if (!name || !email) {
+      return [];
+    }
+    return ['-c', `user.name=${name}`, '-c', `user.email=${email}`];
+  }
+
+  private async gitConfig(tree: Tree, key: string): Promise<string> {
+    try {
+      return (await git(['-C', tree.path, 'config', '--local', '--get', key])).trim();
+    } catch {
+      return '';
+    }
+  }
+
+  private async gitAt(tree: Tree, args: string[], failure: string, env?: NodeJS.ProcessEnv, secret?: string): Promise<string> {
+    try {
+      return await git(['-C', tree.path, ...args], env);
+    } catch (error) {
+      const detail = gitDetail(error);
+      const redacted = secret ? detail.split(secret).join('***').split(encodeURIComponent(secret)).join('***') : detail;
+      throw new SwarmloopError(`${tree.repo} ${failure}: ${redacted}`);
+    }
+  }
+
+  private async end(opened: OpenedStep, outcome: 'ok' | 'failed' | 'waiting', exitCode: number, line: string, body?: string): Promise<PipelineResult> {
+    const note = outcome === 'ok' ? await recordHandoff(this.history, opened.run.key, 'commit', body?.trim() ? body : '- committed the branch\n') : null;
+    const primary = body ? textDocument('commit', body) : null;
+    return closeStep({
+      history: this.history,
+      run: opened.run,
+      previousStep: opened.previousStep,
+      previousStatus: opened.previousStatus,
+      step: 'commit',
+      outcome,
+      exitCode,
+      line,
+      visit: {
+        ...visit(opened, visitStatus(outcome), exitCode, body),
+        document: note ? null : primary,
+        documents: note ? [...(primary ? [primary] : []), note] : undefined,
+      },
+    });
+  }
+}
+
+function visit(opened: OpenedStep, status: string, exitCode: number, body?: string): VisitDraft {
+  return {
+    step: 'commit',
+    model: null,
+    mode: null,
+    startedAt: opened.startedAt,
+    finishedAt: new Date().toISOString(),
+    durationMs: Date.now() - opened.started,
+    status,
+    exitCode,
+    killReason: null,
+    tokensIn: 0,
+    tokensOut: 0,
+    usd: 0,
+    samples: [sampleSelf()],
+    exchange: null,
+    httpCalls: [],
+    document: body ? textDocument('commit', body) : null,
+    resumed: false,
+  };
+}
