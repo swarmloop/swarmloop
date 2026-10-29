@@ -61,6 +61,10 @@ export class ChatService {
         await this.history.putDocument(run, CHAT_LOCK, chatLockBody(previous.status, process.pid));
       }
       locked = true;
+      if (run.runtime !== env.RUNTIME) {
+        run.runtime = env.RUNTIME;
+        await this.history.putDocument(run, 'shell_resume', 'clear\n');
+      }
       run.status = 'running';
       run.ownerPid = process.pid;
       await this.history.saveRun(run);

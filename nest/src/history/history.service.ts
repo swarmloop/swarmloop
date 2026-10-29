@@ -123,6 +123,11 @@ export class HistoryService {
       throw new SwarmloopError(`${key} is already running`);
     }
     this.live?.clearSpend(key);
+    const runtime = readEnv(this.config).RUNTIME;
+    if (existing.runtime !== runtime) {
+      existing.runtime = runtime;
+      await this.putDocument(existing, 'shell_resume', 'clear\n');
+    }
     existing.status = 'running';
     existing.currentStep = step;
     existing.ownerPid = process.pid;

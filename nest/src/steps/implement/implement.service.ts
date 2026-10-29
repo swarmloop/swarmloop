@@ -67,7 +67,7 @@ export class ImplementService {
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
     const full = skillPrompt('implement', ctx.requirements, names, sections, mounts);
     const added = await this.history.latestBody(key, 'added_repos');
-    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'implement')));
+    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'implement')), ctx.opened.run.runtime);
     const basePrompt = withAddedRepos(continued?.chatId ? implementFollowUp(plan, notes) : full, added);
     if (marker === 'pending' || marker === 'pending-implement') {
       const settled = await this.settleRebase(key, ctx, marker, names, branch, storedStderr);

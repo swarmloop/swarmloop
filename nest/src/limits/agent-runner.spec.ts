@@ -6,7 +6,7 @@ import { join } from 'path';
 import { PassThrough } from 'stream';
 import { ConfigService } from '@nestjs/config';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { AgentProcessRunner, AgentRunInput } from './agent-runner';
+import { AgentProcessRunner, AgentRunInput, readSession } from './agent-runner';
 import { RunStop } from './run-stop';
 
 const PREVIOUS = 'previous-visit-transcript\n';
@@ -146,6 +146,20 @@ function config(root: string): ConfigService {
     },
   } as ConfigService;
 }
+
+describe('readSession', () => {
+  it('keeps a chat only for the agent that opened it', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-session-runtime-'));
+    const path = join(root, 'session.json');
+    const body = { chatId: 'c', resumed: true, completed: true, killReason: null };
+    writeFileSync(path, `${JSON.stringify({ ...body, runtime: 'cursor' })}\n`);
+    expect(await readSession(path, 'claude')).toBeNull();
+    writeFileSync(path, `${JSON.stringify(body)}\n`);
+    expect(await readSession(path, 'cursor')).toBeNull();
+    writeFileSync(path, `${JSON.stringify({ ...body, runtime: 'cursor' })}\n`);
+    expect((await readSession(path, 'cursor'))?.chatId).toBe('c');
+  });
+});
 
 function writePriceCache(root: string): void {
   writeFileSync(

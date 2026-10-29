@@ -60,7 +60,7 @@ describe('plan step', () => {
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-45-plan-session.json'),
-      `${JSON.stringify({ chatId: 'chat-1', resumed: true, completed: true, killReason: null, usd: 2 })}\n`,
+      `${JSON.stringify({ runtime: 'cursor', chatId: 'chat-1', resumed: true, completed: true, killReason: null, usd: 2 })}\n`,
     );
     const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
     const app = await boot(root, agent);

@@ -260,7 +260,7 @@ function remember(root: string, key: string): void {
   mkdirSync(join(root, 'data'), { recursive: true });
   writeFileSync(
     join(root, 'data', `${key}-plan-session.json`),
-    `${JSON.stringify({ chatId: 'research-chat', resumed: false, completed: false, killReason: 'time', usd: 1 })}\n`,
+    `${JSON.stringify({ runtime: 'cursor', chatId: 'research-chat', resumed: false, completed: false, killReason: 'time', usd: 1 })}\n`,
   );
 }
 

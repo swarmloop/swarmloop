@@ -48,7 +48,7 @@ export class PlanReviewService {
     const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
     const mounts = mountsForStep(this.history.root(), key, names, ctx.opened.run.targetPath);
     const prior = await this.history.latestBody(key, 'handoff');
-    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'plan-review')));
+    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'plan-review')), ctx.opened.run.runtime);
     const full = skillPrompt(
       'plan-review',
       ctx.requirements,

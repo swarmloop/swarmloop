@@ -67,7 +67,7 @@ export class ImplementReviewService {
     );
     const branch = branchName(key, summaryForBranch(ctx.requirements, key));
     const heads = await featureHeads(mounts, branch);
-    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'implement-review')));
+    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'implement-review')), ctx.opened.run.runtime);
     const full = skillPrompt('implement-review', ctx.requirements, names, sections, mounts);
     const chosen = continued?.chatId ? resumePrompt(full, IMPLEMENT_REVIEW_FOLLOW_UP) : full;
     const prompt = withAddedRepos(chosen, await this.history.latestBody(key, 'added_repos'));

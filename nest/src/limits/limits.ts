@@ -108,6 +108,8 @@ export interface SessionState {
   resumed: boolean;
   completed: boolean;
   killReason: KillReason | null;
+  /** Agent that opened the chat. A different one cannot resume it. */
+  runtime?: string;
   /** Dollars already charged for this chat, so a later turn does not add them again. */
   usd?: number;
 }

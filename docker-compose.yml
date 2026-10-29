@@ -20,6 +20,7 @@ services:
   # PhpStorm starts bin/sloop on the host. That script needs nest/dist, which the image build does not leave on disk.
   sloop:
     image: swarmloop-nest
+    pull_policy: never
     command: ["sh", "-c", "mkdir -p /out && cp -a /app/nest/dist/. /out/ && chown -R ${UID:-1000} /out"]
     volumes:
       - ./nest/dist:/out
@@ -30,6 +31,7 @@ services:
 
   nest:
     image: swarmloop-nest
+    pull_policy: build
     build:
       context: .
       dockerfile: docker/nest/Dockerfile

@@ -235,7 +235,7 @@ describe('implement-review step', () => {
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-73-plan-session.json'),
-      `${JSON.stringify({ chatId: 'plan-chat', resumed: true, completed: true, killReason: null, usd: 1 })}\n`,
+      `${JSON.stringify({ runtime: 'cursor', chatId: 'plan-chat', resumed: true, completed: true, killReason: null, usd: 1 })}\n`,
     );
     const agent = jest.fn().mockResolvedValue(result(reply));
     const app = await boot(root, agent);

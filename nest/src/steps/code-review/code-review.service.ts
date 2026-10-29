@@ -350,7 +350,7 @@ export class CodeReviewService {
     retry: boolean,
   ): Promise<Finished> {
     const step = `code-review-${job.reviewer.name}`;
-    const session = await readSession(join(this.history.root(), 'data', sessionFileName(key, step)));
+    const session = await readSession(join(this.history.root(), 'data', sessionFileName(key, step)), opened.run.runtime);
     const prompt = fresh || !session?.chatId
       ? job.prompt
       : retry && !job.stale

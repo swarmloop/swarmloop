@@ -25,6 +25,7 @@ swarmloop takes a ticket or a prompt and walks a coding agent through requiremen
 | Feature | What you get |
 | --- | --- |
 | 🔒 **Sandbox** | No network unless allowlisted, read-only root, no capabilities, no Docker socket. One model key inside. Git and Jira tokens stay out. |
+| 🧵 **Parallel runs** | Several tasks at once, even in one repository. Each run has its own worktree and branch. Your working copy is not touched. |
 | 🗂 **One history** | Prompt, plan, diff, reviews, model exchanges, tokens, dollars, CPU, and memory in one SQLite file. |
 | 🔀 **Cursor or Claude** | One line in `.env`. Research, plan, and implementation each pick their own model. |
 | 🎫 **Jira, Confluence, Drive** | The ticket, its epic, links, subtasks, attachments, and the pages around it. |
@@ -66,6 +67,7 @@ Ready for Jira and a git host? Go to [Team install](#-team-install).
 Every model step runs in a fresh container. Nest starts it for the step and removes it when the step ends.
 
 - **Disk.** Only this run's worktrees are mounted. Reviewers get them read-only. Home, `~/.ssh`, and other repositories are not there. A `.env` file inside a worktree is covered by an empty file.
+- **Parallel.** Each run gets its own worktree of every repository in `worktrees/<run>/` and its own `feature/<run>-…` branch, so several runs, even in one repository, go at once. A run locks only itself, and `MAX_RUN_USD` counts each run separately.
 - **Network.** `--network none` unless the step names hosts. A model step reaches only its vendor's API. Implementation may also reach package registries: npm, Yarn, PyPI, Go, RubyGems, crates.io, and Maven. Any other public host is refused before the container starts.
 - **Process.** Never root: a launch as root is refused. All Linux capabilities are dropped, `no-new-privileges` is set, the root filesystem is read-only, and the container gets at most 256 processes. There is no Docker socket, so it cannot start another container.
 - **Secrets.** The only secret passed in is the model key. Jira, GitLab, and GitHub tokens stay in the Nest process.
@@ -80,7 +82,7 @@ Every model step runs in a fresh container. Nest starts it for the step and remo
 
 ### 🔀 Cursor, Claude, and what comes next
 
-- `RUNTIME=cursor` or `RUNTIME=claude`. Change the line and restart Nest, and the next step uses the other agent. Both sandbox images ship in this repo.
+- `RUNTIME=cursor` or `RUNTIME=claude`. Change the line and restart Nest: the next step uses the other agent and opens a new chat with the full brief. Both sandbox images ship in this repo.
 - Each phase can use its own model: `MODEL_RESEARCH`, `MODEL_PLAN`, and `MODEL_IMPLEMENT`.
 - Dollars come from the vendor's published price list, cached for a day.
 - A third agent is code, not a setting: a sandbox image under `docker/sandbox`, its API hosts and key, and the code that reads its output. The pipeline, the history, and the panel stay as they are.

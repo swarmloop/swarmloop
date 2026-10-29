@@ -245,7 +245,7 @@ export async function launchAgent(input: {
   const directory = join(input.history.root(), 'data');
   mkdirSync(directory, { recursive: true });
   const sessionFile = join(directory, sessionFileName(input.key, input.step));
-  const stored = await readSession(sessionFile);
+  const stored = await readSession(sessionFile, input.run.runtime);
   const result = await input.agent.run({
     prompt: `${AGENT_LANGUAGE_RULE}\n\n${input.prompt}`,
     workspace: input.workspace,

@@ -56,7 +56,7 @@ export class PlanService {
     const mounts = mountsForStep(this.history.root(), key, names, ctx.opened.run.targetPath);
     const prior = await this.history.latestBody(key, 'handoff');
     const sections = withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior);
-    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'plan')));
+    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'plan')), ctx.opened.run.runtime);
     const full = skillPrompt('plan', ctx.requirements, names, sections, mounts);
     const chosen = continued?.chatId ? planFollowUp(answers) : full;
     const prompt = withAddedRepos(chosen, await this.history.latestBody(key, 'added_repos'));

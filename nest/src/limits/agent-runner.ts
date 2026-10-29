@@ -470,13 +470,15 @@ export class AgentProcessRunner {
   }
 
   private async writeSession(path: string, session: SessionState): Promise<void> {
-    await writeFile(path, `${JSON.stringify(session)}\n`);
+    const runtime = readEnv(this.config).RUNTIME;
+    await writeFile(path, `${JSON.stringify({ ...session, runtime })}\n`);
   }
 }
 
-export async function readSession(path: string): Promise<SessionState | null> {
+export async function readSession(path: string, runtime: string): Promise<SessionState | null> {
   try {
-    return JSON.parse(await readFile(path, 'utf8')) as SessionState;
+    const session = JSON.parse(await readFile(path, 'utf8')) as SessionState;
+    return session.runtime === runtime ? session : null;
   } catch {
     return null;
   }

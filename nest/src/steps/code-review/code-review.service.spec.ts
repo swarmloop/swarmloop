@@ -382,7 +382,7 @@ describe('code-review step', () => {
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-94-code-review-security-session.json'),
-      `${JSON.stringify({ chatId: 'security-chat', resumed: false, completed: false, killReason: 'time', usd: 1 })}\n`,
+      `${JSON.stringify({ runtime: 'cursor', chatId: 'security-chat', resumed: false, completed: false, killReason: 'time', usd: 1 })}\n`,
     );
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(input.step.endsWith('report') ? 'The checks are in.\n' : 'notes\ndecision: ok\n', input.step),
@@ -579,7 +579,7 @@ describe('code-review step', () => {
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-86-code-review-quality-session.json'),
-      `${JSON.stringify({ chatId: 'quality-chat', resumed: true, completed: true, killReason: null, usd: 3 })}\n`,
+      `${JSON.stringify({ runtime: 'cursor', chatId: 'quality-chat', resumed: true, completed: true, killReason: null, usd: 3 })}\n`,
     );
     const agent = jest.fn(async (input: AgentRunInput) => result(`notes\n\ndecision: ok\n`, input.step));
     const app = await boot(root, agent);
@@ -615,7 +615,7 @@ describe('code-review step', () => {
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-97-code-review-quality-session.json'),
-      `${JSON.stringify({ chatId: 'quality-chat', resumed: true, completed: true, killReason: null, usd: 3 })}\n`,
+      `${JSON.stringify({ runtime: 'cursor', chatId: 'quality-chat', resumed: true, completed: true, killReason: null, usd: 3 })}\n`,
     );
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(input.step.endsWith('report') ? 'The checks are in.\n' : reply(input.step, 'ok'), input.step),
@@ -730,7 +730,7 @@ describe('code-review step', () => {
           security += 1;
           writeFileSync(
             join(root, 'data', 'PROJ-95-code-review-security-session.json'),
-            `${JSON.stringify({ chatId: 'security-chat', resumed: false, completed: false, killReason: 'time', usd: 1 })}\n`,
+            `${JSON.stringify({ runtime: 'cursor', chatId: 'security-chat', resumed: false, completed: false, killReason: 'time', usd: 1 })}\n`,
           );
           return {
             ...result('partial', input.step),
