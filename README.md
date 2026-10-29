@@ -1,5 +1,8 @@
 <div align="center">
 
+<br>
+<img src="next/public/logo.svg" alt="swarmloop logo: a sailboat inside a loop arrow" width="112">
+
 # swarmloop
 
 **One server for your coding agents. A fixed path from ticket to merge request, a sandbox around every step, and a record of every dollar.**
@@ -222,6 +225,8 @@ Restart swarmloop after saving a token.
 </details>
 
 ## 🧩 PhpStorm
+
+⛵ **`sloop` — not slop.**
 
 PhpStorm does not have a swarmloop plugin. From 2025.3 on, AI Assistant starts `bin/sloop` as a custom ACP agent and talks to it in AI Chat. The chat then reads and writes the same runs as the CLI. Older PhpStorm shows only the built-in models in that chat, and **Add Custom Agent** is not in the menu.
 

@@ -185,9 +185,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
     <DialogContext.Provider value={() => setOpen(true)}>
       <AppBar position="fixed" sx={{ bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider', zIndex: (theme) => theme.zIndex.drawer + 1 }}>
         <Toolbar>
-          <Typography variant="h5" sx={{ flexGrow: 1, fontFamily: 'var(--font-sans)' }}>
-            swarmloop
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flexGrow: 1 }}>
+            <Box component="img" src="/logo.svg" alt="" width={36} height={36} sx={{ display: 'block' }} />
+            <Typography variant="h5" sx={{ fontFamily: 'var(--font-sans)' }}>
+              swarmloop
+            </Typography>
+          </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mr: 2 }}>
             <Box
               component="span"

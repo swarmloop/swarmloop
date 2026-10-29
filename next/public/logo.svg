@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="swarmloop">
+  <rect width="128" height="128" rx="28" fill="#1c1915"/>
+  <path d="M93.57 28.76 A46 46 0 1 1 71.99 18.70" fill="none" stroke="#6fbf96" stroke-width="6"/>
+  <path d="M79.87 20.09 L73.21 11.81 L70.77 25.59 Z" fill="#6fbf96"/>
+  <line x1="62" y1="29" x2="62" y2="76" stroke="#f7f4ee" stroke-width="3" stroke-linecap="round"/>
+  <path d="M65 32 L65 73 L88 73 Z" fill="#f7f4ee"/>
+  <path d="M59 40 L59 73 L41 73 Z" fill="#6fbf96"/>
+  <path d="M38 77 H90 L84 87 H44 Z" fill="#d7a36a"/>
+  <path d="M46 94 q6 -4 12 0 t12 0 t12 0" fill="none" stroke="#6fbf96" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+</svg>
