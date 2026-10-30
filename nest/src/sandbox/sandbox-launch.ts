@@ -55,7 +55,7 @@ const REGISTRIES = new Set([
 ]);
 
 const MODEL_HOSTS = new Set(['api2.cursor.sh', 'api.cursor.com', 'cursor.com', 'api.anthropic.com']);
-const MODEL_ENV = new Set(['CURSOR_API_KEY', 'ANTHROPIC_API_KEY']);
+const MODEL_ENV = new Set(['CURSOR_API_KEY', 'ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN']);
 
 export function packageRegistries(): string[] {
   return [...REGISTRIES];
@@ -65,10 +65,18 @@ export function modelApiHosts(runtime: 'cursor' | 'claude'): string[] {
   return runtime === 'claude' ? ['api.anthropic.com'] : ['api2.cursor.sh', 'api.cursor.com', 'cursor.com'];
 }
 
-export function modelCredential(runtime: 'cursor' | 'claude', cursorKey: string, anthropicKey: string): { name: string; value: string } {
+export function modelCredential(
+  runtime: 'cursor' | 'claude',
+  cursorKey: string,
+  anthropicKey: string,
+  oauthToken: string,
+): { name: string; value: string } {
   if (runtime === 'claude') {
+    if (oauthToken !== '') {
+      return { name: 'CLAUDE_CODE_OAUTH_TOKEN', value: oauthToken };
+    }
     if (anthropicKey === '') {
-      throw new SwarmloopError('ANTHROPIC_API_KEY is missing');
+      throw new SwarmloopError('ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is missing');
     }
     return { name: 'ANTHROPIC_API_KEY', value: anthropicKey };
   }

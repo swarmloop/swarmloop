@@ -47,7 +47,7 @@ You need Docker and one model key. No Jira, no git token, no CI.
    cp .env.example .env
    ```
 
-2. In `.env`, set `CURSOR_API_KEY` from the [Cursor dashboard](https://cursor.com/dashboard), **API Keys**. For Claude, set `RUNTIME=claude` and `ANTHROPIC_API_KEY` from [Claude Console](https://platform.claude.com/settings/keys) instead. Leave every other secret empty.
+2. In `.env`, set `CURSOR_API_KEY` from the [Cursor dashboard](https://cursor.com/dashboard), **API Keys**. That key uses your Cursor plan, so there is no separate API bill. For Claude, set `RUNTIME=claude` and either `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` to use your Claude subscription, or `ANTHROPIC_API_KEY` from [Claude Console](https://platform.claude.com/settings/keys). A subscription token is for your own use on your own server, not one plan shared by a team. Leave every other secret empty.
 
 3. Start it:
 

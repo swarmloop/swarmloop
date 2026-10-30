@@ -149,8 +149,17 @@ describe('sandbox launch', () => {
     expect(args[args.indexOf('--env') + 1]).toBe('CURSOR_API_KEY=cursor-test-key');
     expect(args[args.indexOf('--network') + 1]).toBe('swarmloop-registry');
     expect(() => sandboxArgs(launch({ env: [{ name: 'GITLAB_TOKEN', value: 'x' }] }), home)).toThrow('sandbox env is not allowed');
-    expect(() => modelCredential('cursor', '', '')).toThrow('CURSOR_API_KEY is missing');
-    expect(() => modelCredential('claude', '', '')).toThrow('ANTHROPIC_API_KEY is missing');
+    expect(() => modelCredential('cursor', '', '', '')).toThrow('CURSOR_API_KEY is missing');
+    expect(() => modelCredential('claude', '', '', '')).toThrow('ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is missing');
+    expect(modelCredential('claude', '', '', 'token')).toEqual({ name: 'CLAUDE_CODE_OAUTH_TOKEN', value: 'token' });
+    expect(modelCredential('claude', '', 'api-key', '')).toEqual({ name: 'ANTHROPIC_API_KEY', value: 'api-key' });
+    const both = modelCredential('claude', '', 'api-key', 'token');
+    expect(both).toEqual({ name: 'CLAUDE_CODE_OAUTH_TOKEN', value: 'token' });
+    const claude = sandboxArgs(launch({ env: [both], envMasks: [] }), home);
+    expect(claude.filter((arg) => arg === '--env')).toEqual(['--env']);
+    expect(claude[claude.indexOf('--env') + 1]).toBe('CLAUDE_CODE_OAUTH_TOKEN=token');
+    expect(claude.join(' ')).not.toContain('ANTHROPIC_API_KEY');
+    expect(modelCredential('cursor', 'cursor-key', 'api-key', 'token')).toEqual({ name: 'CURSOR_API_KEY', value: 'cursor-key' });
   });
 
   it('uses an internal network only for local allowlist hosts', () => {
