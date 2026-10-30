@@ -390,25 +390,30 @@ function renderFail(failures: Failure[], seen: Seen[]): string {
   return `result: fail\n${blocks.join('\n\n')}\n`;
 }
 
-const READABLE_LINES = 60;
+const READABLE_LINES = 200;
 
 export function readableJobTrace(raw: string): string {
-  const lines = cleanTrace(raw);
-  const picked = pickFailures(lines);
-  if (picked.length > 0) {
-    return picked.join('\n');
+  const rawLines = raw.split(/\r?\n/);
+  const section = rawLines.findIndex((line) => line.includes('section_end:') && line.includes('step_script'));
+  let end = rawLines.length;
+  if (section >= 0) {
+    end = section + 1;
+  } else {
+    for (let index = rawLines.length - 1; index >= 0; index -= 1) {
+      if (rawLines[index].includes('##[error]')) {
+        end = index + 1;
+        break;
+      }
+    }
   }
-  if (lines.length <= READABLE_LINES) {
-    return lines.join('\n');
-  }
-  return lines.slice(-READABLE_LINES).join('\n');
+  return cleanTrace(rawLines.slice(0, end).join('\n')).slice(-READABLE_LINES).join('\n');
 }
 
 function cleanTrace(raw: string): string[] {
   return raw
     .replace(/\u001b(?:\[[0-9;?]*[A-Za-z]|\][^\u0007]*(?:\u0007|\u001b\\))/g, '')
     .split(/\r?\n/)
-    .map((line) => line.replace(/\r$/, ''))
+    .map((line) => line.replace(/\r$/, '').replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z /, ''))
     .filter((line) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed === 'trace truncated') {
@@ -425,52 +430,6 @@ function cleanTrace(raw: string): string[] {
       }
       return true;
     });
-}
-
-function pickFailures(lines: string[]): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < lines.length; i += 1) {
-    if (!isFailureHead(lines[i])) {
-      if (isFinding(lines[i]) || isSummaryLine(lines[i])) {
-        out.push(lines[i]);
-      }
-      continue;
-    }
-    const taken = takeBlock(lines, i);
-    out.push(...taken.block);
-    i = taken.next - 1;
-  }
-  return out;
-}
-
-function takeBlock(lines: string[], start: number): { block: string[]; next: number } {
-  const head = lines[start];
-  const block = [head];
-  let next = start + 1;
-  if (/^\s*\d+\) /.test(head)) {
-    while (next < lines.length && lines[next].startsWith(' ') && !isFailureHead(lines[next])) {
-      block.push(lines[next]);
-      next += 1;
-    }
-    return { block, next };
-  }
-  while (next < lines.length && next < start + 16 && !isFailureHead(lines[next]) && !isSummaryLine(lines[next])) {
-    block.push(lines[next]);
-    next += 1;
-  }
-  return { block, next };
-}
-
-function isFailureHead(line: string): boolean {
-  return /^\s*\d+\) /.test(line) || /Compilation error in file/.test(line) || /^\*\* \(/.test(line);
-}
-
-function isFinding(line: string): boolean {
-  return /^\S+\.(ex|exs):\d+:/.test(line);
-}
-
-function isSummaryLine(line: string): boolean {
-  return /Finished in /.test(line) || /\d+ tests?,/.test(line) || /Total errors:/.test(line);
 }
 
 function delay(ms: number): Promise<void> {

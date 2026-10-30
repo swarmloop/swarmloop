@@ -368,6 +368,66 @@ describe('runs api', () => {
     }
   });
 
+  it('shows a returned pipeline as failed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-pipe-red-'));
+    const app = await boot(root);
+    try {
+      const history = app.get(HistoryService);
+      const run = await save(history, 'proj-pipe-red', 'implement', 'waiting');
+      await history.finishVisit(run, visit('pipeline', 'waiting'));
+      const flow = await app.get(RunsService).flow('proj-pipe-red');
+      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'pipeline')?.status).toBe('failed');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('shows a returned code review as failed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-red-'));
+    const app = await boot(root);
+    try {
+      const history = app.get(HistoryService);
+      const run = await save(history, 'proj-review-red', 'implement', 'waiting');
+      await history.finishVisit(run, {
+        ...visit('code-review', 'waiting'),
+        documents: [{ kind: 'review_quality', fileName: '', body: 'notes\ndecision: return\n' }],
+      });
+      const flow = await app.get(RunsService).flow('proj-review-red');
+      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'code-review')?.status).toBe('failed');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('shows a later green pipeline as done', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-pipe-green-'));
+    const app = await boot(root);
+    try {
+      const history = app.get(HistoryService);
+      const run = await save(history, 'proj-pipe-green', 'done', 'done');
+      await history.finishVisit(run, visit('pipeline', 'waiting'));
+      await history.finishVisit(run, visit('pipeline', 'done'));
+      const flow = await app.get(RunsService).flow('proj-pipe-green');
+      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'pipeline')?.status).toBe('done');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('shows a pipeline rerun as running while the previous visit is waiting', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-pipe-run-'));
+    const app = await boot(root);
+    try {
+      const history = app.get(HistoryService);
+      const run = await save(history, 'proj-pipe-run', 'pipeline', 'running');
+      await history.finishVisit(run, visit('pipeline', 'waiting'));
+      const flow = await app.get(RunsService).flow('proj-pipe-run');
+      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'pipeline')?.status).toBe('running');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('shows the stored failure instead of the status word', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-error-'));
     const app = await boot(root);

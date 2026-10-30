@@ -831,7 +831,10 @@ function reportChip(
   const body = log.body.trim();
   const opened = body !== '' && body !== 'waiting for output';
   const writing = run.currentStep === 'code-review' && run.status === 'running' && log.current;
-  const status = writing ? 'running' : body === 'starting' ? 'idle' : verdict === 'ok' ? 'done' : verdict === 'return' ? 'waiting' : stored ? 'done' : opened ? 'failed' : 'idle';
+  const visit = stats.filter((item) => item.step === 'code-review').at(-1);
+  const loopStatus = stepStatus('code-review', run, visit);
+  const shown = writing ? 'running' : body === 'starting' ? 'idle' : verdict === 'ok' ? 'done' : verdict === 'return' ? 'waiting' : stored ? 'done' : opened ? 'failed' : 'idle';
+  const status = run.currentStep !== 'code-review' && loopStatus === 'failed' ? loopStatus : shown;
   return {
     name: 'code-review',
     status,
@@ -916,6 +919,9 @@ function stepStatus(name: string, run: RunEntity, stat: StepStatEntity | undefin
   }
   if (name === run.currentStep) {
     return run.status === 'done' ? 'done' : run.status;
+  }
+  if (isLoopStep(name) && stat?.status === 'waiting') {
+    return 'failed';
   }
   const current = STEPS.indexOf(run.currentStep as StepName);
   const index = STEPS.indexOf(name as StepName);
