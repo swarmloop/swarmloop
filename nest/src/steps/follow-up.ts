@@ -7,10 +7,6 @@ export function withAddedRepos(prompt: string, note: string | null): string {
   return `${prompt.trimEnd()}\n\n${note.trim()}\n`;
 }
 
-export function resumePrompt(full: string, followUp: string): string {
-  return `${full.trimEnd()}\n\n${followUp.trim()}\n`;
-}
-
 export function planFollowUp(answers: string): string {
   const lines = [
     'The requirements in this message are the whole task. Read the working directory when it has source files.',
@@ -82,12 +78,9 @@ export function implementFollowUp(plan: string, notes: string | null): string {
 }
 
 export const IMPLEMENT_REVIEW_FOLLOW_UP = [
-  'Check the implementation for logical and technical gaps, and against the plan and any return in this chat. Fix and improve it in this pass.',
-  'When the code is more than the plan needs, or does not match the tree, bring it in line without dropping a planned case. A change that the failed pipeline job needs is not more than the plan. Do not remove it. Do not strip a well-scoped abstraction just to cut lines. Keep to the structure and patterns already in the tree, and keep it clean, simple, and straightforward: DRY, KISS, SOLID. Favor clear, well-factored code over clever or cramped code: each function, module, and layer has one clear responsibility. Reach for an abstraction when it makes the code clearer and matches how the tree is already organized; do not add a file, helper, or layer that does not earn its place or that the task does not need. When a change leaves a component, file, export, import, comment, or commented-out code with no remaining use, remove that leftover in the same change. Keep the behavior complete and reliable: the cases the requirement names work, and errors are handled the way the tree already handles them. Cover the change with tests in the style the tree already uses. Tests run only in the GitLab or GitHub pipeline, never in this sandbox.',
-  'When there is no logical or technical gap, leave the files as they are. When a return’s behavior is already in the files, leave them. Do not widen it into a new mechanism.',
-  'A pipeline return is a test that failed on this commit. Change the code or that test. Do not leave the files as they are.',
-  `Do not implement a linked ticket. ${TASK_SCOPE} A behavior the task requires that the plan left out is still missing. Put it back.`,
-  'Do not run tests. Do not commit.',
+  'Check the change for logical and technical gaps and fix only those. Start from the files this change touched. Open another file only to follow a call from the change or a test the return names. Do not sweep the tree with grep. When there is no gap, leave the files. A pipeline return changes the code or the failed test. Do not leave them. Do not widen the change. Do not implement a linked ticket.',
+  TASK_SCOPE,
+  'Do not start a service, a database, or the application. Do not run tests. Do not run `git commit`, `git push`, or `git add -A`. Do not create a branch.',
   'When this pass changed the files, end with implementation and summary. When nothing changed and the return is not a pipeline failure, end with summary only.',
   'implementation:',
   '- item',
