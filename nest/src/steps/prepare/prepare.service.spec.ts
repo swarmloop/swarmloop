@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { execFileSync } from 'child_process';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -203,21 +203,113 @@ describe('prepare step', () => {
     }
   });
 
-  it('uses the local origin/main when fetch cannot run ssh', async () => {
+  it('fetches the remote tip through the token url when origin is ssh', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-prepare-ssh-'));
     const clone = repoWithMain(root, 'clone');
-    const expected = git(clone, ['rev-parse', 'origin/main']);
+    const bare = join(root, 'clone.git');
+    const stale = git(clone, ['rev-parse', 'origin/main']);
+    const publisher = join(root, 'publisher');
+    git(root, ['clone', bare, publisher]);
+    commitFile(publisher, 'NEXT', 'next\n', 'next');
+    git(publisher, ['push', 'origin', 'main']);
+    const tip = git(bare, ['rev-parse', 'refs/heads/main']);
+    expect(tip).not.toBe(stale);
     git(clone, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/demo.git']);
-    const app = await boot(root);
+    const token = 's3cret-token';
+    const restore = hostFetch([[`url.${bare}.insteadOf`, `https://oauth2:${token}@gitlab.example/group/demo.git`]]);
+    try {
+      const app = await boot(root, undefined, { gitlab: 'https://gitlab.example', gitlabToken: token });
+      try {
+        await seedRequirements(app, 'PROJ-17');
+        const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
+        await checkouts.save(checkouts.create({ name: 'demo', path: clone }));
+        const result = await app.get(PipelineService).step('prepare', 'PROJ-17');
+        expect(result.exitCode).toBe(0);
+        expect(result.message).not.toContain(token);
+        const worktree = join(root, 'worktrees', 'PROJ-17', 'demo');
+        expect(git(worktree, ['rev-parse', 'HEAD'])).toBe(tip);
+        expect(git(worktree, ['rev-parse', 'HEAD'])).not.toBe(stale);
+        expect(git(clone, ['rev-parse', 'origin/main'])).toBe(tip);
+        expect(git(clone, ['config', '--local', '--list'])).not.toContain(token);
+        expect(readFileSync(join(clone, '.git', 'FETCH_HEAD'), 'utf8')).not.toContain(token);
+        expect(readFileSync(join(clone, '.git', 'logs', 'refs', 'remotes', 'origin', 'main'), 'utf8')).not.toContain(token);
+        expect(existsSync(join(worktree, 'NEXT'))).toBe(true);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it('fails an ssh origin when the token is missing and creates no worktree', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-prepare-ssh-token-'));
+    const clone = repoWithMain(root, 'clone');
+    git(clone, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/demo.git']);
+    const app = await boot(root, undefined, { gitlab: 'https://gitlab.example' });
     try {
       await seedRequirements(app, 'PROJ-17');
       const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
       await checkouts.save(checkouts.create({ name: 'demo', path: clone }));
       const result = await app.get(PipelineService).step('prepare', 'PROJ-17');
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('demo prepare failed: GITLAB_TOKEN is missing');
+      expect(result.message).not.toContain('rebase failed');
+      expect(existsSync(join(root, 'worktrees', 'PROJ-17', 'demo'))).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('fails prepare when the fetch fails and redacts the token', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-prepare-redact-'));
+    const clone = repoWithMain(root, 'clone');
+    const stale = git(clone, ['rev-parse', 'origin/main']);
+    git(clone, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/demo.git']);
+    const token = 's3cret-token';
+    const restore = hostFetch([
+      [`url.https://127.0.0.1:1/${token}/demo.git.insteadOf`, `https://oauth2:${token}@gitlab.example/group/demo.git`],
+    ]);
+    try {
+      const app = await boot(root, undefined, { gitlab: 'https://gitlab.example', gitlabToken: token });
+      try {
+        await seedRequirements(app, 'PROJ-21');
+        const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
+        await checkouts.save(checkouts.create({ name: 'demo', path: clone }));
+        const result = await app.get(PipelineService).step('prepare', 'PROJ-21');
+        expect(result.exitCode).toBe(1);
+        expect(result.message).toContain('demo prepare failed');
+        expect(result.message).toContain('unable to access');
+        expect(result.message).toContain('***');
+        expect(result.message).not.toContain(token);
+        expect(result.message).not.toContain('rebase failed');
+        expect(existsSync(join(root, 'worktrees', 'PROJ-21', 'demo'))).toBe(false);
+        expect(git(clone, ['rev-parse', 'origin/main'])).toBe(stale);
+        expect(git(clone, ['config', '--local', '--list'])).not.toContain(token);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it('detaches at HEAD when the checkout has no origin', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-prepare-head-'));
+    const clone = join(root, 'clone');
+    git(root, ['init', '-b', 'main', clone]);
+    commitFile(clone, 'README', 'base\n', 'base');
+    const head = git(clone, ['rev-parse', 'HEAD']);
+    const app = await boot(root);
+    try {
+      await seedRequirements(app, 'PROJ-22');
+      const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
+      await checkouts.save(checkouts.create({ name: 'demo', path: clone }));
+      const result = await app.get(PipelineService).step('prepare', 'PROJ-22');
       expect(result.exitCode).toBe(0);
-      const worktree = join(root, 'worktrees', 'PROJ-17', 'demo');
-      expect(git(worktree, ['rev-parse', 'HEAD'])).toBe(expected);
-      expect((await app.get(HistoryService).findRun('PROJ-17'))?.codeHost).toBe('');
+      const worktree = join(root, 'worktrees', 'PROJ-22', 'demo');
+      expect(git(worktree, ['rev-parse', 'HEAD'])).toBe(head);
+      expect(git(worktree, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('HEAD');
     } finally {
       await app.close();
     }
@@ -402,7 +494,7 @@ describe('prepare step', () => {
     }
   });
 
-  it('detaches at the prompt branch and uses main when that branch is missing', async () => {
+  it('stops when the named base is missing and detaches at that branch when it exists', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'swarmloop-prepare-branch-'));
     const swarm = join(parent, 'swarm');
     mkdirSync(swarm);
@@ -420,9 +512,10 @@ describe('prepare step', () => {
       run.prompt = 'branch: feature/missing\n';
       await history.saveRun(run);
       const missing = await app.get(PipelineService).step('prepare', 'PROJ-19');
-      expect(missing.exitCode).toBe(0);
-      const fallback = join(swarm, 'worktrees', 'PROJ-19', 'app');
-      expect(git(fallback, ['rev-parse', 'HEAD'])).toBe(git(clone, ['rev-parse', 'origin/main']));
+      expect(missing.exitCode).toBe(1);
+      expect(missing.message).toContain('app has no origin/feature/missing');
+      expect(missing.message).not.toContain('origin/main');
+      expect(existsSync(join(swarm, 'worktrees', 'PROJ-19', 'app'))).toBe(false);
       expect(git(clone, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('dirty');
 
       run.prompt = 'branch: feature/a\nbranch: feature/b\n';
@@ -500,34 +593,48 @@ describe('prepare step', () => {
   it('stores github when the origin matches GITHUB_BASE_URL', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-prepare-github-'));
     const clone = repoWithMain(root, 'demo');
+    const token = 's3cret-token';
     git(clone, ['remote', 'set-url', 'origin', 'git@github.com:acme/demo.git']);
-    const app = await boot(root, undefined, { github: 'https://github.com' });
+    const restore = hostFetch([[`url.${join(root, 'demo.git')}.insteadOf`, `https://x-access-token:${token}@github.com/acme/demo.git`]]);
     try {
-      await seedRequirements(app, 'PROJ-30');
-      const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
-      await checkouts.save(checkouts.create({ name: 'demo', path: clone }));
-      const result = await app.get(PipelineService).step('prepare', 'PROJ-30');
-      expect(result.exitCode).toBe(0);
-      expect((await app.get(HistoryService).findRun('PROJ-30'))?.codeHost).toBe('github');
+      const app = await boot(root, undefined, { github: 'https://github.com', githubToken: token });
+      try {
+        await seedRequirements(app, 'PROJ-30');
+        const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
+        await checkouts.save(checkouts.create({ name: 'demo', path: clone }));
+        const result = await app.get(PipelineService).step('prepare', 'PROJ-30');
+        expect(result.exitCode).toBe(0);
+        expect(result.message).not.toContain(token);
+        expect((await app.get(HistoryService).findRun('PROJ-30'))?.codeHost).toBe('github');
+      } finally {
+        await app.close();
+      }
     } finally {
-      await app.close();
+      restore();
     }
   });
 
   it('stores gitlab when the origin matches GITLAB_BASE_URL', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-prepare-gitlab-'));
     const clone = repoWithMain(root, 'demo');
+    const token = 's3cret-token';
     git(clone, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/demo.git']);
-    const app = await boot(root, undefined, { gitlab: 'https://gitlab.example' });
+    const restore = hostFetch([[`url.${join(root, 'demo.git')}.insteadOf`, `https://oauth2:${token}@gitlab.example/group/demo.git`]]);
     try {
-      await seedRequirements(app, 'PROJ-32');
-      const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
-      await checkouts.save(checkouts.create({ name: 'demo', path: clone }));
-      const result = await app.get(PipelineService).step('prepare', 'PROJ-32');
-      expect(result.exitCode).toBe(0);
-      expect((await app.get(HistoryService).findRun('PROJ-32'))?.codeHost).toBe('gitlab');
+      const app = await boot(root, undefined, { gitlab: 'https://gitlab.example', gitlabToken: token });
+      try {
+        await seedRequirements(app, 'PROJ-32');
+        const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
+        await checkouts.save(checkouts.create({ name: 'demo', path: clone }));
+        const result = await app.get(PipelineService).step('prepare', 'PROJ-32');
+        expect(result.exitCode).toBe(0);
+        expect(result.message).not.toContain(token);
+        expect((await app.get(HistoryService).findRun('PROJ-32'))?.codeHost).toBe('gitlab');
+      } finally {
+        await app.close();
+      }
     } finally {
-      await app.close();
+      restore();
     }
   });
 
@@ -535,51 +642,73 @@ describe('prepare step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-prepare-mixed-'));
     const web = repoWithMain(root, 'web');
     const api = repoWithMain(root, 'api');
+    const token = 's3cret-token';
     git(web, ['remote', 'set-url', 'origin', 'git@github.com:acme/web.git']);
     git(api, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/api.git']);
-    const app = await boot(root, undefined, { github: 'https://github.com', gitlab: 'https://gitlab.example' });
+    const restore = hostFetch([
+      [`url.${join(root, 'web.git')}.insteadOf`, `https://x-access-token:${token}@github.com/acme/web.git`],
+      [`url.${join(root, 'api.git')}.insteadOf`, `https://oauth2:${token}@gitlab.example/group/api.git`],
+    ]);
     try {
-      await seedRequirements(app, 'PROJ-31');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-31');
-      if (!run) {
-        throw new Error('run is missing');
+      const app = await boot(root, undefined, {
+        github: 'https://github.com',
+        gitlab: 'https://gitlab.example',
+        githubToken: token,
+        gitlabToken: token,
+      });
+      try {
+        await seedRequirements(app, 'PROJ-31');
+        const history = app.get(HistoryService);
+        const run = await history.findRun('PROJ-31');
+        if (!run) {
+          throw new Error('run is missing');
+        }
+        run.codeHost = 'github';
+        await history.saveRun(run);
+        const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
+        await checkouts.save(checkouts.create({ name: 'web', path: web }));
+        await checkouts.save(checkouts.create({ name: 'api', path: api }));
+        const result = await app.get(PipelineService).step('prepare', 'PROJ-31');
+        expect(result.exitCode).toBe(1);
+        expect(result.message).toContain('origins use github and gitlab');
+        expect(result.message).not.toContain(token);
+        expect((await history.findRun('PROJ-31'))?.codeHost).toBe('github');
+      } finally {
+        await app.close();
       }
-      run.codeHost = 'github';
-      await history.saveRun(run);
-      const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
-      await checkouts.save(checkouts.create({ name: 'web', path: web }));
-      await checkouts.save(checkouts.create({ name: 'api', path: api }));
-      const result = await app.get(PipelineService).step('prepare', 'PROJ-31');
-      expect(result.exitCode).toBe(1);
-      expect(result.message).toContain('origins use github and gitlab');
-      expect((await history.findRun('PROJ-31'))?.codeHost).toBe('github');
     } finally {
-      await app.close();
+      restore();
     }
   });
 
   it('replaces a stored host when every origin agrees', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-prepare-replace-'));
     const clone = repoWithMain(root, 'demo');
+    const token = 's3cret-token';
     git(clone, ['remote', 'set-url', 'origin', 'git@github.com:acme/demo.git']);
-    const app = await boot(root, undefined, { github: 'https://github.com' });
+    const restore = hostFetch([[`url.${join(root, 'demo.git')}.insteadOf`, `https://x-access-token:${token}@github.com/acme/demo.git`]]);
     try {
-      await seedRequirements(app, 'PROJ-33');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-33');
-      if (!run) {
-        throw new Error('run is missing');
+      const app = await boot(root, undefined, { github: 'https://github.com', githubToken: token });
+      try {
+        await seedRequirements(app, 'PROJ-33');
+        const history = app.get(HistoryService);
+        const run = await history.findRun('PROJ-33');
+        if (!run) {
+          throw new Error('run is missing');
+        }
+        run.codeHost = 'gitlab';
+        await history.saveRun(run);
+        const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
+        await checkouts.save(checkouts.create({ name: 'demo', path: clone }));
+        const result = await app.get(PipelineService).step('prepare', 'PROJ-33');
+        expect(result.exitCode).toBe(0);
+        expect(result.message).not.toContain(token);
+        expect((await history.findRun('PROJ-33'))?.codeHost).toBe('github');
+      } finally {
+        await app.close();
       }
-      run.codeHost = 'gitlab';
-      await history.saveRun(run);
-      const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
-      await checkouts.save(checkouts.create({ name: 'demo', path: clone }));
-      const result = await app.get(PipelineService).step('prepare', 'PROJ-33');
-      expect(result.exitCode).toBe(0);
-      expect((await history.findRun('PROJ-33'))?.codeHost).toBe('github');
     } finally {
-      await app.close();
+      restore();
     }
   });
 
@@ -588,21 +717,31 @@ describe('prepare step', () => {
     const swarm = join(parent, 'swarm');
     mkdirSync(swarm);
     const clone = repoWithMain(parent, 'other');
+    const token = 's3cret-token';
     git(clone, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/other.git']);
-    const app = await boot(swarm, '..', { github: 'https://github.com', gitlab: 'https://gitlab.example' });
+    const restore = hostFetch([[`url.${join(parent, 'other.git')}.insteadOf`, `https://oauth2:${token}@gitlab.example/group/other.git`]]);
     try {
-      await seedRequirements(app, 'PROJ-34');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-34');
-      if (!run) {
-        throw new Error('run is missing');
+      const app = await boot(swarm, '..', {
+        github: 'https://github.com',
+        gitlab: 'https://gitlab.example',
+        gitlabToken: token,
+      });
+      try {
+        await seedRequirements(app, 'PROJ-34');
+        const history = app.get(HistoryService);
+        const run = await history.findRun('PROJ-34');
+        if (!run) {
+          throw new Error('run is missing');
+        }
+        run.codeHost = 'github';
+        await history.saveRun(run);
+        await expect(app.get(PrepareService).ensureDetached(run, ['other'], null, false)).rejects.toThrow(/origin is not github/);
+        expect((await history.findRun('PROJ-34'))?.codeHost).toBe('github');
+      } finally {
+        await app.close();
       }
-      run.codeHost = 'github';
-      await history.saveRun(run);
-      await expect(app.get(PrepareService).ensureDetached(run, ['other'], null, false)).rejects.toThrow(/origin is not github/);
-      expect((await history.findRun('PROJ-34'))?.codeHost).toBe('github');
     } finally {
-      await app.close();
+      restore();
     }
   });
 
@@ -647,7 +786,11 @@ describe('prepare step', () => {
   });
 });
 
-async function boot(root: string, checkoutsRoot?: string, bases: { gitlab?: string; github?: string } = {}): Promise<TestingModule> {
+async function boot(
+  root: string,
+  checkoutsRoot?: string,
+  bases: { gitlab?: string; github?: string; gitlabToken?: string; githubToken?: string } = {},
+): Promise<TestingModule> {
   await writeFile(
     join(root, '.env'),
     [
@@ -658,9 +801,9 @@ async function boot(root: string, checkoutsRoot?: string, bases: { gitlab?: stri
       'JIRA_EMAIL=dev@example.com',
       'JIRA_API_TOKEN=token',
       `GITLAB_BASE_URL=${bases.gitlab ?? ''}`,
-      'GITLAB_TOKEN=',
+      `GITLAB_TOKEN=${bases.gitlabToken ?? ''}`,
       `GITHUB_BASE_URL=${bases.github ?? ''}`,
-      'GITHUB_TOKEN=',
+      `GITHUB_TOKEN=${bases.githubToken ?? ''}`,
       'CURSOR_API_KEY=',
       'ANTHROPIC_API_KEY=',
       'MAX_AGENT_CALLS=20',
@@ -748,6 +891,49 @@ function repoWithBranch(root: string, dirName: string): string {
 
 function git(cwd: string, args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+}
+
+function hostFetch(rewrites: [string, string][]): () => void {
+  const entries: [string, string][] = [['protocol.file.allow', 'always'], ...rewrites];
+  const start = Number(process.env.GIT_CONFIG_COUNT);
+  const base = Number.isInteger(start) && start > 0 ? start : 0;
+  const savedCount = process.env.GIT_CONFIG_COUNT;
+  const saved = entries.map((_, index) => {
+    const slot = String(base + index);
+    return { slot, key: process.env[`GIT_CONFIG_KEY_${slot}`], value: process.env[`GIT_CONFIG_VALUE_${slot}`] };
+  });
+  entries.forEach(([key, value], index) => {
+    const slot = String(base + index);
+    process.env[`GIT_CONFIG_KEY_${slot}`] = key;
+    process.env[`GIT_CONFIG_VALUE_${slot}`] = value;
+  });
+  process.env.GIT_CONFIG_COUNT = String(base + entries.length);
+  const previousSsh = process.env.GIT_SSH_COMMAND;
+  process.env.GIT_SSH_COMMAND = 'false';
+  return () => {
+    if (savedCount === undefined) {
+      delete process.env.GIT_CONFIG_COUNT;
+    } else {
+      process.env.GIT_CONFIG_COUNT = savedCount;
+    }
+    for (const item of saved) {
+      if (item.key === undefined) {
+        delete process.env[`GIT_CONFIG_KEY_${item.slot}`];
+      } else {
+        process.env[`GIT_CONFIG_KEY_${item.slot}`] = item.key;
+      }
+      if (item.value === undefined) {
+        delete process.env[`GIT_CONFIG_VALUE_${item.slot}`];
+      } else {
+        process.env[`GIT_CONFIG_VALUE_${item.slot}`] = item.value;
+      }
+    }
+    if (previousSsh === undefined) {
+      delete process.env.GIT_SSH_COMMAND;
+    } else {
+      process.env.GIT_SSH_COMMAND = previousSsh;
+    }
+  };
 }
 
 function commitFile(cwd: string, name: string, body: string, message: string): void {
