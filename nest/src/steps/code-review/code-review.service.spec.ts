@@ -156,8 +156,9 @@ describe('code-review step', () => {
       expect(events[0]?.attempt).toBe(1);
       expect(events[0]?.reason).toBe('review_quality');
       const notes = await app.get(HistoryService).latestBody('PROJ-81', 'return');
-      expect(notes).toContain('## quality');
-      expect(notes).toContain('decision: return');
+      expect(notes).toContain('What to fix:');
+      expect(notes).toContain('Keep the empty segment.');
+      expect(notes).not.toContain('decision: return');
       const report = await app.get(HistoryService).latestBody('PROJ-81', 'review_report');
       expect(report).toContain('What to fix:');
       expect(report).toContain('Keep the empty segment.');

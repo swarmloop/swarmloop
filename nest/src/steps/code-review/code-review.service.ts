@@ -163,7 +163,7 @@ export class CodeReviewService {
     const plan = approvedPlan(requirements);
     const jobs = pending.map((reviewer) => ({ ...this.job(reviewer, env, requirements, notes, mounts, handoff, returned, diff, plan), stale: stale.has(reviewer.name) }));
     const fix = fixNotes(await this.history.listDocuments(opened.run.id), handoff);
-    const finished = await Promise.all(jobs.map((job) => this.runJob(opened, key, env, job, fix, plan, options.auto, fresh, retry)));
+    const finished = await Promise.all(jobs.map((job) => this.runJob(opened, key, env, job, fix, plan, returned, options.auto, fresh, retry)));
     for (const item of finished) {
       await this.recordAngle(opened, item, repeated);
     }
@@ -212,7 +212,10 @@ export class CodeReviewService {
     }
     opened.run.attemptsReview += 1;
     await this.history.recordLoop(opened.run, 'review', opened.run.attemptsReview, returning.map((item) => item.kind).join(','));
-    const leftover = returnNotes(returning.map((item) => ({ source: item.kind.replace(/^review_/, ''), body: item.body })));
+    const report = documents.find((item) => item.kind === 'review_report')?.body.trim();
+    const leftover = report
+      ? textDocument('return', report.endsWith('\n') ? report : `${report}\n`)
+      : returnNotes(returning.map((item) => ({ source: item.kind.replace(/^review_/, ''), body: item.body })));
     return this.finish(opened, 'waiting', 0, line, [...documents, leftover], exchanges, 'implement', usage);
   }
 
@@ -345,6 +348,7 @@ export class CodeReviewService {
     job: { reviewer: Reviewer; model: string; prompt: string; mounts: SandboxMount[]; stale: boolean },
     fix: { implement: string; reviewed: string },
     plan: string,
+    returned: string | null,
     auto: boolean | undefined,
     fresh: boolean,
     retry: boolean,
@@ -355,7 +359,7 @@ export class CodeReviewService {
       ? job.prompt
       : retry && !job.stale
         ? reviewContinue(job.reviewer.name)
-        : reviewResume(job.reviewer.name, fix.implement, fix.reviewed, plan);
+        : reviewResume(job.reviewer.name, fix.implement, fix.reviewed, plan, returned);
     return this.one(opened, key, env, { reviewer: job.reviewer, model: job.model, prompt, mounts: job.mounts }, auto, fresh);
   }
 
@@ -583,8 +587,6 @@ export class CodeReviewService {
   }
 }
 
-const REVIEW_ANGLES = ['requirements', 'quality', 'regressions', 'security', 'performance'];
-
 function approvedPlan(requirements: string): string {
   const plan = readPlan(requirements);
   if (!plan || plan.decision !== 'approve' || plan.items.length === 0) {
@@ -602,10 +604,11 @@ function staleReturn(repeated: boolean, decision: 'ok' | 'return'): boolean {
 }
 
 function reviewReturn(returned: string | null): boolean {
-  if (!returned) {
+  if (!returned?.trim()) {
     return false;
   }
-  return REVIEW_ANGLES.some((name) => returned.includes(`## ${name}`));
+  const lines = returned.split(/\r?\n/).map((line) => line.trim());
+  return !(lines.includes('## pipeline') && lines.includes('result: fail'));
 }
 
 function sameReviewedDiff(root: string, key: string, patch: string): boolean {

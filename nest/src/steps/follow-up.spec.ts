@@ -104,7 +104,7 @@ describe('withAddedRepos', () => {
 describe('return follow-ups', () => {
   it('tells implement to fix the named behavior and the next reviewer not to copy another angle', () => {
     const implement = implementFollowUp('plan:\n- delete the run\n', '## quality\n- stop returns before writers finish\n');
-    expect(implement).toContain('Fix the broken behavior named in the return');
+    expect(implement).toContain('The return is one list. Fix what it names, and do not undo what it says holds.');
     expect(implement).toContain('Do not add a mechanism it did not name');
     expect(implement).not.toContain('A pipeline return is a test that failed on this commit');
     const pipeline = implementFollowUp('plan:\n- delete the run\n', '## pipeline\nresult: fail\njob: test\n');
@@ -124,6 +124,7 @@ describe('return follow-ups', () => {
     expect(review).toContain('A behavior it removes is not a missing requirement');
     expect(review).toContain('A change that makes a failed pipeline job on this branch pass is not extra');
     expect(reviewResume('quality', '- done', '- checked', '- remove the catch-up')).toContain('remove the catch-up');
+    expect(reviewResume('quality', '- done', '- checked', '', 'What holds:\n- the prefix stays\n')).toContain('the prefix stays');
     expect(reviewResume('quality', '', '')).toContain('- nothing recorded');
     expect(reviewContinue('security')).toContain('You were interrupted before the decision');
     expect(reviewContinue('security')).toContain('Do not start over');

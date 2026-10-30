@@ -74,7 +74,7 @@ export function implementFollowUp(plan: string, notes: string | null): string {
     lines.push(
       isPipelineReturn(notes)
         ? 'A pipeline return is a test that failed on this commit. Change the code or that test. Do not leave the files as they are. Do not add a mechanism it did not name.'
-        : 'Fix the broken behavior named in the return. Do not add a mechanism it did not name. In the summary, say that behavior now holds.',
+        : 'The return is one list. Fix what it names, and do not undo what it says holds. Do not add a mechanism it did not name. In the summary, say that behavior now holds.',
     );
   }
   lines.push('', 'End with these sections:', 'implementation:', '- item', '', 'summary:', '- why');
@@ -106,7 +106,8 @@ export function reportFollowUp(brief: string, implementation?: string | null): s
     'Write the merge request summary from the implementation and the five decisions copied below.',
     'Those decisions are the only reviews. Ignore an earlier draft in this chat.',
     'Do not search again. Do not add a finding none of them wrote. Do not end with a decision line.',
-    'Use these parts, in this order: What changed, Code review, and What to fix only when a latest decision is return.',
+    'Use these parts, in this order: What changed, Code review, What holds when a check is ok, and What to fix only when a latest decision is return.',
+    'What holds is behavior an ok check accepted. What to fix must not undo it.',
     '',
   ];
   if (implementation?.trim()) {
@@ -116,7 +117,7 @@ export function reportFollowUp(brief: string, implementation?: string | null): s
   return lines.join('\n');
 }
 
-export function reviewResume(name: string, implement: string, reviewed: string, plan?: string): string {
+export function reviewResume(name: string, implement: string, reviewed: string, plan?: string, returned?: string | null): string {
   const note = (body: string): string => body.trim() || '- nothing recorded';
   const lines = [
     `Continue this ${name} review. This chat is only the ${name} angle.`,
@@ -130,7 +131,9 @@ export function reviewResume(name: string, implement: string, reviewed: string, 
     'Implement review:',
     note(reviewed),
     '',
+    ...(returned?.trim() ? ['Last return:', returned.trim(), ''] : []),
     'Judge only this angle. When your last return is already fixed, or it is already what the plan asks, decision: ok.',
+    'Do not return a finding that undoes what the last return says must stay.',
     'A behavior it removes is not a missing requirement.',
     'A change that makes a failed pipeline job on this branch pass is not extra.',
     'On `decision: return`, name one broken behavior. Do not ask for a new subsystem.',

@@ -12,8 +12,12 @@ What was done, from the implementation notes.
 
 The status of the checks. When every decision is ok, say what holds.
 
+## What holds
+
+When a check is ok, the behavior that must stay. A later fix must not undo it. Omit this part when every decision is return.
+
 ## What to fix
 
-Only when a check returned. One bullet per distinct change that must be fixed. Omit this part when every decision is ok.
+Only when a check returned. One bullet per distinct change that must be fixed. Each bullet still has to leave What holds true. Omit this part when every decision is ok.
 
 Do not add a finding none of the five wrote. Do not change their decisions. Do not end with a decision line.
