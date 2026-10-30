@@ -14,7 +14,7 @@
   <img alt="Built with NestJS and Next.js" src="https://img.shields.io/badge/built%20with-NestJS%20%2B%20Next.js-e0234e.svg">
 </p>
 
-[Quick start](#-quick-start) · [Features](#-features) · [Team install](#-team-install) · [PhpStorm](#-phpstorm) · [Settings](#-settings)
+[Quick start](#-quick-start) · [CI](#-commit-merge-request-and-ci) · [Features](#-features) · [JetBrains](#-jetbrains) · [Settings](#-settings)
 
 </div>
 
@@ -33,6 +33,7 @@ swarmloop takes a ticket or a prompt and walks a coding agent through requiremen
 | 🔍 **Five reviewers** | Requirements, quality, regressions, security, performance. A finding sends the work back. |
 | 🔄 **Rebase** | One button rebases onto the latest base branch, hands conflicts to the agent, and reviews again. |
 | 💰 **Limits** | Dollars, tokens, time, silence, and retries are server settings, not the agent's choice. |
+| 🖥 **Live panel, CLI, IDE** | The panel updates as each step runs. The CLI and JetBrains AI Chat start the same runs, with the same steps, rules, and history. |
 | 📊 **Statistics** | Spend, tokens, and CPU and memory charts for every step, plus every external HTTP call. |
 | 👥 **Team server** | One machine, one flow, shared rules in `skills/`, one bill. |
 
@@ -46,7 +47,7 @@ You need Docker and one model key. No Jira, no git token, no CI.
    cp .env.example .env
    ```
 
-2. In `.env`, set `CURSOR_API_KEY`. For Claude, set `RUNTIME=claude` and `ANTHROPIC_API_KEY` instead. Leave every other secret empty.
+2. In `.env`, set `CURSOR_API_KEY` from the [Cursor dashboard](https://cursor.com/dashboard), **API Keys**. For Claude, set `RUNTIME=claude` and `ANTHROPIC_API_KEY` from [Claude Console](https://platform.claude.com/settings/keys) instead. Leave every other secret empty.
 
 3. Start it:
 
@@ -58,7 +59,55 @@ You need Docker and one model key. No Jira, no git token, no CI.
 
 The repository list is every git clone in `CHECKOUTS_ROOT`, which `.env.example` sets to the folder that holds swarmloop (`../`). The agent edits its own worktree, not your working copy. Nothing is pushed, and Jira is not called.
 
-Ready for Jira and a git host? Go to [Team install](#-team-install).
+### 🚢 Commit, merge request, and CI
+
+Add a git token to `.env` and run `docker compose up --build` again. This time leave **ci** ticked. After you accept the file list, Nest pushes a feature branch, opens a merge request, and watches the pipeline.
+
+- GitHub needs `GITHUB_TOKEN`. GitLab needs `GITLAB_TOKEN`, and `GITLAB_BASE_URL` when it is self-hosted. Both may be set. Nest picks the host whose hostname equals the checkout `origin`.
+- Nest commits as the clone's own `user.email`. If the clone has none, set `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`.
+
+<details>
+<summary><strong>GitLab token</strong></summary>
+
+`GITLAB_BASE_URL` is `https://gitlab.com` when the remotes are on gitlab.com. Create `GITLAB_TOKEN` from [Personal access tokens](https://gitlab.com/-/user_settings/personal_access_tokens): **Generate token** → **Fine-grained token**, scoped to the group that owns the repositories. Grant only these permissions:
+
+| Resource | Permission |
+| --- | --- |
+| Code | Download, Push |
+| Pipeline | Read |
+| Job | Read |
+| Merge request | Read, Create, Update |
+
+**Code: Download** is the git read. Rebase fetches the remote source branch with this token. Without Download, GitLab refuses the fetch: `This operation requires a fine-grained personal access token with the following project permissions: [Code: Download].` **Code: Push** is the git write Nest uses after the commit pause. Your role on each project still has to be at least Developer.
+
+</details>
+
+<details>
+<summary><strong>GitHub token</strong></summary>
+
+`GITHUB_BASE_URL` is `https://github.com` when the remotes are on github.com. Create `GITHUB_TOKEN` from [Fine-grained personal access tokens](https://github.com/settings/personal-access-tokens): **Generate new token**. Resource owner is the account or organization that owns the repositories. Repository access is only the repositories this run pushes. Grant only these permissions:
+
+| Resource | Permission |
+| --- | --- |
+| Contents | Read and write |
+| Pull requests | Read and write |
+| Actions | Read |
+| Workflows | Read and write |
+| Metadata | Read |
+
+**Contents: Read and write** is the git read and the git write. Rebase fetches the remote source branch with this token, and that fetch uses the read half. The write half is what Nest uses after the commit pause. Your account still has to be able to push to each repository. **Workflows: Read and write** is required when a commit creates or changes a file under `.github/workflows`. Without it GitHub rejects the push: `refusing to allow a Personal Access Token to create or update workflow ... without workflow scope`. GitHub shows the token once.
+
+</details>
+
+### 🎫 Jira (optional)
+
+Only for prompts that name a ticket. A prompt without one never calls Jira.
+
+- `JIRA_BASE_URL` is your site, such as `https://your-team.atlassian.net`.
+- `JIRA_EMAIL` is the email you sign in to Atlassian with.
+- `JIRA_API_TOKEN` comes from [Atlassian API tokens](https://id.atlassian.com/manage-profile/security/api-tokens): **Create API token**.
+
+Run `docker compose up --build` again after saving.
 
 ## ✨ Features
 
@@ -167,8 +216,8 @@ Before code review, implement review reads the change again on the same model an
 ### 🖥 Panel, CLI, and IDE
 
 - **Panel** at [http://127.0.0.1:3921](http://127.0.0.1:3921). A live board over a websocket, a filter by key, and light, dark, and system themes.
-- **CLI.** `bin/swarmloop run KEY --prompt "…"`, `bin/swarmloop step NAME KEY`, and `bin/swarmloop fetch PROJ-123`. Review any local folder with `bin/swarmloop step code-review KEY --path /absolute/dir`.
-- **IDE.** `bin/sloop` speaks ACP, so an ACP client such as PhpStorm AI Chat can start and continue runs. [Set up PhpStorm](#-phpstorm).
+- **CLI.** `bin/swarmloop run KEY --prompt "…"`, `bin/swarmloop step NAME KEY`, and `bin/swarmloop fetch PROJ-123`. Review any local folder with `bin/swarmloop step code-review KEY --path /absolute/dir`. The CLI runs the same pipeline in its own process and writes the same history. The panel shows a CLI run after a reload, not live.
+- **IDE.** `bin/sloop` speaks ACP, so an ACP client such as JetBrains AI Chat can start and continue runs. It goes through the API, so the panel follows those runs live. [Set up JetBrains](#-jetbrains).
 
 **Run again** replays a step, and you choose which later phases run. A replay never moves a run that is further ahead back. The same dialog adds another repository to an open run. Removing a run deletes its rows, its worktrees, and its files.
 
@@ -182,65 +231,21 @@ npm run build --prefix nest
 bin/swarmloop run PROJ-123 --prompt "what this ticket is"
 ```
 
-## 🏢 Team install
-
-Start from [Quick start](#-quick-start), then fill the keys for the systems this server should talk to.
-
-- `RUNTIME=cursor` needs `CURSOR_API_KEY`. `RUNTIME=claude` needs `ANTHROPIC_API_KEY`.
-- Jira needs `JIRA_BASE_URL`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`.
-- GitLab needs `GITLAB_BASE_URL` and `GITLAB_TOKEN`. GitHub needs `GITHUB_BASE_URL` and `GITHUB_TOKEN`. Both may be set. Prepare picks the host whose hostname equals the checkout `origin`.
-- `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` are the identity Nest commits with.
-
-Restart swarmloop after saving a token.
-
-<details>
-<summary><strong>GitLab token</strong></summary>
-
-`GITLAB_BASE_URL` is `https://gitlab.com` when the remotes are on gitlab.com. Create `GITLAB_TOKEN` from [Personal access tokens](https://gitlab.com/-/user_settings/personal_access_tokens): **Generate token** → **Fine-grained token**, scoped to the group that owns the repositories. Grant only these permissions:
-
-| Resource | Permission |
-| --- | --- |
-| Code | Download, Push |
-| Pipeline | Read |
-| Job | Read |
-| Merge request | Read, Create, Update |
-
-**Code: Download** is the git read. Rebase fetches the remote source branch with this token. Without Download, GitLab refuses the fetch: `This operation requires a fine-grained personal access token with the following project permissions: [Code: Download].` **Code: Push** is the git write Nest uses after the commit pause. Your role on each project still has to be at least Developer.
-
-</details>
-
-<details>
-<summary><strong>GitHub token</strong></summary>
-
-`GITHUB_BASE_URL` is `https://github.com` when the remotes are on github.com. Create `GITHUB_TOKEN` from [Fine-grained personal access tokens](https://github.com/settings/personal-access-tokens): **Generate new token**. Resource owner is the account or organization that owns the repositories. Repository access is only the repositories this run pushes. Grant only these permissions:
-
-| Resource | Permission |
-| --- | --- |
-| Contents | Read and write |
-| Pull requests | Read and write |
-| Actions | Read |
-| Workflows | Read and write |
-| Metadata | Read |
-
-**Contents: Read and write** is the git read and the git write. Rebase fetches the remote source branch with this token, and that fetch uses the read half. The write half is what Nest uses after the commit pause. Your account still has to be able to push to each repository. **Workflows: Read and write** is required when a commit creates or changes a file under `.github/workflows`. Without it GitHub rejects the push: `refusing to allow a Personal Access Token to create or update workflow ... without workflow scope`. GitHub shows the token once.
-
-</details>
-
-## 🧩 PhpStorm
+## 🧩 JetBrains
 
 ⛵ **`sloop` — not slop.**
 
-PhpStorm does not have a swarmloop plugin. From 2025.3 on, AI Assistant starts `bin/sloop` as a custom ACP agent and talks to it in AI Chat. The chat then reads and writes the same runs as the CLI. Older PhpStorm shows only the built-in models in that chat, and **Add Custom Agent** is not in the menu.
+JetBrains IDEs do not have a swarmloop plugin. From 2025.3 on, AI Assistant starts `bin/sloop` as a custom ACP agent and talks to it in AI Chat. The chat then reads and writes the same runs as the CLI. An older version shows only the built-in models in that chat, and **Add Custom Agent** is not in the menu.
 
 The swarmloop API has to be up on `127.0.0.1:3920`. `docker compose up` also copies the built client to `nest/dist`, which is what `bin/sloop` runs. The IDE does not need a separate `npm run build`.
 
-Then, in PhpStorm:
+Then, in the IDE:
 
 1. Install the **AI Assistant** plugin if it is not already there: **Settings | Plugins**, search for AI Assistant.
 2. Open the **AI Chat** tool window.
-3. Check **PhpStorm | About**. The version has to be 2025.3 or newer. In an older IDE the `⋮` menu of AI Chat has Rename Chat, Settings, and Show Toolbar, and no way to add an agent. Update PhpStorm first.
+3. Open **About**. The version has to be 2025.3 or newer. In an older IDE the `⋮` menu of AI Chat has Rename Chat, Settings, and Show Toolbar, and no way to add an agent. Update the IDE first.
 4. Leave the model list at the bottom alone. That list is Gemini, GPT, LM Studio, and Ollama. In the top-right of AI Chat, next to the clock icon, open the `⋮` menu and choose **Add Custom Agent**.
-5. PhpStorm creates `~/.jetbrains/acp.json` and opens it. Replace the contents with this, using the absolute path of `bin/sloop` on your machine:
+5. The IDE creates `~/.jetbrains/acp.json` and opens it. Replace the contents with this, using the absolute path of `bin/sloop` on your machine:
 
 ```json
 {
@@ -261,7 +266,7 @@ Then, in PhpStorm:
 6. Save the file. **sloop** appears in the agent list at the top of AI Chat. Select it.
 7. Type a prompt and send it. A prompt with no open run starts one. The next prompt continues that run.
 
-On 2025.3 or newer, if **sloop** does not show up, restart PhpStorm. The same block is in `acp.json` at the repo root. Writing that file on an older IDE does nothing: the chat never reads it.
+On 2025.3 or newer, if **sloop** does not show up, restart the IDE. The same block is in `acp.json` at the repo root. Writing that file on an older IDE does nothing: the chat never reads it.
 
 Open a chat whose session id is the run key, such as `PROJ-123`, and the stored history loads. `/review <path>` starts a code review of that checkout. `/step <name>` runs that step. `/replay` followed by a prompt starts the run again from requirements.
 
