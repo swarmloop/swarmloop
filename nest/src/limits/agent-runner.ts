@@ -165,7 +165,7 @@ export class AgentProcessRunner {
       mounts: [...input.mounts, ...briefs],
       statePath,
       allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(env.RUNTIME)])],
-      env: [modelCredential(env.RUNTIME, env.CURSOR_API_KEY, env.ANTHROPIC_API_KEY)],
+      env: [modelCredential(env.RUNTIME, env.CURSOR_API_KEY, env.ANTHROPIC_API_KEY, env.CLAUDE_CODE_OAUTH_TOKEN)],
       command: [command, ...args],
       userId,
     });

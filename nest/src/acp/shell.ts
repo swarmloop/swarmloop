@@ -176,7 +176,7 @@ async function attach(api: NestApi, feature: ShellFeature, vendor: string[], con
     ],
     userId,
     maskFile,
-    env: [modelCredential(runtime, config.cursorKey, config.anthropicKey)],
+    env: [modelCredential(runtime, config.cursorKey, config.anthropicKey, config.oauthToken)],
     statePath,
     stateDaemonPath: statePath,
     stdin: interactive,
