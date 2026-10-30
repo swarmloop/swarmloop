@@ -228,14 +228,14 @@ describe('implement-review step', () => {
     }
   });
 
-  it('resumes with the requirements, the plan, and the first pass', async () => {
+  it('continues the implement chat with the follow-up', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-review-resume-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-73', 'billing-api');
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(
-      join(root, 'data', 'PROJ-73-plan-session.json'),
-      `${JSON.stringify({ runtime: 'cursor', chatId: 'plan-chat', resumed: true, completed: true, killReason: null, usd: 1 })}\n`,
+      join(root, 'data', 'PROJ-73-implement-session.json'),
+      `${JSON.stringify({ runtime: 'cursor', chatId: 'implement-chat', resumed: true, completed: true, killReason: null, usd: 1 })}\n`,
     );
     const agent = jest.fn().mockResolvedValue(result(reply));
     const app = await boot(root, agent);
@@ -244,12 +244,13 @@ describe('implement-review step', () => {
       const done = await app.get(PipelineService).step('implement-review', 'PROJ-73');
       expect(done.exitCode).toBe(0);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
-      expect(input.resumeChatId).toBe('plan-chat');
-      expect(input.prompt).toContain('# Implement review');
-      expect(input.prompt).toContain('logical and technical gaps');
-      expect(input.prompt).toContain('Ship the field');
-      expect(input.prompt).toContain('add the field');
-      expect(input.prompt).toContain('changed the field parser');
+      expect(input.resumeChatId).toBe('implement-chat');
+      expect(input.prompt).toContain('Check the change for logical and technical gaps and fix only those');
+      expect(input.prompt).not.toContain('# Implement review');
+      expect(input.prompt).not.toContain('Ship the field');
+      expect(input.prompt).not.toContain('add the field');
+      expect(input.prompt).not.toContain('changed the field parser');
+      expect(input.prompt).not.toContain('What previous steps did');
     } finally {
       await app.close();
     }

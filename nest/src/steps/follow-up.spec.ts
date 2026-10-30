@@ -5,7 +5,7 @@ import { LINKED_CONTEXT, TASK_SCOPE } from './requirements-brief';
 
 const skillText = (name: string): string => readFileSync(join(__dirname, '../../../skills', name, 'SKILL.md'), 'utf8');
 
-// The one code-quality standard every plan and implement turn must carry, word for word,
+// Plan, plan-review, and implement carry this code-quality standard, word for word,
 // so the first turn (SKILL.md) and the resume (follow-up.ts) can never drift apart.
 const CODE_STANDARD =
   'Keep to the structure and patterns already in the tree, and keep it clean, simple, and straightforward: DRY, KISS, SOLID. ' +
@@ -25,10 +25,21 @@ const STEP_PAIRS = [
 
 describe('step prompt invariants', () => {
   it('carries the one code-quality standard, word for word, on the first turn and the resume', () => {
-    for (const pair of STEP_PAIRS) {
+    for (const pair of STEP_PAIRS.filter((item) => item.name !== 'implement-review')) {
       expect(pair.skill).toContain(CODE_STANDARD);
       expect(pair.followUp).toContain(CODE_STANDARD);
     }
+    const review = STEP_PAIRS.find((item) => item.name === 'implement-review');
+    const gap =
+      'Check the change for logical and technical gaps and fix only those. Start from the files this change touched. Open another file only to follow a call from the change or a test the return names. Do not sweep the tree with grep. When there is no gap, leave the files. A pipeline return changes the code or the failed test. Do not leave them. Do not widen the change. Do not implement a linked ticket.';
+    const limits =
+      'Do not start a service, a database, or the application. Do not run tests. Do not run `git commit`, `git push`, or `git add -A`. Do not create a branch.';
+    expect(review?.skill).toContain(gap);
+    expect(review?.followUp).toContain(gap);
+    expect(review?.skill).toContain(TASK_SCOPE);
+    expect(review?.followUp).toContain(TASK_SCOPE);
+    expect(review?.skill).toContain(limits);
+    expect(review?.followUp).toContain(limits);
   });
 
   it('carries the one task scope, word for word, wherever the requirements are read', () => {
@@ -112,9 +123,6 @@ describe('return follow-ups', () => {
     expect(pipeline).toContain('Do not leave the files as they are');
     expect(pipeline).not.toContain('say that behavior now holds');
     expect(implementFollowUp('plan:\n- delete the run\n', null)).not.toContain('Fix the broken behavior');
-    expect(IMPLEMENT_REVIEW_FOLLOW_UP).toContain('Do not widen it into a new mechanism');
-    expect(IMPLEMENT_REVIEW_FOLLOW_UP).toContain('A pipeline return is a test that failed on this commit');
-    expect(IMPLEMENT_REVIEW_FOLLOW_UP).toContain('A change that the failed pipeline job needs is not more than the plan');
     expect(IMPLEMENT_REVIEW_FOLLOW_UP).toContain('end with summary only');
     const review = reviewResume('quality', '- waited for the writers\n- stop no longer returns early', '- left that wait in place');
     expect(review).toContain('This chat is only the quality angle');

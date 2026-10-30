@@ -57,13 +57,13 @@ describe('implement step', () => {
     }
   });
 
-  it('continues the plan chat with a short prompt', async () => {
+  it('continues the implement chat with a short prompt', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-resume-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-69', 'billing-api');
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(
-      join(root, 'data', 'PROJ-69-plan-session.json'),
+      join(root, 'data', 'PROJ-69-implement-session.json'),
       `${JSON.stringify({ runtime: 'cursor', chatId: 'plan-chat', resumed: true, completed: true, killReason: null, usd: 1.2 })}\n`,
     );
     const agent = jest.fn().mockResolvedValue(result(reply));
@@ -80,6 +80,31 @@ describe('implement step', () => {
       expect(input.prompt).not.toContain('Ship the field');
       expect(input.prompt).not.toContain('Package registries');
       expect(input.prompt).not.toContain('What previous steps did');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('starts a fresh chat when only the plan session remains', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-old-session-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-68', 'billing-api');
+    mkdirSync(join(root, 'data'), { recursive: true });
+    writeFileSync(
+      join(root, 'data', 'PROJ-68-plan-session.json'),
+      `${JSON.stringify({ runtime: 'cursor', chatId: 'plan-chat', resumed: true, completed: true, killReason: null, usd: 1.2 })}\n`,
+    );
+    const agent = jest.fn().mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-68', 'approve');
+      const done = await app.get(PipelineService).step('implement', 'PROJ-68');
+      expect(done.exitCode).toBe(0);
+      const input = agent.mock.calls[0]?.[0] as AgentRunInput;
+      expect(input.resumeChatId ?? null).toBeNull();
+      expect(input.prompt).toContain('# Implement');
+      expect(input.prompt).toContain('Ship the field');
+      expect(input.prompt).toContain('Package registries');
     } finally {
       await app.close();
     }

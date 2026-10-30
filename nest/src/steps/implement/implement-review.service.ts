@@ -10,7 +10,7 @@ import { packageRegistries } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
-import { IMPLEMENT_REVIEW_FOLLOW_UP, resumePrompt, withAddedRepos } from '../follow-up';
+import { IMPLEMENT_REVIEW_FOLLOW_UP, withAddedRepos } from '../follow-up';
 import { composedReturn, ModelStepContext, plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, withModelStep } from '../model-step';
 import { requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames } from '../repo-names';
@@ -69,7 +69,7 @@ export class ImplementReviewService {
     const heads = await featureHeads(mounts, branch);
     const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'implement-review')), ctx.opened.run.runtime);
     const full = skillPrompt('implement-review', ctx.requirements, names, sections, mounts);
-    const chosen = continued?.chatId ? resumePrompt(full, IMPLEMENT_REVIEW_FOLLOW_UP) : full;
+    const chosen = continued?.chatId ? IMPLEMENT_REVIEW_FOLLOW_UP : full;
     const prompt = withAddedRepos(chosen, await this.history.latestBody(key, 'added_repos'));
     const agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries() });
     const text = agentResult.responseText;

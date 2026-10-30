@@ -1,16 +1,12 @@
-export type SessionGroup = 'plan';
+export type SessionGroup = 'plan' | 'implement';
 
-/** Steps that continue one Cursor chat share one home directory. Each code reviewer keeps its own. */
+/** Research, plan, and plan-review share one chat. Implement steps share another. Each code reviewer keeps its own. */
 export function sessionGroup(step: string): SessionGroup | null {
-  if (
-    step === 'research' ||
-    step === 'plan' ||
-    step === 'plan-review' ||
-    step === 'implement' ||
-    step === 'implement-review' ||
-    step.startsWith('implement-')
-  ) {
+  if (step === 'research' || step === 'plan' || step === 'plan-review') {
     return 'plan';
+  }
+  if (step === 'implement' || step === 'implement-review' || step.startsWith('implement-')) {
+    return 'implement';
   }
   return null;
 }
