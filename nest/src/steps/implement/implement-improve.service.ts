@@ -12,7 +12,7 @@ import { SwarmloopError } from '../../swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
 import { IMPLEMENT_IMPROVE_FOLLOW_UP, withAddedRepos } from '../follow-up';
 import { composedReturn, ModelStepContext, plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, withModelStep } from '../model-step';
-import { requireApprovedPlan } from '../plan/plan-record';
+import { correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames } from '../repo-names';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
 import { reviewedImplementation, withReturnNotes } from './implement-record';
@@ -76,10 +76,13 @@ export class ImplementImproveService {
     await assertUncommitted(mounts, branch, heads);
     const wrote = reviewedImplementation(text);
     const body = wrote.trim() ? wrote : notes;
+    const corrected = correctedPlan(ctx.requirements, text, agentResult.output ?? '');
     const summary = summaryOr(text, plainSummary(text) || '- checked the first pass\n');
+    const handoffBody = corrected ? `${summary.trimEnd()}\n${corrected.handoff}` : summary;
     const status = await worktreeStatus(mounts);
     const line = `${ctx.opened.startedAt} implement-improve done\n${body.trimEnd()}\n${status}`;
-    const handoff = await recordHandoff(this.history, key, 'implement-improve', summary);
-    return ctx.end('ok', 0, line, textDocument('implementation', body), [handoff]);
+    const handoff = await recordHandoff(this.history, key, 'implement-improve', handoffBody);
+    const docs = corrected ? [handoff, textDocument('requirements', corrected.requirements)] : [handoff];
+    return ctx.end('ok', 0, line, textDocument('implementation', body), docs);
   }
 }

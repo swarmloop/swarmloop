@@ -95,6 +95,70 @@ describe('github host', () => {
     expect(seen[2]?.url).toBe('https://api.github.com/repos/acme/demo/actions/jobs/4/logs');
   });
 
+  it('cancels an actions run', async () => {
+    const seen = mockFetch([{}]);
+    const result = await service().cancelPipeline('acme/demo', 9);
+    expect(seen[0]?.method).toBe('POST');
+    expect(seen[0]?.url).toBe('https://api.github.com/repos/acme/demo/actions/runs/9/cancel');
+    expect(result.httpCalls[0]?.method).toBe('POST');
+    expect(result.httpCalls[0]?.url).toContain('/actions/runs/9/cancel');
+    expect(JSON.stringify(result.httpCalls)).not.toContain(TOKEN);
+  });
+
+  it('lists a cancelled job on a canceled run and reads its log', async () => {
+    const seen = mockFetch([
+      {
+        workflow_runs: [
+          { id: 9, head_sha: 'abc', status: 'completed', conclusion: 'cancelled', html_url: 'https://github.com/acme/demo/actions/runs/9' },
+        ],
+      },
+      { jobs: [{ id: 4, name: 'test', status: 'completed', conclusion: 'cancelled' }, { id: 5, name: 'lint', conclusion: 'success' }] },
+      'canceled before the tests',
+    ]);
+    const host = service();
+    const pipeline = await host.readBranchPipeline({ project: 'acme/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' });
+    expect(pipeline.snapshot?.status).toBe('canceled');
+    expect(pipeline.snapshot?.jobs).toEqual([{ id: 4, name: 'test', stage: '', status: 'failed', allowFailure: false }]);
+    const trace = await host.readJobTrace('acme/demo', 4);
+    expect(trace.trace).toBe('canceled before the tests');
+    expect(seen[2]?.url).toBe('https://api.github.com/repos/acme/demo/actions/jobs/4/logs');
+  });
+
+  it('keeps the name of an in-progress job', async () => {
+    mockFetch([
+      { workflow_runs: [{ id: 9, status: 'in_progress', html_url: 'https://github.com/acme/demo/actions/runs/9' }] },
+      { jobs: [{ id: 4, name: 'test', status: 'in_progress', conclusion: null }] },
+    ]);
+    const pipeline = await service().readBranchPipeline({ project: 'acme/demo', ref: 'feature/PROJ-1-ship' });
+    expect(pipeline.snapshot?.status).toBe('running');
+    expect(pipeline.snapshot?.jobs).toEqual([{ id: 4, name: 'test', stage: '', status: 'in_progress', allowFailure: false }]);
+  });
+
+  it('skips the job list while a run is still going', async () => {
+    const seen = mockFetch([
+      { workflow_runs: [{ id: 9, status: 'in_progress', html_url: 'https://github.com/acme/demo/actions/runs/9' }] },
+    ]);
+    const pipeline = await service().readBranchPipeline({ project: 'acme/demo', ref: 'feature/PROJ-1-ship' }, false);
+    expect(pipeline.snapshot?.status).toBe('running');
+    expect(pipeline.snapshot?.jobs).toEqual([]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.url).not.toContain('/jobs');
+  });
+
+  it('still lists failed jobs when the running list is skipped', async () => {
+    const seen = mockFetch([
+      {
+        workflow_runs: [
+          { id: 9, head_sha: 'abc', status: 'completed', conclusion: 'failure', html_url: 'https://github.com/acme/demo/actions/runs/9' },
+        ],
+      },
+      { jobs: [{ id: 4, name: 'test', conclusion: 'failure' }] },
+    ]);
+    const pipeline = await service().readBranchPipeline({ project: 'acme/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' }, false);
+    expect(pipeline.snapshot?.jobs).toEqual([{ id: 4, name: 'test', stage: '', status: 'failed', allowFailure: false }]);
+    expect(seen[1]?.url).toContain('/actions/runs/9/jobs');
+  });
+
   it('names a rejected token', async () => {
     mockFetch([null], 401);
     await expect(service().findMergeRequest({ project: 'acme/demo', source: 'feature/PROJ-1-ship' })).rejects.toThrow('GITHUB_TOKEN was rejected');

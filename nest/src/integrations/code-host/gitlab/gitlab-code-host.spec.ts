@@ -136,6 +136,67 @@ describe('gitlab host', () => {
     expect(result.snapshot).toBeNull();
   });
 
+  it('cancels a pipeline', async () => {
+    const seen = mockFetch([{}]);
+    const result = await service().cancelPipeline('group/demo', 9);
+    expect(seen[0]?.method).toBe('POST');
+    expect(seen[0]?.url).toBe('https://gitlab.example/api/v4/projects/group%2Fdemo/pipelines/9/cancel');
+    expect(result.httpCalls[0]?.method).toBe('POST');
+    expect(result.httpCalls[0]?.url).toContain('/pipelines/9/cancel');
+    expect(JSON.stringify(result.httpCalls)).not.toContain(TOKEN);
+  });
+
+  it('lists a canceled job and reads its trace', async () => {
+    const seen = mockFetch([
+      [{ id: 9, status: 'canceled' }],
+      { id: 9, status: 'canceled', web_url: 'https://gitlab.example/group/demo/-/pipelines/9' },
+      [{ id: 7, name: 'unit', stage: 'test', status: 'canceled', allow_failure: true }],
+      'unit canceled\n',
+    ]);
+    const host = service();
+    const result = await host.readBranchPipeline({ project: 'group/demo', ref: 'feature/PROJ-1' });
+    expect(result.snapshot?.status).toBe('canceled');
+    expect(result.snapshot?.jobs).toEqual([{ id: 7, name: 'unit', stage: 'test', status: 'failed', allowFailure: false }]);
+    expect(seen[2]?.url).toContain('failed');
+    expect(seen[2]?.url).toContain('canceled');
+    const trace = await host.readJobTrace('group/demo', 7);
+    expect(trace.trace).toBe('unit canceled\n');
+  });
+
+  it('keeps the name of a running job', async () => {
+    const seen = mockFetch([
+      [{ id: 9, status: 'running' }],
+      { id: 9, status: 'running', web_url: 'https://gitlab.example/group/demo/-/pipelines/9' },
+      [{ id: 4, name: 'test', stage: 'test', status: 'running' }],
+    ]);
+    const result = await service().readBranchPipeline({ project: 'group/demo', ref: 'feature/PROJ-1' });
+    expect(result.snapshot?.jobs.map((job) => job.name)).toEqual(['test']);
+    expect(seen[2]?.url).toContain('running');
+  });
+
+  it('skips running and pending jobs while a pipeline is still going', async () => {
+    const seen = mockFetch([
+      [{ id: 9, status: 'pending' }],
+      { id: 9, status: 'pending', web_url: 'https://gitlab.example/group/demo/-/pipelines/9' },
+    ]);
+    const result = await service().readBranchPipeline({ project: 'group/demo', ref: 'feature/PROJ-1' }, false);
+    expect(result.snapshot?.status).toBe('pending');
+    expect(result.snapshot?.jobs).toEqual([]);
+    expect(seen).toHaveLength(2);
+    expect(seen.some((call) => call.url.includes('/jobs'))).toBe(false);
+  });
+
+  it('still lists failed jobs when the running list is skipped', async () => {
+    const seen = mockFetch([
+      [{ id: 9, status: 'failed' }],
+      { id: 9, status: 'failed', web_url: 'https://gitlab.example/group/demo/-/pipelines/9' },
+      [{ id: 7, name: 'unit', stage: 'test', status: 'failed', allow_failure: false }],
+    ]);
+    const result = await service().readBranchPipeline({ project: 'group/demo', ref: 'feature/PROJ-1' }, false);
+    expect(result.snapshot?.jobs.map((job) => job.name)).toEqual(['unit']);
+    expect(seen[2]?.url).toContain('failed');
+  });
+
   it('reads a job trace as plain text without storing the token', async () => {
     const seen = mockFetch(['unit failed\n']);
     const result = await service().readJobTrace('group/demo', 7);

@@ -92,6 +92,14 @@ describe('readable job trace', () => {
     expect(body.endsWith('plain line 249')).toBe(true);
     expect(body).not.toContain('plain line 49\n');
   });
+
+  it('caps a trace at its last 20000 characters', () => {
+    const trace = `${'x'.repeat(50000)}tail`;
+    const body = readableJobTrace(trace);
+    expect(body).toHaveLength(20000);
+    expect(body.endsWith('tail')).toBe(true);
+    expect(body.startsWith('x')).toBe(true);
+  });
 });
 
 describe('pipeline step', () => {
@@ -257,20 +265,69 @@ describe('pipeline step', () => {
     }
   });
 
-  it('waits without counting a pipeline that is still running', async () => {
+  it('cancels a run that is still going after the timeout and returns its trace', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-wait-'));
-    const read = jest.fn(async () => ({ snapshot: shot('running', []), httpCalls: [call('GET')] }));
-    const app = await boot(root, read, jest.fn());
+    let canceled = false;
+    const read = jest.fn(async () => ({
+      snapshot: shot(canceled ? 'canceled' : 'running', [job(7, 'unit', false, canceled ? 'failed' : 'in_progress')]),
+      httpCalls: [call('GET')],
+    }));
+    const cancel = jest.fn(async () => {
+      canceled = true;
+      return { httpCalls: [call('POST')] };
+    });
+    const trace = jest.fn(async () => ({ trace: 'log 7\n', httpCalls: [call('GET')] }));
+    const app = await boot(root, read, trace, 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=0\nPIPELINE_START_TIMEOUT_MS=50\n', cancel);
     try {
       await seed(app, 'PROJ-303');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-303');
       expect(result.exitCode).toBe(0);
-      expect(result.message).toContain('pipeline is running');
-      expect(read).toHaveBeenCalledTimes(1);
-      const run = await app.get(HistoryService).findRun('PROJ-303');
-      expect(run?.currentStep).toBe('pipeline');
+      expect(cancel).toHaveBeenCalledWith('group/demo', 9);
+      expect(result.message).toContain('pipeline failed');
+      const history = app.get(HistoryService);
+      const run = await history.findRun('PROJ-303');
+      expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('waiting');
-      expect(run?.attemptsPipeline).toBe(0);
+      expect(run?.attemptsPipeline).toBe(1);
+      const body = await history.latestBody('PROJ-303', 'pipeline_log');
+      expect(body?.startsWith('It was still running after 0 minutes and swarmloop canceled it')).toBe(true);
+      expect(body).toContain('log 7');
+      const notes = await history.latestBody('PROJ-303', 'return');
+      expect(notes).toContain('## pipeline');
+      expect(notes).toContain('It was still running after 0 minutes and swarmloop canceled it');
+      expect(notes).toContain('log 7');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('returns to implement when canceling a timed-out run fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-cancel-fail-'));
+    const read = jest.fn(async (_ref: { project: string }, jobs = true) => ({
+      snapshot: shot('running', jobs ? [job(7, 'unit', false, 'in_progress')] : []),
+      httpCalls: [call('GET')],
+    }));
+    const cancel = jest.fn(async () => {
+      throw new FetchFailed('github pipeline failed: HTTP 500', [call('POST')]);
+    });
+    const trace = jest.fn(async () => ({ trace: 'secret trace\n', httpCalls: [call('GET')] }));
+    const app = await boot(root, read, trace, 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=0\nPIPELINE_START_TIMEOUT_MS=50\n', cancel);
+    try {
+      await seed(app, 'PROJ-318');
+      const result = await app.get(PipelineService).step('pipeline', 'PROJ-318');
+      expect(result.exitCode).toBe(0);
+      expect(cancel).toHaveBeenCalledWith('group/demo', 9);
+      expect(read.mock.calls.map((entry) => entry[1])).toEqual([false, true]);
+      expect(trace).not.toHaveBeenCalled();
+      const history = app.get(HistoryService);
+      const run = await history.findRun('PROJ-318');
+      expect(run?.currentStep).toBe('implement');
+      expect(run?.attemptsPipeline).toBe(1);
+      const notes = await history.latestBody('PROJ-318', 'return');
+      expect(notes).toContain('result: fail');
+      expect(notes).toContain('job: unit');
+      expect(notes).toContain('cancel: group/demo: github pipeline failed: HTTP 500');
+      expect(notes).not.toContain('secret trace');
     } finally {
       await app.close();
     }
@@ -315,17 +372,42 @@ describe('pipeline step', () => {
     }
   });
 
-  it('stays put when the pipeline was canceled', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-cancel-'));
+  it('returns a canceled pipeline to implement with and without auto', async () => {
+    for (const auto of [false, true]) {
+      const root = await mkdtemp(join(tmpdir(), `swarmloop-pipe-cancel-${auto}-`));
+      const trace = jest.fn(async () => ({ trace: 'canceled log\n', httpCalls: [call('GET')] }));
+      const app = await boot(root, jest.fn(async () => ({ snapshot: shot('canceled', [job(7, 'unit', false)]), httpCalls: [call('GET')] })), trace);
+      try {
+        await seed(app, 'PROJ-306');
+        const result = await app.get(PipelineService).step('pipeline', 'PROJ-306', auto ? { auto: true } : {});
+        expect(result.exitCode).toBe(0);
+        expect(trace).toHaveBeenCalledWith('group/demo', 7);
+        const history = app.get(HistoryService);
+        const run = await history.findRun('PROJ-306');
+        expect(run?.currentStep).toBe('implement');
+        expect(run?.status).toBe('waiting');
+        expect(run?.attemptsPipeline).toBe(1);
+        const notes = await history.latestBody('PROJ-306', 'return');
+        expect(notes).toContain('## pipeline');
+        expect(notes).toContain('result: fail');
+        expect(notes).toContain('canceled log');
+      } finally {
+        await app.close();
+      }
+    }
+  });
+
+  it('stays put when the pipeline was skipped', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-skip-'));
     const trace = jest.fn();
-    const app = await boot(root, jest.fn(async () => ({ snapshot: shot('canceled', []), httpCalls: [call('GET')] })), trace);
+    const app = await boot(root, jest.fn(async () => ({ snapshot: shot('skipped', []), httpCalls: [call('GET')] })), trace);
     try {
-      await seed(app, 'PROJ-306');
-      const result = await app.get(PipelineService).step('pipeline', 'PROJ-306');
+      await seed(app, 'PROJ-319');
+      const result = await app.get(PipelineService).step('pipeline', 'PROJ-319');
       expect(result.exitCode).toBe(1);
-      expect(result.message).toContain('pipeline was canceled');
+      expect(result.message).toContain('pipeline was skipped');
       expect(trace).not.toHaveBeenCalled();
-      const run = await app.get(HistoryService).findRun('PROJ-306');
+      const run = await app.get(HistoryService).findRun('PROJ-319');
       expect(run?.currentStep).toBe('pipeline');
       expect(run?.status).toBe('failed');
       expect(run?.attemptsPipeline).toBe(0);
@@ -360,7 +442,7 @@ describe('pipeline step', () => {
     }
   });
 
-  it('stays on the step when a job trace cannot be read', async () => {
+  it('returns to implement when a job trace cannot be read', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-trace-'));
     const trace = jest.fn(async () => {
       throw new FetchFailed('gitlab pipeline failed', [call('GET')]);
@@ -369,13 +451,19 @@ describe('pipeline step', () => {
     try {
       await seed(app, 'PROJ-309');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-309');
-      expect(result.exitCode).toBe(1);
-      expect(result.message).toContain('gitlab pipeline failed');
-      const run = await app.get(HistoryService).findRun('PROJ-309');
-      expect(run?.currentStep).toBe('pipeline');
-      expect(run?.status).toBe('failed');
-      expect(run?.attemptsPipeline).toBe(0);
-      expect(await app.get(HistoryService).latestBody('PROJ-309', 'pipeline_log')).toBeNull();
+      expect(result.exitCode).toBe(0);
+      expect(result.message).toContain('pipeline failed');
+      const history = app.get(HistoryService);
+      const run = await history.findRun('PROJ-309');
+      expect(run?.currentStep).toBe('implement');
+      expect(run?.status).toBe('waiting');
+      expect(run?.attemptsPipeline).toBe(1);
+      const notes = await history.latestBody('PROJ-309', 'return');
+      expect(notes).toContain('project: group/demo');
+      expect(notes).toContain('pipeline: 9');
+      expect(notes).toContain('job: unit');
+      expect(notes).toContain('https://gitlab.example/group/demo/-/pipelines/9');
+      expect(notes).toContain('gitlab pipeline failed');
     } finally {
       await app.close();
     }
@@ -433,7 +521,7 @@ describe('pipeline step', () => {
     }
   });
 
-  it('goes on when a workflow exists and no run starts', async () => {
+  it('fails when a workflow exists and no run starts', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-configured-'));
     const read = jest.fn(async () => ({ snapshot: null, httpCalls: [call('GET')] }));
     const previousTick = process.env.TICK_MS;
@@ -450,13 +538,12 @@ describe('pipeline step', () => {
       await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-311');
       expect(Date.now() - started).toBeLessThan(700);
-      expect(result.exitCode).toBe(0);
-      expect(result.message).toContain('nothing started');
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('demo CI did not start');
       expect(read.mock.calls.length).toBeGreaterThan(1);
       const after = await app.get(HistoryService).findRun('PROJ-311');
-      expect(after?.currentStep).toBe('done');
-      expect(after?.status).toBe('done');
-      expect(await app.get(HistoryService).latestBody('PROJ-311', 'pipeline_log')).toContain('result: none');
+      expect(after?.currentStep).toBe('pipeline');
+      expect(after?.status).toBe('failed');
     } finally {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);
@@ -496,7 +583,7 @@ describe('pipeline step', () => {
   it('keeps polling a running pipeline after the start window', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-running-past-start-'));
     let reads = 0;
-    const read = jest.fn(async () => {
+    const read = jest.fn(async (_ref: { project: string }, _jobs?: boolean) => {
       reads += 1;
       return { snapshot: shot(reads < 4 ? 'running' : 'success', []), httpCalls: [call('GET')] };
     });
@@ -506,13 +593,14 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-314');
       expect(result.exitCode).toBe(0);
       expect(read).toHaveBeenCalledTimes(4);
+      expect(read.mock.calls.every((entry) => entry[1] === false)).toBe(true);
       expect((await app.get(HistoryService).findRun('PROJ-314'))?.currentStep).toBe('done');
     } finally {
       await app.close();
     }
   });
 
-  it('goes on when one workflow never starts and another run passed', async () => {
+  it('fails when one workflow never starts and another run passed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-partial-'));
     const read = jest.fn(async (ref: { project: string }) => {
       if (ref.project === 'group/web') {
@@ -538,13 +626,12 @@ describe('pipeline step', () => {
       const started = Date.now();
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-312');
       expect(Date.now() - started).toBeLessThan(2500);
-      expect(result.exitCode).toBe(0);
-      expect(result.message).toContain('pipeline done');
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('web CI did not start');
       expect(read.mock.calls.length).toBeGreaterThan(2);
       const after = await app.get(HistoryService).findRun('PROJ-312');
-      expect(after?.currentStep).toBe('done');
-      expect(after?.status).toBe('done');
-      expect(await app.get(HistoryService).latestBody('PROJ-312', 'pipeline_log')).toContain('result: pass');
+      expect(after?.currentStep).toBe('pipeline');
+      expect(after?.status).toBe('failed');
     } finally {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);
@@ -567,8 +654,8 @@ function shot(status: string, jobs: PipelineJob[]): PipelineSnapshot {
   return { id: 9, status, url: 'https://gitlab.example/group/demo/-/pipelines/9', jobs };
 }
 
-function job(id: number, name: string, allowFailure: boolean): PipelineJob {
-  return { id, name, stage: 'test', status: 'failed', allowFailure };
+function job(id: number, name: string, allowFailure: boolean, status = 'failed'): PipelineJob {
+  return { id, name, stage: 'test', status, allowFailure };
 }
 
 function call(method: string): HttpCallDraft {
@@ -590,7 +677,13 @@ function restore(key: string, value: string | undefined): void {
   }
 }
 
-async function boot(root: string, read: jest.Mock, trace: jest.Mock, extra = 'PIPELINE_TIMEOUT_MS=0\n') {
+async function boot(
+  root: string,
+  read: jest.Mock,
+  trace: jest.Mock,
+  extra = 'PIPELINE_TIMEOUT_MS=0\n',
+  cancel: jest.Mock = jest.fn(async () => ({ httpCalls: [] as HttpCallDraft[] })),
+) {
   await writeFile(
     join(root, '.env'),
     [
@@ -639,6 +732,7 @@ async function boot(root: string, read: jest.Mock, trace: jest.Mock, extra = 'PI
         openMergeRequest: jest.fn(),
         readBranchPipeline: read,
         readJobTrace: trace,
+        cancelPipeline: cancel,
       }),
     })
     .compile();

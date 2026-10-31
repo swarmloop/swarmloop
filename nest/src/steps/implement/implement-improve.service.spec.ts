@@ -318,6 +318,59 @@ describe('implement-improve step', () => {
       await app.close();
     }
   });
+
+  it('replaces the approved checklist when a pipeline return answers with a plan', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-plan-fix-'));
+    await writeEnv(root);
+    const worktree = featureTree(root, 'PROJ-180', 'billing-api');
+    const agent = jest.fn(async () => {
+      writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
+      return result(
+        ['plan:', '- fix the failing test', '', 'implementation:', '- fixed the test', '', 'summary:', '- the pipeline log required it'].join('\n'),
+      );
+    });
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-180');
+      const history = app.get(HistoryService);
+      const run = await history.findRun('PROJ-180');
+      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-180');
+      expect(done.exitCode).toBe(0);
+      const record = JSON.parse((await history.latestBody('PROJ-180', 'requirements')) ?? '{}') as {
+        prompt?: string;
+        plan?: { items?: string[]; decision?: string };
+      };
+      expect(record.plan?.items).toEqual(['fix the failing test']);
+      expect(record.plan?.decision).toBe('approve');
+      expect(record.prompt).toContain('Ship the field');
+      const handoff = await history.latestBody('PROJ-180', 'handoff');
+      expect(handoff).toContain('dropped "add the field"');
+      expect(handoff).toContain('added "fix the failing test"');
+      expect(handoff).toContain('outranks the checklist');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('leaves the approved plan when the answer has no plan section', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-plan-keep-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-181', 'billing-api');
+    const agent = jest.fn().mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-181');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-181');
+      expect(done.exitCode).toBe(0);
+      const history = app.get(HistoryService);
+      const record = JSON.parse((await history.latestBody('PROJ-181', 'requirements')) ?? '{}') as { plan?: { items?: string[] } };
+      expect(record.plan?.items).toEqual(['add the field']);
+      expect(await history.latestBody('PROJ-181', 'handoff')).not.toContain('outranks the checklist');
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 function result(responseText: string): AgentRunResult {

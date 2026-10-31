@@ -93,6 +93,32 @@ export function reviewedItems(text: string, output = ''): string[] {
   }
 }
 
+/** Checklist the implement answer corrected. Null when the answer has no plan section or the items are unchanged. */
+export function correctedPlan(requirementsBody: string, text: string, output = ''): { requirements: string; handoff: string } | null {
+  const items = reviewedItems(text, output);
+  if (items.length === 0) {
+    return null;
+  }
+  const current = readPlan(requirementsBody);
+  const previous = current?.items ?? [];
+  if (previous.length === items.length && previous.every((item, index) => item === items[index])) {
+    return null;
+  }
+  const dropped = previous.filter((item) => !items.includes(item));
+  const added = items.filter((item) => !previous.includes(item));
+  const named = [...dropped.map((item) => `dropped "${item}"`), ...added.map((item) => `added "${item}"`)].join('; ');
+  const handoff = `- ${named || 'reordered the checklist'} because a pipeline return or a later instruction outranks the checklist\n`;
+  return {
+    requirements: withPlan(requirementsBody, {
+      name: current?.name ?? '',
+      overview: current?.overview ?? '',
+      items,
+      decision: 'approve',
+    }),
+    handoff,
+  };
+}
+
 export function requireApprovedPlan(requirements: string | null): string {
   const plan = readPlan(requirements);
   if (!plan?.items.length) {

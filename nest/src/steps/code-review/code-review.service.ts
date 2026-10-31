@@ -568,6 +568,9 @@ function approvedPlan(requirements: string): string {
   return [
     'This is the approved checklist. A behavior it removes is not a missing requirement.',
     'On a later pass, decision: ok when the last return is already what this checklist asks, even when the files were left unchanged. Do not return that behavior again.',
+    'The checklist may have been corrected to fix a failed pipeline or to follow later instructions. The list below is the current one.',
+    'A change that makes the failed job pass, or that the latest pipeline note requires, is required and is never returned.',
+    'Do not return a finding that brings back what the failing pipeline log shows as the cause.',
     ...plan.items.map((item) => `- ${item}`),
   ].join('\n');
 }

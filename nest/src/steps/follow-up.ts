@@ -59,6 +59,8 @@ export function implementFollowUp(plan: string, notes: string | null): string {
   const lines = [
     'Implement this approved checklist in the mounted worktree. Read a file before editing it.',
     'Do only that checklist. Context from earlier may change how an item is done. Do not start work that belongs to another ticket.',
+    'A pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix.',
+    'When an item changes, end with a plan: section holding the full corrected checklist, before implementation and summary. Without a contradiction, do not write plan:.',
     'Do not start a service. Do not run tests. Do not commit. Do not create a branch.',
     'Write the smallest change that does the checklist. Keep to the structure and patterns already in the tree, and keep it clean, simple, and straightforward: DRY, KISS, SOLID. Favor clear, well-factored code over clever or cramped code: each function, module, and layer has one clear responsibility. Reach for an abstraction when it makes the code clearer and matches how the tree is already organized; do not add a file, helper, or layer that does not earn its place or that the task does not need. When a change leaves a component, file, export, import, comment, or commented-out code with no remaining use, remove that leftover in the same change. Keep the behavior complete and reliable: the cases the requirement names work, and errors are handled the way the tree already handles them. Cover the change with tests in the style the tree already uses. Tests run only in the GitLab or GitHub pipeline, never in this sandbox.',
     '',
@@ -81,6 +83,8 @@ export const IMPLEMENT_IMPROVE_FOLLOW_UP = [
   'Check the change for logical and technical gaps and fix only those. Start from the files this change touched. Open another file only to follow a call from the change or a test the return names. Do not sweep the tree with grep. When there is no gap, leave the files. A pipeline return changes the code or the failed test. Do not leave them. Do not widen the change. Do not implement a linked ticket.',
   TASK_SCOPE,
   'Do not start a service, a database, or the application. Do not run tests. Do not run `git commit`, `git push`, or `git add -A`. Do not create a branch.',
+  'A pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix.',
+  'When an item changes, end with a plan: section holding the full corrected checklist, before implementation and summary. Without a contradiction, do not write plan:.',
   'When this pass changed the files, end with implementation and summary. When nothing changed and the return is not a pipeline failure, end with summary only.',
   'implementation:',
   '- item',
@@ -89,7 +93,10 @@ export const IMPLEMENT_IMPROVE_FOLLOW_UP = [
   '- why',
 ].join('\n');
 
-function isPipelineReturn(notes: string): boolean {
+export function isPipelineReturn(notes: string | null | undefined): boolean {
+  if (!notes) {
+    return false;
+  }
   const lines = notes.split(/\r?\n/).map((line) => line.trim());
   return lines.includes('## pipeline') && lines.includes('result: fail');
 }
@@ -129,6 +136,9 @@ export function reviewResume(name: string, implement: string, reviewed: string, 
     'Do not return a finding that undoes what the last return says must stay.',
     'A behavior it removes is not a missing requirement.',
     'A change that makes a failed pipeline job on this branch pass is not extra.',
+    'The checklist may have been corrected to fix a failed pipeline or to follow later instructions. The list below is the current one.',
+    'A change that makes the failed job pass, or that the latest pipeline note requires, is required and is never returned.',
+    'Do not return a finding that brings back what the failing pipeline log shows as the cause.',
     'On `decision: return`, name one broken behavior. Do not ask for a new subsystem.',
     'End with a summary list and one line, either `decision: ok` or `decision: return`.',
   ];
