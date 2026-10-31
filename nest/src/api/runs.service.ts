@@ -32,8 +32,8 @@ import { reviewDecision } from '../steps/code-review/code-review-record';
 
 const PHASES: { phase: string; steps: string[] }[] = [
   { phase: 'requirements', steps: ['requirements'] },
-  { phase: 'planning', steps: ['prepare', 'research', 'plan', 'plan-review'] },
-  { phase: 'implementation', steps: ['branch', 'implement', 'implement-review'] },
+  { phase: 'planning', steps: ['prepare', 'research', 'plan', 'plan-improve'] },
+  { phase: 'implementation', steps: ['branch', 'implement', 'implement-improve'] },
   { phase: 'code review', steps: REVIEW_STEPS },
   { phase: 'ci', steps: ['commit', 'merge-request', 'pipeline', 'done'] },
 ];
@@ -50,9 +50,9 @@ const STEP_KINDS: Partial<Record<StepName, string[]>> = {
   requirements: ['requirements', 'pending'],
   research: ['repos', 'questions', 'answers'],
   plan: ['requirements'],
-  'plan-review': ['requirements'],
+  'plan-improve': ['requirements'],
   implement: ['implementation'],
-  'implement-review': ['implementation'],
+  'implement-improve': ['implementation'],
   'code-review': [...REVIEW_KINDS, 'review_residual', 'review_report'],
   commit: ['commit'],
   'merge-request': ['merge_request'],
@@ -1114,7 +1114,7 @@ function withReturnNotes<T extends { attempt: number; documents: ReturnType<type
   visits: T[],
   documents: DocumentEntity[],
 ): T[] {
-  if (name !== 'implement' && name !== 'implement-review') {
+  if (name !== 'implement' && name !== 'implement-improve') {
     return visits;
   }
   const last = visits.at(-1);

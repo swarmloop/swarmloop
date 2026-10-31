@@ -10,7 +10,7 @@ import { packageRegistries } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
-import { IMPLEMENT_REVIEW_FOLLOW_UP, withAddedRepos } from '../follow-up';
+import { IMPLEMENT_IMPROVE_FOLLOW_UP, withAddedRepos } from '../follow-up';
 import { composedReturn, ModelStepContext, plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, withModelStep } from '../model-step';
 import { requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames } from '../repo-names';
@@ -18,7 +18,7 @@ import { assertUncommitted, featureHeads, worktreeStatus } from '../worktree-git
 import { reviewedImplementation, withReturnNotes } from './implement-record';
 
 @Injectable()
-export class ImplementReviewService {
+export class ImplementImproveService {
   constructor(
     private readonly history: HistoryService,
     private readonly config: ConfigService,
@@ -32,7 +32,7 @@ export class ImplementReviewService {
       { history: this.history, sandbox: this.sandbox, agent: this.agent },
       {
         key,
-        step: 'implement-review',
+        step: 'implement-improve',
         mode: 'agent',
         model: env.MODEL_IMPLEMENT,
         timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
@@ -52,7 +52,7 @@ export class ImplementReviewService {
     const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
     const mounts = mountsForStep(this.history.root(), key, names, ctx.opened.run.targetPath);
     if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
-      return ctx.end('blocked', 1, `${ctx.opened.startedAt} implement-review does not fit`);
+      return ctx.end('blocked', 1, `${ctx.opened.startedAt} implement-improve does not fit`);
     }
     const returned = composedReturn(await this.history.listDocuments(ctx.opened.run.id));
     const sections = withHandoff(
@@ -67,9 +67,9 @@ export class ImplementReviewService {
     );
     const branch = branchName(key, summaryForBranch(ctx.requirements, key));
     const heads = await featureHeads(mounts, branch);
-    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'implement-review')), ctx.opened.run.runtime);
-    const full = skillPrompt('implement-review', ctx.requirements, names, sections, mounts);
-    const chosen = continued?.chatId ? IMPLEMENT_REVIEW_FOLLOW_UP : full;
+    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'implement-improve')), ctx.opened.run.runtime);
+    const full = skillPrompt('implement-improve', ctx.requirements, names, sections, mounts);
+    const chosen = continued?.chatId ? IMPLEMENT_IMPROVE_FOLLOW_UP : full;
     const prompt = withAddedRepos(chosen, await this.history.latestBody(key, 'added_repos'));
     const agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries() });
     const text = agentResult.responseText;
@@ -78,8 +78,8 @@ export class ImplementReviewService {
     const body = wrote.trim() ? wrote : notes;
     const summary = summaryOr(text, plainSummary(text) || '- checked the first pass\n');
     const status = await worktreeStatus(mounts);
-    const line = `${ctx.opened.startedAt} implement-review done\n${body.trimEnd()}\n${status}`;
-    const handoff = await recordHandoff(this.history, key, 'implement-review', summary);
+    const line = `${ctx.opened.startedAt} implement-improve done\n${body.trimEnd()}\n${status}`;
+    const handoff = await recordHandoff(this.history, key, 'implement-improve', summary);
     return ctx.end('ok', 0, line, textDocument('implementation', body), [handoff]);
   }
 }

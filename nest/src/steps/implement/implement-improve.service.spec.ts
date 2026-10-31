@@ -18,16 +18,16 @@ import { REBASE_CONFLICT } from '../rebase-worktree';
 
 const reply = ['implementation:', '- fixed the empty case', '', 'summary:', '- fixed the empty case because the return was right'].join('\n');
 
-describe('implement-review step', () => {
+describe('implement-improve step', () => {
   it('stores a second implementation note and waits for code review', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-review-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-'));
     await writeEnv(root);
     const worktree = featureTree(root, 'PROJ-70', 'billing-api');
     const agent = jest.fn().mockResolvedValue(result(reply));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-70');
-      const done = await app.get(PipelineService).step('implement-review', 'PROJ-70');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-70');
       expect(done.exitCode).toBe(0);
       expect(done.message).toContain('billing-api');
       expect(done.message).toContain('clean');
@@ -47,7 +47,7 @@ describe('implement-review step', () => {
       expect(run?.currentStep).toBe('code-review');
       expect(run?.status).toBe('waiting');
       expect(git(worktree, ['status', '--porcelain'])).toBe('');
-      await app.get(PipelineService).step('implement-review', 'PROJ-70');
+      await app.get(PipelineService).step('implement-improve', 'PROJ-70');
       expect(await documents.find({ where: { kind: 'implementation' } })).toHaveLength(2);
       expect((await app.get(HistoryService).findRun('PROJ-70'))?.currentStep).toBe('code-review');
     } finally {
@@ -56,7 +56,7 @@ describe('implement-review step', () => {
   });
 
   it('puts why it returned into the agent prompt', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-review-return-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-return-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-74', 'billing-api');
     const agent = jest.fn().mockResolvedValue(result(reply));
@@ -66,7 +66,7 @@ describe('implement-review step', () => {
       const run = await app.get(HistoryService).findRun('PROJ-74');
       await app.get(HistoryService).putDocument(run!, 'return', '## quality\nuse theme.alpha\n');
       await app.get(HistoryService).putDocument(run!, 'handoff', '## implement\n- changed the parser so empty fields stay\n');
-      const done = await app.get(PipelineService).step('implement-review', 'PROJ-74');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-74');
       expect(done.exitCode).toBe(0);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
       expect(input.prompt).toContain('Why this returned:');
@@ -76,7 +76,7 @@ describe('implement-review step', () => {
       const handoff = await app.get(HistoryService).latestBody('PROJ-74', 'handoff');
       expect(handoff).toContain('## implement');
       expect(handoff).toContain('empty fields stay');
-      expect(handoff).toContain('## implement-review');
+      expect(handoff).toContain('## implement-improve');
       expect(handoff).toContain('return was right');
     } finally {
       await app.close();
@@ -84,7 +84,7 @@ describe('implement-review step', () => {
   });
 
   it('runs one review agent for every worktree', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-review-multi-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-multi-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-73', 'api');
     featureTree(root, 'PROJ-73', 'web');
@@ -92,7 +92,7 @@ describe('implement-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-73', 'api\nweb\n');
-      const done = await app.get(PipelineService).step('implement-review', 'PROJ-73');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-73');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
@@ -107,14 +107,14 @@ describe('implement-review step', () => {
   });
 
   it('keeps the first pass notes when the review says the first pass stands', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-review-stands-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-stands-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-76', 'billing-api');
     const agent = jest.fn().mockResolvedValue(result('implementation:\n- The first pass stands.\n\nsummary:\n- the files already match the plan\n'));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-76');
-      const done = await app.get(PipelineService).step('implement-review', 'PROJ-76');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-76');
       expect(done.exitCode).toBe(0);
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       const notes = await documents.find({ where: { kind: 'implementation' }, order: { id: 'DESC' } });
@@ -126,7 +126,7 @@ describe('implement-review step', () => {
   });
 
   it('keeps an unchanged failed commit on the way to code review', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-review-same-commit-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-same-commit-'));
     await writeEnv(root);
     const worktree = featureTree(root, 'PROJ-77', 'billing-api');
     const agent = jest.fn().mockResolvedValue(result('summary:\n- the files already match the plan\n'));
@@ -134,7 +134,7 @@ describe('implement-review step', () => {
     try {
       await seed(app, 'PROJ-77');
       await failedCommit(app, 'PROJ-77', git(worktree, ['rev-parse', 'HEAD']));
-      const done = await app.get(PipelineService).step('implement-review', 'PROJ-77');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-77');
       expect(done.exitCode).toBe(0);
       const history = app.get(HistoryService);
       const run = await history.findRun('PROJ-77');
@@ -150,7 +150,7 @@ describe('implement-review step', () => {
   });
 
   it('reviews a dirty tree after a pipeline failure', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-review-dirty-commit-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-dirty-commit-'));
     await writeEnv(root);
     const worktree = featureTree(root, 'PROJ-78', 'billing-api');
     const agent = jest.fn().mockImplementation(async () => {
@@ -161,7 +161,7 @@ describe('implement-review step', () => {
     try {
       await seed(app, 'PROJ-78');
       await failedCommit(app, 'PROJ-78', git(worktree, ['rev-parse', 'HEAD']));
-      const done = await app.get(PipelineService).step('implement-review', 'PROJ-78');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-78');
       expect(done.exitCode).toBe(0);
       expect((await app.get(HistoryService).findRun('PROJ-78'))?.currentStep).toBe('code-review');
     } finally {
@@ -170,7 +170,7 @@ describe('implement-review step', () => {
   });
 
   it('reviews when the commit is not the one CI failed', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-review-other-commit-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-other-commit-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-79', 'billing-api');
     const agent = jest.fn().mockResolvedValue(result('summary:\n- the files already match the plan\n'));
@@ -178,7 +178,7 @@ describe('implement-review step', () => {
     try {
       await seed(app, 'PROJ-79');
       await failedCommit(app, 'PROJ-79', 'abc');
-      const done = await app.get(PipelineService).step('implement-review', 'PROJ-79');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-79');
       expect(done.exitCode).toBe(0);
       expect((await app.get(HistoryService).findRun('PROJ-79'))?.currentStep).toBe('code-review');
     } finally {
@@ -187,16 +187,16 @@ describe('implement-review step', () => {
   });
 
   it('keeps the first pass notes and advances when the review writes nothing', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-review-empty-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-empty-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-71', 'billing-api');
     const agent = jest.fn().mockResolvedValue(result('The first pass already matches the plan.'));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-71');
-      const done = await app.get(PipelineService).step('implement-review', 'PROJ-71');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-71');
       expect(done.exitCode).toBe(0);
-      expect(done.message).toContain('implement-review done');
+      expect(done.message).toContain('implement-improve done');
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       const notes = await documents.find({ where: { kind: 'implementation' }, order: { id: 'DESC' } });
       expect(notes[0]?.body).toBe('- changed the field parser\n');
@@ -209,7 +209,7 @@ describe('implement-review step', () => {
   });
 
   it('fails when the second pass commits', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-review-commit-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-commit-'));
     await writeEnv(root);
     const worktree = featureTree(root, 'PROJ-72', 'billing-api');
     const agent = jest.fn().mockImplementation(async () => {
@@ -219,7 +219,7 @@ describe('implement-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-72');
-      const done = await app.get(PipelineService).step('implement-review', 'PROJ-72');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-72');
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('billing-api was committed');
       expect((await app.get(HistoryService).findRun('PROJ-72'))?.status).toBe('failed');
@@ -229,7 +229,7 @@ describe('implement-review step', () => {
   });
 
   it('continues the implement chat with the follow-up', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-review-resume-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-resume-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-73', 'billing-api');
     mkdirSync(join(root, 'data'), { recursive: true });
@@ -241,12 +241,12 @@ describe('implement-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-73');
-      const done = await app.get(PipelineService).step('implement-review', 'PROJ-73');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-73');
       expect(done.exitCode).toBe(0);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
       expect(input.resumeChatId).toBe('implement-chat');
       expect(input.prompt).toContain('Check the change for logical and technical gaps and fix only those');
-      expect(input.prompt).not.toContain('# Implement review');
+      expect(input.prompt).not.toContain('# Implement improve');
       expect(input.prompt).not.toContain('Ship the field');
       expect(input.prompt).not.toContain('add the field');
       expect(input.prompt).not.toContain('changed the field parser');
@@ -257,7 +257,7 @@ describe('implement-review step', () => {
   });
 
   it('reviews while a rebase marker is pending and leaves that marker', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-review-catchup-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-catchup-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-74', 'billing-api');
     const agent = jest.fn().mockResolvedValue(result(reply));
@@ -267,7 +267,7 @@ describe('implement-review step', () => {
       const history = app.get(HistoryService);
       const run = await history.findRun('PROJ-74');
       await history.putDocument(run!, REBASE_CONFLICT, 'pending\n');
-      const done = await app.get(PipelineService).step('implement-review', 'PROJ-74');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-74');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
@@ -281,7 +281,7 @@ describe('implement-review step', () => {
   });
 
   it('reviews a diverged repo without starting a rebase', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-review-stop-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-stop-'));
     await writeEnv(root);
     const worktree = featureTree(root, 'PROJ-75', 'billing-api');
     const clone = join(root, 'PROJ-75-billing-api');
@@ -303,7 +303,7 @@ describe('implement-review step', () => {
       const history = app.get(HistoryService);
       const run = await history.findRun('PROJ-75');
       await history.putDocument(run!, REBASE_CONFLICT, 'pending\n');
-      const done = await app.get(PipelineService).step('implement-review', 'PROJ-75');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-75');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
@@ -359,9 +359,9 @@ async function failedCommit(app: Awaited<ReturnType<typeof boot>>, key: string, 
 
 async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, repos = 'billing-api\n'): Promise<void> {
   const history = app.get(HistoryService);
-  const seeded = await history.begin(key, 'implement-review');
+  const seeded = await history.begin(key, 'implement-improve');
   seeded.status = 'waiting';
-  seeded.currentStep = 'implement-review';
+  seeded.currentStep = 'implement-improve';
   await history.saveRun(seeded);
   await history.putDocument(
     seeded,

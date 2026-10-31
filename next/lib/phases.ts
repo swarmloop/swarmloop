@@ -24,10 +24,10 @@ const STEP_NAMES = [
   'prepare',
   'research',
   'plan',
-  'plan-review',
+  'plan-improve',
   'branch',
   'implement',
-  'implement-review',
+  'implement-improve',
   'code-review',
   ...REVIEW_STEPS,
   'commit',
@@ -38,8 +38,8 @@ const STEP_NAMES = [
 
 const PHASE_STEPS: Record<PhaseName, readonly string[]> = {
   requirements: ['requirements'],
-  brainstorm: ['prepare', 'research', 'plan', 'plan-review'],
-  implementation: ['branch', 'implement', 'implement-review'],
+  brainstorm: ['prepare', 'research', 'plan', 'plan-improve'],
+  implementation: ['branch', 'implement', 'implement-improve'],
   'code-review': REVIEW_STEPS,
   ci: ['commit', 'merge-request', 'pipeline', 'done'],
 };

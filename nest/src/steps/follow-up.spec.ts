@@ -1,11 +1,11 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { IMPLEMENT_REVIEW_FOLLOW_UP, implementFollowUp, PLAN_REVIEW_FOLLOW_UP, planFollowUp, reviewContinue, reviewResume, withAddedRepos } from './follow-up';
+import { IMPLEMENT_IMPROVE_FOLLOW_UP, implementFollowUp, PLAN_IMPROVE_FOLLOW_UP, planFollowUp, reviewContinue, reviewResume, withAddedRepos } from './follow-up';
 import { LINKED_CONTEXT, TASK_SCOPE } from './requirements-brief';
 
 const skillText = (name: string): string => readFileSync(join(__dirname, '../../../skills', name, 'SKILL.md'), 'utf8');
 
-// Plan, plan-review, and implement carry this code-quality standard, word for word,
+// Plan, plan-improve, and implement carry this code-quality standard, word for word,
 // so the first turn (SKILL.md) and the resume (follow-up.ts) can never drift apart.
 const CODE_STANDARD =
   'Keep to the structure and patterns already in the tree, and keep it clean, simple, and straightforward: DRY, KISS, SOLID. ' +
@@ -18,18 +18,18 @@ const CODE_STANDARD =
 
 const STEP_PAIRS = [
   { name: 'plan', skill: skillText('plan'), followUp: planFollowUp('') },
-  { name: 'plan-review', skill: skillText('plan-review'), followUp: PLAN_REVIEW_FOLLOW_UP },
+  { name: 'plan-improve', skill: skillText('plan-improve'), followUp: PLAN_IMPROVE_FOLLOW_UP },
   { name: 'implement', skill: skillText('implement'), followUp: implementFollowUp('plan:\n- add the field\n', null) },
-  { name: 'implement-review', skill: skillText('implement-review'), followUp: IMPLEMENT_REVIEW_FOLLOW_UP },
+  { name: 'implement-improve', skill: skillText('implement-improve'), followUp: IMPLEMENT_IMPROVE_FOLLOW_UP },
 ];
 
 describe('step prompt invariants', () => {
   it('carries the one code-quality standard, word for word, on the first turn and the resume', () => {
-    for (const pair of STEP_PAIRS.filter((item) => item.name !== 'implement-review')) {
+    for (const pair of STEP_PAIRS.filter((item) => item.name !== 'implement-improve')) {
       expect(pair.skill).toContain(CODE_STANDARD);
       expect(pair.followUp).toContain(CODE_STANDARD);
     }
-    const review = STEP_PAIRS.find((item) => item.name === 'implement-review');
+    const review = STEP_PAIRS.find((item) => item.name === 'implement-improve');
     const gap =
       'Check the change for logical and technical gaps and fix only those. Start from the files this change touched. Open another file only to follow a call from the change or a test the return names. Do not sweep the tree with grep. When there is no gap, leave the files. A pipeline return changes the code or the failed test. Do not leave them. Do not widen the change. Do not implement a linked ticket.';
     const limits =
@@ -46,18 +46,18 @@ describe('step prompt invariants', () => {
     for (const pair of STEP_PAIRS) {
       expect(pair.skill).toContain(TASK_SCOPE);
     }
-    for (const followUp of [planFollowUp(''), PLAN_REVIEW_FOLLOW_UP, IMPLEMENT_REVIEW_FOLLOW_UP]) {
+    for (const followUp of [planFollowUp(''), PLAN_IMPROVE_FOLLOW_UP, IMPLEMENT_IMPROVE_FOLLOW_UP]) {
       expect(followUp).toContain(TASK_SCOPE);
     }
-    for (const name of ['research', 'plan', 'plan-review', 'implement', 'code-review/requirements']) {
+    for (const name of ['research', 'plan', 'plan-improve', 'implement', 'code-review/requirements']) {
       expect(skillText(name)).toContain(LINKED_CONTEXT);
     }
     expect(skillText('code-review/requirements')).toContain(TASK_SCOPE);
     expect(skillText('research')).toContain(TASK_SCOPE);
-    for (const text of [skillText('plan-review'), PLAN_REVIEW_FOLLOW_UP]) {
+    for (const text of [skillText('plan-improve'), PLAN_IMPROVE_FOLLOW_UP]) {
       expect(text).toContain('Check that the checklist covers every behavior the task requires');
     }
-    for (const name of ['research', 'plan', 'plan-review', 'implement', 'implement-review', 'code-review/requirements']) {
+    for (const name of ['research', 'plan', 'plan-improve', 'implement', 'implement-improve', 'code-review/requirements']) {
       expect(skillText(name)).not.toContain('already owns');
       expect(skillText(name)).not.toContain('Only the Work section');
     }
@@ -71,9 +71,9 @@ describe('step prompt invariants', () => {
     expect(skillText('plan')).not.toContain('belongs only to Context');
   });
 
-  it('asks plan-review for the same sections on the first turn and the resume', () => {
-    expect(skillText('plan-review')).toContain('summary:');
-    expect(PLAN_REVIEW_FOLLOW_UP).toContain('summary:');
+  it('asks plan-improve for the same sections on the first turn and the resume', () => {
+    expect(skillText('plan-improve')).toContain('summary:');
+    expect(PLAN_IMPROVE_FOLLOW_UP).toContain('summary:');
   });
 });
 
@@ -123,7 +123,7 @@ describe('return follow-ups', () => {
     expect(pipeline).toContain('Do not leave the files as they are');
     expect(pipeline).not.toContain('say that behavior now holds');
     expect(implementFollowUp('plan:\n- delete the run\n', null)).not.toContain('Fix the broken behavior');
-    expect(IMPLEMENT_REVIEW_FOLLOW_UP).toContain('end with summary only');
+    expect(IMPLEMENT_IMPROVE_FOLLOW_UP).toContain('end with summary only');
     const review = reviewResume('quality', '- waited for the writers\n- stop no longer returns early', '- left that wait in place');
     expect(review).toContain('This chat is only the quality angle');
     expect(review).toContain('waited for the writers');

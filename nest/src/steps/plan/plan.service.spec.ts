@@ -16,7 +16,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
 
 describe('plan step', () => {
-  it('stores the checklist and advances to plan review', async () => {
+  it('stores the checklist and advances to plan improve', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-40', 'billing-api'), { recursive: true });
@@ -43,11 +43,11 @@ describe('plan step', () => {
         decision: null,
       });
       const run = await app.get(HistoryService).findRun('PROJ-40');
-      expect(run?.currentStep).toBe('plan-review');
+      expect(run?.currentStep).toBe('plan-improve');
       expect(run?.status).toBe('waiting');
       await app.get(PipelineService).step('plan', 'PROJ-40');
       expect(await documents.find({ where: { kind: 'requirements' } })).toHaveLength(stored.length);
-      expect((await app.get(HistoryService).findRun('PROJ-40'))?.currentStep).toBe('plan-review');
+      expect((await app.get(HistoryService).findRun('PROJ-40'))?.currentStep).toBe('plan-improve');
     } finally {
       await app.close();
     }

@@ -92,7 +92,7 @@ describe('review brief mount', () => {
     expect(reviewBriefMount(root, 'commit')).toBeNull();
     expect(reviewBriefMount(root, 'chat')).toBeNull();
     expect(reviewBriefMount(root, 'implement')).toEqual(mount);
-    expect(reviewBriefMount(root, 'plan-review')).toEqual(mount);
+    expect(reviewBriefMount(root, 'plan-improve')).toEqual(mount);
     expect(reviewBriefMount(root, 'code-review-quality')).toEqual(mount);
     expect(reviewBriefMount(root, 'code-review-report')).toEqual(mount);
   });

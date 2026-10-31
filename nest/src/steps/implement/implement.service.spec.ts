@@ -46,12 +46,12 @@ describe('implement step', () => {
       expect(handoff[0]?.body).toContain('## implement');
       expect(handoff[0]?.body).toContain('empty fields stay');
       const run = await app.get(HistoryService).findRun('PROJ-60');
-      expect(run?.currentStep).toBe('implement-review');
+      expect(run?.currentStep).toBe('implement-improve');
       expect(run?.status).toBe('waiting');
       expect(git(worktree, ['status', '--porcelain'])).toBe('');
       await app.get(PipelineService).step('implement', 'PROJ-60');
       expect(await documents.find({ where: { kind: 'implementation' } })).toHaveLength(1);
-      expect((await app.get(HistoryService).findRun('PROJ-60'))?.currentStep).toBe('implement-review');
+      expect((await app.get(HistoryService).findRun('PROJ-60'))?.currentStep).toBe('implement-improve');
     } finally {
       await app.close();
     }
@@ -487,7 +487,7 @@ describe('implement step', () => {
       expect(calls[1]?.prompt).not.toContain('The commit being replayed is');
       expect((await history.latestBody('PROJ-66', 'implementation'))?.trim()).toContain('changed the field parser');
       expect((await history.latestBody('PROJ-66', REBASE_CONFLICT))?.trim()).toBe('review');
-      expect((await history.findRun('PROJ-66'))?.currentStep).toBe('implement-review');
+      expect((await history.findRun('PROJ-66'))?.currentStep).toBe('implement-improve');
       expect(() => git(tree, ['rev-parse', '--verify', 'refs/remotes/origin/feature/PROJ-66-ship-the-field'])).toThrow();
     } finally {
       await app.close();

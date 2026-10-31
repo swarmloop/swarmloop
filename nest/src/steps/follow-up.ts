@@ -21,7 +21,7 @@ export function planFollowUp(answers: string): string {
   return lines.join('\n');
 }
 
-export const PLAN_REVIEW_FOLLOW_UP = [
+export const PLAN_IMPROVE_FOLLOW_UP = [
   'Check the checklist in this message for correctness, logical gaps, and inconsistencies. Fix those in the checklist. Return the full checklist implementation should follow. Read the working directory when it has source files.',
   `${TASK_SCOPE} Check that the checklist covers every behavior the task requires, and add an item for each one that is missing.`,
   `${LINKED_CONTEXT} Every item must still be this task. Do not add an item that belongs only to another ticket.`,
@@ -77,7 +77,7 @@ export function implementFollowUp(plan: string, notes: string | null): string {
   return lines.join('\n');
 }
 
-export const IMPLEMENT_REVIEW_FOLLOW_UP = [
+export const IMPLEMENT_IMPROVE_FOLLOW_UP = [
   'Check the change for logical and technical gaps and fix only those. Start from the files this change touched. Open another file only to follow a call from the change or a test the return names. Do not sweep the tree with grep. When there is no gap, leave the files. A pipeline return changes the code or the failed test. Do not leave them. Do not widen the change. Do not implement a linked ticket.',
   TASK_SCOPE,
   'Do not start a service, a database, or the application. Do not run tests. Do not run `git commit`, `git push`, or `git add -A`. Do not create a branch.',
@@ -116,12 +116,12 @@ export function reviewResume(name: string, implement: string, reviewed: string, 
     `Continue this ${name} review. This chat is only the ${name} angle.`,
     'The complete diff is /work/brief/diff.md. Read it, and read the files in the working directory that this angle needs.',
     'Do not run tests, a service, a database, or the application. Do not run git.',
-    'Implement and implement-review have run since your last decision. What they did and why:',
+    'Implement and implement-improve have run since your last decision. What they did and why:',
     '',
     'Implement:',
     note(implement),
     '',
-    'Implement review:',
+    'Implement improve:',
     note(reviewed),
     '',
     ...(returned?.trim() ? ['Last return:', returned.trim(), ''] : []),

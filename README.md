@@ -156,8 +156,8 @@ A prompt without a ticket number never calls Jira. Jira is the tracker that ship
 
 ```mermaid
 flowchart LR
-  R["📝 Requirements"] --> P["🧭 Planning<br/>prepare · research<br/>plan · plan-review"]
-  P --> I["🔨 Implementation<br/>branch · implement<br/>implement-review"]
+  R["📝 Requirements"] --> P["🧭 Planning<br/>prepare · research<br/>plan · plan-improve"]
+  P --> I["🔨 Implementation<br/>branch · implement<br/>implement-improve"]
   I --> C{"🔍 Code review<br/>5 reviewers + report"}
   C -- ok --> D["🚢 CI<br/>commit · merge-request<br/>pipeline"]
   C -. return .-> I
@@ -170,7 +170,7 @@ The panel shows the same five phases. **New run** lets you switch phases off. Re
 A person is asked where it matters:
 
 - Research and plan stop on open questions until someone answers in the panel.
-- Plan review checks that the checklist covers everything the task asks for.
+- Plan improve checks that the checklist covers everything the task asks for.
 - Commit waits until the file list is accepted.
 
 The instructions for every step are Markdown files in `skills/`. Edit one, rebuild Nest, and every run after that follows it, for everyone on the server. The rules live in the repo and get reviewed like code. They are not a setting in someone's IDE.
@@ -181,7 +181,7 @@ Requirements, quality, regressions, security, and performance review the diff at
 
 A diff that was already reviewed is not returned a second time.
 
-Before code review, implement review reads the change again on the same model and fixes what it finds.
+Before code review, implement improve reads the change again on the same model and fixes what it finds.
 
 ### 🔄 Rebase in one click
 
@@ -285,8 +285,8 @@ When the API is on another machine, set the URL in `env`:
 | --- | --- |
 | `RUNTIME` | `cursor` or `claude`. Stored on the run. |
 | `MODEL_RESEARCH` | Model for research. `.env.example` uses `grok-4.7-high`. |
-| `MODEL_PLAN` | Model for plan, plan review, every code reviewer, and the review report. `.env.example` uses `grok-4.7-xhigh`. |
-| `MODEL_IMPLEMENT` | Model for implementation and implement review. `.env.example` uses `grok-4.7-high`. |
+| `MODEL_PLAN` | Model for plan, plan improve, every code reviewer, and the review report. `.env.example` uses `grok-4.7-xhigh`. |
+| `MODEL_IMPLEMENT` | Model for implementation and implement improve. `.env.example` uses `grok-4.7-high`. |
 | `ISSUE_TRACKER` | `jira` |
 | `REQUIREMENTS_VIA` | `agent` or `direct`. Both build the requirements record in Nest. The model does not rewrite it. |
 | `CHECKOUTS_ROOT` | Folder of git clones listed in **New run**. |

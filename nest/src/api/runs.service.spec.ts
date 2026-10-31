@@ -122,7 +122,7 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn(), replay: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-11 started' }) };
     const app = await boot(root, pipeline);
     try {
-      await save(app.get(HistoryService), 'proj-11', 'implement-review', 'failed');
+      await save(app.get(HistoryService), 'proj-11', 'implement-improve', 'failed');
       const result = await app.get(RunsService).replay('proj-11', 'implement', 'Use the other parser');
       expect(result).toEqual({ http: 202, body: { key: 'proj-11', status: 'started' } });
       expect(pipeline.replay).toHaveBeenCalledWith('proj-11', 'implement', 'Use the other parser');
@@ -160,7 +160,7 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn(), stop: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-9 stopped' }) };
     const app = await boot(root, pipeline);
     try {
-      await save(app.get(HistoryService), 'proj-9', 'implement-review', 'running');
+      await save(app.get(HistoryService), 'proj-9', 'implement-improve', 'running');
       const result = await app.get(RunsService).stop('proj-9');
       expect(result).toEqual({ http: 200, body: { key: 'proj-9', status: 'stopped' } });
       expect(pipeline.stop).toHaveBeenCalledWith('proj-9');
@@ -1233,14 +1233,14 @@ describe('runs api', () => {
     const app = await boot(root, pipeline);
     try {
       const history = app.get(HistoryService);
-      const run = await remember(history, 'proj-55', 'implement-review', 'failed');
+      const run = await remember(history, 'proj-55', 'implement-improve', 'failed');
       await history.putDocument(run, 'implementation', '- changed the field\n');
       const result = await app.get(RunsService).rebase('proj-55');
       expect(result).toEqual({ http: 202, body: { key: 'proj-55', status: 'started' } });
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-55', {});
       const fresh = await history.findRun('proj-55');
       expect(fresh?.status).toBe('failed');
-      expect(fresh?.currentStep).toBe('implement-review');
+      expect(fresh?.currentStep).toBe('implement-improve');
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-55-ship-the-field');
     } finally {
       await app.close();
@@ -1254,14 +1254,14 @@ describe('runs api', () => {
     const app = await boot(root, pipeline);
     try {
       const history = app.get(HistoryService);
-      const run = await remember(history, 'proj-58', 'implement-review', 'waiting');
+      const run = await remember(history, 'proj-58', 'implement-improve', 'waiting');
       await history.putDocument(run, 'implementation', '- changed the field\n');
       const result = await app.get(RunsService).rebase('proj-58');
       expect(result).toEqual({ http: 202, body: { key: 'proj-58', status: 'started' } });
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-58', {});
       const fresh = await history.findRun('proj-58');
       expect(fresh?.status).toBe('waiting');
-      expect(fresh?.currentStep).toBe('implement-review');
+      expect(fresh?.currentStep).toBe('implement-improve');
       expect(await history.latestBody('proj-58', REBASE_MERGE_SKIP)).toBeNull();
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-58-ship-the-field');
     } finally {
@@ -1518,7 +1518,7 @@ describe('runs api', () => {
       await writeFile(join(data, 'ship-plan-output.txt'), 'out\n');
       await writeFile(join(data, 'ship-plan-launches.txt'), '1\n');
       await writeFile(join(data, 'ship-plan-session.json'), '{}\n');
-      await writeFile(join(data, 'ship-plan-review-output.txt'), 'out\n');
+      await writeFile(join(data, 'ship-plan-improve-output.txt'), 'out\n');
       await writeFile(join(data, 'ship-plan-plan-output.txt'), 'out\n');
       await writeFile(join(data, 'ship-plan-plan-launches.txt'), '1\n');
       await writeFile(join(data, 'ship-plan-plan-session.json'), '{}\n');
@@ -1533,7 +1533,7 @@ describe('runs api', () => {
       expect(existsSync(join(data, 'ship-plan-output.txt'))).toBe(false);
       expect(existsSync(join(data, 'ship-plan-launches.txt'))).toBe(false);
       expect(existsSync(join(data, 'ship-plan-session.json'))).toBe(false);
-      expect(existsSync(join(data, 'ship-plan-review-output.txt'))).toBe(false);
+      expect(existsSync(join(data, 'ship-plan-improve-output.txt'))).toBe(false);
       expect(existsSync(join(data, 'ship-plan-plan-output.txt'))).toBe(true);
       expect(existsSync(join(data, 'ship-plan-plan-launches.txt'))).toBe(true);
       expect(existsSync(join(data, 'ship-plan-plan-session.json'))).toBe(true);

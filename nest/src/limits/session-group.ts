@@ -1,11 +1,11 @@
 export type SessionGroup = 'plan' | 'implement';
 
-/** Research, plan, and plan-review share one chat. Implement steps share another. Each code reviewer keeps its own. */
+/** Research, plan, and plan-improve share one chat. Implement steps share another. Each code reviewer keeps its own. */
 export function sessionGroup(step: string): SessionGroup | null {
-  if (step === 'research' || step === 'plan' || step === 'plan-review') {
+  if (step === 'research' || step === 'plan' || step === 'plan-improve') {
     return 'plan';
   }
-  if (step === 'implement' || step === 'implement-review' || step.startsWith('implement-')) {
+  if (step === 'implement' || step === 'implement-improve' || step.startsWith('implement-')) {
     return 'implement';
   }
   return null;

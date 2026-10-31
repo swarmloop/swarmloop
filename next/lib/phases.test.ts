@@ -3,10 +3,10 @@ import { describe, it } from 'node:test';
 import { expandReviewPhases, keepOpenReviews, latestPhaseLabels, liveLogStep, markReviewFinished, markReviewLive, PHASES, pipelineStep, replaySelection, reviewChipName } from './phases.ts';
 
 describe('liveLogStep', () => {
-  it('keeps a per-repo implement log on implement, not implement-review', () => {
+  it('keeps a per-repo implement log on implement, not implement-improve', () => {
     assert.equal(liveLogStep('implement-swarmloop', 'implement'), true);
-    assert.equal(liveLogStep('implement-review-swarmloop', 'implement'), false);
-    assert.equal(liveLogStep('implement-review-swarmloop', 'implement-review'), true);
+    assert.equal(liveLogStep('implement-improve-swarmloop', 'implement'), false);
+    assert.equal(liveLogStep('implement-improve-swarmloop', 'implement-improve'), true);
     assert.equal(liveLogStep('code-review-quality', 'code-review'), false);
     assert.equal(liveLogStep('code-review-quality', 'code-review-quality'), true);
     assert.equal(liveLogStep('code-review', 'code-review-quality'), false);

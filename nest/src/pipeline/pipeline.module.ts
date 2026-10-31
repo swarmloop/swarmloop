@@ -6,9 +6,9 @@ import { BranchService } from '../steps/branch/branch.service';
 import { CommitService } from '../steps/commit/commit.service';
 import { MergeRequestService } from '../steps/merge-request/merge-request.service';
 import { CodeReviewService } from '../steps/code-review/code-review.service';
-import { ImplementReviewService } from '../steps/implement/implement-review.service';
+import { ImplementImproveService } from '../steps/implement/implement-improve.service';
 import { ImplementService } from '../steps/implement/implement.service';
-import { PlanReviewService } from '../steps/plan/plan-review.service';
+import { PlanImproveService } from '../steps/plan/plan-improve.service';
 import { PipelineStepService } from '../steps/pipeline/pipeline-step.service';
 import { PlanService } from '../steps/plan/plan.service';
 import { PrepareService } from '../steps/prepare/prepare.service';
@@ -29,9 +29,9 @@ import { PipelineService } from './pipeline.service';
     MergeRequestService,
     PipelineStepService,
     PlanService,
-    PlanReviewService,
+    PlanImproveService,
     ImplementService,
-    ImplementReviewService,
+    ImplementImproveService,
     CodeReviewService,
     PipelineService,
   ],
