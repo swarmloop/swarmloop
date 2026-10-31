@@ -1,4 +1,4 @@
-import { existsSync } from 'fs';
+import { existsSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -12,7 +12,7 @@ import { launchCount } from '../limits/agent-launches';
 import { Charge, chargeStream, modelForStep } from '../limits/spend';
 import { loadPriceTable } from '../limits/prices';
 import { LiveHub, LiveSample, LiveSpend } from '../live/live.hub';
-import { liveLogBody, liveLogCurrent, liveLogView } from '../acp/live-output';
+import { liveLogBody, liveLogCurrent, liveLogFinished, liveLogView } from '../acp/live-output';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { assertKey, continuesSameStep, countedVisits, isLoopStep, isReviewStep, isStep, loopMark, nextSessionKey, normalizePhases, PhaseName, pipelineStepOf, reviewerOf, REVIEW_STEPS, STEPS, StepName, ticketKey } from '../pipeline/pipeline-result';
 import { answered } from '../steps/answers';
@@ -751,13 +751,14 @@ function phases(run: RunEntity, stats: StepStatEntity[], documents: DocumentEnti
       const parent = pipelineStepOf(name);
       const own = isReviewStep(name) ? latestStats.get(name) : undefined;
       const stat = own ?? latestStats.get(parent);
-      const log = isReviewStep(name) && (!own || parentRunning) ? liveLogView(root, run.key, name) : null;
-      const status = chipStatus(name, run, stat, documents, log);
+      const round = own ? reviewerRound(name, run, own, documents, root) : null;
+      const log = round ? null : isReviewStep(name) && (!own || parentRunning) ? liveLogView(root, run.key, name) : null;
+      const status = chipStatus(name, run, stat, documents, log, round);
       return {
         name,
         status,
         current: isReviewStep(name) ? status === 'running' : parent === run.currentStep,
-        attempts: chipAttempts(name, run, stats, documents, root, log),
+        attempts: chipAttempts(name, run, stats, documents, root, log, round),
       };
     });
     if (phase.phase !== 'code review') {
@@ -773,30 +774,20 @@ function chipStatus(
   stat: StepStatEntity | undefined,
   documents: DocumentEntity[],
   log: { body: string; current: boolean } | null,
+  round: { attempts: number; status: string } | null,
 ): string {
   if (!isReviewStep(name)) {
     return stepStatus(pipelineStepOf(name), run, stat);
   }
   const kind = `review_${name.slice('code-review-'.length)}`;
   if (stat?.step === name) {
+    if (round) {
+      return round.status;
+    }
     if (run.currentStep === 'code-review' && run.status === 'running' && log?.current) {
       return 'running';
     }
-    const body = documents
-      .filter((document) => document.stepStatId === stat.id && document.kind === kind)
-      .map((document) => document.body)
-      .join('\n');
-    const decision = reviewDecision(body);
-    if (decision === 'ok') {
-      return 'done';
-    }
-    if (decision === 'return') {
-      return 'waiting';
-    }
-    if (stat.status === 'failed' || stat.status === 'blocked') {
-      return 'failed';
-    }
-    return stat.status === 'waiting' ? 'waiting' : 'done';
+    return storedReviewerStatus(stat, documents, kind);
   }
   const stored = latest(documents, kind) ?? '';
   const text = log?.body ?? '';
@@ -851,9 +842,10 @@ function chipAttempts(
   documents: DocumentEntity[],
   root: string,
   log: { body: string; current: boolean } | null,
+  round: { attempts: number; status: string } | null,
 ): number {
   if (isReviewStep(name)) {
-    return reviewerAttempts(name, run, stats, documents, log);
+    return reviewerAttempts(name, run, stats, documents, log, round);
   }
   const own = stats.filter((stat) => stat.step === name);
   const last = own.at(-1)?.attempt ?? 0;
@@ -876,12 +868,16 @@ function reviewerAttempts(
   stats: StepStatEntity[],
   documents: DocumentEntity[],
   log: { body: string; current: boolean } | null,
+  round: { attempts: number; status: string } | null,
 ): number {
   const parentRunning = run.status === 'running' && run.currentStep === 'code-review';
   const own = stats.filter((stat) => stat.step === name);
   if (own.length > 0) {
-    const last = own.at(-1)?.attempt ?? 0;
-    return parentRunning && log?.current ? last + 1 : last;
+    if (round) {
+      return round.attempts;
+    }
+    const attempt = own.at(-1)?.attempt ?? 0;
+    return parentRunning && log?.current ? attempt + 1 : attempt;
   }
   const kind = `review_${name.slice('code-review-'.length)}`;
   const owned = stats.filter(
@@ -890,6 +886,66 @@ function reviewerAttempts(
   const raw = parentRunning ? (log?.body ?? '') : '';
   const live = parentRunning && raw.trim() !== '' && raw.trim() !== 'waiting for output' && raw.trim() !== 'starting';
   return owned.length + (live ? 1 : 0);
+}
+
+/** This reviewer's chip while the code-review round is still open. Null keeps today's visit. */
+function reviewerRound(
+  name: string,
+  run: RunEntity,
+  stat: StepStatEntity,
+  documents: DocumentEntity[],
+  root: string,
+): { attempts: number; status: string } | null {
+  if (run.status !== 'running' || run.currentStep !== 'code-review' || !run.stepStartedAt) {
+    return null;
+  }
+  const stored = storedReviewerStatus(stat, documents, `review_${name.slice('code-review-'.length)}`);
+  if (stat.stepStartedAt === run.stepStartedAt) {
+    return { attempts: stat.attempt, status: stored };
+  }
+  const path = join(root, 'data', `${run.key}-${name}-output.txt`);
+  let mtimeMs = 0;
+  try {
+    mtimeMs = statSync(path).mtimeMs;
+  } catch {
+    return { attempts: stat.attempt, status: stored };
+  }
+  if (mtimeMs < Date.parse(run.stepStartedAt)) {
+    return { attempts: stat.attempt, status: stored };
+  }
+  let body = '';
+  try {
+    body = readFileSync(path, 'utf8');
+  } catch {
+    return { attempts: stat.attempt, status: stored };
+  }
+  const trimmed = body.trim();
+  if (trimmed === '' || trimmed === 'starting' || trimmed === 'waiting for output') {
+    return { attempts: stat.attempt, status: stored };
+  }
+  if (!liveLogFinished(body)) {
+    return { attempts: stat.attempt + 1, status: 'running' };
+  }
+  const decision = reviewDecision(body);
+  return { attempts: stat.attempt + 1, status: decision === 'ok' ? 'done' : decision === 'return' ? 'waiting' : 'failed' };
+}
+
+function storedReviewerStatus(stat: StepStatEntity, documents: DocumentEntity[], kind: string): string {
+  const body = documents
+    .filter((document) => document.stepStatId === stat.id && document.kind === kind)
+    .map((document) => document.body)
+    .join('\n');
+  const decision = reviewDecision(body);
+  if (decision === 'ok') {
+    return 'done';
+  }
+  if (decision === 'return') {
+    return 'waiting';
+  }
+  if (stat.status === 'failed' || stat.status === 'blocked') {
+    return 'failed';
+  }
+  return stat.status === 'waiting' ? 'waiting' : 'done';
 }
 
 function reportAttempts(stats: StepStatEntity[], documents: DocumentEntity[], writing: boolean): number {

@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'fs';
 import { mkdir, mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
@@ -842,6 +842,133 @@ describe('runs api', () => {
       expect(steps.find((step) => step.name === 'research')?.attempts).toBe(0);
       expect(steps.find((step) => step.name === 'prepare')?.attempts).toBe(0);
       expect(steps.find((step) => step.name === 'code-review')?.attempts).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('shows each reviewer its own visit while the code-review round is running', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-round-'));
+    const app = await boot(root);
+    try {
+      await mkdir(join(root, 'data'), { recursive: true });
+      const history = app.get(HistoryService);
+      const run = await save(history, 'proj-round', 'code-review', 'running');
+      const round1 = '2026-10-28T10:00:00.000Z';
+      const round2 = '2026-10-28T11:00:00.000Z';
+      run.stepStartedAt = round1;
+      await history.saveRun(run);
+      const stored = [
+        ['requirements', 'ok', 'done'],
+        ['quality', 'return', 'waiting'],
+        ['regressions', 'ok', 'done'],
+        ['security', 'return', 'waiting'],
+        ['performance', 'ok', 'done'],
+      ] as const;
+      for (const [name, decision, status] of stored) {
+        await history.finishVisit(run, {
+          ...visit(`code-review-${name}`, status),
+          documents: [{ kind: `review_${name}`, fileName: '', body: `round 1\ndecision: ${decision}\n` }],
+        });
+      }
+      run.stepStartedAt = round2;
+      await history.saveRun(run);
+      const file = (name: string) => join(root, 'data', `proj-round-code-review-${name}-output.txt`);
+      await writeFile(file('quality'), 'notes\ndecision: ok\nprocess exited 0\n');
+      const older = new Date(Date.parse(round2) - 60_000);
+      utimesSync(file('quality'), older, older);
+      await writeFile(file('requirements'), 'notes\ndecision: ok\nprocess exited 0\n');
+      await writeFile(file('regressions'), 'thinking\n');
+      await writeFile(file('performance'), 'notes\ndecision: return\nprocess exited 0\n');
+      await writeFile(file('security'), 'starting\n');
+      const runs = app.get(RunsService);
+      const chips = async () => (await runs.flow('proj-round')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
+      const running = await chips();
+      const at = (steps: { name: string; status: string; attempts: number }[], name: string) => steps.find((step) => step.name === name);
+      expect(at(running, 'code-review-requirements')?.attempts).toBe(2);
+      expect(at(running, 'code-review-requirements')?.status).toBe('done');
+      expect(at(running, 'code-review-regressions')?.attempts).toBe(2);
+      expect(at(running, 'code-review-regressions')?.status).toBe('running');
+      expect(at(running, 'code-review-performance')?.attempts).toBe(2);
+      expect(at(running, 'code-review-performance')?.status).toBe('waiting');
+      expect(at(running, 'code-review-quality')?.attempts).toBe(1);
+      expect(at(running, 'code-review-quality')?.status).toBe('waiting');
+      expect(at(running, 'code-review-security')?.attempts).toBe(1);
+      expect(at(running, 'code-review-security')?.status).toBe('waiting');
+
+      run.status = 'waiting';
+      await history.saveRun(run);
+      const held = await chips();
+      expect(at(held, 'code-review-requirements')?.attempts).toBe(1);
+      expect(at(held, 'code-review-requirements')?.status).toBe('done');
+      expect(at(held, 'code-review-quality')?.attempts).toBe(1);
+      expect(at(held, 'code-review-quality')?.status).toBe('waiting');
+      expect(at(held, 'code-review-regressions')?.attempts).toBe(1);
+      expect(at(held, 'code-review-regressions')?.status).toBe('done');
+      expect(at(held, 'code-review-security')?.attempts).toBe(1);
+      expect(at(held, 'code-review-security')?.status).toBe('waiting');
+      expect(at(held, 'code-review-performance')?.attempts).toBe(1);
+      expect(at(held, 'code-review-performance')?.status).toBe('done');
+
+      run.status = 'running';
+      run.currentStep = 'code-review';
+      run.stepStartedAt = round2;
+      await history.saveRun(run);
+      const next = [
+        ['requirements', 'return', 'waiting'],
+        ['quality', 'ok', 'done'],
+        ['regressions', 'return', 'waiting'],
+        ['security', 'ok', 'done'],
+        ['performance', 'ok', 'done'],
+      ] as const;
+      for (const [name, decision, status] of next) {
+        await history.finishVisit(run, {
+          ...visit(`code-review-${name}`, status),
+          documents: [{ kind: `review_${name}`, fileName: '', body: `round 2\ndecision: ${decision}\n` }],
+        });
+      }
+      await writeFile(join(root, 'data', 'proj-round-code-review-report-output.txt'), 'thinking\n');
+      const saved = await chips();
+      expect(at(saved, 'code-review-requirements')?.attempts).toBe(2);
+      expect(at(saved, 'code-review-requirements')?.status).toBe('waiting');
+      expect(at(saved, 'code-review-quality')?.attempts).toBe(2);
+      expect(at(saved, 'code-review-quality')?.status).toBe('done');
+      expect(at(saved, 'code-review-regressions')?.attempts).toBe(2);
+      expect(at(saved, 'code-review-regressions')?.status).toBe('waiting');
+      expect(at(saved, 'code-review-security')?.attempts).toBe(2);
+      expect(at(saved, 'code-review-security')?.status).toBe('done');
+      expect(at(saved, 'code-review-performance')?.attempts).toBe(2);
+      expect(at(saved, 'code-review-performance')?.status).toBe('done');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps a time-kill relaunch on the same reviewer visit in the open round', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-kill-'));
+    const app = await boot(root);
+    try {
+      await mkdir(join(root, 'data'), { recursive: true });
+      const history = app.get(HistoryService);
+      const run = await save(history, 'proj-kill', 'code-review', 'running');
+      run.stepStartedAt = '2026-10-28T10:00:00.000Z';
+      await history.saveRun(run);
+      await history.finishVisit(run, {
+        ...visit('code-review-requirements', 'done'),
+        documents: [{ kind: 'review_requirements', fileName: '', body: 'round 1\ndecision: ok\n' }],
+      });
+      run.stepStartedAt = '2026-10-28T11:00:00.000Z';
+      await history.saveRun(run);
+      const path = join(root, 'data', 'proj-kill-code-review-requirements-output.txt');
+      await writeFile(path, 'thinking\nprocess killed: time\n');
+      const runs = app.get(RunsService);
+      const chip = async () =>
+        (await runs.flow('proj-kill')).phases.flatMap((phase) => phase.steps).find((step) => step.name === 'code-review-requirements');
+      expect((await chip())?.attempts).toBe(2);
+      expect((await chip())?.status).toBe('failed');
+      await writeFile(path, 'thinking\nprocess killed: time\nprocess started\n');
+      expect((await chip())?.attempts).toBe(2);
+      expect((await chip())?.status).toBe('running');
     } finally {
       await app.close();
     }
