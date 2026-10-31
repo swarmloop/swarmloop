@@ -367,7 +367,7 @@ async function writeEnv(root: string, overrides: Record<string, string> = {}): P
     GITLAB_TOKEN: '',
     GITHUB_BASE_URL: '',
     GITHUB_TOKEN: '',
-    CURSOR_API_KEY: '',
+    CURSOR_API_KEY: 'test-key',
     ANTHROPIC_API_KEY: '',
     MAX_AGENT_CALLS: '20',
     MAX_RETURNS: '3',

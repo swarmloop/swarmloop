@@ -82,11 +82,13 @@ describe('working directory block', () => {
 
   it('passes a continue prompt through without the English rule', async () => {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-continue-'));
-    let seen: AgentRunInput | null = null;
+    const prompts: string[] = [];
+    const continues: (string | null | undefined)[] = [];
     await launchAgent({
       agent: {
         run: async (input: AgentRunInput) => {
-          seen = input;
+          prompts.push(input.prompt);
+          continues.push(input.continuePrompt);
           return emptyAgent();
         },
       } as never,
@@ -102,8 +104,8 @@ describe('working directory block', () => {
       workspace: root,
       mounts: [],
     });
-    expect(seen?.prompt).toBe(`${AGENT_LANGUAGE_RULE}\n\nЗроби поле`);
-    expect(seen?.continuePrompt).toBe('Finish the checklist.');
+    expect(prompts[0]).toBe(`${AGENT_LANGUAGE_RULE}\n\nЗроби поле`);
+    expect(continues[0]).toBe('Finish the checklist.');
   });
 });
 
