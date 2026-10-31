@@ -3,6 +3,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync }
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Injectable } from '@nestjs/common';
+import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SwarmloopError } from '../swarmloop-error';
 import { BindMount, containerName, emptyEnvFile, EnvMask, imageName, isLocalHost, prepareStateDir, SandboxLaunch, SandboxMount, resolveDaemonPath, sandboxArgs, sandboxNetworkName, hostName, stepContainers } from './sandbox-launch';
 
@@ -22,7 +23,7 @@ export class SandboxService {
     this.docker = docker;
   }
 
-  async assertReady(runtime: 'cursor' | 'claude'): Promise<void> {
+  async assertReady(runtime: RuntimeName): Promise<void> {
     try {
       await this.docker(['info']);
     } catch {

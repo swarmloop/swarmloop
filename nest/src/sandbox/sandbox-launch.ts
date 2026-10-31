@@ -1,6 +1,7 @@
 import { chmodSync, chownSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, isAbsolute, join, resolve, sep } from 'path';
+import { RUNTIME_NAMES, RuntimeName, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SwarmloopError } from '../swarmloop-error';
 
 export interface SandboxMount {
@@ -19,7 +20,7 @@ export interface EnvMask {
 }
 
 export interface SandboxLaunch {
-  runtime: 'cursor' | 'claude';
+  runtime: RuntimeName;
   runKey: string;
   step: string;
   mounts: SandboxMount[];
@@ -54,40 +55,28 @@ const REGISTRIES = new Set([
   'repo1.maven.org',
 ]);
 
-const MODEL_HOSTS = new Set(['api2.cursor.sh', 'api.cursor.com', 'cursor.com', 'api.anthropic.com']);
-const MODEL_ENV = new Set(['CURSOR_API_KEY', 'ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN']);
+const MODEL_HOSTS = new Set(RUNTIME_NAMES.flatMap((name) => runtimeFor(name).apiHosts));
+const MODEL_ENV = new Set(RUNTIME_NAMES.flatMap((name) => runtimeFor(name).credentialNames));
 
 export function packageRegistries(): string[] {
   return [...REGISTRIES];
 }
 
-export function modelApiHosts(runtime: 'cursor' | 'claude'): string[] {
-  return runtime === 'claude' ? ['api.anthropic.com'] : ['api2.cursor.sh', 'api.cursor.com', 'cursor.com'];
+export function modelApiHosts(runtime: RuntimeName): string[] {
+  return [...runtimeFor(runtime).apiHosts];
 }
 
 export function modelCredential(
-  runtime: 'cursor' | 'claude',
+  runtime: RuntimeName,
   cursorKey: string,
   anthropicKey: string,
   oauthToken: string,
 ): { name: string; value: string } {
-  if (runtime === 'claude') {
-    if (oauthToken !== '') {
-      return { name: 'CLAUDE_CODE_OAUTH_TOKEN', value: oauthToken };
-    }
-    if (anthropicKey === '') {
-      throw new SwarmloopError('ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is missing');
-    }
-    return { name: 'ANTHROPIC_API_KEY', value: anthropicKey };
-  }
-  if (cursorKey === '') {
-    throw new SwarmloopError('CURSOR_API_KEY is missing');
-  }
-  return { name: 'CURSOR_API_KEY', value: cursorKey };
+  return runtimeFor(runtime).credential({ cursorKey, anthropicKey, oauthToken });
 }
 
-export function imageName(runtime: 'cursor' | 'claude'): string {
-  return `swarmloop-agent-${runtime}`;
+export function imageName(runtime: RuntimeName): string {
+  return runtimeFor(runtime).image;
 }
 
 /** Containers for one step, including fan-out names such as code-review-security. */
