@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
@@ -417,6 +417,73 @@ describe('implement step', () => {
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/PROJ-117-ship-the-field');
       expect(git(tree, ['diff', '--name-only', '--diff-filter=U'])).toBe('');
       expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toBe('export const field = 1;\n');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('continues an empty resolution and leaves the base files in place', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-rebase-empty-'));
+    await writeEnv(root);
+    const tree = featureTree(root, 'PROJ-118', 'billing-api');
+    const clone = join(root, 'billing-api');
+    git(clone, ['config', 'user.email', 'dev@example.com']);
+    git(clone, ['config', 'user.name', 'Dev']);
+    mkdirSync(join(clone, 'src'), { recursive: true });
+    writeFileSync(join(clone, 'src', 'own.ts'), 'export const own = 1;\n');
+    writeFileSync(join(clone, 'src', 'kept.ts'), 'export const kept = 1;\n');
+    writeFileSync(join(clone, 'src', 'gone.ts'), 'export const gone = 1;\n');
+    writeFileSync(join(clone, 'src', 'overlap.ts'), 'export const overlap = 1;\n');
+    writeFileSync(join(clone, 'src', 'base-edit.ts'), 'export const edited = 1;\n');
+    git(clone, ['add', 'src']);
+    git(clone, ['commit', '-m', 'start']);
+    git(clone, ['push', 'origin', 'main']);
+    git(tree, ['merge', '--ff-only', 'main']);
+    writeFileSync(join(tree, 'src', 'own.ts'), 'export const own = 2;\n');
+    writeFileSync(join(tree, 'src', 'kept.ts'), 'export const kept = 2;\n');
+    git(tree, ['rm', 'src/gone.ts']);
+    writeFileSync(join(tree, 'src', 'overlap.ts'), 'export const overlap = 3;\n');
+    git(tree, ['add', 'src/own.ts', 'src/kept.ts', 'src/overlap.ts']);
+    git(tree, ['commit', '-m', 'replay']);
+    writeFileSync(join(clone, 'src', 'base-new.ts'), 'export const added = 1;\n');
+    writeFileSync(join(clone, 'src', 'base-edit.ts'), 'export const edited = 2;\n');
+    writeFileSync(join(clone, 'src', 'overlap.ts'), 'export const overlap = 2;\n');
+    git(clone, ['add', 'src/base-new.ts', 'src/base-edit.ts', 'src/overlap.ts']);
+    git(clone, ['commit', '-m', 'base']);
+    git(clone, ['push', 'origin', 'main']);
+    git(tree, ['fetch', 'origin', 'main']);
+    try {
+      git(tree, ['rebase', 'origin/main']);
+    } catch {
+      // overlap stops the rebase before the commit
+    }
+    writeFileSync(join(tree, 'src', 'overlap.ts'), 'export const overlap = 2;\n');
+    git(tree, ['add', 'src/overlap.ts']);
+    git(tree, ['checkout', 'HEAD', '--', 'src/own.ts', 'src/kept.ts', 'src/gone.ts']);
+    expect(git(tree, ['diff', '--name-only', '--diff-filter=U'])).toBe('');
+    git(tree, ['diff', '--cached', '--quiet', 'HEAD']);
+    const onto = git(tree, ['rev-parse', 'HEAD']);
+    const replay = git(tree, ['rev-parse', 'REBASE_HEAD']);
+    const marker = git(tree, ['rev-parse', '--git-path', 'rebase-merge']);
+    expect(existsSync(isAbsolute(marker) ? marker : join(tree, marker))).toBe(true);
+    const agent = jest.fn().mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-118', 'approve');
+      const history = app.get(HistoryService);
+      const run = await history.findRun('PROJ-118');
+      await history.putDocument(run!, 'implementation', '- changed the field parser\n');
+      await history.putDocument(run!, REBASE_CONFLICT, 'pending\n');
+      const done = await app.get(PipelineService).step('implement', 'PROJ-118');
+      expect(done.exitCode).toBe(0);
+      expect(done.message).not.toContain('pathspec');
+      expect(agent).not.toHaveBeenCalled();
+      expect(readFileSync(join(tree, 'src', 'base-new.ts'), 'utf8').trim()).toBe(git(tree, ['show', `${onto}:src/base-new.ts`]));
+      expect(readFileSync(join(tree, 'src', 'base-edit.ts'), 'utf8').trim()).toBe(git(tree, ['show', `${onto}:src/base-edit.ts`]));
+      expect(readFileSync(join(tree, 'src', 'own.ts'), 'utf8').trim()).toBe(git(tree, ['show', `${replay}:src/own.ts`]));
+      expect(readFileSync(join(tree, 'src', 'kept.ts'), 'utf8').trim()).toBe(git(tree, ['show', `${replay}:src/kept.ts`]));
+      expect(readFileSync(join(tree, 'src', 'overlap.ts'), 'utf8').trim()).toBe(git(tree, ['show', `${replay}:src/overlap.ts`]));
+      expect(existsSync(join(tree, 'src', 'gone.ts'))).toBe(false);
     } finally {
       await app.close();
     }

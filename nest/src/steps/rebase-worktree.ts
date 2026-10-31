@@ -90,7 +90,7 @@ async function rebaseFeatureRepo(input: {
   hosts: RebaseHosts;
 }): Promise<RebaseStop | null> {
   if (await rebaseInProgress(input.cwd)) {
-    return continueOrStop(input.cwd, input.repo, input.denied, await rebaseOntoName(input.cwd, input.prompt), '');
+    return continueOrStop(input.cwd, input.repo, input.denied, await rebaseOntoName(input.cwd, input.prompt), '', input.hosts, true);
   }
   const current = await gitAt(input.cwd, input.repo, ['branch', '--show-current'], 'branch failed');
   if (current !== input.branch) {
@@ -103,57 +103,79 @@ async function rebaseFeatureRepo(input: {
   }
   await commitAllowed(input.cwd, input.repo, input.denied, input.message);
   const base = await storedBase(input.cwd, input.repo, input.prompt, input.hosts, 'rebase');
-  await hideDeniedWorktree(input.cwd, input.repo, input.denied);
+  await hideDeniedWorktree(input.cwd, input.repo, input.denied, input.hosts);
   try {
     await git(['-C', input.cwd, 'rebase', base]);
   } catch (error) {
-    if (await rebaseInProgress(input.cwd)) {
-      return continueOrStop(input.cwd, input.repo, input.denied, base, gitStderr(error));
+    const captured = gitStderr(error);
+    if ((await unmergedPaths(input.cwd)).length > 0) {
+      return continueOrStop(input.cwd, input.repo, input.denied, base, captured, input.hosts, false);
     }
     await abortRebase(input.cwd);
-    await restoreRebaseStash(input.cwd, input.repo);
-    throw new SwarmloopError(`${input.repo} rebase failed: ${gitDetail(error)}`);
+    try {
+      await restoreRebaseStash(input.cwd, input.repo, input.hosts, captured);
+    } catch {
+      // The stash restore failed after the abort. Report the rebase stderr.
+    }
+    throw new SwarmloopError(`${input.repo} rebase failed: ${rebaseStderr(captured, input.hosts)}`);
   }
-  await restoreRebaseStash(input.cwd, input.repo);
+  await restoreRebaseStash(input.cwd, input.repo, input.hosts, '');
   return null;
 }
 
 /** Stage a resolution that no longer has markers, then continue. A real conflict keeps its files and stderr. */
-async function continueOrStop(cwd: string, repo: string, denied: string[], base: string, stderr: string): Promise<RebaseStop | null> {
+async function continueOrStop(
+  cwd: string,
+  repo: string,
+  denied: string[],
+  base: string,
+  stderr: string,
+  hosts: RebaseHosts,
+  keep: boolean,
+): Promise<RebaseStop | null> {
   const blocked = (await unmergedPaths(cwd)).find((file) => isDenied(file, denied));
   if (blocked) {
     await abortRebase(cwd);
-    await restoreRebaseStash(cwd, repo);
+    await restoreRebaseStash(cwd, repo, hosts, stderr);
     throw new SwarmloopError(`${repo} rebase failed: ${blocked}`);
   }
-  await stageResolved(cwd, repo);
+  await stageResolved(cwd, repo, hosts, stderr);
   const files = await unmergedPaths(cwd);
   if (files.length > 0) {
-    return { kind: 'conflict', repo, files, stderr, base, commit: await replayedSubject(cwd) };
+    return { kind: 'conflict', repo, files, stderr: rebaseStderr(stderr, hosts), base, commit: await replayedSubject(cwd) };
   }
-  await keepMarkedCommit(cwd, repo);
+  if (keep) {
+    await keepMarkedCommit(cwd, repo, hosts, stderr);
+  }
   await ensureRebaseMessage(cwd);
   try {
     await git(['-C', cwd, ...(await authorArgs(cwd)), '-c', 'core.editor=true', 'rebase', '--continue'], { GIT_EDITOR: 'true' });
   } catch (error) {
     if (await rebaseInProgress(cwd)) {
-      return { kind: 'conflict', repo, files: await unmergedPaths(cwd), stderr: gitStderr(error), base, commit: await replayedSubject(cwd) };
+      return {
+        kind: 'conflict',
+        repo,
+        files: await unmergedPaths(cwd),
+        stderr: rebaseStderr(gitStderr(error), hosts, stderr),
+        base,
+        commit: await replayedSubject(cwd),
+      };
     }
-    throw new SwarmloopError(`${repo} rebase failed: ${gitDetail(error)}`);
+    throw new SwarmloopError(`${repo} rebase failed: ${rebaseStderr(gitStderr(error), hosts, stderr)}`);
   }
   if (await rebaseInProgress(cwd)) {
-    return { kind: 'conflict', repo, files: await unmergedPaths(cwd), stderr, base, commit: await replayedSubject(cwd) };
+    return { kind: 'conflict', repo, files: await unmergedPaths(cwd), stderr: rebaseStderr(stderr, hosts), base, commit: await replayedSubject(cwd) };
   }
-  await restoreRebaseStash(cwd, repo);
+  await restoreRebaseStash(cwd, repo, hosts, stderr);
   return null;
 }
 
-async function stageResolved(cwd: string, repo: string): Promise<void> {
+async function stageResolved(cwd: string, repo: string, hosts: RebaseHosts, captured: string): Promise<void> {
   const resolved = (await unmergedPaths(cwd)).filter((file) => !conflictMarkers(join(cwd, file)));
   if (resolved.length === 0) {
     return;
   }
-  await gitAt(cwd, repo, ['add', '--', ...resolved], 'rebase failed');
+  await gitAt(cwd, repo, ['add', '--', ...resolved], 'rebase failed', hosts, captured);
 }
 
 function conflictMarkers(file: string): boolean {
@@ -165,8 +187,8 @@ function conflictMarkers(file: string): boolean {
   }
 }
 
-/** An empty resolution would drop a commit git is still replaying. Keep that commit's tree. */
-async function keepMarkedCommit(cwd: string, repo: string): Promise<void> {
+/** An empty resolution would drop a commit git is still replaying. Keep that commit's own files. */
+async function keepMarkedCommit(cwd: string, repo: string, hosts: RebaseHosts, captured: string): Promise<void> {
   let replay = '';
   try {
     replay = await git(['-C', cwd, 'rev-parse', '--verify', '--quiet', 'REBASE_HEAD']);
@@ -174,7 +196,7 @@ async function keepMarkedCommit(cwd: string, repo: string): Promise<void> {
     if (gitMissing(error)) {
       return;
     }
-    throw new SwarmloopError(`${repo} rebase failed: ${gitDetail(error)}`);
+    throw new SwarmloopError(`${repo} rebase failed: ${rebaseStderr(gitStderr(error), hosts, captured)}`);
   }
   try {
     await git(['-C', cwd, 'diff', '--cached', '--quiet', 'HEAD']);
@@ -182,13 +204,24 @@ async function keepMarkedCommit(cwd: string, repo: string): Promise<void> {
     if (gitMissing(error)) {
       return;
     }
-    throw new SwarmloopError(`${repo} rebase failed: ${gitDetail(error)}`);
+    throw new SwarmloopError(`${repo} rebase failed: ${rebaseStderr(gitStderr(error), hosts, captured)}`);
   }
-  const files = (await gitRaw(['-C', cwd, 'diff', '--name-only', '-z', 'HEAD', replay])).split('\0').filter((file) => file.length > 0);
-  if (files.length === 0) {
-    return;
+  let removedRaw = '';
+  let changedRaw = '';
+  try {
+    removedRaw = await gitRaw(['-C', cwd, 'diff', '--name-only', '--no-renames', '--diff-filter=D', '-z', 'REBASE_HEAD^', 'REBASE_HEAD']);
+    changedRaw = await gitRaw(['-C', cwd, 'diff', '--name-only', '--no-renames', '-z', 'REBASE_HEAD^', 'REBASE_HEAD']);
+  } catch (error) {
+    throw new SwarmloopError(`${repo} rebase failed: ${rebaseStderr(gitStderr(error), hosts)}`);
   }
-  await gitAt(cwd, repo, ['checkout', replay, '--', ...files], 'rebase failed');
+  const removed = removedRaw.split('\0').filter((file) => file.length > 0);
+  const changed = changedRaw.split('\0').filter((file) => file.length > 0 && !removed.includes(file));
+  if (removed.length > 0) {
+    await gitAt(cwd, repo, ['rm', '-f', '--ignore-unmatch', '--', ...removed], 'rebase failed', hosts, captured);
+  }
+  if (changed.length > 0) {
+    await gitAt(cwd, repo, ['checkout', replay, '--', ...changed], 'rebase failed', hosts, captured);
+  }
 }
 
 async function ensureRebaseMessage(cwd: string): Promise<void> {
@@ -236,7 +269,7 @@ async function publishedTip(cwd: string, branch: string): Promise<string | null>
   }
 }
 
-async function restoreRebaseStash(cwd: string, repo: string): Promise<void> {
+async function restoreRebaseStash(cwd: string, repo: string, hosts: RebaseHosts, captured: string): Promise<void> {
   let list = '';
   try {
     list = await git(['-C', cwd, 'stash', 'list']);
@@ -244,7 +277,7 @@ async function restoreRebaseStash(cwd: string, repo: string): Promise<void> {
     if (gitMissing(error)) {
       return;
     }
-    throw new SwarmloopError(`${repo} rebase failed: ${gitDetail(error)}`);
+    throw new SwarmloopError(`${repo} rebase failed: ${rebaseStderr(gitStderr(error), hosts, captured)}`);
   }
   const line = list.split('\n').find((item) => item.includes('swarmloop-rebase'));
   if (!line) {
@@ -262,11 +295,11 @@ async function restoreRebaseStash(cwd: string, repo: string): Promise<void> {
   }
   const files = names.split('\0').map((item) => item.trim()).filter((item) => item.length > 0);
   if (files.length > 0) {
-    await gitAt(cwd, repo, ['checkout', `${ref}^3`, '--', ...files], 'rebase failed');
-    await gitAt(cwd, repo, ['stash', 'drop', ref], 'rebase failed');
+    await gitAt(cwd, repo, ['checkout', `${ref}^3`, '--', ...files], 'rebase failed', hosts, captured);
+    await gitAt(cwd, repo, ['stash', 'drop', ref], 'rebase failed', hosts, captured);
     return;
   }
-  await gitAt(cwd, repo, ['stash', 'pop', '--quiet', ref], 'rebase failed');
+  await gitAt(cwd, repo, ['stash', 'pop', '--quiet', ref], 'rebase failed', hosts, captured);
 }
 
 async function abortRebase(cwd: string): Promise<void> {
@@ -352,12 +385,12 @@ function deniedAt(porcelain: string, denied: string[], column: 0 | 1): string[] 
   return paths;
 }
 
-async function hideDeniedWorktree(cwd: string, repo: string, denied: string[]): Promise<void> {
+async function hideDeniedWorktree(cwd: string, repo: string, denied: string[], hosts: RebaseHosts): Promise<void> {
   const dirty = deniedInWorktree(await gitRawAt(cwd, repo, ['status', '--porcelain=v1', '-z', '-uall']), denied);
   if (dirty.length === 0) {
     return;
   }
-  await gitAt(cwd, repo, ['stash', 'push', '-m', 'swarmloop-rebase', '--', ...dirty], 'rebase failed');
+  await gitAt(cwd, repo, ['stash', 'push', '-m', 'swarmloop-rebase', '--', ...dirty], 'rebase failed', hosts, '');
 }
 
 async function authorArgs(cwd: string): Promise<string[]> {
@@ -490,6 +523,12 @@ function redact(detail: string, secret: string): string {
   return detail.split(token).join('***').split(encodeURIComponent(token)).join('***');
 }
 
+/** Full git stderr for a rebase failure, with both host tokens removed. A captured rebase stderr wins over a later command. */
+function rebaseStderr(text: string, hosts: RebaseHosts, captured = ''): string {
+  const body = captured.trim() ? captured : text;
+  return redact(redact(body, hosts.GITLAB_TOKEN), hosts.GITHUB_TOKEN);
+}
+
 function checkout(root: string, key: string, repo: string): string {
   const cwd = worktreePath(root, key, repo);
   if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
@@ -508,11 +547,12 @@ async function gitPathExists(cwd: string, name: string): Promise<boolean> {
   }
 }
 
-async function gitAt(cwd: string, repo: string, args: string[], failure: string): Promise<string> {
+async function gitAt(cwd: string, repo: string, args: string[], failure: string, hosts?: RebaseHosts, captured = ''): Promise<string> {
   try {
     return await git(['-C', cwd, ...args]);
   } catch (error) {
-    throw new SwarmloopError(`${repo} ${failure}: ${gitDetail(error)}`);
+    const detail = failure === 'rebase failed' && hosts ? rebaseStderr(gitStderr(error), hosts, captured) : gitDetail(error);
+    throw new SwarmloopError(`${repo} ${failure}: ${detail}`);
   }
 }
 
