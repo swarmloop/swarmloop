@@ -12,11 +12,9 @@ export function createRequirementsSource(
   value: string,
   sources: { agent: RequirementsSource; direct: RequirementsSource },
 ): RequirementsSource {
-  if (value === 'agent') {
-    return sources.agent;
+  const known = { agent: sources.agent, direct: sources.direct };
+  if (!Object.hasOwn(known, value)) {
+    throw new SwarmloopError(`REQUIREMENTS_VIA has unknown value ${value}`);
   }
-  if (value === 'direct') {
-    return sources.direct;
-  }
-  throw new SwarmloopError(`REQUIREMENTS_VIA has unknown value ${value}`);
+  return known[value as keyof typeof known];
 }

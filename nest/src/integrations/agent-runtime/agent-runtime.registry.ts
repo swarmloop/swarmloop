@@ -11,6 +11,10 @@ const runtimes: Record<RuntimeName, AgentRuntime> = {
   claude: new ClaudeRuntime(),
 };
 
-export function runtimeFor(name: RuntimeName): AgentRuntime {
-  return runtimes[name];
+export function runtimeFor(name: string): AgentRuntime {
+  return name === 'claude' ? runtimes.claude : runtimes.cursor;
+}
+
+export function runtimeForCommand(command: string): AgentRuntime {
+  return command === 'agent' ? runtimes.cursor : runtimes.claude;
 }

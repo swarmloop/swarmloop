@@ -9,6 +9,8 @@ import { replaceLogFile } from '../acp/live-output';
 import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../swarmloop-error';
 import { SampleDraft } from '../history/visit';
+import type { AgentRuntime } from '../integrations/agent-runtime/agent-runtime';
+import { runtimeFor, runtimeForCommand } from '../integrations/agent-runtime/agent-runtime.registry';
 import { agentStateDir, modelApiHosts, modelCredential, prepareStateDir, SandboxMount, sandboxUserId } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { callsExceeded, DecisionWatch, hasModelDecision, judgeLimits, KillReason, noteDecision, priceTokens, retryCrash, SessionState, turnUsd } from './limits';
@@ -87,7 +89,7 @@ export class AgentProcessRunner {
       if (input.auto === true && callsExceeded(input.agentCalls, env.MAX_AGENT_CALLS)) {
         return this.empty(input, 'calls', 1, 0);
       }
-      const command = env.RUNTIME === 'claude' ? 'claude' : 'agent';
+      const runtime = runtimeFor(env.RUNTIME);
       await this.sandbox.assertReady(env.RUNTIME);
       let calls = 0;
       let tries = 0;
@@ -109,7 +111,7 @@ export class AgentProcessRunner {
       for (;;) {
         const attempt = await this.once(
           { ...input, prompt, resumeChatId: chatId, groupUsd, agentCalls: input.agentCalls + calls },
-          command,
+          runtime,
           resumed,
           prior,
         );
@@ -162,19 +164,19 @@ export class AgentProcessRunner {
     }
   }
 
-  private async once(input: AgentRunInput, command: string, resumed: boolean, priorOutput: string): Promise<AgentRunResult> {
+  private async once(input: AgentRunInput, runtime: AgentRuntime, resumed: boolean, priorOutput: string): Promise<AgentRunResult> {
     const env = readEnv(this.config);
     const userId = sandboxUserId();
     const statePath = agentStateDir(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), input.runKey, sessionHome(input.step));
     prepareStateDir(statePath, userId);
-    if (command === 'agent' && input.resumeChatId) {
+    if (runtime.syncsChatMode && input.resumeChatId) {
       syncChatMode(statePath, input.resumeChatId, input.mode);
     }
     const delivered = spillPrompt(input.prompt, statePath, input.step);
     const briefs = briefMounts(statePath, input.step, delivered.mounts);
-    const args = buildAgentArgs(command, { ...input, prompt: delivered.text });
-    if (briefs.length > 0 && command === 'agent') {
-      args.splice(args.length - 1, 0, '--add-dir', '/work/brief');
+    const args = runtime.printArgs({ ...input, prompt: delivered.text });
+    if (briefs.length > 0) {
+      args.splice(args.length - 1, 0, ...runtime.briefArgs());
     }
     if (!resumed) {
       this.live?.log({
@@ -195,7 +197,7 @@ export class AgentProcessRunner {
       statePath,
       allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(env.RUNTIME)])],
       env: [modelCredential(env.RUNTIME, env.CURSOR_API_KEY, env.ANTHROPIC_API_KEY, env.CLAUDE_CODE_OAUTH_TOKEN)],
-      command: [command, ...args],
+      command: [runtime.command, ...args],
       userId,
     });
     await recordLaunch(input.outputFile, input.runKey, input.liveStep ?? input.step);
@@ -569,31 +571,7 @@ export function buildAgentArgs(
     approveMcps?: boolean;
   },
 ): string[] {
-  const args = [
-    '--print',
-    '--output-format',
-    'stream-json',
-    '--stream-partial-output',
-    '--model',
-    input.model,
-    '--trust',
-    '--workspace',
-    containerWorkspace(input.mounts),
-  ];
-  if (input.resumeChatId) {
-    args.push('--resume', input.resumeChatId);
-  }
-  if ((input.mode === 'plan' || input.mode === 'ask') && command === 'agent') {
-    args.push('--mode', input.mode);
-  }
-  if (command === 'agent' && input.mode !== 'plan' && input.mode !== 'ask') {
-    args.push('--force', '--sandbox', 'disabled');
-  }
-  if (input.approveMcps && command === 'agent') {
-    args.push('--approve-mcps');
-  }
-  args.push(input.prompt);
-  return args;
+  return runtimeForCommand(command).printArgs(input);
 }
 
 /** The vendor's own terminal. A forwarded subcommand keeps the words the person typed. */
@@ -603,22 +581,7 @@ export function terminalArgs(input: {
   resumeChatId: string | null;
   vendor: string[];
 }): string[] {
-  if (input.vendor.length > 0) {
-    return [...input.vendor];
-  }
-  const args = ['--model', input.model, '--trust', '--workspace', input.workspace];
-  if (input.resumeChatId) {
-    args.push('--resume', input.resumeChatId);
-  }
-  return args;
-}
-
-function containerWorkspace(mounts: SandboxMount[]): string {
-  const workspace = mounts[0]?.containerPath;
-  if (!workspace) {
-    throw new SwarmloopError('sandbox mount is missing');
-  }
-  return workspace;
+  return runtimeFor('cursor').terminalArgs(input);
 }
 
 const SAMPLE_MS = 5_000;

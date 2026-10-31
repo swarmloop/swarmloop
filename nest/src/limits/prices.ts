@@ -1,11 +1,8 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
+import { runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { ModelPrice } from './limits';
 
-const SOURCES = {
-  cursor: 'https://cursor.com/docs/models-and-pricing.md',
-  claude: 'https://platform.claude.com/docs/en/about-claude/pricing.md',
-} as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function parsePriceMarkdown(markdown: string): Record<string, ModelPrice> {
@@ -48,7 +45,7 @@ export function parsePriceMarkdown(markdown: string): Record<string, ModelPrice>
 
 export async function loadPriceTable(
   root: string,
-  runtime: keyof typeof SOURCES = 'cursor',
+  runtime: RuntimeName = 'cursor',
   now = Date.now(),
   fetchPage: typeof fetch = fetch,
 ): Promise<Record<string, ModelPrice>> {
@@ -59,7 +56,7 @@ export async function loadPriceTable(
     return cached.prices;
   }
   try {
-    const response = await fetchPage(SOURCES[runtime], { signal: AbortSignal.timeout(10_000) });
+    const response = await fetchPage(runtimeFor(runtime).priceSource, { signal: AbortSignal.timeout(10_000) });
     if (!response.ok) {
       return cached?.prices ?? {};
     }

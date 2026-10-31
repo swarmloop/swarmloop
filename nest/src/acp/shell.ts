@@ -3,7 +3,7 @@ import { createInterface } from 'readline';
 import { existsSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { isAbsolute, join, resolve } from 'path';
-import { terminalArgs } from '../limits/agent-runner';
+import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import {
   agentStateDir,
   containerName,
@@ -144,7 +144,7 @@ function ask(question: string): Promise<string> {
 }
 
 async function attach(api: NestApi, feature: ShellFeature, vendor: string[], config: ShellConfig, root: string): Promise<void> {
-  const runtime = feature.runtime === 'claude' ? 'claude' : 'cursor';
+  const runtime = runtimeFor(feature.runtime);
   if (!config.model) {
     throw new Error('MODEL_IMPLEMENT is missing');
   }
@@ -159,15 +159,15 @@ async function attach(api: NestApi, feature: ShellFeature, vendor: string[], con
     writeFileSync(maskFile, '');
   }
   const args = sandboxArgs({
-    runtime,
+    runtime: runtime.name,
     runKey: feature.key,
     step: 'shell',
     mounts,
     envMasks: collectEnvMasks(mounts),
-    allowHosts: modelApiHosts(runtime),
+    allowHosts: modelApiHosts(runtime.name),
     command: [
-      runtime === 'claude' ? 'claude' : 'agent',
-      ...terminalArgs({
+      runtime.command,
+      ...runtime.terminalArgs({
         model: config.model,
         workspace,
         resumeChatId: feature.resumeChatId,
@@ -176,18 +176,18 @@ async function attach(api: NestApi, feature: ShellFeature, vendor: string[], con
     ],
     userId,
     maskFile,
-    env: [modelCredential(runtime, config.cursorKey, config.anthropicKey, config.oauthToken)],
+    env: [modelCredential(runtime.name, config.cursorKey, config.anthropicKey, config.oauthToken)],
     statePath,
     stateDaemonPath: statePath,
     stdin: interactive,
     tty: interactive,
   });
-  await docker(['image', 'inspect', imageName(runtime)]);
+  await docker(['image', 'inspect', imageName(runtime.name)]);
   const name = containerName(feature.key, 'shell');
   await api.shellLock(feature.key, name);
   let code = 1;
   try {
-    await ensureNetwork(modelApiHosts(runtime));
+    await ensureNetwork(modelApiHosts(runtime.name));
     code = await runDocker(args);
   } finally {
     if ((await containerRunning(name)) !== true) {

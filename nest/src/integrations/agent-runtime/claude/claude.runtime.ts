@@ -4,7 +4,9 @@ import type { RuntimeKeys } from '../agent-runtime';
 
 export class ClaudeRuntime extends AbstractAgentRuntime {
   readonly name = 'claude' as const;
-  readonly command = 'claude';
+  readonly command = 'claude' as const;
+  readonly syncsChatMode = false;
+  readonly priceSource = 'https://platform.claude.com/docs/en/about-claude/pricing.md';
   readonly apiHosts = ['api.anthropic.com'];
   readonly credentialNames = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'];
 
@@ -16,5 +18,9 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
       throw new SwarmloopError('ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is missing');
     }
     return { name: 'ANTHROPIC_API_KEY', value: keys.anthropicKey };
+  }
+
+  briefArgs(): string[] {
+    return [];
   }
 }
