@@ -1,7 +1,8 @@
 import { ConfigService } from '@nestjs/config';
+import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 
 export interface SwarmloopEnv {
-  RUNTIME: 'cursor' | 'claude';
+  RUNTIME: RuntimeName;
   REQUIREMENTS_VIA: 'agent' | 'direct';
   ISSUE_TRACKER: string;
   JIRA_BASE_URL: string;
@@ -54,7 +55,7 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
   const root = config.get<string>('SWARMLOOP_ROOT');
   const checkoutsRoot = config.get<string>('CHECKOUTS_ROOT');
   return {
-    RUNTIME: config.getOrThrow<'cursor' | 'claude'>('RUNTIME'),
+    RUNTIME: config.getOrThrow<RuntimeName>('RUNTIME'),
     REQUIREMENTS_VIA: config.getOrThrow<'agent' | 'direct'>('REQUIREMENTS_VIA'),
     ISSUE_TRACKER: config.getOrThrow<string>('ISSUE_TRACKER'),
     JIRA_BASE_URL: config.getOrThrow<string>('JIRA_BASE_URL'),

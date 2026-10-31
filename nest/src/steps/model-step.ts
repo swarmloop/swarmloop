@@ -9,6 +9,7 @@ import { PipelineResult, StepName, visitStatus } from '../pipeline/pipeline-resu
 import { closeStep, OpenedStep, openStep } from '../pipeline/step-run';
 import { SandboxMount } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
+import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SwarmloopError } from '../swarmloop-error';
 import { bulletSection } from './markdown-section';
 import { modelVisit } from './model-visit';
@@ -353,7 +354,7 @@ export async function withModelStep(
     mode: string;
     model: string;
     timeLimitMs: number;
-    runtime: 'cursor' | 'claude';
+    runtime: RuntimeName;
     auto?: boolean;
   },
   body: (ctx: ModelStepContext) => Promise<PipelineResult>,
