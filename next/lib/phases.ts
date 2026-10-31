@@ -1,3 +1,5 @@
+import type { FlowView } from './types.ts';
+
 /** Ids match nest/src/pipeline/pipeline-result.ts PHASES. */
 export const PHASES = ['requirements', 'brainstorm', 'implementation', 'code-review', 'ci'] as const;
 
@@ -176,4 +178,19 @@ export function replaySelection(
     }
   }
   return { selected: PHASES.filter((phase) => selected.has(phase)), locked };
+}
+
+export function stepLabel(name: string): string {
+  if (name === 'code-review') {
+    return 'report';
+  }
+  return name.startsWith('code-review-') ? name.slice('code-review-'.length) : name;
+}
+
+export function withReport(steps: FlowView['phases'][number]['steps']): FlowView['phases'][number]['steps'] {
+  const reviewers = steps.filter((step) => step.name.startsWith('code-review-'));
+  if (reviewers.length === 0 || steps.some((step) => step.name === 'code-review')) {
+    return steps;
+  }
+  return [...steps, { name: 'code-review', status: 'idle', current: false, attempts: 0 }];
 }

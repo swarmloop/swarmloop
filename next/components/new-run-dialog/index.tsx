@@ -1,20 +1,18 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Autocomplete from '@mui/material/Autocomplete';
 import Button from '@mui/material/Button';
-import Checkbox from '@mui/material/Checkbox';
-import Chip from '@mui/material/Chip';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import FormGroup from '@mui/material/FormGroup';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { api } from '../lib/api';
-import { PHASE_LABEL, PHASES, PhaseName } from '../lib/phases';
+import { api } from '../../lib/api';
+import { mergeNames } from '../../lib/names';
+import { PHASES, PhaseName } from '../../lib/phases';
+import { PhasePicker } from './phase-picker';
+import { ProjectPicker } from './project-picker';
 
 const DEFAULT_PHASES: PhaseName[] = [...PHASES];
 
@@ -51,7 +49,7 @@ export function NewRunDialog({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const kept = useRef<string[]>(lockedProjects ?? []);
-  const frozen = locked ?? ['requirements'];
+  const frozen: PhaseName[] = locked ?? ['requirements'];
   const chosen = PHASES.filter((phase) => phase === 'requirements' || picked.includes(phase));
   const frozenProjects = lockedProjects !== undefined;
   const needProjects = !frozenProjects && pickedProjects.length === 0;
@@ -167,57 +165,8 @@ export function NewRunDialog({
           minRows={6}
           slotProps={{ inputLabel: { shrink: true } }}
         />
-        <FormGroup sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, max-content)', columnGap: 2, rowGap: 0.5 }}>
-          {PHASES.map((phase) => (
-            <FormControlLabel
-              key={phase}
-              sx={{ mr: 0 }}
-              label={PHASE_LABEL[phase]}
-              control={
-                <Checkbox
-                  size="small"
-                  checked={phase === 'requirements' || picked.includes(phase)}
-                  disabled={frozen.includes(phase)}
-                  onChange={(event) => {
-                    setPicked((current) =>
-                      event.target.checked ? PHASES.filter((item) => item === phase || current.includes(item)) : current.filter((item) => item !== phase),
-                    );
-                  }}
-                />
-              }
-            />
-          ))}
-        </FormGroup>
-        <Autocomplete
-          multiple
-          disableCloseOnSelect
-          disableClearable={frozenProjects}
-          options={projectOptions}
-          value={pickedProjects}
-          onChange={(_event, value) => changeProjects(value)}
-          renderValue={
-            frozenProjects
-              ? (value, getItemProps) =>
-                  value.map((option, index) => {
-                    const { key, ...itemProps } = getItemProps({ index });
-                    return <Chip key={key} {...itemProps} label={option} onDelete={undefined} />;
-                  })
-              : undefined
-          }
-          renderInput={(params) => <TextField {...params} label="Projects" />}
-          slotProps={{
-            popper: { sx: { zIndex: (theme) => theme.zIndex.modal + 1 } },
-            paper: {
-              sx: {
-                bgcolor: 'background.paper',
-                border: '1px solid',
-                borderColor: 'divider',
-                boxShadow: '0 8px 24px rgba(28, 25, 21, 0.16)',
-              },
-            },
-            listbox: { sx: { maxHeight: 220 } },
-          }}
-        />
+        <PhasePicker picked={picked} frozen={frozen} setPicked={setPicked} />
+        <ProjectPicker frozenProjects={frozenProjects} projectOptions={projectOptions} pickedProjects={pickedProjects} onChange={changeProjects} />
         {note ? <Typography variant="body2">{note}</Typography> : null}
         {error ? (
           <Typography color="error" variant="body2">
@@ -233,18 +182,6 @@ export function NewRunDialog({
       </DialogActions>
     </Dialog>
   );
-}
-
-function mergeNames(current: readonly string[], incoming: readonly string[]): string[] {
-  const seen = new Set(current);
-  const next = [...current];
-  for (const name of incoming) {
-    if (!seen.has(name)) {
-      seen.add(name);
-      next.push(name);
-    }
-  }
-  return next;
 }
 
 async function postProjects(

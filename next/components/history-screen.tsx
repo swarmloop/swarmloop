@@ -14,6 +14,7 @@ import { SeriesChart } from './charts/series';
 import { MarkdownBody } from './markdown-body';
 import { api } from '../lib/api';
 import { count, duration, memory, money } from '../lib/format';
+import { documentsByKind, tokensByModel } from '../lib/history';
 import { latestPhaseLabels } from '../lib/phases';
 import { LogTranscript } from './log-transcript';
 import { HistoryView } from '../lib/types';
@@ -33,23 +34,8 @@ export function HistoryScreen({ runKey }: { runKey: string }) {
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'history failed'));
   }, [runKey]);
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, HistoryView['documents']>();
-    for (const document of view?.documents ?? []) {
-      map.set(document.kind, [...(map.get(document.kind) ?? []), document]);
-    }
-    return [...map.entries()];
-  }, [view]);
-
-  const tokens = useMemo(() => {
-    const byModel = new Map<string, { inn: number; out: number }>();
-    for (const stat of view?.stats ?? []) {
-      const key = stat.model ?? 'none';
-      const current = byModel.get(key) ?? { inn: 0, out: 0 };
-      byModel.set(key, { inn: current.inn + stat.tokensIn, out: current.out + stat.tokensOut });
-    }
-    return [...byModel.entries()];
-  }, [view]);
+  const grouped = useMemo(() => documentsByKind(view?.documents ?? []), [view]);
+  const tokens = useMemo(() => tokensByModel(view?.stats ?? []), [view]);
 
   if (!view) {
     return <Typography color={error ? 'error' : 'text.secondary'}>{error ?? 'Loading history.'}</Typography>;

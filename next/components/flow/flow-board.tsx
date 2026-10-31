@@ -2,6 +2,7 @@
 
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import { stepLabel, withReport } from '../../lib/phases';
 import { FlowView } from '../../lib/types';
 import { statusColor } from '../../theme/theme';
 
@@ -133,23 +134,8 @@ export function FlowBoard({
   );
 }
 
-function withReport(steps: FlowView['phases'][number]['steps']): FlowView['phases'][number]['steps'] {
-  const reviewers = steps.filter((step) => step.name.startsWith('code-review-'));
-  if (reviewers.length === 0 || steps.some((step) => step.name === 'code-review')) {
-    return steps;
-  }
-  return [...steps, { name: 'code-review', status: 'idle', current: false, attempts: 0 }];
-}
-
 function failedStep(status: string): boolean {
   return status === 'failed' || status === 'blocked';
-}
-
-function stepLabel(name: string): string {
-  if (name === 'code-review') {
-    return 'report';
-  }
-  return name.startsWith('code-review-') ? name.slice('code-review-'.length) : name;
 }
 
 function phaseIndex(phases: FlowView['phases'], step: string): number {

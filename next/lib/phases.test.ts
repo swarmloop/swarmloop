@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { expandReviewPhases, keepOpenReviews, latestPhaseLabels, liveLogStep, markReviewFinished, markReviewLive, PHASES, pipelineStep, replaySelection, reviewChipName } from './phases.ts';
+import { expandReviewPhases, keepOpenReviews, latestPhaseLabels, liveLogStep, markReviewFinished, markReviewLive, PHASES, pipelineStep, replaySelection, reviewChipName, stepLabel, withReport } from './phases.ts';
 
 describe('liveLogStep', () => {
   it('keeps a per-repo implement log on implement, not implement-improve', () => {
@@ -119,5 +119,24 @@ describe('replaySelection', () => {
     const choice = replaySelection([...PHASES], ['requirements', 'brainstorm', 'implementation', 'code-review'], 'code-review');
     assert.deepEqual(choice.selected, ['requirements', 'brainstorm', 'implementation', 'code-review']);
     assert.equal(choice.locked.includes('ci'), false);
+  });
+});
+
+describe('stepLabel', () => {
+  it('names the report chip and strips the reviewer prefix', () => {
+    assert.equal(stepLabel('code-review'), 'report');
+    assert.equal(stepLabel('code-review-quality'), 'quality');
+    assert.equal(stepLabel('implement'), 'implement');
+  });
+});
+
+describe('withReport', () => {
+  it('appends an idle report chip only when reviewers are present and the report is not', () => {
+    const plain = [{ name: 'implement', status: 'done', current: false, attempts: 1 }];
+    assert.equal(withReport(plain), plain);
+    const reviewers = [{ name: 'code-review-quality', status: 'running', current: true, attempts: 2 }];
+    assert.deepEqual(withReport(reviewers), [...reviewers, { name: 'code-review', status: 'idle', current: false, attempts: 0 }]);
+    const both = [...reviewers, { name: 'code-review', status: 'idle', current: false, attempts: 3 }];
+    assert.equal(withReport(both), both);
   });
 });
