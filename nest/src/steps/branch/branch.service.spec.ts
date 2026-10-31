@@ -13,7 +13,7 @@ import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER } from '../../limits/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
-import { PASTE_READER } from '../../providers/tokens';
+import { PASTE_READER } from '../../integrations/linked-pages/paste-page.reader';
 
 describe('branch step', () => {
   it('creates the feature branch only in the repos document', async () => {

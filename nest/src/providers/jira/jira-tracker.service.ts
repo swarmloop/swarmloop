@@ -1,17 +1,14 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
 import { basename } from 'path';
-import { Repository } from 'typeorm';
 import { readEnv } from '../../config/env';
-import { PasteEntity } from '../../history/entities';
-import { adfToMarkdown, collectUrls } from '../adf';
-import { driveTarget, loadDrive } from '../drive';
-import { IssueBundle, IssueLink, IssueNote, IssuePage } from '../issue-bundle';
-import { HttpStatusError, isReadable, request } from '../http';
-import { sameSiteIssueKey } from './jira-url';
-import { PASTE_READER, PasteReader } from '../tokens';
+import { encodedBody, headersFor, LinkedPagesService } from '../../integrations/linked-pages/linked-pages';
+import { PageReadContext } from '../../integrations/linked-pages/page-reader';
 import { FetchFailed, HttpCallDraft, SwarmloopError, PasteNeeded } from '../../swarmloop-error';
+import { adfToMarkdown, collectUrls } from '../adf';
+import { IssueBundle, IssueNote } from '../issue-bundle';
+import { HttpStatusError, request } from '../http';
+import { sameSiteIssueKey } from './jira-url';
 
 const ISSUE_KEY = /^[A-Z][A-Z0-9]+-\d+$/;
 
@@ -44,8 +41,7 @@ interface JiraField {
 export class JiraTrackerService {
   constructor(
     private readonly config: ConfigService,
-    @Inject(PASTE_READER) private readonly pastes: PasteReader,
-    @InjectRepository(PasteEntity) private readonly pasteRows: Repository<PasteEntity>,
+    private readonly linkedPages: LinkedPagesService,
   ) {}
 
   async fetch(key: string, runDir: string): Promise<{ bundle: IssueBundle; httpCalls: HttpCallDraft[] }> {
@@ -229,7 +225,7 @@ export class JiraTrackerService {
     acceptanceId: string | null,
   ): Promise<void> {
     const attachmentUrls = new Set((issue.fields.attachment ?? []).map((item) => item.content).filter((url): url is string => Boolean(url)));
-    const stored = await this.savedPastes(runKey);
+    const context: PageReadContext = { runKey, calls, headers, base };
     const seen = new Set<string>([issue.key, bundle.epic?.key].filter((key): key is string => Boolean(key)));
     const direct: string[] = [];
     const remember = (key: string): void => {
@@ -244,14 +240,7 @@ export class JiraTrackerService {
       if (attachmentUrls.has(url) || !/^https?:\/\//.test(url)) {
         continue;
       }
-      const pageId = confluenceId(url, base);
-      if (pageId) {
-        bundle.confluence.push(await this.confluence(base, headers, pageId, url, calls));
-        continue;
-      }
-      const drive = driveTarget(url);
-      if (drive) {
-        bundle.pages.push(await this.drive(url, calls));
+      if (await this.linkedPages.take(bundle, url, context)) {
         continue;
       }
       const linked = sameSiteIssueKey(url, base);
@@ -259,7 +248,7 @@ export class JiraTrackerService {
         remember(linked);
         continue;
       }
-      bundle.links.push(...(await this.external(url, base, headers, runKey, calls, stored)));
+      bundle.links.push(...(await this.linkedPages.external(url, context)));
     }
     for (const key of direct) {
       const loaded = await this.relatedIssue(bundle, key, base, headers, calls, acceptanceId, seen);
@@ -340,127 +329,6 @@ export class JiraTrackerService {
     }
     return lines.join('\n');
   }
-
-  private async confluence(
-    base: string,
-    headers: Record<string, string>,
-    pageId: string,
-    pageUrl: string,
-    calls: HttpCallDraft[],
-  ): Promise<IssuePage> {
-    const url = `${base}/wiki/rest/api/content/${pageId}?expand=body.storage`;
-    const response = await request(url, headers, calls);
-    if (response.status < 200 || response.status >= 300) {
-      throw new FetchFailed(`confluence is not readable: ${pageUrl}`, calls);
-    }
-    const raw = response.body.toString('utf8');
-    const page = JSON.parse(raw) as { title?: string; body?: { storage?: { value?: string } } };
-    return {
-      source: 'confluence',
-      id: pageId,
-      title: page.title ?? pageId,
-      path: '',
-      url: pageUrl,
-      body: page.body?.storage?.value ?? raw,
-      encoding: 'utf8',
-    };
-  }
-
-  private async drive(url: string, calls: HttpCallDraft[]): Promise<IssuePage> {
-    try {
-      const loaded = await loadDrive(url, (exportUrl) => request(exportUrl, { Accept: '*/*' }, calls));
-      return {
-        source: 'drive',
-        id: loaded.id,
-        title: loaded.title,
-        path: '',
-        url,
-        body: loaded.body,
-        encoding: loaded.encoding,
-      };
-    } catch (error) {
-      if (error instanceof FetchFailed) {
-        throw error;
-      }
-      const message = error instanceof Error ? error.message : `drive is not readable: ${url}`;
-      throw new FetchFailed(message, calls);
-    }
-  }
-
-  private async external(
-    url: string,
-    base: string,
-    headers: Record<string, string>,
-    runKey: string,
-    calls: HttpCallDraft[],
-    stored: Record<string, string>,
-  ): Promise<IssueLink[]> {
-    const saved: IssueLink[] = [];
-    const response = await request(url, headersFor(url, base, headers), calls);
-    if (response.status >= 200 && response.status < 300 && response.body.length > 0) {
-      if (isHtmlDocument(response.contentType, response.body)) {
-        saved.push({ url, path: '', source: 'link', body: '', encoding: 'utf8' });
-        return saved;
-      }
-      const readable = isReadable(response.contentType, response.body);
-      const encoded = encodedBody(response.contentType, response.body);
-      saved.push({ url, path: '', source: 'link', body: encoded.body, encoding: encoded.encoding });
-      if (readable) {
-        return saved;
-      }
-    }
-    if (stored[url]) {
-      saved.push({ url, path: '', source: 'paste', body: stored[url], encoding: 'utf8' });
-      return saved;
-    }
-    const body = await this.pastes.read(url);
-    await this.rememberPaste(runKey, url, body);
-    stored[url] = body;
-    saved.push({ url, path: '', source: 'paste', body, encoding: 'utf8' });
-    return saved;
-  }
-
-  private async savedPastes(runKey: string): Promise<Record<string, string>> {
-    const rows = await this.pasteRows.find({ where: { runKey } });
-    const stored: Record<string, string> = {};
-    for (const row of rows) {
-      stored[row.url] = row.body;
-    }
-    return stored;
-  }
-
-  private async rememberPaste(runKey: string, url: string, body: string): Promise<void> {
-    const existing = await this.pasteRows.findOne({ where: { runKey, url } });
-    if (existing) {
-      existing.body = body;
-      await this.pasteRows.save(existing);
-      return;
-    }
-    await this.pasteRows.save(this.pasteRows.create({ runKey, url, body }));
-  }
-}
-
-function headersFor(url: string, base: string, auth: Record<string, string>): Record<string, string> {
-  try {
-    if (new URL(url).host === new URL(base).host) {
-      return auth;
-    }
-  } catch {
-    return { Accept: '*/*' };
-  }
-  return { Accept: '*/*' };
-}
-
-function confluenceId(url: string, base: string): string | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.host !== new URL(base).host) {
-      return null;
-    }
-    return parsed.pathname.match(/\/pages\/(\d+)/)?.[1] ?? null;
-  } catch {
-    return null;
-  }
 }
 
 /** Jira's status category keys. Status names are localized; these are not. */
@@ -516,21 +384,6 @@ function toNote(comment: JiraComment): IssueNote {
     created: comment.created ?? '',
     bodyMarkdown: adfToMarkdown(comment.body),
   };
-}
-
-function isHtmlDocument(contentType: string | null, body: Buffer): boolean {
-  if ((contentType ?? '').toLowerCase().includes('html')) {
-    return true;
-  }
-  const start = body.subarray(0, 64).toString('utf8').trimStart().toLowerCase();
-  return start.startsWith('<!doctype') || start.startsWith('<html');
-}
-
-function encodedBody(contentType: string | null, body: Buffer): { body: string; encoding: 'utf8' | 'base64' } {
-  if (isReadable(contentType, body)) {
-    return { body: body.toString('utf8'), encoding: 'utf8' };
-  }
-  return { body: body.toString('base64'), encoding: 'base64' };
 }
 
 function textValue(value: unknown): string {
