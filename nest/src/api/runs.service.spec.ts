@@ -3,10 +3,10 @@ import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { mkdir, mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { isAbsolute, join } from 'path';
 import { Repository } from 'typeorm';
 import { DenyPathEntity } from '../history/entities';
 import { SwarmloopConfigModule } from '../config/config.module';
@@ -1376,6 +1376,50 @@ describe('runs api', () => {
         process.env.GIT_SSH_COMMAND = previousSsh;
       }
       restore();
+      await app.close();
+    }
+  });
+
+  it('aborts a rebase that stops with nothing applied', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-untracked-'));
+    const { tree, clone } = featureWorktree(root, 'proj-59');
+    writeFileSync(join(tree, 'src', 'added.ts'), 'export const added = 1;\n');
+    git(tree, ['add', 'src/added.ts']);
+    git(tree, ['commit', '-m', 'add file']);
+    git(tree, ['rm', 'src/added.ts']);
+    git(tree, ['commit', '-m', 'drop file']);
+    git(clone, ['switch', 'main']);
+    writeFileSync(join(clone, 'src', 'base.ts'), 'export const base = 1;\n');
+    git(clone, ['add', 'src/base.ts']);
+    git(clone, ['commit', '-m', 'base']);
+    git(clone, ['push', 'origin', 'main']);
+    const base = git(clone, ['rev-parse', 'main']);
+    writeFileSync(join(tree, 'src', 'readme.ts'), 'export const readme = 2;\n');
+    git(tree, ['stash', 'push', '-m', 'swarmloop-rebase', '--', 'src/readme.ts']);
+    expect(git(tree, ['status', '--porcelain'])).toBe('');
+    const head = git(tree, ['rev-parse', 'HEAD']);
+    const common = git(tree, ['rev-parse', '--git-common-dir']);
+    const hooks = join(isAbsolute(common) ? common : join(tree, common), 'hooks');
+    mkdirSync(hooks, { recursive: true });
+    writeFileSync(join(hooks, 'post-checkout'), "#!/bin/sh\nprintf 'export const added = 1;\\n' > src/added.ts\nexit 0\n", { mode: 0o755 });
+    const pipeline = { startDetached: jest.fn() };
+    const app = await boot(root, pipeline);
+    try {
+      const history = app.get(HistoryService);
+      await remember(history, 'proj-59', 'done', 'done');
+      await expect(app.get(RunsService).rebase('proj-59')).rejects.toThrow(
+        /demo rebase failed[\s\S]*error:[\s\S]*Please move or remove them before you merge/,
+      );
+      expect(pipeline.startDetached).not.toHaveBeenCalled();
+      expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
+      expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-59-ship-the-field');
+      expect(isAncestor(tree, base)).toBe(false);
+      for (const name of ['rebase-merge', 'rebase-apply']) {
+        const printed = git(tree, ['rev-parse', '--git-path', name]);
+        expect(existsSync(isAbsolute(printed) ? printed : join(tree, printed))).toBe(false);
+      }
+      expect(readFileSync(join(tree, 'src', 'readme.ts'), 'utf8')).toBe('export const readme = 2;\n');
+    } finally {
       await app.close();
     }
   });
