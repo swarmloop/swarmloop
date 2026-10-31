@@ -6,19 +6,26 @@ export function git(args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
   return gitText(args, env).then((stdout) => stdout.trim());
 }
 
-export function gitRaw(args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
-  return gitText(args, env);
+export function gitRaw(args: string[], env?: NodeJS.ProcessEnv, input?: string): Promise<string> {
+  return gitText(args, env, input);
 }
 
 const GIT_OUTPUT_CAP = 64_000_000;
 
-function gitText(args: string[], extra?: NodeJS.ProcessEnv): Promise<string> {
+function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Promise<string> {
   const command = withSafeDirectory(args, checkoutRoots());
+  const env = extra ? { ...process.env, ...extra } : undefined;
   return new Promise((done, fail) => {
-    execFile(
+    const child = execFile(
       'git',
       command,
-      { encoding: 'utf8', timeout: 600_000, maxBuffer: GIT_OUTPUT_CAP, env: extra ? { ...process.env, ...extra } : undefined },
+      {
+        encoding: 'utf8',
+        timeout: 600_000,
+        maxBuffer: GIT_OUTPUT_CAP,
+        env,
+        ...(input === undefined ? {} : { stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'] }),
+      },
       (error, stdout, stderr) => {
         if (error) {
           if (typeof stdout === 'string' && stdout.length > 0) {
@@ -33,6 +40,10 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv): Promise<string> {
         done(stdout);
       },
     );
+    if (input !== undefined && child.stdin) {
+      child.stdin.on('error', () => undefined);
+      child.stdin.end(input);
+    }
   });
 }
 

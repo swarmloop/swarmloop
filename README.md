@@ -185,7 +185,7 @@ Before code review, implement improve reads the change again on the same model a
 
 ### 🔄 Rebase in one click
 
-**Rebase** works on a run that is done, failed, or waiting.
+**Rebase** works on a run that is done, failed, or waiting. The branch is squashed to one commit on the fresh base and force-pushed with lease, and a conflict goes to implement once.
 
 1. Nest fetches the base branch from the remote (`main`, `master`, or the one the prompt names) and rebases every feature worktree onto it.
 2. Edits that may ship are committed first. A denied path such as `.env` stays out. If it blocks the rebase, the rebase stops and says so.
