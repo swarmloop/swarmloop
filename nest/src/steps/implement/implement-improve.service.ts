@@ -14,7 +14,7 @@ import { IMPLEMENT_IMPROVE_FOLLOW_UP, withAddedRepos } from '../follow-up';
 import { composedReturn, ModelStepContext, plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, withModelStep } from '../model-step';
 import { requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames } from '../repo-names';
-import { assertUncommitted, featureHeads, worktreeStatus } from '../worktree-git';
+import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
 import { reviewedImplementation, withReturnNotes } from './implement-record';
 
 @Injectable()

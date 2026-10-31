@@ -18,7 +18,7 @@ import { assertKey, continuesSameStep, countedVisits, isLoopStep, isReviewStep, 
 import { answered } from '../steps/answers';
 import { branchName, commitMessage, summaryForBranch } from '../steps/branch/branch-name';
 import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.service';
-import { REBASE_CONFLICT, rebaseFeatureRepos } from '../steps/rebase-worktree';
+import { REBASE_CONFLICT, rebaseFeatureRepos } from '../git/rebase-worktree';
 import { repoNames } from '../steps/repo-names';
 import { parsePaths } from '../steps/commit/commit-paths';
 import { CHECKOUT_NAME, renderProjects, storedProjects } from '../steps/prepare/checkout-path';

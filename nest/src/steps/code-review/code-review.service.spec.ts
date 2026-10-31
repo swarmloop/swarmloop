@@ -17,7 +17,7 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { REPORT_CONTINUE, reviewContinue } from '../follow-up';
-import { REBASE_CONFLICT } from '../rebase-worktree';
+import { REBASE_CONFLICT } from '../../git/rebase-worktree';
 
 describe('code-review step', () => {
   it('stores five reviews when every decision is ok', async () => {

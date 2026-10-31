@@ -20,7 +20,7 @@ import { storedProjects } from '../prepare/checkout-path';
 import { readPlan } from '../plan/plan-record';
 import { PrepareService } from '../prepare/prepare.service';
 import { mountsForStep, repoNames } from '../repo-names';
-import { REBASE_CONFLICT } from '../rebase-worktree';
+import { REBASE_CONFLICT } from '../../git/rebase-worktree';
 import { parseReview } from './code-review-record';
 import { reviewBrief } from './review-report';
 import { reviewDiffSection, writeReviewDiff } from './review-diff';

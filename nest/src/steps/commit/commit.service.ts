@@ -9,7 +9,7 @@ import { PipelineResult, visitStatus } from '../../pipeline/pipeline-result';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { SwarmloopError } from '../../swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
-import { git, gitDetail, gitMissing, gitRaw } from '../git';
+import { authorArgs, git, gitDetail, gitMissing, gitRaw, originUrl, redact } from '../../git/git';
 import { recordHandoff, textDocument } from '../model-step';
 import { repoNames, worktreePath } from '../repo-names';
 import { remoteProject } from '../merge-request/merge-request-record';
@@ -196,7 +196,8 @@ export class CommitService {
 
   private async publishedHead(trees: Tree[], branch: string): Promise<boolean> {
     for (const tree of trees) {
-      if (!(await this.originUrl(tree))) {
+      const cwd = tree.path;
+      if (!(await originUrl(cwd, tree.repo, 'origin failed'))) {
         continue;
       }
       const remote = await this.optionalRev(tree, `refs/remotes/origin/${branch}`);
@@ -213,7 +214,8 @@ export class CommitService {
 
   private async somethingToPush(trees: Tree[], branch: string): Promise<boolean> {
     for (const tree of trees) {
-      if ((await this.originUrl(tree)) && (await this.ahead(tree, branch))) {
+      const cwd = tree.path;
+      if ((await originUrl(cwd, tree.repo, 'origin failed')) && (await this.ahead(tree, branch))) {
         return true;
       }
     }
@@ -242,14 +244,15 @@ export class CommitService {
     env: SwarmloopEnv,
     codeHost: string,
   ): Promise<boolean> {
+    const cwd = tree.path;
     const wanted = planned.filter((item) => item.repo === tree.repo).map((item) => item.path);
     const dirty = new Set(porcelainPaths(await this.status(tree)));
     const stage = wanted.filter((path) => dirty.has(path) && !isDenied(path, denied));
     if (stage.length > 0) {
       await this.gitAt(tree, ['add', '--', ...stage], 'commit failed');
-      await this.gitAt(tree, [...(await this.authorArgs(tree)), 'commit', '--no-verify', '-m', message], 'commit failed');
+      await this.gitAt(tree, [...(await authorArgs(cwd)), 'commit', '--no-verify', '-m', message], 'commit failed');
     }
-    const origin = await this.originUrl(tree);
+    const origin = await originUrl(cwd, tree.repo, 'origin failed');
     if (!origin) {
       return false;
     }
@@ -266,7 +269,8 @@ export class CommitService {
     const trees = this.trees(key, leases.map((lease) => lease.repo));
     const env = readEnv(this.config);
     for (const tree of trees) {
-      const origin = await this.originUrl(tree);
+      const cwd = tree.path;
+      const origin = await originUrl(cwd, tree.repo, 'origin failed');
       if (!origin) {
         continue;
       }
@@ -313,23 +317,12 @@ export class CommitService {
     return true;
   }
 
-  private async originUrl(tree: Tree): Promise<string | null> {
-    try {
-      const url = await git(['-C', tree.path, 'remote', 'get-url', 'origin']);
-      return url.trim() ? url : null;
-    } catch (error) {
-      if (gitDetail(error).includes('No such remote')) {
-        return null;
-      }
-      throw new SwarmloopError(`${tree.repo} origin failed: ${gitDetail(error)}`);
-    }
-  }
-
   /** True when this push recorded a host project. A filesystem origin does not. */
   private async rememberRefs(run: RunEntity, trees: Tree[], branch: string): Promise<boolean> {
     const blocks: string[] = [];
     for (const tree of trees) {
-      const url = await this.originUrl(tree);
+      const cwd = tree.path;
+      const url = await originUrl(cwd, tree.repo, 'origin failed');
       if (!url) {
         continue;
       }
@@ -357,32 +350,12 @@ export class CommitService {
     }
   }
 
-  private async authorArgs(tree: Tree): Promise<string[]> {
-    if (await this.gitConfig(tree, 'user.email')) {
-      return [];
-    }
-    const name = process.env.GIT_AUTHOR_NAME?.trim() ?? '';
-    const email = process.env.GIT_AUTHOR_EMAIL?.trim() ?? '';
-    if (!name || !email) {
-      return [];
-    }
-    return ['-c', `user.name=${name}`, '-c', `user.email=${email}`];
-  }
-
-  private async gitConfig(tree: Tree, key: string): Promise<string> {
-    try {
-      return (await git(['-C', tree.path, 'config', '--local', '--get', key])).trim();
-    } catch {
-      return '';
-    }
-  }
-
   private async gitAt(tree: Tree, args: string[], failure: string, env?: NodeJS.ProcessEnv, secret?: string): Promise<string> {
     try {
       return await git(['-C', tree.path, ...args], env);
     } catch (error) {
       const detail = gitDetail(error);
-      const redacted = secret ? detail.split(secret).join('***').split(encodeURIComponent(secret)).join('***') : detail;
+      const redacted = redact(detail, secret);
       throw new SwarmloopError(`${tree.repo} ${failure}: ${redacted}`);
     }
   }

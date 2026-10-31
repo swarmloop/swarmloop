@@ -14,7 +14,7 @@ import { AGENT_RUNNER, AgentRunInput, AgentRunResult } from '../../limits/agent-
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import { REBASE_CONFLICT } from '../rebase-worktree';
+import { REBASE_CONFLICT } from '../../git/rebase-worktree';
 
 const reply = ['implementation:', '- fixed the empty case', '', 'summary:', '- fixed the empty case because the return was right'].join('\n');
 

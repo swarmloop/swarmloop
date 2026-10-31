@@ -5,10 +5,10 @@ import { dirname, isAbsolute, join, sep } from 'path';
 import { codeHostFromOrigin, selectedHost } from '../providers/host-credentials';
 import { SwarmloopError } from '../swarmloop-error';
 import { originRef, promptBase } from './base-ref';
-import { allowedPaths, isDenied, porcelainPaths } from './commit/commit-paths';
-import { githubPushUrl, gitlabPushUrl } from './commit/commit.service';
-import { git, gitDetail, gitMissing, gitRaw, gitStderr } from './git';
-import { worktreePath } from './repo-names';
+import { allowedPaths, isDenied, porcelainPaths } from '../steps/commit/commit-paths';
+import { githubPushUrl, gitlabPushUrl } from '../steps/commit/commit.service';
+import { authorArgs, git, gitDetail, gitMissing, gitRaw, gitStderr, originUrl, redact } from './git';
+import { worktreePath } from '../steps/repo-names';
 
 /** Set while a conflict rebase still has to be resolved, then reviewed on the new diff. */
 export const REBASE_CONFLICT = 'rebase_conflict';
@@ -741,23 +741,6 @@ async function hideDeniedWorktree(cwd: string, repo: string, denied: string[], h
   await gitAt(cwd, repo, ['stash', 'push', '-m', 'swarmloop-rebase', '--', ...dirty], 'rebase failed', hosts, '');
 }
 
-async function authorArgs(cwd: string): Promise<string[]> {
-  try {
-    const email = (await git(['-C', cwd, 'config', '--local', '--get', 'user.email'])).trim();
-    if (email) {
-      return [];
-    }
-  } catch {
-    // Fall through to the environment author used by commit.
-  }
-  const name = process.env.GIT_AUTHOR_NAME?.trim() ?? '';
-  const email = process.env.GIT_AUTHOR_EMAIL?.trim() ?? '';
-  if (!name || !email) {
-    return [];
-  }
-  return ['-c', `user.name=${name}`, '-c', `user.email=${email}`];
-}
-
 export async function storedBase(
   cwd: string,
   repo: string,
@@ -766,7 +749,7 @@ export async function storedBase(
   step: 'prepare' | 'rebase',
 ): Promise<string> {
   const wanted = promptBase(prompt);
-  const origin = await originUrl(cwd, repo, step);
+  const origin = await originUrl(cwd, repo, `${step} failed`);
   if (!origin) {
     if (wanted.kind === 'named') {
       throw new SwarmloopError(`${repo} has no ${originRef(wanted.name)}`);
@@ -810,23 +793,11 @@ async function fetchSource(
     if (error instanceof SwarmloopError) {
       throw error;
     }
-    const detail = redact(gitDetail(error), secret);
+    const detail = redact(gitDetail(error), secret.trim());
     if (detail.includes("couldn't find remote ref")) {
       return false;
     }
     throw new SwarmloopError(`${repo} ${step} failed: ${detail}`);
-  }
-}
-
-async function originUrl(cwd: string, repo: string, step: 'prepare' | 'rebase'): Promise<string | null> {
-  try {
-    const url = (await git(['-C', cwd, 'remote', 'get-url', 'origin'])).trim();
-    return url || null;
-  } catch (error) {
-    if (gitDetail(error).includes('No such remote')) {
-      return null;
-    }
-    throw new SwarmloopError(`${repo} ${step} failed: ${gitDetail(error)}`);
   }
 }
 
@@ -856,25 +827,17 @@ async function clearFetchedToken(cwd: string, branch: string, secret: string): P
       continue;
     }
     const text = readFileSync(target, 'utf8');
-    const cleaned = redact(text, secret);
+    const cleaned = redact(text, secret.trim());
     if (cleaned !== text) {
       writeFileSync(target, cleaned);
     }
   }
 }
 
-function redact(detail: string, secret: string): string {
-  const token = secret.trim();
-  if (!token) {
-    return detail;
-  }
-  return detail.split(token).join('***').split(encodeURIComponent(token)).join('***');
-}
-
 /** Full git stderr for a rebase failure, with both host tokens removed. A captured rebase stderr wins over a later command. */
 function rebaseStderr(text: string, hosts: RebaseHosts, captured = ''): string {
   const body = captured.trim() ? captured : text;
-  return redact(redact(body, hosts.GITLAB_TOKEN), hosts.GITHUB_TOKEN);
+  return redact(redact(body, hosts.GITLAB_TOKEN.trim()), hosts.GITHUB_TOKEN.trim());
 }
 
 function checkout(root: string, key: string, repo: string): string {

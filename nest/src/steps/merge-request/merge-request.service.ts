@@ -11,7 +11,7 @@ import { CodeHost, MergeRequestRecord } from '../../providers/contracts';
 import { requireHostCredentials, selectedHost } from '../../providers/host-credentials';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
-import { git, gitDetail, gitMissing } from '../git';
+import { git, gitDetail, gitMissing } from '../../git/git';
 import { recordHandoff, textDocument } from '../model-step';
 import { repoNames, worktreePath } from '../repo-names';
 import { remoteProject, renderMergeRequest } from './merge-request-record';
