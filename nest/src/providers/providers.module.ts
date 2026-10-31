@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HistoryModule } from '../history/history.module';
+import { LinkedPagesService } from '../integrations/linked-pages/linked-pages';
+import { PASTE_READER, PastePageReader, TerminalPasteReader } from '../integrations/linked-pages/paste-page.reader';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { AGENT_RUNNER, AgentProcessRunner } from '../limits/agent-runner';
 import { RunStop } from '../limits/run-stop';
@@ -12,8 +14,7 @@ import { GitlabHostService } from './gitlab/gitlab-host.service';
 import { JiraTrackerService } from './jira/jira-tracker.service';
 import { ServiceContextService } from './service-context';
 import { createIssueTracker, createRequirementsSource } from './provider.factory';
-import { TerminalPasteReader } from './terminal-paste.reader';
-import { ISSUE_TRACKER, PASTE_READER, REQUIREMENTS_SOURCE } from './tokens';
+import { ISSUE_TRACKER, REQUIREMENTS_SOURCE } from './tokens';
 
 @Module({
   imports: [HistoryModule, SandboxModule],
@@ -27,6 +28,8 @@ import { ISSUE_TRACKER, PASTE_READER, REQUIREMENTS_SOURCE } from './tokens';
     AgentRequirementsService,
     AgentProcessRunner,
     RunStop,
+    PastePageReader,
+    LinkedPagesService,
     { provide: PASTE_READER, useClass: TerminalPasteReader },
     { provide: AGENT_RUNNER, useExisting: AgentProcessRunner },
     {
