@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { realpathSync } from 'fs';
 import { isAbsolute, join, resolve, sep } from 'path';
+import { SwarmloopError } from '../swarmloop-error';
 
 export function git(args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
   return gitText(args, env).then((stdout) => stdout.trim());
@@ -112,4 +113,40 @@ export function gitDetail(error: unknown): string {
   const fatal = lines.find((line) => (line.startsWith('fatal:') || line.startsWith('error:')) && !line.includes('failed to push some refs'));
   const generic = lines.find((line) => line.startsWith('fatal:') || line.startsWith('error:'));
   return (remote ?? fatal ?? generic ?? lines[0] ?? 'git failed').slice(0, 400);
+}
+
+export async function authorArgs(cwd: string): Promise<string[]> {
+  try {
+    const email = (await git(['-C', cwd, 'config', '--local', '--get', 'user.email'])).trim();
+    if (email) {
+      return [];
+    }
+  } catch {
+    // Fall through to the environment author used by commit.
+  }
+  const name = process.env.GIT_AUTHOR_NAME?.trim() ?? '';
+  const email = process.env.GIT_AUTHOR_EMAIL?.trim() ?? '';
+  if (!name || !email) {
+    return [];
+  }
+  return ['-c', `user.name=${name}`, '-c', `user.email=${email}`];
+}
+
+export async function originUrl(cwd: string, repo: string, failure: string): Promise<string | null> {
+  try {
+    const url = (await git(['-C', cwd, 'remote', 'get-url', 'origin'])).trim();
+    return url || null;
+  } catch (error) {
+    if (gitDetail(error).includes('No such remote')) {
+      return null;
+    }
+    throw new SwarmloopError(`${repo} ${failure}: ${gitDetail(error)}`);
+  }
+}
+
+export function redact(detail: string, secret?: string): string {
+  if (!secret) {
+    return detail;
+  }
+  return detail.split(secret).join('***').split(encodeURIComponent(secret)).join('***');
 }

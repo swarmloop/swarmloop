@@ -13,13 +13,13 @@ import { SwarmloopError } from '../../swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
 import { CommitService } from '../commit/commit.service';
 import { implementFollowUp, rebaseConflictPrompt, withAddedRepos } from '../follow-up';
-import { git } from '../git';
+import { git } from '../../git/git';
 import { composedReturn, parseSummary, recordHandoff, skillPrompt, textDocument, withHandoff, withModelStep, ModelStepContext } from '../model-step';
 import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.service';
 import { requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../repo-names';
-import { REBASE_CONFLICT, RebaseStop, rebaseFeatureRepos, unmergedPaths } from '../rebase-worktree';
-import { assertUncommitted, featureHeads, worktreeStatus } from '../worktree-git';
+import { REBASE_CONFLICT, RebaseStop, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase-worktree';
+import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
 import { parseImplementation, withReturnNotes } from './implement-record';
 
 @Injectable()

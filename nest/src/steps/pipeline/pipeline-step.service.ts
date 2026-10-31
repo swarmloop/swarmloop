@@ -12,7 +12,7 @@ import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { CodeHost, PipelineJob, PipelineRef } from '../../providers/contracts';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../swarmloop-error';
 import { recordHandoff, returnNotes, textDocument } from '../model-step';
-import { git } from '../git';
+import { git } from '../../git/git';
 import { remoteProject } from '../merge-request/merge-request-record';
 import { repoNames, worktreePath } from '../repo-names';
 

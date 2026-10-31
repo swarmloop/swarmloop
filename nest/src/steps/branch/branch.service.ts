@@ -5,7 +5,7 @@ import { DocumentDraft, sampleSelf, VisitDraft } from '../../history/visit';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { PipelineResult } from '../../pipeline/pipeline-result';
 import { SwarmloopError } from '../../swarmloop-error';
-import { git, gitDetail, gitMissing } from '../git';
+import { git, gitDetail, gitMissing } from '../../git/git';
 import { recordHandoff } from '../model-step';
 import { repoNames, worktreePath } from '../repo-names';
 import { branchName, summaryForBranch } from './branch-name';

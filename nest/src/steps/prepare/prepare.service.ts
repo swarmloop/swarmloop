@@ -9,8 +9,8 @@ import { closeStep, openStep, OpenedStep } from '../../pipeline/step-run';
 import { PipelineResult } from '../../pipeline/pipeline-result';
 import { assignCodeHost, codeHostFromOrigin, CodeHostName } from '../../providers/host-credentials';
 import { SwarmloopError } from '../../swarmloop-error';
-import { git, gitDetail } from '../git';
-import { storedBase } from '../rebase-worktree';
+import { git, gitDetail } from '../../git/git';
+import { storedBase } from '../../git/rebase-worktree';
 import { recordHandoff } from '../model-step';
 import { CHECKOUT_NAME, listGitProjects, resolveCheckoutPath, storedProjects } from './checkout-path';
 

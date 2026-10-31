@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
 import { HistoryService } from '../history/history.service';
 import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.service';
-import { REBASE_CONFLICT, rebaseFeatureRepos } from '../steps/rebase-worktree';
+import { REBASE_CONFLICT, rebaseFeatureRepos } from '../git/rebase-worktree';
 import { RunsService } from './runs.service';
 import { boot, remember, featureWorktree, denyEnv, git, isAncestor, hostFetch } from './runs.spec-helpers';
 
