@@ -9,8 +9,8 @@ import { closeStep, openStep, OpenedStep } from '../../pipeline/step-run';
 import { PipelineResult } from '../../pipeline/pipeline-result';
 import { assignCodeHost, codeHostFromOrigin, CodeHostName } from '../../providers/host-credentials';
 import { SwarmloopError } from '../../swarmloop-error';
-import { originRef, promptBase, PromptBase } from '../base-ref';
 import { git, gitDetail } from '../git';
+import { storedBase } from '../rebase-worktree';
 import { recordHandoff } from '../model-step';
 import { CHECKOUT_NAME, listGitProjects, resolveCheckoutPath, storedProjects } from './checkout-path';
 
@@ -124,13 +124,14 @@ export class PrepareService {
     if (!CHECKOUT_NAME.test(checkout.name)) {
       throw new SwarmloopError('checkout name is invalid');
     }
+    const env = readEnv(this.config);
     const located = {
       name: checkout.name,
-      path: resolveCheckoutPath(this.history.root(), readEnv(this.config).CHECKOUTS_ROOT, checkout.name, checkout.path),
+      path: resolveCheckoutPath(this.history.root(), env.CHECKOUTS_ROOT, checkout.name, checkout.path),
     };
     this.assertCheckout(located);
     await this.assertGit(located);
-    const ref = await this.checkoutRef(located, prompt);
+    const ref = await storedBase(located.path, located.name, prompt, env, 'prepare');
     const worktree = join(this.history.root(), 'worktrees', key, located.name);
     if (!existsSync(worktree)) {
       mkdirSync(join(this.history.root(), 'worktrees', key), { recursive: true });
@@ -165,57 +166,6 @@ export class PrepareService {
         return null;
       }
       throw new SwarmloopError(`${checkout.name} origin failed: ${gitDetail(error)}`);
-    }
-  }
-
-  private async checkoutRef(checkout: { name: string; path: string }, prompt: string | null): Promise<string> {
-    const wanted = promptBase(prompt);
-    const remotes = await git(['-C', checkout.path, 'remote']);
-    if (!remotes.split('\n').includes('origin')) {
-      if (wanted.kind === 'named') {
-        throw new SwarmloopError(`${checkout.name} has no ${originRef(wanted.name)}`);
-      }
-      return 'HEAD';
-    }
-    try {
-      await git(['-C', checkout.path, 'fetch', 'origin']);
-    } catch {
-      // A ref already stored locally still works when the remote is unreachable.
-    }
-    return this.storedRef(checkout, wanted);
-  }
-
-  private async storedRef(checkout: { name: string; path: string }, wanted: PromptBase): Promise<string> {
-    if (wanted.kind === 'named') {
-      const named = await this.optionalRef(checkout, originRef(wanted.name));
-      if (named) {
-        return named;
-      }
-    }
-    const main = await this.optionalRef(checkout, 'origin/main');
-    if (main) {
-      return main;
-    }
-    return this.verifyRef(checkout, 'origin/master');
-  }
-
-  private async optionalRef(checkout: { name: string; path: string }, ref: string): Promise<string | null> {
-    try {
-      return await this.verifyRef(checkout, ref);
-    } catch (error) {
-      if (error instanceof SwarmloopError) {
-        return null;
-      }
-      throw error;
-    }
-  }
-
-  private async verifyRef(checkout: { name: string; path: string }, ref: string): Promise<string> {
-    try {
-      await git(['-C', checkout.path, 'rev-parse', '--verify', ref]);
-      return ref;
-    } catch (error) {
-      throw new SwarmloopError(`${checkout.name} has no ${ref}: ${gitDetail(error)}`);
     }
   }
 

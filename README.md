@@ -64,6 +64,7 @@ The repository list is every git clone in `CHECKOUTS_ROOT`, which `.env.example`
 Add a git token to `.env` and run `docker compose up --build` again. This time leave **ci** ticked. After you accept the file list, Nest pushes a feature branch, opens a merge request, and watches the pipeline.
 
 - GitHub needs `GITHUB_TOKEN`. GitLab needs `GITLAB_TOKEN`, and `GITLAB_BASE_URL` when it is self-hosted. Both may be set. Nest picks the host whose hostname equals the checkout `origin`.
+- The same token is also used to fetch the base branch, and a run on an SSH origin stops at prepare without it.
 - Nest commits as the clone's own `user.email`. If the clone has none, set `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`.
 
 <details>

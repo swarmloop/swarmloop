@@ -102,7 +102,7 @@ async function rebaseFeatureRepo(input: {
     throw new SwarmloopError(`${input.repo} rebase failed: ${deniedDirty[0]}`);
   }
   await commitAllowed(input.cwd, input.repo, input.denied, input.message);
-  const base = await storedBase(input.cwd, input.repo, input.prompt, input.hosts);
+  const base = await storedBase(input.cwd, input.repo, input.prompt, input.hosts, 'rebase');
   await hideDeniedWorktree(input.cwd, input.repo, input.denied);
   try {
     await git(['-C', input.cwd, 'rebase', base]);
@@ -377,9 +377,15 @@ async function authorArgs(cwd: string): Promise<string[]> {
   return ['-c', `user.name=${name}`, '-c', `user.email=${email}`];
 }
 
-async function storedBase(cwd: string, repo: string, prompt: string | null, hosts: RebaseHosts): Promise<string> {
+export async function storedBase(
+  cwd: string,
+  repo: string,
+  prompt: string | null,
+  hosts: RebaseHosts,
+  step: 'prepare' | 'rebase',
+): Promise<string> {
   const wanted = promptBase(prompt);
-  const origin = await originUrl(cwd, repo);
+  const origin = await originUrl(cwd, repo, step);
   if (!origin) {
     if (wanted.kind === 'named') {
       throw new SwarmloopError(`${repo} has no ${originRef(wanted.name)}`);
@@ -388,7 +394,7 @@ async function storedBase(cwd: string, repo: string, prompt: string | null, host
   }
   const names = wanted.kind === 'named' ? [wanted.name] : ['main', 'master'];
   for (const name of names) {
-    if (await fetchSource(cwd, repo, origin, name, hosts)) {
+    if (await fetchSource(cwd, repo, origin, name, hosts, step)) {
       return originRef(name);
     }
   }
@@ -396,8 +402,15 @@ async function storedBase(cwd: string, repo: string, prompt: string | null, host
   throw new SwarmloopError(`${repo} has no ${missing}`);
 }
 
-/** Fetch one source branch from the remote. A missing ref tries the next candidate. Any other fetch failure stops the rebase. */
-async function fetchSource(cwd: string, repo: string, origin: string, name: string, hosts: RebaseHosts): Promise<boolean> {
+/** Fetch one source branch from the remote. A missing ref tries the next candidate. Any other fetch failure stops the step. */
+async function fetchSource(
+  cwd: string,
+  repo: string,
+  origin: string,
+  name: string,
+  hosts: RebaseHosts,
+  step: 'prepare' | 'rebase',
+): Promise<boolean> {
   const gitlab = gitlabPushUrl(origin, hosts.GITLAB_BASE_URL, hosts.GITLAB_TOKEN);
   const url = gitlab ?? githubPushUrl(origin, hosts.GITHUB_BASE_URL, hosts.GITHUB_TOKEN);
   const refspec = `+refs/heads/${name}:refs/remotes/origin/${name}`;
@@ -405,8 +418,9 @@ async function fetchSource(cwd: string, repo: string, origin: string, name: stri
   try {
     if (url) {
       await git(['-C', cwd, 'fetch', url, refspec], { GIT_TERMINAL_PROMPT: '0' });
+      await clearFetchedToken(cwd, name, secret);
     } else if (origin.startsWith('git@') || origin.startsWith('ssh://')) {
-      throw new SwarmloopError(sshFailure(repo, origin, hosts));
+      throw new SwarmloopError(sshFailure(repo, origin, hosts, step));
     } else {
       await git(['-C', cwd, 'fetch', 'origin', refspec], { GIT_TERMINAL_PROMPT: '0' });
     }
@@ -419,11 +433,11 @@ async function fetchSource(cwd: string, repo: string, origin: string, name: stri
     if (detail.includes("couldn't find remote ref")) {
       return false;
     }
-    throw new SwarmloopError(`${repo} rebase failed: ${detail}`);
+    throw new SwarmloopError(`${repo} ${step} failed: ${detail}`);
   }
 }
 
-async function originUrl(cwd: string, repo: string): Promise<string | null> {
+async function originUrl(cwd: string, repo: string, step: 'prepare' | 'rebase'): Promise<string | null> {
   try {
     const url = (await git(['-C', cwd, 'remote', 'get-url', 'origin'])).trim();
     return url || null;
@@ -431,23 +445,41 @@ async function originUrl(cwd: string, repo: string): Promise<string | null> {
     if (gitDetail(error).includes('No such remote')) {
       return null;
     }
-    throw new SwarmloopError(`${repo} rebase failed: ${gitDetail(error)}`);
+    throw new SwarmloopError(`${repo} ${step} failed: ${gitDetail(error)}`);
   }
 }
 
-function sshFailure(repo: string, origin: string, hosts: RebaseHosts): string {
+function sshFailure(repo: string, origin: string, hosts: RebaseHosts, step: 'prepare' | 'rebase'): string {
   const name = codeHostFromOrigin(origin, hosts.GITLAB_BASE_URL, hosts.GITHUB_BASE_URL);
   if (!name) {
-    return `${repo} rebase failed: code host is missing`;
+    return `${repo} ${step} failed: code host is missing`;
   }
   const host = selectedHost(hosts, name);
   if (!host.token.trim()) {
-    return `${repo} rebase failed: ${host.tokenKey} is missing`;
+    return `${repo} ${step} failed: ${host.tokenKey} is missing`;
   }
   if (!host.baseUrl.trim()) {
-    return `${repo} rebase failed: ${host.baseKey} is missing`;
+    return `${repo} ${step} failed: ${host.baseKey} is missing`;
   }
-  return `${repo} rebase failed: origin is not ${host.baseKey}`;
+  return `${repo} ${step} failed: origin is not ${host.baseKey}`;
+}
+
+/** The fetch URL stays in FETCH_HEAD and the remote-tracking reflog. Drop the token from both. */
+async function clearFetchedToken(cwd: string, branch: string, secret: string): Promise<void> {
+  if (!secret.trim()) {
+    return;
+  }
+  for (const name of ['FETCH_HEAD', `logs/refs/remotes/origin/${branch}`]) {
+    const target = await resolveGitPath(cwd, name);
+    if (!target || !existsSync(target)) {
+      continue;
+    }
+    const text = readFileSync(target, 'utf8');
+    const cleaned = redact(text, secret);
+    if (cleaned !== text) {
+      writeFileSync(target, cleaned);
+    }
+  }
 }
 
 function redact(detail: string, secret: string): string {
