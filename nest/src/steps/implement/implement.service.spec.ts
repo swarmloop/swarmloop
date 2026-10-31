@@ -1,16 +1,18 @@
 import 'reflect-metadata';
 import { execFileSync } from 'child_process';
+import { EventEmitter } from 'events';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
+import { PassThrough } from 'stream';
 import { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DocumentEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
-import { AGENT_RUNNER, AgentRunInput, AgentRunResult } from '../../limits/agent-runner';
+import { AGENT_CONTINUE, AGENT_RUNNER, AgentRunInput, AgentRunResult } from '../../limits/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -598,6 +600,36 @@ describe('implement step', () => {
       await app.close();
     }
   });
+
+  it('finishes one implement visit after a time kill', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-time-'));
+    await writeEnv(root, 0);
+    featureTree(root, 'PROJ-131', 'billing-api');
+    const spawn = scripted([chatStream('impl-chat', 'partial'), doneStream(reply)]);
+    const app = await bootLive(root, spawn);
+    try {
+      await seed(app, 'PROJ-131', 'approve');
+      const done = await app.get(PipelineService).step('implement', 'PROJ-131');
+      expect(done.exitCode).toBe(0);
+      expect(spawn).toHaveBeenCalledTimes(2);
+      expect(launchedPrompt(spawn.mock.calls[1])).toBe(AGENT_CONTINUE);
+      expect(resumeArg(spawn.mock.calls[1])).toBe('impl-chat');
+      const history = app.get(HistoryService);
+      const run = await history.findRun('PROJ-131');
+      expect(run?.currentStep).toBe('implement-improve');
+      expect(run?.agentCalls).toBe(2);
+      const stats = await history.listStats(run?.id ?? 0);
+      const visits = stats.filter((item) => item.step === 'implement');
+      expect(visits).toHaveLength(1);
+      expect(visits[0]?.status).toBe('done');
+      expect(visits[0]?.killReason ?? null).toBeNull();
+      const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
+      const notes = await documents.find({ where: { kind: 'implementation' } });
+      expect(notes[0]?.body).toContain('changed the field parser');
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 function result(responseText: string): AgentRunResult {
@@ -650,7 +682,75 @@ async function seed(
   await history.putDocument(seeded, 'repos', repos);
 }
 
-async function writeEnv(root: string): Promise<void> {
+async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeof boot> {
+  mkdirSync(join(root, 'data'), { recursive: true });
+  writeFileSync(
+    join(root, 'data', 'price-cache-cursor.json'),
+    `${JSON.stringify({ fetchedAt: new Date().toISOString(), prices: {} })}\n`,
+  );
+  return Test.createTestingModule({
+    imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
+  })
+    .overrideProvider(SandboxService)
+    .useValue({
+      assertReady: jest.fn().mockResolvedValue(undefined),
+      spawn,
+      stats: jest.fn().mockResolvedValue({ cpuPercent: 0, rssBytes: 0 }),
+      kill: jest.fn().mockResolvedValue(undefined),
+    })
+    .compile();
+}
+
+function scripted(chunks: string[]): jest.Mock {
+  const pending = [...chunks];
+  return jest.fn(async () => {
+    const next = pending.shift();
+    if (!next) {
+      throw new Error('unexpected spawn');
+    }
+    return fakeChild([next], 0);
+  });
+}
+
+function launchedPrompt(call: unknown[] | undefined): string {
+  const command = (call?.[0] as { command?: string[] } | undefined)?.command ?? [];
+  return command[command.length - 1] ?? '';
+}
+
+function resumeArg(call: unknown[] | undefined): string | null {
+  const command = (call?.[0] as { command?: string[] } | undefined)?.command ?? [];
+  const at = command.indexOf('--resume');
+  return at < 0 ? null : (command[at + 1] ?? null);
+}
+
+function chatStream(chatId: string, note?: string): string {
+  const noteLine = note ? `${JSON.stringify({ type: 'thinking', text: note })}\n` : '';
+  return `${noteLine}${JSON.stringify({ session_id: chatId })}\n`;
+}
+
+function doneStream(text: string): string {
+  return `${JSON.stringify({ type: 'result', result: text })}\n`;
+}
+
+function fakeChild(chunks: string[], code: number): EventEmitter {
+  const stdout = new PassThrough();
+  const stderr = new PassThrough();
+  const child = new EventEmitter();
+  for (const chunk of chunks) {
+    stdout.write(chunk);
+  }
+  const on = child.on.bind(child);
+  child.on = ((event: string | symbol, listener: (...args: unknown[]) => void) => {
+    const returned = on(event, listener);
+    if (event === 'close') {
+      setImmediate(() => child.emit('close', code));
+    }
+    return returned;
+  }) as typeof child.on;
+  return Object.assign(child, { stdout, stderr, containerName: 'box', kill: () => true });
+}
+
+async function writeEnv(root: string, implementTimeout = 1800000): Promise<void> {
   await writeFile(
     join(root, '.env'),
     [
@@ -675,7 +775,7 @@ async function writeEnv(root: string): Promise<void> {
       'REQUIREMENTS_TIMEOUT_MS=600000',
       'RESEARCH_TIMEOUT_MS=900000',
       'PLAN_TIMEOUT_MS=1200000',
-      'IMPLEMENT_TIMEOUT_MS=1800000',
+      `IMPLEMENT_TIMEOUT_MS=${implementTimeout}`,
       'CODE_REVIEW_TIMEOUT_MS=900000',
       'MERGE_REQUEST_TIMEOUT_MS=600000',
       'PIPELINE_TIMEOUT_MS=1800000',

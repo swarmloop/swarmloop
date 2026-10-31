@@ -82,6 +82,7 @@ export class ChatService {
         workspace: mounts[0].containerPath,
         mounts,
         approveMcps: servers.length > 0,
+        continuePrompt: null,
       });
       const failed = agentFailure(result, 'chat');
       if (failed) {

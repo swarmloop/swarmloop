@@ -42,7 +42,16 @@ export interface AgentRunInput {
   auto?: boolean;
   /** Dollars already recorded for this chat. Used only when the CLI total is cumulative. */
   groupUsd?: number;
+  /**
+   * Prompt for another launch after a time or idle kill.
+   * Null leaves that kill as the result. Omitted uses the shared default.
+   */
+  continuePrompt?: string | null;
 }
+
+/** Used when a pipeline step does not pass its own continue prompt. */
+export const AGENT_CONTINUE =
+  'You were stopped by the time limit before you finished. Continue this same task from where you stopped. Do not start over and do not redo edits already made. End with the sections the first message asked for.';
 
 export interface AgentRunResult {
   responseText: string;
@@ -91,6 +100,7 @@ export class AgentProcessRunner {
           carried = '';
         }
       }
+      let prompt = input.prompt;
       let prior = carried;
       let chatId = opening;
       let resumed = opening !== null;
@@ -98,7 +108,7 @@ export class AgentProcessRunner {
       let merged: AgentRunResult | null = null;
       for (;;) {
         const attempt = await this.once(
-          { ...input, resumeChatId: chatId, groupUsd, agentCalls: input.agentCalls + calls },
+          { ...input, prompt, resumeChatId: chatId, groupUsd, agentCalls: input.agentCalls + calls },
           command,
           resumed,
           prior,
@@ -108,25 +118,44 @@ export class AgentProcessRunner {
         tries += 1;
         groupUsd += attempt.usd;
         prior = `${carried}${merged.output ?? ''}`;
+        const halted = this.runStop.halted(input.runKey);
+        const counted = {
+          halted,
+          callsSoFar: input.agentCalls + calls,
+          maxCalls: env.MAX_AGENT_CALLS,
+          attempts: tries,
+          maxLaunches: env.MAX_LAUNCHES,
+        };
         if (
-          !retryCrash({
+          retryCrash({
             exitCode: attempt.exitCode,
             killReason: attempt.killReason,
-            halted: this.runStop.halted(input.runKey),
-            callsSoFar: input.agentCalls + calls,
-            maxCalls: env.MAX_AGENT_CALLS,
-            attempts: tries,
-            maxLaunches: env.MAX_LAUNCHES,
             decided: attempt.decided === true,
+            ...counted,
           })
         ) {
-          if (!merged) {
-            throw new SwarmloopError('agent returned nothing');
-          }
-          return merged;
+          chatId = attempt.chatId ?? chatId;
+          resumed = chatId !== null;
+          continue;
         }
-        chatId = attempt.chatId ?? chatId;
-        resumed = chatId !== null;
+        if (
+          attempt.chatId &&
+          continueAfterLimit({
+            killReason: attempt.killReason,
+            chatId: attempt.chatId,
+            continuePrompt: input.continuePrompt,
+            ...counted,
+          })
+        ) {
+          chatId = attempt.chatId;
+          resumed = true;
+          prompt = typeof input.continuePrompt === 'string' ? input.continuePrompt : AGENT_CONTINUE;
+          continue;
+        }
+        if (!merged) {
+          throw new SwarmloopError('agent returned nothing');
+        }
+        return merged;
       }
     } finally {
       this.live?.dropSpend(input.runKey, input.liveStep ?? input.step);
@@ -597,6 +626,26 @@ const SAMPLE_MS = 5_000;
 function appendLine(body: string, line: string): string {
   const base = body.length === 0 || body.endsWith('\n') ? body : `${body}\n`;
   return `${base}${line}\n`;
+}
+
+/** Another launch after time or idle, in the same loop as a crash retry. usd, tokens, and calls stay down. */
+function continueAfterLimit(input: {
+  killReason: KillReason | null;
+  chatId: string | null;
+  halted: boolean;
+  callsSoFar: number;
+  maxCalls: number;
+  attempts: number;
+  maxLaunches: number;
+  continuePrompt: string | null | undefined;
+}): boolean {
+  if (input.continuePrompt === null || (input.killReason !== 'time' && input.killReason !== 'idle')) {
+    return false;
+  }
+  if (!input.chatId || input.halted || input.attempts >= input.maxLaunches) {
+    return false;
+  }
+  return !callsExceeded(input.callsSoFar, input.maxCalls);
 }
 
 function foldAttempt(first: AgentRunResult | null, second: AgentRunResult): AgentRunResult {

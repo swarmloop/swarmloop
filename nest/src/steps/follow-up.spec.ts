@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { IMPLEMENT_IMPROVE_FOLLOW_UP, implementFollowUp, PLAN_IMPROVE_FOLLOW_UP, planFollowUp, reviewContinue, reviewResume, withAddedRepos } from './follow-up';
+import { IMPLEMENT_IMPROVE_FOLLOW_UP, implementFollowUp, PLAN_IMPROVE_FOLLOW_UP, planFollowUp, REPORT_CONTINUE, reviewContinue, reviewResume, withAddedRepos } from './follow-up';
 import { LINKED_CONTEXT, TASK_SCOPE } from './requirements-brief';
 
 const skillText = (name: string): string => readFileSync(join(__dirname, '../../../skills', name, 'SKILL.md'), 'utf8');
@@ -136,5 +136,7 @@ describe('return follow-ups', () => {
     expect(reviewResume('quality', '', '')).toContain('- nothing recorded');
     expect(reviewContinue('security')).toContain('You were interrupted before the decision');
     expect(reviewContinue('security')).toContain('Do not start over');
+    expect(REPORT_CONTINUE).toContain('Do not start over');
+    expect(REPORT_CONTINUE).toContain('Do not end with a decision line');
   });
 });

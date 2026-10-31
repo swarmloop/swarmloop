@@ -147,3 +147,10 @@ export function reviewContinue(name: string): string {
     'End with a summary list and one line, either `decision: ok` or `decision: return`.',
   ].join('\n');
 }
+
+export const REPORT_CONTINUE = [
+  'Continue this review report.',
+  'You were interrupted before it was finished. Finish this report. Do not start over.',
+  'Do not add a finding none of the five wrote. Do not change their decisions. Do not end with a decision line.',
+  'Use these parts, in this order: What changed, Code review, What holds when a check is ok, and What to fix only when a latest decision is return.',
+].join('\n');

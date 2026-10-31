@@ -13,9 +13,9 @@ import { agentStateDir, SandboxMount } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
 import { liveLogBody } from '../../acp/live-output';
-import { reportFollowUp, reviewContinue, reviewResume } from '../follow-up';
+import { REPORT_CONTINUE, reportFollowUp, reviewContinue, reviewResume } from '../follow-up';
 import { withReturnNotes } from '../implement/implement-record';
-import { agentFailure, combineAgentResults, composedReturn, handoffSection, launchAgent, mergeHandoff, plainSummary, returnNotes, skillPrompt, summaryOr, textDocument, withHandoff } from '../model-step';
+import { agentFailure, composedReturn, handoffSection, launchAgent, mergeHandoff, plainSummary, returnNotes, skillPrompt, summaryOr, textDocument, withHandoff } from '../model-step';
 import { storedProjects } from '../prepare/checkout-path';
 import { readPlan } from '../plan/plan-record';
 import { PrepareService } from '../prepare/prepare.service';
@@ -303,6 +303,7 @@ export class CodeReviewService {
         mounts,
         auto,
         resume: false,
+        continuePrompt: REPORT_CONTINUE,
       });
       const exchange: ExchangeDraft = {
         model,
@@ -440,50 +441,22 @@ export class CodeReviewService {
     auto?: boolean,
     fresh = false,
   ): Promise<AgentRunResult> {
-    const step = `code-review-${job.reviewer.name}`;
-    const workspace = job.mounts[0]?.containerPath ?? '/work';
-    let prompt = job.prompt;
-    let folded: AgentRunResult | null = null;
-    for (let attempt = 0; attempt < env.MAX_LAUNCHES; attempt += 1) {
-      if (attempt > 0 && auto && opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
-        break;
-      }
-      const result = await launchAgent({
-        agent: this.agent,
-        history: this.history,
-        run: opened.run,
-        key,
-        step,
-        mode: 'ask',
-        model: job.model,
-        timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
-        prompt,
-        workspace,
-        mounts: job.mounts,
-        auto,
-        resume: fresh && attempt === 0 ? false : undefined,
-      });
-      folded = folded
-        ? {
-            ...result,
-            tokensIn: folded.tokensIn + result.tokensIn,
-            tokensOut: folded.tokensOut + result.tokensOut,
-            usd: folded.usd + result.usd,
-            calls: folded.calls + result.calls,
-            samples: [...folded.samples, ...result.samples],
-            durationMs: folded.durationMs + result.durationMs,
-            output: combineAgentResults([folded, result])?.output,
-          }
-        : result;
-      if (result.killReason !== 'time' && result.killReason !== 'idle') {
-        return folded;
-      }
-      prompt = result.chatId ? reviewContinue(job.reviewer.name) : job.prompt;
-    }
-    if (!folded) {
-      throw new SwarmloopError('code-review failed');
-    }
-    return folded;
+    return launchAgent({
+      agent: this.agent,
+      history: this.history,
+      run: opened.run,
+      key,
+      step: `code-review-${job.reviewer.name}`,
+      mode: 'ask',
+      model: job.model,
+      timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
+      prompt: job.prompt,
+      continuePrompt: reviewContinue(job.reviewer.name),
+      workspace: job.mounts[0]?.containerPath ?? '/work',
+      mounts: job.mounts,
+      auto,
+      resume: fresh ? false : undefined,
+    });
   }
 
   private exchange(item: Finished): ExchangeDraft {

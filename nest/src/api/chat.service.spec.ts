@@ -69,6 +69,7 @@ describe('chat', () => {
     expect(input.prompt).toContain('Jira PROJ-1: Ship the field');
     expect(input.prompt).toContain('MCP servers: idea');
     expect(input.prompt).not.toContain('secret-value');
+    expect(input.continuePrompt).toBeNull();
     expect(run.status).toBe('waiting');
     expect(run.spentUsd).toBeCloseTo(0.21);
     await expect(readFile(join(project, '.cursor', 'mcp.json'), 'utf8')).rejects.toThrow();
