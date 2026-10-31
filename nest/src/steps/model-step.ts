@@ -241,6 +241,7 @@ export async function launchAgent(input: {
   approveMcps?: boolean;
   auto?: boolean;
   resume?: boolean;
+  continuePrompt?: string | null;
 }): Promise<AgentRunResult> {
   const directory = join(input.history.root(), 'data');
   mkdirSync(directory, { recursive: true });
@@ -266,6 +267,7 @@ export async function launchAgent(input: {
     timeLimitMs: input.timeLimitMs,
     approveMcps: input.approveMcps,
     auto: input.auto,
+    continuePrompt: input.continuePrompt,
   });
   input.run.agentCalls += result.calls;
   input.run.spentUsd += result.usd;
@@ -289,7 +291,7 @@ export interface ModelStepContext {
     mounts: SandboxMount[];
     allowHosts?: string[];
     label?: string;
-    returnTimeKill?: boolean;
+    continuePrompt?: string;
     resume?: boolean;
   }) => Promise<AgentRunResult>;
 }
@@ -391,12 +393,13 @@ export async function withModelStep(
         mounts: launch.mounts,
         allowHosts: launch.allowHosts,
         resume: launch.resume,
+        continuePrompt: launch.continuePrompt,
       });
       prompt = prompt ? `${prompt}\n\n${launch.prompt}` : launch.prompt;
       launched.push(result);
       agentResult = combineAgentResults(launched);
       const failed = agentFailure(result, input.step);
-      if (failed && !(launch.returnTimeKill === true && result.killReason === 'time')) {
+      if (failed) {
         throw new SwarmloopError(failed);
       }
       return result;

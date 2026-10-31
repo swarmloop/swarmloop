@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync, readdirSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -67,6 +67,6 @@ describe('live log files', () => {
     writeFileSync(file, 'first\n');
     await replaceLogFile(file, 'second\n');
     expect(liveLogBody(root, 'run-1', 'code-review-quality')).toBe('second\n');
-    expect(existsSync(`${file}.tmp`)).toBe(false);
+    expect(readdirSync(directory).some((name) => name.includes('.tmp'))).toBe(false);
   });
 });

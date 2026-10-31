@@ -4,9 +4,8 @@ import { readdirSync, statSync } from 'fs';
 import { basename, join } from 'path';
 import { readEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
-import { AGENT_RUNNER, AgentProcessRunner, AgentRunResult } from '../../limits/agent-runner';
+import { AGENT_RUNNER, AgentProcessRunner } from '../../limits/agent-runner';
 import { PipelineResult, StepOptions } from '../../pipeline/pipeline-result';
-import { SandboxMount } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
 import { renderProjects, storedProjects } from '../prepare/checkout-path';
@@ -36,11 +35,11 @@ export class ResearchService {
         runtime: env.RUNTIME,
         auto: options.auto,
       },
-      (ctx) => this.ask(ctx, options.auto),
+      (ctx) => this.ask(ctx),
     );
   }
 
-  private async ask(ctx: ModelStepContext, auto?: boolean): Promise<PipelineResult> {
+  private async ask(ctx: ModelStepContext): Promise<PipelineResult> {
     const stored = storedProjects(ctx.opened.run.projects);
     const names = stored.length > 0 ? stored : listWorktrees(ctx.workspace);
     if (names.length === 0) {
@@ -51,7 +50,7 @@ export class ResearchService {
     const sections = withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior);
     const mounts = mountsForStep(this.history.root(), ctx.opened.run.key, names, null);
     const full = skillPrompt('research', ctx.requirements, names, sections, mounts);
-    const agentResult = await this.launch(ctx, full, mounts, auto);
+    const agentResult = await ctx.launch({ prompt: full, mounts, continuePrompt: RESEARCH_CONTINUE });
     const parsed = parseResearch(agentResult.responseText);
     const repos = renderProjects(names);
     const paused = parsed.questions !== '';
@@ -67,26 +66,6 @@ export class ResearchService {
       textDocument('questions', parsed.questions),
       [handoff],
     );
-  }
-
-  private async launch(ctx: ModelStepContext, full: string, mounts: SandboxMount[], auto?: boolean): Promise<AgentRunResult> {
-    const maxCalls = readEnv(this.config).MAX_AGENT_CALLS;
-    let prompt = full;
-    let agentResult: AgentRunResult | null = null;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      if (attempt > 0 && auto && ctx.opened.run.agentCalls + 1 > maxCalls) {
-        break;
-      }
-      agentResult = await ctx.launch({ prompt, mounts, returnTimeKill: true });
-      if (agentResult.killReason !== 'time') {
-        break;
-      }
-      prompt = agentResult.chatId ? RESEARCH_CONTINUE : full;
-    }
-    if (!agentResult || agentResult.killReason) {
-      throw new SwarmloopError(`process killed: ${agentResult?.killReason ?? 'time'}`);
-    }
-    return agentResult;
   }
 }
 

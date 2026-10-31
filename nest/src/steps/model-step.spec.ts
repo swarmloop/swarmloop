@@ -79,6 +79,34 @@ describe('working directory block', () => {
     });
     expect(prompts[0]).toBe(`${AGENT_LANGUAGE_RULE}\n\nЗроби поле`);
   });
+
+  it('passes a continue prompt through without the English rule', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-continue-'));
+    const prompts: string[] = [];
+    const continues: (string | null | undefined)[] = [];
+    await launchAgent({
+      agent: {
+        run: async (input: AgentRunInput) => {
+          prompts.push(input.prompt);
+          continues.push(input.continuePrompt);
+          return emptyAgent();
+        },
+      } as never,
+      history: { root: () => root, tokenTotal: async () => 0 } as never,
+      run: { agentCalls: 0, spentUsd: 0 } as never,
+      key: 'k',
+      step: 'plan',
+      mode: 'plan',
+      model: 'm',
+      timeLimitMs: 1,
+      prompt: 'Зроби поле',
+      continuePrompt: 'Finish the checklist.',
+      workspace: root,
+      mounts: [],
+    });
+    expect(prompts[0]).toBe(`${AGENT_LANGUAGE_RULE}\n\nЗроби поле`);
+    expect(continues[0]).toBe('Finish the checklist.');
+  });
 });
 
 describe('model visit duration', () => {

@@ -1,11 +1,13 @@
 import 'reflect-metadata';
 import { execFileSync } from 'child_process';
+import { EventEmitter } from 'events';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, realpathSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { PassThrough } from 'stream';
 import { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { AgentExchangeEntity, DocumentEntity, LoopEventEntity } from '../../history/entities';
@@ -14,6 +16,7 @@ import { AGENT_RUNNER, AgentRunInput, AgentRunResult } from '../../limits/agent-
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
+import { REPORT_CONTINUE, reviewContinue } from '../follow-up';
 import { REBASE_CONFLICT } from '../rebase-worktree';
 
 describe('code-review step', () => {
@@ -44,6 +47,8 @@ describe('code-review step', () => {
       expect(reportCall?.mode).toBe('ask');
       expect(reportCall?.prompt).toContain('five decisions copied below');
       expect(reportCall?.resumeChatId ?? null).toBeNull();
+      expect(reportCall?.continuePrompt).toBe(REPORT_CONTINUE);
+      expect(calls.find((call) => call.step === 'code-review-security')?.continuePrompt).toBe(reviewContinue('security'));
       expect(reportCall?.prompt).toContain('Those decisions are the only reviews');
       expect(reportCall?.prompt).toContain('## Quality');
       expect(reportCall?.prompt).toContain('decision: ok');
@@ -721,43 +726,25 @@ describe('code-review step', () => {
 
   it('tries a timed-out reviewer three times and then continues', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-time-'));
-    await writeEnv(root);
+    await writeEnv(root, undefined, 3, 0);
     mkdirSync(join(root, 'worktrees', 'PROJ-95', 'billing-api'), { recursive: true });
-    mkdirSync(join(root, 'data'), { recursive: true });
-    let security = 0;
-    const agent = jest.fn(async (input: AgentRunInput) => {
-      if (input.step === 'code-review-security') {
-        if (security < 2) {
-          security += 1;
-          writeFileSync(
-            join(root, 'data', 'PROJ-95-code-review-security-session.json'),
-            `${JSON.stringify({ runtime: 'cursor', chatId: 'security-chat', resumed: false, completed: false, killReason: 'time', usd: 1 })}\n`,
-          );
-          return {
-            ...result('partial', input.step),
-            output: `security-attempt-${security}\n`,
-            chatId: 'security-chat',
-            killReason: 'time' as const,
-            exitCode: 1,
-          };
-        }
-        return { ...result(reply(input.step, 'ok'), input.step), output: 'security-finished\n' };
-      }
-      return result(input.step.endsWith('report') ? 'The checks are in.\n' : reply(input.step, 'ok'), input.step);
-    });
-    const app = await boot(root, agent);
+    const spawn = reviewSpawn(3);
+    const app = await bootLive(root, spawn);
     try {
       await seed(app, 'PROJ-95');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-95');
       expect(done.exitCode).toBe(0);
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
-      const securityCalls = calls.filter((call) => call.step === 'code-review-security');
+      const securityCalls = launches(spawn, 'code-review-security');
       expect(securityCalls).toHaveLength(3);
-      expect(securityCalls[1]?.resumeChatId).toBe('security-chat');
-      expect(securityCalls[1]?.prompt).toContain('You were interrupted before the decision');
-      expect(securityCalls[2]?.prompt).toContain('You were interrupted before the decision');
-      expect(calls.filter((call) => call.step === 'code-review-quality')).toHaveLength(1);
-      expect((await app.get(HistoryService).findRun('PROJ-95'))?.currentStep).toBe('commit');
+      expect(resumeArg(securityCalls[1])).toBe('security-chat');
+      expect(launchedPrompt(securityCalls[1])).toBe(reviewContinue('security'));
+      expect(launchedPrompt(securityCalls[2])).toBe(reviewContinue('security'));
+      expect(launches(spawn, 'code-review-quality')).toHaveLength(1);
+      const history = app.get(HistoryService);
+      const run = await history.findRun('PROJ-95');
+      expect(run?.currentStep).toBe('commit');
+      const stats = await history.listStats(run?.id ?? 0);
+      expect(stats.filter((item) => item.step === 'code-review-security')).toHaveLength(1);
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       const logs = await documents.find({ where: { kind: 'log' } });
       const body = logs.map((item) => item.body).join('\n');
@@ -771,21 +758,20 @@ describe('code-review step', () => {
 
   it('stops a reviewer after the third time kill', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-time-stop-'));
-    await writeEnv(root);
+    await writeEnv(root, undefined, 3, 0);
     mkdirSync(join(root, 'worktrees', 'PROJ-96', 'billing-api'), { recursive: true });
-    const agent = jest.fn(async (input: AgentRunInput) => {
-      if (input.step === 'code-review-security') {
-        return { ...result('partial', input.step), chatId: 'security-chat', killReason: 'time' as const, exitCode: 1 };
-      }
-      return result(input.step.endsWith('report') ? 'The checks are in.\n' : reply(input.step, 'ok'), input.step);
-    });
-    const app = await boot(root, agent);
+    const spawn = reviewSpawn(0);
+    const app = await bootLive(root, spawn);
     try {
       await seed(app, 'PROJ-96');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-96');
       expect(done.exitCode).toBe(1);
-      expect(agent.mock.calls.filter((call) => (call[0] as AgentRunInput).step === 'code-review-security')).toHaveLength(3);
-      expect((await app.get(HistoryService).findRun('PROJ-96'))?.currentStep).toBe('code-review');
+      expect(done.message).toContain('process killed: time');
+      expect(launches(spawn, 'code-review-security')).toHaveLength(3);
+      const run = await app.get(HistoryService).findRun('PROJ-96');
+      expect(run?.currentStep).toBe('code-review');
+      const stats = await app.get(HistoryService).listStats(run?.id ?? 0);
+      expect(stats.filter((item) => item.step === 'code-review-security')).toHaveLength(1);
     } finally {
       await app.close();
     }
@@ -793,20 +779,16 @@ describe('code-review step', () => {
 
   it('stops a reviewer after one time kill when the launch cap is 1', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-time-cap-'));
-    await writeEnv(root, undefined, 1);
+    await writeEnv(root, undefined, 1, 0);
     mkdirSync(join(root, 'worktrees', 'PROJ-101', 'billing-api'), { recursive: true });
-    const agent = jest.fn(async (input: AgentRunInput) => {
-      if (input.step === 'code-review-security') {
-        return { ...result('partial', input.step), chatId: 'security-chat', killReason: 'time' as const, exitCode: 1 };
-      }
-      return result(input.step.endsWith('report') ? 'The checks are in.\n' : reply(input.step, 'ok'), input.step);
-    });
-    const app = await boot(root, agent);
+    const spawn = reviewSpawn(0);
+    const app = await bootLive(root, spawn);
     try {
       await seed(app, 'PROJ-101');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-101');
       expect(done.exitCode).toBe(1);
-      expect(agent.mock.calls.filter((call) => (call[0] as AgentRunInput).step === 'code-review-security')).toHaveLength(1);
+      expect(done.message).toContain('process killed: time');
+      expect(launches(spawn, 'code-review-security')).toHaveLength(1);
       expect((await app.get(HistoryService).findRun('PROJ-101'))?.currentStep).toBe('code-review');
     } finally {
       await app.close();
@@ -942,7 +924,83 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, attempts
   await history.putDocument(seeded, 'implementation', '- changed the field parser\n');
 }
 
-async function writeEnv(root: string, checkoutsRoot?: string, maxLaunches = 3): Promise<void> {
+async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeof boot> {
+  mkdirSync(join(root, 'data'), { recursive: true });
+  writeFileSync(join(root, 'data', 'price-cache-cursor.json'), `${JSON.stringify({ fetchedAt: new Date().toISOString(), prices: {} })}\n`);
+  return Test.createTestingModule({
+    imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
+  })
+    .overrideProvider(SandboxService)
+    .useValue({
+      assertReady: jest.fn().mockResolvedValue(undefined),
+      spawn,
+      stats: jest.fn().mockResolvedValue({ cpuPercent: 0, rssBytes: 0 }),
+      kill: jest.fn().mockResolvedValue(undefined),
+    })
+    .compile();
+}
+
+function reviewSpawn(succeedOn: number): jest.Mock {
+  let security = 0;
+  return jest.fn(async (launch: { step: string }) => {
+    if (launch.step === 'code-review-security') {
+      security += 1;
+      if (succeedOn > 0 && security >= succeedOn) {
+        return fakeChild([doneStream('security-finished\n\ndecision: ok\n')], 0);
+      }
+      return fakeChild([chatStream('security-chat', `security-attempt-${security}`)], 0);
+    }
+    if (launch.step === 'code-review-report') {
+      return fakeChild([doneStream('The checks are in.\n')], 0);
+    }
+    const name = launch.step.replace('code-review-', '');
+    return fakeChild([doneStream(`${name}\n\ndecision: ok\n`)], 0);
+  });
+}
+
+function launches(spawn: jest.Mock, step: string): unknown[][] {
+  return spawn.mock.calls.filter((call) => (call[0] as { step?: string }).step === step);
+}
+
+function launchedPrompt(call: unknown[] | undefined): string {
+  const command = (call?.[0] as { command?: string[] } | undefined)?.command ?? [];
+  return command[command.length - 1] ?? '';
+}
+
+function resumeArg(call: unknown[] | undefined): string | null {
+  const command = (call?.[0] as { command?: string[] } | undefined)?.command ?? [];
+  const at = command.indexOf('--resume');
+  return at < 0 ? null : (command[at + 1] ?? null);
+}
+
+function chatStream(chatId: string, note?: string): string {
+  const noteLine = note ? `${JSON.stringify({ type: 'thinking', text: note })}\n` : '';
+  return `${noteLine}${JSON.stringify({ session_id: chatId })}\n`;
+}
+
+function doneStream(text: string): string {
+  return `${JSON.stringify({ type: 'result', result: text })}\n`;
+}
+
+function fakeChild(chunks: string[], code: number): EventEmitter {
+  const stdout = new PassThrough();
+  const stderr = new PassThrough();
+  const child = new EventEmitter();
+  for (const chunk of chunks) {
+    stdout.write(chunk);
+  }
+  const on = child.on.bind(child);
+  child.on = ((event: string | symbol, listener: (...args: unknown[]) => void) => {
+    const returned = on(event, listener);
+    if (event === 'close') {
+      setImmediate(() => child.emit('close', code));
+    }
+    return returned;
+  }) as typeof child.on;
+  return Object.assign(child, { stdout, stderr, containerName: 'box', kill: () => true });
+}
+
+async function writeEnv(root: string, checkoutsRoot?: string, maxLaunches = 3, reviewTimeout = 900000): Promise<void> {
   await writeFile(
     join(root, '.env'),
     [
@@ -956,7 +1014,7 @@ async function writeEnv(root: string, checkoutsRoot?: string, maxLaunches = 3): 
       'GITLAB_TOKEN=',
       'GITHUB_BASE_URL=',
       'GITHUB_TOKEN=',
-      'CURSOR_API_KEY=',
+      'CURSOR_API_KEY=test-key',
       'ANTHROPIC_API_KEY=',
       'MAX_AGENT_CALLS=20',
       'MAX_RETURNS=3',
@@ -968,7 +1026,7 @@ async function writeEnv(root: string, checkoutsRoot?: string, maxLaunches = 3): 
       'RESEARCH_TIMEOUT_MS=900000',
       'PLAN_TIMEOUT_MS=1200000',
       'IMPLEMENT_TIMEOUT_MS=1800000',
-      'CODE_REVIEW_TIMEOUT_MS=900000',
+      `CODE_REVIEW_TIMEOUT_MS=${reviewTimeout}`,
       'MERGE_REQUEST_TIMEOUT_MS=600000',
       'PIPELINE_TIMEOUT_MS=1800000',
       'PIPELINE_START_TIMEOUT_MS=180000',
