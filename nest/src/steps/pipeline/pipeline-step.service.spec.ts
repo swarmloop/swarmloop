@@ -303,7 +303,10 @@ describe('pipeline step', () => {
 
   it('returns to implement when canceling a timed-out run fails', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-cancel-fail-'));
-    const read = jest.fn(async () => ({ snapshot: shot('running', [job(7, 'unit', false, 'in_progress')]), httpCalls: [call('GET')] }));
+    const read = jest.fn(async (_ref: { project: string }, jobs = true) => ({
+      snapshot: shot('running', jobs ? [job(7, 'unit', false, 'in_progress')] : []),
+      httpCalls: [call('GET')],
+    }));
     const cancel = jest.fn(async () => {
       throw new FetchFailed('github pipeline failed: HTTP 500', [call('POST')]);
     });
@@ -314,6 +317,7 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-318');
       expect(result.exitCode).toBe(0);
       expect(cancel).toHaveBeenCalledWith('group/demo', 9);
+      expect(read.mock.calls.map((entry) => entry[1])).toEqual([false, true]);
       expect(trace).not.toHaveBeenCalled();
       const history = app.get(HistoryService);
       const run = await history.findRun('PROJ-318');
@@ -579,7 +583,7 @@ describe('pipeline step', () => {
   it('keeps polling a running pipeline after the start window', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-running-past-start-'));
     let reads = 0;
-    const read = jest.fn(async () => {
+    const read = jest.fn(async (_ref: { project: string }, _jobs?: boolean) => {
       reads += 1;
       return { snapshot: shot(reads < 4 ? 'running' : 'success', []), httpCalls: [call('GET')] };
     });
@@ -589,6 +593,7 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-314');
       expect(result.exitCode).toBe(0);
       expect(read).toHaveBeenCalledTimes(4);
+      expect(read.mock.calls.every((entry) => entry[1] === false)).toBe(true);
       expect((await app.get(HistoryService).findRun('PROJ-314'))?.currentStep).toBe('done');
     } finally {
       await app.close();

@@ -685,7 +685,7 @@ describe('implement step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-unchanged-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-142', 'billing-api');
-    const agent = jest.fn(async () => {
+    const agent = jest.fn(async (_input: AgentRunInput) => {
       mkdirSync(join(root, 'data'), { recursive: true });
       writeFileSync(
         join(root, 'data', 'PROJ-142-implement-session.json'),

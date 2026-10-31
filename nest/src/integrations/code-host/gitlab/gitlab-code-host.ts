@@ -35,7 +35,7 @@ export class GitlabCodeHost extends AbstractCodeHost {
     super(config, 'gitlab merge request failed', 'GITLAB_TOKEN was rejected');
   }
 
-  async readBranchPipeline(ref: PipelineRef): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }> {
+  async readBranchPipeline(ref: PipelineRef, jobs = true): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];
     try {
       const { root: base, headers } = this.credentials();
@@ -60,8 +60,8 @@ export class GitlabCodeHost extends AbstractCodeHost {
       )) as GitlabPipeline;
       const status = detail.status ?? '';
       const scopes = jobScopes(status);
-      const jobs = scopes ? await this.failedJobs(base, headers, project, id, scopes, calls) : [];
-      return { snapshot: { id, status, url: detail.web_url ?? '', jobs }, httpCalls: calls };
+      const listed = scopes && (jobs || scopes.includes('failed')) ? await this.failedJobs(base, headers, project, id, scopes, calls) : [];
+      return { snapshot: { id, status, url: detail.web_url ?? '', jobs: listed }, httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }

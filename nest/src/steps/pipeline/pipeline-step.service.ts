@@ -110,7 +110,7 @@ export class PipelineStepService {
   ): Promise<{ seen: Seen[]; verdict: Verdict }> {
     const deadline = Date.now() + env.PIPELINE_TIMEOUT_MS;
     const startDeadline = Date.now() + env.PIPELINE_START_TIMEOUT_MS;
-    let seen = await this.load(records, calls, host);
+    let seen = await this.load(records, calls, host, false);
     let verdict = this.verdict(seen);
     while (Date.now() < deadline && (verdict === 'wait' || verdict === 'absent' || verdict === 'green')) {
       const missing = verdict === 'wait' ? null : await this.missingRuns(key, seen);
@@ -126,16 +126,16 @@ export class PipelineStepService {
         break;
       }
       await delay(pause);
-      seen = await this.load(records, calls, host);
+      seen = await this.load(records, calls, host, false);
       verdict = this.verdict(seen);
     }
     return { seen, verdict };
   }
 
-  private async load(records: PipelineRef[], calls: HttpCallDraft[], host: CodeHost): Promise<Seen[]> {
+  private async load(records: PipelineRef[], calls: HttpCallDraft[], host: CodeHost, jobs = true): Promise<Seen[]> {
     const loaded = await Promise.all(
       records.map(async (record) => {
-        const result = await host.readBranchPipeline(record);
+        const result = await host.readBranchPipeline(record, jobs);
         return {
           result,
           seen: {
@@ -250,7 +250,19 @@ export class PipelineStepService {
       }
     }
     if (errors.length > 0) {
-      return { seen, note: cancelErrorNote(running, errors), traces: false };
+      let rows = running;
+      try {
+        const named = await this.load(records, calls, host);
+        rows = running.map((item) => {
+          const next = named.find((row) => row.project === item.project);
+          return next && next.id === item.id && this.running(next) ? next : item;
+        });
+      } catch (error) {
+        if (error instanceof FetchFailed) {
+          calls.push(...error.httpCalls);
+        }
+      }
+      return { seen, note: cancelErrorNote(rows, errors), traces: false };
     }
     const deadline = Date.now() + env.PIPELINE_START_TIMEOUT_MS;
     let current = seen;
@@ -260,7 +272,7 @@ export class PipelineStepService {
         break;
       }
       await delay(pause);
-      current = await this.load(records, calls, host);
+      current = await this.load(records, calls, host, false);
     }
     return { seen: current, note: `It was still running after ${minutes} minutes and swarmloop canceled it`, traces: true };
   }

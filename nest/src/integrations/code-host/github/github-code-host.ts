@@ -27,7 +27,7 @@ export class GithubCodeHost extends AbstractCodeHost {
     super(config, 'github pull request failed', 'GITHUB_TOKEN was rejected');
   }
 
-  async readBranchPipeline(ref: PipelineRef): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }> {
+  async readBranchPipeline(ref: PipelineRef, jobs = true): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];
     try {
       const { root: api, headers } = this.credentials();
@@ -44,8 +44,8 @@ export class GithubCodeHost extends AbstractCodeHost {
         return { snapshot: null, httpCalls: calls };
       }
       const status = runStatus(run);
-      const jobs = loadsJobs(status) ? await this.failedJobs(api, headers, project, run.id, calls) : [];
-      return { snapshot: { id: run.id, status, url: run.html_url ?? '', jobs }, httpCalls: calls };
+      const listed = listJobs(status, jobs) ? await this.failedJobs(api, headers, project, run.id, calls) : [];
+      return { snapshot: { id: run.id, status, url: run.html_url ?? '', jobs: listed }, httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }
@@ -171,8 +171,11 @@ export class GithubCodeHost extends AbstractCodeHost {
   }
 }
 
-function loadsJobs(status: string): boolean {
-  return status === 'success' || status === 'failed' || status === 'canceled' || status === 'running';
+function listJobs(status: string, jobs: boolean): boolean {
+  if (status === 'running') {
+    return jobs;
+  }
+  return status === 'success' || status === 'failed' || status === 'canceled';
 }
 
 function repoPath(project: string): string {

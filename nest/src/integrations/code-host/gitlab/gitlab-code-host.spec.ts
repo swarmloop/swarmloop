@@ -174,6 +174,29 @@ describe('gitlab host', () => {
     expect(seen[2]?.url).toContain('running');
   });
 
+  it('skips running and pending jobs while a pipeline is still going', async () => {
+    const seen = mockFetch([
+      [{ id: 9, status: 'pending' }],
+      { id: 9, status: 'pending', web_url: 'https://gitlab.example/group/demo/-/pipelines/9' },
+    ]);
+    const result = await service().readBranchPipeline({ project: 'group/demo', ref: 'feature/PROJ-1' }, false);
+    expect(result.snapshot?.status).toBe('pending');
+    expect(result.snapshot?.jobs).toEqual([]);
+    expect(seen).toHaveLength(2);
+    expect(seen.some((call) => call.url.includes('/jobs'))).toBe(false);
+  });
+
+  it('still lists failed jobs when the running list is skipped', async () => {
+    const seen = mockFetch([
+      [{ id: 9, status: 'failed' }],
+      { id: 9, status: 'failed', web_url: 'https://gitlab.example/group/demo/-/pipelines/9' },
+      [{ id: 7, name: 'unit', stage: 'test', status: 'failed', allow_failure: false }],
+    ]);
+    const result = await service().readBranchPipeline({ project: 'group/demo', ref: 'feature/PROJ-1' }, false);
+    expect(result.snapshot?.jobs.map((job) => job.name)).toEqual(['unit']);
+    expect(seen[2]?.url).toContain('failed');
+  });
+
   it('reads a job trace as plain text without storing the token', async () => {
     const seen = mockFetch(['unit failed\n']);
     const result = await service().readJobTrace('group/demo', 7);

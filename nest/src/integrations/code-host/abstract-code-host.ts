@@ -53,7 +53,7 @@ export abstract class AbstractCodeHost implements CodeHost {
     }
   }
 
-  abstract readBranchPipeline(ref: PipelineRef): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
+  abstract readBranchPipeline(ref: PipelineRef, jobs?: boolean): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
 
   abstract readJobTrace(project: string, jobId: number): Promise<{ trace: string; httpCalls: HttpCallDraft[] }>;
 
