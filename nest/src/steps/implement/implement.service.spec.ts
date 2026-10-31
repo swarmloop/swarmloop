@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { EventEmitter } from 'events';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
@@ -307,15 +307,9 @@ describe('implement step', () => {
     git(clone, ['commit', '-m', 'base']);
     git(clone, ['push', 'origin', 'main']);
     git(tree, ['fetch', 'origin', 'main']);
-    try {
-      git(tree, ['rebase', 'origin/main']);
-    } catch {
-      // content conflict stops the rebase before the commit
-    }
-    writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
-    git(tree, ['add', 'src/field.ts']);
-    const message = git(tree, ['rev-parse', '--git-path', 'rebase-merge/message']);
-    unlinkSync(isAbsolute(message) ? message : join(tree, message));
+    const base = git(tree, ['rev-parse', 'origin/main']);
+    const state = git(tree, ['rev-parse', '--git-path', 'swarmloop-rebase']);
+    writeFileSync(isAbsolute(state) ? state : join(tree, state), `${base}\nfeat(PROJ-116): Ship the field\n`);
     writeFileSync(join(tree, 'src', 'note.ts'), 'short\n');
     git(tree, ['add', 'src/note.ts']);
     git(tree, ['rm', '-f', 'src/note.ts']);
@@ -341,7 +335,7 @@ describe('implement step', () => {
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
       expect(input.prompt).not.toContain('rebase --continue');
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/PROJ-116-ship-the-field');
-      expect(git(tree, ['log', '-1', '--format=%s'])).toBe('field');
+      expect(git(tree, ['log', '-1', '--format=%s'])).toBe('feat(PROJ-116): Ship the field');
       expect(git(tree, ['log', '-1', '--format=%cn <%ce>'])).toBe('Ada Lovelace <ada@example.com>');
       expect(readFileSync(join(tree, 'src', 'note.ts'), 'utf8')).toContain('extra');
       expect(git(tree, ['stash', 'list'])).not.toContain('swarmloop-rebase');
@@ -404,6 +398,14 @@ describe('implement step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-resolved-'));
     await writeEnv(root);
     const tree = conflictedTree(root, 'PROJ-117', 'billing-api');
+    const base = git(tree, ['rev-parse', 'HEAD']);
+    const branch = 'feature/PROJ-117-ship-the-field';
+    const rebaseMerge = git(tree, ['rev-parse', '--git-path', 'rebase-merge']);
+    rmSync(isAbsolute(rebaseMerge) ? rebaseMerge : join(tree, rebaseMerge), { recursive: true, force: true });
+    git(tree, ['update-ref', `refs/heads/${branch}`, base]);
+    git(tree, ['symbolic-ref', 'HEAD', `refs/heads/${branch}`]);
+    const state = git(tree, ['rev-parse', '--git-path', 'swarmloop-rebase']);
+    writeFileSync(isAbsolute(state) ? state : join(tree, state), `${base}\nfeat(PROJ-117): Ship the field\n`);
     writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
     const agent = jest.fn().mockResolvedValue(result(reply));
     const app = await boot(root, agent);
@@ -464,8 +466,6 @@ describe('implement step', () => {
     git(tree, ['checkout', 'HEAD', '--', 'src/own.ts', 'src/kept.ts', 'src/gone.ts']);
     expect(git(tree, ['diff', '--name-only', '--diff-filter=U'])).toBe('');
     git(tree, ['diff', '--cached', '--quiet', 'HEAD']);
-    const onto = git(tree, ['rev-parse', 'HEAD']);
-    const replay = git(tree, ['rev-parse', 'REBASE_HEAD']);
     const marker = git(tree, ['rev-parse', '--git-path', 'rebase-merge']);
     expect(existsSync(isAbsolute(marker) ? marker : join(tree, marker))).toBe(true);
     const agent = jest.fn().mockResolvedValue(result(reply));
@@ -477,15 +477,11 @@ describe('implement step', () => {
       await history.putDocument(run!, 'implementation', '- changed the field parser\n');
       await history.putDocument(run!, REBASE_CONFLICT, 'pending\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-118');
-      expect(done.exitCode).toBe(0);
+      expect(done.exitCode).toBe(1);
       expect(done.message).not.toContain('pathspec');
-      expect(agent).not.toHaveBeenCalled();
-      expect(readFileSync(join(tree, 'src', 'base-new.ts'), 'utf8').trim()).toBe(git(tree, ['show', `${onto}:src/base-new.ts`]));
-      expect(readFileSync(join(tree, 'src', 'base-edit.ts'), 'utf8').trim()).toBe(git(tree, ['show', `${onto}:src/base-edit.ts`]));
-      expect(readFileSync(join(tree, 'src', 'own.ts'), 'utf8').trim()).toBe(git(tree, ['show', `${replay}:src/own.ts`]));
-      expect(readFileSync(join(tree, 'src', 'kept.ts'), 'utf8').trim()).toBe(git(tree, ['show', `${replay}:src/kept.ts`]));
-      expect(readFileSync(join(tree, 'src', 'overlap.ts'), 'utf8').trim()).toBe(git(tree, ['show', `${replay}:src/overlap.ts`]));
-      expect(existsSync(join(tree, 'src', 'gone.ts'))).toBe(false);
+      expect(done.message).toContain('src/overlap.ts');
+      expect(agent).toHaveBeenCalled();
+      expect(git(tree, ['diff', '--name-only', '--diff-filter=U'])).toContain('src/overlap.ts');
     } finally {
       await app.close();
     }
