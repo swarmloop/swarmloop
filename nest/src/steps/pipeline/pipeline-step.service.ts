@@ -22,6 +22,7 @@ interface Seen {
   project: string;
   id: number | null;
   sha: string;
+  url: string;
   status: string;
   jobs: PipelineJob[];
 }
@@ -31,6 +32,7 @@ interface Failure {
   pipelineId: number;
   name: string;
   stage: string;
+  url: string;
   trace: string;
 }
 
@@ -58,7 +60,7 @@ export class PipelineStepService {
         throw new SwarmloopError('pipeline ref is missing');
       }
       const watched = await this.watch(opened.run.key, records, calls, env, host);
-      return await this.route(opened, env, watched.seen, watched.verdict, calls, host, options);
+      return await this.route(opened, env, records, watched.seen, watched.verdict, calls, host, options);
     } catch (error) {
       if (error instanceof FetchFailed) {
         calls.push(...error.httpCalls);
@@ -140,6 +142,7 @@ export class PipelineStepService {
             project: record.project,
             id: result.snapshot?.id ?? null,
             sha: record.sha ?? '',
+            url: result.snapshot?.url ?? '',
             status: result.snapshot?.status ?? 'none',
             jobs: result.snapshot?.jobs ?? [],
           },
@@ -154,10 +157,10 @@ export class PipelineStepService {
 
   private verdict(seen: Seen[]): Verdict {
     const statuses = seen.map((item) => item.status);
-    if (statuses.includes('failed')) {
+    if (statuses.includes('failed') || statuses.includes('canceled')) {
       return 'red';
     }
-    if (statuses.some((status) => status === 'canceled' || status === 'skipped')) {
+    if (statuses.includes('skipped')) {
       return 'stop';
     }
     if (statuses.includes('manual')) {
@@ -176,22 +179,24 @@ export class PipelineStepService {
   private async route(
     opened: OpenedStep,
     env: SwarmloopEnv,
+    records: PipelineRef[],
     seen: Seen[],
     verdict: Verdict,
     calls: HttpCallDraft[],
     host: CodeHost,
     options: StepOptions,
   ): Promise<PipelineResult> {
-    if (verdict === 'absent') {
-      const body = renderNone(seen);
-      return this.finish(opened, 'ok', 0, this.report(opened, 'nothing started', body), 'done', calls, body);
-    }
-    if (verdict === 'green') {
-      const warnings = seen.flatMap((item) =>
-        item.jobs.filter((job) => job.status === 'failed' && job.allowFailure).map((job) => `${item.project} ${job.name}`),
-      );
-      const body = renderPass(seen, warnings);
-      return this.finish(opened, 'ok', 0, this.report(opened, 'pipeline done', body), 'done', calls, body);
+    if (verdict === 'wait') {
+      const settled = await this.cancelRunning(records, seen, calls, env, host);
+      if (!settled.traces) {
+        return this.red(opened, env, settled.seen, calls, host, options, settled.note, false);
+      }
+      const next = this.verdict(settled.seen);
+      if (next === 'red' || next === 'wait') {
+        return this.red(opened, env, settled.seen, calls, host, options, settled.note, true);
+      }
+      seen = settled.seen;
+      verdict = next;
     }
     if (verdict === 'red') {
       return this.red(opened, env, seen, calls, host, options);
@@ -199,13 +204,83 @@ export class PipelineStepService {
     if (verdict === 'stop') {
       return this.finish(opened, 'failed', 1, this.report(opened, this.stopLine(seen)), 'failed', calls);
     }
-    const line = verdict === 'manual' ? 'pipeline is manual' : this.waitLine(seen);
-    return this.finish(opened, 'waiting', 0, this.report(opened, line), 'waiting', calls);
+    if (verdict === 'manual') {
+      return this.finish(opened, 'waiting', 0, this.report(opened, 'pipeline is manual'), 'waiting', calls);
+    }
+    const missing = await this.missingRuns(opened.run.key, seen);
+    if (missing && missing.length > 0) {
+      const line = missing.map((name) => `${name} CI did not start`).join(', ');
+      return this.finish(opened, 'failed', 1, this.report(opened, line), 'failed', calls);
+    }
+    if (verdict === 'absent') {
+      const body = renderNone(seen);
+      return this.finish(opened, 'ok', 0, this.report(opened, 'nothing started', body), 'done', calls, body);
+    }
+    const warnings = seen.flatMap((item) =>
+      item.jobs.filter((job) => job.status === 'failed' && job.allowFailure).map((job) => `${item.project} ${job.name}`),
+    );
+    const body = renderPass(seen, warnings);
+    return this.finish(opened, 'ok', 0, this.report(opened, 'pipeline done', body), 'done', calls, body);
   }
 
-  private async red(opened: OpenedStep, env: SwarmloopEnv, seen: Seen[], calls: HttpCallDraft[], host: CodeHost, options: StepOptions): Promise<PipelineResult> {
-    const failures = await this.failures(seen, calls, host);
-    const body = renderFail(failures, seen);
+  private async cancelRunning(
+    records: PipelineRef[],
+    seen: Seen[],
+    calls: HttpCallDraft[],
+    env: SwarmloopEnv,
+    host: CodeHost,
+  ): Promise<{ seen: Seen[]; note: string; traces: boolean }> {
+    const minutes = Math.round(env.PIPELINE_TIMEOUT_MS / 60000);
+    const running = seen.filter((item) => this.running(item));
+    const errors: string[] = [];
+    for (const item of running) {
+      if (item.id === null) {
+        errors.push(`${item.project}: pipeline id is missing`);
+        continue;
+      }
+      try {
+        const result = await host.cancelPipeline(item.project, item.id);
+        calls.push(...result.httpCalls);
+      } catch (error) {
+        if (error instanceof FetchFailed) {
+          calls.push(...error.httpCalls);
+        }
+        const message = error instanceof Error ? error.message : 'cancel failed';
+        errors.push(`${item.project}: ${message}`);
+      }
+    }
+    if (errors.length > 0) {
+      return { seen, note: cancelErrorNote(running, errors), traces: false };
+    }
+    const deadline = Date.now() + env.PIPELINE_START_TIMEOUT_MS;
+    let current = seen;
+    while (Date.now() < deadline && current.some((item) => this.running(item))) {
+      const pause = Math.min(env.TICK_MS, deadline - Date.now());
+      if (pause <= 0) {
+        break;
+      }
+      await delay(pause);
+      current = await this.load(records, calls, host);
+    }
+    return { seen: current, note: `It was still running after ${minutes} minutes and swarmloop canceled it`, traces: true };
+  }
+
+  private running(item: Seen): boolean {
+    return !['none', 'success', 'failed', 'canceled', 'skipped', 'manual'].includes(item.status);
+  }
+
+  private async red(
+    opened: OpenedStep,
+    env: SwarmloopEnv,
+    seen: Seen[],
+    calls: HttpCallDraft[],
+    host: CodeHost,
+    options: StepOptions,
+    note = '',
+    traces = true,
+  ): Promise<PipelineResult> {
+    const failures = traces ? await this.failures(seen, calls, host) : [];
+    const body = traces ? renderFail(failures, seen, note) : `${note.trim()}\n`;
     if (options.auto && (await this.sameFailure(opened.run.key, seen))) {
       return this.finish(opened, 'failed', 1, this.report(opened, 'pipeline already failed for this commit', body), 'failed', calls, body);
     }
@@ -224,46 +299,47 @@ export class PipelineStepService {
     if (!lines.has('result: fail')) {
       return false;
     }
-    const failed = seen.filter((item) => item.status === 'failed');
+    const failed = seen.filter((item) => item.status === 'failed' || item.status === 'canceled');
     return failed.length > 0 && failed.every((item) => item.id !== null && lines.has(`pipeline: ${item.id}`));
   }
 
   private async failures(seen: Seen[], calls: HttpCallDraft[], host: CodeHost): Promise<Failure[]> {
     const wanted = seen.flatMap((item) =>
-      item.status !== 'failed' || item.id === null
+      (item.status !== 'failed' && item.status !== 'canceled') || item.id === null
         ? []
         : item.jobs
             .filter((job) => job.status === 'failed' && !job.allowFailure)
-            .map((job) => ({ project: item.project, pipelineId: item.id as number, job })),
+            .map((job) => ({ project: item.project, pipelineId: item.id as number, url: item.url, job })),
     );
     const loaded = await Promise.all(
       wanted.map(async (item) => {
-        const trace = await host.readJobTrace(item.project, item.job.id);
-        return { item, trace };
+        try {
+          const trace = await host.readJobTrace(item.project, item.job.id);
+          return { item, trace: trace.trace, calls: trace.httpCalls };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'pipeline failed';
+          return { item, trace: message, calls: error instanceof FetchFailed ? error.httpCalls : [] };
+        }
       }),
     );
     const failures: Failure[] = [];
     for (const row of loaded) {
-      calls.push(...row.trace.httpCalls);
+      calls.push(...row.calls);
       failures.push({
         project: row.item.project,
         pipelineId: row.item.pipelineId,
         name: row.item.job.name,
         stage: row.item.job.stage,
-        trace: row.trace.trace,
+        url: row.item.url,
+        trace: row.trace,
       });
     }
     return failures;
   }
 
-  private waitLine(seen: Seen[]): string {
-    return seen.every((item) => item.status === 'none') ? 'pipeline has not started' : 'pipeline is running';
-  }
-
   private stopLine(seen: Seen[]): string {
-    const canceled = seen.find((item) => item.status === 'canceled');
-    const project = (canceled ?? seen.find((item) => item.status === 'skipped'))?.project ?? 'pipeline';
-    return `${project} pipeline was ${canceled ? 'canceled' : 'skipped'}`;
+    const project = seen.find((item) => item.status === 'skipped')?.project ?? 'pipeline';
+    return `${project} pipeline was skipped`;
   }
 
   private report(opened: OpenedStep, text: string, body = ''): string {
@@ -378,19 +454,52 @@ function renderPass(seen: Seen[], warnings: string[]): string {
   return `${lines.join('\n')}\n`;
 }
 
-function renderFail(failures: Failure[], seen: Seen[]): string {
+function renderFail(failures: Failure[], seen: Seen[], intro = ''): string {
+  const head = intro.trim() ? `${intro.trim()}\n` : '';
   if (failures.length === 0) {
-    const failed = seen.filter((item) => item.status === 'failed').map((item) => `project: ${item.project}\npipeline: ${item.id ?? ''}`);
-    return `result: fail\n${failed.join('\n\n')}\n`;
+    const failed = seen
+      .filter((item) => item.status === 'failed' || item.status === 'canceled')
+      .map((item) =>
+        [`project: ${item.project}`, `pipeline: ${item.id ?? ''}`, `status: ${item.status}`, item.url ? `url: ${item.url}` : '']
+          .filter((line) => line !== '')
+          .join('\n'),
+      );
+    return `${head}result: fail\n${failed.join('\n\n')}\n`;
   }
-  const blocks = failures.map(
-    (failure) =>
-      `project: ${failure.project}\npipeline: ${failure.pipelineId}\njob: ${failure.name}\nstage: ${failure.stage}\n\n${readableJobTrace(failure.trace)}`,
-  );
-  return `result: fail\n${blocks.join('\n\n')}\n`;
+  const blocks = failures.map((failure) => {
+    const lines = [
+      `project: ${failure.project}`,
+      `pipeline: ${failure.pipelineId}`,
+      `job: ${failure.name}`,
+      `stage: ${failure.stage}`,
+    ];
+    if (failure.url) {
+      lines.push(`url: ${failure.url}`);
+    }
+    return `${lines.join('\n')}\n\n${readableJobTrace(failure.trace)}`;
+  });
+  return `${head}result: fail\n${blocks.join('\n\n')}\n`;
+}
+
+function cancelErrorNote(running: Seen[], errors: string[]): string {
+  const lines = ['result: fail'];
+  for (const item of running) {
+    lines.push(`project: ${item.project}`);
+    if (item.id !== null) {
+      lines.push(`pipeline: ${item.id}`);
+    }
+    if (item.url) {
+      lines.push(`url: ${item.url}`);
+    }
+    const names = item.jobs.map((job) => job.name).filter((name) => name !== '');
+    lines.push(...(names.length > 0 ? names.map((name) => `job: ${name}`) : ['job: running']));
+  }
+  lines.push(...errors.map((error) => `cancel: ${error}`));
+  return lines.join('\n');
 }
 
 const READABLE_LINES = 200;
+const READABLE_CHARS = 20000;
 
 export function readableJobTrace(raw: string): string {
   const rawLines = raw.split(/\r?\n/);
@@ -406,7 +515,7 @@ export function readableJobTrace(raw: string): string {
       }
     }
   }
-  return cleanTrace(rawLines.slice(0, end).join('\n')).slice(-READABLE_LINES).join('\n');
+  return cleanTrace(rawLines.slice(0, end).join('\n')).slice(-READABLE_LINES).join('\n').slice(-READABLE_CHARS);
 }
 
 function cleanTrace(raw: string): string[] {

@@ -818,6 +818,8 @@ describe('code-review step', () => {
       const sent = agent.mock.calls.map((call) => call[0] as AgentRunInput).find((call) => call.step === 'code-review-requirements');
       expect(sent?.prompt).toContain('Remove the pending rebase catch-up');
       expect(sent?.prompt).toContain('A behavior it removes is not a missing requirement');
+      expect(sent?.prompt).toContain('The list below is the current one');
+      expect(sent?.prompt).toContain('is required and is never returned');
       const again = await history.findRun('PROJ-98');
       again!.currentStep = 'code-review';
       again!.status = 'waiting';
@@ -828,6 +830,8 @@ describe('code-review step', () => {
       const resumed = agent.mock.calls.map((call) => call[0] as AgentRunInput).find((call) => call.step === 'code-review-requirements');
       expect(resumed?.prompt).toContain('Do not return that behavior again');
       expect(resumed?.prompt).toContain('Remove the pending rebase catch-up');
+      expect(resumed?.prompt).toContain('The list below is the current one');
+      expect(resumed?.prompt).toContain('Do not return a finding that brings back what the failing pipeline log shows as the cause');
       const next = await history.findRun('PROJ-98');
       expect(next?.currentStep).toBe('commit');
       expect(next?.attemptsReview).toBe(1);

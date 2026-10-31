@@ -57,6 +57,8 @@ export abstract class AbstractCodeHost implements CodeHost {
 
   abstract readJobTrace(project: string, jobId: number): Promise<{ trace: string; httpCalls: HttpCallDraft[] }>;
 
+  abstract cancelPipeline(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }>;
+
   protected credentials(): { root: string; headers: Record<string, string> } {
     const env = readEnv(this.config);
     const missing = this.credentialKeys().find((name) => !env[name]);

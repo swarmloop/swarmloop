@@ -12,14 +12,14 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
 import { CommitService } from '../commit/commit.service';
-import { implementFollowUp, rebaseConflictPrompt, withAddedRepos } from '../follow-up';
+import { implementFollowUp, isPipelineReturn, rebaseConflictPrompt, withAddedRepos } from '../follow-up';
 import { git } from '../../git/git';
 import { composedReturn, parseSummary, recordHandoff, skillPrompt, textDocument, withHandoff, withModelStep, ModelStepContext } from '../model-step';
 import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.service';
-import { requireApprovedPlan } from '../plan/plan-record';
+import { correctedPlan, requireApprovedPlan, reviewedItems } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../repo-names';
 import { REBASE_CONFLICT, RebaseStop, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase-worktree';
-import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
+import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { parseImplementation, withReturnNotes } from './implement-record';
 
 @Injectable()
@@ -77,19 +77,44 @@ export class ImplementService {
     }
     const heads = await featureHeads(mounts, branch);
     const prompt = basePrompt;
-    const agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries() });
-    const text = agentResult.responseText;
+    const before = await worktreeSnapshot(mounts);
+    let agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries() });
     await assertUncommitted(mounts, branch, heads);
+    let planText = agentResult.responseText;
+    let planOutput = agentResult.output ?? '';
+    if (isPipelineReturn(notes) && (await worktreeSnapshot(mounts)) === before) {
+      agentResult = await ctx.launch({
+        prompt: `The pipeline failure still stands and the files are unchanged.\n\n${notes?.trim() ?? ''}`,
+        mounts,
+        allowHosts: packageRegistries(),
+      });
+      await assertUncommitted(mounts, branch, heads);
+      const againOutput = agentResult.output ?? '';
+      if (answerHasPlan(agentResult.responseText, againOutput)) {
+        planText = agentResult.responseText;
+        planOutput = againOutput;
+      }
+      if ((await worktreeSnapshot(mounts)) === before) {
+        const corrected = correctedPlan(ctx.requirements, planText, planOutput);
+        const docs = corrected
+          ? [await recordHandoff(this.history, key, 'implement', corrected.handoff), textDocument('requirements', corrected.requirements)]
+          : undefined;
+        return ctx.end('failed', 1, `${ctx.opened.startedAt} pipeline failure left unfixed`, undefined, docs);
+      }
+    }
+    const text = agentResult.responseText;
     const body = parseImplementation(text);
-    const summary = parseSummary(text);
+    const corrected = correctedPlan(ctx.requirements, planText, planOutput);
+    const summary = corrected ? `${parseSummary(text).trimEnd()}\n${corrected.handoff}` : parseSummary(text);
     const status = await worktreeStatus(mounts);
     const handoff = await recordHandoff(this.history, key, 'implement', summary);
+    const docs = corrected ? [handoff, textDocument('requirements', corrected.requirements)] : [handoff];
     return ctx.end(
       'ok',
       0,
       `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
       textDocument('implementation', body),
-      [handoff],
+      docs,
     );
   }
 
@@ -174,6 +199,17 @@ export class ImplementService {
   private failConflict(ctx: ModelStepContext, outcome: Extract<RebaseStop, { kind: 'conflict' }>): Promise<PipelineResult> {
     const detail = [outcome.files.join(', '), outcome.stderr.trim()].filter((part) => part.length > 0).join('\n');
     return ctx.end('failed', 1, `${ctx.opened.startedAt} ${outcome.repo} rebase failed: ${detail}`);
+  }
+}
+
+function answerHasPlan(text: string, output: string): boolean {
+  try {
+    return reviewedItems(text, output).length > 0;
+  } catch (error) {
+    if (error instanceof SwarmloopError && error.message === 'plan is empty') {
+      return false;
+    }
+    throw error;
   }
 }
 

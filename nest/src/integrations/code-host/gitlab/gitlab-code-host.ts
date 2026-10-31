@@ -59,8 +59,22 @@ export class GitlabCodeHost extends AbstractCodeHost {
         'gitlab pipeline failed',
       )) as GitlabPipeline;
       const status = detail.status ?? '';
-      const jobs = status === 'success' || status === 'failed' ? await this.failedJobs(base, headers, project, id, calls) : [];
+      const scopes = jobScopes(status);
+      const jobs = scopes ? await this.failedJobs(base, headers, project, id, scopes, calls) : [];
       return { snapshot: { id, status, url: detail.web_url ?? '', jobs }, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async cancelPipeline(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root: base, headers } = this.credentials();
+      const url = `${base}/api/v4/projects/${encodeURIComponent(project)}/pipelines/${id}/cancel`;
+      const response = await request(url, headers, calls, { method: 'POST' });
+      this.assertStatus(response.status, calls, 'gitlab pipeline failed');
+      return { httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }
@@ -153,6 +167,7 @@ export class GitlabCodeHost extends AbstractCodeHost {
     headers: Record<string, string>,
     project: string,
     pipelineId: number,
+    scopes: string[],
     calls: HttpCallDraft[],
   ): Promise<PipelineJob[]> {
     const jobs: PipelineJob[] = [];
@@ -162,7 +177,9 @@ export class GitlabCodeHost extends AbstractCodeHost {
       params.set('per_page', '100');
       params.set('page', String(page));
       params.set('include_retried', 'false');
-      params.append('scope[]', 'failed');
+      for (const scope of scopes) {
+        params.append('scope[]', scope);
+      }
       const url = `${base}/api/v4/projects/${project}/pipelines/${pipelineId}/jobs?${params.toString()}`;
       const response = await request(url, headers, calls);
       this.assertStatus(response.status, calls, 'gitlab pipeline failed');
@@ -199,16 +216,34 @@ function newestPipeline(body: unknown, sha = ''): number | null {
   return Math.max(...ids);
 }
 
+function jobScopes(status: string): string[] | null {
+  if (status === 'success') {
+    return ['failed'];
+  }
+  if (status === 'failed' || status === 'canceled') {
+    return ['failed', 'canceled'];
+  }
+  if (status === 'skipped' || status === 'manual' || status === '') {
+    return null;
+  }
+  return ['running', 'pending'];
+}
+
 function asJob(row: unknown): PipelineJob | null {
   const job = row as GitlabJob | null;
   if (!job?.id || job.retried === true) {
+    return null;
+  }
+  const canceled = job.status === 'canceled' || job.status === 'cancelled';
+  const status = canceled ? 'failed' : (job.status ?? 'failed');
+  if (status === 'success' || status === 'skipped' || status === 'manual') {
     return null;
   }
   return {
     id: job.id,
     name: job.name ?? String(job.id),
     stage: job.stage ?? '',
-    status: job.status ?? 'failed',
-    allowFailure: job.allow_failure === true,
+    status,
+    allowFailure: canceled ? false : job.allow_failure === true,
   };
 }

@@ -10,7 +10,7 @@ Write the smallest change that does the checklist. Keep to the structure and pat
 
 Package registries are reachable for a library install. Do not call Jira, GitLab, or any other host.
 
-End the answer with these two sections and nothing after them. One item per line. `implementation` says what changed. `summary` says why this way. After a return, fix the broken behavior named in the note. Do not add a mechanism it did not name. `summary` says that behavior now holds. If a finding was wrong for this codebase or version, say that in one line. A pipeline return is a test that failed on this commit. Change the code or that test. Do not leave those files as they are.
+End the answer with these two sections and nothing after them. One item per line. `implementation` says what changed. `summary` says why this way. After a return, fix the broken behavior named in the note. Do not add a mechanism it did not name. `summary` says that behavior now holds. If a finding was wrong for this codebase or version, say that in one line. A pipeline return is a test that failed on this commit. Change the code or that test. Do not leave those files as they are. A pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix. When an item changes, end with a plan: section holding the full corrected checklist, before implementation and summary. Without a contradiction, do not write plan:.
 
 ```
 implementation:

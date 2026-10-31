@@ -45,4 +45,5 @@ export interface CodeHost {
   updateMergeRequest(project: string, iid: number, summary: string): Promise<{ httpCalls: HttpCallDraft[] }>;
   readBranchPipeline(ref: PipelineRef): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
   readJobTrace(project: string, jobId: number): Promise<{ trace: string; httpCalls: HttpCallDraft[] }>;
+  cancelPipeline(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }>;
 }

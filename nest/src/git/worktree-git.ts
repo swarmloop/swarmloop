@@ -43,6 +43,17 @@ export async function assertUncommitted(
   }
 }
 
+/** Porcelain status plus the diff against HEAD, so two stamps match only when both are unchanged. */
+export async function worktreeSnapshot(mounts: SandboxMount[]): Promise<string> {
+  const status = await worktreeStatus(mounts);
+  const diffs: string[] = [];
+  for (const mount of mounts) {
+    const repo = basename(mount.hostPath);
+    diffs.push(await gitAt(mount.hostPath, repo, ['diff', 'HEAD'], 'status failed'));
+  }
+  return `${status}\n${diffs.join('\0')}`;
+}
+
 export async function worktreeStatus(mounts: SandboxMount[]): Promise<string> {
   const lines: string[] = [];
   for (const mount of mounts) {

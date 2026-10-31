@@ -44,8 +44,21 @@ export class GithubCodeHost extends AbstractCodeHost {
         return { snapshot: null, httpCalls: calls };
       }
       const status = runStatus(run);
-      const jobs = status === 'success' || status === 'failed' ? await this.failedJobs(api, headers, project, run.id, calls) : [];
+      const jobs = loadsJobs(status) ? await this.failedJobs(api, headers, project, run.id, calls) : [];
       return { snapshot: { id: run.id, status, url: run.html_url ?? '', jobs }, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async cancelPipeline(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root: api, headers } = this.credentials();
+      const url = `${api}/repos/${repoPath(project)}/actions/runs/${id}/cancel`;
+      const response = await request(url, headers, calls, { method: 'POST' });
+      this.assertStatus(response.status, calls, 'github pipeline failed');
+      return { httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }
@@ -153,9 +166,13 @@ export class GithubCodeHost extends AbstractCodeHost {
     }
     return jobs.flatMap((row) => {
       const job = asJob(row);
-      return job?.status === 'failed' ? [job] : [];
+      return job ? [job] : [];
     });
   }
+}
+
+function loadsJobs(status: string): boolean {
+  return status === 'success' || status === 'failed' || status === 'canceled' || status === 'running';
 }
 
 function repoPath(project: string): string {
@@ -211,6 +228,11 @@ function asJob(row: unknown): PipelineJob | null {
   if (!job?.id) {
     return null;
   }
-  const status = job.conclusion === 'failure' || job.conclusion === 'timed_out' ? 'failed' : (job.conclusion ?? job.status ?? '');
-  return { id: job.id, name: job.name ?? String(job.id), stage: '', status, allowFailure: false };
+  if (job.conclusion === 'failure' || job.conclusion === 'timed_out' || job.conclusion === 'cancelled') {
+    return { id: job.id, name: job.name ?? String(job.id), stage: '', status: 'failed', allowFailure: false };
+  }
+  if (job.status && job.status !== 'completed') {
+    return { id: job.id, name: job.name ?? String(job.id), stage: '', status: job.status, allowFailure: false };
+  }
+  return null;
 }
