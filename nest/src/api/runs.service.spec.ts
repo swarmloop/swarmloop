@@ -1733,7 +1733,7 @@ describe('runs api', () => {
     const { tree, clone } = featureWorktree(root, 'proj-67');
     const branch = 'feature/proj-67-ship-the-field';
     git(clone, ['switch', 'main']);
-    writeFileSync(join(clone, 'src', 'parts.ts'), 'export const a = 1;\nexport const b = 1;\n');
+    writeFileSync(join(clone, 'src', 'parts.ts'), 'export const a = 1;\nexport const mid = 1;\nexport const b = 1;\n');
     symlinkSync(outside, join(clone, 'src', 'hook.ts'));
     symlinkSync(outsideDir, join(clone, 'dir'));
     git(clone, ['add', 'src/parts.ts', 'src/hook.ts', 'dir']);
@@ -1741,7 +1741,7 @@ describe('runs api', () => {
     git(clone, ['push', 'origin', 'main']);
     git(tree, ['fetch', 'origin', 'main']);
     git(tree, ['merge', '--ff-only', 'origin/main']);
-    writeFileSync(join(tree, 'src', 'parts.ts'), 'export const a = 2;\nexport const b = 1;\n');
+    writeFileSync(join(tree, 'src', 'parts.ts'), 'export const a = 2;\nexport const mid = 1;\nexport const b = 1;\n');
     writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
     symlinkSync(outside, join(tree, 'src', 'ext.ts'));
     unlinkSync(join(tree, 'src', 'hook.ts'));
@@ -1751,7 +1751,7 @@ describe('runs api', () => {
     writeFileSync(join(tree, 'dir', 'inner.ts'), 'export const inner = 1;\n');
     git(tree, ['add', 'src/parts.ts', 'src/field.ts', 'src/ext.ts', 'src/hook.ts', 'dir/inner.ts']);
     git(tree, ['commit', '-m', 'feature']);
-    writeFileSync(join(clone, 'src', 'parts.ts'), 'export const a = 1;\nexport const b = 2;\n');
+    writeFileSync(join(clone, 'src', 'parts.ts'), 'export const a = 1;\nexport const mid = 1;\nexport const b = 2;\n');
     writeFileSync(join(clone, 'src', 'field.ts'), 'export const field = 2;\n');
     git(clone, ['add', 'src/parts.ts', 'src/field.ts']);
     git(clone, ['commit', '-m', 'base']);
@@ -1778,7 +1778,7 @@ describe('runs api', () => {
         expect(stop.commit).toBe('feat(proj-67): Ship the field');
       }
       expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toContain('<<<<<<<');
-      expect(readFileSync(join(tree, 'src', 'parts.ts'), 'utf8')).toBe('export const a = 2;\nexport const b = 2;\n');
+      expect(readFileSync(join(tree, 'src', 'parts.ts'), 'utf8')).toBe('export const a = 2;\nexport const mid = 1;\nexport const b = 2;\n');
       expect(lstatSync(join(tree, 'src', 'ext.ts')).isSymbolicLink()).toBe(true);
       expect(readlinkSync(join(tree, 'src', 'ext.ts'))).toBe(outside);
       expect(lstatSync(join(tree, 'src', 'hook.ts')).isFile()).toBe(true);
