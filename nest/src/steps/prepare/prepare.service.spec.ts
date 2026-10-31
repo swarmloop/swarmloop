@@ -14,7 +14,7 @@ import { AGENT_RUNNER } from '../../limits/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { PrepareService } from './prepare.service';
-import { PASTE_READER } from '../../providers/tokens';
+import { PASTE_READER } from '../../integrations/linked-pages/paste-page.reader';
 
 describe('prepare step', () => {
   it('fails when no project was stored and does not scan other repositories', async () => {
