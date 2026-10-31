@@ -13,7 +13,7 @@ import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER, AgentRunResult } from '../../limits/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
-import { MergeRequestDraft } from '../../providers/contracts';
+import { MergeRequestDraft } from '../../integrations/code-host/code-host';
 import { CodeHosts } from '../../providers/code-hosts';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { FetchFailed, HttpCallDraft } from '../../swarmloop-error';

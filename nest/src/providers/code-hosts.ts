@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { SwarmloopError } from '../swarmloop-error';
-import { CodeHost } from './contracts';
-import { GithubHostService } from './github/github-host.service';
-import { GitlabHostService } from './gitlab/gitlab-host.service';
+import { CodeHost } from '../integrations/code-host/code-host';
+import { GithubCodeHost } from '../integrations/code-host/github/github-code-host';
+import { GitlabCodeHost } from '../integrations/code-host/gitlab/gitlab-code-host';
 
 @Injectable()
 export class CodeHosts {
   constructor(
-    private readonly gitlab: GitlabHostService,
-    private readonly github: GithubHostService,
+    private readonly gitlab: GitlabCodeHost,
+    private readonly github: GithubCodeHost,
   ) {}
 
   get(name: string): CodeHost {

@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
-import { GithubHostService } from './github-host.service';
-import { FetchFailed } from '../../swarmloop-error';
+import { FetchFailed } from '../../../swarmloop-error';
+import { GithubCodeHost } from './github-code-host';
 
 const TOKEN = 'super-secret-token';
 
@@ -107,7 +107,7 @@ describe('github host', () => {
   });
 });
 
-function service(overrides: Record<string, string> = {}): GithubHostService {
+function service(overrides: Record<string, string> = {}): GithubCodeHost {
   const values: Record<string, string> = {
     RUNTIME: 'cursor',
     REQUIREMENTS_VIA: 'direct',
@@ -125,7 +125,7 @@ function service(overrides: Record<string, string> = {}): GithubHostService {
     getOrThrow: (key: string) => (key in values ? values[key] : 0),
     get: (key: string) => values[key],
   } as ConfigService;
-  return new GithubHostService(config);
+  return new GithubCodeHost(config);
 }
 
 function opened(): unknown {

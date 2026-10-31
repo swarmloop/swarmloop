@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
-import { GitlabHostService } from './gitlab-host.service';
-import { FetchFailed } from '../../swarmloop-error';
+import { FetchFailed } from '../../../swarmloop-error';
+import { GitlabCodeHost } from './gitlab-code-host';
 
 const TOKEN = 'super-secret-token';
 
@@ -184,7 +184,7 @@ describe('gitlab host', () => {
   });
 });
 
-function service(overrides: Record<string, string> = {}): GitlabHostService {
+function service(overrides: Record<string, string> = {}): GitlabCodeHost {
   const values: Record<string, string> = {
     RUNTIME: 'cursor',
     REQUIREMENTS_VIA: 'direct',
@@ -200,7 +200,7 @@ function service(overrides: Record<string, string> = {}): GitlabHostService {
     getOrThrow: (key: string) => (key in values ? values[key] : 0),
     get: (key: string) => values[key],
   } as ConfigService;
-  return new GitlabHostService(config);
+  return new GitlabCodeHost(config);
 }
 
 function opened(source = 'feature/PROJ-1-ship'): unknown {
