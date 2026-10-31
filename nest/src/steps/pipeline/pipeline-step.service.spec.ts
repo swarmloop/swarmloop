@@ -13,7 +13,7 @@ import { HistoryService } from '../../history/history.service';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { readableJobTrace } from './pipeline-step.service';
-import { PipelineJob, PipelineSnapshot } from '../../providers/contracts';
+import { PipelineJob, PipelineSnapshot } from '../../integrations/code-host/code-host';
 import { CodeHosts } from '../../providers/code-hosts';
 import { FetchFailed, HttpCallDraft } from '../../swarmloop-error';
 

@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HistoryModule } from '../history/history.module';
+import { GithubCodeHost } from '../integrations/code-host/github/github-code-host';
+import { GitlabCodeHost } from '../integrations/code-host/gitlab/gitlab-code-host';
 import { LinkedPagesService } from '../integrations/linked-pages/linked-pages';
 import { PASTE_READER, PastePageReader, TerminalPasteReader } from '../integrations/linked-pages/paste-page.reader';
 import { SandboxModule } from '../sandbox/sandbox.module';
@@ -9,8 +11,6 @@ import { RunStop } from '../limits/run-stop';
 import { AgentRequirementsService } from './requirements/agent-requirements.service';
 import { DirectRequirementsService } from './requirements/direct-requirements.service';
 import { CodeHosts } from './code-hosts';
-import { GithubHostService } from './github/github-host.service';
-import { GitlabHostService } from './gitlab/gitlab-host.service';
 import { JiraTrackerService } from './jira/jira-tracker.service';
 import { ServiceContextService } from './service-context';
 import { createIssueTracker, createRequirementsSource } from './provider.factory';
@@ -20,8 +20,8 @@ import { ISSUE_TRACKER, REQUIREMENTS_SOURCE } from './tokens';
   imports: [HistoryModule, SandboxModule],
   providers: [
     JiraTrackerService,
-    GitlabHostService,
-    GithubHostService,
+    GitlabCodeHost,
+    GithubCodeHost,
     CodeHosts,
     ServiceContextService,
     DirectRequirementsService,

@@ -7,7 +7,7 @@ import { DocumentDraft, sampleSelf } from '../../history/visit';
 import { PhaseName, PipelineResult, StepOptions, visitStatus } from '../../pipeline/pipeline-result';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { CodeHosts } from '../../providers/code-hosts';
-import { CodeHost, MergeRequestRecord } from '../../providers/contracts';
+import { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-host';
 import { requireHostCredentials, selectedHost } from '../../providers/host-credentials';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';

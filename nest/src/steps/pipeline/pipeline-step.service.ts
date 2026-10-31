@@ -9,7 +9,7 @@ import { HistoryService } from '../../history/history.service';
 import { DocumentDraft, sampleSelf } from '../../history/visit';
 import { PipelineResult, StepOptions } from '../../pipeline/pipeline-result';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
-import { CodeHost, PipelineJob, PipelineRef } from '../../providers/contracts';
+import { CodeHost, PipelineJob, PipelineRef } from '../../integrations/code-host/code-host';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../swarmloop-error';
 import { recordHandoff, returnNotes, textDocument } from '../model-step';
 import { git } from '../../git/git';
