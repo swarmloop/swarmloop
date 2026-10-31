@@ -19,6 +19,14 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export async function runLog(runKey: string, name: string): Promise<string | null> {
+  const response = await fetch(`/run-logs/${runKey}-${name}-output.txt`, { cache: 'no-store' });
+  if (!response.ok) {
+    return null;
+  }
+  return response.text();
+}
+
 async function errorMessage(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as { message?: string | string[] };
