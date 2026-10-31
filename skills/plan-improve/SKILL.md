@@ -1,4 +1,4 @@
-# Plan review
+# Plan improve
 
 The plan is already in the prompt. Check it for correctness, logical gaps, and inconsistencies. Fix those in the checklist. Return the full checklist implementation should follow.
 

@@ -74,12 +74,12 @@ describe('activeDurationMs', () => {
   it('adds the implementation between loop backs and keeps each code-review pass separate', () => {
     const total = activeDurationMs([
       part('implement', 200_000, { stepStartedAt: '2026-10-28T10:27:33.166Z' }),
-      part('implement-review', 50_000, { stepStartedAt: '2026-10-28T10:31:02.727Z' }),
+      part('implement-improve', 50_000, { stepStartedAt: '2026-10-28T10:31:02.727Z' }),
       part('code-review-quality', 409_599, { stepStartedAt: '2026-10-28T10:31:53.641Z' }),
       part('code-review-security', 259_340, { stepStartedAt: '2026-10-28T10:31:53.641Z' }),
       part('code-review', 453_238, { stepStartedAt: '2026-10-28T10:31:53.641Z', reportMs: 42_424 }),
       part('implement', 68_826, { stepStartedAt: '2026-10-28T11:09:56.361Z' }),
-      part('implement-review', 22_418, { stepStartedAt: '2026-10-28T11:11:06.676Z' }),
+      part('implement-improve', 22_418, { stepStartedAt: '2026-10-28T11:11:06.676Z' }),
       part('code-review-quality', 47_840, { stepStartedAt: '2026-10-28T11:11:29.817Z' }),
       part('code-review', 95_449, { stepStartedAt: '2026-10-28T11:11:29.817Z', reportMs: 43_342 }),
     ]);

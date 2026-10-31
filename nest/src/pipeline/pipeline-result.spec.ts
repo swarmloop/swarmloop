@@ -39,9 +39,9 @@ describe('phases', () => {
     expect(nextStep('requirements')).toBe('prepare');
     expect(nextStep('requirements', selected)).toBe('code-review');
     expect(nextStep('prepare', selected)).toBe('code-review');
-    expect(nextStep('plan-review')).toBe('branch');
+    expect(nextStep('plan-improve')).toBe('branch');
     expect(nextStep('branch')).toBe('implement');
-    expect(nextStep('plan-review', normalizePhases(['requirements', 'brainstorm']))).toBe('done');
+    expect(nextStep('plan-improve', normalizePhases(['requirements', 'brainstorm']))).toBe('done');
     expect(nextStep('code-review', selected)).toBe('done');
     expect(settle('requirements', 'running', 'requirements', 'ok', undefined, selected)).toEqual({
       currentStep: 'code-review',
@@ -71,8 +71,8 @@ describe('continues', () => {
 
   it('lets the third looping visit run and does not auto-start a fourth', () => {
     const run = { status: 'waiting' as const, currentStep: 'code-review' };
-    expect(autoContinues('implement-review', run, 2, 3)).toBe('code-review');
-    expect(autoContinues('implement-review', run, 3, 3)).toBeNull();
+    expect(autoContinues('implement-improve', run, 2, 3)).toBe('code-review');
+    expect(autoContinues('implement-improve', run, 3, 3)).toBeNull();
     expect(autoContinues('commit', { status: 'waiting', currentStep: 'pipeline' }, 3, 3)).toBeNull();
     expect(autoContinues('code-review', { status: 'waiting', currentStep: 'commit' }, 3, 3)).toBe('commit');
   });

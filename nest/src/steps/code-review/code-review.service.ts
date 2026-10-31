@@ -637,7 +637,7 @@ function fixNotes(documents: { kind: string; body: string }[], handoff: string |
   const same = reviewWhat.length > 0 && reviewWhat === implementWhat;
   return {
     implement: passNote(implementWhat, handoffSection(handoff, 'implement')),
-    reviewed: passNote(same ? '' : reviewWhat, handoffSection(handoff, 'implement-review')),
+    reviewed: passNote(same ? '' : reviewWhat, handoffSection(handoff, 'implement-improve')),
   };
 }
 

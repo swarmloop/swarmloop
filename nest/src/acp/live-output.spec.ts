@@ -5,13 +5,13 @@ import { join } from 'path';
 import { liveLogBody, liveLogCurrent, liveLogFinished, liveLogView, replaceLogFile } from './live-output';
 
 describe('live log files', () => {
-  it('reads a per-repo implement file and skips implement-review', async () => {
+  it('reads a per-repo implement file and skips implement-improve', async () => {
     const root = await mkdtemp(join(tmpdir(), 'sloop-log-'));
     mkdirSync(join(root, 'data'));
     writeFileSync(join(root, 'data', 'run-1-implement-swarmloop-output.txt'), 'implement\n');
-    writeFileSync(join(root, 'data', 'run-1-implement-review-swarmloop-output.txt'), 'review\n');
+    writeFileSync(join(root, 'data', 'run-1-implement-improve-swarmloop-output.txt'), 'review\n');
     expect(liveLogBody(root, 'run-1', 'implement')).toBe('implement\n');
-    expect(liveLogBody(root, 'run-1', 'implement-review')).toBe('review\n');
+    expect(liveLogBody(root, 'run-1', 'implement-improve')).toBe('review\n');
   });
 
   it('keeps each code reviewer on its own file', async () => {

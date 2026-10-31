@@ -14,10 +14,10 @@ export interface Charge {
 const REVIEWERS = CODE_REVIEWERS;
 
 export function modelForStep(step: string, env: { MODEL_RESEARCH: string; MODEL_PLAN: string; MODEL_IMPLEMENT: string }): string | null {
-  if (step === 'research' || step === 'plan' || step === 'plan-review' || step === 'merge-request' || step.startsWith('code-review-')) {
+  if (step === 'research' || step === 'plan' || step === 'plan-improve' || step === 'merge-request' || step.startsWith('code-review-')) {
     return env.MODEL_PLAN;
   }
-  if (step === 'implement' || step === 'implement-review') {
+  if (step === 'implement' || step === 'implement-improve') {
     return env.MODEL_IMPLEMENT;
   }
   return null;

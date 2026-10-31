@@ -8,10 +8,10 @@ export const STEPS = [
   'prepare',
   'research',
   'plan',
-  'plan-review',
+  'plan-improve',
   'branch',
   'implement',
-  'implement-review',
+  'implement-improve',
   'code-review',
   'commit',
   'merge-request',
@@ -43,8 +43,8 @@ export type PhaseName = (typeof PHASES)[number];
 
 const PHASE_STEPS: Record<PhaseName, readonly StepName[]> = {
   requirements: ['requirements'],
-  brainstorm: ['prepare', 'research', 'plan', 'plan-review'],
-  implementation: ['branch', 'implement', 'implement-review'],
+  brainstorm: ['prepare', 'research', 'plan', 'plan-improve'],
+  implementation: ['branch', 'implement', 'implement-improve'],
   'code-review': ['code-review'],
   ci: ['commit', 'merge-request', 'pipeline', 'done'],
 };

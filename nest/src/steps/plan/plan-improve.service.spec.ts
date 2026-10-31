@@ -17,18 +17,18 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 
 const reply = ['plan:', '- add the field', '', 'decision: approve'].join('\n');
 
-describe('plan-review step', () => {
+describe('plan-improve step', () => {
   it('stores a second plan and waits before implementation when approved', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-review-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-50', 'billing-api'), { recursive: true });
     const agent = jest.fn().mockResolvedValue(result(reply));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-50');
-      const done = await app.get(PipelineService).step('plan-review', 'PROJ-50');
+      const done = await app.get(PipelineService).step('plan-improve', 'PROJ-50');
       expect(done.exitCode).toBe(0);
-      expect(done.message).toContain('plan-review done');
+      expect(done.message).toContain('plan-improve done');
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
       expect(input.mode).toBe('plan');
       expect(input.model).toBe('opus-5.5-extra-high');
@@ -42,7 +42,7 @@ describe('plan-review step', () => {
       const run = await app.get(HistoryService).findRun('PROJ-50');
       expect(run?.currentStep).toBe('branch');
       expect(run?.status).toBe('waiting');
-      await app.get(PipelineService).step('plan-review', 'PROJ-50');
+      await app.get(PipelineService).step('plan-improve', 'PROJ-50');
       expect(await documents.find({ where: { kind: 'requirements' } })).toHaveLength(stored.length);
       expect((await app.get(HistoryService).findRun('PROJ-50'))?.currentStep).toBe('branch');
     } finally {
@@ -51,16 +51,16 @@ describe('plan-review step', () => {
   });
 
   it('stores a corrected checklist and advances to implementation', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-review-fix-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-fix-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-51', 'billing-api'), { recursive: true });
     const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field', '- cover the empty case'].join('\n')));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-51');
-      const done = await app.get(PipelineService).step('plan-review', 'PROJ-51');
+      const done = await app.get(PipelineService).step('plan-improve', 'PROJ-51');
       expect(done.exitCode).toBe(0);
-      expect(done.message).toContain('plan-review done');
+      expect(done.message).toContain('plan-improve done');
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       const stored = await documents.find({ where: { kind: 'requirements' }, order: { id: 'DESC' } });
       expect(JSON.parse(stored[0]?.body ?? '{}').plan).toEqual({
@@ -78,14 +78,14 @@ describe('plan-review step', () => {
   });
 
   it('keeps the given plan when the review returns no checklist', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-review-keep-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-keep-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-52', 'billing-api'), { recursive: true });
     const agent = jest.fn().mockResolvedValue(result('The checklist is already specific.'));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-52');
-      const done = await app.get(PipelineService).step('plan-review', 'PROJ-52');
+      const done = await app.get(PipelineService).step('plan-improve', 'PROJ-52');
       expect(done.exitCode).toBe(0);
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       const stored = await documents.find({ where: { kind: 'requirements' }, order: { id: 'DESC' } });
@@ -98,7 +98,7 @@ describe('plan-review step', () => {
   });
 
   it('resumes the plan chat with the follow-up', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-review-resume-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-resume-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-53', 'billing-api'), { recursive: true });
     mkdirSync(join(root, 'data'), { recursive: true });
@@ -110,12 +110,12 @@ describe('plan-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-53');
-      const done = await app.get(PipelineService).step('plan-review', 'PROJ-53');
+      const done = await app.get(PipelineService).step('plan-improve', 'PROJ-53');
       expect(done.exitCode).toBe(0);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
       expect(input.resumeChatId).toBe('chat-1');
       expect(input.prompt).toContain('logical gaps');
-      expect(input.prompt).not.toContain('# Plan review');
+      expect(input.prompt).not.toContain('# Plan improve');
       expect(input.prompt).not.toContain('ship the field');
       expect(input.prompt).not.toContain('add the field');
       expect(input.prompt).not.toContain('What previous steps did');
@@ -158,9 +158,9 @@ async function boot(root: string, agent: jest.Mock) {
 
 async function seed(app: Awaited<ReturnType<typeof boot>>, key: string): Promise<void> {
   const history = app.get(HistoryService);
-  const seeded = await history.begin(key, 'plan-review');
+  const seeded = await history.begin(key, 'plan-improve');
   seeded.status = 'waiting';
-  seeded.currentStep = 'plan-review';
+  seeded.currentStep = 'plan-improve';
   await history.saveRun(seeded);
   await history.putDocument(
     seeded,

@@ -215,13 +215,13 @@ describe('sloop', () => {
     const root = await mkdtemp(join(tmpdir(), 'sloop-watch-'));
     mkdirSync(join(root, 'data'));
     writeFileSync(
-      join(root, 'data', 'PROJ-1-implement-review-swarmloop-output.txt'),
+      join(root, 'data', 'PROJ-1-implement-improve-swarmloop-output.txt'),
       `${JSON.stringify({ type: 'thinking', subtype: 'delta', text: 'Reviewing the diff.' })}\n`,
     );
     const { agent, notes } = harness(
       {
         create: async () => ({ key: 'PROJ-1', status: 'started' }),
-        flow: flippingStep('implement-review'),
+        flow: flippingStep('implement-improve'),
       },
       undefined,
       root,

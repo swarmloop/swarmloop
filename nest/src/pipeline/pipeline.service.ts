@@ -18,9 +18,9 @@ import { BranchService } from '../steps/branch/branch.service';
 import { CommitService } from '../steps/commit/commit.service';
 import { MergeRequestService } from '../steps/merge-request/merge-request.service';
 import { CodeReviewService } from '../steps/code-review/code-review.service';
-import { ImplementReviewService } from '../steps/implement/implement-review.service';
+import { ImplementImproveService } from '../steps/implement/implement-improve.service';
 import { ImplementService } from '../steps/implement/implement.service';
-import { PlanReviewService } from '../steps/plan/plan-review.service';
+import { PlanImproveService } from '../steps/plan/plan-improve.service';
 import { PipelineStepService } from '../steps/pipeline/pipeline-step.service';
 import { PlanService } from '../steps/plan/plan.service';
 import { renderProjects, storedProjects } from '../steps/prepare/checkout-path';
@@ -47,9 +47,9 @@ export class PipelineService implements OnModuleInit {
     private readonly mergeRequest: MergeRequestService,
     private readonly pipelineStep: PipelineStepService,
     private readonly plan: PlanService,
-    private readonly planReview: PlanReviewService,
+    private readonly planImprove: PlanImproveService,
     private readonly implement: ImplementService,
-    private readonly implementReview: ImplementReviewService,
+    private readonly implementImprove: ImplementImproveService,
     private readonly codeReview: CodeReviewService,
     private readonly sandbox: SandboxService,
     private readonly config: ConfigService,
@@ -503,9 +503,9 @@ export class PipelineService implements OnModuleInit {
       research: (key, options) => this.research.execute(key, options),
       branch: (key) => this.branch.execute(key),
       plan: (key, options) => this.plan.execute(key, options),
-      'plan-review': (key, options) => this.planReview.execute(key, options),
+      'plan-improve': (key, options) => this.planImprove.execute(key, options),
       implement: (key, options) => this.implement.execute(key, options),
-      'implement-review': (key, options) => this.implementReview.execute(key, options),
+      'implement-improve': (key, options) => this.implementImprove.execute(key, options),
       'code-review': (key, options) => this.codeReview.execute(key, options),
       commit: (key) => this.commit.execute(key),
       'merge-request': (key, options) => this.mergeRequest.execute(key, options),
@@ -533,7 +533,7 @@ export class PipelineService implements OnModuleInit {
       const path = join(this.history.root(), 'worktrees', key);
       return existsSync(path) ? null : `worktrees/${key}`;
     }
-    if (name === 'plan-review' || name === 'implement') {
+    if (name === 'plan-improve' || name === 'implement') {
       const plan = readPlan(await this.history.latestBody(key, 'requirements'));
       return plan ? null : 'plan';
     }
@@ -639,7 +639,7 @@ export class PipelineService implements OnModuleInit {
 /** One pass, then the return loops. A stuck advance stops here. */
 const HOP_LIMIT = STEPS.length * 3;
 
-const MODEL_STEPS = new Set<StepName>(['research', 'plan', 'plan-review', 'implement', 'implement-review', 'code-review']);
+const MODEL_STEPS = new Set<StepName>(['research', 'plan', 'plan-improve', 'implement', 'implement-improve', 'code-review']);
 
 function isModelStep(name: StepName): boolean {
   return MODEL_STEPS.has(name);
@@ -672,7 +672,7 @@ function requiredKind(name: StepName): string | null {
     case 'branch':
     case 'plan':
       return 'repos';
-    case 'implement-review':
+    case 'implement-improve':
     case 'code-review':
       return 'implementation';
     case 'commit':

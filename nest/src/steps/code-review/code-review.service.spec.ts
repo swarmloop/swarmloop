@@ -406,7 +406,7 @@ describe('code-review step', () => {
       expect(calls.map((call) => call.step)).toEqual(['code-review-security', 'code-review-report']);
       expect(calls[0]?.resumeChatId).toBe('security-chat');
       expect(calls[0]?.prompt).toContain('You were interrupted before the decision');
-      expect(calls[0]?.prompt).not.toContain('Implement and implement-review have run');
+      expect(calls[0]?.prompt).not.toContain('Implement and implement-improve have run');
       expect((await history.findRun('PROJ-94'))?.currentStep).toBe('implement');
     } finally {
       await app.close();
@@ -543,7 +543,7 @@ describe('code-review step', () => {
     try {
       await seed(app, 'PROJ-87');
       const run = await app.get(HistoryService).findRun('PROJ-87');
-      await app.get(HistoryService).putDocument(run!, 'handoff', '## implement\n- changed the parser\n\n## implement-review\n- kept the parser\n');
+      await app.get(HistoryService).putDocument(run!, 'handoff', '## implement\n- changed the parser\n\n## implement-improve\n- kept the parser\n');
       await app.get(HistoryService).putDocument(run!, 'return', '## quality\nuse theme.alpha\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-87');
       expect(done.exitCode).toBe(0);
@@ -565,7 +565,7 @@ describe('code-review step', () => {
       expect(quality?.mode).toBe('ask');
       const handoff = await app.get(HistoryService).latestBody('PROJ-87', 'handoff');
       expect(handoff).toContain('## implement');
-      expect(handoff).toContain('## implement-review');
+      expect(handoff).toContain('## implement-improve');
       expect(handoff).toContain('## quality');
       expect(handoff).toContain('## requirements');
     } finally {
@@ -588,7 +588,7 @@ describe('code-review step', () => {
       await seed(app, 'PROJ-86');
       const run = await app.get(HistoryService).findRun('PROJ-86');
       await app.get(HistoryService).putDocument(run!, 'implementation', '- checked the parser\n');
-      await app.get(HistoryService).putDocument(run!, 'handoff', '## implement\n- the parser had to match the field\n\n## implement-review\n- the first pass already did\n');
+      await app.get(HistoryService).putDocument(run!, 'handoff', '## implement\n- the parser had to match the field\n\n## implement-improve\n- the first pass already did\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-86');
       expect(done.exitCode).toBe(0);
       const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
@@ -933,7 +933,7 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, attempts
   const history = app.get(HistoryService);
   const seeded = await history.begin(key, 'code-review');
   seeded.status = 'waiting';
-  seeded.currentStep = 'implement-review';
+  seeded.currentStep = 'implement-improve';
   seeded.attemptsReview = attemptsReview;
   seeded.agentCalls = agentCalls;
   await history.saveRun(seeded);
