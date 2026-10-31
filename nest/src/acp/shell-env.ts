@@ -1,7 +1,8 @@
 import { readFileSync } from 'fs';
+import { RUNTIME_NAMES, RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 
 export interface ShellConfig {
-  runtime: 'cursor' | 'claude';
+  runtime: RuntimeName;
   model: string;
   cursorKey: string;
   anthropicKey: string;
@@ -26,7 +27,7 @@ export function readShellConfig(file: string): ShellConfig {
     values.set(match[1], unquote(match[2].trim()));
   }
   const runtime = values.get('RUNTIME');
-  if (runtime !== 'cursor' && runtime !== 'claude') {
+  if (!isRuntimeName(runtime)) {
     throw new Error('RUNTIME is missing');
   }
   return {
@@ -37,6 +38,10 @@ export function readShellConfig(file: string): ShellConfig {
     oauthToken: values.get('CLAUDE_CODE_OAUTH_TOKEN') ?? '',
     checkoutsRoot: values.get('CHECKOUTS_ROOT'),
   };
+}
+
+function isRuntimeName(value: string | undefined): value is RuntimeName {
+  return RUNTIME_NAMES.some((name) => name === value);
 }
 
 function unquote(value: string): string {

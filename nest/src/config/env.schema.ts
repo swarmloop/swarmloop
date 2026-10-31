@@ -1,7 +1,8 @@
 import Joi from 'joi';
+import { RUNTIME_NAMES } from '../integrations/agent-runtime/agent-runtime.registry';
 
 export const envSchema = Joi.object({
-  RUNTIME: Joi.string().valid('cursor', 'claude').required(),
+  RUNTIME: Joi.string().valid(...RUNTIME_NAMES).required(),
   REQUIREMENTS_VIA: Joi.string().valid('agent', 'direct').required(),
   ISSUE_TRACKER: Joi.string().valid('jira').required(),
   JIRA_BASE_URL: Joi.string().allow('').required(),
