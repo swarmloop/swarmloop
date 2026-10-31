@@ -227,7 +227,8 @@ async function squashOffMount(input: {
   } catch (error) {
     throw new SwarmloopError(`${input.repo} rebase failed: ${rebaseStderr(gitStderr(error), input.hosts)}`);
   }
-  const merged = await squashMerge(input.tmp, tipSha);
+  const author = await cloneAuthor(input.cwd);
+  const merged = await squashMerge(input.tmp, tipSha, author);
   const unmerged = await cloneUnmerged(input.tmp, input.repo, input.hosts);
   if (unmerged.length > 0) {
     return landConflict({ ...input, baseSha, message: input.message, stderr: merged });
@@ -244,7 +245,7 @@ async function squashOffMount(input: {
     return null;
   }
   try {
-    await git(cloneArgs(input.tmp, [...(await cloneAuthor(input.cwd)), 'commit', '--no-verify', '-m', input.message]));
+    await git(cloneArgs(input.tmp, [...author, 'commit', '--no-verify', '-m', input.message]));
   } catch (error) {
     throw new SwarmloopError(`${input.repo} rebase failed: ${rebaseStderr(gitStderr(error), input.hosts)}`);
   }
@@ -374,9 +375,9 @@ async function baseRefFor(cwd: string, prompt: string | null, sha: string): Prom
   return originRef(names[0] ?? 'main');
 }
 
-async function squashMerge(tmp: string, tipSha: string): Promise<string> {
+async function squashMerge(tmp: string, tipSha: string, author: string[]): Promise<string> {
   try {
-    await git(cloneArgs(tmp, ['merge', '--squash', tipSha]));
+    await git(cloneArgs(tmp, [...author, 'merge', '--squash', tipSha]));
     return '';
   } catch (error) {
     return gitStderr(error);
