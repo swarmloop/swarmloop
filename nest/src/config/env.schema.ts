@@ -1,10 +1,11 @@
 import Joi from 'joi';
 import { RUNTIME_NAMES } from '../integrations/agent-runtime/agent-runtime.registry';
+import { IssueTrackerRegistry } from '../integrations/issue-tracker/issue-tracker.registry';
 
 export const envSchema = Joi.object({
   RUNTIME: Joi.string().valid(...RUNTIME_NAMES).required(),
   REQUIREMENTS_VIA: Joi.string().valid('agent', 'direct').required(),
-  ISSUE_TRACKER: Joi.string().valid('jira').required(),
+  ISSUE_TRACKER: Joi.string().valid(...IssueTrackerRegistry.names).required(),
   JIRA_BASE_URL: Joi.string().allow('').required(),
   JIRA_EMAIL: Joi.string().allow('').required(),
   JIRA_API_TOKEN: Joi.string().allow('').required(),

@@ -1,4 +1,4 @@
-import { IssuePage } from '../../providers/issue-bundle';
+import { IssuePage } from '../issue-tracker/issue-bundle';
 import { HttpCallDraft } from '../../swarmloop-error';
 
 export interface PageReadContext {

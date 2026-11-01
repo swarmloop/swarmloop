@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { basename } from 'path';
-import { readEnv } from '../../config/env';
-import { encodedBody, headersFor, LinkedPagesService } from '../../integrations/linked-pages/linked-pages';
-import { PageReadContext } from '../../integrations/linked-pages/page-reader';
-import { FetchFailed, HttpCallDraft, SwarmloopError, PasteNeeded } from '../../swarmloop-error';
-import { adfToMarkdown, collectUrls } from '../adf';
+import { readEnv } from '../../../config/env';
+import { HttpStatusError, request } from '../../../providers/http';
+import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../../swarmloop-error';
+import { encodedBody, headersFor, LinkedPagesService } from '../../linked-pages/linked-pages';
+import { PageReadContext } from '../../linked-pages/page-reader';
+import { AbstractIssueTracker } from '../abstract-issue-tracker';
 import { IssueBundle, IssueNote } from '../issue-bundle';
-import { HttpStatusError, request } from '../http';
+import { adfToMarkdown, collectUrls } from './adf';
 import { sameSiteIssueKey } from './jira-url';
 
 const ISSUE_KEY = /^[A-Z][A-Z0-9]+-\d+$/;
@@ -38,33 +39,15 @@ interface JiraField {
 }
 
 @Injectable()
-export class JiraTrackerService {
+export class JiraIssueTracker extends AbstractIssueTracker {
   constructor(
     private readonly config: ConfigService,
     private readonly linkedPages: LinkedPagesService,
-  ) {}
-
-  async fetch(key: string, runDir: string): Promise<{ bundle: IssueBundle; httpCalls: HttpCallDraft[] }> {
-    const calls: HttpCallDraft[] = [];
-    try {
-      const bundle = await this.load(key, runDir, calls);
-      return { bundle, httpCalls: calls };
-    } catch (error) {
-      if (error instanceof PasteNeeded) {
-        throw new PasteNeeded(error.url, calls);
-      }
-      if (error instanceof FetchFailed) {
-        throw error;
-      }
-      if (error instanceof SwarmloopError) {
-        throw error;
-      }
-      const message = error instanceof Error ? error.message : 'issue fetch failed';
-      throw new FetchFailed(message, calls);
-    }
+  ) {
+    super();
   }
 
-  private async load(key: string, runDir: string, calls: HttpCallDraft[]): Promise<IssueBundle> {
+  protected async loadIssue(key: string, runDir: string, calls: HttpCallDraft[]): Promise<IssueBundle> {
     const { base, headers } = this.credentials();
     const fields = await this.fieldList(base, headers, calls);
     const acceptanceId = fields.find((field) => /acceptance criteria/i.test(field.name))?.id ?? null;

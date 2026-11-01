@@ -3,7 +3,7 @@ import { activeDurationMs, toDurationParts } from '../../history/active-duration
 import { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { LiveSpend } from '../../live/live.hub';
 import { continuesSameStep, countedVisits, isLoopStep, isReviewStep, loopMark, pipelineStepOf, STEPS, StepName } from '../../pipeline/pipeline-result';
-import { jiraIssueKey } from '../../providers/jira/jira-url';
+import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered } from '../../steps/answers';
 import { items } from '../../steps/markdown-section';
 import { chipStatus, chipAttempts, reportChip, reviewerRound } from './chips';

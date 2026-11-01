@@ -16,7 +16,7 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
-import { IssueTracker } from '../../providers/contracts';
+import { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
 import { PASTE_READER } from '../../integrations/linked-pages/paste-page.reader';
 import { ISSUE_TRACKER } from '../../providers/tokens';
 import { requirementsBrief } from '../requirements-brief';
