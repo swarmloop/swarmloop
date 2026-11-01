@@ -4,6 +4,10 @@ describe('ClaudeRuntime', () => {
   const runtime = new ClaudeRuntime();
   const mounts = [{ containerPath: '/work/demo' }];
 
+  it('opens the brief directory', () => {
+    expect(runtime.briefArgs()).toEqual(['--add-dir', '/work/brief']);
+  });
+
   it('prints plan mode and agent mode with resume and mcp approval', () => {
     expect(
       runtime.printArgs({
@@ -21,6 +25,7 @@ describe('ClaudeRuntime', () => {
       '--model',
       'grok-4.7',
       '--verbose',
+      '--dangerously-skip-permissions',
       'read the worktrees',
     ]);
     expect(
@@ -42,6 +47,7 @@ describe('ClaudeRuntime', () => {
       '--resume',
       'chat-1',
       '--verbose',
+      '--dangerously-skip-permissions',
       'write the server',
     ]);
   });

@@ -421,6 +421,10 @@ export async function withModelStep(
 }
 
 export function agentFailure(result: AgentRunResult, step: string): string | null {
+  const denied = writeDenied(result.output);
+  if (denied) {
+    return `${step} failed: ${denied}`;
+  }
   if (result.killReason) {
     return `process killed: ${result.killReason}`;
   }
@@ -429,6 +433,31 @@ export function agentFailure(result: AgentRunResult, step: string): string | nul
     return detail ? `${step} failed: ${detail}` : `${step} failed`;
   }
   return null;
+}
+
+/** A refused Write or Edit is a failed step. The model must not finish with a summary instead. */
+function writeDenied(output: string | undefined): string | null {
+  if (!output) {
+    return null;
+  }
+  let message: string | null = null;
+  for (const line of output.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{') || !trimmed.includes('permission_denied')) {
+      continue;
+    }
+    try {
+      const record = JSON.parse(trimmed) as { subtype?: string; tool_name?: string; message?: string };
+      if (record.subtype !== 'permission_denied' || (record.tool_name !== 'Write' && record.tool_name !== 'Edit')) {
+        continue;
+      }
+      const text = typeof record.message === 'string' ? record.message.trim() : '';
+      message = (text || 'write permission denied').slice(0, 180);
+    } catch {
+      continue;
+    }
+  }
+  return message;
 }
 
 function shortFailure(output: string | undefined): string {

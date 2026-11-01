@@ -123,6 +123,12 @@ export function countedVisits(stats: { id: number; step: string }[], step: strin
   return stats.filter((item) => item.step === step && item.id > mark).length;
 }
 
+/** Failed visits of this step from the mark onward. The visit recorded as the mark still counts. */
+export function failedLaunches(stats: { id: number; step: string; status: string }[], step: string, mark: number): number {
+  const from = mark > 0 ? mark : 1;
+  return stats.filter((item) => item.step === step && item.status === 'failed' && item.id >= from).length;
+}
+
 export function nextStep(name: StepName, phases?: readonly PhaseName[]): StepName {
   const allowed = new Set(phases ?? PHASES);
   let index = STEPS.indexOf(name);

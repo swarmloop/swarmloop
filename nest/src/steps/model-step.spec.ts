@@ -242,6 +242,31 @@ describe('agentFailure', () => {
   it('drops a long stream', () => {
     expect(agentFailure({ ...emptyAgent(), exitCode: 1, output: 'x'.repeat(501) }, 'code-review')).toBe('code-review failed');
   });
+
+  it('fails a clean exit when a write was refused', () => {
+    const output = [
+      JSON.stringify({ type: 'system', subtype: 'permission_denied', tool_name: 'Bash', message: 'needs approval' }),
+      JSON.stringify({
+        type: 'system',
+        subtype: 'permission_denied',
+        tool_name: 'Write',
+        message: "Claude requested permissions to write to /work/swarmloop/nest/src/steps/step.ts, but you haven't granted it yet.",
+      }),
+    ].join('\n');
+    expect(agentFailure({ ...emptyAgent(), exitCode: 0, output }, 'implement')).toBe(
+      "implement failed: Claude requested permissions to write to /work/swarmloop/nest/src/steps/step.ts, but you haven't granted it yet.",
+    );
+  });
+
+  it('keeps a clean exit when only a shell command was refused', () => {
+    const output = JSON.stringify({
+      type: 'system',
+      subtype: 'permission_denied',
+      tool_name: 'Bash',
+      message: 'This Bash command contains multiple operations.',
+    });
+    expect(agentFailure({ ...emptyAgent(), exitCode: 0, output }, 'implement')).toBeNull();
+  });
 });
 
 function emptyAgent(): AgentRunResult {

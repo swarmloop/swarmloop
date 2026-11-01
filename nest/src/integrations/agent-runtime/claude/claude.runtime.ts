@@ -21,7 +21,7 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
   }
 
   briefArgs(): string[] {
-    return [];
+    return ['--add-dir', '/work/brief'];
   }
 
   protected partialOutputFlag(): string {
@@ -29,6 +29,6 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
   }
 
   protected appendPrintFlags(args: string[], _input: AgentPrintInput): void {
-    args.push('--verbose');
+    args.push('--verbose', '--dangerously-skip-permissions');
   }
 }

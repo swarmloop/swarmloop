@@ -31,7 +31,7 @@ import { ResearchService } from '../steps/research/research.service';
 import { joinPrompt, readPlan, withInstructions } from '../steps/plan/plan-record';
 import { CHAT_LOCK, chatHeld, chatResume, readChatLock } from './chat-lock';
 import { settleShell, shellHolding } from './shell-lock';
-import { assertKey, autoContinues, continuesSameStep, countedVisits, continues, diedLog, isStep, loopMark, PipelineResult, settle, STEPS, StepName, StepOptions } from './pipeline-result';
+import { assertKey, autoContinues, continuesSameStep, countedVisits, continues, diedLog, failedLaunches, isStep, loopMark, PipelineResult, settle, STEPS, StepName, StepOptions } from './pipeline-result';
 
 @Injectable()
 export class PipelineService implements OnModuleInit {
@@ -405,10 +405,21 @@ export class PipelineService implements OnModuleInit {
         return result;
       }
       const run = await this.history.findRun(key);
-      const next = continues(step, run);
       const mark = loopMark(await this.history.latestBody(key, 'loop_mark'));
-      const visits = next && run ? countedVisits(await this.history.listStats(run.id), next, mark) : 0;
-      const following = autoContinues(step, run, visits, readEnv(this.config).MAX_RETURNS);
+      const stats = run ? await this.history.listStats(run.id) : [];
+      const env = readEnv(this.config);
+      if (
+        run?.status === 'failed' &&
+        run.currentStep === step &&
+        step !== 'done' &&
+        failedLaunches(stats, step, mark) < env.MAX_LAUNCHES
+      ) {
+        stepOptions = { ...stepOptions, auto: true };
+        continue;
+      }
+      const next = continues(step, run);
+      const visits = next ? countedVisits(stats, next, mark) : 0;
+      const following = autoContinues(step, run, visits, env.MAX_RETURNS);
       if (!following) {
         return result;
       }

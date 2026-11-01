@@ -1,4 +1,4 @@
-import { autoContinues, continues, continuesSameStep, countedVisits, diedLog, loopMark, nextStep, normalizePhases, PHASES, settle, visitStatus } from './pipeline-result';
+import { autoContinues, continues, continuesSameStep, countedVisits, diedLog, failedLaunches, loopMark, nextStep, normalizePhases, PHASES, settle, visitStatus } from './pipeline-result';
 
 describe('visitStatus', () => {
   it('marks a finished success done and keeps a real pause waiting', () => {
@@ -88,5 +88,17 @@ describe('continues', () => {
     expect(loopMark(null)).toBe(0);
     expect(countedVisits(stats, 'code-review', 12)).toBe(1);
     expect(countedVisits(stats, 'code-review', 0)).toBe(4);
+  });
+
+  it('counts a failed visit that was recorded as the mark', () => {
+    const stats = [
+      { id: 4, step: 'code-review', status: 'done' },
+      { id: 9, step: 'implement', status: 'failed' },
+      { id: 10, step: 'code-review', status: 'failed' },
+    ];
+    expect(failedLaunches(stats, 'code-review', 10)).toBe(1);
+    expect(failedLaunches(stats, 'code-review', 4)).toBe(1);
+    expect(failedLaunches(stats, 'implement', 9)).toBe(1);
+    expect(failedLaunches(stats, 'code-review', 11)).toBe(0);
   });
 });
