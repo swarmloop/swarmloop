@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RequirementsInput, RequirementsSource, RequirementsWrite } from '../contracts';
+import { RequirementsInput, RequirementsSource, RequirementsWrite } from '../requirements-source';
 import { buildRecord, recordJson } from '../requirements-record';
 
 export function writeRecord(input: RequirementsInput): RequirementsWrite {

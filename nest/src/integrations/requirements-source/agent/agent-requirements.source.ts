@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { RequirementsInput, RequirementsSource, RequirementsWrite } from '../contracts';
-import { writeRecord } from './direct-requirements.service';
+import { RequirementsInput, RequirementsSource, RequirementsWrite } from '../requirements-source';
+import { writeRecord } from '../direct/direct-requirements.source';
 
 @Injectable()
 export class AgentRequirementsService implements RequirementsSource {

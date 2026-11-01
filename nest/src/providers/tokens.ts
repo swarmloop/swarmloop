@@ -1,2 +1,1 @@
 export const ISSUE_TRACKER = Symbol('ISSUE_TRACKER');
-export const REQUIREMENTS_SOURCE = Symbol('REQUIREMENTS_SOURCE');

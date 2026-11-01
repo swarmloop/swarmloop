@@ -10,8 +10,9 @@ import { PipelineResult, StepOptions } from '../../pipeline/pipeline-result';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
 import { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
-import { RequirementsSource, RequirementsWrite } from '../../providers/contracts';
-import { ISSUE_TRACKER, REQUIREMENTS_SOURCE } from '../../providers/tokens';
+import { REQUIREMENTS_SOURCE } from '../../integrations/requirements-source/requirements-source.module';
+import { RequirementsSource, RequirementsWrite } from '../../integrations/requirements-source/requirements-source';
+import { ISSUE_TRACKER } from '../../providers/tokens';
 import { recordHandoff } from '../model-step';
 
 @Injectable()
