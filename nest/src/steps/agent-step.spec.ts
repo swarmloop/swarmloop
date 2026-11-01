@@ -121,11 +121,13 @@ async function boot(root: string): Promise<TestingModule> {
   );
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
-    providers: [StubStep, { provide: SandboxService, useValue: { assertReady: jest.fn().mockResolvedValue(undefined) } }],
+    providers: [
+      StubStep,
+      { provide: SandboxService, useValue: { assertReady: jest.fn().mockResolvedValue(undefined) } },
+      { provide: AGENT_RUNNER, useValue: { run: jest.fn() } },
+    ],
   })
     .overrideProvider(PASTE_READER)
     .useValue({ read: jest.fn() })
-    .overrideProvider(AGENT_RUNNER)
-    .useValue({ run: jest.fn() })
     .compile();
 }
