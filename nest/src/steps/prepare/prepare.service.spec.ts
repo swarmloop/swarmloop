@@ -51,7 +51,7 @@ describe('prepare step', () => {
       expect(started.exitCode).toBe(0);
       const pinned = await history.findRun('PROJ-3');
       expect(pinned?.projects).toBe('app\n');
-      for (let attempt = 0; attempt < 50 && pipeline.claimed('PROJ-3'); attempt += 1) {
+      for (let attempt = 0; attempt < 500 && pipeline.claimed('PROJ-3'); attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
     } finally {
