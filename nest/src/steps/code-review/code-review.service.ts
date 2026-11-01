@@ -13,7 +13,7 @@ import { agentStateDir, SandboxMount } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
 import { liveLogBody } from '../../acp/live-output';
-import { REPORT_CONTINUE, reportFollowUp, reviewContinue, reviewResume } from '../follow-up';
+import { REPORT_CONTINUE, reportFollowUp, reviewContinue, reviewResume } from './code-review.prompts';
 import { withReturnNotes } from '../implement/implement-record';
 import { agentFailure, composedReturn, handoffSection, launchAgent, mergeHandoff, plainSummary, returnNotes, skillPrompt, summaryOr, textDocument, withHandoff } from '../model-step';
 import { storedProjects } from '../prepare/checkout-path';

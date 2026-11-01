@@ -1,53 +1,42 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { join } from 'path';
-import { readEnv } from '../../config/env';
+import { SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../limits/agent-runner';
 import { sessionFileName } from '../../limits/session-group';
 import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
+import { AgentSettings, AgentStep } from '../agent-step';
 import { PLAN_IMPROVE_FOLLOW_UP, withAddedRepos } from '../follow-up';
-import { plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, withModelStep, ModelStepContext } from '../model-step';
+import { plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, ModelStepContext } from '../model-step';
 import { mountsForStep, repoNames } from '../repo-names';
-import { Step, storedPlan } from '../step';
+import { storedPlan } from '../step';
 import { readPlan, reviewedItems, withPlan } from './plan-record';
 
 @Injectable()
-export class PlanImproveService implements Step {
+export class PlanImproveService extends AgentStep {
   readonly name: StepName = 'plan-improve';
-  readonly usesModel = true;
 
   constructor(
-    private readonly history: HistoryService,
-    private readonly config: ConfigService,
-    private readonly sandbox: SandboxService,
-    @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
-  ) {}
+    history: HistoryService,
+    config: ConfigService,
+    sandbox: SandboxService,
+    @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
+  ) {
+    super(history, config, sandbox, agent);
+  }
 
   missingInput(key: string): Promise<string | null> {
     return storedPlan(this.history, key);
   }
 
-  execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
-    const env = readEnv(this.config);
-    return withModelStep(
-      { history: this.history, sandbox: this.sandbox, agent: this.agent },
-      {
-        key,
-        step: 'plan-improve',
-        mode: 'plan',
-        model: env.MODEL_PLAN,
-        timeLimitMs: env.PLAN_TIMEOUT_MS,
-        runtime: env.RUNTIME,
-        auto: options.auto,
-      },
-      (ctx) => this.review(key, ctx),
-    );
+  protected settings(env: SwarmloopEnv, options: StepOptions): AgentSettings {
+    return { mode: 'plan', model: env.MODEL_PLAN, timeLimitMs: env.PLAN_TIMEOUT_MS, runtime: env.RUNTIME, auto: options.auto };
   }
 
-  private async review(key: string, ctx: ModelStepContext): Promise<PipelineResult> {
+  protected async body(key: string, ctx: ModelStepContext): Promise<PipelineResult> {
     const requirements = (await this.history.latestBody(key, 'requirements')) ?? '';
     const plan = readPlan(requirements);
     if (!plan) {

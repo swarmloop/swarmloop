@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { join } from 'path';
-import { readEnv, SwarmloopEnv } from '../../config/env';
+import { SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../limits/agent-runner';
 import { sessionFileName } from '../../limits/session-group';
@@ -9,49 +9,39 @@ import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-r
 import { packageRegistries } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
+import { AgentSettings, AgentStep } from '../agent-step';
 import { branchName, summaryForBranch } from '../branch/branch-name';
-import { IMPLEMENT_IMPROVE_FOLLOW_UP, withAddedRepos } from '../follow-up';
-import { composedReturn, ModelStepContext, plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, withModelStep } from '../model-step';
+import { withAddedRepos } from '../follow-up';
+import { IMPLEMENT_IMPROVE_FOLLOW_UP } from './implement.prompts';
+import { composedReturn, ModelStepContext, plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff } from '../model-step';
 import { correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames } from '../repo-names';
-import { Step, requiredDocument } from '../step';
+import { requiredDocument } from '../step';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
 import { reviewedImplementation, withReturnNotes } from './implement-record';
 
 @Injectable()
-export class ImplementImproveService implements Step {
+export class ImplementImproveService extends AgentStep {
   readonly name: StepName = 'implement-improve';
-  readonly usesModel = true;
 
   constructor(
-    private readonly history: HistoryService,
-    private readonly config: ConfigService,
-    private readonly sandbox: SandboxService,
-    @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
-  ) {}
+    history: HistoryService,
+    config: ConfigService,
+    sandbox: SandboxService,
+    @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
+  ) {
+    super(history, config, sandbox, agent);
+  }
 
   missingInput(key: string): Promise<string | null> {
     return requiredDocument(this.history, key, 'implementation');
   }
 
-  execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
-    const env = readEnv(this.config);
-    return withModelStep(
-      { history: this.history, sandbox: this.sandbox, agent: this.agent },
-      {
-        key,
-        step: 'implement-improve',
-        mode: 'agent',
-        model: env.MODEL_IMPLEMENT,
-        timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
-        runtime: env.RUNTIME,
-        auto: options.auto,
-      },
-      (ctx) => this.review(key, ctx, env, options.auto),
-    );
+  protected settings(env: SwarmloopEnv, options: StepOptions): AgentSettings {
+    return { mode: 'agent', model: env.MODEL_IMPLEMENT, timeLimitMs: env.IMPLEMENT_TIMEOUT_MS, runtime: env.RUNTIME, auto: options.auto };
   }
 
-  private async review(key: string, ctx: ModelStepContext, env: SwarmloopEnv, auto?: boolean): Promise<PipelineResult> {
+  protected async body(key: string, ctx: ModelStepContext, env: SwarmloopEnv, options: StepOptions): Promise<PipelineResult> {
     const plan = requireApprovedPlan(await this.history.latestBody(key, 'requirements'));
     const notes = await this.history.latestBody(key, 'implementation');
     if (!notes?.trim()) {
@@ -59,7 +49,7 @@ export class ImplementImproveService implements Step {
     }
     const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
     const mounts = mountsForStep(this.history.root(), key, names, ctx.opened.run.targetPath);
-    if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
+    if (options.auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
       return ctx.end('blocked', 1, `${ctx.opened.startedAt} implement-improve does not fit`);
     }
     const returned = composedReturn(await this.history.listDocuments(ctx.opened.run.id));

@@ -2,52 +2,40 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { basename, join } from 'path';
-import { readEnv } from '../../config/env';
+import { SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER, AgentProcessRunner } from '../../limits/agent-runner';
 import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
+import { AgentSettings, AgentStep } from '../agent-step';
 import { renderProjects, storedProjects } from '../prepare/checkout-path';
-import { plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, withModelStep, ModelStepContext } from '../model-step';
+import { plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, ModelStepContext } from '../model-step';
 import { mountsForStep } from '../repo-names';
-import { Step } from '../step';
 import { parseResearch } from './research-record';
 
 @Injectable()
-export class ResearchService implements Step {
+export class ResearchService extends AgentStep {
   readonly name: StepName = 'research';
-  readonly usesModel = true;
 
   constructor(
-    private readonly history: HistoryService,
-    private readonly config: ConfigService,
-    private readonly sandbox: SandboxService,
-    @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
-  ) {}
+    history: HistoryService,
+    config: ConfigService,
+    sandbox: SandboxService,
+    @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
+  ) {
+    super(history, config, sandbox, agent);
+  }
 
   async missingInput(key: string): Promise<string | null> {
     return existsSync(join(this.history.root(), 'worktrees', key)) ? null : `worktrees/${key}`;
   }
 
-  execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
-    const env = readEnv(this.config);
-    return withModelStep(
-      { history: this.history, sandbox: this.sandbox, agent: this.agent },
-      {
-        key,
-        step: 'research',
-        mode: 'plan',
-        model: env.MODEL_PLAN,
-        timeLimitMs: env.RESEARCH_TIMEOUT_MS,
-        runtime: env.RUNTIME,
-        auto: options.auto,
-      },
-      (ctx) => this.ask(ctx),
-    );
+  protected settings(env: SwarmloopEnv, options: StepOptions): AgentSettings {
+    return { mode: 'plan', model: env.MODEL_PLAN, timeLimitMs: env.RESEARCH_TIMEOUT_MS, runtime: env.RUNTIME, auto: options.auto };
   }
 
-  private async ask(ctx: ModelStepContext): Promise<PipelineResult> {
+  protected async body(_key: string, ctx: ModelStepContext): Promise<PipelineResult> {
     const stored = storedProjects(ctx.opened.run.projects);
     const names = stored.length > 0 ? stored : listWorktrees(ctx.workspace);
     if (names.length === 0) {

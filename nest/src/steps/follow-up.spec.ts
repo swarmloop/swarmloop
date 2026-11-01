@@ -1,12 +1,14 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { IMPLEMENT_IMPROVE_FOLLOW_UP, implementFollowUp, PLAN_IMPROVE_FOLLOW_UP, planFollowUp, REPORT_CONTINUE, reviewContinue, reviewResume, withAddedRepos } from './follow-up';
+import { REPORT_CONTINUE, reviewContinue, reviewResume } from './code-review/code-review.prompts';
+import { IMPLEMENT_IMPROVE_FOLLOW_UP, implementFollowUp } from './implement/implement.prompts';
+import { PLAN_IMPROVE_FOLLOW_UP, planFollowUp, withAddedRepos } from './follow-up';
 import { LINKED_CONTEXT, TASK_SCOPE } from './requirements-brief';
 
 const skillText = (name: string): string => readFileSync(join(__dirname, '../../../skills', name, 'SKILL.md'), 'utf8');
 
 // Plan, plan-improve, and implement carry this code-quality standard, word for word,
-// so the first turn (SKILL.md) and the resume (follow-up.ts) can never drift apart.
+// so the first turn (SKILL.md) and the resume (follow-up.ts, implement/implement.prompts.ts) can never drift apart.
 const CODE_STANDARD =
   'Keep to the structure and patterns already in the tree, and keep it clean, simple, and straightforward: DRY, KISS, SOLID. ' +
   'Favor clear, well-factored code over clever or cramped code: each function, module, and layer has one clear responsibility. ' +

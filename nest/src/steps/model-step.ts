@@ -5,14 +5,11 @@ import { RunEntity } from '../history/entities';
 import { DocumentDraft } from '../history/visit';
 import { AgentProcessRunner, AgentRunResult, readSession } from '../limits/agent-runner';
 import { sessionFileName } from '../limits/session-group';
-import { PipelineResult, StepName, visitStatus } from '../pipeline/pipeline-result';
-import { closeStep, OpenedStep, openStep } from '../pipeline/step-run';
+import { PipelineResult, StepName } from '../pipeline/pipeline-result';
+import { OpenedStep } from '../pipeline/step-run';
 import { SandboxMount } from '../sandbox/sandbox-launch';
-import { SandboxService } from '../sandbox/sandbox.service';
-import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SwarmloopError } from '../swarmloop-error';
 import { bulletSection } from './markdown-section';
-import { modelVisit } from './model-visit';
 import { requirementsBrief } from './requirements-brief';
 
 export function textDocument(kind: string, body: string): DocumentDraft {
@@ -130,48 +127,6 @@ export function composedReturn(documents: { kind: string; body: string }[]): str
 
 function hasLine(body: string, line: string): boolean {
   return body.split(/\r?\n/).some((item) => item.trim() === line);
-}
-
-export function bindModelStep(input: {
-  history: HistoryService;
-  opened: OpenedStep;
-  step: StepName;
-  mode: string;
-  model: string;
-  agent: () => AgentRunResult | null;
-  prompt: () => string;
-}): (
-  outcome: 'ok' | 'failed' | 'waiting' | 'blocked',
-  exitCode: number,
-  line: string,
-  document?: DocumentDraft,
-  documents?: DocumentDraft[],
-  moveTo?: StepName,
-) => Promise<PipelineResult> {
-  return (outcome, exitCode, line, document, documents, moveTo) =>
-    closeStep({
-      history: input.history,
-      run: input.opened.run,
-      previousStep: input.opened.previousStep,
-      previousStatus: input.opened.previousStatus,
-      step: input.step,
-      outcome,
-      visit: modelVisit({
-        opened: input.opened,
-        step: input.step,
-        mode: input.mode,
-        model: input.model,
-        agent: input.agent(),
-        prompt: input.prompt(),
-        status: visitStatus(outcome),
-        exitCode,
-        document,
-        documents,
-      }),
-      line,
-      exitCode,
-      moveTo,
-    });
 }
 
 export function workingDirectoryBlock(names: string[], mounts: SandboxMount[]): string {
@@ -344,80 +299,6 @@ function outputCovers(later: string, earlier: string): boolean {
   const strip = (text: string): string => text.split('process started\n').join('');
   const plain = strip(earlier);
   return plain.length > 0 && strip(later).includes(plain);
-}
-
-export async function withModelStep(
-  deps: { history: HistoryService; sandbox: SandboxService; agent: AgentProcessRunner },
-  input: {
-    key: string;
-    step: StepName;
-    mode: string;
-    model: string;
-    timeLimitMs: number;
-    runtime: RuntimeName;
-    auto?: boolean;
-  },
-  body: (ctx: ModelStepContext) => Promise<PipelineResult>,
-): Promise<PipelineResult> {
-  const opened = await openStep(deps.history, input.key, input.step);
-  let prompt = '';
-  let agentResult: AgentRunResult | null = null;
-  const launched: AgentRunResult[] = [];
-  const end = bindModelStep({
-    history: deps.history,
-    opened,
-    step: input.step,
-    mode: input.mode,
-    model: input.model,
-    agent: () => agentResult,
-    prompt: () => prompt,
-  });
-  const ctx: ModelStepContext = {
-    opened,
-    requirements: '',
-    workspace: join(deps.history.root(), 'worktrees', input.key),
-    end,
-    launch: async (launch) => {
-      const result = await launchAgent({
-        agent: deps.agent,
-        history: deps.history,
-        run: opened.run,
-        key: input.key,
-        step: launch.label ? `${input.step}-${launch.label}` : input.step,
-        liveStep: input.step,
-        mode: input.mode,
-        model: input.model,
-        timeLimitMs: input.timeLimitMs,
-        auto: input.auto,
-        prompt: launch.prompt,
-        workspace: ctx.workspace,
-        mounts: launch.mounts,
-        allowHosts: launch.allowHosts,
-        resume: launch.resume,
-        continuePrompt: launch.continuePrompt,
-      });
-      prompt = prompt ? `${prompt}\n\n${launch.prompt}` : launch.prompt;
-      launched.push(result);
-      agentResult = combineAgentResults(launched);
-      const failed = agentFailure(result, input.step);
-      if (failed) {
-        throw new SwarmloopError(failed);
-      }
-      return result;
-    },
-  };
-  try {
-    await deps.sandbox.assertReady(input.runtime);
-    const requirements = await deps.history.latestBody(input.key, 'requirements');
-    if (!requirements) {
-      throw new SwarmloopError('requirements is missing');
-    }
-    ctx.requirements = requirements;
-    return await body(ctx);
-  } catch (error) {
-    const message = error instanceof SwarmloopError ? error.message : `${input.step} failed`;
-    return end('failed', 1, `${opened.startedAt} ${message}`);
-  }
 }
 
 export function agentFailure(result: AgentRunResult, step: string): string | null {

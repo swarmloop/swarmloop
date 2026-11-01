@@ -9,58 +9,48 @@ import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-r
 import { packageRegistries } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
+import { AgentSettings, AgentStep } from '../agent-step';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
 import { CommitService } from '../commit/commit.service';
-import { implementFollowUp, isPipelineReturn, rebaseConflictPrompt, withAddedRepos } from '../follow-up';
+import { withAddedRepos } from '../follow-up';
+import { implementFollowUp, isPipelineReturn, rebaseConflictPrompt } from './implement.prompts';
 import { git, gitDetail } from '../../git/git';
-import { composedReturn, parseSummary, recordHandoff, skillPrompt, textDocument, withHandoff, withModelStep, ModelStepContext } from '../model-step';
+import { composedReturn, parseSummary, recordHandoff, skillPrompt, textDocument, withHandoff, ModelStepContext } from '../model-step';
 import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.service';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../repo-names';
-import { Step, storedPlan } from '../step';
+import { storedPlan } from '../step';
 import { REBASE_CONFLICT, RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase-worktree';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { parseImplementation, withReturnNotes } from './implement-record';
 
 @Injectable()
-export class ImplementService implements Step {
+export class ImplementService extends AgentStep {
   readonly name: StepName = 'implement';
-  readonly usesModel = true;
 
   constructor(
-    private readonly history: HistoryService,
-    private readonly config: ConfigService,
-    private readonly sandbox: SandboxService,
+    history: HistoryService,
+    config: ConfigService,
+    sandbox: SandboxService,
     private readonly commit: CommitService,
-    @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
-  ) {}
+    @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
+  ) {
+    super(history, config, sandbox, agent);
+  }
 
   missingInput(key: string): Promise<string | null> {
     return storedPlan(this.history, key);
   }
 
-  execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
-    const env = readEnv(this.config);
-    return withModelStep(
-      { history: this.history, sandbox: this.sandbox, agent: this.agent },
-      {
-        key,
-        step: 'implement',
-        mode: 'agent',
-        model: env.MODEL_IMPLEMENT,
-        timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
-        runtime: env.RUNTIME,
-        auto: options.auto,
-      },
-      (ctx) => this.apply(key, ctx, env, options.auto),
-    );
+  protected settings(env: SwarmloopEnv, options: StepOptions): AgentSettings {
+    return { mode: 'agent', model: env.MODEL_IMPLEMENT, timeLimitMs: env.IMPLEMENT_TIMEOUT_MS, runtime: env.RUNTIME, auto: options.auto };
   }
 
-  private async apply(key: string, ctx: ModelStepContext, env: SwarmloopEnv, auto?: boolean): Promise<PipelineResult> {
+  protected async body(key: string, ctx: ModelStepContext, env: SwarmloopEnv, options: StepOptions): Promise<PipelineResult> {
     const plan = requireApprovedPlan(await this.history.latestBody(key, 'requirements'));
     const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
     const mounts = mountsForStep(this.history.root(), key, names, ctx.opened.run.targetPath);
-    if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
+    if (options.auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
       return ctx.end('blocked', 1, `${ctx.opened.startedAt} implement does not fit`);
     }
     const notes = composedReturn(await this.history.listDocuments(ctx.opened.run.id));
