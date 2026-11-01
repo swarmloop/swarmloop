@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { execFileSync } from 'child_process';
+import type { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync } from 'fs';
@@ -14,7 +15,7 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { readableJobTrace } from './pipeline-step.service';
 import { PipelineJob, PipelineSnapshot } from '../../integrations/code-host/code-host';
-import { CodeHosts } from '../../providers/code-hosts';
+import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { FetchFailed, HttpCallDraft } from '../../swarmloop-error';
 
 const TOKEN = 'super-secret-token';
@@ -725,15 +726,23 @@ async function boot(
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })
-    .overrideProvider(CodeHosts)
-    .useValue({
-      get: () => ({
-        findMergeRequest: jest.fn(),
-        openMergeRequest: jest.fn(),
-        readBranchPipeline: read,
-        readJobTrace: trace,
-        cancelPipeline: cancel,
-      }),
+    .overrideProvider(CodeHostRegistry)
+    .useFactory({
+      factory: () => {
+        const config = {
+          getOrThrow: (key: string) => process.env[key] ?? '',
+          get: (key: string) => process.env[key],
+        } as ConfigService;
+        const registry = CodeHostRegistry.create(config);
+        jest.spyOn(registry, 'byName').mockReturnValue({
+          findMergeRequest: jest.fn(),
+          openMergeRequest: jest.fn(),
+          readBranchPipeline: read,
+          readJobTrace: trace,
+          cancelPipeline: cancel,
+        } as never);
+        return registry;
+      },
     })
     .compile();
 }

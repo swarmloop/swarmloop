@@ -3,8 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { readEnv, SwarmloopEnv } from '../../config/env';
-import { CodeHosts } from '../../providers/code-hosts';
-import { requireHostCredentials } from '../../providers/host-credentials';
+import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { HistoryService } from '../../history/history.service';
 import { DocumentDraft, sampleSelf } from '../../history/visit';
 import { PipelineResult, StepOptions } from '../../pipeline/pipeline-result';
@@ -41,7 +40,7 @@ export class PipelineStepService {
   constructor(
     private readonly history: HistoryService,
     private readonly config: ConfigService,
-    private readonly hosts: CodeHosts,
+    private readonly registry: CodeHostRegistry,
   ) {}
 
   async execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
@@ -54,8 +53,8 @@ export class PipelineStepService {
       if (records.length === 0 && skipped) {
         return await this.finish(opened, 'ok', 0, this.report(opened, skipped), 'skipped', calls, skipped);
       }
-      this.credentials(env, opened.run.codeHost);
-      const host = this.hosts.get(opened.run.codeHost);
+      this.registry.requiredCredentials(opened.run.codeHost);
+      const host = this.registry.byName(opened.run.codeHost);
       if (records.length === 0) {
         throw new SwarmloopError('pipeline ref is missing');
       }
@@ -68,10 +67,6 @@ export class PipelineStepService {
       const message = error instanceof SwarmloopError ? error.message : 'pipeline failed';
       return this.finish(opened, 'failed', 1, this.report(opened, message), 'failed', calls);
     }
-  }
-
-  private credentials(env: SwarmloopEnv, name: string): void {
-    requireHostCredentials(env, name);
   }
 
   /** Repo names that have a workflow file and no run. Null when the repo list is missing. */

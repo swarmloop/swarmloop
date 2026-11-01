@@ -12,7 +12,7 @@ import { DenyPathEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
-import { CI_SKIPPED, githubPushUrl, gitlabPushUrl } from './commit.service';
+import { CI_SKIPPED } from './commit.service';
 
 describe('commit step', () => {
   it('commits and pushes when ci is selected and origin exists', async () => {
@@ -239,20 +239,6 @@ describe('commit step', () => {
     } finally {
       await app.close();
     }
-  });
-
-  it('builds a gitlab https push url from ssh origin', () => {
-    expect(gitlabPushUrl('git@gitlab.example:group/demo.git', 'https://gitlab.example', 'tok')).toBe(
-      'https://oauth2:tok@gitlab.example/group/demo.git',
-    );
-    expect(gitlabPushUrl('/tmp/demo.git', 'https://gitlab.example', 'tok')).toBeNull();
-  });
-
-  it('builds a github https push url from ssh origin', () => {
-    expect(githubPushUrl('git@github.com:acme/demo.git', 'https://github.com', 'tok')).toBe(
-      'https://x-access-token:tok@github.com/acme/demo.git',
-    );
-    expect(githubPushUrl('git@gitlab.example:group/demo.git', 'https://github.com', 'tok')).toBeNull();
   });
 
   it('names a missing token when origin is ssh', async () => {

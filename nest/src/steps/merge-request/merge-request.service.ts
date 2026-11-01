@@ -1,14 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { existsSync, statSync } from 'fs';
-import { readEnv, SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { DocumentDraft, sampleSelf } from '../../history/visit';
 import { PhaseName, PipelineResult, StepOptions, visitStatus } from '../../pipeline/pipeline-result';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
-import { CodeHosts } from '../../providers/code-hosts';
 import { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-host';
-import { requireHostCredentials, selectedHost } from '../../providers/host-credentials';
+import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
 import { git, gitDetail, gitMissing } from '../../git/git';
@@ -33,21 +30,19 @@ interface Tree {
 export class MergeRequestService {
   constructor(
     private readonly history: HistoryService,
-    private readonly config: ConfigService,
-    private readonly hosts: CodeHosts,
+    private readonly registry: CodeHostRegistry,
   ) {}
 
   async execute(key: string, _options: StepOptions = {}): Promise<PipelineResult> {
     const opened = await openStep(this.history, key, 'merge-request');
-    const env = readEnv(this.config);
     const calls: HttpCallDraft[] = [];
     try {
       const skipped = ((await this.history.latestBody(key, 'ci_skip')) ?? '').trim();
       if (skipped) {
         return this.finish(opened, 'ok', 0, `${opened.startedAt} ${skipped}`, calls, undefined, '');
       }
-      this.credentials(env, opened.run.codeHost);
-      const client = this.hosts.get(opened.run.codeHost);
+      this.registry.requiredCredentials(opened.run.codeHost);
+      const client = this.registry.byName(opened.run.codeHost);
       const phases = await this.history.activePhases(opened.run.id);
       const requirements = await this.history.latestBody(key, 'requirements');
       if (!requirements?.trim()) {
@@ -56,7 +51,7 @@ export class MergeRequestService {
       const title = summaryForBranch(requirements, key);
       const branch = branchName(key, title);
       const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
-      const trees = await this.trees(key, names, branch, env, calls, opened.run.codeHost, client);
+      const trees = await this.trees(key, names, branch, calls, opened.run.codeHost, client);
       const drafted = await this.describe(key, trees, phases);
       const skip = ((await this.history.latestBody(key, REBASE_MERGE_SKIP)) ?? '').trim() === 'skip';
       const records = await this.ensure(drafted, title, calls, skip, client);
@@ -73,20 +68,15 @@ export class MergeRequestService {
     }
   }
 
-  private credentials(env: SwarmloopEnv, name: string): void {
-    requireHostCredentials(env, name);
-  }
-
   private async trees(
     key: string,
     names: string[],
     branch: string,
-    env: SwarmloopEnv,
     calls: HttpCallDraft[],
     codeHost: string,
     client: CodeHost,
   ): Promise<Tree[]> {
-    const selected = selectedHost(env, codeHost);
+    const selected = this.registry.credentials(codeHost);
     const host = new URL(selected.baseUrl).hostname.toLowerCase();
     const trees: Tree[] = [];
     for (const repo of names) {

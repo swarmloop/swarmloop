@@ -7,7 +7,7 @@ import { HistoryService } from '../../history/history.service';
 import { DocumentDraft, sampleSelf, VisitDraft } from '../../history/visit';
 import { closeStep, openStep, OpenedStep } from '../../pipeline/step-run';
 import { PipelineResult } from '../../pipeline/pipeline-result';
-import { assignCodeHost, codeHostFromOrigin, CodeHostName } from '../../providers/host-credentials';
+import { assignCodeHost, CodeHostRegistry, type CodeHostName } from '../../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../../swarmloop-error';
 import { git, gitDetail } from '../../git/git';
 import { storedBase } from '../../git/rebase-worktree';
@@ -19,6 +19,7 @@ export class PrepareService {
   constructor(
     private readonly history: HistoryService,
     private readonly config: ConfigService,
+    private readonly registry: CodeHostRegistry,
   ) {}
 
   async execute(key: string): Promise<PipelineResult> {
@@ -41,11 +42,10 @@ export class PrepareService {
       if (checkouts.length === 0) {
         throw new SwarmloopError('projects is missing');
       }
-      const env = readEnv(this.config);
       const hosts: (CodeHostName | null)[] = [];
       for (const checkout of checkouts) {
         const located = await this.prepareCheckout(key, checkout, opened.run.prompt);
-        hosts.push(await this.classified(located, env.GITLAB_BASE_URL, env.GITHUB_BASE_URL));
+        hosts.push(await this.classified(located));
       }
       assignCodeHost(opened.run, hosts, true);
       const handoff = await recordHandoff(
@@ -111,11 +111,10 @@ export class PrepareService {
   }
 
   async ensureDetached(run: { key: string; codeHost: string }, names: string[], prompt: string | null, replace: boolean): Promise<void> {
-    const env = readEnv(this.config);
     const hosts: (CodeHostName | null)[] = [];
     for (const name of names) {
       const located = await this.prepareCheckout(run.key, { name, path: '' }, prompt);
-      hosts.push(await this.classified(located, env.GITLAB_BASE_URL, env.GITHUB_BASE_URL));
+      hosts.push(await this.classified(located));
     }
     assignCodeHost(run, hosts, replace);
   }
@@ -152,9 +151,9 @@ export class PrepareService {
     return located;
   }
 
-  private async classified(checkout: { name: string; path: string }, gitlabBase: string, githubBase: string): Promise<CodeHostName | null> {
+  private async classified(checkout: { name: string; path: string }): Promise<CodeHostName | null> {
     const origin = await this.originOf(checkout);
-    return origin ? codeHostFromOrigin(origin, gitlabBase, githubBase) : null;
+    return origin ? this.registry.forOrigin(origin) : null;
   }
 
   private async originOf(checkout: { name: string; path: string }): Promise<string | null> {

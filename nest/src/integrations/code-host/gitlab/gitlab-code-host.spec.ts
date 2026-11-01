@@ -223,6 +223,12 @@ describe('gitlab host', () => {
     expect(seen.filter((item) => item.url.includes('/pipelines/9/jobs'))).toHaveLength(2);
   });
 
+  it('builds a gitlab https push url from ssh origin', () => {
+    const host = service({ GITLAB_BASE_URL: 'https://gitlab.example', GITLAB_TOKEN: 'tok' });
+    expect(host.pushUrl('git@gitlab.example:group/demo.git')).toBe('https://oauth2:tok@gitlab.example/group/demo.git');
+    expect(host.pushUrl('/tmp/demo.git')).toBeNull();
+  });
+
   it('names a missing token and does not call gitlab', async () => {
     const fetchMock = jest.fn();
     global.fetch = fetchMock;

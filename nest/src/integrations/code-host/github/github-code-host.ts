@@ -3,8 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { SwarmloopEnv } from '../../../config/env';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../../swarmloop-error';
 import { request } from '../../../providers/http';
+import { remoteProject } from '../../../steps/merge-request/merge-request-record';
 import { AbstractCodeHost } from '../abstract-code-host';
-import { MergeRequestDraft, MergeRequestQuery, MergeRequestRecord, PipelineJob, PipelineRef, PipelineSnapshot } from '../code-host';
+import { MergeRequestDraft, MergeRequestQuery, MergeRequestRecord, PipelineJob, PipelineRef, PipelineSnapshot, SelectedHost } from '../code-host';
 
 interface GithubPull {
   number?: number;
@@ -23,8 +24,41 @@ interface GithubRun {
 
 @Injectable()
 export class GithubCodeHost extends AbstractCodeHost {
+  readonly name = 'github' as const;
+
   constructor(config: ConfigService) {
     super(config, 'github pull request failed', 'GITHUB_TOKEN was rejected');
+  }
+
+  matchesOrigin(origin: string): boolean {
+    return this.remoteOnBase(origin, this.config.getOrThrow<string>('GITHUB_BASE_URL')) !== null;
+  }
+
+  pushUrl(origin: string): string | null {
+    const token = this.config.getOrThrow<string>('GITHUB_TOKEN');
+    if (!token.trim()) {
+      return null;
+    }
+    try {
+      const host = new URL(this.config.getOrThrow<string>('GITHUB_BASE_URL')).hostname.toLowerCase();
+      const remote = remoteProject(origin);
+      if (remote.host.toLowerCase() !== host) {
+        return null;
+      }
+      return `https://x-access-token:${encodeURIComponent(token)}@${host}/${remote.project}.git`;
+    } catch {
+      return null;
+    }
+  }
+
+  selected(): SelectedHost {
+    return {
+      name: this.name,
+      baseUrl: this.config.getOrThrow<string>('GITHUB_BASE_URL'),
+      token: this.config.getOrThrow<string>('GITHUB_TOKEN'),
+      baseKey: 'GITHUB_BASE_URL',
+      tokenKey: 'GITHUB_TOKEN',
+    };
   }
 
   async readBranchPipeline(ref: PipelineRef, jobs = true): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }> {

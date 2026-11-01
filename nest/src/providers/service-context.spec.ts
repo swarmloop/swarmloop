@@ -17,7 +17,7 @@ const bundle: IssueBundle = {
 describe('service context', () => {
   const tracker = { fetch: jest.fn() };
   const host = { findMergeRequest: jest.fn() };
-  const hosts = { get: jest.fn(() => host) };
+  const hosts = { byName: jest.fn(() => host) };
   const history = {
     root: () => '/tmp/swarmloop',
     latestBody: jest.fn(),
@@ -28,7 +28,7 @@ describe('service context', () => {
   afterEach(() => {
     tracker.fetch.mockReset();
     host.findMergeRequest.mockReset();
-    hosts.get.mockClear();
+    hosts.byName.mockClear();
     history.latestBody.mockReset();
     history.findRun.mockReset();
     history.findRun.mockResolvedValue({ codeHost: 'gitlab' });
