@@ -1,5 +1,5 @@
 import { SwarmloopError } from '../../swarmloop-error';
-import { parsePlan, planFromAgent, reviewedItems, withInstructions } from './plan-record';
+import { correctedPlan, parsePlan, planFromAgent, reviewedItems, withInstructions } from './plan-record';
 
 describe('withInstructions', () => {
   it('appends the prompt and asks for a new plan only when asked', () => {
@@ -64,6 +64,33 @@ describe('planFromAgent', () => {
       items: ['from the answer'],
       decision: null,
     });
+  });
+});
+
+describe('correctedPlan', () => {
+  const body = `${JSON.stringify({ prompt: 'Ship the field', plan: { name: 'Field', overview: 'Ship it.', items: ['add the field'], decision: 'approve' } }, null, 2)}\n`;
+
+  it('replaces the checklist with the stored plan object', () => {
+    const plan = { name: 'Replacement', overview: 'From the log.', items: ['fix the failing test'], decision: 'approve' };
+    const corrected = correctedPlan(body, ['plan:', JSON.stringify(plan, null, 2), ''].join('\n'));
+    const record = JSON.parse(corrected?.requirements ?? '{}') as { plan?: { name?: string; overview?: string; items?: string[]; decision?: string } };
+    expect(record.plan?.items).toEqual(['fix the failing test']);
+    expect(record.plan?.name).toBe('Field');
+    expect(record.plan?.overview).toBe('Ship it.');
+    expect(record.plan?.decision).toBe('approve');
+    expect(corrected?.handoff).toContain('dropped "add the field"');
+    expect(corrected?.handoff).toContain('added "fix the failing test"');
+  });
+
+  it('still reads a bullet checklist', () => {
+    const corrected = correctedPlan(body, 'plan:\n- fix the failing test\n');
+    const record = JSON.parse(corrected?.requirements ?? '{}') as { plan?: { items?: string[] } };
+    expect(record.plan?.items).toEqual(['fix the failing test']);
+  });
+
+  it('leaves the plan when the section is not a checklist', () => {
+    expect(correctedPlan(body, 'plan:\nThe checklist stays.\n')).toBeNull();
+    expect(correctedPlan(body, 'No plan section.\n')).toBeNull();
   });
 });
 

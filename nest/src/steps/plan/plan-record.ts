@@ -1,6 +1,6 @@
 import { PlanFields } from '../../providers/requirements-record';
 import { SwarmloopError } from '../../swarmloop-error';
-import { bulletSection } from '../markdown-section';
+import { bulletSection, section } from '../markdown-section';
 
 export function parsePlan(text: string): string {
   return bulletSection(text, 'plan');
@@ -93,10 +93,23 @@ export function reviewedItems(text: string, output = ''): string[] {
   }
 }
 
-/** Checklist the implement answer corrected. Null when the answer has no plan section or the items are unchanged. */
+/** Bullets or the stored plan object in an answer. Null when that answer has no corrected checklist. */
+export function correctedItems(text: string, output = ''): string[] | null {
+  try {
+    const items = reviewedItems(text, output);
+    return items.length > 0 ? items : null;
+  } catch (error) {
+    if (!(error instanceof SwarmloopError) || error.message !== 'plan is empty') {
+      throw error;
+    }
+  }
+  return planObjectItems(text);
+}
+
+/** Checklist the implement answer corrected. Null when the answer leaves the approved plan. */
 export function correctedPlan(requirementsBody: string, text: string, output = ''): { requirements: string; handoff: string } | null {
-  const items = reviewedItems(text, output);
-  if (items.length === 0) {
+  const items = correctedItems(text, output);
+  if (!items) {
     return null;
   }
   const current = readPlan(requirementsBody);
@@ -128,6 +141,27 @@ export function requireApprovedPlan(requirements: string | null): string {
     throw new SwarmloopError('plan is not approved');
   }
   return `${JSON.stringify(plan, null, 2)}\n`;
+}
+
+function planObjectItems(text: string): string[] | null {
+  const block = section(text, 'plan');
+  if (block === null) {
+    return null;
+  }
+  const start = block.indexOf('{');
+  const end = block.lastIndexOf('}');
+  if (start < 0 || end <= start) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(block.slice(start, end + 1)) as unknown;
+    if (!isRecord(parsed) || typeof parsed.name !== 'string' || typeof parsed.overview !== 'string') {
+      return null;
+    }
+    return asPlan(parsed)?.items ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function fieldsFromSection(text: string): PlanFields | null {

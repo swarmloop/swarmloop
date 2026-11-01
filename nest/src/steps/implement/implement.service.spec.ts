@@ -681,6 +681,103 @@ describe('implement step', () => {
     }
   });
 
+  it('replaces the approved checklist when a pipeline return answers with the plan object', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-plan-json-'));
+    await writeEnv(root);
+    const worktree = featureTree(root, 'PROJ-145', 'billing-api');
+    const plan = { name: 'Field', overview: 'Fix the failing test.', items: ['fix the failing test'], decision: 'approve' };
+    const agent = jest.fn(async () => {
+      writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
+      return result(
+        ['plan:', JSON.stringify(plan, null, 2), '', 'implementation:', '- fixed the test', '', 'summary:', '- the pipeline log required it'].join('\n'),
+      );
+    });
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-145', 'approve');
+      const history = app.get(HistoryService);
+      const run = await history.findRun('PROJ-145');
+      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const done = await app.get(PipelineService).step('implement', 'PROJ-145');
+      expect(done.exitCode).toBe(0);
+      expect(done.message).not.toContain('plan is empty');
+      expect(agent).toHaveBeenCalledTimes(1);
+      const record = JSON.parse((await history.latestBody('PROJ-145', 'requirements')) ?? '{}') as {
+        prompt?: string;
+        plan?: { name?: string; items?: string[]; decision?: string };
+      };
+      expect(record.plan?.items).toEqual(['fix the failing test']);
+      expect(record.plan?.name).toBe('');
+      expect(record.plan?.decision).toBe('approve');
+      expect(record.prompt).toContain('Ship the field');
+      const handoff = await history.latestBody('PROJ-145', 'handoff');
+      expect(handoff).toContain('dropped "add the field"');
+      expect(handoff).toContain('added "fix the failing test"');
+      expect(handoff).toContain('outranks the checklist');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps the approved plan when the plan section has no checklist', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-plan-prose-'));
+    await writeEnv(root);
+    const worktree = featureTree(root, 'PROJ-146', 'billing-api');
+    const agent = jest.fn(async () => {
+      writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
+      return result(['plan:', 'The checklist stays.', '', reply].join('\n'));
+    });
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-146', 'approve');
+      const history = app.get(HistoryService);
+      const run = await history.findRun('PROJ-146');
+      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const done = await app.get(PipelineService).step('implement', 'PROJ-146');
+      expect(done.exitCode).toBe(0);
+      expect(done.message).not.toContain('plan is empty');
+      const record = JSON.parse((await history.latestBody('PROJ-146', 'requirements')) ?? '{}') as { plan?: { items?: string[] } };
+      expect(record.plan?.items).toEqual(['add the field']);
+      expect(await history.latestBody('PROJ-146', 'handoff')).not.toContain('outranks the checklist');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('saves the plan object from a later reply when the files were unchanged', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-plan-json-later-'));
+    await writeEnv(root);
+    const worktree = featureTree(root, 'PROJ-147', 'billing-api');
+    const plan = { name: 'Field', overview: 'Fix the failing test.', items: ['fix the failing test'], decision: 'approve' };
+    let calls = 0;
+    const agent = jest.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return result(['implementation:', '- not yet', '', 'summary:', '- the log requires it'].join('\n'));
+      }
+      writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
+      return result(
+        ['plan:', JSON.stringify(plan, null, 2), '', 'implementation:', '- fixed the test', '', 'summary:', '- the files now match the log'].join('\n'),
+      );
+    });
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-147', 'approve');
+      const history = app.get(HistoryService);
+      const run = await history.findRun('PROJ-147');
+      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const done = await app.get(PipelineService).step('implement', 'PROJ-147');
+      expect(done.exitCode).toBe(0);
+      expect(agent).toHaveBeenCalledTimes(2);
+      const record = JSON.parse((await history.latestBody('PROJ-147', 'requirements')) ?? '{}') as { plan?: { items?: string[] } };
+      expect(record.plan?.items).toEqual(['fix the failing test']);
+      expect(await history.latestBody('PROJ-147', 'implementation')).toContain('fixed the test');
+      expect(await history.latestBody('PROJ-147', 'handoff')).toContain('added "fix the failing test"');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('fails when a pipeline return leaves the worktree unchanged', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-unchanged-'));
     await writeEnv(root);

@@ -16,7 +16,7 @@ import { implementFollowUp, isPipelineReturn, rebaseConflictPrompt, withAddedRep
 import { git } from '../../git/git';
 import { composedReturn, parseSummary, recordHandoff, skillPrompt, textDocument, withHandoff, withModelStep, ModelStepContext } from '../model-step';
 import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.service';
-import { correctedPlan, requireApprovedPlan, reviewedItems } from '../plan/plan-record';
+import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../repo-names';
 import { REBASE_CONFLICT, RebaseStop, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase-worktree';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
@@ -203,14 +203,7 @@ export class ImplementService {
 }
 
 function answerHasPlan(text: string, output: string): boolean {
-  try {
-    return reviewedItems(text, output).length > 0;
-  } catch (error) {
-    if (error instanceof SwarmloopError && error.message === 'plan is empty') {
-      return false;
-    }
-    throw error;
-  }
+  return correctedItems(text, output) !== null;
 }
 
 function samePaths(left: string[], right: string[]): boolean {
