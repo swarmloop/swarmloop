@@ -23,17 +23,12 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
     if (!workspace) {
       throw new SwarmloopError('sandbox mount is missing');
     }
-    const args = [
-      '--print',
-      '--output-format',
-      'stream-json',
-      '--stream-partial-output',
-      '--model',
-      input.model,
-      '--trust',
-      '--workspace',
-      workspace,
-    ];
+    const args = ['--print', '--output-format', 'stream-json'];
+    const partial = this.partialOutputFlag();
+    if (partial) {
+      args.push(partial);
+    }
+    args.push('--model', input.model, ...this.workspaceArgs(workspace));
     if (input.resumeChatId) {
       args.push('--resume', input.resumeChatId);
     }
@@ -46,7 +41,7 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
     if (input.vendor.length > 0) {
       return [...input.vendor];
     }
-    const args = ['--model', input.model, '--trust', '--workspace', input.workspace];
+    const args = ['--model', input.model, ...this.workspaceArgs(input.workspace)];
     if (input.resumeChatId) {
       args.push('--resume', input.resumeChatId);
     }
@@ -54,4 +49,12 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
   }
 
   protected appendPrintFlags(_args: string[], _input: AgentPrintInput): void {}
+
+  protected partialOutputFlag(): string | null {
+    return null;
+  }
+
+  protected workspaceArgs(_workspace: string): string[] {
+    return [];
+  }
 }

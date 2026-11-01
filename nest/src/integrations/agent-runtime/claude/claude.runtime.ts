@@ -23,4 +23,8 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
   briefArgs(): string[] {
     return [];
   }
+
+  protected partialOutputFlag(): string {
+    return '--include-partial-messages';
+  }
 }

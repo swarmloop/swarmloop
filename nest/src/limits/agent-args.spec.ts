@@ -82,6 +82,9 @@ describe('buildAgentArgs', () => {
       mode: 'ask',
     });
     expect(args).not.toContain('--mode');
+    expect(args).not.toContain('--trust');
+    expect(args).not.toContain('--workspace');
+    expect(args).toContain('--include-partial-messages');
   });
 });
 
