@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Post, Res } from '@nestjs/common';
 import { ChatBody, ChatService } from './chat.service';
-import { RunsService } from './runs.service';
+import { RunCommandsService } from './run-commands.service';
+import { RunQueriesService } from './run-queries.service';
+import { RunRebaseService } from './run-rebase.service';
 import { ShellFeature, ShellService } from './shell.service';
 
 interface StatusResponse {
@@ -10,29 +12,31 @@ interface StatusResponse {
 @Controller()
 export class RunsController {
   constructor(
-    private readonly runs: RunsService,
+    private readonly queries: RunQueriesService,
+    private readonly commands: RunCommandsService,
+    private readonly rebases: RunRebaseService,
     private readonly chat: ChatService,
     private readonly shell: ShellService,
   ) {}
 
   @Get('runs')
   list(): Promise<{ runs: { key: string; name: string; status: string; currentStep: string; createdAt: string; updatedAt: string; stepStartedAt: string | null; durationMs: number; usd: number }[] }> {
-    return this.runs.list();
+    return this.queries.list();
   }
 
   @Get('runs/:key/history')
-  history(@Param('key') key: string): ReturnType<RunsService['readHistory']> {
-    return this.runs.readHistory(key);
+  history(@Param('key') key: string): ReturnType<RunQueriesService['readHistory']> {
+    return this.queries.readHistory(key);
   }
 
   @Get('runs/:key/steps/:step')
-  step(@Param('key') key: string, @Param('step') step: string): ReturnType<RunsService['step']> {
-    return this.runs.step(key, step);
+  step(@Param('key') key: string, @Param('step') step: string): ReturnType<RunQueriesService['step']> {
+    return this.queries.step(key, step);
   }
 
   @Get('runs/:key')
-  flow(@Param('key') key: string): ReturnType<RunsService['flow']> {
-    return this.runs.flow(key);
+  flow(@Param('key') key: string): ReturnType<RunQueriesService['flow']> {
+    return this.queries.flow(key);
   }
 
   @Post('runs/shell')
@@ -70,7 +74,7 @@ export class RunsController {
     @Body() body: { key?: string; prompt?: string; path?: string; projects?: string[]; phases?: string[] },
     @Res({ passthrough: true }) response: StatusResponse,
   ): Promise<{ key: string; status: string }> {
-    const result = await this.runs.start(body);
+    const result = await this.commands.start(body);
     response.status(result.http);
     return result.body;
   }
@@ -79,8 +83,8 @@ export class RunsController {
   answers(
     @Param('key') key: string,
     @Body() body: { answers?: { kind?: string; id?: string; body?: string }[] },
-  ): ReturnType<RunsService['answers']> {
-    return this.runs.answers(key, body);
+  ): ReturnType<RunCommandsService['answers']> {
+    return this.commands.answers(key, body);
   }
 
   @Post('runs/:key/chat')
@@ -95,7 +99,7 @@ export class RunsController {
     @Body() body: { prompt?: string; path?: string },
     @Res({ passthrough: true }) response: StatusResponse,
   ): Promise<{ key: string; status: string }> {
-    const result = await this.runs.startStep(key, step, body);
+    const result = await this.commands.startStep(key, step, body);
     response.status(result.http);
     return result.body;
   }
@@ -107,33 +111,33 @@ export class RunsController {
     @Body() body: { prompt?: string; phases?: string[] },
     @Res({ passthrough: true }) response: StatusResponse,
   ): Promise<{ key: string; status: string }> {
-    const result = await this.runs.replay(key, step, body.prompt ?? '', body.phases);
+    const result = await this.commands.replay(key, step, body.prompt ?? '', body.phases);
     response.status(result.http);
     return result.body;
   }
 
   @Post('runs/:key/stop')
   async stop(@Param('key') key: string, @Res({ passthrough: true }) response: StatusResponse): Promise<{ key: string; status: string }> {
-    const result = await this.runs.stop(key);
+    const result = await this.commands.stop(key);
     response.status(result.http);
     return result.body;
   }
 
   @Delete('runs/:key')
   remove(@Param('key') key: string): Promise<{ key: string }> {
-    return this.runs.remove(key);
+    return this.commands.remove(key);
   }
 
   @Post('runs/:key/rebase')
   async rebase(@Param('key') key: string, @Res({ passthrough: true }) response: StatusResponse): Promise<{ key: string; status: string }> {
-    const result = await this.runs.rebase(key);
+    const result = await this.rebases.rebase(key);
     response.status(result.http);
     return result.body;
   }
 
   @Post('runs/:key/projects')
   addProject(@Param('key') key: string, @Body() body: { name?: string }): Promise<{ projects: string[]; applied: boolean }> {
-    return this.runs.addProject(key, body.name ?? '');
+    return this.commands.addProject(key, body.name ?? '');
   }
 
   @Post('runs/:key/resume')
@@ -142,7 +146,7 @@ export class RunsController {
     @Body() body: { prompt?: string },
     @Res({ passthrough: true }) response: StatusResponse,
   ): Promise<{ key: string; status: string }> {
-    const result = await this.runs.resume(key, body?.prompt);
+    const result = await this.commands.resume(key, body?.prompt);
     response.status(result.http);
     return result.body;
   }

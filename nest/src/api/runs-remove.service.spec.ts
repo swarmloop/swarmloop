@@ -6,7 +6,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { HistoryService } from '../history/history.service';
 import { LiveHub } from '../live/live.hub';
-import { RunsService } from './runs.service';
+import { RunCommandsService } from './run-commands.service';
 import { boot, save, visit, denyEnv } from './runs.spec-helpers';
 
 describe('runs api', () => {
@@ -232,7 +232,7 @@ describe('runs api', () => {
         expect(existsSync(file)).toBe(true);
         expect(await history.findRun('proj-70')).not.toBeNull();
       });
-      expect(await app.get(RunsService).remove('proj-70')).toEqual({ key: 'proj-70' });
+      expect(await app.get(RunCommandsService).remove('proj-70')).toEqual({ key: 'proj-70' });
       expect(events).toEqual(['stop', 'worktrees']);
       expect(pipeline.stop).toHaveBeenCalledWith('proj-70');
       expect(prepare.removeWorktrees).toHaveBeenCalledWith('proj-70');
@@ -253,7 +253,7 @@ describe('runs api', () => {
       await save(history, 'proj-71', 'implement', 'running');
       const file = join(root, 'data', 'proj-71-implement-output.txt');
       await writeFile(file, 'out\n');
-      await expect(app.get(RunsService).remove('proj-71')).rejects.toBeInstanceOf(ConflictException);
+      await expect(app.get(RunCommandsService).remove('proj-71')).rejects.toBeInstanceOf(ConflictException);
       expect(prepare.removeWorktrees).not.toHaveBeenCalled();
       expect(await history.findRun('proj-71')).not.toBeNull();
       expect(existsSync(file)).toBe(true);
@@ -267,7 +267,7 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn(), stop: jest.fn() };
     const app = await boot(root, pipeline);
     try {
-      const runs = app.get(RunsService);
+      const runs = app.get(RunCommandsService);
       await expect(runs.remove('missing-run')).rejects.toBeInstanceOf(NotFoundException);
       await expect(runs.remove('Bad Key')).rejects.toBeInstanceOf(BadRequestException);
       expect(pipeline.stop).not.toHaveBeenCalled();

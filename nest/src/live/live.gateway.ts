@@ -1,7 +1,7 @@
 import { NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { OnGatewayConnection, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { RunsService } from '../api/runs.service';
+import { RunQueriesService } from '../api/run-queries.service';
 import { LiveHub } from './live.hub';
 import { PANEL_ORIGINS } from './origins';
 
@@ -15,7 +15,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
 
   constructor(
     private readonly hub: LiveHub,
-    private readonly runs: RunsService,
+    private readonly runs: RunQueriesService,
   ) {}
 
   onModuleInit(): void {
@@ -85,7 +85,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
     }
   }
 
-  private async flowOf(key: string): Promise<Awaited<ReturnType<RunsService['flow']>> | null> {
+  private async flowOf(key: string): Promise<Awaited<ReturnType<RunQueriesService['flow']>> | null> {
     try {
       return await this.runs.flow(key);
     } catch (error) {
