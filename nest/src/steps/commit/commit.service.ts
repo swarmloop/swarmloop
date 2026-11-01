@@ -3,16 +3,15 @@ import { existsSync, statSync } from 'fs';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { RunEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
-import { sampleSelf, VisitDraft } from '../../history/visit';
-import { PipelineResult, StepName, StepOptions, visitStatus } from '../../pipeline/pipeline-result';
-import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
+import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
+import { OpenedStep } from '../../pipeline/step-run';
 import { SwarmloopError } from '../../swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
 import { authorArgs, git, gitDetail, gitMissing, gitRaw, originUrl, redact } from '../../git/git';
-import { recordHandoff, textDocument } from '../model-step';
+import { textDocument } from '../model-step';
 import { repoNames, worktreePath } from '../repo-names';
 import { remoteProject } from '../merge-request/merge-request-record';
-import { Step, requiredDocument } from '../step';
+import { BaseStep, StepContext } from '../base-step';
 import { allowedPaths, deniedIndexPaths, parsePaths, PlannedPath, renderPaths, stageSelection } from './commit-paths';
 
 interface Tree {
@@ -23,65 +22,58 @@ interface Tree {
 export const CI_SKIPPED = 'CI skipped: there is no origin to push.';
 
 @Injectable()
-export class CommitService implements Step {
+export class CommitService extends BaseStep {
   readonly name: StepName = 'commit';
-  readonly usesModel = false;
+  readonly requiredKind = 'requirements';
 
   constructor(
-    private readonly history: HistoryService,
+    history: HistoryService,
     private readonly registry: CodeHostRegistry,
-  ) {}
-
-  missingInput(key: string): Promise<string | null> {
-    return requiredDocument(this.history, key, 'requirements');
+  ) {
+    super(history);
   }
 
-  async execute(key: string, _options: StepOptions = {}): Promise<PipelineResult> {
-    const opened = await openStep(this.history, key, 'commit');
-    try {
-      const requirements = await this.history.latestBody(key, 'requirements');
-      if (!requirements?.trim()) {
-        throw new SwarmloopError('requirements is missing');
-      }
-      const summary = summaryForBranch(requirements, key);
-      const branch = branchName(key, summary);
-      const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
-      const trees = this.trees(key, names);
-      await this.assertBranch(trees, branch);
-      const phases = await this.history.activePhases(opened.run.id);
-      const stored = await this.history.latestBody(key, 'commit');
-      const again = await this.resume(opened, stored);
-      if (!phases.includes('ci') && !again) {
-        const body = await this.preview(trees, branch);
-        return this.end(opened, 'waiting', 0, `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
-      }
-      const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, await this.history.listDenyPaths());
-      if (planned.length === 0 && !(await this.somethingToPush(trees, branch))) {
-        if (await this.publishedHead(trees, branch)) {
-          return this.end(opened, 'ok', 0, `${opened.startedAt} commit done\n${branch}`);
-        }
-        throw new SwarmloopError('nothing to commit');
-      }
-      const pushed = await this.publish(trees, planned, branch, commitMessage(key, summary), opened.run.codeHost);
-      const listed = planned.length > 0 ? renderPaths(planned).trimEnd() : '';
-      if (!pushed) {
-        await this.history.putDocument(opened.run, 'ci_skip', `${CI_SKIPPED}\n`);
-        const line = listed ? `${opened.startedAt} ${CI_SKIPPED}\n${listed}` : `${opened.startedAt} ${CI_SKIPPED}`;
-        return this.end(opened, 'ok', 0, line, listed ? `${listed}\n` : undefined);
-      }
-      const recorded = await this.rememberRefs(opened.run, trees, branch);
-      if (recorded) {
-        const skip = await this.history.latestBody(key, 'ci_skip');
-        if (skip?.trim()) {
-          await this.history.putDocument(opened.run, 'ci_skip', '');
-        }
-      }
-      const line = listed ? `${opened.startedAt} commit done\n${branch}\n${listed}` : `${opened.startedAt} commit done\n${branch}`;
-      return this.end(opened, 'ok', 0, line, listed ? `${listed}\n` : undefined);
-    } catch (error) {
-      const message = error instanceof SwarmloopError ? error.message : 'commit failed';
-      return this.end(opened, 'failed', 1, `${opened.startedAt} ${message}`);
+  protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
+    const { opened } = ctx;
+    const requirements = await this.history.latestBody(key, 'requirements');
+    if (!requirements?.trim()) {
+      throw new SwarmloopError('requirements is missing');
     }
+    const summary = summaryForBranch(requirements, key);
+    const branch = branchName(key, summary);
+    const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
+    const trees = this.trees(key, names);
+    await this.assertBranch(trees, branch);
+    const phases = await this.history.activePhases(opened.run.id);
+    const stored = await this.history.latestBody(key, 'commit');
+    const again = await this.resume(opened, stored);
+    if (!phases.includes('ci') && !again) {
+      const body = await this.preview(trees, branch);
+      return this.end(ctx, 'waiting', 0, `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
+    }
+    const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, await this.history.listDenyPaths());
+    if (planned.length === 0 && !(await this.somethingToPush(trees, branch))) {
+      if (await this.publishedHead(trees, branch)) {
+        return this.end(ctx, 'ok', 0, `${opened.startedAt} commit done\n${branch}`);
+      }
+      throw new SwarmloopError('nothing to commit');
+    }
+    const pushed = await this.publish(trees, planned, branch, commitMessage(key, summary), opened.run.codeHost);
+    const listed = planned.length > 0 ? renderPaths(planned).trimEnd() : '';
+    if (!pushed) {
+      await this.history.putDocument(opened.run, 'ci_skip', `${CI_SKIPPED}\n`);
+      const line = listed ? `${opened.startedAt} ${CI_SKIPPED}\n${listed}` : `${opened.startedAt} ${CI_SKIPPED}`;
+      return this.end(ctx, 'ok', 0, line, listed ? `${listed}\n` : undefined);
+    }
+    const recorded = await this.rememberRefs(opened.run, trees, branch);
+    if (recorded) {
+      const skip = await this.history.latestBody(key, 'ci_skip');
+      if (skip?.trim()) {
+        await this.history.putDocument(opened.run, 'ci_skip', '');
+      }
+    }
+    const line = listed ? `${opened.startedAt} commit done\n${branch}\n${listed}` : `${opened.startedAt} commit done\n${branch}`;
+    return this.end(ctx, 'ok', 0, line, listed ? `${listed}\n` : undefined);
   }
 
   /** A failed or still-open commit retries its own path list. Arriving from the previous phase reads the tree again. */
@@ -325,45 +317,17 @@ export class CommitService implements Step {
     }
   }
 
-  private async end(opened: OpenedStep, outcome: 'ok' | 'failed' | 'waiting', exitCode: number, line: string, body?: string): Promise<PipelineResult> {
-    const note = outcome === 'ok' ? await recordHandoff(this.history, opened.run.key, 'commit', body?.trim() ? body : '- committed the branch\n') : null;
+  private end(ctx: StepContext, outcome: 'ok' | 'waiting', exitCode: number, line: string, body?: string): Promise<PipelineResult> {
     const primary = body ? textDocument('commit', body) : null;
-    return closeStep({
-      history: this.history,
-      run: opened.run,
-      previousStep: opened.previousStep,
-      previousStatus: opened.previousStatus,
-      step: 'commit',
+    if (outcome === 'waiting') {
+      return ctx.end({ outcome, exitCode, line, visit: { document: primary } });
+    }
+    return ctx.end({
       outcome,
       exitCode,
       line,
-      visit: {
-        ...visit(opened, visitStatus(outcome), exitCode, body),
-        document: note ? null : primary,
-        documents: note ? [...(primary ? [primary] : []), note] : undefined,
-      },
+      handoff: body?.trim() ? body : '- committed the branch\n',
+      visit: { documents: primary ? [primary] : undefined },
     });
   }
-}
-
-function visit(opened: OpenedStep, status: string, exitCode: number, body?: string): VisitDraft {
-  return {
-    step: 'commit',
-    model: null,
-    mode: null,
-    startedAt: opened.startedAt,
-    finishedAt: new Date().toISOString(),
-    durationMs: Date.now() - opened.started,
-    status,
-    exitCode,
-    killReason: null,
-    tokensIn: 0,
-    tokensOut: 0,
-    usd: 0,
-    samples: [sampleSelf()],
-    exchange: null,
-    httpCalls: [],
-    document: body ? textDocument('commit', body) : null,
-    resumed: false,
-  };
 }
