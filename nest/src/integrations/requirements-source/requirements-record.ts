@@ -1,5 +1,5 @@
-import { RequirementsInput } from './contracts';
-import { IssueBundle, IssueEpic, IssuePage } from '../integrations/issue-tracker/issue-bundle';
+import { RequirementsInput } from './requirements-source';
+import { IssueBundle, IssueEpic, IssuePage } from '../issue-tracker/issue-bundle';
 
 export interface RecordNote {
   author: string;

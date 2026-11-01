@@ -1,4 +1,4 @@
-import { PlanFields } from '../../providers/requirements-record';
+import { PlanFields } from '../../integrations/requirements-source/requirements-record';
 import { SwarmloopError } from '../../swarmloop-error';
 import { bulletSection, section } from '../markdown-section';
 
