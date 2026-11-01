@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { chmodSync, mkdirSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -426,6 +426,37 @@ describe('commit step', () => {
       }
     } finally {
       restore();
+    }
+  });
+
+  it('commits a staged deletion and a staged rename', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-rename-'));
+    const tree = featureTree(root, 'PROJ-120');
+    writeFileSync(join(tree, 'src', 'old.ts'), 'export const old = 1;\n');
+    git(tree, ['add', 'src/old.ts']);
+    git(tree, ['commit', '-m', 'track']);
+    git(tree, ['rm', 'src/readme.ts']);
+    git(tree, ['mv', 'src/old.ts', 'src/new.ts']);
+    writeFileSync(join(tree, '.env'), 'TOKEN=1\n');
+    git(tree, ['add', '.env']);
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-120');
+      const committed = await app.get(PipelineService).step('commit', 'PROJ-120');
+      expect(committed.exitCode).toBe(0);
+      expect(committed.message).not.toContain('pathspec');
+      const files = git(tree, ['ls-tree', '-r', '--name-only', 'HEAD']);
+      expect(files).toContain('src/new.ts');
+      expect(files).not.toContain('src/old.ts');
+      expect(files).not.toContain('src/readme.ts');
+      expect(files).not.toContain('.env');
+      expect(git(tree, ['status', '--porcelain'])).toContain('.env');
+      expect(readFileSync(join(tree, 'src', 'new.ts'), 'utf8')).toBe('export const old = 1;\n');
+      expect(existsSync(join(tree, 'src', 'readme.ts'))).toBe(false);
+      expect(existsSync(join(tree, 'src', 'old.ts'))).toBe(false);
+      expect(git(tree, ['diff', '--name-status', '--format=', 'HEAD^', 'HEAD'])).toContain('src/readme.ts');
+    } finally {
+      await app.close();
     }
   });
 

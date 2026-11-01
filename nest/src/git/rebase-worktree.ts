@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join, sep } from 'path';
 import { codeHostFromOrigin, selectedHost } from '../providers/host-credentials';
 import { SwarmloopError } from '../swarmloop-error';
 import { originRef, promptBase } from './base-ref';
-import { allowedPaths, isDenied, porcelainPaths } from '../steps/commit/commit-paths';
+import { allowedPaths, deniedIndexPaths, isDenied, porcelainPaths, stageSelection } from '../steps/commit/commit-paths';
 import { githubPushUrl, gitlabPushUrl } from '../steps/commit/commit.service';
 import { authorArgs, git, gitDetail, gitMissing, gitRaw, gitStderr, originUrl, redact } from './git';
 import { worktreePath } from '../steps/repo-names';
@@ -95,7 +95,11 @@ async function rebaseFeatureRepo(input: {
   }
   const porcelain = await gitRawAt(input.cwd, input.repo, ['status', '--porcelain=v1', '-z', '-uall']);
   const deniedDirty = porcelainPaths(porcelain).filter((path) => isDenied(path, input.denied));
-  if (deniedDirty.length > 0 && allowedPaths(input.repo, porcelain, input.denied).length === 0) {
+  if (
+    deniedDirty.length > 0 &&
+    allowedPaths(input.repo, porcelain, input.denied).length === 0 &&
+    !(await branchHasAllowedChange(input.cwd, input.prompt, input.denied))
+  ) {
     throw new SwarmloopError(`${input.repo} rebase failed: ${deniedDirty[0]}`);
   }
   await commitAllowed(input.cwd, input.repo, input.denied, input.message);
@@ -108,23 +112,23 @@ async function rebaseFeatureRepo(input: {
   await hideDeniedWorktree(input.cwd, input.repo, input.denied, input.hosts);
   const scratch = await mkdtemp(join(tmpdir(), 'swarmloop-rebase-'));
   const tmp = join(scratch, 'clone');
-  let stashed = true;
+  let hidden = true;
   try {
     const outcome = await squashOffMount({ ...input, base, tmp });
     try {
-      await restoreRebaseStash(input.cwd, input.repo, input.hosts, '');
+      await restoreHiddenWorktree(input.cwd, input.repo, input.hosts, '');
     } catch (error) {
-      // Pop cannot save an unmerged index. The conflict still returns; resume restores the stash.
+      // Restore cannot apply onto an unmerged index. The conflict still returns; resume restores this ref.
       if (outcome?.kind !== 'conflict') {
         throw error;
       }
     }
-    stashed = false;
+    hidden = false;
     return outcome;
   } catch (error) {
-    if (stashed) {
+    if (hidden) {
       try {
-        await restoreRebaseStash(input.cwd, input.repo, input.hosts, '');
+        await restoreHiddenWorktree(input.cwd, input.repo, input.hosts, '');
       } catch {
         // Restore failed. Report the rebase error.
       }
@@ -132,6 +136,34 @@ async function rebaseFeatureRepo(input: {
     throw error;
   } finally {
     rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+/** True when this branch already changes an allowed path relative to the local base. A denied-only branch does not. */
+async function branchHasAllowedChange(cwd: string, prompt: string | null, denied: string[]): Promise<boolean> {
+  const wanted = promptBase(prompt);
+  const names = wanted.kind === 'named' ? [wanted.name] : ['main', 'master'];
+  let base: string | null = null;
+  for (const name of names) {
+    const ref = originRef(name);
+    try {
+      await git(['-C', cwd, 'rev-parse', '--verify', '--quiet', ref]);
+      base = ref;
+      break;
+    } catch (error) {
+      if (!gitMissing(error)) {
+        throw error;
+      }
+    }
+  }
+  if (!base) {
+    return false;
+  }
+  try {
+    const listed = await gitRaw(['-C', cwd, 'diff', '--name-only', '-z', `${base}...HEAD`]);
+    return listed.split('\0').some((path) => path.length > 0 && !isDenied(path, denied));
+  } catch {
+    return false;
   }
 }
 
@@ -178,9 +210,13 @@ async function resumeRebase(input: {
     };
   }
   const porcelain = await gitRawAt(input.cwd, input.repo, ['status', '--porcelain=v1', '-z', '-uall']);
-  const stage = allowedPaths(input.repo, porcelain, input.denied).map((item) => item.path);
-  if (stage.length > 0) {
-    await gitAt(input.cwd, input.repo, ['add', '--', ...stage], 'rebase failed', input.hosts);
+  const held = deniedIndexPaths(porcelain, input.denied);
+  if (held.length > 0) {
+    await gitAt(input.cwd, input.repo, ['reset', '-q', 'HEAD', '--', ...held], 'rebase failed', input.hosts);
+  }
+  const add = stageSelection(porcelain, input.denied).add;
+  if (add.length > 0) {
+    await gitAt(input.cwd, input.repo, ['add', '--', ...add], 'rebase failed', input.hosts);
   }
   await gitAt(
     input.cwd,
@@ -193,7 +229,7 @@ async function resumeRebase(input: {
   if (target && existsSync(target)) {
     unlinkSync(target);
   }
-  await restoreRebaseStash(input.cwd, input.repo, input.hosts, '');
+  await restoreHiddenWorktree(input.cwd, input.repo, input.hosts, '');
   return null;
 }
 
@@ -644,37 +680,46 @@ async function publishedTip(cwd: string, branch: string): Promise<string | null>
   }
 }
 
-async function restoreRebaseStash(cwd: string, repo: string, hosts: RebaseHosts, captured: string): Promise<void> {
-  let list = '';
+/** Per-worktree ref for the files this run hides during rebase. */
+const HIDDEN_REF = 'refs/worktree/swarmloop-rebase';
+
+function hiddenMessage(paths: string[]): string {
+  return `swarmloop-rebase\n${paths.join('\n')}\n`;
+}
+
+function hiddenPaths(message: string): string[] {
+  const lines = message.split('\n');
+  if ((lines[0] ?? '').trim() !== 'swarmloop-rebase') {
+    return [];
+  }
+  return lines.slice(1).filter((line) => line.length > 0);
+}
+
+async function restoreHiddenWorktree(cwd: string, repo: string, hosts: RebaseHosts, captured: string): Promise<void> {
   try {
-    list = await git(['-C', cwd, 'stash', 'list']);
+    await git(['-C', cwd, 'rev-parse', '--verify', '--quiet', HIDDEN_REF]);
   } catch (error) {
     if (gitMissing(error)) {
       return;
     }
     throw new SwarmloopError(`${repo} rebase failed: ${rebaseStderr(gitStderr(error), hosts, captured)}`);
   }
-  const line = list.split('\n').find((item) => item.includes('swarmloop-rebase'));
-  if (!line) {
-    return;
+  const message = await gitAt(cwd, repo, ['log', '-1', '--format=%B', HIDDEN_REF], 'rebase failed', hosts, captured);
+  let paths = hiddenPaths(message);
+  const present = (await gitRaw(['-C', cwd, 'ls-tree', '-r', '--name-only', '-z', HIDDEN_REF])).split('\0').filter((item) => item.length > 0);
+  if (paths.length === 0) {
+    paths = present;
   }
-  const ref = line.slice(0, line.indexOf(':')).trim();
-  if (!ref) {
-    return;
+  const known = new Set(present);
+  const checkout = paths.filter((path) => known.has(path));
+  const removed = paths.filter((path) => !known.has(path));
+  if (checkout.length > 0) {
+    await gitAt(cwd, repo, ['restore', '--source', HIDDEN_REF, '--worktree', '--', ...checkout], 'rebase failed', hosts, captured);
   }
-  let names = '';
-  try {
-    names = await gitRaw(['-C', cwd, 'ls-tree', '-r', '--name-only', '-z', `${ref}^3`]);
-  } catch {
-    names = '';
+  for (const path of removed) {
+    removeCopiedPath(join(cwd, path));
   }
-  const files = names.split('\0').map((item) => item.trim()).filter((item) => item.length > 0);
-  if (files.length > 0) {
-    await gitAt(cwd, repo, ['checkout', `${ref}^3`, '--', ...files], 'rebase failed', hosts, captured);
-    await gitAt(cwd, repo, ['stash', 'drop', ref], 'rebase failed', hosts, captured);
-    return;
-  }
-  await gitAt(cwd, repo, ['stash', 'pop', '--quiet', ref], 'rebase failed', hosts, captured);
+  await gitAt(cwd, repo, ['update-ref', '-d', HIDDEN_REF], 'rebase failed', hosts, captured);
 }
 
 async function resolveGitPath(cwd: string, name: string): Promise<string | null> {
@@ -688,20 +733,18 @@ async function resolveGitPath(cwd: string, name: string): Promise<string | null>
 
 async function commitAllowed(cwd: string, repo: string, denied: string[], message: string): Promise<void> {
   const porcelain = await gitRawAt(cwd, repo, ['status', '--porcelain=v1', '-z', '-uall']);
-  const stage = allowedPaths(repo, porcelain, denied).map((item) => item.path);
-  const held = deniedInIndex(porcelain, denied);
+  const held = deniedIndexPaths(porcelain, denied);
   if (held.length > 0) {
     await gitAt(cwd, repo, ['reset', '-q', 'HEAD', '--', ...held], 'commit failed');
   }
-  if (stage.length === 0) {
+  const selection = stageSelection(porcelain, denied);
+  if (selection.add.length > 0) {
+    await gitAt(cwd, repo, ['add', '--', ...selection.add], 'commit failed');
+  }
+  if (selection.add.length === 0 && selection.staged.length === 0) {
     return;
   }
-  await gitAt(cwd, repo, ['add', '--', ...stage], 'commit failed');
-  await gitAt(cwd, repo, [...(await authorArgs(cwd)), 'commit', '--no-verify', '--only', '-m', message, '--', ...stage], 'commit failed');
-}
-
-function deniedInIndex(porcelain: string, denied: string[]): string[] {
-  return deniedAt(porcelain, denied, 0);
+  await gitAt(cwd, repo, [...(await authorArgs(cwd)), 'commit', '--no-verify', '-m', message], 'commit failed');
 }
 
 function deniedInWorktree(porcelain: string, denied: string[]): string[] {
@@ -738,7 +781,39 @@ async function hideDeniedWorktree(cwd: string, repo: string, denied: string[], h
   if (dirty.length === 0) {
     return;
   }
-  await gitAt(cwd, repo, ['stash', 'push', '-m', 'swarmloop-rebase', '--', ...dirty], 'rebase failed', hosts, '');
+  const scratch = await mkdtemp(join(tmpdir(), 'swarmloop-hide-'));
+  try {
+    const env = { GIT_INDEX_FILE: join(scratch, 'index') };
+    await git(['-C', cwd, 'read-tree', '--empty'], env);
+    const present = dirty.filter((path) => worktreeFile(join(cwd, path)));
+    if (present.length > 0) {
+      await git(['-C', cwd, 'update-index', '--add', '--', ...present], env);
+    }
+    const tree = await git(['-C', cwd, 'write-tree'], env);
+    const commit = await git(['-C', cwd, 'commit-tree', tree, '-m', hiddenMessage(dirty)], env);
+    await gitAt(cwd, repo, ['update-ref', HIDDEN_REF, commit], 'rebase failed', hosts, '');
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+  try {
+    await gitAt(cwd, repo, ['checkout', 'HEAD', '--', ...dirty], 'rebase failed', hosts, '');
+  } catch (error) {
+    try {
+      await restoreHiddenWorktree(cwd, repo, hosts, '');
+    } catch {
+      // The ref still holds this run's files.
+    }
+    throw error;
+  }
+}
+
+function worktreeFile(full: string): boolean {
+  try {
+    const info = lstatSync(full);
+    return info.isFile() || info.isSymbolicLink();
+  } catch {
+    return false;
+  }
 }
 
 export async function storedBase(
@@ -766,7 +841,28 @@ export async function storedBase(
   throw new SwarmloopError(`${repo} has no ${missing}`);
 }
 
-/** Fetch one source branch from the remote. A missing ref tries the next candidate. Any other fetch failure stops the step. */
+const checkoutFetches = new Map<string, Promise<void>>();
+
+/** First attempt, then at most three retries when git reports `cannot lock ref`. */
+const FETCH_LOCK_ATTEMPTS = 4;
+
+function withCheckoutLock<T>(checkout: string, run: () => Promise<T>): Promise<T> {
+  const previous = checkoutFetches.get(checkout) ?? Promise.resolve();
+  const current = previous.then(run, run);
+  const settled = current.then(
+    () => undefined,
+    () => undefined,
+  );
+  checkoutFetches.set(checkout, settled);
+  void settled.then(() => {
+    if (checkoutFetches.get(checkout) === settled) {
+      checkoutFetches.delete(checkout);
+    }
+  });
+  return current;
+}
+
+/** Fetch one source branch. One fetch runs at a time per checkout. A missing ref tries the next candidate. A ref lock is retried. Any other fetch failure stops the step. */
 async function fetchSource(
   cwd: string,
   repo: string,
@@ -779,26 +875,46 @@ async function fetchSource(
   const url = gitlab ?? githubPushUrl(origin, hosts.GITHUB_BASE_URL, hosts.GITHUB_TOKEN);
   const refspec = `+refs/heads/${name}:refs/remotes/origin/${name}`;
   const secret = gitlab ? hosts.GITLAB_TOKEN : hosts.GITHUB_TOKEN;
-  try {
-    if (url) {
-      await git(['-C', cwd, 'fetch', url, refspec], { GIT_TERMINAL_PROMPT: '0' });
-      await clearFetchedToken(cwd, name, secret);
-    } else if (origin.startsWith('git@') || origin.startsWith('ssh://')) {
-      throw new SwarmloopError(sshFailure(repo, origin, hosts, step));
-    } else {
-      await git(['-C', cwd, 'fetch', 'origin', refspec], { GIT_TERMINAL_PROMPT: '0' });
-    }
-    return true;
-  } catch (error) {
-    if (error instanceof SwarmloopError) {
-      throw error;
-    }
-    const detail = redact(gitDetail(error), secret.trim());
-    if (detail.includes("couldn't find remote ref")) {
-      return false;
-    }
-    throw new SwarmloopError(`${repo} ${step} failed: ${detail}`);
+  if (!url && (origin.startsWith('git@') || origin.startsWith('ssh://'))) {
+    throw new SwarmloopError(sshFailure(repo, origin, hosts, step));
   }
+  const checkout = await cloneSource(cwd);
+  return withCheckoutLock(checkout, () => fetchLocked(cwd, repo, url, refspec, name, secret, step));
+}
+
+async function fetchLocked(
+  cwd: string,
+  repo: string,
+  url: string | null,
+  refspec: string,
+  name: string,
+  secret: string,
+  step: 'prepare' | 'rebase',
+): Promise<boolean> {
+  for (let attempt = 0; attempt < FETCH_LOCK_ATTEMPTS; attempt += 1) {
+    try {
+      if (url) {
+        await git(['-C', cwd, 'fetch', url, refspec], { GIT_TERMINAL_PROMPT: '0' });
+        await clearFetchedToken(cwd, name, secret);
+      } else {
+        await git(['-C', cwd, 'fetch', 'origin', refspec], { GIT_TERMINAL_PROMPT: '0' });
+      }
+      return true;
+    } catch (error) {
+      if (error instanceof SwarmloopError) {
+        throw error;
+      }
+      const detail = redact(gitDetail(error), secret.trim());
+      if (detail.includes("couldn't find remote ref")) {
+        return false;
+      }
+      if (detail.includes('cannot lock ref') && attempt < FETCH_LOCK_ATTEMPTS - 1) {
+        continue;
+      }
+      throw new SwarmloopError(`${repo} ${step} failed: ${detail}`);
+    }
+  }
+  throw new SwarmloopError(`${repo} ${step} failed`);
 }
 
 function sshFailure(repo: string, origin: string, hosts: RebaseHosts, step: 'prepare' | 'rebase'): string {

@@ -14,7 +14,7 @@ import { recordHandoff, textDocument } from '../model-step';
 import { repoNames, worktreePath } from '../repo-names';
 import { remoteProject } from '../merge-request/merge-request-record';
 import { selectedHost } from '../../providers/host-credentials';
-import { allowedPaths, isDenied, parsePaths, PlannedPath, porcelainPaths, renderPaths } from './commit-paths';
+import { allowedPaths, deniedIndexPaths, parsePaths, PlannedPath, renderPaths, stageSelection } from './commit-paths';
 
 interface Tree {
   repo: string;
@@ -245,11 +245,19 @@ export class CommitService {
     codeHost: string,
   ): Promise<boolean> {
     const cwd = tree.path;
-    const wanted = planned.filter((item) => item.repo === tree.repo).map((item) => item.path);
-    const dirty = new Set(porcelainPaths(await this.status(tree)));
-    const stage = wanted.filter((path) => dirty.has(path) && !isDenied(path, denied));
-    if (stage.length > 0) {
-      await this.gitAt(tree, ['add', '--', ...stage], 'commit failed');
+    const wanted = new Set(planned.filter((item) => item.repo === tree.repo).map((item) => item.path));
+    const porcelain = await this.status(tree);
+    const held = deniedIndexPaths(porcelain, denied);
+    if (held.length > 0) {
+      await this.gitAt(tree, ['reset', '-q', 'HEAD', '--', ...held], 'commit failed');
+    }
+    const selection = stageSelection(porcelain, denied);
+    const add = selection.add.filter((path) => wanted.has(path));
+    const staged = selection.staged.filter((path) => wanted.has(path));
+    if (add.length > 0) {
+      await this.gitAt(tree, ['add', '--', ...add], 'commit failed');
+    }
+    if (add.length > 0 || staged.length > 0) {
       await this.gitAt(tree, [...(await authorArgs(cwd)), 'commit', '--no-verify', '-m', message], 'commit failed');
     }
     const origin = await originUrl(cwd, tree.repo, 'origin failed');
