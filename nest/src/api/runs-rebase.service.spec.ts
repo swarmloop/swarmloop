@@ -450,13 +450,17 @@ describe('runs api', () => {
       expect(git(tree, ['rev-parse', `refs/swarmloop/pre-rebase/${branch}`])).toBe(oldTip);
       expect(git(tree, ['branch', '--show-current'])).toBe(branch);
       expect(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-') && !temps.has(name))).toEqual([]);
-      writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 3;\n');
+      const resolved = 'export const field = 3;\n<<<<<<<\n>>>>>>>\n';
+      writeFileSync(join(tree, 'src', 'field.ts'), resolved);
+      expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
       const next = await rebaseFeatureRepos(input);
       expect(next).toEqual({ kind: 'clean', leases: [{ repo: 'demo', tip: remoteTip }] });
       expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);
       expect(git(tree, ['rev-list', '--count', `${base}..HEAD`])).toBe('1');
       expect(git(tree, ['log', '-1', '--format=%s'])).toBe('feat(proj-64): Ship the field');
-      expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toBe('export const field = 3;\n');
+      expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toBe(resolved);
+      expect(git(tree, ['show', 'HEAD:src/field.ts'])).toBe(resolved.trim());
+      expect(git(tree, ['ls-files', '-u'])).not.toContain('src/field.ts');
       expect(git(tree, ['rev-parse', `refs/remotes/origin/${branch}`])).toBe(remoteTip);
       expect(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-') && !temps.has(name))).toEqual([]);
     } finally {

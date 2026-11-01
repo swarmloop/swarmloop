@@ -1,6 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { readFileSync } from 'fs';
 import { join } from 'path';
 import { readEnv, SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
@@ -13,12 +12,12 @@ import { SwarmloopError } from '../../swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
 import { CommitService } from '../commit/commit.service';
 import { implementFollowUp, isPipelineReturn, rebaseConflictPrompt, withAddedRepos } from '../follow-up';
-import { git } from '../../git/git';
+import { git, gitDetail } from '../../git/git';
 import { composedReturn, parseSummary, recordHandoff, skillPrompt, textDocument, withHandoff, withModelStep, ModelStepContext } from '../model-step';
 import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.service';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../repo-names';
-import { REBASE_CONFLICT, RebaseStop, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase-worktree';
+import { REBASE_CONFLICT, RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase-worktree';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { parseImplementation, withReturnNotes } from './implement-record';
 
@@ -138,7 +137,17 @@ export class ImplementService {
       hosts: readEnv(this.config),
     };
     const mounts = mountsForStep(this.history.root(), key, names, ctx.opened.run.targetPath);
-    let outcome = await rebaseFeatureRepos(input);
+    let outcome: RebaseStop | null = null;
+    for (const repo of names) {
+      const parked = await parkedConflict(worktreePath(this.history.root(), key, repo), repo, ctx.opened.run.prompt);
+      if (parked) {
+        outcome = parked;
+        break;
+      }
+    }
+    if (!outcome) {
+      outcome = await rebaseFeatureRepos(input);
+    }
     const seen = new Set<string>();
     while (outcome.kind === 'conflict') {
       if (!outcome.stderr.trim() && storedStderr) {
@@ -163,13 +172,12 @@ export class ImplementService {
       });
       const cwd = worktreePath(this.history.root(), key, outcome.repo);
       const still = await unmergedPaths(cwd);
-      const toAdd = outcome.files.filter((path) => still.includes(path) && !conflictMarkers(join(cwd, path)));
-      if (toAdd.length > 0) {
-        await git(['-C', cwd, 'add', '--', ...toAdd]);
-      }
-      const after = await unmergedPaths(cwd);
-      if (samePaths(after, outcome.files)) {
-        return this.failConflict(ctx, outcome);
+      if (still.length > 0) {
+        try {
+          await git(['-C', cwd, 'add', '--', ...still]);
+        } catch (error) {
+          throw new SwarmloopError(`${outcome.repo} rebase failed: ${gitDetail(error)}`);
+        }
       }
       outcome = await rebaseFeatureRepos(input);
     }
@@ -204,17 +212,4 @@ export class ImplementService {
 
 function answerHasPlan(text: string, output: string): boolean {
   return correctedItems(text, output) !== null;
-}
-
-function samePaths(left: string[], right: string[]): boolean {
-  return left.slice().sort().join('\0') === right.slice().sort().join('\0');
-}
-
-function conflictMarkers(file: string): boolean {
-  try {
-    const text = readFileSync(file, 'utf8');
-    return text.includes('<<<<<<<') && text.includes('>>>>>>>');
-  } catch {
-    return false;
-  }
 }
