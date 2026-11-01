@@ -7,7 +7,7 @@ import { CHECKOUT_NAME, storedProjects } from '../steps/prepare/checkout-path';
 import { PrepareService } from '../steps/prepare/prepare.service';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { SwarmloopError } from '../swarmloop-error';
-import { taskKeys } from '../steps/requirements/requirements.service';
+import { taskKeys } from '../steps/requirements/requirements-input';
 import { FlowView } from './run-view/run-view.types';
 import { requireRun, RunQueriesService } from './run-queries.service';
 

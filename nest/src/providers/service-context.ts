@@ -1,7 +1,7 @@
 import { join } from 'path';
 import { Inject, Injectable } from '@nestjs/common';
 import { HistoryService } from '../history/history.service';
-import { taskKeys } from '../steps/requirements/requirements.service';
+import { taskKeys } from '../steps/requirements/requirements-input';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { IssueBundle } from '../integrations/issue-tracker/issue-bundle';
 import { IssueTracker } from '../integrations/issue-tracker/issue-tracker';

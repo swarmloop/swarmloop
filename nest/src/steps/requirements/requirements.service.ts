@@ -1,31 +1,30 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { existsSync } from 'fs';
-import { readFile } from 'fs/promises';
 import { HistoryService } from '../../history/history.service';
-import { sampleSelf, SampleDraft, VisitDraft } from '../../history/visit';
 import { RunEntity } from '../../history/entities';
-import { KillReason } from '../../limits/limits';
+import { SampleDraft, sampleSelf } from '../../history/visit';
 import { FetchFailed, HttpCallDraft, SwarmloopError, PasteNeeded } from '../../swarmloop-error';
 import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
-import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
 import { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
 import { REQUIREMENTS_SOURCE } from '../../integrations/requirements-source/requirements-source.module';
-import { RequirementsSource, RequirementsWrite } from '../../integrations/requirements-source/requirements-source';
+import { RequirementsSource } from '../../integrations/requirements-source/requirements-source';
 import { ISSUE_TRACKER } from '../../providers/tokens';
-import { recordHandoff } from '../shared/handoff';
-import { Step } from '../step';
+import { BaseStep, StepContext } from '../base-step';
+import { readPrompt, taskKeys, unreadSource } from './requirements-input';
+import { emptyWrite, RequirementsFinish, requirementsVisit, stopReason } from './requirements-visit';
 
 @Injectable()
-export class RequirementsService implements Step {
+export class RequirementsService extends BaseStep {
   readonly name: StepName = 'requirements';
-  readonly usesModel = false;
+  readonly requiredKind = 'requirements';
 
   constructor(
-    private readonly history: HistoryService,
+    history: HistoryService,
     @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
     @Inject(REQUIREMENTS_SOURCE) private readonly source: RequirementsSource,
-  ) {}
+  ) {
+    super(history);
+  }
 
   async fetch(key: string): Promise<PipelineResult> {
     const prior = await this.history.findRun(key);
@@ -37,7 +36,7 @@ export class RequirementsService implements Step {
         keys.add(ticket.key);
       }
     }
-    return this.produce(key, prompt, [...keys]);
+    return this.perform(key, (ctx) => this.produce(ctx, prompt, [...keys]));
   }
 
   async missingInput(): Promise<string | null> {
@@ -45,15 +44,6 @@ export class RequirementsService implements Step {
   }
 
   async execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
-    try {
-      return await this.run(key, options);
-    } catch (error) {
-      const message = error instanceof SwarmloopError ? error.message : 'requirements failed';
-      return { exitCode: 1, message };
-    }
-  }
-
-  private async run(key: string, options: StepOptions): Promise<PipelineResult> {
     let prompt: string | undefined;
     try {
       prompt = await readPrompt(options);
@@ -61,24 +51,35 @@ export class RequirementsService implements Step {
       const message = error instanceof SwarmloopError ? error.message : 'prompt failed';
       return { exitCode: 1, message };
     }
-    if (prompt === undefined) {
-      prompt = (await this.history.findRun(key))?.prompt ?? undefined;
+    try {
+      const resolved = prompt ?? (await this.history.findRun(key))?.prompt ?? undefined;
+      if (resolved === undefined) {
+        return { exitCode: 1, message: 'prompt is missing' };
+      }
+      return await super.execute(key, { ...options, prompt: resolved });
+    } catch (error) {
+      return { exitCode: 1, message: this.failureText(error) };
     }
-    if (prompt === undefined) {
-      return { exitCode: 1, message: 'prompt is missing' };
-    }
-    return this.produce(key, prompt, taskKeys(prompt, key));
   }
 
-  private async produce(key: string, prompt: string | undefined, issueKeys: string[]): Promise<PipelineResult> {
-    const opened = await openStep(this.history, key, 'requirements');
+  protected run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
+    return this.produce(ctx, options.prompt, taskKeys(options.prompt ?? '', key));
+  }
+
+  private async produce(ctx: StepContext, prompt: string | undefined, issueKeys: string[]): Promise<PipelineResult> {
+    const { opened } = ctx;
+    const key = opened.run.key;
     const effectivePrompt = prompt ?? opened.prior?.prompt ?? undefined;
     if (effectivePrompt !== undefined) {
       opened.run.prompt = effectivePrompt;
-      await this.history.saveRun(opened.run);
+      try {
+        await this.history.saveRun(opened.run);
+      } catch (error) {
+        return { exitCode: 1, message: this.failureText(error) };
+      }
     }
     const samples: SampleDraft[] = [sampleSelf()];
-    const finish = (input: RequirementsFinish) => this.finish(opened, samples, input);
+    const finish = (input: RequirementsFinish) => this.finish(ctx, samples, input);
     try {
       const unread = effectivePrompt ? unreadSource(effectivePrompt) : null;
       if (unread) {
@@ -112,7 +113,6 @@ export class RequirementsService implements Step {
         written,
         calls: fetched.httpCalls,
         outcome: 'ok',
-        visitStatus: 'done',
         exitCode: 0,
         message: 'requirements done',
         body: written.body,
@@ -124,46 +124,32 @@ export class RequirementsService implements Step {
           written: emptyWrite(),
           calls: error.httpCalls,
           outcome: 'waiting',
-          visitStatus: 'waiting',
           exitCode: 0,
           message: error.message,
           body: `${JSON.stringify({ url: error.url })}\n`,
           kind: 'pending',
         });
       }
-      const message = error instanceof SwarmloopError ? error.message : 'requirements failed';
       return finish({
         written: emptyWrite(),
         calls: error instanceof FetchFailed ? error.httpCalls : [],
         outcome: 'failed',
-        visitStatus: 'failed',
         exitCode: 1,
-        message,
+        message: this.failureText(error),
         body: null,
       });
     }
   }
 
-  private async finish(opened: OpenedStep, samples: SampleDraft[], input: RequirementsFinish) {
-    opened.run.agentCalls += input.written.calls;
-    opened.run.spentUsd += input.written.usd;
-    const visit = requirementsVisit(opened, samples, input);
-    if (input.outcome === 'ok') {
-      const note = await recordHandoff(this.history, opened.run.key, 'requirements', `- ${input.message}\n`);
-      const primary = visit.document;
-      visit.document = null;
-      visit.documents = [...(primary ? [primary] : []), note];
-    }
-    return closeStep({
-      history: this.history,
-      run: opened.run,
-      previousStep: opened.previousStep,
-      previousStatus: opened.previousStatus,
-      step: 'requirements',
+  private finish(ctx: StepContext, samples: SampleDraft[], input: RequirementsFinish): Promise<PipelineResult> {
+    ctx.opened.run.agentCalls += input.written.calls;
+    ctx.opened.run.spentUsd += input.written.usd;
+    return ctx.end({
       outcome: input.outcome,
-      visit,
-      line: `${opened.startedAt} ${input.message}`,
       exitCode: input.exitCode,
+      line: `${ctx.opened.startedAt} ${input.message}`,
+      handoff: input.outcome === 'ok' ? `- ${input.message}\n` : undefined,
+      visit: requirementsVisit(samples, input),
     });
   }
 
@@ -198,124 +184,11 @@ export class RequirementsService implements Step {
   }
 }
 
-interface RequirementsFinish {
-  written: RequirementsWrite;
-  calls: HttpCallDraft[];
-  outcome: 'ok' | 'failed' | 'blocked' | 'waiting';
-  visitStatus: string;
-  exitCode: number;
-  message: string;
-  body: string | null;
-  kind?: string;
-}
-
-function requirementsVisit(opened: OpenedStep, samples: SampleDraft[], input: RequirementsFinish): VisitDraft {
-  return {
-    step: 'requirements',
-    model: input.written.exchange?.model ?? null,
-    mode: input.written.exchange ? 'agent' : null,
-    startedAt: opened.startedAt,
-    finishedAt: new Date().toISOString(),
-    durationMs: Date.now() - opened.started,
-    status: input.visitStatus,
-    exitCode: input.exitCode,
-    killReason: input.written.killReason,
-    tokensIn: input.written.tokensIn,
-    tokensOut: input.written.tokensOut,
-    usd: input.written.usd,
-    samples,
-    exchange: input.written.exchange,
-    httpCalls: input.calls,
-    document: input.body ? { kind: input.kind ?? 'requirements', fileName: '', body: input.body } : null,
-    resumed: input.written.resumed,
-  };
-}
-
 function resuming(prior: RunEntity | null): boolean {
   if (!prior || prior.currentStep !== 'requirements') {
     return false;
   }
   return prior.status === 'failed' || prior.status === 'running' || prior.status === 'waiting';
-}
-
-function stopReason(
-  key: string,
-  written: RequirementsWrite,
-): Pick<RequirementsFinish, 'outcome' | 'visitStatus' | 'message'> | null {
-  if (ceiling(written.killReason)) {
-    return { outcome: 'blocked', visitStatus: 'blocked', message: `${key} blocked: ${written.killReason}` };
-  }
-  if (written.killReason === 'time' || written.killReason === 'idle') {
-    return { outcome: 'failed', visitStatus: 'failed', message: `${key} requirements killed: ${written.killReason}` };
-  }
-  if (!written.body.trim()) {
-    return { outcome: 'failed', visitStatus: 'failed', message: 'requirements record is empty' };
-  }
-  return null;
-}
-
-
-function emptyWrite(): RequirementsWrite {
-  return {
-    body: '',
-    calls: 0,
-    usd: 0,
-    tokensIn: 0,
-    tokensOut: 0,
-    exchange: null,
-    killReason: null,
-    samples: [],
-    resumed: false,
-  };
-}
-
-const JIRA_KEY = /[A-Z][A-Z0-9]+-\d+/g;
-const JIRA_KEY_EXACT = /^[A-Z][A-Z0-9]+-\d+$/;
-
-export function taskKeys(prompt: string, runId: string): string[] {
-  const found = new Set<string>();
-  if (JIRA_KEY_EXACT.test(runId)) {
-    found.add(runId);
-  }
-  for (const match of prompt.matchAll(JIRA_KEY)) {
-    found.add(match[0]);
-  }
-  return [...found];
-}
-
-function unreadSource(prompt: string): string | null {
-  if (/https?:\/\/\S*slack\.com/i.test(prompt)) {
-    return 'slack is not readable';
-  }
-  if (/https?:\/\/\S*teams\.microsoft\.com/i.test(prompt)) {
-    return 'teams is not readable';
-  }
-  return null;
-}
-
-function ceiling(reason: KillReason | null): boolean {
-  return reason === 'usd' || reason === 'tokens' || reason === 'calls';
-}
-
-async function readPrompt(options: StepOptions): Promise<string | undefined> {
-  if (options.prompt !== undefined && options.promptFile !== undefined) {
-    throw new SwarmloopError('prompt and prompt-file are both set');
-  }
-  if (options.prompt === undefined && options.promptFile === undefined) {
-    return undefined;
-  }
-  const text = options.promptFile !== undefined ? await readPromptFile(options.promptFile) : options.prompt ?? '';
-  if (!text.trim()) {
-    throw new SwarmloopError('prompt is empty');
-  }
-  return text.endsWith('\n') ? text : `${text}\n`;
-}
-
-async function readPromptFile(path: string): Promise<string> {
-  if (!existsSync(path)) {
-    throw new SwarmloopError('prompt file is missing');
-  }
-  return readFile(path, 'utf8');
 }
 
 function parseProgress(body: string | null): { issues: Record<string, IssueBundle> } {
