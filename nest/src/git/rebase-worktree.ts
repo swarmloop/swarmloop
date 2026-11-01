@@ -63,16 +63,33 @@ export async function rebaseFeatureRepos(input: RebaseRepoInput): Promise<Rebase
 export async function unmergedPaths(cwd: string): Promise<string[]> {
   let raw = '';
   try {
-    raw = await gitRaw(['-C', cwd, 'diff', '--name-only', '--diff-filter=U', '-z']);
+    raw = await gitRaw(['-C', cwd, 'ls-files', '-u', '-z']);
   } catch (error) {
     if (!gitMissing(error)) {
       throw new SwarmloopError(gitDetail(error));
     }
   }
-  return raw
-    .split('\0')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
+  return unmergedFromStageList(raw);
+}
+
+/** Parked rebase: the state file is present and the index is still unmerged. */
+export async function parkedConflict(cwd: string, repo: string, prompt: string | null): Promise<RebaseStop | null> {
+  const state = await readRebaseState(cwd, repo);
+  if (!state) {
+    return null;
+  }
+  const files = await unmergedPaths(cwd);
+  if (files.length === 0) {
+    return null;
+  }
+  return {
+    kind: 'conflict',
+    repo,
+    files,
+    stderr: '',
+    base: await baseRefFor(cwd, prompt, state.baseSha),
+    commit: state.message,
+  };
 }
 
 async function rebaseFeatureRepo(input: {
@@ -185,7 +202,6 @@ async function resumeRebase(input: {
   cwd: string;
   repo: string;
   branch: string;
-  prompt: string | null;
   denied: string[];
   hosts: RebaseHosts;
   state: RebaseState;
@@ -193,21 +209,6 @@ async function resumeRebase(input: {
   const current = await gitAt(input.cwd, input.repo, ['branch', '--show-current'], 'branch failed');
   if (current !== input.branch) {
     throw new SwarmloopError(`${input.repo} branch is missing`);
-  }
-  const files = await unmergedPaths(input.cwd);
-  const blocked = files.find((file) => isDenied(file, input.denied) && conflictMarkers(join(input.cwd, file)));
-  if (blocked) {
-    throw new SwarmloopError(`${input.repo} rebase failed: ${blocked}`);
-  }
-  if (files.some((file) => conflictMarkers(join(input.cwd, file)))) {
-    return {
-      kind: 'conflict',
-      repo: input.repo,
-      files,
-      stderr: '',
-      base: await baseRefFor(input.cwd, input.prompt, input.state.baseSha),
-      commit: input.state.message,
-    };
   }
   const porcelain = await gitRawAt(input.cwd, input.repo, ['status', '--porcelain=v1', '-z', '-uall']);
   const held = deniedIndexPaths(porcelain, input.denied);
@@ -350,15 +351,6 @@ async function landConflict(input: {
   };
 }
 
-function conflictMarkers(file: string): boolean {
-  try {
-    const text = readFileSync(file, 'utf8');
-    return text.includes('<<<<<<<') && text.includes('>>>>>>>');
-  } catch {
-    return false;
-  }
-}
-
 /** `--no-skip-worktree` is ignored when `--no-assume-unchanged` is in the same call. */
 async function resetHard(cwd: string, repo: string, hosts: RebaseHosts, rev: string): Promise<void> {
   const raw = await gitRawAt(cwd, repo, ['ls-files', '-z']);
@@ -423,13 +415,13 @@ async function squashMerge(tmp: string, tipSha: string, author: string[]): Promi
 async function cloneUnmerged(tmp: string, repo: string, hosts: RebaseHosts): Promise<string[]> {
   let raw = '';
   try {
-    raw = await gitRaw(cloneArgs(tmp, ['diff', '--name-only', '--diff-filter=U', '-z']));
+    raw = await gitRaw(cloneArgs(tmp, ['ls-files', '-u', '-z']));
   } catch (error) {
     if (!gitMissing(error)) {
       throw new SwarmloopError(`${repo} rebase failed: ${rebaseStderr(gitStderr(error), hosts)}`);
     }
   }
-  return raw.split('\0').map((item) => item.trim()).filter((item) => item.length > 0);
+  return unmergedFromStageList(raw);
 }
 
 async function indexDirty(tmp: string, repo: string, hosts: RebaseHosts): Promise<boolean> {
@@ -638,6 +630,17 @@ async function loadCloneIndex(
     return;
   }
   await gitStdin(cwd, repo, hosts, ['update-index', '--index-info'], `${lines.join('\n')}\n`);
+}
+
+function unmergedFromStageList(raw: string): string[] {
+  const paths: string[] = [];
+  for (const entry of parseStageList(raw)) {
+    if (entry.stage === '0' || paths.includes(entry.path)) {
+      continue;
+    }
+    paths.push(entry.path);
+  }
+  return paths;
 }
 
 function parseStageList(raw: string): StageEntry[] {

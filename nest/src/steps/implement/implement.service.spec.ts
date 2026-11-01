@@ -16,7 +16,7 @@ import { AGENT_CONTINUE, AGENT_RUNNER, AgentRunInput, AgentRunResult } from '../
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import { REBASE_CONFLICT } from '../../git/rebase-worktree';
+import { REBASE_CONFLICT, rebaseFeatureRepos } from '../../git/rebase-worktree';
 
 const reply = ['implementation:', '- changed the field parser', '- ran unit tests', '', 'summary:', '- changed the parser so empty fields stay'].join('\n');
 
@@ -359,7 +359,15 @@ describe('implement step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-conflict-'));
     await writeEnv(root);
     const tree = conflictedTree(root, 'PROJ-64', 'billing-api');
-    const agent = jest.fn().mockResolvedValue(result(reply));
+    let marked = '';
+    const agent = jest.fn(async (input: AgentRunInput) => {
+      if (input.prompt.includes('The commit being replayed is')) {
+        expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
+        marked = readFileSync(join(tree, 'src', 'field.ts'), 'utf8');
+        return result('edited the conflict\n');
+      }
+      return result(reply);
+    });
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-64', 'approve');
@@ -367,29 +375,31 @@ describe('implement step', () => {
       const run = await history.findRun('PROJ-64');
       await history.putDocument(run!, REBASE_CONFLICT, 'pending-implement\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-64');
-      expect(done.exitCode).toBe(1);
-      expect(done.message).toContain('billing-api rebase failed');
-      expect(done.message).toContain('src/field.ts');
-      expect(done.message).not.toContain('rebase is in progress');
-      expect(agent).toHaveBeenCalledTimes(1);
-      const input = agent.mock.calls[0]?.[0] as AgentRunInput;
-      expect(input.resumeChatId ?? null).toBeNull();
-      expect(input.prompt).toContain('src/field.ts');
-      expect(input.prompt).toContain('The new base is origin/main.');
-      expect(input.prompt).toContain('The commit being replayed is');
-      expect(input.prompt).toContain('Ship the field');
-      expect(input.prompt).toContain('Edit only these files:');
-      expect(input.prompt).toContain('Do not run git.');
-      expect(input.prompt).not.toContain('rebase --continue');
-      expect(input.prompt).not.toContain('git add only those files');
-      expect(input.prompt).not.toContain('finish the checklist');
-      expect(input.prompt.toLowerCase()).not.toContain('ours');
-      expect(input.prompt.toLowerCase()).not.toContain('theirs');
-      const fresh = await history.findRun('PROJ-64');
-      expect(fresh?.currentStep).toBe('implement');
-      expect(fresh?.status).toBe('failed');
-      expect((await history.latestBody('PROJ-64', REBASE_CONFLICT))?.trim().split('\n')[0]).toBe('pending-implement');
-      expect(git(tree, ['diff', '--name-only', '--diff-filter=U'])).toContain('src/field.ts');
+      expect(done.exitCode).toBe(0);
+      expect(agent).toHaveBeenCalledTimes(2);
+      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      const input = calls[0];
+      expect(input?.resumeChatId ?? null).toBeNull();
+      expect(input?.prompt).toContain('src/field.ts');
+      expect(input?.prompt).toContain('The new base is origin/main.');
+      expect(input?.prompt).toContain('The commit being replayed is');
+      expect(input?.prompt).toContain('Ship the field');
+      expect(input?.prompt).toContain('Edit only these files:');
+      expect(input?.prompt).toContain('Do not run git.');
+      expect(input?.prompt).not.toContain('rebase --continue');
+      expect(input?.prompt).not.toContain('git add only those files');
+      expect(input?.prompt).not.toContain('finish the checklist');
+      expect(input?.prompt.toLowerCase()).not.toContain('ours');
+      expect(input?.prompt.toLowerCase()).not.toContain('theirs');
+      expect(calls[1]?.prompt).toContain('add the field');
+      expect(calls[1]?.prompt).not.toContain('The commit being replayed is');
+      expect(marked).toContain('<<<<<<<');
+      expect(marked).toContain('>>>>>>>');
+      expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toBe(marked);
+      expect(git(tree, ['show', 'HEAD:src/field.ts'])).toBe(marked.trim());
+      expect(git(tree, ['ls-files', '-u'])).not.toContain('src/field.ts');
+      expect((await history.latestBody('PROJ-64', REBASE_CONFLICT))?.trim()).toBe('review');
+      expect((await history.findRun('PROJ-64'))?.currentStep).toBe('implement-improve');
     } finally {
       await app.close();
     }
@@ -408,6 +418,7 @@ describe('implement step', () => {
     const state = git(tree, ['rev-parse', '--git-path', 'swarmloop-rebase']);
     writeFileSync(isAbsolute(state) ? state : join(tree, state), `${base}\nfeat(PROJ-117): Ship the field\n`);
     writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
+    git(tree, ['add', 'src/field.ts']);
     const agent = jest.fn().mockResolvedValue(result(reply));
     const app = await boot(root, agent);
     try {
@@ -469,7 +480,10 @@ describe('implement step', () => {
     git(tree, ['diff', '--cached', '--quiet', 'HEAD']);
     const marker = git(tree, ['rev-parse', '--git-path', 'rebase-merge']);
     expect(existsSync(isAbsolute(marker) ? marker : join(tree, marker))).toBe(true);
-    const agent = jest.fn().mockResolvedValue(result(reply));
+    const agent = jest.fn(async () => {
+      expect(git(tree, ['ls-files', '-u'])).toContain('src/overlap.ts');
+      return result(reply);
+    });
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-118', 'approve');
@@ -478,11 +492,11 @@ describe('implement step', () => {
       await history.putDocument(run!, 'implementation', '- changed the field parser\n');
       await history.putDocument(run!, REBASE_CONFLICT, 'pending\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-118');
-      expect(done.exitCode).toBe(1);
+      expect(done.exitCode).toBe(0);
       expect(done.message).not.toContain('pathspec');
-      expect(done.message).toContain('src/overlap.ts');
-      expect(agent).toHaveBeenCalled();
-      expect(git(tree, ['diff', '--name-only', '--diff-filter=U'])).toContain('src/overlap.ts');
+      expect(agent).toHaveBeenCalledTimes(1);
+      expect(git(tree, ['ls-files', '-u'])).not.toContain('src/overlap.ts');
+      expect((await history.findRun('PROJ-118'))?.currentStep).toBe('code-review');
     } finally {
       await app.close();
     }
@@ -522,6 +536,124 @@ describe('implement step', () => {
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/PROJ-65-ship-the-field');
       expect(git(tree, ['show', 'HEAD:src/field.ts'])).toContain('field = 3');
     } finally {
+      await app.close();
+    }
+  });
+
+  it('returns the existing implementation text when the resolution still contains conflict markers', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-marker-bytes-'));
+    await writeEnv(root);
+    const tree = conflictedTree(root, 'PROJ-168', 'billing-api');
+    const marked = 'export const field = 3;\n<<<<<<<\n>>>>>>>\n';
+    const agent = jest.fn(async (_input: AgentRunInput) => {
+      expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
+      writeFileSync(join(tree, 'src', 'field.ts'), marked);
+      expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
+      return result('implementation:\n- something else\n\nsummary:\n- resolved the rebase\n');
+    });
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-168', 'approve');
+      const history = app.get(HistoryService);
+      const run = await history.findRun('PROJ-168');
+      await history.putDocument(run!, 'implementation', '- changed the field parser\n');
+      await history.putDocument(run!, REBASE_CONFLICT, 'pending\n');
+      const done = await app.get(PipelineService).step('implement', 'PROJ-168');
+      expect(done.exitCode).toBe(0);
+      expect(agent).toHaveBeenCalledTimes(1);
+      const input = agent.mock.calls[0]?.[0] as AgentRunInput;
+      expect(input.resumeChatId ?? null).toBeNull();
+      expect(input.prompt).toContain('The new base is origin/main.');
+      expect(input.prompt).toContain('The commit being replayed is');
+      expect(input.prompt).toContain('Ship the field');
+      expect(input.prompt).not.toContain('rebase --continue');
+      expect(input.prompt.toLowerCase()).not.toContain('ours');
+      expect(input.prompt.toLowerCase()).not.toContain('theirs');
+      const notes = await app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity)).find({ where: { kind: 'implementation' } });
+      expect(notes.map((item) => item.body)).toEqual(['- changed the field parser\n']);
+      expect((await history.latestBody('PROJ-168', REBASE_CONFLICT))?.trim()).toBe('review');
+      expect((await history.latestBody('PROJ-168', 'rebase_merge_skip'))?.trim()).toBe('skip');
+      expect((await history.findRun('PROJ-168'))?.currentStep).toBe('code-review');
+      expect(git(tree, ['branch', '--show-current'])).toBe('feature/PROJ-168-ship-the-field');
+      expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toBe(marked);
+      expect(git(tree, ['show', 'HEAD:src/field.ts'])).toBe(marked.trim());
+      expect(git(tree, ['ls-files', '-u'])).not.toContain('src/field.ts');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('shows a parked conflict to the agent before the commit', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-parked-'));
+    await writeEnv(root);
+    const tree = featureTree(root, 'PROJ-169', 'billing-api');
+    const clone = join(root, 'billing-api');
+    git(clone, ['config', 'user.email', 'dev@example.com']);
+    git(clone, ['config', 'user.name', 'Dev']);
+    mkdirSync(join(tree, 'src'), { recursive: true });
+    writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
+    git(tree, ['add', 'src/field.ts']);
+    git(tree, ['commit', '-m', 'field']);
+    mkdirSync(join(clone, 'src'), { recursive: true });
+    writeFileSync(join(clone, 'src', 'field.ts'), 'export const field = 2;\n');
+    git(clone, ['add', 'src/field.ts']);
+    git(clone, ['commit', '-m', 'base']);
+    git(clone, ['push', 'origin', 'main']);
+    git(tree, ['fetch', 'origin', 'main']);
+    const marked = 'export const field = 3;\n<<<<<<<\n>>>>>>>\n';
+    const agent = jest.fn(async (input: AgentRunInput) => {
+      if (input.prompt.includes('The commit being replayed is')) {
+        expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
+        writeFileSync(join(tree, 'src', 'field.ts'), marked);
+        expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
+        return result('edited the conflict\n');
+      }
+      return result(reply);
+    });
+    const previous = process.env.SWARMLOOP_ROOT;
+    process.env.SWARMLOOP_ROOT = root;
+    const app = await boot(root, agent);
+    try {
+      const stop = await rebaseFeatureRepos({
+        root,
+        key: 'PROJ-169',
+        repos: ['billing-api'],
+        branch: 'feature/PROJ-169-ship-the-field',
+        prompt: null,
+        denied: [],
+        message: 'feat(PROJ-169): Ship the field',
+        hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' },
+      });
+      expect(stop.kind).toBe('conflict');
+      const state = git(tree, ['rev-parse', '--git-path', 'swarmloop-rebase']);
+      expect(existsSync(isAbsolute(state) ? state : join(tree, state))).toBe(true);
+      expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
+      await seed(app, 'PROJ-169', 'approve');
+      const history = app.get(HistoryService);
+      const run = await history.findRun('PROJ-169');
+      await history.putDocument(run!, REBASE_CONFLICT, 'pending-implement\n');
+      const done = await app.get(PipelineService).step('implement', 'PROJ-169');
+      expect(done.exitCode).toBe(0);
+      expect(agent).toHaveBeenCalledTimes(2);
+      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      expect(calls[0]?.prompt).toContain('src/field.ts');
+      expect(calls[0]?.prompt).toContain('The new base is origin/main.');
+      expect(calls[0]?.prompt).toContain('The commit being replayed is');
+      expect(calls[0]?.prompt).toContain('Ship the field');
+      expect(calls[0]?.prompt).toContain('Do not run git.');
+      expect(calls[1]?.prompt).toContain('add the field');
+      expect(calls[1]?.prompt).not.toContain('The commit being replayed is');
+      expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toBe(marked);
+      expect(git(tree, ['show', 'HEAD:src/field.ts'])).toBe(marked.trim());
+      expect(git(tree, ['ls-files', '-u'])).not.toContain('src/field.ts');
+      expect((await history.latestBody('PROJ-169', REBASE_CONFLICT))?.trim()).toBe('review');
+      expect((await history.findRun('PROJ-169'))?.currentStep).toBe('implement-improve');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.SWARMLOOP_ROOT;
+      } else {
+        process.env.SWARMLOOP_ROOT = previous;
+      }
       await app.close();
     }
   });
