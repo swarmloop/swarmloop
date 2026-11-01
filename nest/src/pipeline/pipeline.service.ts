@@ -1,7 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync, realpathSync, statSync } from 'fs';
-import { join } from 'path';
 import { readEnv } from '../config/env';
 import { liveLogBody } from '../acp/live-output';
 import { overSpend } from '../limits/limits';
@@ -14,21 +13,11 @@ import { HistoryService } from '../history/history.service';
 import { containerName } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SwarmloopError } from '../swarmloop-error';
-import { BranchService } from '../steps/branch/branch.service';
-import { CommitService } from '../steps/commit/commit.service';
-import { MergeRequestService } from '../steps/merge-request/merge-request.service';
-import { CodeReviewService } from '../steps/code-review/code-review.service';
-import { ImplementImproveService } from '../steps/implement/implement-improve.service';
-import { ImplementService } from '../steps/implement/implement.service';
-import { PlanImproveService } from '../steps/plan/plan-improve.service';
-import { PipelineStepService } from '../steps/pipeline/pipeline-step.service';
-import { PlanService } from '../steps/plan/plan.service';
 import { renderProjects, storedProjects } from '../steps/prepare/checkout-path';
-import { PrepareService } from '../steps/prepare/prepare.service';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { RequirementsService } from '../steps/requirements/requirements.service';
-import { ResearchService } from '../steps/research/research.service';
-import { joinPrompt, readPlan, withInstructions } from '../steps/plan/plan-record';
+import { StepRegistry } from '../steps/step.registry';
+import { joinPrompt, withInstructions } from '../steps/plan/plan-record';
 import { CHAT_LOCK, chatHeld, chatResume, readChatLock } from './chat-lock';
 import { settleShell, shellHolding } from './shell-lock';
 import { assertKey, autoContinues, continuesSameStep, countedVisits, continues, diedLog, failedLaunches, isStep, loopMark, PipelineResult, settle, STEPS, StepName, StepOptions } from './pipeline-result';
@@ -40,17 +29,7 @@ export class PipelineService implements OnModuleInit {
   constructor(
     private readonly history: HistoryService,
     private readonly requirements: RequirementsService,
-    private readonly prepare: PrepareService,
-    private readonly research: ResearchService,
-    private readonly branch: BranchService,
-    private readonly commit: CommitService,
-    private readonly mergeRequest: MergeRequestService,
-    private readonly pipelineStep: PipelineStepService,
-    private readonly plan: PlanService,
-    private readonly planImprove: PlanImproveService,
-    private readonly implement: ImplementService,
-    private readonly implementImprove: ImplementImproveService,
-    private readonly codeReview: CodeReviewService,
+    private readonly registry: StepRegistry,
     private readonly sandbox: SandboxService,
     private readonly config: ConfigService,
     private readonly runStop: RunStop,
@@ -460,17 +439,9 @@ export class PipelineService implements OnModuleInit {
     if (pendingError) {
       return { exitCode: 1, message: pendingError };
     }
-    const handler = this.handlers()[name];
-    if (handler) {
-      return handler(key, options);
-    }
-    let sandboxError: string | null = null;
-    if (isModelStep(name)) {
-      try {
-        await this.sandbox.assertReady(readEnv(this.config).RUNTIME);
-      } catch (error) {
-        sandboxError = error instanceof SwarmloopError ? error.message : 'sandbox failed';
-      }
+    const step = this.registry.get(name);
+    if (step) {
+      return step.execute(key, options);
     }
     const prior = await this.history.findRun(key);
     const previousStep = prior?.currentStep ?? name;
@@ -479,12 +450,12 @@ export class PipelineService implements OnModuleInit {
     if (options.path) {
       run.targetPath = realpathSync(options.path);
     }
-    const settled = settle(previousStep, previousStatus, name, sandboxError ? 'failed' : 'blocked');
+    const settled = settle(previousStep, previousStatus, name, 'blocked');
     run.status = settled.status;
     run.currentStep = settled.currentStep;
     run.ownerPid = null;
     await this.history.saveRun(run);
-    const line = `${new Date().toISOString()} ${sandboxError ?? `${name} not implemented`}`;
+    const line = `${new Date().toISOString()} ${name} not implemented`;
     await this.history.appendProgress(key, line);
     return { exitCode: 1, message: line };
   }
@@ -507,65 +478,8 @@ export class PipelineService implements OnModuleInit {
     }
   }
 
-  private handlers(): Partial<Record<StepName, (key: string, options: StepOptions) => Promise<PipelineResult>>> {
-    return {
-      requirements: (key, options) => this.guard(this.requirements.execute(key, options), 'requirements failed'),
-      prepare: (key) => this.prepare.execute(key),
-      research: (key, options) => this.research.execute(key, options),
-      branch: (key) => this.branch.execute(key),
-      plan: (key, options) => this.plan.execute(key, options),
-      'plan-improve': (key, options) => this.planImprove.execute(key, options),
-      implement: (key, options) => this.implement.execute(key, options),
-      'implement-improve': (key, options) => this.implementImprove.execute(key, options),
-      'code-review': (key, options) => this.codeReview.execute(key, options),
-      commit: (key) => this.commit.execute(key),
-      'merge-request': (key, options) => this.mergeRequest.execute(key, options),
-      pipeline: (key, options) => this.pipelineStep.execute(key, options),
-    };
-  }
-
-  private async guard(result: Promise<PipelineResult>, fallback: string): Promise<PipelineResult> {
-    try {
-      return await result;
-    } catch (error) {
-      const message = error instanceof SwarmloopError ? error.message : fallback;
-      return { exitCode: 1, message };
-    }
-  }
-
   private async missingInput(name: StepName, key: string, options: StepOptions): Promise<string | null> {
-    if (name === 'code-review' && (options.path || (await this.storedCheckout(key)) || (await this.foreignReview(key)))) {
-      return null;
-    }
-    if (name === 'requirements' || name === 'done') {
-      return null;
-    }
-    if (name === 'research') {
-      const path = join(this.history.root(), 'worktrees', key);
-      return existsSync(path) ? null : `worktrees/${key}`;
-    }
-    if (name === 'plan-improve' || name === 'implement') {
-      const plan = readPlan(await this.history.latestBody(key, 'requirements'));
-      return plan ? null : 'plan';
-    }
-    const kind = requiredKind(name);
-    if (!kind) {
-      return null;
-    }
-    return (await this.history.hasDocument(key, kind)) ? null : kind;
-  }
-
-  private async foreignReview(key: string): Promise<boolean> {
-    const run = await this.history.findRun(key);
-    if (!run) {
-      return false;
-    }
-    return !(await this.history.activePhases(run.id)).includes('implementation');
-  }
-
-  private async storedCheckout(key: string): Promise<boolean> {
-    const run = await this.history.findRun(key);
-    return Boolean(run?.targetPath) && !(await this.history.hasDocument(key, 'implementation'));
+    return this.registry.get(name)?.missingInput(key, options) ?? null;
   }
 
   claimed(key: string): boolean {
@@ -650,12 +564,6 @@ export class PipelineService implements OnModuleInit {
 /** One pass, then the return loops. A stuck advance stops here. */
 const HOP_LIMIT = STEPS.length * 3;
 
-const MODEL_STEPS = new Set<StepName>(['research', 'plan', 'plan-improve', 'implement', 'implement-improve', 'code-review']);
-
-function isModelStep(name: StepName): boolean {
-  return MODEL_STEPS.has(name);
-}
-
 function flagError(name: StepName, options: StepOptions): string | null {
   if ((options.prompt !== undefined || options.promptFile !== undefined) && name !== 'requirements') {
     return 'prompt is only valid for requirements';
@@ -674,26 +582,6 @@ function targetError(path: string | undefined): string | null {
     return 'path is not a directory';
   }
   return null;
-}
-
-function requiredKind(name: StepName): string | null {
-  switch (name) {
-    case 'prepare':
-      return 'requirements';
-    case 'branch':
-    case 'plan':
-      return 'repos';
-    case 'implement-improve':
-    case 'code-review':
-      return 'implementation';
-    case 'commit':
-    case 'merge-request':
-      return 'requirements';
-    case 'pipeline':
-      return 'pipeline_ref';
-    default:
-      return null;
-  }
 }
 
 function stepElapsed(startedAt: string | null): number {

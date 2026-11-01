@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import { HistoryService } from '../../history/history.service';
 import { DocumentDraft, sampleSelf } from '../../history/visit';
-import { PhaseName, PipelineResult, StepOptions, visitStatus } from '../../pipeline/pipeline-result';
+import { PhaseName, PipelineResult, StepName, StepOptions, visitStatus } from '../../pipeline/pipeline-result';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
@@ -11,6 +11,7 @@ import { branchName, summaryForBranch } from '../branch/branch-name';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { recordHandoff, textDocument } from '../model-step';
 import { repoNames, worktreePath } from '../repo-names';
+import { Step, requiredDocument } from '../step';
 import { remoteProject, renderMergeRequest } from './merge-request-record';
 
 /** Set on a done rebase so this pass leaves an existing merge request untouched. */
@@ -27,11 +28,18 @@ interface Tree {
 }
 
 @Injectable()
-export class MergeRequestService {
+export class MergeRequestService implements Step {
+  readonly name: StepName = 'merge-request';
+  readonly usesModel = false;
+
   constructor(
     private readonly history: HistoryService,
     private readonly registry: CodeHostRegistry,
   ) {}
+
+  missingInput(key: string): Promise<string | null> {
+    return requiredDocument(this.history, key, 'requirements');
+  }
 
   async execute(key: string, _options: StepOptions = {}): Promise<PipelineResult> {
     const opened = await openStep(this.history, key, 'merge-request');

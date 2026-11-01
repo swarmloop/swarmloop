@@ -197,6 +197,18 @@ describe('requirements step', () => {
     }
   });
 
+  it('reports requirements failed when the step throws something other than a SwarmloopError', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-throw-'));
+    const app = await boot(root, 'http://127.0.0.1:9', 'direct', jest.fn(), jest.fn());
+    try {
+      jest.spyOn(app.get(HistoryService), 'begin').mockRejectedValueOnce(new Error('database is locked'));
+      const result = await app.get(PipelineService).step('requirements', 'PROJ-2', { prompt: 'Build it' });
+      expect(result).toEqual({ exitCode: 1, message: 'requirements failed' });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('blocks a step that is not implemented', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-later-'));
     const app = await boot(root, 'http://127.0.0.1:9', 'direct', jest.fn(), jest.fn());

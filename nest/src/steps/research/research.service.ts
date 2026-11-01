@@ -1,26 +1,34 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { readdirSync, statSync } from 'fs';
+import { existsSync, readdirSync, statSync } from 'fs';
 import { basename, join } from 'path';
 import { readEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER, AgentProcessRunner } from '../../limits/agent-runner';
-import { PipelineResult, StepOptions } from '../../pipeline/pipeline-result';
+import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
 import { renderProjects, storedProjects } from '../prepare/checkout-path';
 import { plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, withModelStep, ModelStepContext } from '../model-step';
 import { mountsForStep } from '../repo-names';
+import { Step } from '../step';
 import { parseResearch } from './research-record';
 
 @Injectable()
-export class ResearchService {
+export class ResearchService implements Step {
+  readonly name: StepName = 'research';
+  readonly usesModel = true;
+
   constructor(
     private readonly history: HistoryService,
     private readonly config: ConfigService,
     private readonly sandbox: SandboxService,
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
   ) {}
+
+  async missingInput(key: string): Promise<string | null> {
+    return existsSync(join(this.history.root(), 'worktrees', key)) ? null : `worktrees/${key}`;
+  }
 
   execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
     const env = readEnv(this.config);
