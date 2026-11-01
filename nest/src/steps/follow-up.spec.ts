@@ -1,6 +1,8 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { IMPLEMENT_IMPROVE_FOLLOW_UP, implementFollowUp, REPORT_CONTINUE, reviewContinue, reviewResume, withAddedRepos } from './follow-up';
+import { IMPLEMENT_IMPROVE_FOLLOW_UP, implementFollowUp } from './implement/implement.prompts';
+import { REPORT_CONTINUE, reviewContinue, reviewResume } from './code-review/code-review.prompts';
+import { withAddedRepos } from './follow-up';
 import { PLAN_IMPROVE_FOLLOW_UP } from './plan-improve/plan-improve.prompts';
 import { planFollowUp } from './plan/plan.prompts';
 import { LINKED_CONTEXT, TASK_SCOPE } from './shared/requirements-brief';
@@ -8,7 +10,7 @@ import { LINKED_CONTEXT, TASK_SCOPE } from './shared/requirements-brief';
 const skillText = (name: string): string => readFileSync(join(__dirname, '../../../skills', name, 'SKILL.md'), 'utf8');
 
 // Plan, plan-improve, and implement carry this code-quality standard, word for word,
-// so the first turn (SKILL.md) and the resume (follow-up.ts) can never drift apart.
+// so the first turn (SKILL.md) and the resume (implement.prompts.ts, plan/plan.prompts.ts, plan-improve/plan-improve.prompts.ts) can never drift apart.
 const CODE_STANDARD =
   'Keep to the structure and patterns already in the tree, and keep it clean, simple, and straightforward: DRY, KISS, SOLID. ' +
   'Favor clear, well-factored code over clever or cramped code: each function, module, and layer has one clear responsibility. ' +

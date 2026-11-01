@@ -10,50 +10,37 @@ import { packageRegistries } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
-import { IMPLEMENT_IMPROVE_FOLLOW_UP, withAddedRepos } from '../follow-up';
-import { ModelStepContext, withModelStep } from '../agent-step';
+import { withAddedRepos } from '../follow-up';
+import { AgentStep, ModelStepContext } from '../agent-step';
 import { composedReturn, recordHandoff, textDocument, withHandoff } from '../shared/handoff';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames } from '../shared/repo-names';
-import { Step, requiredDocument } from '../step';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
+import { IMPLEMENT_IMPROVE_FOLLOW_UP } from './implement.prompts';
 import { reviewedImplementation, withReturnNotes } from './implement-record';
 
 @Injectable()
-export class ImplementImproveService implements Step {
+export class ImplementImproveService extends AgentStep {
   readonly name: StepName = 'implement-improve';
-  readonly usesModel = true;
+  readonly requiredKind = 'implementation';
 
   constructor(
-    private readonly history: HistoryService,
-    private readonly config: ConfigService,
-    private readonly sandbox: SandboxService,
-    @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
-  ) {}
-
-  missingInput(key: string): Promise<string | null> {
-    return requiredDocument(this.history, key, 'implementation');
+    history: HistoryService,
+    config: ConfigService,
+    sandbox: SandboxService,
+    @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
+  ) {
+    super(history, config, sandbox, agent);
   }
 
-  execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
+  protected settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number } {
+    return { mode: 'agent', model: env.MODEL_IMPLEMENT, timeLimitMs: env.IMPLEMENT_TIMEOUT_MS };
+  }
+
+  protected async write(key: string, ctx: ModelStepContext, options: StepOptions): Promise<PipelineResult> {
     const env = readEnv(this.config);
-    return withModelStep(
-      { history: this.history, sandbox: this.sandbox, agent: this.agent },
-      {
-        key,
-        step: 'implement-improve',
-        mode: 'agent',
-        model: env.MODEL_IMPLEMENT,
-        timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
-        runtime: env.RUNTIME,
-        auto: options.auto,
-      },
-      (ctx) => this.review(key, ctx, env, options.auto),
-    );
-  }
-
-  private async review(key: string, ctx: ModelStepContext, env: SwarmloopEnv, auto?: boolean): Promise<PipelineResult> {
+    const auto = options.auto;
     const plan = requireApprovedPlan(await this.history.latestBody(key, 'requirements'));
     const notes = await this.history.latestBody(key, 'implementation');
     if (!notes?.trim()) {
