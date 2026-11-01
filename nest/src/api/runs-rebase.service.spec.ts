@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
 import { HistoryService } from '../history/history.service';
 import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.service';
-import { REBASE_CONFLICT, rebaseFeatureRepos } from '../git/rebase-worktree';
+import { REBASE_CONFLICT, rebaseFeatureRepos, storedBase } from '../git/rebase-worktree';
 import { RunRebaseService } from './run-rebase.service';
 import { boot, remember, featureWorktree, denyEnv, git, isAncestor, hostFetch } from './runs.spec-helpers';
 
@@ -332,7 +332,12 @@ describe('runs api', () => {
     git(clone, ['push', 'origin', 'main']);
     const base = git(clone, ['rev-parse', 'main']);
     writeFileSync(join(tree, 'src', 'readme.ts'), 'export const readme = 2;\n');
-    git(tree, ['stash', 'push', '-m', 'swarmloop-rebase', '--', 'src/readme.ts']);
+    git(tree, ['add', 'src/readme.ts']);
+    const savedTree = git(tree, ['write-tree']);
+    const saved = git(tree, ['commit-tree', savedTree, '-m', 'swarmloop-rebase\nsrc/readme.ts']);
+    git(tree, ['update-ref', 'refs/worktree/swarmloop-rebase', saved]);
+    git(tree, ['reset', '-q', 'HEAD', '--', 'src/readme.ts']);
+    git(tree, ['checkout', 'HEAD', '--', 'src/readme.ts']);
     expect(git(tree, ['status', '--porcelain'])).toBe('');
     const head = git(tree, ['rev-parse', 'HEAD']);
     const common = git(tree, ['rev-parse', '--git-common-dir']);
@@ -494,7 +499,7 @@ describe('runs api', () => {
     }
   });
 
-  it('returns a conflict when a tracked denied edit is stashed', async () => {
+  it('returns a conflict when a tracked denied edit is hidden', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-denied-stash-'));
     const { tree, clone } = featureWorktree(root, 'proj-66');
     const branch = 'feature/proj-66-ship-the-field';
@@ -531,9 +536,15 @@ describe('runs api', () => {
       expect(existsSync(isAbsolute(state) ? state : join(tree, state))).toBe(true);
       const saved = git(tree, ['rev-parse', `refs/swarmloop/pre-rebase/${branch}`]);
       expect(git(tree, ['show', '--name-only', '--format=', saved])).toContain('src/extra.ts');
-      const listed = git(tree, ['stash', 'list']);
+      let hidden = false;
+      try {
+        git(tree, ['rev-parse', '--verify', '--quiet', 'refs/worktree/swarmloop-rebase']);
+        hidden = true;
+      } catch {
+        hidden = false;
+      }
       const env = existsSync(join(tree, '.env')) ? readFileSync(join(tree, '.env'), 'utf8') : '';
-      expect(listed.includes('swarmloop-rebase') || env.includes('TOKEN=2')).toBe(true);
+      expect(hidden || env.includes('TOKEN=2')).toBe(true);
     } finally {
       await app.close();
     }
@@ -606,6 +617,285 @@ describe('runs api', () => {
       expect(readFileSync(join(outsideDir, 'keep.txt'), 'utf8')).toBe('SECRET-DIR\n');
       expect(git(tree, ['ls-files', '--stage', '--', 'src/ext.ts'])).toContain('120000');
       expect(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-') && !temps.has(name))).toEqual([]);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.SWARMLOOP_ROOT;
+      } else {
+        process.env.SWARMLOOP_ROOT = previous;
+      }
+    }
+  });
+
+  it('rebases two worktrees of one repo at the same time', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-parallel-'));
+    const { tree, clone } = featureWorktree(root, 'proj-a');
+    const treeB = join(root, 'worktrees', 'proj-b', 'demo');
+    mkdirSync(join(treeB, '..'), { recursive: true });
+    git(clone, ['worktree', 'add', '-b', 'feature/proj-b-ship-the-field', treeB, 'main']);
+    writeFileSync(join(tree, 'src', 'a.ts'), 'export const a = 1;\n');
+    git(tree, ['add', 'src/a.ts']);
+    git(tree, ['commit', '-m', 'a']);
+    writeFileSync(join(treeB, 'src', 'b.ts'), 'export const b = 1;\n');
+    git(treeB, ['add', 'src/b.ts']);
+    git(treeB, ['commit', '-m', 'b']);
+    git(clone, ['switch', 'main']);
+    writeFileSync(join(clone, 'src', 'base.ts'), 'export const base = 1;\n');
+    git(clone, ['add', 'src/base.ts']);
+    git(clone, ['commit', '-m', 'base']);
+    git(clone, ['push', 'origin', 'main']);
+    const base = git(clone, ['rev-parse', 'main']);
+    const previous = process.env.SWARMLOOP_ROOT;
+    process.env.SWARMLOOP_ROOT = root;
+    const hosts = { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' };
+    try {
+      const [left, right] = await Promise.all([
+        rebaseFeatureRepos({
+          root,
+          key: 'proj-a',
+          repos: ['demo'],
+          branch: 'feature/proj-a-ship-the-field',
+          prompt: null,
+          denied: [],
+          message: 'feat(proj-a): Ship the field',
+          hosts,
+        }),
+        rebaseFeatureRepos({
+          root,
+          key: 'proj-b',
+          repos: ['demo'],
+          branch: 'feature/proj-b-ship-the-field',
+          prompt: null,
+          denied: [],
+          message: 'feat(proj-b): Ship the field',
+          hosts,
+        }),
+      ]);
+      expect(left).toEqual({ kind: 'clean', leases: [{ repo: 'demo', tip: null }] });
+      expect(right).toEqual({ kind: 'clean', leases: [{ repo: 'demo', tip: null }] });
+      expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);
+      expect(git(treeB, ['rev-parse', 'HEAD^'])).toBe(base);
+      const filesA = git(tree, ['ls-tree', '-r', '--name-only', 'HEAD']);
+      const filesB = git(treeB, ['ls-tree', '-r', '--name-only', 'HEAD']);
+      expect(filesA).toContain('src/a.ts');
+      expect(filesA).not.toContain('src/b.ts');
+      expect(filesB).toContain('src/b.ts');
+      expect(filesB).not.toContain('src/a.ts');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.SWARMLOOP_ROOT;
+      } else {
+        process.env.SWARMLOOP_ROOT = previous;
+      }
+    }
+  });
+
+  it('fetches one checkout from two prepares at the same time', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-fetch-'));
+    const { clone } = featureWorktree(root, 'proj-fetch');
+    const other = join(root, 'other');
+    git(root, ['clone', join(root, 'demo.git'), other]);
+    git(other, ['config', 'user.email', 'dev@example.com']);
+    git(other, ['config', 'user.name', 'Dev']);
+    writeFileSync(join(other, 'src', 'remote.ts'), 'export const remote = 1;\n');
+    git(other, ['add', 'src/remote.ts']);
+    git(other, ['commit', '-m', 'remote']);
+    git(other, ['push', 'origin', 'HEAD:main']);
+    const tip = git(join(root, 'demo.git'), ['rev-parse', 'refs/heads/main']);
+    expect(git(clone, ['rev-parse', 'origin/main'])).not.toBe(tip);
+    const previous = process.env.CHECKOUTS_ROOT;
+    process.env.CHECKOUTS_ROOT = root;
+    const hosts = { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' };
+    try {
+      const refs = await Promise.all([
+        storedBase(clone, 'demo', null, hosts, 'prepare'),
+        storedBase(clone, 'demo', null, hosts, 'prepare'),
+      ]);
+      expect(refs).toEqual(['origin/main', 'origin/main']);
+      expect(git(clone, ['rev-parse', 'origin/main'])).toBe(tip);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CHECKOUTS_ROOT;
+      } else {
+        process.env.CHECKOUTS_ROOT = previous;
+      }
+    }
+  });
+
+  it('restores only the denied file hidden by that worktree', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-hide-'));
+    const { tree, clone } = featureWorktree(root, 'proj-a');
+    git(clone, ['switch', 'main']);
+    writeFileSync(join(clone, '.env'), 'TOKEN=0\n');
+    git(clone, ['add', '.env']);
+    git(clone, ['commit', '-m', 'env']);
+    git(clone, ['push', 'origin', 'main']);
+    git(tree, ['fetch', 'origin', 'main']);
+    git(tree, ['merge', '--ff-only', 'origin/main']);
+    const treeB = join(root, 'worktrees', 'proj-b', 'demo');
+    mkdirSync(join(treeB, '..'), { recursive: true });
+    git(clone, ['worktree', 'add', '-b', 'feature/proj-b-ship-the-field', treeB, 'main']);
+    writeFileSync(join(tree, 'src', 'a.ts'), 'export const a = 1;\n');
+    git(tree, ['add', 'src/a.ts']);
+    git(tree, ['commit', '-m', 'a']);
+    writeFileSync(join(treeB, 'src', 'b.ts'), 'export const b = 1;\n');
+    git(treeB, ['add', 'src/b.ts']);
+    git(treeB, ['commit', '-m', 'b']);
+    writeFileSync(join(tree, '.env'), 'TOKEN=A\n');
+    writeFileSync(join(treeB, '.env'), 'TOKEN=B\n');
+    writeFileSync(join(clone, 'src', 'base.ts'), 'export const base = 1;\n');
+    git(clone, ['add', 'src/base.ts']);
+    git(clone, ['commit', '-m', 'base']);
+    git(clone, ['push', 'origin', 'main']);
+    const base = git(clone, ['rev-parse', 'main']);
+    const previous = process.env.SWARMLOOP_ROOT;
+    process.env.SWARMLOOP_ROOT = root;
+    const hosts = { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' };
+    const input = (key: string) => ({
+      root,
+      key,
+      repos: ['demo'],
+      branch: `feature/${key}-ship-the-field`,
+      prompt: null,
+      denied: ['.env'],
+      message: `feat(${key}): Ship the field`,
+      hosts,
+    });
+    try {
+      const [left, right] = await Promise.all([
+        rebaseFeatureRepos(input('proj-a')),
+        rebaseFeatureRepos(input('proj-b')),
+      ]);
+      expect(left.kind).toBe('clean');
+      expect(right.kind).toBe('clean');
+      expect(readFileSync(join(tree, '.env'), 'utf8')).toBe('TOKEN=A\n');
+      expect(readFileSync(join(treeB, '.env'), 'utf8')).toBe('TOKEN=B\n');
+      expect(git(tree, ['show', 'HEAD:.env'])).toBe('TOKEN=0');
+      expect(git(treeB, ['show', 'HEAD:.env'])).toBe('TOKEN=0');
+      expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);
+      expect(git(treeB, ['rev-parse', 'HEAD^'])).toBe(base);
+      const filesA = git(tree, ['ls-tree', '-r', '--name-only', 'HEAD']);
+      const filesB = git(treeB, ['ls-tree', '-r', '--name-only', 'HEAD']);
+      expect(filesA).toContain('src/a.ts');
+      expect(filesA).not.toContain('src/b.ts');
+      expect(filesB).toContain('src/b.ts');
+      expect(filesB).not.toContain('src/a.ts');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.SWARMLOOP_ROOT;
+      } else {
+        process.env.SWARMLOOP_ROOT = previous;
+      }
+    }
+  });
+
+  it('squashes a deletion of a tracked file onto a base that still has it', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-delete-'));
+    const { tree, clone } = featureWorktree(root, 'proj-71');
+    git(tree, ['rm', 'src/readme.ts']);
+    git(clone, ['switch', 'main']);
+    writeFileSync(join(clone, 'src', 'base.ts'), 'export const base = 1;\n');
+    git(clone, ['add', 'src/base.ts']);
+    git(clone, ['commit', '-m', 'base']);
+    git(clone, ['push', 'origin', 'main']);
+    const base = git(clone, ['rev-parse', 'main']);
+    const previous = process.env.SWARMLOOP_ROOT;
+    process.env.SWARMLOOP_ROOT = root;
+    try {
+      const stop = await rebaseFeatureRepos({
+        root,
+        key: 'proj-71',
+        repos: ['demo'],
+        branch: 'feature/proj-71-ship-the-field',
+        prompt: null,
+        denied: [],
+        message: 'feat(proj-71): Ship the field',
+        hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' },
+      });
+      expect(stop.kind).toBe('clean');
+      expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);
+      expect(git(tree, ['diff', '--name-status', '--format=', 'HEAD^', 'HEAD'])).toContain('D\tsrc/readme.ts');
+      expect(git(tree, ['ls-tree', '-r', '--name-only', 'HEAD'])).not.toContain('src/readme.ts');
+      expect(git(tree, ['ls-tree', '-r', '--name-only', 'HEAD^'])).toContain('src/readme.ts');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.SWARMLOOP_ROOT;
+      } else {
+        process.env.SWARMLOOP_ROOT = previous;
+      }
+    }
+  });
+
+  it('commits a parked index deletion and clears the marker', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-resume-delete-'));
+    const { tree } = featureWorktree(root, 'proj-72');
+    const base = git(tree, ['rev-parse', 'origin/main']);
+    const state = git(tree, ['rev-parse', '--git-path', 'swarmloop-rebase']);
+    const marker = isAbsolute(state) ? state : join(tree, state);
+    writeFileSync(marker, `${base}\nfeat(proj-72): Ship the field\n`);
+    git(tree, ['rm', 'src/readme.ts']);
+    writeFileSync(join(tree, '.env'), 'TOKEN=1\n');
+    git(tree, ['add', '.env']);
+    const previous = process.env.SWARMLOOP_ROOT;
+    process.env.SWARMLOOP_ROOT = root;
+    try {
+      const stop = await rebaseFeatureRepos({
+        root,
+        key: 'proj-72',
+        repos: ['demo'],
+        branch: 'feature/proj-72-ship-the-field',
+        prompt: null,
+        denied: ['.env'],
+        message: 'feat(proj-72): Ship the field',
+        hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' },
+      });
+      expect(stop).toEqual({ kind: 'clean', leases: [{ repo: 'demo', tip: null }] });
+      expect(existsSync(marker)).toBe(false);
+      expect(git(tree, ['log', '-1', '--format=%s'])).toBe('feat(proj-72): Ship the field');
+      expect(git(tree, ['diff', '--name-status', '--format=', 'HEAD^', 'HEAD'])).toContain('D\tsrc/readme.ts');
+      expect(git(tree, ['ls-tree', '-r', '--name-only', 'HEAD'])).not.toContain('src/readme.ts');
+      expect(git(tree, ['ls-tree', '-r', '--name-only', 'HEAD'])).not.toContain('.env');
+      expect(git(tree, ['status', '--porcelain'])).toContain('.env');
+      expect(readFileSync(join(tree, '.env'), 'utf8')).toBe('TOKEN=1\n');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.SWARMLOOP_ROOT;
+      } else {
+        process.env.SWARMLOOP_ROOT = previous;
+      }
+    }
+  });
+
+  it('squashes a staged rename onto the new base', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-rename-'));
+    const { tree, clone } = featureWorktree(root, 'proj-73');
+    git(tree, ['mv', 'src/readme.ts', 'src/guide.ts']);
+    git(clone, ['switch', 'main']);
+    writeFileSync(join(clone, 'src', 'base.ts'), 'export const base = 1;\n');
+    git(clone, ['add', 'src/base.ts']);
+    git(clone, ['commit', '-m', 'base']);
+    git(clone, ['push', 'origin', 'main']);
+    const base = git(clone, ['rev-parse', 'main']);
+    const previous = process.env.SWARMLOOP_ROOT;
+    process.env.SWARMLOOP_ROOT = root;
+    try {
+      const stop = await rebaseFeatureRepos({
+        root,
+        key: 'proj-73',
+        repos: ['demo'],
+        branch: 'feature/proj-73-ship-the-field',
+        prompt: null,
+        denied: [],
+        message: 'feat(proj-73): Ship the field',
+        hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' },
+      });
+      expect(stop.kind).toBe('clean');
+      expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);
+      const files = git(tree, ['ls-tree', '-r', '--name-only', 'HEAD']);
+      expect(files).toContain('src/guide.ts');
+      expect(files).not.toContain('src/readme.ts');
+      expect(git(tree, ['ls-tree', '-r', '--name-only', 'HEAD^'])).toContain('src/readme.ts');
+      expect(readFileSync(join(tree, 'src', 'guide.ts'), 'utf8')).toBe('export const readme = 1;\n');
+      expect(existsSync(join(tree, 'src', 'readme.ts'))).toBe(false);
     } finally {
       if (previous === undefined) {
         delete process.env.SWARMLOOP_ROOT;

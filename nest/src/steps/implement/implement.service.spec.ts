@@ -310,11 +310,12 @@ describe('implement step', () => {
     const base = git(tree, ['rev-parse', 'origin/main']);
     const state = git(tree, ['rev-parse', '--git-path', 'swarmloop-rebase']);
     writeFileSync(isAbsolute(state) ? state : join(tree, state), `${base}\nfeat(PROJ-116): Ship the field\n`);
-    writeFileSync(join(tree, 'src', 'note.ts'), 'short\n');
-    git(tree, ['add', 'src/note.ts']);
-    git(tree, ['rm', '-f', 'src/note.ts']);
     writeFileSync(join(tree, 'src', 'note.ts'), 'short\nextra\n');
-    git(tree, ['stash', 'push', '--include-untracked', '-m', 'swarmloop-rebase', '--', 'src/note.ts']);
+    git(tree, ['add', 'src/note.ts']);
+    const savedTree = git(tree, ['write-tree']);
+    const saved = git(tree, ['commit-tree', savedTree, '-m', 'swarmloop-rebase\nsrc/note.ts']);
+    git(tree, ['update-ref', 'refs/worktree/swarmloop-rebase', saved]);
+    git(tree, ['rm', '-f', '--cached', 'src/note.ts']);
     writeFileSync(join(tree, 'src', 'note.ts'), 'short\n');
     git(tree, ['add', 'src/note.ts']);
     git(clone, ['config', '--unset-all', 'user.email']);
@@ -338,7 +339,7 @@ describe('implement step', () => {
       expect(git(tree, ['log', '-1', '--format=%s'])).toBe('feat(PROJ-116): Ship the field');
       expect(git(tree, ['log', '-1', '--format=%cn <%ce>'])).toBe('Ada Lovelace <ada@example.com>');
       expect(readFileSync(join(tree, 'src', 'note.ts'), 'utf8')).toContain('extra');
-      expect(git(tree, ['stash', 'list'])).not.toContain('swarmloop-rebase');
+      expect(() => git(tree, ['rev-parse', '--verify', '--quiet', 'refs/worktree/swarmloop-rebase'])).toThrow();
     } finally {
       if (previousName === undefined) {
         delete process.env.GIT_AUTHOR_NAME;
