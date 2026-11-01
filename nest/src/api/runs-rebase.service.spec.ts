@@ -693,7 +693,7 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-fetch-'));
     const { clone } = featureWorktree(root, 'proj-fetch');
     const other = join(root, 'other');
-    git(root, ['clone', join(root, 'demo.git'), other]);
+    git(root, ['clone', '-b', 'main', join(root, 'demo.git'), other]);
     git(other, ['config', 'user.email', 'dev@example.com']);
     git(other, ['config', 'user.name', 'Dev']);
     writeFileSync(join(other, 'src', 'remote.ts'), 'export const remote = 1;\n');
