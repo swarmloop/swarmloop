@@ -20,6 +20,7 @@ describe('ClaudeRuntime', () => {
       '--include-partial-messages',
       '--model',
       'grok-4.7',
+      '--verbose',
       'read the worktrees',
     ]);
     expect(
@@ -40,6 +41,7 @@ describe('ClaudeRuntime', () => {
       'grok-4.7',
       '--resume',
       'chat-1',
+      '--verbose',
       'write the server',
     ]);
   });

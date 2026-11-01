@@ -1,6 +1,6 @@
 import { SwarmloopError } from '../../../swarmloop-error';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
-import type { RuntimeKeys } from '../agent-runtime';
+import type { AgentPrintInput, RuntimeKeys } from '../agent-runtime';
 
 export class ClaudeRuntime extends AbstractAgentRuntime {
   readonly name = 'claude' as const;
@@ -26,5 +26,9 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
 
   protected partialOutputFlag(): string {
     return '--include-partial-messages';
+  }
+
+  protected appendPrintFlags(args: string[], _input: AgentPrintInput): void {
+    args.push('--verbose');
   }
 }

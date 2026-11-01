@@ -85,6 +85,7 @@ describe('buildAgentArgs', () => {
     expect(args).not.toContain('--trust');
     expect(args).not.toContain('--workspace');
     expect(args).toContain('--include-partial-messages');
+    expect(args).toContain('--verbose');
   });
 });
 
