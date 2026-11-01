@@ -75,6 +75,15 @@ describe('step prompt invariants', () => {
     expect(skillText('plan-improve')).toContain('summary:');
     expect(PLAN_IMPROVE_FOLLOW_UP).toContain('summary:');
   });
+
+  it('tells implement to correct a checklist as one plan block of - item lines', () => {
+    const sentence =
+      'When an item changes, end with one plan: block of "- item" lines, not a JSON object, holding the full corrected checklist, before implementation and summary. Without a contradiction, do not write plan:.';
+    expect(skillText('implement')).toContain(sentence);
+    expect(skillText('implement-improve')).toContain(sentence);
+    expect(implementFollowUp('plan:\n- add the field\n', null)).toContain(sentence);
+    expect(IMPLEMENT_IMPROVE_FOLLOW_UP).toContain(sentence);
+  });
 });
 
 const REVIEWERS = ['requirements', 'quality', 'regressions', 'security', 'performance'];
