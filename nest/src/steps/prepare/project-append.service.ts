@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { RunEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
 import { SwarmloopError } from '../../swarmloop-error';
-import { repoNames } from '../repo-names';
+import { repoNames } from '../shared/repo-names';
 import { BranchService } from '../branch/branch.service';
 import { appendProjectNames } from './append-projects';
 import { CHECKOUT_NAME, renderProjects, storedProjects } from './checkout-path';

@@ -1,5 +1,5 @@
 import { SwarmloopError } from '../../swarmloop-error';
-import { bulletSection } from '../markdown-section';
+import { bulletSection } from '../shared/markdown-section';
 
 export function parseImplementation(text: string): string {
   return bulletSection(text, 'implementation');

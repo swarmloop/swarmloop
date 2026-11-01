@@ -4,8 +4,8 @@ import { HistoryService } from '../../history/history.service';
 import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { SwarmloopError } from '../../swarmloop-error';
 import { git, gitDetail, gitMissing } from '../../git/git';
-import { recordHandoff } from '../model-step';
-import { repoNames, worktreePath } from '../repo-names';
+import { recordHandoff } from '../shared/handoff';
+import { repoNames, worktreePath } from '../shared/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { branchName, summaryForBranch } from './branch-name';
 

@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'fs';
 import { join } from 'path';
-import { SandboxMount } from '../sandbox/sandbox-launch';
-import { SwarmloopError } from '../swarmloop-error';
+import { SandboxMount } from '../../sandbox/sandbox-launch';
+import { SwarmloopError } from '../../swarmloop-error';
 
 const REPO_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 

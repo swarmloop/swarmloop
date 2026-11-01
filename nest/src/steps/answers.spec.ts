@@ -1,4 +1,4 @@
-import { unanswered } from './answers';
+import { unanswered } from './shared/answers';
 
 describe('answers', () => {
   it('keeps a question until it has an answer', () => {

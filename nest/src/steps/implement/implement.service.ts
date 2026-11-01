@@ -13,10 +13,12 @@ import { branchName, commitMessage, summaryForBranch } from '../branch/branch-na
 import { CommitService } from '../commit/commit.service';
 import { implementFollowUp, isPipelineReturn, rebaseConflictPrompt, withAddedRepos } from '../follow-up';
 import { git, gitDetail } from '../../git/git';
-import { composedReturn, parseSummary, recordHandoff, skillPrompt, textDocument, withHandoff, withModelStep, ModelStepContext } from '../model-step';
+import { ModelStepContext, withModelStep } from '../agent-step';
+import { composedReturn, recordHandoff, textDocument, withHandoff } from '../shared/handoff';
+import { parseSummary, skillPrompt } from '../shared/skill-prompt';
 import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.service';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
-import { mountsForStep, repoNames, worktreePath } from '../repo-names';
+import { mountsForStep, repoNames, worktreePath } from '../shared/repo-names';
 import { Step, storedPlan } from '../step';
 import { REBASE_CONFLICT, RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase-worktree';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';

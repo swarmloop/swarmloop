@@ -1,8 +1,8 @@
-import { AgentRunResult } from '../limits/agent-runner';
-import { DocumentDraft, VisitDraft } from '../history/visit';
-import { OpenedStep } from '../pipeline/step-run';
-import { StepName } from '../pipeline/pipeline-result';
-import { HttpCallDraft } from '../swarmloop-error';
+import { AgentRunResult } from '../../limits/agent-runner';
+import { DocumentDraft, VisitDraft } from '../../history/visit';
+import { OpenedStep } from '../../pipeline/step-run';
+import { StepName } from '../../pipeline/pipeline-result';
+import { HttpCallDraft } from '../../swarmloop-error';
 
 export function modelVisit(input: {
   opened: OpenedStep;

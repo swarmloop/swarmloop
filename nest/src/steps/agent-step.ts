@@ -1,0 +1,237 @@
+import { mkdirSync } from 'fs';
+import { join } from 'path';
+import { ConfigService } from '@nestjs/config';
+import { readEnv, SwarmloopEnv } from '../config/env';
+import { RunEntity } from '../history/entities';
+import { HistoryService } from '../history/history.service';
+import { DocumentDraft } from '../history/visit';
+import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
+import { AgentProcessRunner, AgentRunResult, readSession } from '../limits/agent-runner';
+import { sessionFileName } from '../limits/session-group';
+import { PipelineResult, StepName, StepOptions, visitStatus } from '../pipeline/pipeline-result';
+import { closeStep, OpenedStep, openStep } from '../pipeline/step-run';
+import { SandboxMount } from '../sandbox/sandbox-launch';
+import { SandboxService } from '../sandbox/sandbox.service';
+import { SwarmloopError } from '../swarmloop-error';
+import { BaseStep } from './base-step';
+import { agentFailure, combineAgentResults } from './shared/agent-result';
+import { modelVisit } from './shared/model-visit';
+import { AGENT_LANGUAGE_RULE } from './shared/skill-prompt';
+
+export function bindModelStep(input: {
+  history: HistoryService;
+  opened: OpenedStep;
+  step: StepName;
+  mode: string;
+  model: string;
+  agent: () => AgentRunResult | null;
+  prompt: () => string;
+}): (
+  outcome: 'ok' | 'failed' | 'waiting' | 'blocked',
+  exitCode: number,
+  line: string,
+  document?: DocumentDraft,
+  documents?: DocumentDraft[],
+  moveTo?: StepName,
+) => Promise<PipelineResult> {
+  return (outcome, exitCode, line, document, documents, moveTo) =>
+    closeStep({
+      history: input.history,
+      run: input.opened.run,
+      previousStep: input.opened.previousStep,
+      previousStatus: input.opened.previousStatus,
+      step: input.step,
+      outcome,
+      visit: modelVisit({
+        opened: input.opened,
+        step: input.step,
+        mode: input.mode,
+        model: input.model,
+        agent: input.agent(),
+        prompt: input.prompt(),
+        status: visitStatus(outcome),
+        exitCode,
+        document,
+        documents,
+      }),
+      line,
+      exitCode,
+      moveTo,
+    });
+}
+
+export async function launchAgent(input: {
+  agent: AgentProcessRunner;
+  history: HistoryService;
+  run: RunEntity;
+  key: string;
+  step: string;
+  mode: string;
+  model: string;
+  timeLimitMs: number;
+  prompt: string;
+  workspace: string;
+  mounts: SandboxMount[];
+  liveStep?: string;
+  allowHosts?: string[];
+  approveMcps?: boolean;
+  auto?: boolean;
+  resume?: boolean;
+  continuePrompt?: string | null;
+}): Promise<AgentRunResult> {
+  const directory = join(input.history.root(), 'data');
+  mkdirSync(directory, { recursive: true });
+  const sessionFile = join(directory, sessionFileName(input.key, input.step));
+  const stored = await readSession(sessionFile, input.run.runtime);
+  const result = await input.agent.run({
+    prompt: `${AGENT_LANGUAGE_RULE}\n\n${input.prompt}`,
+    workspace: input.workspace,
+    outputFile: join(directory, `${input.key}-${input.step}-output.txt`),
+    sessionFile,
+    model: input.model,
+    agentCalls: input.run.agentCalls,
+    spentUsd: input.run.spentUsd,
+    tokensInRun: await input.history.tokenTotal(input.run.id),
+    resumeChatId: input.resume === false ? null : (stored?.chatId ?? null),
+    groupUsd: input.resume === false ? 0 : (stored?.usd ?? 0),
+    runKey: input.key,
+    step: input.step,
+    liveStep: input.liveStep,
+    mounts: input.mounts,
+    allowHosts: input.allowHosts,
+    mode: input.mode,
+    timeLimitMs: input.timeLimitMs,
+    approveMcps: input.approveMcps,
+    auto: input.auto,
+    continuePrompt: input.continuePrompt,
+  });
+  input.run.agentCalls += result.calls;
+  input.run.spentUsd += result.usd;
+  return result;
+}
+
+export interface ModelStepContext {
+  opened: OpenedStep;
+  requirements: string;
+  workspace: string;
+  end: (
+    outcome: 'ok' | 'failed' | 'waiting' | 'blocked',
+    exitCode: number,
+    line: string,
+    document?: DocumentDraft,
+    documents?: DocumentDraft[],
+    moveTo?: StepName,
+  ) => Promise<PipelineResult>;
+  launch: (input: {
+    prompt: string;
+    mounts: SandboxMount[];
+    allowHosts?: string[];
+    label?: string;
+    continuePrompt?: string;
+    resume?: boolean;
+  }) => Promise<AgentRunResult>;
+}
+
+export async function withModelStep(
+  deps: { history: HistoryService; sandbox: SandboxService; agent: AgentProcessRunner },
+  input: {
+    key: string;
+    step: StepName;
+    mode: string;
+    model: string;
+    timeLimitMs: number;
+    runtime: RuntimeName;
+    auto?: boolean;
+  },
+  body: (ctx: ModelStepContext) => Promise<PipelineResult>,
+): Promise<PipelineResult> {
+  const opened = await openStep(deps.history, input.key, input.step);
+  let prompt = '';
+  let agentResult: AgentRunResult | null = null;
+  const launched: AgentRunResult[] = [];
+  const end = bindModelStep({
+    history: deps.history,
+    opened,
+    step: input.step,
+    mode: input.mode,
+    model: input.model,
+    agent: () => agentResult,
+    prompt: () => prompt,
+  });
+  const ctx: ModelStepContext = {
+    opened,
+    requirements: '',
+    workspace: join(deps.history.root(), 'worktrees', input.key),
+    end,
+    launch: async (launch) => {
+      const result = await launchAgent({
+        agent: deps.agent,
+        history: deps.history,
+        run: opened.run,
+        key: input.key,
+        step: launch.label ? `${input.step}-${launch.label}` : input.step,
+        liveStep: input.step,
+        mode: input.mode,
+        model: input.model,
+        timeLimitMs: input.timeLimitMs,
+        auto: input.auto,
+        prompt: launch.prompt,
+        workspace: ctx.workspace,
+        mounts: launch.mounts,
+        allowHosts: launch.allowHosts,
+        resume: launch.resume,
+        continuePrompt: launch.continuePrompt,
+      });
+      prompt = prompt ? `${prompt}\n\n${launch.prompt}` : launch.prompt;
+      launched.push(result);
+      agentResult = combineAgentResults(launched);
+      const failed = agentFailure(result, input.step);
+      if (failed) {
+        throw new SwarmloopError(failed);
+      }
+      return result;
+    },
+  };
+  try {
+    await deps.sandbox.assertReady(input.runtime);
+    const requirements = await deps.history.latestBody(input.key, 'requirements');
+    if (!requirements) {
+      throw new SwarmloopError('requirements is missing');
+    }
+    ctx.requirements = requirements;
+    return await body(ctx);
+  } catch (error) {
+    const message = error instanceof SwarmloopError ? error.message : `${input.step} failed`;
+    return end('failed', 1, `${opened.startedAt} ${message}`);
+  }
+}
+
+export abstract class AgentStep extends BaseStep {
+  readonly usesModel = true;
+
+  constructor(
+    history: HistoryService,
+    protected readonly config: ConfigService,
+    protected readonly sandbox: SandboxService,
+    protected readonly agent: AgentProcessRunner,
+  ) {
+    super(history);
+  }
+
+  protected abstract settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number };
+
+  protected abstract write(key: string, ctx: ModelStepContext, options: StepOptions): Promise<PipelineResult>;
+
+  execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
+    const env = readEnv(this.config);
+    return withModelStep(
+      { history: this.history, sandbox: this.sandbox, agent: this.agent },
+      { key, step: this.name, ...this.settings(env), runtime: env.RUNTIME, auto: options.auto },
+      (ctx) => this.write(key, ctx, options),
+    );
+  }
+
+  protected run(key: string, options: StepOptions): Promise<PipelineResult> {
+    return this.execute(key, options);
+  }
+}

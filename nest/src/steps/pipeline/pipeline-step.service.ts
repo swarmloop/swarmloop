@@ -10,10 +10,10 @@ import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-r
 import { OpenedStep } from '../../pipeline/step-run';
 import { CodeHost, PipelineJob, PipelineRef } from '../../integrations/code-host/code-host';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../swarmloop-error';
-import { recordHandoff, returnNotes, textDocument } from '../model-step';
+import { recordHandoff, returnNotes, textDocument } from '../shared/handoff';
 import { git } from '../../git/git';
 import { remoteProject } from '../merge-request/merge-request-record';
-import { repoNames, worktreePath } from '../repo-names';
+import { repoNames, worktreePath } from '../shared/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 
 type Verdict = 'green' | 'red' | 'wait' | 'manual' | 'stop' | 'absent';

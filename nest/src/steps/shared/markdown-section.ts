@@ -1,4 +1,4 @@
-import { SwarmloopError } from '../swarmloop-error';
+import { SwarmloopError } from '../../swarmloop-error';
 
 export function bulletSection(text: string, name: string): string {
   const block = section(text, name);

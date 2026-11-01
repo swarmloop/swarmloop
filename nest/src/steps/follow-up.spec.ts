@@ -1,7 +1,9 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { IMPLEMENT_IMPROVE_FOLLOW_UP, implementFollowUp, PLAN_IMPROVE_FOLLOW_UP, planFollowUp, REPORT_CONTINUE, reviewContinue, reviewResume, withAddedRepos } from './follow-up';
-import { LINKED_CONTEXT, TASK_SCOPE } from './requirements-brief';
+import { IMPLEMENT_IMPROVE_FOLLOW_UP, implementFollowUp, REPORT_CONTINUE, reviewContinue, reviewResume, withAddedRepos } from './follow-up';
+import { PLAN_IMPROVE_FOLLOW_UP } from './plan-improve/plan-improve.prompts';
+import { planFollowUp } from './plan/plan.prompts';
+import { LINKED_CONTEXT, TASK_SCOPE } from './shared/requirements-brief';
 
 const skillText = (name: string): string => readFileSync(join(__dirname, '../../../skills', name, 'SKILL.md'), 'utf8');
 

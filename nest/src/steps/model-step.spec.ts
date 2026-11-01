@@ -2,8 +2,10 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { AgentRunInput, AgentRunResult } from '../limits/agent-runner';
-import { AGENT_LANGUAGE_RULE, agentFailure, combineAgentResults, launchAgent, skillPrompt, workingDirectoryBlock } from './model-step';
-import { modelVisit } from './model-visit';
+import { launchAgent } from './agent-step';
+import { agentFailure, combineAgentResults } from './shared/agent-result';
+import { modelVisit } from './shared/model-visit';
+import { AGENT_LANGUAGE_RULE, skillPrompt, workingDirectoryBlock } from './shared/skill-prompt';
 
 describe('working directory block', () => {
   it('names the single scratch directory mounted at /work', () => {
