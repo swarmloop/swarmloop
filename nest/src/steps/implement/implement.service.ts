@@ -11,54 +11,46 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
 import { CommitService } from '../commit/commit.service';
-import { implementFollowUp, isPipelineReturn, rebaseConflictPrompt, withAddedRepos } from '../follow-up';
+import { isPipelineReturn, withAddedRepos } from '../follow-up';
 import { git, gitDetail } from '../../git/git';
-import { ModelStepContext, withModelStep } from '../agent-step';
+import { AgentStep, ModelStepContext } from '../agent-step';
 import { composedReturn, recordHandoff, textDocument, withHandoff } from '../shared/handoff';
 import { parseSummary, skillPrompt } from '../shared/skill-prompt';
 import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.service';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../shared/repo-names';
-import { Step, storedPlan } from '../step';
+import { storedPlan } from '../step';
 import { REBASE_CONFLICT, RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase-worktree';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
+import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
 import { parseImplementation, withReturnNotes } from './implement-record';
 
 @Injectable()
-export class ImplementService implements Step {
+export class ImplementService extends AgentStep {
   readonly name: StepName = 'implement';
-  readonly usesModel = true;
+  readonly requiredKind = 'plan';
 
   constructor(
-    private readonly history: HistoryService,
-    private readonly config: ConfigService,
-    private readonly sandbox: SandboxService,
+    history: HistoryService,
+    config: ConfigService,
+    sandbox: SandboxService,
     private readonly commit: CommitService,
-    @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
-  ) {}
+    @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
+  ) {
+    super(history, config, sandbox, agent);
+  }
 
   missingInput(key: string): Promise<string | null> {
     return storedPlan(this.history, key);
   }
 
-  execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
-    const env = readEnv(this.config);
-    return withModelStep(
-      { history: this.history, sandbox: this.sandbox, agent: this.agent },
-      {
-        key,
-        step: 'implement',
-        mode: 'agent',
-        model: env.MODEL_IMPLEMENT,
-        timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
-        runtime: env.RUNTIME,
-        auto: options.auto,
-      },
-      (ctx) => this.apply(key, ctx, env, options.auto),
-    );
+  protected settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number } {
+    return { mode: 'agent', model: env.MODEL_IMPLEMENT, timeLimitMs: env.IMPLEMENT_TIMEOUT_MS };
   }
 
-  private async apply(key: string, ctx: ModelStepContext, env: SwarmloopEnv, auto?: boolean): Promise<PipelineResult> {
+  protected async write(key: string, ctx: ModelStepContext, options: StepOptions): Promise<PipelineResult> {
+    const env = readEnv(this.config);
+    const auto = options.auto;
     const plan = requireApprovedPlan(await this.history.latestBody(key, 'requirements'));
     const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
     const mounts = mountsForStep(this.history.root(), key, names, ctx.opened.run.targetPath);
