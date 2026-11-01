@@ -9,7 +9,7 @@ import { join } from 'path';
 import { AddressInfo } from 'net';
 import { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
-import { AgentExchangeEntity, DocumentEntity, HttpCallEntity, RunEntity } from '../../history/entities';
+import { AgentExchangeEntity, DocumentEntity, HttpCallEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER, AgentRunResult } from '../../limits/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
@@ -204,6 +204,24 @@ describe('requirements step', () => {
       jest.spyOn(app.get(HistoryService), 'begin').mockRejectedValueOnce(new Error('database is locked'));
       const result = await app.get(PipelineService).step('requirements', 'PROJ-2', { prompt: 'Build it' });
       expect(result).toEqual({ exitCode: 1, message: 'requirements failed' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps the no-visit result when the prompt cannot be saved', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-save-'));
+    const app = await boot(root, 'http://127.0.0.1:9', 'direct', jest.fn(), jest.fn());
+    try {
+      const history = app.get(HistoryService);
+      const save = history.saveRun.bind(history);
+      jest
+        .spyOn(history, 'saveRun')
+        .mockImplementation((run) => (run.prompt ? Promise.reject(new Error('disk full')) : save(run)));
+      const result = await app.get(PipelineService).step('requirements', 'PROJ-2', { prompt: 'Build it' });
+      expect(result).toEqual({ exitCode: 1, message: 'requirements failed' });
+      const stats = app.get<Repository<StepStatEntity>>(getRepositoryToken(StepStatEntity));
+      expect(await stats.count()).toBe(0);
     } finally {
       await app.close();
     }

@@ -23,7 +23,6 @@ export interface StepContext {
   end(input: StepEnd): Promise<PipelineResult>;
 }
 
-/** Opens the step, runs its body, and closes the visit. A throw closes it as failed. */
 export abstract class BaseStep implements Step {
   abstract readonly name: StepName;
   abstract readonly requiredKind: string;
@@ -35,7 +34,12 @@ export abstract class BaseStep implements Step {
     return requiredDocument(this.history, key, this.requiredKind);
   }
 
-  async execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
+  execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
+    return this.perform(key, (ctx) => this.run(key, options, ctx));
+  }
+
+  /** Opens the step, runs its body, and closes the visit. A throw closes it as failed. */
+  protected async perform(key: string, body: (ctx: StepContext) => Promise<PipelineResult>): Promise<PipelineResult> {
     const opened = await openStep(this.history, key, this.name);
     const calls: HttpCallDraft[] = [];
     let closed = false;
@@ -48,7 +52,7 @@ export abstract class BaseStep implements Step {
       },
     };
     try {
-      return await this.run(key, options, ctx);
+      return await body(ctx);
     } catch (error) {
       if (closed) {
         throw error;
