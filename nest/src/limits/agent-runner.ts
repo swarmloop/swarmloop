@@ -176,7 +176,7 @@ export class AgentProcessRunner {
     const briefs = briefMounts(statePath, input.step, delivered.mounts);
     const args = runtime.printArgs({ ...input, prompt: delivered.text });
     if (briefs.length > 0) {
-      args.splice(args.length - 1, 0, ...runtime.briefArgs());
+      args.unshift(...runtime.briefArgs());
     }
     if (!resumed) {
       this.live?.log({

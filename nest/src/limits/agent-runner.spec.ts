@@ -12,6 +12,17 @@ import { RunStop } from './run-stop';
 
 const PREVIOUS = 'previous-visit-transcript\n';
 
+describe('AgentProcessRunner brief directory', () => {
+  it('keeps the prompt last so a variadic --add-dir cannot swallow it', async () => {
+    const { spawn } = await start('brief', [{ chunks: [chatStream('chat-9')] }], { resumeChatId: null });
+    const command = (spawn.mock.calls[0]?.[0] as { command?: string[] } | undefined)?.command ?? [];
+    expect(command.at(-1)).toBe('follow up');
+    const at = command.indexOf('--add-dir');
+    expect(command[at + 1]).toBe('/work/brief');
+    expect(command[at + 2]?.startsWith('--')).toBe(true);
+  });
+});
+
 describe('AgentProcessRunner resume output', () => {
   it('returns only the new stream and keeps the previous transcript in the output file', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-agent-resume-'));
