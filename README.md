@@ -5,7 +5,7 @@
 
 # swarmloop
 
-**One server for your coding agents. A fixed path from ticket to merge request, a sandbox around every step, and a record of every dollar.**
+**Coding agents that have to pass five reviewers and your CI before they reach you. A sandbox around every step, a record of every dollar.**
 
 <p>
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg"></a>
@@ -18,7 +18,9 @@
 
 </div>
 
-swarmloop takes a ticket or a prompt and walks a coding agent through requirements, research, a plan, implementation, five parallel code reviews, and CI. Every step runs in a locked container. Every prompt, diff, review, token, and dollar is stored. Cursor or Claude is one line in `.env`.
+swarmloop takes a ticket or a prompt and walks a coding agent through requirements, research, a plan, and implementation. Then the work has to earn your attention. Five reviewers read the diff in parallel, and any finding sends it back to the agent. Only when they agree does Nest commit, push a branch, open a merge request, and watch your pipeline. A red job sends the work back too. You open the merge request when the reviewers and every check in your pipeline have passed.
+
+Every step runs in a locked container. Every prompt, diff, review, token, and dollar is stored. Cursor or Claude is one line in `.env`.
 
 ![A swarmloop run. The flow across the top, the selected step underneath, with its spend, tokens, CPU, and memory.](swarmloop.png)
 
@@ -29,7 +31,7 @@ swarmloop takes a ticket or a prompt and walks a coding agent through requiremen
 | 🗂 **One history** | Prompt, plan, diff, reviews, model exchanges, tokens, dollars, CPU, and memory in one SQLite file. |
 | 🔀 **Cursor or Claude** | One line in `.env`. Research, plan, and implementation each pick their own model. |
 | 🎫 **Jira, Confluence, Drive** | The ticket, its epic, links, subtasks, attachments, and the pages around it. |
-| 🌿 **GitHub and GitLab** | Feature branch, commit after you approve the files, merge request, pipeline watch. |
+| 🌿 **GitHub and GitLab** | Feature branch, commit once the reviewers pass, merge request, pipeline watch. |
 | 🔍 **Five reviewers** | Requirements, quality, regressions, security, performance. A finding sends the work back. |
 | 🔄 **Rebase** | One button rebases onto the latest base branch, hands conflicts to the agent, and reviews again. |
 | 💰 **Limits** | Dollars, tokens, time, silence, and retries are server settings, not the agent's choice. |
@@ -61,7 +63,7 @@ The repository list is every git clone in `CHECKOUTS_ROOT`, which `.env.example`
 
 ### 🚢 Commit, merge request, and CI
 
-Add a git token to `.env` and run `docker compose up --build` again. This time leave **ci** ticked. After you accept the file list, Nest pushes a feature branch, opens a merge request, and watches the pipeline.
+Add a git token to `.env` and run `docker compose up --build` again. This time leave **ci** ticked. When the reviewers pass, Nest pushes a feature branch, opens a merge request, and watches the pipeline. Nobody has to click in between.
 
 - GitHub needs `GITHUB_TOKEN`. GitLab needs `GITLAB_TOKEN`, and `GITLAB_BASE_URL` when it is self-hosted. Both may be set. Nest picks the host whose hostname equals the checkout `origin`.
 - The same token is also used to fetch the base branch, and a run on an SSH origin stops at prepare without it.
@@ -122,7 +124,7 @@ Every model step runs in a fresh container. Nest starts it for the step and remo
 - **Process.** Never root: a launch as root is refused. All Linux capabilities are dropped, `no-new-privileges` is set, the root filesystem is read-only, and the container gets at most 256 processes. There is no Docker socket, so it cannot start another container.
 - **Secrets.** The only secret passed in is the model key. Jira, GitLab, and GitHub tokens stay in the Nest process.
 - **Lifetime.** The step time limit, silence longer than `IDLE_TIMEOUT_MS`, or a token ceiling kills the container. It never outlives its step.
-- **Git.** The agent does not commit and does not push. Nest does, after you accept the file list.
+- **Git.** The agent does not commit and does not push. Nest does, after the reviewers pass, and only for paths outside `deny_paths`.
 
 ### 🗂 One history, nothing lost
 
@@ -147,7 +149,7 @@ A prompt without a ticket number never calls Jira. Jira is the tracker that ship
 
 - One run can span several repositories. Research decides which ones get a feature branch.
 - Nest matches each checkout's `origin` with `GITHUB_BASE_URL` or `GITLAB_BASE_URL`. Point `GITLAB_BASE_URL` at a self-hosted GitLab and it works the same way.
-- Commit stops and shows the file list. After you accept it, Nest commits only those paths, refuses `main` and `master`, and skips everything in `deny_paths`.
+- With **ci** ticked, Nest commits by itself once the reviewers pass. It commits only paths outside `deny_paths` and refuses `main` and `master`. With **ci** unticked, the run stops at commit and shows the file list, and nothing is committed or pushed.
 - A pull request or merge request is opened, or the existing one is updated.
 - Nest watches the pipeline on that branch. A red job's log goes back to implementation.
 - A checkout with no `origin` still gets the full review. CI is skipped, and the panel says why.
@@ -171,7 +173,9 @@ A person is asked where it matters:
 
 - Research and plan stop on open questions until someone answers in the panel.
 - Plan improve checks that the checklist covers everything the task asks for.
-- Commit waits until the file list is accepted.
+- With **ci** unticked, commit waits for you and shows the file list.
+
+With **ci** ticked there is no click between the plan and the merge request. Your time comes last: you open it when the reviewers and your pipeline are green.
 
 The instructions for every step are Markdown files in `skills/`. Edit one, rebuild Nest, and every run after that follows it, for everyone on the server. The rules live in the repo and get reviewed like code. They are not a setting in someone's IDE.
 
@@ -182,6 +186,8 @@ Requirements, quality, regressions, security, and performance review the diff at
 A diff that was already reviewed is not returned a second time.
 
 Before code review, implement improve reads the change again on the same model and fixes what it finds.
+
+Passing review and CI is a minimum bar, not proof that the change is right. The reviewers run on the same family of models as the author, and green tests only show what the tests cover. You still read the diff. You just read one that already passed its own checks.
 
 ### 🔄 Rebase in one click
 

@@ -12,6 +12,8 @@ End the answer with these two sections and nothing after them. `summary` says wh
 
 `questions` lists a decision the requirement leaves open only when two choices would build different things, and neither the requirement nor the tree decides it. A detail a later step can settle from the requirement or from ordinary practice is not a question. Use `- none` when no such decision is open.
 
+Do not ask to confirm an interpretation, and do not ask which of several reasonable options to take. When the requirement is ambiguous, or two of its instructions conflict, pick the choice that fits the tree and the requirement best and record it in `summary` as `- assumed: ...`. The reviewers check that choice later. A person is asked only when every choice would break something the requirement names and neither the requirement nor the tree shows which one is meant. Expect `- none` almost every time.
+
 ```
 summary:
 - why
