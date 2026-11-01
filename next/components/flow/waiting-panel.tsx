@@ -7,6 +7,7 @@ import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { api } from '../../lib/api';
+import { answerPresentation } from '../../lib/answer-field';
 import { FlowView } from '../../lib/types';
 
 export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (flow: FlowView) => void }) {
@@ -57,16 +58,22 @@ export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (fl
         </Box>
       ) : null}
       <Box sx={{ display: 'grid', gap: 1.5, mt: flow.items.length > 0 ? 2 : 0 }}>
-        {answers.map((item) => (
-          <TextField
-            key={`${item.kind}:${item.id}`}
-            label={item.label}
-            value={item.answer}
-            onChange={(event) => setDrafts((current) => ({ ...current, [`${item.kind}:${item.id}`]: event.target.value }))}
-            multiline
-            minRows={2}
-          />
-        ))}
+        {answers.map((item) => {
+          const presentation = answerPresentation(item);
+          return (
+            <Box key={`${item.kind}:${item.id}`} sx={{ display: 'grid', gap: 0.5 }}>
+              {presentation.heading ? <Typography>{presentation.heading}</Typography> : null}
+              <TextField
+                label={presentation.label}
+                slotProps={item.kind === 'question' ? { htmlInput: { 'aria-label': item.label } } : undefined}
+                value={item.answer}
+                onChange={(event) => setDrafts((current) => ({ ...current, [`${item.kind}:${item.id}`]: event.target.value }))}
+                multiline
+                minRows={2}
+              />
+            </Box>
+          );
+        })}
       </Box>
       {error ? (
         <Typography color="error" variant="body2" sx={{ mt: 1 }}>
