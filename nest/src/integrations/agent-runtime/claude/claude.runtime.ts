@@ -28,7 +28,12 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
     return '--include-partial-messages';
   }
 
-  protected appendPrintFlags(args: string[], _input: AgentPrintInput): void {
-    args.push('--verbose', '--dangerously-skip-permissions');
+  protected appendPrintFlags(args: string[], input: AgentPrintInput): void {
+    args.push('--verbose');
+    if (input.mode === 'plan' || input.mode === 'ask') {
+      args.push('--permission-mode', 'plan');
+      return;
+    }
+    args.push('--dangerously-skip-permissions');
   }
 }

@@ -25,7 +25,8 @@ describe('ClaudeRuntime', () => {
       '--model',
       'grok-4.7',
       '--verbose',
-      '--dangerously-skip-permissions',
+      '--permission-mode',
+      'plan',
       'read the worktrees',
     ]);
     expect(

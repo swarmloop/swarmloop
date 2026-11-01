@@ -86,7 +86,8 @@ describe('buildAgentArgs', () => {
     expect(args).not.toContain('--workspace');
     expect(args).toContain('--include-partial-messages');
     expect(args).toContain('--verbose');
-    expect(args).toContain('--dangerously-skip-permissions');
+    expect(args).not.toContain('--dangerously-skip-permissions');
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan');
     expect(args.at(-1)).toBe('read the worktrees');
   });
 });
