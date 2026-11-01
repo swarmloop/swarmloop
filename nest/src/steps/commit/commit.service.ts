@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { existsSync, statSync } from 'fs';
-import { readEnv, SwarmloopEnv } from '../../config/env';
+import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { RunEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
 import { sampleSelf, VisitDraft } from '../../history/visit';
@@ -13,7 +12,6 @@ import { authorArgs, git, gitDetail, gitMissing, gitRaw, originUrl, redact } fro
 import { recordHandoff, textDocument } from '../model-step';
 import { repoNames, worktreePath } from '../repo-names';
 import { remoteProject } from '../merge-request/merge-request-record';
-import { selectedHost } from '../../providers/host-credentials';
 import { allowedPaths, deniedIndexPaths, parsePaths, PlannedPath, renderPaths, stageSelection } from './commit-paths';
 
 interface Tree {
@@ -23,43 +21,11 @@ interface Tree {
 
 export const CI_SKIPPED = 'CI skipped: there is no origin to push.';
 
-export function gitlabPushUrl(origin: string, baseUrl: string, token: string): string | null {
-  if (!token.trim()) {
-    return null;
-  }
-  try {
-    const host = new URL(baseUrl).hostname.toLowerCase();
-    const remote = remoteProject(origin);
-    if (remote.host.toLowerCase() !== host) {
-      return null;
-    }
-    return `https://oauth2:${token}@${host}/${remote.project}.git`;
-  } catch {
-    return null;
-  }
-}
-
-export function githubPushUrl(origin: string, baseUrl: string, token: string): string | null {
-  if (!token.trim()) {
-    return null;
-  }
-  try {
-    const host = new URL(baseUrl).hostname.toLowerCase();
-    const remote = remoteProject(origin);
-    if (remote.host.toLowerCase() !== host) {
-      return null;
-    }
-    return `https://x-access-token:${encodeURIComponent(token)}@${host}/${remote.project}.git`;
-  } catch {
-    return null;
-  }
-}
-
 @Injectable()
 export class CommitService {
   constructor(
     private readonly history: HistoryService,
-    private readonly config: ConfigService,
+    private readonly registry: CodeHostRegistry,
   ) {}
 
   async execute(key: string): Promise<PipelineResult> {
@@ -88,7 +54,7 @@ export class CommitService {
         }
         throw new SwarmloopError('nothing to commit');
       }
-      const pushed = await this.publish(trees, planned, branch, commitMessage(key, summary), readEnv(this.config), opened.run.codeHost);
+      const pushed = await this.publish(trees, planned, branch, commitMessage(key, summary), opened.run.codeHost);
       const listed = planned.length > 0 ? renderPaths(planned).trimEnd() : '';
       if (!pushed) {
         await this.history.putDocument(opened.run, 'ci_skip', `${CI_SKIPPED}\n`);
@@ -222,16 +188,9 @@ export class CommitService {
     return false;
   }
 
-  private async publish(
-    trees: Tree[],
-    planned: PlannedPath[],
-    branch: string,
-    message: string,
-    env: SwarmloopEnv,
-    codeHost: string,
-  ): Promise<boolean> {
+  private async publish(trees: Tree[], planned: PlannedPath[], branch: string, message: string, codeHost: string): Promise<boolean> {
     const denied = await this.history.listDenyPaths();
-    const pushed = await Promise.all(trees.map((tree) => this.publishTree(tree, planned, branch, message, denied, env, codeHost)));
+    const pushed = await Promise.all(trees.map((tree) => this.publishTree(tree, planned, branch, message, denied, codeHost)));
     return pushed.some(Boolean);
   }
 
@@ -241,7 +200,6 @@ export class CommitService {
     branch: string,
     message: string,
     denied: string[],
-    env: SwarmloopEnv,
     codeHost: string,
   ): Promise<boolean> {
     const cwd = tree.path;
@@ -265,7 +223,7 @@ export class CommitService {
       return false;
     }
     const published = await this.optionalRev(tree, `refs/remotes/origin/${branch}`);
-    return this.pushRef(tree, branch, published, env, codeHost, origin);
+    return this.pushRef(tree, branch, published, codeHost, origin);
   }
 
   /** Push a rewritten branch with the tip captured before the base fetch. Does not stage or commit. */
@@ -275,7 +233,6 @@ export class CommitService {
       throw new SwarmloopError(`${key} is missing`);
     }
     const trees = this.trees(key, leases.map((lease) => lease.repo));
-    const env = readEnv(this.config);
     for (const tree of trees) {
       const cwd = tree.path;
       const origin = await originUrl(cwd, tree.repo, 'origin failed');
@@ -283,30 +240,22 @@ export class CommitService {
         continue;
       }
       const captured = leases.find((lease) => lease.repo === tree.repo)?.tip ?? null;
-      await this.pushRef(tree, branch, captured, env, run.codeHost, origin);
+      await this.pushRef(tree, branch, captured, run.codeHost, origin);
     }
     await this.rememberRefs(run, trees, branch);
   }
 
-  private async pushRef(
-    tree: Tree,
-    branch: string,
-    published: string | null,
-    env: SwarmloopEnv,
-    codeHost: string,
-    origin: string,
-  ): Promise<boolean> {
+  private async pushRef(tree: Tree, branch: string, published: string | null, codeHost: string, origin: string): Promise<boolean> {
     const lease = published ? [`--force-with-lease=refs/heads/${branch}:${published}`] : [];
-    const named = codeHost === 'gitlab' || codeHost === 'github';
-    if (!named) {
+    if (!this.registry.has(codeHost)) {
       if (origin.startsWith('git@') || origin.startsWith('ssh://')) {
         throw new SwarmloopError('code host is missing');
       }
       await this.gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed');
       return true;
     }
-    const host = selectedHost(env, codeHost);
-    const url = host.name === 'github' ? githubPushUrl(origin, host.baseUrl, host.token) : gitlabPushUrl(origin, host.baseUrl, host.token);
+    const host = this.registry.credentials(codeHost);
+    const url = this.registry.byName(codeHost).pushUrl(origin);
     if (url) {
       await this.gitAt(tree, ['-c', `remote.origin.pushurl=${url}`, 'push', ...lease, 'origin', `HEAD:refs/heads/${branch}`], 'push failed', { GIT_TERMINAL_PROMPT: '0' }, host.token);
       await this.gitAt(tree, ['update-ref', `refs/remotes/origin/${branch}`, 'HEAD'], 'push failed');

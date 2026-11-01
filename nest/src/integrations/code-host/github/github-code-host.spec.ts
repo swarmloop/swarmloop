@@ -164,6 +164,12 @@ describe('github host', () => {
     await expect(service().findMergeRequest({ project: 'acme/demo', source: 'feature/PROJ-1-ship' })).rejects.toThrow('GITHUB_TOKEN was rejected');
   });
 
+  it('builds a github https push url from ssh origin', () => {
+    const host = service({ GITHUB_BASE_URL: 'https://github.com', GITHUB_TOKEN: 'tok' });
+    expect(host.pushUrl('git@github.com:acme/demo.git')).toBe('https://x-access-token:tok@github.com/acme/demo.git');
+    expect(host.pushUrl('git@gitlab.example:group/demo.git')).toBeNull();
+  });
+
   it('names a missing token', async () => {
     await expect(service({ GITHUB_TOKEN: '' }).findMergeRequest({ project: 'acme/demo', source: 'feature/PROJ-1-ship' })).rejects.toThrow(
       'GITHUB_TOKEN is missing',

@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { execFileSync } from 'child_process';
+import type { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
@@ -14,7 +15,7 @@ import { AGENT_RUNNER, AgentRunResult } from '../../limits/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { MergeRequestDraft } from '../../integrations/code-host/code-host';
-import { CodeHosts } from '../../providers/code-hosts';
+import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { FetchFailed, HttpCallDraft } from '../../swarmloop-error';
 import { REBASE_MERGE_SKIP } from './merge-request.service';
@@ -395,15 +396,23 @@ async function boot(
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })
-    .overrideProvider(CodeHosts)
-    .useValue({
-      get: () => ({
-        findMergeRequest: host.find,
-        openMergeRequest: host.open,
-        updateMergeRequest: host.update ?? jest.fn(async () => ({ httpCalls: [] })),
-        readBranchPipeline: jest.fn(),
-        readJobTrace: jest.fn(),
-      }),
+    .overrideProvider(CodeHostRegistry)
+    .useFactory({
+      factory: () => {
+        const config = {
+          getOrThrow: (key: string) => process.env[key] ?? '',
+          get: (key: string) => process.env[key],
+        } as ConfigService;
+        const registry = CodeHostRegistry.create(config);
+        jest.spyOn(registry, 'byName').mockReturnValue({
+          findMergeRequest: host.find,
+          openMergeRequest: host.open,
+          updateMergeRequest: host.update ?? jest.fn(async () => ({ httpCalls: [] })),
+          readBranchPipeline: jest.fn(),
+          readJobTrace: jest.fn(),
+        } as never);
+        return registry;
+      },
     })
     .overrideProvider(AGENT_RUNNER)
     .useValue({ run: agent })

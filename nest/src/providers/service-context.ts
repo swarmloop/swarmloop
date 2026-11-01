@@ -2,9 +2,9 @@ import { join } from 'path';
 import { Inject, Injectable } from '@nestjs/common';
 import { HistoryService } from '../history/history.service';
 import { taskKeys } from '../steps/requirements/requirements.service';
+import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { IssueBundle } from '../integrations/issue-tracker/issue-bundle';
 import { IssueTracker } from '../integrations/issue-tracker/issue-tracker';
-import { CodeHosts } from './code-hosts';
 import { ISSUE_TRACKER } from './tokens';
 
 @Injectable()
@@ -12,7 +12,7 @@ export class ServiceContextService {
   constructor(
     private readonly history: HistoryService,
     @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
-    private readonly hosts: CodeHosts,
+    private readonly registry: CodeHostRegistry,
   ) {}
 
   /**
@@ -62,7 +62,7 @@ export class ServiceContextService {
     if (!run?.codeHost) {
       return null;
     }
-    const host = this.hosts.get(run.codeHost);
+    const host = this.registry.byName(run.codeHost);
     const body = await this.history.latestBody(key, 'pipeline_ref');
     const lines: string[] = [];
     for (const ref of body ? pipelineRefs(body) : []) {

@@ -2,9 +2,12 @@ import { ConfigService } from '@nestjs/config';
 import { readEnv, SwarmloopEnv } from '../../config/env';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../swarmloop-error';
 import { request } from '../../providers/http';
-import { CodeHost, MergeRequestDraft, MergeRequestQuery, MergeRequestRecord, PipelineRef, PipelineSnapshot } from './code-host';
+import { remoteProject } from '../../steps/merge-request/merge-request-record';
+import { CodeHost, MergeRequestDraft, MergeRequestQuery, MergeRequestRecord, PipelineRef, PipelineSnapshot, SelectedHost } from './code-host';
 
 export abstract class AbstractCodeHost implements CodeHost {
+  abstract readonly name: SelectedHost['name'];
+
   constructor(
     protected readonly config: ConfigService,
     private readonly failure: string,
@@ -59,6 +62,12 @@ export abstract class AbstractCodeHost implements CodeHost {
 
   abstract cancelPipeline(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }>;
 
+  abstract matchesOrigin(origin: string): boolean;
+
+  abstract pushUrl(origin: string): string | null;
+
+  abstract selected(): SelectedHost;
+
   protected credentials(): { root: string; headers: Record<string, string> } {
     const env = readEnv(this.config);
     const missing = this.credentialKeys().find((name) => !env[name]);
@@ -105,6 +114,19 @@ export abstract class AbstractCodeHost implements CodeHost {
     }
   }
 
+  protected remoteOnBase(origin: string, baseUrl: string): { host: string; project: string } | null {
+    try {
+      const remote = remoteProject(origin);
+      const host = configuredHost(baseUrl);
+      if (!host || remote.host.toLowerCase() !== host) {
+        return null;
+      }
+      return { host, project: remote.project };
+    } catch {
+      return null;
+    }
+  }
+
   protected assertStatus(status: number, calls: HttpCallDraft[], failure: string): void {
     if (status === 401 || status === 403) {
       throw new FetchFailed(this.rejectedToken, calls);
@@ -146,5 +168,17 @@ export abstract class AbstractCodeHost implements CodeHost {
       throw error;
     }
     throw new FetchFailed(message, calls);
+  }
+}
+
+function configuredHost(base: string): string | null {
+  const trimmed = base.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    return new URL(trimmed).hostname.toLowerCase();
+  } catch {
+    return null;
   }
 }

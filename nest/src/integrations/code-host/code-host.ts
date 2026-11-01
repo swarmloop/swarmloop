@@ -39,7 +39,19 @@ export interface PipelineSnapshot {
   jobs: PipelineJob[];
 }
 
+export interface SelectedHost {
+  name: 'github' | 'gitlab';
+  baseUrl: string;
+  token: string;
+  baseKey: 'GITLAB_BASE_URL' | 'GITHUB_BASE_URL';
+  tokenKey: 'GITLAB_TOKEN' | 'GITHUB_TOKEN';
+}
+
 export interface CodeHost {
+  readonly name: SelectedHost['name'];
+  matchesOrigin(origin: string): boolean;
+  pushUrl(origin: string): string | null;
+  selected(): SelectedHost;
   findMergeRequest(query: MergeRequestQuery): Promise<{ record: MergeRequestRecord | null; httpCalls: HttpCallDraft[] }>;
   openMergeRequest(draft: MergeRequestDraft): Promise<{ record: MergeRequestRecord; httpCalls: HttpCallDraft[] }>;
   updateMergeRequest(project: string, iid: number, summary: string): Promise<{ httpCalls: HttpCallDraft[] }>;

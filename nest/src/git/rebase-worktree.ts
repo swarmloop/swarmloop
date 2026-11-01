@@ -2,11 +2,11 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, s
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { dirname, isAbsolute, join, sep } from 'path';
-import { codeHostFromOrigin, selectedHost } from '../providers/host-credentials';
+import { ConfigService } from '@nestjs/config';
+import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../swarmloop-error';
 import { originRef, promptBase } from './base-ref';
 import { allowedPaths, deniedIndexPaths, isDenied, porcelainPaths, stageSelection } from '../steps/commit/commit-paths';
-import { githubPushUrl, gitlabPushUrl } from '../steps/commit/commit.service';
 import { authorArgs, git, gitDetail, gitMissing, gitRaw, gitStderr, originUrl, redact } from './git';
 import { worktreePath } from '../steps/repo-names';
 
@@ -871,12 +871,13 @@ async function fetchSource(
   hosts: RebaseHosts,
   step: 'prepare' | 'rebase',
 ): Promise<boolean> {
-  const gitlab = gitlabPushUrl(origin, hosts.GITLAB_BASE_URL, hosts.GITLAB_TOKEN);
-  const url = gitlab ?? githubPushUrl(origin, hosts.GITHUB_BASE_URL, hosts.GITHUB_TOKEN);
+  const registry = registryFor(hosts);
+  const auth = registry.pushAuth(origin);
+  const url = auth.url;
   const refspec = `+refs/heads/${name}:refs/remotes/origin/${name}`;
-  const secret = gitlab ? hosts.GITLAB_TOKEN : hosts.GITHUB_TOKEN;
+  const secret = auth.token;
   if (!url && (origin.startsWith('git@') || origin.startsWith('ssh://'))) {
-    throw new SwarmloopError(sshFailure(repo, origin, hosts, step));
+    throw new SwarmloopError(sshFailure(repo, origin, registry, step));
   }
   const checkout = await cloneSource(cwd);
   return withCheckoutLock(checkout, () => fetchLocked(cwd, repo, url, refspec, name, secret, step));
@@ -917,12 +918,26 @@ async function fetchLocked(
   throw new SwarmloopError(`${repo} ${step} failed`);
 }
 
-function sshFailure(repo: string, origin: string, hosts: RebaseHosts, step: 'prepare' | 'rebase'): string {
-  const name = codeHostFromOrigin(origin, hosts.GITLAB_BASE_URL, hosts.GITHUB_BASE_URL);
+function registryFor(hosts: RebaseHosts): CodeHostRegistry {
+  const values: Record<string, string> = {
+    GITLAB_BASE_URL: hosts.GITLAB_BASE_URL,
+    GITLAB_TOKEN: hosts.GITLAB_TOKEN,
+    GITHUB_BASE_URL: hosts.GITHUB_BASE_URL,
+    GITHUB_TOKEN: hosts.GITHUB_TOKEN,
+  };
+  const config = {
+    getOrThrow: (key: string) => values[key] ?? '',
+    get: (key: string) => values[key],
+  } as ConfigService;
+  return CodeHostRegistry.create(config);
+}
+
+function sshFailure(repo: string, origin: string, registry: CodeHostRegistry, step: 'prepare' | 'rebase'): string {
+  const name = registry.forOrigin(origin);
   if (!name) {
     return `${repo} ${step} failed: code host is missing`;
   }
-  const host = selectedHost(hosts, name);
+  const host = registry.credentials(name);
   if (!host.token.trim()) {
     return `${repo} ${step} failed: ${host.tokenKey} is missing`;
   }
