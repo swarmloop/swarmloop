@@ -2,9 +2,9 @@ import { join } from 'path';
 import { Inject, Injectable } from '@nestjs/common';
 import { HistoryService } from '../history/history.service';
 import { taskKeys } from '../steps/requirements/requirements.service';
-import { IssueBundle } from './issue-bundle';
+import { IssueBundle } from '../integrations/issue-tracker/issue-bundle';
+import { IssueTracker } from '../integrations/issue-tracker/issue-tracker';
 import { CodeHosts } from './code-hosts';
-import { IssueTracker } from './contracts';
 import { ISSUE_TRACKER } from './tokens';
 
 @Injectable()

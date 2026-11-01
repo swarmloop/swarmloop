@@ -1,4 +1,4 @@
-import { IssuePage } from '../../providers/issue-bundle';
+import { IssuePage } from '../issue-tracker/issue-bundle';
 import { request } from '../../providers/http';
 import { FetchFailed } from '../../swarmloop-error';
 import { driveTarget, loadDrive } from './drive';

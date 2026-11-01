@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { IssueBundle, IssueLink } from '../../providers/issue-bundle';
+import { IssueBundle, IssueLink } from '../issue-tracker/issue-bundle';
 import { isReadable, request } from '../../providers/http';
 import { ConfluencePageReader } from './confluence-page.reader';
 import { DrivePageReader } from './drive-page.reader';

@@ -8,8 +8,9 @@ import { KillReason } from '../../limits/limits';
 import { FetchFailed, HttpCallDraft, SwarmloopError, PasteNeeded } from '../../swarmloop-error';
 import { PipelineResult, StepOptions } from '../../pipeline/pipeline-result';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
-import { IssueTracker, RequirementsSource, RequirementsWrite } from '../../providers/contracts';
-import { IssueBundle } from '../../providers/issue-bundle';
+import { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
+import { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
+import { RequirementsSource, RequirementsWrite } from '../../providers/contracts';
 import { ISSUE_TRACKER, REQUIREMENTS_SOURCE } from '../../providers/tokens';
 import { recordHandoff } from '../model-step';
 

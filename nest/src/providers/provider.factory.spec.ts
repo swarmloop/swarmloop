@@ -1,4 +1,5 @@
-import { createIssueTracker, createRequirementsSource } from './provider.factory';
+import { createIssueTracker } from '../integrations/issue-tracker/issue-tracker.registry';
+import { createRequirementsSource } from './provider.factory';
 
 describe('provider factory', () => {
   const tracker = { fetch: jest.fn() };

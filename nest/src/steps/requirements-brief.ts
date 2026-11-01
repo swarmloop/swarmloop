@@ -1,4 +1,4 @@
-import { jiraIssueKey } from '../providers/jira/jira-url';
+import { jiraIssueKey } from '../integrations/issue-tracker/jira/jira-url';
 
 interface BriefNote {
   author?: string;
