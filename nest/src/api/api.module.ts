@@ -11,11 +11,13 @@ import { ShellService } from './shell.service';
 import { CheckoutsController } from './checkouts.controller';
 import { HealthController } from './health.controller';
 import { RunsController } from './runs.controller';
-import { RunsService } from './runs.service';
+import { RunCommandsService } from './run-commands.service';
+import { RunQueriesService } from './run-queries.service';
+import { RunRebaseService } from './run-rebase.service';
 
 @Module({
   imports: [SwarmloopConfigModule.forRoot(), HistoryModule, PipelineModule, LiveModule, ProvidersModule, SandboxModule],
   controllers: [HealthController, RunsController, CheckoutsController],
-  providers: [RunsService, ChatService, ShellService, LiveGateway],
+  providers: [RunQueriesService, RunCommandsService, RunRebaseService, ChatService, ShellService, LiveGateway],
 })
 export class ApiModule {}

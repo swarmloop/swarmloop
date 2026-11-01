@@ -15,7 +15,9 @@ import { VisitDraft } from '../history/visit';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { PrepareService } from '../steps/prepare/prepare.service';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
-import { RunsService } from './runs.service';
+import { RunCommandsService } from './run-commands.service';
+import { RunQueriesService } from './run-queries.service';
+import { RunRebaseService } from './run-rebase.service';
 
 export async function boot(
   root: string,
@@ -64,7 +66,9 @@ export async function boot(
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), HistoryModule, LiveModule],
     providers: [
-      RunsService,
+      RunQueriesService,
+      RunCommandsService,
+      RunRebaseService,
       { provide: PipelineService, useValue: { claimed: () => false, ...pipeline } },
       { provide: ProjectAppendService, useValue: { add: jest.fn(), flush: jest.fn() } },
       { provide: PrepareService, useValue: prepare },

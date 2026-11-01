@@ -5,7 +5,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { HistoryService } from '../history/history.service';
 import { PHASES } from '../pipeline/pipeline-result';
-import { RunsService } from './runs.service';
+import { RunCommandsService } from './run-commands.service';
+import { RunQueriesService } from './run-queries.service';
 import { boot, save, visit } from './runs.spec-helpers';
 
 describe('runs api', () => {
@@ -17,9 +18,9 @@ describe('runs api', () => {
       await save(history, 'alpha', 'prepare', 'waiting');
       const second = await save(history, 'beta', 'implement', 'waiting', 2);
       await save(history, 'alpha', 'prepare', 'waiting');
-      const listed = await app.get(RunsService).list();
+      const listed = await app.get(RunQueriesService).list();
       expect(listed.runs.map((run) => run.key)).toEqual(['beta', 'alpha']);
-      const flow = await app.get(RunsService).flow('beta');
+      const flow = await app.get(RunQueriesService).flow('beta');
       expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.current)?.name).toBe('implement');
       expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'prepare')?.status).toBe('done');
       expect(flow.sentence).toBe('The next continuation returns to implementation.');
@@ -35,7 +36,7 @@ describe('runs api', () => {
     const app = await boot(root);
     try {
       const history = app.get(HistoryService);
-      const runs = app.get(RunsService);
+      const runs = app.get(RunQueriesService);
       const long = `${'a'.repeat(120)}bc`;
       const named = await save(history, 'named', 'prepare', 'waiting');
       named.prompt = 'Ship the field\nmore than the first line';
@@ -74,7 +75,7 @@ describe('runs api', () => {
       const history = app.get(HistoryService);
       const run = await save(history, 'proj-3', 'research', 'waiting');
       await history.putDocument(run, 'questions', '- which limit\n');
-      const runs = app.get(RunsService);
+      const runs = app.get(RunCommandsService);
       await expect(runs.resume('proj-3')).rejects.toBeInstanceOf(BadRequestException);
       const answered = await runs.answers('proj-3', { answers: [{ kind: 'question', id: 'which limit', body: 'three' }] });
       expect(answered.resume).toBe('running');
@@ -91,7 +92,7 @@ describe('runs api', () => {
     const app = await boot(root, pipeline);
     try {
       await save(app.get(HistoryService), 'proj-reviewer', 'code-review', 'waiting');
-      await app.get(RunsService).startStep('proj-reviewer', 'code-review-quality');
+      await app.get(RunCommandsService).startStep('proj-reviewer', 'code-review-quality');
       expect(pipeline.startDetached).toHaveBeenCalledWith(
         'proj-reviewer',
         { prompt: undefined, path: undefined, reviewer: 'quality' },
@@ -108,7 +109,7 @@ describe('runs api', () => {
     const app = await boot(root, pipeline);
     try {
       await save(app.get(HistoryService), 'proj-11', 'implement-improve', 'failed');
-      const result = await app.get(RunsService).replay('proj-11', 'implement', 'Use the other parser');
+      const result = await app.get(RunCommandsService).replay('proj-11', 'implement', 'Use the other parser');
       expect(result).toEqual({ http: 202, body: { key: 'proj-11', status: 'started' } });
       expect(pipeline.replay).toHaveBeenCalledWith('proj-11', 'implement', 'Use the other parser');
     } finally {
@@ -124,7 +125,7 @@ describe('runs api', () => {
     };
     const app = await boot(root, pipeline);
     try {
-      const runs = app.get(RunsService);
+      const runs = app.get(RunCommandsService);
       const history = app.get(HistoryService);
       await runs.start({ key: 'proj-12', prompt: 'Review the checkout', phases: ['requirements', 'code-review'], projects: ['demo'] });
       await runs.replay('proj-12', 'code-review', 'Skip the pipeline', ['requirements', 'code-review', 'ci']);
@@ -146,7 +147,7 @@ describe('runs api', () => {
     const app = await boot(root, pipeline);
     try {
       await save(app.get(HistoryService), 'proj-9', 'implement-improve', 'running');
-      const result = await app.get(RunsService).stop('proj-9');
+      const result = await app.get(RunCommandsService).stop('proj-9');
       expect(result).toEqual({ http: 200, body: { key: 'proj-9', status: 'stopped' } });
       expect(pipeline.stop).toHaveBeenCalledWith('proj-9');
       expect(pipeline.startDetached).not.toHaveBeenCalled();
@@ -160,7 +161,7 @@ describe('runs api', () => {
     const app = await boot(root);
     try {
       await save(app.get(HistoryService), 'proj-4', 'prepare', 'blocked');
-      await expect(app.get(RunsService).resume('proj-4')).rejects.toBeInstanceOf(ConflictException);
+      await expect(app.get(RunCommandsService).resume('proj-4')).rejects.toBeInstanceOf(ConflictException);
     } finally {
       await app.close();
     }
@@ -172,9 +173,9 @@ describe('runs api', () => {
     const app = await boot(root, pipeline);
     try {
       await save(app.get(HistoryService), 'proj-loop', 'code-review', 'blocked');
-      const flow = await app.get(RunsService).flow('proj-loop');
+      const flow = await app.get(RunQueriesService).flow('proj-loop');
       expect(flow.resume).toBe('ready');
-      await app.get(RunsService).resume('proj-loop');
+      await app.get(RunCommandsService).resume('proj-loop');
       expect(pipeline.startDetached).toHaveBeenCalled();
     } finally {
       await app.close();
@@ -189,10 +190,10 @@ describe('runs api', () => {
       const history = app.get(HistoryService);
       const run = await save(history, 'proj-fit', 'code-review', 'blocked');
       await history.putDocument(run, 'error', 'code-review does not fit\n');
-      const flow = await app.get(RunsService).flow('proj-fit');
+      const flow = await app.get(RunQueriesService).flow('proj-fit');
       expect(flow.resume).toBe('ready');
       expect(flow.sentence).toContain('agent-call budget');
-      await app.get(RunsService).resume('proj-fit');
+      await app.get(RunCommandsService).resume('proj-fit');
       expect(pipeline.startDetached).toHaveBeenCalled();
     } finally {
       await app.close();
@@ -204,7 +205,7 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-7 started' }) };
     const app = await boot(root, pipeline);
     try {
-      const started = await app.get(RunsService).start({ key: 'proj-7', prompt: 'Look here', path: '/tmp/checkout' });
+      const started = await app.get(RunCommandsService).start({ key: 'proj-7', prompt: 'Look here', path: '/tmp/checkout' });
       expect(started.http).toBe(202);
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-7', { path: '/tmp/checkout', phases: [...PHASES] }, 'code-review');
       expect((await app.get(HistoryService).findRun('proj-7'))?.prompt).toBe('Look here');
@@ -227,7 +228,7 @@ describe('runs api', () => {
       live.ownerPid = process.pid;
       await history.saveRun(live);
       const prompt = 'https://example.atlassian.net/browse/PROJ-12\nbranch: feature/PROJ-12-add-export';
-      const started = await app.get(RunsService).start({
+      const started = await app.get(RunCommandsService).start({
         prompt,
         phases: ['requirements', 'code-review'],
         projects: ['billing-api'],
@@ -253,7 +254,7 @@ describe('runs api', () => {
     try {
       await save(app.get(HistoryService), 'PROJ-12', 'done', 'done');
       const prompt = 'https://example.atlassian.net/browse/PROJ-12\nbranch: feature/PROJ-12-add-export';
-      const started = await app.get(RunsService).start({
+      const started = await app.get(RunCommandsService).start({
         prompt,
         phases: ['requirements', 'code-review'],
         projects: ['billing-api'],
@@ -276,7 +277,7 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
     const app = await boot(root, pipeline);
     try {
-      const started = await app.get(RunsService).start({ prompt: 'Ship PROJ-15 before Friday', projects: ['demo'] });
+      const started = await app.get(RunCommandsService).start({ prompt: 'Ship PROJ-15 before Friday', projects: ['demo'] });
       expect(started.http).toBe(202);
       expect(started.body.key).toBe('PROJ-15');
       expect(pipeline.startDetached).toHaveBeenCalledWith('PROJ-15', { prompt: 'Ship PROJ-15 before Friday', projects: ['demo'], phases: [...PHASES] });
@@ -290,7 +291,7 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
     const app = await boot(root, pipeline);
     try {
-      const started = await app.get(RunsService).start({ prompt: 'Ship the field', projects: ['demo'] });
+      const started = await app.get(RunCommandsService).start({ prompt: 'Ship the field', projects: ['demo'] });
       expect(started.body.key).toMatch(/^run-[a-z0-9]+$/);
       expect(pipeline.startDetached).toHaveBeenCalledWith(started.body.key, { prompt: 'Ship the field', projects: ['demo'], phases: [...PHASES] });
     } finally {
@@ -305,7 +306,7 @@ describe('runs api', () => {
       const history = app.get(HistoryService);
       const run = await save(history, 'proj-9', 'prepare', 'waiting');
       await history.finishVisit(run, visit('prepare', 'waiting'));
-      const flow = await app.get(RunsService).flow('proj-9');
+      const flow = await app.get(RunQueriesService).flow('proj-9');
       expect(flow.sentence).toBe('The next continuation prepares the worktrees.');
       expect(flow.items).toEqual([]);
     } finally {
@@ -318,7 +319,7 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-5 started' }) };
     const app = await boot(root, pipeline);
     try {
-      const started = await app.get(RunsService).start({ key: 'proj-5', prompt: 'Ship the field', projects: ['demo'] });
+      const started = await app.get(RunCommandsService).start({ key: 'proj-5', prompt: 'Ship the field', projects: ['demo'] });
       expect(started.http).toBe(202);
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-5', { prompt: 'Ship the field', projects: ['demo'], phases: [...PHASES] });
     } finally {
