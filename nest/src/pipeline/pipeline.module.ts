@@ -15,6 +15,7 @@ import { PrepareService } from '../steps/prepare/prepare.service';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { RequirementsService } from '../steps/requirements/requirements.service';
 import { ResearchService } from '../steps/research/research.service';
+import { StepRegistry } from '../steps/step.registry';
 import { PipelineService } from './pipeline.service';
 
 @Module({
@@ -33,6 +34,7 @@ import { PipelineService } from './pipeline.service';
     ImplementService,
     ImplementImproveService,
     CodeReviewService,
+    StepRegistry,
     PipelineService,
   ],
   exports: [PipelineService, PrepareService, ProjectAppendService, CommitService, HistoryModule],

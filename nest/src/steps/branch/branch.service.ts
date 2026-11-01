@@ -3,18 +3,26 @@ import { existsSync, statSync } from 'fs';
 import { HistoryService } from '../../history/history.service';
 import { DocumentDraft, sampleSelf, VisitDraft } from '../../history/visit';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
-import { PipelineResult } from '../../pipeline/pipeline-result';
+import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { SwarmloopError } from '../../swarmloop-error';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { recordHandoff } from '../model-step';
 import { repoNames, worktreePath } from '../repo-names';
+import { Step, requiredDocument } from '../step';
 import { branchName, summaryForBranch } from './branch-name';
 
 @Injectable()
-export class BranchService {
+export class BranchService implements Step {
+  readonly name: StepName = 'branch';
+  readonly usesModel = false;
+
   constructor(private readonly history: HistoryService) {}
 
-  async execute(key: string): Promise<PipelineResult> {
+  missingInput(key: string): Promise<string | null> {
+    return requiredDocument(this.history, key, 'repos');
+  }
+
+  async execute(key: string, _options: StepOptions = {}): Promise<PipelineResult> {
     const opened = await openStep(this.history, key, 'branch');
     const end = (outcome: 'ok' | 'failed', status: string, exitCode: number, line: string, documents?: DocumentDraft[]) =>
       closeStep({

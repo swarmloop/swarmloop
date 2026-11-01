@@ -4,7 +4,7 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 import { RunEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
 import { sampleSelf, VisitDraft } from '../../history/visit';
-import { PipelineResult, visitStatus } from '../../pipeline/pipeline-result';
+import { PipelineResult, StepName, StepOptions, visitStatus } from '../../pipeline/pipeline-result';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { SwarmloopError } from '../../swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
@@ -12,6 +12,7 @@ import { authorArgs, git, gitDetail, gitMissing, gitRaw, originUrl, redact } fro
 import { recordHandoff, textDocument } from '../model-step';
 import { repoNames, worktreePath } from '../repo-names';
 import { remoteProject } from '../merge-request/merge-request-record';
+import { Step, requiredDocument } from '../step';
 import { allowedPaths, deniedIndexPaths, parsePaths, PlannedPath, renderPaths, stageSelection } from './commit-paths';
 
 interface Tree {
@@ -22,13 +23,20 @@ interface Tree {
 export const CI_SKIPPED = 'CI skipped: there is no origin to push.';
 
 @Injectable()
-export class CommitService {
+export class CommitService implements Step {
+  readonly name: StepName = 'commit';
+  readonly usesModel = false;
+
   constructor(
     private readonly history: HistoryService,
     private readonly registry: CodeHostRegistry,
   ) {}
 
-  async execute(key: string): Promise<PipelineResult> {
+  missingInput(key: string): Promise<string | null> {
+    return requiredDocument(this.history, key, 'requirements');
+  }
+
+  async execute(key: string, _options: StepOptions = {}): Promise<PipelineResult> {
     const opened = await openStep(this.history, key, 'commit');
     try {
       const requirements = await this.history.latestBody(key, 'requirements');

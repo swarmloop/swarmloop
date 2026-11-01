@@ -5,7 +5,7 @@ import { readEnv, SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../limits/agent-runner';
 import { sessionFileName } from '../../limits/session-group';
-import { PipelineResult, StepOptions } from '../../pipeline/pipeline-result';
+import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { packageRegistries } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
@@ -17,12 +17,16 @@ import { composedReturn, parseSummary, recordHandoff, skillPrompt, textDocument,
 import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.service';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../repo-names';
+import { Step, storedPlan } from '../step';
 import { REBASE_CONFLICT, RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase-worktree';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { parseImplementation, withReturnNotes } from './implement-record';
 
 @Injectable()
-export class ImplementService {
+export class ImplementService implements Step {
+  readonly name: StepName = 'implement';
+  readonly usesModel = true;
+
   constructor(
     private readonly history: HistoryService,
     private readonly config: ConfigService,
@@ -30,6 +34,10 @@ export class ImplementService {
     private readonly commit: CommitService,
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
   ) {}
+
+  missingInput(key: string): Promise<string | null> {
+    return storedPlan(this.history, key);
+  }
 
   execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
     const env = readEnv(this.config);

@@ -6,7 +6,7 @@ import { sampleSelf, SampleDraft, VisitDraft } from '../../history/visit';
 import { RunEntity } from '../../history/entities';
 import { KillReason } from '../../limits/limits';
 import { FetchFailed, HttpCallDraft, SwarmloopError, PasteNeeded } from '../../swarmloop-error';
-import { PipelineResult, StepOptions } from '../../pipeline/pipeline-result';
+import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
 import { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
@@ -14,9 +14,13 @@ import { REQUIREMENTS_SOURCE } from '../../integrations/requirements-source/requ
 import { RequirementsSource, RequirementsWrite } from '../../integrations/requirements-source/requirements-source';
 import { ISSUE_TRACKER } from '../../providers/tokens';
 import { recordHandoff } from '../model-step';
+import { Step } from '../step';
 
 @Injectable()
-export class RequirementsService {
+export class RequirementsService implements Step {
+  readonly name: StepName = 'requirements';
+  readonly usesModel = false;
+
   constructor(
     private readonly history: HistoryService,
     @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
@@ -36,7 +40,20 @@ export class RequirementsService {
     return this.produce(key, prompt, [...keys]);
   }
 
+  async missingInput(): Promise<string | null> {
+    return null;
+  }
+
   async execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
+    try {
+      return await this.run(key, options);
+    } catch (error) {
+      const message = error instanceof SwarmloopError ? error.message : 'requirements failed';
+      return { exitCode: 1, message };
+    }
+  }
+
+  private async run(key: string, options: StepOptions): Promise<PipelineResult> {
     let prompt: string | undefined;
     try {
       prompt = await readPrompt(options);

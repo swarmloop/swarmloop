@@ -6,7 +6,7 @@ import { readEnv, SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { HistoryService } from '../../history/history.service';
 import { DocumentDraft, sampleSelf } from '../../history/visit';
-import { PipelineResult, StepOptions } from '../../pipeline/pipeline-result';
+import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { CodeHost, PipelineJob, PipelineRef } from '../../integrations/code-host/code-host';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../swarmloop-error';
@@ -14,6 +14,7 @@ import { recordHandoff, returnNotes, textDocument } from '../model-step';
 import { git } from '../../git/git';
 import { remoteProject } from '../merge-request/merge-request-record';
 import { repoNames, worktreePath } from '../repo-names';
+import { Step, requiredDocument } from '../step';
 
 type Verdict = 'green' | 'red' | 'wait' | 'manual' | 'stop' | 'absent';
 
@@ -36,12 +37,19 @@ interface Failure {
 }
 
 @Injectable()
-export class PipelineStepService {
+export class PipelineStepService implements Step {
+  readonly name: StepName = 'pipeline';
+  readonly usesModel = false;
+
   constructor(
     private readonly history: HistoryService,
     private readonly config: ConfigService,
     private readonly registry: CodeHostRegistry,
   ) {}
+
+  missingInput(key: string): Promise<string | null> {
+    return requiredDocument(this.history, key, 'pipeline_ref');
+  }
 
   async execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
     const opened = await openStep(this.history, key, 'pipeline');

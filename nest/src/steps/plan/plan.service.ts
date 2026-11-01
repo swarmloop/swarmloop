@@ -5,23 +5,31 @@ import { readEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../limits/agent-runner';
 import { sessionFileName } from '../../limits/session-group';
-import { PipelineResult, StepOptions } from '../../pipeline/pipeline-result';
+import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
 import { planFollowUp, withAddedRepos } from '../follow-up';
 import { plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, withModelStep, ModelStepContext } from '../model-step';
 import { unanswered } from '../answers';
 import { mountsForStep, repoNames } from '../repo-names';
+import { Step, requiredDocument } from '../step';
 import { planFromAgent, readPlan, withPlan } from './plan-record';
 
 @Injectable()
-export class PlanService {
+export class PlanService implements Step {
+  readonly name: StepName = 'plan';
+  readonly usesModel = true;
+
   constructor(
     private readonly history: HistoryService,
     private readonly config: ConfigService,
     private readonly sandbox: SandboxService,
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
   ) {}
+
+  missingInput(key: string): Promise<string | null> {
+    return requiredDocument(this.history, key, 'repos');
+  }
 
   execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
     const env = readEnv(this.config);

@@ -5,7 +5,7 @@ import { readEnv, SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../limits/agent-runner';
 import { sessionFileName } from '../../limits/session-group';
-import { PipelineResult, StepOptions } from '../../pipeline/pipeline-result';
+import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { packageRegistries } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
@@ -14,17 +14,25 @@ import { IMPLEMENT_IMPROVE_FOLLOW_UP, withAddedRepos } from '../follow-up';
 import { composedReturn, ModelStepContext, plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, withModelStep } from '../model-step';
 import { correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames } from '../repo-names';
+import { Step, requiredDocument } from '../step';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
 import { reviewedImplementation, withReturnNotes } from './implement-record';
 
 @Injectable()
-export class ImplementImproveService {
+export class ImplementImproveService implements Step {
+  readonly name: StepName = 'implement-improve';
+  readonly usesModel = true;
+
   constructor(
     private readonly history: HistoryService,
     private readonly config: ConfigService,
     private readonly sandbox: SandboxService,
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
   ) {}
+
+  missingInput(key: string): Promise<string | null> {
+    return requiredDocument(this.history, key, 'implementation');
+  }
 
   execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
     const env = readEnv(this.config);

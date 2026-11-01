@@ -7,7 +7,7 @@ import { HistoryService } from '../../history/history.service';
 import { DocumentDraft, ExchangeDraft, SampleDraft } from '../../history/visit';
 import { AGENT_RUNNER, AgentProcessRunner, AgentRunResult, readSession } from '../../limits/agent-runner';
 import { sessionFileName } from '../../limits/session-group';
-import { PipelineResult, StepOptions, visitStatus } from '../../pipeline/pipeline-result';
+import { PipelineResult, StepName, StepOptions, visitStatus } from '../../pipeline/pipeline-result';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { agentStateDir, SandboxMount } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -20,6 +20,7 @@ import { storedProjects } from '../prepare/checkout-path';
 import { readPlan } from '../plan/plan-record';
 import { PrepareService } from '../prepare/prepare.service';
 import { mountsForStep, repoNames } from '../repo-names';
+import { Step, requiredDocument } from '../step';
 import { REBASE_CONFLICT } from '../../git/rebase-worktree';
 import { parseReview } from './code-review-record';
 import { reviewBrief } from './review-report';
@@ -54,7 +55,10 @@ export const REVIEWERS: Reviewer[] = [
 ];
 
 @Injectable()
-export class CodeReviewService {
+export class CodeReviewService implements Step {
+  readonly name: StepName = 'code-review';
+  readonly usesModel = true;
+
   constructor(
     private readonly history: HistoryService,
     private readonly config: ConfigService,
@@ -62,6 +66,13 @@ export class CodeReviewService {
     private readonly sandbox: SandboxService,
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
   ) {}
+
+  async missingInput(key: string, options: StepOptions): Promise<string | null> {
+    if (options.path || (await this.storedCheckout(key)) || (await this.foreignReviewOf(key))) {
+      return null;
+    }
+    return requiredDocument(this.history, key, 'implementation');
+  }
 
   execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
     return this.run(key, options, readEnv(this.config));
@@ -479,6 +490,16 @@ export class CodeReviewService {
 
   private async foreignReview(runId: number): Promise<boolean> {
     return !(await this.history.activePhases(runId)).includes('implementation');
+  }
+
+  private async foreignReviewOf(key: string): Promise<boolean> {
+    const run = await this.history.findRun(key);
+    return run ? this.foreignReview(run.id) : false;
+  }
+
+  private async storedCheckout(key: string): Promise<boolean> {
+    const run = await this.history.findRun(key);
+    return Boolean(run?.targetPath) && !(await this.history.hasDocument(key, 'implementation'));
   }
 
   private async detachForeign(opened: OpenedStep): Promise<void> {

@@ -6,23 +6,31 @@ import { readEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { DocumentDraft, sampleSelf, VisitDraft } from '../../history/visit';
 import { closeStep, openStep, OpenedStep } from '../../pipeline/step-run';
-import { PipelineResult } from '../../pipeline/pipeline-result';
+import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { assignCodeHost, CodeHostRegistry, type CodeHostName } from '../../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../../swarmloop-error';
 import { git, gitDetail } from '../../git/git';
 import { storedBase } from '../../git/rebase-worktree';
 import { recordHandoff } from '../model-step';
+import { Step, requiredDocument } from '../step';
 import { CHECKOUT_NAME, listGitProjects, resolveCheckoutPath, storedProjects } from './checkout-path';
 
 @Injectable()
-export class PrepareService {
+export class PrepareService implements Step {
+  readonly name: StepName = 'prepare';
+  readonly usesModel = false;
+
   constructor(
     private readonly history: HistoryService,
     private readonly config: ConfigService,
     private readonly registry: CodeHostRegistry,
   ) {}
 
-  async execute(key: string): Promise<PipelineResult> {
+  missingInput(key: string): Promise<string | null> {
+    return requiredDocument(this.history, key, 'requirements');
+  }
+
+  async execute(key: string, _options: StepOptions = {}): Promise<PipelineResult> {
     const opened = await openStep(this.history, key, 'prepare');
     const end = (outcome: 'ok' | 'failed' | 'waiting', status: string, exitCode: number, line: string, documents?: DocumentDraft[]) =>
       closeStep({
