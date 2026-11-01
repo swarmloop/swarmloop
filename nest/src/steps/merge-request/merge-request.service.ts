@@ -1,17 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import { HistoryService } from '../../history/history.service';
-import { DocumentDraft, sampleSelf } from '../../history/visit';
-import { PhaseName, PipelineResult, StepName, StepOptions, visitStatus } from '../../pipeline/pipeline-result';
-import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
+import { PhaseName, PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../swarmloop-error';
+import { HttpCallDraft, SwarmloopError } from '../../swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
 import { git, gitDetail, gitMissing } from '../../git/git';
-import { recordHandoff, textDocument } from '../model-step';
+import { textDocument } from '../model-step';
 import { repoNames, worktreePath } from '../repo-names';
-import { Step, requiredDocument } from '../step';
+import { BaseStep, StepContext } from '../base-step';
 import { remoteProject, renderMergeRequest } from './merge-request-record';
 
 /** Set on a done rebase so this pass leaves an existing merge request untouched. */
@@ -28,52 +26,43 @@ interface Tree {
 }
 
 @Injectable()
-export class MergeRequestService implements Step {
+export class MergeRequestService extends BaseStep {
   readonly name: StepName = 'merge-request';
-  readonly usesModel = false;
+  readonly requiredKind = 'requirements';
 
   constructor(
-    private readonly history: HistoryService,
+    history: HistoryService,
     private readonly registry: CodeHostRegistry,
-  ) {}
-
-  missingInput(key: string): Promise<string | null> {
-    return requiredDocument(this.history, key, 'requirements');
+  ) {
+    super(history);
   }
 
-  async execute(key: string, _options: StepOptions = {}): Promise<PipelineResult> {
-    const opened = await openStep(this.history, key, 'merge-request');
-    const calls: HttpCallDraft[] = [];
-    try {
-      const skipped = ((await this.history.latestBody(key, 'ci_skip')) ?? '').trim();
-      if (skipped) {
-        return this.finish(opened, 'ok', 0, `${opened.startedAt} ${skipped}`, calls, undefined, '');
-      }
-      this.registry.requiredCredentials(opened.run.codeHost);
-      const client = this.registry.byName(opened.run.codeHost);
-      const phases = await this.history.activePhases(opened.run.id);
-      const requirements = await this.history.latestBody(key, 'requirements');
-      if (!requirements?.trim()) {
-        throw new SwarmloopError('requirements is missing');
-      }
-      const title = summaryForBranch(requirements, key);
-      const branch = branchName(key, title);
-      const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
-      const trees = await this.trees(key, names, branch, calls, opened.run.codeHost, client);
-      const drafted = await this.describe(key, trees, phases);
-      const skip = ((await this.history.latestBody(key, REBASE_MERGE_SKIP)) ?? '').trim() === 'skip';
-      const records = await this.ensure(drafted, title, calls, skip, client);
-      if (skip) {
-        await this.history.putDocument(opened.run, REBASE_MERGE_SKIP, 'clear\n');
-      }
-      const body = renderMergeRequest(records);
-      const urls = records.map((record) => record.url).join('\n');
-      return this.finish(opened, 'ok', 0, `${opened.startedAt} merge-request done\n${urls}`, calls, body);
-    } catch (error) {
-      this.keepCalls(error, calls);
-      const message = error instanceof SwarmloopError ? error.message : 'merge-request failed';
-      return this.finish(opened, 'failed', 1, `${opened.startedAt} ${message}`, calls);
+  protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
+    const { opened } = ctx;
+    const skipped = ((await this.history.latestBody(key, 'ci_skip')) ?? '').trim();
+    if (skipped) {
+      return this.finish(ctx, `${opened.startedAt} ${skipped}`, undefined, '');
     }
+    this.registry.requiredCredentials(opened.run.codeHost);
+    const client = this.registry.byName(opened.run.codeHost);
+    const phases = await this.history.activePhases(opened.run.id);
+    const requirements = await this.history.latestBody(key, 'requirements');
+    if (!requirements?.trim()) {
+      throw new SwarmloopError('requirements is missing');
+    }
+    const title = summaryForBranch(requirements, key);
+    const branch = branchName(key, title);
+    const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
+    const trees = await this.trees(key, names, branch, ctx.calls, opened.run.codeHost, client);
+    const drafted = await this.describe(key, trees, phases);
+    const skip = ((await this.history.latestBody(key, REBASE_MERGE_SKIP)) ?? '').trim() === 'skip';
+    const records = await this.ensure(drafted, title, ctx.calls, skip, client);
+    if (skip) {
+      await this.history.putDocument(opened.run, REBASE_MERGE_SKIP, 'clear\n');
+    }
+    const body = renderMergeRequest(records);
+    const urls = records.map((record) => record.url).join('\n');
+    return this.finish(ctx, `${opened.startedAt} merge-request done\n${urls}`, body);
   }
 
   private async trees(
@@ -199,58 +188,13 @@ export class MergeRequestService implements Step {
     }
   }
 
-  private keepCalls(error: unknown, calls: HttpCallDraft[]): void {
-    if (error instanceof FetchFailed) {
-      calls.push(...error.httpCalls);
-    }
-  }
-
-  private async finish(
-    opened: OpenedStep,
-    outcome: 'ok' | 'failed',
-    exitCode: number,
-    line: string,
-    calls: HttpCallDraft[],
-    body?: string,
-    handoff = '- opened the merge request\n',
-  ): Promise<PipelineResult> {
-    const now = new Date().toISOString();
-    const docs: DocumentDraft[] = [];
-    if (body) {
-      docs.push(textDocument('merge_request', body));
-    }
-    if (outcome === 'ok' && handoff) {
-      docs.push(await recordHandoff(this.history, opened.run.key, 'merge-request', handoff));
-    }
-    return closeStep({
-      history: this.history,
-      run: opened.run,
-      previousStep: opened.previousStep,
-      previousStatus: opened.previousStatus,
-      step: 'merge-request',
-      outcome,
-      exitCode,
+  private finish(ctx: StepContext, line: string, body?: string, handoff = '- opened the merge request\n'): Promise<PipelineResult> {
+    return ctx.end({
+      outcome: 'ok',
+      exitCode: 0,
       line,
-      visit: {
-        step: 'merge-request',
-        model: null,
-        mode: null,
-        startedAt: opened.startedAt,
-        finishedAt: now,
-        durationMs: Date.now() - opened.started,
-        status: visitStatus(outcome),
-        exitCode,
-        killReason: null,
-        tokensIn: 0,
-        tokensOut: 0,
-        usd: 0,
-        samples: [sampleSelf()],
-        exchange: null,
-        httpCalls: calls,
-        document: null,
-        documents: docs.length > 0 ? docs : undefined,
-        resumed: false,
-      },
+      handoff: handoff || undefined,
+      visit: { documents: body ? [textDocument('merge_request', body)] : undefined },
     });
   }
 }

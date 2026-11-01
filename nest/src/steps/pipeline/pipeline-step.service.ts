@@ -5,16 +5,16 @@ import { join } from 'path';
 import { readEnv, SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { HistoryService } from '../../history/history.service';
-import { DocumentDraft, sampleSelf } from '../../history/visit';
+import { DocumentDraft } from '../../history/visit';
 import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
-import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
+import { OpenedStep } from '../../pipeline/step-run';
 import { CodeHost, PipelineJob, PipelineRef } from '../../integrations/code-host/code-host';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../swarmloop-error';
 import { recordHandoff, returnNotes, textDocument } from '../model-step';
 import { git } from '../../git/git';
 import { remoteProject } from '../merge-request/merge-request-record';
 import { repoNames, worktreePath } from '../repo-names';
-import { Step, requiredDocument } from '../step';
+import { BaseStep, StepContext } from '../base-step';
 
 type Verdict = 'green' | 'red' | 'wait' | 'manual' | 'stop' | 'absent';
 
@@ -37,44 +37,33 @@ interface Failure {
 }
 
 @Injectable()
-export class PipelineStepService implements Step {
+export class PipelineStepService extends BaseStep {
   readonly name: StepName = 'pipeline';
-  readonly usesModel = false;
+  readonly requiredKind = 'pipeline_ref';
 
   constructor(
-    private readonly history: HistoryService,
+    history: HistoryService,
     private readonly config: ConfigService,
     private readonly registry: CodeHostRegistry,
-  ) {}
-
-  missingInput(key: string): Promise<string | null> {
-    return requiredDocument(this.history, key, 'pipeline_ref');
+  ) {
+    super(history);
   }
 
-  async execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
-    const opened = await openStep(this.history, key, 'pipeline');
+  protected async run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
+    const { opened, calls } = ctx;
     const env = readEnv(this.config);
-    const calls: HttpCallDraft[] = [];
-    try {
-      const records = parsePipelineRefs((await this.history.latestBody(key, 'pipeline_ref')) ?? '');
-      const skipped = (await this.history.latestBody(key, 'ci_skip'))?.trim() ?? '';
-      if (records.length === 0 && skipped) {
-        return await this.finish(opened, 'ok', 0, this.report(opened, skipped), 'skipped', calls, skipped);
-      }
-      this.registry.requiredCredentials(opened.run.codeHost);
-      const host = this.registry.byName(opened.run.codeHost);
-      if (records.length === 0) {
-        throw new SwarmloopError('pipeline ref is missing');
-      }
-      const watched = await this.watch(opened.run.key, records, calls, env, host);
-      return await this.route(opened, env, records, watched.seen, watched.verdict, calls, host, options);
-    } catch (error) {
-      if (error instanceof FetchFailed) {
-        calls.push(...error.httpCalls);
-      }
-      const message = error instanceof SwarmloopError ? error.message : 'pipeline failed';
-      return this.finish(opened, 'failed', 1, this.report(opened, message), 'failed', calls);
+    const records = parsePipelineRefs((await this.history.latestBody(key, 'pipeline_ref')) ?? '');
+    const skipped = (await this.history.latestBody(key, 'ci_skip'))?.trim() ?? '';
+    if (records.length === 0 && skipped) {
+      return this.finish(ctx, 'ok', 0, this.report(opened, skipped), 'skipped', skipped);
     }
+    this.registry.requiredCredentials(opened.run.codeHost);
+    const host = this.registry.byName(opened.run.codeHost);
+    if (records.length === 0) {
+      throw new SwarmloopError('pipeline ref is missing');
+    }
+    const watched = await this.watch(opened.run.key, records, calls, env, host);
+    return this.route(ctx, env, records, watched.seen, watched.verdict, host, options);
   }
 
   /** Repo names that have a workflow file and no run. Null when the repo list is missing. */
@@ -180,50 +169,50 @@ export class PipelineStepService implements Step {
   }
 
   private async route(
-    opened: OpenedStep,
+    ctx: StepContext,
     env: SwarmloopEnv,
     records: PipelineRef[],
     seen: Seen[],
     verdict: Verdict,
-    calls: HttpCallDraft[],
     host: CodeHost,
     options: StepOptions,
   ): Promise<PipelineResult> {
+    const { opened, calls } = ctx;
     if (verdict === 'wait') {
       const settled = await this.cancelRunning(records, seen, calls, env, host);
       if (!settled.traces) {
-        return this.red(opened, env, settled.seen, calls, host, options, settled.note, false);
+        return this.red(ctx, env, settled.seen, host, options, settled.note, false);
       }
       const next = this.verdict(settled.seen);
       if (next === 'red' || next === 'wait') {
-        return this.red(opened, env, settled.seen, calls, host, options, settled.note, true);
+        return this.red(ctx, env, settled.seen, host, options, settled.note, true);
       }
       seen = settled.seen;
       verdict = next;
     }
     if (verdict === 'red') {
-      return this.red(opened, env, seen, calls, host, options);
+      return this.red(ctx, env, seen, host, options);
     }
     if (verdict === 'stop') {
-      return this.finish(opened, 'failed', 1, this.report(opened, this.stopLine(seen)), 'failed', calls);
+      return this.finish(ctx, 'failed', 1, this.report(opened, this.stopLine(seen)), 'failed');
     }
     if (verdict === 'manual') {
-      return this.finish(opened, 'waiting', 0, this.report(opened, 'pipeline is manual'), 'waiting', calls);
+      return this.finish(ctx, 'waiting', 0, this.report(opened, 'pipeline is manual'), 'waiting');
     }
     const missing = await this.missingRuns(opened.run.key, seen);
     if (missing && missing.length > 0) {
       const line = missing.map((name) => `${name} CI did not start`).join(', ');
-      return this.finish(opened, 'failed', 1, this.report(opened, line), 'failed', calls);
+      return this.finish(ctx, 'failed', 1, this.report(opened, line), 'failed');
     }
     if (verdict === 'absent') {
       const body = renderNone(seen);
-      return this.finish(opened, 'ok', 0, this.report(opened, 'nothing started', body), 'done', calls, body);
+      return this.finish(ctx, 'ok', 0, this.report(opened, 'nothing started', body), 'done', body);
     }
     const warnings = seen.flatMap((item) =>
       item.jobs.filter((job) => job.status === 'failed' && job.allowFailure).map((job) => `${item.project} ${job.name}`),
     );
     const body = renderPass(seen, warnings);
-    return this.finish(opened, 'ok', 0, this.report(opened, 'pipeline done', body), 'done', calls, body);
+    return this.finish(ctx, 'ok', 0, this.report(opened, 'pipeline done', body), 'done', body);
   }
 
   private async cancelRunning(
@@ -285,27 +274,27 @@ export class PipelineStepService implements Step {
   }
 
   private async red(
-    opened: OpenedStep,
+    ctx: StepContext,
     env: SwarmloopEnv,
     seen: Seen[],
-    calls: HttpCallDraft[],
     host: CodeHost,
     options: StepOptions,
     note = '',
     traces = true,
   ): Promise<PipelineResult> {
+    const { opened, calls } = ctx;
     const failures = traces ? await this.failures(seen, calls, host) : [];
     const body = traces ? renderFail(failures, seen, note) : `${note.trim()}\n`;
     if (options.auto && (await this.sameFailure(opened.run.key, seen))) {
-      return this.finish(opened, 'failed', 1, this.report(opened, 'pipeline already failed for this commit', body), 'failed', calls, body);
+      return this.finish(ctx, 'failed', 1, this.report(opened, 'pipeline already failed for this commit', body), 'failed', body);
     }
     if (opened.run.attemptsPipeline >= env.MAX_PIPELINE_RETURNS) {
-      return this.finish(opened, 'blocked', 1, this.report(opened, 'pipeline return limit reached', body), 'blocked', calls, body);
+      return this.finish(ctx, 'blocked', 1, this.report(opened, 'pipeline return limit reached', body), 'blocked', body);
     }
     opened.run.attemptsPipeline += 1;
     const reason = failures.map((failure) => `${failure.project} ${failure.name}`).join(',') || 'pipeline failed';
     await this.history.recordLoop(opened.run, 'pipeline', opened.run.attemptsPipeline, reason);
-    return this.finish(opened, 'waiting', 0, this.report(opened, 'pipeline failed', body), 'waiting', calls, body, 'implement');
+    return this.finish(ctx, 'waiting', 0, this.report(opened, 'pipeline failed', body), 'waiting', body, 'implement');
   }
 
   private async sameFailure(key: string, seen: Seen[]): Promise<boolean> {
@@ -363,16 +352,15 @@ export class PipelineStepService implements Step {
   }
 
   private async finish(
-    opened: OpenedStep,
+    ctx: StepContext,
     outcome: 'ok' | 'failed' | 'blocked' | 'waiting',
     exitCode: number,
     line: string,
     visitStatus: string,
-    calls: HttpCallDraft[],
     body?: string,
     moveTo?: 'implement',
   ): Promise<PipelineResult> {
-    const now = new Date().toISOString();
+    const { opened } = ctx;
     const docs: DocumentDraft[] = [];
     if (body) {
       docs.push(textDocument('pipeline_log', body));
@@ -390,36 +378,13 @@ export class PipelineStepService implements Step {
             : 'Pipeline passed.';
       docs.push(await recordHandoff(this.history, opened.run.key, 'pipeline', `- ${head}\n`));
     }
-    return closeStep({
-      history: this.history,
-      run: opened.run,
-      previousStep: opened.previousStep,
-      previousStatus: opened.previousStatus,
-      step: 'pipeline',
+    return ctx.end({
       outcome,
       exitCode,
       line,
+      status: visitStatus,
       moveTo,
-      visit: {
-        step: 'pipeline',
-        model: null,
-        mode: null,
-        startedAt: opened.startedAt,
-        finishedAt: now,
-        durationMs: Date.now() - opened.started,
-        status: visitStatus,
-        exitCode,
-        killReason: null,
-        tokensIn: 0,
-        tokensOut: 0,
-        usd: 0,
-        samples: [sampleSelf()],
-        exchange: null,
-        httpCalls: calls,
-        document: null,
-        documents: docs.length > 0 ? docs : undefined,
-        resumed: false,
-      },
+      visit: { documents: docs.length > 0 ? docs : undefined },
     });
   }
 }

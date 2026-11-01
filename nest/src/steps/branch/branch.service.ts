@@ -1,58 +1,36 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import { HistoryService } from '../../history/history.service';
-import { DocumentDraft, sampleSelf, VisitDraft } from '../../history/visit';
-import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { SwarmloopError } from '../../swarmloop-error';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { recordHandoff } from '../model-step';
 import { repoNames, worktreePath } from '../repo-names';
-import { Step, requiredDocument } from '../step';
+import { BaseStep, StepContext } from '../base-step';
 import { branchName, summaryForBranch } from './branch-name';
 
 @Injectable()
-export class BranchService implements Step {
+export class BranchService extends BaseStep {
   readonly name: StepName = 'branch';
-  readonly usesModel = false;
+  readonly requiredKind = 'repos';
 
-  constructor(private readonly history: HistoryService) {}
-
-  missingInput(key: string): Promise<string | null> {
-    return requiredDocument(this.history, key, 'repos');
+  constructor(history: HistoryService) {
+    super(history);
   }
 
-  async execute(key: string, _options: StepOptions = {}): Promise<PipelineResult> {
-    const opened = await openStep(this.history, key, 'branch');
-    const end = (outcome: 'ok' | 'failed', status: string, exitCode: number, line: string, documents?: DocumentDraft[]) =>
-      closeStep({
-        history: this.history,
-        run: opened.run,
-        previousStep: opened.previousStep,
-        previousStatus: opened.previousStatus,
-        step: 'branch',
-        outcome,
-        visit: { ...branchVisit(opened, status, exitCode), ...(documents ? { documents } : {}) },
-        line,
-        exitCode,
-      });
-    try {
-      const requirements = await this.history.latestBody(key, 'requirements');
-      if (!requirements) {
-        throw new SwarmloopError('requirements is missing');
-      }
-      const repos = await this.history.latestBody(key, 'repos');
-      const names = repoNames(repos ?? '');
-      const name = branchName(key, summaryForBranch(requirements, key));
-      for (const repo of names) {
-        await this.ensure(key, repo);
-      }
-      const handoff = await recordHandoff(this.history, key, 'branch', `- checked out ${name}\n`);
-      return end('ok', 'done', 0, `${opened.startedAt} branch done\n${name}`, [handoff]);
-    } catch (error) {
-      const message = error instanceof SwarmloopError ? error.message : 'branch failed';
-      return end('failed', 'failed', 1, `${opened.startedAt} ${message}`);
+  protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
+    const requirements = await this.history.latestBody(key, 'requirements');
+    if (!requirements) {
+      throw new SwarmloopError('requirements is missing');
     }
+    const repos = await this.history.latestBody(key, 'repos');
+    const names = repoNames(repos ?? '');
+    const name = branchName(key, summaryForBranch(requirements, key));
+    for (const repo of names) {
+      await this.ensure(key, repo);
+    }
+    const handoff = await recordHandoff(this.history, key, 'branch', `- checked out ${name}\n`);
+    return ctx.end({ outcome: 'ok', exitCode: 0, line: `${ctx.opened.startedAt} branch done\n${name}`, visit: { documents: [handoff] } });
   }
 
   async ensure(key: string, repo: string): Promise<void> {
@@ -101,27 +79,5 @@ async function hasBranch(worktree: string, branch: string): Promise<boolean> {
     }
     throw error;
   }
-}
-
-function branchVisit(opened: OpenedStep, status: string, exitCode: number): VisitDraft {
-  return {
-    step: 'branch',
-    model: null,
-    mode: null,
-    startedAt: opened.startedAt,
-    finishedAt: new Date().toISOString(),
-    durationMs: Date.now() - opened.started,
-    status,
-    exitCode,
-    killReason: null,
-    tokensIn: 0,
-    tokensOut: 0,
-    usd: 0,
-    samples: [sampleSelf()],
-    exchange: null,
-    httpCalls: [],
-    document: null,
-    resumed: false,
-  };
 }
 

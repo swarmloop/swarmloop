@@ -4,78 +4,60 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { readEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
-import { DocumentDraft, sampleSelf, VisitDraft } from '../../history/visit';
-import { closeStep, openStep, OpenedStep } from '../../pipeline/step-run';
 import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
 import { assignCodeHost, CodeHostRegistry, type CodeHostName } from '../../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../../swarmloop-error';
 import { git, gitDetail } from '../../git/git';
 import { storedBase } from '../../git/rebase-worktree';
 import { recordHandoff } from '../model-step';
-import { Step, requiredDocument } from '../step';
+import { BaseStep, StepContext } from '../base-step';
 import { CHECKOUT_NAME, listGitProjects, resolveCheckoutPath, storedProjects } from './checkout-path';
 
 @Injectable()
-export class PrepareService implements Step {
+export class PrepareService extends BaseStep {
   readonly name: StepName = 'prepare';
-  readonly usesModel = false;
+  readonly requiredKind = 'requirements';
 
   constructor(
-    private readonly history: HistoryService,
+    history: HistoryService,
     private readonly config: ConfigService,
     private readonly registry: CodeHostRegistry,
-  ) {}
-
-  missingInput(key: string): Promise<string | null> {
-    return requiredDocument(this.history, key, 'requirements');
+  ) {
+    super(history);
   }
 
-  async execute(key: string, _options: StepOptions = {}): Promise<PipelineResult> {
-    const opened = await openStep(this.history, key, 'prepare');
-    const end = (outcome: 'ok' | 'failed' | 'waiting', status: string, exitCode: number, line: string, documents?: DocumentDraft[]) =>
-      closeStep({
-        history: this.history,
-        run: opened.run,
-        previousStep: opened.previousStep,
-        previousStatus: opened.previousStatus,
-        step: 'prepare',
-        outcome,
-        visit: { ...prepareVisit(opened, status, exitCode), ...(documents ? { documents } : {}) },
-        line,
-        exitCode,
-      });
-    try {
-      const selected = storedProjects(opened.run.projects).map((name) => ({ name, path: '' }));
-      const checkouts: { name: string; path: string }[] = selected.length > 0 ? selected : await this.history.listCheckouts();
-      if (checkouts.length === 0) {
-        throw new SwarmloopError('projects is missing');
-      }
-      const hosts: (CodeHostName | null)[] = [];
-      for (const checkout of checkouts) {
-        const located = await this.prepareCheckout(key, checkout, opened.run.prompt);
-        hosts.push(await this.classified(located));
-      }
-      assignCodeHost(opened.run, hosts, true);
-      const handoff = await recordHandoff(
-        this.history,
-        key,
-        'prepare',
-        `- prepared ${checkouts.map((checkout) => checkout.name).join(', ')}\n`,
-      );
-      return end(
-        'ok',
-        'done',
-        0,
-        [
-          `${opened.startedAt} prepare done`,
-          'Run unit tests from the worktree. The shared Docker stack can serve only one worktree at a time.',
-        ].join('\n'),
-        [handoff],
-      );
-    } catch (error) {
-      const message = error instanceof SwarmloopError ? error.message : gitDetail(error);
-      return end('failed', 'failed', 1, `${opened.startedAt} ${message}`);
+  protected failureText(error: unknown): string {
+    return error instanceof SwarmloopError ? error.message : gitDetail(error);
+  }
+
+  protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
+    const { opened } = ctx;
+    const selected = storedProjects(opened.run.projects).map((name) => ({ name, path: '' }));
+    const checkouts: { name: string; path: string }[] = selected.length > 0 ? selected : await this.history.listCheckouts();
+    if (checkouts.length === 0) {
+      throw new SwarmloopError('projects is missing');
     }
+    const hosts: (CodeHostName | null)[] = [];
+    for (const checkout of checkouts) {
+      const located = await this.prepareCheckout(key, checkout, opened.run.prompt);
+      hosts.push(await this.classified(located));
+    }
+    assignCodeHost(opened.run, hosts, true);
+    const handoff = await recordHandoff(
+      this.history,
+      key,
+      'prepare',
+      `- prepared ${checkouts.map((checkout) => checkout.name).join(', ')}\n`,
+    );
+    return ctx.end({
+      outcome: 'ok',
+      exitCode: 0,
+      line: [
+        `${opened.startedAt} prepare done`,
+        'Run unit tests from the worktree. The shared Docker stack can serve only one worktree at a time.',
+      ].join('\n'),
+      visit: { documents: [handoff] },
+    });
   }
 
   async listClones(): Promise<{ name: string }[]> {
@@ -254,28 +236,6 @@ export class PrepareService implements Step {
     }
   }
 
-}
-
-function prepareVisit(opened: OpenedStep, status: string, exitCode: number): VisitDraft {
-  return {
-    step: 'prepare',
-    model: null,
-    mode: null,
-    startedAt: opened.startedAt,
-    finishedAt: new Date().toISOString(),
-    durationMs: Date.now() - opened.started,
-    status,
-    exitCode,
-    killReason: null,
-    tokensIn: 0,
-    tokensOut: 0,
-    usd: 0,
-    samples: [sampleSelf()],
-    exchange: null,
-    httpCalls: [],
-    document: null,
-    resumed: false,
-  };
 }
 
 function linkedWorktree(path: string): boolean {
