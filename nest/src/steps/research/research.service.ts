@@ -2,52 +2,43 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { basename, join } from 'path';
-import { readEnv } from '../../config/env';
+import { SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER, AgentProcessRunner } from '../../limits/agent-runner';
-import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
+import { PipelineResult, StepName } from '../../pipeline/pipeline-result';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
 import { renderProjects, storedProjects } from '../prepare/checkout-path';
-import { plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, withModelStep, ModelStepContext } from '../model-step';
-import { mountsForStep } from '../repo-names';
-import { Step } from '../step';
+import { AgentStep, ModelStepContext } from '../agent-step';
+import { recordHandoff, textDocument, withHandoff } from '../shared/handoff';
+import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
+import { mountsForStep } from '../shared/repo-names';
 import { parseResearch } from './research-record';
+import { RESEARCH_CONTINUE } from './research.prompts';
 
 @Injectable()
-export class ResearchService implements Step {
+export class ResearchService extends AgentStep {
   readonly name: StepName = 'research';
-  readonly usesModel = true;
+  readonly requiredKind = 'worktrees';
 
   constructor(
-    private readonly history: HistoryService,
-    private readonly config: ConfigService,
-    private readonly sandbox: SandboxService,
-    @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
-  ) {}
+    history: HistoryService,
+    config: ConfigService,
+    sandbox: SandboxService,
+    @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
+  ) {
+    super(history, config, sandbox, agent);
+  }
+
+  protected settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number } {
+    return { mode: 'plan', model: env.MODEL_PLAN, timeLimitMs: env.RESEARCH_TIMEOUT_MS };
+  }
 
   async missingInput(key: string): Promise<string | null> {
     return existsSync(join(this.history.root(), 'worktrees', key)) ? null : `worktrees/${key}`;
   }
 
-  execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
-    const env = readEnv(this.config);
-    return withModelStep(
-      { history: this.history, sandbox: this.sandbox, agent: this.agent },
-      {
-        key,
-        step: 'research',
-        mode: 'plan',
-        model: env.MODEL_PLAN,
-        timeLimitMs: env.RESEARCH_TIMEOUT_MS,
-        runtime: env.RUNTIME,
-        auto: options.auto,
-      },
-      (ctx) => this.ask(ctx),
-    );
-  }
-
-  private async ask(ctx: ModelStepContext): Promise<PipelineResult> {
+  protected async write(key: string, ctx: ModelStepContext): Promise<PipelineResult> {
     const stored = storedProjects(ctx.opened.run.projects);
     const names = stored.length > 0 ? stored : listWorktrees(ctx.workspace);
     if (names.length === 0) {
@@ -76,16 +67,6 @@ export class ResearchService implements Step {
     );
   }
 }
-
-const RESEARCH_CONTINUE = [
-  'You were interrupted before the summary. Finish this research. Do not start over.',
-  'End with these sections:',
-  'summary:',
-  '- why',
-  '',
-  'questions:',
-  '- none',
-].join('\n');
 
 function listWorktrees(directory: string): string[] {
   let names: string[];

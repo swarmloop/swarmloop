@@ -19,7 +19,7 @@ import { SwarmloopError } from '../../swarmloop-error';
 import { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
 import { PASTE_READER } from '../../integrations/linked-pages/paste-page.reader';
 import { ISSUE_TRACKER } from '../../providers/tokens';
-import { requirementsBrief } from '../requirements-brief';
+import { requirementsBrief } from '../shared/requirements-brief';
 
 const TOKEN = 'super-secret-token';
 

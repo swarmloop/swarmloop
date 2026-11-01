@@ -1,54 +1,41 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { join } from 'path';
-import { readEnv } from '../../config/env';
+import { SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../limits/agent-runner';
 import { sessionFileName } from '../../limits/session-group';
-import { PipelineResult, StepName, StepOptions } from '../../pipeline/pipeline-result';
+import { PipelineResult, StepName } from '../../pipeline/pipeline-result';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../swarmloop-error';
-import { planFollowUp, withAddedRepos } from '../follow-up';
-import { plainSummary, recordHandoff, skillPrompt, summaryOr, textDocument, withHandoff, withModelStep, ModelStepContext } from '../model-step';
-import { unanswered } from '../answers';
-import { mountsForStep, repoNames } from '../repo-names';
-import { Step, requiredDocument } from '../step';
+import { withAddedRepos } from '../follow-up';
+import { AgentStep, ModelStepContext } from '../agent-step';
+import { recordHandoff, textDocument, withHandoff } from '../shared/handoff';
+import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
+import { unanswered } from '../shared/answers';
+import { mountsForStep, repoNames } from '../shared/repo-names';
 import { planFromAgent, readPlan, withPlan } from './plan-record';
+import { planFollowUp } from './plan.prompts';
 
 @Injectable()
-export class PlanService implements Step {
+export class PlanService extends AgentStep {
   readonly name: StepName = 'plan';
-  readonly usesModel = true;
+  readonly requiredKind = 'repos';
 
   constructor(
-    private readonly history: HistoryService,
-    private readonly config: ConfigService,
-    private readonly sandbox: SandboxService,
-    @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
-  ) {}
-
-  missingInput(key: string): Promise<string | null> {
-    return requiredDocument(this.history, key, 'repos');
+    history: HistoryService,
+    config: ConfigService,
+    sandbox: SandboxService,
+    @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
+  ) {
+    super(history, config, sandbox, agent);
   }
 
-  execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
-    const env = readEnv(this.config);
-    return withModelStep(
-      { history: this.history, sandbox: this.sandbox, agent: this.agent },
-      {
-        key,
-        step: 'plan',
-        mode: 'plan',
-        model: env.MODEL_PLAN,
-        timeLimitMs: env.PLAN_TIMEOUT_MS,
-        runtime: env.RUNTIME,
-        auto: options.auto,
-      },
-      (ctx) => this.write(key, ctx),
-    );
+  protected settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number } {
+    return { mode: 'plan', model: env.MODEL_PLAN, timeLimitMs: env.PLAN_TIMEOUT_MS };
   }
 
-  private async write(key: string, ctx: ModelStepContext): Promise<PipelineResult> {
+  protected async write(key: string, ctx: ModelStepContext): Promise<PipelineResult> {
     const questions = (await this.history.latestBody(key, 'questions')) ?? '';
     const answers = (await this.history.latestBody(key, 'answers')) ?? '';
     if (unanswered(questions, answers).length > 0) {

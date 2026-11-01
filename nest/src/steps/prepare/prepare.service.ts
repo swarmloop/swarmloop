@@ -9,7 +9,7 @@ import { assignCodeHost, CodeHostRegistry, type CodeHostName } from '../../integ
 import { SwarmloopError } from '../../swarmloop-error';
 import { git, gitDetail } from '../../git/git';
 import { storedBase } from '../../git/rebase-worktree';
-import { recordHandoff } from '../model-step';
+import { recordHandoff } from '../shared/handoff';
 import { BaseStep, StepContext } from '../base-step';
 import { CHECKOUT_NAME, listGitProjects, resolveCheckoutPath, storedProjects } from './checkout-path';
 

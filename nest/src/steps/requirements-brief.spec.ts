@@ -1,5 +1,5 @@
-import { skillPrompt } from './model-step';
-import { LINKED_CONTEXT, requirementsBrief, TASK_SCOPE } from './requirements-brief';
+import { skillPrompt } from './shared/skill-prompt';
+import { LINKED_CONTEXT, requirementsBrief, TASK_SCOPE } from './shared/requirements-brief';
 
 describe('requirements brief', () => {
   const record = {

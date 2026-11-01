@@ -8,7 +8,7 @@ import { SwarmloopError } from '../swarmloop-error';
 import { originRef, promptBase } from './base-ref';
 import { allowedPaths, deniedIndexPaths, isDenied, porcelainPaths, stageSelection } from '../steps/commit/commit-paths';
 import { authorArgs, git, gitDetail, gitMissing, gitRaw, gitStderr, originUrl, redact } from './git';
-import { worktreePath } from '../steps/repo-names';
+import { worktreePath } from '../steps/shared/repo-names';
 
 /** Set while a conflict rebase still has to be resolved, then reviewed on the new diff. */
 export const REBASE_CONFLICT = 'rebase_conflict';

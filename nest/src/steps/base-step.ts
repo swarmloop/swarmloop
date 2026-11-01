@@ -3,7 +3,7 @@ import { sampleSelf, VisitDraft } from '../history/visit';
 import { PipelineResult, StepName, StepOptions, visitStatus } from '../pipeline/pipeline-result';
 import { closeStep, OpenedStep, openStep } from '../pipeline/step-run';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../swarmloop-error';
-import { recordHandoff } from './model-step';
+import { recordHandoff } from './shared/handoff';
 import { requiredDocument, Step } from './step';
 
 export interface StepEnd {
@@ -27,7 +27,7 @@ export interface StepContext {
 export abstract class BaseStep implements Step {
   abstract readonly name: StepName;
   abstract readonly requiredKind: string;
-  readonly usesModel = false;
+  readonly usesModel: boolean = false;
 
   constructor(protected readonly history: HistoryService) {}
 

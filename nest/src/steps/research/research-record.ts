@@ -1,5 +1,5 @@
 import { SwarmloopError } from '../../swarmloop-error';
-import { bulletList, items, section } from '../markdown-section';
+import { bulletList, items, section } from '../shared/markdown-section';
 
 export interface ResearchRecord {
   questions: string;

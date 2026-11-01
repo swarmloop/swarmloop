@@ -4,8 +4,8 @@ import { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entitie
 import { LiveSpend } from '../../live/live.hub';
 import { continuesSameStep, countedVisits, isLoopStep, isReviewStep, loopMark, pipelineStepOf, STEPS, StepName } from '../../pipeline/pipeline-result';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
-import { answered } from '../../steps/answers';
-import { items } from '../../steps/markdown-section';
+import { answered } from '../../steps/shared/answers';
+import { items } from '../../steps/shared/markdown-section';
 import { chipStatus, chipAttempts, reportChip, reviewerRound } from './chips';
 import { FlowItem, FlowView, PHASES } from './run-view.types';
 

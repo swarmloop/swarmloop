@@ -13,7 +13,7 @@ import { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
 import { REQUIREMENTS_SOURCE } from '../../integrations/requirements-source/requirements-source.module';
 import { RequirementsSource, RequirementsWrite } from '../../integrations/requirements-source/requirements-source';
 import { ISSUE_TRACKER } from '../../providers/tokens';
-import { recordHandoff } from '../model-step';
+import { recordHandoff } from '../shared/handoff';
 import { Step } from '../step';
 
 @Injectable()

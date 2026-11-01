@@ -1,5 +1,5 @@
 import { DocumentEntity } from '../../history/entities';
-import { composedReturn } from '../../steps/model-step';
+import { composedReturn } from '../../steps/shared/handoff';
 
 export function belongsToVisit(document: DocumentEntity, statId: number, kinds: string[], latestVisit: boolean): boolean {
   if (!kinds.includes(document.kind)) {

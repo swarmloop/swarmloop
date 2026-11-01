@@ -7,8 +7,8 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 import { HttpCallDraft, SwarmloopError } from '../../swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
 import { git, gitDetail, gitMissing } from '../../git/git';
-import { textDocument } from '../model-step';
-import { repoNames, worktreePath } from '../repo-names';
+import { textDocument } from '../shared/handoff';
+import { repoNames, worktreePath } from '../shared/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { remoteProject, renderMergeRequest } from './merge-request-record';
 
