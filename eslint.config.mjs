@@ -46,5 +46,10 @@ export default tseslint.config(
     ...jsxA11y.flatConfigs.recommended,
     files: dashboardFiles,
   },
+  {
+    // Next.js writes this file, and its reference line is not ours to change.
+    files: ['dashboard/next-env.d.ts'],
+    rules: { '@typescript-eslint/triple-slash-reference': 'off' },
+  },
   prettier,
 );

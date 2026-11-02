@@ -73,7 +73,7 @@ function fakeChild(chunks: string[], code: number): EventEmitter {
     stdout.write(chunk);
   }
   const on = child.on.bind(child);
-  child.on = ((event: string | symbol, listener: (...args: any[]) => void) => {
+  child.on = ((event: string | symbol, listener: (...args: unknown[]) => void) => {
     const returned = on(event, listener);
     if (event === 'close') {
       setImmediate(() => child.emit('close', code));

@@ -148,12 +148,12 @@ function JsonCode({ text }: { text: string }) {
 
 function jsonTokens(text: string): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern = /"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[{}\[\],:]|\s+|[^\s"{}\[\],:]+/g;
+  const pattern = /"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[{}[\],:]|\s+|[^\s"{}[\],:]+/g;
   const parts = text.match(pattern) ?? [text];
   parts.forEach((part, index) => {
     const next = parts.slice(index + 1).find((item) => item.trim() !== '');
     const key = part.startsWith('"') && next === ':';
-    const color = key ? 'secondary.main' : part.startsWith('"') ? 'primary.main' : /^-?\d/.test(part) ? 'warning.main' : /^[{}\[\],:]$/.test(part) ? 'text.secondary' : 'text.primary';
+    const color = key ? 'secondary.main' : part.startsWith('"') ? 'primary.main' : /^-?\d/.test(part) ? 'warning.main' : /^[{}[\],:]$/.test(part) ? 'text.secondary' : 'text.primary';
     nodes.push(
       <Box key={index} component="span" sx={{ color }}>
         {part}

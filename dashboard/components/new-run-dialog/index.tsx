@@ -156,6 +156,7 @@ export function NewRunDialog({
       <DialogTitle>{title}</DialogTitle>
       <DialogContent sx={{ display: 'grid', gap: 2, '&&': { pt: 2.5 } }}>
         <TextField
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- the prompt is the dialog's first field, so it takes focus when the dialog opens
           autoFocus
           label="Prompt"
           value={prompt}

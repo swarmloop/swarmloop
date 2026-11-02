@@ -148,7 +148,7 @@ interface ModelRun {
 }
 
 export abstract class AgentStep extends BaseStep {
-  readonly usesModel = true;
+  override readonly usesModel = true;
 
   constructor(
     history: HistoryService,
