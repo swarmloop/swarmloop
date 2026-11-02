@@ -40,7 +40,7 @@ export class ImplementStep extends AgentStep {
     super(history, config, sandbox, agent);
   }
 
-  missingInput(key: string): Promise<string | null> {
+  override missingInput(key: string): Promise<string | null> {
     return storedPlan(this.history, key);
   }
 
@@ -70,11 +70,9 @@ export class ImplementStep extends AgentStep {
     const added = await this.history.latestBody(key, 'added_repos');
     const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'implement')), ctx.opened.run.runtime);
     const basePrompt = withAddedRepos(continued?.chatId ? implementFollowUp(plan, notes) : full, added);
-    if (marker === 'pending' || marker === 'pending-implement') {
-      const settled = await this.settleRebase(key, ctx, marker, names, branch, storedStderr);
-      if (settled) {
-        return settled;
-      }
+    const settled = await this.settleRebase(key, ctx, marker, names, branch, storedStderr);
+    if (settled) {
+      return settled;
     }
     const heads = await featureHeads(mounts, branch);
     const prompt = basePrompt;
@@ -96,11 +94,7 @@ export class ImplementStep extends AgentStep {
         planOutput = againOutput;
       }
       if ((await worktreeSnapshot(mounts)) === before) {
-        const corrected = correctedPlan(ctx.requirements, planText, planOutput);
-        const docs = corrected
-          ? [await recordHandoff(this.history, key, 'implement', corrected.handoff), textDocument('requirements', corrected.requirements)]
-          : undefined;
-        return ctx.end('failed', 1, `${ctx.opened.startedAt} pipeline failure left unfixed`, undefined, docs);
+        return this.unfixedPipelineFailure(ctx, key, planText, planOutput);
       }
     }
     const text = agentResult.responseText;
@@ -119,6 +113,20 @@ export class ImplementStep extends AgentStep {
     );
   }
 
+  /** A pipeline failure that the retry left unchanged on disk: stop with the corrected checklist, if one came back. */
+  private async unfixedPipelineFailure(
+    ctx: ModelStepContext,
+    key: string,
+    planText: string,
+    planOutput: string,
+  ): Promise<PipelineResult> {
+    const corrected = correctedPlan(ctx.requirements, planText, planOutput);
+    const docs = corrected
+      ? [await recordHandoff(this.history, key, 'implement', corrected.handoff), textDocument('requirements', corrected.requirements)]
+      : undefined;
+    return ctx.end('failed', 1, `${ctx.opened.startedAt} pipeline failure left unfixed`, undefined, docs);
+  }
+
   /** Finish an open rebase in the server. A stored checklist then goes to code review; an unfinished one returns to the checklist prompt. */
   private async settleRebase(
     key: string,
@@ -128,6 +136,9 @@ export class ImplementStep extends AgentStep {
     branch: string,
     storedStderr: string,
   ): Promise<PipelineResult | null> {
+    if (marker !== 'pending' && marker !== 'pending-implement') {
+      return null;
+    }
     const input = {
       root: this.history.root(),
       key,

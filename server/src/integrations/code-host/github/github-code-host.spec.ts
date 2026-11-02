@@ -1,5 +1,4 @@
 import { ConfigService } from '@nestjs/config';
-import { FetchFailed } from '../../../core/swarmloop-error';
 import { GithubCodeHost } from './github-code-host';
 
 const TOKEN = 'super-secret-token';
@@ -218,18 +217,18 @@ interface Seen {
 
 function mockFetch(bodies: unknown[], status: number | number[] = 200): Seen[] {
   const seen: Seen[] = [];
-  global.fetch = jest.fn(async (url: string, init?: { method?: string; body?: string; headers?: Record<string, string> }) => {
+  global.fetch = jest.fn((url: string, init?: { method?: string; body?: string; headers?: Record<string, string> }) => {
     const method = init?.method ?? 'GET';
     seen.push({ method, url: String(url), body: init?.body ?? '', headers: init?.headers ?? {} });
     const payload = bodies[seen.length - 1] ?? bodies[0];
     const code = Array.isArray(status) ? (status[seen.length - 1] ?? 200) : status;
-    return {
+    return Promise.resolve({
       status: code,
       ok: code >= 200 && code < 300,
       url: String(url),
       headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) },
-      arrayBuffer: async () => Buffer.from(typeof payload === 'string' ? payload : JSON.stringify(payload ?? null)),
-    };
+      arrayBuffer: () => Promise.resolve(Buffer.from(typeof payload === 'string' ? payload : JSON.stringify(payload ?? null))),
+    });
   }) as unknown as typeof fetch;
   return seen;
 }

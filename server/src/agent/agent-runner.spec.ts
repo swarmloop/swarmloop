@@ -30,7 +30,7 @@ describe('AgentProcessRunner resume output', () => {
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(outputFile, PREVIOUS);
     writePriceCache(root);
-    const spawn = jest.fn(async () => fakeChild(['visit-new-stream\n'], 0));
+    const spawn = jest.fn(() => Promise.resolve(fakeChild(['visit-new-stream\n'], 0)));
     const runner = new AgentProcessRunner(config(root), sandbox(spawn), new RunStop());
     const result = await runner.run(input(root, outputFile));
     expect(result.output).toContain('visit-new-stream');
@@ -48,12 +48,12 @@ describe('AgentProcessRunner resume output', () => {
       { chunks: [] as string[], code: 1 },
       { chunks: ['second-stream\n'], code: 0 },
     ];
-    const spawn = jest.fn(async () => {
+    const spawn = jest.fn(() => {
       const next = scripts.shift();
       if (!next) {
-        throw new Error('unexpected spawn');
+        return Promise.reject(new Error('unexpected spawn'));
       }
-      return fakeChild(next.chunks, next.code);
+      return Promise.resolve(fakeChild(next.chunks, next.code));
     });
     const runner = new AgentProcessRunner(config(root), sandbox(spawn), new RunStop());
     const result = await runner.run(input(root, outputFile));
@@ -73,7 +73,7 @@ function fakeChild(chunks: string[], code: number): EventEmitter {
     stdout.write(chunk);
   }
   const on = child.on.bind(child);
-  child.on = ((event: string | symbol, listener: (...args: any[]) => void) => {
+  child.on = ((event: string | symbol, listener: (...args: unknown[]) => void) => {
     const returned = on(event, listener);
     if (event === 'close') {
       setImmediate(() => child.emit('close', code));
@@ -296,7 +296,7 @@ async function start(
   patch: Partial<AgentRunInput> = {},
   env: Record<string, string | number> = {},
   stop = new RunStop(),
-): Promise<{ result: Awaited<ReturnType<AgentProcessRunner['run']>>; spawn: jest.Mock; outputFile: string }> {
+): Promise<{ result: Awaited<ReturnType<AgentProcessRunner['run']>>; spawn: jest.Mock<Promise<EventEmitter>, unknown[]>; outputFile: string }> {
   const root = await mkdtemp(join(tmpdir(), `swarmloop-agent-${label}-`));
   const outputFile = join(root, 'data', 'run1-implement-output.txt');
   mkdirSync(join(root, 'data'), { recursive: true });
@@ -304,13 +304,13 @@ async function start(
   const pending = [...steps];
   let now = Date.now();
   const clock = steps.some((step) => step.advance) ? jest.spyOn(Date, 'now').mockImplementation(() => now) : null;
-  const spawn = jest.fn(async () => {
+  const spawn = jest.fn<Promise<EventEmitter>, unknown[]>(() => {
     const next = pending.shift();
     if (!next) {
-      throw new Error('unexpected spawn');
+      return Promise.reject(new Error('unexpected spawn'));
     }
     now += next.advance ?? 0;
-    return fakeChild(next.chunks, next.code ?? 0);
+    return Promise.resolve(fakeChild(next.chunks, next.code ?? 0));
   });
   const runner = new AgentProcessRunner(config(root, env), sandbox(spawn), stop);
   try {

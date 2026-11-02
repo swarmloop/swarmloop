@@ -39,11 +39,11 @@ export class RequirementsStep extends BaseStep {
     return this.perform(key, (ctx) => this.produce(ctx, prompt, [...keys]));
   }
 
-  async missingInput(): Promise<string | null> {
-    return null;
+  override missingInput(): Promise<string | null> {
+    return Promise.resolve(null);
   }
 
-  async execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
+  override async execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
     let prompt: string | undefined;
     try {
       prompt = await readPrompt(options);

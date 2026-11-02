@@ -5,6 +5,7 @@
     "dev": "next dev -p 3921 -H 0.0.0.0",
     "test": "node --import ./lib/resolve-ts.mjs --test lib/*.test.ts",
     "build": "next build",
+    "typecheck": "tsc --noEmit",
     "start": "next start -p 3921 -H 0.0.0.0"
   },
   "dependencies": {

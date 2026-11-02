@@ -35,7 +35,7 @@ export class PlanImproveStep extends AgentStep {
     return { mode: 'plan', model: env.MODEL_PLAN, timeLimitMs: env.PLAN_TIMEOUT_MS };
   }
 
-  missingInput(key: string): Promise<string | null> {
+  override missingInput(key: string): Promise<string | null> {
     return storedPlan(this.history, key);
   }
 

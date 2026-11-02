@@ -7,7 +7,6 @@ import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent
 import { sessionFileName } from '../../agent/session-group';
 import { PipelineResult, StepName } from '../../core/pipeline-result';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import { SwarmloopError } from '../../core/swarmloop-error';
 import { withAddedRepos } from '../follow-up';
 import { AgentStep, ModelStepContext } from '../agent-step';
 import { recordHandoff, textDocument, withHandoff } from '../shared/handoff';

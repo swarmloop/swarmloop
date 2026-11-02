@@ -2,39 +2,30 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
-import { readEnv, SwarmloopEnv } from '../../config/env';
+import { readEnv, type SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { HistoryService } from '../../history/history.service';
-import { DocumentDraft } from '../../history/visit';
-import { PipelineResult, StepName, StepOptions } from '../../core/pipeline-result';
-import { OpenedStep } from '../../pipeline/step-run';
-import { CodeHost, PipelineJob, PipelineRef } from '../../integrations/code-host/code-host';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../core/swarmloop-error';
+import type { DocumentDraft } from '../../history/visit';
+import type { PipelineResult, StepName, StepOptions } from '../../core/pipeline-result';
+import type { OpenedStep } from '../../pipeline/step-run';
+import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
+import { FetchFailed, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { recordHandoff, returnNotes, textDocument } from '../shared/handoff';
 import { git } from '../../git/git';
 import { remoteProject } from '../merge-request/merge-request-record';
 import { repoNames, worktreePath } from '../shared/repo-names';
-import { BaseStep, StepContext } from '../base-step';
+import { BaseStep, type StepContext } from '../base-step';
+import {
+  cancelErrorNote,
+  parsePipelineRefs,
+  renderFail,
+  renderNone,
+  renderPass,
+  type Failure,
+  type Seen,
+} from './pipeline-report';
 
 type Verdict = 'green' | 'red' | 'wait' | 'manual' | 'stop' | 'absent';
-
-interface Seen {
-  project: string;
-  id: number | null;
-  sha: string;
-  url: string;
-  status: string;
-  jobs: PipelineJob[];
-}
-
-interface Failure {
-  project: string;
-  pipelineId: number;
-  name: string;
-  stage: string;
-  url: string;
-  trace: string;
-}
 
 @Injectable()
 export class PipelineStep extends BaseStep {
@@ -389,14 +380,6 @@ export class PipelineStep extends BaseStep {
   }
 }
 
-function renderNone(seen: Seen[]): string {
-  const lines = ['result: none', 'nothing started'];
-  for (const item of seen) {
-    lines.push(`project: ${item.project}`);
-  }
-  return `${lines.join('\n')}\n`;
-}
-
 async function originProject(dir: string): Promise<string | null> {
   try {
     return remoteProject(await git(['-C', dir, 'remote', 'get-url', 'origin'])).project;
@@ -419,137 +402,6 @@ function hasCi(dir: string): boolean {
   return readdirSync(workflows).some((name) => name.endsWith('.yml') || name.endsWith('.yaml'));
 }
 
-function renderPass(seen: Seen[], warnings: string[]): string {
-  const lines = ['result: pass'];
-  for (const item of seen) {
-    lines.push(`project: ${item.project}`);
-    if (item.id) {
-      lines.push(`pipeline: ${item.id}`);
-    }
-    if (item.sha) {
-      lines.push(`sha: ${item.sha}`);
-    }
-  }
-  lines.push(...warnings.map((warning) => `warning: ${warning}`));
-  return `${lines.join('\n')}\n`;
-}
-
-function renderFail(failures: Failure[], seen: Seen[], intro = ''): string {
-  const head = intro.trim() ? `${intro.trim()}\n` : '';
-  if (failures.length === 0) {
-    const failed = seen
-      .filter((item) => item.status === 'failed' || item.status === 'canceled')
-      .map((item) =>
-        [`project: ${item.project}`, `pipeline: ${item.id ?? ''}`, `status: ${item.status}`, item.url ? `url: ${item.url}` : '']
-          .filter((line) => line !== '')
-          .join('\n'),
-      );
-    return `${head}result: fail\n${failed.join('\n\n')}\n`;
-  }
-  const blocks = failures.map((failure) => {
-    const lines = [
-      `project: ${failure.project}`,
-      `pipeline: ${failure.pipelineId}`,
-      `job: ${failure.name}`,
-      `stage: ${failure.stage}`,
-    ];
-    if (failure.url) {
-      lines.push(`url: ${failure.url}`);
-    }
-    return `${lines.join('\n')}\n\n${readableJobTrace(failure.trace)}`;
-  });
-  return `${head}result: fail\n${blocks.join('\n\n')}\n`;
-}
-
-function cancelErrorNote(running: Seen[], errors: string[]): string {
-  const lines = ['result: fail'];
-  for (const item of running) {
-    lines.push(`project: ${item.project}`);
-    if (item.id !== null) {
-      lines.push(`pipeline: ${item.id}`);
-    }
-    if (item.url) {
-      lines.push(`url: ${item.url}`);
-    }
-    const names = item.jobs.map((job) => job.name).filter((name) => name !== '');
-    lines.push(...(names.length > 0 ? names.map((name) => `job: ${name}`) : ['job: running']));
-  }
-  lines.push(...errors.map((error) => `cancel: ${error}`));
-  return lines.join('\n');
-}
-
-const READABLE_LINES = 200;
-const READABLE_CHARS = 20000;
-
-export function readableJobTrace(raw: string): string {
-  const rawLines = raw.split(/\r?\n/);
-  const section = rawLines.findIndex((line) => line.includes('section_end:') && line.includes('step_script'));
-  let end = rawLines.length;
-  if (section >= 0) {
-    end = section + 1;
-  } else {
-    for (let index = rawLines.length - 1; index >= 0; index -= 1) {
-      if (rawLines[index].includes('##[error]')) {
-        end = index + 1;
-        break;
-      }
-    }
-  }
-  return cleanTrace(rawLines.slice(0, end).join('\n')).slice(-READABLE_LINES).join('\n').slice(-READABLE_CHARS);
-}
-
-function cleanTrace(raw: string): string[] {
-  return raw
-    .replace(/\u001b(?:\[[0-9;?]*[A-Za-z]|\][^\u0007]*(?:\u0007|\u001b\\))/g, '')
-    .split(/\r?\n/)
-    .map((line) => line.replace(/\r$/, '').replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z /, ''))
-    .filter((line) => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === 'trace truncated') {
-        return false;
-      }
-      if (trimmed.includes('section_start:') || trimmed.includes('section_end:')) {
-        return false;
-      }
-      if (/^[.*]+$/.test(trimmed) || /^\* test /.test(trimmed)) {
-        return false;
-      }
-      if (/^Compiling \d+ files/.test(trimmed) || /^Generated /.test(trimmed)) {
-        return false;
-      }
-      return true;
-    });
-}
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function parsePipelineRefs(body: string): PipelineRef[] {
-  const records: PipelineRef[] = [];
-  let project = '';
-  let ref = '';
-  let sha = '';
-  const flush = (): void => {
-    if (project && ref) {
-      records.push({ project, ref, sha });
-    }
-    project = '';
-    ref = '';
-    sha = '';
-  };
-  for (const line of body.split('\n')) {
-    if (line.startsWith('project: ')) {
-      if (project || ref) {
-        flush();
-      }
-      project = line.slice('project: '.length).trim();
-    } else if (line.startsWith('ref: ')) {
-      ref = line.slice('ref: '.length).trim();
-    } else if (line.startsWith('sha: ')) {
-      sha = line.slice('sha: '.length).trim();
-    }
-  }
-  flush();
-  return records;
 }
