@@ -6,8 +6,11 @@
     "swarmloop": "./bin/swarmloop"
   },
   "scripts": {
-    "build": "npm run build --prefix server",
-    "test": "npm test --prefix server",
+    "build": "npm run build --prefix server && npm run build --prefix dashboard",
+    "lint": "eslint .",
+    "test": "npm test --prefix server && npm test --prefix dashboard",
+    "typecheck": "npm run typecheck --prefix server && npm run typecheck --prefix dashboard",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build",
     "swarmloop": "node server/dist/main.js"
   }
 }
