@@ -26,7 +26,7 @@ export class PrepareStep extends BaseStep {
     super(history);
   }
 
-  protected failureText(error: unknown): string {
+  protected override failureText(error: unknown): string {
     return error instanceof SwarmloopError ? error.message : gitDetail(error);
   }
 

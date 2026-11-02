@@ -163,7 +163,7 @@ export abstract class AgentStep extends BaseStep {
 
   protected abstract write(key: string, ctx: ModelStepContext, options: StepOptions): Promise<PipelineResult>;
 
-  async execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
+  override async execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
     const env = readEnv(this.config);
     const opened = await openStep(this.history, key, this.name);
     const run: ModelRun = {
