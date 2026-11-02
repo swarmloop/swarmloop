@@ -86,7 +86,7 @@ export class ChatService {
         approveMcps: servers.length > 0,
         continuePrompt: null,
       });
-      const failed = agentFailure(result, 'chat');
+      const failed = agentFailure(result, 'chat', 'agent');
       if (failed) {
         throw new BadRequestException(failed);
       }

@@ -232,17 +232,17 @@ describe('combineAgentResults', () => {
 
 describe('agentFailure', () => {
   it('keeps a bare exit when the process wrote nothing', () => {
-    expect(agentFailure({ ...emptyAgent(), exitCode: 1 }, 'code-review')).toBe('code-review failed');
+    expect(agentFailure({ ...emptyAgent(), exitCode: 1 }, 'code-review', 'agent')).toBe('code-review failed');
   });
 
   it('includes a short process error', () => {
-    expect(agentFailure({ ...emptyAgent(), exitCode: 1, output: 'E2BIG: spawn docker E2BIG\n' }, 'code-review')).toBe(
+    expect(agentFailure({ ...emptyAgent(), exitCode: 1, output: 'E2BIG: spawn docker E2BIG\n' }, 'code-review', 'agent')).toBe(
       'code-review failed: E2BIG: spawn docker E2BIG',
     );
   });
 
   it('drops a long stream', () => {
-    expect(agentFailure({ ...emptyAgent(), exitCode: 1, output: 'x'.repeat(501) }, 'code-review')).toBe('code-review failed');
+    expect(agentFailure({ ...emptyAgent(), exitCode: 1, output: 'x'.repeat(501) }, 'code-review', 'agent')).toBe('code-review failed');
   });
 
   it('fails a clean exit when a write was refused', () => {
@@ -255,7 +255,7 @@ describe('agentFailure', () => {
         message: "Claude requested permissions to write to /work/swarmloop/nest/src/steps/step.ts, but you haven't granted it yet.",
       }),
     ].join('\n');
-    expect(agentFailure({ ...emptyAgent(), exitCode: 0, output }, 'implement')).toBe(
+    expect(agentFailure({ ...emptyAgent(), exitCode: 0, output }, 'implement', 'agent')).toBe(
       "implement failed: Claude requested permissions to write to /work/swarmloop/nest/src/steps/step.ts, but you haven't granted it yet.",
     );
   });
@@ -267,7 +267,7 @@ describe('agentFailure', () => {
       tool_name: 'Bash',
       message: 'This Bash command contains multiple operations.',
     });
-    expect(agentFailure({ ...emptyAgent(), exitCode: 0, output }, 'implement')).toBeNull();
+    expect(agentFailure({ ...emptyAgent(), exitCode: 0, output }, 'implement', 'agent')).toBeNull();
   });
 });
 

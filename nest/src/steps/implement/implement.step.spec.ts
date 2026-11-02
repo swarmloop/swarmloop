@@ -20,6 +20,13 @@ import { REBASE_CONFLICT, rebaseFeatureRepos } from '../../git/rebase-worktree';
 
 const reply = ['implementation:', '- changed the field parser', '- ran unit tests', '', 'summary:', '- changed the parser so empty fields stay'].join('\n');
 
+const REFUSED_WRITE = JSON.stringify({
+  type: 'system',
+  subtype: 'permission_denied',
+  tool_name: 'Write',
+  message: 'Cannot write to /work/billing-api/a.php while in plan mode.',
+});
+
 describe('implement step', () => {
   it('writes the checklist on the feature branch and waits for review', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-'));
@@ -266,6 +273,22 @@ describe('implement step', () => {
       const done = await app.get(PipelineService).step('implement', 'PROJ-69');
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('summary is missing');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('still fails the implement step when a write was refused', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-refused-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-70', 'billing-api');
+    const agent = jest.fn().mockResolvedValue({ ...result(reply), output: REFUSED_WRITE });
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-70', 'approve');
+      const done = await app.get(PipelineService).step('implement', 'PROJ-70');
+      expect(done.exitCode).toBe(1);
+      expect(done.message).toContain('implement failed: Cannot write to /work/billing-api/a.php while in plan mode.');
     } finally {
       await app.close();
     }

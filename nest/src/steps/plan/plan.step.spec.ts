@@ -17,6 +17,13 @@ import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 
+const REFUSED_WRITE = JSON.stringify({
+  type: 'system',
+  subtype: 'permission_denied',
+  tool_name: 'Write',
+  message: 'Cannot write to /work/billing-api/a.php while in plan mode.',
+});
+
 describe('plan step', () => {
   it('stores the checklist and advances to plan improve', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-'));
@@ -144,6 +151,22 @@ describe('plan step', () => {
     }
   });
 
+  it('keeps a valid plan after a write was refused in plan mode', async () => {
+    const answer = ['plan:', '- add the field', '- cover the empty case'].join('\n');
+    const clean = await planOutcome(result(answer));
+    const refused = await planOutcome({ ...result(answer), output: REFUSED_WRITE });
+    expect(clean.exitCode).toBe(0);
+    expect(refused.exitCode).toBe(0);
+    expect(refused.documents).toEqual(clean.documents);
+  });
+
+  it('names the refused write when a write was refused and the answer has no plan', async () => {
+    const outcome = await planOutcome({ ...result('the file is written'), output: REFUSED_WRITE });
+    expect(outcome.exitCode).toBe(1);
+    expect(outcome.message).toContain('plan is missing');
+    expect(outcome.message).toContain('a write was refused: Cannot write to /work/billing-api/a.php');
+  });
+
   it('stops before the agent when the sandbox cannot start', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-sandbox-'));
     await writeEnv(root);
@@ -191,6 +214,26 @@ describe('plan step', () => {
     }
   });
 });
+
+async function planOutcome(answer: AgentRunResult) {
+  const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-refusal-'));
+  await writeEnv(root);
+  mkdirSync(join(root, 'worktrees', 'PROJ-44', 'billing-api'), { recursive: true });
+  const app = await boot(root, jest.fn().mockResolvedValue(answer));
+  try {
+    await seed(app, 'PROJ-44', '');
+    const done = await app.get(PipelineService).step('plan', 'PROJ-44');
+    const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
+    const bodies = async (kind: string) => (await documents.find({ where: { kind } })).map((item) => item.body);
+    return {
+      exitCode: done.exitCode,
+      message: done.message,
+      documents: { requirements: await bodies('requirements'), handoff: await bodies('handoff') },
+    };
+  } finally {
+    await app.close();
+  }
+}
 
 function result(responseText: string): AgentRunResult {
   const now = new Date().toISOString();
