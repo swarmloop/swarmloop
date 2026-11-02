@@ -1,7 +1,7 @@
 <div align="center">
 
 <br>
-<img src="next/public/logo.svg" alt="swarmloop logo: a sailboat inside a loop arrow" width="112">
+<img src="dashboard/public/logo.svg" alt="swarmloop logo: a sailboat inside a loop arrow" width="112">
 
 # swarmloop
 
@@ -18,7 +18,7 @@
 
 </div>
 
-swarmloop takes a ticket or a prompt and walks a coding agent through requirements, research, a plan, and implementation. Then the work has to earn your attention. Five reviewers read the diff in parallel, and any finding sends it back to the agent. Only when they agree does Nest commit, push a branch, open a merge request, and watch your pipeline. A red job sends the work back too. You open the merge request when the reviewers and every check in your pipeline have passed.
+swarmloop takes a ticket or a prompt and walks a coding agent through requirements, research, a plan, and implementation. Then the work has to earn your attention. Five reviewers read the diff in parallel, and any finding sends it back to the agent. Only when they agree does the server commit, push a branch, open a merge request, and watch your pipeline. A red job sends the work back too. You open the merge request when the reviewers and every check in your pipeline have passed.
 
 Every step runs in a locked container. Every prompt, diff, review, token, and dollar is stored. Cursor or Claude is one line in `.env`.
 
@@ -63,11 +63,11 @@ The repository list is every git clone in `CHECKOUTS_ROOT`, which `.env.example`
 
 ### 🚢 Commit, merge request, and CI
 
-Add a git token to `.env` and run `docker compose up --build` again. This time leave **ci** ticked. When the reviewers pass, Nest pushes a feature branch, opens a merge request, and watches the pipeline. Nobody has to click in between.
+Add a git token to `.env` and run `docker compose up --build` again. This time leave **ci** ticked. When the reviewers pass, the server pushes a feature branch, opens a merge request, and watches the pipeline. Nobody has to click in between.
 
-- GitHub needs `GITHUB_TOKEN`. GitLab needs `GITLAB_TOKEN`, and `GITLAB_BASE_URL` when it is self-hosted. Both may be set. Nest picks the host whose hostname equals the checkout `origin`.
+- GitHub needs `GITHUB_TOKEN`. GitLab needs `GITLAB_TOKEN`, and `GITLAB_BASE_URL` when it is self-hosted. Both may be set. The server picks the host whose hostname equals the checkout `origin`.
 - The same token is also used to fetch the base branch, and a run on an SSH origin stops at prepare without it.
-- Nest commits as the clone's own `user.email`. If the clone has none, set `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`.
+- The server commits as the clone's own `user.email`. If the clone has none, set `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`.
 
 <details>
 <summary><strong>GitLab token</strong></summary>
@@ -81,7 +81,7 @@ Add a git token to `.env` and run `docker compose up --build` again. This time l
 | Job | Read |
 | Merge request | Read, Create, Update |
 
-**Code: Download** is the git read. Rebase fetches the remote source branch with this token. Without Download, GitLab refuses the fetch: `This operation requires a fine-grained personal access token with the following project permissions: [Code: Download].` **Code: Push** is the git write Nest uses after the commit pause. Your role on each project still has to be at least Developer.
+**Code: Download** is the git read. Rebase fetches the remote source branch with this token. Without Download, GitLab refuses the fetch: `This operation requires a fine-grained personal access token with the following project permissions: [Code: Download].` **Code: Push** is the git write the server uses after the commit pause. Your role on each project still has to be at least Developer.
 
 </details>
 
@@ -98,7 +98,7 @@ Add a git token to `.env` and run `docker compose up --build` again. This time l
 | Workflows | Read and write |
 | Metadata | Read |
 
-**Contents: Read and write** is the git read and the git write. Rebase fetches the remote source branch with this token, and that fetch uses the read half. The write half is what Nest uses after the commit pause. Your account still has to be able to push to each repository. **Workflows: Read and write** is required when a commit creates or changes a file under `.github/workflows`. Without it GitHub rejects the push: `refusing to allow a Personal Access Token to create or update workflow ... without workflow scope`. GitHub shows the token once.
+**Contents: Read and write** is the git read and the git write. Rebase fetches the remote source branch with this token, and that fetch uses the read half. The write half is what the server uses after the commit pause. Your account still has to be able to push to each repository. **Workflows: Read and write** is required when a commit creates or changes a file under `.github/workflows`. Without it GitHub rejects the push: `refusing to allow a Personal Access Token to create or update workflow ... without workflow scope`. GitHub shows the token once.
 
 </details>
 
@@ -116,15 +116,15 @@ Run `docker compose up --build` again after saving.
 
 ### 🔒 Sandbox and security
 
-Every model step runs in a fresh container. Nest starts it for the step and removes it when the step ends.
+Every model step runs in a fresh container. The server starts it for the step and removes it when the step ends.
 
 - **Disk.** Only this run's worktrees are mounted. Reviewers get them read-only. Home, `~/.ssh`, and other repositories are not there. A `.env` file inside a worktree is covered by an empty file.
 - **Parallel.** Each run gets its own worktree of every repository in `worktrees/<run>/` and its own `feature/<run>-…` branch, so several runs, even in one repository, go at once. A run locks only itself, and `MAX_RUN_USD` counts each run separately.
 - **Network.** `--network none` unless the step names hosts. A model step reaches only its vendor's API. Implementation may also reach package registries: npm, Yarn, PyPI, Go, RubyGems, crates.io, and Maven. Any other public host is refused before the container starts.
 - **Process.** Never root: a launch as root is refused. All Linux capabilities are dropped, `no-new-privileges` is set, the root filesystem is read-only, and the container gets at most 256 processes. There is no Docker socket, so it cannot start another container.
-- **Secrets.** The only secret passed in is the model key. Jira, GitLab, and GitHub tokens stay in the Nest process.
+- **Secrets.** The only secret passed in is the model key. Jira, GitLab, and GitHub tokens stay in the server process.
 - **Lifetime.** The step time limit, silence longer than `IDLE_TIMEOUT_MS`, or a token ceiling kills the container. It never outlives its step.
-- **Git.** The agent does not commit and does not push. Nest does, after the reviewers pass, and only for paths outside `deny_paths`.
+- **Git.** The agent does not commit and does not push. The server does, after the reviewers pass, and only for paths outside `deny_paths`.
 
 ### 🗂 One history, nothing lost
 
@@ -134,7 +134,7 @@ Every model step runs in a fresh container. Nest starts it for the step and remo
 
 ### 🔀 Cursor, Claude, and what comes next
 
-- `RUNTIME=cursor` or `RUNTIME=claude`. Change the line and restart Nest: the next step uses the other agent and opens a new chat with the full brief. Both sandbox images ship in this repo.
+- `RUNTIME=cursor` or `RUNTIME=claude`. Change the line and restart the server: the next step uses the other agent and opens a new chat with the full brief. Both sandbox images ship in this repo.
 - Each phase can use its own model: `MODEL_RESEARCH`, `MODEL_PLAN`, and `MODEL_IMPLEMENT`.
 - Dollars come from the vendor's published price list, cached for a day.
 - A third agent is code, not a setting: a sandbox image under `docker/sandbox`, its API hosts and key, and the code that reads its output. The pipeline, the history, and the panel stay as they are.
@@ -143,15 +143,15 @@ Every model step runs in a fresh container. Nest starts it for the step and remo
 
 Put a Jira key in the prompt, or use it as the run id. swarmloop pulls the description, acceptance criteria, comments, attachments, the epic, linked issues, and one level of subtasks. Confluence pages on the same site, and Google Drive documents, sheets, slides, and files, are copied into the requirements record. The agent gets a brief of that record, not raw JSON.
 
-A prompt without a ticket number never calls Jira. Jira is the tracker that ships. Another tracker implements the same `IssueTracker` interface in `nest/src/integrations/issue-tracker`.
+A prompt without a ticket number never calls Jira. Jira is the tracker that ships. Another tracker implements the same `IssueTracker` interface in `server/src/integrations/issue-tracker`.
 
 ### 🌿 GitHub and GitLab
 
 - One run can span several repositories. Research decides which ones get a feature branch.
-- Nest matches each checkout's `origin` with `GITHUB_BASE_URL` or `GITLAB_BASE_URL`. Point `GITLAB_BASE_URL` at a self-hosted GitLab and it works the same way.
-- With **ci** ticked, Nest commits by itself once the reviewers pass. It commits only paths outside `deny_paths` and refuses `main` and `master`. With **ci** unticked, the run stops at commit and shows the file list, and nothing is committed or pushed.
+- The server matches each checkout's `origin` with `GITHUB_BASE_URL` or `GITLAB_BASE_URL`. Point `GITLAB_BASE_URL` at a self-hosted GitLab and it works the same way.
+- With **ci** ticked, the server commits by itself once the reviewers pass. It commits only paths outside `deny_paths` and refuses `main` and `master`. With **ci** unticked, the run stops at commit and shows the file list, and nothing is committed or pushed.
 - A pull request or merge request is opened, or the existing one is updated.
-- Nest watches the pipeline on that branch. A red job's log goes back to implementation.
+- The server watches the pipeline on that branch. A red job's log goes back to implementation.
 - A checkout with no `origin` still gets the full review. CI is skipped, and the panel says why.
 
 ### 📐 One flow, shared rules
@@ -177,7 +177,7 @@ A person is asked where it matters:
 
 With **ci** ticked there is no click between the plan and the merge request. Your time comes last: you open it when the reviewers and your pipeline are green.
 
-The instructions for every step are Markdown files in `skills/`. Edit one, rebuild Nest, and every run after that follows it, for everyone on the server. The rules live in the repo and get reviewed like code. They are not a setting in someone's IDE.
+The instructions for every step are Markdown files in `skills/`. Edit one, rebuild the server, and every run after that follows it, for everyone on the server. The rules live in the repo and get reviewed like code. They are not a setting in someone's IDE.
 
 ### 🔍 Five reviewers, and they can say no
 
@@ -193,7 +193,7 @@ Passing review and CI is a minimum bar, not proof that the change is right. The 
 
 **Rebase** works on a run that is done, failed, or waiting. The branch is squashed to one commit on the fresh base and force-pushed with lease, and a conflict goes to implement once.
 
-1. Nest fetches the base branch from the remote (`main`, `master`, or the one the prompt names) and rebases every feature worktree onto it.
+1. The server fetches the base branch from the remote (`main`, `master`, or the one the prompt names) and rebases every feature worktree onto it.
 2. Edits that may ship are committed first. A denied path such as `.env` stays out. If it blocks the rebase, the rebase stops and says so.
 3. A conflict goes back to the agent, which resolves it. Code review then runs on the new diff.
 4. A clean rebase of a finished run reruns code review and CI on the new base and keeps the existing merge request.
@@ -233,8 +233,8 @@ Passing review and CI is a minimum bar, not proof that the change is right. The 
 The CLI on the host needs a build:
 
 ```sh
-npm ci --prefix nest
-npm run build --prefix nest
+npm ci --prefix server
+npm run build --prefix server
 bin/swarmloop run PROJ-123 --prompt "what this ticket is"
 ```
 
@@ -244,7 +244,7 @@ bin/swarmloop run PROJ-123 --prompt "what this ticket is"
 
 JetBrains IDEs do not have a swarmloop plugin. From 2025.3 on, AI Assistant starts `bin/sloop` as a custom ACP agent and talks to it in AI Chat. The chat then reads and writes the same runs as the CLI. An older version shows only the built-in models in that chat, and **Add Custom Agent** is not in the menu.
 
-The swarmloop API has to be up on `127.0.0.1:3920`. `docker compose up` also copies the built client to `nest/dist`, which is what `bin/sloop` runs. The IDE does not need a separate `npm run build`.
+The swarmloop API has to be up on `127.0.0.1:3920`. `docker compose up` also copies the built client to `server/dist`, which is what `bin/sloop` runs. The IDE does not need a separate `npm run build`.
 
 Then, in the IDE:
 
@@ -294,7 +294,7 @@ When the API is on another machine, set the URL in `env`:
 | `MODEL_PLAN` | Model for plan, plan improve, every code reviewer, and the review report. `.env.example` uses `grok-4.7-xhigh`. |
 | `MODEL_IMPLEMENT` | Model for implementation and implement improve. `.env.example` uses `grok-4.7-high`. |
 | `ISSUE_TRACKER` | `jira` |
-| `REQUIREMENTS_VIA` | `agent` or `direct`. Both build the requirements record in Nest. The model does not rewrite it. |
+| `REQUIREMENTS_VIA` | `agent` or `direct`. Both build the requirements record in the server. The model does not rewrite it. |
 | `CHECKOUTS_ROOT` | Folder of git clones listed in **New run**. |
 | `TICK_MS` | How often a running pipeline is polled. `.env.example` uses `15000`. |
 | `SWARMLOOP_API_HOST`, `SWARMLOOP_API_PORT` | Where the API listens. `.env.example` uses `127.0.0.1:3920`. |
@@ -305,7 +305,7 @@ Spend, tokens, retries, and timeouts are in [Limits](#-limits-on-money-tokens-an
 
 Put it on one machine. Everyone who can open the panel sees the same runs, the same plans, and the same bill.
 
-The flow is the same for every ticket. The rules live in `skills/` in this repo, so a change to a review or a plan rule reaches the whole team at the next Nest rebuild. Spend, tokens, and how many times a review may send work back are server settings, not a choice the agent makes.
+The flow is the same for every ticket. The rules live in `skills/` in this repo, so a change to a review or a plan rule reaches the whole team at the next server rebuild. Spend, tokens, and how many times a review may send work back are server settings, not a choice the agent makes.
 
 There is no login. The network is the access control. The compose file publishes the panel and the API on `127.0.0.1`. On a shared machine that is the team. To reach them from other machines, publish the ports on an internal address. Do not put this on the public internet.
 

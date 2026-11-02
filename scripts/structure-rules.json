@@ -1,0 +1,7 @@
+{
+  "mustNotExist": ["nest", "next", "docker/nest", "docker/next"],
+  "forbidPattern": {
+    "pattern": "--prefix (nest|next)\\b|swarmloop-(nest|next)\\b",
+    "exclude": ["docs/refactor/"]
+  }
+}
