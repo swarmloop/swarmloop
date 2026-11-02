@@ -24,11 +24,11 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
     return ['--add-dir', '/work/brief'];
   }
 
-  protected partialOutputFlag(): string {
+  protected override partialOutputFlag(): string {
     return '--include-partial-messages';
   }
 
-  protected appendPrintFlags(args: string[], input: AgentPrintInput): void {
+  protected override appendPrintFlags(args: string[], input: AgentPrintInput): void {
     args.push('--verbose');
     if (input.mode === 'plan' || input.mode === 'ask') {
       args.push('--permission-mode', 'plan');

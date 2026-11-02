@@ -40,7 +40,7 @@ export class ImplementStep extends AgentStep {
     super(history, config, sandbox, agent);
   }
 
-  missingInput(key: string): Promise<string | null> {
+  override missingInput(key: string): Promise<string | null> {
     return storedPlan(this.history, key);
   }
 

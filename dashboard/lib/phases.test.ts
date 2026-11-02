@@ -16,7 +16,7 @@ describe('liveLogStep', () => {
     assert.equal(pipelineStep('code-review-quality'), 'code-review');
     assert.equal(pipelineStep('implement'), 'implement');
     const expanded = expandReviewPhases([
-      { phase: 'code review', steps: [{ name: 'code-review', status: 'running' }] },
+      { phase: 'code review', steps: [{ name: 'code-review', status: 'running', current: false }] },
     ]);
     assert.deepEqual(
       expanded[0]?.steps.map((step) => step.name),

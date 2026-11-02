@@ -21,15 +21,15 @@ export class CursorRuntime extends AbstractAgentRuntime {
     return ['--add-dir', '/work/brief'];
   }
 
-  protected partialOutputFlag(): string {
+  protected override partialOutputFlag(): string {
     return '--stream-partial-output';
   }
 
-  protected workspaceArgs(workspace: string): string[] {
+  protected override workspaceArgs(workspace: string): string[] {
     return ['--trust', '--workspace', workspace];
   }
 
-  protected appendPrintFlags(args: string[], input: AgentPrintInput): void {
+  protected override appendPrintFlags(args: string[], input: AgentPrintInput): void {
     if (input.mode === 'plan' || input.mode === 'ask') {
       args.push('--mode', input.mode);
     } else {
