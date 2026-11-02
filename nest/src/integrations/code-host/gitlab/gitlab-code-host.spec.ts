@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { FetchFailed } from '../../../swarmloop-error';
+import { FetchFailed } from '../../../core/swarmloop-error';
 import { GitlabCodeHost } from './gitlab-code-host';
 
 const TOKEN = 'super-secret-token';

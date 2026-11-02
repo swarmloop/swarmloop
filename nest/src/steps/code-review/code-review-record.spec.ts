@@ -1,4 +1,4 @@
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { parseReview, reviewDecision } from './code-review-record';
 
 describe('parseReview', () => {

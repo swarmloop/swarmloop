@@ -2,7 +2,7 @@ import { chmodSync, chownSync, existsSync, mkdirSync, readdirSync, realpathSync,
 import { homedir } from 'os';
 import { dirname, isAbsolute, join, resolve, sep } from 'path';
 import { RUNTIME_NAMES, RuntimeName, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
-import { SwarmloopError } from '../swarmloop-error';
+import { SwarmloopError } from '../core/swarmloop-error';
 
 export interface SandboxMount {
   hostPath: string;

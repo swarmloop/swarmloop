@@ -4,7 +4,7 @@ import { SwarmloopEnv } from '../../config/env';
 import { DocumentDraft, ExchangeDraft } from '../../history/visit';
 import { OpenedStep } from '../../pipeline/step-run';
 import { SandboxMount } from '../../sandbox/sandbox-launch';
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { launchAgent } from '../agent-step';
 import { agentFailure } from '../shared/agent-result';
 import { textDocument } from '../shared/handoff';

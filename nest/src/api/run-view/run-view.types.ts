@@ -1,4 +1,4 @@
-import { REVIEW_STEPS, StepName } from '../../pipeline/pipeline-result';
+import { REVIEW_STEPS, StepName } from '../../core/pipeline-result';
 
 export const PHASES: { phase: string; steps: string[] }[] = [
   { phase: 'requirements', steps: ['requirements'] },

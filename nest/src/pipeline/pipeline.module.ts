@@ -1,42 +1,42 @@
 import { Module } from '@nestjs/common';
 import { HistoryModule } from '../history/history.module';
-import { ProvidersModule } from '../providers/providers.module';
+import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
-import { BranchService } from '../steps/branch/branch.service';
-import { CommitService } from '../steps/commit/commit.service';
-import { MergeRequestService } from '../steps/merge-request/merge-request.service';
-import { CodeReviewService } from '../steps/code-review/code-review.service';
-import { ImplementImproveService } from '../steps/implement/implement-improve.service';
-import { ImplementService } from '../steps/implement/implement.service';
-import { PlanImproveService } from '../steps/plan/plan-improve.service';
-import { PipelineStepService } from '../steps/pipeline/pipeline-step.service';
-import { PlanService } from '../steps/plan/plan.service';
-import { PrepareService } from '../steps/prepare/prepare.service';
+import { BranchStep } from '../steps/branch/branch.step';
+import { CommitStep } from '../steps/commit/commit.step';
+import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
+import { CodeReviewStep } from '../steps/code-review/code-review.step';
+import { ImplementImproveStep } from '../steps/implement/implement-improve.step';
+import { ImplementStep } from '../steps/implement/implement.step';
+import { PlanImproveStep } from '../steps/plan/plan-improve.step';
+import { PipelineStep } from '../steps/pipeline/pipeline.step';
+import { PlanStep } from '../steps/plan/plan.step';
+import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
-import { RequirementsService } from '../steps/requirements/requirements.service';
-import { ResearchService } from '../steps/research/research.service';
+import { RequirementsStep } from '../steps/requirements/requirements.step';
+import { ResearchStep } from '../steps/research/research.step';
 import { StepRegistry } from '../steps/step.registry';
 import { PipelineService } from './pipeline.service';
 
 @Module({
   imports: [HistoryModule, ProvidersModule, SandboxModule],
   providers: [
-    RequirementsService,
-    PrepareService,
+    RequirementsStep,
+    PrepareStep,
     ProjectAppendService,
-    ResearchService,
-    BranchService,
-    CommitService,
-    MergeRequestService,
-    PipelineStepService,
-    PlanService,
-    PlanImproveService,
-    ImplementService,
-    ImplementImproveService,
-    CodeReviewService,
+    ResearchStep,
+    BranchStep,
+    CommitStep,
+    MergeRequestStep,
+    PipelineStep,
+    PlanStep,
+    PlanImproveStep,
+    ImplementStep,
+    ImplementImproveStep,
+    CodeReviewStep,
     StepRegistry,
     PipelineService,
   ],
-  exports: [PipelineService, PrepareService, ProjectAppendService, CommitService, HistoryModule],
+  exports: [PipelineService, PrepareStep, ProjectAppendService, CommitStep, HistoryModule],
 })
 export class PipelineModule {}

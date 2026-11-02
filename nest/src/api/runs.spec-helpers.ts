@@ -13,7 +13,7 @@ import { HistoryService } from '../history/history.service';
 import { LiveModule } from '../live/live.module';
 import { VisitDraft } from '../history/visit';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { PrepareService } from '../steps/prepare/prepare.service';
+import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
@@ -71,7 +71,7 @@ export async function boot(
       RunRebaseService,
       { provide: PipelineService, useValue: { claimed: () => false, ...pipeline } },
       { provide: ProjectAppendService, useValue: { add: jest.fn(), flush: jest.fn() } },
-      { provide: PrepareService, useValue: prepare },
+      { provide: PrepareStep, useValue: prepare },
     ],
   }).compile();
 }

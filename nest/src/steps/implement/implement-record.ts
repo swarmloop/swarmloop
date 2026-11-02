@@ -1,4 +1,4 @@
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { bulletSection } from '../shared/markdown-section';
 
 export function parseImplementation(text: string): string {

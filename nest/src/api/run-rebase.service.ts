@@ -5,10 +5,10 @@ import { RunEntity } from '../history/entities';
 import { HistoryService } from '../history/history.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { branchName, commitMessage, summaryForBranch } from '../steps/branch/branch-name';
-import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.service';
+import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.step';
 import { REBASE_CONFLICT, rebaseFeatureRepos } from '../git/rebase-worktree';
 import { repoNames } from '../steps/shared/repo-names';
-import { SwarmloopError } from '../swarmloop-error';
+import { SwarmloopError } from '../core/swarmloop-error';
 import { RunCommandsService } from './run-commands.service';
 import { requireRun } from './run-queries.service';
 

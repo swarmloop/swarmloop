@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
-import { SwarmloopError } from '../swarmloop-error';
+import { SwarmloopError } from '../core/swarmloop-error';
 import { BindMount, containerName, emptyEnvFile, EnvMask, imageName, isLocalHost, prepareStateDir, SandboxLaunch, SandboxMount, resolveDaemonPath, sandboxArgs, sandboxNetworkName, hostName, stepContainers } from './sandbox-launch';
 
 export type DockerRunner = (args: string[]) => Promise<string>;

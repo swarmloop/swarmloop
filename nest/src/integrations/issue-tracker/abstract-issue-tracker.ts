@@ -1,4 +1,4 @@
-import { FetchFailed, HttpCallDraft, PasteNeeded, SwarmloopError } from '../../swarmloop-error';
+import { FetchFailed, HttpCallDraft, PasteNeeded, SwarmloopError } from '../../core/swarmloop-error';
 import { IssueBundle } from './issue-bundle';
 import { IssueTracker } from './issue-tracker';
 

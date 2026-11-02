@@ -1,7 +1,7 @@
 import { execFile } from 'child_process';
 import { realpathSync } from 'fs';
 import { isAbsolute, join, resolve, sep } from 'path';
-import { SwarmloopError } from '../swarmloop-error';
+import { SwarmloopError } from '../core/swarmloop-error';
 
 export function git(args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
   return gitText(args, env).then((stdout) => stdout.trim());

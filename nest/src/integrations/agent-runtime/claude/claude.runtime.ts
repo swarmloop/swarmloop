@@ -1,4 +1,4 @@
-import { SwarmloopError } from '../../../swarmloop-error';
+import { SwarmloopError } from '../../../core/swarmloop-error';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
 import type { AgentPrintInput, RuntimeKeys } from '../agent-runtime';
 

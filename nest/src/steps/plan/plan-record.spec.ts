@@ -1,4 +1,4 @@
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { correctedPlan, parsePlan, planFromAgent, reviewedItems, withInstructions } from './plan-record';
 
 describe('withInstructions', () => {

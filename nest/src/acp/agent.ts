@@ -7,7 +7,7 @@ import { liveLogBody } from './live-output';
 import { FlowView, NestApi } from './nest-api';
 import { readableLog } from './readable-log';
 import { nestCheckout } from './paths';
-import { REVIEW_STEPS } from '../pipeline/pipeline-result';
+import { REVIEW_STEPS } from '../core/pipeline-result';
 import { CHECKOUT_NAME } from '../steps/prepare/checkout-path';
 
 export interface SkillCommand {

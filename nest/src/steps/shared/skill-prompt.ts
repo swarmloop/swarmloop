@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { SandboxMount } from '../../sandbox/sandbox-launch';
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { bulletSection } from './markdown-section';
 import { requirementsBrief } from './requirements-brief';
 

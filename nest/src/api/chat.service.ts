@@ -5,17 +5,17 @@ import { ConfigService } from '@nestjs/config';
 import { readEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { HistoryService } from '../history/history.service';
-import { AGENT_RUNNER, AgentProcessRunner } from '../limits/agent-runner';
-import { modelForStep } from '../limits/spend';
+import { AGENT_RUNNER, AgentProcessRunner } from '../agent/agent-runner';
+import { modelForStep } from '../agent/spend';
 import { CHAT_LOCK, chatLockBody } from '../pipeline/chat-lock';
 import { settleShell, shellHolding } from '../pipeline/shell-lock';
-import { ServiceContextService } from '../providers/service-context';
+import { ServiceContextService } from '../steps/shared/service-context';
 import { launchAgent } from '../steps/agent-step';
 import { agentFailure } from '../steps/shared/agent-result';
 import { LOCAL_RUN_RULE } from '../steps/shared/skill-prompt';
 import { mountsForRun } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { SwarmloopError } from '../swarmloop-error';
+import { SwarmloopError } from '../core/swarmloop-error';
 import { installMcp, McpServerSpec, readMcpServers } from './mcp-config';
 
 export interface ChatBody {

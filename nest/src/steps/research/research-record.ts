@@ -1,4 +1,4 @@
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { bulletList, items, section } from '../shared/markdown-section';
 
 export interface ResearchRecord {

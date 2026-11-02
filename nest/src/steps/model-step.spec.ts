@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { AgentRunInput, AgentRunResult } from '../limits/agent-runner';
+import { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
 import { launchAgent } from './agent-step';
 import { agentFailure, combineAgentResults } from './shared/agent-result';
 import { modelVisit } from './shared/model-visit';

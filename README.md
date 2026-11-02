@@ -143,7 +143,7 @@ Every model step runs in a fresh container. Nest starts it for the step and remo
 
 Put a Jira key in the prompt, or use it as the run id. swarmloop pulls the description, acceptance criteria, comments, attachments, the epic, linked issues, and one level of subtasks. Confluence pages on the same site, and Google Drive documents, sheets, slides, and files, are copied into the requirements record. The agent gets a brief of that record, not raw JSON.
 
-A prompt without a ticket number never calls Jira. Jira is the tracker that ships. Another tracker implements the same `IssueTracker` interface in `nest/src/providers`.
+A prompt without a ticket number never calls Jira. Jira is the tracker that ships. Another tracker implements the same `IssueTracker` interface in `nest/src/integrations/issue-tracker`.
 
 ### 🌿 GitHub and GitLab
 

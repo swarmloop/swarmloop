@@ -2,11 +2,11 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { RunEntity } from '../history/entities';
 import { HistoryService } from '../history/history.service';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { assertKey, isStep, nextSessionKey, normalizePhases, PhaseName, pipelineStepOf, reviewerOf, ticketKey } from '../pipeline/pipeline-result';
+import { assertKey, isStep, nextSessionKey, normalizePhases, PhaseName, pipelineStepOf, reviewerOf, ticketKey } from '../core/pipeline-result';
 import { CHECKOUT_NAME, storedProjects } from '../steps/prepare/checkout-path';
-import { PrepareService } from '../steps/prepare/prepare.service';
+import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
-import { SwarmloopError } from '../swarmloop-error';
+import { SwarmloopError } from '../core/swarmloop-error';
 import { taskKeys } from '../steps/requirements/requirements-input';
 import { FlowView } from './run-view/run-view.types';
 import { requireRun, RunQueriesService } from './run-queries.service';
@@ -17,7 +17,7 @@ export class RunCommandsService {
     private readonly history: HistoryService,
     private readonly pipeline: PipelineService,
     private readonly projects: ProjectAppendService,
-    private readonly prepare: PrepareService,
+    private readonly prepare: PrepareStep,
     private readonly queries: RunQueriesService,
   ) {}
 

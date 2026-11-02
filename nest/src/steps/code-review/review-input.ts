@@ -2,9 +2,9 @@ import { realpathSync } from 'fs';
 import { HistoryService } from '../../history/history.service';
 import { OpenedStep } from '../../pipeline/step-run';
 import { SandboxMount } from '../../sandbox/sandbox-launch';
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { storedProjects } from '../prepare/checkout-path';
-import { PrepareService } from '../prepare/prepare.service';
+import { PrepareStep } from '../prepare/prepare.step';
 import { mountsForStep, repoNames } from '../shared/repo-names';
 
 export async function repoMounts(history: HistoryService, key: string): Promise<SandboxMount[]> {
@@ -31,7 +31,7 @@ export async function foreignReviewOf(history: HistoryService, key: string): Pro
   return run ? foreignReview(history, run.id) : false;
 }
 
-export async function detachForeign(history: HistoryService, prepare: PrepareService, opened: OpenedStep): Promise<void> {
+export async function detachForeign(history: HistoryService, prepare: PrepareStep, opened: OpenedStep): Promise<void> {
   const names = storedProjects(opened.run.projects);
   if (names.length === 0) {
     throw new SwarmloopError('projects is missing');

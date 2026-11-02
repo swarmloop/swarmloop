@@ -1,5 +1,5 @@
 import { HistoryService } from '../history/history.service';
-import { PipelineResult, StepName, StepOptions } from '../pipeline/pipeline-result';
+import { PipelineResult, StepName, StepOptions } from '../core/pipeline-result';
 import { readPlan } from './plan/plan-record';
 
 export interface Step {

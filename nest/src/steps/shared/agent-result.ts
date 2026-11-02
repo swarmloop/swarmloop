@@ -1,4 +1,4 @@
-import { AgentRunResult } from '../../limits/agent-runner';
+import { AgentRunResult } from '../../agent/agent-runner';
 
 export function combineAgentResults(results: AgentRunResult[]): AgentRunResult | null {
   if (results.length === 0) {

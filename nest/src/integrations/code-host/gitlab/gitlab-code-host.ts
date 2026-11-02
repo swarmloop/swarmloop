@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SwarmloopEnv } from '../../../config/env';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../../swarmloop-error';
-import { request } from '../../../providers/http';
+import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../../core/swarmloop-error';
+import { request } from '../../http';
 import { remoteProject } from '../../../steps/merge-request/merge-request-record';
 import { AbstractCodeHost } from '../abstract-code-host';
 import { MergeRequestDraft, MergeRequestQuery, MergeRequestRecord, PipelineJob, PipelineRef, PipelineSnapshot, SelectedHost } from '../code-host';

@@ -1,7 +1,7 @@
 import { Command, CommandRunner, Option } from 'nest-commander';
 import { HistoryService } from '../history/history.service';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { assertKey, StepOptions } from '../pipeline/pipeline-result';
+import { assertKey, StepOptions } from '../core/pipeline-result';
 
 @Command({
   name: 'run',

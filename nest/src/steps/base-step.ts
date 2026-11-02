@@ -1,8 +1,8 @@
 import { HistoryService } from '../history/history.service';
 import { sampleSelf, VisitDraft } from '../history/visit';
-import { PipelineResult, StepName, StepOptions, visitStatus } from '../pipeline/pipeline-result';
+import { PipelineResult, StepName, StepOptions, visitStatus } from '../core/pipeline-result';
 import { closeStep, OpenedStep, openStep } from '../pipeline/step-run';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../swarmloop-error';
+import { FetchFailed, HttpCallDraft, SwarmloopError } from '../core/swarmloop-error';
 import { recordHandoff } from './shared/handoff';
 import { requiredDocument, Step } from './step';
 

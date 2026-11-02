@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { mkdir, rename, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
-import { REVIEW_STEPS, STEPS } from '../pipeline/pipeline-result';
+import { REVIEW_STEPS, STEPS } from '../core/pipeline-result';
 
 let nextLogTemp = 0;
 

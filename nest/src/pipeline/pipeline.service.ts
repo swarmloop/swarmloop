@@ -3,24 +3,24 @@ import { ConfigService } from '@nestjs/config';
 import { existsSync, realpathSync, statSync } from 'fs';
 import { readEnv } from '../config/env';
 import { liveLogBody } from '../acp/live-output';
-import { overSpend } from '../limits/limits';
-import { RunStop } from '../limits/run-stop';
-import { chargeReview, chargeStream, modelForStep } from '../limits/spend';
-import { loadPriceTable } from '../limits/prices';
+import { overSpend } from '../agent/limits';
+import { RunStop } from '../agent/run-stop';
+import { chargeReview, chargeStream, modelForStep } from '../agent/spend';
+import { loadPriceTable } from '../agent/prices';
 import { resolveRepoRoot } from '../config/repo-root';
 import { RunEntity } from '../history/entities';
 import { HistoryService } from '../history/history.service';
 import { containerName } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { SwarmloopError } from '../swarmloop-error';
+import { SwarmloopError } from '../core/swarmloop-error';
 import { renderProjects, storedProjects } from '../steps/prepare/checkout-path';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
-import { RequirementsService } from '../steps/requirements/requirements.service';
+import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { StepRegistry } from '../steps/step.registry';
 import { joinPrompt, withInstructions } from '../steps/plan/plan-record';
 import { CHAT_LOCK, chatHeld, chatResume, readChatLock } from './chat-lock';
 import { settleShell, shellHolding } from './shell-lock';
-import { assertKey, autoContinues, continuesSameStep, countedVisits, continues, diedLog, failedLaunches, isStep, loopMark, PipelineResult, settle, STEPS, StepName, StepOptions } from './pipeline-result';
+import { assertKey, autoContinues, continuesSameStep, countedVisits, continues, diedLog, failedLaunches, isStep, loopMark, PipelineResult, settle, STEPS, StepName, StepOptions } from '../core/pipeline-result';
 
 @Injectable()
 export class PipelineService implements OnModuleInit {
@@ -28,7 +28,7 @@ export class PipelineService implements OnModuleInit {
 
   constructor(
     private readonly history: HistoryService,
-    private readonly requirements: RequirementsService,
+    private readonly requirements: RequirementsStep,
     private readonly registry: StepRegistry,
     private readonly sandbox: SandboxService,
     private readonly config: ConfigService,

@@ -1,4 +1,4 @@
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 
 export function appendProjectNames(current: string[], incoming: string[]): { projects: string[]; added: string[] } {
   for (const name of current) {
