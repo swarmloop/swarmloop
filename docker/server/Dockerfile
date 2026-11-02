@@ -5,13 +5,14 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY server/package.json server/package-lock.json ./server/
-WORKDIR /app/server
-RUN npm ci
-COPY server/tsconfig.json server/tsconfig.build.json ./
-COPY server/src ./src
+COPY package.json package-lock.json ./
+COPY server/package.json ./server/
+COPY dashboard/package.json ./dashboard/
+RUN npm ci --workspace server --include-workspace-root=false
+COPY server/tsconfig.json server/tsconfig.build.json ./server/
+COPY server/src ./server/src
 COPY .env.example /app/.env.example
-RUN npm run build && npm prune --omit=dev
+RUN npm run build --workspace server && npm prune --omit=dev --workspace server
 
 # The engine stays on the host. This client talks to the mounted socket.
 RUN apt-get update \
@@ -34,4 +35,5 @@ COPY skills /app/skills
 
 ENV SWARMLOOP_ROOT=/app
 EXPOSE 3920
+WORKDIR /app/server
 CMD ["node", "dist/api-main.js"]

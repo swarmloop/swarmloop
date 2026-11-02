@@ -32,6 +32,15 @@ test('reports a forbidden folder that is present', () => {
   assert.match(violations[0], /^nest: must not exist/);
 });
 
+test('reports a package lockfile left in a workspace folder', () => {
+  const root = makeRoot({ 'server/package-lock.json': '{}\n' });
+
+  const violations = findViolations({ root, rules, files: [] });
+
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], /^server\/package-lock\.json: must not exist/);
+});
+
 test('reports a --prefix match on an old package name', () => {
   const files = { 'package.json': `{ "build": "npm run build ${oldPrefix}" }\n` };
   const root = makeRoot(files);

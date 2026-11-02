@@ -78,7 +78,7 @@ services:
     environment:
       SWARMLOOP_API_URL: http://server:3920
     volumes:
-      - ./data:/app/public/run-logs:ro
+      - ./data:/app/dashboard/public/run-logs:ro
     depends_on:
       server:
         condition: service_healthy

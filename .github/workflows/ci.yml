@@ -5,51 +5,67 @@ on:
   pull_request:
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: npm run verify
+
+  server-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: npm run typecheck --workspace server
+
+  server-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: npm run build --workspace server
+
   server-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: server/package-lock.json
-      - run: npm ci
-        working-directory: server
-      - run: npm test
-        working-directory: server
-      - run: npm run build
-        working-directory: server
+      - uses: ./.github/actions/setup
+      - run: npm run test --workspace server
+
+  dashboard-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: npm run typecheck --workspace dashboard
+
+  dashboard-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: npm run build --workspace dashboard
 
   dashboard-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: dashboard/package-lock.json
-      - run: npm ci
-        working-directory: dashboard
-      - run: npm test
-        working-directory: dashboard
-      - run: npm run build
-        working-directory: dashboard
+      - uses: ./.github/actions/setup
+      - run: npm run test --workspace dashboard
 
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
       - run: docker build -f docker/server/Dockerfile -t swarmloop-server .
       - run: docker build -f docker/dashboard/Dockerfile -t swarmloop-dashboard .
 
-  structure-check:
+  structure:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - uses: ./.github/actions/setup
       - run: node --test scripts/check-structure.test.mjs
       - run: node scripts/check-structure.mjs

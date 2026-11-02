@@ -1,0 +1,13 @@
+name: setup
+description: Install the root workspace once from the root lockfile.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - run: npm ci
+      shell: bash

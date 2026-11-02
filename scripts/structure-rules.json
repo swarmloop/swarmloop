@@ -1,5 +1,5 @@
 {
-  "mustNotExist": ["nest", "next", "docker/nest", "docker/next"],
+  "mustNotExist": ["nest", "next", "docker/nest", "docker/next", "server/package-lock.json", "dashboard/package-lock.json"],
   "forbidPattern": {
     "pattern": "--prefix (nest|next)\\b|swarmloop-(nest|next)\\b",
     "exclude": ["docs/refactor/"]

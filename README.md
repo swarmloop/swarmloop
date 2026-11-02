@@ -233,8 +233,8 @@ Passing review and CI is a minimum bar, not proof that the change is right. The 
 The CLI on the host needs a build:
 
 ```sh
-npm ci --prefix server
-npm run build --prefix server
+npm ci
+npm run build
 bin/swarmloop run PROJ-123 --prompt "what this ticket is"
 ```
 
