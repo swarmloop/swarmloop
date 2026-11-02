@@ -4,10 +4,10 @@ dist/
 /runs/
 worktrees/
 data/
-nest/dist/
-nest/node_modules/
-next/node_modules/
-next/.next/
+server/dist/
+server/node_modules/
+dashboard/node_modules/
+dashboard/.next/
 *.tsbuildinfo
 *.sqlite
 *.sqlite-wal

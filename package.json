@@ -6,8 +6,8 @@
     "swarmloop": "./bin/swarmloop"
   },
   "scripts": {
-    "build": "npm run build --prefix nest",
-    "test": "npm test --prefix nest",
-    "swarmloop": "node nest/dist/main.js"
+    "build": "npm run build --prefix server",
+    "test": "npm test --prefix server",
+    "swarmloop": "node server/dist/main.js"
   }
 }

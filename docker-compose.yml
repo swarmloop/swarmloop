@@ -17,24 +17,24 @@ services:
     command: ["true"]
     restart: "no"
 
-  # PhpStorm starts bin/sloop on the host. That script needs nest/dist, which the image build does not leave on disk.
+  # PhpStorm starts bin/sloop on the host. That script needs server/dist, which the image build does not leave on disk.
   sloop:
-    image: swarmloop-nest
+    image: swarmloop-server
     pull_policy: never
-    command: ["sh", "-c", "mkdir -p /out && cp -a /app/nest/dist/. /out/ && chown -R ${UID:-1000} /out"]
+    command: ["sh", "-c", "mkdir -p /out && cp -a /app/server/dist/. /out/ && chown -R ${UID:-1000} /out"]
     volumes:
-      - ./nest/dist:/out
+      - ./server/dist:/out
     restart: "no"
     depends_on:
-      nest:
+      server:
         condition: service_started
 
-  nest:
-    image: swarmloop-nest
+  server:
+    image: swarmloop-server
     pull_policy: build
     build:
       context: .
-      dockerfile: docker/nest/Dockerfile
+      dockerfile: docker/server/Dockerfile
     ports:
       - "127.0.0.1:3920:3920"
     env_file:
@@ -69,16 +69,16 @@ services:
       retries: 20
       start_period: 10s
 
-  next:
+  dashboard:
     build:
       context: .
-      dockerfile: docker/next/Dockerfile
+      dockerfile: docker/dashboard/Dockerfile
     ports:
       - "127.0.0.1:3921:3921"
     environment:
-      SWARMLOOP_API_URL: http://nest:3920
+      SWARMLOOP_API_URL: http://server:3920
     volumes:
       - ./data:/app/public/run-logs:ro
     depends_on:
-      nest:
+      server:
         condition: service_healthy
