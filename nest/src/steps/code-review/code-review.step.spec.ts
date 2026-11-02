@@ -19,6 +19,13 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { REPORT_CONTINUE, reviewContinue } from './code-review.prompts';
 import { REBASE_CONFLICT } from '../../git/rebase-worktree';
 
+const REFUSED_WRITE = JSON.stringify({
+  type: 'system',
+  subtype: 'permission_denied',
+  tool_name: 'Write',
+  message: 'Cannot write to /work/billing-api/a.php while in plan mode.',
+});
+
 describe('code-review step', () => {
   it('stores five reviews when every decision is ok', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-'));
@@ -790,6 +797,47 @@ describe('code-review step', () => {
       expect(done.message).toContain('process killed: time');
       expect(launches(spawn, 'code-review-security')).toHaveLength(1);
       expect((await app.get(HistoryService).findRun('PROJ-101'))?.currentStep).toBe('code-review');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('accepts a reviewer whose write was refused when its decision is ok', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-refused-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-82', 'billing-api'), { recursive: true });
+    const agent = jest.fn(async (input: AgentRunInput) => ({
+      ...result(input.step.endsWith('report') ? 'The parser change holds together.\n' : 'notes\n\ndecision: ok\n', input.step),
+      output: input.step.endsWith('quality') ? REFUSED_WRITE : undefined,
+    }));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-82');
+      const done = await app.get(PipelineService).step('code-review', 'PROJ-82');
+      expect(done.exitCode).toBe(0);
+      const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
+      expect(await documents.count({ where: { kind: 'review_quality' } })).toBe(1);
+      expect(await documents.count({ where: { kind: 'error' } })).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('names the refused write when a reviewer whose write was refused has no decision', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-no-decision-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-83', 'billing-api'), { recursive: true });
+    const agent = jest.fn(async (input: AgentRunInput) => ({
+      ...result(input.step.endsWith('quality') ? 'notes only\n' : reply(input.step, 'ok'), input.step),
+      output: input.step.endsWith('quality') ? REFUSED_WRITE : undefined,
+    }));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-83');
+      const done = await app.get(PipelineService).step('code-review', 'PROJ-83');
+      expect(done.exitCode).toBe(1);
+      expect(done.message).toContain('decision is missing');
+      expect(done.message).toContain('a write was refused: Cannot write to /work/billing-api/a.php');
     } finally {
       await app.close();
     }

@@ -10,7 +10,7 @@ import { SandboxMount } from '../../sandbox/sandbox-launch';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { reviewContinue, reviewResume } from './code-review.prompts';
 import { launchAgent } from '../agent-step';
-import { agentFailure } from '../shared/agent-result';
+import { agentFailure, refusedWrite, withRefusal } from '../shared/agent-result';
 import { handoffSection, textDocument } from '../shared/handoff';
 import { parseReview } from './code-review-record';
 
@@ -148,12 +148,14 @@ async function one(
   auto?: boolean,
   fresh = false,
 ): Promise<Finished> {
+  let refused: string | null = null;
   try {
     const directory = join(deps.history.root(), 'data');
     mkdirSync(directory, { recursive: true });
     writeFileSync(join(directory, `${key}-code-review-${job.reviewer.name}-output.txt`), 'starting\n');
     const result = await launchReview(deps, opened, key, env, job, auto, fresh);
-    const failure = agentFailure(result, 'code-review');
+    refused = refusedWrite(result.output);
+    const failure = agentFailure(result, 'code-review', 'ask');
     if (failure) {
       return { reviewer: job.reviewer, model: job.model, prompt: job.prompt, result, error: failure };
     }
@@ -166,7 +168,7 @@ async function one(
       parsed: { kind: job.reviewer.kind, decision: parsed.decision, body: parsed.body },
     };
   } catch (error) {
-    const message = error instanceof SwarmloopError ? error.message : 'code-review failed';
+    const message = error instanceof SwarmloopError ? withRefusal(error.message, refused) : 'code-review failed';
     return { reviewer: job.reviewer, model: job.model, prompt: job.prompt, result: null, error: message };
   }
 }

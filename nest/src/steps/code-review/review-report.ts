@@ -84,7 +84,7 @@ export async function writeReport(
       killReason: result.killReason,
     };
     const spent: Usage = { tokensIn: result.tokensIn, tokensOut: result.tokensOut, usd: result.usd, samples: result.samples };
-    const failure = agentFailure(result, 'code-review');
+    const failure = agentFailure(result, 'code-review', 'ask');
     if (failure) {
       return { error: failure, exchange, usage: spent };
     }

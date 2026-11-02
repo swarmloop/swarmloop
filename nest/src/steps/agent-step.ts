@@ -13,7 +13,7 @@ import { SandboxMount } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { BaseStep } from './base-step';
-import { agentFailure, combineAgentResults } from './shared/agent-result';
+import { agentFailure, combineAgentResults, refusedWrite, withRefusal } from './shared/agent-result';
 import { modelVisit } from './shared/model-visit';
 import { AGENT_LANGUAGE_RULE } from './shared/skill-prompt';
 
@@ -141,6 +141,10 @@ interface ModelRun {
   prompt: string;
   agentResult: AgentRunResult | null;
   launched: AgentRunResult[];
+  /** The last refused write in any launch. Plan and ask keep going past it, so a parse error can name it. */
+  refusal: string | null;
+  /** The error launch threw for a kill or a bad exit. Its message already names the cause, so no refusal is added. */
+  launchError: SwarmloopError | null;
 }
 
 export abstract class AgentStep extends BaseStep {
@@ -171,6 +175,8 @@ export abstract class AgentStep extends BaseStep {
       prompt: '',
       agentResult: null,
       launched: [],
+      refusal: null,
+      launchError: null,
     };
     const ctx: ModelStepContext = {
       opened,
@@ -196,7 +202,8 @@ export abstract class AgentStep extends BaseStep {
       ctx.requirements = requirements;
       return await this.write(key, ctx, options);
     } catch (error) {
-      return ctx.end('failed', 1, `${opened.startedAt} ${this.failureText(error)}`);
+      const refusal = error === run.launchError ? null : run.refusal;
+      return ctx.end('failed', 1, `${opened.startedAt} ${withRefusal(this.failureText(error), refusal)}`);
     }
   }
 
@@ -226,9 +233,11 @@ export abstract class AgentStep extends BaseStep {
     run.prompt = run.prompt ? `${run.prompt}\n\n${launch.prompt}` : launch.prompt;
     run.launched.push(result);
     run.agentResult = combineAgentResults(run.launched);
-    const failed = agentFailure(result, this.name);
+    run.refusal = refusedWrite(result.output) ?? run.refusal;
+    const failed = agentFailure(result, this.name, run.settings.mode);
     if (failed) {
-      throw new SwarmloopError(failed);
+      run.launchError = new SwarmloopError(failed);
+      throw run.launchError;
     }
     return result;
   }

@@ -49,8 +49,9 @@ function outputCovers(later: string, earlier: string): boolean {
   return plain.length > 0 && strip(later).includes(plain);
 }
 
-export function agentFailure(result: AgentRunResult, step: string): string | null {
-  const denied = writeDenied(result.output);
+/** Plan and ask steps only read, so a refused Write or Edit there says nothing about their answer. */
+export function agentFailure(result: AgentRunResult, step: string, mode: string): string | null {
+  const denied = mode === 'plan' || mode === 'ask' ? null : refusedWrite(result.output);
   if (denied) {
     return `${step} failed: ${denied}`;
   }
@@ -64,8 +65,13 @@ export function agentFailure(result: AgentRunResult, step: string): string | nul
   return null;
 }
 
-/** A refused Write or Edit is a failed step. The model must not finish with a summary instead. */
-function writeDenied(output: string | undefined): string | null {
+/** Adds a refused write to a failure, so the cause shows next to the missing section. */
+export function withRefusal(message: string, refusal: string | null): string {
+  return refusal ? `${message}; a write was refused: ${refusal}` : message;
+}
+
+/** The last Write or Edit the stream refused, or null. A refusal fails a step only in agentFailure's modes. */
+export function refusedWrite(output: string | undefined): string | null {
   if (!output) {
     return null;
   }

@@ -16,6 +16,13 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 
+const REFUSED_WRITE = JSON.stringify({
+  type: 'system',
+  subtype: 'permission_denied',
+  tool_name: 'Write',
+  message: 'Cannot write to /work/billing-api/a.php while in plan mode.',
+});
+
 describe('research step', () => {
   it('stores repos and waits while questions are open', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-'));
@@ -234,9 +241,43 @@ describe('research step', () => {
       await app.close();
     }
   });
+
+  it('keeps a valid answer after a write was refused in plan mode', async () => {
+    const clean = await researchOutcome(result(FINISHED));
+    const refused = await researchOutcome({ ...result(FINISHED), output: REFUSED_WRITE });
+    expect(clean.exitCode).toBe(0);
+    expect(refused.exitCode).toBe(0);
+    expect(refused.documents).toEqual(clean.documents);
+  });
+
+  it('names the refused write when a write was refused and the answer has no questions', async () => {
+    const outcome = await researchOutcome({ ...result('summary:\n- looking\n'), output: REFUSED_WRITE });
+    expect(outcome.exitCode).toBe(1);
+    expect(outcome.message).toContain('questions is missing');
+    expect(outcome.message).toContain('a write was refused: Cannot write to /work/billing-api/a.php');
+  });
 });
 
 const FINISHED = ['summary:', '- looking', 'questions:', '- none'].join('\n');
+
+async function researchOutcome(answer: AgentRunResult) {
+  const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-refusal-'));
+  await writeEnv(root);
+  const app = await boot(root, jest.fn().mockResolvedValue(answer));
+  try {
+    await seed(app, root, 'PROJ-30');
+    const done = await app.get(PipelineService).step('research', 'PROJ-30');
+    const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
+    const bodies = async (kind: string) => (await documents.find({ where: { kind } })).map((item) => item.body);
+    return {
+      exitCode: done.exitCode,
+      message: done.message,
+      documents: { questions: await bodies('questions'), repos: await bodies('repos') },
+    };
+  } finally {
+    await app.close();
+  }
+}
 
 function killed(reason: 'time' | 'idle', chatId: string | null = 'research-chat'): AgentRunResult {
   return { ...result('partial'), chatId, killReason: reason, exitCode: 1 };
