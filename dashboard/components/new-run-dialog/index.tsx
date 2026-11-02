@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { type ReactElement, useEffect, useRef, useState } from 'react';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
@@ -40,7 +40,7 @@ export function NewRunDialog({
   runKey?: string;
   onProjects?: (projects: string[]) => void;
   onSubmit?: (prompt: string, phases: PhaseName[]) => Promise<'hold' | void>;
-}) {
+}): ReactElement {
   const [prompt, setPrompt] = useState('');
   const [picked, setPicked] = useState<PhaseName[]>(selected ?? DEFAULT_PHASES);
   const [available, setAvailable] = useState<string[]>(lockedProjects ?? []);

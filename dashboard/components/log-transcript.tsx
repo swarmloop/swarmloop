@@ -1,12 +1,12 @@
 'use client';
 
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import type { Theme } from '@mui/material/styles';
 import { pieces } from '../lib/log-pieces';
 import { LogMessage, logMessages } from '../lib/readable-log';
 
-export function LogTranscript({ raw }: { raw: string }) {
+export function LogTranscript({ raw }: { raw: string }): ReactNode {
   const messages = logMessages(raw);
   if (messages.length === 0) {
     return null;

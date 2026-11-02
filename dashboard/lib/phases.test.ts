@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { expandReviewPhases, keepOpenReviews, latestPhaseLabels, liveLogStep, markReviewFinished, markReviewLive, PHASES, pipelineStep, replaySelection, reviewChipName, stepLabel, withReport } from './phases.ts';
 
-describe('liveLogStep', () => {
-  it('keeps a per-repo implement log on implement, not implement-improve', () => {
+void describe('liveLogStep', () => {
+  void it('keeps a per-repo implement log on implement, not implement-improve', () => {
     assert.equal(liveLogStep('implement-swarmloop', 'implement'), true);
     assert.equal(liveLogStep('implement-improve-swarmloop', 'implement'), false);
     assert.equal(liveLogStep('implement-improve-swarmloop', 'implement-improve'), true);
@@ -12,7 +12,7 @@ describe('liveLogStep', () => {
     assert.equal(liveLogStep('code-review', 'code-review-quality'), false);
   });
 
-  it('maps a reviewer chip back to code-review and expands the board', () => {
+  void it('maps a reviewer chip back to code-review and expands the board', () => {
     assert.equal(pipelineStep('code-review-quality'), 'code-review');
     assert.equal(pipelineStep('implement'), 'implement');
     const expanded = expandReviewPhases([
@@ -48,7 +48,7 @@ describe('liveLogStep', () => {
     assert.equal(kept[0]?.steps[0]?.status, 'done');
   });
 
-  it('keeps open review chips running when a snapshot says idle or failed', () => {
+  void it('keeps open review chips running when a snapshot says idle or failed', () => {
     assert.equal(reviewChipName('code-review-report'), 'code-review');
     assert.equal(reviewChipName('code-review-quality'), 'code-review-quality');
     const snapshot = [
@@ -89,8 +89,8 @@ describe('liveLogStep', () => {
   });
 });
 
-describe('latestPhaseLabels', () => {
-  it('uses the last launch in phase order and keeps unknown ids after the five', () => {
+void describe('latestPhaseLabels', () => {
+  void it('uses the last launch in phase order and keeps unknown ids after the five', () => {
     assert.deepEqual(
       latestPhaseLabels([
         { phases: ['requirements', 'code-review'] },
@@ -101,37 +101,37 @@ describe('latestPhaseLabels', () => {
   });
 });
 
-describe('replaySelection', () => {
-  it('locks the clicked phase and earlier phases the original flow included', () => {
+void describe('replaySelection', () => {
+  void it('locks the clicked phase and earlier phases the original flow included', () => {
     const choice = replaySelection([...PHASES], [...PHASES], 'code-review');
     assert.deepEqual(choice.locked, ['requirements', 'brainstorm', 'implementation', 'code-review']);
     assert.deepEqual(choice.selected, [...PHASES]);
   });
 
-  it('leaves later phases editable and does not insert phases the original skipped', () => {
+  void it('leaves later phases editable and does not insert phases the original skipped', () => {
     const original = ['requirements', 'code-review'];
     const choice = replaySelection(original, original, 'code-review');
     assert.deepEqual(choice.locked, ['requirements', 'brainstorm', 'implementation', 'code-review']);
     assert.deepEqual(choice.selected, ['requirements', 'code-review']);
   });
 
-  it('keeps phases after the click changeable', () => {
+  void it('keeps phases after the click changeable', () => {
     const choice = replaySelection([...PHASES], ['requirements', 'brainstorm', 'implementation', 'code-review'], 'code-review');
     assert.deepEqual(choice.selected, ['requirements', 'brainstorm', 'implementation', 'code-review']);
     assert.equal(choice.locked.includes('ci'), false);
   });
 });
 
-describe('stepLabel', () => {
-  it('names the report chip and strips the reviewer prefix', () => {
+void describe('stepLabel', () => {
+  void it('names the report chip and strips the reviewer prefix', () => {
     assert.equal(stepLabel('code-review'), 'report');
     assert.equal(stepLabel('code-review-quality'), 'quality');
     assert.equal(stepLabel('implement'), 'implement');
   });
 });
 
-describe('withReport', () => {
-  it('appends an idle report chip only when reviewers are present and the report is not', () => {
+void describe('withReport', () => {
+  void it('appends an idle report chip only when reviewers are present and the report is not', () => {
     const plain = [{ name: 'implement', status: 'done', current: false, attempts: 1 }];
     assert.equal(withReport(plain), plain);
     const reviewers = [{ name: 'code-review-quality', status: 'running', current: true, attempts: 2 }];

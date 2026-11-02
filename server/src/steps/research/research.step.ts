@@ -34,8 +34,8 @@ export class ResearchStep extends AgentStep {
     return { mode: 'plan', model: env.MODEL_PLAN, timeLimitMs: env.RESEARCH_TIMEOUT_MS };
   }
 
-  override async missingInput(key: string): Promise<string | null> {
-    return existsSync(join(this.history.root(), 'worktrees', key)) ? null : `worktrees/${key}`;
+  override missingInput(key: string): Promise<string | null> {
+    return Promise.resolve(existsSync(join(this.history.root(), 'worktrees', key)) ? null : `worktrees/${key}`);
   }
 
   protected async write(key: string, ctx: ModelStepContext): Promise<PipelineResult> {

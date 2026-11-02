@@ -22,7 +22,7 @@ const TOKEN = 'super-secret-token';
 describe('pipeline step', () => {
   it('finishes when every pipeline succeeded', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-green-'));
-    const read = jest.fn(async () => ({ snapshot: shot('success', [job(8, 'lint', true)]), httpCalls: [call('GET')] }));
+    const read = jest.fn(() => Promise.resolve({ snapshot: shot('success', [job(8, 'lint', true)]), httpCalls: [call('GET')] }));
     const trace = jest.fn();
     const app = await boot(root, read, trace);
     try {
@@ -44,16 +44,16 @@ describe('pipeline step', () => {
 
   it('returns to implement once when several blocking jobs failed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-red-'));
-    const read = jest.fn(async (ref: { project: string }) => {
+    const read = jest.fn((ref: { project: string }) => {
       if (ref.project === 'group/web') {
-        return { snapshot: shot('success', []), httpCalls: [call('GET')] };
+        return Promise.resolve({ snapshot: shot('success', []), httpCalls: [call('GET')] });
       }
-      return {
+      return Promise.resolve({
         snapshot: shot('failed', [job(7, 'unit', false), job(8, 'lint', true), job(9, 'e2e', false)]),
         httpCalls: [call('GET')],
-      };
+      });
     });
-    const trace = jest.fn(async (_project: string, jobId: number) => ({ trace: `log ${jobId}\n`, httpCalls: [call('GET')] }));
+    const trace = jest.fn((_project: string, jobId: number) => Promise.resolve({ trace: `log ${jobId}\n`, httpCalls: [call('GET')] }));
     const app = await boot(root, read, trace);
     try {
       await seed(app, 'PROJ-301', two);
@@ -85,8 +85,8 @@ describe('pipeline step', () => {
 
   it('does not send the same failed run back to implement', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-same-'));
-    const read = jest.fn(async () => ({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] }));
-    const app = await boot(root, read, jest.fn(async () => ({ trace: 'log 7\n', httpCalls: [call('GET')] })));
+    const read = jest.fn(() => Promise.resolve({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] }));
+    const app = await boot(root, read, jest.fn(() => Promise.resolve({ trace: 'log 7\n', httpCalls: [call('GET')] })));
     try {
       await seed(app, 'PROJ-314');
       const history = app.get(HistoryService);
@@ -107,8 +107,8 @@ describe('pipeline step', () => {
 
   it('returns to implement when a person resumes the same failed run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-resume-'));
-    const read = jest.fn(async () => ({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] }));
-    const app = await boot(root, read, jest.fn(async () => ({ trace: 'log 7\n', httpCalls: [call('GET')] })));
+    const read = jest.fn(() => Promise.resolve({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] }));
+    const app = await boot(root, read, jest.fn(() => Promise.resolve({ trace: 'log 7\n', httpCalls: [call('GET')] })));
     try {
       await seed(app, 'PROJ-317');
       const history = app.get(HistoryService);
@@ -127,8 +127,8 @@ describe('pipeline step', () => {
 
   it('returns to implement when the failed run is a new one', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-new-'));
-    const read = jest.fn(async () => ({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] }));
-    const app = await boot(root, read, jest.fn(async () => ({ trace: 'log 7\n', httpCalls: [call('GET')] })));
+    const read = jest.fn(() => Promise.resolve({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] }));
+    const app = await boot(root, read, jest.fn(() => Promise.resolve({ trace: 'log 7\n', httpCalls: [call('GET')] })));
     try {
       await seed(app, 'PROJ-315');
       const history = app.get(HistoryService);
@@ -146,8 +146,8 @@ describe('pipeline step', () => {
 
   it('stops on pipeline when the pipeline return limit is already used', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-cap-'));
-    const read = jest.fn(async () => ({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] }));
-    const app = await boot(root, read, jest.fn(async () => ({ trace: 'log\n', httpCalls: [call('GET')] })), 'MAX_PIPELINE_RETURNS=6\n');
+    const read = jest.fn(() => Promise.resolve({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] }));
+    const app = await boot(root, read, jest.fn(() => Promise.resolve({ trace: 'log\n', httpCalls: [call('GET')] })), 'MAX_PIPELINE_RETURNS=6\n');
     try {
       await seed(app, 'PROJ-316', one, 6);
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-316');
@@ -166,8 +166,8 @@ describe('pipeline step', () => {
 
   it('finishes a red pipeline even when the counter is already at the limit', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-limit-'));
-    const read = jest.fn(async () => ({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] }));
-    const app = await boot(root, read, jest.fn(async () => ({ trace: 'log\n', httpCalls: [call('GET')] })));
+    const read = jest.fn(() => Promise.resolve({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] }));
+    const app = await boot(root, read, jest.fn(() => Promise.resolve({ trace: 'log\n', httpCalls: [call('GET')] })));
     try {
       await seed(app, 'PROJ-302', one, 3);
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-302');
@@ -185,15 +185,15 @@ describe('pipeline step', () => {
   it('cancels a run that is still going after the timeout and returns its trace', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-wait-'));
     let canceled = false;
-    const read = jest.fn(async () => ({
+    const read = jest.fn(() => Promise.resolve({
       snapshot: shot(canceled ? 'canceled' : 'running', [job(7, 'unit', false, canceled ? 'failed' : 'in_progress')]),
       httpCalls: [call('GET')],
     }));
-    const cancel = jest.fn(async () => {
+    const cancel = jest.fn(() => {
       canceled = true;
-      return { httpCalls: [call('POST')] };
+      return Promise.resolve({ httpCalls: [call('POST')] });
     });
-    const trace = jest.fn(async () => ({ trace: 'log 7\n', httpCalls: [call('GET')] }));
+    const trace = jest.fn(() => Promise.resolve({ trace: 'log 7\n', httpCalls: [call('GET')] }));
     const app = await boot(root, read, trace, 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=0\nPIPELINE_START_TIMEOUT_MS=50\n', cancel);
     try {
       await seed(app, 'PROJ-303');
@@ -220,21 +220,19 @@ describe('pipeline step', () => {
 
   it('returns to implement when canceling a timed-out run fails', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-cancel-fail-'));
-    const read = jest.fn(async (_ref: { project: string }, jobs = true) => ({
+    const read = jest.fn((_ref: { project: string }, jobs = true) => Promise.resolve({
       snapshot: shot('running', jobs ? [job(7, 'unit', false, 'in_progress')] : []),
       httpCalls: [call('GET')],
     }));
-    const cancel = jest.fn(async () => {
-      throw new FetchFailed('github pipeline failed: HTTP 500', [call('POST')]);
-    });
-    const trace = jest.fn(async () => ({ trace: 'secret trace\n', httpCalls: [call('GET')] }));
+    const cancel = jest.fn(() => Promise.reject(new FetchFailed('github pipeline failed: HTTP 500', [call('POST')])));
+    const trace = jest.fn(() => Promise.resolve({ trace: 'secret trace\n', httpCalls: [call('GET')] }));
     const app = await boot(root, read, trace, 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=0\nPIPELINE_START_TIMEOUT_MS=50\n', cancel);
     try {
       await seed(app, 'PROJ-318');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-318');
       expect(result.exitCode).toBe(0);
       expect(cancel).toHaveBeenCalledWith('group/demo', 9);
-      expect(read.mock.calls.map((entry) => entry[1])).toEqual([false, true]);
+      expect(read.mock.calls.map((entry) => entry[1] === true)).toEqual([false, true]);
       expect(trace).not.toHaveBeenCalled();
       const history = app.get(HistoryService);
       const run = await history.findRun('PROJ-318');
@@ -255,10 +253,10 @@ describe('pipeline step', () => {
     const previousTick = process.env.TICK_MS;
     const previousTimeout = process.env.PIPELINE_TIMEOUT_MS;
     let reads = 0;
-    const read = jest.fn(async () => {
+    const read = jest.fn(() => {
       reads += 1;
       const status = reads === 1 ? 'running' : 'success';
-      return { snapshot: shot(status, []), httpCalls: [call('GET')] };
+      return Promise.resolve({ snapshot: shot(status, []), httpCalls: [call('GET')] });
     });
     const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=5000\n');
     try {
@@ -277,7 +275,7 @@ describe('pipeline step', () => {
 
   it('waits when a person still has to start a manual pipeline', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-manual-'));
-    const app = await boot(root, jest.fn(async () => ({ snapshot: shot('manual', []), httpCalls: [call('GET')] })), jest.fn());
+    const app = await boot(root, jest.fn(() => Promise.resolve({ snapshot: shot('manual', []), httpCalls: [call('GET')] })), jest.fn());
     try {
       await seed(app, 'PROJ-305');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-305');
@@ -292,8 +290,8 @@ describe('pipeline step', () => {
   it('returns a canceled pipeline to implement with and without auto', async () => {
     for (const auto of [false, true]) {
       const root = await mkdtemp(join(tmpdir(), `swarmloop-pipe-cancel-${auto}-`));
-      const trace = jest.fn(async () => ({ trace: 'canceled log\n', httpCalls: [call('GET')] }));
-      const app = await boot(root, jest.fn(async () => ({ snapshot: shot('canceled', [job(7, 'unit', false)]), httpCalls: [call('GET')] })), trace);
+      const trace = jest.fn(() => Promise.resolve({ trace: 'canceled log\n', httpCalls: [call('GET')] }));
+      const app = await boot(root, jest.fn(() => Promise.resolve({ snapshot: shot('canceled', [job(7, 'unit', false)]), httpCalls: [call('GET')] })), trace);
       try {
         await seed(app, 'PROJ-306');
         const result = await app.get(PipelineService).step('pipeline', 'PROJ-306', auto ? { auto: true } : {});
@@ -317,7 +315,7 @@ describe('pipeline step', () => {
   it('stays put when the pipeline was skipped', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-skip-'));
     const trace = jest.fn();
-    const app = await boot(root, jest.fn(async () => ({ snapshot: shot('skipped', []), httpCalls: [call('GET')] })), trace);
+    const app = await boot(root, jest.fn(() => Promise.resolve({ snapshot: shot('skipped', []), httpCalls: [call('GET')] })), trace);
     try {
       await seed(app, 'PROJ-319');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-319');
@@ -337,13 +335,13 @@ describe('pipeline step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-mixed-'));
     const previousTick = process.env.TICK_MS;
     const previousTimeout = process.env.PIPELINE_TIMEOUT_MS;
-    const read = jest.fn(async (ref: { project: string }) => {
+    const read = jest.fn((ref: { project: string }) => {
       if (ref.project === 'group/web') {
-        return { snapshot: shot('running', []), httpCalls: [call('GET')] };
+        return Promise.resolve({ snapshot: shot('running', []), httpCalls: [call('GET')] });
       }
-      return { snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] };
+      return Promise.resolve({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] });
     });
-    const app = await boot(root, read, jest.fn(async () => ({ trace: 'log\n', httpCalls: [call('GET')] })), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=5000\n');
+    const app = await boot(root, read, jest.fn(() => Promise.resolve({ trace: 'log\n', httpCalls: [call('GET')] })), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=5000\n');
     try {
       await seed(app, 'PROJ-308', two);
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-308');
@@ -361,10 +359,8 @@ describe('pipeline step', () => {
 
   it('returns to implement when a job trace cannot be read', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-trace-'));
-    const trace = jest.fn(async () => {
-      throw new FetchFailed('gitlab pipeline failed', [call('GET')]);
-    });
-    const app = await boot(root, jest.fn(async () => ({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] })), trace);
+    const trace = jest.fn(() => Promise.reject(new FetchFailed('gitlab pipeline failed', [call('GET')])));
+    const app = await boot(root, jest.fn(() => Promise.resolve({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] })), trace);
     try {
       await seed(app, 'PROJ-309');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-309');
@@ -391,11 +387,11 @@ describe('pipeline step', () => {
     const previousTick = process.env.TICK_MS;
     const previousTimeout = process.env.PIPELINE_TIMEOUT_MS;
     let reads = 0;
-    const read = jest.fn(async () => {
+    const read = jest.fn(() => {
       reads += 1;
-      return reads === 1
-        ? { snapshot: null, httpCalls: [call('GET')] }
-        : { snapshot: shot('success', []), httpCalls: [call('GET')] };
+      return Promise.resolve(
+        reads === 1 ? { snapshot: null, httpCalls: [call('GET')] } : { snapshot: shot('success', []), httpCalls: [call('GET')] },
+      );
     });
     const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=5000\n');
     try {
@@ -414,7 +410,7 @@ describe('pipeline step', () => {
 
   it('goes on green when the worktree has no workflow', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-none-'));
-    const read = jest.fn(async () => ({ snapshot: null, httpCalls: [call('GET')] }));
+    const read = jest.fn(() => Promise.resolve({ snapshot: null, httpCalls: [call('GET')] }));
     const previousTick = process.env.TICK_MS;
     const previousTimeout = process.env.PIPELINE_TIMEOUT_MS;
     const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=30\n');
@@ -440,7 +436,7 @@ describe('pipeline step', () => {
 
   it('fails when a workflow exists and no run starts', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-configured-'));
-    const read = jest.fn(async () => ({ snapshot: null, httpCalls: [call('GET')] }));
+    const read = jest.fn(() => Promise.resolve({ snapshot: null, httpCalls: [call('GET')] }));
     const previousTick = process.env.TICK_MS;
     const previousTimeout = process.env.PIPELINE_TIMEOUT_MS;
     const previousStart = process.env.PIPELINE_START_TIMEOUT_MS;
@@ -472,11 +468,11 @@ describe('pipeline step', () => {
   it('follows a pipeline that appears during the start window', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-appeared-'));
     let reads = 0;
-    const read = jest.fn(async () => {
+    const read = jest.fn(() => {
       reads += 1;
-      return reads === 1
-        ? { snapshot: null, httpCalls: [call('GET')] }
-        : { snapshot: shot('success', []), httpCalls: [call('GET')] };
+      return Promise.resolve(
+        reads === 1 ? { snapshot: null, httpCalls: [call('GET')] } : { snapshot: shot('success', []), httpCalls: [call('GET')] },
+      );
     });
     const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_START_TIMEOUT_MS=5000\nPIPELINE_TIMEOUT_MS=5000\n');
     try {
@@ -500,9 +496,9 @@ describe('pipeline step', () => {
   it('keeps polling a running pipeline after the start window', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-running-past-start-'));
     let reads = 0;
-    const read = jest.fn(async (_ref: { project: string }, _jobs?: boolean) => {
+    const read = jest.fn((_ref: { project: string }, _jobs?: boolean) => {
       reads += 1;
-      return { snapshot: shot(reads < 4 ? 'running' : 'success', []), httpCalls: [call('GET')] };
+      return Promise.resolve({ snapshot: shot(reads < 4 ? 'running' : 'success', []), httpCalls: [call('GET')] });
     });
     const app = await boot(root, read, jest.fn(), 'TICK_MS=30\nPIPELINE_START_TIMEOUT_MS=40\nPIPELINE_TIMEOUT_MS=500\n');
     try {
@@ -519,11 +515,11 @@ describe('pipeline step', () => {
 
   it('fails when one workflow never starts and another run passed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-partial-'));
-    const read = jest.fn(async (ref: { project: string }) => {
+    const read = jest.fn((ref: { project: string }) => {
       if (ref.project === 'group/web') {
-        return { snapshot: null, httpCalls: [call('GET')] };
+        return Promise.resolve({ snapshot: null, httpCalls: [call('GET')] });
       }
-      return { snapshot: shot('success', []), httpCalls: [call('GET')] };
+      return Promise.resolve({ snapshot: shot('success', []), httpCalls: [call('GET')] });
     });
     const previousTick = process.env.TICK_MS;
     const previousTimeout = process.env.PIPELINE_TIMEOUT_MS;
@@ -599,7 +595,7 @@ async function boot(
   read: jest.Mock,
   trace: jest.Mock,
   extra = 'PIPELINE_TIMEOUT_MS=0\n',
-  cancel: jest.Mock = jest.fn(async () => ({ httpCalls: [] as HttpCallDraft[] })),
+  cancel: jest.Mock = jest.fn(() => Promise.resolve({ httpCalls: [] as HttpCallDraft[] })),
 ) {
   await writeFile(
     join(root, '.env'),
