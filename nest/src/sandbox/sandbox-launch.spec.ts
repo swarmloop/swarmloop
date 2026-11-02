@@ -2,7 +2,7 @@ import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'fs';
 import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { SwarmloopError } from '../swarmloop-error';
+import { SwarmloopError } from '../core/swarmloop-error';
 import { SandboxService, collectEnvMasks, parseDockerStats } from './sandbox.service';
 import { agentStateDir, emptyEnvFile, modelCredential, mountsForRun, resolveDaemonPath, sandboxArgs, sandboxUserId, stepContainers, SandboxLaunch } from './sandbox-launch';
 

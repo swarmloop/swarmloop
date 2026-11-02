@@ -3,7 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { ConfigService } from '@nestjs/config';
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { AgentRunInput, AgentRunResult } from '../limits/agent-runner';
+import { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
 import { ChatService } from './chat.service';
 
 describe('chat', () => {

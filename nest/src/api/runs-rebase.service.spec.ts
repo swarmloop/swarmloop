@@ -4,7 +4,7 @@ import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
 import { HistoryService } from '../history/history.service';
-import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.service';
+import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.step';
 import { REBASE_CONFLICT, rebaseFeatureRepos, storedBase } from '../git/rebase-worktree';
 import { RunRebaseService } from './run-rebase.service';
 import { boot, remember, featureWorktree, denyEnv, git, isAncestor, hostFetch } from './runs.spec-helpers';

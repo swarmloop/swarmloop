@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { RunEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { repoNames } from '../shared/repo-names';
-import { BranchService } from '../branch/branch.service';
+import { BranchStep } from '../branch/branch.step';
 import { appendProjectNames } from './append-projects';
 import { CHECKOUT_NAME, renderProjects, storedProjects } from './checkout-path';
-import { PrepareService } from './prepare.service';
+import { PrepareStep } from './prepare.step';
 
 const PENDING = 'pending_repos';
 
@@ -14,8 +14,8 @@ const PENDING = 'pending_repos';
 export class ProjectAppendService {
   constructor(
     private readonly history: HistoryService,
-    private readonly prepare: PrepareService,
-    private readonly branch: BranchService,
+    private readonly prepare: PrepareStep,
+    private readonly branch: BranchStep,
   ) {}
 
   async add(key: string, name: string): Promise<{ projects: string[]; applied: boolean }> {

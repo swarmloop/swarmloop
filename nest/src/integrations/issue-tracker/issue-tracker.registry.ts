@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { JiraIssueTracker } from './jira/jira-issue-tracker';
 import { IssueTracker } from './issue-tracker';
 

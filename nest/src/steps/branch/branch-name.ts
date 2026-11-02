@@ -1,5 +1,5 @@
 import cyrillicToTranslit from 'cyrillic-to-translit-js';
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 
 const KEBAB_LIMIT = 48;
 const translit = cyrillicToTranslit({ preset: 'uk' });

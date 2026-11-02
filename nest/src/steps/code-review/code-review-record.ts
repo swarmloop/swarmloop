@@ -1,5 +1,5 @@
-import { readStreamLine, takeAnswer } from '../../limits/stream';
-import { SwarmloopError } from '../../swarmloop-error';
+import { readStreamLine, takeAnswer } from '../../agent/stream';
+import { SwarmloopError } from '../../core/swarmloop-error';
 
 export interface ReviewDecision {
   decision: 'ok' | 'return';

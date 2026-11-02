@@ -1,6 +1,6 @@
 import { IssuePage } from '../issue-tracker/issue-bundle';
-import { request } from '../../providers/http';
-import { FetchFailed } from '../../swarmloop-error';
+import { request } from '../http';
+import { FetchFailed } from '../../core/swarmloop-error';
 import { driveTarget, loadDrive } from './drive';
 import { PageReadContext, PageReader } from './page-reader';
 

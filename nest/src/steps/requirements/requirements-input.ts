@@ -1,7 +1,7 @@
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
-import { StepOptions } from '../../pipeline/pipeline-result';
-import { SwarmloopError } from '../../swarmloop-error';
+import { StepOptions } from '../../core/pipeline-result';
+import { SwarmloopError } from '../../core/swarmloop-error';
 
 const JIRA_KEY = /[A-Z][A-Z0-9]+-\d+/g;
 const JIRA_KEY_EXACT = /^[A-Z][A-Z0-9]+-\d+$/;

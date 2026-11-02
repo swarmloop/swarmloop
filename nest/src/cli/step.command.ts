@@ -1,6 +1,6 @@
 import { Command, CommandRunner, Option } from 'nest-commander';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { StepOptions } from '../pipeline/pipeline-result';
+import { StepOptions } from '../core/pipeline-result';
 import { report } from './run.command';
 
 @Command({

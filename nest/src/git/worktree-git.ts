@@ -1,6 +1,6 @@
 import { basename } from 'path';
 import { SandboxMount } from '../sandbox/sandbox-launch';
-import { SwarmloopError } from '../swarmloop-error';
+import { SwarmloopError } from '../core/swarmloop-error';
 import { git, gitDetail } from './git';
 
 export async function featureHeads(

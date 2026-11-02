@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HistoryModule } from '../../history/history.module';
-import { ISSUE_TRACKER } from '../../providers/tokens';
+import { ISSUE_TRACKER } from './tokens';
 import { LinkedPagesService } from '../linked-pages/linked-pages';
 import { PASTE_READER, PastePageReader, TerminalPasteReader } from '../linked-pages/paste-page.reader';
 import { JiraIssueTracker } from './jira/jira-issue-tracker';

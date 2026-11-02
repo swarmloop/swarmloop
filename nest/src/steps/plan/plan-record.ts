@@ -1,5 +1,5 @@
 import { PlanFields } from '../../integrations/requirements-source/requirements-record';
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { bulletSection, section } from '../shared/markdown-section';
 
 export function parsePlan(text: string): string {

@@ -3,7 +3,7 @@ import { join, resolve, sep } from 'path';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { RunEntity } from '../history/entities';
 import { HistoryService } from '../history/history.service';
-import { assertKey, PHASES } from '../pipeline/pipeline-result';
+import { assertKey, PHASES } from '../core/pipeline-result';
 import { CHAT_LOCK, containerLockBody, readChatLock } from '../pipeline/chat-lock';
 import { settleShell } from '../pipeline/shell-lock';
 import { mountsForRun } from '../sandbox/sandbox-launch';

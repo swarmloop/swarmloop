@@ -2,7 +2,7 @@ import { liveLogView } from '../../acp/live-output';
 import { activeDurationMs, toDurationParts } from '../../history/active-duration';
 import { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { LiveSpend } from '../../live/live.hub';
-import { continuesSameStep, countedVisits, isLoopStep, isReviewStep, loopMark, pipelineStepOf, STEPS, StepName } from '../../pipeline/pipeline-result';
+import { continuesSameStep, countedVisits, isLoopStep, isReviewStep, loopMark, pipelineStepOf, STEPS, StepName } from '../../core/pipeline-result';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered } from '../../steps/shared/answers';
 import { items } from '../../steps/shared/markdown-section';

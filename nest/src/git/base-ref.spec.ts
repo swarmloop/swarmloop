@@ -1,4 +1,4 @@
-import { SwarmloopError } from '../swarmloop-error';
+import { SwarmloopError } from '../core/swarmloop-error';
 import { originRef, promptBase } from './base-ref';
 
 describe('prompt base ref', () => {

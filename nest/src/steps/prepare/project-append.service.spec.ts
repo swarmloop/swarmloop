@@ -1,6 +1,6 @@
 import { RunEntity } from '../../history/entities';
-import { BranchService } from '../branch/branch.service';
-import { PrepareService } from './prepare.service';
+import { BranchStep } from '../branch/branch.step';
+import { PrepareStep } from './prepare.step';
 import { ProjectAppendService } from './project-append.service';
 
 describe('ProjectAppendService', () => {
@@ -23,7 +23,7 @@ describe('ProjectAppendService', () => {
     };
     const prepare = { listProjects: () => ({ projects: ['billing-api', 'worker', 'handbook'] }), ensureDetached: jest.fn(async () => undefined) };
     const branch = { ensure: jest.fn(async () => undefined) };
-    const service = new ProjectAppendService(history as never, prepare as unknown as PrepareService, branch as unknown as BranchService);
+    const service = new ProjectAppendService(history as never, prepare as unknown as PrepareStep, branch as unknown as BranchStep);
     return { run, docs, stats, prepare, branch, service };
   }
 

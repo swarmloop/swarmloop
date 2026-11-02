@@ -2,7 +2,7 @@ import { mkdirSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { listGitProjects, resolveCheckoutPath, storedProjects } from './checkout-path';
 
 describe('resolveCheckoutPath', () => {

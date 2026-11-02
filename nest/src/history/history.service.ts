@@ -7,9 +7,9 @@ import { In, Repository } from 'typeorm';
 import { readEnv } from '../config/env';
 import { LiveHub } from '../live/live.hub';
 import { resolveRepoRoot } from '../config/repo-root';
-import { SwarmloopError } from '../swarmloop-error';
-import { sessionHome } from '../limits/session-group';
-import { normalizePhases, PhaseName, PHASES, REVIEW_STEPS, STEPS } from '../pipeline/pipeline-result';
+import { SwarmloopError } from '../core/swarmloop-error';
+import { sessionHome } from '../agent/session-group';
+import { normalizePhases, PhaseName, PHASES, REVIEW_STEPS, STEPS } from '../core/pipeline-result';
 import {
   AgentExchangeEntity,
   CheckoutEntity,

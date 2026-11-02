@@ -1,6 +1,6 @@
 import { existsSync } from 'fs';
 import { dirname, join } from 'path';
-import { SwarmloopError } from '../swarmloop-error';
+import { SwarmloopError } from '../core/swarmloop-error';
 
 export function resolveRepoRoot(configured: string | undefined, fromDir: string): string {
   if (configured) {

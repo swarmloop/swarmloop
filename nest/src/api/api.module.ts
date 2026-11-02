@@ -4,7 +4,7 @@ import { HistoryModule } from '../history/history.module';
 import { LiveGateway } from '../live/live.gateway';
 import { LiveModule } from '../live/live.module';
 import { PipelineModule } from '../pipeline/pipeline.module';
-import { ProvidersModule } from '../providers/providers.module';
+import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { ChatService } from './chat.service';
 import { ShellService } from './shell.service';

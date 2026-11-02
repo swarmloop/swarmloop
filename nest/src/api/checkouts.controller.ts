@@ -1,10 +1,10 @@
 import { BadRequestException, Body, Controller, Get, Post } from '@nestjs/common';
-import { PrepareService } from '../steps/prepare/prepare.service';
-import { SwarmloopError } from '../swarmloop-error';
+import { PrepareStep } from '../steps/prepare/prepare.step';
+import { SwarmloopError } from '../core/swarmloop-error';
 
 @Controller('checkouts')
 export class CheckoutsController {
-  constructor(private readonly prepare: PrepareService) {}
+  constructor(private readonly prepare: PrepareStep) {}
 
   @Get()
   list(): Promise<{ clones: { name: string }[] }> {

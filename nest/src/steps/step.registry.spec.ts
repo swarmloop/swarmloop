@@ -1,34 +1,34 @@
 import 'reflect-metadata';
 import { Type } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { StepName } from '../pipeline/pipeline-result';
-import { BranchService } from './branch/branch.service';
-import { CommitService } from './commit/commit.service';
-import { CodeReviewService } from './code-review/code-review.service';
-import { ImplementImproveService } from './implement/implement-improve.service';
-import { ImplementService } from './implement/implement.service';
-import { MergeRequestService } from './merge-request/merge-request.service';
-import { PlanImproveService } from './plan/plan-improve.service';
-import { PlanService } from './plan/plan.service';
-import { PipelineStepService } from './pipeline/pipeline-step.service';
-import { PrepareService } from './prepare/prepare.service';
-import { RequirementsService } from './requirements/requirements.service';
-import { ResearchService } from './research/research.service';
+import { StepName } from '../core/pipeline-result';
+import { BranchStep } from './branch/branch.step';
+import { CommitStep } from './commit/commit.step';
+import { CodeReviewStep } from './code-review/code-review.step';
+import { ImplementImproveStep } from './implement/implement-improve.step';
+import { ImplementStep } from './implement/implement.step';
+import { MergeRequestStep } from './merge-request/merge-request.step';
+import { PlanImproveStep } from './plan/plan-improve.step';
+import { PlanStep } from './plan/plan.step';
+import { PipelineStep } from './pipeline/pipeline.step';
+import { PrepareStep } from './prepare/prepare.step';
+import { RequirementsStep } from './requirements/requirements.step';
+import { ResearchStep } from './research/research.step';
 import { StepRegistry } from './step.registry';
 
 const SERVICES: [Type<unknown>, Exclude<StepName, 'done'>][] = [
-  [RequirementsService, 'requirements'],
-  [PrepareService, 'prepare'],
-  [ResearchService, 'research'],
-  [BranchService, 'branch'],
-  [PlanService, 'plan'],
-  [PlanImproveService, 'plan-improve'],
-  [ImplementService, 'implement'],
-  [ImplementImproveService, 'implement-improve'],
-  [CodeReviewService, 'code-review'],
-  [CommitService, 'commit'],
-  [MergeRequestService, 'merge-request'],
-  [PipelineStepService, 'pipeline'],
+  [RequirementsStep, 'requirements'],
+  [PrepareStep, 'prepare'],
+  [ResearchStep, 'research'],
+  [BranchStep, 'branch'],
+  [PlanStep, 'plan'],
+  [PlanImproveStep, 'plan-improve'],
+  [ImplementStep, 'implement'],
+  [ImplementImproveStep, 'implement-improve'],
+  [CodeReviewStep, 'code-review'],
+  [CommitStep, 'commit'],
+  [MergeRequestStep, 'merge-request'],
+  [PipelineStep, 'pipeline'],
 ];
 
 describe('step registry', () => {

@@ -1,8 +1,8 @@
 import { chmodSync, mkdirSync, writeFileSync } from 'fs';
 import { basename, join } from 'path';
-import { sessionHome } from '../../limits/session-group';
+import { sessionHome } from '../../agent/session-group';
 import { agentStateDir, SandboxMount } from '../../sandbox/sandbox-launch';
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { isDenied } from '../commit/commit-paths';
 import { gitMissing, gitRaw } from '../../git/git';
 

@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { readEnv, SwarmloopEnv } from '../../config/env';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../swarmloop-error';
-import { request } from '../../providers/http';
+import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../core/swarmloop-error';
+import { request } from '../http';
 import { remoteProject } from '../../steps/merge-request/merge-request-record';
 import { CodeHost, MergeRequestDraft, MergeRequestQuery, MergeRequestRecord, PipelineRef, PipelineSnapshot, SelectedHost } from './code-host';
 

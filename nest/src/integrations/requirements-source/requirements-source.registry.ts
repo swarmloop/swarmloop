@@ -1,4 +1,4 @@
-import { SwarmloopError } from '../../swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import type { RequirementsSource } from './requirements-source';
 
 export const names = ['agent', 'direct'] as const;

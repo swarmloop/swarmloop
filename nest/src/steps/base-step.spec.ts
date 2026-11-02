@@ -6,11 +6,11 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { HistoryService } from '../history/history.service';
-import { AGENT_RUNNER } from '../limits/agent-runner';
+import { AGENT_RUNNER } from '../agent/agent-runner';
 import { PipelineModule } from '../pipeline/pipeline.module';
-import { PipelineResult, StepName, StepOptions } from '../pipeline/pipeline-result';
+import { PipelineResult, StepName, StepOptions } from '../core/pipeline-result';
 import { PASTE_READER } from '../integrations/linked-pages/paste-page.reader';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../swarmloop-error';
+import { FetchFailed, HttpCallDraft, SwarmloopError } from '../core/swarmloop-error';
 import { BaseStep, StepContext } from './base-step';
 
 /** Throws whatever the test sets, so each case drives one path through `BaseStep.execute`. */

@@ -1,5 +1,5 @@
 import { IssuePage } from '../issue-tracker/issue-bundle';
-import { HttpCallDraft } from '../../swarmloop-error';
+import { HttpCallDraft } from '../../core/swarmloop-error';
 
 export interface PageReadContext {
   runKey: string;

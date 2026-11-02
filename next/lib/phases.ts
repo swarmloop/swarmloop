@@ -1,6 +1,6 @@
 import type { FlowView } from './types.ts';
 
-/** Ids match nest/src/pipeline/pipeline-result.ts PHASES. */
+/** Ids match nest/src/core/pipeline-result.ts PHASES. */
 export const PHASES = ['requirements', 'brainstorm', 'implementation', 'code-review', 'ci'] as const;
 
 export type PhaseName = (typeof PHASES)[number];

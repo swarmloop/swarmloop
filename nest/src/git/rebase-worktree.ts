@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { dirname, isAbsolute, join, sep } from 'path';
 import { ConfigService } from '@nestjs/config';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
-import { SwarmloopError } from '../swarmloop-error';
+import { SwarmloopError } from '../core/swarmloop-error';
 import { originRef, promptBase } from './base-ref';
 import { allowedPaths, deniedIndexPaths, isDenied, porcelainPaths, stageSelection } from '../steps/commit/commit-paths';
 import { authorArgs, git, gitDetail, gitMissing, gitRaw, gitStderr, originUrl, redact } from './git';

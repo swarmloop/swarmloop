@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { createInterface } from 'readline';
 import { Repository } from 'typeorm';
 import { PasteEntity } from '../../history/entities';
-import { PasteNeeded } from '../../swarmloop-error';
+import { PasteNeeded } from '../../core/swarmloop-error';
 
 export const PASTE_READER = Symbol('PASTE_READER');
 
