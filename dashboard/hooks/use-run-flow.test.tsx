@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { api } from '../lib/api';
+import { api, runLog } from '../lib/api';
 import { emitted, receive } from '../test/fake-socket';
 import { flowView } from '../test/fixtures';
 import { useRunFlow } from './use-run-flow';
@@ -19,6 +19,44 @@ function Probe({ runKey }: { runKey: string }) {
 }
 
 describe('useRunFlow', () => {
+  it('keeps pending review probes tied to their original effect', async () => {
+    const step = 'code-review-quality';
+    const reviewing = flowView({
+      name: 'Original review',
+      currentStep: 'code-review',
+      phases: [{ phase: 'code-review', steps: [{ name: step, status: 'running', current: true, attempts: 0 }] }],
+    });
+    let finish: ((raw: string | null) => void) | undefined;
+    const pending = new Promise<string | null>((resolve) => {
+      finish = resolve;
+    });
+    vi.mocked(runLog).mockResolvedValue(null).mockReturnValueOnce(pending);
+    vi.mocked(api)
+      .mockResolvedValueOnce(reviewing)
+      .mockResolvedValueOnce(flowView({ key: 'run-2', name: 'Other run' }))
+      .mockResolvedValueOnce({ ...reviewing, name: 'Fresh review' });
+
+    function ReviewProbe({ runKey }: { runKey: string }) {
+      const { flow } = useRunFlow(runKey);
+      return <p>{flow ? `${flow.name}: ${flow.phases[0].steps[0].status}` : 'Loading'}</p>;
+    }
+
+    const { rerender } = render(<ReviewProbe runKey="run-1" />);
+    await screen.findByText('Original review: running');
+    act(() => receive('log', { key: 'run-1', step, body: 'working' }));
+    rerender(<ReviewProbe runKey="run-2" />);
+    await screen.findByText('Other run: running');
+    rerender(<ReviewProbe runKey="run-1" />);
+    await screen.findByText('Fresh review: running');
+
+    await act(async () => {
+      finish?.('decision: return\nprocess exited 0');
+      await pending;
+    });
+
+    expect(screen.getByText('Fresh review: running')).toBeInTheDocument();
+  });
+
   it('applies the flow from GET /runs/:key on mount', async () => {
     vi.mocked(api).mockResolvedValue(flowView({ name: 'Flow one' }));
 

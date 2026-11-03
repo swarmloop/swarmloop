@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 import { api, runLog } from '../lib/api';
 import { openElapsed, visitStored } from '../lib/elapsed';
 import { liveSocket } from '../lib/live';
-import { keepOpenReviews, markReviewFinished, markReviewLive, reviewChipName } from '../lib/phases';
+import { markReviewFinished } from '../lib/phases';
+import { applyFlow, applyReviewLog, type FlowMemory } from '../lib/flow-state';
 import { pipelineStepOf, REVIEW_STEPS, type PhaseName } from '@contract/steps';
 import { reviewChipStatus } from '@contract/readable-log';
 import type { FlowView, ReplayBody } from '@contract/api';
@@ -45,45 +46,23 @@ export function useRunFlow(runKey: string): {
   const [replay, setReplay] = useState<string | null>(null);
   const [pending, setPending] = useState<{ prompt: string; phases: PhaseName[] } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const pinnedAt = useRef<string | null>(null);
+  const memory = useRef<FlowMemory>({ pinnedAt: null, heldMs: 0, heldStart: null, openReviews: new Set() });
   const followStep = useRef(true);
-  const heldMs = useRef(0);
-  const heldStart = useRef<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     let stopped = false;
-    const openReviews = new Set<string>();
+    memory.current = { ...memory.current, openReviews: new Set() };
+    let openReviews = memory.current.openReviews;
     const apply = (body: FlowView | null): void => {
       if (stopped || !body || body.key !== runKey) {
         return;
       }
       setFlow((current) => {
-        if (
-          pinnedAt.current &&
-          body.updatedAt === pinnedAt.current &&
-          current?.status === 'running' &&
-          body.status === 'waiting'
-        ) {
-          return current;
-        }
-        pinnedAt.current = null;
-        if (heldMs.current > 0 && visitStored(body.metrics.closedStarts, heldStart.current)) {
-          heldMs.current = 0;
-          heldStart.current = null;
-        }
-        if (body.status !== 'running' || body.currentStep !== 'code-review') {
-          openReviews.clear();
-        }
-        const phases = keepOpenReviews(body.phases, openReviews);
-        for (const phase of phases) {
-          for (const step of phase.steps) {
-            if (step.status === 'done' || step.status === 'waiting') {
-              openReviews.delete(step.name);
-            }
-          }
-        }
-        return { ...body, phases };
+        const result = applyFlow(current, body, memory.current);
+        memory.current = result.memory;
+        openReviews = result.memory.openReviews;
+        return result.flow;
       });
       setError(null);
       void probeFinishedReviews(body, runKey, (name, status) => {
@@ -112,32 +91,11 @@ export function useRunFlow(runKey: string): {
       if (stopped || entry.key !== runKey || !entry.step.startsWith('code-review-')) {
         return;
       }
-      const chip = reviewChipName(entry.step);
-      const status = reviewChipStatus(entry.body);
-      const trimmed = entry.body.trim();
-      if (status) {
-        openReviews.delete(chip);
-      } else if (trimmed !== '' && trimmed !== 'waiting for output' && trimmed !== 'starting') {
-        openReviews.add(chip);
-      }
-      setFlow((current) => {
-        if (!current) {
-          return current;
-        }
-        if (status) {
-          return { ...current, phases: markReviewFinished(current.phases, chip, status) };
-        }
-        if (
-          current.status !== 'running' ||
-          current.currentStep !== 'code-review' ||
-          trimmed === '' ||
-          trimmed === 'waiting for output' ||
-          trimmed === 'starting'
-        ) {
-          return current;
-        }
-        return { ...current, phases: markReviewLive(current.phases, chip) };
-      });
+      // Record the log before React processes queued flow updates, as before.
+      const result = applyReviewLog(null, memory.current, entry);
+      memory.current = result.memory;
+      openReviews = result.memory.openReviews;
+      setFlow((current) => applyReviewLog(current, memory.current, entry).flow);
     };
     socket.on('connect', watch);
     socket.on('flow', apply);
@@ -173,11 +131,11 @@ export function useRunFlow(runKey: string): {
 
   let openMs = 0;
   if (flow) {
-    const gap = heldMs.current > 0 && !visitStored(flow.metrics.closedStarts, heldStart.current);
-    const staleStart = gap && flow.stepStartedAt !== null && flow.stepStartedAt === heldStart.current;
+    const gap = memory.current.heldMs > 0 && !visitStored(flow.metrics.closedStarts, memory.current.heldStart);
+    const staleStart = gap && flow.stepStartedAt !== null && flow.stepStartedAt === memory.current.heldStart;
     const live =
       flow.status === 'running' && flow.stepStartedAt && !staleStart ? openElapsed(flow.stepStartedAt, now) : 0;
-    openMs = live + (gap ? heldMs.current : 0);
+    openMs = live + (gap ? memory.current.heldMs : 0);
   }
 
   const selectStep = (name: string): void => {
@@ -191,7 +149,7 @@ export function useRunFlow(runKey: string): {
   const applyWaiting = (next: FlowView): void => {
     if (next.status === 'running') {
       followStep.current = true;
-      pinnedAt.current = next.updatedAt;
+      memory.current.pinnedAt = next.updatedAt;
     }
     setFlow(next);
   };
@@ -209,8 +167,8 @@ export function useRunFlow(runKey: string): {
           if (!current) {
             return current;
           }
-          heldMs.current = current.stepStartedAt ? openElapsed(current.stepStartedAt, Date.now()) : 0;
-          heldStart.current = current.stepStartedAt;
+          memory.current.heldMs = current.stepStartedAt ? openElapsed(current.stepStartedAt, Date.now()) : 0;
+          memory.current.heldStart = current.stepStartedAt;
           return { ...current, status: 'failed', resume: 'ready' };
         });
         setNow(Date.now());
@@ -255,7 +213,7 @@ export function useRunFlow(runKey: string): {
     }).then(() => {
       followStep.current = true;
       setSelected(step);
-      pinnedAt.current = run.updatedAt;
+      memory.current.pinnedAt = run.updatedAt;
       setFlow((current) =>
         current
           ? { ...current, status: 'running', currentStep: step, resume: 'running', stepStartedAt: null }
@@ -276,7 +234,7 @@ export function useRunFlow(runKey: string): {
       .then(() => {
         followStep.current = true;
         setSelected(step);
-        pinnedAt.current = run.updatedAt;
+        memory.current.pinnedAt = run.updatedAt;
         setFlow((current) =>
           current
             ? { ...current, status: 'running', currentStep: 'code-review', resume: 'running', stepStartedAt: null }
@@ -294,7 +252,7 @@ export function useRunFlow(runKey: string): {
     api(`/runs/${encodeURIComponent(run.key)}/resume`, { method: 'POST' })
       .then(() => {
         followStep.current = true;
-        pinnedAt.current = run.updatedAt;
+        memory.current.pinnedAt = run.updatedAt;
         setFlow((current) =>
           current ? { ...current, status: 'running', resume: 'running', stepStartedAt: null } : current,
         );
