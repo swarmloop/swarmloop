@@ -154,7 +154,15 @@ export class CodeReviewStep extends BaseStep {
     const noted = await noteHandoff(this.history, key, opinions, stored);
     if (only && othersOpen(only, opinions)) {
       const summary = opinions.map((item) => `${item.kind} ${item.decision}`).join('\n');
-      return closeReview(ctx, 'waiting', 0, `${opened.startedAt} code-review waiting\n${summary}`, noted, [], undefined);
+      return closeReview(
+        ctx,
+        'waiting',
+        0,
+        `${opened.startedAt} code-review waiting\n${summary}`,
+        noted,
+        [],
+        undefined,
+      );
     }
     const written = await writeReport(
       deps,
