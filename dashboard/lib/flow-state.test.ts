@@ -65,12 +65,15 @@ describe('applyFlow', () => {
 });
 
 describe('applyReviewLog', () => {
-  it.each(['decision: return\nprocess exited 0', 'process killed: timeout'])('keeps done chips finished for %s', (body) => {
-    const current = review('done');
-    const result = applyReviewLog(current, memory(), { key: current.key, step: 'code-review-quality', body });
-    expect(result.flow?.phases[0].steps[0]).toEqual(current.phases[0].steps[0]);
-    expect([...result.memory.openReviews]).toEqual([]);
-  });
+  it.each(['decision: return\nprocess exited 0', 'process killed: timeout'])(
+    'keeps done chips finished for %s',
+    (body) => {
+      const current = review('done');
+      const result = applyReviewLog(current, memory(), { key: current.key, step: 'code-review-quality', body });
+      expect(result.flow?.phases[0].steps[0]).toEqual(current.phases[0].steps[0]);
+      expect([...result.memory.openReviews]).toEqual([]);
+    },
+  );
 
   it.each([
     ['decision: ok\nprocess exited 0', 'done'],
@@ -106,9 +109,12 @@ describe('applyReviewLog', () => {
     },
   );
 
-  it.each([null, flowView({ status: 'waiting' }), flowView()])('records live memory before a reviewing flow', (current) => {
-    const result = applyReviewLog(current, memory(), { key: 'run-1', step: 'code-review-quality', body: 'working' });
-    expect(result.flow).toBe(current);
-    expect([...result.memory.openReviews]).toEqual(['code-review-quality']);
-  });
+  it.each([null, flowView({ status: 'waiting' }), flowView()])(
+    'records live memory before a reviewing flow',
+    (current) => {
+      const result = applyReviewLog(current, memory(), { key: 'run-1', step: 'code-review-quality', body: 'working' });
+      expect(result.flow).toBe(current);
+      expect([...result.memory.openReviews]).toEqual(['code-review-quality']);
+    },
+  );
 });
