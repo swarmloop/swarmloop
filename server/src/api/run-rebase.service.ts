@@ -1,6 +1,6 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { readEnv } from '../config/env';
+import { AppConfig } from '../config/env';
+import { Clock } from '../core/clock';
 import { RunEntity } from '../history/entities';
 import { HistoryService } from '../history/history.service';
 import { PipelineService } from '../pipeline/pipeline.service';
@@ -18,8 +18,9 @@ export class RunRebaseService {
   constructor(
     private readonly history: HistoryService,
     private readonly pipeline: PipelineService,
-    private readonly config: ConfigService,
+    private readonly config: AppConfig,
     private readonly commands: RunCommandsService,
+    private readonly clock: Clock,
   ) {}
 
   async rebase(key: string): Promise<RunRef> {
@@ -73,7 +74,7 @@ export class RunRebaseService {
       prompt: run.prompt,
       denied: await this.history.listDenyPaths(),
       message: commitMessage(run.key, summary),
-      hosts: readEnv(this.config),
+      hosts: { ...this.config.env, clock: this.clock },
     });
   }
 

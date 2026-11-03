@@ -1,11 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { SwarmloopEnv } from '../../../config/env';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../../core/swarmloop-error';
+import type { Clock } from '../../../core/clock';
+import type { HttpCallDraft } from '../../../core/swarmloop-error';
+import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
 import { request } from '../../http';
 import { remoteProject } from '../../../steps/merge-request/merge-request-record';
-import { AbstractCodeHost } from '../abstract-code-host';
-import {
+import { AbstractCodeHost, type CodeHostEnv } from '../abstract-code-host';
+import type {
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
@@ -30,25 +29,24 @@ interface GithubRun {
   html_url?: string;
 }
 
-@Injectable()
 export class GithubCodeHost extends AbstractCodeHost {
   readonly name = 'github' as const;
 
-  constructor(config: ConfigService) {
-    super(config, 'github pull request failed', 'GITHUB_TOKEN was rejected');
+  constructor(env: CodeHostEnv, clock: Clock) {
+    super(env, clock, 'github pull request failed', 'GITHUB_TOKEN was rejected');
   }
 
   matchesOrigin(origin: string): boolean {
-    return this.remoteOnBase(origin, this.config.getOrThrow<string>('GITHUB_BASE_URL')) !== null;
+    return this.remoteOnBase(origin, this.env.GITHUB_BASE_URL) !== null;
   }
 
   pushUrl(origin: string): string | null {
-    const token = this.config.getOrThrow<string>('GITHUB_TOKEN');
+    const token = this.env.GITHUB_TOKEN;
     if (!token.trim()) {
       return null;
     }
     try {
-      const host = new URL(this.config.getOrThrow<string>('GITHUB_BASE_URL')).hostname.toLowerCase();
+      const host = new URL(this.env.GITHUB_BASE_URL).hostname.toLowerCase();
       const remote = remoteProject(origin);
       if (remote.host.toLowerCase() !== host) {
         return null;
@@ -62,8 +60,8 @@ export class GithubCodeHost extends AbstractCodeHost {
   selected(): SelectedHost {
     return {
       name: this.name,
-      baseUrl: this.config.getOrThrow<string>('GITHUB_BASE_URL'),
-      token: this.config.getOrThrow<string>('GITHUB_TOKEN'),
+      baseUrl: this.env.GITHUB_BASE_URL,
+      token: this.env.GITHUB_TOKEN,
       baseKey: 'GITHUB_BASE_URL',
       tokenKey: 'GITHUB_TOKEN',
     };
@@ -101,7 +99,7 @@ export class GithubCodeHost extends AbstractCodeHost {
     try {
       const { root: api, headers } = this.credentials();
       const url = `${api}/repos/${repoPath(project)}/actions/runs/${id}/cancel`;
-      const response = await request(url, headers, calls, { method: 'POST' });
+      const response = await request(this.clock, url, headers, calls, { method: 'POST' });
       this.assertStatus(response.status, calls, 'github pipeline failed');
       return { httpCalls: calls };
     } catch (error) {
@@ -114,7 +112,7 @@ export class GithubCodeHost extends AbstractCodeHost {
     try {
       const { root: api, headers } = this.credentials();
       const url = `${api}/repos/${repoPath(project)}/actions/jobs/${jobId}/logs`;
-      const response = await request(url, headers, calls);
+      const response = await request(this.clock, url, headers, calls);
       this.assertStatus(response.status, calls, 'github pipeline failed');
       return { trace: response.body.toString('utf8'), httpCalls: calls };
     } catch (error) {
@@ -122,11 +120,11 @@ export class GithubCodeHost extends AbstractCodeHost {
     }
   }
 
-  protected credentialKeys(): readonly (keyof SwarmloopEnv)[] {
+  protected credentialKeys(): readonly (keyof CodeHostEnv)[] {
     return ['GITHUB_BASE_URL', 'GITHUB_TOKEN'];
   }
 
-  protected endpoint(env: SwarmloopEnv): { root: string; headers: Record<string, string> } {
+  protected endpoint(env: CodeHostEnv): { root: string; headers: Record<string, string> } {
     let api: string;
     try {
       api = apiRoot(env.GITHUB_BASE_URL);
@@ -178,7 +176,7 @@ export class GithubCodeHost extends AbstractCodeHost {
     if (!Array.isArray(body)) {
       throw new SwarmloopError('github pull request failed');
     }
-    const row = body.find((item) => (item as GithubPull | null)?.head?.ref === source);
+    const row = (body as unknown[]).find((item) => (item as GithubPull | null)?.head?.ref === source);
     return (row as GithubPull | undefined) ?? null;
   }
 
@@ -202,7 +200,12 @@ export class GithubCodeHost extends AbstractCodeHost {
     runId: number,
     calls: HttpCallDraft[],
   ): Promise<PipelineJob[]> {
-    const response = await request(`${api}/repos/${project}/actions/runs/${runId}/jobs?per_page=100`, headers, calls);
+    const response = await request(
+      this.clock,
+      `${api}/repos/${project}/actions/runs/${runId}/jobs?per_page=100`,
+      headers,
+      calls,
+    );
     this.assertStatus(response.status, calls, 'github pipeline failed');
     let body: unknown;
     try {
@@ -269,7 +272,7 @@ function newestRun(body: unknown, sha: string): GithubRun | null {
   if (!Array.isArray(runs)) {
     throw new SwarmloopError('github pipeline failed');
   }
-  const match = runs.find((item) => {
+  const match = (runs as unknown[]).find((item) => {
     const run = item as GithubRun | null;
     return run?.id && (!sha || run.head_sha === sha);
   });

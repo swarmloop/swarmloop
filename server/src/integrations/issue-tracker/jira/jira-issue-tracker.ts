@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { basename } from 'path';
-import { readEnv } from '../../../config/env';
+import { AppConfig } from '../../../config/env';
+import { Clock } from '../../../core/clock';
 import { HttpStatusError, request } from '../../http';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../../core/swarmloop-error';
 import { encodedBody, headersFor, LinkedPagesService } from '../../linked-pages/linked-pages';
@@ -41,8 +41,9 @@ interface JiraField {
 @Injectable()
 export class JiraIssueTracker extends AbstractIssueTracker {
   constructor(
-    private readonly config: ConfigService,
+    private readonly config: AppConfig,
     private readonly linkedPages: LinkedPagesService,
+    private readonly clock: Clock,
   ) {
     super();
   }
@@ -75,7 +76,7 @@ export class JiraIssueTracker extends AbstractIssueTracker {
   }
 
   private credentials(): { base: string; headers: Record<string, string> } {
-    const env = readEnv(this.config);
+    const env = this.config.env;
     const missing = (['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN'] as const).find((name) => !env[name]);
     if (missing) {
       throw new SwarmloopError(`${missing} is missing`);
@@ -88,7 +89,7 @@ export class JiraIssueTracker extends AbstractIssueTracker {
   }
 
   private async fieldList(base: string, headers: Record<string, string>, calls: HttpCallDraft[]): Promise<JiraField[]> {
-    const response = await request(`${base}/rest/api/3/field`, headers, calls);
+    const response = await request(this.clock, `${base}/rest/api/3/field`, headers, calls);
     if (response.status < 200 || response.status >= 300) {
       return [];
     }
@@ -104,7 +105,7 @@ export class JiraIssueTracker extends AbstractIssueTracker {
     const url = `${base}/rest/api/3/issue/${encodeURIComponent(key)}?fields=*all`;
     let response: Awaited<ReturnType<typeof request>>;
     try {
-      response = await request(url, headers, calls);
+      response = await request(this.clock, url, headers, calls);
     } catch (error) {
       const status = error instanceof HttpStatusError ? error.status : 'failed';
       throw new FetchFailed(`issue fetch failed for ${key}: HTTP ${status}`, calls);
@@ -160,7 +161,7 @@ export class JiraIssueTracker extends AbstractIssueTracker {
     let startAt = 0;
     for (;;) {
       const url = `${base}/rest/api/3/issue/${encodeURIComponent(key)}/comment?startAt=${startAt}&maxResults=100`;
-      const response = await request(url, headers, calls);
+      const response = await request(this.clock, url, headers, calls);
       if (response.status < 200 || response.status >= 300) {
         throw new FetchFailed(`issue fetch failed for ${key}: HTTP ${response.status}`, calls);
       }
@@ -189,7 +190,12 @@ export class JiraIssueTracker extends AbstractIssueTracker {
       if (!attachment.content || !attachment.filename) {
         continue;
       }
-      const response = await request(attachment.content, headersFor(attachment.content, base, headers), calls);
+      const response = await request(
+        this.clock,
+        attachment.content,
+        headersFor(attachment.content, base, headers),
+        calls,
+      );
       const encoded = encodedBody(response.contentType, response.body);
       saved.push({
         filename: attachment.filename,
@@ -215,7 +221,7 @@ export class JiraIssueTracker extends AbstractIssueTracker {
     const attachmentUrls = new Set(
       (issue.fields.attachment ?? []).map((item) => item.content).filter((url): url is string => Boolean(url)),
     );
-    const context: PageReadContext = { runKey, calls, headers, base };
+    const context: PageReadContext = { runKey, calls, headers, base, clock: this.clock };
     const seen = new Set<string>([issue.key, bundle.epic?.key].filter((key): key is string => Boolean(key)));
     const direct: string[] = [];
     const remember = (key: string): void => {

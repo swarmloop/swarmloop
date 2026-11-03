@@ -6,6 +6,7 @@ import type { HttpCallDraft } from '../../core/swarmloop-error';
 
 export function modelVisit(input: {
   opened: OpenedStep;
+  now: number;
   step: StepName;
   mode: string;
   model: string;
@@ -17,7 +18,7 @@ export function modelVisit(input: {
   documents?: DocumentDraft[];
   httpCalls?: HttpCallDraft[];
 }): VisitDraft {
-  const now = new Date().toISOString();
+  const now = new Date(input.now).toISOString();
   const agent = input.agent;
   const wallStart = input.opened.run.stepStartedAt ?? input.opened.startedAt ?? now;
   const startedMs = Date.parse(wallStart);
@@ -34,7 +35,7 @@ export function modelVisit(input: {
     mode: input.mode,
     startedAt: wallStart,
     finishedAt: now,
-    durationMs: Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : 0,
+    durationMs: Number.isFinite(startedMs) ? Math.max(0, input.now - startedMs) : 0,
     status: input.status,
     exitCode: input.exitCode,
     killReason: agent?.killReason ? `process killed: ${agent.killReason}` : null,

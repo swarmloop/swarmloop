@@ -22,6 +22,7 @@ import { collectEnvMasks } from '../sandbox/sandbox.service';
 import type { ShellFeature, ShellMatch } from '../contract/api';
 import type { ServerApi } from './server-api';
 import { HttpServerApi } from './server-api';
+import { rawEnv } from '../config/process-env';
 import { hostCheckout, nestCheckout } from './paths';
 import type { ShellCommand } from './shell-command';
 import { parseShell, pickSnapshot } from './shell-command';
@@ -30,7 +31,7 @@ import { readShellConfig } from './shell-env';
 
 export async function runShell(argv: string[], cwd = process.cwd()): Promise<void> {
   const root = resolve(__dirname, '../../..');
-  const api = new HttpServerApi(process.env.SWARMLOOP_API_URL ?? 'http://127.0.0.1:3920');
+  const api = new HttpServerApi(rawEnv().SWARMLOOP_API_URL ?? 'http://127.0.0.1:3920');
   try {
     await dispatch(argv, cwd, root, api);
   } catch (error) {

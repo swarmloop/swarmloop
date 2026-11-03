@@ -20,6 +20,7 @@ export function withReturnNotes<T extends { attempt: number; documents: ReturnTy
   name: string,
   visits: T[],
   documents: DocumentEntity[],
+  now: number,
 ): T[] {
   if (name !== 'implement' && name !== 'implement-improve') {
     return visits;
@@ -31,7 +32,9 @@ export function withReturnNotes<T extends { attempt: number; documents: ReturnTy
   }
   const found = [...documents].reverse().find((document) => document.kind === 'return');
   last.documents = [
-    found ? documentView(found) : { kind: 'return', attempt: last.attempt, body, createdAt: new Date().toISOString() },
+    found
+      ? documentView(found)
+      : { kind: 'return', attempt: last.attempt, body, createdAt: new Date(now).toISOString() },
     ...last.documents.filter((item) => item.kind !== 'return'),
   ];
   return visits;

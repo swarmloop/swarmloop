@@ -16,7 +16,7 @@ export class ConfluencePageReader implements PageReader {
       throw new FetchFailed(`confluence is not readable: ${url}`, context.calls);
     }
     const contentUrl = `${this.base}/wiki/rest/api/content/${pageId}?expand=body.storage`;
-    const response = await request(contentUrl, context.headers, context.calls);
+    const response = await request(context.clock, contentUrl, context.headers, context.calls);
     if (response.status < 200 || response.status >= 300) {
       throw new FetchFailed(`confluence is not readable: ${url}`, context.calls);
     }

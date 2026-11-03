@@ -1,6 +1,7 @@
 import type { HistoryService } from '../history/history.service';
 import type { VisitDraft } from '../history/visit';
 import { sampleSelf } from '../history/visit';
+import type { Clock } from '../core/clock';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { visitStatus } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
@@ -26,6 +27,7 @@ export interface StepEnd {
 export interface StepContext {
   opened: OpenedStep;
   calls: HttpCallDraft[];
+  clock: Clock;
   end(input: StepEnd): Promise<PipelineResult>;
 }
 
@@ -34,7 +36,10 @@ export abstract class BaseStep implements Step {
   abstract readonly requiredKind: string;
   readonly usesModel: boolean = false;
 
-  constructor(protected readonly history: HistoryService) {}
+  constructor(
+    protected readonly history: HistoryService,
+    protected readonly clock: Clock,
+  ) {}
 
   missingInput(key: string, _options?: StepOptions): Promise<string | null> {
     return requiredDocument(this.history, key, this.requiredKind);
@@ -46,12 +51,13 @@ export abstract class BaseStep implements Step {
 
   /** Opens the step, runs its body, and closes the visit. A throw closes it as failed. */
   protected async perform(key: string, body: (ctx: StepContext) => Promise<PipelineResult>): Promise<PipelineResult> {
-    const opened = await openStep(this.history, key, this.name);
+    const opened = await openStep(this.history, this.clock, key, this.name);
     const calls: HttpCallDraft[] = [];
     let closed = false;
     const ctx: StepContext = {
       opened,
       calls,
+      clock: this.clock,
       end: (input) => {
         closed = true;
         return this.close(opened, calls, input);
@@ -87,20 +93,21 @@ export abstract class BaseStep implements Step {
   protected abstract run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult>;
 
   private async close(opened: OpenedStep, calls: HttpCallDraft[], input: StepEnd): Promise<PipelineResult> {
+    const finishedAt = this.clock.iso();
     const visit: VisitDraft = {
       step: this.name,
       model: null,
       mode: null,
       startedAt: opened.startedAt,
-      finishedAt: new Date().toISOString(),
-      durationMs: Date.now() - opened.started,
+      finishedAt,
+      durationMs: this.clock.now() - opened.started,
       status: input.status ?? visitStatus(input.outcome),
       exitCode: input.exitCode,
       killReason: null,
       tokensIn: 0,
       tokensOut: 0,
       usd: 0,
-      samples: [sampleSelf()],
+      samples: [sampleSelf(finishedAt)],
       exchange: null,
       httpCalls: calls,
       document: null,
@@ -113,6 +120,7 @@ export abstract class BaseStep implements Step {
     }
     return closeStep({
       history: this.history,
+      clock: this.clock,
       run: opened.run,
       previousStep: opened.previousStep,
       previousStatus: opened.previousStatus,

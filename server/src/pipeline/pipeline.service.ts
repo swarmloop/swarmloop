@@ -1,7 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { existsSync, realpathSync, statSync } from 'fs';
-import { readEnv } from '../config/env';
+import { AppConfig } from '../config/env';
 import { liveLogBody } from '../acp/live-output';
 import { overSpend } from '../agent/limits';
 import { RunStop } from '../agent/run-stop';
@@ -13,6 +12,7 @@ import { HistoryService } from '../history/history.service';
 import { containerName } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { Clock } from '../core/clock';
 import { renderProjects, storedProjects } from '../steps/prepare/checkout-path';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { RequirementsStep } from '../steps/requirements/requirements.step';
@@ -47,7 +47,8 @@ export class PipelineService implements OnModuleInit {
     private readonly requirements: RequirementsStep,
     private readonly registry: StepRegistry,
     private readonly sandbox: SandboxService,
-    private readonly config: ConfigService,
+    private readonly config: AppConfig,
+    private readonly clock: Clock,
     private readonly runStop: RunStop,
     private readonly projects: ProjectAppendService,
   ) {}
@@ -60,7 +61,7 @@ export class PipelineService implements OnModuleInit {
       const body = await this.history.latestBody(run.key, CHAT_LOCK);
       const shell = readChatLock(body);
       if (shell?.container) {
-        await settleShell(this.history, this.sandbox, run);
+        await settleShell(this.history, this.sandbox, run, this.clock);
         continue;
       }
       const resume = chatResume(body, run.ownerPid);
@@ -218,14 +219,14 @@ export class PipelineService implements OnModuleInit {
           this.logger.error(message);
           const run = await this.history.findRun(key);
           if (run?.status === 'running' && run.ownerPid === process.pid) {
-            const now = new Date().toISOString();
+            const now = this.clock.iso();
             await this.history.finishVisit(run, {
               step: run.currentStep,
               model: null,
               mode: null,
               startedAt: run.stepStartedAt ?? now,
               finishedAt: now,
-              durationMs: stepElapsed(run.stepStartedAt),
+              durationMs: stepElapsed(run.stepStartedAt, this.clock.now()),
               status: 'failed',
               exitCode: 1,
               killReason: null,
@@ -308,12 +309,12 @@ export class PipelineService implements OnModuleInit {
   }
 
   private async abandon(run: RunEntity): Promise<void> {
-    const now = new Date().toISOString();
+    const now = this.clock.iso();
     const note = 'process died\n';
     const saved = this.savedOutput(run);
     const log = diedLog(saved);
-    const env = readEnv(this.config);
-    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME);
+    const env = this.config.env;
+    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now());
     const model = modelForStep(run.currentStep, env);
     const step = isStep(run.currentStep) ? this.registry.get(run.currentStep) : null;
     const charge = step?.charge
@@ -328,7 +329,7 @@ export class PipelineService implements OnModuleInit {
       mode: null,
       startedAt: run.stepStartedAt ?? run.updatedAt,
       finishedAt: now,
-      durationMs: stepElapsed(run.stepStartedAt),
+      durationMs: stepElapsed(run.stepStartedAt, this.clock.now()),
       status: 'failed',
       exitCode: 1,
       killReason: 'process died',
@@ -413,7 +414,7 @@ export class PipelineService implements OnModuleInit {
       const run = await this.history.findRun(key);
       const mark = loopMark(await this.history.latestBody(key, 'loop_mark'));
       const stats = run ? await this.history.listStats(run.id) : [];
-      const env = readEnv(this.config);
+      const env = this.config.env;
       if (
         run?.status === 'failed' &&
         run.currentStep === step &&
@@ -438,7 +439,7 @@ export class PipelineService implements OnModuleInit {
   /** Refuse a step that has not started once recorded spend is at the ceiling. */
   private async spendStop(key: string, step: StepName): Promise<string | null> {
     const existing = await this.history.findRun(key);
-    if (!existing || !overSpend(existing.spentUsd, readEnv(this.config).MAX_RUN_USD)) {
+    if (!existing || !overSpend(existing.spentUsd, this.config.env.MAX_RUN_USD)) {
       return null;
     }
     const stats = await this.history.listStats(existing.id);
@@ -482,7 +483,7 @@ export class PipelineService implements OnModuleInit {
     run.currentStep = settled.currentStep;
     run.ownerPid = null;
     await this.history.saveRun(run);
-    const line = `${new Date().toISOString()} ${name} not implemented`;
+    const line = `${this.clock.iso()} ${name} not implemented`;
     await this.history.appendProgress(key, line);
     return { exitCode: 1, message: line };
   }
@@ -547,14 +548,14 @@ export class PipelineService implements OnModuleInit {
   }
 
   private untilIdle(key: string): Promise<boolean> {
-    const deadline = Date.now() + 20_000;
+    const deadline = this.clock.now() + 20_000;
     return new Promise((resolve) => {
       const tick = (): void => {
         if (!this.inflight.has(key)) {
           resolve(true);
           return;
         }
-        if (Date.now() >= deadline) {
+        if (this.clock.now() >= deadline) {
           resolve(false);
           return;
         }
@@ -572,7 +573,7 @@ export class PipelineService implements OnModuleInit {
     if (!existing) {
       return false;
     }
-    const settled = await settleShell(this.history, this.sandbox, existing);
+    const settled = await settleShell(this.history, this.sandbox, existing, this.clock);
     if (shellHolding(await this.history.latestBody(key, CHAT_LOCK), settled.status)) {
       return true;
     }
@@ -612,10 +613,10 @@ function targetError(path: string | undefined): string | null {
   return null;
 }
 
-function stepElapsed(startedAt: string | null): number {
+function stepElapsed(startedAt: string | null, now: number): number {
   if (!startedAt) {
     return 0;
   }
   const started = Date.parse(startedAt);
-  return Number.isFinite(started) ? Math.max(0, Date.now() - started) : 0;
+  return Number.isFinite(started) ? Math.max(0, now - started) : 0;
 }

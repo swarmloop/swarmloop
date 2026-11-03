@@ -9,6 +9,7 @@ import type { FlowView } from '../contract/api';
 import type { ServerApi } from './server-api';
 import { HttpServerApi } from './server-api';
 import { nestCheckout } from './paths';
+import { FakeClock } from '../core/fake-clock.spec-helpers';
 
 describe('sloop', () => {
   it('names the phase and the step', () => {
@@ -655,7 +656,7 @@ function harness(
     cwd: '/tmp/demo',
     sleep: sleep ?? (async () => undefined),
     intervalMs: 0,
-    now: () => 1,
+    clock: new FakeClock(1),
   });
   return { agent, notes, api: full };
 }

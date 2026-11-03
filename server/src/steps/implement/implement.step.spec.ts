@@ -18,6 +18,7 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { REBASE_CONFLICT, rebaseFeatureRepos } from '../../git/rebase-worktree';
+import { FakeClock } from '../../core/fake-clock.spec-helpers';
 
 const reply = [
   'implementation:',
@@ -666,7 +667,7 @@ describe('implement step', () => {
         prompt: null,
         denied: [],
         message: 'feat(PROJ-169): Ship the field',
-        hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' },
+        hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '', clock: new FakeClock() },
       });
       expect(stop.kind).toBe('conflict');
       const state = git(tree, ['rev-parse', '--git-path', 'swarmloop-rebase']);

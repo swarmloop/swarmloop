@@ -2,12 +2,12 @@ import { chmodSync, mkdirSync, writeFileSync } from 'fs';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { readEnv } from '../config/env';
+import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { replaceLogFile } from '../acp/live-output';
 import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { Clock } from '../core/clock';
 import { SampleDraft } from '../history/visit';
 import type { AgentRuntime } from '../integrations/agent-runtime/agent-runtime';
 import { runtimeFor, runtimeForCommand } from '../integrations/agent-runtime/agent-runtime.registry';
@@ -97,7 +97,8 @@ export class AgentProcessRunner {
   private readonly logger = new Logger(AgentProcessRunner.name);
 
   constructor(
-    private readonly config: ConfigService,
+    private readonly config: AppConfig,
+    private readonly clock: Clock,
     private readonly sandbox: SandboxService,
     private readonly runStop: RunStop,
     @Optional() private readonly live?: LiveHub,
@@ -105,7 +106,7 @@ export class AgentProcessRunner {
 
   async run(input: AgentRunInput): Promise<AgentRunResult> {
     try {
-      const env = readEnv(this.config);
+      const env = this.config.env;
       if (input.auto === true && callsExceeded(input.agentCalls, env.MAX_AGENT_CALLS)) {
         return this.empty(input, 'calls', 1, 0);
       }
@@ -190,7 +191,7 @@ export class AgentProcessRunner {
     resumed: boolean,
     priorOutput: string,
   ): Promise<AgentRunResult> {
-    const env = readEnv(this.config);
+    const env = this.config.env;
     const userId = sandboxUserId();
     const statePath = agentStateDir(
       resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname),
@@ -216,7 +217,7 @@ export class AgentProcessRunner {
         usage: { tokensIn: 0, tokensOut: 0, usd: 0 },
       });
     }
-    const started = Date.now();
+    const started = this.clock.now();
     const startedAt = new Date(started).toISOString();
     const child = await this.sandbox.spawn({
       runtime: env.RUNTIME,
@@ -261,7 +262,7 @@ export class AgentProcessRunner {
     let lastActivity = started;
     let finishedByResult = false;
     let buffer = '';
-    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME);
+    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now());
 
     const billed = (): { tokensIn: number; tokensOut: number; usd: number } => {
       if (!billedFromStream) {
@@ -280,7 +281,7 @@ export class AgentProcessRunner {
     };
     const sessionUsd = (): number => (input.groupUsd ?? 0) + billed().usd;
     const check = (): void => {
-      const now = Date.now();
+      const now = this.clock.now();
       const step = billed();
       const stepTokens = step.tokensIn + step.tokensOut;
       const priced = step.usd;
@@ -351,7 +352,7 @@ export class AgentProcessRunner {
       }
     };
     const onData = (chunk: Buffer): void => {
-      lastActivity = Date.now();
+      lastActivity = this.clock.now();
       note(chunk.toString('utf8'));
       buffer += chunk.toString('utf8');
       const lines = buffer.split('\n');
@@ -410,7 +411,7 @@ export class AgentProcessRunner {
     };
 
     const onErr = (chunk: Buffer): void => {
-      lastActivity = Date.now();
+      lastActivity = this.clock.now();
       note(chunk.toString('utf8'));
     };
     child.stdout?.on('data', onData);
@@ -425,7 +426,7 @@ export class AgentProcessRunner {
       void this.sandbox
         .stats(child.containerName)
         .then((sample) => {
-          samples.push({ sampledAt: new Date().toISOString(), ...sample });
+          samples.push({ sampledAt: this.clock.iso(), ...sample });
           publish();
         })
         .finally(() => {
@@ -472,7 +473,7 @@ export class AgentProcessRunner {
     child.stderr?.off('data', onErr);
     clearInterval(timer);
     await writing;
-    const finished = Date.now();
+    const finished = this.clock.now();
     const priced = billed();
     await this.writeSession(input.sessionFile, {
       chatId,
@@ -515,7 +516,7 @@ export class AgentProcessRunner {
   }
 
   private empty(input: AgentRunInput, killReason: KillReason, exitCode: number, calls: number): AgentRunResult {
-    const now = new Date().toISOString();
+    const now = this.clock.iso();
     return {
       responseText: '',
       chatId: null,
@@ -535,7 +536,7 @@ export class AgentProcessRunner {
   }
 
   private async writeSession(path: string, session: SessionState): Promise<void> {
-    const runtime = readEnv(this.config).RUNTIME;
+    const runtime = this.config.env.RUNTIME;
     await writeFile(path, `${JSON.stringify({ ...session, runtime })}\n`);
   }
 }

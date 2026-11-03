@@ -45,8 +45,8 @@ export function parsePriceMarkdown(markdown: string): Record<string, ModelPrice>
 
 export async function loadPriceTable(
   root: string,
-  runtime: RuntimeName = 'cursor',
-  now = Date.now(),
+  runtime: RuntimeName,
+  now: number,
   fetchPage: typeof fetch = fetch,
 ): Promise<Record<string, ModelPrice>> {
   const file = join(root, 'data', `price-cache-${runtime}.json`);

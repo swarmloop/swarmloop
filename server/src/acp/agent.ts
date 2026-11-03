@@ -10,6 +10,7 @@ import type { ServerApi } from './server-api';
 import { readableLog } from '../contract/readable-log';
 import { nestCheckout } from './paths';
 import { REVIEW_STEPS } from '../contract/steps';
+import type { Clock } from '../core/clock';
 import { CHECKOUT_NAME } from '../steps/prepare/checkout-path';
 
 export interface SkillCommand {
@@ -39,7 +40,7 @@ export interface SloopOptions {
   cwd?: string;
   sleep?: (ms: number) => Promise<void>;
   intervalMs?: number;
-  now?: () => number;
+  clock: Clock;
 }
 
 const MISSING_POLLS = 20;
@@ -169,7 +170,7 @@ export class Sloop {
   }
 
   private open(params: Record<string, unknown>, emit: (note: JsonRpc) => void): unknown {
-    const id = `sloop-${(this.options.now ?? Date.now)().toString(36)}-${this.serial}`;
+    const id = `sloop-${this.options.clock.now().toString(36)}-${this.serial}`;
     this.serial += 1;
     const session: Session = {
       id,
@@ -520,7 +521,7 @@ export class Sloop {
   }
 
   private name(session: Session, title: string, emit: (note: JsonRpc) => void): void {
-    const updatedAt = new Date(this.options.now?.() ?? Date.now()).toISOString();
+    const updatedAt = this.options.clock.iso();
     emit({
       jsonrpc: '2.0',
       method: 'session/update',

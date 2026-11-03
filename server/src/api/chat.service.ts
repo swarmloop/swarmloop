@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { readEnv } from '../config/env';
+import { AppConfig } from '../config/env';
+import { Clock } from '../core/clock';
 import { resolveRepoRoot } from '../config/repo-root';
 import { HistoryService } from '../history/history.service';
 import { AGENT_RUNNER, AgentProcessRunner } from '../agent/agent-runner';
@@ -23,7 +23,8 @@ import { ChatBody, ChatView } from '../contract/api';
 export class ChatService {
   constructor(
     private readonly history: HistoryService,
-    private readonly config: ConfigService,
+    private readonly config: AppConfig,
+    private readonly clock: Clock,
     private readonly sandbox: SandboxService,
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
     private readonly services: ServiceContextService,
@@ -34,7 +35,7 @@ export class ChatService {
     if (!found) {
       throw new NotFoundException(`${key} is missing`);
     }
-    const run = await settleShell(this.history, this.sandbox, found);
+    const run = await settleShell(this.history, this.sandbox, found, this.clock);
     if (shellHolding(await this.history.latestBody(key, CHAT_LOCK), run.status) || this.history.held(run)) {
       throw new ConflictException(`${key} is already running`);
     }
@@ -42,7 +43,7 @@ export class ChatService {
     if (!prompt) {
       throw new BadRequestException('prompt is missing');
     }
-    const env = readEnv(this.config);
+    const env = this.config.env;
     const model = modelForStep('implement', env);
     if (!model) {
       throw new BadRequestException('MODEL_IMPLEMENT is missing');
@@ -167,7 +168,7 @@ export class ChatService {
     if (!/^[a-z0-9-]+$/.test(name)) {
       throw new BadRequestException(`${name} skill is missing`);
     }
-    const file = join(resolveRepoRoot(readEnv(this.config).SWARMLOOP_ROOT, __dirname), 'skills', name, 'SKILL.md');
+    const file = join(resolveRepoRoot(this.config.env.SWARMLOOP_ROOT, __dirname), 'skills', name, 'SKILL.md');
     try {
       return readFileSync(file, 'utf8').trimEnd();
     } catch {

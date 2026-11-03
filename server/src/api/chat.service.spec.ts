@@ -1,7 +1,9 @@
 import { mkdir, mkdtemp, readFile, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { ConfigService } from '@nestjs/config';
+import { AppConfig } from '../config/env';
+import { testEnv } from '../config/env.spec-helpers';
+import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
 import { ChatService } from './chat.service';
@@ -48,6 +50,7 @@ describe('chat', () => {
     const chat = new ChatService(
       history as never,
       config(root),
+      new FakeClock(),
       { assertReady: async () => undefined } as never,
       { run: agent } as never,
       { block: async () => 'Services:\nJira PROJ-1: Ship the field' } as never,
@@ -87,6 +90,7 @@ describe('chat', () => {
     const chat = new ChatService(
       history as never,
       config('/tmp'),
+      new FakeClock(),
       { assertReady: async () => undefined } as never,
       { run: jest.fn() } as never,
       {
@@ -105,6 +109,7 @@ describe('chat', () => {
     const chat = new ChatService(
       history as never,
       config('/tmp'),
+      new FakeClock(),
       { assertReady: async () => undefined } as never,
       { run: jest.fn() } as never,
       {
@@ -115,51 +120,28 @@ describe('chat', () => {
   });
 });
 
-function config(root: string): ConfigService {
-  const values: Record<string, string | number> = {
-    RUNTIME: 'cursor',
-    REQUIREMENTS_VIA: 'direct',
-    ISSUE_TRACKER: 'jira',
-    JIRA_BASE_URL: '',
-    JIRA_EMAIL: '',
-    JIRA_API_TOKEN: '',
-    GITLAB_BASE_URL: '',
-    GITLAB_TOKEN: '',
-    GITHUB_BASE_URL: '',
-    GITHUB_TOKEN: '',
-    CURSOR_API_KEY: '',
-    ANTHROPIC_API_KEY: '',
-    MAX_AGENT_CALLS: 20,
-    MAX_RETURNS: 3,
-    MAX_PIPELINE_RETURNS: 6,
-    MAX_LAUNCHES: 3,
-    MAX_RUN_USD: 25,
-    IDLE_TIMEOUT_MS: 1000,
-    TICK_MS: 1000,
-    REQUIREMENTS_TIMEOUT_MS: 1000,
-    RESEARCH_TIMEOUT_MS: 1000,
-    PLAN_TIMEOUT_MS: 1000,
-    IMPLEMENT_TIMEOUT_MS: 5000,
-    CODE_REVIEW_TIMEOUT_MS: 1000,
-    MERGE_REQUEST_TIMEOUT_MS: 1000,
-    PIPELINE_TIMEOUT_MS: 1000,
-    PIPELINE_START_TIMEOUT_MS: 180000,
-    MODEL_RESEARCH: 'research-model',
-    MODEL_PLAN: 'plan-model',
-    MODEL_IMPLEMENT: 'implement-model',
-    SWARMLOOP_ROOT: root,
-    SWARMLOOP_API_PORT: 3920,
-    SWARMLOOP_API_HOST: '127.0.0.1',
-  };
-  return {
-    get: (key: string) => values[key],
-    getOrThrow: (key: string) => {
-      if (values[key] === undefined) {
-        throw new Error(key);
-      }
-      return values[key];
-    },
-  } as ConfigService;
+function config(root: string): AppConfig {
+  return new AppConfig(
+    testEnv({
+      SWARMLOOP_ROOT: root,
+      REQUIREMENTS_VIA: 'direct',
+      CURSOR_API_KEY: '',
+      MAX_AGENT_CALLS: 20,
+      MAX_RUN_USD: 25,
+      IDLE_TIMEOUT_MS: 1000,
+      TICK_MS: 1000,
+      REQUIREMENTS_TIMEOUT_MS: 1000,
+      RESEARCH_TIMEOUT_MS: 1000,
+      PLAN_TIMEOUT_MS: 1000,
+      IMPLEMENT_TIMEOUT_MS: 5000,
+      CODE_REVIEW_TIMEOUT_MS: 1000,
+      MERGE_REQUEST_TIMEOUT_MS: 1000,
+      PIPELINE_TIMEOUT_MS: 1000,
+      MODEL_RESEARCH: 'research-model',
+      MODEL_PLAN: 'plan-model',
+      MODEL_IMPLEMENT: 'implement-model',
+    }),
+  );
 }
 
 function result(prompt: string): AgentRunResult {

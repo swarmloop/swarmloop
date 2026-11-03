@@ -1,9 +1,8 @@
 import 'reflect-metadata';
-import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
-import { readEnv } from './config/env';
+import { AppConfig } from './config/env';
 import { assertEnvFile } from './config/load-env';
 import { resolveRepoRoot } from './config/repo-root';
 import { PANEL_ORIGINS } from './live/origins';
@@ -20,7 +19,7 @@ async function bootstrap(): Promise<void> {
     app.enableShutdownHooks();
     app.enableCors({ origin: PANEL_ORIGINS });
     app.useWebSocketAdapter(new IoAdapter(app));
-    const env = readEnv(app.get(ConfigService));
+    const env = app.get(AppConfig).env;
     await app.listen(env.SWARMLOOP_API_PORT, env.SWARMLOOP_API_HOST);
   } catch (error) {
     fail(error);

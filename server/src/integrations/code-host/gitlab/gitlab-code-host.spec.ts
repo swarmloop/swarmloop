@@ -1,4 +1,6 @@
-import type { ConfigService } from '@nestjs/config';
+import { testEnv } from '../../../config/env.spec-helpers';
+import { FakeClock } from '../../../core/fake-clock.spec-helpers';
+import type { CodeHostEnv } from '../abstract-code-host';
 import { FetchFailed } from '../../../core/swarmloop-error';
 import { GitlabCodeHost } from './gitlab-code-host';
 
@@ -260,23 +262,9 @@ describe('gitlab host', () => {
   });
 });
 
-function service(overrides: Record<string, string> = {}): GitlabCodeHost {
-  const values: Record<string, string> = {
-    RUNTIME: 'cursor',
-    REQUIREMENTS_VIA: 'direct',
-    ISSUE_TRACKER: 'jira',
-    JIRA_BASE_URL: '',
-    JIRA_EMAIL: '',
-    JIRA_API_TOKEN: '',
-    GITLAB_BASE_URL: 'https://gitlab.example',
-    GITLAB_TOKEN: TOKEN,
-    ...overrides,
-  };
-  const config = {
-    getOrThrow: (key: string) => (key in values ? values[key] : 0),
-    get: (key: string) => values[key],
-  } as ConfigService;
-  return new GitlabCodeHost(config);
+function service(overrides: Partial<CodeHostEnv> = {}): GitlabCodeHost {
+  const env = testEnv({ GITLAB_BASE_URL: 'https://gitlab.example', GITLAB_TOKEN: TOKEN, ...overrides });
+  return new GitlabCodeHost(env, new FakeClock());
 }
 
 function opened(source = 'feature/PROJ-1-ship'): unknown {

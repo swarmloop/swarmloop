@@ -1,6 +1,5 @@
-import type { ConfigService } from '@nestjs/config';
 import type { SwarmloopEnv } from '../../config/env';
-import { readEnv } from '../../config/env';
+import type { Clock } from '../../core/clock';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../../core/swarmloop-error';
 import { request } from '../http';
@@ -15,11 +14,15 @@ import type {
   SelectedHost,
 } from './code-host';
 
+/** The env keys a code host reads. */
+export type CodeHostEnv = Pick<SwarmloopEnv, 'GITHUB_BASE_URL' | 'GITHUB_TOKEN' | 'GITLAB_BASE_URL' | 'GITLAB_TOKEN'>;
+
 export abstract class AbstractCodeHost implements CodeHost {
   abstract readonly name: SelectedHost['name'];
 
   constructor(
-    protected readonly config: ConfigService,
+    protected readonly env: CodeHostEnv,
+    protected readonly clock: Clock,
     private readonly failure: string,
     private readonly rejectedToken: string,
   ) {}
@@ -62,7 +65,7 @@ export abstract class AbstractCodeHost implements CodeHost {
     try {
       const { root, headers } = this.credentials();
       const { url, method, payload } = this.updateRequest(root, project, iid, summary);
-      const response = await request(url, { ...headers, 'Content-Type': 'application/json' }, calls, {
+      const response = await request(this.clock, url, { ...headers, 'Content-Type': 'application/json' }, calls, {
         method,
         body: payload,
       });
@@ -89,17 +92,16 @@ export abstract class AbstractCodeHost implements CodeHost {
   abstract selected(): SelectedHost;
 
   protected credentials(): { root: string; headers: Record<string, string> } {
-    const env = readEnv(this.config);
-    const missing = this.credentialKeys().find((name) => !env[name]);
+    const missing = this.credentialKeys().find((name) => !this.env[name]);
     if (missing) {
       throw new SwarmloopError(`${missing} is missing`);
     }
-    return this.endpoint(env);
+    return this.endpoint(this.env);
   }
 
-  protected abstract credentialKeys(): readonly (keyof SwarmloopEnv)[];
+  protected abstract credentialKeys(): readonly (keyof CodeHostEnv)[];
 
-  protected abstract endpoint(env: SwarmloopEnv): { root: string; headers: Record<string, string> };
+  protected abstract endpoint(env: CodeHostEnv): { root: string; headers: Record<string, string> };
 
   protected abstract findUrl(root: string, query: MergeRequestQuery): string;
 
@@ -112,7 +114,7 @@ export abstract class AbstractCodeHost implements CodeHost {
     summary: string,
   ): { url: string; method: string; payload: string };
 
-  protected abstract match(body: unknown, source: string): unknown | null;
+  protected abstract match(body: unknown, source: string): unknown;
 
   protected abstract record(project: string, row: unknown, summary?: string): MergeRequestRecord;
 
@@ -125,7 +127,7 @@ export abstract class AbstractCodeHost implements CodeHost {
     body?: string,
     failure = this.failure,
   ): Promise<unknown> {
-    const response = await request(url, headers, calls, body === undefined ? {} : { method: 'POST', body });
+    const response = await request(this.clock, url, headers, calls, body === undefined ? {} : { method: 'POST', body });
     this.assertStatus(response.status, calls, failure);
     try {
       return JSON.parse(response.body.toString('utf8')) as unknown;

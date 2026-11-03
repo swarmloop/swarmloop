@@ -1,4 +1,6 @@
-import type { ConfigService } from '@nestjs/config';
+import { testEnv } from '../../../config/env.spec-helpers';
+import { FakeClock } from '../../../core/fake-clock.spec-helpers';
+import type { CodeHostEnv } from '../abstract-code-host';
 import { GithubCodeHost } from './github-code-host';
 
 const TOKEN = 'super-secret-token';
@@ -220,25 +222,9 @@ describe('github host', () => {
   });
 });
 
-function service(overrides: Record<string, string> = {}): GithubCodeHost {
-  const values: Record<string, string> = {
-    RUNTIME: 'cursor',
-    REQUIREMENTS_VIA: 'direct',
-    ISSUE_TRACKER: 'jira',
-    JIRA_BASE_URL: '',
-    JIRA_EMAIL: '',
-    JIRA_API_TOKEN: '',
-    GITLAB_BASE_URL: '',
-    GITLAB_TOKEN: '',
-    GITHUB_BASE_URL: 'https://github.com',
-    GITHUB_TOKEN: TOKEN,
-    ...overrides,
-  };
-  const config = {
-    getOrThrow: (key: string) => (key in values ? values[key] : 0),
-    get: (key: string) => values[key],
-  } as ConfigService;
-  return new GithubCodeHost(config);
+function service(overrides: Partial<CodeHostEnv> = {}): GithubCodeHost {
+  const env = testEnv({ GITHUB_BASE_URL: 'https://github.com', GITHUB_TOKEN: TOKEN, ...overrides });
+  return new GithubCodeHost(env, new FakeClock());
 }
 
 function opened(): unknown {

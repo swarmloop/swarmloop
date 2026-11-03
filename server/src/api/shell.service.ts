@@ -1,6 +1,7 @@
 import { realpathSync } from 'fs';
 import { join, resolve, sep } from 'path';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Clock } from '../core/clock';
 import { RunEntity } from '../history/entities';
 import { HistoryService } from '../history/history.service';
 import { assertKey } from '../core/pipeline-result';
@@ -46,6 +47,7 @@ export class ShellService {
   constructor(
     private readonly history: HistoryService,
     private readonly sandbox: SandboxService,
+    private readonly clock: Clock,
   ) {}
 
   async open(path: string): Promise<ShellFeature | { matches: ShellMatch[] }> {
@@ -60,9 +62,9 @@ export class ShellService {
       };
     }
     if (matches.length === 1) {
-      return this.view(await settleShell(this.history, this.sandbox, matches[0]), false);
+      return this.view(await settleShell(this.history, this.sandbox, matches[0], this.clock), false);
     }
-    const key = `run-${Date.now().toString(36)}`;
+    const key = `run-${this.clock.now().toString(36)}`;
     const created = await this.history.openWaiting(key, cwd);
     await this.history.noteFlow(key, PHASES, null);
     return this.view(created, true);
@@ -84,7 +86,7 @@ export class ShellService {
     if (!/^(waiting|blocked|failed|done)$/.test(run.status)) {
       throw new ConflictException(`${key} is already running`);
     }
-    await this.history.putDocument(run, CHAT_LOCK, containerLockBody(run.status, name));
+    await this.history.putDocument(run, CHAT_LOCK, containerLockBody(run.status, name, this.clock.now()));
     run.status = 'running';
     run.ownerPid = null;
     await this.history.saveRun(run);
@@ -97,7 +99,7 @@ export class ShellService {
     if (!lock?.container) {
       return { status: run.status };
     }
-    await snapshotRun(this.history, run, run.currentStep, '');
+    await snapshotRun(this.history, this.clock, run, run.currentStep, '');
     run.status = lock.status;
     run.ownerPid = null;
     await this.history.saveRun(run);
@@ -149,7 +151,7 @@ export class ShellService {
 
   private async ready(key: string): Promise<RunEntity> {
     const run = await this.find(key);
-    return settleShell(this.history, this.sandbox, run);
+    return settleShell(this.history, this.sandbox, run, this.clock);
   }
 
   private async find(key: string): Promise<RunEntity> {

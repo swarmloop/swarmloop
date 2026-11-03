@@ -1,6 +1,9 @@
 import type { RunEntity } from '../history/entities';
 import { containerLockBody } from './chat-lock';
+import { SystemClock } from '../core/clock';
 import { settleShell } from './shell-lock';
+
+const clock = new SystemClock();
 
 function feature(status = 'running'): RunEntity {
   return { key: 'PROJ-1', status, ownerPid: null } as RunEntity;
@@ -17,7 +20,7 @@ describe('shell lock', () => {
         notes.push('clear');
       },
     };
-    const settled = await settleShell(history as never, { containerExists: async () => false }, current);
+    const settled = await settleShell(history as never, { containerExists: async () => false }, current, clock);
     expect(settled.status).toBe('running');
     expect(notes).toEqual([]);
   });
@@ -35,7 +38,7 @@ describe('shell lock', () => {
         notes.push('clear');
       },
     };
-    const settled = await settleShell(history as never, { containerExists: async () => false }, current);
+    const settled = await settleShell(history as never, { containerExists: async () => false }, current, clock);
     expect(settled.status).toBe('waiting');
     expect(notes).toEqual(['waiting', 'clear']);
   });
@@ -47,7 +50,7 @@ describe('shell lock', () => {
       saveRun: async (value: RunEntity) => value,
       putDocument: async () => undefined,
     };
-    const settled = await settleShell(history as never, { containerExists: async () => true }, current);
+    const settled = await settleShell(history as never, { containerExists: async () => true }, current, clock);
     expect(settled.status).toBe('running');
   });
 });

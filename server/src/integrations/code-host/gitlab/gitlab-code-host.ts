@@ -1,11 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { SwarmloopEnv } from '../../../config/env';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../../core/swarmloop-error';
+import type { Clock } from '../../../core/clock';
+import type { HttpCallDraft } from '../../../core/swarmloop-error';
+import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
 import { request } from '../../http';
 import { remoteProject } from '../../../steps/merge-request/merge-request-record';
-import { AbstractCodeHost } from '../abstract-code-host';
-import {
+import { AbstractCodeHost, type CodeHostEnv } from '../abstract-code-host';
+import type {
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
@@ -38,25 +37,24 @@ interface GitlabJob {
   retried?: boolean;
 }
 
-@Injectable()
 export class GitlabCodeHost extends AbstractCodeHost {
   readonly name = 'gitlab' as const;
 
-  constructor(config: ConfigService) {
-    super(config, 'gitlab merge request failed', 'GITLAB_TOKEN was rejected');
+  constructor(env: CodeHostEnv, clock: Clock) {
+    super(env, clock, 'gitlab merge request failed', 'GITLAB_TOKEN was rejected');
   }
 
   matchesOrigin(origin: string): boolean {
-    return this.remoteOnBase(origin, this.config.getOrThrow<string>('GITLAB_BASE_URL')) !== null;
+    return this.remoteOnBase(origin, this.env.GITLAB_BASE_URL) !== null;
   }
 
   pushUrl(origin: string): string | null {
-    const token = this.config.getOrThrow<string>('GITLAB_TOKEN');
+    const token = this.env.GITLAB_TOKEN;
     if (!token.trim()) {
       return null;
     }
     try {
-      const host = new URL(this.config.getOrThrow<string>('GITLAB_BASE_URL')).hostname.toLowerCase();
+      const host = new URL(this.env.GITLAB_BASE_URL).hostname.toLowerCase();
       const remote = remoteProject(origin);
       if (remote.host.toLowerCase() !== host) {
         return null;
@@ -70,8 +68,8 @@ export class GitlabCodeHost extends AbstractCodeHost {
   selected(): SelectedHost {
     return {
       name: this.name,
-      baseUrl: this.config.getOrThrow<string>('GITLAB_BASE_URL'),
-      token: this.config.getOrThrow<string>('GITLAB_TOKEN'),
+      baseUrl: this.env.GITLAB_BASE_URL,
+      token: this.env.GITLAB_TOKEN,
       baseKey: 'GITLAB_BASE_URL',
       tokenKey: 'GITLAB_TOKEN',
     };
@@ -120,7 +118,7 @@ export class GitlabCodeHost extends AbstractCodeHost {
     try {
       const { root: base, headers } = this.credentials();
       const url = `${base}/api/v4/projects/${encodeURIComponent(project)}/pipelines/${id}/cancel`;
-      const response = await request(url, headers, calls, { method: 'POST' });
+      const response = await request(this.clock, url, headers, calls, { method: 'POST' });
       this.assertStatus(response.status, calls, 'gitlab pipeline failed');
       return { httpCalls: calls };
     } catch (error) {
@@ -140,11 +138,11 @@ export class GitlabCodeHost extends AbstractCodeHost {
     }
   }
 
-  protected credentialKeys(): readonly (keyof SwarmloopEnv)[] {
+  protected credentialKeys(): readonly (keyof CodeHostEnv)[] {
     return ['GITLAB_BASE_URL', 'GITLAB_TOKEN'];
   }
 
-  protected endpoint(env: SwarmloopEnv): { root: string; headers: Record<string, string> } {
+  protected endpoint(env: CodeHostEnv): { root: string; headers: Record<string, string> } {
     return {
       root: env.GITLAB_BASE_URL.replace(/\/$/, ''),
       headers: { 'PRIVATE-TOKEN': env.GITLAB_TOKEN, Accept: 'application/json' },
@@ -184,7 +182,7 @@ export class GitlabCodeHost extends AbstractCodeHost {
     if (!Array.isArray(body)) {
       throw new SwarmloopError('gitlab merge request failed');
     }
-    const row = body.find((item) => (item as GitlabMergeRequest | null)?.source_branch === source);
+    const row = (body as unknown[]).find((item) => (item as GitlabMergeRequest | null)?.source_branch === source);
     return (row as GitlabMergeRequest | undefined) ?? null;
   }
 
@@ -207,7 +205,7 @@ export class GitlabCodeHost extends AbstractCodeHost {
     calls: HttpCallDraft[],
     failure: string,
   ): Promise<string> {
-    const response = await request(url, headers, calls);
+    const response = await request(this.clock, url, headers, calls);
     this.assertStatus(response.status, calls, failure);
     return response.body.toString('utf8');
   }
@@ -239,7 +237,7 @@ export class GitlabCodeHost extends AbstractCodeHost {
         params.append('scope[]', scope);
       }
       const url = `${base}/api/v4/projects/${project}/pipelines/${pipelineId}/jobs?${params.toString()}`;
-      const response = await request(url, headers, calls);
+      const response = await request(this.clock, url, headers, calls);
       this.assertStatus(response.status, calls, 'gitlab pipeline failed');
       const body = this.parseJson(response.body, calls);
       if (!Array.isArray(body)) {

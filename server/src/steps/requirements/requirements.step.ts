@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { HistoryService } from '../../history/history.service';
+import { Clock } from '../../core/clock';
 import { RunEntity } from '../../history/entities';
 import { SampleDraft, sampleSelf } from '../../history/visit';
 import { FetchFailed, HttpCallDraft, SwarmloopError, PasteNeeded } from '../../core/swarmloop-error';
@@ -23,10 +24,11 @@ export class RequirementsStep extends BaseStep {
 
   constructor(
     history: HistoryService,
+    clock: Clock,
     @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
     @Inject(REQUIREMENTS_SOURCE) private readonly source: RequirementsSource,
   ) {
-    super(history);
+    super(history, clock);
   }
 
   async fetch(key: string): Promise<PipelineResult> {
@@ -81,7 +83,7 @@ export class RequirementsStep extends BaseStep {
         return { exitCode: 1, message: this.failureText(error) };
       }
     }
-    const samples: SampleDraft[] = [sampleSelf()];
+    const samples: SampleDraft[] = [sampleSelf(this.clock.iso())];
     const finish = (input: RequirementsFinish) => this.finish(ctx, samples, input);
     try {
       const unread = effectivePrompt ? unreadSource(effectivePrompt) : null;
@@ -107,7 +109,7 @@ export class RequirementsStep extends BaseStep {
         spentUsd: opened.run.spentUsd,
         tokensInRun: await this.history.tokenTotal(opened.run.id),
       });
-      samples.push(...written.samples, sampleSelf());
+      samples.push(...written.samples, sampleSelf(this.clock.iso()));
       const stopped = stopReason(key, written);
       if (stopped) {
         return finish({ written, calls: fetched.httpCalls, ...stopped, exitCode: 1, body: null });
@@ -121,7 +123,7 @@ export class RequirementsStep extends BaseStep {
         body: written.body,
       });
     } catch (error) {
-      samples.push(sampleSelf());
+      samples.push(sampleSelf(this.clock.iso()));
       if (error instanceof PasteNeeded) {
         return finish({
           written: emptyWrite(),

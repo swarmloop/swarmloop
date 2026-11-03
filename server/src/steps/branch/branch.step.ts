@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import { HistoryService } from '../../history/history.service';
+import { Clock } from '../../core/clock';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -15,8 +16,8 @@ export class BranchStep extends BaseStep {
   readonly name: StepName = 'branch';
   readonly requiredKind = 'repos';
 
-  constructor(history: HistoryService) {
-    super(history);
+  constructor(history: HistoryService, clock: Clock) {
+    super(history, clock);
   }
 
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {

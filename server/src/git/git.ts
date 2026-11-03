@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { realpathSync } from 'fs';
 import { isAbsolute, join, resolve, sep } from 'path';
+import { rawEnv } from '../config/process-env';
 import { SwarmloopError } from '../core/swarmloop-error';
 
 export function git(args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
@@ -15,7 +16,7 @@ const GIT_OUTPUT_CAP = 64_000_000;
 
 function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Promise<string> {
   const command = withSafeDirectory(args, checkoutRoots());
-  const env = extra ? { ...process.env, ...extra } : undefined;
+  const env = extra ? { ...rawEnv(), ...extra } : undefined;
   return new Promise((done, fail) => {
     const child = execFile(
       'git',
@@ -27,7 +28,7 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Pro
         env,
         ...(input === undefined ? {} : { stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'] }),
       },
-      (error, stdout, stderr) => {
+      (error: unknown, stdout, stderr) => {
         if (error) {
           if (typeof stdout === 'string' && stdout.length > 0) {
             (error as { stdout?: string }).stdout = stdout;
@@ -66,8 +67,9 @@ export function withSafeDirectory(args: string[], roots: readonly string[]): str
 }
 
 function checkoutRoots(): string[] {
-  const worktrees = process.env.SWARMLOOP_ROOT ? join(process.env.SWARMLOOP_ROOT, 'worktrees') : '';
-  return [process.env.CHECKOUTS_ROOT ?? '', worktrees].filter((root) => isAbsolute(root));
+  const env = rawEnv();
+  const worktrees = env.SWARMLOOP_ROOT ? join(env.SWARMLOOP_ROOT, 'worktrees') : '';
+  return [env.CHECKOUTS_ROOT ?? '', worktrees].filter((root) => isAbsolute(root));
 }
 
 function directoryArg(args: string[]): string | null {
@@ -96,15 +98,15 @@ function contains(root: string, directory: string): boolean {
 /** Full git stderr, or one preferred line when git left stderr empty. */
 export function gitStderr(error: unknown): string {
   const record = error && typeof error === 'object' ? (error as { stderr?: unknown }) : {};
-  const stderr = String(record.stderr ?? '').trim();
+  const stderr = (typeof record.stderr === 'string' ? record.stderr : '').trim();
   return stderr || gitDetail(error);
 }
 
 export function gitDetail(error: unknown): string {
   const record =
     error && typeof error === 'object' ? (error as { stderr?: unknown; stdout?: unknown; message?: unknown }) : {};
-  const stderr = String(record.stderr ?? '');
-  const stdout = String(record.stdout ?? '');
+  const stderr = typeof record.stderr === 'string' ? record.stderr : '';
+  const stdout = typeof record.stdout === 'string' ? record.stdout : '';
   const message = typeof record.message === 'string' ? record.message : '';
   const lines = `${stderr}\n${stdout}\n${message}`
     .split('\n')
@@ -127,8 +129,9 @@ export async function authorArgs(cwd: string): Promise<string[]> {
   } catch {
     // Fall through to the environment author used by commit.
   }
-  const name = process.env.GIT_AUTHOR_NAME?.trim() ?? '';
-  const email = process.env.GIT_AUTHOR_EMAIL?.trim() ?? '';
+  const env = rawEnv();
+  const name = env.GIT_AUTHOR_NAME?.trim() ?? '';
+  const email = env.GIT_AUTHOR_EMAIL?.trim() ?? '';
   if (!name || !email) {
     return [];
   }
