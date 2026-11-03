@@ -46,7 +46,7 @@ export class RunCommandsService {
     }
   }
 
-  async start(body: CreateRunBody): Promise<{ http: number; body: RunRef }> {
+  async start(body: CreateRunBody): Promise<RunRef> {
     const prompt = body.prompt?.trim() || undefined;
     const given = body.key?.trim() ?? '';
     if (!given && !prompt) {
@@ -111,7 +111,7 @@ export class RunCommandsService {
     return this.queries.flow(key);
   }
 
-  async startStep(key: string, step: string, body: StartStepBody = {}): Promise<{ http: number; body: RunRef }> {
+  async startStep(key: string, step: string, body: StartStepBody = {}): Promise<RunRef> {
     const name = pipelineStepOf(step);
     if (!isStep(name) || name === 'done') {
       throw new BadRequestException(`${step} is unknown`);
@@ -129,7 +129,7 @@ export class RunCommandsService {
     );
   }
 
-  async replay(key: string, step: string, prompt: string, phases?: string[]): Promise<{ http: number; body: RunRef }> {
+  async replay(key: string, step: string, prompt: string, phases?: string[]): Promise<RunRef> {
     const name = pipelineStepOf(step);
     if (!isStep(name) || name === 'done') {
       throw new BadRequestException(`${step} is unknown`);
@@ -145,13 +145,13 @@ export class RunCommandsService {
     return this.accepted(key, await this.pipeline.replay(key, name, text));
   }
 
-  async stop(key: string): Promise<{ http: number; body: RunRef }> {
+  async stop(key: string): Promise<RunRef> {
     await requireRun(this.history, key);
     const result = await this.pipeline.stop(key);
     if (result.exitCode !== 0) {
       throw new ConflictException(result.message);
     }
-    return { http: 200, body: { key, status: 'stopped' } };
+    return { key, status: 'stopped' };
   }
 
   async remove(key: string): Promise<RemovedRunView> {
@@ -170,7 +170,7 @@ export class RunCommandsService {
     return { key };
   }
 
-  async resume(key: string, prompt?: string): Promise<{ http: number; body: RunRef }> {
+  async resume(key: string, prompt?: string): Promise<RunRef> {
     const view = await this.queries.flow(key);
     if (view.resume === 'need-answers') {
       throw new BadRequestException('answers are missing');
@@ -182,7 +182,7 @@ export class RunCommandsService {
       throw new ConflictException(`${key} is already running`);
     }
     if (view.resume === 'done') {
-      return { http: 200, body: { key, status: 'done' } };
+      return { key, status: 'done' };
     }
     return this.accepted(key, await this.pipeline.startDetached(key, prompt?.trim() ? { prompt: prompt.trim() } : {}));
   }
@@ -243,11 +243,11 @@ export class RunCommandsService {
     throw new BadRequestException(result.message);
   }
 
-  accepted(key: string, result: { exitCode: number; message: string }): { http: number; body: RunRef } {
+  accepted(key: string, result: { exitCode: number; message: string }): RunRef {
     this.demandStart(result);
     if (result.message.endsWith('is done')) {
-      return { http: 200, body: { key, status: 'done' } };
+      return { key, status: 'done' };
     }
-    return { http: 202, body: { key, status: 'started' } };
+    return { key, status: 'started' };
   }
 }

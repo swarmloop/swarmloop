@@ -17,6 +17,7 @@ import { HistoryService } from '../history/history.service';
 import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.step';
 import { REBASE_CONFLICT, rebaseFeatureRepos, storedBase } from '../git/rebase-worktree';
 import { RunRebaseService } from './run-rebase.service';
+import { httpStatus } from './runs.controller';
 import { boot, remember, featureWorktree, denyEnv, git, isAncestor, hostFetch } from './runs.spec-helpers';
 
 describe('runs api', () => {
@@ -38,7 +39,8 @@ describe('runs api', () => {
       const history = app.get(HistoryService);
       await remember(history, 'proj-50', 'implement', 'failed');
       const result = await app.get(RunRebaseService).rebase('proj-50');
-      expect(result).toEqual({ http: 202, body: { key: 'proj-50', status: 'started' } });
+      expect(result).toEqual({ key: 'proj-50', status: 'started' });
+      expect(httpStatus(result)).toBe(202);
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-50');
       const fresh = await history.findRun('proj-50');
       expect(fresh?.status).toBe('waiting');
@@ -77,7 +79,8 @@ describe('runs api', () => {
       git(tree, ['push', '-u', 'origin', branch]);
       const tip = git(tree, ['rev-parse', `refs/remotes/origin/${branch}`]);
       const result = await app.get(RunRebaseService).rebase('proj-51');
-      expect(result).toEqual({ http: 202, body: { key: 'proj-51', status: 'started' } });
+      expect(result).toEqual({ key: 'proj-51', status: 'started' });
+      expect(httpStatus(result)).toBe(202);
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-51');
       const fresh = await history.findRun('proj-51');
       expect(fresh?.status).toBe('waiting');
@@ -115,7 +118,8 @@ describe('runs api', () => {
       const run = await remember(history, 'proj-52', 'done', 'done');
       await history.putDocument(run, 'implementation', '- changed the field\n');
       const result = await app.get(RunRebaseService).rebase('proj-52');
-      expect(result).toEqual({ http: 202, body: { key: 'proj-52', status: 'started' } });
+      expect(result).toEqual({ key: 'proj-52', status: 'started' });
+      expect(httpStatus(result)).toBe(202);
       const names = git(tree, ['show', '--name-only', '--format=', 'HEAD']);
       expect(names).toContain('src/dirty.ts');
       expect(names).not.toContain('.env');
@@ -255,7 +259,8 @@ describe('runs api', () => {
       await history.putDocument(run, 'implementation', '- changed the field\n');
       await history.putDocument(run, 'repos', 'demo\nother\nlater\n');
       const result = await app.get(RunRebaseService).rebase('proj-56');
-      expect(result).toEqual({ http: 202, body: { key: 'proj-56', status: 'started' } });
+      expect(result).toEqual({ key: 'proj-56', status: 'started' });
+      expect(httpStatus(result)).toBe(202);
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-56');
       const fresh = await history.findRun('proj-56');
       expect(fresh?.status).toBe('waiting');
@@ -312,7 +317,8 @@ describe('runs api', () => {
       await history.saveRun(run);
       await history.putDocument(run, 'implementation', '- changed the field\n');
       const result = await app.get(RunRebaseService).rebase('proj-57');
-      expect(result).toEqual({ http: 202, body: { key: 'proj-57', status: 'started' } });
+      expect(result).toEqual({ key: 'proj-57', status: 'started' });
+      expect(httpStatus(result)).toBe(202);
       expect(git(tree, ['rev-parse', 'origin/release'])).toBe(tip);
       expect(isAncestor(tree, tip)).toBe(true);
       expect(git(tree, ['log', '--oneline'])).toContain('field');
@@ -404,7 +410,8 @@ describe('runs api', () => {
       const run = await remember(history, 'proj-62', 'done', 'done');
       await history.putDocument(run, 'implementation', '- changed the field\n');
       const result = await app.get(RunRebaseService).rebase('proj-62');
-      expect(result).toEqual({ http: 202, body: { key: 'proj-62', status: 'started' } });
+      expect(result).toEqual({ key: 'proj-62', status: 'started' });
+      expect(httpStatus(result)).toBe(202);
       const fresh = await history.findRun('proj-62');
       expect(fresh?.status).toBe('waiting');
       expect(fresh?.currentStep).toBe('code-review');
@@ -516,7 +523,8 @@ describe('runs api', () => {
       const run = await remember(history, 'proj-63', 'done', 'done');
       await history.putDocument(run, 'implementation', '- changed the field\n');
       const result = await app.get(RunRebaseService).rebase('proj-63');
-      expect(result).toEqual({ http: 202, body: { key: 'proj-63', status: 'started' } });
+      expect(result).toEqual({ key: 'proj-63', status: 'started' });
+      expect(httpStatus(result)).toBe(202);
       expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);
       expect(readFileSync(join(tree, 'src', 'readme.ts'), 'utf8')).toBe('export const readme = 1;\n');
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-63-ship-the-field');
@@ -550,7 +558,8 @@ describe('runs api', () => {
       const run = await remember(history, 'proj-66', 'done', 'done');
       await history.putDocument(run, 'implementation', '- changed the field\n');
       const result = await app.get(RunRebaseService).rebase('proj-66');
-      expect(result).toEqual({ http: 202, body: { key: 'proj-66', status: 'started' } });
+      expect(result).toEqual({ key: 'proj-66', status: 'started' });
+      expect(httpStatus(result)).toBe(202);
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-66');
       const fresh = await history.findRun('proj-66');
       expect(fresh?.status).toBe('waiting');

@@ -12,7 +12,7 @@ import { api } from '../../lib/api';
 import { mergeNames } from '../../lib/names';
 import type { PhaseName } from '@contract/steps';
 import { PHASES } from '@contract/steps';
-import type { ProjectsView, RunRef } from '@contract/api';
+import type { AddProjectBody, CreateRunBody, ProjectsView, RunRef } from '@contract/api';
 import { PhasePicker } from './phase-picker';
 import { ProjectPicker } from './project-picker';
 
@@ -148,7 +148,7 @@ export function NewRunDialog({
         })
       : api<RunRef>('/runs', {
           method: 'POST',
-          body: JSON.stringify({ prompt: text, phases: chosen, projects: pickedProjects }),
+          body: JSON.stringify({ prompt: text, phases: chosen, projects: pickedProjects } satisfies CreateRunBody),
         }).then((body) => done(body.key));
     request
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'run failed'))
@@ -206,7 +206,7 @@ async function postProjects(
     try {
       const body = await api<ProjectsView>(`/runs/${encodeURIComponent(runKey)}/projects`, {
         method: 'POST',
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name } satisfies AddProjectBody),
       });
       projects = mergeNames(projects, body.projects);
       told = body.projects;

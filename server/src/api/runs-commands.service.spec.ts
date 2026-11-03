@@ -7,6 +7,7 @@ import { HistoryService } from '../history/history.service';
 import { PHASES } from '../contract/steps';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
+import { httpStatus } from './runs.controller';
 import { boot, save, visit } from './runs.spec-helpers';
 
 describe('runs api', () => {
@@ -118,7 +119,8 @@ describe('runs api', () => {
     try {
       await save(app.get(HistoryService), 'proj-11', 'implement-improve', 'failed');
       const result = await app.get(RunCommandsService).replay('proj-11', 'implement', 'Use the other parser');
-      expect(result).toEqual({ http: 202, body: { key: 'proj-11', status: 'started' } });
+      expect(result).toEqual({ key: 'proj-11', status: 'started' });
+      expect(httpStatus(result)).toBe(202);
       expect(pipeline.replay).toHaveBeenCalledWith('proj-11', 'implement', 'Use the other parser');
     } finally {
       await app.close();
@@ -166,7 +168,8 @@ describe('runs api', () => {
     try {
       await save(app.get(HistoryService), 'proj-9', 'implement-improve', 'running');
       const result = await app.get(RunCommandsService).stop('proj-9');
-      expect(result).toEqual({ http: 200, body: { key: 'proj-9', status: 'stopped' } });
+      expect(result).toEqual({ key: 'proj-9', status: 'stopped' });
+      expect(httpStatus(result)).toBe(200);
       expect(pipeline.stop).toHaveBeenCalledWith('proj-9');
       expect(pipeline.startDetached).not.toHaveBeenCalled();
     } finally {
@@ -232,7 +235,7 @@ describe('runs api', () => {
       const started = await app
         .get(RunCommandsService)
         .start({ key: 'proj-7', prompt: 'Look here', path: '/tmp/checkout' });
-      expect(started.http).toBe(202);
+      expect(httpStatus(started)).toBe(202);
       expect(pipeline.startDetached).toHaveBeenCalledWith(
         'proj-7',
         { path: '/tmp/checkout', phases: [...PHASES] },
@@ -263,8 +266,8 @@ describe('runs api', () => {
         phases: ['requirements', 'code-review'],
         projects: ['billing-api'],
       });
-      expect(started.http).toBe(202);
-      expect(started.body.key).toBe('PROJ-12--4');
+      expect(httpStatus(started)).toBe(202);
+      expect(started.key).toBe('PROJ-12--4');
       expect(pipeline.startDetached).toHaveBeenCalledWith('PROJ-12--4', {
         prompt,
         projects: ['billing-api'],
@@ -289,8 +292,8 @@ describe('runs api', () => {
         phases: ['requirements', 'code-review'],
         projects: ['billing-api'],
       });
-      expect(started.http).toBe(202);
-      expect(started.body.key).toBe('PROJ-12--2');
+      expect(httpStatus(started)).toBe(202);
+      expect(started.key).toBe('PROJ-12--2');
       expect(pipeline.startDetached).toHaveBeenCalledWith('PROJ-12--2', {
         prompt,
         projects: ['billing-api'],
@@ -310,8 +313,8 @@ describe('runs api', () => {
       const started = await app
         .get(RunCommandsService)
         .start({ prompt: 'Ship PROJ-15 before Friday', projects: ['demo'] });
-      expect(started.http).toBe(202);
-      expect(started.body.key).toBe('PROJ-15');
+      expect(httpStatus(started)).toBe(202);
+      expect(started.key).toBe('PROJ-15');
       expect(pipeline.startDetached).toHaveBeenCalledWith('PROJ-15', {
         prompt: 'Ship PROJ-15 before Friday',
         projects: ['demo'],
@@ -328,8 +331,8 @@ describe('runs api', () => {
     const app = await boot(root, pipeline);
     try {
       const started = await app.get(RunCommandsService).start({ prompt: 'Ship the field', projects: ['demo'] });
-      expect(started.body.key).toMatch(/^run-[a-z0-9]+$/);
-      expect(pipeline.startDetached).toHaveBeenCalledWith(started.body.key, {
+      expect(started.key).toMatch(/^run-[a-z0-9]+$/);
+      expect(pipeline.startDetached).toHaveBeenCalledWith(started.key, {
         prompt: 'Ship the field',
         projects: ['demo'],
         phases: [...PHASES],
@@ -362,7 +365,7 @@ describe('runs api', () => {
       const started = await app
         .get(RunCommandsService)
         .start({ key: 'proj-5', prompt: 'Ship the field', projects: ['demo'] });
-      expect(started.http).toBe(202);
+      expect(httpStatus(started)).toBe(202);
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-5', {
         prompt: 'Ship the field',
         projects: ['demo'],

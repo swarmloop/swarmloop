@@ -30,8 +30,9 @@ import { RunQueriesService } from './run-queries.service';
 import { RunRebaseService } from './run-rebase.service';
 import { ShellService } from './shell.service';
 
-interface StatusResponse {
-  status(code: number): void;
+/** A started run is accepted; anything else the run answers with is OK. */
+export function httpStatus(result: RunRef): number {
+  return result.status === 'started' ? 202 : 200;
 }
 
 @Controller()
@@ -95,10 +96,13 @@ export class RunsController {
   }
 
   @Post('runs')
-  async create(@Body() body: CreateRunBody, @Res({ passthrough: true }) response: StatusResponse): Promise<RunRef> {
+  async create(
+    @Body() body: CreateRunBody,
+    @Res({ passthrough: true }) response: { status(code: number): void },
+  ): Promise<RunRef> {
     const result = await this.commands.start(body);
-    response.status(result.http);
-    return result.body;
+    response.status(httpStatus(result));
+    return result;
   }
 
   @Post('runs/:key/answers')
@@ -116,11 +120,11 @@ export class RunsController {
     @Param('key') key: string,
     @Param('step') step: string,
     @Body() body: StartStepBody,
-    @Res({ passthrough: true }) response: StatusResponse,
+    @Res({ passthrough: true }) response: { status(code: number): void },
   ): Promise<RunRef> {
     const result = await this.commands.startStep(key, step, body);
-    response.status(result.http);
-    return result.body;
+    response.status(httpStatus(result));
+    return result;
   }
 
   @Post('runs/:key/steps/:step/replay')
@@ -128,18 +132,21 @@ export class RunsController {
     @Param('key') key: string,
     @Param('step') step: string,
     @Body() body: ReplayBody,
-    @Res({ passthrough: true }) response: StatusResponse,
+    @Res({ passthrough: true }) response: { status(code: number): void },
   ): Promise<RunRef> {
     const result = await this.commands.replay(key, step, body.prompt ?? '', body.phases);
-    response.status(result.http);
-    return result.body;
+    response.status(httpStatus(result));
+    return result;
   }
 
   @Post('runs/:key/stop')
-  async stop(@Param('key') key: string, @Res({ passthrough: true }) response: StatusResponse): Promise<RunRef> {
+  async stop(
+    @Param('key') key: string,
+    @Res({ passthrough: true }) response: { status(code: number): void },
+  ): Promise<RunRef> {
     const result = await this.commands.stop(key);
-    response.status(result.http);
-    return result.body;
+    response.status(httpStatus(result));
+    return result;
   }
 
   @Delete('runs/:key')
@@ -148,10 +155,13 @@ export class RunsController {
   }
 
   @Post('runs/:key/rebase')
-  async rebase(@Param('key') key: string, @Res({ passthrough: true }) response: StatusResponse): Promise<RunRef> {
+  async rebase(
+    @Param('key') key: string,
+    @Res({ passthrough: true }) response: { status(code: number): void },
+  ): Promise<RunRef> {
     const result = await this.rebases.rebase(key);
-    response.status(result.http);
-    return result.body;
+    response.status(httpStatus(result));
+    return result;
   }
 
   @Post('runs/:key/projects')
@@ -163,10 +173,10 @@ export class RunsController {
   async resume(
     @Param('key') key: string,
     @Body() body: ResumeBody,
-    @Res({ passthrough: true }) response: StatusResponse,
+    @Res({ passthrough: true }) response: { status(code: number): void },
   ): Promise<RunRef> {
     const result = await this.commands.resume(key, body?.prompt);
-    response.status(result.http);
-    return result.body;
+    response.status(httpStatus(result));
+    return result;
   }
 }
