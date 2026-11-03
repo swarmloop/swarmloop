@@ -4,7 +4,7 @@ import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { HistoryService } from '../history/history.service';
-import { PHASES } from '../core/pipeline-result';
+import { PHASES } from '../contract/steps';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
 import { boot, save, visit } from './runs.spec-helpers';

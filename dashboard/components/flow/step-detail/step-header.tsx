@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactElement } from 'react';
 import DataUsage from '@mui/icons-material/DataUsage';
 import MemoryIcon from '@mui/icons-material/Memory';
 import Paid from '@mui/icons-material/Paid';
@@ -13,7 +14,7 @@ import { statusColor } from '../../../theme/theme';
 import { stepLabel } from '../../../lib/phases';
 import { StepMetricKind, stepMetrics } from '../../../lib/step-metrics';
 import { shownStatus } from '../../../lib/step-view';
-import { StepView } from '../../../lib/types';
+import { StepView } from '@contract/api';
 
 const stepMetricIcon: Partial<Record<StepMetricKind, typeof Schedule>> = {
   duration: Schedule,
@@ -52,7 +53,7 @@ export function StepHeader({
   label: string;
   shownDuration: number;
   shownAttempt: number;
-}) {
+}): ReactElement {
   return (
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>

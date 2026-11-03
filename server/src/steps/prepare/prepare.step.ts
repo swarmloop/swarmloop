@@ -4,7 +4,8 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { readEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
-import { PipelineResult, StepName, StepOptions } from '../../core/pipeline-result';
+import { PipelineResult, StepOptions } from '../../core/pipeline-result';
+import { StepName } from '../../contract/steps';
 import { assignCodeHost, CodeHostRegistry, type CodeHostName } from '../../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail } from '../../git/git';
@@ -33,7 +34,8 @@ export class PrepareStep extends BaseStep {
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
     const { opened } = ctx;
     const selected = storedProjects(opened.run.projects).map((name) => ({ name, path: '' }));
-    const checkouts: { name: string; path: string }[] = selected.length > 0 ? selected : await this.history.listCheckouts();
+    const checkouts: { name: string; path: string }[] =
+      selected.length > 0 ? selected : await this.history.listCheckouts();
     if (checkouts.length === 0) {
       throw new SwarmloopError('projects is missing');
     }
@@ -100,7 +102,12 @@ export class PrepareStep extends BaseStep {
     rmSync(directory, { recursive: true, force: true });
   }
 
-  async ensureDetached(run: { key: string; codeHost: string }, names: string[], prompt: string | null, replace: boolean): Promise<void> {
+  async ensureDetached(
+    run: { key: string; codeHost: string },
+    names: string[],
+    prompt: string | null,
+    replace: boolean,
+  ): Promise<void> {
     const hosts: (CodeHostName | null)[] = [];
     for (const name of names) {
       const located = await this.prepareCheckout(run.key, { name, path: '' }, prompt);
@@ -109,7 +116,11 @@ export class PrepareStep extends BaseStep {
     assignCodeHost(run, hosts, replace);
   }
 
-  private async prepareCheckout(key: string, checkout: { name: string; path: string }, prompt: string | null): Promise<{ name: string; path: string }> {
+  private async prepareCheckout(
+    key: string,
+    checkout: { name: string; path: string },
+    prompt: string | null,
+  ): Promise<{ name: string; path: string }> {
     if (!CHECKOUT_NAME.test(checkout.name)) {
       throw new SwarmloopError('checkout name is invalid');
     }
@@ -235,7 +246,6 @@ export class PrepareStep extends BaseStep {
       throw new SwarmloopError(`${checkout.name} is not a git checkout`);
     }
   }
-
 }
 
 function linkedWorktree(path: string): boolean {
@@ -265,4 +275,3 @@ function listsWorktree(porcelain: string, worktree: string): boolean {
     return existsSync(listed) && realpathSync(listed) === real;
   });
 }
-

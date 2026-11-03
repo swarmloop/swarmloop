@@ -1,6 +1,8 @@
 import { NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { OnGatewayConnection, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { FlowView } from '../contract/api';
+import { ClientToServerEvents, ServerToClientEvents } from '../contract/live';
 import { RunQueriesService } from '../api/run-queries.service';
 import { LiveHub } from './live.hub';
 import { PANEL_ORIGINS } from './origins';
@@ -8,7 +10,7 @@ import { PANEL_ORIGINS } from './origins';
 @WebSocketGateway({ cors: { origin: PANEL_ORIGINS }, transports: ['websocket'] })
 export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConnection {
   @WebSocketServer()
-  server!: Server;
+  server!: Server<ClientToServerEvents, ServerToClientEvents>;
 
   private readonly stop: Array<() => void> = [];
   private readonly pending = new Map<string, ReturnType<typeof setTimeout>>();
@@ -37,12 +39,12 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
     }
   }
 
-  async handleConnection(client: Socket): Promise<void> {
+  async handleConnection(client: Socket<ClientToServerEvents, ServerToClientEvents>): Promise<void> {
     client.emit('runs', await this.runs.list());
   }
 
   @SubscribeMessage('watch')
-  async watch(client: Socket, key: unknown): Promise<void> {
+  async watch(client: Socket<ClientToServerEvents, ServerToClientEvents>, key: unknown): Promise<void> {
     if (typeof key !== 'string' || key === '') {
       return;
     }
@@ -85,7 +87,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
     }
   }
 
-  private async flowOf(key: string): Promise<Awaited<ReturnType<RunQueriesService['flow']>> | null> {
+  private async flowOf(key: string): Promise<FlowView | null> {
     try {
       return await this.runs.flow(key);
     } catch (error) {

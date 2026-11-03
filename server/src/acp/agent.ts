@@ -4,10 +4,11 @@ import { Writable } from 'stream';
 import { encodeMessage, JsonRpc, pushFrames } from './framing';
 import { sessionTitle } from './format';
 import { liveLogBody } from './live-output';
-import { FlowView, ServerApi } from './server-api';
+import { FlowView } from '../contract/api';
+import { ServerApi } from './server-api';
 import { readableLog } from './readable-log';
 import { nestCheckout } from './paths';
-import { REVIEW_STEPS } from '../core/pipeline-result';
+import { REVIEW_STEPS } from '../contract/steps';
 import { CHECKOUT_NAME } from '../steps/prepare/checkout-path';
 
 export interface SkillCommand {

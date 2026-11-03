@@ -1,9 +1,6 @@
-import type { FlowView } from './types.ts';
-
-/** Ids match server/src/core/pipeline-result.ts PHASES. */
-export const PHASES = ['requirements', 'brainstorm', 'implementation', 'code-review', 'ci'] as const;
-
-export type PhaseName = (typeof PHASES)[number];
+import type { FlowView } from '@contract/api';
+import { PHASE_STEPS, PHASES, pipelineStepOf, REVIEW_STEPS, STEPS } from '@contract/steps';
+import type { PhaseName } from '@contract/steps';
 
 export const PHASE_LABEL: Record<PhaseName, string> = {
   requirements: 'requirements',
@@ -12,43 +9,6 @@ export const PHASE_LABEL: Record<PhaseName, string> = {
   'code-review': 'code review',
   ci: 'ci',
 };
-
-export const REVIEW_STEPS = [
-  'code-review-requirements',
-  'code-review-quality',
-  'code-review-regressions',
-  'code-review-security',
-  'code-review-performance',
-] as const;
-
-const STEP_NAMES = [
-  'requirements',
-  'prepare',
-  'research',
-  'plan',
-  'plan-improve',
-  'branch',
-  'implement',
-  'implement-improve',
-  'code-review',
-  ...REVIEW_STEPS,
-  'commit',
-  'merge-request',
-  'pipeline',
-  'done',
-] as const;
-
-const PHASE_STEPS: Record<PhaseName, readonly string[]> = {
-  requirements: ['requirements'],
-  brainstorm: ['prepare', 'research', 'plan', 'plan-improve'],
-  implementation: ['branch', 'implement', 'implement-improve'],
-  'code-review': REVIEW_STEPS,
-  ci: ['commit', 'merge-request', 'pipeline', 'done'],
-};
-
-export function pipelineStep(step: string): string {
-  return (REVIEW_STEPS as readonly string[]).includes(step) ? 'code-review' : step;
-}
 
 export function expandReviewPhases<T extends { steps: { name: string }[] }>(phases: T[]): T[] {
   return phases.map((phase) => {
@@ -113,12 +73,12 @@ function reviewChip(name: string): boolean {
 
 /** Live agent files are `implement-swarmloop`; the board watches `implement`. */
 export function liveLogStep(entry: string, watched: string): boolean {
-  const owner = STEP_NAMES.filter((name) => entry === name || entry.startsWith(`${name}-`)).sort((left, right) => right.length - left.length)[0];
+  const owner = [...STEPS, ...REVIEW_STEPS].filter((name) => entry === name || entry.startsWith(`${name}-`)).sort((left, right) => right.length - left.length)[0];
   return owner === watched;
 }
 
 export function phaseOf(step: string): PhaseName {
-  const name = pipelineStep(step);
+  const name = pipelineStepOf(step);
   if (name === 'code-review') {
     return 'code-review';
   }

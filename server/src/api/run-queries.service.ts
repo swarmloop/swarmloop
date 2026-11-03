@@ -6,14 +6,17 @@ import { DocumentEntity, RunEntity, StepStatEntity } from '../history/entities';
 import { HistoryService } from '../history/history.service';
 import { Charge, chargeStream, modelForStep } from '../agent/spend';
 import { loadPriceTable } from '../agent/prices';
-import { LiveHub, LiveSpend } from '../live/live.hub';
+import { LiveHub } from '../live/live.hub';
+import { LiveUsage } from '../contract/live';
 import { liveLogBody, liveLogCurrent } from '../acp/live-output';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { isReviewStep, isStep } from '../core/pipeline-result';
+import { isStep } from '../core/pipeline-result';
+import { isReviewStep } from '../contract/steps';
 import { parsePaths } from '../steps/commit/commit-paths';
 import { renderProjects, storedProjects } from '../steps/prepare/checkout-path';
 import { reviewDecision } from '../steps/code-review/code-review-record';
-import { RunSummary, FlowView, REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
+import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
+import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, resumeState, returns, runName, sentence, withSkip } from './run-view/flow';
 import { belongsToVisit, documentView, filesOf, withReturnNotes } from './run-view/documents';
@@ -28,7 +31,7 @@ export class RunQueriesService {
     @Optional() private readonly live?: LiveHub,
   ) {}
 
-  async list(): Promise<{ runs: RunSummary[] }> {
+  async list(): Promise<RunsView> {
     const runs = await this.history.listRuns();
     const durations = await this.history.durationByRun();
     return {
@@ -77,7 +80,7 @@ export class RunQueriesService {
     };
   }
 
-  async step(key: string, name: string) {
+  async step(key: string, name: string): Promise<StepView> {
     if (isReviewStep(name)) {
       return this.reviewerStep(key, name);
     }
@@ -141,7 +144,7 @@ export class RunQueriesService {
     };
   }
 
-  async readHistory(key: string) {
+  async readHistory(key: string): Promise<HistoryView> {
     const run = await requireRun(this.history, key);
     const documents = await this.history.listDocuments(run.id);
     const stats = await this.history.listStats(run.id);
@@ -185,7 +188,7 @@ export class RunQueriesService {
     };
   }
 
-  private openSpend(run: RunEntity): LiveSpend {
+  private openSpend(run: RunEntity): LiveUsage {
     const running = run.status === 'running' || this.pipeline.claimed(run.key);
     if (!running) {
       return { tokensIn: 0, tokensOut: 0, usd: 0 };
@@ -193,7 +196,7 @@ export class RunQueriesService {
     return this.live?.spendOf(run.key) ?? { tokensIn: 0, tokensOut: 0, usd: 0 };
   }
 
-  private async reviewerStep(key: string, name: string) {
+  private async reviewerStep(key: string, name: string): Promise<StepView> {
     const run = await requireRun(this.history, key);
     const documents = await this.history.listDocuments(run.id);
     const own = (await this.history.listStats(run.id)).filter((stat) => stat.step === name);
@@ -213,7 +216,7 @@ export class RunQueriesService {
     const parentRunning = (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
     const open = parentRunning && liveLogCurrent(this.history.root(), key, name);
     const ownedStats = stats.filter((stat) => documents.some((document) => document.stepStatId === stat.id && document.kind === kind));
-    const visits = ownedStats.map((stat, index) => {
+    const visits: VisitView[] = ownedStats.map((stat, index) => {
       const latestDone = index === ownedStats.length - 1 && !parentRunning;
       const owned = documents.filter((document) => document.stepStatId === stat.id && document.kind === kind);
       const log = latestDone ? raw : '';
@@ -260,7 +263,7 @@ export class RunQueriesService {
   }
 
   /** A reviewer visit is the same record as any other step: its own log, exchange, and chart. */
-  private async angleStep(run: RunEntity, name: string, documents: DocumentEntity[], stats: StepStatEntity[]) {
+  private async angleStep(run: RunEntity, name: string, documents: DocumentEntity[], stats: StepStatEntity[]): Promise<StepView> {
     const kind = `review_${name.slice('code-review-'.length)}`;
     const kinds = [kind, 'log', 'error'];
     const exchanges = await this.history.listExchanges(stats.map((stat) => stat.id));

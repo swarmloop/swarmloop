@@ -1,4 +1,4 @@
-import type { FlowItem } from './types.ts';
+import type { FlowItem } from '@contract/api';
 
 export interface AnswerPresentation {
   heading: string | null;

@@ -1,7 +1,7 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { ModelPrice, priceTokens } from './limits';
-import { CODE_REVIEWERS } from '../core/pipeline-result';
+import { CODE_REVIEWERS } from '../contract/steps';
 import { guessFromStream, usageFromStream } from './stream';
 
 export interface Charge {

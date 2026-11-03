@@ -17,6 +17,9 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
+    "paths": {
+      "@contract/*": ["../server/src/contract/*"]
+    },
     "incremental": true,
     "plugins": [
       {

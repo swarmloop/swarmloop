@@ -1,6 +1,6 @@
 'use client';
 
-import { RefObject } from 'react';
+import { ReactElement, RefObject } from 'react';
 import Accordion from '@mui/material/Accordion';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import AccordionSummary from '@mui/material/AccordionSummary';
@@ -10,7 +10,7 @@ import Typography from '@mui/material/Typography';
 import { statusColor } from '../../../theme/theme';
 import { MarkdownBody } from '../../markdown-body';
 import { duration } from '../../../lib/format';
-import { StepView } from '../../../lib/types';
+import { StepView } from '@contract/api';
 import { LogTranscript } from '../../log-transcript';
 import { StepChart } from './step-chart';
 
@@ -32,7 +32,7 @@ export function StepDocuments({
   document: string;
   logBox: RefObject<HTMLDivElement | null>;
   stick: { current: boolean };
-}) {
+}): ReactElement {
   return (
     <>
       {shownChecks.length > 0 ? (

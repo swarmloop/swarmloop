@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactElement } from 'react';
 import Link from 'next/link';
 import DataUsage from '@mui/icons-material/DataUsage';
 import MemoryIcon from '@mui/icons-material/Memory';
@@ -13,7 +14,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { duration, memory, money, tokens } from '../../../lib/format';
 import { latestPhaseLabels } from '../../../lib/phases';
-import { FlowView } from '../../../lib/types';
+import { FlowView } from '@contract/api';
 import { statusColor } from '../../../theme/theme';
 
 export function RunHeader({
@@ -32,7 +33,7 @@ export function RunHeader({
   rebaseError: string | null;
   onRebase: () => void;
   onStop: () => void;
-}) {
+}): ReactElement {
   const metric = flow.metrics;
   const metricItems: { Icon?: typeof Schedule; text: string; tip: string; color?: string }[] = [
     { text: metric.status, tip: 'Run status', color: statusColor(metric.status) },

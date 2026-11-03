@@ -1,19 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { existsSync, readdirSync, statSync } from 'fs';
-import { join } from 'path';
 import { readEnv, type SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { HistoryService } from '../../history/history.service';
 import type { DocumentDraft } from '../../history/visit';
-import type { PipelineResult, StepName, StepOptions } from '../../core/pipeline-result';
+import type { PipelineResult, StepOptions } from '../../core/pipeline-result';
+import type { StepName } from '../../contract/steps';
 import type { OpenedStep } from '../../pipeline/step-run';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import { FetchFailed, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { recordHandoff, returnNotes, textDocument } from '../shared/handoff';
 import { git } from '../../git/git';
 import { remoteProject } from '../merge-request/merge-request-record';
-import { repoNames, worktreePath } from '../shared/repo-names';
+import { hasCi, repoNames, worktreePath } from '../shared/repo-names';
 import { BaseStep, type StepContext } from '../base-step';
 import {
   cancelErrorNote,
@@ -200,7 +199,9 @@ export class PipelineStep extends BaseStep {
       return this.finish(ctx, 'ok', 0, this.report(opened, 'nothing started', body), 'done', body);
     }
     const warnings = seen.flatMap((item) =>
-      item.jobs.filter((job) => job.status === 'failed' && job.allowFailure).map((job) => `${item.project} ${job.name}`),
+      item.jobs
+        .filter((job) => job.status === 'failed' && job.allowFailure)
+        .map((job) => `${item.project} ${job.name}`),
     );
     const body = renderPass(seen, warnings);
     return this.finish(ctx, 'ok', 0, this.report(opened, 'pipeline done', body), 'done', body);
@@ -257,7 +258,11 @@ export class PipelineStep extends BaseStep {
       await delay(pause);
       current = await this.load(records, calls, host, false);
     }
-    return { seen: current, note: `It was still running after ${minutes} minutes and swarmloop canceled it`, traces: true };
+    return {
+      seen: current,
+      note: `It was still running after ${minutes} minutes and swarmloop canceled it`,
+      traces: true,
+    };
   }
 
   private running(item: Seen): boolean {
@@ -277,10 +282,12 @@ export class PipelineStep extends BaseStep {
     const failures = traces ? await this.failures(seen, calls, host) : [];
     const body = traces ? renderFail(failures, seen, note) : `${note.trim()}\n`;
     if (options.auto && (await this.sameFailure(opened.run.key, seen))) {
-      return this.finish(ctx, 'failed', 1, this.report(opened, 'pipeline already failed for this commit', body), 'failed', body);
+      const report = this.report(opened, 'pipeline already failed for this commit', body);
+      return this.finish(ctx, 'failed', 1, report, 'failed', body);
     }
     if (opened.run.attemptsPipeline >= env.MAX_PIPELINE_RETURNS) {
-      return this.finish(ctx, 'blocked', 1, this.report(opened, 'pipeline return limit reached', body), 'blocked', body);
+      const report = this.report(opened, 'pipeline return limit reached', body);
+      return this.finish(ctx, 'blocked', 1, report, 'blocked', body);
     }
     opened.run.attemptsPipeline += 1;
     const reason = failures.map((failure) => `${failure.project} ${failure.name}`).join(',') || 'pipeline failed';
@@ -386,20 +393,6 @@ async function originProject(dir: string): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-function hasCi(dir: string): boolean {
-  if (!existsSync(dir) || !statSync(dir).isDirectory()) {
-    return false;
-  }
-  if (existsSync(join(dir, '.gitlab-ci.yml'))) {
-    return true;
-  }
-  const workflows = join(dir, '.github', 'workflows');
-  if (!existsSync(workflows) || !statSync(workflows).isDirectory()) {
-    return false;
-  }
-  return readdirSync(workflows).some((name) => name.endsWith('.yml') || name.endsWith('.yaml'));
 }
 
 function delay(ms: number): Promise<void> {

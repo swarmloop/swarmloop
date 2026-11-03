@@ -1,11 +1,6 @@
 import { reviewChipStatus, usageFromLog } from './readable-log.ts';
-import type { StepView } from './types.ts';
-
-export interface LiveUsage {
-  tokensIn: number;
-  tokensOut: number;
-  usd: number;
-}
+import type { LiveUsage } from '@contract/live';
+import type { StepView } from '@contract/api';
 
 export function fileView(step: string, body: string): StepView {
   const done = reviewChipStatus(body);

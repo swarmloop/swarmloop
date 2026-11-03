@@ -1,10 +1,16 @@
-import { HistoryService } from '../history/history.service';
-import { sampleSelf, VisitDraft } from '../history/visit';
-import { PipelineResult, StepName, StepOptions, visitStatus } from '../core/pipeline-result';
-import { closeStep, OpenedStep, openStep } from '../pipeline/step-run';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../core/swarmloop-error';
+import type { HistoryService } from '../history/history.service';
+import type { VisitDraft } from '../history/visit';
+import { sampleSelf } from '../history/visit';
+import type { PipelineResult, StepOptions } from '../core/pipeline-result';
+import { visitStatus } from '../core/pipeline-result';
+import type { StepName } from '../contract/steps';
+import type { OpenedStep } from '../pipeline/step-run';
+import { closeStep, openStep } from '../pipeline/step-run';
+import type { HttpCallDraft } from '../core/swarmloop-error';
+import { FetchFailed, SwarmloopError } from '../core/swarmloop-error';
 import { recordHandoff } from './shared/handoff';
-import { requiredDocument, Step } from './step';
+import type { Step } from './step';
+import { requiredDocument } from './step';
 
 export interface StepEnd {
   outcome: 'ok' | 'failed' | 'blocked' | 'waiting';

@@ -1,13 +1,26 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Dispatch, RefObject, SetStateAction, useEffect, useRef, useState } from 'react';
 import { api, runLog } from '../lib/api';
 import { liveSocket } from '../lib/live';
 import { liveLogStep } from '../lib/phases';
-import { fileView, LiveUsage, withFileUsage, withLog } from '../lib/step-view';
-import { StepView } from '../lib/types';
+import { fileView, withFileUsage, withLog } from '../lib/step-view';
+import { LiveLog, LiveUsage } from '@contract/live';
+import { StepView } from '@contract/api';
 
-export function useStep(runKey: string, step: string, live: boolean, revision: string, attempts: number) {
+export function useStep(
+  runKey: string,
+  step: string,
+  live: boolean,
+  revision: string,
+  attempts: number,
+): {
+  view: StepView | null;
+  attempt: number;
+  setAttempt: Dispatch<SetStateAction<number>>;
+  error: string | null;
+  follow: RefObject<boolean>;
+} {
   const [view, setView] = useState<StepView | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +82,7 @@ export function useStep(runKey: string, step: string, live: boolean, revision: s
 
   useEffect(() => {
     const socket = liveSocket();
-    const apply = (entry: { key: string; step: string; body: string; samples?: StepView['visits'][number]['samples']; usage?: LiveUsage }): void => {
+    const apply = (entry: LiveLog): void => {
       if (entry.key !== runKey || !liveLogStep(entry.step, step)) {
         return;
       }

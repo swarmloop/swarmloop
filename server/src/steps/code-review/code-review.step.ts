@@ -5,7 +5,8 @@ import { readEnv, SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { DocumentDraft, ExchangeDraft } from '../../history/visit';
 import { AGENT_RUNNER, AgentProcessRunner } from '../../agent/agent-runner';
-import { PipelineResult, StepName, StepOptions, visitStatus } from '../../core/pipeline-result';
+import { PipelineResult, StepOptions, visitStatus } from '../../core/pipeline-result';
+import { StepName } from '../../contract/steps';
 import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -18,7 +19,15 @@ import { Step, requiredDocument } from '../step';
 import { REBASE_CONFLICT } from '../../git/rebase-worktree';
 import { reviewDiffSection, writeReviewDiff } from './review-diff';
 import { decidedOk, Opinion, REVIEWERS, Reviewer, Usage } from './reviewer';
-import { detachForeign, foreignReview, foreignReviewOf, pathMount, repoMounts, retrying, storedCheckout } from './review-input';
+import {
+  detachForeign,
+  foreignReview,
+  foreignReviewOf,
+  pathMount,
+  repoMounts,
+  retrying,
+  storedCheckout,
+} from './review-input';
 import { writeReport } from './review-report';
 import { acceptRepeated, reviewReturn, runRound, sameReviewedDiff, selectReviewers } from './review-round';
 
@@ -60,7 +69,12 @@ export class CodeReviewStep implements Step {
     }
   }
 
-  private async review(key: string, opened: OpenedStep, options: StepOptions, env: SwarmloopEnv): Promise<PipelineResult> {
+  private async review(
+    key: string,
+    opened: OpenedStep,
+    options: StepOptions,
+    env: SwarmloopEnv,
+  ): Promise<PipelineResult> {
     const deps = { history: this.history, agent: this.agent };
     const notes = await this.history.latestBody(key, 'implementation');
     const checkout = options.path ?? (notes?.trim() ? null : opened.run.targetPath);
@@ -87,7 +101,14 @@ export class CodeReviewStep implements Step {
     const diff = await reviewDiffSection(mounts, await this.history.listDenyPaths());
     const same = sameReviewedDiff(this.history.root(), key, diff.patch);
     const repeated = reviewReturn(returned) && same;
-    const { kept, pending, recovered, stale } = await selectReviewers(this.history, { key, only, fresh, retry, same, repeated });
+    const { kept, pending, recovered, stale } = await selectReviewers(this.history, {
+      key,
+      only,
+      fresh,
+      retry,
+      same,
+      repeated,
+    });
     const calls = pending.length + (this.reportDue(only, kept, pending) ? 1 : 0);
     if (options.auto && calls > 0 && opened.run.agentCalls + calls > env.MAX_AGENT_CALLS) {
       return this.finish(opened, 'failed', 1, `${opened.startedAt} code-review does not fit`, [], []);
@@ -114,10 +135,15 @@ export class CodeReviewStep implements Step {
       repeated,
     });
     const reportContinued = finished.some((item) => Boolean(item.result?.chatId));
-    const drafted = [...recovered, ...finished.flatMap((item) => (item.parsed ? [textDocument(item.reviewer.kind, item.parsed.body)] : []))];
+    const drafted = [
+      ...recovered,
+      ...finished.flatMap((item) => (item.parsed ? [textDocument(item.reviewer.kind, item.parsed.body)] : [])),
+    ];
     const found = this.ordered([...kept, ...finished.flatMap((item) => (item.parsed ? [item.parsed] : []))]);
     const opinions = repeated
-      ? found.map((item) => (item.decision === 'return' ? { ...item, decision: 'ok' as const, body: decidedOk(item.body) } : item))
+      ? found.map((item) =>
+          item.decision === 'return' ? { ...item, decision: 'ok' as const, body: decidedOk(item.body) } : item,
+        )
       : found;
     const stored = repeated ? acceptRepeated(drafted, found) : drafted;
     const errors = finished.flatMap((item) => (item.error ? [item.error] : []));
@@ -128,18 +154,54 @@ export class CodeReviewStep implements Step {
     const noted = await this.noted(key, opinions, stored);
     if (only && this.othersOpen(only, opinions)) {
       const summary = opinions.map((item) => `${item.kind} ${item.decision}`).join('\n');
-      return this.finish(opened, 'waiting', 0, `${opened.startedAt} code-review waiting\n${summary}`, noted, [], undefined, none);
+      return this.finish(
+        opened,
+        'waiting',
+        0,
+        `${opened.startedAt} code-review waiting\n${summary}`,
+        noted,
+        [],
+        undefined,
+        none,
+      );
     }
-    const written = await writeReport(deps, opened, key, env, opinions, mounts, requirements, notes, reportContinued, options.auto);
+    const written = await writeReport(
+      deps,
+      opened,
+      key,
+      env,
+      opinions,
+      mounts,
+      requirements,
+      notes,
+      reportContinued,
+      options.auto,
+    );
     const reportExchanges = written.exchange ? [written.exchange] : [];
     if ('error' in written) {
-      return this.finish(opened, 'failed', 1, `${opened.startedAt} ${written.error}`, noted, reportExchanges, undefined, written.usage);
+      return this.finish(
+        opened,
+        'failed',
+        1,
+        `${opened.startedAt} ${written.error}`,
+        noted,
+        reportExchanges,
+        undefined,
+        written.usage,
+      );
     }
     const recorded = [...noted, written.document];
     if (fresh) {
       recorded.push(textDocument(REBASE_CONFLICT, 'clear\n'));
     }
-    return this.route(opened, opinions, recorded, written.exchange ? [written.exchange] : [], thirdParty, written.usage);
+    return this.route(
+      opened,
+      opinions,
+      recorded,
+      written.exchange ? [written.exchange] : [],
+      thirdParty,
+      written.usage,
+    );
   }
 
   private async route(
@@ -154,10 +216,24 @@ export class CodeReviewStep implements Step {
     const line = `${opened.startedAt} code-review waiting\n${summary}`;
     const returning = opinions.filter((item) => item.decision === 'return');
     if (returning.length === 0 || thirdParty) {
-      return this.finish(opened, 'ok', 0, `${opened.startedAt} code-review done\n${summary}`, documents, exchanges, undefined, usage);
+      return this.finish(
+        opened,
+        'ok',
+        0,
+        `${opened.startedAt} code-review done\n${summary}`,
+        documents,
+        exchanges,
+        undefined,
+        usage,
+      );
     }
     opened.run.attemptsReview += 1;
-    await this.history.recordLoop(opened.run, 'review', opened.run.attemptsReview, returning.map((item) => item.kind).join(','));
+    await this.history.recordLoop(
+      opened.run,
+      'review',
+      opened.run.attemptsReview,
+      returning.map((item) => item.kind).join(','),
+    );
     const report = documents.find((item) => item.kind === 'review_report')?.body.trim();
     const leftover = report
       ? textDocument('return', report.endsWith('\n') ? report : `${report}\n`)

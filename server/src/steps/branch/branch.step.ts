@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import { HistoryService } from '../../history/history.service';
-import { PipelineResult, StepName, StepOptions } from '../../core/pipeline-result';
+import { PipelineResult, StepOptions } from '../../core/pipeline-result';
+import { StepName } from '../../contract/steps';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { recordHandoff } from '../shared/handoff';
@@ -30,7 +31,12 @@ export class BranchStep extends BaseStep {
       await this.ensure(key, repo);
     }
     const handoff = await recordHandoff(this.history, key, 'branch', `- checked out ${name}\n`);
-    return ctx.end({ outcome: 'ok', exitCode: 0, line: `${ctx.opened.startedAt} branch done\n${name}`, visit: { documents: [handoff] } });
+    return ctx.end({
+      outcome: 'ok',
+      exitCode: 0,
+      line: `${ctx.opened.startedAt} branch done\n${name}`,
+      visit: { documents: [handoff] },
+    });
   }
 
   async ensure(key: string, repo: string): Promise<void> {
@@ -80,4 +86,3 @@ async function hasBranch(worktree: string, branch: string): Promise<boolean> {
     throw error;
   }
 }
-

@@ -5,12 +5,13 @@ import { basename, join } from 'path';
 import { Writable } from 'stream';
 import { panelUrl, planEntries, progressText, serve, Sloop } from './agent';
 import { encodeMessage, pushFrames } from './framing';
+import { FlowView } from '../contract/api';
 import { HttpServerApi, ServerApi } from './server-api';
 import { nestCheckout } from './paths';
 
 describe('sloop', () => {
   it('names the phase and the step', () => {
-    const flow = {
+    const flow = flowView({
       key: 'PROJ-1',
       status: 'running',
       currentStep: 'research',
@@ -27,7 +28,7 @@ describe('sloop', () => {
           ],
         },
       ],
-    };
+    });
     expect(progressText(flow)).toBe('PROJ-1 · planning · research — running\n');
     expect(progressText({ ...flow, sentence: 'Answer the open questions before the run continues.' })).toBe(
       'PROJ-1 · planning · research — running\n\nAnswer the open questions before the run continues.\n',
@@ -61,7 +62,19 @@ describe('sloop', () => {
   it('answers initialize and lists features from nest', async () => {
     const { agent, notes } = harness({
       list: async () => ({
-        runs: [{ key: 'PROJ-1', status: 'running', currentStep: 'research', updatedAt: '2026-10-17T19:04:00.000Z', usd: 0.14 }],
+        runs: [
+          {
+            key: 'PROJ-1',
+            name: 'PROJ-1',
+            status: 'running',
+            currentStep: 'research',
+            createdAt: '2026-10-17T19:00:00.000Z',
+            updatedAt: '2026-10-17T19:04:00.000Z',
+            stepStartedAt: null,
+            durationMs: 0,
+            usd: 0.14,
+          },
+        ],
       }),
     });
     const init = await agent.handle({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 2 } }, note(notes));
@@ -81,8 +94,28 @@ describe('sloop', () => {
     const { agent, notes } = harness({
       list: async () => ({
         runs: [
-          { key: 'PROJ-2', status: 'waiting', currentStep: 'research', updatedAt: '2026-10-17T19:04:00.000Z', usd: 0.14 },
-          { key: 'PROJ-1', status: 'failed', currentStep: 'branch', updatedAt: '2026-10-18T10:20:46.936Z', usd: 0.02 },
+          {
+            key: 'PROJ-2',
+            name: 'PROJ-2',
+            status: 'waiting',
+            currentStep: 'research',
+            createdAt: '2026-10-17T19:00:00.000Z',
+            updatedAt: '2026-10-17T19:04:00.000Z',
+            stepStartedAt: null,
+            durationMs: 0,
+            usd: 0.14,
+          },
+          {
+            key: 'PROJ-1',
+            name: 'PROJ-1',
+            status: 'failed',
+            currentStep: 'branch',
+            createdAt: '2026-10-18T10:00:00.000Z',
+            updatedAt: '2026-10-18T10:20:46.936Z',
+            stepStartedAt: null,
+            durationMs: 0,
+            usd: 0.02,
+          },
         ],
       }),
       resume: async (key) => {
@@ -279,14 +312,14 @@ describe('sloop', () => {
         if (polls < 3) {
           throw new Error('PROJ-1 is missing');
         }
-        return {
+        return flowView({
           key: 'PROJ-1',
           status: 'waiting',
           currentStep: 'research',
           updatedAt: '2026-10-17T19:04:00.000Z',
           sentence: 'research is waiting',
           phases: [],
-        };
+        });
       },
     });
     const folder = await mkdtemp(join(tmpdir(), 'sloop-demo-'));
@@ -322,14 +355,15 @@ describe('sloop', () => {
     const stopped: string[] = [];
     const { agent } = harness({
       create: async () => ({ key: 'PROJ-1', status: 'started' }),
-      flow: async () => ({
-        key: 'PROJ-1',
-        status: 'running',
-        currentStep: 'research',
-        updatedAt: '2026-10-17T19:04:00.000Z',
-        sentence: 'working',
-        phases: [],
-      }),
+      flow: async () =>
+        flowView({
+          key: 'PROJ-1',
+          status: 'running',
+          currentStep: 'research',
+          updatedAt: '2026-10-17T19:04:00.000Z',
+          sentence: 'working',
+          phases: [],
+        }),
       stop: async (key) => {
         stopped.push(key);
         return { key, status: 'stopped' };
@@ -406,14 +440,50 @@ function flippingStep(step: string, phase = 'implementation'): ServerApi['flow']
   return async () => {
     polls += 1;
     const running = polls === 1;
-    return {
+    return flowView({
       key: 'PROJ-1',
       status: running ? 'running' : 'waiting',
       currentStep: step,
       updatedAt: '2026-10-17T19:04:00.000Z',
       sentence: `${step} is waiting`,
       phases: [{ phase, steps: [{ name: step, status: running ? 'running' : 'done' }] }],
-    };
+    });
+  };
+}
+
+type FlowFixture = Pick<FlowView, 'key' | 'status' | 'currentStep' | 'updatedAt' | 'sentence'> & {
+  phases: { phase: string; steps: { name: string; status: string }[] }[];
+};
+
+/** A full flow view. Each test varies only the fields it reads, so the rest take neutral values. */
+function flowView(view: FlowFixture): FlowView {
+  return {
+    name: view.key,
+    stepStartedAt: null,
+    resume: 'running',
+    metrics: {
+      status: view.status,
+      durationMs: 0,
+      closedStarts: [],
+      tokens: 0,
+      usd: 0,
+      attemptsReview: 0,
+      attemptsQa: 0,
+      attemptsPipeline: 0,
+      cpuPeak: 0,
+      memPeak: 0,
+    },
+    returns: [],
+    items: [],
+    paths: [],
+    reason: null,
+    launches: [],
+    projects: [],
+    ...view,
+    phases: view.phases.map((group) => ({
+      phase: group.phase,
+      steps: group.steps.map((step) => ({ ...step, current: false, attempts: 0 })),
+    })),
   };
 }
 
@@ -424,14 +494,15 @@ function harness(
 ): { agent: Sloop; notes: { method?: string; params?: unknown }[]; api: ServerApi } {
   const full: ServerApi = {
     list: async () => ({ runs: [] }),
-    flow: async () => ({
-      key: 'PROJ-1',
-      status: 'waiting',
-      currentStep: 'research',
-      updatedAt: '2026-10-17T19:04:00.000Z',
-      sentence: 'research is waiting',
-      phases: [{ phase: 'planning', steps: [{ name: 'research', status: 'done' }] }],
-    }),
+    flow: async () =>
+      flowView({
+        key: 'PROJ-1',
+        status: 'waiting',
+        currentStep: 'research',
+        updatedAt: '2026-10-17T19:04:00.000Z',
+        sentence: 'research is waiting',
+        phases: [{ phase: 'planning', steps: [{ name: 'research', status: 'done' }] }],
+      }),
     create: async () => ({ key: 'PROJ-1', status: 'started' }),
     chat: async () => ({ text: 'ok' }),
     step: async (key) => ({ key, status: 'started' }),
@@ -488,14 +559,15 @@ describe('stdio serve', () => {
     const { agent } = harness(
       {
         create: async () => ({ key: 'PROJ-1', status: 'started' }),
-        flow: async () => ({
-          key: 'PROJ-1',
-          status: 'running',
-          currentStep: 'research',
-          updatedAt: '2026-10-17T19:04:00.000Z',
-          sentence: 'working',
-          phases: [],
-        }),
+        flow: async () =>
+          flowView({
+            key: 'PROJ-1',
+            status: 'running',
+            currentStep: 'research',
+            updatedAt: '2026-10-17T19:04:00.000Z',
+            sentence: 'working',
+            phases: [],
+          }),
         stop: async (key) => {
           stopped.push(key);
           return { key, status: 'stopped' };

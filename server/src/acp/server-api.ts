@@ -1,56 +1,36 @@
-export interface RunRow {
-  key: string;
-  status: string;
-  currentStep: string;
-  updatedAt: string;
-  usd: number;
-}
-
-export interface FlowStep {
-  name: string;
-  status: string;
-}
-
-export interface FlowView {
-  key: string;
-  status: string;
-  currentStep: string;
-  updatedAt: string;
-  sentence: string;
-  phases?: { phase: string; steps: FlowStep[] }[];
-}
+import {
+  ChatBody,
+  ChatView,
+  CreateRunBody,
+  FlowView,
+  OpenShellBody,
+  ReplayBody,
+  ResumeBody,
+  RewindView,
+  RunRef,
+  RunsView,
+  ShellFeature,
+  ShellMatch,
+  ShellStatusView,
+  SnapshotsView,
+  StartStepBody,
+} from '../contract/api';
 
 export interface ServerApi {
-  list(): Promise<{ runs: RunRow[] }>;
+  list(): Promise<RunsView>;
   flow(key: string): Promise<FlowView>;
-  create(body: { prompt?: string; path?: string; projects?: string[] }): Promise<{ key: string; status: string }>;
-  chat(key: string, body: { prompt: string; skill?: string; cwd?: string; mcpServers?: unknown }): Promise<{ text: string }>;
-  step(key: string, step: string, body: { prompt?: string }): Promise<{ key: string; status: string }>;
-  replay(key: string, step: string, body: { prompt: string }): Promise<{ key: string; status: string }>;
-  resume(key: string, body?: { prompt?: string }): Promise<{ key: string; status: string }>;
-  stop(key: string): Promise<{ key: string; status: string }>;
-  shellOpen(body: { path: string }): Promise<ShellFeature | { matches: ShellMatch[] }>;
+  create(body: CreateRunBody): Promise<RunRef>;
+  chat(key: string, body: ChatBody): Promise<ChatView>;
+  step(key: string, step: string, body: StartStepBody): Promise<RunRef>;
+  replay(key: string, step: string, body: ReplayBody): Promise<RunRef>;
+  resume(key: string, body?: ResumeBody): Promise<RunRef>;
+  stop(key: string): Promise<RunRef>;
+  shellOpen(body: OpenShellBody): Promise<ShellFeature | { matches: ShellMatch[] }>;
   shellFeature(key: string): Promise<ShellFeature>;
-  shellLock(key: string, container: string): Promise<{ status: string }>;
-  shellUnlock(key: string): Promise<{ status: string }>;
-  snapshots(key: string): Promise<{ snapshots: { id: number; step: string; at: string }[] }>;
-  rewind(key: string, id: number): Promise<{ step: string }>;
-}
-
-export interface ShellMatch {
-  key: string;
-  status: string;
-  currentStep: string;
-}
-
-export interface ShellFeature {
-  key: string;
-  created: boolean;
-  status: string;
-  currentStep: string;
-  runtime: string;
-  resumeChatId: string | null;
-  mounts: { hostPath: string; containerPath: string }[];
+  shellLock(key: string, container: string): Promise<ShellStatusView>;
+  shellUnlock(key: string): Promise<ShellStatusView>;
+  snapshots(key: string): Promise<SnapshotsView>;
+  rewind(key: string, id: number): Promise<RewindView>;
 }
 
 export class HttpServerApi implements ServerApi {
@@ -59,7 +39,7 @@ export class HttpServerApi implements ServerApi {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  list(): Promise<{ runs: RunRow[] }> {
+  list(): Promise<RunsView> {
     return this.send('GET', '/runs');
   }
 
@@ -67,31 +47,31 @@ export class HttpServerApi implements ServerApi {
     return this.send('GET', `/runs/${encodeURIComponent(key)}`);
   }
 
-  create(body: { prompt?: string; path?: string; projects?: string[] }): Promise<{ key: string; status: string }> {
+  create(body: CreateRunBody): Promise<RunRef> {
     return this.send('POST', '/runs', body);
   }
 
-  chat(key: string, body: { prompt: string; skill?: string; cwd?: string; mcpServers?: unknown }): Promise<{ text: string }> {
+  chat(key: string, body: ChatBody): Promise<ChatView> {
     return this.send('POST', `/runs/${encodeURIComponent(key)}/chat`, body);
   }
 
-  step(key: string, step: string, body: { prompt?: string }): Promise<{ key: string; status: string }> {
+  step(key: string, step: string, body: StartStepBody): Promise<RunRef> {
     return this.send('POST', `/runs/${encodeURIComponent(key)}/steps/${encodeURIComponent(step)}`, body);
   }
 
-  replay(key: string, step: string, body: { prompt: string }): Promise<{ key: string; status: string }> {
+  replay(key: string, step: string, body: ReplayBody): Promise<RunRef> {
     return this.send('POST', `/runs/${encodeURIComponent(key)}/steps/${encodeURIComponent(step)}/replay`, body);
   }
 
-  resume(key: string, body?: { prompt?: string }): Promise<{ key: string; status: string }> {
+  resume(key: string, body?: ResumeBody): Promise<RunRef> {
     return this.send('POST', `/runs/${encodeURIComponent(key)}/resume`, body ?? {});
   }
 
-  stop(key: string): Promise<{ key: string; status: string }> {
+  stop(key: string): Promise<RunRef> {
     return this.send('POST', `/runs/${encodeURIComponent(key)}/stop`, {});
   }
 
-  shellOpen(body: { path: string }): Promise<ShellFeature | { matches: ShellMatch[] }> {
+  shellOpen(body: OpenShellBody): Promise<ShellFeature | { matches: ShellMatch[] }> {
     return this.send('POST', '/runs/shell', body);
   }
 
@@ -99,19 +79,19 @@ export class HttpServerApi implements ServerApi {
     return this.send('GET', `/runs/${encodeURIComponent(key)}/shell`);
   }
 
-  shellLock(key: string, container: string): Promise<{ status: string }> {
+  shellLock(key: string, container: string): Promise<ShellStatusView> {
     return this.send('POST', `/runs/${encodeURIComponent(key)}/shell/lock`, { container });
   }
 
-  shellUnlock(key: string): Promise<{ status: string }> {
+  shellUnlock(key: string): Promise<ShellStatusView> {
     return this.send('POST', `/runs/${encodeURIComponent(key)}/shell/unlock`, {});
   }
 
-  snapshots(key: string): Promise<{ snapshots: { id: number; step: string; at: string }[] }> {
+  snapshots(key: string): Promise<SnapshotsView> {
     return this.send('GET', `/runs/${encodeURIComponent(key)}/snapshots`);
   }
 
-  rewind(key: string, id: number): Promise<{ step: string }> {
+  rewind(key: string, id: number): Promise<RewindView> {
     return this.send('POST', `/runs/${encodeURIComponent(key)}/rewind`, { id });
   }
 

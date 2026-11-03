@@ -3,9 +3,15 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { liveSocket } from '../lib/live';
-import { RunSummary } from '../lib/types';
+import { RunsView, RunSummary } from '@contract/api';
 
-export function useLive() {
+export function useLive(): {
+  runs: RunSummary[];
+  now: number;
+  error: string | null;
+  connected: boolean;
+  removeRun: (key: string) => Promise<void>;
+} {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
@@ -14,7 +20,7 @@ export function useLive() {
   useEffect(() => {
     let stopped = false;
     const load = (): void => {
-      api<{ runs: RunSummary[] }>('/runs')
+      api<RunsView>('/runs')
         .then((body) => {
           if (!stopped) {
             setRuns(body.runs);
@@ -31,7 +37,7 @@ export function useLive() {
     const socket = liveSocket();
     const show = (): void => setConnected(true);
     const hide = (): void => setConnected(false);
-    const apply = (body: { runs: RunSummary[] }): void => {
+    const apply = (body: RunsView): void => {
       if (!stopped) {
         setRuns(body.runs);
         setError(null);

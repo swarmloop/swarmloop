@@ -10,7 +10,8 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { api } from '../../lib/api';
 import { mergeNames } from '../../lib/names';
-import { PHASES, PhaseName } from '../../lib/phases';
+import { PHASES, PhaseName } from '@contract/steps';
+import { ProjectsView, RunRef } from '@contract/api';
 import { PhasePicker } from './phase-picker';
 import { ProjectPicker } from './project-picker';
 
@@ -144,7 +145,7 @@ export function NewRunDialog({
             onClose();
           }
         })
-      : api<{ key: string }>('/runs', {
+      : api<RunRef>('/runs', {
           method: 'POST',
           body: JSON.stringify({ prompt: text, phases: chosen, projects: pickedProjects }),
         }).then((body) => done(body.key));
@@ -195,7 +196,7 @@ async function postProjects(
   let told: string[] | null = null;
   for (const name of names) {
     try {
-      const body = await api<{ projects: string[]; applied: boolean }>(`/runs/${encodeURIComponent(runKey)}/projects`, {
+      const body = await api<ProjectsView>(`/runs/${encodeURIComponent(runKey)}/projects`, {
         method: 'POST',
         body: JSON.stringify({ name }),
       });

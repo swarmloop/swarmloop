@@ -30,6 +30,16 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // The contract is compiled by the dashboard too, so it may import only its own files.
+    files: ['server/src/contract/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [{ regex: '^(?!\\./)', message: 'server/src/contract may import only its own files through ./ paths.' }] },
+      ],
+    },
+  },
+  {
     files: ['server/src/cli/**', 'server/src/main.ts', 'server/src/api-main.ts', 'scripts/**'],
     rules: { 'no-console': 'off' },
   },

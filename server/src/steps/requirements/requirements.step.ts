@@ -3,7 +3,8 @@ import { HistoryService } from '../../history/history.service';
 import { RunEntity } from '../../history/entities';
 import { SampleDraft, sampleSelf } from '../../history/visit';
 import { FetchFailed, HttpCallDraft, SwarmloopError, PasteNeeded } from '../../core/swarmloop-error';
-import { PipelineResult, StepName, StepOptions } from '../../core/pipeline-result';
+import { PipelineResult, StepOptions } from '../../core/pipeline-result';
+import { StepName } from '../../contract/steps';
 import { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
 import { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
 import { REQUIREMENTS_SOURCE } from '../../integrations/requirements-source/requirements-source.module';
@@ -161,7 +162,9 @@ export class RequirementsStep extends BaseStep {
     run: RunEntity,
     resume: boolean,
   ): Promise<{ bundle: IssueBundle; bundles: IssueBundle[]; httpCalls: HttpCallDraft[] }> {
-    const progress = resume ? parseProgress(await this.history.latestBody(key, 'requirements_progress')) : { issues: {} };
+    const progress = resume
+      ? parseProgress(await this.history.latestBody(key, 'requirements_progress'))
+      : { issues: {} };
     const bundles: IssueBundle[] = [];
     const httpCalls: HttpCallDraft[] = [];
     for (const issueKey of issueKeys) {

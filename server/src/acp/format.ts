@@ -1,4 +1,4 @@
-import { RunRow } from './server-api';
+import { RunSummary } from '../contract/api';
 
 export function money(usd: number): string {
   if (usd === 0) {
@@ -7,7 +7,7 @@ export function money(usd: number): string {
   return usd < 0.01 ? '<$0.01' : `$${usd.toFixed(2)}`;
 }
 
-export function sessionTitle(run: RunRow): string {
+export function sessionTitle(run: RunSummary): string {
   return `${money(run.usd)} · ${run.key} · ${run.status} · ${run.currentStep} · ${when(run.updatedAt)}`;
 }
 

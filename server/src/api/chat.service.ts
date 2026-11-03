@@ -17,13 +17,7 @@ import { mountsForRun } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { installMcp, McpServerSpec, readMcpServers } from './mcp-config';
-
-export interface ChatBody {
-  prompt?: string;
-  skill?: string;
-  cwd?: string;
-  mcpServers?: unknown;
-}
+import { ChatBody, ChatView } from '../contract/api';
 
 @Injectable()
 export class ChatService {
@@ -35,7 +29,7 @@ export class ChatService {
     private readonly services: ServiceContextService,
   ) {}
 
-  async speak(key: string, body: ChatBody): Promise<{ text: string }> {
+  async speak(key: string, body: ChatBody): Promise<ChatView> {
     const found = await this.history.findRun(key);
     if (!found) {
       throw new NotFoundException(`${key} is missing`);

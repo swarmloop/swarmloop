@@ -20,7 +20,8 @@ import { StepRegistry } from '../steps/step.registry';
 import { joinPrompt, withInstructions } from '../steps/plan/plan-record';
 import { CHAT_LOCK, chatHeld, chatResume, readChatLock } from './chat-lock';
 import { settleShell, shellHolding } from './shell-lock';
-import { assertKey, autoContinues, continuesSameStep, countedVisits, continues, diedLog, failedLaunches, isStep, loopMark, PipelineResult, settle, STEPS, StepName, StepOptions } from '../core/pipeline-result';
+import { assertKey, autoContinues, continuesSameStep, countedVisits, continues, diedLog, failedLaunches, isStep, loopMark, PipelineResult, settle, StepOptions } from '../core/pipeline-result';
+import { STEPS, StepName } from '../contract/steps';
 
 @Injectable()
 export class PipelineService implements OnModuleInit {
@@ -288,7 +289,7 @@ export class PipelineService implements OnModuleInit {
   private async abandon(run: RunEntity): Promise<void> {
     const now = new Date().toISOString();
     const note = 'process died\n';
-    const saved = await this.savedOutput(run);
+    const saved = this.savedOutput(run);
     const log = diedLog(saved);
     const env = readEnv(this.config);
     const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME);
@@ -324,7 +325,7 @@ export class PipelineService implements OnModuleInit {
     await this.history.saveRun(run);
   }
 
-  private async savedOutput(run: RunEntity): Promise<string> {
+  private savedOutput(run: RunEntity): string {
     return liveLogBody(this.history.root(), run.key, run.currentStep);
   }
 

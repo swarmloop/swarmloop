@@ -1,18 +1,20 @@
 import { liveLogView } from '../../acp/live-output';
 import { activeDurationMs, toDurationParts } from '../../history/active-duration';
 import { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
-import { LiveSpend } from '../../live/live.hub';
-import { continuesSameStep, countedVisits, isLoopStep, isReviewStep, loopMark, pipelineStepOf, STEPS, StepName } from '../../core/pipeline-result';
+import { continuesSameStep, countedVisits, isLoopStep, loopMark } from '../../core/pipeline-result';
+import { FlowItem, FlowView } from '../../contract/api';
+import { LiveUsage } from '../../contract/live';
+import { isReviewStep, pipelineStepOf, STEPS, StepName } from '../../contract/steps';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered } from '../../steps/shared/answers';
 import { items } from '../../steps/shared/markdown-section';
 import { chipStatus, chipAttempts, reportChip, reviewerRound } from './chips';
-import { FlowItem, FlowView, PHASES } from './run-view.types';
+import { PHASES } from './run-view.types';
 
 export function metrics(
   run: RunEntity,
   stats: StepStatEntity[],
-  live: LiveSpend,
+  live: LiveUsage,
   peaks: { cpuPeak: number; memPeak: number },
   reportMs: Map<number, number>,
 ): FlowView['metrics'] {

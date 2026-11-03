@@ -5,7 +5,8 @@ import { SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../agent/session-group';
-import { PipelineResult, StepName } from '../../core/pipeline-result';
+import { PipelineResult } from '../../core/pipeline-result';
+import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { withAddedRepos } from '../follow-up';
@@ -48,7 +49,10 @@ export class PlanImproveStep extends AgentStep {
     const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
     const mounts = mountsForStep(this.history.root(), key, names, ctx.opened.run.targetPath);
     const prior = await this.history.latestBody(key, 'handoff');
-    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'plan-improve')), ctx.opened.run.runtime);
+    const continued = await readSession(
+      join(this.history.root(), 'data', sessionFileName(key, 'plan-improve')),
+      ctx.opened.run.runtime,
+    );
     const full = skillPrompt(
       'plan-improve',
       ctx.requirements,
@@ -61,10 +65,17 @@ export class PlanImproveStep extends AgentStep {
     const agentResult = await ctx.launch({ prompt, mounts });
     const items = reviewedItems(agentResult.responseText, agentResult.output ?? '');
     const next = { ...plan, items: items.length > 0 ? items : plan.items, decision: 'approve' as const };
-    const summary = summaryOr(agentResult.responseText, plainSummary(agentResult.responseText) || next.items.map((item) => `- ${item}`).join('\n'));
+    const summary = summaryOr(
+      agentResult.responseText,
+      plainSummary(agentResult.responseText) || next.items.map((item) => `- ${item}`).join('\n'),
+    );
     const handoff = await recordHandoff(this.history, key, 'plan-improve', summary);
-    return ctx.end('ok', 0, `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`, textDocument('requirements', withPlan(requirements, next)), [
-      handoff,
-    ]);
+    return ctx.end(
+      'ok',
+      0,
+      `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`,
+      textDocument('requirements', withPlan(requirements, next)),
+      [handoff],
+    );
   }
 }

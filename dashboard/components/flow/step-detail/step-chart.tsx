@@ -1,10 +1,11 @@
 'use client';
 
+import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import { SeriesChart } from '../../charts/series';
-import { StepView } from '../../../lib/types';
+import { StepView } from '@contract/api';
 
-export function StepChart({ visit }: { visit: StepView['visits'][number] | undefined }) {
+export function StepChart({ visit }: { visit: StepView['visits'][number] | undefined }): ReactElement | null {
   if (!visit || (visit.status !== 'running' && visit.samples.length === 0)) {
     return null;
   }

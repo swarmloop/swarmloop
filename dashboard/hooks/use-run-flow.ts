@@ -1,14 +1,40 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
 import { api, runLog } from '../lib/api';
 import { openElapsed, visitStored } from '../lib/elapsed';
 import { liveSocket } from '../lib/live';
-import { keepOpenReviews, markReviewFinished, markReviewLive, pipelineStep, REVIEW_STEPS, reviewChipName, type PhaseName } from '../lib/phases';
+import { keepOpenReviews, markReviewFinished, markReviewLive, reviewChipName } from '../lib/phases';
+import { pipelineStepOf, REVIEW_STEPS, type PhaseName } from '@contract/steps';
 import { reviewChipStatus } from '../lib/readable-log';
-import { FlowView } from '../lib/types';
+import { FlowView } from '@contract/api';
+import { LiveLog } from '@contract/live';
 
-export function useRunFlow(runKey: string) {
+export function useRunFlow(runKey: string): {
+  flow: FlowView | null;
+  setFlow: Dispatch<SetStateAction<FlowView | null>>;
+  error: string | null;
+  setError: Dispatch<SetStateAction<string | null>>;
+  stopping: boolean;
+  rebasing: boolean;
+  rebaseError: string | null;
+  confirmStop: boolean;
+  setConfirmStop: Dispatch<SetStateAction<boolean>>;
+  replay: string | null;
+  setReplay: Dispatch<SetStateAction<string | null>>;
+  pending: { prompt: string; phases: PhaseName[] } | null;
+  setPending: Dispatch<SetStateAction<{ prompt: string; phases: PhaseName[] } | null>>;
+  selected: string | null;
+  now: number;
+  openMs: number;
+  selectStep: (name: string) => void;
+  applyWaiting: (next: FlowView) => void;
+  stopRun: () => void;
+  rebaseRun: () => void;
+  startReplay: (step: string, prompt: string, phases: PhaseName[]) => Promise<void>;
+  startReviewer: (step: string) => void;
+  resumeRun: () => void;
+} {
   const [flow, setFlow] = useState<FlowView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
@@ -74,7 +100,7 @@ export function useRunFlow(runKey: string) {
     const watch = (): void => {
       socket.emit('watch', runKey);
     };
-    const onLog = (entry: { key: string; step: string; body: string }): void => {
+    const onLog = (entry: LiveLog): void => {
       if (stopped || entry.key !== runKey || !entry.step.startsWith('code-review-')) {
         return;
       }
@@ -124,7 +150,7 @@ export function useRunFlow(runKey: string) {
     if (flow && followStep.current) {
       setSelected((current) => {
         if (flow.currentStep === 'code-review') {
-          return current && pipelineStep(current) === 'code-review' ? current : REVIEW_STEPS[0];
+          return current && pipelineStepOf(current) === 'code-review' ? current : REVIEW_STEPS[0];
         }
         return flow.currentStep;
       });
@@ -143,7 +169,7 @@ export function useRunFlow(runKey: string) {
     if (!flow) {
       return;
     }
-    followStep.current = pipelineStep(name) === flow.currentStep;
+    followStep.current = pipelineStepOf(name) === flow.currentStep;
     setSelected(name);
   };
 

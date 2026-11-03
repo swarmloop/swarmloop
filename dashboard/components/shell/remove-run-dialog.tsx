@@ -1,12 +1,13 @@
 'use client';
 
+import type { ReactElement } from 'react';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import Typography from '@mui/material/Typography';
-import { RunSummary } from '../../lib/types';
+import { RunSummary } from '@contract/api';
 
 export function RemoveRunDialog({
   run,
@@ -20,7 +21,7 @@ export function RemoveRunDialog({
   error: string | null;
   onClose: () => void;
   onConfirm: () => void;
-}) {
+}): ReactElement {
   return (
     <Dialog open={run !== null} onClose={onClose} fullWidth maxWidth="xs">
       <DialogTitle>Remove {run?.name}?</DialogTitle>

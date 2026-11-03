@@ -5,7 +5,8 @@ import { readEnv, SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../agent/session-group';
-import { PipelineResult, StepName, StepOptions } from '../../core/pipeline-result';
+import { PipelineResult, StepOptions } from '../../core/pipeline-result';
+import { StepName } from '../../contract/steps';
 import { packageRegistries } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -64,7 +65,10 @@ export class ImplementImproveStep extends AgentStep {
     );
     const branch = branchName(key, summaryForBranch(ctx.requirements, key));
     const heads = await featureHeads(mounts, branch);
-    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'implement-improve')), ctx.opened.run.runtime);
+    const continued = await readSession(
+      join(this.history.root(), 'data', sessionFileName(key, 'implement-improve')),
+      ctx.opened.run.runtime,
+    );
     const full = skillPrompt('implement-improve', ctx.requirements, names, sections, mounts);
     const chosen = continued?.chatId ? IMPLEMENT_IMPROVE_FOLLOW_UP : full;
     const prompt = withAddedRepos(chosen, await this.history.latestBody(key, 'added_repos'));

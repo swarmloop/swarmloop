@@ -1,9 +1,34 @@
 import { Body, Controller, Delete, Get, Param, Post, Res } from '@nestjs/common';
-import { ChatBody, ChatService } from './chat.service';
+import {
+  AddProjectBody,
+  AnswersBody,
+  ChatBody,
+  ChatView,
+  CreateRunBody,
+  FlowView,
+  HistoryView,
+  LockShellBody,
+  OpenShellBody,
+  ProjectsView,
+  RemovedRunView,
+  ReplayBody,
+  ResumeBody,
+  RewindBody,
+  RewindView,
+  RunRef,
+  RunsView,
+  ShellFeature,
+  ShellMatch,
+  ShellStatusView,
+  SnapshotsView,
+  StartStepBody,
+  StepView,
+} from '../contract/api';
+import { ChatService } from './chat.service';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
 import { RunRebaseService } from './run-rebase.service';
-import { ShellFeature, ShellService } from './shell.service';
+import { ShellService } from './shell.service';
 
 interface StatusResponse {
   status(code: number): void;
@@ -20,27 +45,27 @@ export class RunsController {
   ) {}
 
   @Get('runs')
-  list(): Promise<{ runs: { key: string; name: string; status: string; currentStep: string; createdAt: string; updatedAt: string; stepStartedAt: string | null; durationMs: number; usd: number }[] }> {
+  list(): Promise<RunsView> {
     return this.queries.list();
   }
 
   @Get('runs/:key/history')
-  history(@Param('key') key: string): ReturnType<RunQueriesService['readHistory']> {
+  history(@Param('key') key: string): Promise<HistoryView> {
     return this.queries.readHistory(key);
   }
 
   @Get('runs/:key/steps/:step')
-  step(@Param('key') key: string, @Param('step') step: string): ReturnType<RunQueriesService['step']> {
+  step(@Param('key') key: string, @Param('step') step: string): Promise<StepView> {
     return this.queries.step(key, step);
   }
 
   @Get('runs/:key')
-  flow(@Param('key') key: string): ReturnType<RunQueriesService['flow']> {
+  flow(@Param('key') key: string): Promise<FlowView> {
     return this.queries.flow(key);
   }
 
   @Post('runs/shell')
-  openShell(@Body() body: { path?: string }): Promise<ShellFeature | { matches: { key: string; status: string; currentStep: string }[] }> {
+  openShell(@Body() body: OpenShellBody): Promise<ShellFeature | { matches: ShellMatch[] }> {
     return this.shell.open(body.path ?? '');
   }
 
@@ -50,45 +75,39 @@ export class RunsController {
   }
 
   @Post('runs/:key/shell/lock')
-  lockShell(@Param('key') key: string, @Body() body: { container?: string }): Promise<{ status: string }> {
+  lockShell(@Param('key') key: string, @Body() body: LockShellBody): Promise<ShellStatusView> {
     return this.shell.lock(key, body.container ?? '');
   }
 
   @Post('runs/:key/shell/unlock')
-  unlockShell(@Param('key') key: string): Promise<{ status: string }> {
+  unlockShell(@Param('key') key: string): Promise<ShellStatusView> {
     return this.shell.unlock(key);
   }
 
   @Get('runs/:key/snapshots')
-  snapshots(@Param('key') key: string): Promise<{ snapshots: { id: number; step: string; at: string }[] }> {
+  snapshots(@Param('key') key: string): Promise<SnapshotsView> {
     return this.shell.snapshots(key);
   }
 
   @Post('runs/:key/rewind')
-  rewind(@Param('key') key: string, @Body() body: { id?: number }): Promise<{ step: string }> {
+  rewind(@Param('key') key: string, @Body() body: RewindBody): Promise<RewindView> {
     return this.shell.rewind(key, Number(body.id));
   }
 
   @Post('runs')
-  async create(
-    @Body() body: { key?: string; prompt?: string; path?: string; projects?: string[]; phases?: string[] },
-    @Res({ passthrough: true }) response: StatusResponse,
-  ): Promise<{ key: string; status: string }> {
+  async create(@Body() body: CreateRunBody, @Res({ passthrough: true }) response: StatusResponse): Promise<RunRef> {
     const result = await this.commands.start(body);
     response.status(result.http);
     return result.body;
   }
 
   @Post('runs/:key/answers')
-  answers(
-    @Param('key') key: string,
-    @Body() body: { answers?: { kind?: string; id?: string; body?: string }[] },
-  ): ReturnType<RunCommandsService['answers']> {
+  answers(@Param('key') key: string, @Body() body: AnswersBody): Promise<FlowView> {
     return this.commands.answers(key, body);
   }
 
   @Post('runs/:key/chat')
-  chatWith(@Param('key') key: string, @Body() body: ChatBody): Promise<{ text: string }> {
+  chatWith(@Param('key') key: string, @Body() body: ChatBody): Promise<ChatView> {
     return this.chat.speak(key, body);
   }
 
@@ -96,9 +115,9 @@ export class RunsController {
   async startStep(
     @Param('key') key: string,
     @Param('step') step: string,
-    @Body() body: { prompt?: string; path?: string },
+    @Body() body: StartStepBody,
     @Res({ passthrough: true }) response: StatusResponse,
-  ): Promise<{ key: string; status: string }> {
+  ): Promise<RunRef> {
     const result = await this.commands.startStep(key, step, body);
     response.status(result.http);
     return result.body;
@@ -108,44 +127,44 @@ export class RunsController {
   async replay(
     @Param('key') key: string,
     @Param('step') step: string,
-    @Body() body: { prompt?: string; phases?: string[] },
+    @Body() body: ReplayBody,
     @Res({ passthrough: true }) response: StatusResponse,
-  ): Promise<{ key: string; status: string }> {
+  ): Promise<RunRef> {
     const result = await this.commands.replay(key, step, body.prompt ?? '', body.phases);
     response.status(result.http);
     return result.body;
   }
 
   @Post('runs/:key/stop')
-  async stop(@Param('key') key: string, @Res({ passthrough: true }) response: StatusResponse): Promise<{ key: string; status: string }> {
+  async stop(@Param('key') key: string, @Res({ passthrough: true }) response: StatusResponse): Promise<RunRef> {
     const result = await this.commands.stop(key);
     response.status(result.http);
     return result.body;
   }
 
   @Delete('runs/:key')
-  remove(@Param('key') key: string): Promise<{ key: string }> {
+  remove(@Param('key') key: string): Promise<RemovedRunView> {
     return this.commands.remove(key);
   }
 
   @Post('runs/:key/rebase')
-  async rebase(@Param('key') key: string, @Res({ passthrough: true }) response: StatusResponse): Promise<{ key: string; status: string }> {
+  async rebase(@Param('key') key: string, @Res({ passthrough: true }) response: StatusResponse): Promise<RunRef> {
     const result = await this.rebases.rebase(key);
     response.status(result.http);
     return result.body;
   }
 
   @Post('runs/:key/projects')
-  addProject(@Param('key') key: string, @Body() body: { name?: string }): Promise<{ projects: string[]; applied: boolean }> {
+  addProject(@Param('key') key: string, @Body() body: AddProjectBody): Promise<ProjectsView> {
     return this.commands.addProject(key, body.name ?? '');
   }
 
   @Post('runs/:key/resume')
   async resume(
     @Param('key') key: string,
-    @Body() body: { prompt?: string },
+    @Body() body: ResumeBody,
     @Res({ passthrough: true }) response: StatusResponse,
-  ): Promise<{ key: string; status: string }> {
+  ): Promise<RunRef> {
     const result = await this.commands.resume(key, body?.prompt);
     response.status(result.http);
     return result.body;

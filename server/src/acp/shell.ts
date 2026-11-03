@@ -19,7 +19,8 @@ import {
   SandboxMount,
 } from '../sandbox/sandbox-launch';
 import { collectEnvMasks } from '../sandbox/sandbox.service';
-import { HttpServerApi, ServerApi, ShellFeature, ShellMatch } from './server-api';
+import { ShellFeature, ShellMatch } from '../contract/api';
+import { HttpServerApi, ServerApi } from './server-api';
 import { hostCheckout, nestCheckout } from './paths';
 import { parseShell, pickSnapshot, ShellCommand } from './shell-command';
 import { readShellConfig, ShellConfig } from './shell-env';
