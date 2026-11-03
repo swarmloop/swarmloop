@@ -12,7 +12,7 @@ import { HistoryService } from '../../history/history.service';
 import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
-import { withPlan } from './plan-record';
+import { withPlan } from '../plan/plan-record';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 

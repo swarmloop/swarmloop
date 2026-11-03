@@ -6,7 +6,7 @@ import { CodeReviewStep } from './code-review/code-review.step';
 import { ImplementImproveStep } from './implement/implement-improve.step';
 import { ImplementStep } from './implement/implement.step';
 import { MergeRequestStep } from './merge-request/merge-request.step';
-import { PlanImproveStep } from './plan/plan-improve.step';
+import { PlanImproveStep } from './plan-improve/plan-improve.step';
 import { PlanStep } from './plan/plan.step';
 import { PipelineStep } from './pipeline/pipeline.step';
 import { PrepareStep } from './prepare/prepare.step';

@@ -21,6 +21,7 @@ import { planFollowUp } from './plan.prompts';
 export class PlanStep extends AgentStep {
   readonly name: StepName = 'plan';
   readonly requiredKind = 'repos';
+  readonly revisesRequirements = true;
 
   constructor(
     history: HistoryService,

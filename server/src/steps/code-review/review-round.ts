@@ -3,16 +3,20 @@ import { basename, join } from 'path';
 import type { SwarmloopEnv } from '../../config/env';
 import { liveLogBody } from '../../acp/live-output';
 import type { HistoryService } from '../../history/history.service';
-import type { DocumentDraft } from '../../history/visit';
+import type { DocumentDraft, ExchangeDraft } from '../../history/visit';
+import type { PipelineResult } from '../../core/pipeline-result';
 import type { OpenedStep } from '../../pipeline/step-run';
 import type { SandboxMount } from '../../sandbox/sandbox-launch';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
+import type { StepContext } from '../base-step';
 import { withReturnNotes } from '../implement/implement-record';
-import { textDocument, withHandoff } from '../shared/handoff';
+import { returnNotes, textDocument, withHandoff } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
 import { parseReview } from './code-review-record';
-import type { Finished, Opinion, Reviewer, ReviewDeps } from './reviewer';
-import { decidedOk, fixNotes, recordAngle, REVIEWERS, runJob } from './reviewer';
+import { fixNotes } from './review-input';
+import { closeReview, recordAngle } from './review-report';
+import type { Finished, Opinion, Reviewer, ReviewDeps, Usage } from './reviewer';
+import { decidedOk, REVIEWERS, runJob } from './reviewer';
 
 export interface Selection {
   kept: Opinion[];
@@ -151,11 +155,93 @@ export function sameReviewedDiff(root: string, key: string, patch: string): bool
   }
 }
 
-export function acceptRepeated(documents: DocumentDraft[], opinions: Opinion[]): DocumentDraft[] {
+function acceptRepeated(documents: DocumentDraft[], opinions: Opinion[]): DocumentDraft[] {
   const kinds = new Set(opinions.filter((item) => item.decision === 'return').map((item) => item.kind));
   return documents.map((document) =>
     kinds.has(document.kind) ? { ...document, body: decidedOk(document.body) } : document,
   );
+}
+
+/** Sorts the round's opinions into reviewer order and drafts the documents they are stored with. */
+export function tallyRound(
+  kept: Opinion[],
+  recovered: DocumentDraft[],
+  finished: Finished[],
+  repeated: boolean,
+): { reportContinued: boolean; opinions: Opinion[]; stored: DocumentDraft[]; errors: string[] } {
+  const reportContinued = finished.some((item) => Boolean(item.result?.chatId));
+  const drafted = [
+    ...recovered,
+    ...finished.flatMap((item) => (item.parsed ? [textDocument(item.reviewer.kind, item.parsed.body)] : [])),
+  ];
+  const found = ordered([...kept, ...finished.flatMap((item) => (item.parsed ? [item.parsed] : []))]);
+  const opinions = repeated
+    ? found.map((item) =>
+        item.decision === 'return' ? { ...item, decision: 'ok' as const, body: decidedOk(item.body) } : item,
+      )
+    : found;
+  const stored = repeated ? acceptRepeated(drafted, found) : drafted;
+  const errors = finished.flatMap((item) => (item.error ? [item.error] : []));
+  return { reportContinued, opinions, stored, errors };
+}
+
+function ordered(opinions: Opinion[]): Opinion[] {
+  return REVIEWERS.flatMap((reviewer) => opinions.filter((item) => item.kind === reviewer.kind));
+}
+
+export function reportDue(only: string | undefined, kept: Opinion[], pending: Reviewer[]): boolean {
+  const covered = new Set([...kept.map((item) => item.kind), ...pending.map((item) => item.kind)]);
+  return REVIEWERS.every((reviewer) => covered.has(reviewer.kind));
+}
+
+export function othersOpen(only: string, opinions: Opinion[]): boolean {
+  return REVIEWERS.some((reviewer) => {
+    if (reviewer.name === only) {
+      return false;
+    }
+    const opinion = opinions.find((item) => item.kind === reviewer.kind);
+    return !opinion || opinion.decision === 'return';
+  });
+}
+
+/** Done when nothing returned or the step is third-party. Otherwise the step goes back to implement. */
+export async function routeReview(
+  history: HistoryService,
+  ctx: StepContext,
+  opinions: Opinion[],
+  documents: DocumentDraft[],
+  exchanges: ExchangeDraft[],
+  thirdParty: boolean,
+  usage: Usage,
+): Promise<PipelineResult> {
+  const { opened } = ctx;
+  const summary = opinions.map((item) => `${item.kind} ${item.decision}`).join('\n');
+  const line = `${opened.startedAt} code-review waiting\n${summary}`;
+  const returning = opinions.filter((item) => item.decision === 'return');
+  if (returning.length === 0 || thirdParty) {
+    return closeReview(
+      ctx,
+      'ok',
+      0,
+      `${opened.startedAt} code-review done\n${summary}`,
+      documents,
+      exchanges,
+      undefined,
+      usage,
+    );
+  }
+  opened.run.attemptsReview += 1;
+  await history.recordLoop(
+    opened.run,
+    'review',
+    opened.run.attemptsReview,
+    returning.map((item) => item.kind).join(','),
+  );
+  const report = documents.find((item) => item.kind === 'review_report')?.body.trim();
+  const leftover = report
+    ? textDocument('return', report.endsWith('\n') ? report : `${report}\n`)
+    : returnNotes(returning.map((item) => ({ source: item.kind.replace(/^review_/, ''), body: item.body })));
+  return closeReview(ctx, 'waiting', 0, line, [...documents, leftover], exchanges, 'implement', usage);
 }
 
 function staleReturn(repeated: boolean, decision: 'ok' | 'return'): boolean {

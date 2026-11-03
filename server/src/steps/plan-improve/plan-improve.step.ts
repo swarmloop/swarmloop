@@ -15,8 +15,8 @@ import { recordHandoff, textDocument, withHandoff } from '../shared/handoff';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { mountsForStep, repoNames } from '../shared/repo-names';
 import { storedPlan } from '../step';
-import { readPlan, reviewedItems, withPlan } from './plan-record';
-import { PLAN_IMPROVE_FOLLOW_UP } from '../plan-improve/plan-improve.prompts';
+import { readPlan, reviewedItems, withPlan } from '../plan/plan-record';
+import { PLAN_IMPROVE_FOLLOW_UP } from './plan-improve.prompts';
 
 @Injectable()
 export class PlanImproveStep extends AgentStep {

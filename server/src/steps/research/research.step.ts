@@ -21,6 +21,7 @@ import { RESEARCH_CONTINUE } from './research.prompts';
 export class ResearchStep extends AgentStep {
   readonly name: StepName = 'research';
   readonly requiredKind = 'worktrees';
+  readonly revisesRequirements = true;
 
   constructor(
     history: HistoryService,

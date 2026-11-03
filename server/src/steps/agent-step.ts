@@ -13,56 +13,14 @@ import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { visitStatus } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
 import type { OpenedStep } from '../pipeline/step-run';
-import { closeStep, openStep } from '../pipeline/step-run';
 import type { SandboxMount } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { SwarmloopError } from '../core/swarmloop-error';
+import type { StepContext } from './base-step';
 import { BaseStep } from './base-step';
 import { agentFailure, combineAgentResults, refusedWrite, withRefusal } from './shared/agent-result';
 import { modelVisit } from './shared/model-visit';
 import { AGENT_LANGUAGE_RULE } from './shared/skill-prompt';
-
-function bindModelStep(input: {
-  history: HistoryService;
-  opened: OpenedStep;
-  step: StepName;
-  mode: string;
-  model: string;
-  agent: () => AgentRunResult | null;
-  prompt: () => string;
-}): (
-  outcome: 'ok' | 'failed' | 'waiting' | 'blocked',
-  exitCode: number,
-  line: string,
-  document?: DocumentDraft,
-  documents?: DocumentDraft[],
-  moveTo?: StepName,
-) => Promise<PipelineResult> {
-  return (outcome, exitCode, line, document, documents, moveTo) =>
-    closeStep({
-      history: input.history,
-      run: input.opened.run,
-      previousStep: input.opened.previousStep,
-      previousStatus: input.opened.previousStatus,
-      step: input.step,
-      outcome,
-      visit: modelVisit({
-        opened: input.opened,
-        step: input.step,
-        mode: input.mode,
-        model: input.model,
-        agent: input.agent(),
-        prompt: input.prompt(),
-        status: visitStatus(outcome),
-        exitCode,
-        document,
-        documents,
-      }),
-      line,
-      exitCode,
-      moveTo,
-    });
-}
 
 export async function launchAgent(input: {
   agent: AgentProcessRunner;
@@ -136,7 +94,7 @@ export interface ModelStepContext {
   }) => Promise<AgentRunResult>;
 }
 
-/** Per-run state of one model step. It lives in one execute call, not on the service, which is a singleton. */
+/** Per-run state of one model step. It lives in one run call, not on the service, which is a singleton. */
 interface ModelRun {
   key: string;
   opened: OpenedStep;
@@ -168,12 +126,12 @@ export abstract class AgentStep extends BaseStep {
 
   protected abstract write(key: string, ctx: ModelStepContext, options: StepOptions): Promise<PipelineResult>;
 
-  override async execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
+  /** The model body. The base step opens and closes the visit; this supplies the model visit through its context. */
+  protected async run(key: string, options: StepOptions, stepCtx: StepContext): Promise<PipelineResult> {
     const env = readEnv(this.config);
-    const opened = await openStep(this.history, key, this.name);
     const run: ModelRun = {
       key,
-      opened,
+      opened: stepCtx.opened,
       settings: this.settings(env),
       auto: options.auto,
       workspace: join(this.history.root(), 'worktrees', key),
@@ -184,18 +142,28 @@ export abstract class AgentStep extends BaseStep {
       launchError: null,
     };
     const ctx: ModelStepContext = {
-      opened,
+      opened: stepCtx.opened,
       requirements: '',
       workspace: run.workspace,
-      end: bindModelStep({
-        history: this.history,
-        opened,
-        step: this.name,
-        mode: run.settings.mode,
-        model: run.settings.model,
-        agent: () => run.agentResult,
-        prompt: () => run.prompt,
-      }),
+      end: (outcome, exitCode, line, document, documents, moveTo) =>
+        stepCtx.end({
+          outcome,
+          exitCode,
+          line,
+          moveTo,
+          visit: modelVisit({
+            opened: run.opened,
+            step: this.name,
+            mode: run.settings.mode,
+            model: run.settings.model,
+            agent: run.agentResult,
+            prompt: run.prompt,
+            status: visitStatus(outcome),
+            exitCode,
+            document,
+            documents,
+          }),
+        }),
       launch: (launch) => this.launch(run, launch),
     };
     try {
@@ -208,12 +176,8 @@ export abstract class AgentStep extends BaseStep {
       return await this.write(key, ctx, options);
     } catch (error) {
       const refusal = error === run.launchError ? null : run.refusal;
-      return ctx.end('failed', 1, `${opened.startedAt} ${withRefusal(this.failureText(error), refusal)}`);
+      return ctx.end('failed', 1, `${stepCtx.opened.startedAt} ${withRefusal(this.failureText(error), refusal)}`);
     }
-  }
-
-  protected run(key: string, options: StepOptions): Promise<PipelineResult> {
-    return this.execute(key, options);
   }
 
   private async launch(run: ModelRun, launch: Parameters<ModelStepContext['launch']>[0]): Promise<AgentRunResult> {

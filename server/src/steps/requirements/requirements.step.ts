@@ -18,6 +18,8 @@ import { emptyWrite, RequirementsFinish, requirementsVisit, stopReason } from '.
 export class RequirementsStep extends BaseStep {
   readonly name: StepName = 'requirements';
   readonly requiredKind = 'requirements';
+  readonly acceptsPrompt = true;
+  readonly acceptsProjects = true;
 
   constructor(
     history: HistoryService,
