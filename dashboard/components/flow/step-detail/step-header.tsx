@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactElement } from 'react';
 import DataUsage from '@mui/icons-material/DataUsage';
 import MemoryIcon from '@mui/icons-material/Memory';
 import Paid from '@mui/icons-material/Paid';
@@ -52,7 +53,7 @@ export function StepHeader({
   label: string;
   shownDuration: number;
   shownAttempt: number;
-}) {
+}): ReactElement {
   return (
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>

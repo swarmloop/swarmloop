@@ -5,7 +5,13 @@ import { api } from '../lib/api';
 import { liveSocket } from '../lib/live';
 import { RunsView, RunSummary } from '@contract/api';
 
-export function useLive() {
+export function useLive(): {
+  runs: RunSummary[];
+  now: number;
+  error: string | null;
+  connected: boolean;
+  removeRun: (key: string) => Promise<void>;
+} {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);

@@ -162,7 +162,9 @@ export class RequirementsStep extends BaseStep {
     run: RunEntity,
     resume: boolean,
   ): Promise<{ bundle: IssueBundle; bundles: IssueBundle[]; httpCalls: HttpCallDraft[] }> {
-    const progress = resume ? parseProgress(await this.history.latestBody(key, 'requirements_progress')) : { issues: {} };
+    const progress = resume
+      ? parseProgress(await this.history.latestBody(key, 'requirements_progress'))
+      : { issues: {} };
     const bundles: IssueBundle[] = [];
     const httpCalls: HttpCallDraft[] = [];
     for (const issueKey of issueKeys) {

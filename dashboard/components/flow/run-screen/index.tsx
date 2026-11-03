@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { useRunFlow } from '../../../hooks/use-run-flow';
@@ -12,7 +13,7 @@ import { WaitingPanel } from '../waiting-panel';
 import { RunDialogs } from './run-dialogs';
 import { RunHeader } from './run-header';
 
-export function RunScreen({ runKey }: { runKey: string }) {
+export function RunScreen({ runKey }: { runKey: string }): ReactElement {
   const {
     flow,
     setFlow,

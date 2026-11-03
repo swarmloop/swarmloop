@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactElement } from 'react';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
@@ -33,7 +34,7 @@ export function RunDialogs({
   stopRun: () => void;
   startReplay: (step: string, prompt: string, phases: PhaseName[]) => Promise<void>;
   setError: (error: string | null) => void;
-}) {
+}): ReactElement {
   return (
     <>
       <Dialog open={confirmStop} onClose={() => (stopping ? undefined : setConfirmStop(false))} fullWidth maxWidth="xs">

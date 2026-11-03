@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { stepLabel, withReport } from '../../lib/phases';
@@ -16,7 +17,7 @@ export function FlowBoard({
   returns: FlowView['returns'];
   selected: string | null;
   onSelect: (name: string) => void;
-}) {
+}): ReactElement {
   const columns = Math.max(phases.length, 1);
   return (
     <Box sx={{ mt: 4 }}>

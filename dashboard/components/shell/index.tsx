@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, ReactElement, useContext, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import AddIcon from '@mui/icons-material/Add';
 import AppBar from '@mui/material/AppBar';
@@ -24,7 +24,7 @@ export function useNewRun(): () => void {
   return useContext(DialogContext);
 }
 
-export function Shell({ children }: { children: React.ReactNode }) {
+export function Shell({ children }: { children: React.ReactNode }): ReactElement {
   const pathname = usePathname();
   const router = useRouter();
   const { runs, now, error, connected, removeRun } = useLive();

@@ -57,7 +57,10 @@ export class ResearchStep extends AgentStep {
     await this.history.putDocument(ctx.opened.run, 'repos', repos);
     const detail = (paused ? parsed.questions : repos).trimEnd();
     const word = paused ? 'waiting' : 'done';
-    const summary = summaryOr(agentResult.responseText, plainSummary(agentResult.responseText) || `- chose ${repos.trim().split('\n').join(', ')}`);
+    const summary = summaryOr(
+      agentResult.responseText,
+      plainSummary(agentResult.responseText) || `- chose ${repos.trim().split('\n').join(', ')}`,
+    );
     const handoff = await recordHandoff(this.history, ctx.opened.run.key, 'research', summary);
     return ctx.end(
       paused ? 'waiting' : 'ok',

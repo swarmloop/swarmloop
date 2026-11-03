@@ -1,8 +1,8 @@
-import { AgentRunResult } from '../../agent/agent-runner';
-import { DocumentDraft, VisitDraft } from '../../history/visit';
-import { OpenedStep } from '../../pipeline/step-run';
-import { StepName } from '../../contract/steps';
-import { HttpCallDraft } from '../../core/swarmloop-error';
+import type { AgentRunResult } from '../../agent/agent-runner';
+import type { DocumentDraft, VisitDraft } from '../../history/visit';
+import type { OpenedStep } from '../../pipeline/step-run';
+import type { StepName } from '../../contract/steps';
+import type { HttpCallDraft } from '../../core/swarmloop-error';
 
 export function modelVisit(input: {
   opened: OpenedStep;
@@ -24,7 +24,9 @@ export function modelVisit(input: {
   const documents = [
     ...(input.document ? [input.document] : []),
     ...(input.documents ?? []),
-    ...(agent?.output ? [{ kind: 'log', fileName: '', body: agent.output.endsWith('\n') ? agent.output : `${agent.output}\n` }] : []),
+    ...(agent?.output
+      ? [{ kind: 'log', fileName: '', body: agent.output.endsWith('\n') ? agent.output : `${agent.output}\n` }]
+      : []),
   ];
   return {
     step: input.step,

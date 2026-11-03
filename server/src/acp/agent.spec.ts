@@ -62,7 +62,19 @@ describe('sloop', () => {
   it('answers initialize and lists features from nest', async () => {
     const { agent, notes } = harness({
       list: async () => ({
-        runs: [{ key: 'PROJ-1', status: 'running', currentStep: 'research', updatedAt: '2026-10-17T19:04:00.000Z', usd: 0.14 }],
+        runs: [
+          {
+            key: 'PROJ-1',
+            name: 'PROJ-1',
+            status: 'running',
+            currentStep: 'research',
+            createdAt: '2026-10-17T19:00:00.000Z',
+            updatedAt: '2026-10-17T19:04:00.000Z',
+            stepStartedAt: null,
+            durationMs: 0,
+            usd: 0.14,
+          },
+        ],
       }),
     });
     const init = await agent.handle({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 2 } }, note(notes));
@@ -82,8 +94,28 @@ describe('sloop', () => {
     const { agent, notes } = harness({
       list: async () => ({
         runs: [
-          { key: 'PROJ-2', status: 'waiting', currentStep: 'research', updatedAt: '2026-10-17T19:04:00.000Z', usd: 0.14 },
-          { key: 'PROJ-1', status: 'failed', currentStep: 'branch', updatedAt: '2026-10-18T10:20:46.936Z', usd: 0.02 },
+          {
+            key: 'PROJ-2',
+            name: 'PROJ-2',
+            status: 'waiting',
+            currentStep: 'research',
+            createdAt: '2026-10-17T19:00:00.000Z',
+            updatedAt: '2026-10-17T19:04:00.000Z',
+            stepStartedAt: null,
+            durationMs: 0,
+            usd: 0.14,
+          },
+          {
+            key: 'PROJ-1',
+            name: 'PROJ-1',
+            status: 'failed',
+            currentStep: 'branch',
+            createdAt: '2026-10-18T10:00:00.000Z',
+            updatedAt: '2026-10-18T10:20:46.936Z',
+            stepStartedAt: null,
+            durationMs: 0,
+            usd: 0.02,
+          },
         ],
       }),
       resume: async (key) => {

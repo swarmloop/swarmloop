@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactElement } from 'react';
 import Link from 'next/link';
 import DataUsage from '@mui/icons-material/DataUsage';
 import MemoryIcon from '@mui/icons-material/Memory';
@@ -32,7 +33,7 @@ export function RunHeader({
   rebaseError: string | null;
   onRebase: () => void;
   onStop: () => void;
-}) {
+}): ReactElement {
   const metric = flow.metrics;
   const metricItems: { Icon?: typeof Schedule; text: string; tip: string; color?: string }[] = [
     { text: metric.status, tip: 'Run status', color: statusColor(metric.status) },

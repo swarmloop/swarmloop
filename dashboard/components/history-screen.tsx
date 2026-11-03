@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactElement, ReactNode, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Accordion from '@mui/material/Accordion';
@@ -19,7 +19,7 @@ import { latestPhaseLabels } from '../lib/phases';
 import { LogTranscript } from './log-transcript';
 import { HistoryView } from '@contract/api';
 
-export function HistoryScreen({ runKey }: { runKey: string }) {
+export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
   const [view, setView] = useState<HistoryView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [visit, setVisit] = useState<number | null>(null);

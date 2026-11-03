@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactElement } from 'react';
 import Schedule from '@mui/icons-material/Schedule';
 import DeleteOutline from '@mui/icons-material/DeleteOutline';
 import Box from '@mui/material/Box';
@@ -36,7 +37,7 @@ export function RunList({
   error: string | null;
   onOpen: (key: string) => void;
   onRemove: (run: RunSummary) => void;
-}) {
+}): ReactElement {
   return (
     <Box sx={{ flex: 1, overflow: 'auto' }}>
       <Box sx={{ px: 1.5, pt: 1 }}>

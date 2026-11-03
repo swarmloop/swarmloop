@@ -64,8 +64,12 @@ export class PlanImproveStep extends AgentStep {
     const next = { ...plan, items: items.length > 0 ? items : plan.items, decision: 'approve' as const };
     const summary = summaryOr(agentResult.responseText, plainSummary(agentResult.responseText) || next.items.map((item) => `- ${item}`).join('\n'));
     const handoff = await recordHandoff(this.history, key, 'plan-improve', summary);
-    return ctx.end('ok', 0, `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`, textDocument('requirements', withPlan(requirements, next)), [
-      handoff,
-    ]);
+    return ctx.end(
+      'ok',
+      0,
+      `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`,
+      textDocument('requirements', withPlan(requirements, next)),
+      [handoff],
+    );
   }
 }

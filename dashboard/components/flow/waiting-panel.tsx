@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { ReactElement, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
@@ -10,7 +10,7 @@ import { api } from '../../lib/api';
 import { answerPresentation } from '../../lib/answer-field';
 import { FlowView } from '@contract/api';
 
-export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (flow: FlowView) => void }) {
+export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (flow: FlowView) => void }): ReactElement {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

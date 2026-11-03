@@ -1,5 +1,5 @@
 import { liveLogBody } from '../../acp/live-output';
-import { LaunchView } from '../../contract/api';
+import { LaunchView, VisitView } from '../../contract/api';
 import { LiveSample } from '../../contract/live';
 
 export function liveVisit(
@@ -9,7 +9,7 @@ export function liveVisit(
   previousAttempt: number,
   startedAt: string,
   samples: LiveSample[] = [],
-) {
+): VisitView {
   const body = liveLogBody(root, key, step);
   const started = Date.parse(startedAt);
   return {

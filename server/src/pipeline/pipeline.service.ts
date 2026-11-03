@@ -289,7 +289,7 @@ export class PipelineService implements OnModuleInit {
   private async abandon(run: RunEntity): Promise<void> {
     const now = new Date().toISOString();
     const note = 'process died\n';
-    const saved = await this.savedOutput(run);
+    const saved = this.savedOutput(run);
     const log = diedLog(saved);
     const env = readEnv(this.config);
     const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME);
@@ -325,7 +325,7 @@ export class PipelineService implements OnModuleInit {
     await this.history.saveRun(run);
   }
 
-  private async savedOutput(run: RunEntity): Promise<string> {
+  private savedOutput(run: RunEntity): string {
     return liveLogBody(this.history.root(), run.key, run.currentStep);
   }
 

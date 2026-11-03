@@ -1,6 +1,6 @@
-import { HistoryService } from '../history/history.service';
-import { PipelineResult, StepOptions } from '../core/pipeline-result';
-import { StepName } from '../contract/steps';
+import type { HistoryService } from '../history/history.service';
+import type { PipelineResult, StepOptions } from '../core/pipeline-result';
+import type { StepName } from '../contract/steps';
 import { readPlan } from './plan/plan-record';
 
 export interface Step {

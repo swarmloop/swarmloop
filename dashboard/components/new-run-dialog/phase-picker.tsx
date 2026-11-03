@@ -1,13 +1,13 @@
 'use client';
 
-import { Dispatch, SetStateAction } from 'react';
+import { Dispatch, ReactElement, SetStateAction } from 'react';
 import Checkbox from '@mui/material/Checkbox';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import FormGroup from '@mui/material/FormGroup';
 import { PHASE_LABEL } from '../../lib/phases';
 import { PHASES, PhaseName } from '@contract/steps';
 
-export function PhasePicker({ picked, frozen, setPicked }: { picked: PhaseName[]; frozen: PhaseName[]; setPicked: Dispatch<SetStateAction<PhaseName[]>> }) {
+export function PhasePicker({ picked, frozen, setPicked }: { picked: PhaseName[]; frozen: PhaseName[]; setPicked: Dispatch<SetStateAction<PhaseName[]>> }): ReactElement {
   return (
     <FormGroup sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, max-content)', columnGap: 2, rowGap: 0.5 }}>
       {PHASES.map((phase) => (

@@ -1,6 +1,6 @@
 'use client';
 
-import { RefObject } from 'react';
+import { ReactElement, RefObject } from 'react';
 import Accordion from '@mui/material/Accordion';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import AccordionSummary from '@mui/material/AccordionSummary';
@@ -32,7 +32,7 @@ export function StepDocuments({
   document: string;
   logBox: RefObject<HTMLDivElement | null>;
   stick: { current: boolean };
-}) {
+}): ReactElement {
   return (
     <>
       {shownChecks.length > 0 ? (
