@@ -1,4 +1,4 @@
-import { existsSync, statSync } from 'fs';
+import { existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { SandboxMount } from '../../sandbox/sandbox-launch';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -59,4 +59,18 @@ export function perRepoMounts(mounts: SandboxMount[], names: string[]): { name: 
     name: mount.containerPath.startsWith('/work/') ? mount.containerPath.slice('/work/'.length) : (names[index] ?? 'work'),
     mounts: [mount],
   }));
+}
+
+export function hasCi(dir: string): boolean {
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+    return false;
+  }
+  if (existsSync(join(dir, '.gitlab-ci.yml'))) {
+    return true;
+  }
+  const workflows = join(dir, '.github', 'workflows');
+  if (!existsSync(workflows) || !statSync(workflows).isDirectory()) {
+    return false;
+  }
+  return readdirSync(workflows).some((name) => name.endsWith('.yml') || name.endsWith('.yaml'));
 }

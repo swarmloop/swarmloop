@@ -115,10 +115,15 @@ export class CodeReviewStep implements Step {
       repeated,
     });
     const reportContinued = finished.some((item) => Boolean(item.result?.chatId));
-    const drafted = [...recovered, ...finished.flatMap((item) => (item.parsed ? [textDocument(item.reviewer.kind, item.parsed.body)] : []))];
+    const drafted = [
+      ...recovered,
+      ...finished.flatMap((item) => (item.parsed ? [textDocument(item.reviewer.kind, item.parsed.body)] : [])),
+    ];
     const found = this.ordered([...kept, ...finished.flatMap((item) => (item.parsed ? [item.parsed] : []))]);
     const opinions = repeated
-      ? found.map((item) => (item.decision === 'return' ? { ...item, decision: 'ok' as const, body: decidedOk(item.body) } : item))
+      ? found.map((item) =>
+          item.decision === 'return' ? { ...item, decision: 'ok' as const, body: decidedOk(item.body) } : item,
+        )
       : found;
     const stored = repeated ? acceptRepeated(drafted, found) : drafted;
     const errors = finished.flatMap((item) => (item.error ? [item.error] : []));
@@ -129,18 +134,54 @@ export class CodeReviewStep implements Step {
     const noted = await this.noted(key, opinions, stored);
     if (only && this.othersOpen(only, opinions)) {
       const summary = opinions.map((item) => `${item.kind} ${item.decision}`).join('\n');
-      return this.finish(opened, 'waiting', 0, `${opened.startedAt} code-review waiting\n${summary}`, noted, [], undefined, none);
+      return this.finish(
+        opened,
+        'waiting',
+        0,
+        `${opened.startedAt} code-review waiting\n${summary}`,
+        noted,
+        [],
+        undefined,
+        none,
+      );
     }
-    const written = await writeReport(deps, opened, key, env, opinions, mounts, requirements, notes, reportContinued, options.auto);
+    const written = await writeReport(
+      deps,
+      opened,
+      key,
+      env,
+      opinions,
+      mounts,
+      requirements,
+      notes,
+      reportContinued,
+      options.auto,
+    );
     const reportExchanges = written.exchange ? [written.exchange] : [];
     if ('error' in written) {
-      return this.finish(opened, 'failed', 1, `${opened.startedAt} ${written.error}`, noted, reportExchanges, undefined, written.usage);
+      return this.finish(
+        opened,
+        'failed',
+        1,
+        `${opened.startedAt} ${written.error}`,
+        noted,
+        reportExchanges,
+        undefined,
+        written.usage,
+      );
     }
     const recorded = [...noted, written.document];
     if (fresh) {
       recorded.push(textDocument(REBASE_CONFLICT, 'clear\n'));
     }
-    return this.route(opened, opinions, recorded, written.exchange ? [written.exchange] : [], thirdParty, written.usage);
+    return this.route(
+      opened,
+      opinions,
+      recorded,
+      written.exchange ? [written.exchange] : [],
+      thirdParty,
+      written.usage,
+    );
   }
 
   private async route(
@@ -155,10 +196,24 @@ export class CodeReviewStep implements Step {
     const line = `${opened.startedAt} code-review waiting\n${summary}`;
     const returning = opinions.filter((item) => item.decision === 'return');
     if (returning.length === 0 || thirdParty) {
-      return this.finish(opened, 'ok', 0, `${opened.startedAt} code-review done\n${summary}`, documents, exchanges, undefined, usage);
+      return this.finish(
+        opened,
+        'ok',
+        0,
+        `${opened.startedAt} code-review done\n${summary}`,
+        documents,
+        exchanges,
+        undefined,
+        usage,
+      );
     }
     opened.run.attemptsReview += 1;
-    await this.history.recordLoop(opened.run, 'review', opened.run.attemptsReview, returning.map((item) => item.kind).join(','));
+    await this.history.recordLoop(
+      opened.run,
+      'review',
+      opened.run.attemptsReview,
+      returning.map((item) => item.kind).join(','),
+    );
     const report = documents.find((item) => item.kind === 'review_report')?.body.trim();
     const leftover = report
       ? textDocument('return', report.endsWith('\n') ? report : `${report}\n`)
