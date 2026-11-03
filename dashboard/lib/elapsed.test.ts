@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import { openElapsed, openRunMs, visitStored } from './elapsed.ts';
 
 const start = '2020-01-01T00:00:00.000Z';
