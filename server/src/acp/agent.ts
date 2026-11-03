@@ -7,7 +7,7 @@ import { sessionTitle } from './format';
 import { liveLogBody } from './live-output';
 import type { FlowView } from '../contract/api';
 import type { ServerApi } from './server-api';
-import { readableLog } from './readable-log';
+import { readableLog } from '../contract/readable-log';
 import { nestCheckout } from './paths';
 import { REVIEW_STEPS } from '../contract/steps';
 import { CHECKOUT_NAME } from '../steps/prepare/checkout-path';

@@ -263,7 +263,7 @@ describe('code-review step', () => {
       const done = await app.get(PipelineService).step('code-review', 'PROJ-87');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
-      expect((agent.mock.calls[0]?.[0]).step).toBe('code-review-report');
+      expect(agent.mock.calls[0]?.[0]?.step).toBe('code-review-report');
       expect((await history.findRun('PROJ-87'))?.currentStep).toBe('commit');
     } finally {
       await app.close();
@@ -293,8 +293,8 @@ describe('code-review step', () => {
       const done = await app.get(PipelineService).step('code-review', 'PROJ-83');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
-      expect((agent.mock.calls[0]?.[0]).step).toBe('code-review-quality');
-      expect((agent.mock.calls[1]?.[0]).step).toBe('code-review-report');
+      expect(agent.mock.calls[0]?.[0]?.step).toBe('code-review-quality');
+      expect(agent.mock.calls[1]?.[0]?.step).toBe('code-review-report');
       expect((await app.get(HistoryService).findRun('PROJ-83'))?.currentStep).toBe('commit');
     } finally {
       await app.close();
@@ -458,7 +458,7 @@ describe('code-review step', () => {
       await history.putDocument(run!, 'review_regressions', 'notes\ndecision: return\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-89', { reviewer: 'quality' });
       expect(agent).toHaveBeenCalledTimes(1);
-      expect((agent.mock.calls[0]?.[0]).step).toBe('code-review-quality');
+      expect(agent.mock.calls[0]?.[0]?.step).toBe('code-review-quality');
       expect(done.exitCode).toBe(0);
       const next = await history.findRun('PROJ-89');
       expect(next?.currentStep).toBe('code-review');
@@ -557,7 +557,7 @@ describe('code-review step', () => {
       expect(agent).toHaveBeenCalledTimes(2);
       const call = agent.mock.calls[0]?.[0];
       expect(call.step).toBe('code-review-quality');
-      expect((agent.mock.calls[1]?.[0]).step).toBe('code-review-report');
+      expect(agent.mock.calls[1]?.[0]?.step).toBe('code-review-report');
       expect(call.mounts[0]?.hostPath).toBe(realpathSync(checkout));
       const run = await app.get(HistoryService).findRun('PROJ-86');
       expect(run?.currentStep).toBe('commit');

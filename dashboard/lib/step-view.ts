@@ -1,4 +1,4 @@
-import { reviewChipStatus, usageFromLog } from './readable-log.ts';
+import { reviewChipStatus, usageFromLog } from '@contract/readable-log';
 import type { LiveUsage } from '@contract/live';
 import type { StepView } from '@contract/api';
 

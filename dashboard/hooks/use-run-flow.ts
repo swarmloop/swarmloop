@@ -7,7 +7,7 @@ import { openElapsed, visitStored } from '../lib/elapsed';
 import { liveSocket } from '../lib/live';
 import { keepOpenReviews, markReviewFinished, markReviewLive, reviewChipName } from '../lib/phases';
 import { pipelineStepOf, REVIEW_STEPS, type PhaseName } from '@contract/steps';
-import { reviewChipStatus } from '../lib/readable-log';
+import { reviewChipStatus } from '@contract/readable-log';
 import type { FlowView } from '@contract/api';
 import type { LiveLog } from '@contract/live';
 
