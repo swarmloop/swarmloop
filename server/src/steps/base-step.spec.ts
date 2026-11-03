@@ -6,6 +6,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { HistoryService } from '../history/history.service';
+import type { VisitDraft } from '../history/visit';
 import { AGENT_RUNNER } from '../agent/agent-runner';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { PipelineResult, StepOptions } from '../core/pipeline-result';
@@ -20,9 +21,14 @@ class StubStep extends BaseStep {
   readonly name: StepName = 'branch';
   readonly requiredKind = 'repos';
   thrown: unknown = null;
+  failure: Partial<VisitDraft> = {};
 
   constructor(history: HistoryService) {
     super(history);
+  }
+
+  protected override failureVisit(): Partial<VisitDraft> {
+    return this.failure;
   }
 
   protected async run(_key: string, _options: StepOptions, _ctx: StepContext): Promise<PipelineResult> {
@@ -86,6 +92,23 @@ describe('base step', () => {
       expect(calls.map((item) => [item.provider, item.url, item.statusCode])).toEqual([
         [call.provider, call.url, call.statusCode],
       ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('merges the step failure visit into the failed visit', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-base-visit-'));
+    const app = await boot(root);
+    try {
+      const step = app.get(StubStep);
+      step.thrown = new Error('boom');
+      step.failure = { mode: 'ask', samples: [] };
+      await step.execute('BASE-5');
+      const history = app.get(HistoryService);
+      const run = await history.findRun('BASE-5');
+      const stats = await history.listStats(run?.id ?? 0);
+      expect(stats.map((item) => [item.step, item.status, item.mode])).toEqual([['branch', 'failed', 'ask']]);
     } finally {
       await app.close();
     }

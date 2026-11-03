@@ -3,23 +3,23 @@ import { ConfigService } from '@nestjs/config';
 import { realpathSync } from 'fs';
 import { readEnv, SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
-import { DocumentDraft, ExchangeDraft } from '../../history/visit';
+import { VisitDraft } from '../../history/visit';
 import { AGENT_RUNNER, AgentProcessRunner } from '../../agent/agent-runner';
-import { PipelineResult, StepOptions, visitStatus } from '../../core/pipeline-result';
+import { Charge, chargeReview } from '../../agent/spend';
+import { ModelPrice } from '../../agent/limits';
+import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
-import { closeStep, OpenedStep, openStep } from '../../pipeline/step-run';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { approvedChecklist } from './code-review.prompts';
-import { composedReturn, mergeHandoff, returnNotes, textDocument } from '../shared/handoff';
-import { plainSummary, summaryOr } from '../shared/skill-prompt';
-import { readPlan } from '../plan/plan-record';
+import { BaseStep, StepContext } from '../base-step';
+import { composedReturn, textDocument } from '../shared/handoff';
 import { PrepareStep } from '../prepare/prepare.step';
-import { Step, requiredDocument } from '../step';
+import { requiredDocument } from '../step';
 import { REBASE_CONFLICT } from '../../git/rebase-worktree';
 import { reviewDiffSection, writeReviewDiff } from './review-diff';
-import { decidedOk, Opinion, REVIEWERS, Reviewer, Usage } from './reviewer';
+import { REVIEWERS } from './reviewer';
 import {
+  approvedPlan,
   detachForeign,
   foreignReview,
   foreignReviewOf,
@@ -28,53 +28,66 @@ import {
   retrying,
   storedCheckout,
 } from './review-input';
-import { writeReport } from './review-report';
-import { acceptRepeated, reviewReturn, runRound, sameReviewedDiff, selectReviewers } from './review-round';
+import { closeReview, noteHandoff, writeReport } from './review-report';
+import {
+  othersOpen,
+  reportDue,
+  reviewReturn,
+  routeReview,
+  runRound,
+  sameReviewedDiff,
+  selectReviewers,
+  tallyRound,
+} from './review-round';
 
 @Injectable()
-export class CodeReviewStep implements Step {
+export class CodeReviewStep extends BaseStep {
   readonly name: StepName = 'code-review';
-  readonly usesModel = true;
+  readonly requiredKind = 'implementation';
+  override readonly usesModel = true;
+  readonly acceptsPath = true;
 
   constructor(
-    private readonly history: HistoryService,
+    history: HistoryService,
     private readonly config: ConfigService,
     private readonly prepare: PrepareStep,
     private readonly sandbox: SandboxService,
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
-  ) {}
+  ) {
+    super(history);
+  }
 
-  async missingInput(key: string, options: StepOptions): Promise<string | null> {
+  override async missingInput(key: string, options: StepOptions): Promise<string | null> {
     if (options.path || (await storedCheckout(this.history, key)) || (await foreignReviewOf(this.history, key))) {
       return null;
     }
-    return requiredDocument(this.history, key, 'implementation');
+    return requiredDocument(this.history, key, this.requiredKind);
   }
 
-  execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
-    return this.run(key, options, readEnv(this.config));
+  charge(key: string, env: SwarmloopEnv, prices: Record<string, ModelPrice>): Promise<Charge | null> {
+    return chargeReview(this.history.root(), key, env, prices);
   }
 
-  private async run(key: string, options: StepOptions, env: SwarmloopEnv): Promise<PipelineResult> {
-    const opened = await openStep(this.history, key, 'code-review');
+  protected override failureVisit(): Partial<VisitDraft> {
+    return { mode: 'ask', exchanges: [], samples: [], httpCalls: [] };
+  }
+
+  protected async run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
+    const env = readEnv(this.config);
     if (options.path) {
-      opened.run.targetPath = realpathSync(options.path);
+      ctx.opened.run.targetPath = realpathSync(options.path);
     }
-    try {
-      await this.sandbox.assertReady(env.RUNTIME);
-      return await this.review(key, opened, options, env);
-    } catch (error) {
-      const message = error instanceof SwarmloopError ? error.message : 'code-review failed';
-      return this.finish(opened, 'failed', 1, `${opened.startedAt} ${message}`, [], []);
-    }
+    await this.sandbox.assertReady(env.RUNTIME);
+    return this.review(key, ctx, options, env);
   }
 
   private async review(
     key: string,
-    opened: OpenedStep,
+    ctx: StepContext,
     options: StepOptions,
     env: SwarmloopEnv,
   ): Promise<PipelineResult> {
+    const { opened } = ctx;
     const deps = { history: this.history, agent: this.agent };
     const notes = await this.history.latestBody(key, 'implementation');
     const checkout = options.path ?? (notes?.trim() ? null : opened.run.targetPath);
@@ -109,9 +122,9 @@ export class CodeReviewStep implements Step {
       same,
       repeated,
     });
-    const calls = pending.length + (this.reportDue(only, kept, pending) ? 1 : 0);
+    const calls = pending.length + (reportDue(only, kept, pending) ? 1 : 0);
     if (options.auto && calls > 0 && opened.run.agentCalls + calls > env.MAX_AGENT_CALLS) {
-      return this.finish(opened, 'failed', 1, `${opened.startedAt} code-review does not fit`, [], []);
+      return closeReview(ctx, 'failed', 1, `${opened.startedAt} code-review does not fit`, [], []);
     }
     writeReviewDiff(this.history.root(), key, diff.patch);
     const handoff = await this.history.latestBody(key, 'handoff');
@@ -134,36 +147,14 @@ export class CodeReviewStep implements Step {
       retry,
       repeated,
     });
-    const reportContinued = finished.some((item) => Boolean(item.result?.chatId));
-    const drafted = [
-      ...recovered,
-      ...finished.flatMap((item) => (item.parsed ? [textDocument(item.reviewer.kind, item.parsed.body)] : [])),
-    ];
-    const found = this.ordered([...kept, ...finished.flatMap((item) => (item.parsed ? [item.parsed] : []))]);
-    const opinions = repeated
-      ? found.map((item) =>
-          item.decision === 'return' ? { ...item, decision: 'ok' as const, body: decidedOk(item.body) } : item,
-        )
-      : found;
-    const stored = repeated ? acceptRepeated(drafted, found) : drafted;
-    const errors = finished.flatMap((item) => (item.error ? [item.error] : []));
-    const none: Usage = { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] };
+    const { reportContinued, opinions, stored, errors } = tallyRound(kept, recovered, finished, repeated);
     if (errors.length > 0) {
-      return this.finish(opened, 'failed', 1, `${opened.startedAt} ${errors[0]}`, stored, [], undefined, none);
+      return closeReview(ctx, 'failed', 1, `${opened.startedAt} ${errors[0]}`, stored, [], undefined);
     }
-    const noted = await this.noted(key, opinions, stored);
-    if (only && this.othersOpen(only, opinions)) {
+    const noted = await noteHandoff(this.history, key, opinions, stored);
+    if (only && othersOpen(only, opinions)) {
       const summary = opinions.map((item) => `${item.kind} ${item.decision}`).join('\n');
-      return this.finish(
-        opened,
-        'waiting',
-        0,
-        `${opened.startedAt} code-review waiting\n${summary}`,
-        noted,
-        [],
-        undefined,
-        none,
-      );
+      return closeReview(ctx, 'waiting', 0, `${opened.startedAt} code-review waiting\n${summary}`, noted, [], undefined);
     }
     const written = await writeReport(
       deps,
@@ -179,8 +170,8 @@ export class CodeReviewStep implements Step {
     );
     const reportExchanges = written.exchange ? [written.exchange] : [];
     if ('error' in written) {
-      return this.finish(
-        opened,
+      return closeReview(
+        ctx,
         'failed',
         1,
         `${opened.startedAt} ${written.error}`,
@@ -194,8 +185,9 @@ export class CodeReviewStep implements Step {
     if (fresh) {
       recorded.push(textDocument(REBASE_CONFLICT, 'clear\n'));
     }
-    return this.route(
-      opened,
+    return routeReview(
+      this.history,
+      ctx,
       opinions,
       recorded,
       written.exchange ? [written.exchange] : [],
@@ -203,125 +195,4 @@ export class CodeReviewStep implements Step {
       written.usage,
     );
   }
-
-  private async route(
-    opened: OpenedStep,
-    opinions: Opinion[],
-    documents: DocumentDraft[],
-    exchanges: ExchangeDraft[],
-    thirdParty: boolean,
-    usage: Usage,
-  ): Promise<PipelineResult> {
-    const summary = opinions.map((item) => `${item.kind} ${item.decision}`).join('\n');
-    const line = `${opened.startedAt} code-review waiting\n${summary}`;
-    const returning = opinions.filter((item) => item.decision === 'return');
-    if (returning.length === 0 || thirdParty) {
-      return this.finish(
-        opened,
-        'ok',
-        0,
-        `${opened.startedAt} code-review done\n${summary}`,
-        documents,
-        exchanges,
-        undefined,
-        usage,
-      );
-    }
-    opened.run.attemptsReview += 1;
-    await this.history.recordLoop(
-      opened.run,
-      'review',
-      opened.run.attemptsReview,
-      returning.map((item) => item.kind).join(','),
-    );
-    const report = documents.find((item) => item.kind === 'review_report')?.body.trim();
-    const leftover = report
-      ? textDocument('return', report.endsWith('\n') ? report : `${report}\n`)
-      : returnNotes(returning.map((item) => ({ source: item.kind.replace(/^review_/, ''), body: item.body })));
-    return this.finish(opened, 'waiting', 0, line, [...documents, leftover], exchanges, 'implement', usage);
-  }
-
-  private ordered(opinions: Opinion[]): Opinion[] {
-    return REVIEWERS.flatMap((reviewer) => opinions.filter((item) => item.kind === reviewer.kind));
-  }
-
-  private async noted(key: string, opinions: Opinion[], documents: DocumentDraft[]): Promise<DocumentDraft[]> {
-    if (opinions.length === 0) {
-      return documents;
-    }
-    let text = (await this.history.latestBody(key, 'handoff')) ?? '';
-    for (const opinion of opinions) {
-      const step = opinion.kind.replace(/^review_/, '');
-      text = mergeHandoff(text, step, summaryOr(opinion.body, plainSummary(opinion.body) || `- ${opinion.decision}`));
-    }
-    return [...documents, textDocument('handoff', text)];
-  }
-
-  private reportDue(only: string | undefined, kept: Opinion[], pending: Reviewer[]): boolean {
-    const covered = new Set([...kept.map((item) => item.kind), ...pending.map((item) => item.kind)]);
-    return REVIEWERS.every((reviewer) => covered.has(reviewer.kind));
-  }
-
-  private othersOpen(only: string, opinions: Opinion[]): boolean {
-    return REVIEWERS.some((reviewer) => {
-      if (reviewer.name === only) {
-        return false;
-      }
-      const opinion = opinions.find((item) => item.kind === reviewer.kind);
-      return !opinion || opinion.decision === 'return';
-    });
-  }
-
-  private finish(
-    opened: OpenedStep,
-    outcome: 'ok' | 'failed' | 'blocked' | 'waiting',
-    exitCode: number,
-    line: string,
-    documents: DocumentDraft[],
-    exchanges: ExchangeDraft[],
-    moveTo?: 'implement',
-    usage: Usage = { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] },
-  ): Promise<PipelineResult> {
-    const now = new Date().toISOString();
-    return closeStep({
-      history: this.history,
-      run: opened.run,
-      previousStep: opened.previousStep,
-      previousStatus: opened.previousStatus,
-      step: 'code-review',
-      outcome,
-      exitCode,
-      line,
-      moveTo,
-      visit: {
-        step: 'code-review',
-        model: exchanges.find((exchange) => exchange.model)?.model ?? null,
-        mode: 'ask',
-        startedAt: opened.startedAt,
-        finishedAt: now,
-        durationMs: Date.now() - opened.started,
-        status: visitStatus(outcome),
-        exitCode,
-        killReason: exchanges.find((exchange) => exchange.killReason)?.killReason ?? null,
-        tokensIn: usage.tokensIn,
-        tokensOut: usage.tokensOut,
-        usd: usage.usd,
-        samples: usage.samples,
-        exchange: null,
-        exchanges,
-        httpCalls: [],
-        document: null,
-        documents,
-        resumed: false,
-      },
-    });
-  }
-}
-
-function approvedPlan(requirements: string): string {
-  const plan = readPlan(requirements);
-  if (!plan || plan.decision !== 'approve' || plan.items.length === 0) {
-    return '';
-  }
-  return approvedChecklist(plan.items);
 }

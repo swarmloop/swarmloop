@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { SwarmloopEnv } from '../../config/env';
 import type { HistoryService } from '../../history/history.service';
-import type { ExchangeDraft, SampleDraft } from '../../history/visit';
+import type { SampleDraft } from '../../history/visit';
 import type { AgentProcessRunner, AgentRunResult } from '../../agent/agent-runner';
 import { readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../agent/session-group';
@@ -12,7 +12,6 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { reviewContinue, reviewResume } from './code-review.prompts';
 import { launchAgent } from '../agent-step';
 import { agentFailure, refusedWrite, withRefusal } from '../shared/agent-result';
-import { handoffSection, textDocument } from '../shared/handoff';
 import { parseReview } from './code-review-record';
 
 export interface Reviewer {
@@ -87,74 +86,9 @@ export async function runJob(
   );
 }
 
-/** One reviewer visit, with its own chart and exchange, the same shape as any other step. */
-export async function recordAngle(
-  deps: ReviewDeps,
-  opened: OpenedStep,
-  item: Finished,
-  repeated = false,
-): Promise<void> {
-  const result = item.result;
-  if (!result) {
-    return;
-  }
-  const parsed =
-    item.parsed && repeated && item.parsed.decision === 'return'
-      ? { ...item.parsed, decision: 'ok' as const, body: decidedOk(item.parsed.body) }
-      : item.parsed;
-  const status = item.error ? 'failed' : parsed?.decision === 'return' ? 'waiting' : parsed ? 'done' : 'failed';
-  const exchange = exchangeOf(item);
-  const log = result.output ? (result.output.endsWith('\n') ? result.output : `${result.output}\n`) : '';
-  await deps.history.finishVisit(opened.run, {
-    step: `code-review-${item.reviewer.name}`,
-    model: item.model,
-    mode: 'ask',
-    startedAt: result.startedAt,
-    finishedAt: result.finishedAt,
-    durationMs: result.durationMs,
-    status,
-    exitCode: item.error ? 1 : 0,
-    killReason: result.killReason ? `process killed: ${result.killReason}` : null,
-    tokensIn: result.tokensIn,
-    tokensOut: result.tokensOut,
-    usd: result.usd,
-    samples: result.samples,
-    exchange,
-    httpCalls: [],
-    document: null,
-    documents: [
-      ...(parsed ? [textDocument(item.reviewer.kind, parsed.body)] : []),
-      ...(item.error ? [{ kind: 'error', fileName: '', body: `${item.error}\n` }] : []),
-      ...(log ? [{ kind: 'log', fileName: '', body: log }] : []),
-    ],
-    resumed: result.resumed,
-  });
-}
-
 export function decidedOk(body: string): string {
   const lines = body.split('\n').filter((line) => line.trim() !== 'decision: return');
   return `${lines.join('\n').trimEnd()}\ndecision: ok\n`;
-}
-
-export function fixNotes(
-  documents: { kind: string; body: string }[],
-  handoff: string | null,
-): { implement: string; reviewed: string } {
-  const written = documents
-    .filter((item) => item.kind === 'implementation' && item.body.trim())
-    .map((item) => item.body.trim());
-  const implementWhat = written.length >= 2 ? written[written.length - 2] : (written.at(-1) ?? '');
-  const reviewWhat = written.length >= 2 ? (written.at(-1) ?? '') : '';
-  const same = reviewWhat.length > 0 && reviewWhat === implementWhat;
-  return {
-    implement: passNote(implementWhat, handoffSection(handoff, 'implement')),
-    reviewed: passNote(same ? '' : reviewWhat, handoffSection(handoff, 'implement-improve')),
-  };
-}
-
-function passNote(what: string, why: string): string {
-  const parts = [what.trim() ? `What was done:\n${what.trim()}` : '', why.trim() ? `Why:\n${why.trim()}` : ''];
-  return parts.filter((part) => part.length > 0).join('\n');
 }
 
 async function one(
@@ -216,22 +150,4 @@ async function launchReview(
     auto,
     resume: fresh ? false : undefined,
   });
-}
-
-function exchangeOf(item: Finished): ExchangeDraft {
-  const result = item.result;
-  if (!result) {
-    throw new SwarmloopError('code-review failed');
-  }
-  return {
-    model: item.model,
-    startedAt: result.startedAt,
-    finishedAt: result.finishedAt,
-    durationMs: result.durationMs,
-    requestText: item.prompt,
-    responseText: result.responseText,
-    chatId: result.chatId,
-    resumed: result.resumed,
-    killReason: result.killReason,
-  };
 }

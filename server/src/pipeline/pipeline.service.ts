@@ -5,7 +5,7 @@ import { readEnv } from '../config/env';
 import { liveLogBody } from '../acp/live-output';
 import { overSpend } from '../agent/limits';
 import { RunStop } from '../agent/run-stop';
-import { chargeReview, chargeStream, modelForStep } from '../agent/spend';
+import { chargeStream, modelForStep } from '../agent/spend';
 import { loadPriceTable } from '../agent/prices';
 import { resolveRepoRoot } from '../config/repo-root';
 import { RunEntity } from '../history/entities';
@@ -17,6 +17,7 @@ import { renderProjects, storedProjects } from '../steps/prepare/checkout-path';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { StepRegistry } from '../steps/step.registry';
+import type { Step } from '../steps/step';
 import { joinPrompt, withInstructions } from '../steps/plan/plan-record';
 import { CHAT_LOCK, chatHeld, chatResume, readChatLock } from './chat-lock';
 import { settleShell, shellHolding } from './shell-lock';
@@ -156,7 +157,7 @@ export class PipelineService implements OnModuleInit {
     fresh.ownerPid = null;
     await this.history.saveRun(fresh);
     this.runStop.clear(key);
-    return this.startDetached(key, name === 'requirements' ? { prompt: full } : {});
+    return this.startDetached(key, this.registry.get(name)?.acceptsPrompt ? { prompt: full } : {});
   }
 
   async startDetached(key: string, options: StepOptions = {}, only?: StepName): Promise<PipelineResult> {
@@ -177,11 +178,12 @@ export class PipelineService implements OnModuleInit {
       if (!only && existing?.status === 'done') {
         return { exitCode: 0, message: `${key} is done` };
       }
-      const step = only ?? existing?.currentStep ?? 'requirements';
+      const step = only ?? existing?.currentStep ?? STEPS[0];
       if (!isStep(step) || step === 'done') {
         return { exitCode: 1, message: `${step} is unknown` };
       }
-      const flagged = flagError(step, options);
+      const target = this.registry.get(step);
+      const flagged = flagError(target, options);
       if (flagged) {
         return { exitCode: 1, message: flagged };
       }
@@ -194,7 +196,7 @@ export class PipelineService implements OnModuleInit {
         return { exitCode: 1, message: `${missing} is missing` };
       }
       if (
-        step === 'requirements' &&
+        target?.acceptsPrompt &&
         options.prompt === undefined &&
         options.promptFile === undefined &&
         !existing?.prompt
@@ -205,7 +207,7 @@ export class PipelineService implements OnModuleInit {
       if (blocked) {
         return { exitCode: 1, message: blocked };
       }
-      if (options.projects?.length && step === 'requirements') {
+      if (options.projects?.length && target?.acceptsProjects) {
         await this.pinProjects(key, options.projects);
       }
       started = true;
@@ -282,7 +284,7 @@ export class PipelineService implements OnModuleInit {
   }
 
   private async start(name: StepName, key: string, options: StepOptions): Promise<PipelineResult> {
-    const flagged = flagError(name, options);
+    const flagged = flagError(this.registry.get(name), options);
     if (flagged) {
       return { exitCode: 1, message: flagged };
     }
@@ -312,12 +314,12 @@ export class PipelineService implements OnModuleInit {
     const env = readEnv(this.config);
     const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME);
     const model = modelForStep(run.currentStep, env);
-    const charge =
-      run.currentStep === 'code-review'
-        ? await chargeReview(this.history.root(), run.key, env, prices)
-        : model
-          ? chargeStream(model, saved, prices)
-          : null;
+    const step = isStep(run.currentStep) ? this.registry.get(run.currentStep) : null;
+    const charge = step?.charge
+      ? await step.charge(run.key, env, prices)
+      : model
+        ? chargeStream(model, saved, prices)
+        : null;
     run.spentUsd += charge?.usd ?? 0;
     await this.history.finishVisit(run, {
       step: run.currentStep,
@@ -380,7 +382,7 @@ export class PipelineService implements OnModuleInit {
     if (existing?.status === 'done') {
       return { exitCode: 0, message: `${key} is done` };
     }
-    const step = existing?.currentStep ?? 'requirements';
+    const step = existing?.currentStep ?? STEPS[0];
     if (!isStep(step)) {
       return { exitCode: 1, message: `${step} is unknown` };
     }
@@ -531,12 +533,13 @@ export class PipelineService implements OnModuleInit {
     const prompt = joinPrompt(run.prompt, text);
     run.prompt = prompt;
     await this.history.saveRun(run);
-    if (step === 'requirements') {
+    const target = this.registry.get(step);
+    if (target?.acceptsPrompt) {
       return prompt;
     }
     const body = await this.history.latestBody(run.key, 'requirements');
     if (body) {
-      const revise = STEPS.indexOf(step) <= STEPS.indexOf('plan');
+      const revise = target?.revisesRequirements === true;
       await this.history.putDocument(run, 'requirements', withInstructions(body, text, revise));
     }
     return prompt;
@@ -588,11 +591,11 @@ export class PipelineService implements OnModuleInit {
 /** One pass, then the return loops. A stuck advance stops here. */
 const HOP_LIMIT = STEPS.length * 3;
 
-function flagError(name: StepName, options: StepOptions): string | null {
-  if ((options.prompt !== undefined || options.promptFile !== undefined) && name !== 'requirements') {
+function flagError(step: Step | null, options: StepOptions): string | null {
+  if ((options.prompt !== undefined || options.promptFile !== undefined) && !step?.acceptsPrompt) {
     return 'prompt is only valid for requirements';
   }
-  if (options.path && name !== 'code-review') {
+  if (options.path && !step?.acceptsPath) {
     return 'path is only valid for code-review';
   }
   return null;

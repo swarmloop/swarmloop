@@ -3,9 +3,12 @@ import type { HistoryService } from '../../history/history.service';
 import type { OpenedStep } from '../../pipeline/step-run';
 import type { SandboxMount } from '../../sandbox/sandbox-launch';
 import { SwarmloopError } from '../../core/swarmloop-error';
+import { readPlan } from '../plan/plan-record';
 import { storedProjects } from '../prepare/checkout-path';
 import type { PrepareStep } from '../prepare/prepare.step';
+import { handoffSection } from '../shared/handoff';
 import { mountsForStep, repoNames } from '../shared/repo-names';
+import { approvedChecklist } from './code-review.prompts';
 
 export async function repoMounts(history: HistoryService, key: string): Promise<SandboxMount[]> {
   const names = repoNames((await history.latestBody(key, 'repos')) ?? '');
@@ -55,4 +58,33 @@ export async function retrying(history: HistoryService, opened: OpenedStep): Pro
   }
   const last = [...(await history.listStats(opened.run.id))].reverse().find((item) => item.step === 'code-review');
   return last?.status === 'failed' || last?.status === 'blocked';
+}
+
+export function approvedPlan(requirements: string): string {
+  const plan = readPlan(requirements);
+  if (!plan || plan.decision !== 'approve' || plan.items.length === 0) {
+    return '';
+  }
+  return approvedChecklist(plan.items);
+}
+
+export function fixNotes(
+  documents: { kind: string; body: string }[],
+  handoff: string | null,
+): { implement: string; reviewed: string } {
+  const written = documents
+    .filter((item) => item.kind === 'implementation' && item.body.trim())
+    .map((item) => item.body.trim());
+  const implementWhat = written.length >= 2 ? written[written.length - 2] : (written.at(-1) ?? '');
+  const reviewWhat = written.length >= 2 ? (written.at(-1) ?? '') : '';
+  const same = reviewWhat.length > 0 && reviewWhat === implementWhat;
+  return {
+    implement: passNote(implementWhat, handoffSection(handoff, 'implement')),
+    reviewed: passNote(same ? '' : reviewWhat, handoffSection(handoff, 'implement-improve')),
+  };
+}
+
+function passNote(what: string, why: string): string {
+  const parts = [what.trim() ? `What was done:\n${what.trim()}` : '', why.trim() ? `Why:\n${why.trim()}` : ''];
+  return parts.filter((part) => part.length > 0).join('\n');
 }

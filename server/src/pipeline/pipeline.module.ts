@@ -8,7 +8,7 @@ import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
 import { CodeReviewStep } from '../steps/code-review/code-review.step';
 import { ImplementImproveStep } from '../steps/implement/implement-improve.step';
 import { ImplementStep } from '../steps/implement/implement.step';
-import { PlanImproveStep } from '../steps/plan/plan-improve.step';
+import { PlanImproveStep } from '../steps/plan-improve/plan-improve.step';
 import { PipelineStep } from '../steps/pipeline/pipeline.step';
 import { PlanStep } from '../steps/plan/plan.step';
 import { PrepareStep } from '../steps/prepare/prepare.step';

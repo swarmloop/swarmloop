@@ -18,6 +18,7 @@ import { CHECKOUT_NAME, listGitProjects, resolveCheckoutPath, storedProjects } f
 export class PrepareStep extends BaseStep {
   readonly name: StepName = 'prepare';
   readonly requiredKind = 'requirements';
+  readonly revisesRequirements = true;
 
   constructor(
     history: HistoryService,

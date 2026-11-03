@@ -36,7 +36,7 @@ export abstract class BaseStep implements Step {
 
   constructor(protected readonly history: HistoryService) {}
 
-  missingInput(key: string): Promise<string | null> {
+  missingInput(key: string, _options?: StepOptions): Promise<string | null> {
     return requiredDocument(this.history, key, this.requiredKind);
   }
 
@@ -66,12 +66,22 @@ export abstract class BaseStep implements Step {
       if (error instanceof FetchFailed) {
         calls.push(...error.httpCalls);
       }
-      return ctx.end({ outcome: 'failed', exitCode: 1, line: `${opened.startedAt} ${this.failureText(error)}` });
+      return ctx.end({
+        outcome: 'failed',
+        exitCode: 1,
+        line: `${opened.startedAt} ${this.failureText(error)}`,
+        visit: this.failureVisit(),
+      });
     }
   }
 
   protected failureText(error: unknown): string {
     return error instanceof SwarmloopError ? error.message : `${this.name} failed`;
+  }
+
+  /** Merged into the visit of a failed run. A step overrides it to keep the failed visit it has always recorded. */
+  protected failureVisit(): Partial<VisitDraft> {
+    return {};
   }
 
   protected abstract run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult>;
