@@ -15,10 +15,7 @@ import type {
 } from './code-host';
 
 /** The env keys a code host reads. */
-export type CodeHostEnv = Pick<
-  SwarmloopEnv,
-  'GITHUB_BASE_URL' | 'GITHUB_TOKEN' | 'GITLAB_BASE_URL' | 'GITLAB_TOKEN'
->;
+export type CodeHostEnv = Pick<SwarmloopEnv, 'GITHUB_BASE_URL' | 'GITHUB_TOKEN' | 'GITLAB_BASE_URL' | 'GITLAB_TOKEN'>;
 
 export abstract class AbstractCodeHost implements CodeHost {
   abstract readonly name: SelectedHost['name'];
@@ -117,7 +114,7 @@ export abstract class AbstractCodeHost implements CodeHost {
     summary: string,
   ): { url: string; method: string; payload: string };
 
-  protected abstract match(body: unknown, source: string): unknown | null;
+  protected abstract match(body: unknown, source: string): unknown;
 
   protected abstract record(project: string, row: unknown, summary?: string): MergeRequestRecord;
 

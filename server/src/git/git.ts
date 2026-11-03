@@ -36,7 +36,7 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Pro
           if (typeof stderr === 'string' && stderr.length > 0) {
             (error as { stderr?: string }).stderr = stderr;
           }
-          fail(error);
+          fail(error as Error);
           return;
         }
         done(stdout);
@@ -98,15 +98,15 @@ function contains(root: string, directory: string): boolean {
 /** Full git stderr, or one preferred line when git left stderr empty. */
 export function gitStderr(error: unknown): string {
   const record = error && typeof error === 'object' ? (error as { stderr?: unknown }) : {};
-  const stderr = String(record.stderr ?? '').trim();
+  const stderr = (typeof record.stderr === 'string' ? record.stderr : '').trim();
   return stderr || gitDetail(error);
 }
 
 export function gitDetail(error: unknown): string {
   const record =
     error && typeof error === 'object' ? (error as { stderr?: unknown; stdout?: unknown; message?: unknown }) : {};
-  const stderr = String(record.stderr ?? '');
-  const stdout = String(record.stdout ?? '');
+  const stderr = typeof record.stderr === 'string' ? record.stderr : '';
+  const stdout = typeof record.stdout === 'string' ? record.stdout : '';
   const message = typeof record.message === 'string' ? record.message : '';
   const lines = `${stderr}\n${stdout}\n${message}`
     .split('\n')

@@ -262,11 +262,7 @@ export class AgentProcessRunner {
     let lastActivity = started;
     let finishedByResult = false;
     let buffer = '';
-    const prices = await loadPriceTable(
-      resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname),
-      env.RUNTIME,
-      this.clock.now(),
-    );
+    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now());
 
     const billed = (): { tokensIn: number; tokensOut: number; usd: number } => {
       if (!billedFromStream) {

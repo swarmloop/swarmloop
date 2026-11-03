@@ -1,9 +1,10 @@
 import type { Clock } from '../../../core/clock';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../../core/swarmloop-error';
+import type { HttpCallDraft } from '../../../core/swarmloop-error';
+import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
 import { request } from '../../http';
 import { remoteProject } from '../../../steps/merge-request/merge-request-record';
 import { AbstractCodeHost, type CodeHostEnv } from '../abstract-code-host';
-import {
+import type {
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
@@ -175,7 +176,7 @@ export class GithubCodeHost extends AbstractCodeHost {
     if (!Array.isArray(body)) {
       throw new SwarmloopError('github pull request failed');
     }
-    const row = body.find((item) => (item as GithubPull | null)?.head?.ref === source);
+    const row = (body as unknown[]).find((item) => (item as GithubPull | null)?.head?.ref === source);
     return (row as GithubPull | undefined) ?? null;
   }
 
@@ -271,7 +272,7 @@ function newestRun(body: unknown, sha: string): GithubRun | null {
   if (!Array.isArray(runs)) {
     throw new SwarmloopError('github pipeline failed');
   }
-  const match = runs.find((item) => {
+  const match = (runs as unknown[]).find((item) => {
     const run = item as GithubRun | null;
     return run?.id && (!sha || run.head_sha === sha);
   });

@@ -1,9 +1,10 @@
 import type { Clock } from '../../../core/clock';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../../core/swarmloop-error';
+import type { HttpCallDraft } from '../../../core/swarmloop-error';
+import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
 import { request } from '../../http';
 import { remoteProject } from '../../../steps/merge-request/merge-request-record';
 import { AbstractCodeHost, type CodeHostEnv } from '../abstract-code-host';
-import {
+import type {
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
@@ -181,7 +182,7 @@ export class GitlabCodeHost extends AbstractCodeHost {
     if (!Array.isArray(body)) {
       throw new SwarmloopError('gitlab merge request failed');
     }
-    const row = body.find((item) => (item as GitlabMergeRequest | null)?.source_branch === source);
+    const row = (body as unknown[]).find((item) => (item as GitlabMergeRequest | null)?.source_branch === source);
     return (row as GitlabMergeRequest | undefined) ?? null;
   }
 

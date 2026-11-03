@@ -186,11 +186,7 @@ export async function snapshotRun(
       return;
     }
     const recorded = chat !== undefined ? chat : ((await history.latestChatId(run.id)) ?? '');
-    await history.putDocument(
-      run,
-      SNAPSHOT,
-      renderSnapshot({ step, at: clock.iso(), chat: recorded, repos }),
-    );
+    await history.putDocument(run, SNAPSHOT, renderSnapshot({ step, at: clock.iso(), chat: recorded, repos }));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'snapshot failed';
     logger.error(message);
