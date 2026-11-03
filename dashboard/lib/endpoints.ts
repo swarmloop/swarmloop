@@ -1,0 +1,40 @@
+import { api, runLog } from './api';
+import type {
+  AddProjectBody,
+  AnswersBody,
+  CreateRunBody,
+  FlowView,
+  HistoryView,
+  ProjectsView,
+  ReplayBody,
+  RunRef,
+  RunsView,
+  StepView,
+} from '@contract/api';
+
+const run = (key: string): string => `/runs/${encodeURIComponent(key)}`;
+const step = (key: string, name: string): string => `${run(key)}/steps/${encodeURIComponent(name)}`;
+const post = (body?: unknown): RequestInit => ({
+  method: 'POST',
+  ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+});
+
+export const listRuns = (): Promise<RunsView> => api<RunsView>('/runs');
+export const getFlow = (key: string): Promise<FlowView> => api<FlowView>(run(key));
+export const getStep = (key: string, name: string): Promise<StepView> => api<StepView>(step(key, name));
+export const getHistory = (key: string): Promise<HistoryView> => api<HistoryView>(`${run(key)}/history`);
+export const listProjects = (): Promise<{ projects: string[] }> => api<{ projects: string[] }>('/checkouts/projects');
+export const getRunLog = (key: string, name: string): Promise<string | null> => runLog(key, name);
+
+export const createRun = (body: CreateRunBody): Promise<RunRef> => api<RunRef>('/runs', post(body));
+export const setRunProjects = (key: string, name: string): Promise<ProjectsView> =>
+  api<ProjectsView>(`${run(key)}/projects`, post({ name } satisfies AddProjectBody));
+export const sendAnswers = (key: string, body: AnswersBody): Promise<FlowView> =>
+  api<FlowView>(`${run(key)}/answers`, post(body));
+export const resumeRun = (key: string): Promise<unknown> => api(`${run(key)}/resume`, post());
+export const stopRun = (key: string): Promise<unknown> => api(`${run(key)}/stop`, post());
+export const rebaseRun = (key: string): Promise<unknown> => api(`${run(key)}/rebase`, post());
+export const startReviewer = (key: string, name: string): Promise<unknown> => api(step(key, name), post());
+export const replayStep = (key: string, name: string, body: ReplayBody): Promise<unknown> =>
+  api(`${step(key, name)}/replay`, post(body));
+export const removeRun = (key: string): Promise<unknown> => api(run(key), { method: 'DELETE' });

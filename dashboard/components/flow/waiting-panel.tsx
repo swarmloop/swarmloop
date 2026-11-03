@@ -7,7 +7,7 @@ import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { api } from '../../lib/api';
+import { resumeRun, sendAnswers } from '../../lib/endpoints';
 import { answerPresentation } from '../../lib/answer-field';
 import type { AnswersBody, FlowView } from '@contract/api';
 
@@ -20,12 +20,9 @@ export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (fl
 
   const save = (): void => {
     setBusy(true);
-    api<FlowView>(`/runs/${encodeURIComponent(flow.key)}/answers`, {
-      method: 'POST',
-      body: JSON.stringify({
-        answers: answers.map((item) => ({ kind: item.kind, id: item.id, body: item.answer })),
-      } satisfies AnswersBody),
-    })
+    sendAnswers(flow.key, {
+      answers: answers.map((item) => ({ kind: item.kind, id: item.id, body: item.answer })),
+    } satisfies AnswersBody)
       .then((next) => {
         setDrafts({});
         setError(null);
@@ -37,7 +34,7 @@ export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (fl
 
   const resume = (): void => {
     setBusy(true);
-    api(`/runs/${encodeURIComponent(flow.key)}/resume`, { method: 'POST' })
+    resumeRun(flow.key)
       .then(() => onChange({ ...flow, status: 'running', resume: 'running', stepStartedAt: null }))
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'resume failed'))
       .finally(() => setBusy(false));

@@ -3,13 +3,19 @@ import userEvent from '@testing-library/user-event';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { usePathname, useRouter } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../../lib/api';
+import { listProjects, listRuns, removeRun } from '../../lib/endpoints';
 import { receive } from '../../test/fake-socket';
 import { runSummary } from '../../test/fixtures';
 import { Shell } from './index';
 
 vi.mock('next/navigation', () => ({ usePathname: vi.fn(), useRouter: vi.fn() }));
-vi.mock('../../lib/api', () => ({ api: vi.fn(), runLog: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({
+  listRuns: vi.fn(),
+  removeRun: vi.fn(),
+  listProjects: vi.fn(),
+  createRun: vi.fn(),
+  setRunProjects: vi.fn(),
+}));
 vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
 
 const theme = createTheme({ cssVariables: true, colorSchemes: { light: true, dark: true } });
@@ -28,18 +34,9 @@ function renderShell(): void {
 beforeEach(() => {
   vi.mocked(usePathname).mockReturnValue('/');
   vi.mocked(useRouter).mockReturnValue({ push } as unknown as ReturnType<typeof useRouter>);
-  vi.mocked(api).mockImplementation(async (path: string, init?: RequestInit) => {
-    if (init?.method === 'DELETE') {
-      return { key: 'run-1' };
-    }
-    if (path === '/runs') {
-      return { runs: [runSummary()] };
-    }
-    if (path === '/checkouts/projects') {
-      return { projects: [] };
-    }
-    throw new Error(`unexpected ${path}`);
-  });
+  vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
+  vi.mocked(removeRun).mockResolvedValue({ key: 'run-1' });
+  vi.mocked(listProjects).mockResolvedValue({ projects: [] });
 });
 
 describe('Shell', () => {
@@ -75,6 +72,6 @@ describe('Shell', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith('/'));
-    expect(api).toHaveBeenCalledWith('/runs/run-1', { method: 'DELETE' });
+    expect(removeRun).toHaveBeenCalledWith('run-1');
   });
 });

@@ -1,12 +1,32 @@
 import { act, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { api, runLog } from '../lib/api';
+import { ApiError } from '../lib/api';
+import { getRunLog, getStep } from '../lib/endpoints';
 import { receive } from '../test/fake-socket';
 import { stepView, visitView } from '../test/fixtures';
+import { LiveBridgeProvider, useLiveActions } from './use-live-bridge';
 import { useStep } from './use-step';
 
-vi.mock('../lib/api', () => ({ api: vi.fn(), runLog: vi.fn() }));
+vi.mock('../lib/endpoints', () => ({ getStep: vi.fn(), getRunLog: vi.fn() }));
 vi.mock('../lib/live', async () => (await import('../test/fake-socket')).fakeLive());
+
+function Watching({ children }: { children: ReactNode }) {
+  const { watchRun } = useLiveActions();
+  useEffect(() => {
+    watchRun('run-1');
+  }, [watchRun]);
+  return <>{children}</>;
+}
+
+function Wrapper({ children }: { children: ReactNode }) {
+  return (
+    <LiveBridgeProvider>
+      <Watching>{children}</Watching>
+    </LiveBridgeProvider>
+  );
+}
 
 function Probe({ step }: { step: string }) {
   const { view, error } = useStep('run-1', step, false, 'revision', 0);
@@ -32,17 +52,17 @@ function runningStep(body: string) {
 
 describe('useStep', () => {
   it('shows the step from GET on mount', async () => {
-    vi.mocked(api).mockResolvedValue(runningStep('first line'));
+    vi.mocked(getStep).mockResolvedValue(runningStep('first line'));
 
-    render(<Probe step="implement" />);
+    render(<Probe step="implement" />, { wrapper: Wrapper });
 
     expect(await screen.findByText('first line')).toBeInTheDocument();
-    expect(api).toHaveBeenCalledWith('/runs/run-1/steps/implement');
+    expect(getStep).toHaveBeenCalledWith('run-1', 'implement');
   });
 
   it('merges a log event for the watched step and ignores other steps', async () => {
-    vi.mocked(api).mockResolvedValue(runningStep('first line'));
-    render(<Probe step="implement" />);
+    vi.mocked(getStep).mockResolvedValue(runningStep('first line'));
+    render(<Probe step="implement" />, { wrapper: Wrapper });
     await screen.findByText('first line');
 
     act(() => receive('log', { key: 'run-1', step: 'plan', body: 'other step' }));
@@ -54,12 +74,19 @@ describe('useStep', () => {
   });
 
   it('reads a code-review step from its log when the step request fails', async () => {
-    vi.mocked(api).mockRejectedValue(new Error('step is gone'));
-    vi.mocked(runLog).mockResolvedValue('reviewer notes');
+    vi.mocked(getStep).mockRejectedValue(new Error('step is gone'));
+    vi.mocked(getRunLog).mockResolvedValue('reviewer notes');
 
-    render(<Probe step="code-review-security" />);
+    render(<Probe step="code-review-security" />, { wrapper: Wrapper });
 
     expect(await screen.findByText('reviewer notes')).toBeInTheDocument();
-    expect(runLog).toHaveBeenCalledWith('run-1', 'code-review-security');
+    expect(getRunLog).toHaveBeenCalledWith('run-1', 'code-review-security');
+  });
+  it('shows the message of a rejected 404 ApiError', async () => {
+    vi.mocked(getStep).mockRejectedValue(new ApiError(404, 'step is gone'));
+
+    render(<Probe step="implement" />, { wrapper: Wrapper });
+
+    expect(await screen.findByText('step is gone')).toBeInTheDocument();
   });
 });

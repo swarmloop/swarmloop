@@ -10,7 +10,8 @@ import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
-import { useLive } from '../../hooks/use-live';
+import { LiveBridgeProvider } from '../../hooks/use-live-bridge';
+import { useRuns } from '../../hooks/use-runs';
 import type { RunSummary } from '@contract/api';
 import { NewRunDialog } from '../new-run-dialog';
 import { RemoveRunDialog } from './remove-run-dialog';
@@ -26,9 +27,17 @@ export function useNewRun(): () => void {
 }
 
 export function Shell({ children }: { children: React.ReactNode }): ReactElement {
+  return (
+    <LiveBridgeProvider>
+      <ShellFrame>{children}</ShellFrame>
+    </LiveBridgeProvider>
+  );
+}
+
+function ShellFrame({ children }: { children: React.ReactNode }): ReactElement {
   const pathname = usePathname();
   const router = useRouter();
-  const { runs, now, error, connected, removeRun } = useLive();
+  const { runs, now, error, connected, removeRun } = useRuns();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<RunSummary | null>(null);

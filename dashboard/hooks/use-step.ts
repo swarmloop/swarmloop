@@ -2,8 +2,8 @@
 
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { api, runLog } from '../lib/api';
-import { liveSocket } from '../lib/live';
+import { getRunLog, getStep } from '../lib/endpoints';
+import { useLiveBridge } from './use-live-bridge';
 import { liveLogStep } from '../lib/phases';
 import { fileView, withFileUsage, withLog } from '../lib/step-view';
 import type { LiveLog, LiveUsage } from '@contract/live';
@@ -26,6 +26,8 @@ export function useStep(
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const follow = useRef(true);
+  const logs = useLiveBridge((snapshot) => snapshot.logs);
+  const seenLogs = useRef(new WeakSet<LiveLog>());
   const latestLog = useRef<{ body: string; samples: StepView['visits'][number]['samples']; usage?: LiveUsage } | null>(
     null,
   );
@@ -40,10 +42,11 @@ export function useStep(
   useEffect(() => {
     let stopped = false;
     latestLog.current = null;
+    logs.forEach((entry) => seenLogs.current.add(entry));
     if (live) {
       follow.current = true;
     }
-    api<StepView>(`/runs/${encodeURIComponent(runKey)}/steps/${encodeURIComponent(step)}`)
+    getStep(runKey, step)
       .then((body) => {
         if (stopped) {
           return;
@@ -64,7 +67,7 @@ export function useStep(
         }
         if (step.startsWith('code-review-')) {
           try {
-            const raw = await runLog(runKey, step);
+            const raw = await getRunLog(runKey, step);
             if (raw !== null) {
               const fetched = withFileUsage(fileView(step, raw));
               setView(fetched);
@@ -84,20 +87,16 @@ export function useStep(
   }, [runKey, step, live, revision, attempts]);
 
   useEffect(() => {
-    const socket = liveSocket();
-    const apply = (entry: LiveLog): void => {
-      if (entry.key !== runKey || !liveLogStep(entry.step, step)) {
-        return;
-      }
-      const samples = entry.samples ?? [];
-      latestLog.current = { body: entry.body, samples, usage: entry.usage };
-      setView((current) => (current ? withLog(current, entry.body, samples, entry.usage) : current));
-    };
-    socket.on('log', apply);
-    return () => {
-      socket.off('log', apply);
-    };
-  }, [runKey, step]);
+    const fresh = logs.filter((entry) => !seenLogs.current.has(entry));
+    fresh.forEach((entry) => seenLogs.current.add(entry));
+    const entry = fresh.filter((item) => item.key === runKey && liveLogStep(item.step, step)).at(-1);
+    if (!entry) {
+      return;
+    }
+    const samples = entry.samples ?? [];
+    latestLog.current = { body: entry.body, samples, usage: entry.usage };
+    setView((current) => (current ? withLog(current, entry.body, samples, entry.usage) : current));
+  }, [logs, runKey, step]);
 
   useEffect(() => {
     if (!live) {

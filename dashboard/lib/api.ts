@@ -7,6 +7,16 @@ function apiUrl(path: string): string {
   return `/swarmloop-api${suffix}`;
 }
 
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(apiUrl(path), {
     ...init,
@@ -18,7 +28,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
-    throw new Error(await errorMessage(response));
+    throw new ApiError(response.status, await errorMessage(response));
   }
   return response.json() as Promise<T>;
 }

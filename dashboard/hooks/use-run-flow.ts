@@ -2,9 +2,17 @@
 
 import type { Dispatch, SetStateAction } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { api, runLog } from '../lib/api';
+import {
+  getFlow,
+  getRunLog,
+  rebaseRun as rebaseEndpoint,
+  replayStep,
+  resumeRun as resumeEndpoint,
+  startReviewer as reviewerEndpoint,
+  stopRun as stopEndpoint,
+} from '../lib/endpoints';
 import { openElapsed, visitStored } from '../lib/elapsed';
-import { liveSocket } from '../lib/live';
+import { useLiveActions, useLiveBridge } from './use-live-bridge';
 import { applyFlow, applyReviewLog, type FlowMemory } from '../lib/flow-state';
 import { pipelineStepOf, REVIEW_STEPS, type PhaseName } from '@contract/steps';
 import { reviewChipStatus } from '@contract/readable-log';
@@ -48,72 +56,82 @@ export function useRunFlow(runKey: string): {
   const memory = useRef<FlowMemory>({ pinnedAt: null, heldMs: 0, heldStart: null, openReviews: [] });
   const followStep = useRef(true);
   const [now, setNow] = useState(() => Date.now());
+  const liveFlow = useLiveBridge((snapshot) => snapshot.flow);
+  const logs = useLiveBridge((snapshot) => snapshot.logs);
+  const { watchRun } = useLiveActions();
 
-  useEffect(() => {
-    let stopped = false;
-    memory.current = { ...memory.current, openReviews: [] };
-    const apply = (body: FlowView | null): void => {
-      if (stopped || !body || body.key !== runKey) {
+  const generation = useRef(0);
+  const seenFlow = useRef<FlowView | null>(null);
+  const seenLogs = useRef(new WeakSet<LiveLog>());
+
+  const applyBody = (body: FlowView | null): void => {
+    const mine = generation.current;
+    if (!body || body.key !== runKey) {
+      return;
+    }
+    setFlow((current) => {
+      const result = applyFlow(current, body, memory.current);
+      memory.current = result.memory;
+      return result.flow;
+    });
+    setError(null);
+    void probeFinishedReviews(body, runKey, (name, raw) => {
+      if (generation.current !== mine || memory.current.openReviews.includes(name)) {
         return;
       }
       setFlow((current) => {
-        const result = applyFlow(current, body, memory.current);
+        if (current?.key !== runKey) {
+          return current;
+        }
+        const result = applyReviewLog(current, memory.current, { key: runKey, step: name, body: raw });
         memory.current = result.memory;
         return result.flow;
       });
-      setError(null);
-      void probeFinishedReviews(body, runKey, (name, raw) => {
-        if (stopped || memory.current.openReviews.includes(name)) {
-          return;
+    });
+  };
+
+  useEffect(() => {
+    generation.current += 1;
+    const mine = generation.current;
+    memory.current = { ...memory.current, openReviews: [] };
+    watchRun(runKey);
+    getFlow(runKey)
+      .then((body) => {
+        if (generation.current === mine) {
+          applyBody(body);
         }
-        setFlow((current) => {
-          if (current?.key !== runKey) {
-            return current;
-          }
-          const result = applyReviewLog(current, memory.current, { key: runKey, step: name, body: raw });
-          memory.current = result.memory;
-          return result.flow;
-        });
+      })
+      .catch((cause: unknown) => {
+        if (generation.current === mine) {
+          setError(cause instanceof Error ? cause.message : 'run is missing');
+        }
       });
+    return () => {
+      generation.current += 1;
+      watchRun(null);
     };
-    const load = (): void => {
-      api<FlowView>(`/runs/${encodeURIComponent(runKey)}`)
-        .then(apply)
-        .catch((cause: unknown) => {
-          if (!stopped) {
-            setError(cause instanceof Error ? cause.message : 'run is missing');
-          }
-        });
-    };
-    const socket = liveSocket();
-    const watch = (): void => {
-      socket.emit('watch', runKey);
-    };
-    const onLog = (entry: LiveLog): void => {
-      if (stopped || entry.key !== runKey || !entry.step.startsWith('code-review-')) {
-        return;
-      }
-      // Record the log before React processes queued flow updates, as before.
-      const result = applyReviewLog(null, memory.current, entry);
-      memory.current = result.memory;
+  }, [runKey]);
+
+  useEffect(() => {
+    const fresh = logs.filter((entry) => !seenLogs.current.has(entry));
+    fresh.forEach((entry) => seenLogs.current.add(entry));
+    const reviews = fresh.filter((entry) => entry.key === runKey && entry.step.startsWith('code-review-'));
+    // Record the logs before the flow is applied, as before.
+    for (const entry of reviews) {
+      memory.current = applyReviewLog(null, memory.current, entry).memory;
+    }
+    if (liveFlow && liveFlow !== seenFlow.current) {
+      seenFlow.current = liveFlow;
+      applyBody(liveFlow);
+    }
+    for (const entry of reviews) {
       setFlow((current) => {
         const next = applyReviewLog(current, memory.current, entry);
         memory.current = next.memory;
         return next.flow;
       });
-    };
-    socket.on('connect', watch);
-    socket.on('flow', apply);
-    socket.on('log', onLog);
-    watch();
-    load();
-    return () => {
-      stopped = true;
-      socket.off('connect', watch);
-      socket.off('flow', apply);
-      socket.off('log', onLog);
-    };
-  }, [runKey]);
+    }
+  }, [liveFlow, logs, runKey]);
 
   useEffect(() => {
     if (flow?.status !== 'running') {
@@ -165,7 +183,7 @@ export function useRunFlow(runKey: string): {
     }
     setStopping(true);
     setError(null);
-    api(`/runs/${encodeURIComponent(flow.key)}/stop`, { method: 'POST' })
+    stopEndpoint(flow.key)
       .then(() => {
         setConfirmStop(false);
         setFlow((current) => {
@@ -191,7 +209,7 @@ export function useRunFlow(runKey: string): {
     }
     setRebasing(true);
     setRebaseError(null);
-    api(`/runs/${encodeURIComponent(flow.key)}/rebase`, { method: 'POST' })
+    rebaseEndpoint(flow.key)
       .then(() => {
         followStep.current = true;
         setFlow((current) =>
@@ -215,10 +233,7 @@ export function useRunFlow(runKey: string): {
       return Promise.resolve();
     }
     const run = flow;
-    return api(`/runs/${encodeURIComponent(run.key)}/steps/${encodeURIComponent(step)}/replay`, {
-      method: 'POST',
-      body: JSON.stringify({ prompt, phases } satisfies ReplayBody),
-    }).then(() => {
+    return replayStep(run.key, step, { prompt, phases } satisfies ReplayBody).then(() => {
       followStep.current = true;
       setSelected(step);
       memory.current = { ...memory.current, pinnedAt: run.updatedAt };
@@ -238,7 +253,7 @@ export function useRunFlow(runKey: string): {
     }
     const run = flow;
     setError(null);
-    api(`/runs/${encodeURIComponent(run.key)}/steps/${encodeURIComponent(step)}`, { method: 'POST' })
+    reviewerEndpoint(run.key, step)
       .then(() => {
         followStep.current = true;
         setSelected(step);
@@ -257,7 +272,7 @@ export function useRunFlow(runKey: string): {
       return;
     }
     const run = flow;
-    api(`/runs/${encodeURIComponent(run.key)}/resume`, { method: 'POST' })
+    resumeEndpoint(run.key)
       .then(() => {
         followStep.current = true;
         memory.current = { ...memory.current, pinnedAt: run.updatedAt };
@@ -307,7 +322,7 @@ async function probeFinishedReviews(
   await Promise.all(
     names.map(async (name) => {
       try {
-        const raw = await runLog(runKey, name);
+        const raw = await getRunLog(runKey, name);
         if (raw === null) {
           return;
         }
