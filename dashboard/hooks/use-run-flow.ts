@@ -154,7 +154,7 @@ export function useRunFlow(runKey: string): {
   const applyWaiting = (next: FlowView): void => {
     if (next.status === 'running') {
       followStep.current = true;
-      memory.current.pinnedAt = next.updatedAt;
+      memory.current = { ...memory.current, pinnedAt: next.updatedAt };
     }
     setFlow(next);
   };
@@ -172,8 +172,11 @@ export function useRunFlow(runKey: string): {
           if (!current) {
             return current;
           }
-          memory.current.heldMs = current.stepStartedAt ? openElapsed(current.stepStartedAt, Date.now()) : 0;
-          memory.current.heldStart = current.stepStartedAt;
+          memory.current = {
+            ...memory.current,
+            heldMs: current.stepStartedAt ? openElapsed(current.stepStartedAt, Date.now()) : 0,
+            heldStart: current.stepStartedAt,
+          };
           return { ...current, status: 'failed', resume: 'ready' };
         });
         setNow(Date.now());
@@ -218,7 +221,7 @@ export function useRunFlow(runKey: string): {
     }).then(() => {
       followStep.current = true;
       setSelected(step);
-      memory.current.pinnedAt = run.updatedAt;
+      memory.current = { ...memory.current, pinnedAt: run.updatedAt };
       setFlow((current) =>
         current
           ? { ...current, status: 'running', currentStep: step, resume: 'running', stepStartedAt: null }
@@ -239,7 +242,7 @@ export function useRunFlow(runKey: string): {
       .then(() => {
         followStep.current = true;
         setSelected(step);
-        memory.current.pinnedAt = run.updatedAt;
+        memory.current = { ...memory.current, pinnedAt: run.updatedAt };
         setFlow((current) =>
           current
             ? { ...current, status: 'running', currentStep: 'code-review', resume: 'running', stepStartedAt: null }
@@ -257,7 +260,7 @@ export function useRunFlow(runKey: string): {
     api(`/runs/${encodeURIComponent(run.key)}/resume`, { method: 'POST' })
       .then(() => {
         followStep.current = true;
-        memory.current.pinnedAt = run.updatedAt;
+        memory.current = { ...memory.current, pinnedAt: run.updatedAt };
         setFlow((current) =>
           current ? { ...current, status: 'running', resume: 'running', stepStartedAt: null } : current,
         );
