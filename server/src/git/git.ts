@@ -28,7 +28,7 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Pro
         env,
         ...(input === undefined ? {} : { stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'] }),
       },
-      (error, stdout, stderr) => {
+      (error: unknown, stdout, stderr) => {
         if (error) {
           if (typeof stdout === 'string' && stdout.length > 0) {
             (error as { stdout?: string }).stdout = stdout;
@@ -36,7 +36,7 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Pro
           if (typeof stderr === 'string' && stderr.length > 0) {
             (error as { stderr?: string }).stderr = stderr;
           }
-          fail(error instanceof Error ? error : new Error('git command failed'));
+          fail(error);
           return;
         }
         done(stdout);
