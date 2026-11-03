@@ -36,7 +36,7 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Pro
           if (typeof stderr === 'string' && stderr.length > 0) {
             (error as { stderr?: string }).stderr = stderr;
           }
-          fail(error as Error);
+          fail(error instanceof Error ? error : new Error('git command failed'));
           return;
         }
         done(stdout);
