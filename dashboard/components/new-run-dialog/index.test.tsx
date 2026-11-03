@@ -1,10 +1,14 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../../lib/api';
+import { createRun, listProjects } from '../../lib/endpoints';
 import { NewRunDialog } from './index';
 
-vi.mock('../../lib/api', () => ({ api: vi.fn(), runLog: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({
+  listProjects: vi.fn(),
+  createRun: vi.fn(),
+  setRunProjects: vi.fn(),
+}));
 
 const allPhases = ['requirements', 'brainstorm', 'implementation', 'code-review', 'ci'];
 
@@ -14,15 +18,8 @@ async function pickProject(user: UserEvent, name: string): Promise<void> {
 }
 
 beforeEach(() => {
-  vi.mocked(api).mockImplementation(async (path: string, init?: RequestInit) => {
-    if (init?.method === 'POST') {
-      return { key: 'run-9' };
-    }
-    if (path === '/checkouts/projects') {
-      return { projects: ['swarmloop', 'docs'] };
-    }
-    throw new Error(`unexpected ${path}`);
-  });
+  vi.mocked(listProjects).mockResolvedValue({ projects: ['swarmloop', 'docs'] });
+  vi.mocked(createRun).mockResolvedValue({ key: 'run-9' });
 });
 
 describe('NewRunDialog', () => {
@@ -58,14 +55,11 @@ describe('NewRunDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Start' }));
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('run-9'));
-    expect(api).toHaveBeenCalledWith('/runs', {
-      method: 'POST',
-      body: JSON.stringify({
+    expect(createRun).toHaveBeenCalledWith({
         prompt: 'Ship it',
         phases: ['requirements', 'brainstorm', 'implementation', 'code-review'],
         projects: ['swarmloop'],
-      }),
-    });
+      });
   });
 
   it('hands the prompt and phases to onSubmit instead of posting', async () => {
@@ -84,12 +78,8 @@ describe('NewRunDialog', () => {
 
   it('shows the error when the POST to /runs fails', async () => {
     const user = userEvent.setup();
-    vi.mocked(api).mockImplementation(async (path: string, init?: RequestInit) => {
-      if (init?.method === 'POST') {
-        throw new Error('run refused');
-      }
-      return { projects: ['swarmloop'] };
-    });
+    vi.mocked(listProjects).mockResolvedValue({ projects: ['swarmloop'] });
+    vi.mocked(createRun).mockRejectedValue(new Error('run refused'));
     render(<NewRunDialog open onClose={vi.fn()} />);
     await user.type(screen.getByRole('textbox', { name: /Prompt/ }), 'Ship it');
     await pickProject(user, 'swarmloop');

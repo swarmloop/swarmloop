@@ -1,11 +1,13 @@
 import { act, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { api, runLog } from '../lib/api';
+import { ApiError } from '../lib/api';
+import { getFlow, getRunLog } from '../lib/endpoints';
 import { emitted, receive } from '../test/fake-socket';
 import { flowView } from '../test/fixtures';
+import { LiveBridgeProvider } from './use-live-bridge';
 import { useRunFlow } from './use-run-flow';
 
-vi.mock('../lib/api', () => ({ api: vi.fn(), runLog: vi.fn() }));
+vi.mock('../lib/endpoints', () => ({ getFlow: vi.fn(), getRunLog: vi.fn() }));
 vi.mock('../lib/live', async () => (await import('../test/fake-socket')).fakeLive());
 
 function Probe({ runKey }: { runKey: string }) {
@@ -30,8 +32,8 @@ describe('useRunFlow', () => {
     const pending = new Promise<string | null>((resolve) => {
       finish = resolve;
     });
-    vi.mocked(runLog).mockResolvedValue(null).mockReturnValueOnce(pending);
-    vi.mocked(api)
+    vi.mocked(getRunLog).mockResolvedValue(null).mockReturnValueOnce(pending);
+    vi.mocked(getFlow)
       .mockResolvedValueOnce(reviewing)
       .mockResolvedValueOnce(flowView({ key: 'run-2', name: 'Other run' }))
       .mockResolvedValueOnce({ ...reviewing, name: 'Fresh review' });
@@ -41,7 +43,7 @@ describe('useRunFlow', () => {
       return <p>{flow ? `${flow.name}: ${flow.phases[0].steps[0].status}` : 'Loading'}</p>;
     }
 
-    const { rerender } = render(<ReviewProbe runKey="run-1" />);
+    const { rerender } = render(<ReviewProbe runKey="run-1" />, { wrapper: LiveBridgeProvider });
     await screen.findByText('Original review: running');
     act(() => receive('log', { key: 'run-1', step, body: 'working' }));
     rerender(<ReviewProbe runKey="run-2" />);
@@ -58,17 +60,17 @@ describe('useRunFlow', () => {
   });
 
   it('applies the flow from GET /runs/:key on mount', async () => {
-    vi.mocked(api).mockResolvedValue(flowView({ name: 'Flow one' }));
+    vi.mocked(getFlow).mockResolvedValue(flowView({ name: 'Flow one' }));
 
-    render(<Probe runKey="run-1" />);
+    render(<Probe runKey="run-1" />, { wrapper: LiveBridgeProvider });
 
     expect(await screen.findByText('Flow one')).toBeInTheDocument();
-    expect(api).toHaveBeenCalledWith('/runs/run-1');
+    expect(getFlow).toHaveBeenCalledWith('run-1');
   });
 
   it('applies a flow event for the same run', async () => {
-    vi.mocked(api).mockResolvedValue(flowView({ name: 'Flow one' }));
-    render(<Probe runKey="run-1" />);
+    vi.mocked(getFlow).mockResolvedValue(flowView({ name: 'Flow one' }));
+    render(<Probe runKey="run-1" />, { wrapper: LiveBridgeProvider });
     await screen.findByText('Flow one');
 
     act(() => receive('flow', flowView({ name: 'Flow two' })));
@@ -77,8 +79,8 @@ describe('useRunFlow', () => {
   });
 
   it('ignores a flow event for another run', async () => {
-    vi.mocked(api).mockResolvedValue(flowView({ name: 'Flow one' }));
-    render(<Probe runKey="run-1" />);
+    vi.mocked(getFlow).mockResolvedValue(flowView({ name: 'Flow one' }));
+    render(<Probe runKey="run-1" />, { wrapper: LiveBridgeProvider });
     await screen.findByText('Flow one');
 
     act(() => receive('flow', flowView({ key: 'run-2', name: 'Other run' })));
@@ -88,8 +90,8 @@ describe('useRunFlow', () => {
   });
 
   it('emits watch on mount and again on connect', async () => {
-    vi.mocked(api).mockResolvedValue(flowView());
-    render(<Probe runKey="run-1" />);
+    vi.mocked(getFlow).mockResolvedValue(flowView());
+    render(<Probe runKey="run-1" />, { wrapper: LiveBridgeProvider });
     await screen.findByText('Run one');
 
     expect(emitted).toHaveBeenCalledWith('watch', 'run-1');
@@ -102,10 +104,18 @@ describe('useRunFlow', () => {
   });
 
   it('shows the message when the load is rejected', async () => {
-    vi.mocked(api).mockRejectedValue(new Error('run is gone'));
+    vi.mocked(getFlow).mockRejectedValue(new Error('run is gone'));
 
-    render(<Probe runKey="run-1" />);
+    render(<Probe runKey="run-1" />, { wrapper: LiveBridgeProvider });
 
     expect(await screen.findByText('run is gone')).toBeInTheDocument();
   });
+  it('shows the message of a rejected 404 ApiError', async () => {
+    vi.mocked(getFlow).mockRejectedValue(new ApiError(404, 'run not found'));
+
+    render(<Probe runKey="run-1" />, { wrapper: LiveBridgeProvider });
+
+    expect(await screen.findByText('run not found')).toBeInTheDocument();
+  });
+
 });

@@ -13,7 +13,7 @@ import Chip from '@mui/material/Chip';
 import Typography from '@mui/material/Typography';
 import { SeriesChart } from './charts/series';
 import { MarkdownBody } from './markdown-body';
-import { api } from '../lib/api';
+import { getHistory } from '../lib/endpoints';
 import { count, duration, memory, money } from '../lib/format';
 import { documentsByKind, tokensByModel } from '../lib/history';
 import { latestPhaseLabels } from '../lib/phases';
@@ -27,7 +27,7 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
   const [file, setFile] = useState<string | null>(null);
 
   useEffect(() => {
-    api<HistoryView>(`/runs/${encodeURIComponent(runKey)}/history`)
+    getHistory(runKey)
       .then((body) => {
         setView(body);
         setVisit(body.stats.at(-1)?.id ?? null);

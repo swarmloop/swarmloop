@@ -2,11 +2,12 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../../../lib/api';
+import { LiveBridgeProvider } from '../../../hooks/use-live-bridge';
+import { getStep } from '../../../lib/endpoints';
 import { stepView } from '../../../test/fixtures';
 import { StepDetail } from './index';
 
-vi.mock('../../../lib/api', () => ({ api: vi.fn(), runLog: vi.fn() }));
+vi.mock('../../../lib/endpoints', () => ({ getStep: vi.fn(), getRunLog: vi.fn() }));
 vi.mock('../../../lib/live', async () => (await import('../../../test/fake-socket')).fakeLive());
 
 function detail(overrides: Partial<ComponentProps<typeof StepDetail>> = {}) {
@@ -20,11 +21,12 @@ function detail(overrides: Partial<ComponentProps<typeof StepDetail>> = {}) {
       attempts={0}
       {...overrides}
     />,
+    { wrapper: LiveBridgeProvider },
   );
 }
 
 beforeEach(() => {
-  vi.mocked(api).mockResolvedValue(stepView());
+  vi.mocked(getStep).mockResolvedValue(stepView());
 });
 
 describe('StepDetail', () => {
@@ -35,7 +37,7 @@ describe('StepDetail', () => {
   });
 
   it('shows the load error text', async () => {
-    vi.mocked(api).mockRejectedValue(new Error('step is gone'));
+    vi.mocked(getStep).mockRejectedValue(new Error('step is gone'));
 
     detail();
 

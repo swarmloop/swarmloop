@@ -103,6 +103,41 @@ export default tseslint.config(
     },
   },
   {
+    files: dashboardFiles,
+    rules: {
+      'no-restricted-globals': ['error', { name: 'fetch', message: 'Call the API through lib/api.' }],
+    },
+  },
+  {
+    files: ['dashboard/lib/api.ts'],
+    rules: { 'no-restricted-globals': 'off' },
+  },
+  {
+    files: dashboardFiles,
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.object.name='socket'][callee.property.name=/^(on|off)$/]",
+          message: 'Subscribe to socket events only in hooks/use-live-bridge.ts',
+        },
+      ],
+    },
+  },
+  {
+    files: ['dashboard/hooks/use-live-bridge.ts'],
+    rules: { 'no-restricted-syntax': 'off' },
+  },
+  {
+    files: ['dashboard/components/**/*.{js,mjs,ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [{ regex: '(^|/)lib/api$', message: 'Components call lib/endpoints, not lib/api.' }] },
+      ],
+    },
+  },
+  {
     ...jsxA11y.flatConfigs.recommended,
     files: dashboardFiles,
   },

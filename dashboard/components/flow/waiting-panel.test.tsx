@@ -1,11 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { api } from '../../lib/api';
+import { resumeRun, sendAnswers } from '../../lib/endpoints';
 import { flowView } from '../../test/fixtures';
 import { WaitingPanel } from './waiting-panel';
 
-vi.mock('../../lib/api', () => ({ api: vi.fn(), runLog: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({ sendAnswers: vi.fn(), resumeRun: vi.fn() }));
 
 function waitingFlow() {
   return flowView({
@@ -22,7 +22,7 @@ describe('WaitingPanel', () => {
   it('enables Submit once every answer is filled, then posts the answers and calls onChange', async () => {
     const user = userEvent.setup();
     const next = flowView({ status: 'running', resume: 'running' });
-    vi.mocked(api).mockResolvedValue(next);
+    vi.mocked(sendAnswers).mockResolvedValue(next);
     const onChange = vi.fn();
     render(<WaitingPanel flow={waitingFlow()} onChange={onChange} />);
 
@@ -36,20 +36,17 @@ describe('WaitingPanel', () => {
     await user.click(submit);
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith(next));
-    expect(api).toHaveBeenCalledWith('/runs/run-1/answers', {
-      method: 'POST',
-      body: JSON.stringify({
-        answers: [
-          { kind: 'question', id: 'q1', body: 'postgres' },
-          { kind: 'paste', id: 'p1', body: 'port=5432' },
-        ],
-      }),
-    });
+  expect(sendAnswers).toHaveBeenCalledWith('run-1', {
+      answers: [
+        { kind: 'question', id: 'q1', body: 'postgres' },
+        { kind: 'paste', id: 'p1', body: 'port=5432' },
+      ],
+      });
   });
 
   it('shows the error when the answers are rejected', async () => {
     const user = userEvent.setup();
-    vi.mocked(api).mockRejectedValue(new Error('answers rejected'));
+    vi.mocked(sendAnswers).mockRejectedValue(new Error('answers rejected'));
     render(<WaitingPanel flow={waitingFlow()} onChange={vi.fn()} />);
     await user.type(screen.getByRole('textbox', { name: 'Which database?' }), 'postgres');
     await user.type(screen.getByRole('textbox', { name: 'Config' }), 'port=5432');
@@ -61,7 +58,7 @@ describe('WaitingPanel', () => {
 
   it('offers Resume without items when the run is ready, and posts it', async () => {
     const user = userEvent.setup();
-    vi.mocked(api).mockResolvedValue({});
+    vi.mocked(resumeRun).mockResolvedValue({});
     const onChange = vi.fn();
     render(<WaitingPanel flow={flowView({ status: 'failed', resume: 'ready' })} onChange={onChange} />);
 
@@ -70,7 +67,7 @@ describe('WaitingPanel', () => {
     await waitFor(() =>
       expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ status: 'running', resume: 'running' })),
     );
-    expect(api).toHaveBeenCalledWith('/runs/run-1/resume', { method: 'POST' });
+    expect(resumeRun).toHaveBeenCalledWith('run-1');
   });
 
   it('disables Resume while the run is not ready', () => {

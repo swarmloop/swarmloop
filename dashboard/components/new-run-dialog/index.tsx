@@ -8,11 +8,11 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { api } from '../../lib/api';
+import { createRun, listProjects, setRunProjects } from '../../lib/endpoints';
 import { mergeNames } from '../../lib/names';
 import type { PhaseName } from '@contract/steps';
 import { PHASES } from '@contract/steps';
-import type { AddProjectBody, CreateRunBody, ProjectsView, RunRef } from '@contract/api';
+import type { CreateRunBody } from '@contract/api';
 import { PhasePicker } from './phase-picker';
 import { ProjectPicker } from './project-picker';
 
@@ -62,7 +62,7 @@ export function NewRunDialog({
       return;
     }
     if (!frozenProjects) {
-      api<{ projects: string[] }>('/checkouts/projects')
+      listProjects()
         .then((body) => {
           setAvailable(body.projects);
           setPickedProjects([]);
@@ -70,7 +70,7 @@ export function NewRunDialog({
         .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'projects failed'));
       return;
     }
-    api<{ projects: string[] }>('/checkouts/projects')
+    listProjects()
       .then((body) => setAvailable(body.projects))
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'projects failed'));
   }, [open, frozenProjects]);
@@ -146,10 +146,7 @@ export function NewRunDialog({
             onClose();
           }
         })
-      : api<RunRef>('/runs', {
-          method: 'POST',
-          body: JSON.stringify({ prompt: text, phases: chosen, projects: pickedProjects } satisfies CreateRunBody),
-        }).then((body) => done(body.key));
+      : createRun({ prompt: text, phases: chosen, projects: pickedProjects } satisfies CreateRunBody).then((body) => done(body.key));
     request
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'run failed'))
       .finally(() => setBusy(false));
@@ -204,10 +201,7 @@ async function postProjects(
   let told: string[] | null = null;
   for (const name of names) {
     try {
-      const body = await api<ProjectsView>(`/runs/${encodeURIComponent(runKey)}/projects`, {
-        method: 'POST',
-        body: JSON.stringify({ name } satisfies AddProjectBody),
-      });
+      const body = await setRunProjects(runKey, name);
       projects = mergeNames(projects, body.projects);
       told = body.projects;
       notes.push(body.applied ? `${name} is mounted.` : `${name} will be mounted on the next step.`);
