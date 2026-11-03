@@ -1,5 +1,11 @@
 import type { PipelineJob, PipelineRef } from '../../integrations/code-host/code-host';
 import { readableJobTrace } from './job-trace';
+import { basename } from 'path';
+import { git } from '../../git/git';
+import type { SandboxMount } from '../../sandbox/sandbox-launch';
+import { remoteProject } from '../merge-request/merge-request-record';
+
+export const CI_RERUN = 'ci_rerun';
 
 export interface Seen {
   project: string;
@@ -118,4 +124,30 @@ export function parsePipelineRefs(body: string): PipelineRef[] {
   }
   flush();
   return records;
+}
+
+export async function originProject(dir: string): Promise<string | null> {
+  try {
+    return remoteProject(await git(['-C', dir, 'remote', 'get-url', 'origin'])).project;
+  } catch {
+    return null;
+  }
+}
+
+/** One `<repo> <ci sha> -> <head>` line per repo whose HEAD is not the commit CI ran on. Empty when nothing is stale. */
+export async function staleRepos(refBody: string | null, mounts: SandboxMount[]): Promise<string[]> {
+  const records = parsePipelineRefs(refBody ?? '');
+  const lines: string[] = [];
+  for (const mount of mounts) {
+    const project = await originProject(mount.hostPath);
+    const sha = records.find((record) => record.project === project)?.sha;
+    if (!project || !sha) {
+      continue;
+    }
+    const head = await git(['-C', mount.hostPath, 'rev-parse', 'HEAD']);
+    if (head !== sha) {
+      lines.push(`${basename(mount.hostPath)} ${sha} -> ${head}`);
+    }
+  }
+  return lines;
 }

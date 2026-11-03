@@ -10,12 +10,11 @@ import type { OpenedStep } from '../../pipeline/step-run';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import { FetchFailed, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { recordHandoff, returnNotes, textDocument } from '../shared/handoff';
-import { git } from '../../git/git';
-import { remoteProject } from '../merge-request/merge-request-record';
 import { hasCi, repoNames, worktreePath } from '../shared/repo-names';
 import { BaseStep, type StepContext } from '../base-step';
 import {
   cancelErrorNote,
+  originProject,
   parsePipelineRefs,
   renderFail,
   renderNone,
@@ -385,14 +384,6 @@ export class PipelineStep extends BaseStep {
       moveTo,
       visit: { documents: docs.length > 0 ? docs : undefined },
     });
-  }
-}
-
-async function originProject(dir: string): Promise<string | null> {
-  try {
-    return remoteProject(await git(['-C', dir, 'remote', 'get-url', 'origin'])).project;
-  } catch {
-    return null;
   }
 }
 

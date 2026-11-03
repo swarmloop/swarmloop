@@ -14,6 +14,7 @@ import { textDocument } from '../shared/handoff';
 import { repoNames, worktreePath } from '../shared/repo-names';
 import { remoteProject } from '../merge-request/merge-request-record';
 import { BaseStep, StepContext } from '../base-step';
+import { CI_RERUN } from '../pipeline/pipeline-report';
 import { allowedPaths, deniedIndexPaths, parsePaths, PlannedPath, renderPaths, stageSelection } from './commit-paths';
 
 interface Tree {
@@ -55,14 +56,19 @@ export class CommitStep extends BaseStep {
       return this.end(ctx, 'waiting', 0, `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
     }
     const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, await this.history.listDenyPaths());
-    if (planned.length === 0 && !(await this.somethingToPush(trees, branch))) {
+    const rerun = planned.length === 0 && (await this.rerunPending(key));
+    if (!rerun && planned.length === 0 && !(await this.somethingToPush(trees, branch))) {
       if (await this.publishedHead(trees, branch)) {
         return this.end(ctx, 'ok', 0, `${opened.startedAt} commit done\n${branch}`);
       }
       throw new SwarmloopError('nothing to commit');
     }
-    const pushed = await this.publish(trees, planned, branch, commitMessage(key, summary), opened.run.codeHost);
+    const heads: string[] = [];
+    const pushed = rerun
+      ? await this.republish(trees, branch, opened.run.codeHost, heads)
+      : await this.publish(trees, planned, branch, commitMessage(key, summary), opened.run.codeHost);
     const listed = planned.length > 0 ? renderPaths(planned).trimEnd() : '';
+    const recordedHeads = heads.length > 0 ? `${heads.join('\n')}\n` : undefined;
     if (!pushed) {
       await this.history.putDocument(opened.run, 'ci_skip', `${CI_SKIPPED}\n`);
       const line = listed ? `${opened.startedAt} ${CI_SKIPPED}\n${listed}` : `${opened.startedAt} ${CI_SKIPPED}`;
@@ -78,7 +84,7 @@ export class CommitStep extends BaseStep {
     const line = listed
       ? `${opened.startedAt} commit done\n${branch}\n${listed}`
       : `${opened.startedAt} commit done\n${branch}`;
-    return this.end(ctx, 'ok', 0, line, listed ? `${listed}\n` : undefined);
+    return this.end(ctx, 'ok', 0, line, listed ? `${listed}\n` : recordedHeads);
   }
 
   /** A failed or still-open commit retries its own path list. Arriving from the previous phase reads the tree again. */
@@ -185,6 +191,16 @@ export class CommitStep extends BaseStep {
     return false;
   }
 
+  /** A `ci_rerun` document newer than the latest `commit` document asks for one new CI run. */
+  private async rerunPending(key: string): Promise<boolean> {
+    const rerun = await this.history.latestDocument(key, CI_RERUN);
+    if (!rerun) {
+      return false;
+    }
+    const commit = await this.history.latestDocument(key, 'commit');
+    return !commit || commit.id < rerun.id;
+  }
+
   private async somethingToPush(trees: Tree[], branch: string): Promise<boolean> {
     for (const tree of trees) {
       const cwd = tree.path;
@@ -207,6 +223,28 @@ export class CommitStep extends BaseStep {
       trees.map((tree) => this.publishTree(tree, planned, branch, message, denied, codeHost)),
     );
     return pushed.some(Boolean);
+  }
+
+  /** Start CI again on a clean tree: push an unpublished HEAD, else push an empty commit. Fills `heads` with `<repo> <head>` per pushed repo. */
+  private async republish(trees: Tree[], branch: string, codeHost: string, heads: string[]): Promise<boolean> {
+    for (const tree of trees) {
+      const cwd = tree.path;
+      const origin = await originUrl(cwd, tree.repo, 'origin failed');
+      if (!origin) {
+        continue;
+      }
+      const published = await this.optionalRev(tree, `refs/remotes/origin/${branch}`);
+      if (published === (await this.gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed'))) {
+        await this.gitAt(
+          tree,
+          [...(await authorArgs(cwd)), 'commit', '--allow-empty', '--no-verify', '-m', 'Re-run CI'],
+          'commit failed',
+        );
+      }
+      await this.pushRef(tree, branch, published, codeHost, origin);
+      heads.push(`${tree.repo} ${await this.gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed')}`);
+    }
+    return heads.length > 0;
   }
 
   private async publishTree(

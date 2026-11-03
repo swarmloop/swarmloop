@@ -219,6 +219,81 @@ describe('commit step', () => {
     }
   });
 
+  it('pushes an empty Re-run CI commit when a ci_rerun is pending and the tree is clean', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-rerun-'));
+    const tree = featureTree(root, 'PROJ-130');
+    const branch = 'feature/PROJ-130-ship-the-field';
+    const bare = join(root, 'demo.git');
+    const token = 'rerun-token';
+    git(tree, ['push', '-u', 'origin', branch]);
+    const old = git(tree, ['rev-parse', 'HEAD']);
+    git(tree, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/demo.git']);
+    const restore = hostPush(bare, token);
+    try {
+      const app = await boot(root, 'gitlab', { baseUrl: 'https://gitlab.example', token });
+      try {
+        await seed(app, 'PROJ-130', 'gitlab');
+        const history = app.get(HistoryService);
+        const seeded = await history.findRun('PROJ-130');
+        await history.putDocument(seeded!, 'ci_rerun', `demo ${old} -> ${old}\n`);
+        const pushed = await app.get(PipelineService).step('commit', 'PROJ-130');
+        expect(pushed.exitCode).toBe(0);
+        expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
+        expect(git(tree, ['log', '-1', '--format=%s'])).toBe('Re-run CI');
+        const head = git(tree, ['rev-parse', 'HEAD']);
+        expect(git(bare, ['rev-parse', `refs/heads/${branch}`])).toBe(head);
+        expect(await history.latestBody('PROJ-130', 'pipeline_ref')).toContain(`sha: ${head}`);
+        expect(await history.latestBody('PROJ-130', 'commit')).toContain(`demo ${head}`);
+        const again = await app.get(PipelineService).step('commit', 'PROJ-130');
+        expect(again.exitCode).toBe(0);
+        expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
+      } finally {
+        await app.close();
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it('pushes an unpublished HEAD without an empty commit when a ci_rerun is pending', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-rerun-ahead-'));
+    const tree = featureTree(root, 'PROJ-131');
+    const branch = 'feature/PROJ-131-ship-the-field';
+    const bare = join(root, 'demo.git');
+    writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
+    git(tree, ['add', 'src/field.ts']);
+    git(tree, ['commit', '-m', 'already']);
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-131');
+      const history = app.get(HistoryService);
+      const seeded = await history.findRun('PROJ-131');
+      await history.putDocument(seeded!, 'ci_rerun', 'demo old -> new\n');
+      const pushed = await app.get(PipelineService).step('commit', 'PROJ-131');
+      expect(pushed.exitCode).toBe(0);
+      expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
+      expect(git(tree, ['log', '-1', '--format=%s'])).toBe('already');
+      expect(git(bare, ['rev-parse', `refs/heads/${branch}`])).toBe(git(tree, ['rev-parse', 'HEAD']));
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('still reports nothing to commit on a clean tree without a ci_rerun', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-clean-'));
+    const tree = featureTree(root, 'PROJ-132');
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-132');
+      const done = await app.get(PipelineService).step('commit', 'PROJ-132');
+      expect(done.exitCode).toBe(1);
+      expect(done.message).toContain('nothing to commit');
+      expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('1');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('does not stage a denied file inside a new directory', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-nested-'));
     const tree = featureTree(root, 'PROJ-106');
