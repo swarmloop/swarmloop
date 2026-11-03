@@ -10,6 +10,7 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
 import { SampleDraft } from '../history/visit';
 import type { AgentRuntime } from '../integrations/agent-runtime/agent-runtime';
+import { CodexAuthStore } from '../integrations/agent-runtime/codex/codex-auth';
 import { runtimeFor, runtimeForCommand } from '../integrations/agent-runtime/agent-runtime.registry';
 import {
   agentStateDir,
@@ -95,6 +96,7 @@ export interface AgentRunResult {
 @Injectable()
 export class AgentProcessRunner {
   private readonly logger = new Logger(AgentProcessRunner.name);
+  private codexAuth: CodexAuthStore | null = null;
 
   constructor(
     private readonly config: AppConfig,
@@ -185,6 +187,15 @@ export class AgentProcessRunner {
     }
   }
 
+  /** The subscription login, refreshed once by the server so parallel containers never race on it. */
+  private async codexLogin(env: { RUNTIME: string; CODEX_AUTH: string; SWARMLOOP_ROOT?: string }): Promise<string> {
+    if (env.RUNTIME !== 'codex' || env.CODEX_AUTH === '') {
+      return env.CODEX_AUTH;
+    }
+    this.codexAuth ??= new CodexAuthStore(join(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), 'data', 'codex'));
+    return this.codexAuth.current(env.CODEX_AUTH);
+  }
+
   private async once(
     input: AgentRunInput,
     runtime: AgentRuntime,
@@ -236,7 +247,7 @@ export class AgentProcessRunner {
           env.CURSOR_API_KEY,
           env.ANTHROPIC_API_KEY,
           env.CLAUDE_CODE_OAUTH_TOKEN,
-          env.CODEX_AUTH,
+          await this.codexLogin(env),
           env.CODEX_API_KEY,
         ),
       ],

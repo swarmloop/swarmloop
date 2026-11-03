@@ -36,6 +36,9 @@ export interface SandboxLaunch {
   /** Durable home for the vendor session. Replaces the /home/sandbox tmpfs. */
   statePath?: string;
   stateDaemonPath?: string;
+  /** Shared Codex login. Every container refreshes this one file. */
+  authPath?: string;
+  authDaemonPath?: string;
   /** Attach the caller's stdin. */
   stdin?: boolean;
   /** Allocate a terminal. Only the interactive vendor screen needs one. */
@@ -249,6 +252,11 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir()): string[] {
     args.push('--mount', `type=bind,src=${state},dst=/home/sandbox,readonly=false`);
   } else {
     args.push('--tmpfs', `/home/sandbox:rw,nosuid,nodev,size=64m,uid=${launch.userId},gid=${launch.userId},mode=700`);
+  }
+  const auth = launch.authDaemonPath ?? launch.authPath;
+  if (auth) {
+    assertDaemonPath(auth, home);
+    args.push('--mount', `type=bind,src=${auth},dst=/codex-auth,readonly=false`);
   }
   if (network === null) {
     args.push('--network', 'none');

@@ -4,6 +4,7 @@ import { existsSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { isAbsolute, join, resolve } from 'path';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
+import { prepareCodexAuth } from '../integrations/agent-runtime/codex/codex-auth';
 import type { SandboxMount } from '../sandbox/sandbox-launch';
 import {
   agentStateDir,
@@ -168,6 +169,8 @@ async function attach(
   const userId = sandboxUserId();
   const statePath = agentStateDir(root, feature.key);
   prepareStateDir(statePath, userId);
+  const authPath =
+    runtime.name === 'codex' && config.codexAuth !== '' ? prepareCodexAuth(root, config.codexAuth, userId) : undefined;
   const maskFile = join(tmpdir(), 'swarmloop-empty-env');
   if (!existsSync(maskFile)) {
     writeFileSync(maskFile, '');
@@ -202,6 +205,8 @@ async function attach(
     ],
     statePath,
     stateDaemonPath: statePath,
+    authPath,
+    authDaemonPath: authPath,
     stdin: interactive,
     tty: interactive,
   });

@@ -57,9 +57,10 @@ export class SandboxService {
       prepareStateDir(launch.statePath, launch.userId);
     }
     const stateDaemonPath = await this.stateDaemonPath(launch.statePath, launch.stateDaemonPath);
+    const authDaemonPath = await this.stateDaemonPath(launch.authPath, launch.authDaemonPath);
     const envMasks = launch.envMasks ?? collectEnvMasks(mounts);
     const maskFile = await this.maskFor(launch.statePath, envMasks.length > 0);
-    const full: SandboxLaunch = { ...launch, mounts, stateDaemonPath, envMasks, maskFile };
+    const full: SandboxLaunch = { ...launch, mounts, stateDaemonPath, authDaemonPath, envMasks, maskFile };
     const args = sandboxArgs(full);
     const network = sandboxNetworkName(full.allowHosts);
     if (network) {

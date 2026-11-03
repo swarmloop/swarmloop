@@ -73,6 +73,12 @@ describe('sandbox launch', () => {
     ).toEqual([base, `${base}-security`]);
   });
 
+  it('shares one Codex login directory between containers', () => {
+    const args = sandboxArgs(launch({ authPath: '/tmp/codex-auth' }), home);
+    expect(args.join(' ')).toContain('type=bind,src=/tmp/codex-auth,dst=/codex-auth,readonly=false');
+    expect(sandboxArgs(launch(), home).join(' ')).not.toContain('/codex-auth');
+  });
+
   it('binds the feature home and allocates a terminal only when asked', () => {
     const args = sandboxArgs(launch({ statePath: '/tmp/agent-state/PROJ-1', tty: true, stdin: true }), home);
     expect(args.join(' ')).toContain('type=bind,src=/tmp/agent-state/PROJ-1,dst=/home/sandbox,readonly=false');

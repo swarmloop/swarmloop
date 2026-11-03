@@ -54,11 +54,11 @@ You need Docker and one model key. No Jira, no git token, no CI.
    For Codex:
 
    - `RUNTIME=codex`.
-   - Subscription (ChatGPT Plus or Pro, no API bill): on your own machine run `codex login`. On a server without a browser run `codex login --device-auth`. Then put the file in `.env` as one line: `CODEX_AUTH=$(base64 -w0 ~/.codex/auth.json)` (macOS: `base64 -i ~/.codex/auth.json | tr -d '\n'`), pasted as the value, not as a command. The file is a password: never commit it, never share it. It is for your own use on your own server, not one plan shared by a team.
+   - Subscription (ChatGPT Plus or Pro, no API bill): on your own machine run `codex login`. On a server without a browser run `codex login --device-auth`. Then put the file in `.env` as one line: `CODEX_AUTH=$(base64 -w0 ~/.codex/auth.json)` (macOS: `base64 -i ~/.codex/auth.json | tr -d '\n'`), pasted as the value, not as a command. The file is a password: never commit it, never share it. It is for your own use on your own server, not one plan shared by a team. Use this login only for swarmloop: a ChatGPT login can be refreshed from one place at a time, so also running `codex` with it on your laptop would log the server out. On a team server, log in once on that server.
    - API key instead: `CODEX_API_KEY` from the [OpenAI platform dashboard](https://platform.openai.com/api-keys) (API keys); it is billed per token. If both are set, `CODEX_AUTH` wins.
    - Then run `docker/sandbox/build.sh` to build the `swarmloop-agent-codex` image, and restart.
-   - One honest limit: each agent container starts from the same login file and Codex may refresh the token inside the container; if runs start failing with a login error, run `codex login` again and paste the new value. Parallel code reviewers are fine.
-   - A one-line check the person can run: `docker run --rm -e CODEX_AUTH="$CODEX_AUTH" swarmloop-agent-codex codex exec --skip-git-repo-check "say ok"` should print an answer.
+   - The server keeps the login in `data/codex/` (it survives restarts) and refreshes it itself every few days, so parallel reviewers and steps never fight over it. `CODEX_AUTH` in `.env` is only the starting point: it is used again only when you change its value. Nothing to do by hand, unless the log says `Codex login expired`: then run `codex login`, paste the new value into `CODEX_AUTH` and restart the server.
+   - A quick check: start a run with `RUNTIME=codex`; the first step answers if the login works.
 
 3. Start it:
 

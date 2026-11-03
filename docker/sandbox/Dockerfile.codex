@@ -25,11 +25,42 @@ RUN set -eu \
   && chmod 755 /opt/codex/codex-bin /opt/codex/codex-code-mode-host \
   && rm -rf /tmp/codex
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY codex-auth-proxy.py /usr/local/bin/codex-auth-proxy
+RUN chmod 755 /usr/local/bin/codex-auth-proxy
+
 RUN cat > /usr/local/bin/codex <<'EOF'
 #!/bin/sh
 set -eu
 export CODEX_HOME=/home/sandbox/.codex
 mkdir -p "$CODEX_HOME"
+if [ -d /codex-auth ]; then
+  if [ ! -f /codex-auth/auth.json ] && [ -n "${CODEX_AUTH:-}" ]; then
+    printf %s "$CODEX_AUTH" | base64 -d > /codex-auth/auth.json
+    chmod 600 /codex-auth/auth.json
+  fi
+  if [ -f /codex-auth/auth.json ]; then
+    cp /codex-auth/auth.json "$CODEX_HOME/auth.json"
+    chmod 600 "$CODEX_HOME/auth.json"
+    unset CODEX_AUTH
+    rm -f /tmp/codex-auth-proxy.ready
+    /usr/local/bin/codex-auth-proxy /codex-auth/auth.json &
+    i=0
+    while [ ! -f /tmp/codex-auth-proxy.ready ]; do
+      i=$((i + 1))
+      if [ "$i" -gt 50 ]; then
+        echo "codex auth proxy failed" >&2
+        exit 1
+      fi
+      sleep 0.05
+    done
+    export CODEX_REFRESH_TOKEN_URL_OVERRIDE=http://127.0.0.1:8765/oauth/token
+    exec /opt/codex/codex-bin "$@"
+  fi
+fi
 if [ -n "${CODEX_AUTH:-}" ]; then
   printf %s "$CODEX_AUTH" | base64 -d > "$CODEX_HOME/auth.json"
   chmod 600 "$CODEX_HOME/auth.json"
