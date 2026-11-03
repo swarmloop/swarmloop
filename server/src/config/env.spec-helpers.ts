@@ -16,6 +16,8 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     CURSOR_API_KEY: '',
     ANTHROPIC_API_KEY: '',
     CLAUDE_CODE_OAUTH_TOKEN: '',
+    CODEX_AUTH: '',
+    CODEX_API_KEY: '',
     MAX_AGENT_CALLS: 50,
     MAX_RETURNS: 3,
     MAX_PIPELINE_RETURNS: 6,

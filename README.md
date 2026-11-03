@@ -9,7 +9,7 @@
 
 <p>
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg"></a>
-  <img alt="Agents: Cursor and Claude" src="https://img.shields.io/badge/agents-Cursor%20%7C%20Claude-6fbf96.svg">
+  <img alt="Agents: Cursor, Claude, and Codex" src="https://img.shields.io/badge/agents-Cursor%20%7C%20Claude%20%7C%20Codex-6fbf96.svg">
   <img alt="Runs on Docker" src="https://img.shields.io/badge/runs%20on-Docker-2496ED.svg?logo=docker&logoColor=white">
   <img alt="Built with NestJS and Next.js" src="https://img.shields.io/badge/built%20with-NestJS%20%2B%20Next.js-e0234e.svg">
 </p>
@@ -20,7 +20,7 @@
 
 swarmloop takes a ticket or a prompt and walks a coding agent through requirements, research, a plan, and implementation. Then the work has to earn your attention. Five reviewers read the diff in parallel, and any finding sends it back to the agent. Only when they agree does the server commit, push a branch, open a merge request, and watch your pipeline. A red job sends the work back too. You open the merge request when the reviewers and every check in your pipeline have passed.
 
-Every step runs in a locked container. Every prompt, diff, review, token, and dollar is stored. Cursor or Claude is one line in `.env`.
+Every step runs in a locked container. Every prompt, diff, review, token, and dollar is stored. Cursor, Claude, or Codex is one line in `.env`.
 
 ![A swarmloop run. The flow across the top, the selected step underneath, with its spend, tokens, CPU, and memory.](swarmloop.png)
 
@@ -29,7 +29,7 @@ Every step runs in a locked container. Every prompt, diff, review, token, and do
 | 🔒 **Sandbox** | No network unless allowlisted, read-only root, no capabilities, no Docker socket. One model key inside. Git and Jira tokens stay out. |
 | 🧵 **Parallel runs** | Several tasks at once, even in one repository. Each run has its own worktree and branch. Your working copy is not touched. |
 | 🗂 **One history** | Prompt, plan, diff, reviews, model exchanges, tokens, dollars, CPU, and memory in one SQLite file. |
-| 🔀 **Cursor or Claude** | One line in `.env`. Research, plan, and implementation each pick their own model. |
+| 🔀 **Cursor, Claude, or Codex** | One line in `.env`. Research, plan, and implementation each pick their own model. |
 | 🎫 **Jira, Confluence, Drive** | The ticket, its epic, links, subtasks, attachments, and the pages around it. |
 | 🌿 **GitHub and GitLab** | Feature branch, commit once the reviewers pass, merge request, pipeline watch. |
 | 🔍 **Five reviewers** | Requirements, quality, regressions, security, performance. A finding sends the work back. |
@@ -50,6 +50,15 @@ You need Docker and one model key. No Jira, no git token, no CI.
    ```
 
 2. In `.env`, set `CURSOR_API_KEY` from the [Cursor dashboard](https://cursor.com/dashboard), **API Keys**. That key uses your Cursor plan, so there is no separate API bill. For Claude, set `RUNTIME=claude` and either `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` to use your Claude subscription, or `ANTHROPIC_API_KEY` from [Claude Console](https://platform.claude.com/settings/keys). A subscription token is for your own use on your own server, not one plan shared by a team. Leave every other secret empty.
+
+   For Codex:
+
+   - `RUNTIME=codex`.
+   - Subscription (ChatGPT Plus or Pro, no API bill): on your own machine run `codex login`. On a server without a browser run `codex login --device-auth`. Then put the file in `.env` as one line: `CODEX_AUTH=$(base64 -w0 ~/.codex/auth.json)` (macOS: `base64 -i ~/.codex/auth.json | tr -d '\n'`), pasted as the value, not as a command. The file is a password: never commit it, never share it. It is for your own use on your own server, not one plan shared by a team.
+   - API key instead: `CODEX_API_KEY` from the [OpenAI platform dashboard](https://platform.openai.com/api-keys) (API keys); it is billed per token. If both are set, `CODEX_AUTH` wins.
+   - Then run `docker/sandbox/build.sh` to build the `swarmloop-agent-codex` image, and restart.
+   - One honest limit: each agent container starts from the same login file and Codex may refresh the token inside the container; if runs start failing with a login error, run `codex login` again and paste the new value. Parallel code reviewers are fine.
+   - A one-line check the person can run: `docker run --rm -e CODEX_AUTH="$CODEX_AUTH" swarmloop-agent-codex codex exec --skip-git-repo-check "say ok"` should print an answer.
 
 3. Start it:
 
@@ -132,12 +141,12 @@ Every model step runs in a fresh container. The server starts it for the step an
 
 **All history** on a run opens all of it: documents, prompts and responses, tokens by model, CPU and memory, loops, and HTTP calls. A step that crashed can resume the same agent chat. Anyone who can open the panel can open any run and see how the task was done.
 
-### 🔀 Cursor, Claude, and what comes next
+### 🔀 Cursor, Claude, or Codex
 
-- `RUNTIME=cursor` or `RUNTIME=claude`. Change the line and restart the server: the next step uses the other agent and opens a new chat with the full brief. Both sandbox images ship in this repo.
+- `RUNTIME=cursor`, `RUNTIME=claude`, or `RUNTIME=codex`. Change the line and restart the server: the next step uses that agent and opens a new chat with the full brief. The sandbox images ship in this repo.
 - Each phase can use its own model: `MODEL_RESEARCH`, `MODEL_PLAN`, and `MODEL_IMPLEMENT`.
 - Dollars come from the vendor's published price list, cached for a day.
-- A third agent is code, not a setting: a sandbox image under `docker/sandbox`, its API hosts and key, and the code that reads its output. The pipeline, the history, and the panel stay as they are.
+- Another agent is the same three pieces: a sandbox image under `docker/sandbox`, its API hosts and key, and the code that reads its output. The pipeline, the history, and the panel stay as they are.
 
 ### 🎫 Jira, Confluence, and Google Drive
 
@@ -289,7 +298,7 @@ When the API is on another machine, set the URL in `env`:
 
 | Variable | Values |
 | --- | --- |
-| `RUNTIME` | `cursor` or `claude`. Stored on the run. |
+| `RUNTIME` | `cursor`, `claude`, or `codex`. Stored on the run. |
 | `MODEL_RESEARCH` | Model for research. `.env.example` uses `grok-4.7-high`. |
 | `MODEL_PLAN` | Model for plan, plan improve, every code reviewer, and the review report. `.env.example` uses `grok-4.7-xhigh`. |
 | `MODEL_IMPLEMENT` | Model for implementation and implement improve. `.env.example` uses `grok-4.7-high`. |

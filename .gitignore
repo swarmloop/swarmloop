@@ -14,3 +14,4 @@ dashboard/.next/
 *.sqlite-shm
 .idea/
 /node_modules/
+docs/

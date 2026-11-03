@@ -182,6 +182,21 @@ class LogWriter {
       }
       return;
     }
+    if (record.type === 'item.completed') {
+      const item = record.item;
+      if (isRecord(item) && item.type === 'agent_message' && typeof item.text === 'string') {
+        this.say('assistant', item.text);
+      }
+      return;
+    }
+    if (record.type === 'error' || record.type === 'turn.failed') {
+      this.closeSpeech();
+      const text = failureText(record);
+      if (text) {
+        this.blocks.push({ type: String(record.type), text });
+      }
+      return;
+    }
     if (record.type === 'tool_call') {
       this.closeSpeech();
       this.tool(record);
@@ -420,6 +435,20 @@ function numberField(record: Record<string, unknown>, keys: string[]): number | 
     if (typeof value === 'number' && Number.isFinite(value)) {
       return value;
     }
+  }
+  return null;
+}
+
+function failureText(record: Record<string, unknown>): string | null {
+  if (typeof record.message === 'string' && record.message.length > 0) {
+    return record.message;
+  }
+  const error = record.error;
+  if (typeof error === 'string' && error.length > 0) {
+    return error;
+  }
+  if (isRecord(error) && typeof error.message === 'string' && error.message.length > 0) {
+    return error.message;
   }
   return null;
 }

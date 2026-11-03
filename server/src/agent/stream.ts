@@ -8,6 +8,10 @@ export interface StreamPiece {
   guessedOut: number;
   guessKind: 'user' | 'output' | 'tool-result' | 'none';
   result: boolean;
+  /** Cursor and Claude end the process with one result line. A Codex turn does not. */
+  stops: boolean;
+  /** A Codex turn reports its own tokens. A result line is the whole call and replaces them. */
+  addUsage: boolean;
   /** The finished assistant message. Partials carry timestamp_ms and are not this. */
   finalMessage: boolean;
   chatId: string | null;
@@ -38,9 +42,9 @@ export function readStreamLine(line: string): StreamPiece | null {
   const text = textFrom(record);
   const guessed = guessLineTokens(record);
   return {
-    tokensIn: numberFrom(usage, ['input_tokens', 'inputTokens', 'prompt_tokens']),
+    tokensIn: uncachedInput(record, usage),
     tokensOut: numberFrom(usage, ['output_tokens', 'outputTokens', 'completion_tokens']),
-    cacheRead: numberFrom(usage, ['cacheReadTokens', 'cache_read_tokens', 'cache_read_input_tokens']),
+    cacheRead: cacheReadOf(record, usage),
     cacheWrite: numberFrom(usage, ['cacheWriteTokens', 'cache_write_tokens', 'cache_creation_input_tokens']),
     reportedUsd:
       numberFrom(record, ['total_cost_usd', 'totalCostUsd', 'cost_usd']) ??
@@ -48,12 +52,63 @@ export function readStreamLine(line: string): StreamPiece | null {
     guessedIn: guessed.tokensIn,
     guessedOut: guessed.tokensOut,
     guessKind: guessed.kind,
-    result: record.type === 'result',
+    result: record.type === 'result' || record.type === 'turn.completed',
+    stops: record.type === 'result',
+    addUsage: record.type === 'turn.completed',
     finalMessage: record.type === 'assistant' && !('timestamp_ms' in record) && text !== null,
-    chatId: stringFrom(record, ['session_id', 'sessionId', 'chat_id', 'chatId']),
-    text,
-    replaceText: record.type === 'result' && text !== null,
+    chatId:
+      record.type === 'thread.started'
+        ? stringFrom(record, ['thread_id'])
+        : stringFrom(record, ['session_id', 'sessionId', 'chat_id', 'chatId']),
+    text: record.type === 'item.completed' ? (agentMessage(record) ?? text) : (failureText(record) ?? text),
+    replaceText: (record.type === 'result' && text !== null) || agentMessage(record) !== null,
   };
+}
+
+function uncachedInput(record: Record<string, unknown>, usage: Record<string, unknown>): number | null {
+  const input = numberFrom(usage, ['input_tokens', 'inputTokens', 'prompt_tokens']);
+  if (record.type !== 'turn.completed' || input === null) {
+    return input;
+  }
+  const cached = numberFrom(usage, ['cached_input_tokens']);
+  return cached === null ? input : Math.max(0, input - cached);
+}
+
+function cacheReadOf(record: Record<string, unknown>, usage: Record<string, unknown>): number | null {
+  if (record.type === 'turn.completed') {
+    return numberFrom(usage, ['cached_input_tokens']);
+  }
+  return numberFrom(usage, ['cacheReadTokens', 'cache_read_tokens', 'cache_read_input_tokens']);
+}
+
+function agentMessage(record: Record<string, unknown>): string | null {
+  const item = record.item;
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+  const message = item as { type?: unknown; text?: unknown };
+  if (message.type !== 'agent_message' || typeof message.text !== 'string' || message.text.length === 0) {
+    return null;
+  }
+  return message.text;
+}
+
+function failureText(record: Record<string, unknown>): string | null {
+  if (record.type !== 'turn.failed' && record.type !== 'error') {
+    return null;
+  }
+  if (typeof record.message === 'string' && record.message.length > 0) {
+    return record.message;
+  }
+  const error = record.error;
+  if (typeof error === 'string' && error.length > 0) {
+    return error;
+  }
+  if (error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string') {
+    const message = (error as { message: string }).message;
+    return message.length > 0 ? message : null;
+  }
+  return null;
 }
 
 /** The finished assistant message is the step answer. A later result line does not replace it. */

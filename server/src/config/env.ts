@@ -16,6 +16,8 @@ export interface SwarmloopEnv {
   CURSOR_API_KEY: string;
   ANTHROPIC_API_KEY: string;
   CLAUDE_CODE_OAUTH_TOKEN: string;
+  CODEX_AUTH: string;
+  CODEX_API_KEY: string;
   MAX_AGENT_CALLS: number;
   MAX_RETURNS: number;
   MAX_PIPELINE_RETURNS: number;
@@ -74,6 +76,8 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     CURSOR_API_KEY: config.getOrThrow<string>('CURSOR_API_KEY'),
     ANTHROPIC_API_KEY: config.getOrThrow<string>('ANTHROPIC_API_KEY'),
     CLAUDE_CODE_OAUTH_TOKEN: config.get<string>('CLAUDE_CODE_OAUTH_TOKEN') ?? '',
+    CODEX_AUTH: config.get<string>('CODEX_AUTH') ?? '',
+    CODEX_API_KEY: config.get<string>('CODEX_API_KEY') ?? '',
     MAX_AGENT_CALLS: config.getOrThrow<number>('MAX_AGENT_CALLS'),
     MAX_RETURNS: config.getOrThrow<number>('MAX_RETURNS'),
     MAX_PIPELINE_RETURNS: config.getOrThrow<number>('MAX_PIPELINE_RETURNS'),

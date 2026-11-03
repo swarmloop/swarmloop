@@ -86,4 +86,63 @@ describe('stream usage', () => {
     expect(text.endsWith('launch\n')).toBe(true);
     expect(locked).toBe(true);
   });
+
+  it('reads a codex thread, its message, its usage, and a failure', () => {
+    expect(readStreamLine(JSON.stringify({ type: 'thread.started', thread_id: 'th-1' }))?.chatId).toBe('th-1');
+    const message = readStreamLine(
+      JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'done' } }),
+    );
+    expect(message?.text).toBe('done');
+    expect(message?.finalMessage).toBe(false);
+    expect(message?.replaceText).toBe(true);
+    let answer = '';
+    let locked = false;
+    for (const body of ['first', 'second']) {
+      const piece = readStreamLine(
+        JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: body } }),
+      );
+      if (!piece) {
+        continue;
+      }
+      const next = takeAnswer(answer, locked, piece);
+      answer = next.text;
+      locked = next.locked;
+    }
+    expect(answer).toBe('second');
+    expect(locked).toBe(false);
+    expect(
+      readStreamLine(JSON.stringify({ type: 'item.completed', item: { type: 'reasoning', text: 'thinking' } }))
+        ?.finalMessage,
+    ).toBe(false);
+    const turn = JSON.stringify({
+      type: 'turn.completed',
+      usage: { input_tokens: 100, cached_input_tokens: 40, output_tokens: 10 },
+    });
+    expect(readStreamLine(turn)).toMatchObject({
+      result: true,
+      stops: false,
+      addUsage: true,
+      tokensIn: 60,
+      tokensOut: 10,
+      cacheRead: 40,
+      reportedUsd: null,
+    });
+    const second = JSON.stringify({
+      type: 'turn.completed',
+      usage: { input_tokens: 20, cached_input_tokens: 0, output_tokens: 5 },
+    });
+    expect(usageFromStream(`${turn}\n${second}`)).toEqual({
+      input: 80,
+      output: 15,
+      cacheRead: 40,
+      cacheWrite: 0,
+      reportedUsd: null,
+    });
+    expect(readStreamLine(JSON.stringify({ type: 'result', result: 'ok' }))).toMatchObject({
+      stops: true,
+      addUsage: false,
+    });
+    expect(readStreamLine(JSON.stringify({ type: 'turn.failed', error: { message: 'boom' } }))?.text).toBe('boom');
+    expect(readStreamLine(JSON.stringify({ type: 'error', message: 'nope' }))?.text).toBe('nope');
+  });
 });

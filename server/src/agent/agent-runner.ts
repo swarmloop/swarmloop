@@ -226,7 +226,16 @@ export class AgentProcessRunner {
       mounts: [...input.mounts, ...briefs],
       statePath,
       allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(env.RUNTIME)])],
-      env: [modelCredential(env.RUNTIME, env.CURSOR_API_KEY, env.ANTHROPIC_API_KEY, env.CLAUDE_CODE_OAUTH_TOKEN)],
+      env: [
+        modelCredential(
+          env.RUNTIME,
+          env.CURSOR_API_KEY,
+          env.ANTHROPIC_API_KEY,
+          env.CLAUDE_CODE_OAUTH_TOKEN,
+          env.CODEX_AUTH,
+          env.CODEX_API_KEY,
+        ),
+      ],
       command: [runtime.command, ...args],
       userId,
     });
@@ -373,22 +382,17 @@ export class AgentProcessRunner {
             usd: sessionUsd(),
           });
         }
-        if (piece.tokensIn !== null) {
-          tokensIn = piece.tokensIn;
+        const count = (current: number, next: number | null): number => {
+          if (next === null) {
+            return current;
+          }
           billedFromStream = true;
-        }
-        if (piece.tokensOut !== null) {
-          tokensOut = piece.tokensOut;
-          billedFromStream = true;
-        }
-        if (piece.cacheRead !== null) {
-          cacheRead = piece.cacheRead;
-          billedFromStream = true;
-        }
-        if (piece.cacheWrite !== null) {
-          cacheWrite = piece.cacheWrite;
-          billedFromStream = true;
-        }
+          return piece.addUsage ? current + next : next;
+        };
+        tokensIn = count(tokensIn, piece.tokensIn);
+        tokensOut = count(tokensOut, piece.tokensOut);
+        cacheRead = count(cacheRead, piece.cacheRead);
+        cacheWrite = count(cacheWrite, piece.cacheWrite);
         if (piece.reportedUsd !== null) {
           reportedUsd = piece.reportedUsd;
           billedFromStream = true;
@@ -401,7 +405,7 @@ export class AgentProcessRunner {
           responseText = next.text;
           answerLocked = next.locked;
         }
-        if (piece.result && !finishedByResult) {
+        if (piece.stops && !finishedByResult) {
           finishedByResult = true;
           child.kill('SIGTERM');
           void this.sandbox.kill(child.containerName);

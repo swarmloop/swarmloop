@@ -190,7 +190,16 @@ async function attach(
     ],
     userId,
     maskFile,
-    env: [modelCredential(runtime.name, config.cursorKey, config.anthropicKey, config.oauthToken)],
+    env: [
+      modelCredential(
+        runtime.name,
+        config.cursorKey,
+        config.anthropicKey,
+        config.oauthToken,
+        config.codexAuth,
+        config.codexApiKey,
+      ),
+    ],
     statePath,
     stateDaemonPath: statePath,
     stdin: interactive,

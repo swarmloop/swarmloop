@@ -23,6 +23,8 @@ export const envSchema = Joi.object({
   CURSOR_API_KEY: Joi.string().allow('').required(),
   ANTHROPIC_API_KEY: Joi.string().allow('').required(),
   CLAUDE_CODE_OAUTH_TOKEN: Joi.string().allow('').default(''),
+  CODEX_AUTH: Joi.string().allow('').default(''),
+  CODEX_API_KEY: Joi.string().allow('').default(''),
   MAX_AGENT_CALLS: Joi.number().required(),
   MAX_RETURNS: Joi.number().integer().min(1).required(),
   MAX_PIPELINE_RETURNS: Joi.number().integer().min(1).default(6),

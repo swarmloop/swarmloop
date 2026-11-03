@@ -8,6 +8,8 @@ export interface ShellConfig {
   cursorKey: string;
   anthropicKey: string;
   oauthToken: string;
+  codexAuth: string;
+  codexApiKey: string;
   checkoutsRoot: string | undefined;
 }
 
@@ -22,7 +24,7 @@ export function readShellConfig(file: string): ShellConfig {
   }
   for (const line of body.split('\n')) {
     const match =
-      /^(?:export\s+)?(RUNTIME|MODEL_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CHECKOUTS_ROOT)=(.*)$/.exec(
+      /^(?:export\s+)?(RUNTIME|MODEL_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CODEX_AUTH|CODEX_API_KEY|CHECKOUTS_ROOT)=(.*)$/.exec(
         line.trim(),
       );
     if (!match) {
@@ -40,6 +42,8 @@ export function readShellConfig(file: string): ShellConfig {
     cursorKey: values.get('CURSOR_API_KEY') ?? '',
     anthropicKey: values.get('ANTHROPIC_API_KEY') ?? '',
     oauthToken: values.get('CLAUDE_CODE_OAUTH_TOKEN') ?? '',
+    codexAuth: values.get('CODEX_AUTH') ?? '',
+    codexApiKey: values.get('CODEX_API_KEY') ?? '',
     checkoutsRoot: values.get('CHECKOUTS_ROOT'),
   };
 }

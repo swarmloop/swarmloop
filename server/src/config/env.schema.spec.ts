@@ -110,6 +110,16 @@ describe('env schema', () => {
     expect(config.env.MAX_RUN_TOKENS).toBeNull();
   });
 
+  it('accepts codex with both keys empty', () => {
+    const { error, value } = envSchema.validate(
+      { ...complete, RUNTIME: 'codex' },
+      { abortEarly: false, convert: true },
+    );
+    expect(error).toBeUndefined();
+    expect(value.CODEX_AUTH).toBe('');
+    expect(value.CODEX_API_KEY).toBe('');
+  });
+
   it('keeps the defaults for values the file leaves out', async () => {
     const { MAX_PIPELINE_RETURNS: _omitted, ...withoutDefaults } = complete;
     const config = await compileWith(withoutDefaults);

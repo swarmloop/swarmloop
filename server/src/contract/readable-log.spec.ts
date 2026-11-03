@@ -68,6 +68,17 @@ describe('readableLog', () => {
     expect(usageFromLog(raw)).toStrictEqual({ tokensIn: 10, tokensOut: 2 });
   });
 
+  it('prints a codex message and a failure', () => {
+    const raw = [
+      JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'ship it' } }),
+      JSON.stringify({ type: 'turn.failed', error: { message: 'boom' } }),
+      JSON.stringify({ type: 'error', message: 'nope' }),
+    ].join('\n');
+    expect(readableLog(raw)).toBe(
+      ['assistant', '    ship it', '', 'turn.failed', '    boom', '', 'error', '    nope'].join('\n'),
+    );
+  });
+
   it('counts cache tokens as input', () => {
     const raw = JSON.stringify({
       type: 'result',

@@ -17,6 +17,14 @@ services:
     command: ['true']
     restart: 'no'
 
+  sandbox-codex:
+    image: swarmloop-agent-codex
+    build:
+      context: ./docker/sandbox
+      dockerfile: Dockerfile.codex
+    command: ['true']
+    restart: 'no'
+
   # PhpStorm starts bin/sloop on the host. That script needs server/dist, which the image build does not leave on disk.
   sloop:
     image: swarmloop-server
@@ -55,6 +63,8 @@ services:
       sandbox-cursor:
         condition: service_completed_successfully
       sandbox-claude:
+        condition: service_completed_successfully
+      sandbox-codex:
         condition: service_completed_successfully
     healthcheck:
       test:

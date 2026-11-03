@@ -6,6 +6,8 @@ export interface RuntimeKeys {
   cursorKey: string;
   anthropicKey: string;
   oauthToken: string;
+  codexAuth: string;
+  codexApiKey: string;
 }
 
 export interface AgentPrintInput {
@@ -26,7 +28,7 @@ export interface AgentTerminalInput {
 
 export interface AgentRuntime {
   readonly name: RuntimeName;
-  readonly command: 'agent' | 'claude';
+  readonly command: 'agent' | 'claude' | 'codex';
   readonly image: string;
   readonly apiHosts: readonly string[];
   readonly credentialNames: readonly string[];

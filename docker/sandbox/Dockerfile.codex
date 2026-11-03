@@ -1,0 +1,42 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends bash ca-certificates curl git \
+  && rm -rf /var/lib/apt/lists/* \
+  && useradd --create-home --uid 1000 --shell /usr/sbin/nologin sandbox \
+  && mkdir -p /work \
+  && chown sandbox:sandbox /work
+
+# /home/sandbox is a tmpfs at run time, so the binary lives outside it.
+RUN set -eu \
+  && arch="$(uname -m)" \
+  && case "$arch" in \
+    x86_64) file=codex-x86_64-unknown-linux-musl.tar.gz ;; \
+    aarch64|arm64) file=codex-aarch64-unknown-linux-musl.tar.gz ;; \
+    *) echo "unsupported CPU: $arch" >&2; exit 1 ;; \
+  esac \
+  && mkdir -p /tmp/codex /opt/codex \
+  && curl -fsSL "https://github.com/openai/codex/releases/latest/download/${file}" -o "/tmp/codex/${file}" \
+  && tar -xzf "/tmp/codex/${file}" -C /tmp/codex \
+  && mv "/tmp/codex/${file%.tar.gz}" /opt/codex/codex-bin \
+  && chmod 755 /opt/codex/codex-bin \
+  && rm -rf /tmp/codex
+
+RUN cat > /usr/local/bin/codex <<'EOF'
+#!/bin/sh
+set -eu
+export CODEX_HOME=/home/sandbox/.codex
+mkdir -p "$CODEX_HOME"
+if [ -n "${CODEX_AUTH:-}" ]; then
+  printf %s "$CODEX_AUTH" | base64 -d > "$CODEX_HOME/auth.json"
+  chmod 600 "$CODEX_HOME/auth.json"
+  unset CODEX_AUTH
+else
+  rm -f "$CODEX_HOME/auth.json"
+fi
+exec /opt/codex/codex-bin "$@"
+EOF
+RUN chmod 755 /usr/local/bin/codex
+
+USER sandbox
+WORKDIR /work

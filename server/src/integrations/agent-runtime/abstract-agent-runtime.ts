@@ -3,7 +3,7 @@ import type { AgentPrintInput, AgentRuntime, AgentTerminalInput, RuntimeKeys, Ru
 
 export abstract class AbstractAgentRuntime implements AgentRuntime {
   abstract readonly name: RuntimeName;
-  abstract readonly command: 'agent' | 'claude';
+  abstract readonly command: 'agent' | 'claude' | 'codex';
   abstract readonly syncsChatMode: boolean;
   abstract readonly priceSource: string;
 

@@ -73,8 +73,10 @@ export function modelCredential(
   cursorKey: string,
   anthropicKey: string,
   oauthToken: string,
+  codexAuth = '',
+  codexApiKey = '',
 ): { name: string; value: string } {
-  return runtimeFor(runtime).credential({ cursorKey, anthropicKey, oauthToken });
+  return runtimeFor(runtime).credential({ cursorKey, anthropicKey, oauthToken, codexAuth, codexApiKey });
 }
 
 export function imageName(runtime: RuntimeName): string {
