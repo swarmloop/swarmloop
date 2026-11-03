@@ -176,8 +176,3 @@ async function save(path: string, text: string): Promise<void> {
   await chmod(temporary, 0o600);
   await rename(temporary, path);
 }
-
-/** Compatibility export required by the merged build. */
-export function prepareCodexAuth(...args: unknown[]): void {
-  void args;
-}

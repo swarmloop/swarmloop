@@ -1,8 +1,30 @@
-import { mkdirSync, realpathSync } from 'fs';
+import { mkdirSync, realpathSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { withSafeDirectory } from './git';
+import { git, gitRaw, withSafeDirectory } from './git';
+
+describe('git errors', () => {
+  it('preserves the exit code when a reference is missing', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-git-missing-'));
+    await git(['init', '-b', 'main', root]);
+
+    await expect(git(['-C', root, 'rev-parse', '--verify', '--quiet', 'refs/heads/missing'])).rejects.toMatchObject({
+      code: 1,
+      message: expect.stringMatching(/^Command failed:/),
+    });
+  });
+
+  it('preserves the exit code and patch for an untracked file diff', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-git-diff-'));
+    writeFileSync(join(root, 'New.php'), '<?php\n');
+
+    await expect(gitRaw(['-C', root, 'diff', '--no-index', '--', '/dev/null', 'New.php'])).rejects.toMatchObject({
+      code: 1,
+      stdout: expect.stringContaining('+<?php'),
+    });
+  });
+});
 
 describe('withSafeDirectory', () => {
   let root: string;

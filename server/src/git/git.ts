@@ -39,10 +39,10 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Pro
             (failure as { code?: unknown }).code = error.code;
           }
           if (typeof stdout === 'string' && stdout.length > 0) {
-            (failure as { stdout?: string }).stdout = stdout;
+            Object.assign(failure, { stdout });
           }
           if (typeof stderr === 'string' && stderr.length > 0) {
-            (failure as { stderr?: string }).stderr = stderr;
+            Object.assign(failure, { stderr });
           }
           fail(failure);
           return;
