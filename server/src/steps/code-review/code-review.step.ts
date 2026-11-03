@@ -19,7 +19,15 @@ import { Step, requiredDocument } from '../step';
 import { REBASE_CONFLICT } from '../../git/rebase-worktree';
 import { reviewDiffSection, writeReviewDiff } from './review-diff';
 import { decidedOk, Opinion, REVIEWERS, Reviewer, Usage } from './reviewer';
-import { detachForeign, foreignReview, foreignReviewOf, pathMount, repoMounts, retrying, storedCheckout } from './review-input';
+import {
+  detachForeign,
+  foreignReview,
+  foreignReviewOf,
+  pathMount,
+  repoMounts,
+  retrying,
+  storedCheckout,
+} from './review-input';
 import { writeReport } from './review-report';
 import { acceptRepeated, reviewReturn, runRound, sameReviewedDiff, selectReviewers } from './review-round';
 
@@ -61,7 +69,12 @@ export class CodeReviewStep implements Step {
     }
   }
 
-  private async review(key: string, opened: OpenedStep, options: StepOptions, env: SwarmloopEnv): Promise<PipelineResult> {
+  private async review(
+    key: string,
+    opened: OpenedStep,
+    options: StepOptions,
+    env: SwarmloopEnv,
+  ): Promise<PipelineResult> {
     const deps = { history: this.history, agent: this.agent };
     const notes = await this.history.latestBody(key, 'implementation');
     const checkout = options.path ?? (notes?.trim() ? null : opened.run.targetPath);
@@ -88,7 +101,14 @@ export class CodeReviewStep implements Step {
     const diff = await reviewDiffSection(mounts, await this.history.listDenyPaths());
     const same = sameReviewedDiff(this.history.root(), key, diff.patch);
     const repeated = reviewReturn(returned) && same;
-    const { kept, pending, recovered, stale } = await selectReviewers(this.history, { key, only, fresh, retry, same, repeated });
+    const { kept, pending, recovered, stale } = await selectReviewers(this.history, {
+      key,
+      only,
+      fresh,
+      retry,
+      same,
+      repeated,
+    });
     const calls = pending.length + (this.reportDue(only, kept, pending) ? 1 : 0);
     if (options.auto && calls > 0 && opened.run.agentCalls + calls > env.MAX_AGENT_CALLS) {
       return this.finish(opened, 'failed', 1, `${opened.startedAt} code-review does not fit`, [], []);

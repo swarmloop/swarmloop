@@ -43,7 +43,9 @@ describe('base step', () => {
       const run = await history.findRun('BASE-1');
       expect(run?.status).toBe('failed');
       const documents = await history.listDocuments(run?.id ?? 0);
-      expect(documents.filter((document) => document.kind === 'error').map((document) => document.body)).toEqual(['branch failed\n']);
+      expect(documents.filter((document) => document.kind === 'error').map((document) => document.body)).toEqual([
+        'branch failed\n',
+      ]);
     } finally {
       await app.close();
     }
@@ -81,7 +83,9 @@ describe('base step', () => {
       const history = app.get(HistoryService);
       const run = await history.findRun('BASE-3');
       const calls = await history.listHttpCalls(run?.id ?? 0);
-      expect(calls.map((item) => [item.provider, item.url, item.statusCode])).toEqual([[call.provider, call.url, call.statusCode]]);
+      expect(calls.map((item) => [item.provider, item.url, item.statusCode])).toEqual([
+        [call.provider, call.url, call.statusCode],
+      ]);
     } finally {
       await app.close();
     }

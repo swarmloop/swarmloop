@@ -1,9 +1,10 @@
-import { RunEntity } from '../history/entities';
-import { HistoryService } from '../history/history.service';
-import { VisitDraft } from '../history/visit';
+import type { RunEntity } from '../history/entities';
+import type { HistoryService } from '../history/history.service';
+import type { VisitDraft } from '../history/visit';
 import { snapshotRun } from '../git/worktree-snapshot';
-import { PipelineResult, settle } from '../core/pipeline-result';
-import { StepName } from '../contract/steps';
+import type { PipelineResult } from '../core/pipeline-result';
+import { settle } from '../core/pipeline-result';
+import type { StepName } from '../contract/steps';
 
 export interface OpenedStep {
   run: RunEntity;

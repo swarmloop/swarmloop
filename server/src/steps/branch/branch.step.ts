@@ -31,7 +31,12 @@ export class BranchStep extends BaseStep {
       await this.ensure(key, repo);
     }
     const handoff = await recordHandoff(this.history, key, 'branch', `- checked out ${name}\n`);
-    return ctx.end({ outcome: 'ok', exitCode: 0, line: `${ctx.opened.startedAt} branch done\n${name}`, visit: { documents: [handoff] } });
+    return ctx.end({
+      outcome: 'ok',
+      exitCode: 0,
+      line: `${ctx.opened.startedAt} branch done\n${name}`,
+      visit: { documents: [handoff] },
+    });
   }
 
   async ensure(key: string, repo: string): Promise<void> {
@@ -81,4 +86,3 @@ async function hasBranch(worktree: string, branch: string): Promise<boolean> {
     throw error;
   }
 }
-
