@@ -4,8 +4,8 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import type { Theme } from '@mui/material/styles';
 import { pieces } from '../lib/log-pieces';
-import type { LogMessage } from '../lib/readable-log';
-import { logMessages } from '../lib/readable-log';
+import type { LogMessage } from '@contract/readable-log';
+import { logMessages } from '@contract/readable-log';
 
 export function LogTranscript({ raw }: { raw: string }): ReactNode {
   const messages = logMessages(raw);

@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import { logFinished, readableLog, reviewChipStatus, usageFromLog } from './readable-log.ts';
+import { logFinished, readableLog, reviewChipStatus, usageFromLog } from './readable-log';
 
 describe('readableLog', () => {
   it('separates each message and keeps the type with an indent', () => {
