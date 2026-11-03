@@ -10,7 +10,7 @@ import Typography from '@mui/material/Typography';
 import { statusColor } from '../../../theme/theme';
 import { MarkdownBody } from '../../markdown-body';
 import { duration } from '../../../lib/format';
-import { StepView } from '../../../lib/types';
+import { StepView } from '@contract/api';
 import { LogTranscript } from '../../log-transcript';
 import { StepChart } from './step-chart';
 

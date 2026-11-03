@@ -1,6 +1,6 @@
-import { REVIEW_STEPS, StepName } from '../../core/pipeline-result';
+import { REVIEW_STEPS, StepName } from '../../contract/steps';
 
-export const PHASES: { phase: string; steps: string[] }[] = [
+export const PHASES: { phase: string; steps: readonly string[] }[] = [
   { phase: 'requirements', steps: ['requirements'] },
   { phase: 'planning', steps: ['prepare', 'research', 'plan', 'plan-improve'] },
   { phase: 'implementation', steps: ['branch', 'implement', 'implement-improve'] },
@@ -28,58 +28,3 @@ export const STEP_KINDS: Partial<Record<StepName, string[]>> = {
   'merge-request': ['merge_request'],
   pipeline: ['pipeline_log'],
 };
-
-export interface RunSummary {
-  key: string;
-  name: string;
-  status: string;
-  currentStep: string;
-  createdAt: string;
-  updatedAt: string;
-  stepStartedAt: string | null;
-  durationMs: number;
-  usd: number;
-}
-
-export interface FlowItem {
-  kind: 'question' | 'paste';
-  id: string;
-  label: string;
-  answer: string;
-}
-
-export interface FlowView {
-  key: string;
-  name: string;
-  status: string;
-  currentStep: string;
-  updatedAt: string;
-  stepStartedAt: string | null;
-  resume: 'ready' | 'need-answers' | 'running' | 'blocked' | 'done';
-  sentence: string;
-  metrics: {
-    status: string;
-    durationMs: number;
-    closedStarts: string[];
-    tokens: number;
-    usd: number;
-    attemptsReview: number;
-    attemptsQa: number;
-    attemptsPipeline: number;
-    cpuPeak: number;
-    memPeak: number;
-  };
-  phases: { phase: string; steps: { name: string; status: string; current: boolean; attempts: number }[] }[];
-  returns: { counter: string; count: number; from: string; to: 'implement' }[];
-  items: FlowItem[];
-  paths: { repo: string; path: string }[];
-  reason: string | null;
-  launches: LaunchView[];
-  projects: string[];
-}
-
-export interface LaunchView {
-  phases: string[];
-  fromStep: string | null;
-  createdAt: string;
-}

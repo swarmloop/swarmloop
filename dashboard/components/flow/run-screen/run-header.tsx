@@ -13,7 +13,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { duration, memory, money, tokens } from '../../../lib/format';
 import { latestPhaseLabels } from '../../../lib/phases';
-import { FlowView } from '../../../lib/types';
+import { FlowView } from '@contract/api';
 import { statusColor } from '../../../theme/theme';
 
 export function RunHeader({

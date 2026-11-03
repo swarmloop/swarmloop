@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import { HistoryService } from '../../history/history.service';
-import { PhaseName, PipelineResult, StepName, StepOptions } from '../../core/pipeline-result';
+import { PipelineResult, StepOptions } from '../../core/pipeline-result';
+import { PhaseName, StepName } from '../../contract/steps';
 import { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { HttpCallDraft, SwarmloopError } from '../../core/swarmloop-error';

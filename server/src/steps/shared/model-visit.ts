@@ -1,7 +1,7 @@
 import { AgentRunResult } from '../../agent/agent-runner';
 import { DocumentDraft, VisitDraft } from '../../history/visit';
 import { OpenedStep } from '../../pipeline/step-run';
-import { StepName } from '../../core/pipeline-result';
+import { StepName } from '../../contract/steps';
 import { HttpCallDraft } from '../../core/swarmloop-error';
 
 export function modelVisit(input: {

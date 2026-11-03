@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { liveSocket } from '../lib/live';
-import { RunSummary } from '../lib/types';
+import { RunsView, RunSummary } from '@contract/api';
 
 export function useLive() {
   const [runs, setRuns] = useState<RunSummary[]>([]);
@@ -14,7 +14,7 @@ export function useLive() {
   useEffect(() => {
     let stopped = false;
     const load = (): void => {
-      api<{ runs: RunSummary[] }>('/runs')
+      api<RunsView>('/runs')
         .then((body) => {
           if (!stopped) {
             setRuns(body.runs);
@@ -31,7 +31,7 @@ export function useLive() {
     const socket = liveSocket();
     const show = (): void => setConnected(true);
     const hide = (): void => setConnected(false);
-    const apply = (body: { runs: RunSummary[] }): void => {
+    const apply = (body: RunsView): void => {
       if (!stopped) {
         setRuns(body.runs);
         setError(null);

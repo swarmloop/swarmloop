@@ -8,7 +8,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { api } from '../../lib/api';
 import { answerPresentation } from '../../lib/answer-field';
-import { FlowView } from '../../lib/types';
+import { FlowView } from '@contract/api';
 
 export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (flow: FlowView) => void }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});

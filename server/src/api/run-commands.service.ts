@@ -2,13 +2,22 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { RunEntity } from '../history/entities';
 import { HistoryService } from '../history/history.service';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { assertKey, isStep, nextSessionKey, normalizePhases, PhaseName, pipelineStepOf, reviewerOf, ticketKey } from '../core/pipeline-result';
+import { assertKey, isStep, nextSessionKey, normalizePhases, ticketKey } from '../core/pipeline-result';
+import { PhaseName, pipelineStepOf, reviewerOf } from '../contract/steps';
 import { CHECKOUT_NAME, storedProjects } from '../steps/prepare/checkout-path';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { taskKeys } from '../steps/requirements/requirements-input';
-import { FlowView } from './run-view/run-view.types';
+import {
+  AnswersBody,
+  CreateRunBody,
+  FlowView,
+  ProjectsView,
+  RemovedRunView,
+  RunRef,
+  StartStepBody,
+} from '../contract/api';
 import { requireRun, RunQueriesService } from './run-queries.service';
 
 @Injectable()
@@ -21,7 +30,7 @@ export class RunCommandsService {
     private readonly queries: RunQueriesService,
   ) {}
 
-  async addProject(key: string, name: string): Promise<{ projects: string[]; applied: boolean }> {
+  async addProject(key: string, name: string): Promise<ProjectsView> {
     const trimmed = name.trim();
     if (!trimmed) {
       throw new BadRequestException('name is missing');
@@ -37,7 +46,7 @@ export class RunCommandsService {
     }
   }
 
-  async start(body: { key?: string; prompt?: string; path?: string; projects?: string[]; phases?: string[] }): Promise<{ http: number; body: { key: string; status: string } }> {
+  async start(body: CreateRunBody): Promise<{ http: number; body: RunRef }> {
     const prompt = body.prompt?.trim() || undefined;
     const given = body.key?.trim() ?? '';
     if (!given && !prompt) {
@@ -74,7 +83,7 @@ export class RunCommandsService {
     return this.accepted(key, result);
   }
 
-  async answers(key: string, body: { answers?: { kind?: string; id?: string; body?: string }[] }): Promise<FlowView> {
+  async answers(key: string, body: AnswersBody): Promise<FlowView> {
     const run = await requireRun(this.history, key);
     if (this.history.held(run)) {
       throw new ConflictException(`${key} is already running`);
@@ -102,8 +111,8 @@ export class RunCommandsService {
   async startStep(
     key: string,
     step: string,
-    body: { prompt?: string; path?: string } = {},
-  ): Promise<{ http: number; body: { key: string; status: string } }> {
+    body: StartStepBody = {},
+  ): Promise<{ http: number; body: RunRef }> {
     const name = pipelineStepOf(step);
     if (!isStep(name) || name === 'done') {
       throw new BadRequestException(`${step} is unknown`);
@@ -121,7 +130,7 @@ export class RunCommandsService {
     );
   }
 
-  async replay(key: string, step: string, prompt: string, phases?: string[]): Promise<{ http: number; body: { key: string; status: string } }> {
+  async replay(key: string, step: string, prompt: string, phases?: string[]): Promise<{ http: number; body: RunRef }> {
     const name = pipelineStepOf(step);
     if (!isStep(name) || name === 'done') {
       throw new BadRequestException(`${step} is unknown`);
@@ -137,7 +146,7 @@ export class RunCommandsService {
     return this.accepted(key, await this.pipeline.replay(key, name, text));
   }
 
-  async stop(key: string): Promise<{ http: number; body: { key: string; status: string } }> {
+  async stop(key: string): Promise<{ http: number; body: RunRef }> {
     await requireRun(this.history, key);
     const result = await this.pipeline.stop(key);
     if (result.exitCode !== 0) {
@@ -146,7 +155,7 @@ export class RunCommandsService {
     return { http: 200, body: { key, status: 'stopped' } };
   }
 
-  async remove(key: string): Promise<{ key: string }> {
+  async remove(key: string): Promise<RemovedRunView> {
     try {
       assertKey(key);
     } catch (error) {
@@ -162,7 +171,7 @@ export class RunCommandsService {
     return { key };
   }
 
-  async resume(key: string, prompt?: string): Promise<{ http: number; body: { key: string; status: string } }> {
+  async resume(key: string, prompt?: string): Promise<{ http: number; body: RunRef }> {
     const view = await this.queries.flow(key);
     if (view.resume === 'need-answers') {
       throw new BadRequestException('answers are missing');
@@ -232,7 +241,7 @@ export class RunCommandsService {
     throw new BadRequestException(result.message);
   }
 
-  accepted(key: string, result: { exitCode: number; message: string }): { http: number; body: { key: string; status: string } } {
+  accepted(key: string, result: { exitCode: number; message: string }): { http: number; body: RunRef } {
     this.demandStart(result);
     if (result.message.endsWith('is done')) {
       return { http: 200, body: { key, status: 'done' } };

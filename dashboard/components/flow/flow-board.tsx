@@ -3,7 +3,7 @@
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { stepLabel, withReport } from '../../lib/phases';
-import { FlowView } from '../../lib/types';
+import { FlowView } from '@contract/api';
 import { statusColor } from '../../theme/theme';
 
 export function FlowBoard({

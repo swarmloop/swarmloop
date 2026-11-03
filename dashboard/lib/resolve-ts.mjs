@@ -3,6 +3,8 @@ import { register, stripTypeScriptTypes } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+const contractDir = fileURLToPath(new URL('../../server/src/contract/', import.meta.url));
+
 if (!process.env.SWARMLOOP_TS_RESOLVE) {
   process.env.SWARMLOOP_TS_RESOLVE = '1';
   register(import.meta.url);
@@ -25,6 +27,10 @@ export async function load(url, context, nextLoad) {
 }
 
 function tsFile(specifier, parentURL) {
+  if (specifier.startsWith('@contract/')) {
+    const contract = join(contractDir, `${specifier.slice('@contract/'.length)}.ts`);
+    return existsSync(contract) ? contract : '';
+  }
   const relative = specifier.startsWith('./') || specifier.startsWith('../');
   if (!relative || !parentURL) {
     return '';

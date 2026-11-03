@@ -1,6 +1,7 @@
 import { HistoryService } from '../history/history.service';
 import { sampleSelf, VisitDraft } from '../history/visit';
-import { PipelineResult, StepName, StepOptions, visitStatus } from '../core/pipeline-result';
+import { PipelineResult, StepOptions, visitStatus } from '../core/pipeline-result';
+import { StepName } from '../contract/steps';
 import { closeStep, OpenedStep, openStep } from '../pipeline/step-run';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../core/swarmloop-error';
 import { recordHandoff } from './shared/handoff';

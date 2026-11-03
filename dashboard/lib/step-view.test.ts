@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { decisionLine, fileView, reportAgrees, shownStatus, stepText, tokenUsage, usage, visitChecks, withFileUsage, withLog } from './step-view.ts';
-import type { StepView } from './types.ts';
+import type { StepView } from '@contract/api';
 
 const doneLog = 'decision: ok\n{"type":"result"}\n';
 const waitingLog = 'decision: return\n{"type":"result"}\n';

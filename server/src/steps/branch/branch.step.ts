@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import { HistoryService } from '../../history/history.service';
-import { PipelineResult, StepName, StepOptions } from '../../core/pipeline-result';
+import { PipelineResult, StepOptions } from '../../core/pipeline-result';
+import { StepName } from '../../contract/steps';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { recordHandoff } from '../shared/handoff';

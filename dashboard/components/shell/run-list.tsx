@@ -13,7 +13,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { openRunMs } from '../../lib/elapsed';
 import { duration, money, when } from '../../lib/format';
-import { RunSummary } from '../../lib/types';
+import { RunSummary } from '@contract/api';
 import { statusColor } from '../../theme/theme';
 
 export function RunList({

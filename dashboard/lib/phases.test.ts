@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { expandReviewPhases, keepOpenReviews, latestPhaseLabels, liveLogStep, markReviewFinished, markReviewLive, PHASES, pipelineStep, replaySelection, reviewChipName, stepLabel, withReport } from './phases.ts';
+import { expandReviewPhases, keepOpenReviews, latestPhaseLabels, liveLogStep, markReviewFinished, markReviewLive, replaySelection, reviewChipName, stepLabel, withReport } from './phases.ts';
+import { PHASES, pipelineStepOf } from '@contract/steps';
 
 void describe('liveLogStep', () => {
   void it('keeps a per-repo implement log on implement, not implement-improve', () => {
@@ -13,8 +14,8 @@ void describe('liveLogStep', () => {
   });
 
   void it('maps a reviewer chip back to code-review and expands the board', () => {
-    assert.equal(pipelineStep('code-review-quality'), 'code-review');
-    assert.equal(pipelineStep('implement'), 'implement');
+    assert.equal(pipelineStepOf('code-review-quality'), 'code-review');
+    assert.equal(pipelineStepOf('implement'), 'implement');
     const expanded = expandReviewPhases([
       { phase: 'code review', steps: [{ name: 'code-review', status: 'running', current: false }] },
     ]);

@@ -3,37 +3,18 @@ import { join, resolve, sep } from 'path';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { RunEntity } from '../history/entities';
 import { HistoryService } from '../history/history.service';
-import { assertKey, PHASES } from '../core/pipeline-result';
+import { assertKey } from '../core/pipeline-result';
+import { PHASES } from '../contract/steps';
 import { CHAT_LOCK, containerLockBody, readChatLock } from '../pipeline/chat-lock';
 import { settleShell } from '../pipeline/shell-lock';
 import { mountsForRun } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { parseResume, parseSnapshot, restoreTree, SHELL_RESUME, SNAPSHOT, snapshotRun } from '../git/worktree-snapshot';
+import { RewindView, ShellFeature, ShellMatch, ShellStatusView, SnapshotsView } from '../contract/api';
 
 export interface FeatureRow {
   key: string;
   targetPath: string | null;
-}
-
-export interface ShellMount {
-  hostPath: string;
-  containerPath: string;
-}
-
-export interface ShellFeature {
-  key: string;
-  created: boolean;
-  status: string;
-  currentStep: string;
-  runtime: string;
-  resumeChatId: string | null;
-  mounts: ShellMount[];
-}
-
-export interface ShellMatch {
-  key: string;
-  status: string;
-  currentStep: string;
 }
 
 function covers(featurePath: string, cwd: string): boolean {
@@ -91,7 +72,7 @@ export class ShellService {
     return this.view(await this.ready(key), false);
   }
 
-  async lock(key: string, container: string): Promise<{ status: string }> {
+  async lock(key: string, container: string): Promise<ShellStatusView> {
     const name = container.trim();
     if (!/^[a-z0-9][a-z0-9_.-]+$/.test(name)) {
       throw new BadRequestException('container is missing');
@@ -110,7 +91,7 @@ export class ShellService {
     return { status: 'running' };
   }
 
-  async unlock(key: string): Promise<{ status: string }> {
+  async unlock(key: string): Promise<ShellStatusView> {
     const run = await this.find(key);
     const lock = readChatLock(await this.history.latestBody(key, CHAT_LOCK));
     if (!lock?.container) {
@@ -124,7 +105,7 @@ export class ShellService {
     return { status: run.status };
   }
 
-  async snapshots(key: string): Promise<{ snapshots: { id: number; step: string; at: string }[] }> {
+  async snapshots(key: string): Promise<SnapshotsView> {
     const run = await this.find(key);
     const rows = await this.history.listDocuments(run.id);
     const snapshots = rows
@@ -136,7 +117,7 @@ export class ShellService {
     return { snapshots };
   }
 
-  async rewind(key: string, id: number): Promise<{ step: string }> {
+  async rewind(key: string, id: number): Promise<RewindView> {
     const run = await this.ready(key);
     if (run.status === 'running') {
       throw new ConflictException(`${key} is already running`);

@@ -9,7 +9,8 @@ import { LiveHub } from '../live/live.hub';
 import { resolveRepoRoot } from '../config/repo-root';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { sessionHome } from '../agent/session-group';
-import { normalizePhases, PhaseName, PHASES, REVIEW_STEPS, STEPS } from '../core/pipeline-result';
+import { normalizePhases } from '../core/pipeline-result';
+import { PhaseName, PHASES, REVIEW_STEPS, STEPS } from '../contract/steps';
 import {
   AgentExchangeEntity,
   CheckoutEntity,

@@ -2,7 +2,8 @@ import { RunEntity } from '../history/entities';
 import { HistoryService } from '../history/history.service';
 import { VisitDraft } from '../history/visit';
 import { snapshotRun } from '../git/worktree-snapshot';
-import { PipelineResult, settle, StepName } from '../core/pipeline-result';
+import { PipelineResult, settle } from '../core/pipeline-result';
+import { StepName } from '../contract/steps';
 
 export interface OpenedStep {
   run: RunEntity;

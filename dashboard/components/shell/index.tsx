@@ -10,7 +10,7 @@ import Drawer from '@mui/material/Drawer';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import { useLive } from '../../hooks/use-live';
-import { RunSummary } from '../../lib/types';
+import { RunSummary } from '@contract/api';
 import { NewRunDialog } from '../new-run-dialog';
 import { RemoveRunDialog } from './remove-run-dialog';
 import { RunList } from './run-list';

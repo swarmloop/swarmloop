@@ -4,7 +4,8 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { useRunFlow } from '../../../hooks/use-run-flow';
 import { NewRunDialog } from '../../new-run-dialog';
-import { expandReviewPhases, PHASES, pipelineStep, replaySelection, REVIEW_STEPS } from '../../../lib/phases';
+import { expandReviewPhases, replaySelection } from '../../../lib/phases';
+import { PHASES, pipelineStepOf, REVIEW_STEPS } from '@contract/steps';
 import { FlowBoard } from '../flow-board';
 import { StepDetail } from '../step-detail';
 import { WaitingPanel } from '../waiting-panel';
@@ -43,7 +44,7 @@ export function RunScreen({ runKey }: { runKey: string }) {
   }
 
   const phases = expandReviewPhases(flow.phases);
-  const runningElsewhere = flow.status === 'running' && replay !== null && pipelineStep(flow.currentStep) !== pipelineStep(replay);
+  const runningElsewhere = flow.status === 'running' && replay !== null && pipelineStepOf(flow.currentStep) !== pipelineStepOf(replay);
   const launches = flow.launches ?? [];
   const original = launches.find((launch) => launch.fromStep === null)?.phases ?? [...PHASES];
   const latest = launches.at(-1)?.phases ?? original;
@@ -58,7 +59,7 @@ export function RunScreen({ runKey }: { runKey: string }) {
           key={selected}
           runKey={flow.key}
           step={selected}
-          live={flow.status === 'running' && pipelineStep(selected) === flow.currentStep}
+          live={flow.status === 'running' && pipelineStepOf(selected) === flow.currentStep}
           revision={flow.updatedAt}
           attempts={phases.flatMap((phase) => phase.steps).find((step) => step.name === selected)?.attempts ?? 0}
           now={now}
@@ -67,11 +68,11 @@ export function RunScreen({ runKey }: { runKey: string }) {
               ? undefined
               : (REVIEW_STEPS as readonly string[]).includes(selected)
                 ? () => startReviewer(selected)
-                : () => setReplay(pipelineStep(selected))
+                : () => setReplay(pipelineStepOf(selected))
           }
-          runStatus={pipelineStep(selected) === flow.currentStep ? flow.status : undefined}
+          runStatus={pipelineStepOf(selected) === flow.currentStep ? flow.status : undefined}
           onResume={
-            pipelineStep(selected) === flow.currentStep && (flow.status === 'failed' || flow.status === 'blocked') && flow.resume === 'ready' ? resumeRun : undefined
+            pipelineStepOf(selected) === flow.currentStep && (flow.status === 'failed' || flow.status === 'blocked') && flow.resume === 'ready' ? resumeRun : undefined
           }
         />
       ) : null}

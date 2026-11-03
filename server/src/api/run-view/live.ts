@@ -1,6 +1,6 @@
 import { liveLogBody } from '../../acp/live-output';
-import { LiveSample } from '../../live/live.hub';
-import { LaunchView } from './run-view.types';
+import { LaunchView } from '../../contract/api';
+import { LiveSample } from '../../contract/live';
 
 export function liveVisit(
   key: string,

@@ -1,35 +1,16 @@
 import { EventEmitter } from 'events';
 import { Injectable } from '@nestjs/common';
-
-export interface LiveLog {
-  key: string;
-  step: string;
-  body: string;
-  samples?: { at: string; cpu: number; memory: number }[];
-  usage?: { tokensIn: number; tokensOut: number; usd: number };
-}
-
-export interface LiveSpend {
-  tokensIn: number;
-  tokensOut: number;
-  usd: number;
-}
+import { LiveLog, LiveSample, LiveUsage } from '../contract/live';
 
 export interface LivePeaks {
   cpuPeak: number;
   memPeak: number;
 }
 
-export interface LiveSample {
-  at: string;
-  cpu: number;
-  memory: number;
-}
-
 @Injectable()
 export class LiveHub {
   private readonly events = new EventEmitter();
-  private readonly spend = new Map<string, Map<string, LiveSpend>>();
+  private readonly spend = new Map<string, Map<string, LiveUsage>>();
   private readonly samples = new Map<string, Map<string, LiveSample[]>>();
 
   constructor() {
@@ -69,7 +50,7 @@ export class LiveHub {
     this.events.emit('log', entry);
   }
 
-  spendOf(key: string): LiveSpend | undefined {
+  spendOf(key: string): LiveUsage | undefined {
     const steps = this.spend.get(key);
     if (!steps || steps.size === 0) {
       return undefined;
@@ -122,7 +103,7 @@ export class LiveHub {
   }
 }
 
-function total(steps: Map<string, LiveSpend>): LiveSpend {
+function total(steps: Map<string, LiveUsage>): LiveUsage {
   let tokensIn = 0;
   let tokensOut = 0;
   let usd = 0;
@@ -134,7 +115,7 @@ function total(steps: Map<string, LiveSpend>): LiveSpend {
   return { tokensIn, tokensOut, usd };
 }
 
-function sameSpend(left: LiveSpend | undefined, right: LiveSpend): boolean {
+function sameSpend(left: LiveUsage | undefined, right: LiveUsage): boolean {
   return left !== undefined && left.tokensIn === right.tokensIn && left.tokensOut === right.tokensOut && left.usd === right.usd;
 }
 

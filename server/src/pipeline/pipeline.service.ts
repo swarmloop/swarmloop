@@ -20,7 +20,8 @@ import { StepRegistry } from '../steps/step.registry';
 import { joinPrompt, withInstructions } from '../steps/plan/plan-record';
 import { CHAT_LOCK, chatHeld, chatResume, readChatLock } from './chat-lock';
 import { settleShell, shellHolding } from './shell-lock';
-import { assertKey, autoContinues, continuesSameStep, countedVisits, continues, diedLog, failedLaunches, isStep, loopMark, PipelineResult, settle, STEPS, StepName, StepOptions } from '../core/pipeline-result';
+import { assertKey, autoContinues, continuesSameStep, countedVisits, continues, diedLog, failedLaunches, isStep, loopMark, PipelineResult, settle, StepOptions } from '../core/pipeline-result';
+import { STEPS, StepName } from '../contract/steps';
 
 @Injectable()
 export class PipelineService implements OnModuleInit {

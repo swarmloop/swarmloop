@@ -3,10 +3,11 @@ import { join } from 'path';
 import { liveLogFinished, liveLogView } from '../../acp/live-output';
 import { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { launchCount } from '../../agent/agent-launches';
-import { isReviewStep, pipelineStepOf } from '../../core/pipeline-result';
+import { isReviewStep, pipelineStepOf } from '../../contract/steps';
 import { reviewDecision } from '../../steps/code-review/code-review-record';
 import { stepStatus, latest } from './flow';
-import { FlowView, REVIEW_KINDS } from './run-view.types';
+import { FlowView } from '../../contract/api';
+import { REVIEW_KINDS } from './run-view.types';
 
 export function chipStatus(
   name: string,

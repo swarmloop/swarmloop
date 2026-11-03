@@ -10,11 +10,26 @@ export interface RunSummary {
   usd: number;
 }
 
+export interface RunsView {
+  runs: RunSummary[];
+}
+
+export interface RunRef {
+  key: string;
+  status: string;
+}
+
 export interface FlowItem {
   kind: 'question' | 'paste';
   id: string;
   label: string;
   answer: string;
+}
+
+export interface LaunchView {
+  phases: string[];
+  fromStep: string | null;
+  createdAt: string;
 }
 
 export interface FlowView {
@@ -39,11 +54,11 @@ export interface FlowView {
     memPeak: number;
   };
   phases: { phase: string; steps: { name: string; status: string; current: boolean; attempts: number }[] }[];
-  returns: { counter: string; count: number; from: string; to: string }[];
+  returns: { counter: string; count: number; from: string; to: 'implement' }[];
   items: FlowItem[];
   paths: { repo: string; path: string }[];
   reason: string | null;
-  launches: { phases: string[]; fromStep: string | null; createdAt: string }[];
+  launches: LaunchView[];
   projects: string[];
 }
 
@@ -75,7 +90,7 @@ export interface StepView {
 }
 
 export interface HistoryView {
-  launches: { phases: string[]; fromStep: string | null; createdAt: string }[];
+  launches: LaunchView[];
   documents: { kind: string; attempt: number; body: string; createdAt: string }[];
   files: { name: string; path: string; body: string | null }[];
   exchanges: { stepStatId: number; model: string; durationMs: number; request: string; response: string }[];
@@ -94,4 +109,99 @@ export interface HistoryView {
     cpuPeak: number;
     memPeak: number;
   }[];
+}
+
+export interface ShellMount {
+  hostPath: string;
+  containerPath: string;
+}
+
+export interface ShellFeature {
+  key: string;
+  created: boolean;
+  status: string;
+  currentStep: string;
+  runtime: string;
+  resumeChatId: string | null;
+  mounts: ShellMount[];
+}
+
+export interface ShellMatch {
+  key: string;
+  status: string;
+  currentStep: string;
+}
+
+export interface CreateRunBody {
+  key?: string;
+  prompt?: string;
+  path?: string;
+  projects?: string[];
+  phases?: string[];
+}
+
+export interface StartStepBody {
+  prompt?: string;
+  path?: string;
+}
+
+export interface ReplayBody {
+  prompt?: string;
+  phases?: string[];
+}
+
+export interface ResumeBody {
+  prompt?: string;
+}
+
+export interface AnswersBody {
+  answers?: { kind?: string; id?: string; body?: string }[];
+}
+
+export interface AddProjectBody {
+  name?: string;
+}
+
+export interface ChatBody {
+  prompt?: string;
+  skill?: string;
+  cwd?: string;
+  mcpServers?: unknown;
+}
+
+export interface OpenShellBody {
+  path?: string;
+}
+
+export interface LockShellBody {
+  container?: string;
+}
+
+export interface RewindBody {
+  id?: number;
+}
+
+export interface RemovedRunView {
+  key: string;
+}
+
+export interface ShellStatusView {
+  status: string;
+}
+
+export interface SnapshotsView {
+  snapshots: { id: number; step: string; at: string }[];
+}
+
+export interface RewindView {
+  step: string;
+}
+
+export interface ProjectsView {
+  projects: string[];
+  applied: boolean;
+}
+
+export interface ChatView {
+  text: string;
 }

@@ -17,7 +17,7 @@ import { count, duration, memory, money } from '../lib/format';
 import { documentsByKind, tokensByModel } from '../lib/history';
 import { latestPhaseLabels } from '../lib/phases';
 import { LogTranscript } from './log-transcript';
-import { HistoryView } from '../lib/types';
+import { HistoryView } from '@contract/api';
 
 export function HistoryScreen({ runKey }: { runKey: string }) {
   const [view, setView] = useState<HistoryView | null>(null);

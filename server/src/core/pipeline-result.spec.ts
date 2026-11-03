@@ -1,4 +1,5 @@
-import { autoContinues, continues, continuesSameStep, countedVisits, diedLog, failedLaunches, loopMark, nextStep, normalizePhases, PHASES, settle, visitStatus } from './pipeline-result';
+import { autoContinues, continues, continuesSameStep, countedVisits, diedLog, failedLaunches, loopMark, nextStep, normalizePhases, settle, visitStatus } from './pipeline-result';
+import { PHASES } from '../contract/steps';
 
 describe('visitStatus', () => {
   it('marks a finished success done and keeps a real pause waiting', () => {

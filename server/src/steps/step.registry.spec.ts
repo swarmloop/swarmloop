@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { Type } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { StepName } from '../core/pipeline-result';
+import { StepName } from '../contract/steps';
 import { BranchStep } from './branch/branch.step';
 import { CommitStep } from './commit/commit.step';
 import { CodeReviewStep } from './code-review/code-review.step';

@@ -4,7 +4,8 @@ import { Dispatch, SetStateAction } from 'react';
 import Checkbox from '@mui/material/Checkbox';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import FormGroup from '@mui/material/FormGroup';
-import { PHASE_LABEL, PHASES, PhaseName } from '../../lib/phases';
+import { PHASE_LABEL } from '../../lib/phases';
+import { PHASES, PhaseName } from '@contract/steps';
 
 export function PhasePicker({ picked, frozen, setPicked }: { picked: PhaseName[]; frozen: PhaseName[]; setPicked: Dispatch<SetStateAction<PhaseName[]>> }) {
   return (

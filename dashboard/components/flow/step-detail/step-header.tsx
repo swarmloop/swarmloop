@@ -13,7 +13,7 @@ import { statusColor } from '../../../theme/theme';
 import { stepLabel } from '../../../lib/phases';
 import { StepMetricKind, stepMetrics } from '../../../lib/step-metrics';
 import { shownStatus } from '../../../lib/step-view';
-import { StepView } from '../../../lib/types';
+import { StepView } from '@contract/api';
 
 const stepMetricIcon: Partial<Record<StepMetricKind, typeof Schedule>> = {
   duration: Schedule,
