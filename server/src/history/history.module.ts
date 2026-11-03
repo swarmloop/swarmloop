@@ -1,10 +1,9 @@
 import { Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import type { BetterSqlite3ConnectionOptions } from 'typeorm/driver/better-sqlite3/BetterSqlite3ConnectionOptions';
-import { readEnv } from '../config/env';
+import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { entities } from './entities';
 import { HistoryService } from './history.service';
@@ -38,9 +37,8 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
 @Module({
   imports: [
     TypeOrmModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) =>
-        historyDatabaseOptions(resolveRepoRoot(readEnv(config).SWARMLOOP_ROOT, __dirname)),
+      inject: [AppConfig],
+      useFactory: (config: AppConfig) => historyDatabaseOptions(resolveRepoRoot(config.env.SWARMLOOP_ROOT, __dirname)),
     }),
     TypeOrmModule.forFeature(entities),
   ],

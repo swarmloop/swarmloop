@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, resolve, sep } from 'path';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { rawEnv } from '../config/process-env';
 
 export interface SandboxMount {
   hostPath: string;
@@ -187,7 +188,7 @@ export function prepareStateDir(path: string, userId: number): void {
 
 export function sandboxUserId(
   own = typeof process.getuid === 'function' ? (process.getuid() ?? 0) : 0,
-  configured = process.env.SWARMLOOP_UID,
+  configured = rawEnv().SWARMLOOP_UID,
 ): number {
   if (own > 0) {
     return own;

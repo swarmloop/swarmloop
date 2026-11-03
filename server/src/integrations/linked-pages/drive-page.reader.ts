@@ -11,7 +11,9 @@ export class DrivePageReader implements PageReader {
 
   async read(url: string, context: PageReadContext): Promise<IssuePage> {
     try {
-      const loaded = await loadDrive(url, (exportUrl) => request(exportUrl, { Accept: '*/*' }, context.calls));
+      const loaded = await loadDrive(url, (exportUrl) =>
+        request(context.clock, exportUrl, { Accept: '*/*' }, context.calls),
+      );
       return {
         source: 'drive',
         id: loaded.id,

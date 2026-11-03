@@ -6,6 +6,8 @@ import { join } from 'path';
 import { Logger } from '@nestjs/common';
 import type { RunEntity } from '../history/entities';
 import type { HistoryService } from '../history/history.service';
+import type { Clock } from '../core/clock';
+import { rawEnv } from '../config/process-env';
 import { mountsForRun } from '../sandbox/sandbox-launch';
 
 const logger = new Logger('WorktreeSnapshot');
@@ -28,7 +30,7 @@ export interface SnapshotBody {
 
 function git(repo: string, args: string[], extra?: Record<string, string>): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile('git', ['-C', repo, ...args], { env: { ...process.env, ...extra } }, (error, stdout, stderr) => {
+    execFile('git', ['-C', repo, ...args], { env: { ...rawEnv(), ...extra } }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error((stderr || error.message).trim()));
         return;
@@ -164,7 +166,13 @@ export function parseResume(body: string | null): { step: string; chat: string }
   return { step, chat };
 }
 
-export async function snapshotRun(history: HistoryService, run: RunEntity, step: string, chat?: string): Promise<void> {
+export async function snapshotRun(
+  history: HistoryService,
+  clock: Clock,
+  run: RunEntity,
+  step: string,
+  chat?: string,
+): Promise<void> {
   try {
     const mounts = mountsForRun(join(history.root(), 'worktrees', run.key), run.targetPath);
     const repos: RepoTree[] = [];
@@ -181,7 +189,7 @@ export async function snapshotRun(history: HistoryService, run: RunEntity, step:
     await history.putDocument(
       run,
       SNAPSHOT,
-      renderSnapshot({ step, at: new Date().toISOString(), chat: recorded, repos }),
+      renderSnapshot({ step, at: clock.iso(), chat: recorded, repos }),
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : 'snapshot failed';

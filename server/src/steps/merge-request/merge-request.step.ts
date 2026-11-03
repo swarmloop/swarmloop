@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import { HistoryService } from '../../history/history.service';
+import { Clock } from '../../core/clock';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { PhaseName, StepName } from '../../contract/steps';
 import { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-host';
@@ -33,9 +34,10 @@ export class MergeRequestStep extends BaseStep {
 
   constructor(
     history: HistoryService,
+    clock: Clock,
     private readonly registry: CodeHostRegistry,
   ) {
-    super(history);
+    super(history, clock);
   }
 
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {

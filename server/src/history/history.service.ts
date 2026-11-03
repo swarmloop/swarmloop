@@ -1,10 +1,10 @@
 import { existsSync, readdirSync, rmSync } from 'fs';
 import { Injectable, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { join } from 'path';
 import { In, Repository } from 'typeorm';
-import { readEnv } from '../config/env';
+import { AppConfig } from '../config/env';
+import { Clock } from '../core/clock';
 import { LiveHub } from '../live/live.hub';
 import { resolveRepoRoot } from '../config/repo-root';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -30,7 +30,8 @@ import { summarizeSamples, VisitDraft } from './visit';
 @Injectable()
 export class HistoryService {
   constructor(
-    private readonly config: ConfigService,
+    private readonly config: AppConfig,
+    private readonly clock: Clock,
     @InjectRepository(RunEntity) private readonly runs: Repository<RunEntity>,
     @InjectRepository(DocumentEntity) private readonly documents: Repository<DocumentEntity>,
     @InjectRepository(StepStatEntity) private readonly stepStats: Repository<StepStatEntity>,
@@ -46,7 +47,7 @@ export class HistoryService {
   ) {}
 
   root(): string {
-    return resolveRepoRoot(readEnv(this.config).SWARMLOOP_ROOT, __dirname);
+    return resolveRepoRoot(this.config.env.SWARMLOOP_ROOT, __dirname);
   }
 
   runDir(key: string): string {
@@ -66,8 +67,8 @@ export class HistoryService {
   }
 
   async openWaiting(key: string, targetPath: string): Promise<RunEntity> {
-    const env = readEnv(this.config);
-    const now = new Date().toISOString();
+    const env = this.config.env;
+    const now = this.clock.iso();
     const created = this.runs.create({
       key,
       status: 'waiting',
@@ -94,9 +95,9 @@ export class HistoryService {
 
   async begin(key: string, step: string): Promise<RunEntity> {
     const existing = await this.findRun(key);
-    const now = new Date().toISOString();
+    const now = this.clock.iso();
     if (!existing) {
-      const env = readEnv(this.config);
+      const env = this.config.env;
       const created = this.runs.create({
         key,
         status: 'running',
@@ -124,7 +125,7 @@ export class HistoryService {
       throw new SwarmloopError(`${key} is already running`);
     }
     this.live?.clearSpend(key);
-    const runtime = readEnv(this.config).RUNTIME;
+    const runtime = this.config.env.RUNTIME;
     if (existing.runtime !== runtime) {
       existing.runtime = runtime;
       await this.putDocument(existing, 'shell_resume', 'clear\n');
@@ -145,7 +146,7 @@ export class HistoryService {
   }
 
   async saveRun(run: RunEntity): Promise<RunEntity> {
-    run.updatedAt = new Date().toISOString();
+    run.updatedAt = this.clock.iso();
     const saved = await this.runs.save(run);
     this.live?.changed(saved.key);
     return saved;
@@ -173,7 +174,7 @@ export class HistoryService {
         runId: run.id,
         phases: JSON.stringify(selected),
         fromStep: recordedFrom,
-        createdAt: new Date().toISOString(),
+        createdAt: this.clock.iso(),
       }),
     );
   }
@@ -244,7 +245,7 @@ export class HistoryService {
         attempt: 0,
         body,
         path: '',
-        createdAt: new Date().toISOString(),
+        createdAt: this.clock.iso(),
       }),
     );
     this.live?.changed(run.key);
@@ -357,7 +358,7 @@ export class HistoryService {
         counter,
         attempt,
         reason,
-        createdAt: new Date().toISOString(),
+        createdAt: this.clock.iso(),
       }),
     );
   }

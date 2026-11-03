@@ -126,6 +126,7 @@ describe('model visit duration', () => {
   it('keeps the step wall time when the agent itself was shorter', () => {
     const started = Date.now() - 4_000;
     const visit = modelVisit({
+      now: Date.now(),
       opened: {
         run: { stepStartedAt: new Date(started).toISOString() } as never,
         prior: null,
@@ -166,6 +167,7 @@ describe('combineAgentResults', () => {
       },
     ]);
     const visit = modelVisit({
+      now: Date.now(),
       opened: {
         run: { stepStartedAt: new Date().toISOString() } as never,
         prior: null,

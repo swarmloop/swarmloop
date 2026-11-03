@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, statSync } from 'fs';
 import { dirname, isAbsolute, join, resolve } from 'path';
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { readEnv } from '../../config/env';
+import { AppConfig } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
+import { Clock } from '../../core/clock';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { assignCodeHost, CodeHostRegistry, type CodeHostName } from '../../integrations/code-host/code-host.registry';
@@ -22,10 +22,11 @@ export class PrepareStep extends BaseStep {
 
   constructor(
     history: HistoryService,
-    private readonly config: ConfigService,
+    clock: Clock,
+    private readonly config: AppConfig,
     private readonly registry: CodeHostRegistry,
   ) {
-    super(history);
+    super(history, clock);
   }
 
   protected override failureText(error: unknown): string {
@@ -69,7 +70,7 @@ export class PrepareStep extends BaseStep {
   }
 
   listProjects(): { projects: string[] } {
-    return { projects: listGitProjects(this.history.root(), readEnv(this.config).CHECKOUTS_ROOT) };
+    return { projects: listGitProjects(this.history.root(), this.config.env.CHECKOUTS_ROOT) };
   }
 
   async addClone(name: string): Promise<{ name: string }> {
@@ -77,7 +78,7 @@ export class PrepareStep extends BaseStep {
     if (!CHECKOUT_NAME.test(trimmed)) {
       throw new SwarmloopError('checkout name is invalid');
     }
-    const path = resolveCheckoutPath(this.history.root(), readEnv(this.config).CHECKOUTS_ROOT, trimmed, '');
+    const path = resolveCheckoutPath(this.history.root(), this.config.env.CHECKOUTS_ROOT, trimmed, '');
     const located = { name: trimmed, path };
     this.assertCheckout(located);
     await this.assertGit(located);
@@ -125,14 +126,14 @@ export class PrepareStep extends BaseStep {
     if (!CHECKOUT_NAME.test(checkout.name)) {
       throw new SwarmloopError('checkout name is invalid');
     }
-    const env = readEnv(this.config);
+    const env = this.config.env;
     const located = {
       name: checkout.name,
       path: resolveCheckoutPath(this.history.root(), env.CHECKOUTS_ROOT, checkout.name, checkout.path),
     };
     this.assertCheckout(located);
     await this.assertGit(located);
-    const ref = await storedBase(located.path, located.name, prompt, env, 'prepare');
+    const ref = await storedBase(located.path, located.name, prompt, { ...env, clock: this.clock }, 'prepare');
     const worktree = join(this.history.root(), 'worktrees', key, located.name);
     if (!existsSync(worktree)) {
       mkdirSync(join(this.history.root(), 'worktrees', key), { recursive: true });

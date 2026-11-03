@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { Clock } from '../core/clock';
 import { RunEntity } from '../history/entities';
 import { HistoryService } from '../history/history.service';
 import { PipelineService } from '../pipeline/pipeline.service';
@@ -28,6 +29,7 @@ export class RunCommandsService {
     private readonly projects: ProjectAppendService,
     private readonly prepare: PrepareStep,
     private readonly queries: RunQueriesService,
+    private readonly clock: Clock,
   ) {}
 
   async addProject(key: string, name: string): Promise<ProjectsView> {
@@ -53,7 +55,7 @@ export class RunCommandsService {
       throw new BadRequestException('prompt is missing');
     }
     const phases = this.phases(body.phases);
-    let key = given || taskKeys(prompt ?? '', '')[0] || `run-${Date.now().toString(36)}`;
+    let key = given || taskKeys(prompt ?? '', '')[0] || `run-${this.clock.now().toString(36)}`;
     try {
       assertKey(key);
     } catch (error) {

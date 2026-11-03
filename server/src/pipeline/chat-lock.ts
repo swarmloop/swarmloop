@@ -15,7 +15,7 @@ export function chatLockBody(status: string, pid: number): string {
   return `${status} ${pid}\n`;
 }
 
-export function containerLockBody(status: string, container: string, now = Date.now()): string {
+export function containerLockBody(status: string, container: string, now: number): string {
   return `${status} container ${container} ${now}\n`;
 }
 

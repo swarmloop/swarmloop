@@ -1,4 +1,5 @@
-import type { ConfigService } from '@nestjs/config';
+import { testEnv } from '../../config/env.spec-helpers';
+import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { assignCodeHost, CodeHostRegistry } from './code-host.registry';
 
 const env = {
@@ -9,11 +10,7 @@ const env = {
 };
 
 function registryFor(values: typeof env): CodeHostRegistry {
-  const config = {
-    getOrThrow: (key: string) => values[key as keyof typeof env] ?? '',
-    get: (key: string) => values[key as keyof typeof env],
-  } as ConfigService;
-  return CodeHostRegistry.create(config);
+  return CodeHostRegistry.create(testEnv(values), new FakeClock());
 }
 
 describe('code host registry', () => {

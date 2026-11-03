@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { realpathSync } from 'fs';
-import { readEnv, SwarmloopEnv } from '../../config/env';
+import { AppConfig, SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
+import { Clock } from '../../core/clock';
 import { VisitDraft } from '../../history/visit';
 import { AGENT_RUNNER, AgentProcessRunner } from '../../agent/agent-runner';
 import { Charge, chargeReview } from '../../agent/spend';
@@ -49,12 +49,13 @@ export class CodeReviewStep extends BaseStep {
 
   constructor(
     history: HistoryService,
-    private readonly config: ConfigService,
+    clock: Clock,
+    private readonly config: AppConfig,
     private readonly prepare: PrepareStep,
     private readonly sandbox: SandboxService,
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
   ) {
-    super(history);
+    super(history, clock);
   }
 
   override async missingInput(key: string, options: StepOptions): Promise<string | null> {
@@ -73,7 +74,7 @@ export class CodeReviewStep extends BaseStep {
   }
 
   protected async run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
-    const env = readEnv(this.config);
+    const env = this.config.env;
     if (options.path) {
       ctx.opened.run.targetPath = realpathSync(options.path);
     }

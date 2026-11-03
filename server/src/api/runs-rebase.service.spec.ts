@@ -16,6 +16,7 @@ import { isAbsolute, join } from 'path';
 import { HistoryService } from '../history/history.service';
 import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.step';
 import { REBASE_CONFLICT, rebaseFeatureRepos, storedBase } from '../git/rebase-worktree';
+import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { RunRebaseService } from './run-rebase.service';
 import { httpStatus } from './runs.controller';
 import { boot, remember, featureWorktree, denyEnv, git, isAncestor, hostFetch } from './runs.spec-helpers';
@@ -458,7 +459,7 @@ describe('runs api', () => {
       prompt: null,
       denied: [],
       message: 'feat(proj-64): Ship the field',
-      hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' },
+      hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '', clock: new FakeClock() },
     };
     try {
       const stop = await rebaseFeatureRepos(input);
@@ -629,7 +630,7 @@ describe('runs api', () => {
       prompt: null,
       denied: [],
       message: 'feat(proj-67): Ship the field',
-      hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' },
+      hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '', clock: new FakeClock() },
     };
     try {
       const stop = await rebaseFeatureRepos(input);
@@ -685,7 +686,13 @@ describe('runs api', () => {
     const base = git(clone, ['rev-parse', 'main']);
     const previous = process.env.SWARMLOOP_ROOT;
     process.env.SWARMLOOP_ROOT = root;
-    const hosts = { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' };
+    const hosts = {
+      GITLAB_BASE_URL: '',
+      GITLAB_TOKEN: '',
+      GITHUB_BASE_URL: '',
+      GITHUB_TOKEN: '',
+      clock: new FakeClock(),
+    };
     try {
       const [left, right] = await Promise.all([
         rebaseFeatureRepos({
@@ -743,7 +750,13 @@ describe('runs api', () => {
     expect(git(clone, ['rev-parse', 'origin/main'])).not.toBe(tip);
     const previous = process.env.CHECKOUTS_ROOT;
     process.env.CHECKOUTS_ROOT = root;
-    const hosts = { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' };
+    const hosts = {
+      GITLAB_BASE_URL: '',
+      GITLAB_TOKEN: '',
+      GITHUB_BASE_URL: '',
+      GITHUB_TOKEN: '',
+      clock: new FakeClock(),
+    };
     try {
       const refs = await Promise.all([
         storedBase(clone, 'demo', null, hosts, 'prepare'),
@@ -788,7 +801,13 @@ describe('runs api', () => {
     const base = git(clone, ['rev-parse', 'main']);
     const previous = process.env.SWARMLOOP_ROOT;
     process.env.SWARMLOOP_ROOT = root;
-    const hosts = { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' };
+    const hosts = {
+      GITLAB_BASE_URL: '',
+      GITLAB_TOKEN: '',
+      GITHUB_BASE_URL: '',
+      GITHUB_TOKEN: '',
+      clock: new FakeClock(),
+    };
     const input = (key: string) => ({
       root,
       key,
@@ -848,7 +867,7 @@ describe('runs api', () => {
         prompt: null,
         denied: [],
         message: 'feat(proj-71): Ship the field',
-        hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' },
+        hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '', clock: new FakeClock() },
       });
       expect(stop.kind).toBe('clean');
       expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);
@@ -885,7 +904,7 @@ describe('runs api', () => {
         prompt: null,
         denied: ['.env'],
         message: 'feat(proj-72): Ship the field',
-        hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' },
+        hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '', clock: new FakeClock() },
       });
       expect(stop).toEqual({ kind: 'clean', leases: [{ repo: 'demo', tip: null }] });
       expect(existsSync(marker)).toBe(false);
@@ -925,7 +944,7 @@ describe('runs api', () => {
         prompt: null,
         denied: [],
         message: 'feat(proj-73): Ship the field',
-        hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '' },
+        hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '', clock: new FakeClock() },
       });
       expect(stop.kind).toBe('clean');
       expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { AppConfig } from '../../config/env';
 import { HistoryModule } from '../../history/history.module';
 import { ISSUE_TRACKER } from './tokens';
 import { LinkedPagesService } from '../linked-pages/linked-pages';
@@ -18,9 +18,8 @@ import { IssueTrackerRegistry } from './issue-tracker.registry';
     { provide: PASTE_READER, useExisting: TerminalPasteReader },
     {
       provide: ISSUE_TRACKER,
-      useFactory: (config: ConfigService, registry: IssueTrackerRegistry) =>
-        registry.byName(config.getOrThrow<string>('ISSUE_TRACKER')),
-      inject: [ConfigService, IssueTrackerRegistry],
+      useFactory: (config: AppConfig, registry: IssueTrackerRegistry) => registry.byName(config.env.ISSUE_TRACKER),
+      inject: [AppConfig, IssueTrackerRegistry],
     },
   ],
   exports: [IssueTrackerRegistry, TerminalPasteReader, ISSUE_TRACKER, PASTE_READER],

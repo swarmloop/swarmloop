@@ -5,6 +5,7 @@ import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopConfigModule } from '../config/config.module';
+import { Clock } from '../core/clock';
 import { HistoryService } from '../history/history.service';
 import type { VisitDraft } from '../history/visit';
 import { AGENT_RUNNER } from '../agent/agent-runner';
@@ -23,8 +24,8 @@ class StubStep extends BaseStep {
   thrown: unknown = null;
   failure: Partial<VisitDraft> = {};
 
-  constructor(history: HistoryService) {
-    super(history);
+  constructor(history: HistoryService, clock: Clock) {
+    super(history, clock);
   }
 
   protected override failureVisit(): Partial<VisitDraft> {

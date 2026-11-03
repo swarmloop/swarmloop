@@ -1,4 +1,6 @@
 import { join, resolve } from 'path';
+import { rawEnv } from '../config/process-env';
+import { SystemClock } from '../core/clock';
 import { Sloop, serve } from './agent';
 import { HttpServerApi } from './server-api';
 import { runShell } from './shell';
@@ -8,10 +10,11 @@ async function main(): Promise<void> {
   if (process.argv[2] === 'acp') {
     const root = resolve(__dirname, '../../..');
     const agent = new Sloop({
-      api: new HttpServerApi(process.env.SWARMLOOP_API_URL ?? 'http://127.0.0.1:3920'),
+      api: new HttpServerApi(rawEnv().SWARMLOOP_API_URL ?? 'http://127.0.0.1:3920'),
       skills: loadSkills(join(root, 'skills')),
       repoRoot: root,
       checkoutsRoot: readCheckoutsRoot(join(root, '.env')),
+      clock: new SystemClock(),
     });
     await serve(process.stdin, process.stdout, agent);
     return;

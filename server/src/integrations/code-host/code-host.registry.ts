@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { remoteProject } from '../../steps/merge-request/merge-request-record';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { CodeHost, SelectedHost } from './code-host';
+import type { CodeHostEnv } from './abstract-code-host';
+import type { Clock } from '../../core/clock';
 import { GithubCodeHost } from './github/github-code-host';
 import { GitlabCodeHost } from './gitlab/gitlab-code-host';
 
@@ -21,8 +22,8 @@ export class CodeHostRegistry {
     this.hosts = [github, gitlab];
   }
 
-  static create(config: ConfigService): CodeHostRegistry {
-    return new CodeHostRegistry(new GithubCodeHost(config), new GitlabCodeHost(config));
+  static create(hosts: CodeHostEnv, clock: Clock): CodeHostRegistry {
+    return new CodeHostRegistry(new GithubCodeHost(hosts, clock), new GitlabCodeHost(hosts, clock));
   }
 
   has(name: string): boolean {

@@ -13,22 +13,20 @@ import {
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { dirname, isAbsolute, join, sep } from 'path';
-import type { ConfigService } from '@nestjs/config';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { originRef, promptBase } from './base-ref';
 import { allowedPaths, deniedIndexPaths, isDenied, porcelainPaths, stageSelection } from '../steps/commit/commit-paths';
+import type { CodeHostEnv } from '../integrations/code-host/abstract-code-host';
+import type { Clock } from '../core/clock';
 import { authorArgs, git, gitDetail, gitMissing, gitRaw, gitStderr, originUrl, redact } from './git';
 import { worktreePath } from '../steps/shared/repo-names';
 
 /** Set while a conflict rebase still has to be resolved, then reviewed on the new diff. */
 export const REBASE_CONFLICT = 'rebase_conflict';
 
-export interface RebaseHosts {
-  GITLAB_BASE_URL: string;
-  GITLAB_TOKEN: string;
-  GITHUB_BASE_URL: string;
-  GITHUB_TOKEN: string;
+export interface RebaseHosts extends CodeHostEnv {
+  clock: Clock;
 }
 
 export interface RebaseRepoInput {
@@ -975,17 +973,7 @@ async function fetchLocked(
 }
 
 function registryFor(hosts: RebaseHosts): CodeHostRegistry {
-  const values: Record<string, string> = {
-    GITLAB_BASE_URL: hosts.GITLAB_BASE_URL,
-    GITLAB_TOKEN: hosts.GITLAB_TOKEN,
-    GITHUB_BASE_URL: hosts.GITHUB_BASE_URL,
-    GITHUB_TOKEN: hosts.GITHUB_TOKEN,
-  };
-  const config = {
-    getOrThrow: (key: string) => values[key] ?? '',
-    get: (key: string) => values[key],
-  } as ConfigService;
-  return CodeHostRegistry.create(config);
+  return CodeHostRegistry.create(hosts, hosts.clock);
 }
 
 function sshFailure(repo: string, origin: string, registry: CodeHostRegistry, step: 'prepare' | 'rebase'): string {

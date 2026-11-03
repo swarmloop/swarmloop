@@ -1,6 +1,8 @@
 import { DynamicModule, Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { join } from 'path';
+import { SystemClock, Clock } from '../core/clock';
+import { AppConfig, readEnv } from './env';
 import { envSchema } from './env.schema';
 import { loadEnvFile } from './load-env';
 import { resolveRepoRoot } from './repo-root';
@@ -11,6 +13,7 @@ export class SwarmloopConfigModule {
     const path = envFilePath ?? join(resolveRepoRoot(undefined, __dirname), '.env');
     loadEnvFile(path);
     return {
+      global: true,
       module: SwarmloopConfigModule,
       imports: [
         ConfigModule.forRoot({
@@ -24,6 +27,15 @@ export class SwarmloopConfigModule {
           },
         }),
       ],
+      providers: [
+        {
+          provide: AppConfig,
+          useFactory: (config: ConfigService) => new AppConfig(readEnv(config)),
+          inject: [ConfigService],
+        },
+        { provide: Clock, useClass: SystemClock },
+      ],
+      exports: [AppConfig, Clock],
     };
   }
 }

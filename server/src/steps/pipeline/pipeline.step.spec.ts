@@ -1,6 +1,5 @@
 import 'reflect-metadata';
 import { execFileSync } from 'child_process';
-import type { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync } from 'fs';
@@ -9,6 +8,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
+import { AppConfig } from '../../config/env';
+import { Clock } from '../../core/clock';
 import { LoopEventEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
 import { PipelineModule } from '../../pipeline/pipeline.module';
@@ -738,12 +739,8 @@ async function boot(
   })
     .overrideProvider(CodeHostRegistry)
     .useFactory({
-      factory: () => {
-        const config = {
-          getOrThrow: (key: string) => process.env[key] ?? '',
-          get: (key: string) => process.env[key],
-        } as ConfigService;
-        const registry = CodeHostRegistry.create(config);
+      factory: (config: AppConfig, clock: Clock) => {
+        const registry = CodeHostRegistry.create(config.env, clock);
         jest.spyOn(registry, 'byName').mockReturnValue({
           findMergeRequest: jest.fn(),
           openMergeRequest: jest.fn(),
@@ -753,6 +750,7 @@ async function boot(
         } as never);
         return registry;
       },
+      inject: [AppConfig, Clock],
     })
     .compile();
 }

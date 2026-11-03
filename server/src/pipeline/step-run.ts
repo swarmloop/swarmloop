@@ -5,6 +5,7 @@ import { snapshotRun } from '../git/worktree-snapshot';
 import type { PipelineResult } from '../core/pipeline-result';
 import { settle } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
+import type { Clock } from '../core/clock';
 
 export interface OpenedStep {
   run: RunEntity;
@@ -23,8 +24,13 @@ function failureText(line: string): string {
     .trim();
 }
 
-export async function openStep(history: HistoryService, key: string, step: StepName): Promise<OpenedStep> {
-  const started = Date.now();
+export async function openStep(
+  history: HistoryService,
+  clock: Clock,
+  key: string,
+  step: StepName,
+): Promise<OpenedStep> {
+  const started = clock.now();
   const prior = await history.findRun(key);
   return {
     run: await history.begin(key, step),
@@ -38,6 +44,7 @@ export async function openStep(history: HistoryService, key: string, step: StepN
 
 export async function closeStep(input: {
   history: HistoryService;
+  clock: Clock;
   run: RunEntity;
   previousStep: string;
   previousStatus: string;
@@ -65,6 +72,6 @@ export async function closeStep(input: {
   input.run.stepStartedAt = null;
   await input.history.saveRun(input.run);
   await input.history.appendProgress(input.run.key, input.line);
-  await snapshotRun(input.history, input.run, input.step);
+  await snapshotRun(input.history, input.clock, input.run, input.step);
   return { exitCode: input.exitCode, message: input.line };
 }

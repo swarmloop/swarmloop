@@ -5,6 +5,7 @@ import { join } from 'path';
 import { Logger } from '@nestjs/common';
 import type { HistoryService } from '../history/history.service';
 import type { RunEntity } from '../history/entities';
+import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { captureTree, parseSnapshot, renderSnapshot, restoreTree, snapshotRun } from './worktree-snapshot';
 
 function git(repo: string, args: string[]): string {
@@ -64,7 +65,7 @@ describe('worktree snapshot', () => {
     const run = { id: 1, key: 'PROJ-1', targetPath: repo } as unknown as RunEntity;
     const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     try {
-      await snapshotRun(history as unknown as HistoryService, run, 'implement');
+      await snapshotRun(history as unknown as HistoryService, new FakeClock(), run, 'implement');
       expect(error).toHaveBeenCalledWith('boom');
     } finally {
       error.mockRestore();

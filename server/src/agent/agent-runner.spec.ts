@@ -5,7 +5,9 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
 import { Logger } from '@nestjs/common';
-import type { ConfigService } from '@nestjs/config';
+import { AppConfig, type SwarmloopEnv } from '../config/env';
+import { testEnv } from '../config/env.spec-helpers';
+import { SystemClock } from '../core/clock';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import type { AgentRunInput } from './agent-runner';
 import { AGENT_CONTINUE, AgentProcessRunner, readSession } from './agent-runner';
@@ -33,7 +35,7 @@ describe('AgentProcessRunner resume output', () => {
     writeFileSync(outputFile, PREVIOUS);
     writePriceCache(root);
     const spawn = jest.fn(() => Promise.resolve(fakeChild(['visit-new-stream\n'], 0)));
-    const runner = new AgentProcessRunner(config(root), sandbox(spawn), new RunStop());
+    const runner = new AgentProcessRunner(config(root), new SystemClock(), sandbox(spawn), new RunStop());
     const result = await runner.run(input(root, outputFile));
     expect(result.output).toContain('visit-new-stream');
     expect(result.output).not.toContain('previous-visit-transcript');
@@ -57,7 +59,7 @@ describe('AgentProcessRunner resume output', () => {
       }
       return Promise.resolve(fakeChild(next.chunks, next.code));
     });
-    const runner = new AgentProcessRunner(config(root), sandbox(spawn), new RunStop());
+    const runner = new AgentProcessRunner(config(root), new SystemClock(), sandbox(spawn), new RunStop());
     const result = await runner.run(input(root, outputFile));
     expect(spawn).toHaveBeenCalledTimes(2);
     expect(result.output).toContain('process exited 1');
@@ -114,53 +116,20 @@ function input(root: string, outputFile: string, patch: Partial<AgentRunInput> =
   };
 }
 
-function config(root: string, patch: Record<string, string | number> = {}): ConfigService {
-  const env: Record<string, string | number> = {
-    RUNTIME: 'cursor',
-    REQUIREMENTS_VIA: 'direct',
-    ISSUE_TRACKER: 'jira',
-    JIRA_BASE_URL: '',
-    JIRA_EMAIL: '',
-    JIRA_API_TOKEN: '',
-    GITLAB_BASE_URL: '',
-    GITLAB_TOKEN: '',
-    GITHUB_BASE_URL: '',
-    GITHUB_TOKEN: '',
-    CURSOR_API_KEY: 'test-key',
-    ANTHROPIC_API_KEY: 'test-key',
-    MAX_AGENT_CALLS: 20,
-    MAX_RETURNS: 3,
-    MAX_PIPELINE_RETURNS: 6,
-    MAX_LAUNCHES: 3,
-    MAX_RUN_USD: 25,
-    IDLE_TIMEOUT_MS: 900000,
-    TICK_MS: 15000,
-    REQUIREMENTS_TIMEOUT_MS: 600000,
-    RESEARCH_TIMEOUT_MS: 900000,
-    PLAN_TIMEOUT_MS: 1200000,
-    IMPLEMENT_TIMEOUT_MS: 1800000,
-    CODE_REVIEW_TIMEOUT_MS: 900000,
-    MERGE_REQUEST_TIMEOUT_MS: 600000,
-    PIPELINE_TIMEOUT_MS: 1800000,
-    PIPELINE_START_TIMEOUT_MS: 180000,
-    MODEL_RESEARCH: 'm',
-    MODEL_PLAN: 'm',
-    MODEL_IMPLEMENT: 'm',
-    SWARMLOOP_API_PORT: 3920,
-    SWARMLOOP_API_HOST: '127.0.0.1',
-    ...patch,
-    SWARMLOOP_ROOT: root,
-  };
-  return {
-    get: (key: string) => env[key],
-    getOrThrow: (key: string) => {
-      const value = env[key];
-      if (value === undefined) {
-        throw new Error(key);
-      }
-      return value;
-    },
-  } as ConfigService;
+function config(root: string, patch: Partial<SwarmloopEnv> = {}): AppConfig {
+  return new AppConfig(
+    testEnv({
+      CURSOR_API_KEY: 'test-key',
+      ANTHROPIC_API_KEY: 'test-key',
+      MAX_AGENT_CALLS: 20,
+      MAX_RUN_USD: 25,
+      MODEL_RESEARCH: 'm',
+      MODEL_PLAN: 'm',
+      MODEL_IMPLEMENT: 'm',
+      SWARMLOOP_ROOT: root,
+      ...patch,
+    }),
+  );
 }
 
 describe('readSession', () => {
@@ -335,7 +304,7 @@ async function start(
   label: string,
   steps: { chunks: string[]; code?: number; advance?: number }[],
   patch: Partial<AgentRunInput> = {},
-  env: Record<string, string | number> = {},
+  env: Partial<SwarmloopEnv> = {},
   stop = new RunStop(),
 ): Promise<{
   result: Awaited<ReturnType<AgentProcessRunner['run']>>;
@@ -357,7 +326,7 @@ async function start(
     now += next.advance ?? 0;
     return Promise.resolve(fakeChild(next.chunks, next.code ?? 0));
   });
-  const runner = new AgentProcessRunner(config(root, env), sandbox(spawn), stop);
+  const runner = new AgentProcessRunner(config(root, env), new SystemClock(), sandbox(spawn), stop);
   try {
     const result = await runner.run(input(root, outputFile, patch));
     return { result, spawn, outputFile };

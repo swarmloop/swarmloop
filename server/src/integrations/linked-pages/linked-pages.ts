@@ -32,7 +32,7 @@ export class LinkedPagesService {
       context.pastes = stored;
     }
     const saved: IssueLink[] = [];
-    const response = await request(url, headersFor(url, context.base, context.headers), context.calls);
+    const response = await request(context.clock, url, headersFor(url, context.base, context.headers), context.calls);
     if (response.status >= 200 && response.status < 300 && response.body.length > 0) {
       if (isHtmlDocument(response.contentType, response.body)) {
         saved.push({ url, path: '', source: 'link', body: '', encoding: 'utf8' });

@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { basename, join } from 'path';
-import { SwarmloopEnv } from '../../config/env';
+import { AppConfig, SwarmloopEnv } from '../../config/env';
 import { HistoryService } from '../../history/history.service';
+import { Clock } from '../../core/clock';
 import { AGENT_RUNNER, AgentProcessRunner } from '../../agent/agent-runner';
 import { PipelineResult } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
@@ -25,11 +25,12 @@ export class ResearchStep extends AgentStep {
 
   constructor(
     history: HistoryService,
-    config: ConfigService,
+    clock: Clock,
+    config: AppConfig,
     sandbox: SandboxService,
     @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
   ) {
-    super(history, config, sandbox, agent);
+    super(history, clock, config, sandbox, agent);
   }
 
   protected settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number } {

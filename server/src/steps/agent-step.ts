@@ -1,10 +1,9 @@
 import { mkdirSync } from 'fs';
 import { join } from 'path';
-import type { ConfigService } from '@nestjs/config';
-import type { SwarmloopEnv } from '../config/env';
-import { readEnv } from '../config/env';
+import type { AppConfig, SwarmloopEnv } from '../config/env';
 import type { RunEntity } from '../history/entities';
 import type { HistoryService } from '../history/history.service';
+import type { Clock } from '../core/clock';
 import type { DocumentDraft } from '../history/visit';
 import type { AgentProcessRunner, AgentRunResult } from '../agent/agent-runner';
 import { readSession } from '../agent/agent-runner';
@@ -115,11 +114,12 @@ export abstract class AgentStep extends BaseStep {
 
   constructor(
     history: HistoryService,
-    protected readonly config: ConfigService,
+    clock: Clock,
+    protected readonly config: AppConfig,
     protected readonly sandbox: SandboxService,
     protected readonly agent: AgentProcessRunner,
   ) {
-    super(history);
+    super(history, clock);
   }
 
   protected abstract settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number };
@@ -128,7 +128,7 @@ export abstract class AgentStep extends BaseStep {
 
   /** The model body. The base step opens and closes the visit; this supplies the model visit through its context. */
   protected async run(key: string, options: StepOptions, stepCtx: StepContext): Promise<PipelineResult> {
-    const env = readEnv(this.config);
+    const env = this.config.env;
     const run: ModelRun = {
       key,
       opened: stepCtx.opened,
@@ -153,6 +153,7 @@ export abstract class AgentStep extends BaseStep {
           moveTo,
           visit: modelVisit({
             opened: run.opened,
+            now: this.clock.now(),
             step: this.name,
             mode: run.settings.mode,
             model: run.settings.model,

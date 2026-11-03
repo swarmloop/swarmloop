@@ -8,6 +8,7 @@ export function liveVisit(
   root: string,
   previousAttempt: number,
   startedAt: string,
+  now: number,
   samples: LiveSample[] = [],
 ): VisitView {
   const body = liveLogBody(root, key, step);
@@ -18,7 +19,7 @@ export function liveVisit(
     status: 'running',
     model: null,
     mode: null,
-    durationMs: Number.isFinite(started) ? Math.max(0, Date.now() - started) : 0,
+    durationMs: Number.isFinite(started) ? Math.max(0, now - started) : 0,
     tokensIn: 0,
     tokensOut: 0,
     usd: 0,
@@ -33,7 +34,7 @@ export function liveVisit(
         kind: 'log',
         attempt: previousAttempt + 1,
         body: body || 'waiting for output\n',
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(now).toISOString(),
       },
     ],
     exchanges: [],

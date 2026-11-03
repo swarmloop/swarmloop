@@ -1,3 +1,4 @@
+import type { Clock } from '../core/clock';
 import type { HttpCallDraft } from '../core/swarmloop-error';
 
 const RETRYABLE = new Set([429, 502, 503, 504]);
@@ -86,6 +87,7 @@ export function retryable(error: unknown): boolean {
 }
 
 export async function request(
+  clock: Clock,
   url: string,
   headers: Record<string, string>,
   calls: HttpCallDraft[],
@@ -96,7 +98,7 @@ export async function request(
   body: Buffer;
   headers: { get(name: string): string | null };
 }> {
-  const started = Date.now();
+  const started = clock.now();
   const method = init.method ?? 'GET';
   const safe = safeUrl(url);
   try {
@@ -113,7 +115,7 @@ export async function request(
       method,
       url: safeUrl(response.url || url),
       statusCode: response.status,
-      durationMs: Date.now() - started,
+      durationMs: clock.now() - started,
       error: response.ok ? null : `HTTP ${response.status}`,
     });
     return {
@@ -129,7 +131,7 @@ export async function request(
       method,
       url: safe,
       statusCode: status,
-      durationMs: Date.now() - started,
+      durationMs: clock.now() - started,
       error: error instanceof Error ? error.message : 'request failed',
     });
     throw error;

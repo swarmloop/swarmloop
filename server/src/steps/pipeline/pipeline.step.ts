@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { readEnv, type SwarmloopEnv } from '../../config/env';
+import { AppConfig, type SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { HistoryService } from '../../history/history.service';
+import { Clock } from '../../core/clock';
 import type { DocumentDraft } from '../../history/visit';
 import type { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import type { StepName } from '../../contract/steps';
@@ -33,15 +33,16 @@ export class PipelineStep extends BaseStep {
 
   constructor(
     history: HistoryService,
-    private readonly config: ConfigService,
+    clock: Clock,
+    private readonly config: AppConfig,
     private readonly registry: CodeHostRegistry,
   ) {
-    super(history);
+    super(history, clock);
   }
 
   protected async run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
     const { opened, calls } = ctx;
-    const env = readEnv(this.config);
+    const env = this.config.env;
     const records = parsePipelineRefs((await this.history.latestBody(key, 'pipeline_ref')) ?? '');
     const skipped = (await this.history.latestBody(key, 'ci_skip'))?.trim() ?? '';
     if (records.length === 0 && skipped) {
@@ -90,11 +91,11 @@ export class PipelineStep extends BaseStep {
     env: SwarmloopEnv,
     host: CodeHost,
   ): Promise<{ seen: Seen[]; verdict: Verdict }> {
-    const deadline = Date.now() + env.PIPELINE_TIMEOUT_MS;
-    const startDeadline = Date.now() + env.PIPELINE_START_TIMEOUT_MS;
+    const deadline = this.clock.now() + env.PIPELINE_TIMEOUT_MS;
+    const startDeadline = this.clock.now() + env.PIPELINE_START_TIMEOUT_MS;
     let seen = await this.load(records, calls, host, false);
     let verdict = this.verdict(seen);
-    while (Date.now() < deadline && (verdict === 'wait' || verdict === 'absent' || verdict === 'green')) {
+    while (this.clock.now() < deadline && (verdict === 'wait' || verdict === 'absent' || verdict === 'green')) {
       const missing = verdict === 'wait' ? null : await this.missingRuns(key, seen);
       if (verdict === 'green' && !(missing && missing.length > 0)) {
         break;
@@ -103,7 +104,7 @@ export class PipelineStep extends BaseStep {
         break;
       }
       const limit = verdict === 'wait' ? deadline : startDeadline;
-      const pause = Math.min(env.TICK_MS, limit - Date.now());
+      const pause = Math.min(env.TICK_MS, limit - this.clock.now());
       if (pause <= 0) {
         break;
       }
@@ -248,10 +249,10 @@ export class PipelineStep extends BaseStep {
       }
       return { seen, note: cancelErrorNote(rows, errors), traces: false };
     }
-    const deadline = Date.now() + env.PIPELINE_START_TIMEOUT_MS;
+    const deadline = this.clock.now() + env.PIPELINE_START_TIMEOUT_MS;
     let current = seen;
-    while (Date.now() < deadline && current.some((item) => this.running(item))) {
-      const pause = Math.min(env.TICK_MS, deadline - Date.now());
+    while (this.clock.now() < deadline && current.some((item) => this.running(item))) {
+      const pause = Math.min(env.TICK_MS, deadline - this.clock.now());
       if (pause <= 0) {
         break;
       }

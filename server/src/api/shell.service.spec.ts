@@ -1,6 +1,7 @@
 import type { HistoryService } from '../history/history.service';
 import type { RunEntity } from '../history/entities';
 import type { SandboxService } from '../sandbox/sandbox.service';
+import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { ShellService } from './shell.service';
 
 describe('shell open', () => {
@@ -29,7 +30,11 @@ describe('shell open', () => {
       latestBody: async () => null,
     };
     const sandbox = { containerExists: async () => false };
-    const service = new ShellService(history as unknown as HistoryService, sandbox as unknown as SandboxService);
+    const service = new ShellService(
+      history as unknown as HistoryService,
+      sandbox as unknown as SandboxService,
+      new FakeClock(),
+    );
     const created = await service.open('/tmp/demo');
     expect(created).toMatchObject({ created: true, status: 'waiting', currentStep: 'requirements' });
     expect(notes[0]).toBe('open /tmp/demo');
@@ -52,7 +57,7 @@ describe('shell open', () => {
         return {} as RunEntity;
       },
     };
-    const service = new ShellService(history as unknown as HistoryService, {} as SandboxService);
+    const service = new ShellService(history as unknown as HistoryService, {} as SandboxService, new FakeClock());
     const result = await service.open('/tmp/demo');
     expect(result).toEqual({
       matches: [

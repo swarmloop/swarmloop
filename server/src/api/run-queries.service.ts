@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { readEnv } from '../config/env';
+import { AppConfig } from '../config/env';
+import { Clock } from '../core/clock';
 import { resolveRepoRoot } from '../config/repo-root';
 import { DocumentEntity, RunEntity, StepStatEntity } from '../history/entities';
 import { HistoryService } from '../history/history.service';
@@ -38,7 +38,8 @@ export class RunQueriesService {
   constructor(
     private readonly history: HistoryService,
     private readonly pipeline: PipelineService,
-    private readonly config: ConfigService,
+    private readonly config: AppConfig,
+    private readonly clock: Clock,
     @Optional() private readonly live?: LiveHub,
   ) {}
 
@@ -73,7 +74,7 @@ export class RunQueriesService {
     );
     const shown = this.pipeline.claimed(run.key) && run.status !== 'done' ? { ...run, status: 'running' } : run;
     const resume = resumeState(shown, open, documents);
-    const maxReturns = readEnv(this.config).MAX_RETURNS;
+    const maxReturns = this.config.env.MAX_RETURNS;
     const reportMs = await this.history.codeReviewReportMs(run.id);
     return {
       key: run.key,
@@ -163,11 +164,13 @@ export class RunQueriesService {
       };
     });
     if (run.status === 'running' && run.currentStep === name) {
-      visits.push(liveVisit(run.key, name, this.history.root(), stats.at(-1)?.attempt ?? 0, run.updatedAt));
+      visits.push(
+        liveVisit(run.key, name, this.history.root(), stats.at(-1)?.attempt ?? 0, run.updatedAt, this.clock.now()),
+      );
     }
     return {
       step: name,
-      visits: withReturnNotes(name, visits, documents),
+      visits: withReturnNotes(name, visits, documents, this.clock.now()),
       checks:
         name === 'code-review'
           ? REVIEW_KINDS.map((kind) => {
@@ -251,14 +254,14 @@ export class RunQueriesService {
     const samples = await this.history.listSamples(stats.map((stat) => stat.id));
     const kind = `review_${name.slice('code-review-'.length)}`;
     const raw = liveLogBody(this.history.root(), key, name);
-    const env = readEnv(this.config);
+    const env = this.config.env;
     const model = modelForStep(name, env);
     let charge: Charge | null = null;
     if (model && raw.trim() && raw !== 'waiting for output') {
       charge = chargeStream(
         model,
         raw,
-        await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME),
+        await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now()),
       );
     }
     const parentRunning =
@@ -309,6 +312,7 @@ export class RunQueriesService {
           this.history.root(),
           visits.length,
           run.updatedAt,
+          this.clock.now(),
           this.live?.samplesOf(run.key, name) ?? [],
         ),
         model,
@@ -376,6 +380,7 @@ export class RunQueriesService {
           this.history.root(),
           stats.at(-1)?.attempt ?? 0,
           run.updatedAt,
+          this.clock.now(),
           this.live?.samplesOf(run.key, name) ?? [],
         ),
       );

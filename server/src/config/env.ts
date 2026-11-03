@@ -52,6 +52,11 @@ export function optionalLimit(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** The validated env, read once at startup and injected wherever services need config. */
+export class AppConfig {
+  constructor(readonly env: SwarmloopEnv) {}
+}
+
 export function readEnv(config: ConfigService): SwarmloopEnv {
   const root = config.get<string>('SWARMLOOP_ROOT');
   const checkoutsRoot = config.get<string>('CHECKOUTS_ROOT');

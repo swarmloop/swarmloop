@@ -3,6 +3,7 @@ import { existsSync, statSync } from 'fs';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { RunEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
+import { Clock } from '../../core/clock';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { OpenedStep } from '../../pipeline/step-run';
@@ -29,9 +30,10 @@ export class CommitStep extends BaseStep {
 
   constructor(
     history: HistoryService,
+    clock: Clock,
     private readonly registry: CodeHostRegistry,
   ) {
-    super(history);
+    super(history, clock);
   }
 
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {

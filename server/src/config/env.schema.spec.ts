@@ -4,8 +4,24 @@ import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopConfigModule } from './config.module';
-import { optionalLimit } from './env';
+import { AppConfig, optionalLimit } from './env';
 import { envSchema } from './env.schema';
+
+/** Compiles the config module from a temp .env file and returns the injected AppConfig. */
+async function compileWith(values: Record<string, string | number>): Promise<AppConfig> {
+  const dir = await mkdtemp(join(tmpdir(), 'swarmloop-env-'));
+  const path = join(dir, '.env');
+  const lines = Object.entries(values).map(([key, value]) => `${key}=${value}`);
+  await writeFile(path, lines.join('\n'));
+  try {
+    const moduleRef = await Test.createTestingModule({ imports: [SwarmloopConfigModule.forRoot(path)] }).compile();
+    return moduleRef.get(AppConfig);
+  } finally {
+    for (const key of Object.keys(values)) {
+      delete process.env[key];
+    }
+  }
+}
 
 const complete = {
   RUNTIME: 'cursor',
@@ -77,6 +93,28 @@ describe('env schema', () => {
     );
     expect(missing.error?.message).toContain('MAX_AGENT_CALLS');
     expect(missing.error?.message).toContain('missing');
+  });
+
+  it('provides the validated env through AppConfig', async () => {
+    const config = await compileWith(complete);
+    expect(config.env).toMatchObject({
+      RUNTIME: 'cursor',
+      MAX_AGENT_CALLS: 50,
+      MODEL_PLAN: 'grok-4.7-high',
+      SWARMLOOP_API_PORT: 3920,
+    });
+  });
+
+  it('reads an empty token limit as no cap', async () => {
+    const config = await compileWith({ ...complete, MAX_RUN_TOKENS: '' });
+    expect(config.env.MAX_RUN_TOKENS).toBeNull();
+  });
+
+  it('keeps the defaults for values the file leaves out', async () => {
+    const { MAX_PIPELINE_RETURNS: _omitted, ...withoutDefaults } = complete;
+    const config = await compileWith(withoutDefaults);
+    expect(config.env.MAX_PIPELINE_RETURNS).toBe(6);
+    expect(config.env.CLAUDE_CODE_OAUTH_TOKEN).toBe('');
   });
 
   it('fails bootstrap when a variable is missing', async () => {

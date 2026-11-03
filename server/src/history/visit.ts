@@ -6,9 +6,9 @@ export interface SampleDraft {
   rssBytes: number;
 }
 
-export function sampleSelf(): SampleDraft {
+export function sampleSelf(sampledAt: string): SampleDraft {
   return {
-    sampledAt: new Date().toISOString(),
+    sampledAt,
     cpuPercent: 0,
     rssBytes: process.memoryUsage().rss,
   };

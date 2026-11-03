@@ -54,11 +54,18 @@ export default tseslint.config(
         'error',
         { object: 'process.stderr', property: 'write', message: 'Log through a Nest Logger instead.' },
         { object: 'process.stdout', property: 'write', message: 'Log through a Nest Logger instead.' },
+        { object: 'process', property: 'env', message: 'Read config through AppConfig, or rawEnv() outside Nest.' },
+        { object: 'Date', property: 'now', message: 'Read time through Clock.' },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: 'Read time through Clock.' },
       ],
     },
   },
   {
     // Person-facing CLI, bootstrap, and prompt output is written directly, as the no-console exceptions are.
+    // The stdout and stderr entries are off here, but the env and clock checks stay on.
     files: [
       'server/src/cli/**',
       'server/src/main.ts',
@@ -66,7 +73,25 @@ export default tseslint.config(
       'server/src/acp/shell.ts',
       'server/src/integrations/linked-pages/paste-page.reader.ts',
     ],
-    rules: { 'no-restricted-properties': 'off' },
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        { object: 'process', property: 'env', message: 'Read config through AppConfig, or rawEnv() outside Nest.' },
+        { object: 'Date', property: 'now', message: 'Read time through Clock.' },
+      ],
+    },
+  },
+  {
+    // The config layer, the clock itself, the entry points, and specs read the raw env and the clock directly.
+    files: [
+      'server/src/config/**',
+      'server/src/core/clock.ts',
+      'server/src/main.ts',
+      'server/src/api-main.ts',
+      '**/*.spec.ts',
+      '**/*.spec-helpers.ts',
+    ],
+    rules: { 'no-restricted-properties': 'off', 'no-restricted-syntax': 'off' },
   },
   {
     files: dashboardFiles,
