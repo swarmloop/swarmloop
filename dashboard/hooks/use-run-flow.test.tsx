@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { api } from '../lib/api';
-import { fakeSocket, receive } from '../test/fake-socket';
+import { emitted, receive } from '../test/fake-socket';
 import { flowView } from '../test/fixtures';
 import { useRunFlow } from './use-run-flow';
 
@@ -54,13 +54,13 @@ describe('useRunFlow', () => {
     render(<Probe runKey="run-1" />);
     await screen.findByText('Run one');
 
-    expect(fakeSocket.emit).toHaveBeenCalledWith('watch', 'run-1');
-    expect(fakeSocket.emit).toHaveBeenCalledTimes(1);
+    expect(emitted).toHaveBeenCalledWith('watch', 'run-1');
+    expect(emitted).toHaveBeenCalledTimes(1);
 
     act(() => receive('connect'));
 
-    expect(fakeSocket.emit).toHaveBeenCalledTimes(2);
-    expect(fakeSocket.emit).toHaveBeenLastCalledWith('watch', 'run-1');
+    expect(emitted).toHaveBeenCalledTimes(2);
+    expect(emitted).toHaveBeenLastCalledWith('watch', 'run-1');
   });
 
   it('shows the message when the load is rejected', async () => {

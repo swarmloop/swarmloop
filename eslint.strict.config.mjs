@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 
 const typedFiles = ['**/*.{ts,tsx}'];
 // dashboard/tsconfig.json excludes these test and config files. dashboard/tsconfig.test.json includes them.
-const dashboardTestFiles = ['dashboard/**/*.test.{ts,tsx}', 'dashboard/vitest.*.ts'];
+const dashboardTestFiles = ['dashboard/**/*.test.{ts,tsx}', 'dashboard/vitest.*.ts', 'dashboard/test/fake-socket.ts'];
 // Size rules are warnings until part 51, after the split parts (35-38) have broken up the large legacy files.
 const maxLines = (max) => ['warn', { max, skipBlankLines: true, skipComments: true }];
 const typedRules = {

@@ -28,7 +28,7 @@ describe('RunList', () => {
     const user = userEvent.setup();
     const props = list();
 
-    await user.type(screen.getByRole('textbox', { name: 'Filter by key' }), 'r');
+    await user.type(screen.getByRole('textbox'), 'r');
 
     expect(props.onQuery).toHaveBeenCalledWith('r');
   });

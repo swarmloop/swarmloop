@@ -38,7 +38,9 @@ export function flowView(overrides: Partial<FlowView> = {}): FlowView {
       cpuPeak: 0,
       memPeak: 0,
     },
-    phases: [{ phase: 'implementation', steps: [{ name: 'implement', status: 'running', current: true, attempts: 0 }] }],
+    phases: [
+      { phase: 'implementation', steps: [{ name: 'implement', status: 'running', current: true, attempts: 0 }] },
+    ],
     returns: [],
     items: [],
     paths: [],
