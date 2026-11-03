@@ -487,7 +487,7 @@ export class AgentProcessRunner {
     const ending =
       finishedByResult || !killReason
         ? `process exited ${finishedByResult ? 0 : exitCode}`
-        : `process killed: ${killReason}`;
+        : `process killed: ${String(killReason)}`;
     output = appendLine(output, ending);
     // The step result is already in memory. A log flush that never calls back must not leave the step running.
     void replaceLogFile(input.outputFile, visible()).catch(() => undefined);
