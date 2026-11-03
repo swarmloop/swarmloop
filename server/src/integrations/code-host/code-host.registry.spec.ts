@@ -1,4 +1,4 @@
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import { assignCodeHost, CodeHostRegistry } from './code-host.registry';
 
 const env = {
@@ -43,22 +43,30 @@ describe('code host credentials', () => {
     expect(registryFor(env).forOrigin('git@github.com:acme/demo.git')).toBe('github');
     expect(registryFor({ ...env, GITLAB_BASE_URL: '' }).forOrigin('https://github.com/acme/demo.git')).toBe('github');
     expect(registryFor(env).forOrigin('git@gitlab.example:group/demo.git')).toBe('gitlab');
-    expect(registryFor({ ...env, GITHUB_BASE_URL: '' }).forOrigin('ssh://git@gitlab.example/group/demo.git')).toBe('gitlab');
+    expect(registryFor({ ...env, GITHUB_BASE_URL: '' }).forOrigin('ssh://git@gitlab.example/group/demo.git')).toBe(
+      'gitlab',
+    );
   });
 
   it('returns nothing for a path, a blank base, or an unknown host', () => {
     expect(registryFor(env).forOrigin('/tmp/demo.git')).toBeNull();
-    expect(registryFor({ ...env, GITLAB_BASE_URL: '', GITHUB_BASE_URL: '' }).forOrigin('git@gitlab.example:group/demo.git')).toBeNull();
-    expect(registryFor({ ...env, GITLAB_BASE_URL: 'not a url' }).forOrigin('git@gitlab.example:group/demo.git')).toBeNull();
+    expect(
+      registryFor({ ...env, GITLAB_BASE_URL: '', GITHUB_BASE_URL: '' }).forOrigin('git@gitlab.example:group/demo.git'),
+    ).toBeNull();
+    expect(
+      registryFor({ ...env, GITLAB_BASE_URL: 'not a url' }).forOrigin('git@gitlab.example:group/demo.git'),
+    ).toBeNull();
     expect(registryFor(env).forOrigin('git@other.example:group/demo.git')).toBeNull();
     expect(registryFor({ ...env, GITLAB_BASE_URL: '', GITHUB_BASE_URL: '' }).forOrigin('')).toBeNull();
   });
 
   it('refuses a hostname configured for both hosts', () => {
     expect(() =>
-      registryFor({ ...env, GITLAB_BASE_URL: 'https://gitlab.example', GITHUB_BASE_URL: 'https://gitlab.example' }).forOrigin(
-        'git@gitlab.example:group/demo.git',
-      ),
+      registryFor({
+        ...env,
+        GITLAB_BASE_URL: 'https://gitlab.example',
+        GITHUB_BASE_URL: 'https://gitlab.example',
+      }).forOrigin('git@gitlab.example:group/demo.git'),
     ).toThrow(/gitlab\.example matches both code hosts/);
   });
 
@@ -66,7 +74,9 @@ describe('code host credentials', () => {
     expect(registryFor(env).credentials('github').tokenKey).toBe('GITHUB_TOKEN');
     expect(registryFor(env).credentials('gitlab').baseKey).toBe('GITLAB_BASE_URL');
     expect(() => registryFor(env).credentials('')).toThrow(/code host is missing/);
-    expect(() => registryFor({ ...env, GITHUB_TOKEN: '' }).requiredCredentials('github')).toThrow(/GITHUB_TOKEN is missing/);
+    expect(() => registryFor({ ...env, GITHUB_TOKEN: '' }).requiredCredentials('github')).toThrow(
+      /GITHUB_TOKEN is missing/,
+    );
   });
 
   it('keeps one host for the run', () => {

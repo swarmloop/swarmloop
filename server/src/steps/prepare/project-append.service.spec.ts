@@ -1,6 +1,6 @@
-import { RunEntity } from '../../history/entities';
-import { BranchStep } from '../branch/branch.step';
-import { PrepareStep } from './prepare.step';
+import type { RunEntity } from '../../history/entities';
+import type { BranchStep } from '../branch/branch.step';
+import type { PrepareStep } from './prepare.step';
 import { ProjectAppendService } from './project-append.service';
 
 describe('ProjectAppendService', () => {
@@ -12,7 +12,9 @@ describe('ProjectAppendService', () => {
     const stats: { step: string; status: string }[] = [];
     const history = {
       findRun: jest.fn(async () => run),
-      latestBody: jest.fn(async (_key: string, kind: string) => [...docs].reverse().find((item) => item.kind === kind)?.body ?? null),
+      latestBody: jest.fn(
+        async (_key: string, kind: string) => [...docs].reverse().find((item) => item.kind === kind)?.body ?? null,
+      ),
       putDocument: jest.fn(async (_run: RunEntity, kind: string, body: string) => {
         docs.push({ kind, body });
       }),
@@ -21,9 +23,16 @@ describe('ProjectAppendService', () => {
       }),
       listStats: jest.fn(async () => stats),
     };
-    const prepare = { listProjects: () => ({ projects: ['billing-api', 'worker', 'handbook'] }), ensureDetached: jest.fn(async () => undefined) };
+    const prepare = {
+      listProjects: () => ({ projects: ['billing-api', 'worker', 'handbook'] }),
+      ensureDetached: jest.fn(async () => undefined),
+    };
     const branch = { ensure: jest.fn(async () => undefined) };
-    const service = new ProjectAppendService(history as never, prepare as unknown as PrepareStep, branch as unknown as BranchStep);
+    const service = new ProjectAppendService(
+      history as never,
+      prepare as unknown as PrepareStep,
+      branch as unknown as BranchStep,
+    );
     return { run, docs, stats, prepare, branch, service };
   }
 

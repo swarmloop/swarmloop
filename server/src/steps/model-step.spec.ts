@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
+import type { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
 import { launchAgent } from './agent-step';
 import { agentFailure, combineAgentResults } from './shared/agent-result';
 import { modelVisit } from './shared/model-visit';
@@ -9,7 +9,10 @@ import { AGENT_LANGUAGE_RULE, skillPrompt, workingDirectoryBlock } from './share
 
 describe('working directory block', () => {
   it('names the single scratch directory mounted at /work', () => {
-    const text = workingDirectoryBlock(['run-example'], [{ hostPath: '/tmp/run-example-missing', containerPath: '/work' }]);
+    const text = workingDirectoryBlock(
+      ['run-example'],
+      [{ hostPath: '/tmp/run-example-missing', containerPath: '/work' }],
+    );
     expect(text).toBe(
       [
         'The only working directory is /work (run-example). It has no source files.',
@@ -49,9 +52,17 @@ describe('working directory block', () => {
   });
 
   it('puts the working directory before the skill text', () => {
-    const prompt = skillPrompt('research', '{"prompt":"hello"}', ['run-example'], [], [{ hostPath: '/tmp/run-example', containerPath: '/work' }]);
+    const prompt = skillPrompt(
+      'research',
+      '{"prompt":"hello"}',
+      ['run-example'],
+      [],
+      [{ hostPath: '/tmp/run-example', containerPath: '/work' }],
+    );
     const pathAt = prompt.indexOf('The only working directory is /work (run-example).');
-    const ruleAt = prompt.indexOf('Do not start a service, a database, or the application. Do not run tests on this machine.');
+    const ruleAt = prompt.indexOf(
+      'Do not start a service, a database, or the application. Do not run tests on this machine.',
+    );
     const skillAt = prompt.indexOf('# Research');
     expect(pathAt).toBe(0);
     expect(ruleAt).toBeGreaterThan(pathAt);
@@ -194,7 +205,16 @@ describe('combineAgentResults', () => {
     const folded = combineAgentResults([
       { ...emptyAgent(), output: first, killReason: 'time', exitCode: 1, tokensIn: 10, tokensOut: 4, calls: 1 },
       { ...emptyAgent(), output: second, killReason: 'time', exitCode: 1, tokensIn: 5, tokensOut: 2, calls: 1 },
-      { ...emptyAgent(), output: third, resumed: true, killReason: null, exitCode: 0, tokensIn: 1, tokensOut: 1, calls: 1 },
+      {
+        ...emptyAgent(),
+        output: third,
+        resumed: true,
+        killReason: null,
+        exitCode: 0,
+        tokensIn: 1,
+        tokensOut: 1,
+        calls: 1,
+      },
     ]);
     const log = folded?.output ?? '';
     expect(log.startsWith(first)).toBe(true);
@@ -236,13 +256,15 @@ describe('agentFailure', () => {
   });
 
   it('includes a short process error', () => {
-    expect(agentFailure({ ...emptyAgent(), exitCode: 1, output: 'E2BIG: spawn docker E2BIG\n' }, 'code-review', 'agent')).toBe(
-      'code-review failed: E2BIG: spawn docker E2BIG',
-    );
+    expect(
+      agentFailure({ ...emptyAgent(), exitCode: 1, output: 'E2BIG: spawn docker E2BIG\n' }, 'code-review', 'agent'),
+    ).toBe('code-review failed: E2BIG: spawn docker E2BIG');
   });
 
   it('drops a long stream', () => {
-    expect(agentFailure({ ...emptyAgent(), exitCode: 1, output: 'x'.repeat(501) }, 'code-review', 'agent')).toBe('code-review failed');
+    expect(agentFailure({ ...emptyAgent(), exitCode: 1, output: 'x'.repeat(501) }, 'code-review', 'agent')).toBe(
+      'code-review failed',
+    );
   });
 
   it('fails a clean exit when a write was refused', () => {
@@ -252,7 +274,8 @@ describe('agentFailure', () => {
         type: 'system',
         subtype: 'permission_denied',
         tool_name: 'Write',
-        message: "Claude requested permissions to write to /work/swarmloop/nest/src/steps/step.ts, but you haven't granted it yet.",
+        message:
+          "Claude requested permissions to write to /work/swarmloop/nest/src/steps/step.ts, but you haven't granted it yet.",
       }),
     ].join('\n');
     expect(agentFailure({ ...emptyAgent(), exitCode: 0, output }, 'implement', 'agent')).toBe(

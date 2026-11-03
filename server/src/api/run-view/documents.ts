@@ -1,7 +1,12 @@
-import { DocumentEntity } from '../../history/entities';
+import type { DocumentEntity } from '../../history/entities';
 import { composedReturn } from '../../steps/shared/handoff';
 
-export function belongsToVisit(document: DocumentEntity, statId: number, kinds: string[], latestVisit: boolean): boolean {
+export function belongsToVisit(
+  document: DocumentEntity,
+  statId: number,
+  kinds: string[],
+  latestVisit: boolean,
+): boolean {
   if (!kinds.includes(document.kind)) {
     return false;
   }
@@ -32,7 +37,12 @@ export function withReturnNotes<T extends { attempt: number; documents: ReturnTy
   return visits;
 }
 
-export function documentView(document: DocumentEntity): { kind: string; attempt: number; body: string; createdAt: string } {
+export function documentView(document: DocumentEntity): {
+  kind: string;
+  attempt: number;
+  body: string;
+  createdAt: string;
+} {
   return { kind: document.kind, attempt: document.attempt, body: document.body, createdAt: document.createdAt };
 }
 
@@ -57,7 +67,10 @@ export function filesOf(documents: DocumentEntity[]): { name: string; path: stri
   return [...files.values()];
 }
 
-function keepFile(files: Map<string, { name: string; path: string; body: string | null }>, row: { name: string; path: string; body: string | null }): void {
+function keepFile(
+  files: Map<string, { name: string; path: string; body: string | null }>,
+  row: { name: string; path: string; body: string | null },
+): void {
   const key = `${row.name}\0${row.path}`;
   const previous = files.get(key);
   if (!previous || row.body !== null) {
@@ -65,6 +78,11 @@ function keepFile(files: Map<string, { name: string; path: string; body: string 
   }
 }
 
-function fileRow(name: string, path: string, encoding: string | undefined, body: string | null | undefined): { name: string; path: string; body: string | null } {
+function fileRow(
+  name: string,
+  path: string,
+  encoding: string | undefined,
+  body: string | null | undefined,
+): { name: string; path: string; body: string | null } {
   return { name, path, body: encoding === 'base64' ? null : (body ?? null) };
 }

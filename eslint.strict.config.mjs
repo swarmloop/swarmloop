@@ -2,7 +2,8 @@ import baseConfig from './eslint.config.mjs';
 import tseslint from 'typescript-eslint';
 
 const typedFiles = ['**/*.{ts,tsx}'];
-const maxLines = (max) => ['error', { max, skipBlankLines: true, skipComments: true }];
+// Size rules are warnings until part 51, after the split parts (35-38) have broken up the large legacy files.
+const maxLines = (max) => ['warn', { max, skipBlankLines: true, skipComments: true }];
 
 export default tseslint.config(
   ...baseConfig,
@@ -21,7 +22,7 @@ export default tseslint.config(
       '@typescript-eslint/explicit-module-boundary-types': 'error',
       '@typescript-eslint/no-explicit-any': 'error',
       'max-lines': maxLines(400),
-      complexity: ['error', 20],
+      complexity: ['warn', 20],
     },
   },
   {

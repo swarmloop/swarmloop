@@ -4,7 +4,12 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 
 export const CHECKOUT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
-export function resolveCheckoutPath(repoRoot: string, checkoutsRoot: string | undefined, name: string, storedPath: string): string {
+export function resolveCheckoutPath(
+  repoRoot: string,
+  checkoutsRoot: string | undefined,
+  name: string,
+  storedPath: string,
+): string {
   const stored = storedPath.trim();
   if (stored.length > 0 && isAbsolute(stored)) {
     return stored;
@@ -25,7 +30,9 @@ export function listGitProjects(repoRoot: string, checkoutsRoot: string | undefi
   if (!existsSync(root) || !statSync(root).isDirectory()) {
     throw new SwarmloopError('CHECKOUTS_ROOT is missing');
   }
-  return readdirSync(root).filter((name) => isGitProject(root, name)).sort();
+  return readdirSync(root)
+    .filter((name) => isGitProject(root, name))
+    .sort();
 }
 
 export function storedProjects(body: string | null | undefined): string[] {

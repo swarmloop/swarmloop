@@ -1,4 +1,5 @@
-import { PHASES, PHASE_STEPS, PhaseName, STEPS, StepName } from '../contract/steps';
+import type { PhaseName, StepName } from '../contract/steps';
+import { PHASES, PHASE_STEPS, STEPS } from '../contract/steps';
 
 export interface PipelineResult {
   exitCode: number;
@@ -80,7 +81,11 @@ export function countedVisits(stats: { id: number; step: string }[], step: strin
 }
 
 /** Failed visits of this step from the mark onward. The visit recorded as the mark still counts. */
-export function failedLaunches(stats: { id: number; step: string; status: string }[], step: string, mark: number): number {
+export function failedLaunches(
+  stats: { id: number; step: string; status: string }[],
+  step: string,
+  mark: number,
+): number {
   const from = mark > 0 ? mark : 1;
   return stats.filter((item) => item.step === step && item.status === 'failed' && item.id >= from).length;
 }
@@ -146,12 +151,19 @@ export interface StepOptions {
 
 /** Keep the output already on disk when the process dies. */
 /** A finished success is done. Waiting is only a real pause for a person. */
-export function visitStatus(outcome: 'ok' | 'failed' | 'blocked' | 'waiting'): 'done' | 'failed' | 'blocked' | 'waiting' {
+export function visitStatus(
+  outcome: 'ok' | 'failed' | 'blocked' | 'waiting',
+): 'done' | 'failed' | 'blocked' | 'waiting' {
   return outcome === 'ok' ? 'done' : outcome;
 }
 
 /** A failed or paused visit of this step may finish. A step that has not started may not. */
-export function continuesSameStep(status: string, currentStep: string, step: string, lastVisit: string | null): boolean {
+export function continuesSameStep(
+  status: string,
+  currentStep: string,
+  step: string,
+  lastVisit: string | null,
+): boolean {
   if (currentStep !== step) {
     return false;
   }

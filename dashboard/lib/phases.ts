@@ -12,7 +12,7 @@ export const PHASE_LABEL: Record<PhaseName, string> = {
 
 export function expandReviewPhases<T extends { steps: { name: string }[] }>(phases: T[]): T[] {
   return phases.map((phase) => {
-    if (phase.steps.some((step) => (REVIEW_STEPS as readonly string[]).includes(step.name))) {
+    if (phase.steps.some((step) => REVIEW_STEPS.includes(step.name))) {
       return phase;
     }
     const parent = phase.steps.find((step) => step.name === 'code-review');
@@ -39,7 +39,10 @@ export function markReviewFinished<T extends { steps: { name: string; status: st
   }));
 }
 
-export function markReviewLive<T extends { steps: { name: string; status: string; current: boolean }[] }>(phases: T[], name: string): T[] {
+export function markReviewLive<T extends { steps: { name: string; status: string; current: boolean }[] }>(
+  phases: T[],
+  name: string,
+): T[] {
   return phases.map((phase) => ({
     ...phase,
     steps: phase.steps.map((step) => (step.name === name ? { ...step, status: 'running', current: true } : step)),
@@ -68,12 +71,14 @@ export function keepOpenReviews<T extends { steps: { name: string; status: strin
 }
 
 function reviewChip(name: string): boolean {
-  return name === 'code-review' || (REVIEW_STEPS as readonly string[]).includes(name);
+  return name === 'code-review' || REVIEW_STEPS.includes(name);
 }
 
 /** Live agent files are `implement-swarmloop`; the board watches `implement`. */
 export function liveLogStep(entry: string, watched: string): boolean {
-  const owner = [...STEPS, ...REVIEW_STEPS].filter((name) => entry === name || entry.startsWith(`${name}-`)).sort((left, right) => right.length - left.length)[0];
+  const owner = [...STEPS, ...REVIEW_STEPS]
+    .filter((name) => entry === name || entry.startsWith(`${name}-`))
+    .sort((left, right) => right.length - left.length)[0];
   return owner === watched;
 }
 

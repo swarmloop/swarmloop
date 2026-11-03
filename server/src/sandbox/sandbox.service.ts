@@ -5,7 +5,22 @@ import { join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { BindMount, containerName, emptyEnvFile, EnvMask, imageName, isLocalHost, prepareStateDir, SandboxLaunch, SandboxMount, resolveDaemonPath, sandboxArgs, sandboxNetworkName, hostName, stepContainers } from './sandbox-launch';
+import {
+  BindMount,
+  containerName,
+  emptyEnvFile,
+  EnvMask,
+  imageName,
+  isLocalHost,
+  prepareStateDir,
+  SandboxLaunch,
+  SandboxMount,
+  resolveDaemonPath,
+  sandboxArgs,
+  sandboxNetworkName,
+  hostName,
+  stepContainers,
+} from './sandbox-launch';
 
 export type DockerRunner = (args: string[]) => Promise<string>;
 
@@ -48,7 +63,10 @@ export class SandboxService {
     const args = sandboxArgs(full);
     const network = sandboxNetworkName(full.allowHosts);
     if (network) {
-      await this.ensureNetwork(network, full.allowHosts.every((entry) => isLocalHost(hostName(entry))));
+      await this.ensureNetwork(
+        network,
+        full.allowHosts.every((entry) => isLocalHost(hostName(entry))),
+      );
     }
     const name = args[args.indexOf('--name') + 1] ?? '';
     await this.remove(name);

@@ -1,4 +1,5 @@
-import { activeDurationMs, DurationPart } from './active-duration';
+import type { DurationPart } from './active-duration';
+import { activeDurationMs } from './active-duration';
 
 function part(step: string, durationMs: number, extra: Partial<DurationPart> = {}): DurationPart {
   return {
@@ -66,7 +67,10 @@ describe('activeDurationMs', () => {
   });
 
   it('does not match a reviewer to a visit when only one of them stored the visit start', () => {
-    const total = activeDurationMs([part('code-review-quality', 8_000), part('code-review', 1_000, { stepStartedAt: null, reportMs: 500 })]);
+    const total = activeDurationMs([
+      part('code-review-quality', 8_000),
+      part('code-review', 1_000, { stepStartedAt: null, reportMs: 500 }),
+    ]);
 
     expect(total).toBe(1_000);
   });

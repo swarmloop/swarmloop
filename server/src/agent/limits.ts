@@ -1,4 +1,5 @@
-import { StreamPiece, takeAnswer } from './stream';
+import type { StreamPiece } from './stream';
+import { takeAnswer } from './stream';
 
 export type KillReason = 'time' | 'idle' | 'usd' | 'tokens' | 'calls';
 
@@ -59,7 +60,13 @@ export function retryCrash(input: {
   maxLaunches: number;
   decided: boolean;
 }): boolean {
-  if (input.exitCode === 0 || input.killReason !== null || input.halted || input.attempts >= input.maxLaunches || input.decided) {
+  if (
+    input.exitCode === 0 ||
+    input.killReason !== null ||
+    input.halted ||
+    input.attempts >= input.maxLaunches ||
+    input.decided
+  ) {
     return false;
   }
   return !callsExceeded(input.callsSoFar, input.maxCalls);
@@ -98,7 +105,11 @@ export function hasModelDecision(state: DecisionWatch): boolean {
 
 function decisionLine(text: string): boolean {
   return text.split(/\r?\n/).some((line) => {
-    const cleaned = line.trim().replace(/^[`*]+/, '').replace(/[`*]+$/, '').trim();
+    const cleaned = line
+      .trim()
+      .replace(/^[`*]+/, '')
+      .replace(/[`*]+$/, '')
+      .trim();
     return /^decision:\s*(ok|return|approve|revise)\s*$/.test(cleaned);
   });
 }
@@ -160,7 +171,10 @@ export function priceTokens(
   }
   const read = row.cacheReadPerMillion ?? 0;
   const write = row.cacheWritePerMillion ?? 0;
-  return (tokensIn * row.inputPerMillion + cacheRead * read + cacheWrite * write + tokensOut * row.outputPerMillion) / 1_000_000;
+  return (
+    (tokensIn * row.inputPerMillion + cacheRead * read + cacheWrite * write + tokensOut * row.outputPerMillion) /
+    1_000_000
+  );
 }
 
 function findPrice(model: string, table: Record<string, ModelPrice>): ModelPrice | null {
@@ -178,5 +192,9 @@ function findPrice(model: string, table: Record<string, ModelPrice>): ModelPrice
 }
 
 function canonical(value: string): string {
-  return value.trim().toLowerCase().replace(/(\d)\.(\d)/g, '$1-$2').replace(EFFORT, '');
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/(\d)\.(\d)/g, '$1-$2')
+    .replace(EFFORT, '');
 }

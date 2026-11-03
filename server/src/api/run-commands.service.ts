@@ -66,7 +66,10 @@ export class RunCommandsService {
     if (!path && !prompt && !existing?.prompt) {
       throw new BadRequestException('prompt is missing');
     }
-    const projects = storedProjects(existing?.projects).length > 0 ? storedProjects(existing?.projects) : this.projectNames(body.projects);
+    const projects =
+      storedProjects(existing?.projects).length > 0
+        ? storedProjects(existing?.projects)
+        : this.projectNames(body.projects);
     if (!path && projects.length === 0) {
       throw new BadRequestException('projects is missing');
     }
@@ -108,11 +111,7 @@ export class RunCommandsService {
     return this.queries.flow(key);
   }
 
-  async startStep(
-    key: string,
-    step: string,
-    body: StartStepBody = {},
-  ): Promise<{ http: number; body: RunRef }> {
+  async startStep(key: string, step: string, body: StartStepBody = {}): Promise<{ http: number; body: RunRef }> {
     const name = pipelineStepOf(step);
     if (!isStep(name) || name === 'done') {
       throw new BadRequestException(`${step} is unknown`);
@@ -192,7 +191,10 @@ export class RunCommandsService {
   private async openSession(key: string): Promise<{ key: string; run: RunEntity | null }> {
     const ticket = ticketKey(key);
     const family = (await this.history.listRuns()).filter((run) => ticketKey(run.key) === ticket);
-    const session = nextSessionKey(ticket, family.map((run) => run.key));
+    const session = nextSessionKey(
+      ticket,
+      family.map((run) => run.key),
+    );
     return { key: session, run: await this.history.findRun(session) };
   }
 

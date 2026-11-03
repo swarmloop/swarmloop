@@ -7,11 +7,12 @@ import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
-import { Repository } from 'typeorm';
+import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DocumentEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
-import { AGENT_RUNNER, AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
+import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
+import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -29,7 +30,9 @@ describe('research step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-20', 'billing-api'), { recursive: true });
     mkdirSync(join(root, 'worktrees', 'PROJ-20', 'catalog-api'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result(['summary:', '- looking', 'questions:', '- which field is optional?'].join('\n')));
+    const agent = jest
+      .fn()
+      .mockResolvedValue(result(['summary:', '- looking', 'questions:', '- which field is optional?'].join('\n')));
     const app = await boot(root, agent);
     const history = app.get(HistoryService);
     const seeded = await history.begin('PROJ-20', 'prepare');
@@ -78,7 +81,9 @@ describe('research step', () => {
       const done = await app.get(PipelineService).step('research', 'PROJ-22');
       expect(done.exitCode).toBe(0);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
-      expect(input.mounts).toEqual([{ hostPath: join(root, 'worktrees', 'PROJ-22', 'app'), containerPath: '/work/app' }]);
+      expect(input.mounts).toEqual([
+        { hostPath: join(root, 'worktrees', 'PROJ-22', 'app'), containerPath: '/work/app' },
+      ]);
       expect(input.prompt).toContain('app');
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       expect((await documents.find({ where: { kind: 'repos' } }))[0]?.body).toBe('app\n');
@@ -332,7 +337,10 @@ async function boot(root: string, agent: jest.Mock) {
 
 async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeof boot> {
   mkdirSync(join(root, 'data'), { recursive: true });
-  writeFileSync(join(root, 'data', 'price-cache-cursor.json'), `${JSON.stringify({ fetchedAt: new Date().toISOString(), prices: {} })}\n`);
+  writeFileSync(
+    join(root, 'data', 'price-cache-cursor.json'),
+    `${JSON.stringify({ fetchedAt: new Date().toISOString(), prices: {} })}\n`,
+  );
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })
@@ -432,5 +440,10 @@ async function writeEnv(root: string, overrides: Record<string, string> = {}): P
     ...overrides,
     SWARMLOOP_ROOT: root,
   };
-  await writeFile(join(root, '.env'), `${Object.entries(values).map(([key, value]) => `${key}=${value}`).join('\n')}\n`);
+  await writeFile(
+    join(root, '.env'),
+    `${Object.entries(values)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n')}\n`,
+  );
 }

@@ -5,8 +5,9 @@ import { basename, join } from 'path';
 import { Writable } from 'stream';
 import { panelUrl, planEntries, progressText, serve, Sloop } from './agent';
 import { encodeMessage, pushFrames } from './framing';
-import { FlowView } from '../contract/api';
-import { HttpServerApi, ServerApi } from './server-api';
+import type { FlowView } from '../contract/api';
+import type { ServerApi } from './server-api';
+import { HttpServerApi } from './server-api';
 import { nestCheckout } from './paths';
 
 describe('sloop', () => {
@@ -33,7 +34,11 @@ describe('sloop', () => {
     expect(progressText({ ...flow, sentence: 'Answer the open questions before the run continues.' })).toBe(
       'PROJ-1 · planning · research — running\n\nAnswer the open questions before the run continues.\n',
     );
-    expect(planEntries(flow)).toContainEqual({ content: 'planning · research — running', priority: 'high', status: 'in_progress' });
+    expect(planEntries(flow)).toContainEqual({
+      content: 'planning · research — running',
+      priority: 'high',
+      status: 'in_progress',
+    });
   });
 
   it('frames json-rpc as one line', () => {
@@ -77,13 +82,17 @@ describe('sloop', () => {
         ],
       }),
     });
-    const init = await agent.handle({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 2 } }, note(notes));
+    const init = await agent.handle(
+      { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 2 } },
+      note(notes),
+    );
     expect(init).toMatchObject({ id: 1, result: { protocolVersion: 2, agentInfo: { name: 'sloop' } } });
     const listed = await agent.handle(
       { jsonrpc: '2.0', id: 2, method: 'session/list', params: { cwd: '/work/app' } },
       note(notes),
     );
-    const sessions = (listed as { result: { sessions: { sessionId: string; cwd: string; title: string }[] } }).result.sessions;
+    const sessions = (listed as { result: { sessions: { sessionId: string; cwd: string; title: string }[] } }).result
+      .sessions;
     expect(sessions[0].sessionId).toBe('PROJ-1');
     expect(sessions[0].cwd).toBe('/work/app');
     expect(sessions[0].title).toContain('$0.14 · PROJ-1 · running · research');
@@ -125,7 +134,12 @@ describe('sloop', () => {
     });
     await agent.handle({ jsonrpc: '2.0', id: 1, method: 'session/new', params: { cwd: '/work/app' } }, note(notes));
     await agent.handle(
-      { jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: '/resume' }] } },
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/prompt',
+        params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: '/resume' }] },
+      },
       note(notes),
     );
     expect(calls).toEqual(['PROJ-1']);
@@ -153,15 +167,25 @@ describe('sloop', () => {
     });
     const folder = await mkdtemp(join(tmpdir(), 'sloop-demo-'));
     await mkdir(join(folder, '.git'));
-    await agent.handle({ jsonrpc: '2.0', id: 1, method: 'session/new', params: { cwd: folder, mcpServers: [] } }, note(notes));
+    await agent.handle(
+      { jsonrpc: '2.0', id: 1, method: 'session/new', params: { cwd: folder, mcpServers: [] } },
+      note(notes),
+    );
     const prompted = await agent.handle(
-      { jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: 'Ship the field' }] } },
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/prompt',
+        params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: 'Ship the field' }] },
+      },
       note(notes),
     );
     expect(created).toEqual([{ prompt: 'Ship the field', projects: [basename(folder)] }]);
     expect(prompted).toMatchObject({ result: { stopReason: 'end_turn' } });
     expect(text(notes)).toContain(`${panelUrl(null)}\n`);
-    const titleAt = notes.findIndex((item) => (item.params as { update?: { title?: string } })?.update?.title === 'PROJ-1');
+    const titleAt = notes.findIndex(
+      (item) => (item.params as { update?: { title?: string } })?.update?.title === 'PROJ-1',
+    );
     const startedAt = notes.findIndex((item) => JSON.stringify(item).includes('PROJ-1 started'));
     expect(titleAt).toBeGreaterThanOrEqual(0);
     expect(startedAt).toBeGreaterThan(titleAt);
@@ -174,7 +198,12 @@ describe('sloop', () => {
       return { text: 'noted' };
     };
     await agent.handle(
-      { jsonrpc: '2.0', id: 3, method: 'session/prompt', params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: 'why?' }] } },
+      {
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'session/prompt',
+        params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: 'why?' }] },
+      },
       note(notes),
     );
     expect(chats).toEqual([{ key: 'PROJ-1', body: { prompt: 'why?', skill: undefined, cwd: folder, mcpServers: [] } }]);
@@ -211,28 +240,61 @@ describe('sloop', () => {
     expect(loaded).toMatchObject({ result: { sessionId: 'PROJ-1' } });
     expect(text(notes)).toContain(panelUrl('PROJ-1'));
     expect(text(notes)).toContain('PROJ-1 · planning · research — waiting');
-    expect(notes.some((item) => (item.params as { update?: { sessionUpdate?: string; title?: string } })?.update?.sessionUpdate === 'session_info_update')).toBe(true);
+    expect(
+      notes.some(
+        (item) =>
+          (item.params as { update?: { sessionUpdate?: string; title?: string } })?.update?.sessionUpdate ===
+          'session_info_update',
+      ),
+    ).toBe(true);
     expect(text(notes)).toContain('research is waiting');
     expect(text(notes)).not.toContain('- brainstorm');
-    expect(notes.some((item) => (item.params as { update?: { sessionUpdate?: string } })?.update?.sessionUpdate === 'plan')).toBe(true);
+    expect(
+      notes.some((item) => (item.params as { update?: { sessionUpdate?: string } })?.update?.sessionUpdate === 'plan'),
+    ).toBe(true);
     await agent.handle(
-      { jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId: 'PROJ-1', prompt: [{ type: 'text', text: '/replay Ship it again' }] } },
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/prompt',
+        params: { sessionId: 'PROJ-1', prompt: [{ type: 'text', text: '/replay Ship it again' }] },
+      },
       note(notes),
     );
     await agent.handle(
-      { jsonrpc: '2.0', id: 3, method: 'session/prompt', params: { sessionId: 'PROJ-1', prompt: [{ type: 'text', text: '/step commit check the form' }] } },
+      {
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'session/prompt',
+        params: { sessionId: 'PROJ-1', prompt: [{ type: 'text', text: '/step commit check the form' }] },
+      },
       note(notes),
     );
     await agent.handle(
-      { jsonrpc: '2.0', id: 4, method: 'session/prompt', params: { sessionId: 'PROJ-1', prompt: [{ type: 'text', text: '/research' }] } },
+      {
+        jsonrpc: '2.0',
+        id: 4,
+        method: 'session/prompt',
+        params: { sessionId: 'PROJ-1', prompt: [{ type: 'text', text: '/research' }] },
+      },
       note(notes),
     );
     await agent.handle(
-      { jsonrpc: '2.0', id: 6, method: 'session/prompt', params: { sessionId: 'PROJ-1', prompt: [{ type: 'text', text: '/resume' }] } },
+      {
+        jsonrpc: '2.0',
+        id: 6,
+        method: 'session/prompt',
+        params: { sessionId: 'PROJ-1', prompt: [{ type: 'text', text: '/resume' }] },
+      },
       note(notes),
     );
     await agent.handle(
-      { jsonrpc: '2.0', id: 5, method: 'session/prompt', params: { sessionId: 'PROJ-1', prompt: [{ type: 'text', text: '/review look at the branch' }] } },
+      {
+        jsonrpc: '2.0',
+        id: 5,
+        method: 'session/prompt',
+        params: { sessionId: 'PROJ-1', prompt: [{ type: 'text', text: '/review look at the branch' }] },
+      },
       note(notes),
     );
     expect(calls).toEqual([
@@ -263,7 +325,12 @@ describe('sloop', () => {
     await mkdir(join(folder, '.git'));
     await agent.handle({ jsonrpc: '2.0', id: 1, method: 'session/new', params: { cwd: folder } }, note(notes));
     await agent.handle(
-      { jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: 'Ship' }] } },
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/prompt',
+        params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: 'Ship' }] },
+      },
       note(notes),
     );
     expect(text(notes)).toContain('thinking');
@@ -293,7 +360,12 @@ describe('sloop', () => {
     await mkdir(join(folder, '.git'));
     await agent.handle({ jsonrpc: '2.0', id: 1, method: 'session/new', params: { cwd: folder } }, note(notes));
     await agent.handle(
-      { jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: 'Ship' }] } },
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/prompt',
+        params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: 'Ship' }] },
+      },
       note(notes),
     );
     const said = text(notes);
@@ -326,7 +398,12 @@ describe('sloop', () => {
     await mkdir(join(folder, '.git'));
     await agent.handle({ jsonrpc: '2.0', id: 1, method: 'session/new', params: { cwd: folder } }, note(notes));
     const prompted = await agent.handle(
-      { jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: 'Ship' }] } },
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/prompt',
+        params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: 'Ship' }] },
+      },
       note(notes),
     );
     expect(polls).toBe(3);
@@ -342,9 +419,17 @@ describe('sloop', () => {
         return { key: 'PROJ-9', status: 'done' };
       },
     });
-    await agent.handle({ jsonrpc: '2.0', id: 1, method: 'session/new', params: { cwd: '/no/such/sloop-demo' } }, () => undefined);
     await agent.handle(
-      { jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: '/review ./other look here' }] } },
+      { jsonrpc: '2.0', id: 1, method: 'session/new', params: { cwd: '/no/such/sloop-demo' } },
+      () => undefined,
+    );
+    await agent.handle(
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/prompt',
+        params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: '/review ./other look here' }] },
+      },
       () => undefined,
     );
     expect(created).toEqual(['/no/such/sloop-demo/other look here']);
@@ -353,35 +438,46 @@ describe('sloop', () => {
   it('stops the feature when the session is cancelled', async () => {
     let release = (): void => undefined;
     const stopped: string[] = [];
-    const { agent } = harness({
-      create: async () => ({ key: 'PROJ-1', status: 'started' }),
-      flow: async () =>
-        flowView({
-          key: 'PROJ-1',
-          status: 'running',
-          currentStep: 'research',
-          updatedAt: '2026-10-17T19:04:00.000Z',
-          sentence: 'working',
-          phases: [],
-        }),
-      stop: async (key) => {
-        stopped.push(key);
-        return { key, status: 'stopped' };
+    const { agent } = harness(
+      {
+        create: async () => ({ key: 'PROJ-1', status: 'started' }),
+        flow: async () =>
+          flowView({
+            key: 'PROJ-1',
+            status: 'running',
+            currentStep: 'research',
+            updatedAt: '2026-10-17T19:04:00.000Z',
+            sentence: 'working',
+            phases: [],
+          }),
+        stop: async (key) => {
+          stopped.push(key);
+          return { key, status: 'stopped' };
+        },
       },
-    }, async () => {
-      await new Promise<void>((resolve) => {
-        release = resolve;
-      });
-    });
+      async () => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      },
+    );
     const folder = await mkdtemp(join(tmpdir(), 'sloop-demo-'));
     await mkdir(join(folder, '.git'));
     await agent.handle({ jsonrpc: '2.0', id: 1, method: 'session/new', params: { cwd: folder } }, () => undefined);
     const pending = agent.handle(
-      { jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: 'Ship' }] } },
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/prompt',
+        params: { sessionId: 'sloop-1-0', prompt: [{ type: 'text', text: 'Ship' }] },
+      },
       () => undefined,
     );
     await new Promise((resolve) => setImmediate(resolve));
-    await agent.handle({ jsonrpc: '2.0', id: 3, method: 'session/cancel', params: { sessionId: 'sloop-1-0' } }, () => undefined);
+    await agent.handle(
+      { jsonrpc: '2.0', id: 3, method: 'session/cancel', params: { sessionId: 'sloop-1-0' } },
+      () => undefined,
+    );
     release();
     await pending;
     expect(stopped).toEqual(['PROJ-1']);
@@ -397,20 +493,35 @@ describe('sloop', () => {
         throw new Error('chat failed');
       },
     });
-    await agent.handle({ jsonrpc: '2.0', id: 1, method: 'session/load', params: { sessionId: 'PROJ-1', cwd: '/no/such/sloop-demo' } }, () => undefined);
+    await agent.handle(
+      { jsonrpc: '2.0', id: 1, method: 'session/load', params: { sessionId: 'PROJ-1', cwd: '/no/such/sloop-demo' } },
+      () => undefined,
+    );
     const pending = agent.handle(
-      { jsonrpc: '2.0', id: 2, method: 'session/prompt', params: { sessionId: 'PROJ-1', prompt: [{ type: 'text', text: 'hi' }] } },
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'session/prompt',
+        params: { sessionId: 'PROJ-1', prompt: [{ type: 'text', text: 'hi' }] },
+      },
       () => undefined,
     );
     await new Promise((resolve) => setImmediate(resolve));
-    await agent.handle({ jsonrpc: '2.0', id: 3, method: 'session/cancel', params: { sessionId: 'PROJ-1' } }, () => undefined);
+    await agent.handle(
+      { jsonrpc: '2.0', id: 3, method: 'session/cancel', params: { sessionId: 'PROJ-1' } },
+      () => undefined,
+    );
     release();
     await expect(pending).resolves.toMatchObject({ result: { stopReason: 'cancelled' } });
   });
 
   it('reports a nest error from the http client', async () => {
     const fetchImpl = jest.fn() as jest.MockedFunction<typeof fetch>;
-    fetchImpl.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ message: 'prompt is missing' }) } as Response);
+    fetchImpl.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ message: 'prompt is missing' }),
+    } as Response);
     const api = new HttpServerApi('http://127.0.0.1:3920', fetchImpl);
     await expect(api.create({ prompt: '' })).rejects.toThrow('prompt is missing');
     fetchImpl.mockRejectedValueOnce(new Error('connect failed'));
@@ -418,7 +529,9 @@ describe('sloop', () => {
   });
 });
 
-function note(notes: { method?: string; params?: unknown }[]): (message: { method?: string; params?: unknown }) => void {
+function note(
+  notes: { method?: string; params?: unknown }[],
+): (message: { method?: string; params?: unknown }) => void {
   return (message) => notes.push(message);
 }
 
@@ -604,7 +717,11 @@ describe('stdio serve', () => {
       },
     });
     const { agent } = harness({});
-    await serveOnce(agent, output, encodeMessage({ jsonrpc: '2.0', id: 7, method: 'initialize', params: { protocolVersion: 1 } }));
+    await serveOnce(
+      agent,
+      output,
+      encodeMessage({ jsonrpc: '2.0', id: 7, method: 'initialize', params: { protocolVersion: 1 } }),
+    );
     const parsed = pushFrames(Buffer.alloc(0), Buffer.concat(chunks));
     expect(parsed.messages[0]).toMatchObject({ id: 7, result: { protocolVersion: 1 } });
   });

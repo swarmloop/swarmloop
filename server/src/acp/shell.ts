@@ -4,6 +4,7 @@ import { existsSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { isAbsolute, join, resolve } from 'path';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
+import type { SandboxMount } from '../sandbox/sandbox-launch';
 import {
   agentStateDir,
   containerName,
@@ -16,14 +17,16 @@ import {
   sandboxArgs,
   sandboxNetworkName,
   sandboxUserId,
-  SandboxMount,
 } from '../sandbox/sandbox-launch';
 import { collectEnvMasks } from '../sandbox/sandbox.service';
-import { ShellFeature, ShellMatch } from '../contract/api';
-import { HttpServerApi, ServerApi } from './server-api';
+import type { ShellFeature, ShellMatch } from '../contract/api';
+import type { ServerApi } from './server-api';
+import { HttpServerApi } from './server-api';
 import { hostCheckout, nestCheckout } from './paths';
-import { parseShell, pickSnapshot, ShellCommand } from './shell-command';
-import { readShellConfig, ShellConfig } from './shell-env';
+import type { ShellCommand } from './shell-command';
+import { parseShell, pickSnapshot } from './shell-command';
+import type { ShellConfig } from './shell-env';
+import { readShellConfig } from './shell-env';
 
 export async function runShell(argv: string[], cwd = process.cwd()): Promise<void> {
   const root = resolve(__dirname, '../../..');
@@ -38,7 +41,10 @@ export async function runShell(argv: string[], cwd = process.cwd()): Promise<voi
 
 async function dispatch(argv: string[], cwd: string, root: string, api: ServerApi): Promise<void> {
   const listed = await api.list();
-  const command = parseShell(argv, listed.runs.map((run) => run.key));
+  const command = parseShell(
+    argv,
+    listed.runs.map((run) => run.key),
+  );
   const config = readShellConfig(join(root, '.env'));
   if (command.type === 'review') {
     await review(api, command, cwd, root, config.checkoutsRoot);
@@ -144,7 +150,13 @@ function ask(question: string): Promise<string> {
   });
 }
 
-async function attach(api: ServerApi, feature: ShellFeature, vendor: string[], config: ShellConfig, root: string): Promise<void> {
+async function attach(
+  api: ServerApi,
+  feature: ShellFeature,
+  vendor: string[],
+  config: ShellConfig,
+  root: string,
+): Promise<void> {
   const runtime = runtimeFor(feature.runtime);
   if (!config.model) {
     throw new Error('MODEL_IMPLEMENT is missing');
@@ -224,14 +236,19 @@ async function ensureNetwork(allowHosts: string[]): Promise<void> {
 
 function containerRunning(name: string): Promise<boolean | null> {
   return new Promise((resolveRunning) => {
-    execFile('docker', ['inspect', '--format', '{{.State.Running}}', name], { encoding: 'utf8' }, (error, stdout, stderr) => {
-      if (error) {
-        const text = `${stderr ?? ''} ${error.message}`;
-        resolveRunning(text.includes('No such object') || text.includes('No such container') ? false : null);
-        return;
-      }
-      resolveRunning(stdout.trim() === 'true');
-    });
+    execFile(
+      'docker',
+      ['inspect', '--format', '{{.State.Running}}', name],
+      { encoding: 'utf8' },
+      (error, stdout, stderr) => {
+        if (error) {
+          const text = `${stderr ?? ''} ${error.message}`;
+          resolveRunning(text.includes('No such object') || text.includes('No such container') ? false : null);
+          return;
+        }
+        resolveRunning(stdout.trim() === 'true');
+      },
+    );
   });
 }
 

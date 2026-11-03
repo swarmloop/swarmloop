@@ -1,9 +1,9 @@
 import { mkdir, mkdtemp, readFile, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
+import type { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
 import { ChatService } from './chat.service';
 
 describe('chat', () => {
@@ -84,9 +84,15 @@ describe('chat', () => {
       held: () => true,
       latestBody: async () => null,
     };
-    const chat = new ChatService(history as never, config('/tmp'), { assertReady: async () => undefined } as never, { run: jest.fn() } as never, {
-      block: async () => '',
-    } as never);
+    const chat = new ChatService(
+      history as never,
+      config('/tmp'),
+      { assertReady: async () => undefined } as never,
+      { run: jest.fn() } as never,
+      {
+        block: async () => '',
+      } as never,
+    );
     await expect(chat.speak('PROJ-1', { prompt: 'hello' })).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -96,9 +102,15 @@ describe('chat', () => {
       held: () => false,
       latestBody: async () => null,
     };
-    const chat = new ChatService(history as never, config('/tmp'), { assertReady: async () => undefined } as never, { run: jest.fn() } as never, {
-      block: async () => '',
-    } as never);
+    const chat = new ChatService(
+      history as never,
+      config('/tmp'),
+      { assertReady: async () => undefined } as never,
+      { run: jest.fn() } as never,
+      {
+        block: async () => '',
+      } as never,
+    );
     await expect(chat.speak('PROJ-1', { prompt: '  ' })).rejects.toBeInstanceOf(BadRequestException);
   });
 });

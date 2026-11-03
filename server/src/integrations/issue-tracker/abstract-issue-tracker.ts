@@ -1,6 +1,7 @@
-import { FetchFailed, HttpCallDraft, PasteNeeded, SwarmloopError } from '../../core/swarmloop-error';
-import { IssueBundle } from './issue-bundle';
-import { IssueTracker } from './issue-tracker';
+import type { HttpCallDraft } from '../../core/swarmloop-error';
+import { FetchFailed, PasteNeeded, SwarmloopError } from '../../core/swarmloop-error';
+import type { IssueBundle } from './issue-bundle';
+import type { IssueTracker } from './issue-tracker';
 
 export abstract class AbstractIssueTracker implements IssueTracker {
   async fetch(key: string, runDir: string): Promise<{ bundle: IssueBundle; httpCalls: HttpCallDraft[] }> {

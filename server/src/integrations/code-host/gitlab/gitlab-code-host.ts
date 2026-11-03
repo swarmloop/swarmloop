@@ -5,7 +5,15 @@ import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../../core/swarml
 import { request } from '../../http';
 import { remoteProject } from '../../../steps/merge-request/merge-request-record';
 import { AbstractCodeHost } from '../abstract-code-host';
-import { MergeRequestDraft, MergeRequestQuery, MergeRequestRecord, PipelineJob, PipelineRef, PipelineSnapshot, SelectedHost } from '../code-host';
+import {
+  MergeRequestDraft,
+  MergeRequestQuery,
+  MergeRequestRecord,
+  PipelineJob,
+  PipelineRef,
+  PipelineSnapshot,
+  SelectedHost,
+} from '../code-host';
 
 interface GitlabMergeRequest {
   iid?: number;
@@ -69,7 +77,10 @@ export class GitlabCodeHost extends AbstractCodeHost {
     };
   }
 
-  async readBranchPipeline(ref: PipelineRef, jobs = true): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }> {
+  async readBranchPipeline(
+    ref: PipelineRef,
+    jobs = true,
+  ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];
     try {
       const { root: base, headers } = this.credentials();
@@ -94,7 +105,10 @@ export class GitlabCodeHost extends AbstractCodeHost {
       )) as GitlabPipeline;
       const status = detail.status ?? '';
       const scopes = jobScopes(status);
-      const listed = scopes && (jobs || scopes.includes('failed')) ? await this.failedJobs(base, headers, project, id, scopes, calls) : [];
+      const listed =
+        scopes && (jobs || scopes.includes('failed'))
+          ? await this.failedJobs(base, headers, project, id, scopes, calls)
+          : [];
       return { snapshot: { id, status, url: detail.web_url ?? '', jobs: listed }, httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
@@ -153,7 +167,12 @@ export class GitlabCodeHost extends AbstractCodeHost {
     };
   }
 
-  protected updateRequest(root: string, project: string, iid: number, summary: string): { url: string; method: string; payload: string } {
+  protected updateRequest(
+    root: string,
+    project: string,
+    iid: number,
+    summary: string,
+  ): { url: string; method: string; payload: string } {
     return {
       url: `${root}/api/v4/projects/${encodeURIComponent(project)}/merge_requests/${iid}`,
       method: 'PUT',
@@ -182,7 +201,12 @@ export class GitlabCodeHost extends AbstractCodeHost {
     return error instanceof FetchFailed && calls.some((call) => call.statusCode === 409);
   }
 
-  private async readText(url: string, headers: Record<string, string>, calls: HttpCallDraft[], failure: string): Promise<string> {
+  private async readText(
+    url: string,
+    headers: Record<string, string>,
+    calls: HttpCallDraft[],
+    failure: string,
+  ): Promise<string> {
     const response = await request(url, headers, calls);
     this.assertStatus(response.status, calls, failure);
     return response.body.toString('utf8');

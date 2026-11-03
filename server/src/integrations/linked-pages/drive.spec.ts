@@ -26,9 +26,11 @@ describe('drive pages', () => {
   });
 
   it('fails a folder and an unread page instead of storing a partial page', async () => {
-    await expect(loadDrive('https://drive.google.com/drive/folders/folder1', async () => {
-      throw new Error('should not fetch a folder');
-    })).rejects.toThrow('drive is not readable: https://drive.google.com/drive/folders/folder1');
+    await expect(
+      loadDrive('https://drive.google.com/drive/folders/folder1', async () => {
+        throw new Error('should not fetch a folder');
+      }),
+    ).rejects.toThrow('drive is not readable: https://drive.google.com/drive/folders/folder1');
 
     await expect(
       loadDrive('https://docs.google.com/presentation/d/slides1/edit', async () => ({

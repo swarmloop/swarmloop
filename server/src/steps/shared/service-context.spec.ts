@@ -1,5 +1,5 @@
 import { ServiceContextService, pipelineRef, pipelineRefs } from './service-context';
-import { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
+import type { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
 
 const bundle: IssueBundle = {
   key: 'PROJ-1',
@@ -23,7 +23,7 @@ describe('service context', () => {
     latestBody: jest.fn(),
     findRun: jest.fn(async () => ({ codeHost: 'gitlab' })),
   };
-  const service = new ServiceContextService(history as never, tracker as never, hosts as never);
+  const service = new ServiceContextService(history as never, tracker, hosts as never);
 
   afterEach(() => {
     tracker.fetch.mockReset();

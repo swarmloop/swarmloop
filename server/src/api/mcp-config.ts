@@ -39,7 +39,11 @@ export function installMcp(directory: string, servers: McpServerSpec[]): () => v
 }
 
 export function readMcpServers(value: unknown): McpServerSpec[] {
-  const list = Array.isArray(value) ? value : value && typeof value === 'object' && Array.isArray((value as { mcpServers?: unknown }).mcpServers) ? (value as { mcpServers: unknown[] }).mcpServers : [];
+  const list = Array.isArray(value)
+    ? value
+    : value && typeof value === 'object' && Array.isArray((value as { mcpServers?: unknown }).mcpServers)
+      ? (value as { mcpServers: unknown[] }).mcpServers
+      : [];
   const servers: McpServerSpec[] = [];
   for (const item of list) {
     if (!item || typeof item !== 'object') {
@@ -62,9 +66,13 @@ export function readMcpServers(value: unknown): McpServerSpec[] {
   return servers;
 }
 
-function readServers(body: string): Record<string, { command?: string; args?: string[]; env?: Record<string, string>; url?: string }> {
+function readServers(
+  body: string,
+): Record<string, { command?: string; args?: string[]; env?: Record<string, string>; url?: string }> {
   try {
-    const parsed = JSON.parse(body) as { mcpServers?: Record<string, { command?: string; args?: string[]; env?: Record<string, string>; url?: string }> };
+    const parsed = JSON.parse(body) as {
+      mcpServers?: Record<string, { command?: string; args?: string[]; env?: Record<string, string>; url?: string }>;
+    };
     return parsed.mcpServers ?? {};
   } catch {
     return {};
@@ -88,7 +96,9 @@ function envRecord(value: unknown): Record<string, string> {
     return env;
   }
   if (typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([name, item]) => [name, String(item ?? '')]));
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([name, item]) => [name, String(item ?? '')]),
+    );
   }
   return {};
 }

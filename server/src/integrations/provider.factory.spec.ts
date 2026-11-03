@@ -11,7 +11,9 @@ describe('provider factory', () => {
   });
 
   it('rejects an unknown requirements source', () => {
-    expect(() => createRequirementsSource('other', { agent, direct })).toThrow(/REQUIREMENTS_VIA has unknown value other/);
+    expect(() => createRequirementsSource('other', { agent, direct })).toThrow(
+      /REQUIREMENTS_VIA has unknown value other/,
+    );
   });
 
   it('returns the jira tracker and the direct source', () => {

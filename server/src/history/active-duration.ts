@@ -8,7 +8,14 @@ export interface DurationPart {
 }
 
 export function toDurationParts(
-  stats: { id: number; step: string; durationMs: number; stepStartedAt: string | null; startedAt: string; finishedAt: string }[],
+  stats: {
+    id: number;
+    step: string;
+    durationMs: number;
+    stepStartedAt: string | null;
+    startedAt: string;
+    finishedAt: string;
+  }[],
   reportMs: ReadonlyMap<number, number>,
 ): DurationPart[] {
   return stats.map((stat) => ({

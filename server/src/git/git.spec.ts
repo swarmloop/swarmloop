@@ -32,7 +32,9 @@ describe('withSafeDirectory', () => {
 
   it('trusts a worktree under the worktree mount', () => {
     const directory = join(worktrees, 'PROJ-1', 'billing-api');
-    expect(withSafeDirectory(['-C', directory, 'status'], [checkouts, worktrees])[1]).toBe(`safe.directory=${realpathSync(directory)}`);
+    expect(withSafeDirectory(['-C', directory, 'status'], [checkouts, worktrees])[1]).toBe(
+      `safe.directory=${realpathSync(directory)}`,
+    );
   });
 
   it('leaves a command alone when it has no checkout', () => {

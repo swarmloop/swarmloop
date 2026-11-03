@@ -57,7 +57,10 @@ describe('env schema', () => {
   });
 
   it('names an unknown provider value', () => {
-    const { error } = envSchema.validate({ ...complete, ISSUE_TRACKER: 'github' }, { abortEarly: false, convert: true });
+    const { error } = envSchema.validate(
+      { ...complete, ISSUE_TRACKER: 'github' },
+      { abortEarly: false, convert: true },
+    );
     expect(error?.message).toContain('ISSUE_TRACKER');
     expect(error?.message).toContain('github');
   });
@@ -68,7 +71,10 @@ describe('env schema', () => {
     expect(value.MAX_AGENT_CALLS).toBe(50);
     expect(value.MAX_PIPELINE_RETURNS).toBe(6);
     expect(value.MODEL_PLAN).toBe('grok-4.7-high');
-    const missing = envSchema.validate({ ...complete, MAX_AGENT_CALLS: undefined }, { abortEarly: false, convert: true });
+    const missing = envSchema.validate(
+      { ...complete, MAX_AGENT_CALLS: undefined },
+      { abortEarly: false, convert: true },
+    );
     expect(missing.error?.message).toContain('MAX_AGENT_CALLS');
     expect(missing.error?.message).toContain('missing');
   });

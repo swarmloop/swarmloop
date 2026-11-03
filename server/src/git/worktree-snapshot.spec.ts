@@ -63,6 +63,10 @@ describe('worktree snapshot', () => {
       repos: [{ repo: '/tmp/demo', head: 'aaa', tree: 'bbb' }],
     });
     expect(first).not.toBe(second);
-    expect(parseSnapshot(first)).toMatchObject({ step: 'implement', chat: 'chat-1', repos: [{ head: 'aaa', tree: 'bbb' }] });
+    expect(parseSnapshot(first)).toMatchObject({
+      step: 'implement',
+      chat: 'chat-1',
+      repos: [{ head: 'aaa', tree: 'bbb' }],
+    });
   });
 });

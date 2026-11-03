@@ -12,9 +12,10 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { statusColor } from '../../../theme/theme';
 import { stepLabel } from '../../../lib/phases';
-import { StepMetricKind, stepMetrics } from '../../../lib/step-metrics';
+import type { StepMetricKind } from '../../../lib/step-metrics';
+import { stepMetrics } from '../../../lib/step-metrics';
 import { shownStatus } from '../../../lib/step-view';
-import { StepView } from '@contract/api';
+import type { StepView } from '@contract/api';
 
 const stepMetricIcon: Partial<Record<StepMetricKind, typeof Schedule>> = {
   duration: Schedule,
@@ -60,7 +61,9 @@ export function StepHeader({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography sx={{ fontFamily: 'var(--font-mono)' }}>{stepLabel(step)}</Typography>
           {!step.startsWith('code-review-') && (runStatus === 'failed' || runStatus === 'blocked') ? (
-            <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: statusColor(runStatus) }}>{runStatus}</Typography>
+            <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: statusColor(runStatus) }}>
+              {runStatus}
+            </Typography>
           ) : null}
           {onReplay && step !== 'done' ? (
             <Button size="small" variant="contained" onClick={onReplay}>
@@ -74,27 +77,42 @@ export function StepHeader({
           ) : null}
         </Box>
         <Box sx={{ display: 'flex', gap: 0.5 }}>
-          {(view.visits.length > 1 || attempts > 0) && view.visits.map((item, index) => {
-            const color = statusColor(shownStatus(item.status, index === view.visits.length - 1, runStatus, step, item.decision));
-            return (
-              <Button
-                key={item.id}
-                size="small"
-                variant={index === attempt ? 'contained' : 'text'}
-                onClick={() => {
-                  follow.current = index === view.visits.length - 1;
-                  setAttempt(index);
-                }}
-                sx={index === attempt ? { bgcolor: color, '&:hover': { bgcolor: color } } : { color }}
-              >
-                {item.attempt}
-              </Button>
-            );
-          })}
+          {(view.visits.length > 1 || attempts > 0) &&
+            view.visits.map((item, index) => {
+              const color = statusColor(
+                shownStatus(item.status, index === view.visits.length - 1, runStatus, step, item.decision),
+              );
+              return (
+                <Button
+                  key={item.id}
+                  size="small"
+                  variant={index === attempt ? 'contained' : 'text'}
+                  onClick={() => {
+                    follow.current = index === view.visits.length - 1;
+                    setAttempt(index);
+                  }}
+                  sx={index === attempt ? { bgcolor: color, '&:hover': { bgcolor: color } } : { color }}
+                >
+                  {item.attempt}
+                </Button>
+              );
+            })}
         </Box>
       </Box>
       {visit ? (
-        <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 2, rowGap: 0.75, fontFamily: 'var(--font-mono)', fontSize: 13, color: 'text.secondary' }}>
+        <Box
+          sx={{
+            mt: 1.5,
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            columnGap: 2,
+            rowGap: 0.75,
+            fontFamily: 'var(--font-mono)',
+            fontSize: 13,
+            color: 'text.secondary',
+          }}
+        >
           {stepMetrics({
             status: label,
             attempt: shownAttempt,
@@ -110,7 +128,15 @@ export function StepHeader({
             const Icon = stepMetricIcon[item.kind];
             return (
               <Tooltip key={item.tip} title={item.tip}>
-                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color: item.kind === 'status' ? statusColor(label) : undefined }}>
+                <Box
+                  component="span"
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    color: item.kind === 'status' ? statusColor(label) : undefined,
+                  }}
+                >
                   {Icon ? <Icon sx={{ fontSize: 16 }} /> : null}
                   {item.text}
                 </Box>

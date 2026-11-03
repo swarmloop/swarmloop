@@ -8,17 +8,25 @@ import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
 import { PassThrough } from 'stream';
-import { Repository } from 'typeorm';
+import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DocumentEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
-import { AGENT_CONTINUE, AGENT_RUNNER, AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
+import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
+import { AGENT_CONTINUE, AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { REBASE_CONFLICT, rebaseFeatureRepos } from '../../git/rebase-worktree';
 
-const reply = ['implementation:', '- changed the field parser', '- ran unit tests', '', 'summary:', '- changed the parser so empty fields stay'].join('\n');
+const reply = [
+  'implementation:',
+  '- changed the field parser',
+  '- ran unit tests',
+  '',
+  'summary:',
+  '- changed the parser so empty fields stay',
+].join('\n');
 
 const REFUSED_WRITE = JSON.stringify({
   type: 'system',
@@ -124,7 +132,16 @@ describe('implement step', () => {
     await writeEnv(root);
     const worktree = featureTree(root, 'PROJ-66', 'billing-api');
     const agent = jest.fn().mockImplementation(async () => {
-      git(worktree, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '--allow-empty', '-m', 'nope']);
+      git(worktree, [
+        '-c',
+        'user.email=dev@example.com',
+        '-c',
+        'user.name=Dev',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'nope',
+      ]);
       return result(reply);
     });
     const app = await boot(root, agent);
@@ -218,9 +235,9 @@ describe('implement step', () => {
     await writeEnv(root);
     featureTree(root, 'PROJ-67', 'api');
     featureTree(root, 'PROJ-67', 'web');
-    const agent = jest.fn().mockResolvedValue(
-      result('implementation:\n- api field\n- web button\n\nsummary:\n- both follow the plan\n'),
-    );
+    const agent = jest
+      .fn()
+      .mockResolvedValue(result('implementation:\n- api field\n- web button\n\nsummary:\n- both follow the plan\n'));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-67', 'approve', 'api\nweb\n');
@@ -400,7 +417,7 @@ describe('implement step', () => {
       const done = await app.get(PipelineService).step('implement', 'PROJ-64');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      const calls = agent.mock.calls.map((call) => call[0]);
       const input = calls[0];
       expect(input?.resumeChatId ?? null).toBeNull();
       expect(input?.prompt).toContain('src/field.ts');
@@ -543,7 +560,7 @@ describe('implement step', () => {
       const done = await app.get(PipelineService).step('implement', 'PROJ-65');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
-      const input = agent.mock.calls[0]?.[0] as AgentRunInput;
+      const input = agent.mock.calls[0]?.[0];
       expect(input.resumeChatId ?? null).toBeNull();
       expect(input.prompt).toContain('The new base is origin/main.');
       expect(input.prompt).toContain('The commit being replayed is');
@@ -551,7 +568,9 @@ describe('implement step', () => {
       expect(input.prompt).not.toContain('rebase --continue');
       expect(input.prompt.toLowerCase()).not.toContain('ours');
       expect(input.prompt.toLowerCase()).not.toContain('theirs');
-      const notes = await app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity)).find({ where: { kind: 'implementation' } });
+      const notes = await app
+        .get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity))
+        .find({ where: { kind: 'implementation' } });
       expect(notes.map((item) => item.body)).toEqual(['- changed the field parser\n']);
       expect((await history.latestBody('PROJ-65', REBASE_CONFLICT))?.trim()).toBe('review');
       expect((await history.latestBody('PROJ-65', 'rebase_merge_skip'))?.trim()).toBe('skip');
@@ -584,7 +603,7 @@ describe('implement step', () => {
       const done = await app.get(PipelineService).step('implement', 'PROJ-168');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
-      const input = agent.mock.calls[0]?.[0] as AgentRunInput;
+      const input = agent.mock.calls[0]?.[0];
       expect(input.resumeChatId ?? null).toBeNull();
       expect(input.prompt).toContain('The new base is origin/main.');
       expect(input.prompt).toContain('The commit being replayed is');
@@ -592,7 +611,9 @@ describe('implement step', () => {
       expect(input.prompt).not.toContain('rebase --continue');
       expect(input.prompt.toLowerCase()).not.toContain('ours');
       expect(input.prompt.toLowerCase()).not.toContain('theirs');
-      const notes = await app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity)).find({ where: { kind: 'implementation' } });
+      const notes = await app
+        .get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity))
+        .find({ where: { kind: 'implementation' } });
       expect(notes.map((item) => item.body)).toEqual(['- changed the field parser\n']);
       expect((await history.latestBody('PROJ-168', REBASE_CONFLICT))?.trim()).toBe('review');
       expect((await history.latestBody('PROJ-168', 'rebase_merge_skip'))?.trim()).toBe('skip');
@@ -658,7 +679,7 @@ describe('implement step', () => {
       const done = await app.get(PipelineService).step('implement', 'PROJ-169');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      const calls = agent.mock.calls.map((call) => call[0]);
       expect(calls[0]?.prompt).toContain('src/field.ts');
       expect(calls[0]?.prompt).toContain('The new base is origin/main.');
       expect(calls[0]?.prompt).toContain('The commit being replayed is');
@@ -701,7 +722,7 @@ describe('implement step', () => {
       const done = await app.get(PipelineService).step('implement', 'PROJ-66');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      const calls = agent.mock.calls.map((call) => call[0]);
       expect(calls[0]?.resumeChatId ?? null).toBeNull();
       expect(calls[0]?.prompt).toContain('The new base is origin/main.');
       expect(calls[1]?.prompt).toContain('add the field');
@@ -709,7 +730,9 @@ describe('implement step', () => {
       expect((await history.latestBody('PROJ-66', 'implementation'))?.trim()).toContain('changed the field parser');
       expect((await history.latestBody('PROJ-66', REBASE_CONFLICT))?.trim()).toBe('review');
       expect((await history.findRun('PROJ-66'))?.currentStep).toBe('implement-improve');
-      expect(() => git(tree, ['rev-parse', '--verify', 'refs/remotes/origin/feature/PROJ-66-ship-the-field'])).toThrow();
+      expect(() =>
+        git(tree, ['rev-parse', '--verify', 'refs/remotes/origin/feature/PROJ-66-ship-the-field']),
+      ).toThrow();
     } finally {
       await app.close();
     }
@@ -790,7 +813,16 @@ describe('implement step', () => {
     const agent = jest.fn(async () => {
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
       return result(
-        ['plan:', '- fix the failing test', '', 'implementation:', '- fixed the test', '', 'summary:', '- the pipeline log required it'].join('\n'),
+        [
+          'plan:',
+          '- fix the failing test',
+          '',
+          'implementation:',
+          '- fixed the test',
+          '',
+          'summary:',
+          '- the pipeline log required it',
+        ].join('\n'),
       );
     });
     const app = await boot(root, agent);
@@ -829,7 +861,9 @@ describe('implement step', () => {
       const done = await app.get(PipelineService).step('implement', 'PROJ-141');
       expect(done.exitCode).toBe(0);
       const history = app.get(HistoryService);
-      const record = JSON.parse((await history.latestBody('PROJ-141', 'requirements')) ?? '{}') as { plan?: { items?: string[] } };
+      const record = JSON.parse((await history.latestBody('PROJ-141', 'requirements')) ?? '{}') as {
+        plan?: { items?: string[] };
+      };
       expect(record.plan?.items).toEqual(['add the field']);
       expect(await history.latestBody('PROJ-141', 'handoff')).not.toContain('outranks the checklist');
     } finally {
@@ -841,11 +875,25 @@ describe('implement step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-plan-json-'));
     await writeEnv(root);
     const worktree = featureTree(root, 'PROJ-145', 'billing-api');
-    const plan = { name: 'Field', overview: 'Fix the failing test.', items: ['fix the failing test'], decision: 'approve' };
+    const plan = {
+      name: 'Field',
+      overview: 'Fix the failing test.',
+      items: ['fix the failing test'],
+      decision: 'approve',
+    };
     const agent = jest.fn(async () => {
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
       return result(
-        ['plan:', JSON.stringify(plan, null, 2), '', 'implementation:', '- fixed the test', '', 'summary:', '- the pipeline log required it'].join('\n'),
+        [
+          'plan:',
+          JSON.stringify(plan, null, 2),
+          '',
+          'implementation:',
+          '- fixed the test',
+          '',
+          'summary:',
+          '- the pipeline log required it',
+        ].join('\n'),
       );
     });
     const app = await boot(root, agent);
@@ -892,7 +940,9 @@ describe('implement step', () => {
       const done = await app.get(PipelineService).step('implement', 'PROJ-146');
       expect(done.exitCode).toBe(0);
       expect(done.message).not.toContain('plan is empty');
-      const record = JSON.parse((await history.latestBody('PROJ-146', 'requirements')) ?? '{}') as { plan?: { items?: string[] } };
+      const record = JSON.parse((await history.latestBody('PROJ-146', 'requirements')) ?? '{}') as {
+        plan?: { items?: string[] };
+      };
       expect(record.plan?.items).toEqual(['add the field']);
       expect(await history.latestBody('PROJ-146', 'handoff')).not.toContain('outranks the checklist');
     } finally {
@@ -904,7 +954,12 @@ describe('implement step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-plan-json-later-'));
     await writeEnv(root);
     const worktree = featureTree(root, 'PROJ-147', 'billing-api');
-    const plan = { name: 'Field', overview: 'Fix the failing test.', items: ['fix the failing test'], decision: 'approve' };
+    const plan = {
+      name: 'Field',
+      overview: 'Fix the failing test.',
+      items: ['fix the failing test'],
+      decision: 'approve',
+    };
     let calls = 0;
     const agent = jest.fn(async () => {
       calls += 1;
@@ -913,7 +968,16 @@ describe('implement step', () => {
       }
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
       return result(
-        ['plan:', JSON.stringify(plan, null, 2), '', 'implementation:', '- fixed the test', '', 'summary:', '- the files now match the log'].join('\n'),
+        [
+          'plan:',
+          JSON.stringify(plan, null, 2),
+          '',
+          'implementation:',
+          '- fixed the test',
+          '',
+          'summary:',
+          '- the files now match the log',
+        ].join('\n'),
       );
     });
     const app = await boot(root, agent);
@@ -925,7 +989,9 @@ describe('implement step', () => {
       const done = await app.get(PipelineService).step('implement', 'PROJ-147');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
-      const record = JSON.parse((await history.latestBody('PROJ-147', 'requirements')) ?? '{}') as { plan?: { items?: string[] } };
+      const record = JSON.parse((await history.latestBody('PROJ-147', 'requirements')) ?? '{}') as {
+        plan?: { items?: string[] };
+      };
       expect(record.plan?.items).toEqual(['fix the failing test']);
       expect(await history.latestBody('PROJ-147', 'implementation')).toContain('fixed the test');
       expect(await history.latestBody('PROJ-147', 'handoff')).toContain('added "fix the failing test"');
@@ -956,7 +1022,7 @@ describe('implement step', () => {
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('pipeline failure left unfixed');
       expect(agent).toHaveBeenCalledTimes(2);
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      const calls = agent.mock.calls.map((call) => call[0]);
       expect(calls[1]?.prompt).toContain('The pipeline failure still stands and the files are unchanged.');
       expect(calls[1]?.prompt).toContain('FAIL nest npm test');
       expect(calls[1]?.resumeChatId).toBe('impl-chat');
@@ -976,10 +1042,23 @@ describe('implement step', () => {
     const agent = jest.fn(async () => {
       calls += 1;
       if (calls === 1) {
-        return result(['plan:', '- fix the failing test', '', 'implementation:', '- not yet', '', 'summary:', '- the log requires it'].join('\n'));
+        return result(
+          [
+            'plan:',
+            '- fix the failing test',
+            '',
+            'implementation:',
+            '- not yet',
+            '',
+            'summary:',
+            '- the log requires it',
+          ].join('\n'),
+        );
       }
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
-      return result(['implementation:', '- fixed the test', '', 'summary:', '- the files now match the log'].join('\n'));
+      return result(
+        ['implementation:', '- fixed the test', '', 'summary:', '- the files now match the log'].join('\n'),
+      );
     });
     const app = await boot(root, agent);
     try {
@@ -990,7 +1069,9 @@ describe('implement step', () => {
       const done = await app.get(PipelineService).step('implement', 'PROJ-143');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
-      const record = JSON.parse((await history.latestBody('PROJ-143', 'requirements')) ?? '{}') as { plan?: { items?: string[] } };
+      const record = JSON.parse((await history.latestBody('PROJ-143', 'requirements')) ?? '{}') as {
+        plan?: { items?: string[] };
+      };
       expect(record.plan?.items).toEqual(['fix the failing test']);
       expect(await history.latestBody('PROJ-143', 'implementation')).toContain('fixed the test');
       expect(await history.latestBody('PROJ-143', 'handoff')).toContain('dropped "add the field"');
@@ -1003,9 +1084,22 @@ describe('implement step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-plan-unfixed-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-144', 'billing-api');
-    const agent = jest.fn().mockResolvedValue(
-      result(['plan:', '- fix the failing test', '', 'implementation:', '- not yet', '', 'summary:', '- the log requires it'].join('\n')),
-    );
+    const agent = jest
+      .fn()
+      .mockResolvedValue(
+        result(
+          [
+            'plan:',
+            '- fix the failing test',
+            '',
+            'implementation:',
+            '- not yet',
+            '',
+            'summary:',
+            '- the log requires it',
+          ].join('\n'),
+        ),
+      );
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-144', 'approve');
@@ -1018,7 +1112,9 @@ describe('implement step', () => {
       const after = await history.findRun('PROJ-144');
       expect(after?.currentStep).toBe('implement');
       expect(after?.status).toBe('failed');
-      const record = JSON.parse((await history.latestBody('PROJ-144', 'requirements')) ?? '{}') as { plan?: { items?: string[]; decision?: string } };
+      const record = JSON.parse((await history.latestBody('PROJ-144', 'requirements')) ?? '{}') as {
+        plan?: { items?: string[]; decision?: string };
+      };
       expect(record.plan?.items).toEqual(['fix the failing test']);
       expect(record.plan?.decision).toBe('approve');
     } finally {

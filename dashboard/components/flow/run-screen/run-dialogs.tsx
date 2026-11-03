@@ -7,8 +7,8 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import Typography from '@mui/material/Typography';
-import { PhaseName } from '@contract/steps';
-import { FlowView } from '@contract/api';
+import type { PhaseName } from '@contract/steps';
+import type { FlowView } from '@contract/api';
 
 export function RunDialogs({
   flow,
@@ -40,7 +40,10 @@ export function RunDialogs({
       <Dialog open={confirmStop} onClose={() => (stopping ? undefined : setConfirmStop(false))} fullWidth maxWidth="xs">
         <DialogTitle>Stop {flow.currentStep}?</DialogTitle>
         <DialogContent>
-          <Typography>The agent for {flow.key} is killed and this run is marked failed. Files already written stay in the worktree.</Typography>
+          <Typography>
+            The agent for {flow.key} is killed and this run is marked failed. Files already written stay in the
+            worktree.
+          </Typography>
           {error ? (
             <Typography color="error" variant="body2" sx={{ mt: 1 }}>
               {error}
@@ -75,7 +78,9 @@ export function RunDialogs({
             variant="contained"
             onClick={() => {
               if (replay && pending) {
-                startReplay(replay, pending.prompt, pending.phases).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'replay failed'));
+                startReplay(replay, pending.prompt, pending.phases).catch((cause: unknown) =>
+                  setError(cause instanceof Error ? cause.message : 'replay failed'),
+                );
               }
             }}
           >

@@ -4,9 +4,10 @@ import { mkdtemp, readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
-import { ConfigService } from '@nestjs/config';
-import { SandboxService } from '../sandbox/sandbox.service';
-import { AGENT_CONTINUE, AgentProcessRunner, AgentRunInput, readSession } from './agent-runner';
+import type { ConfigService } from '@nestjs/config';
+import type { SandboxService } from '../sandbox/sandbox.service';
+import type { AgentRunInput } from './agent-runner';
+import { AGENT_CONTINUE, AgentProcessRunner, readSession } from './agent-runner';
 import * as limits from './limits';
 import { RunStop } from './run-stop';
 
@@ -177,10 +178,14 @@ describe('readSession', () => {
 
 describe('AgentProcessRunner limit continuation', () => {
   it('relaunches a time kill in the same chat and returns the folded result', async () => {
-    const { result, spawn, outputFile } = await start('time', [
-      { chunks: [chatStream('chat-9', 'first-stream')] },
-      { chunks: [doneStream('second-stream\nsummary:\n- done\n')] },
-    ], { resumeChatId: null, timeLimitMs: 0 });
+    const { result, spawn, outputFile } = await start(
+      'time',
+      [
+        { chunks: [chatStream('chat-9', 'first-stream')] },
+        { chunks: [doneStream('second-stream\nsummary:\n- done\n')] },
+      ],
+      { resumeChatId: null, timeLimitMs: 0 },
+    );
     expect(spawn).toHaveBeenCalledTimes(2);
     expect(promptArg(spawn.mock.calls[0])).toBe('follow up');
     expect(resumeArg(spawn.mock.calls[0])).toBeNull();
@@ -216,10 +221,11 @@ describe('AgentProcessRunner limit continuation', () => {
   });
 
   it('uses a given continue prompt', async () => {
-    const { spawn } = await start('prompt', [
-      { chunks: [chatStream('chat-9')] },
-      { chunks: [doneStream('done\n')] },
-    ], { resumeChatId: null, timeLimitMs: 0, continuePrompt: 'Finish the sections you already started.' });
+    const { spawn } = await start('prompt', [{ chunks: [chatStream('chat-9')] }, { chunks: [doneStream('done\n')] }], {
+      resumeChatId: null,
+      timeLimitMs: 0,
+      continuePrompt: 'Finish the sections you already started.',
+    });
     expect(promptArg(spawn.mock.calls[1])).toBe('Finish the sections you already started.');
     expect(promptArg(spawn.mock.calls[1])).not.toBe(AGENT_CONTINUE);
   });
@@ -236,7 +242,12 @@ describe('AgentProcessRunner limit continuation', () => {
   });
 
   it('does not relaunch a tokens kill', async () => {
-    const { result, spawn } = await start('tokens', [{ chunks: [chatStream('chat-9')] }], { resumeChatId: null }, { STEP_TOKEN_MAX: 0 });
+    const { result, spawn } = await start(
+      'tokens',
+      [{ chunks: [chatStream('chat-9')] }],
+      { resumeChatId: null },
+      { STEP_TOKEN_MAX: 0 },
+    );
     expect(spawn).toHaveBeenCalledTimes(1);
     expect(result.killReason).toBe('tokens');
   });
@@ -250,31 +261,48 @@ describe('AgentProcessRunner limit continuation', () => {
   it('does not relaunch a halted run', async () => {
     const stop = new RunStop();
     stop.halt('run1');
-    const { result, spawn } = await start('halt', [{ chunks: [chatStream('chat-9')] }], { resumeChatId: null, timeLimitMs: 0 }, {}, stop);
+    const { result, spawn } = await start(
+      'halt',
+      [{ chunks: [chatStream('chat-9')] }],
+      { resumeChatId: null, timeLimitMs: 0 },
+      {},
+      stop,
+    );
     expect(spawn).toHaveBeenCalledTimes(1);
     expect(result.killReason).toBe('time');
   });
 
   it('does not relaunch when the attempt has no chat id', async () => {
-    const { result, spawn } = await start('noch', [{ chunks: [chatStream(null)] }], { resumeChatId: null, timeLimitMs: 0 });
+    const { result, spawn } = await start('noch', [{ chunks: [chatStream(null)] }], {
+      resumeChatId: null,
+      timeLimitMs: 0,
+    });
     expect(spawn).toHaveBeenCalledTimes(1);
     expect(result.killReason).toBe('time');
     expect(result.chatId).toBeNull();
   });
 
   it('does not continue a chat that opts out', async () => {
-    const { result, spawn } = await start('opt', [{ chunks: [chatStream('chat-9')] }], { resumeChatId: null, timeLimitMs: 0, continuePrompt: null });
+    const { result, spawn } = await start('opt', [{ chunks: [chatStream('chat-9')] }], {
+      resumeChatId: null,
+      timeLimitMs: 0,
+      continuePrompt: null,
+    });
     expect(spawn).toHaveBeenCalledTimes(1);
     expect(result.killReason).toBe('time');
   });
 
   it('counts a time kill and a crash toward the same launch cap', async () => {
-    const { result, spawn } = await start('cap', [
-      { chunks: [chatStream('chat-9', 'time-1')], advance: 120_000 },
-      { chunks: [chatStream('chat-9', 'crash-1')], code: 1 },
-      { chunks: [chatStream('chat-9', 'time-2')], advance: 120_000 },
-      { chunks: [doneStream('should-not-run')] },
-    ], { resumeChatId: null });
+    const { result, spawn } = await start(
+      'cap',
+      [
+        { chunks: [chatStream('chat-9', 'time-1')], advance: 120_000 },
+        { chunks: [chatStream('chat-9', 'crash-1')], code: 1 },
+        { chunks: [chatStream('chat-9', 'time-2')], advance: 120_000 },
+        { chunks: [doneStream('should-not-run')] },
+      ],
+      { resumeChatId: null },
+    );
     expect(spawn).toHaveBeenCalledTimes(3);
     expect(promptArg(spawn.mock.calls[0])).toBe('follow up');
     expect(resumeArg(spawn.mock.calls[0])).toBeNull();
@@ -296,7 +324,11 @@ async function start(
   patch: Partial<AgentRunInput> = {},
   env: Record<string, string | number> = {},
   stop = new RunStop(),
-): Promise<{ result: Awaited<ReturnType<AgentProcessRunner['run']>>; spawn: jest.Mock<Promise<EventEmitter>, unknown[]>; outputFile: string }> {
+): Promise<{
+  result: Awaited<ReturnType<AgentProcessRunner['run']>>;
+  spawn: jest.Mock<Promise<EventEmitter>, unknown[]>;
+  outputFile: string;
+}> {
   const root = await mkdtemp(join(tmpdir(), `swarmloop-agent-${label}-`));
   const outputFile = join(root, 'data', 'run1-implement-output.txt');
   mkdirSync(join(root, 'data'), { recursive: true });

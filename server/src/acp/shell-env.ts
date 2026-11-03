@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
-import { RUNTIME_NAMES, RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
+import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
+import { RUNTIME_NAMES } from '../integrations/agent-runtime/agent-runtime.registry';
 
 export interface ShellConfig {
   runtime: RuntimeName;
@@ -20,7 +21,10 @@ export function readShellConfig(file: string): ShellConfig {
     body = '';
   }
   for (const line of body.split('\n')) {
-    const match = /^(?:export\s+)?(RUNTIME|MODEL_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CHECKOUTS_ROOT)=(.*)$/.exec(line.trim());
+    const match =
+      /^(?:export\s+)?(RUNTIME|MODEL_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CHECKOUTS_ROOT)=(.*)$/.exec(
+        line.trim(),
+      );
     if (!match) {
       continue;
     }

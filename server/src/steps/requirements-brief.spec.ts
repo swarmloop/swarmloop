@@ -12,9 +12,20 @@ describe('requirements brief', () => {
         acceptanceCriteria: 'Must round-trip.',
         comments: [{ author: 'Ann', body: 'Watch the slash.' }],
       },
-      { key: 'PROJ-8', summary: 'Also named in the prompt', description: 'Second task.', acceptanceCriteria: '', comments: [] },
+      {
+        key: 'PROJ-8',
+        summary: 'Also named in the prompt',
+        description: 'Second task.',
+        acceptanceCriteria: '',
+        comments: [],
+      },
     ],
-    epic: { key: 'PROJ-0', summary: 'Rewrite the pages', description: 'Do the whole migration.', comments: [{ body: 'Epic note' }] },
+    epic: {
+      key: 'PROJ-0',
+      summary: 'Rewrite the pages',
+      description: 'Do the whole migration.',
+      comments: [{ body: 'Epic note' }],
+    },
     epics: [{ key: 'PROJ-0', summary: 'Rewrite the pages', description: 'Do the whole migration.', comments: [] }],
     files: [
       { name: 'note.txt', source: 'attachment', url: null, body: 'file-body', encoding: 'utf8' },
@@ -35,7 +46,14 @@ describe('requirements brief', () => {
       },
     ],
     pages: [
-      { source: 'confluence', id: '42', title: 'Design', url: 'https://example.test/wiki/pages/42', body: '<p>Keep this</p>', encoding: 'utf8' },
+      {
+        source: 'confluence',
+        id: '42',
+        title: 'Design',
+        url: 'https://example.test/wiki/pages/42',
+        body: '<p>Keep this</p>',
+        encoding: 'utf8',
+      },
       {
         source: 'confluence',
         id: '99',
@@ -84,7 +102,13 @@ describe('requirements brief', () => {
   });
 
   it('puts the brief in the agent prompt', () => {
-    const prompt = skillPrompt('research', JSON.stringify(record), ['api'], [], [{ hostPath: '/tmp/api', containerPath: '/work/api' }]);
+    const prompt = skillPrompt(
+      'research',
+      JSON.stringify(record),
+      ['api'],
+      [],
+      [{ hostPath: '/tmp/api', containerPath: '/work/api' }],
+    );
     expect(prompt).toContain('Work, and only this work: PROJ-1, PROJ-8.');
     expect(prompt).toContain('Linked body');
     expect(prompt).toContain('Ada: Linked note');

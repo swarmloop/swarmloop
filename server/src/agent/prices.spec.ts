@@ -21,8 +21,18 @@ describe('prices', () => {
   const table = parsePriceMarkdown(PAGE);
 
   it('prices the base model and ignores a longer variant', () => {
-    expect(table['grok-4.7']).toEqual({ inputPerMillion: 2, outputPerMillion: 6, cacheReadPerMillion: 0.5, cacheWritePerMillion: null });
-    expect(table['grok-4.7-fast']).toEqual({ inputPerMillion: 4, outputPerMillion: 12, cacheReadPerMillion: 1, cacheWritePerMillion: null });
+    expect(table['grok-4.7']).toEqual({
+      inputPerMillion: 2,
+      outputPerMillion: 6,
+      cacheReadPerMillion: 0.5,
+      cacheWritePerMillion: null,
+    });
+    expect(table['grok-4.7-fast']).toEqual({
+      inputPerMillion: 4,
+      outputPerMillion: 12,
+      cacheReadPerMillion: 1,
+      cacheWritePerMillion: null,
+    });
     expect(priceTokens('grok-4.7', 1_000_000, 500_000, table)).toBe(5);
     expect(priceTokens('grok-4.7', 22_601, 5_787, table, 324_352, 0)).toBeCloseTo(0.2421, 4);
     expect(priceTokens('opus-5.5-extra-high', 1_000_000, 0, table)).toBe(4);
@@ -39,7 +49,9 @@ describe('prices', () => {
     expect(fetchPage).toHaveBeenCalledTimes(1);
     fetchPage.mockResolvedValueOnce(new Response('no', { status: 500 }));
     expect(await loadPriceTable(root, 'cursor', now + 25 * 60 * 60 * 1000, fetchPage)).toEqual(table);
-    const stored = JSON.parse(await readFile(join(root, 'data', 'price-cache-cursor.json'), 'utf8')) as { fetchedAt: string };
+    const stored = JSON.parse(await readFile(join(root, 'data', 'price-cache-cursor.json'), 'utf8')) as {
+      fetchedAt: string;
+    };
     expect(stored.fetchedAt).toBe('2026-10-16T12:00:00.000Z');
   });
 

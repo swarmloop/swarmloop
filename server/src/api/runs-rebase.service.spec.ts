@@ -1,5 +1,15 @@
 import 'reflect-metadata';
-import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  readdirSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
@@ -343,7 +353,11 @@ describe('runs api', () => {
     const common = git(tree, ['rev-parse', '--git-common-dir']);
     const hooks = join(isAbsolute(common) ? common : join(tree, common), 'hooks');
     mkdirSync(hooks, { recursive: true });
-    writeFileSync(join(hooks, 'post-checkout'), "#!/bin/sh\nprintf 'export const added = 1;\\n' > src/added.ts\nexit 0\n", { mode: 0o755 });
+    writeFileSync(
+      join(hooks, 'post-checkout'),
+      "#!/bin/sh\nprintf 'export const added = 1;\\n' > src/added.ts\nexit 0\n",
+      { mode: 0o755 },
+    );
     const pipeline = { startDetached: jest.fn() };
     const app = await boot(root, pipeline);
     try {
@@ -360,7 +374,9 @@ describe('runs api', () => {
         expect(existsSync(isAbsolute(printed) ? printed : join(tree, printed))).toBe(false);
       }
       expect(readFileSync(join(tree, 'src', 'readme.ts'), 'utf8')).toBe('export const readme = 2;\n');
-      expect(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-') && !temps.has(name))).toEqual([]);
+      expect(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-') && !temps.has(name))).toEqual(
+        [],
+      );
     } finally {
       await app.close();
     }
@@ -400,7 +416,9 @@ describe('runs api', () => {
       expect(names).toContain('src/one.ts');
       expect(names).toContain('src/two.ts');
       expect(names).toContain('src/three.ts');
-      expect(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-') && !temps.has(name))).toEqual([]);
+      expect(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-') && !temps.has(name))).toEqual(
+        [],
+      );
     } finally {
       await app.close();
     }
@@ -449,7 +467,9 @@ describe('runs api', () => {
       expect(git(tree, ['rev-parse', `refs/remotes/origin/${branch}`])).toBe(remoteTip);
       expect(git(tree, ['rev-parse', `refs/swarmloop/pre-rebase/${branch}`])).toBe(oldTip);
       expect(git(tree, ['branch', '--show-current'])).toBe(branch);
-      expect(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-') && !temps.has(name))).toEqual([]);
+      expect(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-') && !temps.has(name))).toEqual(
+        [],
+      );
       const resolved = 'export const field = 3;\n<<<<<<<\n>>>>>>>\n';
       writeFileSync(join(tree, 'src', 'field.ts'), resolved);
       expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
@@ -462,7 +482,9 @@ describe('runs api', () => {
       expect(git(tree, ['show', 'HEAD:src/field.ts'])).toBe(resolved.trim());
       expect(git(tree, ['ls-files', '-u'])).not.toContain('src/field.ts');
       expect(git(tree, ['rev-parse', `refs/remotes/origin/${branch}`])).toBe(remoteTip);
-      expect(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-') && !temps.has(name))).toEqual([]);
+      expect(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-') && !temps.has(name))).toEqual(
+        [],
+      );
     } finally {
       if (previous === undefined) {
         delete process.env.SWARMLOOP_ROOT;
@@ -609,7 +631,9 @@ describe('runs api', () => {
         expect(stop.commit).toBe('feat(proj-67): Ship the field');
       }
       expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toContain('<<<<<<<');
-      expect(readFileSync(join(tree, 'src', 'parts.ts'), 'utf8')).toBe('export const a = 2;\nexport const mid = 1;\nexport const b = 2;\n');
+      expect(readFileSync(join(tree, 'src', 'parts.ts'), 'utf8')).toBe(
+        'export const a = 2;\nexport const mid = 1;\nexport const b = 2;\n',
+      );
       expect(lstatSync(join(tree, 'src', 'ext.ts')).isSymbolicLink()).toBe(true);
       expect(readlinkSync(join(tree, 'src', 'ext.ts'))).toBe(outside);
       expect(lstatSync(join(tree, 'src', 'hook.ts')).isFile()).toBe(true);
@@ -620,7 +644,9 @@ describe('runs api', () => {
       expect(existsSync(join(outsideDir, 'inner.ts'))).toBe(false);
       expect(readFileSync(join(outsideDir, 'keep.txt'), 'utf8')).toBe('SECRET-DIR\n');
       expect(git(tree, ['ls-files', '--stage', '--', 'src/ext.ts'])).toContain('120000');
-      expect(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-') && !temps.has(name))).toEqual([]);
+      expect(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-') && !temps.has(name))).toEqual(
+        [],
+      );
     } finally {
       if (previous === undefined) {
         delete process.env.SWARMLOOP_ROOT;

@@ -5,7 +5,15 @@ import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../../core/swarml
 import { request } from '../../http';
 import { remoteProject } from '../../../steps/merge-request/merge-request-record';
 import { AbstractCodeHost } from '../abstract-code-host';
-import { MergeRequestDraft, MergeRequestQuery, MergeRequestRecord, PipelineJob, PipelineRef, PipelineSnapshot, SelectedHost } from '../code-host';
+import {
+  MergeRequestDraft,
+  MergeRequestQuery,
+  MergeRequestRecord,
+  PipelineJob,
+  PipelineRef,
+  PipelineSnapshot,
+  SelectedHost,
+} from '../code-host';
 
 interface GithubPull {
   number?: number;
@@ -61,7 +69,10 @@ export class GithubCodeHost extends AbstractCodeHost {
     };
   }
 
-  async readBranchPipeline(ref: PipelineRef, jobs = true): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }> {
+  async readBranchPipeline(
+    ref: PipelineRef,
+    jobs = true,
+  ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];
     try {
       const { root: api, headers } = this.credentials();
@@ -150,7 +161,12 @@ export class GithubCodeHost extends AbstractCodeHost {
     };
   }
 
-  protected updateRequest(root: string, project: string, iid: number, summary: string): { url: string; method: string; payload: string } {
+  protected updateRequest(
+    root: string,
+    project: string,
+    iid: number,
+    summary: string,
+  ): { url: string; method: string; payload: string } {
     return {
       url: `${root}/repos/${repoPath(project)}/pulls/${iid}`,
       method: 'PATCH',

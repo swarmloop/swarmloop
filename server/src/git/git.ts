@@ -101,7 +101,8 @@ export function gitStderr(error: unknown): string {
 }
 
 export function gitDetail(error: unknown): string {
-  const record = error && typeof error === 'object' ? (error as { stderr?: unknown; stdout?: unknown; message?: unknown }) : {};
+  const record =
+    error && typeof error === 'object' ? (error as { stderr?: unknown; stdout?: unknown; message?: unknown }) : {};
   const stderr = String(record.stderr ?? '');
   const stdout = String(record.stdout ?? '');
   const message = typeof record.message === 'string' ? record.message : '';
@@ -110,7 +111,9 @@ export function gitDetail(error: unknown): string {
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith('Command failed:'));
   const remote = lines.find((line) => line.includes('remote rejected') || line.startsWith('remote: GitLab'));
-  const fatal = lines.find((line) => (line.startsWith('fatal:') || line.startsWith('error:')) && !line.includes('failed to push some refs'));
+  const fatal = lines.find(
+    (line) => (line.startsWith('fatal:') || line.startsWith('error:')) && !line.includes('failed to push some refs'),
+  );
   const generic = lines.find((line) => line.startsWith('fatal:') || line.startsWith('error:'));
   return (remote ?? fatal ?? generic ?? lines[0] ?? 'git failed').slice(0, 400);
 }

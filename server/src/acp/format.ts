@@ -1,4 +1,4 @@
-import { RunSummary } from '../contract/api';
+import type { RunSummary } from '../contract/api';
 
 export function money(usd: number): string {
   if (usd === 0) {

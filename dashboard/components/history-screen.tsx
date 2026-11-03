@@ -1,6 +1,7 @@
 'use client';
 
-import { ReactElement, ReactNode, useEffect, useMemo, useState } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Accordion from '@mui/material/Accordion';
@@ -17,7 +18,7 @@ import { count, duration, memory, money } from '../lib/format';
 import { documentsByKind, tokensByModel } from '../lib/history';
 import { latestPhaseLabels } from '../lib/phases';
 import { LogTranscript } from './log-transcript';
-import { HistoryView } from '@contract/api';
+import type { HistoryView } from '@contract/api';
 
 export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
   const [view, setView] = useState<HistoryView | null>(null);
@@ -56,7 +57,13 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
         ) : (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
             {latestPhaseLabels(view.launches).map((label) => (
-              <Chip key={label} size="small" variant="outlined" label={label} sx={{ height: 22, bgcolor: 'transparent', fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+              <Chip
+                key={label}
+                size="small"
+                variant="outlined"
+                label={label}
+                sx={{ height: 22, bgcolor: 'transparent', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+              />
             ))}
           </Box>
         )}
@@ -64,7 +71,13 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
       <Section title="Documents">
         {grouped.length === 0 ? <Empty /> : null}
         {grouped.map(([kind, documents]) => (
-          <Accordion key={kind} defaultExpanded={false} disableGutters elevation={0} sx={{ bgcolor: 'transparent', borderTop: 1, borderColor: 'divider' }}>
+          <Accordion
+            key={kind}
+            defaultExpanded={false}
+            disableGutters
+            elevation={0}
+            sx={{ bgcolor: 'transparent', borderTop: 1, borderColor: 'divider' }}
+          >
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>{kind}</AccordionSummary>
             <AccordionDetails>
               {documents.map((document, index) => (
@@ -72,11 +85,7 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
                   <Typography variant="caption" color="text.secondary">
                     attempt {document.attempt}
                   </Typography>
-                  {kind === 'log' ? (
-                    <LogTranscript raw={document.body} />
-                  ) : (
-                    <MarkdownBody text={document.body} />
-                  )}
+                  {kind === 'log' ? <LogTranscript raw={document.body} /> : <MarkdownBody text={document.body} />}
                 </Box>
               ))}
             </AccordionDetails>
@@ -87,12 +96,19 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
         {view.files.length === 0 ? <Empty /> : null}
         {view.files.map((item) => (
           <Box key={`${item.name}:${item.path}`} sx={{ py: 1, borderTop: 1, borderColor: 'divider' }}>
-            <Button color="inherit" onClick={() => setFile(`${item.name}:${item.path}`)} sx={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+            <Button
+              color="inherit"
+              onClick={() => setFile(`${item.name}:${item.path}`)}
+              sx={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}
+            >
               {item.name || item.path}
             </Button>
             {opened === item ? (
               item.body ? (
-                <Typography component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                <Typography
+                  component="pre"
+                  sx={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                >
                   {item.body}
                 </Typography>
               ) : (
@@ -105,7 +121,12 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
       <Section title="Prompts">
         {view.exchanges.length === 0 ? <Empty /> : null}
         {view.exchanges.map((exchange, index) => (
-          <Accordion key={index} disableGutters elevation={0} sx={{ bgcolor: 'transparent', borderTop: 1, borderColor: 'divider' }}>
+          <Accordion
+            key={index}
+            disableGutters
+            elevation={0}
+            sx={{ bgcolor: 'transparent', borderTop: 1, borderColor: 'divider' }}
+          >
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               {exchange.model} · {duration(exchange.durationMs)}
             </AccordionSummary>
@@ -126,7 +147,8 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
         {view.stats.length === 0 ? <Empty /> : null}
         {view.stats.map((stat) => (
           <Typography key={stat.id} sx={{ fontFamily: 'var(--font-mono)', fontSize: 13, py: 0.5 }}>
-            {stat.step} #{stat.attempt} · {duration(stat.durationMs)} · {money(stat.usd)} · cpu {stat.cpuPeak.toFixed(0)}% · mem {memory(stat.memPeak)}
+            {stat.step} #{stat.attempt} · {duration(stat.durationMs)} · {money(stat.usd)} · cpu{' '}
+            {stat.cpuPeak.toFixed(0)}% · mem {memory(stat.memPeak)}
           </Typography>
         ))}
         <Box sx={{ mt: 2 }}>
@@ -138,7 +160,12 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', my: 2 }}>
           {view.stats.map((stat) => (
-            <Button key={stat.id} size="small" variant={stat.id === visit ? 'contained' : 'text'} onClick={() => setVisit(stat.id)}>
+            <Button
+              key={stat.id}
+              size="small"
+              variant={stat.id === visit ? 'contained' : 'text'}
+              onClick={() => setVisit(stat.id)}
+            >
               {stat.step} {stat.attempt}
             </Button>
           ))}
@@ -170,7 +197,12 @@ function Empty() {
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Accordion defaultExpanded={false} disableGutters elevation={0} sx={{ bgcolor: 'transparent', border: 1, borderColor: 'divider', mb: 1 }}>
+    <Accordion
+      defaultExpanded={false}
+      disableGutters
+      elevation={0}
+      sx={{ bgcolor: 'transparent', border: 1, borderColor: 'divider', mb: 1 }}
+    >
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Typography>{title}</Typography>
       </AccordionSummary>

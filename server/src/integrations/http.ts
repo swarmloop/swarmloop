@@ -1,4 +1,4 @@
-import { HttpCallDraft } from '../core/swarmloop-error';
+import type { HttpCallDraft } from '../core/swarmloop-error';
 
 const RETRYABLE = new Set([429, 502, 503, 504]);
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -28,7 +28,13 @@ export function isReadable(contentType: string | null, body: Buffer): boolean {
     return false;
   }
   const type = (contentType ?? '').toLowerCase();
-  return type.startsWith('text/') || type.includes('json') || type.includes('xml') || type.includes('yaml') || type.includes('html');
+  return (
+    type.startsWith('text/') ||
+    type.includes('json') ||
+    type.includes('xml') ||
+    type.includes('yaml') ||
+    type.includes('html')
+  );
 }
 
 export function providerFor(url: string): HttpCallDraft['provider'] {
@@ -84,7 +90,12 @@ export async function request(
   headers: Record<string, string>,
   calls: HttpCallDraft[],
   init: { method?: string; body?: string } = {},
-): Promise<{ status: number; contentType: string | null; body: Buffer; headers: { get(name: string): string | null } }> {
+): Promise<{
+  status: number;
+  contentType: string | null;
+  body: Buffer;
+  headers: { get(name: string): string | null };
+}> {
   const started = Date.now();
   const method = init.method ?? 'GET';
   const safe = safeUrl(url);
@@ -105,7 +116,12 @@ export async function request(
       durationMs: Date.now() - started,
       error: response.ok ? null : `HTTP ${response.status}`,
     });
-    return { status: response.status, contentType: response.headers.get('content-type'), body, headers: response.headers };
+    return {
+      status: response.status,
+      contentType: response.headers.get('content-type'),
+      body,
+      headers: response.headers,
+    };
   } catch (error) {
     const status = error instanceof HttpStatusError ? error.status : null;
     calls.push({

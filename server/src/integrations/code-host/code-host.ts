@@ -1,4 +1,4 @@
-import { HttpCallDraft } from '../../core/swarmloop-error';
+import type { HttpCallDraft } from '../../core/swarmloop-error';
 
 export interface MergeRequestQuery {
   project: string;
@@ -52,10 +52,15 @@ export interface CodeHost {
   matchesOrigin(origin: string): boolean;
   pushUrl(origin: string): string | null;
   selected(): SelectedHost;
-  findMergeRequest(query: MergeRequestQuery): Promise<{ record: MergeRequestRecord | null; httpCalls: HttpCallDraft[] }>;
+  findMergeRequest(
+    query: MergeRequestQuery,
+  ): Promise<{ record: MergeRequestRecord | null; httpCalls: HttpCallDraft[] }>;
   openMergeRequest(draft: MergeRequestDraft): Promise<{ record: MergeRequestRecord; httpCalls: HttpCallDraft[] }>;
   updateMergeRequest(project: string, iid: number, summary: string): Promise<{ httpCalls: HttpCallDraft[] }>;
-  readBranchPipeline(ref: PipelineRef, jobs?: boolean): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
+  readBranchPipeline(
+    ref: PipelineRef,
+    jobs?: boolean,
+  ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
   readJobTrace(project: string, jobId: number): Promise<{ trace: string; httpCalls: HttpCallDraft[] }>;
   cancelPipeline(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }>;
 }

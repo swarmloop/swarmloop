@@ -86,14 +86,17 @@ describe('readableLog', () => {
     assert.equal(logFinished('process killed: idle\n'), true);
     assert.equal(logFinished('thinking\nprocess killed: time\nthinking\n'), false);
     assert.equal(logFinished('process killed: time\nprocess started\n'), false);
-    const quoted = '{"type":"tool_call","snippet":"reviewChipStatus(\'decision: return\\\\nprocess exited 0\\\\n\')"}\n';
+    const quoted =
+      '{"type":"tool_call","snippet":"reviewChipStatus(\'decision: return\\\\nprocess exited 0\\\\n\')"}\n';
     assert.equal(logFinished(quoted), false);
     assert.equal(reviewChipStatus(quoted), null);
     assert.equal(reviewChipStatus('decision: return\nprocess exited 0\n'), 'waiting');
     assert.equal(reviewChipStatus('decision: ok\nprocess exited 0\n'), 'done');
     const prompt = JSON.stringify({
       type: 'user',
-      message: { content: [{ type: 'text', text: '```\ndecision: ok\n```\nEnd with `decision: return` when it breaks.\n' }] },
+      message: {
+        content: [{ type: 'text', text: '```\ndecision: ok\n```\nEnd with `decision: return` when it breaks.\n' }],
+      },
     });
     assert.equal(reviewChipStatus(`${prompt}\nprocess exited 1\n`), 'failed');
     const answered = `${prompt}\n${JSON.stringify({ type: 'result', result: 'notes\ndecision: return\n' })}\n`;

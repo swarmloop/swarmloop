@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { expandReviewPhases, keepOpenReviews, latestPhaseLabels, liveLogStep, markReviewFinished, markReviewLive, replaySelection, reviewChipName, stepLabel, withReport } from './phases.ts';
+import {
+  expandReviewPhases,
+  keepOpenReviews,
+  latestPhaseLabels,
+  liveLogStep,
+  markReviewFinished,
+  markReviewLive,
+  replaySelection,
+  reviewChipName,
+  stepLabel,
+  withReport,
+} from './phases.ts';
 import { PHASES, pipelineStepOf } from '@contract/steps';
 
 void describe('liveLogStep', () => {
@@ -68,18 +79,24 @@ void describe('liveLogStep', () => {
     ];
     const open = new Set(['code-review-quality', 'code-review-security', 'code-review', 'implement']);
     const steps = keepOpenReviews(snapshot, open)[0]?.steps ?? [];
-    assert.deepEqual(steps.find((step) => step.name === 'code-review-quality'), {
-      name: 'code-review-quality',
-      status: 'running',
-      current: true,
-      attempts: 2,
-    });
-    assert.deepEqual(steps.find((step) => step.name === 'code-review-security'), {
-      name: 'code-review-security',
-      status: 'running',
-      current: true,
-      attempts: 1,
-    });
+    assert.deepEqual(
+      steps.find((step) => step.name === 'code-review-quality'),
+      {
+        name: 'code-review-quality',
+        status: 'running',
+        current: true,
+        attempts: 2,
+      },
+    );
+    assert.deepEqual(
+      steps.find((step) => step.name === 'code-review-security'),
+      {
+        name: 'code-review-security',
+        status: 'running',
+        current: true,
+        attempts: 1,
+      },
+    );
     assert.equal(steps.find((step) => step.name === 'code-review-requirements')?.status, 'done');
     assert.equal(steps.find((step) => step.name === 'code-review-regressions')?.status, 'waiting');
     assert.equal(steps.find((step) => step.name === 'code-review-performance')?.status, 'idle');
@@ -117,7 +134,11 @@ void describe('replaySelection', () => {
   });
 
   void it('keeps phases after the click changeable', () => {
-    const choice = replaySelection([...PHASES], ['requirements', 'brainstorm', 'implementation', 'code-review'], 'code-review');
+    const choice = replaySelection(
+      [...PHASES],
+      ['requirements', 'brainstorm', 'implementation', 'code-review'],
+      'code-review',
+    );
     assert.deepEqual(choice.selected, ['requirements', 'brainstorm', 'implementation', 'code-review']);
     assert.equal(choice.locked.includes('ci'), false);
   });
@@ -136,7 +157,10 @@ void describe('withReport', () => {
     const plain = [{ name: 'implement', status: 'done', current: false, attempts: 1 }];
     assert.equal(withReport(plain), plain);
     const reviewers = [{ name: 'code-review-quality', status: 'running', current: true, attempts: 2 }];
-    assert.deepEqual(withReport(reviewers), [...reviewers, { name: 'code-review', status: 'idle', current: false, attempts: 0 }]);
+    assert.deepEqual(withReport(reviewers), [
+      ...reviewers,
+      { name: 'code-review', status: 'idle', current: false, attempts: 0 },
+    ]);
     const both = [...reviewers, { name: 'code-review', status: 'idle', current: false, attempts: 3 }];
     assert.equal(withReport(both), both);
   });

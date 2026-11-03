@@ -1,12 +1,12 @@
 import { existsSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { liveLogFinished, liveLogView } from '../../acp/live-output';
-import { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
+import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { launchCount } from '../../agent/agent-launches';
 import { isReviewStep, pipelineStepOf } from '../../contract/steps';
 import { reviewDecision } from '../../steps/code-review/code-review-record';
 import { stepStatus, latest } from './flow';
-import { FlowView } from '../../contract/api';
+import type { FlowView } from '../../contract/api';
 import { REVIEW_KINDS } from './run-view.types';
 
 export function chipStatus(
@@ -59,13 +59,27 @@ export function reportChip(
 ): FlowView['phases'][number]['steps'][number] {
   const log = liveLogView(root, run.key, 'code-review-report');
   const stored = (latest(documents, 'review_report') ?? '').trim();
-  const verdict = angleVerdict(REVIEW_KINDS.map((kind) => latest(documents, kind) ?? '').filter((body) => body.trim() !== ''));
+  const verdict = angleVerdict(
+    REVIEW_KINDS.map((kind) => latest(documents, kind) ?? '').filter((body) => body.trim() !== ''),
+  );
   const body = log.body.trim();
   const opened = body !== '' && body !== 'waiting for output';
   const writing = run.currentStep === 'code-review' && run.status === 'running' && log.current;
   const visit = stats.filter((item) => item.step === 'code-review').at(-1);
   const loopStatus = stepStatus('code-review', run, visit);
-  const shown = writing ? 'running' : body === 'starting' ? 'idle' : verdict === 'ok' ? 'done' : verdict === 'return' ? 'waiting' : stored ? 'done' : opened ? 'failed' : 'idle';
+  const shown = writing
+    ? 'running'
+    : body === 'starting'
+      ? 'idle'
+      : verdict === 'ok'
+        ? 'done'
+        : verdict === 'return'
+          ? 'waiting'
+          : stored
+            ? 'done'
+            : opened
+              ? 'failed'
+              : 'idle';
   const status = run.currentStep !== 'code-review' && loopStatus === 'failed' ? loopStatus : shown;
   return {
     name: 'code-review',
@@ -122,7 +136,9 @@ function reviewerAttempts(
   }
   const kind = `review_${name.slice('code-review-'.length)}`;
   const owned = stats.filter(
-    (stat) => stat.step === 'code-review' && documents.some((document) => document.stepStatId === stat.id && document.kind === kind),
+    (stat) =>
+      stat.step === 'code-review' &&
+      documents.some((document) => document.stepStatId === stat.id && document.kind === kind),
   );
   const raw = parentRunning ? (log?.body ?? '') : '';
   const live = parentRunning && raw.trim() !== '' && raw.trim() !== 'waiting for output' && raw.trim() !== 'starting';
@@ -168,7 +184,10 @@ export function reviewerRound(
     return { attempts: stat.attempt + 1, status: 'running' };
   }
   const decision = reviewDecision(body);
-  return { attempts: stat.attempt + 1, status: decision === 'ok' ? 'done' : decision === 'return' ? 'waiting' : 'failed' };
+  return {
+    attempts: stat.attempt + 1,
+    status: decision === 'ok' ? 'done' : decision === 'return' ? 'waiting' : 'failed',
+  };
 }
 
 function storedReviewerStatus(stat: StepStatEntity, documents: DocumentEntity[], kind: string): string {
@@ -191,7 +210,9 @@ function storedReviewerStatus(stat: StepStatEntity, documents: DocumentEntity[],
 
 function reportAttempts(stats: StepStatEntity[], documents: DocumentEntity[], writing: boolean): number {
   const saved = stats.filter(
-    (stat) => stat.step === 'code-review' && documents.some((document) => document.stepStatId === stat.id && document.kind === 'review_report'),
+    (stat) =>
+      stat.step === 'code-review' &&
+      documents.some((document) => document.stepStatId === stat.id && document.kind === 'review_report'),
   ).length;
   return saved + (writing ? 1 : 0);
 }

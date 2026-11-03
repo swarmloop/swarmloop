@@ -1,12 +1,13 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { SwarmloopEnv } from '../../config/env';
-import { HistoryService } from '../../history/history.service';
-import { ExchangeDraft, SampleDraft } from '../../history/visit';
-import { AgentProcessRunner, AgentRunResult, readSession } from '../../agent/agent-runner';
+import type { SwarmloopEnv } from '../../config/env';
+import type { HistoryService } from '../../history/history.service';
+import type { ExchangeDraft, SampleDraft } from '../../history/visit';
+import type { AgentProcessRunner, AgentRunResult } from '../../agent/agent-runner';
+import { readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../agent/session-group';
-import { OpenedStep } from '../../pipeline/step-run';
-import { SandboxMount } from '../../sandbox/sandbox-launch';
+import type { OpenedStep } from '../../pipeline/step-run';
+import type { SandboxMount } from '../../sandbox/sandbox-launch';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { reviewContinue, reviewResume } from './code-review.prompts';
 import { launchAgent } from '../agent-step';
@@ -69,23 +70,38 @@ export async function runJob(
 ): Promise<Finished> {
   const step = `code-review-${job.reviewer.name}`;
   const session = await readSession(join(deps.history.root(), 'data', sessionFileName(key, step)), opened.run.runtime);
-  const prompt = fresh || !session?.chatId
-    ? job.prompt
-    : retry && !job.stale
-      ? reviewContinue(job.reviewer.name)
-      : reviewResume(job.reviewer.name, fix.implement, fix.reviewed, plan, returned);
-  return one(deps, opened, key, env, { reviewer: job.reviewer, model: job.model, prompt, mounts: job.mounts }, auto, fresh);
+  const prompt =
+    fresh || !session?.chatId
+      ? job.prompt
+      : retry && !job.stale
+        ? reviewContinue(job.reviewer.name)
+        : reviewResume(job.reviewer.name, fix.implement, fix.reviewed, plan, returned);
+  return one(
+    deps,
+    opened,
+    key,
+    env,
+    { reviewer: job.reviewer, model: job.model, prompt, mounts: job.mounts },
+    auto,
+    fresh,
+  );
 }
 
 /** One reviewer visit, with its own chart and exchange, the same shape as any other step. */
-export async function recordAngle(deps: ReviewDeps, opened: OpenedStep, item: Finished, repeated = false): Promise<void> {
+export async function recordAngle(
+  deps: ReviewDeps,
+  opened: OpenedStep,
+  item: Finished,
+  repeated = false,
+): Promise<void> {
   const result = item.result;
   if (!result) {
     return;
   }
-  const parsed = item.parsed && repeated && item.parsed.decision === 'return'
-    ? { ...item.parsed, decision: 'ok' as const, body: decidedOk(item.parsed.body) }
-    : item.parsed;
+  const parsed =
+    item.parsed && repeated && item.parsed.decision === 'return'
+      ? { ...item.parsed, decision: 'ok' as const, body: decidedOk(item.parsed.body) }
+      : item.parsed;
   const status = item.error ? 'failed' : parsed?.decision === 'return' ? 'waiting' : parsed ? 'done' : 'failed';
   const exchange = exchangeOf(item);
   const log = result.output ? (result.output.endsWith('\n') ? result.output : `${result.output}\n`) : '';
@@ -120,8 +136,13 @@ export function decidedOk(body: string): string {
   return `${lines.join('\n').trimEnd()}\ndecision: ok\n`;
 }
 
-export function fixNotes(documents: { kind: string; body: string }[], handoff: string | null): { implement: string; reviewed: string } {
-  const written = documents.filter((item) => item.kind === 'implementation' && item.body.trim()).map((item) => item.body.trim());
+export function fixNotes(
+  documents: { kind: string; body: string }[],
+  handoff: string | null,
+): { implement: string; reviewed: string } {
+  const written = documents
+    .filter((item) => item.kind === 'implementation' && item.body.trim())
+    .map((item) => item.body.trim());
   const implementWhat = written.length >= 2 ? written[written.length - 2] : (written.at(-1) ?? '');
   const reviewWhat = written.length >= 2 ? (written.at(-1) ?? '') : '';
   const same = reviewWhat.length > 0 && reviewWhat === implementWhat;
@@ -132,10 +153,7 @@ export function fixNotes(documents: { kind: string; body: string }[], handoff: s
 }
 
 function passNote(what: string, why: string): string {
-  const parts = [
-    what.trim() ? `What was done:\n${what.trim()}` : '',
-    why.trim() ? `Why:\n${why.trim()}` : '',
-  ];
+  const parts = [what.trim() ? `What was done:\n${what.trim()}` : '', why.trim() ? `Why:\n${why.trim()}` : ''];
   return parts.filter((part) => part.length > 0).join('\n');
 }
 

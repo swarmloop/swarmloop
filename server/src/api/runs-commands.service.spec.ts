@@ -77,7 +77,9 @@ describe('runs api', () => {
       await history.putDocument(run, 'questions', '- which limit\n');
       const runs = app.get(RunCommandsService);
       await expect(runs.resume('proj-3')).rejects.toBeInstanceOf(BadRequestException);
-      const answered = await runs.answers('proj-3', { answers: [{ kind: 'question', id: 'which limit', body: 'three' }] });
+      const answered = await runs.answers('proj-3', {
+        answers: [{ kind: 'question', id: 'which limit', body: 'three' }],
+      });
       expect(answered.resume).toBe('running');
       expect(await history.latestBody('proj-3', 'answers')).toContain('answer: three');
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-3');
@@ -88,7 +90,10 @@ describe('runs api', () => {
 
   it('starts a single code reviewer', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-reviewer-'));
-    const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }), claimed: () => false };
+    const pipeline = {
+      startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
+      claimed: () => false,
+    };
     const app = await boot(root, pipeline);
     try {
       await save(app.get(HistoryService), 'proj-reviewer', 'code-review', 'waiting');
@@ -105,7 +110,10 @@ describe('runs api', () => {
 
   it('replays a chosen step with the new prompt', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-replay-'));
-    const pipeline = { startDetached: jest.fn(), replay: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-11 started' }) };
+    const pipeline = {
+      startDetached: jest.fn(),
+      replay: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-11 started' }),
+    };
     const app = await boot(root, pipeline);
     try {
       await save(app.get(HistoryService), 'proj-11', 'implement-improve', 'failed');
@@ -127,7 +135,12 @@ describe('runs api', () => {
     try {
       const runs = app.get(RunCommandsService);
       const history = app.get(HistoryService);
-      await runs.start({ key: 'proj-12', prompt: 'Review the checkout', phases: ['requirements', 'code-review'], projects: ['demo'] });
+      await runs.start({
+        key: 'proj-12',
+        prompt: 'Review the checkout',
+        phases: ['requirements', 'code-review'],
+        projects: ['demo'],
+      });
       await runs.replay('proj-12', 'code-review', 'Skip the pipeline', ['requirements', 'code-review', 'ci']);
       const run = await history.findRun('proj-12');
       const rows = await history.listFlows(run?.id ?? 0);
@@ -135,7 +148,9 @@ describe('runs api', () => {
         { phases: ['requirements', 'code-review'], fromStep: null },
         { phases: ['requirements', 'code-review', 'ci'], fromStep: 'code-review' },
       ]);
-      await expect(runs.start({ key: 'proj-13', prompt: 'Nope', phases: ['nope'] })).rejects.toBeInstanceOf(BadRequestException);
+      await expect(runs.start({ key: 'proj-13', prompt: 'Nope', phases: ['nope'] })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     } finally {
       await app.close();
     }
@@ -143,7 +158,10 @@ describe('runs api', () => {
 
   it('stops a running step without starting it again', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-stop-'));
-    const pipeline = { startDetached: jest.fn(), stop: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-9 stopped' }) };
+    const pipeline = {
+      startDetached: jest.fn(),
+      stop: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-9 stopped' }),
+    };
     const app = await boot(root, pipeline);
     try {
       await save(app.get(HistoryService), 'proj-9', 'implement-improve', 'running');
@@ -169,7 +187,10 @@ describe('runs api', () => {
 
   it('resumes a blocked looping step', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-loop-'));
-    const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }), claimed: () => false };
+    const pipeline = {
+      startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
+      claimed: () => false,
+    };
     const app = await boot(root, pipeline);
     try {
       await save(app.get(HistoryService), 'proj-loop', 'code-review', 'blocked');
@@ -184,7 +205,10 @@ describe('runs api', () => {
 
   it('resumes a blocked code-review that did not fit', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-fit-'));
-    const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }), claimed: () => false };
+    const pipeline = {
+      startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
+      claimed: () => false,
+    };
     const app = await boot(root, pipeline);
     try {
       const history = app.get(HistoryService);
@@ -205,9 +229,15 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-7 started' }) };
     const app = await boot(root, pipeline);
     try {
-      const started = await app.get(RunCommandsService).start({ key: 'proj-7', prompt: 'Look here', path: '/tmp/checkout' });
+      const started = await app
+        .get(RunCommandsService)
+        .start({ key: 'proj-7', prompt: 'Look here', path: '/tmp/checkout' });
       expect(started.http).toBe(202);
-      expect(pipeline.startDetached).toHaveBeenCalledWith('proj-7', { path: '/tmp/checkout', phases: [...PHASES] }, 'code-review');
+      expect(pipeline.startDetached).toHaveBeenCalledWith(
+        'proj-7',
+        { path: '/tmp/checkout', phases: [...PHASES] },
+        'code-review',
+      );
       expect((await app.get(HistoryService).findRun('proj-7'))?.prompt).toBe('Look here');
     } finally {
       await app.close();
@@ -277,10 +307,16 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
     const app = await boot(root, pipeline);
     try {
-      const started = await app.get(RunCommandsService).start({ prompt: 'Ship PROJ-15 before Friday', projects: ['demo'] });
+      const started = await app
+        .get(RunCommandsService)
+        .start({ prompt: 'Ship PROJ-15 before Friday', projects: ['demo'] });
       expect(started.http).toBe(202);
       expect(started.body.key).toBe('PROJ-15');
-      expect(pipeline.startDetached).toHaveBeenCalledWith('PROJ-15', { prompt: 'Ship PROJ-15 before Friday', projects: ['demo'], phases: [...PHASES] });
+      expect(pipeline.startDetached).toHaveBeenCalledWith('PROJ-15', {
+        prompt: 'Ship PROJ-15 before Friday',
+        projects: ['demo'],
+        phases: [...PHASES],
+      });
     } finally {
       await app.close();
     }
@@ -293,7 +329,11 @@ describe('runs api', () => {
     try {
       const started = await app.get(RunCommandsService).start({ prompt: 'Ship the field', projects: ['demo'] });
       expect(started.body.key).toMatch(/^run-[a-z0-9]+$/);
-      expect(pipeline.startDetached).toHaveBeenCalledWith(started.body.key, { prompt: 'Ship the field', projects: ['demo'], phases: [...PHASES] });
+      expect(pipeline.startDetached).toHaveBeenCalledWith(started.body.key, {
+        prompt: 'Ship the field',
+        projects: ['demo'],
+        phases: [...PHASES],
+      });
     } finally {
       await app.close();
     }
@@ -319,9 +359,15 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-5 started' }) };
     const app = await boot(root, pipeline);
     try {
-      const started = await app.get(RunCommandsService).start({ key: 'proj-5', prompt: 'Ship the field', projects: ['demo'] });
+      const started = await app
+        .get(RunCommandsService)
+        .start({ key: 'proj-5', prompt: 'Ship the field', projects: ['demo'] });
       expect(started.http).toBe(202);
-      expect(pipeline.startDetached).toHaveBeenCalledWith('proj-5', { prompt: 'Ship the field', projects: ['demo'], phases: [...PHASES] });
+      expect(pipeline.startDetached).toHaveBeenCalledWith('proj-5', {
+        prompt: 'Ship the field',
+        projects: ['demo'],
+        phases: [...PHASES],
+      });
     } finally {
       await app.close();
     }

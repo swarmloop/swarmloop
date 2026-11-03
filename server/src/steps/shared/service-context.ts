@@ -69,7 +69,9 @@ export class ServiceContextService {
       try {
         const found = await host.findMergeRequest({ project: ref.project, source: ref.ref });
         if (found.record) {
-          lines.push(`${codeHostLabel(found.record.url)} ${found.record.project} !${found.record.iid} ${found.record.url}`);
+          lines.push(
+            `${codeHostLabel(found.record.url)} ${found.record.project} !${found.record.iid} ${found.record.url}`,
+          );
         }
       } catch {
         break;

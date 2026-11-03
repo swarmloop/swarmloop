@@ -2,7 +2,8 @@ import { allowedPaths, deniedIndexPaths, isDenied, parsePaths, renderPaths, stag
 
 describe('commit paths', () => {
   it('drops a denied path and keeps the rest', () => {
-    const porcelain = ' M src/field.ts\0?? .env\0?? docker/docker-compose.dev.yml\0?? fresh/.env\0?? fresh/keep.ts\0R  src/new.ts\0src/old.ts\0';
+    const porcelain =
+      ' M src/field.ts\0?? .env\0?? docker/docker-compose.dev.yml\0?? fresh/.env\0?? fresh/keep.ts\0R  src/new.ts\0src/old.ts\0';
     expect(allowedPaths('demo', porcelain, ['.env', 'docker/docker-compose.dev.yml'])).toEqual([
       { repo: 'demo', path: 'src/field.ts' },
       { repo: 'demo', path: 'fresh/keep.ts' },
@@ -12,7 +13,8 @@ describe('commit paths', () => {
   });
 
   it('adds an unstaged deletion and keeps a staged deletion and a rename source out of git add', () => {
-    const porcelain = 'D  src/gone.ts\0 D src/drop.ts\0R  src/new.ts\0src/old.ts\0 M src/field.ts\0?? keep.ts\0?? .env\0';
+    const porcelain =
+      'D  src/gone.ts\0 D src/drop.ts\0R  src/new.ts\0src/old.ts\0 M src/field.ts\0?? keep.ts\0?? .env\0';
     expect(stageSelection(porcelain, ['.env'])).toEqual({
       add: ['src/drop.ts', 'src/new.ts', 'src/field.ts', 'keep.ts'],
       staged: ['src/gone.ts', 'src/new.ts'],
@@ -37,5 +39,4 @@ describe('commit paths', () => {
       { repo: 'web', path: 'app/page.ts' },
     ]);
   });
-
 });

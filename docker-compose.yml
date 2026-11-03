@@ -6,25 +6,25 @@ services:
     build:
       context: ./docker/sandbox
       dockerfile: Dockerfile.cursor
-    command: ["true"]
-    restart: "no"
+    command: ['true']
+    restart: 'no'
 
   sandbox-claude:
     image: swarmloop-agent-claude
     build:
       context: ./docker/sandbox
       dockerfile: Dockerfile.claude
-    command: ["true"]
-    restart: "no"
+    command: ['true']
+    restart: 'no'
 
   # PhpStorm starts bin/sloop on the host. That script needs server/dist, which the image build does not leave on disk.
   sloop:
     image: swarmloop-server
     pull_policy: never
-    command: ["sh", "-c", "mkdir -p /out && cp -a /app/server/dist/. /out/ && chown -R ${UID:-1000} /out"]
+    command: ['sh', '-c', 'mkdir -p /out && cp -a /app/server/dist/. /out/ && chown -R ${UID:-1000} /out']
     volumes:
       - ./server/dist:/out
-    restart: "no"
+    restart: 'no'
     depends_on:
       server:
         condition: service_started
@@ -36,7 +36,7 @@ services:
       context: .
       dockerfile: docker/server/Dockerfile
     ports:
-      - "127.0.0.1:3920:3920"
+      - '127.0.0.1:3920:3920'
     env_file:
       - path: .env
         required: false
@@ -59,9 +59,9 @@ services:
     healthcheck:
       test:
         [
-          "CMD",
-          "node",
-          "-e",
+          'CMD',
+          'node',
+          '-e',
           "fetch('http://127.0.0.1:3920/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
         ]
       interval: 5s
@@ -74,7 +74,7 @@ services:
       context: .
       dockerfile: docker/dashboard/Dockerfile
     ports:
-      - "127.0.0.1:3921:3921"
+      - '127.0.0.1:3921:3921'
     environment:
       SWARMLOOP_API_URL: http://server:3920
     volumes:

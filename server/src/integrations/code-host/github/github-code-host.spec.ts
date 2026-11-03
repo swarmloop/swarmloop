@@ -1,4 +1,4 @@
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import { GithubCodeHost } from './github-code-host';
 
 const TOKEN = 'super-secret-token';
@@ -21,7 +21,9 @@ describe('github host', () => {
     });
     expect(seen).toHaveLength(1);
     expect(seen[0]?.method).toBe('GET');
-    expect(seen[0]?.url).toBe('https://api.github.com/repos/acme/demo/pulls?state=open&head=acme%3Afeature%2FPROJ-1-ship&per_page=20');
+    expect(seen[0]?.url).toBe(
+      'https://api.github.com/repos/acme/demo/pulls?state=open&head=acme%3Afeature%2FPROJ-1-ship&per_page=20',
+    );
     expect(seen[0]?.headers.Authorization).toBe(`Bearer ${TOKEN}`);
     expect(JSON.stringify(result.httpCalls)).not.toContain(TOKEN);
     expect(result.httpCalls[0]?.provider).toBe('github');
@@ -29,7 +31,10 @@ describe('github host', () => {
 
   it('uses the enterprise api root', async () => {
     const seen = mockFetch([[]]);
-    await service({ GITHUB_BASE_URL: 'https://github.example' }).findMergeRequest({ project: 'acme/demo', source: 'feature/PROJ-1-ship' });
+    await service({ GITHUB_BASE_URL: 'https://github.example' }).findMergeRequest({
+      project: 'acme/demo',
+      source: 'feature/PROJ-1-ship',
+    });
     expect(seen[0]?.url).toContain('https://github.example/api/v3/repos/acme/demo/pulls');
   });
 
@@ -75,10 +80,21 @@ describe('github host', () => {
     const seen = mockFetch([
       {
         workflow_runs: [
-          { id: 9, head_sha: 'abc', status: 'completed', conclusion: 'failure', html_url: 'https://github.com/acme/demo/actions/runs/9' },
+          {
+            id: 9,
+            head_sha: 'abc',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: 'https://github.com/acme/demo/actions/runs/9',
+          },
         ],
       },
-      { jobs: [{ id: 4, name: 'test', conclusion: 'failure' }, { id: 5, name: 'lint', conclusion: 'success' }] },
+      {
+        jobs: [
+          { id: 4, name: 'test', conclusion: 'failure' },
+          { id: 5, name: 'lint', conclusion: 'success' },
+        ],
+      },
       'assertion failed',
     ]);
     const host = service();
@@ -108,16 +124,29 @@ describe('github host', () => {
     const seen = mockFetch([
       {
         workflow_runs: [
-          { id: 9, head_sha: 'abc', status: 'completed', conclusion: 'cancelled', html_url: 'https://github.com/acme/demo/actions/runs/9' },
+          {
+            id: 9,
+            head_sha: 'abc',
+            status: 'completed',
+            conclusion: 'cancelled',
+            html_url: 'https://github.com/acme/demo/actions/runs/9',
+          },
         ],
       },
-      { jobs: [{ id: 4, name: 'test', status: 'completed', conclusion: 'cancelled' }, { id: 5, name: 'lint', conclusion: 'success' }] },
+      {
+        jobs: [
+          { id: 4, name: 'test', status: 'completed', conclusion: 'cancelled' },
+          { id: 5, name: 'lint', conclusion: 'success' },
+        ],
+      },
       'canceled before the tests',
     ]);
     const host = service();
     const pipeline = await host.readBranchPipeline({ project: 'acme/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' });
     expect(pipeline.snapshot?.status).toBe('canceled');
-    expect(pipeline.snapshot?.jobs).toEqual([{ id: 4, name: 'test', stage: '', status: 'failed', allowFailure: false }]);
+    expect(pipeline.snapshot?.jobs).toEqual([
+      { id: 4, name: 'test', stage: '', status: 'failed', allowFailure: false },
+    ]);
     const trace = await host.readJobTrace('acme/demo', 4);
     expect(trace.trace).toBe('canceled before the tests');
     expect(seen[2]?.url).toBe('https://api.github.com/repos/acme/demo/actions/jobs/4/logs');
@@ -130,7 +159,9 @@ describe('github host', () => {
     ]);
     const pipeline = await service().readBranchPipeline({ project: 'acme/demo', ref: 'feature/PROJ-1-ship' });
     expect(pipeline.snapshot?.status).toBe('running');
-    expect(pipeline.snapshot?.jobs).toEqual([{ id: 4, name: 'test', stage: '', status: 'in_progress', allowFailure: false }]);
+    expect(pipeline.snapshot?.jobs).toEqual([
+      { id: 4, name: 'test', stage: '', status: 'in_progress', allowFailure: false },
+    ]);
   });
 
   it('skips the job list while a run is still going', async () => {
@@ -148,19 +179,32 @@ describe('github host', () => {
     const seen = mockFetch([
       {
         workflow_runs: [
-          { id: 9, head_sha: 'abc', status: 'completed', conclusion: 'failure', html_url: 'https://github.com/acme/demo/actions/runs/9' },
+          {
+            id: 9,
+            head_sha: 'abc',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: 'https://github.com/acme/demo/actions/runs/9',
+          },
         ],
       },
       { jobs: [{ id: 4, name: 'test', conclusion: 'failure' }] },
     ]);
-    const pipeline = await service().readBranchPipeline({ project: 'acme/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' }, false);
-    expect(pipeline.snapshot?.jobs).toEqual([{ id: 4, name: 'test', stage: '', status: 'failed', allowFailure: false }]);
+    const pipeline = await service().readBranchPipeline(
+      { project: 'acme/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' },
+      false,
+    );
+    expect(pipeline.snapshot?.jobs).toEqual([
+      { id: 4, name: 'test', stage: '', status: 'failed', allowFailure: false },
+    ]);
     expect(seen[1]?.url).toContain('/actions/runs/9/jobs');
   });
 
   it('names a rejected token', async () => {
     mockFetch([null], 401);
-    await expect(service().findMergeRequest({ project: 'acme/demo', source: 'feature/PROJ-1-ship' })).rejects.toThrow('GITHUB_TOKEN was rejected');
+    await expect(service().findMergeRequest({ project: 'acme/demo', source: 'feature/PROJ-1-ship' })).rejects.toThrow(
+      'GITHUB_TOKEN was rejected',
+    );
   });
 
   it('builds a github https push url from ssh origin', () => {
@@ -170,9 +214,9 @@ describe('github host', () => {
   });
 
   it('names a missing token', async () => {
-    await expect(service({ GITHUB_TOKEN: '' }).findMergeRequest({ project: 'acme/demo', source: 'feature/PROJ-1-ship' })).rejects.toThrow(
-      'GITHUB_TOKEN is missing',
-    );
+    await expect(
+      service({ GITHUB_TOKEN: '' }).findMergeRequest({ project: 'acme/demo', source: 'feature/PROJ-1-ship' }),
+    ).rejects.toThrow('GITHUB_TOKEN is missing');
   });
 });
 
@@ -227,7 +271,8 @@ function mockFetch(bodies: unknown[], status: number | number[] = 200): Seen[] {
       ok: code >= 200 && code < 300,
       url: String(url),
       headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) },
-      arrayBuffer: () => Promise.resolve(Buffer.from(typeof payload === 'string' ? payload : JSON.stringify(payload ?? null))),
+      arrayBuffer: () =>
+        Promise.resolve(Buffer.from(typeof payload === 'string' ? payload : JSON.stringify(payload ?? null))),
     });
   }) as unknown as typeof fetch;
   return seen;

@@ -1,12 +1,13 @@
 import 'reflect-metadata';
 import { execFileSync } from 'child_process';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { Repository } from 'typeorm';
+import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { CheckoutEntity, DocumentEntity, StepStatEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
@@ -197,7 +198,11 @@ describe('prepare step', () => {
       expect(again.exitCode).toBe(0);
       expect(existsSync(join(worktree, 'note.txt'))).toBe(true);
       expect(git(clone, ['worktree', 'list'])).toContain(worktree);
-      expect(git(clone, ['worktree', 'list']).split('\n').filter((line) => line.includes('worktrees'))).toHaveLength(1);
+      expect(
+        git(clone, ['worktree', 'list'])
+          .split('\n')
+          .filter((line) => line.includes('worktrees')),
+      ).toHaveLength(1);
     } finally {
       await app.close();
     }
@@ -232,7 +237,9 @@ describe('prepare step', () => {
         expect(git(clone, ['rev-parse', 'origin/main'])).toBe(tip);
         expect(git(clone, ['config', '--local', '--list'])).not.toContain(token);
         expect(readFileSync(join(clone, '.git', 'FETCH_HEAD'), 'utf8')).not.toContain(token);
-        expect(readFileSync(join(clone, '.git', 'logs', 'refs', 'remotes', 'origin', 'main'), 'utf8')).not.toContain(token);
+        expect(readFileSync(join(clone, '.git', 'logs', 'refs', 'remotes', 'origin', 'main'), 'utf8')).not.toContain(
+          token,
+        );
         expect(existsSync(join(worktree, 'NEXT'))).toBe(true);
       } finally {
         await app.close();
@@ -358,7 +365,11 @@ describe('prepare step', () => {
       const second = await pipeline.step('prepare', 'PROJ-11');
       expect(second.exitCode).toBe(0);
       expect(existsSync(join(root, 'worktrees', 'PROJ-11', 'beta'))).toBe(true);
-      expect(git(alpha, ['worktree', 'list']).split('\n').filter((line) => line.includes('worktrees'))).toHaveLength(1);
+      expect(
+        git(alpha, ['worktree', 'list'])
+          .split('\n')
+          .filter((line) => line.includes('worktrees')),
+      ).toHaveLength(1);
       const run = await app.get(HistoryService).findRun('PROJ-11');
       expect(run?.currentStep).toBe('research');
       expect(run?.ownerPid).toBeNull();
@@ -572,7 +583,9 @@ describe('prepare step', () => {
         'requirements',
         `${JSON.stringify({
           prompt: 'Ship the field\n',
-          tickets: [{ key: 'PROJ-40', summary: 'Ship the field', description: '', acceptanceCriteria: '', comments: [] }],
+          tickets: [
+            { key: 'PROJ-40', summary: 'Ship the field', description: '', acceptanceCriteria: '', comments: [] },
+          ],
           epic: null,
           epics: [],
           files: [],
@@ -595,7 +608,9 @@ describe('prepare step', () => {
     const clone = repoWithMain(root, 'demo');
     const token = 's3cret-token';
     git(clone, ['remote', 'set-url', 'origin', 'git@github.com:acme/demo.git']);
-    const restore = hostFetch([[`url.${join(root, 'demo.git')}.insteadOf`, `https://x-access-token:${token}@github.com/acme/demo.git`]]);
+    const restore = hostFetch([
+      [`url.${join(root, 'demo.git')}.insteadOf`, `https://x-access-token:${token}@github.com/acme/demo.git`],
+    ]);
     try {
       const app = await boot(root, undefined, { github: 'https://github.com', githubToken: token });
       try {
@@ -619,7 +634,9 @@ describe('prepare step', () => {
     const clone = repoWithMain(root, 'demo');
     const token = 's3cret-token';
     git(clone, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/demo.git']);
-    const restore = hostFetch([[`url.${join(root, 'demo.git')}.insteadOf`, `https://oauth2:${token}@gitlab.example/group/demo.git`]]);
+    const restore = hostFetch([
+      [`url.${join(root, 'demo.git')}.insteadOf`, `https://oauth2:${token}@gitlab.example/group/demo.git`],
+    ]);
     try {
       const app = await boot(root, undefined, { gitlab: 'https://gitlab.example', gitlabToken: token });
       try {
@@ -686,7 +703,9 @@ describe('prepare step', () => {
     const clone = repoWithMain(root, 'demo');
     const token = 's3cret-token';
     git(clone, ['remote', 'set-url', 'origin', 'git@github.com:acme/demo.git']);
-    const restore = hostFetch([[`url.${join(root, 'demo.git')}.insteadOf`, `https://x-access-token:${token}@github.com/acme/demo.git`]]);
+    const restore = hostFetch([
+      [`url.${join(root, 'demo.git')}.insteadOf`, `https://x-access-token:${token}@github.com/acme/demo.git`],
+    ]);
     try {
       const app = await boot(root, undefined, { github: 'https://github.com', githubToken: token });
       try {
@@ -719,7 +738,9 @@ describe('prepare step', () => {
     const clone = repoWithMain(parent, 'other');
     const token = 's3cret-token';
     git(clone, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/other.git']);
-    const restore = hostFetch([[`url.${join(parent, 'other.git')}.insteadOf`, `https://oauth2:${token}@gitlab.example/group/other.git`]]);
+    const restore = hostFetch([
+      [`url.${join(parent, 'other.git')}.insteadOf`, `https://oauth2:${token}@gitlab.example/group/other.git`],
+    ]);
     try {
       const app = await boot(swarm, '..', {
         github: 'https://github.com',
@@ -735,7 +756,9 @@ describe('prepare step', () => {
         }
         run.codeHost = 'github';
         await history.saveRun(run);
-        await expect(app.get(PrepareStep).ensureDetached(run, ['other'], null, false)).rejects.toThrow(/origin is not github/);
+        await expect(app.get(PrepareStep).ensureDetached(run, ['other'], null, false)).rejects.toThrow(
+          /origin is not github/,
+        );
         expect((await history.findRun('PROJ-34'))?.codeHost).toBe('github');
       } finally {
         await app.close();

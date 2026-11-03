@@ -1,6 +1,6 @@
-import { HistoryService } from '../history/history.service';
-import { RunEntity } from '../history/entities';
-import { SandboxService } from '../sandbox/sandbox.service';
+import type { HistoryService } from '../history/history.service';
+import type { RunEntity } from '../history/entities';
+import type { SandboxService } from '../sandbox/sandbox.service';
 import { ShellService } from './shell.service';
 
 describe('shell open', () => {

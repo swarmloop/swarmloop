@@ -14,7 +14,13 @@ export function reportFollowUp(brief: string, implementation?: string | null): s
   return lines.join('\n');
 }
 
-export function reviewResume(name: string, implement: string, reviewed: string, plan?: string, returned?: string | null): string {
+export function reviewResume(
+  name: string,
+  implement: string,
+  reviewed: string,
+  plan?: string,
+  returned?: string | null,
+): string {
   const note = (body: string): string => body.trim() || '- nothing recorded';
   const lines = [
     `Continue this ${name} review. This chat is only the ${name} angle.`,

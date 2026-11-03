@@ -61,7 +61,14 @@ describe('step prompt invariants', () => {
     for (const text of [skillText('plan-improve'), PLAN_IMPROVE_FOLLOW_UP]) {
       expect(text).toContain('Check that the checklist covers every behavior the task requires');
     }
-    for (const name of ['research', 'plan', 'plan-improve', 'implement', 'implement-improve', 'code-review/requirements']) {
+    for (const name of [
+      'research',
+      'plan',
+      'plan-improve',
+      'implement',
+      'implement-improve',
+      'code-review/requirements',
+    ]) {
       expect(skillText(name)).not.toContain('already owns');
       expect(skillText(name)).not.toContain('Only the Work section');
     }
@@ -127,7 +134,10 @@ describe('withAddedRepos', () => {
 
 describe('return follow-ups', () => {
   it('tells implement to fix the named behavior and the next reviewer not to copy another angle', () => {
-    const implement = implementFollowUp('plan:\n- delete the run\n', '## quality\n- stop returns before writers finish\n');
+    const implement = implementFollowUp(
+      'plan:\n- delete the run\n',
+      '## quality\n- stop returns before writers finish\n',
+    );
     expect(implement).toContain('The return is one list. Fix what it names, and do not undo what it says holds.');
     expect(implement).toContain('Do not add a mechanism it did not name');
     expect(implement).not.toContain('A pipeline return is a test that failed on this commit');
@@ -137,15 +147,23 @@ describe('return follow-ups', () => {
     expect(pipeline).not.toContain('say that behavior now holds');
     expect(implementFollowUp('plan:\n- delete the run\n', null)).not.toContain('Fix the broken behavior');
     expect(IMPLEMENT_IMPROVE_FOLLOW_UP).toContain('end with summary only');
-    const review = reviewResume('quality', '- waited for the writers\n- stop no longer returns early', '- left that wait in place');
+    const review = reviewResume(
+      'quality',
+      '- waited for the writers\n- stop no longer returns early',
+      '- left that wait in place',
+    );
     expect(review).toContain('This chat is only the quality angle');
     expect(review).toContain('waited for the writers');
     expect(review).toContain('left that wait in place');
-    expect(review).toContain('When your last return is already fixed, or it is already what the plan asks, decision: ok');
+    expect(review).toContain(
+      'When your last return is already fixed, or it is already what the plan asks, decision: ok',
+    );
     expect(review).toContain('A behavior it removes is not a missing requirement');
     expect(review).toContain('A change that makes a failed pipeline job on this branch pass is not extra');
     expect(reviewResume('quality', '- done', '- checked', '- remove the catch-up')).toContain('remove the catch-up');
-    expect(reviewResume('quality', '- done', '- checked', '', 'What holds:\n- the prefix stays\n')).toContain('the prefix stays');
+    expect(reviewResume('quality', '- done', '- checked', '', 'What holds:\n- the prefix stays\n')).toContain(
+      'the prefix stays',
+    );
     expect(reviewResume('quality', '', '')).toContain('- nothing recorded');
     expect(reviewContinue('security')).toContain('You were interrupted before the decision');
     expect(reviewContinue('security')).toContain('Do not start over');

@@ -8,11 +8,12 @@ import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
-import { Repository } from 'typeorm';
+import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { AgentExchangeEntity, DocumentEntity, LoopEventEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
-import { AGENT_RUNNER, AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
+import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
+import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -32,7 +33,10 @@ describe('code-review step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-80', 'billing-api'), { recursive: true });
     const agent = jest.fn(async (input: AgentRunInput) =>
-      result(input.step.endsWith('report') ? 'The parser change holds together.\n' : 'notes\n\ndecision: ok\n', input.step),
+      result(
+        input.step.endsWith('report') ? 'The parser change holds together.\n' : 'notes\n\ndecision: ok\n',
+        input.step,
+      ),
     );
     const app = await boot(root, agent);
     try {
@@ -40,7 +44,7 @@ describe('code-review step', () => {
       const done = await app.get(PipelineService).step('code-review', 'PROJ-80');
       expect(done.exitCode).toBe(0);
       expect(done.message).toContain('review_requirements ok');
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      const calls = agent.mock.calls.map((call) => call[0]);
       expect(calls.map((call) => call.step).sort()).toEqual([
         'code-review-performance',
         'code-review-quality',
@@ -55,7 +59,9 @@ describe('code-review step', () => {
       expect(reportCall?.prompt).toContain('five decisions copied below');
       expect(reportCall?.resumeChatId ?? null).toBeNull();
       expect(reportCall?.continuePrompt).toBe(REPORT_CONTINUE);
-      expect(calls.find((call) => call.step === 'code-review-security')?.continuePrompt).toBe(reviewContinue('security'));
+      expect(calls.find((call) => call.step === 'code-review-security')?.continuePrompt).toBe(
+        reviewContinue('security'),
+      );
       expect(reportCall?.prompt).toContain('Those decisions are the only reviews');
       expect(reportCall?.prompt).toContain('## Quality');
       expect(reportCall?.prompt).toContain('decision: ok');
@@ -111,7 +117,10 @@ describe('code-review step', () => {
         open -= 1;
       }
       return {
-        ...result(input.step.endsWith('report') ? 'The parser change holds together.\n' : 'notes\n\ndecision: ok\n', input.step),
+        ...result(
+          input.step.endsWith('report') ? 'The parser change holds together.\n' : 'notes\n\ndecision: ok\n',
+          input.step,
+        ),
         samples: [{ sampledAt: new Date().toISOString(), cpuPercent: 22, rssBytes: 4096 }],
       };
     });
@@ -121,7 +130,7 @@ describe('code-review step', () => {
       const done = await app.get(PipelineService).step('code-review', 'PROJ-81');
       expect(done.exitCode).toBe(0);
       expect(peak).toBe(5);
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      const calls = agent.mock.calls.map((call) => call[0]);
       expect(calls.at(-1)?.step).toBe('code-review-report');
       const history = app.get(HistoryService);
       const run = await history.findRun('PROJ-81');
@@ -184,7 +193,9 @@ describe('code-review step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-own-branch-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-93', 'billing-api'), { recursive: true });
-    const agent = jest.fn(async (input: AgentRunInput) => result(reply(input.step, input.step.endsWith('quality') ? 'return' : 'ok')));
+    const agent = jest.fn(async (input: AgentRunInput) =>
+      result(reply(input.step, input.step.endsWith('quality') ? 'return' : 'ok')),
+    );
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-93');
@@ -209,7 +220,9 @@ describe('code-review step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-stop-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-82', 'billing-api'), { recursive: true });
-    const agent = jest.fn(async (input: AgentRunInput) => result(reply(input.step, input.step.endsWith('quality') ? 'return' : 'ok')));
+    const agent = jest.fn(async (input: AgentRunInput) =>
+      result(reply(input.step, input.step.endsWith('quality') ? 'return' : 'ok')),
+    );
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-82', 3);
@@ -250,7 +263,7 @@ describe('code-review step', () => {
       const done = await app.get(PipelineService).step('code-review', 'PROJ-87');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
-      expect((agent.mock.calls[0]?.[0] as AgentRunInput).step).toBe('code-review-report');
+      expect((agent.mock.calls[0]?.[0]).step).toBe('code-review-report');
       expect((await history.findRun('PROJ-87'))?.currentStep).toBe('commit');
     } finally {
       await app.close();
@@ -262,7 +275,9 @@ describe('code-review step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-83', 'billing-api'), { recursive: true });
     let quality = 'notes\n';
-    const agent = jest.fn(async (input: AgentRunInput) => result(input.step.endsWith('quality') ? quality : reply(input.step, 'ok')));
+    const agent = jest.fn(async (input: AgentRunInput) =>
+      result(input.step.endsWith('quality') ? quality : reply(input.step, 'ok')),
+    );
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-83');
@@ -278,8 +293,8 @@ describe('code-review step', () => {
       const done = await app.get(PipelineService).step('code-review', 'PROJ-83');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
-      expect((agent.mock.calls[0]?.[0] as AgentRunInput).step).toBe('code-review-quality');
-      expect((agent.mock.calls[1]?.[0] as AgentRunInput).step).toBe('code-review-report');
+      expect((agent.mock.calls[0]?.[0]).step).toBe('code-review-quality');
+      expect((agent.mock.calls[1]?.[0]).step).toBe('code-review-report');
       expect((await app.get(HistoryService).findRun('PROJ-83'))?.currentStep).toBe('commit');
     } finally {
       await app.close();
@@ -310,7 +325,9 @@ describe('code-review step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-same-fit-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-100', 'billing-api'), { recursive: true });
-    const agent = jest.fn(async (input: AgentRunInput) => result(input.step.endsWith('report') ? 'The checks are in.\n' : reply(input.step, 'ok')));
+    const agent = jest.fn(async (input: AgentRunInput) =>
+      result(input.step.endsWith('report') ? 'The checks are in.\n' : reply(input.step, 'ok')),
+    );
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-100');
@@ -329,7 +346,7 @@ describe('code-review step', () => {
       const second = await app.get(PipelineService).step('code-review', 'PROJ-100', { auto: true });
       expect(second.exitCode).toBe(0);
       expect(second.message).not.toContain('does not fit');
-      expect(agent.mock.calls.map((call) => (call[0] as AgentRunInput).step)).toEqual(['code-review-report']);
+      expect(agent.mock.calls.map((call) => call[0].step)).toEqual(['code-review-report']);
       expect((await history.findRun('PROJ-100'))?.currentStep).toBe('commit');
     } finally {
       await app.close();
@@ -340,9 +357,9 @@ describe('code-review step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-replay-fit-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-88', 'billing-api'), { recursive: true });
-      const agent = jest.fn(async (input: AgentRunInput) =>
-        result(reply(input.step, input.step.endsWith('quality') || input.step.endsWith('regressions') ? 'return' : 'ok')),
-      );
+    const agent = jest.fn(async (input: AgentRunInput) =>
+      result(reply(input.step, input.step.endsWith('quality') || input.step.endsWith('regressions') ? 'return' : 'ok')),
+    );
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-88', 1, 17);
@@ -378,7 +395,7 @@ describe('code-review step', () => {
       await history.putDocument(run!, 'review_regressions', 'statusColor\ndecision: return\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-88');
       expect(done.message).not.toContain('does not fit');
-      expect(agent.mock.calls.map((call) => (call[0] as AgentRunInput).step).sort()).toEqual(['code-review-report']);
+      expect(agent.mock.calls.map((call) => call[0].step).sort()).toEqual(['code-review-report']);
       const next = await history.findRun('PROJ-88');
       expect(next?.currentStep).toBe('implement');
       expect(next?.status).toBe('waiting');
@@ -414,7 +431,7 @@ describe('code-review step', () => {
       }
       const done = await app.get(PipelineService).step('code-review', 'PROJ-94');
       expect(done.exitCode).toBe(0);
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      const calls = agent.mock.calls.map((call) => call[0]);
       expect(calls.map((call) => call.step)).toEqual(['code-review-security', 'code-review-report']);
       expect(calls[0]?.resumeChatId).toBe('security-chat');
       expect(calls[0]?.prompt).toContain('You were interrupted before the decision');
@@ -441,7 +458,7 @@ describe('code-review step', () => {
       await history.putDocument(run!, 'review_regressions', 'notes\ndecision: return\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-89', { reviewer: 'quality' });
       expect(agent).toHaveBeenCalledTimes(1);
-      expect((agent.mock.calls[0]?.[0] as AgentRunInput).step).toBe('code-review-quality');
+      expect((agent.mock.calls[0]?.[0]).step).toBe('code-review-quality');
       expect(done.exitCode).toBe(0);
       const next = await history.findRun('PROJ-89');
       expect(next?.currentStep).toBe('code-review');
@@ -504,8 +521,10 @@ describe('code-review step', () => {
     try {
       const done = await app.get(PipelineService).step('code-review', 'PROJ-85', { path: checkout });
       expect(done.exitCode).toBe(0);
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
-      expect(calls.every((call) => call.mounts[0]?.containerPath === '/work' && call.mounts[0]?.readonly === true)).toBe(true);
+      const calls = agent.mock.calls.map((call) => call[0]);
+      expect(
+        calls.every((call) => call.mounts[0]?.containerPath === '/work' && call.mounts[0]?.readonly === true),
+      ).toBe(true);
       const run = await app.get(HistoryService).findRun('PROJ-85');
       expect(run?.currentStep).toBe('commit');
       expect(run?.attemptsReview).toBe(0);
@@ -522,7 +541,9 @@ describe('code-review step', () => {
     const checkout = await mkdtemp(join(tmpdir(), 'swarmloop-checkout-resume-'));
     await writeEnv(root);
     let quality = 'notes\n';
-    const agent = jest.fn(async (input: AgentRunInput) => result(input.step.endsWith('quality') ? quality : reply(input.step, 'ok')));
+    const agent = jest.fn(async (input: AgentRunInput) =>
+      result(input.step.endsWith('quality') ? quality : reply(input.step, 'ok')),
+    );
     const app = await boot(root, agent);
     try {
       const failed = await app.get(PipelineService).step('code-review', 'PROJ-86', { path: checkout });
@@ -534,9 +555,9 @@ describe('code-review step', () => {
       expect(done.exitCode).toBe(0);
       expect(done.message).not.toContain('implementation is missing');
       expect(agent).toHaveBeenCalledTimes(2);
-      const call = agent.mock.calls[0]?.[0] as AgentRunInput;
+      const call = agent.mock.calls[0]?.[0];
       expect(call.step).toBe('code-review-quality');
-      expect((agent.mock.calls[1]?.[0] as AgentRunInput).step).toBe('code-review-report');
+      expect((agent.mock.calls[1]?.[0]).step).toBe('code-review-report');
       expect(call.mounts[0]?.hostPath).toBe(realpathSync(checkout));
       const run = await app.get(HistoryService).findRun('PROJ-86');
       expect(run?.currentStep).toBe('commit');
@@ -555,11 +576,17 @@ describe('code-review step', () => {
     try {
       await seed(app, 'PROJ-87');
       const run = await app.get(HistoryService).findRun('PROJ-87');
-      await app.get(HistoryService).putDocument(run!, 'handoff', '## implement\n- changed the parser\n\n## implement-improve\n- kept the parser\n');
+      await app
+        .get(HistoryService)
+        .putDocument(
+          run!,
+          'handoff',
+          '## implement\n- changed the parser\n\n## implement-improve\n- kept the parser\n',
+        );
       await app.get(HistoryService).putDocument(run!, 'return', '## quality\nuse theme.alpha\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-87');
       expect(done.exitCode).toBe(0);
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      const calls = agent.mock.calls.map((call) => call[0]);
       const reviewers = calls.filter((call) => call.step !== 'code-review-report');
       expect(reviewers).toHaveLength(5);
       expect(calls.find((call) => call.step === 'code-review-report')?.prompt).toContain('five decisions copied below');
@@ -600,10 +627,16 @@ describe('code-review step', () => {
       await seed(app, 'PROJ-86');
       const run = await app.get(HistoryService).findRun('PROJ-86');
       await app.get(HistoryService).putDocument(run!, 'implementation', '- checked the parser\n');
-      await app.get(HistoryService).putDocument(run!, 'handoff', '## implement\n- the parser had to match the field\n\n## implement-improve\n- the first pass already did\n');
+      await app
+        .get(HistoryService)
+        .putDocument(
+          run!,
+          'handoff',
+          '## implement\n- the parser had to match the field\n\n## implement-improve\n- the first pass already did\n',
+        );
       const done = await app.get(PipelineService).step('code-review', 'PROJ-86');
       expect(done.exitCode).toBe(0);
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      const calls = agent.mock.calls.map((call) => call[0]);
       const first = calls.find((call) => call.step === 'code-review-requirements');
       expect(first?.resumeChatId ?? null).toBeNull();
       expect(first?.prompt).toContain('Ship the field');
@@ -645,10 +678,12 @@ describe('code-review step', () => {
       await history.putDocument(run!, REBASE_CONFLICT, 'review\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-97');
       expect(done.exitCode).toBe(0);
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      const calls = agent.mock.calls.map((call) => call[0]);
       const reviewers = calls.filter((call) => call.step !== 'code-review-report');
       expect(reviewers.map((call) => call.step).sort()).toEqual(
-        ['requirements', 'quality', 'regressions', 'security', 'performance'].map((name) => `code-review-${name}`).sort(),
+        ['requirements', 'quality', 'regressions', 'security', 'performance']
+          .map((name) => `code-review-${name}`)
+          .sort(),
       );
       const quality = reviewers.find((call) => call.step === 'code-review-quality');
       expect(quality?.resumeChatId ?? null).toBeNull();
@@ -667,7 +702,9 @@ describe('code-review step', () => {
     mkdirSync(root);
     const clone = repoWithBranch(parent, 'app');
     await writeEnv(root, parent);
-    const agent = jest.fn(async (input: AgentRunInput) => result(reply(input.step, input.step.endsWith('quality') ? 'return' : 'ok')));
+    const agent = jest.fn(async (input: AgentRunInput) =>
+      result(reply(input.step, input.step.endsWith('quality') ? 'return' : 'ok')),
+    );
     const app = await boot(root, agent);
     try {
       const history = app.get(HistoryService);
@@ -683,10 +720,13 @@ describe('code-review step', () => {
       const done = await app.get(PipelineService).step('code-review', 'PROJ-88');
       expect(done.exitCode).toBe(0);
       const worktree = join(root, 'worktrees', 'PROJ-88', 'app');
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      const calls = agent.mock.calls.map((call) => call[0]);
       expect(calls).toHaveLength(6);
       expect(
-        calls.every((call) => call.mounts[0]?.readonly === true && realpathSync(call.mounts[0].hostPath) === realpathSync(worktree)),
+        calls.every(
+          (call) =>
+            call.mounts[0]?.readonly === true && realpathSync(call.mounts[0].hostPath) === realpathSync(worktree),
+        ),
       ).toBe(true);
       expect(calls[0]?.prompt).toContain('Clean worktree');
       expect(calls[0]?.prompt).toContain('NEXT');
@@ -807,7 +847,10 @@ describe('code-review step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-82', 'billing-api'), { recursive: true });
     const agent = jest.fn(async (input: AgentRunInput) => ({
-      ...result(input.step.endsWith('report') ? 'The parser change holds together.\n' : 'notes\n\ndecision: ok\n', input.step),
+      ...result(
+        input.step.endsWith('report') ? 'The parser change holds together.\n' : 'notes\n\ndecision: ok\n',
+        input.step,
+      ),
       output: input.step.endsWith('quality') ? REFUSED_WRITE : undefined,
     }));
     const app = await boot(root, agent);
@@ -848,7 +891,11 @@ describe('code-review step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-98', 'billing-api'), { recursive: true });
     const agent = jest.fn(async (input: AgentRunInput) =>
-      result(input.step.endsWith('report') ? 'The checks are in.\n' : reply(input.step, input.step.endsWith('requirements') ? 'return' : 'ok')),
+      result(
+        input.step.endsWith('report')
+          ? 'The checks are in.\n'
+          : reply(input.step, input.step.endsWith('requirements') ? 'return' : 'ok'),
+      ),
     );
     const app = await boot(root, agent);
     try {
@@ -863,7 +910,7 @@ describe('code-review step', () => {
       const first = await app.get(PipelineService).step('code-review', 'PROJ-98');
       expect(first.exitCode).toBe(0);
       expect((await history.findRun('PROJ-98'))?.currentStep).toBe('implement');
-      const sent = agent.mock.calls.map((call) => call[0] as AgentRunInput).find((call) => call.step === 'code-review-requirements');
+      const sent = agent.mock.calls.map((call) => call[0]).find((call) => call.step === 'code-review-requirements');
       expect(sent?.prompt).toContain('Remove the pending rebase catch-up');
       expect(sent?.prompt).toContain('A behavior it removes is not a missing requirement');
       expect(sent?.prompt).toContain('The list below is the current one');
@@ -875,11 +922,13 @@ describe('code-review step', () => {
       agent.mockClear();
       const second = await app.get(PipelineService).step('code-review', 'PROJ-98');
       expect(second.exitCode).toBe(0);
-      const resumed = agent.mock.calls.map((call) => call[0] as AgentRunInput).find((call) => call.step === 'code-review-requirements');
+      const resumed = agent.mock.calls.map((call) => call[0]).find((call) => call.step === 'code-review-requirements');
       expect(resumed?.prompt).toContain('Do not return that behavior again');
       expect(resumed?.prompt).toContain('Remove the pending rebase catch-up');
       expect(resumed?.prompt).toContain('The list below is the current one');
-      expect(resumed?.prompt).toContain('Do not return a finding that brings back what the failing pipeline log shows as the cause');
+      expect(resumed?.prompt).toContain(
+        'Do not return a finding that brings back what the failing pipeline log shows as the cause',
+      );
       const next = await history.findRun('PROJ-98');
       expect(next?.currentStep).toBe('commit');
       expect(next?.attemptsReview).toBe(1);
@@ -893,7 +942,11 @@ describe('code-review step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-99', 'billing-api'), { recursive: true });
     const agent = jest.fn(async (input: AgentRunInput) =>
-      result(input.step.endsWith('report') ? 'The checks are in.\n' : reply(input.step, input.step.endsWith('requirements') ? 'return' : 'ok')),
+      result(
+        input.step.endsWith('report')
+          ? 'The checks are in.\n'
+          : reply(input.step, input.step.endsWith('requirements') ? 'return' : 'ok'),
+      ),
     );
     const app = await boot(root, agent);
     try {
@@ -914,7 +967,7 @@ describe('code-review step', () => {
       agent.mockClear();
       const second = await app.get(PipelineService).step('code-review', 'PROJ-99');
       expect(second.exitCode).toBe(0);
-      const calls = agent.mock.calls.map((call) => call[0] as AgentRunInput);
+      const calls = agent.mock.calls.map((call) => call[0]);
       const resumed = calls.find((call) => call.step === 'code-review-requirements');
       expect(calls.map((call) => call.step).sort()).toEqual(['code-review-report', 'code-review-requirements']);
       expect(resumed?.prompt).toContain('Remove the pending rebase catch-up');
@@ -963,7 +1016,12 @@ async function boot(root: string, agent: jest.Mock) {
     .compile();
 }
 
-async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, attemptsReview = 0, agentCalls = 0): Promise<void> {
+async function seed(
+  app: Awaited<ReturnType<typeof boot>>,
+  key: string,
+  attemptsReview = 0,
+  agentCalls = 0,
+): Promise<void> {
   const history = app.get(HistoryService);
   const seeded = await history.begin(key, 'code-review');
   seeded.status = 'waiting';
@@ -978,7 +1036,10 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, attempts
 
 async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeof boot> {
   mkdirSync(join(root, 'data'), { recursive: true });
-  writeFileSync(join(root, 'data', 'price-cache-cursor.json'), `${JSON.stringify({ fetchedAt: new Date().toISOString(), prices: {} })}\n`);
+  writeFileSync(
+    join(root, 'data', 'price-cache-cursor.json'),
+    `${JSON.stringify({ fetchedAt: new Date().toISOString(), prices: {} })}\n`,
+  );
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })

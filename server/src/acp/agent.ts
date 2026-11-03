@@ -1,11 +1,12 @@
 import { existsSync } from 'fs';
 import { basename, isAbsolute, join, resolve } from 'path';
-import { Writable } from 'stream';
-import { encodeMessage, JsonRpc, pushFrames } from './framing';
+import type { Writable } from 'stream';
+import type { JsonRpc } from './framing';
+import { encodeMessage, pushFrames } from './framing';
 import { sessionTitle } from './format';
 import { liveLogBody } from './live-output';
-import { FlowView } from '../contract/api';
-import { ServerApi } from './server-api';
+import type { FlowView } from '../contract/api';
+import type { ServerApi } from './server-api';
 import { readableLog } from './readable-log';
 import { nestCheckout } from './paths';
 import { REVIEW_STEPS } from '../contract/steps';
@@ -43,7 +44,11 @@ export interface SloopOptions {
 
 const MISSING_POLLS = 20;
 
-export async function serve(input: AsyncIterable<Buffer | string> | Iterable<Buffer | string>, output: Writable, agent: Sloop): Promise<void> {
+export async function serve(
+  input: AsyncIterable<Buffer | string> | Iterable<Buffer | string>,
+  output: Writable,
+  agent: Sloop,
+): Promise<void> {
   let buffer = Buffer.alloc(0);
   let chain = Promise.resolve();
   const write = (message: unknown): Promise<void> => {
@@ -323,7 +328,12 @@ export class Sloop {
     }
   }
 
-  private async chat(session: Session, text: string, skill: string | undefined, emit: (note: JsonRpc) => void): Promise<void> {
+  private async chat(
+    session: Session,
+    text: string,
+    skill: string | undefined,
+    emit: (note: JsonRpc) => void,
+  ): Promise<void> {
     if (!session.runKey) {
       throw new Error('start the feature with a prompt first');
     }
@@ -430,7 +440,9 @@ export class Sloop {
     const extra = Array.isArray(params.roots) ? params.roots : [];
     const paths = [
       cwd,
-      ...extra.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => this.directory(item)),
+      ...extra
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        .map((item) => this.directory(item)),
     ];
     return [...new Set(paths)];
   }
@@ -495,7 +507,10 @@ export class Sloop {
       { name: 'step', description: 'Run a pipeline step. The next word is the step name.' },
       { name: 'resume', description: 'Run the failed step again.' },
       { name: 'replay', description: 'Restart this feature from requirements. The rest is the new prompt.' },
-      { name: 'review', description: 'Start a code review of this directory, or of a directory named after the command.' },
+      {
+        name: 'review',
+        description: 'Start a code review of this directory, or of a directory named after the command.',
+      },
     ];
     emit({
       jsonrpc: '2.0',
@@ -538,7 +553,12 @@ export class Sloop {
     });
   }
 
-  private emitLog(session: Session, part: { name: string; text: string }, shown: Map<string, string>, emit: (note: JsonRpc) => void): void {
+  private emitLog(
+    session: Session,
+    part: { name: string; text: string },
+    shown: Map<string, string>,
+    emit: (note: JsonRpc) => void,
+  ): void {
     const prev = shown.get(part.name) ?? '';
     const label = part.name.startsWith('code-review-') ? part.name.slice('code-review-'.length) : '';
     if (part.text.startsWith(prev)) {
@@ -594,12 +614,19 @@ export function progressText(flow: FlowView): string {
   return `${line}\n\n${sentence}\n`;
 }
 
-export function planEntries(flow: FlowView): { content: string; priority: 'high' | 'medium'; status: 'pending' | 'in_progress' | 'completed' }[] {
+export function planEntries(
+  flow: FlowView,
+): { content: string; priority: 'high' | 'medium'; status: 'pending' | 'in_progress' | 'completed' }[] {
   return (flow.phases ?? []).flatMap((group) =>
     group.steps.map((step) => ({
       content: `${group.phase} · ${step.name} — ${step.status}`,
       priority: step.name === flow.currentStep ? 'high' : 'medium',
-      status: step.status === 'done' ? 'completed' : step.status === 'idle' || step.status === 'skipped' ? 'pending' : 'in_progress',
+      status:
+        step.status === 'done'
+          ? 'completed'
+          : step.status === 'idle' || step.status === 'skipped'
+            ? 'pending'
+            : 'in_progress',
     })),
   );
 }

@@ -1,5 +1,5 @@
 import { basename } from 'path';
-import { SandboxMount } from '../sandbox/sandbox-launch';
+import type { SandboxMount } from '../sandbox/sandbox-launch';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { git, gitDetail } from './git';
 

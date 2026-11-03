@@ -48,7 +48,12 @@ export function renderFail(failures: Failure[], seen: Seen[], intro = ''): strin
     const failed = seen
       .filter((item) => item.status === 'failed' || item.status === 'canceled')
       .map((item) =>
-        [`project: ${item.project}`, `pipeline: ${item.id ?? ''}`, `status: ${item.status}`, item.url ? `url: ${item.url}` : '']
+        [
+          `project: ${item.project}`,
+          `pipeline: ${item.id ?? ''}`,
+          `status: ${item.status}`,
+          item.url ? `url: ${item.url}` : '',
+        ]
           .filter((line) => line !== '')
           .join('\n'),
       );

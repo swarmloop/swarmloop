@@ -1,14 +1,15 @@
 'use client';
 
-import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, runLog } from '../lib/api';
 import { openElapsed, visitStored } from '../lib/elapsed';
 import { liveSocket } from '../lib/live';
 import { keepOpenReviews, markReviewFinished, markReviewLive, reviewChipName } from '../lib/phases';
 import { pipelineStepOf, REVIEW_STEPS, type PhaseName } from '@contract/steps';
 import { reviewChipStatus } from '../lib/readable-log';
-import { FlowView } from '@contract/api';
-import { LiveLog } from '@contract/live';
+import type { FlowView } from '@contract/api';
+import type { LiveLog } from '@contract/live';
 
 export function useRunFlow(runKey: string): {
   flow: FlowView | null;
@@ -58,7 +59,12 @@ export function useRunFlow(runKey: string): {
         return;
       }
       setFlow((current) => {
-        if (pinnedAt.current && body.updatedAt === pinnedAt.current && current?.status === 'running' && body.status === 'waiting') {
+        if (
+          pinnedAt.current &&
+          body.updatedAt === pinnedAt.current &&
+          current?.status === 'running' &&
+          body.status === 'waiting'
+        ) {
           return current;
         }
         pinnedAt.current = null;
@@ -84,7 +90,9 @@ export function useRunFlow(runKey: string): {
         if (openReviews.has(name)) {
           return;
         }
-        setFlow((current) => (current?.key === runKey ? { ...current, phases: markReviewFinished(current.phases, name, status) } : current));
+        setFlow((current) =>
+          current?.key === runKey ? { ...current, phases: markReviewFinished(current.phases, name, status) } : current,
+        );
       });
     };
     const load = (): void => {
@@ -119,7 +127,13 @@ export function useRunFlow(runKey: string): {
         if (status) {
           return { ...current, phases: markReviewFinished(current.phases, chip, status) };
         }
-        if (current.status !== 'running' || current.currentStep !== 'code-review' || trimmed === '' || trimmed === 'waiting for output' || trimmed === 'starting') {
+        if (
+          current.status !== 'running' ||
+          current.currentStep !== 'code-review' ||
+          trimmed === '' ||
+          trimmed === 'waiting for output' ||
+          trimmed === 'starting'
+        ) {
           return current;
         }
         return { ...current, phases: markReviewLive(current.phases, chip) };
@@ -161,7 +175,8 @@ export function useRunFlow(runKey: string): {
   if (flow) {
     const gap = heldMs.current > 0 && !visitStored(flow.metrics.closedStarts, heldStart.current);
     const staleStart = gap && flow.stepStartedAt !== null && flow.stepStartedAt === heldStart.current;
-    const live = flow.status === 'running' && flow.stepStartedAt && !staleStart ? openElapsed(flow.stepStartedAt, now) : 0;
+    const live =
+      flow.status === 'running' && flow.stepStartedAt && !staleStart ? openElapsed(flow.stepStartedAt, now) : 0;
     openMs = live + (gap ? heldMs.current : 0);
   }
 
@@ -241,7 +256,11 @@ export function useRunFlow(runKey: string): {
       followStep.current = true;
       setSelected(step);
       pinnedAt.current = run.updatedAt;
-      setFlow((current) => (current ? { ...current, status: 'running', currentStep: step, resume: 'running', stepStartedAt: null } : current));
+      setFlow((current) =>
+        current
+          ? { ...current, status: 'running', currentStep: step, resume: 'running', stepStartedAt: null }
+          : current,
+      );
       setReplay(null);
       setPending(null);
     });
@@ -258,7 +277,11 @@ export function useRunFlow(runKey: string): {
         followStep.current = true;
         setSelected(step);
         pinnedAt.current = run.updatedAt;
-        setFlow((current) => (current ? { ...current, status: 'running', currentStep: 'code-review', resume: 'running', stepStartedAt: null } : current));
+        setFlow((current) =>
+          current
+            ? { ...current, status: 'running', currentStep: 'code-review', resume: 'running', stepStartedAt: null }
+            : current,
+        );
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'start failed'));
   };
@@ -272,7 +295,9 @@ export function useRunFlow(runKey: string): {
       .then(() => {
         followStep.current = true;
         pinnedAt.current = run.updatedAt;
-        setFlow((current) => (current ? { ...current, status: 'running', resume: 'running', stepStartedAt: null } : current));
+        setFlow((current) =>
+          current ? { ...current, status: 'running', resume: 'running', stepStartedAt: null } : current,
+        );
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'resume failed'));
   };
@@ -304,7 +329,11 @@ export function useRunFlow(runKey: string): {
   };
 }
 
-async function probeFinishedReviews(flow: FlowView, runKey: string, mark: (name: string, status: string) => void): Promise<void> {
+async function probeFinishedReviews(
+  flow: FlowView,
+  runKey: string,
+  mark: (name: string, status: string) => void,
+): Promise<void> {
   const names = flow.phases
     .flatMap((phase) => phase.steps)
     .filter((step) => step.name.startsWith('code-review-') && step.status === 'running')

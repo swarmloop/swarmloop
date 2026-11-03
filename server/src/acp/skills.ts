@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { SkillCommand } from './agent';
+import type { SkillCommand } from './agent';
 
 export function loadSkills(directory: string): SkillCommand[] {
   if (!existsSync(directory)) {

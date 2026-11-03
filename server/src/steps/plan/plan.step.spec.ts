@@ -7,11 +7,12 @@ import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
-import { Repository } from 'typeorm';
+import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DocumentEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
-import { AGENT_CONTINUE, AGENT_RUNNER, AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
+import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
+import { AGENT_CONTINUE, AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -30,7 +31,9 @@ describe('plan step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-40', 'billing-api'), { recursive: true });
     mkdirSync(join(root, 'worktrees', 'PROJ-40', 'other'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field', '- cover the empty case'].join('\n')));
+    const agent = jest
+      .fn()
+      .mockResolvedValue(result(['plan:', '- add the field', '- cover the empty case'].join('\n')));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-40', '');
@@ -108,7 +111,9 @@ describe('plan step', () => {
       const done = await app.get(PipelineService).step('plan', 'PROJ-44');
       expect(done.exitCode).toBe(0);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
-      expect(input.mounts).toEqual([{ hostPath: join(root, 'worktrees', 'PROJ-44', 'app'), containerPath: '/work/app' }]);
+      expect(input.mounts).toEqual([
+        { hostPath: join(root, 'worktrees', 'PROJ-44', 'app'), containerPath: '/work/app' },
+      ]);
     } finally {
       await app.close();
     }
@@ -279,7 +284,10 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, question
 
 async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeof boot> {
   mkdirSync(join(root, 'data'), { recursive: true });
-  writeFileSync(join(root, 'data', 'price-cache-cursor.json'), `${JSON.stringify({ fetchedAt: new Date().toISOString(), prices: {} })}\n`);
+  writeFileSync(
+    join(root, 'data', 'price-cache-cursor.json'),
+    `${JSON.stringify({ fetchedAt: new Date().toISOString(), prices: {} })}\n`,
+  );
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })

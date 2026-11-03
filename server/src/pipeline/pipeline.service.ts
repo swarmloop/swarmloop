@@ -20,7 +20,20 @@ import { StepRegistry } from '../steps/step.registry';
 import { joinPrompt, withInstructions } from '../steps/plan/plan-record';
 import { CHAT_LOCK, chatHeld, chatResume, readChatLock } from './chat-lock';
 import { settleShell, shellHolding } from './shell-lock';
-import { assertKey, autoContinues, continuesSameStep, countedVisits, continues, diedLog, failedLaunches, isStep, loopMark, PipelineResult, settle, StepOptions } from '../core/pipeline-result';
+import {
+  assertKey,
+  autoContinues,
+  continuesSameStep,
+  countedVisits,
+  continues,
+  diedLog,
+  failedLaunches,
+  isStep,
+  loopMark,
+  PipelineResult,
+  settle,
+  StepOptions,
+} from '../core/pipeline-result';
 import { STEPS, StepName } from '../contract/steps';
 
 @Injectable()
@@ -180,7 +193,12 @@ export class PipelineService implements OnModuleInit {
       if (missing) {
         return { exitCode: 1, message: `${missing} is missing` };
       }
-      if (step === 'requirements' && options.prompt === undefined && options.promptFile === undefined && !existing?.prompt) {
+      if (
+        step === 'requirements' &&
+        options.prompt === undefined &&
+        options.promptFile === undefined &&
+        !existing?.prompt
+      ) {
         return { exitCode: 1, message: 'prompt is missing' };
       }
       const blocked = await this.spendStop(key, step);
@@ -294,7 +312,12 @@ export class PipelineService implements OnModuleInit {
     const env = readEnv(this.config);
     const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME);
     const model = modelForStep(run.currentStep, env);
-    const charge = run.currentStep === 'code-review' ? await chargeReview(this.history.root(), run.key, env, prices) : model ? chargeStream(model, saved, prices) : null;
+    const charge =
+      run.currentStep === 'code-review'
+        ? await chargeReview(this.history.root(), run.key, env, prices)
+        : model
+          ? chargeStream(model, saved, prices)
+          : null;
     run.spentUsd += charge?.usd ?? 0;
     await this.history.finishVisit(run, {
       step: run.currentStep,

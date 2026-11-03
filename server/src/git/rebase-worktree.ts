@@ -1,8 +1,19 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { dirname, isAbsolute, join, sep } from 'path';
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { originRef, promptBase } from './base-ref';
@@ -286,7 +297,13 @@ async function squashOffMount(input: {
   } catch (error) {
     throw new SwarmloopError(`${input.repo} rebase failed: ${rebaseStderr(gitStderr(error), input.hosts)}`);
   }
-  await gitAt(input.cwd, input.repo, ['-c', 'safe.directory=*', 'fetch', input.tmp, 'HEAD'], 'rebase failed', input.hosts);
+  await gitAt(
+    input.cwd,
+    input.repo,
+    ['-c', 'safe.directory=*', 'fetch', input.tmp, 'HEAD'],
+    'rebase failed',
+    input.hosts,
+  );
   await resetHard(input.cwd, input.repo, input.hosts, 'FETCH_HEAD');
   return null;
 }
@@ -315,9 +332,18 @@ async function landConflict(input: {
     throw new SwarmloopError(`${input.repo} rebase failed: ${rebaseStderr(gitStderr(error), input.hosts)}`);
   }
   const entries = parseStageList(stageList);
-  const files = readCloneFiles(input.tmp, entries.map((entry) => entry.path));
+  const files = readCloneFiles(
+    input.tmp,
+    entries.map((entry) => entry.path),
+  );
   const oldTip = await gitAt(input.cwd, input.repo, ['rev-parse', 'HEAD'], 'rebase failed', input.hosts);
-  await gitAt(input.cwd, input.repo, ['update-ref', `refs/swarmloop/pre-rebase/${input.branch}`, oldTip], 'rebase failed', input.hosts);
+  await gitAt(
+    input.cwd,
+    input.repo,
+    ['update-ref', `refs/swarmloop/pre-rebase/${input.branch}`, oldTip],
+    'rebase failed',
+    input.hosts,
+  );
   await resetHard(input.cwd, input.repo, input.hosts, input.baseSha);
   for (const [path, file] of files) {
     const full = copiedDestination(input.cwd, path);
@@ -329,7 +355,9 @@ async function landConflict(input: {
     }
   }
   const present = new Set(entries.map((entry) => entry.path));
-  const tracked = (await gitRawAt(input.cwd, input.repo, ['ls-files', '-z'])).split('\0').filter((path) => path.length > 0);
+  const tracked = (await gitRawAt(input.cwd, input.repo, ['ls-files', '-z']))
+    .split('\0')
+    .filter((path) => path.length > 0);
   const removed = tracked.filter((path) => !present.has(path));
   for (const path of removed) {
     removeCopiedPath(join(input.cwd, path));
@@ -436,7 +464,13 @@ async function indexDirty(tmp: string, repo: string, hosts: RebaseHosts): Promis
   }
 }
 
-async function tipInBase(tmp: string, tipSha: string, baseSha: string, repo: string, hosts: RebaseHosts): Promise<boolean> {
+async function tipInBase(
+  tmp: string,
+  tipSha: string,
+  baseSha: string,
+  repo: string,
+  hosts: RebaseHosts,
+): Promise<boolean> {
   try {
     await git(cloneArgs(tmp, ['merge-base', '--is-ancestor', tipSha, baseSha]));
     return true;
@@ -578,8 +612,18 @@ function removeCopiedPath(full: string): void {
   }
 }
 
-async function importCloneBlobs(cwd: string, tmp: string, repo: string, hosts: RebaseHosts, entries: StageEntry[]): Promise<void> {
-  const shas = [...new Set(entries.filter((entry) => entry.mode !== '160000' && entry.sha !== EMPTY_BLOB).map((entry) => entry.sha))];
+async function importCloneBlobs(
+  cwd: string,
+  tmp: string,
+  repo: string,
+  hosts: RebaseHosts,
+  entries: StageEntry[],
+): Promise<void> {
+  const shas = [
+    ...new Set(
+      entries.filter((entry) => entry.mode !== '160000' && entry.sha !== EMPTY_BLOB).map((entry) => entry.sha),
+    ),
+  ];
   if (shas.length === 0) {
     return;
   }
@@ -709,7 +753,9 @@ async function restoreHiddenWorktree(cwd: string, repo: string, hosts: RebaseHos
   }
   const message = await gitAt(cwd, repo, ['log', '-1', '--format=%B', HIDDEN_REF], 'rebase failed', hosts, captured);
   let paths = hiddenPaths(message);
-  const present = (await gitRaw(['-C', cwd, 'ls-tree', '-r', '--name-only', '-z', HIDDEN_REF])).split('\0').filter((item) => item.length > 0);
+  const present = (await gitRaw(['-C', cwd, 'ls-tree', '-r', '--name-only', '-z', HIDDEN_REF]))
+    .split('\0')
+    .filter((item) => item.length > 0);
   if (paths.length === 0) {
     paths = present;
   }
@@ -717,7 +763,14 @@ async function restoreHiddenWorktree(cwd: string, repo: string, hosts: RebaseHos
   const checkout = paths.filter((path) => known.has(path));
   const removed = paths.filter((path) => !known.has(path));
   if (checkout.length > 0) {
-    await gitAt(cwd, repo, ['restore', '--source', HIDDEN_REF, '--worktree', '--', ...checkout], 'rebase failed', hosts, captured);
+    await gitAt(
+      cwd,
+      repo,
+      ['restore', '--source', HIDDEN_REF, '--worktree', '--', ...checkout],
+      'rebase failed',
+      hosts,
+      captured,
+    );
   }
   for (const path of removed) {
     removeCopiedPath(join(cwd, path));
@@ -992,11 +1045,19 @@ async function gitPathExists(cwd: string, name: string): Promise<boolean> {
   }
 }
 
-async function gitAt(cwd: string, repo: string, args: string[], failure: string, hosts?: RebaseHosts, captured = ''): Promise<string> {
+async function gitAt(
+  cwd: string,
+  repo: string,
+  args: string[],
+  failure: string,
+  hosts?: RebaseHosts,
+  captured = '',
+): Promise<string> {
   try {
     return await git(['-C', cwd, ...args]);
   } catch (error) {
-    const detail = failure === 'rebase failed' && hosts ? rebaseStderr(gitStderr(error), hosts, captured) : gitDetail(error);
+    const detail =
+      failure === 'rebase failed' && hosts ? rebaseStderr(gitStderr(error), hosts, captured) : gitDetail(error);
     throw new SwarmloopError(`${repo} ${failure}: ${detail}`);
   }
 }

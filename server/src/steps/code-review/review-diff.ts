@@ -1,7 +1,8 @@
 import { chmodSync, mkdirSync, writeFileSync } from 'fs';
 import { basename, join } from 'path';
 import { sessionHome } from '../../agent/session-group';
-import { agentStateDir, SandboxMount } from '../../sandbox/sandbox-launch';
+import type { SandboxMount } from '../../sandbox/sandbox-launch';
+import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { isDenied } from '../commit/commit-paths';
 import { gitMissing, gitRaw } from '../../git/git';
@@ -71,7 +72,8 @@ async function one(mount: SandboxMount, denied: string[]): Promise<{ list: strin
   const allowedUntracked = untracked.filter((path) => !isDenied(path, denied));
   const allowedDirty = dirtyNames.filter((path) => !isDenied(path, denied));
   if (allowedDirty.length > 0 || allowedUntracked.length > 0) {
-    const dirty = allowedDirty.length > 0 ? withoutDenied(await optional(mount.hostPath, ['diff', 'HEAD']), denied) : '';
+    const dirty =
+      allowedDirty.length > 0 ? withoutDenied(await optional(mount.hostPath, ['diff', 'HEAD']), denied) : '';
     const names = [...allowedDirty, ...allowedUntracked];
     const extra = await untrackedBodies(mount.hostPath, allowedUntracked);
     const status = 'Uncommitted changes against HEAD.';
@@ -247,7 +249,12 @@ async function optional(cwd: string, args: string[]): Promise<string | null> {
 }
 
 function isOutputCap(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: unknown }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER';
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
+  );
 }
 
 function stdoutOf(error: unknown): string {

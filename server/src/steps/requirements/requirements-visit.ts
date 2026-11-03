@@ -1,7 +1,7 @@
-import { SampleDraft, VisitDraft } from '../../history/visit';
-import { KillReason } from '../../agent/limits';
-import { RequirementsWrite } from '../../integrations/requirements-source/requirements-source';
-import { HttpCallDraft } from '../../core/swarmloop-error';
+import type { SampleDraft, VisitDraft } from '../../history/visit';
+import type { KillReason } from '../../agent/limits';
+import type { RequirementsWrite } from '../../integrations/requirements-source/requirements-source';
+import type { HttpCallDraft } from '../../core/swarmloop-error';
 
 export interface RequirementsFinish {
   written: RequirementsWrite;

@@ -1,5 +1,5 @@
-import { RequirementsInput } from './requirements-source';
-import { IssueBundle, IssueEpic, IssuePage } from '../issue-tracker/issue-bundle';
+import type { RequirementsInput } from './requirements-source';
+import type { IssueBundle, IssueEpic, IssuePage } from '../issue-tracker/issue-bundle';
 
 export interface RecordNote {
   author: string;
@@ -59,8 +59,16 @@ export interface RequirementsRecord {
   plan: PlanFields | null;
 }
 
-export function buildRecord(input: Pick<RequirementsInput, 'prompt' | 'bundles' | 'bundle' | 'issueKeys'>): RequirementsRecord {
-  const bundles = input.issueKeys?.length ? (input.bundles?.length ? input.bundles : input.bundle ? [input.bundle] : []) : [];
+export function buildRecord(
+  input: Pick<RequirementsInput, 'prompt' | 'bundles' | 'bundle' | 'issueKeys'>,
+): RequirementsRecord {
+  const bundles = input.issueKeys?.length
+    ? input.bundles?.length
+      ? input.bundles
+      : input.bundle
+        ? [input.bundle]
+        : []
+    : [];
   const epics = uniqueEpics(bundles);
   const tickets = bundles.map((bundle) => ({
     key: bundle.key,

@@ -4,7 +4,8 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import type { Theme } from '@mui/material/styles';
 import { pieces } from '../lib/log-pieces';
-import { LogMessage, logMessages } from '../lib/readable-log';
+import type { LogMessage } from '../lib/readable-log';
+import { logMessages } from '../lib/readable-log';
 
 export function LogTranscript({ raw }: { raw: string }): ReactNode {
   const messages = logMessages(raw);
@@ -42,7 +43,13 @@ function Message({ message }: { message: LogMessage }) {
         }
         setOpen((value) => !value);
       }}
-      sx={{ border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'hidden', cursor: tall ? 'pointer' : 'default' }}
+      sx={{
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 1,
+        overflow: 'hidden',
+        cursor: tall ? 'pointer' : 'default',
+      }}
     >
       <Box
         sx={{
@@ -59,7 +66,15 @@ function Message({ message }: { message: LogMessage }) {
       </Box>
       <Box sx={{ position: 'relative' }}>
         <Box ref={body} sx={{ maxHeight: tall && !open ? FOLDED_HEIGHT : 'none', overflow: 'hidden' }}>
-          {code ? message.code === 'shell' ? <ShellCode text={message.text} /> : <JsonCode text={message.text} /> : <Prose text={message.text} />}
+          {code ? (
+            message.code === 'shell' ? (
+              <ShellCode text={message.text} />
+            ) : (
+              <JsonCode text={message.text} />
+            )
+          ) : (
+            <Prose text={message.text} />
+          )}
         </Box>
         {tall && !open ? (
           <Box
@@ -69,7 +84,8 @@ function Message({ message }: { message: LogMessage }) {
               right: 0,
               bottom: 0,
               height: 48,
-              background: (theme) => `linear-gradient(to bottom, transparent, ${theme.vars?.palette.background.paper ?? theme.palette.background.paper} 72%)`,
+              background: (theme) =>
+                `linear-gradient(to bottom, transparent, ${theme.vars?.palette.background.paper ?? theme.palette.background.paper} 72%)`,
               pointerEvents: 'none',
             }}
           />
@@ -153,7 +169,15 @@ function jsonTokens(text: string): ReactNode[] {
   parts.forEach((part, index) => {
     const next = parts.slice(index + 1).find((item) => item.trim() !== '');
     const key = part.startsWith('"') && next === ':';
-    const color = key ? 'secondary.main' : part.startsWith('"') ? 'primary.main' : /^-?\d/.test(part) ? 'warning.main' : /^[{}[\],:]$/.test(part) ? 'text.secondary' : 'text.primary';
+    const color = key
+      ? 'secondary.main'
+      : part.startsWith('"')
+        ? 'primary.main'
+        : /^-?\d/.test(part)
+          ? 'warning.main'
+          : /^[{}[\],:]$/.test(part)
+            ? 'text.secondary'
+            : 'text.primary';
     nodes.push(
       <Box key={index} component="span" sx={{ color }}>
         {part}

@@ -4,7 +4,17 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { SandboxService, collectEnvMasks, parseDockerStats } from './sandbox.service';
-import { agentStateDir, emptyEnvFile, modelCredential, mountsForRun, resolveDaemonPath, sandboxArgs, sandboxUserId, stepContainers, SandboxLaunch } from './sandbox-launch';
+import type { SandboxLaunch } from './sandbox-launch';
+import {
+  agentStateDir,
+  emptyEnvFile,
+  modelCredential,
+  mountsForRun,
+  resolveDaemonPath,
+  sandboxArgs,
+  sandboxUserId,
+  stepContainers,
+} from './sandbox-launch';
 
 const home = '/Users/dev';
 
@@ -78,7 +88,11 @@ describe('sandbox launch', () => {
     mkdirSync(join(root, 'alpha'));
     const target = join(root, 'target');
     mkdirSync(target);
-    expect(mountsForRun(root, null).map((mount) => mount.containerPath)).toEqual(['/work/alpha', '/work/beta', '/work/target']);
+    expect(mountsForRun(root, null).map((mount) => mount.containerPath)).toEqual([
+      '/work/alpha',
+      '/work/beta',
+      '/work/target',
+    ]);
     expect(mountsForRun(root, target)).toEqual([{ hostPath: target, containerPath: '/work' }]);
   });
 
@@ -89,7 +103,9 @@ describe('sandbox launch', () => {
     mkdirSync(join(checkouts, 'run-1'), { recursive: true });
     mkdirSync(join(root, 'worktrees'));
     symlinkSync(join(checkouts, 'run-1'), link);
-    expect(resolveDaemonPath(link, [{ destination: checkouts, source: '/Users/dev/www' }])).toBe('/Users/dev/www/run-1');
+    expect(resolveDaemonPath(link, [{ destination: checkouts, source: '/Users/dev/www' }])).toBe(
+      '/Users/dev/www/run-1',
+    );
     expect(resolveDaemonPath('/tmp/worktrees/PROJ-1', [])).toBe('/tmp/worktrees/PROJ-1');
     const mask = emptyEnvFile('/app/data/agent-state/PROJ-1');
     expect(mask).toBe('/app/data/swarmloop-empty-env');
@@ -111,7 +127,9 @@ describe('sandbox launch', () => {
     expect(bind.join(' ')).not.toContain('src=/data/checkout');
     const volume = sandboxArgs(
       launch({
-        mounts: [{ hostPath: '/data/clones/other', volume: 'swarmloop-clones', containerPath: '/work', readonly: true }],
+        mounts: [
+          { hostPath: '/data/clones/other', volume: 'swarmloop-clones', containerPath: '/work', readonly: true },
+        ],
         envMasks: [],
       }),
       home,
@@ -120,7 +138,14 @@ describe('sandbox launch', () => {
     expect(() =>
       sandboxArgs(
         launch({
-          mounts: [{ hostPath: '/data/clones/other', volume: 'swarmloop-clones', daemonPath: '/builds/other', containerPath: '/work' }],
+          mounts: [
+            {
+              hostPath: '/data/clones/other',
+              volume: 'swarmloop-clones',
+              daemonPath: '/builds/other',
+              containerPath: '/work',
+            },
+          ],
         }),
         home,
       ),
@@ -128,8 +153,12 @@ describe('sandbox launch', () => {
   });
 
   it('rejects a production host, the home directory, and root', () => {
-    expect(() => sandboxArgs(launch({ allowHosts: ['api.example.com'] }), home)).toThrow('api.example.com is a production host');
-    expect(() => sandboxArgs(launch({ mounts: [{ hostPath: home, containerPath: '/work' }] }), home)).toThrow(SwarmloopError);
+    expect(() => sandboxArgs(launch({ allowHosts: ['api.example.com'] }), home)).toThrow(
+      'api.example.com is a production host',
+    );
+    expect(() => sandboxArgs(launch({ mounts: [{ hostPath: home, containerPath: '/work' }] }), home)).toThrow(
+      SwarmloopError,
+    );
     expect(() => sandboxArgs(launch({ userId: 0 }), home)).toThrow('sandbox user is root');
     expect(sandboxUserId(502)).toBe(502);
     expect(sandboxUserId(0, '502')).toBe(502);
@@ -148,9 +177,13 @@ describe('sandbox launch', () => {
     expect(args.filter((arg) => arg === '--env')).toEqual(['--env']);
     expect(args[args.indexOf('--env') + 1]).toBe('CURSOR_API_KEY=cursor-test-key');
     expect(args[args.indexOf('--network') + 1]).toBe('swarmloop-registry');
-    expect(() => sandboxArgs(launch({ env: [{ name: 'GITLAB_TOKEN', value: 'x' }] }), home)).toThrow('sandbox env is not allowed');
+    expect(() => sandboxArgs(launch({ env: [{ name: 'GITLAB_TOKEN', value: 'x' }] }), home)).toThrow(
+      'sandbox env is not allowed',
+    );
     expect(() => modelCredential('cursor', '', '', '')).toThrow('CURSOR_API_KEY is missing');
-    expect(() => modelCredential('claude', '', '', '')).toThrow('ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is missing');
+    expect(() => modelCredential('claude', '', '', '')).toThrow(
+      'ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is missing',
+    );
     expect(modelCredential('claude', '', '', 'token')).toEqual({ name: 'CLAUDE_CODE_OAUTH_TOKEN', value: 'token' });
     expect(modelCredential('claude', '', 'api-key', '')).toEqual({ name: 'ANTHROPIC_API_KEY', value: 'api-key' });
     const both = modelCredential('claude', '', 'api-key', 'token');
@@ -159,7 +192,10 @@ describe('sandbox launch', () => {
     expect(claude.filter((arg) => arg === '--env')).toEqual(['--env']);
     expect(claude[claude.indexOf('--env') + 1]).toBe('CLAUDE_CODE_OAUTH_TOKEN=token');
     expect(claude.join(' ')).not.toContain('ANTHROPIC_API_KEY');
-    expect(modelCredential('cursor', 'cursor-key', 'api-key', 'token')).toEqual({ name: 'CURSOR_API_KEY', value: 'cursor-key' });
+    expect(modelCredential('cursor', 'cursor-key', 'api-key', 'token')).toEqual({
+      name: 'CURSOR_API_KEY',
+      value: 'cursor-key',
+    });
   });
 
   it('uses an internal network only for local allowlist hosts', () => {
