@@ -30,7 +30,14 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Pro
       },
       (error: unknown, stdout, stderr) => {
         if (error) {
-          const failure = error instanceof Error ? error : new Error(String(error));
+          const message =
+            typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'
+              ? error.message
+              : 'Git command failed';
+          const failure = error instanceof Error ? error : new Error(message);
+          if (typeof error === 'object' && error !== null && 'code' in error) {
+            (failure as { code?: unknown }).code = error.code;
+          }
           if (typeof stdout === 'string' && stdout.length > 0) {
             (failure as { stdout?: string }).stdout = stdout;
           }
