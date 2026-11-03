@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync, realpathSync, statSync } from 'fs';
 import { readEnv } from '../config/env';
@@ -39,6 +39,7 @@ import { STEPS, StepName } from '../contract/steps';
 
 @Injectable()
 export class PipelineService implements OnModuleInit {
+  private readonly logger = new Logger(PipelineService.name);
   private readonly inflight = new Set<string>();
 
   constructor(
@@ -214,7 +215,7 @@ export class PipelineService implements OnModuleInit {
       void this.drive(step, key, options)
         .catch(async (error: unknown) => {
           const message = error instanceof Error ? error.message : 'run failed';
-          process.stderr.write(`${message}\n`);
+          this.logger.error(message);
           const run = await this.history.findRun(key);
           if (run?.status === 'running' && run.ownerPid === process.pid) {
             const now = new Date().toISOString();

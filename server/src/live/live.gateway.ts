@@ -1,4 +1,4 @@
-import { NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { OnGatewayConnection, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { FlowView } from '../contract/api';
@@ -12,6 +12,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
   @WebSocketServer()
   server!: Server<ClientToServerEvents, ServerToClientEvents>;
 
+  private readonly logger = new Logger(LiveGateway.name);
   private readonly stop: Array<() => void> = [];
   private readonly pending = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -83,7 +84,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'live update failed';
-      process.stderr.write(`${message}\n`);
+      this.logger.error(message);
     }
   }
 

@@ -48,6 +48,27 @@ export default tseslint.config(
     rules: { 'no-console': 'off' },
   },
   {
+    files: ['server/src/**/*.ts'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        { object: 'process.stderr', property: 'write', message: 'Log through a Nest Logger instead.' },
+        { object: 'process.stdout', property: 'write', message: 'Log through a Nest Logger instead.' },
+      ],
+    },
+  },
+  {
+    // Person-facing CLI, bootstrap, and prompt output is written directly, as the no-console exceptions are.
+    files: [
+      'server/src/cli/**',
+      'server/src/main.ts',
+      'server/src/api-main.ts',
+      'server/src/acp/shell.ts',
+      'server/src/integrations/linked-pages/paste-page.reader.ts',
+    ],
+    rules: { 'no-restricted-properties': 'off' },
+  },
+  {
     files: dashboardFiles,
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     plugins: { '@next/next': nextPlugin, 'react-hooks': reactHooks },

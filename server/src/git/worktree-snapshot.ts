@@ -3,9 +3,12 @@ import { randomBytes } from 'crypto';
 import { realpathSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { Logger } from '@nestjs/common';
 import type { RunEntity } from '../history/entities';
 import type { HistoryService } from '../history/history.service';
 import { mountsForRun } from '../sandbox/sandbox-launch';
+
+const logger = new Logger('WorktreeSnapshot');
 
 export const SNAPSHOT = 'snapshot';
 export const SHELL_RESUME = 'shell_resume';
@@ -182,6 +185,6 @@ export async function snapshotRun(history: HistoryService, run: RunEntity, step:
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : 'snapshot failed';
-    process.stderr.write(`${message}\n`);
+    logger.error(message);
   }
 }

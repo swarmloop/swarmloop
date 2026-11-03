@@ -4,6 +4,7 @@ import { mkdtemp, readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
+import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import type { AgentRunInput } from './agent-runner';
@@ -250,6 +251,18 @@ describe('AgentProcessRunner limit continuation', () => {
     );
     expect(spawn).toHaveBeenCalledTimes(1);
     expect(result.killReason).toBe('tokens');
+  });
+
+  it('logs the 80% warning once', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const spy = jest.spyOn(limits, 'judgeLimits').mockReturnValue({ kill: null, warn: true });
+    try {
+      await start('warn', [{ chunks: [doneStream('done\n')] }], { resumeChatId: null });
+      expect(warn).toHaveBeenCalledWith('m reached 80% of its limit');
+    } finally {
+      spy.mockRestore();
+      warn.mockRestore();
+    }
   });
 
   it('does not relaunch a calls kill', async () => {

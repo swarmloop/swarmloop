@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, writeFileSync } from 'fs';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { readEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
@@ -94,6 +94,8 @@ export interface AgentRunResult {
 
 @Injectable()
 export class AgentProcessRunner {
+  private readonly logger = new Logger(AgentProcessRunner.name);
+
   constructor(
     private readonly config: ConfigService,
     private readonly sandbox: SandboxService,
@@ -300,7 +302,7 @@ export class AgentProcessRunner {
       });
       if (verdict.warn) {
         warned = true;
-        process.stdout.write(`${input.model} reached 80% of its limit\n`);
+        this.logger.warn(`${input.model} reached 80% of its limit`);
       }
       if (verdict.kill && killReason === null && !finishedByResult) {
         killReason = verdict.kill;

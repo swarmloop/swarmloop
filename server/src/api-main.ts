@@ -17,6 +17,7 @@ async function bootstrap(): Promise<void> {
   const { ApiModule } = await import('./api/api.module');
   try {
     const app = await NestFactory.create(ApiModule, { logger: ['error', 'warn', 'log'] });
+    app.enableShutdownHooks();
     app.enableCors({ origin: PANEL_ORIGINS });
     app.useWebSocketAdapter(new IoAdapter(app));
     const env = readEnv(app.get(ConfigService));

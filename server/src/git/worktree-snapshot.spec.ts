@@ -2,7 +2,10 @@ import { execFileSync } from 'child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { captureTree, parseSnapshot, renderSnapshot, restoreTree } from './worktree-snapshot';
+import { Logger } from '@nestjs/common';
+import type { HistoryService } from '../history/history.service';
+import type { RunEntity } from '../history/entities';
+import { captureTree, parseSnapshot, renderSnapshot, restoreTree, snapshotRun } from './worktree-snapshot';
 
 function git(repo: string, args: string[]): string {
   return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' });
@@ -47,6 +50,25 @@ describe('worktree snapshot', () => {
     mkdirSync(nested);
     expect(await captureTree(nested)).toBeNull();
     await expect(restoreTree(nested, '', 'bbb')).rejects.toThrow('snapshot is not the repository root');
+  });
+
+  it('logs a snapshot that cannot be saved', async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'swarmloop-snapshot-error-'));
+    git(repo, ['init']);
+    writeFileSync(join(repo, 'kept'), 'one\n');
+    const history = {
+      root: () => repo,
+      latestChatId: jest.fn().mockResolvedValue(null),
+      putDocument: jest.fn().mockRejectedValue(new Error('boom')),
+    };
+    const run = { id: 1, key: 'PROJ-1', targetPath: repo } as unknown as RunEntity;
+    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      await snapshotRun(history as unknown as HistoryService, run, 'implement');
+      expect(error).toHaveBeenCalledWith('boom');
+    } finally {
+      error.mockRestore();
+    }
   });
 
   it('keeps the step and the time so an unchanged tree is still a new document', () => {
