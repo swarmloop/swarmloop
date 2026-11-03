@@ -3,10 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
+import type { BetterSqlite3ConnectionOptions } from 'typeorm/driver/better-sqlite3/BetterSqlite3ConnectionOptions';
 import { readEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { entities } from './entities';
 import { HistoryService } from './history.service';
+import { migrations } from './migrations';
 
 /** A commit is copied into the database file. The default waits for 1000 pages, so a finished status stays only in the WAL. */
 export function configureDatabase(db: { pragma: (statement: string) => unknown }): void {
@@ -14,23 +16,31 @@ export function configureDatabase(db: { pragma: (statement: string) => unknown }
   db.pragma('wal_autocheckpoint = 1');
 }
 
+function databaseFile(root: string): string {
+  const directory = join(root, 'data');
+  mkdirSync(directory, { recursive: true });
+  return join(directory, 'swarmloop.sqlite');
+}
+
+export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOptions {
+  return {
+    type: 'better-sqlite3',
+    database: databaseFile(root),
+    entities,
+    migrations,
+    synchronize: false,
+    migrationsRun: true,
+    logging: false,
+    prepareDatabase: configureDatabase,
+  };
+}
+
 @Module({
   imports: [
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => {
-        const root = resolveRepoRoot(readEnv(config).SWARMLOOP_ROOT, __dirname);
-        const directory = join(root, 'data');
-        mkdirSync(directory, { recursive: true });
-        return {
-          type: 'better-sqlite3' as const,
-          database: join(directory, 'swarmloop.sqlite'),
-          entities,
-          synchronize: true,
-          logging: false,
-          prepareDatabase: configureDatabase,
-        };
-      },
+      useFactory: (config: ConfigService) =>
+        historyDatabaseOptions(resolveRepoRoot(readEnv(config).SWARMLOOP_ROOT, __dirname)),
     }),
     TypeOrmModule.forFeature(entities),
   ],

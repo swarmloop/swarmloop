@@ -6,7 +6,9 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "migration:run": "npm run build && typeorm -d dist/history/data-source.js migration:run",
+    "migration:generate": "npm run build && typeorm -d dist/history/data-source.js migration:generate"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",
