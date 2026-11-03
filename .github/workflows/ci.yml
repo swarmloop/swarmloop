@@ -31,6 +31,7 @@ jobs:
           cache-dependency-path: dashboard/package-lock.json
       - run: npm ci
         working-directory: dashboard
+      - run: bash scripts/ci-tools.sh dashboard-test
       - run: npm run typecheck
         working-directory: dashboard
 
@@ -113,6 +114,7 @@ jobs:
           cache-dependency-path: dashboard/package-lock.json
       - run: npm ci
         working-directory: dashboard
+      - run: bash scripts/ci-tools.sh dashboard-test
       - run: npm test
         working-directory: dashboard
 

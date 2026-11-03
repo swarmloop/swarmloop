@@ -53,3 +53,26 @@ test('installs the pinned lint packages in the repository root', () => {
     'typescript@5',
   ]);
 });
+
+test('installs the pinned dashboard test packages in dashboard/', () => {
+  const { env, record } = stubNpm();
+
+  const result = spawnSync('bash', [script, 'dashboard-test'], { env, encoding: 'utf8' });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(readFileSync(record, 'utf8').split('\n').filter(Boolean), [
+    join(repoRoot, 'dashboard'),
+    'install',
+    '--no-save',
+    '--no-package-lock',
+    '--no-audit',
+    '--no-fund',
+    'vitest@3',
+    'jsdom@26',
+    '@vitejs/plugin-react@4',
+    '@testing-library/react@16',
+    '@testing-library/dom@10',
+    '@testing-library/user-event@14',
+    '@testing-library/jest-dom@6',
+  ]);
+});

@@ -3,9 +3,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3921 -H 0.0.0.0",
-    "test": "node --import ./lib/resolve-ts.mjs --test lib/*.test.ts",
+    "test": "vitest run",
     "build": "next build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "start": "next start -p 3921 -H 0.0.0.0"
   },
   "dependencies": {
