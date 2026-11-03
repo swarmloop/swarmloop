@@ -8,7 +8,7 @@ import { liveSocket } from '../lib/live';
 import { keepOpenReviews, markReviewFinished, markReviewLive, reviewChipName } from '../lib/phases';
 import { pipelineStepOf, REVIEW_STEPS, type PhaseName } from '@contract/steps';
 import { reviewChipStatus } from '@contract/readable-log';
-import type { FlowView } from '@contract/api';
+import type { FlowView, ReplayBody } from '@contract/api';
 import type { LiveLog } from '@contract/live';
 
 export function useRunFlow(runKey: string): {
@@ -251,7 +251,7 @@ export function useRunFlow(runKey: string): {
     const run = flow;
     return api(`/runs/${encodeURIComponent(run.key)}/steps/${encodeURIComponent(step)}/replay`, {
       method: 'POST',
-      body: JSON.stringify({ prompt, phases }),
+      body: JSON.stringify({ prompt, phases } satisfies ReplayBody),
     }).then(() => {
       followStep.current = true;
       setSelected(step);

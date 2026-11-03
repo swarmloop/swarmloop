@@ -9,7 +9,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { api } from '../../lib/api';
 import { answerPresentation } from '../../lib/answer-field';
-import type { FlowView } from '@contract/api';
+import type { AnswersBody, FlowView } from '@contract/api';
 
 export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (flow: FlowView) => void }): ReactElement {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -22,7 +22,9 @@ export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (fl
     setBusy(true);
     api<FlowView>(`/runs/${encodeURIComponent(flow.key)}/answers`, {
       method: 'POST',
-      body: JSON.stringify({ answers: answers.map((item) => ({ kind: item.kind, id: item.id, body: item.answer })) }),
+      body: JSON.stringify({
+        answers: answers.map((item) => ({ kind: item.kind, id: item.id, body: item.answer })),
+      } satisfies AnswersBody),
     })
       .then((next) => {
         setDrafts({});

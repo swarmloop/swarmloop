@@ -9,6 +9,7 @@ import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.step';
 import { REBASE_CONFLICT, rebaseFeatureRepos } from '../git/rebase-worktree';
 import { repoNames } from '../steps/shared/repo-names';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { RunRef } from '../contract/api';
 import { RunCommandsService } from './run-commands.service';
 import { requireRun } from './run-queries.service';
 
@@ -21,7 +22,7 @@ export class RunRebaseService {
     private readonly commands: RunCommandsService,
   ) {}
 
-  async rebase(key: string): Promise<{ http: number; body: { key: string; status: string } }> {
+  async rebase(key: string): Promise<RunRef> {
     const run = await requireRun(this.history, key);
     if (run.status !== 'failed' && run.status !== 'done' && run.status !== 'waiting') {
       throw new ConflictException(`${key} is ${run.status}`);
@@ -85,7 +86,7 @@ export class RunRebaseService {
     return notes.trim().length === 0;
   }
 
-  private async startAtImplement(run: RunEntity): Promise<{ http: number; body: { key: string; status: string } }> {
+  private async startAtImplement(run: RunEntity): Promise<RunRef> {
     const phases = await this.history.activePhases(run.id);
     if (!phases.includes('implementation')) {
       await this.history.noteFlow(run.key, ['implementation', 'code-review', 'ci'], 'implement');
