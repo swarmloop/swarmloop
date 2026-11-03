@@ -8,6 +8,12 @@ import { resolveRepoRoot } from '../config/repo-root';
 import { entities } from './entities';
 import { HistoryService } from './history.service';
 import { migrations } from './migrations';
+import { RunRepository } from './run.repository';
+import { DocumentRepository } from './document.repository';
+import { VisitRepository } from './visit.repository';
+import { FlowRepository } from './flow.repository';
+import { EventRepository } from './event.repository';
+import { CheckoutRepository } from './checkout.repository';
 
 /** A commit is copied into the database file. The default waits for 1000 pages, so a finished status stays only in the WAL. */
 export function configureDatabase(db: { pragma: (statement: string) => unknown }): void {
@@ -42,7 +48,24 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     }),
     TypeOrmModule.forFeature(entities),
   ],
-  providers: [HistoryService],
-  exports: [HistoryService, TypeOrmModule],
+  providers: [
+    HistoryService,
+    RunRepository,
+    DocumentRepository,
+    VisitRepository,
+    FlowRepository,
+    EventRepository,
+    CheckoutRepository,
+  ],
+  exports: [
+    HistoryService,
+    RunRepository,
+    DocumentRepository,
+    VisitRepository,
+    FlowRepository,
+    EventRepository,
+    CheckoutRepository,
+    TypeOrmModule,
+  ],
 })
 export class HistoryModule {}
