@@ -15,7 +15,7 @@ import { isReviewStep } from '../contract/steps';
 import { parsePaths } from '../steps/commit/commit-paths';
 import { renderProjects, storedProjects } from '../steps/prepare/checkout-path';
 import { reviewDecision } from '../steps/code-review/code-review-record';
-import { FlowView, HistoryView, RunsView, StepView } from '../contract/api';
+import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, resumeState, returns, runName, sentence, withSkip } from './run-view/flow';
@@ -216,7 +216,7 @@ export class RunQueriesService {
     const parentRunning = (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
     const open = parentRunning && liveLogCurrent(this.history.root(), key, name);
     const ownedStats = stats.filter((stat) => documents.some((document) => document.stepStatId === stat.id && document.kind === kind));
-    const visits = ownedStats.map((stat, index) => {
+    const visits: VisitView[] = ownedStats.map((stat, index) => {
       const latestDone = index === ownedStats.length - 1 && !parentRunning;
       const owned = documents.filter((document) => document.stepStatId === stat.id && document.kind === kind);
       const log = latestDone ? raw : '';

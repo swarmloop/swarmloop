@@ -318,7 +318,13 @@ export class CommitStep extends BaseStep {
     }
   }
 
-  private end(ctx: StepContext, outcome: 'ok' | 'waiting', exitCode: number, line: string, body?: string): Promise<PipelineResult> {
+  private end(
+    ctx: StepContext,
+    outcome: 'ok' | 'waiting',
+    exitCode: number,
+    line: string,
+    body?: string,
+  ): Promise<PipelineResult> {
     const primary = body ? textDocument('commit', body) : null;
     if (outcome === 'waiting') {
       return ctx.end({ outcome, exitCode, line, visit: { document: primary } });

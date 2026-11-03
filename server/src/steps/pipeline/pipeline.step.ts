@@ -201,7 +201,9 @@ export class PipelineStep extends BaseStep {
       return this.finish(ctx, 'ok', 0, this.report(opened, 'nothing started', body), 'done', body);
     }
     const warnings = seen.flatMap((item) =>
-      item.jobs.filter((job) => job.status === 'failed' && job.allowFailure).map((job) => `${item.project} ${job.name}`),
+      item.jobs
+        .filter((job) => job.status === 'failed' && job.allowFailure)
+        .map((job) => `${item.project} ${job.name}`),
     );
     const body = renderPass(seen, warnings);
     return this.finish(ctx, 'ok', 0, this.report(opened, 'pipeline done', body), 'done', body);
@@ -258,7 +260,11 @@ export class PipelineStep extends BaseStep {
       await delay(pause);
       current = await this.load(records, calls, host, false);
     }
-    return { seen: current, note: `It was still running after ${minutes} minutes and swarmloop canceled it`, traces: true };
+    return {
+      seen: current,
+      note: `It was still running after ${minutes} minutes and swarmloop canceled it`,
+      traces: true,
+    };
   }
 
   private running(item: Seen): boolean {
@@ -278,10 +284,24 @@ export class PipelineStep extends BaseStep {
     const failures = traces ? await this.failures(seen, calls, host) : [];
     const body = traces ? renderFail(failures, seen, note) : `${note.trim()}\n`;
     if (options.auto && (await this.sameFailure(opened.run.key, seen))) {
-      return this.finish(ctx, 'failed', 1, this.report(opened, 'pipeline already failed for this commit', body), 'failed', body);
+      return this.finish(
+        ctx,
+        'failed',
+        1,
+        this.report(opened, 'pipeline already failed for this commit', body),
+        'failed',
+        body,
+      );
     }
     if (opened.run.attemptsPipeline >= env.MAX_PIPELINE_RETURNS) {
-      return this.finish(ctx, 'blocked', 1, this.report(opened, 'pipeline return limit reached', body), 'blocked', body);
+      return this.finish(
+        ctx,
+        'blocked',
+        1,
+        this.report(opened, 'pipeline return limit reached', body),
+        'blocked',
+        body,
+      );
     }
     opened.run.attemptsPipeline += 1;
     const reason = failures.map((failure) => `${failure.project} ${failure.name}`).join(',') || 'pipeline failed';

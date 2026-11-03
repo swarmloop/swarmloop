@@ -114,14 +114,22 @@ export class MergeRequestStep extends BaseStep {
     if (!implementation) {
       throw new SwarmloopError('implementation is missing');
     }
-    const summary = phases.includes('code-review') ? ((await this.history.latestBody(key, 'review_report'))?.trim() ?? '') : implementation;
+    const summary = phases.includes('code-review')
+      ? ((await this.history.latestBody(key, 'review_report'))?.trim() ?? '')
+      : implementation;
     if (!summary) {
       throw new SwarmloopError('review report is missing');
     }
     return trees.map((tree) => ({ ...tree, summary }));
   }
 
-  private async ensure(trees: Tree[], title: string, calls: HttpCallDraft[], skip: boolean, client: CodeHost): Promise<MergeRequestRecord[]> {
+  private async ensure(
+    trees: Tree[],
+    title: string,
+    calls: HttpCallDraft[],
+    skip: boolean,
+    client: CodeHost,
+  ): Promise<MergeRequestRecord[]> {
     const opened = await Promise.all(
       trees.map(async (tree) => {
         if (tree.existing && skip) {
@@ -189,7 +197,12 @@ export class MergeRequestStep extends BaseStep {
     }
   }
 
-  private finish(ctx: StepContext, line: string, body?: string, handoff = '- opened the merge request\n'): Promise<PipelineResult> {
+  private finish(
+    ctx: StepContext,
+    line: string,
+    body?: string,
+    handoff = '- opened the merge request\n',
+  ): Promise<PipelineResult> {
     return ctx.end({
       outcome: 'ok',
       exitCode: 0,

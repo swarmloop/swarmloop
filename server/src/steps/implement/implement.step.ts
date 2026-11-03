@@ -21,7 +21,13 @@ import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.step';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../shared/repo-names';
 import { storedPlan } from '../step';
-import { REBASE_CONFLICT, RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase-worktree';
+import {
+  REBASE_CONFLICT,
+  RebaseStop,
+  parkedConflict,
+  rebaseFeatureRepos,
+  unmergedPaths,
+} from '../../git/rebase-worktree';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
 import { parseImplementation, withReturnNotes } from './implement-record';
@@ -69,7 +75,10 @@ export class ImplementStep extends AgentStep {
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
     const full = skillPrompt('implement', ctx.requirements, names, sections, mounts);
     const added = await this.history.latestBody(key, 'added_repos');
-    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'implement')), ctx.opened.run.runtime);
+    const continued = await readSession(
+      join(this.history.root(), 'data', sessionFileName(key, 'implement')),
+      ctx.opened.run.runtime,
+    );
     const basePrompt = withAddedRepos(continued?.chatId ? implementFollowUp(plan, notes) : full, added);
     const settled = await this.settleRebase(key, ctx, marker, names, branch, storedStderr);
     if (settled) {
@@ -123,7 +132,10 @@ export class ImplementStep extends AgentStep {
   ): Promise<PipelineResult> {
     const corrected = correctedPlan(ctx.requirements, planText, planOutput);
     const docs = corrected
-      ? [await recordHandoff(this.history, key, 'implement', corrected.handoff), textDocument('requirements', corrected.requirements)]
+      ? [
+          await recordHandoff(this.history, key, 'implement', corrected.handoff),
+          textDocument('requirements', corrected.requirements),
+        ]
       : undefined;
     return ctx.end('failed', 1, `${ctx.opened.startedAt} pipeline failure left unfixed`, undefined, docs);
   }
@@ -218,7 +230,10 @@ export class ImplementStep extends AgentStep {
     );
   }
 
-  private failConflict(ctx: ModelStepContext, outcome: Extract<RebaseStop, { kind: 'conflict' }>): Promise<PipelineResult> {
+  private failConflict(
+    ctx: ModelStepContext,
+    outcome: Extract<RebaseStop, { kind: 'conflict' }>,
+  ): Promise<PipelineResult> {
     const detail = [outcome.files.join(', '), outcome.stderr.trim()].filter((part) => part.length > 0).join('\n');
     return ctx.end('failed', 1, `${ctx.opened.startedAt} ${outcome.repo} rebase failed: ${detail}`);
   }

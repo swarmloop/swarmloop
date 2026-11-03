@@ -65,7 +65,10 @@ export class ImplementImproveStep extends AgentStep {
     );
     const branch = branchName(key, summaryForBranch(ctx.requirements, key));
     const heads = await featureHeads(mounts, branch);
-    const continued = await readSession(join(this.history.root(), 'data', sessionFileName(key, 'implement-improve')), ctx.opened.run.runtime);
+    const continued = await readSession(
+      join(this.history.root(), 'data', sessionFileName(key, 'implement-improve')),
+      ctx.opened.run.runtime,
+    );
     const full = skillPrompt('implement-improve', ctx.requirements, names, sections, mounts);
     const chosen = continued?.chatId ? IMPLEMENT_IMPROVE_FOLLOW_UP : full;
     const prompt = withAddedRepos(chosen, await this.history.latestBody(key, 'added_repos'));
