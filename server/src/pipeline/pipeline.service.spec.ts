@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { Logger } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { mkdtemp, writeFile } from 'fs/promises';
@@ -77,6 +78,23 @@ describe('pipeline service', () => {
       await app.close();
     }
   }, 30_000);
+
+  it('logs a run that fails outside its step', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-drive-'));
+    const app = await boot(root);
+    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      jest.spyOn(app.get(CodeReviewStep), 'execute').mockRejectedValue(new Error('boom'));
+      const pipeline = app.get(PipelineService);
+      const started = await pipeline.startDetached('PROJ-64', { path: root }, 'code-review');
+      expect(started).toEqual({ exitCode: 0, message: 'PROJ-64 started' });
+      await settle(pipeline, 'PROJ-64');
+      expect(error).toHaveBeenCalledWith('boom');
+    } finally {
+      error.mockRestore();
+      await app.close();
+    }
+  });
 });
 
 /** A started step runs in the background. Wait for it to release the key before the app closes. */
