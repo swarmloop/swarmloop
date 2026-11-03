@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { RunEntity } from '../../history/entities';
-import { HistoryService } from '../../history/history.service';
+import { DocumentRepository } from '../../history/document.repository';
+import { RunRepository } from '../../history/run.repository';
+import { VisitRepository } from '../../history/visit.repository';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { repoNames } from '../shared/repo-names';
 import { BranchStep } from '../branch/branch.step';
@@ -13,7 +15,9 @@ const PENDING = 'pending_repos';
 @Injectable()
 export class ProjectAppendService {
   constructor(
-    private readonly history: HistoryService,
+    private readonly runs: RunRepository,
+    private readonly documents: DocumentRepository,
+    private readonly visits: VisitRepository,
     private readonly prepare: PrepareStep,
     private readonly branch: BranchStep,
   ) {}
@@ -27,7 +31,7 @@ export class ProjectAppendService {
     if (!known.includes(trimmed)) {
       throw new SwarmloopError(`${trimmed} is not a checkout`);
     }
-    const run = await this.history.findRun(key);
+    const run = await this.runs.findRun(key);
     if (!run) {
       throw new SwarmloopError(`${key} is missing`);
     }
@@ -36,9 +40,9 @@ export class ProjectAppendService {
       return { projects: current, applied: true };
     }
     if (run.status === 'running') {
-      const pending = storedProjects((await this.history.latestBody(key, PENDING)) ?? '');
+      const pending = storedProjects((await this.documents.latestBody(key, PENDING)) ?? '');
       const queued = storedProjects(renderProjects([...pending, trimmed]));
-      await this.history.putDocument(run, PENDING, renderProjects(queued));
+      await this.documents.putDocument(run, PENDING, renderProjects(queued));
       return { projects: storedProjects(renderProjects([...current, ...queued])), applied: false };
     }
     const projects = await this.apply(run, [trimmed]);
@@ -46,16 +50,16 @@ export class ProjectAppendService {
   }
 
   async flush(key: string): Promise<void> {
-    const run = await this.history.findRun(key);
+    const run = await this.runs.findRun(key);
     if (!run || run.status === 'running') {
       return;
     }
-    const pending = storedProjects((await this.history.latestBody(key, PENDING)) ?? '');
+    const pending = storedProjects((await this.documents.latestBody(key, PENDING)) ?? '');
     if (pending.length === 0) {
       return;
     }
     await this.apply(run, pending);
-    await this.history.putDocument(run, PENDING, '');
+    await this.documents.putDocument(run, PENDING, '');
   }
 
   private async apply(run: RunEntity, incoming: string[]): Promise<string[]> {
@@ -65,7 +69,7 @@ export class ProjectAppendService {
       return projects;
     }
     await this.prepare.ensureDetached(run, added, run.prompt, false);
-    const stats = await this.history.listStats(run.id);
+    const stats = await this.visits.listStats(run.id);
     const branchDone = [...stats].reverse().find((stat) => stat.step === 'branch')?.status === 'done';
     if (branchDone) {
       for (const name of added) {
@@ -73,14 +77,14 @@ export class ProjectAppendService {
       }
     }
     run.projects = renderProjects(projects);
-    await this.history.saveRun(run);
-    const repos = await this.history.latestBody(run.key, 'repos');
+    await this.runs.saveRun(run);
+    const repos = await this.documents.latestBody(run.key, 'repos');
     if (repos?.trim()) {
-      await this.history.putDocument(run, 'repos', renderProjects([...repoNames(repos), ...added]));
+      await this.documents.putDocument(run, 'repos', renderProjects([...repoNames(repos), ...added]));
     }
-    const earlier = mountedNames(await this.history.latestBody(run.key, 'added_repos'));
+    const earlier = mountedNames(await this.documents.latestBody(run.key, 'added_repos'));
     const names = storedProjects(renderProjects([...earlier, ...added]));
-    await this.history.putDocument(run, 'added_repos', `${addedNote(names)}\n`);
+    await this.documents.putDocument(run, 'added_repos', `${addedNote(names)}\n`);
     return projects;
   }
 }

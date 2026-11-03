@@ -8,7 +8,8 @@ import { join } from 'path';
 import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DocumentEntity } from '../../history/entities';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
 import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
@@ -40,12 +41,12 @@ describe('plan-improve step', () => {
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       const stored = await documents.find({ where: { kind: 'requirements' }, order: { id: 'DESC' } });
       expect(JSON.parse(stored[0]?.body ?? '{}').plan.decision).toBe('approve');
-      const run = await app.get(HistoryService).findRun('PROJ-50');
+      const run = await app.get(RunRepository).findRun('PROJ-50');
       expect(run?.currentStep).toBe('branch');
       expect(run?.status).toBe('waiting');
       await app.get(PipelineService).step('plan-improve', 'PROJ-50');
       expect(await documents.find({ where: { kind: 'requirements' } })).toHaveLength(stored.length);
-      expect((await app.get(HistoryService).findRun('PROJ-50'))?.currentStep).toBe('branch');
+      expect((await app.get(RunRepository).findRun('PROJ-50'))?.currentStep).toBe('branch');
     } finally {
       await app.close();
     }
@@ -72,7 +73,7 @@ describe('plan-improve step', () => {
         items: ['add the field', 'cover the empty case'],
         decision: 'approve',
       });
-      const run = await app.get(HistoryService).findRun('PROJ-51');
+      const run = await app.get(RunRepository).findRun('PROJ-51');
       expect(run?.currentStep).toBe('branch');
       expect(run?.status).toBe('waiting');
     } finally {
@@ -93,7 +94,7 @@ describe('plan-improve step', () => {
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       const stored = await documents.find({ where: { kind: 'requirements' }, order: { id: 'DESC' } });
       expect(JSON.parse(stored[0]?.body ?? '{}').plan.items).toEqual(['add the field']);
-      const run = await app.get(HistoryService).findRun('PROJ-52');
+      const run = await app.get(RunRepository).findRun('PROJ-52');
       expect(run?.currentStep).toBe('branch');
     } finally {
       await app.close();
@@ -160,17 +161,18 @@ async function boot(root: string, agent: jest.Mock) {
 }
 
 async function seed(app: Awaited<ReturnType<typeof boot>>, key: string): Promise<void> {
-  const history = app.get(HistoryService);
-  const seeded = await history.begin(key, 'plan-improve');
+  const runs = app.get(RunRepository);
+  const documents = app.get(DocumentRepository);
+  const seeded = await runs.begin(key, 'plan-improve');
   seeded.status = 'waiting';
   seeded.currentStep = 'plan-improve';
-  await history.saveRun(seeded);
-  await history.putDocument(
+  await runs.saveRun(seeded);
+  await documents.putDocument(
     seeded,
     'requirements',
     withPlan('{"prompt":"ship the field"}\n', { name: '', overview: '', items: ['add the field'], decision: null }),
   );
-  await history.putDocument(seeded, 'repos', 'billing-api\n');
+  await documents.putDocument(seeded, 'repos', 'billing-api\n');
 }
 
 async function writeEnv(root: string): Promise<void> {

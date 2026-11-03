@@ -1,5 +1,8 @@
 import type { RunEntity } from '../history/entities';
-import type { HistoryService } from '../history/history.service';
+import type { DocumentRepository } from '../history/document.repository';
+import type { FlowRepository } from '../history/flow.repository';
+import type { RunRepository } from '../history/run.repository';
+import type { VisitRepository } from '../history/visit.repository';
 import type { VisitDraft } from '../history/visit';
 import { snapshotRun } from '../git/worktree-snapshot';
 import type { PipelineResult } from '../core/pipeline-result';
@@ -24,16 +27,11 @@ function failureText(line: string): string {
     .trim();
 }
 
-export async function openStep(
-  history: HistoryService,
-  clock: Clock,
-  key: string,
-  step: StepName,
-): Promise<OpenedStep> {
+export async function openStep(runs: RunRepository, clock: Clock, key: string, step: StepName): Promise<OpenedStep> {
   const started = clock.now();
-  const prior = await history.findRun(key);
+  const prior = await runs.findRun(key);
   return {
-    run: await history.begin(key, step),
+    run: await runs.begin(key, step),
     prior,
     previousStep: prior?.currentStep ?? step,
     previousStatus: prior?.status ?? 'waiting',
@@ -43,7 +41,11 @@ export async function openStep(
 }
 
 export async function closeStep(input: {
-  history: HistoryService;
+  runs: RunRepository;
+  documents: DocumentRepository;
+  visits: VisitRepository;
+  flows: FlowRepository;
+  root: string;
   clock: Clock;
   run: RunEntity;
   previousStep: string;
@@ -55,7 +57,7 @@ export async function closeStep(input: {
   exitCode: number;
   moveTo?: StepName;
 }): Promise<PipelineResult> {
-  const phases = await input.history.activePhases(input.run.id);
+  const phases = await input.flows.activePhases(input.run.id);
   const settled = settle(input.previousStep, input.previousStatus, input.step, input.outcome, input.moveTo, phases);
   input.run.status = settled.status;
   input.run.currentStep = settled.currentStep;
@@ -68,10 +70,14 @@ export async function closeStep(input: {
     input.visit.documents = docs;
     input.visit.document = null;
   }
-  await input.history.finishVisit(input.run, input.visit);
+  await input.visits.finishVisit(input.run, input.visit);
   input.run.stepStartedAt = null;
-  await input.history.saveRun(input.run);
-  await input.history.appendProgress(input.run.key, input.line);
-  await snapshotRun(input.history, input.clock, input.run, input.step);
+  await input.runs.saveRun(input.run);
+  await snapshotRun(
+    { documents: input.documents, visits: input.visits, root: input.root },
+    input.clock,
+    input.run,
+    input.step,
+  );
   return { exitCode: input.exitCode, message: input.line };
 }

@@ -11,7 +11,8 @@ import { SwarmloopConfigModule } from '../../config/config.module';
 import { AppConfig } from '../../config/env';
 import { Clock } from '../../core/clock';
 import { HttpCallEntity } from '../../history/entities';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
 import type { AgentRunResult } from '../../agent/agent-runner';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
@@ -56,12 +57,12 @@ describe('merge-request step', () => {
         summary: 'Ships the field.',
       });
       expect(agent).not.toHaveBeenCalled();
-      const body = await app.get(HistoryService).latestBody('PROJ-200', 'merge_request');
+      const body = await app.get(DocumentRepository).latestBody('PROJ-200', 'merge_request');
       expect(body).toContain('project: group/demo');
       expect(body).toContain('iid: 12');
       expect(body).toContain('https://gitlab.example/group/demo/-/merge_requests/12');
       expect(body).toContain('Ships the field.');
-      const run = await app.get(HistoryService).findRun('PROJ-200');
+      const run = await app.get(RunRepository).findRun('PROJ-200');
       expect(run?.currentStep).toBe('pipeline');
       expect(run?.status).toBe('waiting');
       expect(readFileSync(join(root, 'data', 'swarmloop.sqlite')).toString('utf8')).not.toContain(TOKEN);
@@ -93,10 +94,10 @@ describe('merge-request step', () => {
       expect(open).not.toHaveBeenCalled();
       expect(agent).not.toHaveBeenCalled();
       expect(update).toHaveBeenCalledWith('group/demo', 9, 'Ships the field.');
-      const body = await app.get(HistoryService).latestBody('PROJ-201', 'merge_request');
+      const body = await app.get(DocumentRepository).latestBody('PROJ-201', 'merge_request');
       expect(body).toContain('iid: 9');
       expect(body).toContain('Ships the field.');
-      expect((await app.get(HistoryService).findRun('PROJ-201'))?.currentStep).toBe('pipeline');
+      expect((await app.get(RunRepository).findRun('PROJ-201'))?.currentStep).toBe('pipeline');
     } finally {
       await app.close();
     }
@@ -122,21 +123,22 @@ describe('merge-request step', () => {
       jest.fn(async () => result('Ships the field.\n')),
     );
     try {
-      const history = app.get(HistoryService);
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
       await seed(app, 'PROJ-212');
-      const run = await history.findRun('PROJ-212');
+      const run = await runs.findRun('PROJ-212');
       if (!run) {
         throw new Error('run is missing');
       }
-      await history.putDocument(run, REBASE_MERGE_SKIP, 'skip\n');
+      await documents.putDocument(run, REBASE_MERGE_SKIP, 'skip\n');
       const skipped = await app.get(PipelineService).step('merge-request', 'PROJ-212');
       expect(skipped.exitCode).toBe(0);
       expect(open).not.toHaveBeenCalled();
       expect(update).not.toHaveBeenCalled();
-      expect(await history.latestBody('PROJ-212', 'merge_request')).toContain('Already open.');
-      expect((await history.latestBody('PROJ-212', REBASE_MERGE_SKIP))?.trim()).toBe('clear');
-      expect((await history.findRun('PROJ-212'))?.currentStep).toBe('pipeline');
-      expect((await history.findRun('PROJ-212'))?.status).toBe('waiting');
+      expect(await documents.latestBody('PROJ-212', 'merge_request')).toContain('Already open.');
+      expect((await documents.latestBody('PROJ-212', REBASE_MERGE_SKIP))?.trim()).toBe('clear');
+      expect((await runs.findRun('PROJ-212'))?.currentStep).toBe('pipeline');
+      expect((await runs.findRun('PROJ-212'))?.status).toBe('waiting');
       const again = await app.get(PipelineService).step('merge-request', 'PROJ-212');
       expect(again.exitCode).toBe(0);
       expect(update).toHaveBeenCalledWith('group/demo', 9, 'Ships the field.');
@@ -187,7 +189,7 @@ describe('merge-request step', () => {
       expect(open.mock.calls[0]?.[0]?.project).toBe('group/demo');
       expect(open.mock.calls[0]?.[0]?.summary).toBe('Ships the field.');
       expect(update).toHaveBeenCalledWith('group/web', 4, 'Ships the field.');
-      const body = await app.get(HistoryService).latestBody('PROJ-202', 'merge_request');
+      const body = await app.get(DocumentRepository).latestBody('PROJ-202', 'merge_request');
       expect(body).toContain('iid: 4');
       expect(body).toContain('iid: 12');
       expect(body).toContain('Ships the field.');
@@ -302,12 +304,13 @@ describe('merge-request step', () => {
     const app = await boot(root, { find, open }, jest.fn());
     try {
       await seed(app, 'PROJ-206');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-206');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-206');
       if (!run) {
         throw new Error('run is missing');
       }
-      await history.putDocument(run, 'ci_skip', 'CI skipped: there is no origin to push.\n');
+      await documents.putDocument(run, 'ci_skip', 'CI skipped: there is no origin to push.\n');
       const result = await app.get(PipelineService).step('merge-request', 'PROJ-206');
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('CI skipped: there is no origin to push.');
@@ -456,13 +459,14 @@ async function seed(
   key: string,
   options: { implementation?: boolean; repos?: string } = {},
 ): Promise<void> {
-  const history = app.get(HistoryService);
-  const seeded = await history.begin(key, 'merge-request');
+  const runs = app.get(RunRepository);
+  const documents = app.get(DocumentRepository);
+  const seeded = await runs.begin(key, 'merge-request');
   seeded.status = 'waiting';
   seeded.currentStep = 'commit';
   seeded.codeHost = 'gitlab';
-  await history.saveRun(seeded);
-  await history.putDocument(
+  await runs.saveRun(seeded);
+  await documents.putDocument(
     seeded,
     'requirements',
     `${JSON.stringify({
@@ -474,11 +478,11 @@ async function seed(
       pages: [],
     })}\n`,
   );
-  await history.putDocument(seeded, 'repos', options.repos ?? 'demo\n');
-  await history.putDocument(seeded, 'pipeline_log', 'result: pass\n');
+  await documents.putDocument(seeded, 'repos', options.repos ?? 'demo\n');
+  await documents.putDocument(seeded, 'pipeline_log', 'result: pass\n');
   if (options.implementation !== false) {
-    await history.putDocument(seeded, 'implementation', 'changed the field\n');
-    await history.putDocument(seeded, 'review_report', 'Ships the field.\n');
+    await documents.putDocument(seeded, 'implementation', 'changed the field\n');
+    await documents.putDocument(seeded, 'review_report', 'Ships the field.\n');
   }
 }
 

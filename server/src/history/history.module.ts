@@ -6,7 +6,6 @@ import type { BetterSqlite3ConnectionOptions } from 'typeorm/driver/better-sqlit
 import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { entities } from './entities';
-import { HistoryService } from './history.service';
 import { migrations } from './migrations';
 import { RunRepository } from './run.repository';
 import { DocumentRepository } from './document.repository';
@@ -49,7 +48,6 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     TypeOrmModule.forFeature(entities),
   ],
   providers: [
-    HistoryService,
     RunRepository,
     DocumentRepository,
     VisitRepository,
@@ -58,7 +56,6 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     CheckoutRepository,
   ],
   exports: [
-    HistoryService,
     RunRepository,
     DocumentRepository,
     VisitRepository,

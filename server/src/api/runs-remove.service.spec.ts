@@ -4,7 +4,12 @@ import { existsSync } from 'fs';
 import { mkdir, mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { HistoryService } from '../history/history.service';
+import { RunRepository } from '../history/run.repository';
+import { DocumentRepository } from '../history/document.repository';
+import { VisitRepository } from '../history/visit.repository';
+import { FlowRepository } from '../history/flow.repository';
+import { EventRepository } from '../history/event.repository';
+import { CheckoutRepository } from '../history/checkout.repository';
 import { LiveHub } from '../live/live.hub';
 import { RunCommandsService } from './run-commands.service';
 import { boot, save, visit, denyEnv } from './runs.spec-helpers';
@@ -14,10 +19,15 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-remove-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'PROJ-20', 'plan', 'waiting');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const visits = app.get(VisitRepository);
+      const flows = app.get(FlowRepository);
+      const events = app.get(EventRepository);
+      const checkouts = app.get(CheckoutRepository);
+      const run = await save(runs, 'PROJ-20', 'plan', 'waiting');
       const now = new Date().toISOString();
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, {
         ...visit('plan', 'done'),
         samples: [{ sampledAt: now, cpuPercent: 1, rssBytes: 2 }],
         exchange: {
@@ -35,14 +45,14 @@ describe('runs api', () => {
           { provider: 'jira', method: 'GET', url: 'http://jira', statusCode: 200, durationMs: 1, error: null },
         ],
       });
-      await history.putDocument(run, 'requirements', 'body\n');
-      await history.noteFlow('PROJ-20', ['requirements'], null);
-      await history.recordLoop(run, 'review', 1, 'again');
-      await history.savePaste('PROJ-20', 'http://paste', 'pasted');
-      await history.saveCheckout('demo', join(root, 'demo'));
+      await documents.putDocument(run, 'requirements', 'body\n');
+      await flows.noteFlow('PROJ-20', ['requirements'], null);
+      await events.recordLoop(run, 'review', 1, 'again');
+      await checkouts.savePaste('PROJ-20', 'http://paste', 'pasted');
+      await checkouts.saveCheckout('demo', join(root, 'demo'));
       await denyEnv(app);
-      const kept = await save(history, 'keep', 'plan', 'waiting');
-      await history.putDocument(kept, 'requirements', 'stay\n');
+      const kept = await save(runs, 'keep', 'plan', 'waiting');
+      await documents.putDocument(kept, 'requirements', 'stay\n');
       const data = join(root, 'data');
       await mkdir(join(data, 'agent-state', 'PROJ-20'), { recursive: true });
       await mkdir(join(root, 'runs', 'PROJ-20'), { recursive: true });
@@ -56,30 +66,30 @@ describe('runs api', () => {
       await writeFile(join(data, 'agent-state', 'PROJ-20', 'brief.txt'), 'brief\n');
       await writeFile(join(root, 'runs', 'PROJ-20', 'state.json'), '{}\n');
       await writeFile(join(root, 'worktrees', 'PROJ-20', 'keep.txt'), 'keep\n');
-      const stats = await history.listStats(run.id);
+      const stats = await visits.listStats(run.id);
       const ids = stats.map((stat) => stat.id);
       expect(ids).toHaveLength(1);
       const hub = app.get(LiveHub);
       hub.log({ key: 'PROJ-20', step: 'plan', body: '', usage: { tokensIn: 1, tokensOut: 1, usd: 1 } });
       const seen: string[] = [];
       const off = hub.onChanged((key) => seen.push(key));
-      await history.remove(run);
+      await runs.remove(run);
       off();
       expect(seen).toEqual(['PROJ-20']);
       expect(hub.spendOf('PROJ-20')).toBeUndefined();
-      expect(await history.findRun('PROJ-20')).toBeNull();
-      expect(await history.listDocuments(run.id)).toEqual([]);
-      expect(await history.listStats(run.id)).toEqual([]);
-      expect(await history.listSamples(ids)).toEqual([]);
-      expect(await history.listExchanges(ids)).toEqual([]);
-      expect(await history.listHttpCalls(run.id)).toEqual([]);
-      expect(await history.listLoops(run.id)).toEqual([]);
-      expect(await history.listFlows(run.id)).toEqual([]);
-      expect(await history.listPastes('PROJ-20')).toEqual([]);
-      expect(await history.findRun('keep')).not.toBeNull();
-      expect(await history.listDocuments(kept.id)).toHaveLength(1);
-      expect((await history.listCheckouts()).map((row) => row.name)).toEqual(['demo']);
-      expect(await history.listDenyPaths()).toEqual(['.env']);
+      expect(await runs.findRun('PROJ-20')).toBeNull();
+      expect(await documents.listDocuments(run.id)).toEqual([]);
+      expect(await visits.listStats(run.id)).toEqual([]);
+      expect(await visits.listSamples(ids)).toEqual([]);
+      expect(await visits.listExchanges(ids)).toEqual([]);
+      expect(await events.listHttpCalls(run.id)).toEqual([]);
+      expect(await events.listLoops(run.id)).toEqual([]);
+      expect(await flows.listFlows(run.id)).toEqual([]);
+      expect(await checkouts.listPastes('PROJ-20')).toEqual([]);
+      expect(await runs.findRun('keep')).not.toBeNull();
+      expect(await documents.listDocuments(kept.id)).toHaveLength(1);
+      expect((await checkouts.listCheckouts()).map((row) => row.name)).toEqual(['demo']);
+      expect(await checkouts.listDenyPaths()).toEqual(['.env']);
       expect(existsSync(join(data, 'PROJ-20-plan-output.txt'))).toBe(false);
       expect(existsSync(join(data, 'PROJ-20-plan-launches.txt'))).toBe(false);
       expect(existsSync(join(data, 'PROJ-20-plan-session.json'))).toBe(false);
@@ -99,12 +109,12 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-remove-prefix-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const duration = await save(history, 'proj-duration', 'plan', 'waiting');
-      await save(history, 'proj-duration-short', 'plan', 'waiting');
-      const agent = await save(history, 'agent', 'plan', 'waiting');
-      const price = await save(history, 'price', 'plan', 'waiting');
-      const loop = await save(history, 'swarmloop', 'plan', 'waiting');
+      const runs = app.get(RunRepository);
+      const duration = await save(runs, 'proj-duration', 'plan', 'waiting');
+      await save(runs, 'proj-duration-short', 'plan', 'waiting');
+      const agent = await save(runs, 'agent', 'plan', 'waiting');
+      const price = await save(runs, 'price', 'plan', 'waiting');
+      const loop = await save(runs, 'swarmloop', 'plan', 'waiting');
       const data = join(root, 'data');
       await mkdir(join(data, 'agent-state', 'marker'), { recursive: true });
       await writeFile(join(data, 'agent-state', 'marker', 'keep.txt'), 'keep\n');
@@ -117,10 +127,10 @@ describe('runs api', () => {
       await writeFile(join(data, 'agent-plan-output.txt'), 'out\n');
       await writeFile(join(data, 'price-cache-cursor.json'), '{}\n');
       await writeFile(join(data, 'swarmloop-empty-env'), '');
-      await history.remove(duration);
-      await history.remove(agent);
-      await history.remove(price);
-      await history.remove(loop);
+      await runs.remove(duration);
+      await runs.remove(agent);
+      await runs.remove(price);
+      await runs.remove(loop);
       expect(existsSync(join(data, 'proj-duration-plan-output.txt'))).toBe(false);
       expect(existsSync(join(data, 'proj-duration-plan-launches.txt'))).toBe(false);
       expect(existsSync(join(data, 'proj-duration-plan-session.json'))).toBe(false);
@@ -131,7 +141,7 @@ describe('runs api', () => {
       expect(existsSync(join(data, 'agent-state', 'marker', 'keep.txt'))).toBe(true);
       expect(existsSync(join(data, 'price-cache-cursor.json'))).toBe(true);
       expect(existsSync(join(data, 'swarmloop-empty-env'))).toBe(true);
-      expect(await history.findRun('proj-duration-short')).not.toBeNull();
+      expect(await runs.findRun('proj-duration-short')).not.toBeNull();
     } finally {
       await app.close();
     }
@@ -141,11 +151,11 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-remove-step-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const ship = await save(history, 'ship', 'plan', 'waiting');
-      await save(history, 'ship-plan', 'plan', 'waiting');
-      const plan = await save(history, 'proj-plan', 'plan', 'waiting');
-      await save(history, 'proj', 'plan', 'waiting');
+      const runs = app.get(RunRepository);
+      const ship = await save(runs, 'ship', 'plan', 'waiting');
+      await save(runs, 'ship-plan', 'plan', 'waiting');
+      const plan = await save(runs, 'proj-plan', 'plan', 'waiting');
+      await save(runs, 'proj', 'plan', 'waiting');
       const data = join(root, 'data');
       await writeFile(join(data, 'ship-plan-output.txt'), 'out\n');
       await writeFile(join(data, 'ship-plan-launches.txt'), '1\n');
@@ -160,8 +170,8 @@ describe('runs api', () => {
       await writeFile(join(data, 'proj-plan-plan-output.txt'), 'out\n');
       await writeFile(join(data, 'proj-plan-plan-launches.txt'), '1\n');
       await writeFile(join(data, 'proj-plan-plan-session.json'), '{}\n');
-      await history.remove(ship);
-      await history.remove(plan);
+      await runs.remove(ship);
+      await runs.remove(plan);
       expect(existsSync(join(data, 'ship-plan-output.txt'))).toBe(false);
       expect(existsSync(join(data, 'ship-plan-launches.txt'))).toBe(false);
       expect(existsSync(join(data, 'ship-plan-session.json'))).toBe(false);
@@ -175,10 +185,10 @@ describe('runs api', () => {
       expect(existsSync(join(data, 'proj-plan-plan-output.txt'))).toBe(false);
       expect(existsSync(join(data, 'proj-plan-plan-launches.txt'))).toBe(false);
       expect(existsSync(join(data, 'proj-plan-plan-session.json'))).toBe(false);
-      expect(await history.findRun('ship')).toBeNull();
-      expect(await history.findRun('ship-plan')).not.toBeNull();
-      expect(await history.findRun('proj')).not.toBeNull();
-      expect(await history.findRun('proj-plan')).toBeNull();
+      expect(await runs.findRun('ship')).toBeNull();
+      expect(await runs.findRun('ship-plan')).not.toBeNull();
+      expect(await runs.findRun('proj')).not.toBeNull();
+      expect(await runs.findRun('proj-plan')).toBeNull();
     } finally {
       await app.close();
     }
@@ -188,22 +198,22 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-remove-review-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const proj = await save(history, 'proj', 'code-review', 'waiting');
-      const review = await save(history, 'proj-code-review', 'requirements', 'waiting');
+      const runs = app.get(RunRepository);
+      const proj = await save(runs, 'proj', 'code-review', 'waiting');
+      const review = await save(runs, 'proj-code-review', 'requirements', 'waiting');
       const data = join(root, 'data');
       await writeFile(join(data, 'proj-code-review-requirements-output.txt'), 'out\n');
       await writeFile(join(data, 'proj-code-review-requirements-launches.txt'), '1\n');
       await writeFile(join(data, 'proj-code-review-requirements-session.json'), '{}\n');
       await writeFile(join(data, 'proj-code-review-plan-output.txt'), 'out\n');
-      await history.remove(review);
+      await runs.remove(review);
       expect(existsSync(join(data, 'proj-code-review-requirements-output.txt'))).toBe(true);
       expect(existsSync(join(data, 'proj-code-review-requirements-launches.txt'))).toBe(true);
       expect(existsSync(join(data, 'proj-code-review-requirements-session.json'))).toBe(true);
       expect(existsSync(join(data, 'proj-code-review-plan-output.txt'))).toBe(false);
-      expect(await history.findRun('proj')).not.toBeNull();
-      expect(await history.findRun('proj-code-review')).toBeNull();
-      await history.remove(proj);
+      expect(await runs.findRun('proj')).not.toBeNull();
+      expect(await runs.findRun('proj-code-review')).toBeNull();
+      await runs.remove(proj);
       expect(existsSync(join(data, 'proj-code-review-requirements-output.txt'))).toBe(false);
       expect(existsSync(join(data, 'proj-code-review-requirements-launches.txt'))).toBe(false);
       expect(existsSync(join(data, 'proj-code-review-requirements-session.json'))).toBe(false);
@@ -225,20 +235,20 @@ describe('runs api', () => {
     const prepare = { removeWorktrees: jest.fn() };
     const app = await boot(root, pipeline, prepare);
     try {
-      const history = app.get(HistoryService);
-      await save(history, 'proj-70', 'implement', 'running');
+      const runs = app.get(RunRepository);
+      await save(runs, 'proj-70', 'implement', 'running');
       const file = join(root, 'data', 'proj-70-implement-output.txt');
       await writeFile(file, 'out\n');
       prepare.removeWorktrees.mockImplementation(async () => {
         events.push('worktrees');
         expect(existsSync(file)).toBe(true);
-        expect(await history.findRun('proj-70')).not.toBeNull();
+        expect(await runs.findRun('proj-70')).not.toBeNull();
       });
       expect(await app.get(RunCommandsService).remove('proj-70')).toEqual({ key: 'proj-70' });
       expect(events).toEqual(['stop', 'worktrees']);
       expect(pipeline.stop).toHaveBeenCalledWith('proj-70');
       expect(prepare.removeWorktrees).toHaveBeenCalledWith('proj-70');
-      expect(await history.findRun('proj-70')).toBeNull();
+      expect(await runs.findRun('proj-70')).toBeNull();
       expect(existsSync(file)).toBe(false);
     } finally {
       await app.close();
@@ -254,13 +264,13 @@ describe('runs api', () => {
     const prepare = { removeWorktrees: jest.fn() };
     const app = await boot(root, pipeline, prepare);
     try {
-      const history = app.get(HistoryService);
-      await save(history, 'proj-71', 'implement', 'running');
+      const runs = app.get(RunRepository);
+      await save(runs, 'proj-71', 'implement', 'running');
       const file = join(root, 'data', 'proj-71-implement-output.txt');
       await writeFile(file, 'out\n');
       await expect(app.get(RunCommandsService).remove('proj-71')).rejects.toBeInstanceOf(ConflictException);
       expect(prepare.removeWorktrees).not.toHaveBeenCalled();
-      expect(await history.findRun('proj-71')).not.toBeNull();
+      expect(await runs.findRun('proj-71')).not.toBeNull();
       expect(existsSync(file)).toBe(true);
     } finally {
       await app.close();

@@ -1,5 +1,4 @@
 import { EventRepository } from './event.repository';
-import { HistoryService } from './history.service';
 import { repositoryDatabase, repositoryVisit } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
 import { VisitRepository } from './visit.repository';
@@ -11,7 +10,7 @@ describe('EventRepository', () => {
       const events = db.app.get(EventRepository);
       const run = await db.app.get(RunRepository).begin('run-1', 'code-review');
       await events.recordLoop(run, 'review', 1, 'first');
-      expect(await db.app.get(HistoryService).listLoops(run.id)).toEqual([
+      expect(await events.listLoops(run.id)).toEqual([
         expect.objectContaining({ counter: 'review', attempt: 1, reason: 'first' }),
       ]);
       await events.recordLoop(run, 'review', 2, 'updated');

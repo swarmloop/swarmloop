@@ -1,7 +1,10 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { Clock } from '../core/clock';
 import { RunEntity } from '../history/entities';
-import { HistoryService } from '../history/history.service';
+import { RunRepository } from '../history/run.repository';
+import { DocumentRepository } from '../history/document.repository';
+import { FlowRepository } from '../history/flow.repository';
+import { CheckoutRepository } from '../history/checkout.repository';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { assertKey, isStep, nextSessionKey, normalizePhases, ticketKey } from '../core/pipeline-result';
 import { PhaseName, pipelineStepOf, reviewerOf } from '../contract/steps';
@@ -24,7 +27,10 @@ import { requireRun, RunQueriesService } from './run-queries.service';
 @Injectable()
 export class RunCommandsService {
   constructor(
-    private readonly history: HistoryService,
+    private readonly runs: RunRepository,
+    private readonly documents: DocumentRepository,
+    private readonly flows: FlowRepository,
+    private readonly checkouts: CheckoutRepository,
     private readonly pipeline: PipelineService,
     private readonly projects: ProjectAppendService,
     private readonly prepare: PrepareStep,
@@ -37,7 +43,7 @@ export class RunCommandsService {
     if (!trimmed) {
       throw new BadRequestException('name is missing');
     }
-    await requireRun(this.history, key);
+    await requireRun(this.runs, key);
     try {
       return await this.projects.add(key, trimmed);
     } catch (error) {
@@ -75,8 +81,8 @@ export class RunCommandsService {
     if (!path && projects.length === 0) {
       throw new BadRequestException('projects is missing');
     }
-    if (!existing || (body.phases !== undefined && !this.history.held(existing))) {
-      await this.history.noteFlow(key, phases, null);
+    if (!existing || (body.phases !== undefined && !this.runs.held(existing))) {
+      await this.flows.noteFlow(key, phases, null);
     }
     const acceptsPrompt = !existing || existing.currentStep === 'requirements';
     if (prompt && (path || !acceptsPrompt)) {
@@ -89,8 +95,8 @@ export class RunCommandsService {
   }
 
   async answers(key: string, body: AnswersBody): Promise<FlowView> {
-    const run = await requireRun(this.history, key);
-    if (this.history.held(run)) {
+    const run = await requireRun(this.runs, key);
+    if (this.runs.held(run)) {
       throw new ConflictException(`${key} is already running`);
     }
     const incoming = body.answers ?? [];
@@ -104,10 +110,10 @@ export class RunCommandsService {
     const questions = incoming.filter((answer) => answer.kind === 'question' && answer.id && answer.body?.trim());
     if (questions.length > 0) {
       const text = questions.map((answer) => `question: ${answer.id}\nanswer: ${answer.body?.trim()}`).join('\n\n');
-      await this.history.putDocument(run, 'answers', `${text}\n`);
+      await this.documents.putDocument(run, 'answers', `${text}\n`);
     }
     for (const answer of incoming.filter((item) => item.kind === 'paste' && item.id && item.body?.trim())) {
-      await this.history.savePaste(key, answer.id ?? '', answer.body?.trim() ?? '');
+      await this.checkouts.savePaste(key, answer.id ?? '', answer.body?.trim() ?? '');
     }
     this.demandStart(await this.pipeline.startDetached(key));
     return this.queries.flow(key);
@@ -118,7 +124,7 @@ export class RunCommandsService {
     if (!isStep(name) || name === 'done') {
       throw new BadRequestException(`${step} is unknown`);
     }
-    await requireRun(this.history, key);
+    await requireRun(this.runs, key);
     const prompt = body.prompt?.trim();
     const path = body.path?.trim();
     return this.accepted(
@@ -140,15 +146,15 @@ export class RunCommandsService {
     if (!text) {
       throw new BadRequestException('prompt is missing');
     }
-    await requireRun(this.history, key);
+    await requireRun(this.runs, key);
     if (phases !== undefined) {
-      await this.history.noteFlow(key, this.phases(phases), name);
+      await this.flows.noteFlow(key, this.phases(phases), name);
     }
     return this.accepted(key, await this.pipeline.replay(key, name, text));
   }
 
   async stop(key: string): Promise<RunRef> {
-    await requireRun(this.history, key);
+    await requireRun(this.runs, key);
     const result = await this.pipeline.stop(key);
     if (result.exitCode !== 0) {
       throw new ConflictException(result.message);
@@ -162,13 +168,13 @@ export class RunCommandsService {
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : 'run id is invalid');
     }
-    const run = await requireRun(this.history, key);
+    const run = await requireRun(this.runs, key);
     const stopped = await this.pipeline.stop(key);
     if (stopped.exitCode !== 0) {
       throw new ConflictException(stopped.message);
     }
     await this.prepare.removeWorktrees(key);
-    await this.history.remove(run);
+    await this.runs.remove(run);
     return { key };
   }
 
@@ -192,12 +198,12 @@ export class RunCommandsService {
   /** New run always opens the next free session. Resume keeps the current one. */
   private async openSession(key: string): Promise<{ key: string; run: RunEntity | null }> {
     const ticket = ticketKey(key);
-    const family = (await this.history.listRuns()).filter((run) => ticketKey(run.key) === ticket);
+    const family = (await this.runs.listRuns()).filter((run) => ticketKey(run.key) === ticket);
     const session = nextSessionKey(
       ticket,
       family.map((run) => run.key),
     );
-    return { key: session, run: await this.history.findRun(session) };
+    return { key: session, run: await this.runs.findRun(session) };
   }
 
   private phases(input?: string[]): PhaseName[] {
@@ -219,20 +225,20 @@ export class RunCommandsService {
   }
 
   private async rememberPrompt(key: string, prompt: string): Promise<void> {
-    const existing = await this.history.findRun(key);
+    const existing = await this.runs.findRun(key);
     if (existing) {
-      if (!this.history.held(existing)) {
+      if (!this.runs.held(existing)) {
         existing.prompt = prompt;
-        await this.history.saveRun(existing);
+        await this.runs.saveRun(existing);
       }
       return;
     }
-    const created = await this.history.begin(key, 'code-review');
+    const created = await this.runs.begin(key, 'code-review');
     created.status = 'waiting';
     created.ownerPid = null;
     created.prompt = prompt;
     created.stepStartedAt = null;
-    await this.history.saveRun(created);
+    await this.runs.saveRun(created);
   }
 
   private demandStart(result: { exitCode: number; message: string }): void {

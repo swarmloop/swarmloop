@@ -1,7 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { realpathSync } from 'fs';
 import { AppConfig, SwarmloopEnv } from '../../config/env';
-import { HistoryService } from '../../history/history.service';
+import { CheckoutRepository } from '../../history/checkout.repository';
+import { DocumentRepository } from '../../history/document.repository';
+import { EventRepository } from '../../history/event.repository';
+import { FlowRepository } from '../../history/flow.repository';
+import { root } from '../../history/run-paths';
+import { RunRepository } from '../../history/run.repository';
+import { VisitRepository } from '../../history/visit.repository';
 import { Clock } from '../../core/clock';
 import { VisitDraft } from '../../history/visit';
 import { AGENT_RUNNER, AgentProcessRunner } from '../../agent/agent-runner';
@@ -48,25 +54,34 @@ export class CodeReviewStep extends BaseStep {
   readonly acceptsPath = true;
 
   constructor(
-    history: HistoryService,
+    runs: RunRepository,
+    documents: DocumentRepository,
+    visits: VisitRepository,
+    flows: FlowRepository,
     clock: Clock,
-    private readonly config: AppConfig,
+    config: AppConfig,
+    private readonly checkouts: CheckoutRepository,
+    private readonly events: EventRepository,
     private readonly prepare: PrepareStep,
     private readonly sandbox: SandboxService,
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
   ) {
-    super(history, clock);
+    super(runs, documents, visits, flows, clock, config);
   }
 
   override async missingInput(key: string, options: StepOptions): Promise<string | null> {
-    if (options.path || (await storedCheckout(this.history, key)) || (await foreignReviewOf(this.history, key))) {
+    if (
+      options.path ||
+      (await storedCheckout(this.runs, this.documents, key)) ||
+      (await foreignReviewOf(this.runs, this.flows, key))
+    ) {
       return null;
     }
-    return requiredDocument(this.history, key, this.requiredKind);
+    return requiredDocument(this.documents, key, this.requiredKind);
   }
 
   charge(key: string, env: SwarmloopEnv, prices: Record<string, ModelPrice>): Promise<Charge | null> {
-    return chargeReview(this.history.root(), key, env, prices);
+    return chargeReview(root(this.config), key, env, prices);
   }
 
   protected override failureVisit(): Partial<VisitDraft> {
@@ -89,33 +104,39 @@ export class CodeReviewStep extends BaseStep {
     env: SwarmloopEnv,
   ): Promise<PipelineResult> {
     const { opened } = ctx;
-    const deps = { history: this.history, agent: this.agent };
-    const notes = await this.history.latestBody(key, 'implementation');
+    const deps = {
+      documents: this.documents,
+      visits: this.visits,
+      root: root(this.config),
+      agent: this.agent,
+    };
+    const notes = await this.documents.latestBody(key, 'implementation');
     const checkout = options.path ?? (notes?.trim() ? null : opened.run.targetPath);
     let thirdParty = Boolean(checkout);
     if (!thirdParty && !notes?.trim()) {
-      if (!(await foreignReview(this.history, opened.run.id))) {
+      if (!(await foreignReview(this.flows, opened.run.id))) {
         throw new SwarmloopError('implementation is missing');
       }
-      await detachForeign(this.history, this.prepare, opened);
+      await detachForeign(this.documents, this.prepare, opened);
       thirdParty = true;
     }
     if (checkout) {
       opened.run.targetPath = realpathSync(checkout);
     }
-    const requirements = ((await this.history.latestBody(key, 'requirements')) ?? '').trim() || opened.run.prompt || '';
+    const requirements =
+      ((await this.documents.latestBody(key, 'requirements')) ?? '').trim() || opened.run.prompt || '';
     if (!thirdParty && !requirements.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
-    const mounts = checkout ? pathMount(checkout) : await repoMounts(this.history, key);
+    const mounts = checkout ? pathMount(checkout) : await repoMounts(this.runs, this.documents, root(this.config), key);
     const only = REVIEWERS.some((item) => item.name === options.reviewer) ? options.reviewer : undefined;
-    const fresh = ((await this.history.latestBody(key, REBASE_CONFLICT)) ?? '').trim() === 'review';
-    const retry = fresh ? false : await retrying(this.history, opened);
-    const returned = composedReturn(await this.history.listDocuments(opened.run.id));
-    const diff = await reviewDiffSection(mounts, await this.history.listDenyPaths());
-    const same = sameReviewedDiff(this.history.root(), key, diff.patch);
+    const fresh = ((await this.documents.latestBody(key, REBASE_CONFLICT)) ?? '').trim() === 'review';
+    const retry = fresh ? false : await retrying(this.visits, opened);
+    const returned = composedReturn(await this.documents.listDocuments(opened.run.id));
+    const diff = await reviewDiffSection(mounts, await this.checkouts.listDenyPaths());
+    const same = sameReviewedDiff(root(this.config), key, diff.patch);
     const repeated = reviewReturn(returned) && same;
-    const { kept, pending, recovered, stale } = await selectReviewers(this.history, {
+    const { kept, pending, recovered, stale } = await selectReviewers(this.documents, root(this.config), {
       key,
       only,
       fresh,
@@ -127,8 +148,8 @@ export class CodeReviewStep extends BaseStep {
     if (options.auto && calls > 0 && opened.run.agentCalls + calls > env.MAX_AGENT_CALLS) {
       return closeReview(ctx, 'failed', 1, `${opened.startedAt} code-review does not fit`, [], []);
     }
-    writeReviewDiff(this.history.root(), key, diff.patch);
-    const handoff = await this.history.latestBody(key, 'handoff');
+    writeReviewDiff(root(this.config), key, diff.patch);
+    const handoff = await this.documents.latestBody(key, 'handoff');
     const plan = approvedPlan(requirements);
     const finished = await runRound(deps, {
       opened,
@@ -152,7 +173,7 @@ export class CodeReviewStep extends BaseStep {
     if (errors.length > 0) {
       return closeReview(ctx, 'failed', 1, `${opened.startedAt} ${errors[0]}`, stored, [], undefined);
     }
-    const noted = await noteHandoff(this.history, key, opinions, stored);
+    const noted = await noteHandoff(this.documents, key, opinions, stored);
     if (only && othersOpen(only, opinions)) {
       const summary = opinions.map((item) => `${item.kind} ${item.decision}`).join('\n');
       return closeReview(
@@ -195,7 +216,7 @@ export class CodeReviewStep extends BaseStep {
       recorded.push(textDocument(REBASE_CONFLICT, 'clear\n'));
     }
     return routeReview(
-      this.history,
+      this.events,
       ctx,
       opinions,
       recorded,

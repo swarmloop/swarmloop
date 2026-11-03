@@ -27,20 +27,21 @@ describe('chat', () => {
     };
     const saved: unknown[] = [];
     const documents: string[] = [];
-    const history = {
+    const runRepository = {
       findRun: async () => run,
       held: () => false,
-      root: () => root,
-      tokenTotal: async () => 3,
-      latestBody: async (_key: string, kind: string) => (kind === 'requirements' ? 'Add the field' : null),
       saveRun: async (value: unknown) => {
         saved.push({ ...(value as object) });
         return value;
       },
+    };
+    const documentRepository = {
+      latestBody: async (_key: string, kind: string) => (kind === 'requirements' ? 'Add the field' : null),
       putDocument: async (_run: unknown, kind: string, body: string) => {
         documents.push(`${kind}:${body}`);
       },
     };
+    const visitRepository = { tokenTotal: async () => 3 };
     const agent = jest.fn(async (input: AgentRunInput): Promise<AgentRunResult> => {
       const raw = await readFile(join(project, '.cursor', 'mcp.json'), 'utf8');
       expect(raw).toContain('idea-mcp');
@@ -48,7 +49,9 @@ describe('chat', () => {
       return result(input.prompt);
     });
     const chat = new ChatService(
-      history as never,
+      runRepository as never,
+      documentRepository as never,
+      visitRepository as never,
       config(root),
       new FakeClock(),
       { assertReady: async () => undefined } as never,
@@ -82,13 +85,15 @@ describe('chat', () => {
   });
 
   it('refuses a chat while the feature is running', async () => {
-    const history = {
+    const runRepository = {
       findRun: async () => ({ key: 'PROJ-1', status: 'running', ownerPid: process.pid }),
       held: () => true,
-      latestBody: async () => null,
     };
+    const documentRepository = { latestBody: async () => null };
     const chat = new ChatService(
-      history as never,
+      runRepository as never,
+      documentRepository as never,
+      {} as never,
       config('/tmp'),
       new FakeClock(),
       { assertReady: async () => undefined } as never,
@@ -101,13 +106,15 @@ describe('chat', () => {
   });
 
   it('refuses an empty prompt', async () => {
-    const history = {
+    const runRepository = {
       findRun: async () => ({ key: 'PROJ-1', status: 'waiting' }),
       held: () => false,
-      latestBody: async () => null,
     };
+    const documentRepository = { latestBody: async () => null };
     const chat = new ChatService(
-      history as never,
+      runRepository as never,
+      documentRepository as never,
+      {} as never,
       config('/tmp'),
       new FakeClock(),
       { assertReady: async () => undefined } as never,

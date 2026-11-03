@@ -12,7 +12,7 @@ import type { AddressInfo } from 'net';
 import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { AgentExchangeEntity, DocumentEntity, HttpCallEntity, RunEntity, StepStatEntity } from '../../history/entities';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
 import type { AgentRunResult } from '../../agent/agent-runner';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
@@ -84,7 +84,7 @@ describe('requirements step', () => {
       expect(calls.every((call) => !call.url.includes(TOKEN) && !(call.error ?? '').includes(TOKEN))).toBe(true);
       const db = await readFile(join(root, 'data', 'swarmloop.sqlite'));
       expect(db.includes(Buffer.from(TOKEN))).toBe(false);
-      const run = await app.get(HistoryService).findRun('PROJ-2');
+      const run = await app.get(RunRepository).findRun('PROJ-2');
       expect(run?.status).toBe('waiting');
       expect(run?.currentStep).toBe('prepare');
     } finally {
@@ -142,7 +142,7 @@ describe('requirements step', () => {
       expect(existsSync(join(root, 'runs', 'PROJ-2', 'requirements.json'))).toBe(false);
       const documents = await app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity)).find();
       expect(documents.filter((row) => row.kind === 'requirements')).toHaveLength(0);
-      const run = await app.get(HistoryService).findRun('PROJ-2');
+      const run = await app.get(RunRepository).findRun('PROJ-2');
       expect(run?.status).toBe('failed');
     } finally {
       await app.close();
@@ -180,7 +180,7 @@ describe('requirements step', () => {
       expect(record.tickets[0]?.summary).toBe('Ship the thing');
       expect(record.tickets[0]?.comments).toHaveLength(2);
       expect(record.epic?.comments).toHaveLength(1);
-      const run = await app.get(HistoryService).findRun('PROJ-2');
+      const run = await app.get(RunRepository).findRun('PROJ-2');
       expect(run?.status).toBe('waiting');
     } finally {
       await app.close();
@@ -195,7 +195,7 @@ describe('requirements step', () => {
       const result = await app.get(PipelineService).step('prepare', 'PROJ-3');
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('requirements is missing');
-      expect(await app.get(HistoryService).findRun('PROJ-3')).toBeNull();
+      expect(await app.get(RunRepository).findRun('PROJ-3')).toBeNull();
       expect(existsSync(join(root, 'runs', 'PROJ-3', 'state.json'))).toBe(false);
     } finally {
       await app.close();
@@ -206,7 +206,7 @@ describe('requirements step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-throw-'));
     const app = await boot(root, 'http://127.0.0.1:9', 'direct', jest.fn(), jest.fn());
     try {
-      jest.spyOn(app.get(HistoryService), 'begin').mockRejectedValueOnce(new Error('database is locked'));
+      jest.spyOn(app.get(RunRepository), 'begin').mockRejectedValueOnce(new Error('database is locked'));
       const result = await app.get(PipelineService).step('requirements', 'PROJ-2', { prompt: 'Build it' });
       expect(result).toEqual({ exitCode: 1, message: 'requirements failed' });
     } finally {
@@ -218,10 +218,10 @@ describe('requirements step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-save-'));
     const app = await boot(root, 'http://127.0.0.1:9', 'direct', jest.fn(), jest.fn());
     try {
-      const history = app.get(HistoryService);
-      const save = history.saveRun.bind(history);
+      const runs = app.get(RunRepository);
+      const save = runs.saveRun.bind(runs);
       jest
-        .spyOn(history, 'saveRun')
+        .spyOn(runs, 'saveRun')
         .mockImplementation((run) => (run.prompt ? Promise.reject(new Error('disk full')) : save(run)));
       const result = await app.get(PipelineService).step('requirements', 'PROJ-2', { prompt: 'Build it' });
       expect(result).toEqual({ exitCode: 1, message: 'requirements failed' });
@@ -235,10 +235,10 @@ describe('requirements step', () => {
   it('blocks a step that is not implemented', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-later-'));
     const app = await boot(root, 'http://127.0.0.1:9', 'direct', jest.fn(), jest.fn());
-    const history = app.get(HistoryService);
-    const seeded = await history.begin('PROJ-4', 'requirements');
+    const runs = app.get(RunRepository);
+    const seeded = await runs.begin('PROJ-4', 'requirements');
     seeded.status = 'waiting';
-    await history.saveRun(seeded);
+    await runs.saveRun(seeded);
     const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
     await documents.save(
       documents.create({
@@ -255,7 +255,7 @@ describe('requirements step', () => {
       const result = await app.get(PipelineService).step('done', 'PROJ-4');
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('not implemented');
-      const run = await app.get(HistoryService).findRun('PROJ-4');
+      const run = await app.get(RunRepository).findRun('PROJ-4');
       expect(run?.status).toBe('blocked');
       expect(run?.currentStep).toBe('done');
     } finally {
@@ -271,7 +271,7 @@ describe('requirements step', () => {
       const missing = await app.get(PipelineService).run('widget');
       expect(missing.exitCode).toBe(1);
       expect(missing.message).toContain('prompt is missing');
-      expect(await app.get(HistoryService).findRun('widget')).toBeNull();
+      expect(await app.get(RunRepository).findRun('widget')).toBeNull();
       const result = await app.get(PipelineService).run('PROJ-2', { prompt: 'Do the ticket' });
       expect(result.exitCode).toBe(0);
       const requirements = await requirementsBody(app, 'PROJ-2');
@@ -311,7 +311,7 @@ describe('requirements step', () => {
       expect(existsSync(join(root, 'runs', 'widget', 'requirements.json'))).toBe(false);
       const calls = await app.get<Repository<HttpCallEntity>>(getRepositoryToken(HttpCallEntity)).find();
       expect(calls).toHaveLength(0);
-      const run = await app.get(HistoryService).findRun('widget');
+      const run = await app.get(RunRepository).findRun('widget');
       expect(run?.status).toBe('waiting');
       expect(run?.currentStep).toBe('prepare');
     } finally {
@@ -329,7 +329,7 @@ describe('requirements step', () => {
       const empty = await app.get(PipelineService).run('widget', { prompt: '   ' });
       expect(empty.exitCode).toBe(1);
       expect(empty.message).toContain('prompt is empty');
-      expect(await app.get(HistoryService).findRun('widget')).toBeNull();
+      expect(await app.get(RunRepository).findRun('widget')).toBeNull();
     } finally {
       await app.close();
     }
@@ -383,11 +383,11 @@ describe('requirements step', () => {
       const missing = await app.get(PipelineService).step('code-review', 'vendor-api');
       expect(missing.exitCode).toBe(1);
       expect(missing.message).toContain('implementation is missing');
-      expect(await app.get(HistoryService).findRun('vendor-api')).toBeNull();
+      expect(await app.get(RunRepository).findRun('vendor-api')).toBeNull();
       const review = await app.get(PipelineService).step('code-review', 'vendor-api', { path: checkout });
       expect(review.exitCode).toBe(0);
       expect(review.message).not.toContain('implementation is missing');
-      const run = await app.get(HistoryService).findRun('vendor-api');
+      const run = await app.get(RunRepository).findRun('vendor-api');
       expect(run?.targetPath).toBe(realpathSync(checkout));
       expect(existsSync(join(root, 'runs', 'vendor-api', 'target.json'))).toBe(false);
       expect(run?.status).toBe('waiting');
@@ -402,11 +402,11 @@ describe('requirements step', () => {
     const server = await listen(200, 1);
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-retry-'));
     const app = await boot(root, server.base, 'direct', jest.fn().mockResolvedValue('pasted-body'), jest.fn());
-    const history = app.get(HistoryService);
+    const runs = app.get(RunRepository);
     try {
       const first = await app.get(PipelineService).run('PROJ-2', { prompt: 'Do the ticket' });
       expect(first.exitCode).toBe(1);
-      const failed = await history.findRun('PROJ-2');
+      const failed = await runs.findRun('PROJ-2');
       expect(failed?.status).toBe('failed');
       expect(failed?.currentStep).toBe('requirements');
       expect(failed?.prompt).toContain('Do the ticket');
@@ -421,19 +421,19 @@ describe('requirements step', () => {
       const requirementRows = (await documents.find()).filter((row) => row.kind === 'requirements');
       expect(requirementRows).toHaveLength(1);
       expect(requirementRows[0]?.body).toContain('Do the ticket');
-      expect((await history.findRun('PROJ-2'))?.currentStep).toBe('prepare');
-      const advanced = await history.findRun('PROJ-2');
+      expect((await runs.findRun('PROJ-2'))?.currentStep).toBe('prepare');
+      const advanced = await runs.findRun('PROJ-2');
       expect(advanced?.currentStep).toBe('prepare');
       if (advanced) {
         advanced.currentStep = 'branch';
         advanced.status = 'waiting';
-        await history.saveRun(advanced);
+        await runs.saveRun(advanced);
       }
       const third = await app.get(PipelineService).step('requirements', 'PROJ-2');
       expect(third.exitCode).toBe(0);
       expect((await documents.find()).filter((row) => row.kind === 'requirements')).toHaveLength(1);
-      expect((await history.findRun('PROJ-2'))?.currentStep).toBe('branch');
-      expect((await history.findRun('PROJ-2'))?.status).toBe('waiting');
+      expect((await runs.findRun('PROJ-2'))?.currentStep).toBe('branch');
+      expect((await runs.findRun('PROJ-2'))?.status).toBe('waiting');
     } finally {
       await app.close();
       await server.close();
@@ -476,7 +476,7 @@ describe('requirements step', () => {
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('docker is not running');
       expect(result.message).not.toContain('not implemented');
-      const run = await app.get(HistoryService).findRun('PROJ-17');
+      const run = await app.get(RunRepository).findRun('PROJ-17');
       expect(run?.currentStep).toBe('research');
       expect(run?.status).toBe('failed');
     } finally {
@@ -487,11 +487,11 @@ describe('requirements step', () => {
   it('does not move backward when an earlier step fails', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-rewind-'));
     const app = await boot(root, 'http://127.0.0.1:9', 'direct', jest.fn(), jest.fn());
-    const history = app.get(HistoryService);
-    const seeded = await history.begin('PROJ-6', 'requirements');
+    const runs = app.get(RunRepository);
+    const seeded = await runs.begin('PROJ-6', 'requirements');
     seeded.status = 'waiting';
     seeded.currentStep = 'implement';
-    await history.saveRun(seeded);
+    await runs.saveRun(seeded);
     const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
     await documents.save(
       documents.create({
@@ -508,7 +508,7 @@ describe('requirements step', () => {
       const result = await app.get(PipelineService).step('branch', 'PROJ-6');
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('requirements is missing');
-      const run = await history.findRun('PROJ-6');
+      const run = await runs.findRun('PROJ-6');
       expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('waiting');
     } finally {
@@ -520,18 +520,18 @@ describe('requirements step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-dead-'));
     await writeEnv(root, '', 'direct', { JIRA_BASE_URL: '', JIRA_EMAIL: '', JIRA_API_TOKEN: '' });
     const app = await boot(root, '', 'direct', jest.fn(), jest.fn(), false);
-    const history = app.get(HistoryService);
+    const runs = app.get(RunRepository);
     try {
-      const seeded = await history.begin('widget', 'requirements');
+      const seeded = await runs.begin('widget', 'requirements');
       seeded.status = 'running';
       seeded.ownerPid = 2_147_483_646;
       seeded.prompt = 'Ship the widget\n';
       seeded.currentStep = 'requirements';
-      await history.saveRun(seeded);
+      await runs.saveRun(seeded);
       const result = await app.get(PipelineService).run('widget');
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('requirements done');
-      const run = await history.findRun('widget');
+      const run = await runs.findRun('widget');
       expect(run?.currentStep).toBe('prepare');
       expect(run?.ownerPid).toBeNull();
     } finally {
@@ -542,7 +542,7 @@ describe('requirements step', () => {
   it('refuses a second process while the run is running', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-lock-'));
     const app = await boot(root, 'http://127.0.0.1:9', 'direct', jest.fn(), jest.fn());
-    await app.get(HistoryService).begin('PROJ-5', 'requirements');
+    await app.get(RunRepository).begin('PROJ-5', 'requirements');
     try {
       const result = await app.get(PipelineService).run('PROJ-5');
       expect(result.exitCode).toBe(1);

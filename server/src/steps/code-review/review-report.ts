@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { basename, join } from 'path';
 import type { SwarmloopEnv } from '../../config/env';
-import type { HistoryService } from '../../history/history.service';
+import type { DocumentRepository } from '../../history/document.repository';
 import type { DocumentDraft, ExchangeDraft } from '../../history/visit';
 import type { OpenedStep } from '../../pipeline/step-run';
 import type { SandboxMount } from '../../sandbox/sandbox-launch';
@@ -61,12 +61,13 @@ export async function writeReport(
   const model = env.MODEL_PLAN;
   const empty: Usage = { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] };
   try {
-    const directory = join(deps.history.root(), 'data');
+    const directory = join(deps.root, 'data');
     mkdirSync(directory, { recursive: true });
     writeFileSync(join(directory, `${key}-code-review-report-output.txt`), 'starting\n');
     const result = await launchAgent({
       agent: deps.agent,
-      history: deps.history,
+      visits: deps.visits,
+      root: deps.root,
       run: opened.run,
       key,
       step: 'code-review-report',
@@ -130,7 +131,7 @@ export async function recordAngle(
   const status = item.error ? 'failed' : parsed?.decision === 'return' ? 'waiting' : parsed ? 'done' : 'failed';
   const exchange = exchangeOf(item);
   const log = result.output ? (result.output.endsWith('\n') ? result.output : `${result.output}\n`) : '';
-  await deps.history.finishVisit(opened.run, {
+  await deps.visits.finishVisit(opened.run, {
     step: `code-review-${item.reviewer.name}`,
     model: item.model,
     mode: 'ask',
@@ -158,20 +159,20 @@ export async function recordAngle(
 
 /** Adds each opinion's handoff summary to the handoff record, in the order given. */
 export async function noteHandoff(
-  history: HistoryService,
+  documents: DocumentRepository,
   key: string,
   opinions: Opinion[],
-  documents: DocumentDraft[],
+  drafts: DocumentDraft[],
 ): Promise<DocumentDraft[]> {
   if (opinions.length === 0) {
-    return documents;
+    return drafts;
   }
-  let text = (await history.latestBody(key, 'handoff')) ?? '';
+  let text = (await documents.latestBody(key, 'handoff')) ?? '';
   for (const opinion of opinions) {
     const step = opinion.kind.replace(/^review_/, '');
     text = mergeHandoff(text, step, summaryOr(opinion.body, plainSummary(opinion.body) || `- ${opinion.decision}`));
   }
-  return [...documents, textDocument('handoff', text)];
+  return [...drafts, textDocument('handoff', text)];
 }
 
 /** Closes the code-review visit with its documents, exchanges and usage. */

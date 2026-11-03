@@ -2,7 +2,11 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { RunEntity } from '../history/entities';
-import { HistoryService } from '../history/history.service';
+import { RunRepository } from '../history/run.repository';
+import { DocumentRepository } from '../history/document.repository';
+import { FlowRepository } from '../history/flow.repository';
+import { CheckoutRepository } from '../history/checkout.repository';
+import { root } from '../history/run-paths';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { branchName, commitMessage, summaryForBranch } from '../steps/branch/branch-name';
 import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.step';
@@ -16,7 +20,10 @@ import { requireRun } from './run-queries.service';
 @Injectable()
 export class RunRebaseService {
   constructor(
-    private readonly history: HistoryService,
+    private readonly runs: RunRepository,
+    private readonly documents: DocumentRepository,
+    private readonly flows: FlowRepository,
+    private readonly checkouts: CheckoutRepository,
     private readonly pipeline: PipelineService,
     private readonly config: AppConfig,
     private readonly commands: RunCommandsService,
@@ -24,7 +31,7 @@ export class RunRebaseService {
   ) {}
 
   async rebase(key: string): Promise<RunRef> {
-    const run = await requireRun(this.history, key);
+    const run = await requireRun(this.runs, key);
     if (run.status !== 'failed' && run.status !== 'done' && run.status !== 'waiting') {
       throw new ConflictException(`${key} is ${run.status}`);
     }
@@ -38,7 +45,7 @@ export class RunRebaseService {
     }
     if (stop.kind === 'conflict') {
       const unfinished = await this.checklistUnfinished(run);
-      await this.history.putDocument(run, REBASE_CONFLICT, unfinished ? 'pending-implement\n' : 'pending\n');
+      await this.documents.putDocument(run, REBASE_CONFLICT, unfinished ? 'pending-implement\n' : 'pending\n');
       return this.startAtImplement(run);
     }
     if (await this.checklistUnfinished(run)) {
@@ -47,32 +54,32 @@ export class RunRebaseService {
     if (status === 'failed' || status === 'waiting') {
       return this.commands.resume(key);
     }
-    const fresh = await requireRun(this.history, key);
-    await this.history.putDocument(fresh, REBASE_MERGE_SKIP, 'skip\n');
-    await this.history.noteFlow(key, ['code-review', 'ci'], 'code-review');
-    const next = await requireRun(this.history, key);
+    const fresh = await requireRun(this.runs, key);
+    await this.documents.putDocument(fresh, REBASE_MERGE_SKIP, 'skip\n');
+    await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review');
+    const next = await requireRun(this.runs, key);
     next.currentStep = 'code-review';
     next.status = 'waiting';
     next.ownerPid = null;
     next.stepStartedAt = null;
-    await this.history.saveRun(next);
+    await this.runs.saveRun(next);
     return this.commands.accepted(key, await this.pipeline.startDetached(key));
   }
 
   private async rebaseWorktrees(run: RunEntity): Promise<Awaited<ReturnType<typeof rebaseFeatureRepos>>> {
-    const requirements = await this.history.latestBody(run.key, 'requirements');
+    const requirements = await this.documents.latestBody(run.key, 'requirements');
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
     const summary = summaryForBranch(requirements, run.key);
-    const names = repoNames((await this.history.latestBody(run.key, 'repos')) ?? '');
+    const names = repoNames((await this.documents.latestBody(run.key, 'repos')) ?? '');
     return rebaseFeatureRepos({
-      root: this.history.root(),
+      root: root(this.config),
       key: run.key,
       repos: names,
       branch: branchName(run.key, summary),
       prompt: run.prompt,
-      denied: await this.history.listDenyPaths(),
+      denied: await this.checkouts.listDenyPaths(),
       message: commitMessage(run.key, summary),
       hosts: { ...this.config.env, clock: this.clock },
     });
@@ -83,21 +90,21 @@ export class RunRebaseService {
     if (run.currentStep === 'implement') {
       return true;
     }
-    const notes = (await this.history.latestBody(run.key, 'implementation')) ?? '';
+    const notes = (await this.documents.latestBody(run.key, 'implementation')) ?? '';
     return notes.trim().length === 0;
   }
 
   private async startAtImplement(run: RunEntity): Promise<RunRef> {
-    const phases = await this.history.activePhases(run.id);
+    const phases = await this.flows.activePhases(run.id);
     if (!phases.includes('implementation')) {
-      await this.history.noteFlow(run.key, ['implementation', 'code-review', 'ci'], 'implement');
+      await this.flows.noteFlow(run.key, ['implementation', 'code-review', 'ci'], 'implement');
     }
-    const fresh = await requireRun(this.history, run.key);
+    const fresh = await requireRun(this.runs, run.key);
     fresh.currentStep = 'implement';
     fresh.status = 'waiting';
     fresh.ownerPid = null;
     fresh.stepStartedAt = null;
-    await this.history.saveRun(fresh);
+    await this.runs.saveRun(fresh);
     return this.commands.accepted(run.key, await this.pipeline.startDetached(run.key));
   }
 }

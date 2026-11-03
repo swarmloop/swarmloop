@@ -1,4 +1,9 @@
-import type { HistoryService } from '../history/history.service';
+import type { AppConfig } from '../config/env';
+import type { DocumentRepository } from '../history/document.repository';
+import type { FlowRepository } from '../history/flow.repository';
+import { root } from '../history/run-paths';
+import type { RunRepository } from '../history/run.repository';
+import type { VisitRepository } from '../history/visit.repository';
 import type { VisitDraft } from '../history/visit';
 import { sampleSelf } from '../history/visit';
 import type { Clock } from '../core/clock';
@@ -37,12 +42,16 @@ export abstract class BaseStep implements Step {
   readonly usesModel: boolean = false;
 
   constructor(
-    protected readonly history: HistoryService,
+    protected readonly runs: RunRepository,
+    protected readonly documents: DocumentRepository,
+    protected readonly visits: VisitRepository,
+    protected readonly flows: FlowRepository,
     protected readonly clock: Clock,
+    protected readonly config: AppConfig,
   ) {}
 
   missingInput(key: string, _options?: StepOptions): Promise<string | null> {
-    return requiredDocument(this.history, key, this.requiredKind);
+    return requiredDocument(this.documents, key, this.requiredKind);
   }
 
   execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
@@ -51,7 +60,7 @@ export abstract class BaseStep implements Step {
 
   /** Opens the step, runs its body, and closes the visit. A throw closes it as failed. */
   protected async perform(key: string, body: (ctx: StepContext) => Promise<PipelineResult>): Promise<PipelineResult> {
-    const opened = await openStep(this.history, this.clock, key, this.name);
+    const opened = await openStep(this.runs, this.clock, key, this.name);
     const calls: HttpCallDraft[] = [];
     let closed = false;
     const ctx: StepContext = {
@@ -115,11 +124,15 @@ export abstract class BaseStep implements Step {
       ...input.visit,
     };
     if (input.handoff !== undefined) {
-      const handoff = await recordHandoff(this.history, opened.run.key, this.name, input.handoff);
+      const handoff = await recordHandoff(this.documents, opened.run.key, this.name, input.handoff);
       visit.documents = [...(visit.documents ?? []), handoff];
     }
     return closeStep({
-      history: this.history,
+      runs: this.runs,
+      documents: this.documents,
+      visits: this.visits,
+      flows: this.flows,
+      root: root(this.config),
       clock: this.clock,
       run: opened.run,
       previousStep: opened.previousStep,

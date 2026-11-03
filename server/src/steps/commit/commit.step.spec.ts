@@ -9,7 +9,10 @@ import { join } from 'path';
 import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DenyPathEntity } from '../../history/entities';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
+import { VisitRepository } from '../../history/visit.repository';
+import { FlowRepository } from '../../history/flow.repository';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { CI_SKIPPED } from './commit.step';
@@ -24,12 +27,13 @@ describe('commit step', () => {
     const app = await boot(root);
     try {
       await seed(app, 'PROJ-100');
-      const history = app.get(HistoryService);
-      const seeded = await history.findRun('PROJ-100');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const seeded = await runs.findRun('PROJ-100');
       if (!seeded) {
         throw new Error('run is missing');
       }
-      await history.putDocument(seeded, 'ci_skip', `${CI_SKIPPED}\n`);
+      await documents.putDocument(seeded, 'ci_skip', `${CI_SKIPPED}\n`);
       const pushed = await app.get(PipelineService).step('commit', 'PROJ-100');
       expect(pushed.exitCode).toBe(0);
       expect(pushed.message).toContain('src/field.ts');
@@ -39,10 +43,10 @@ describe('commit step', () => {
       expect(git(tree, ['show', '--name-only', '--format=', 'HEAD'])).not.toContain('.env');
       expect(git(tree, ['status', '--porcelain'])).toContain('.env');
       expect(git(tree, ['rev-parse', 'HEAD'])).toBe(git(tree, ['rev-parse', 'origin/feature/PROJ-100-ship-the-field']));
-      const run = await history.findRun('PROJ-100');
+      const run = await runs.findRun('PROJ-100');
       expect(run?.currentStep).toBe('merge-request');
       expect(run?.status).toBe('waiting');
-      expect(await history.latestBody('PROJ-100', 'ci_skip')).toContain(CI_SKIPPED);
+      expect(await documents.latestBody('PROJ-100', 'ci_skip')).toContain(CI_SKIPPED);
     } finally {
       await app.close();
     }
@@ -77,12 +81,12 @@ describe('commit step', () => {
     const app = await boot(root);
     try {
       await seed(app, 'PROJ-108');
-      await app.get(HistoryService).noteFlow('PROJ-108', ['code-review'], null);
+      await app.get(FlowRepository).noteFlow('PROJ-108', ['code-review'], null);
       const listed = await app.get(PipelineService).step('commit', 'PROJ-108');
       expect(listed.exitCode).toBe(0);
       expect(listed.message).toContain('src/field.ts');
       expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('1');
-      const run = await app.get(HistoryService).findRun('PROJ-108');
+      const run = await app.get(RunRepository).findRun('PROJ-108');
       expect(run?.currentStep).toBe('commit');
       expect(run?.status).toBe('waiting');
     } finally {
@@ -107,14 +111,14 @@ describe('commit step', () => {
       expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
       expect(git(tree, ['show', '--name-only', '--format=', 'HEAD'])).not.toContain('.env');
       expect(git(tree, ['status', '--porcelain'])).toContain('.env');
-      expect(await app.get(HistoryService).latestBody('PROJ-109', 'ci_skip')).toContain(CI_SKIPPED);
+      expect(await app.get(DocumentRepository).latestBody('PROJ-109', 'ci_skip')).toContain(CI_SKIPPED);
       const skipped = await app.get(PipelineService).runThrough('PROJ-109');
       expect(skipped.exitCode).toBe(0);
       expect(skipped.message).toContain(CI_SKIPPED);
-      const run = await app.get(HistoryService).findRun('PROJ-109');
+      const run = await app.get(RunRepository).findRun('PROJ-109');
       expect(run?.currentStep).toBe('done');
       expect(run?.status).toBe('done');
-      const stats = await app.get(HistoryService).listStats(run?.id ?? 0);
+      const stats = await app.get(VisitRepository).listStats(run?.id ?? 0);
       expect(stats.some((stat) => stat.step === 'pipeline' && stat.status === 'skipped')).toBe(true);
       expect(stats.some((stat) => stat.step === 'merge-request' && stat.status === 'done')).toBe(true);
     } finally {
@@ -129,17 +133,17 @@ describe('commit step', () => {
     const app = await boot(root);
     try {
       await seed(app, 'PROJ-115');
-      const history = app.get(HistoryService);
+      const runs = app.get(RunRepository);
       const first = await app.get(PipelineService).step('commit', 'PROJ-115');
       expect(first.exitCode).toBe(0);
       expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
-      const run = await history.findRun('PROJ-115');
+      const run = await runs.findRun('PROJ-115');
       if (!run) {
         throw new Error('run is missing');
       }
       run.status = 'waiting';
       run.currentStep = 'commit';
-      await history.saveRun(run);
+      await runs.saveRun(run);
       writeFileSync(join(tree, 'src', 'extra.ts'), 'export const extra = 1;\n');
       const second = await app.get(PipelineService).step('commit', 'PROJ-115');
       expect(second.exitCode).toBe(0);
@@ -169,7 +173,7 @@ describe('commit step', () => {
       expect(again.exitCode).toBe(0);
       expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
       expect(git(tree, ['rev-parse', 'HEAD'])).toBe(git(tree, ['rev-parse', 'origin/feature/PROJ-102-ship-the-field']));
-      expect((await app.get(HistoryService).findRun('PROJ-102'))?.currentStep).toBe('merge-request');
+      expect((await app.get(RunRepository).findRun('PROJ-102'))?.currentStep).toBe('merge-request');
     } finally {
       await app.close();
     }
@@ -204,15 +208,15 @@ describe('commit step', () => {
     const app = await boot(root);
     try {
       await seed(app, 'PROJ-114');
-      const history = app.get(HistoryService);
-      const before = await history.latestBody('PROJ-114', 'pipeline_ref');
+      const documents = app.get(DocumentRepository);
+      const before = await documents.latestBody('PROJ-114', 'pipeline_ref');
       const done = await app.get(PipelineService).step('commit', 'PROJ-114');
       expect(done.exitCode).toBe(0);
       expect(done.message).toContain('commit done');
       expect(done.message).not.toContain('nothing to commit');
       expect(done.message).not.toContain(CI_SKIPPED);
-      expect(await history.latestBody('PROJ-114', 'ci_skip')).toBeNull();
-      expect(await history.latestBody('PROJ-114', 'pipeline_ref')).toBe(before);
+      expect(await documents.latestBody('PROJ-114', 'ci_skip')).toBeNull();
+      expect(await documents.latestBody('PROJ-114', 'pipeline_ref')).toBe(before);
       expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
     } finally {
       await app.close();
@@ -233,17 +237,18 @@ describe('commit step', () => {
       const app = await boot(root, 'gitlab', { baseUrl: 'https://gitlab.example', token });
       try {
         await seed(app, 'PROJ-130', 'gitlab');
-        const history = app.get(HistoryService);
-        const seeded = await history.findRun('PROJ-130');
-        await history.putDocument(seeded!, 'ci_rerun', `demo ${old} -> ${old}\n`);
+        const runs = app.get(RunRepository);
+        const documents = app.get(DocumentRepository);
+        const seeded = await runs.findRun('PROJ-130');
+        await documents.putDocument(seeded!, 'ci_rerun', `demo ${old} -> ${old}\n`);
         const pushed = await app.get(PipelineService).step('commit', 'PROJ-130');
         expect(pushed.exitCode).toBe(0);
         expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
         expect(git(tree, ['log', '-1', '--format=%s'])).toBe('Re-run CI');
         const head = git(tree, ['rev-parse', 'HEAD']);
         expect(git(bare, ['rev-parse', `refs/heads/${branch}`])).toBe(head);
-        expect(await history.latestBody('PROJ-130', 'pipeline_ref')).toContain(`sha: ${head}`);
-        expect(await history.latestBody('PROJ-130', 'commit')).toContain(`demo ${head}`);
+        expect(await documents.latestBody('PROJ-130', 'pipeline_ref')).toContain(`sha: ${head}`);
+        expect(await documents.latestBody('PROJ-130', 'commit')).toContain(`demo ${head}`);
         const again = await app.get(PipelineService).step('commit', 'PROJ-130');
         expect(again.exitCode).toBe(0);
         expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
@@ -266,9 +271,10 @@ describe('commit step', () => {
     const app = await boot(root);
     try {
       await seed(app, 'PROJ-131');
-      const history = app.get(HistoryService);
-      const seeded = await history.findRun('PROJ-131');
-      await history.putDocument(seeded!, 'ci_rerun', 'demo old -> new\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const seeded = await runs.findRun('PROJ-131');
+      await documents.putDocument(seeded!, 'ci_rerun', 'demo old -> new\n');
       const pushed = await app.get(PipelineService).step('commit', 'PROJ-131');
       expect(pushed.exitCode).toBe(0);
       expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
@@ -393,7 +399,7 @@ describe('commit step', () => {
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('branch is protected');
       expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('1');
-      expect((await app.get(HistoryService).findRun('PROJ-103'))?.currentStep).toBe('commit');
+      expect((await app.get(RunRepository).findRun('PROJ-103'))?.currentStep).toBe('commit');
     } finally {
       await app.close();
     }
@@ -434,17 +440,18 @@ describe('commit step', () => {
       const app = await boot(root, 'gitlab', { baseUrl: 'https://gitlab.example', token });
       try {
         await seed(app, 'PROJ-112', 'gitlab');
-        const history = app.get(HistoryService);
-        const seeded = await history.findRun('PROJ-112');
+        const runs = app.get(RunRepository);
+        const documents = app.get(DocumentRepository);
+        const seeded = await runs.findRun('PROJ-112');
         if (!seeded) {
           throw new Error('run is missing');
         }
-        await history.putDocument(seeded, 'ci_skip', `${CI_SKIPPED}\n`);
+        await documents.putDocument(seeded, 'ci_skip', `${CI_SKIPPED}\n`);
         const pushed = await app.get(PipelineService).step('commit', 'PROJ-112');
         expect(pushed.exitCode).toBe(0);
         expect(git(tree, ['rev-parse', 'HEAD'])).toBe(amended);
         expect(git(bare, ['rev-parse', `refs/heads/${branch}`])).toBe(amended);
-        expect((await history.latestBody('PROJ-112', 'ci_skip'))?.trim() ?? '').toBe('');
+        expect((await documents.latestBody('PROJ-112', 'ci_skip'))?.trim() ?? '').toBe('');
       } finally {
         await app.close();
       }
@@ -570,13 +577,14 @@ async function boot(root: string, codeHost = 'gitlab', host: { baseUrl?: string;
 }
 
 async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, codeHost = ''): Promise<void> {
-  const history = app.get(HistoryService);
-  const seeded = await history.begin(key, 'commit');
+  const runs = app.get(RunRepository);
+  const documents = app.get(DocumentRepository);
+  const seeded = await runs.begin(key, 'commit');
   seeded.status = 'waiting';
   seeded.currentStep = 'code-review';
   seeded.codeHost = codeHost;
-  await history.saveRun(seeded);
-  await history.putDocument(
+  await runs.saveRun(seeded);
+  await documents.putDocument(
     seeded,
     'requirements',
     `${JSON.stringify({
@@ -588,7 +596,7 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, codeHost
       pages: [],
     })}\n`,
   );
-  await history.putDocument(seeded, 'repos', 'demo\n');
+  await documents.putDocument(seeded, 'repos', 'demo\n');
 }
 
 function featureTree(root: string, key: string): string {

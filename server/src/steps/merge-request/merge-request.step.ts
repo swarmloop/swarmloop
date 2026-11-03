@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
+import { VisitRepository } from '../../history/visit.repository';
+import { FlowRepository } from '../../history/flow.repository';
+import { root } from '../../history/run-paths';
+import { AppConfig } from '../../config/env';
 import { Clock } from '../../core/clock';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { PhaseName, StepName } from '../../contract/steps';
@@ -33,35 +38,39 @@ export class MergeRequestStep extends BaseStep {
   readonly requiredKind = 'requirements';
 
   constructor(
-    history: HistoryService,
+    runs: RunRepository,
+    documents: DocumentRepository,
+    visits: VisitRepository,
+    flows: FlowRepository,
     clock: Clock,
+    config: AppConfig,
     private readonly registry: CodeHostRegistry,
   ) {
-    super(history, clock);
+    super(runs, documents, visits, flows, clock, config);
   }
 
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
     const { opened } = ctx;
-    const skipped = ((await this.history.latestBody(key, 'ci_skip')) ?? '').trim();
+    const skipped = ((await this.documents.latestBody(key, 'ci_skip')) ?? '').trim();
     if (skipped) {
       return this.finish(ctx, `${opened.startedAt} ${skipped}`, undefined, '');
     }
     this.registry.requiredCredentials(opened.run.codeHost);
     const client = this.registry.byName(opened.run.codeHost);
-    const phases = await this.history.activePhases(opened.run.id);
-    const requirements = await this.history.latestBody(key, 'requirements');
+    const phases = await this.flows.activePhases(opened.run.id);
+    const requirements = await this.documents.latestBody(key, 'requirements');
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
     const title = summaryForBranch(requirements, key);
     const branch = branchName(key, title);
-    const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
+    const names = repoNames((await this.documents.latestBody(key, 'repos')) ?? '');
     const trees = await this.trees(key, names, branch, ctx.calls, opened.run.codeHost, client);
     const drafted = await this.describe(key, trees, phases);
-    const skip = ((await this.history.latestBody(key, REBASE_MERGE_SKIP)) ?? '').trim() === 'skip';
+    const skip = ((await this.documents.latestBody(key, REBASE_MERGE_SKIP)) ?? '').trim() === 'skip';
     const records = await this.ensure(drafted, title, ctx.calls, skip, client);
     if (skip) {
-      await this.history.putDocument(opened.run, REBASE_MERGE_SKIP, 'clear\n');
+      await this.documents.putDocument(opened.run, REBASE_MERGE_SKIP, 'clear\n');
     }
     const body = renderMergeRequest(records);
     const urls = records.map((record) => record.url).join('\n');
@@ -80,7 +89,7 @@ export class MergeRequestStep extends BaseStep {
     const host = new URL(selected.baseUrl).hostname.toLowerCase();
     const trees: Tree[] = [];
     for (const repo of names) {
-      const path = worktreePath(this.history.root(), key, repo);
+      const path = worktreePath(root(this.config), key, repo);
       if (!existsSync(path) || !statSync(path).isDirectory()) {
         throw new SwarmloopError(`${repo} is not a worktree`);
       }
@@ -112,12 +121,12 @@ export class MergeRequestStep extends BaseStep {
   }
 
   private async describe(key: string, trees: Tree[], phases: readonly PhaseName[]): Promise<Tree[]> {
-    const implementation = (await this.history.latestBody(key, 'implementation'))?.trim() ?? '';
+    const implementation = (await this.documents.latestBody(key, 'implementation'))?.trim() ?? '';
     if (!implementation) {
       throw new SwarmloopError('implementation is missing');
     }
     const summary = phases.includes('code-review')
-      ? ((await this.history.latestBody(key, 'review_report'))?.trim() ?? '')
+      ? ((await this.documents.latestBody(key, 'review_report'))?.trim() ?? '')
       : implementation;
     if (!summary) {
       throw new SwarmloopError('review report is missing');

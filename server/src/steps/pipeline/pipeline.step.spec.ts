@@ -11,7 +11,8 @@ import { SwarmloopConfigModule } from '../../config/config.module';
 import { AppConfig } from '../../config/env';
 import { Clock } from '../../core/clock';
 import { LoopEventEntity } from '../../history/entities';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import type { PipelineJob, PipelineSnapshot } from '../../integrations/code-host/code-host';
@@ -33,11 +34,11 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-300');
       expect(result.exitCode).toBe(0);
       expect(trace).not.toHaveBeenCalled();
-      const run = await app.get(HistoryService).findRun('PROJ-300');
+      const run = await app.get(RunRepository).findRun('PROJ-300');
       expect(run?.status).toBe('done');
       expect(run?.currentStep).toBe('done');
       expect(run?.attemptsPipeline).toBe(0);
-      const body = await app.get(HistoryService).latestBody('PROJ-300', 'pipeline_log');
+      const body = await app.get(DocumentRepository).latestBody('PROJ-300', 'pipeline_log');
       expect(body).toContain('result: pass');
       expect(body).toContain('warning: group/demo lint');
     } finally {
@@ -65,11 +66,11 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-301');
       expect(result.exitCode).toBe(0);
       expect(trace.mock.calls.map((item) => item[1])).toEqual([7, 9]);
-      const run = await app.get(HistoryService).findRun('PROJ-301');
+      const run = await app.get(RunRepository).findRun('PROJ-301');
       expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('waiting');
       expect(run?.attemptsPipeline).toBe(1);
-      const body = await app.get(HistoryService).latestBody('PROJ-301', 'pipeline_log');
+      const body = await app.get(DocumentRepository).latestBody('PROJ-301', 'pipeline_log');
       expect(body).toContain('result: fail');
       expect(body).toContain('job: unit');
       expect(body).toContain('log 7');
@@ -79,7 +80,7 @@ describe('pipeline step', () => {
       expect(loops).toHaveLength(1);
       expect(loops[0]?.counter).toBe('pipeline');
       expect(loops[0]?.attempt).toBe(1);
-      const notes = await app.get(HistoryService).latestBody('PROJ-301', 'return');
+      const notes = await app.get(DocumentRepository).latestBody('PROJ-301', 'return');
       expect(notes).toContain('## pipeline');
       expect(notes).toContain('result: fail');
       expect(notes).toContain('log 7');
@@ -100,17 +101,22 @@ describe('pipeline step', () => {
     );
     try {
       await seed(app, 'PROJ-314');
-      const history = app.get(HistoryService);
-      const seeded = await history.findRun('PROJ-314');
-      await history.putDocument(seeded!, 'pipeline_log', 'result: fail\nproject: group/demo\npipeline: 9\njob: unit\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const seeded = await runs.findRun('PROJ-314');
+      await documents.putDocument(
+        seeded!,
+        'pipeline_log',
+        'result: fail\nproject: group/demo\npipeline: 9\njob: unit\n',
+      );
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-314', { auto: true });
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('pipeline already failed for this commit');
-      const run = await history.findRun('PROJ-314');
+      const run = await runs.findRun('PROJ-314');
       expect(run?.currentStep).toBe('pipeline');
       expect(run?.status).toBe('failed');
       expect(run?.attemptsPipeline).toBe(0);
-      expect(await history.latestBody('PROJ-314', 'return')).toBeNull();
+      expect(await documents.latestBody('PROJ-314', 'return')).toBeNull();
     } finally {
       await app.close();
     }
@@ -124,9 +130,10 @@ describe('pipeline step', () => {
     const app = await boot(root, read, jest.fn());
     try {
       await seed(app, 'PROJ-315', `${one}sha: ${'a'.repeat(40)}\n`);
-      const history = app.get(HistoryService);
-      const seeded = await history.findRun('PROJ-315');
-      await history.putDocument(seeded!, 'pipeline_ref', `${one}sha: ${'b'.repeat(40)}\n`);
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const seeded = await runs.findRun('PROJ-315');
+      await documents.putDocument(seeded!, 'pipeline_ref', `${one}sha: ${'b'.repeat(40)}\n`);
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-315');
       expect(result.exitCode).toBe(0);
       expect(read).toHaveBeenCalledTimes(1);
@@ -148,12 +155,17 @@ describe('pipeline step', () => {
     );
     try {
       await seed(app, 'PROJ-317');
-      const history = app.get(HistoryService);
-      const seeded = await history.findRun('PROJ-317');
-      await history.putDocument(seeded!, 'pipeline_log', 'result: fail\nproject: group/demo\npipeline: 9\njob: unit\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const seeded = await runs.findRun('PROJ-317');
+      await documents.putDocument(
+        seeded!,
+        'pipeline_log',
+        'result: fail\nproject: group/demo\npipeline: 9\njob: unit\n',
+      );
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-317');
       expect(result.exitCode).toBe(0);
-      const run = await history.findRun('PROJ-317');
+      const run = await runs.findRun('PROJ-317');
       expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('waiting');
       expect(run?.attemptsPipeline).toBe(1);
@@ -174,12 +186,17 @@ describe('pipeline step', () => {
     );
     try {
       await seed(app, 'PROJ-315');
-      const history = app.get(HistoryService);
-      const seeded = await history.findRun('PROJ-315');
-      await history.putDocument(seeded!, 'pipeline_log', 'result: fail\nproject: group/demo\npipeline: 8\njob: unit\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const seeded = await runs.findRun('PROJ-315');
+      await documents.putDocument(
+        seeded!,
+        'pipeline_log',
+        'result: fail\nproject: group/demo\npipeline: 8\njob: unit\n',
+      );
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-315');
       expect(result.exitCode).toBe(0);
-      const run = await history.findRun('PROJ-315');
+      const run = await runs.findRun('PROJ-315');
       expect(run?.currentStep).toBe('implement');
       expect(run?.attemptsPipeline).toBe(1);
     } finally {
@@ -203,12 +220,12 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-316');
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('pipeline return limit reached');
-      const run = await app.get(HistoryService).findRun('PROJ-316');
+      const run = await app.get(RunRepository).findRun('PROJ-316');
       expect(run?.currentStep).toBe('pipeline');
       expect(run?.status).toBe('blocked');
       expect(run?.attemptsPipeline).toBe(6);
-      expect(await app.get(HistoryService).latestBody('PROJ-316', 'return')).toBeNull();
-      expect(await app.get(HistoryService).latestBody('PROJ-316', 'pipeline_log')).toContain('result: fail');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-316', 'return')).toBeNull();
+      expect(await app.get(DocumentRepository).latestBody('PROJ-316', 'pipeline_log')).toContain('result: fail');
     } finally {
       await app.close();
     }
@@ -229,7 +246,7 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-302');
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('pipeline failed');
-      const run = await app.get(HistoryService).findRun('PROJ-302');
+      const run = await app.get(RunRepository).findRun('PROJ-302');
       expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('waiting');
       expect(run?.attemptsPipeline).toBe(4);
@@ -265,15 +282,16 @@ describe('pipeline step', () => {
       expect(result.exitCode).toBe(0);
       expect(cancel).toHaveBeenCalledWith('group/demo', 9);
       expect(result.message).toContain('pipeline failed');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-303');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-303');
       expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('waiting');
       expect(run?.attemptsPipeline).toBe(1);
-      const body = await history.latestBody('PROJ-303', 'pipeline_log');
+      const body = await documents.latestBody('PROJ-303', 'pipeline_log');
       expect(body?.startsWith('It was still running after 0 minutes and swarmloop canceled it')).toBe(true);
       expect(body).toContain('log 7');
-      const notes = await history.latestBody('PROJ-303', 'return');
+      const notes = await documents.latestBody('PROJ-303', 'return');
       expect(notes).toContain('## pipeline');
       expect(notes).toContain('It was still running after 0 minutes and swarmloop canceled it');
       expect(notes).toContain('log 7');
@@ -306,11 +324,12 @@ describe('pipeline step', () => {
       expect(cancel).toHaveBeenCalledWith('group/demo', 9);
       expect(read.mock.calls.map((entry) => entry[1] === true)).toEqual([false, true]);
       expect(trace).not.toHaveBeenCalled();
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-318');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-318');
       expect(run?.currentStep).toBe('implement');
       expect(run?.attemptsPipeline).toBe(1);
-      const notes = await history.latestBody('PROJ-318', 'return');
+      const notes = await documents.latestBody('PROJ-318', 'return');
       expect(notes).toContain('result: fail');
       expect(notes).toContain('job: unit');
       expect(notes).toContain('cancel: group/demo: github pipeline failed: HTTP 500');
@@ -336,8 +355,8 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-304');
       expect(result.exitCode).toBe(0);
       expect(read).toHaveBeenCalledTimes(2);
-      expect((await app.get(HistoryService).findRun('PROJ-304'))?.currentStep).toBe('done');
-      expect((await app.get(HistoryService).findRun('PROJ-304'))?.status).toBe('done');
+      expect((await app.get(RunRepository).findRun('PROJ-304'))?.currentStep).toBe('done');
+      expect((await app.get(RunRepository).findRun('PROJ-304'))?.status).toBe('done');
     } finally {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);
@@ -357,7 +376,7 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-305');
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('pipeline is manual');
-      expect((await app.get(HistoryService).findRun('PROJ-305'))?.attemptsPipeline).toBe(0);
+      expect((await app.get(RunRepository).findRun('PROJ-305'))?.attemptsPipeline).toBe(0);
     } finally {
       await app.close();
     }
@@ -379,12 +398,13 @@ describe('pipeline step', () => {
         const result = await app.get(PipelineService).step('pipeline', 'PROJ-306', auto ? { auto: true } : {});
         expect(result.exitCode).toBe(0);
         expect(trace).toHaveBeenCalledWith('group/demo', 7);
-        const history = app.get(HistoryService);
-        const run = await history.findRun('PROJ-306');
+        const runs = app.get(RunRepository);
+        const documents = app.get(DocumentRepository);
+        const run = await runs.findRun('PROJ-306');
         expect(run?.currentStep).toBe('implement');
         expect(run?.status).toBe('waiting');
         expect(run?.attemptsPipeline).toBe(1);
-        const notes = await history.latestBody('PROJ-306', 'return');
+        const notes = await documents.latestBody('PROJ-306', 'return');
         expect(notes).toContain('## pipeline');
         expect(notes).toContain('result: fail');
         expect(notes).toContain('canceled log');
@@ -408,7 +428,7 @@ describe('pipeline step', () => {
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('pipeline was skipped');
       expect(trace).not.toHaveBeenCalled();
-      const run = await app.get(HistoryService).findRun('PROJ-319');
+      const run = await app.get(RunRepository).findRun('PROJ-319');
       expect(run?.currentStep).toBe('pipeline');
       expect(run?.status).toBe('failed');
       expect(run?.attemptsPipeline).toBe(0);
@@ -438,7 +458,7 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-308');
       expect(result.exitCode).toBe(0);
       expect(read).toHaveBeenCalledTimes(2);
-      const run = await app.get(HistoryService).findRun('PROJ-308');
+      const run = await app.get(RunRepository).findRun('PROJ-308');
       expect(run?.currentStep).toBe('implement');
       expect(run?.attemptsPipeline).toBe(1);
     } finally {
@@ -461,12 +481,13 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-309');
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('pipeline failed');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-309');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-309');
       expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('waiting');
       expect(run?.attemptsPipeline).toBe(1);
-      const notes = await history.latestBody('PROJ-309', 'return');
+      const notes = await documents.latestBody('PROJ-309', 'return');
       expect(notes).toContain('project: group/demo');
       expect(notes).toContain('pipeline: 9');
       expect(notes).toContain('job: unit');
@@ -496,8 +517,8 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-310');
       expect(result.exitCode).toBe(0);
       expect(read).toHaveBeenCalledTimes(2);
-      expect((await app.get(HistoryService).findRun('PROJ-310'))?.currentStep).toBe('done');
-      expect(await app.get(HistoryService).latestBody('PROJ-310', 'pipeline_log')).toContain('result: pass');
+      expect((await app.get(RunRepository).findRun('PROJ-310'))?.currentStep).toBe('done');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-310', 'pipeline_log')).toContain('result: pass');
     } finally {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);
@@ -513,17 +534,17 @@ describe('pipeline step', () => {
     const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=30\n');
     try {
       await seed(app, 'PROJ-307');
-      const run = await app.get(HistoryService).findRun('PROJ-307');
-      await app.get(HistoryService).putDocument(run!, 'repos', 'demo\n');
+      const run = await app.get(RunRepository).findRun('PROJ-307');
+      await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
       mkdirSync(join(root, 'worktrees', 'PROJ-307', 'demo'), { recursive: true });
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-307');
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('nothing started');
       expect(read).toHaveBeenCalledTimes(1);
-      const after = await app.get(HistoryService).findRun('PROJ-307');
+      const after = await app.get(RunRepository).findRun('PROJ-307');
       expect(after?.currentStep).toBe('done');
       expect(after?.status).toBe('done');
-      expect(await app.get(HistoryService).latestBody('PROJ-307', 'pipeline_log')).toContain('result: none');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-307', 'pipeline_log')).toContain('result: none');
     } finally {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);
@@ -546,8 +567,8 @@ describe('pipeline step', () => {
     const started = Date.now();
     try {
       await seed(app, 'PROJ-311');
-      const run = await app.get(HistoryService).findRun('PROJ-311');
-      await app.get(HistoryService).putDocument(run!, 'repos', 'demo\n');
+      const run = await app.get(RunRepository).findRun('PROJ-311');
+      await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
       const workflow = join(root, 'worktrees', 'PROJ-311', 'demo', '.github', 'workflows');
       mkdirSync(workflow, { recursive: true });
       await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
@@ -556,7 +577,7 @@ describe('pipeline step', () => {
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('demo CI did not start');
       expect(read.mock.calls.length).toBeGreaterThan(1);
-      const after = await app.get(HistoryService).findRun('PROJ-311');
+      const after = await app.get(RunRepository).findRun('PROJ-311');
       expect(after?.currentStep).toBe('pipeline');
       expect(after?.status).toBe('failed');
     } finally {
@@ -586,8 +607,8 @@ describe('pipeline step', () => {
     );
     try {
       await seed(app, 'PROJ-313');
-      const run = await app.get(HistoryService).findRun('PROJ-313');
-      await app.get(HistoryService).putDocument(run!, 'repos', 'demo\n');
+      const run = await app.get(RunRepository).findRun('PROJ-313');
+      await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
       gitRepo(join(root, 'worktrees', 'PROJ-313', 'demo'), 'git@gitlab.example:group/demo.git');
       const workflow = join(root, 'worktrees', 'PROJ-313', 'demo', '.github', 'workflows');
       mkdirSync(workflow, { recursive: true });
@@ -595,8 +616,8 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-313');
       expect(result.exitCode).toBe(0);
       expect(read).toHaveBeenCalledTimes(2);
-      expect((await app.get(HistoryService).findRun('PROJ-313'))?.currentStep).toBe('done');
-      expect(await app.get(HistoryService).latestBody('PROJ-313', 'pipeline_log')).toContain('result: pass');
+      expect((await app.get(RunRepository).findRun('PROJ-313'))?.currentStep).toBe('done');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-313', 'pipeline_log')).toContain('result: pass');
     } finally {
       await app.close();
     }
@@ -621,7 +642,7 @@ describe('pipeline step', () => {
       expect(result.exitCode).toBe(0);
       expect(read).toHaveBeenCalledTimes(4);
       expect(read.mock.calls.every((entry) => entry[1] === false)).toBe(true);
-      expect((await app.get(HistoryService).findRun('PROJ-314'))?.currentStep).toBe('done');
+      expect((await app.get(RunRepository).findRun('PROJ-314'))?.currentStep).toBe('done');
     } finally {
       await app.close();
     }
@@ -646,8 +667,8 @@ describe('pipeline step', () => {
     );
     try {
       await seed(app, 'PROJ-312', two);
-      const run = await app.get(HistoryService).findRun('PROJ-312');
-      await app.get(HistoryService).putDocument(run!, 'repos', 'demo\nweb\n');
+      const run = await app.get(RunRepository).findRun('PROJ-312');
+      await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\nweb\n');
       gitRepo(join(root, 'worktrees', 'PROJ-312', 'demo'), 'git@gitlab.example:group/demo.git');
       gitRepo(join(root, 'worktrees', 'PROJ-312', 'web'), 'git@gitlab.example:group/web.git');
       for (const name of ['demo', 'web']) {
@@ -661,7 +682,7 @@ describe('pipeline step', () => {
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('web CI did not start');
       expect(read.mock.calls.length).toBeGreaterThan(2);
-      const after = await app.get(HistoryService).findRun('PROJ-312');
+      const after = await app.get(RunRepository).findRun('PROJ-312');
       expect(after?.currentStep).toBe('pipeline');
       expect(after?.status).toBe('failed');
     } finally {
@@ -781,12 +802,13 @@ async function seed(
   body = one,
   attemptsPipeline = 0,
 ): Promise<void> {
-  const history = app.get(HistoryService);
-  const seeded = await history.begin(key, 'pipeline');
+  const runs = app.get(RunRepository);
+  const documents = app.get(DocumentRepository);
+  const seeded = await runs.begin(key, 'pipeline');
   seeded.status = 'waiting';
   seeded.currentStep = 'commit';
   seeded.codeHost = 'gitlab';
   seeded.attemptsPipeline = attemptsPipeline;
-  await history.saveRun(seeded);
-  await history.putDocument(seeded, 'pipeline_ref', body);
+  await runs.saveRun(seeded);
+  await documents.putDocument(seeded, 'pipeline_ref', body);
 }

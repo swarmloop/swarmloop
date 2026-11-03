@@ -2,7 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { basename, join } from 'path';
 import { AppConfig, SwarmloopEnv } from '../../config/env';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
+import { VisitRepository } from '../../history/visit.repository';
+import { FlowRepository } from '../../history/flow.repository';
+import { root } from '../../history/run-paths';
 import { Clock } from '../../core/clock';
 import { AGENT_RUNNER, AgentProcessRunner } from '../../agent/agent-runner';
 import { PipelineResult } from '../../core/pipeline-result';
@@ -24,13 +28,16 @@ export class ResearchStep extends AgentStep {
   readonly revisesRequirements = true;
 
   constructor(
-    history: HistoryService,
+    runs: RunRepository,
+    documents: DocumentRepository,
+    visits: VisitRepository,
+    flows: FlowRepository,
     clock: Clock,
     config: AppConfig,
     sandbox: SandboxService,
     @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
   ) {
-    super(history, clock, config, sandbox, agent);
+    super(runs, documents, visits, flows, clock, config, sandbox, agent);
   }
 
   protected settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number } {
@@ -38,7 +45,7 @@ export class ResearchStep extends AgentStep {
   }
 
   override missingInput(key: string): Promise<string | null> {
-    return Promise.resolve(existsSync(join(this.history.root(), 'worktrees', key)) ? null : `worktrees/${key}`);
+    return Promise.resolve(existsSync(join(root(this.config), 'worktrees', key)) ? null : `worktrees/${key}`);
   }
 
   protected async write(key: string, ctx: ModelStepContext): Promise<PipelineResult> {
@@ -47,23 +54,23 @@ export class ResearchStep extends AgentStep {
     if (names.length === 0) {
       throw new SwarmloopError('worktrees is empty');
     }
-    const answers = (await this.history.latestBody(ctx.opened.run.key, 'answers')) ?? '';
-    const prior = await this.history.latestBody(ctx.opened.run.key, 'handoff');
+    const answers = (await this.documents.latestBody(ctx.opened.run.key, 'answers')) ?? '';
+    const prior = await this.documents.latestBody(ctx.opened.run.key, 'handoff');
     const sections = withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior);
-    const mounts = mountsForStep(this.history.root(), ctx.opened.run.key, names, null);
+    const mounts = mountsForStep(root(this.config), ctx.opened.run.key, names, null);
     const full = skillPrompt('research', ctx.requirements, names, sections, mounts);
     const agentResult = await ctx.launch({ prompt: full, mounts, continuePrompt: RESEARCH_CONTINUE });
     const parsed = parseResearch(agentResult.responseText);
     const repos = renderProjects(names);
     const paused = parsed.questions !== '';
-    await this.history.putDocument(ctx.opened.run, 'repos', repos);
+    await this.documents.putDocument(ctx.opened.run, 'repos', repos);
     const detail = (paused ? parsed.questions : repos).trimEnd();
     const word = paused ? 'waiting' : 'done';
     const summary = summaryOr(
       agentResult.responseText,
       plainSummary(agentResult.responseText) || `- chose ${repos.trim().split('\n').join(', ')}`,
     );
-    const handoff = await recordHandoff(this.history, ctx.opened.run.key, 'research', summary);
+    const handoff = await recordHandoff(this.documents, ctx.opened.run.key, 'research', summary);
     return ctx.end(
       paused ? 'waiting' : 'ok',
       0,

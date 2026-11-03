@@ -13,7 +13,9 @@ import {
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
-import { HistoryService } from '../history/history.service';
+import { RunRepository } from '../history/run.repository';
+import { DocumentRepository } from '../history/document.repository';
+import { FlowRepository } from '../history/flow.repository';
 import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.step';
 import { REBASE_CONFLICT, rebaseFeatureRepos, storedBase } from '../git/rebase-worktree';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
@@ -37,16 +39,17 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-50 started' }) };
     const app = await boot(root, pipeline);
     try {
-      const history = app.get(HistoryService);
-      await remember(history, 'proj-50', 'implement', 'failed');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      await remember(runs, documents, 'proj-50', 'implement', 'failed');
       const result = await app.get(RunRebaseService).rebase('proj-50');
       expect(result).toEqual({ key: 'proj-50', status: 'started' });
       expect(httpStatus(result)).toBe(202);
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-50');
-      const fresh = await history.findRun('proj-50');
+      const fresh = await runs.findRun('proj-50');
       expect(fresh?.status).toBe('waiting');
       expect(fresh?.currentStep).toBe('implement');
-      expect(await history.latestBody('proj-50', REBASE_MERGE_SKIP)).toBeNull();
+      expect(await documents.latestBody('proj-50', REBASE_MERGE_SKIP)).toBeNull();
       git(tree, ['merge-base', '--is-ancestor', base, 'HEAD']);
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-50-ship-the-field');
       expect(git(tree, ['log', '--oneline'])).toContain('field');
@@ -71,11 +74,13 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-51 started' }) };
     const app = await boot(root, pipeline);
     try {
-      const history = app.get(HistoryService);
-      const run = await remember(history, 'proj-51', 'done', 'done');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const flows = app.get(FlowRepository);
+      const run = await remember(runs, documents, 'proj-51', 'done', 'done');
       run.prompt = 'branch: release\n';
-      await history.saveRun(run);
-      await history.putDocument(run, 'implementation', '- changed the field\n');
+      await runs.saveRun(run);
+      await documents.putDocument(run, 'implementation', '- changed the field\n');
       const branch = 'feature/proj-51-ship-the-field';
       git(tree, ['push', '-u', 'origin', branch]);
       const tip = git(tree, ['rev-parse', `refs/remotes/origin/${branch}`]);
@@ -83,11 +88,11 @@ describe('runs api', () => {
       expect(result).toEqual({ key: 'proj-51', status: 'started' });
       expect(httpStatus(result)).toBe(202);
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-51');
-      const fresh = await history.findRun('proj-51');
+      const fresh = await runs.findRun('proj-51');
       expect(fresh?.status).toBe('waiting');
       expect(fresh?.currentStep).toBe('code-review');
-      expect((await history.latestBody('proj-51', REBASE_MERGE_SKIP))?.trim()).toBe('skip');
-      const rows = await history.listFlows(fresh?.id ?? 0);
+      expect((await documents.latestBody('proj-51', REBASE_MERGE_SKIP))?.trim()).toBe('skip');
+      const rows = await flows.listFlows(fresh?.id ?? 0);
       expect(JSON.parse(rows.at(-1)?.phases ?? '[]')).toEqual(['requirements', 'code-review', 'ci']);
       expect(rows.at(-1)?.fromStep).toBe('code-review');
       git(tree, ['merge-base', '--is-ancestor', release, 'HEAD']);
@@ -115,9 +120,10 @@ describe('runs api', () => {
     const app = await boot(root, pipeline);
     try {
       await denyEnv(app);
-      const history = app.get(HistoryService);
-      const run = await remember(history, 'proj-52', 'done', 'done');
-      await history.putDocument(run, 'implementation', '- changed the field\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await remember(runs, documents, 'proj-52', 'done', 'done');
+      await documents.putDocument(run, 'implementation', '- changed the field\n');
       const result = await app.get(RunRebaseService).rebase('proj-52');
       expect(result).toEqual({ key: 'proj-52', status: 'started' });
       expect(httpStatus(result)).toBe(202);
@@ -127,7 +133,7 @@ describe('runs api', () => {
       expect(git(tree, ['status', '--porcelain'])).toContain('.env');
       git(tree, ['merge-base', '--is-ancestor', base, 'HEAD']);
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-52-ship-the-field');
-      expect((await history.findRun('proj-52'))?.currentStep).toBe('code-review');
+      expect((await runs.findRun('proj-52'))?.currentStep).toBe('code-review');
     } finally {
       await app.close();
     }
@@ -145,10 +151,11 @@ describe('runs api', () => {
     const app = await boot(root, pipeline);
     try {
       await denyEnv(app);
-      const history = app.get(HistoryService);
-      await remember(history, 'proj-53', 'done', 'done');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      await remember(runs, documents, 'proj-53', 'done', 'done');
       await expect(app.get(RunRebaseService).rebase('proj-53')).rejects.toThrow('demo rebase failed');
-      const fresh = await history.findRun('proj-53');
+      const fresh = await runs.findRun('proj-53');
       expect(fresh?.status).toBe('done');
       expect(fresh?.currentStep).toBe('done');
       expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
@@ -165,15 +172,17 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-54 started' }) };
     const app = await boot(root, pipeline);
     try {
-      const history = app.get(HistoryService);
-      await remember(history, 'proj-54', 'done', 'done');
-      await history.noteFlow('proj-54', ['code-review', 'ci'], 'code-review');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const flows = app.get(FlowRepository);
+      await remember(runs, documents, 'proj-54', 'done', 'done');
+      await flows.noteFlow('proj-54', ['code-review', 'ci'], 'code-review');
       await expect(app.get(RunRebaseService).rebase('proj-54')).rejects.toThrow('already in the base');
       expect(pipeline.startDetached).not.toHaveBeenCalled();
-      const fresh = await history.findRun('proj-54');
+      const fresh = await runs.findRun('proj-54');
       expect(fresh?.status).toBe('done');
       expect(fresh?.currentStep).toBe('done');
-      expect(await history.latestBody('proj-54', REBASE_MERGE_SKIP)).toBeNull();
+      expect(await documents.latestBody('proj-54', REBASE_MERGE_SKIP)).toBeNull();
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-54-ship-the-field');
     } finally {
       await app.close();
@@ -186,12 +195,13 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-55 started' }) };
     const app = await boot(root, pipeline);
     try {
-      const history = app.get(HistoryService);
-      const run = await remember(history, 'proj-55', 'implement-improve', 'failed');
-      await history.putDocument(run, 'implementation', '- changed the field\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await remember(runs, documents, 'proj-55', 'implement-improve', 'failed');
+      await documents.putDocument(run, 'implementation', '- changed the field\n');
       await expect(app.get(RunRebaseService).rebase('proj-55')).rejects.toThrow('already in the base');
       expect(pipeline.startDetached).not.toHaveBeenCalled();
-      const fresh = await history.findRun('proj-55');
+      const fresh = await runs.findRun('proj-55');
       expect(fresh?.status).toBe('failed');
       expect(fresh?.currentStep).toBe('implement-improve');
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-55-ship-the-field');
@@ -206,15 +216,16 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-58 started' }) };
     const app = await boot(root, pipeline);
     try {
-      const history = app.get(HistoryService);
-      const run = await remember(history, 'proj-58', 'implement-improve', 'waiting');
-      await history.putDocument(run, 'implementation', '- changed the field\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await remember(runs, documents, 'proj-58', 'implement-improve', 'waiting');
+      await documents.putDocument(run, 'implementation', '- changed the field\n');
       await expect(app.get(RunRebaseService).rebase('proj-58')).rejects.toThrow('already in the base');
       expect(pipeline.startDetached).not.toHaveBeenCalled();
-      const fresh = await history.findRun('proj-58');
+      const fresh = await runs.findRun('proj-58');
       expect(fresh?.status).toBe('waiting');
       expect(fresh?.currentStep).toBe('implement-improve');
-      expect(await history.latestBody('proj-58', REBASE_MERGE_SKIP)).toBeNull();
+      expect(await documents.latestBody('proj-58', REBASE_MERGE_SKIP)).toBeNull();
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-58-ship-the-field');
     } finally {
       await app.close();
@@ -255,19 +266,20 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-56 started' }) };
     const app = await boot(root, pipeline);
     try {
-      const history = app.get(HistoryService);
-      const run = await remember(history, 'proj-56', 'code-review', 'failed');
-      await history.putDocument(run, 'implementation', '- changed the field\n');
-      await history.putDocument(run, 'repos', 'demo\nother\nlater\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await remember(runs, documents, 'proj-56', 'code-review', 'failed');
+      await documents.putDocument(run, 'implementation', '- changed the field\n');
+      await documents.putDocument(run, 'repos', 'demo\nother\nlater\n');
       const result = await app.get(RunRebaseService).rebase('proj-56');
       expect(result).toEqual({ key: 'proj-56', status: 'started' });
       expect(httpStatus(result)).toBe(202);
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-56');
-      const fresh = await history.findRun('proj-56');
+      const fresh = await runs.findRun('proj-56');
       expect(fresh?.status).toBe('waiting');
       expect(fresh?.currentStep).toBe('implement');
-      expect((await history.latestBody('proj-56', REBASE_CONFLICT))?.trim()).toBe('pending');
-      expect(await history.latestBody('proj-56', REBASE_MERGE_SKIP)).toBeNull();
+      expect((await documents.latestBody('proj-56', REBASE_CONFLICT))?.trim()).toBe('pending');
+      expect(await documents.latestBody('proj-56', REBASE_MERGE_SKIP)).toBeNull();
       expect(isAncestor(demo, demoBase)).toBe(true);
       expect(git(demo, ['branch', '--show-current'])).toBe('feature/proj-56-ship-the-field');
       expect(git(other, ['diff', '--name-only', '--diff-filter=U'])).toContain('src/field.ts');
@@ -312,11 +324,12 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-57 started' }) };
     const app = await boot(root, pipeline);
     try {
-      const history = app.get(HistoryService);
-      const run = await remember(history, 'proj-57', 'done', 'done');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await remember(runs, documents, 'proj-57', 'done', 'done');
       run.prompt = 'branch: release\n';
-      await history.saveRun(run);
-      await history.putDocument(run, 'implementation', '- changed the field\n');
+      await runs.saveRun(run);
+      await documents.putDocument(run, 'implementation', '- changed the field\n');
       const result = await app.get(RunRebaseService).rebase('proj-57');
       expect(result).toEqual({ key: 'proj-57', status: 'started' });
       expect(httpStatus(result)).toBe(202);
@@ -368,8 +381,9 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn() };
     const app = await boot(root, pipeline);
     try {
-      const history = app.get(HistoryService);
-      await remember(history, 'proj-59', 'done', 'done');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      await remember(runs, documents, 'proj-59', 'done', 'done');
       const temps = new Set(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-')));
       await expect(app.get(RunRebaseService).rebase('proj-59')).rejects.toThrow(/demo rebase failed: empty squash/);
       expect(pipeline.startDetached).not.toHaveBeenCalled();
@@ -407,13 +421,14 @@ describe('runs api', () => {
     const app = await boot(root, pipeline);
     const temps = new Set(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-')));
     try {
-      const history = app.get(HistoryService);
-      const run = await remember(history, 'proj-62', 'done', 'done');
-      await history.putDocument(run, 'implementation', '- changed the field\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await remember(runs, documents, 'proj-62', 'done', 'done');
+      await documents.putDocument(run, 'implementation', '- changed the field\n');
       const result = await app.get(RunRebaseService).rebase('proj-62');
       expect(result).toEqual({ key: 'proj-62', status: 'started' });
       expect(httpStatus(result)).toBe(202);
-      const fresh = await history.findRun('proj-62');
+      const fresh = await runs.findRun('proj-62');
       expect(fresh?.status).toBe('waiting');
       expect(fresh?.currentStep).toBe('code-review');
       expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);
@@ -520,9 +535,10 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-63 started' }) };
     const app = await boot(root, pipeline);
     try {
-      const history = app.get(HistoryService);
-      const run = await remember(history, 'proj-63', 'done', 'done');
-      await history.putDocument(run, 'implementation', '- changed the field\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await remember(runs, documents, 'proj-63', 'done', 'done');
+      await documents.putDocument(run, 'implementation', '- changed the field\n');
       const result = await app.get(RunRebaseService).rebase('proj-63');
       expect(result).toEqual({ key: 'proj-63', status: 'started' });
       expect(httpStatus(result)).toBe(202);
@@ -555,17 +571,18 @@ describe('runs api', () => {
     const app = await boot(root, pipeline);
     try {
       await denyEnv(app);
-      const history = app.get(HistoryService);
-      const run = await remember(history, 'proj-66', 'done', 'done');
-      await history.putDocument(run, 'implementation', '- changed the field\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await remember(runs, documents, 'proj-66', 'done', 'done');
+      await documents.putDocument(run, 'implementation', '- changed the field\n');
       const result = await app.get(RunRebaseService).rebase('proj-66');
       expect(result).toEqual({ key: 'proj-66', status: 'started' });
       expect(httpStatus(result)).toBe(202);
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-66');
-      const fresh = await history.findRun('proj-66');
+      const fresh = await runs.findRun('proj-66');
       expect(fresh?.status).toBe('waiting');
       expect(fresh?.currentStep).toBe('implement');
-      expect((await history.latestBody('proj-66', REBASE_CONFLICT))?.trim()).toBe('pending');
+      expect((await documents.latestBody('proj-66', REBASE_CONFLICT))?.trim()).toBe('pending');
       expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toContain('<<<<<<<');
       expect(git(tree, ['branch', '--show-current'])).toBe(branch);
       const state = git(tree, ['rev-parse', '--git-path', 'swarmloop-rebase']);

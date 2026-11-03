@@ -10,7 +10,9 @@ import { PassThrough } from 'stream';
 import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DocumentEntity } from '../../history/entities';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
+import { VisitRepository } from '../../history/visit.repository';
 import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
 import { AGENT_CONTINUE, AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
@@ -54,12 +56,12 @@ describe('plan step', () => {
         items: ['add the field', 'cover the empty case'],
         decision: null,
       });
-      const run = await app.get(HistoryService).findRun('PROJ-40');
+      const run = await app.get(RunRepository).findRun('PROJ-40');
       expect(run?.currentStep).toBe('plan-improve');
       expect(run?.status).toBe('waiting');
       await app.get(PipelineService).step('plan', 'PROJ-40');
       expect(await documents.find({ where: { kind: 'requirements' } })).toHaveLength(stored.length);
-      expect((await app.get(HistoryService).findRun('PROJ-40'))?.currentStep).toBe('plan-improve');
+      expect((await app.get(RunRepository).findRun('PROJ-40'))?.currentStep).toBe('plan-improve');
     } finally {
       await app.close();
     }
@@ -100,14 +102,15 @@ describe('plan step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-44', '');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-44');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-44');
       if (!run) {
         throw new Error('run is missing');
       }
       run.projects = 'app\n';
-      await history.saveRun(run);
-      await history.putDocument(run, 'repos', 'app\n');
+      await runs.saveRun(run);
+      await documents.putDocument(run, 'repos', 'app\n');
       const done = await app.get(PipelineService).step('plan', 'PROJ-44');
       expect(done.exitCode).toBe(0);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
@@ -130,7 +133,7 @@ describe('plan step', () => {
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('questions are open');
       expect(agent).not.toHaveBeenCalled();
-      const run = await app.get(HistoryService).findRun('PROJ-41');
+      const run = await app.get(RunRepository).findRun('PROJ-41');
       expect(run?.currentStep).toBe('plan');
       expect(run?.status).toBe('waiting');
     } finally {
@@ -149,8 +152,8 @@ describe('plan step', () => {
       const result = await app.get(PipelineService).step('plan', 'PROJ-42');
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('plan is empty');
-      expect((await app.get(HistoryService).findRun('PROJ-42'))?.currentStep).toBe('plan');
-      expect((await app.get(HistoryService).findRun('PROJ-42'))?.status).toBe('failed');
+      expect((await app.get(RunRepository).findRun('PROJ-42'))?.currentStep).toBe('plan');
+      expect((await app.get(RunRepository).findRun('PROJ-42'))?.status).toBe('failed');
     } finally {
       await app.close();
     }
@@ -202,11 +205,12 @@ describe('plan step', () => {
       expect(spawn).toHaveBeenCalledTimes(2);
       expect(launchedPrompt(spawn.mock.calls[1])).toBe(AGENT_CONTINUE);
       expect(resumeArg(spawn.mock.calls[1])).toBe('plan-chat');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-146');
+      const runs = app.get(RunRepository);
+      const visitRepository = app.get(VisitRepository);
+      const run = await runs.findRun('PROJ-146');
       expect(run?.currentStep).toBe('plan-improve');
       expect(run?.agentCalls).toBe(2);
-      const stats = await history.listStats(run?.id ?? 0);
+      const stats = await visitRepository.listStats(run?.id ?? 0);
       const visits = stats.filter((item) => item.step === 'plan');
       expect(visits).toHaveLength(1);
       expect(visits[0]?.status).toBe('done');
@@ -272,14 +276,15 @@ async function boot(root: string, agent: jest.Mock, sandboxError?: Error) {
 }
 
 async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, questions: string): Promise<void> {
-  const history = app.get(HistoryService);
-  const seeded = await history.begin(key, 'plan');
+  const runs = app.get(RunRepository);
+  const documents = app.get(DocumentRepository);
+  const seeded = await runs.begin(key, 'plan');
   seeded.status = 'waiting';
   seeded.currentStep = 'plan';
-  await history.saveRun(seeded);
-  await history.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
-  await history.putDocument(seeded, 'repos', 'billing-api\n');
-  await history.putDocument(seeded, 'questions', questions);
+  await runs.saveRun(seeded);
+  await documents.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
+  await documents.putDocument(seeded, 'repos', 'billing-api\n');
+  await documents.putDocument(seeded, 'questions', questions);
 }
 
 async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeof boot> {

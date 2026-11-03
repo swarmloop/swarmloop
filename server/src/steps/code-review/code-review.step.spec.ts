@@ -11,7 +11,10 @@ import { PassThrough } from 'stream';
 import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { AgentExchangeEntity, DocumentEntity, LoopEventEntity } from '../../history/entities';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
+import { VisitRepository } from '../../history/visit.repository';
+import { FlowRepository } from '../../history/flow.repository';
 import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
@@ -91,13 +94,13 @@ describe('code-review step', () => {
       expect(report?.body).toBe('The parser change holds together.\n');
       const exchanges = app.get<Repository<AgentExchangeEntity>>(getRepositoryToken(AgentExchangeEntity));
       expect(await exchanges.count()).toBe(6);
-      const run = await app.get(HistoryService).findRun('PROJ-80');
+      const run = await app.get(RunRepository).findRun('PROJ-80');
       expect(run?.currentStep).toBe('commit');
       expect(run?.status).toBe('waiting');
       expect(run?.attemptsReview).toBe(0);
       await app.get(PipelineService).step('code-review', 'PROJ-80');
       expect(await documents.count({ where: { kind: 'review_quality' } })).toBe(1);
-      expect((await app.get(HistoryService).findRun('PROJ-80'))?.currentStep).toBe('commit');
+      expect((await app.get(RunRepository).findRun('PROJ-80'))?.currentStep).toBe('commit');
     } finally {
       await app.close();
     }
@@ -132,16 +135,17 @@ describe('code-review step', () => {
       expect(peak).toBe(5);
       const calls = agent.mock.calls.map((call) => call[0]);
       expect(calls.at(-1)?.step).toBe('code-review-report');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-81');
-      const stats = await history.listStats(run!.id);
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await runs.findRun('PROJ-81');
+      const stats = await visits.listStats(run!.id);
       const quality = stats.find((stat) => stat.step === 'code-review-quality');
       expect(quality?.cpuPeak).toBe(22);
       expect(quality?.status).toBe('done');
       const report = stats.find((stat) => stat.step === 'code-review');
       expect(report?.tokensIn).toBe(10);
       expect(report?.mode).toBe('ask');
-      const reportSamples = await history.listSamples(report ? [report.id] : []);
+      const reportSamples = await visits.listSamples(report ? [report.id] : []);
       expect(reportSamples).toHaveLength(1);
       expect(quality?.tokensIn).toBe(10);
     } finally {
@@ -166,7 +170,7 @@ describe('code-review step', () => {
       await seed(app, 'PROJ-81');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-81');
       expect(done.exitCode).toBe(0);
-      const run = await app.get(HistoryService).findRun('PROJ-81');
+      const run = await app.get(RunRepository).findRun('PROJ-81');
       expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('waiting');
       expect(run?.attemptsReview).toBe(1);
@@ -176,11 +180,11 @@ describe('code-review step', () => {
       expect(events[0]?.counter).toBe('review');
       expect(events[0]?.attempt).toBe(1);
       expect(events[0]?.reason).toBe('review_quality');
-      const notes = await app.get(HistoryService).latestBody('PROJ-81', 'return');
+      const notes = await app.get(DocumentRepository).latestBody('PROJ-81', 'return');
       expect(notes).toContain('What to fix:');
       expect(notes).toContain('Keep the empty segment.');
       expect(notes).not.toContain('decision: return');
-      const report = await app.get(HistoryService).latestBody('PROJ-81', 'review_report');
+      const report = await app.get(DocumentRepository).latestBody('PROJ-81', 'review_report');
       expect(report).toContain('What to fix:');
       expect(report).toContain('Keep the empty segment.');
       expect(report).not.toContain('decision: return');
@@ -199,16 +203,16 @@ describe('code-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-93');
-      const history = app.get(HistoryService);
-      const seeded = await history.findRun('PROJ-93');
+      const runs = app.get(RunRepository);
+      const seeded = await runs.findRun('PROJ-93');
       if (!seeded) {
         throw new Error('run is missing');
       }
       seeded.prompt = 'branch: feature/other\n';
-      await history.saveRun(seeded);
+      await runs.saveRun(seeded);
       const done = await app.get(PipelineService).step('code-review', 'PROJ-93');
       expect(done.exitCode).toBe(0);
-      const run = await history.findRun('PROJ-93');
+      const run = await runs.findRun('PROJ-93');
       expect(run?.currentStep).toBe('implement');
       expect(run?.attemptsReview).toBe(1);
     } finally {
@@ -229,7 +233,7 @@ describe('code-review step', () => {
       const done = await app.get(PipelineService).step('code-review', 'PROJ-82');
       expect(done.exitCode).toBe(0);
       expect(done.message).toContain('waiting');
-      const run = await app.get(HistoryService).findRun('PROJ-82');
+      const run = await app.get(RunRepository).findRun('PROJ-82');
       expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('waiting');
       expect(run?.attemptsReview).toBe(4);
@@ -252,19 +256,20 @@ describe('code-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-87');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-87');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-87');
       run!.status = 'failed';
       run!.currentStep = 'code-review';
-      await history.saveRun(run!);
+      await runs.saveRun(run!);
       for (const name of ['requirements', 'quality', 'regressions', 'security']) {
-        await history.putDocument(run!, `review_${name}`, `notes\ndecision: ok\n`);
+        await documents.putDocument(run!, `review_${name}`, `notes\ndecision: ok\n`);
       }
       const done = await app.get(PipelineService).step('code-review', 'PROJ-87');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
       expect(agent.mock.calls[0]?.[0]?.step).toBe('code-review-report');
-      expect((await history.findRun('PROJ-87'))?.currentStep).toBe('commit');
+      expect((await runs.findRun('PROJ-87'))?.currentStep).toBe('commit');
     } finally {
       await app.close();
     }
@@ -287,7 +292,7 @@ describe('code-review step', () => {
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       expect(await documents.count({ where: { kind: 'review_quality' } })).toBe(0);
       expect(await documents.count({ where: { kind: 'review_security' } })).toBe(1);
-      expect((await app.get(HistoryService).findRun('PROJ-83'))?.currentStep).toBe('code-review');
+      expect((await app.get(RunRepository).findRun('PROJ-83'))?.currentStep).toBe('code-review');
       quality = reply('quality', 'ok');
       agent.mockClear();
       const done = await app.get(PipelineService).step('code-review', 'PROJ-83');
@@ -295,7 +300,7 @@ describe('code-review step', () => {
       expect(agent).toHaveBeenCalledTimes(2);
       expect(agent.mock.calls[0]?.[0]?.step).toBe('code-review-quality');
       expect(agent.mock.calls[1]?.[0]?.step).toBe('code-review-report');
-      expect((await app.get(HistoryService).findRun('PROJ-83'))?.currentStep).toBe('commit');
+      expect((await app.get(RunRepository).findRun('PROJ-83'))?.currentStep).toBe('commit');
     } finally {
       await app.close();
     }
@@ -313,7 +318,7 @@ describe('code-review step', () => {
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('code-review does not fit');
       expect(agent).not.toHaveBeenCalled();
-      const run = await app.get(HistoryService).findRun('PROJ-84');
+      const run = await app.get(RunRepository).findRun('PROJ-84');
       expect(run?.status).toBe('failed');
       expect(run?.currentStep).toBe('code-review');
     } finally {
@@ -331,23 +336,23 @@ describe('code-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-100');
-      const history = app.get(HistoryService);
+      const runs = app.get(RunRepository);
       const first = await app.get(PipelineService).step('code-review', 'PROJ-100');
       expect(first.exitCode).toBe(0);
-      const run = await history.findRun('PROJ-100');
+      const run = await runs.findRun('PROJ-100');
       if (!run) {
         throw new Error('run is missing');
       }
       run.agentCalls = 15;
       run.status = 'waiting';
       run.currentStep = 'code-review';
-      await history.saveRun(run);
+      await runs.saveRun(run);
       agent.mockClear();
       const second = await app.get(PipelineService).step('code-review', 'PROJ-100', { auto: true });
       expect(second.exitCode).toBe(0);
       expect(second.message).not.toContain('does not fit');
       expect(agent.mock.calls.map((call) => call[0].step)).toEqual(['code-review-report']);
-      expect((await history.findRun('PROJ-100'))?.currentStep).toBe('commit');
+      expect((await runs.findRun('PROJ-100'))?.currentStep).toBe('commit');
     } finally {
       await app.close();
     }
@@ -363,13 +368,15 @@ describe('code-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-88', 1, 17);
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-88');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const visits = app.get(VisitRepository);
+      const run = await runs.findRun('PROJ-88');
       run!.status = 'waiting';
       run!.currentStep = 'code-review';
-      await history.saveRun(run!);
+      await runs.saveRun(run!);
       const now = new Date().toISOString();
-      await history.finishVisit(run!, {
+      await visits.finishVisit(run!, {
         step: 'code-review',
         model: null,
         mode: null,
@@ -389,14 +396,14 @@ describe('code-review step', () => {
         resumed: false,
       });
       for (const name of ['requirements', 'security', 'performance']) {
-        await history.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
+        await documents.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
       }
-      await history.putDocument(run!, 'review_quality', 'theme.alpha\ndecision: return\n');
-      await history.putDocument(run!, 'review_regressions', 'statusColor\ndecision: return\n');
+      await documents.putDocument(run!, 'review_quality', 'theme.alpha\ndecision: return\n');
+      await documents.putDocument(run!, 'review_regressions', 'statusColor\ndecision: return\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-88');
       expect(done.message).not.toContain('does not fit');
       expect(agent.mock.calls.map((call) => call[0].step).sort()).toEqual(['code-review-report']);
-      const next = await history.findRun('PROJ-88');
+      const next = await runs.findRun('PROJ-88');
       expect(next?.currentStep).toBe('implement');
       expect(next?.status).toBe('waiting');
       expect(next?.attemptsReview).toBe(2);
@@ -420,14 +427,15 @@ describe('code-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-94');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-94');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-94');
       run!.status = 'failed';
       run!.currentStep = 'code-review';
-      await history.saveRun(run!);
-      await history.putDocument(run!, 'review_requirements', 'notes\ndecision: return\n');
+      await runs.saveRun(run!);
+      await documents.putDocument(run!, 'review_requirements', 'notes\ndecision: return\n');
       for (const name of ['quality', 'regressions', 'performance']) {
-        await history.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
+        await documents.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
       }
       const done = await app.get(PipelineService).step('code-review', 'PROJ-94');
       expect(done.exitCode).toBe(0);
@@ -436,7 +444,7 @@ describe('code-review step', () => {
       expect(calls[0]?.resumeChatId).toBe('security-chat');
       expect(calls[0]?.prompt).toContain('You were interrupted before the decision');
       expect(calls[0]?.prompt).not.toContain('Implement and implement-improve have run');
-      expect((await history.findRun('PROJ-94'))?.currentStep).toBe('implement');
+      expect((await runs.findRun('PROJ-94'))?.currentStep).toBe('implement');
     } finally {
       await app.close();
     }
@@ -450,17 +458,18 @@ describe('code-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-89');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-89');
-      await history.putDocument(run!, 'review_requirements', 'notes\ndecision: ok\n');
-      await history.putDocument(run!, 'review_security', 'notes\ndecision: ok\n');
-      await history.putDocument(run!, 'review_performance', 'notes\ndecision: ok\n');
-      await history.putDocument(run!, 'review_regressions', 'notes\ndecision: return\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-89');
+      await documents.putDocument(run!, 'review_requirements', 'notes\ndecision: ok\n');
+      await documents.putDocument(run!, 'review_security', 'notes\ndecision: ok\n');
+      await documents.putDocument(run!, 'review_performance', 'notes\ndecision: ok\n');
+      await documents.putDocument(run!, 'review_regressions', 'notes\ndecision: return\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-89', { reviewer: 'quality' });
       expect(agent).toHaveBeenCalledTimes(1);
       expect(agent.mock.calls[0]?.[0]?.step).toBe('code-review-quality');
       expect(done.exitCode).toBe(0);
-      const next = await history.findRun('PROJ-89');
+      const next = await runs.findRun('PROJ-89');
       expect(next?.currentStep).toBe('code-review');
       expect(next?.status).toBe('waiting');
     } finally {
@@ -476,14 +485,15 @@ describe('code-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-90');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-90');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-90');
       for (const name of ['requirements', 'regressions', 'security', 'performance']) {
-        await history.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
+        await documents.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
       }
       const done = await app.get(PipelineService).step('code-review', 'PROJ-90', { reviewer: 'quality' });
       expect(done.exitCode).toBe(0);
-      expect((await history.findRun('PROJ-90'))?.currentStep).toBe('commit');
+      expect((await runs.findRun('PROJ-90'))?.currentStep).toBe('commit');
     } finally {
       await app.close();
     }
@@ -497,14 +507,15 @@ describe('code-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-91');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-91');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-91');
       for (const name of ['requirements', 'regressions', 'security', 'performance']) {
-        await history.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
+        await documents.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
       }
       const done = await app.get(PipelineService).step('code-review', 'PROJ-91', { reviewer: 'quality' });
       expect(done.exitCode).toBe(0);
-      const next = await history.findRun('PROJ-91');
+      const next = await runs.findRun('PROJ-91');
       expect(next?.currentStep).toBe('implement');
       expect(next?.status).toBe('waiting');
     } finally {
@@ -525,7 +536,7 @@ describe('code-review step', () => {
       expect(
         calls.every((call) => call.mounts[0]?.containerPath === '/work' && call.mounts[0]?.readonly === true),
       ).toBe(true);
-      const run = await app.get(HistoryService).findRun('PROJ-85');
+      const run = await app.get(RunRepository).findRun('PROJ-85');
       expect(run?.currentStep).toBe('commit');
       expect(run?.attemptsReview).toBe(0);
       expect(run?.targetPath).toBe(realpathSync(checkout));
@@ -559,7 +570,7 @@ describe('code-review step', () => {
       expect(call.step).toBe('code-review-quality');
       expect(agent.mock.calls[1]?.[0]?.step).toBe('code-review-report');
       expect(call.mounts[0]?.hostPath).toBe(realpathSync(checkout));
-      const run = await app.get(HistoryService).findRun('PROJ-86');
+      const run = await app.get(RunRepository).findRun('PROJ-86');
       expect(run?.currentStep).toBe('commit');
       expect(run?.attemptsReview).toBe(0);
     } finally {
@@ -575,15 +586,15 @@ describe('code-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-87');
-      const run = await app.get(HistoryService).findRun('PROJ-87');
+      const run = await app.get(RunRepository).findRun('PROJ-87');
       await app
-        .get(HistoryService)
+        .get(DocumentRepository)
         .putDocument(
           run!,
           'handoff',
           '## implement\n- changed the parser\n\n## implement-improve\n- kept the parser\n',
         );
-      await app.get(HistoryService).putDocument(run!, 'return', '## quality\nuse theme.alpha\n');
+      await app.get(DocumentRepository).putDocument(run!, 'return', '## quality\nuse theme.alpha\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-87');
       expect(done.exitCode).toBe(0);
       const calls = agent.mock.calls.map((call) => call[0]);
@@ -602,7 +613,7 @@ describe('code-review step', () => {
       expect(quality?.prompt).toContain('kept the parser');
       expect(quality?.prompt).toContain('/work/brief/diff.md');
       expect(quality?.mode).toBe('ask');
-      const handoff = await app.get(HistoryService).latestBody('PROJ-87', 'handoff');
+      const handoff = await app.get(DocumentRepository).latestBody('PROJ-87', 'handoff');
       expect(handoff).toContain('## implement');
       expect(handoff).toContain('## implement-improve');
       expect(handoff).toContain('## quality');
@@ -625,10 +636,10 @@ describe('code-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-86');
-      const run = await app.get(HistoryService).findRun('PROJ-86');
-      await app.get(HistoryService).putDocument(run!, 'implementation', '- checked the parser\n');
+      const run = await app.get(RunRepository).findRun('PROJ-86');
+      await app.get(DocumentRepository).putDocument(run!, 'implementation', '- checked the parser\n');
       await app
-        .get(HistoryService)
+        .get(DocumentRepository)
         .putDocument(
           run!,
           'handoff',
@@ -669,13 +680,14 @@ describe('code-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-97');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-97');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-97');
       run!.currentStep = 'code-review';
       run!.status = 'failed';
-      await history.saveRun(run!);
-      await history.putDocument(run!, 'review_quality', 'notes\n\ndecision: ok\n');
-      await history.putDocument(run!, REBASE_CONFLICT, 'review\n');
+      await runs.saveRun(run!);
+      await documents.putDocument(run!, 'review_quality', 'notes\n\ndecision: ok\n');
+      await documents.putDocument(run!, REBASE_CONFLICT, 'review\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-97');
       expect(done.exitCode).toBe(0);
       const calls = agent.mock.calls.map((call) => call[0]);
@@ -687,10 +699,10 @@ describe('code-review step', () => {
       );
       const quality = reviewers.find((call) => call.step === 'code-review-quality');
       expect(quality?.resumeChatId ?? null).toBeNull();
-      expect((await history.findRun('PROJ-97'))?.attemptsReview).toBe(0);
+      expect((await runs.findRun('PROJ-97'))?.attemptsReview).toBe(0);
       expect(quality?.prompt).not.toContain('This chat is only the quality angle');
       expect(quality?.prompt).toContain('/work/brief/diff.md');
-      expect((await history.latestBody('PROJ-97', REBASE_CONFLICT))?.trim()).toBe('clear');
+      expect((await documents.latestBody('PROJ-97', REBASE_CONFLICT))?.trim()).toBe('clear');
     } finally {
       await app.close();
     }
@@ -707,16 +719,18 @@ describe('code-review step', () => {
     );
     const app = await boot(root, agent);
     try {
-      const history = app.get(HistoryService);
-      const seeded = await history.begin('PROJ-88', 'code-review');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const flows = app.get(FlowRepository);
+      const seeded = await runs.begin('PROJ-88', 'code-review');
       seeded.status = 'waiting';
       seeded.currentStep = 'requirements';
       seeded.ownerPid = null;
       seeded.projects = 'app\n';
       seeded.prompt = 'https://example/browse/PROJ-88\nbranch: feature/other\n';
-      await history.saveRun(seeded);
-      await history.noteFlow('PROJ-88', ['requirements', 'code-review'], null);
-      await history.putDocument(seeded, 'requirements', '{}\n');
+      await runs.saveRun(seeded);
+      await flows.noteFlow('PROJ-88', ['requirements', 'code-review'], null);
+      await documents.putDocument(seeded, 'requirements', '{}\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-88');
       expect(done.exitCode).toBe(0);
       const worktree = join(root, 'worktrees', 'PROJ-88', 'app');
@@ -733,7 +747,7 @@ describe('code-review step', () => {
       expect(calls[0]?.prompt).not.toContain('local.txt');
       expect(git(worktree, ['rev-parse', 'HEAD'])).toBe(git(clone, ['rev-parse', 'origin/feature/other']));
       expect(git(clone, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('dirty');
-      const run = await history.findRun('PROJ-88');
+      const run = await runs.findRun('PROJ-88');
       expect(run?.attemptsReview).toBe(0);
       expect(run?.currentStep).toBe('done');
       expect(run?.targetPath ?? null).toBeNull();
@@ -751,21 +765,22 @@ describe('code-review step', () => {
     const agent = jest.fn(async (input: AgentRunInput) => result(reply(input.step, 'ok')));
     const app = await boot(root, agent);
     try {
-      const history = app.get(HistoryService);
-      const seeded = await history.begin('PROJ-89', 'code-review');
+      const runs = app.get(RunRepository);
+      const flows = app.get(FlowRepository);
+      const seeded = await runs.begin('PROJ-89', 'code-review');
       seeded.status = 'waiting';
       seeded.currentStep = 'requirements';
       seeded.ownerPid = null;
       seeded.projects = 'app\n';
       seeded.prompt = 'Review the checkout\n';
-      await history.saveRun(seeded);
-      await history.noteFlow('PROJ-89', ['code-review'], null);
+      await runs.saveRun(seeded);
+      await flows.noteFlow('PROJ-89', ['code-review'], null);
       const done = await app.get(PipelineService).step('code-review', 'PROJ-89');
       expect(done.exitCode).toBe(0);
       const worktree = join(root, 'worktrees', 'PROJ-89', 'app');
       expect(git(worktree, ['rev-parse', 'HEAD'])).toBe(git(clone, ['rev-parse', 'origin/main']));
       expect(git(clone, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('dirty');
-      expect((await history.findRun('PROJ-89'))?.attemptsReview).toBe(0);
+      expect((await runs.findRun('PROJ-89'))?.attemptsReview).toBe(0);
     } finally {
       await app.close();
     }
@@ -787,10 +802,11 @@ describe('code-review step', () => {
       expect(launchedPrompt(securityCalls[1])).toBe(reviewContinue('security'));
       expect(launchedPrompt(securityCalls[2])).toBe(reviewContinue('security'));
       expect(launches(spawn, 'code-review-quality')).toHaveLength(1);
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-95');
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await runs.findRun('PROJ-95');
       expect(run?.currentStep).toBe('commit');
-      const stats = await history.listStats(run?.id ?? 0);
+      const stats = await visits.listStats(run?.id ?? 0);
       expect(stats.filter((item) => item.step === 'code-review-security')).toHaveLength(1);
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       const logs = await documents.find({ where: { kind: 'log' } });
@@ -815,9 +831,9 @@ describe('code-review step', () => {
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('process killed: time');
       expect(launches(spawn, 'code-review-security')).toHaveLength(3);
-      const run = await app.get(HistoryService).findRun('PROJ-96');
+      const run = await app.get(RunRepository).findRun('PROJ-96');
       expect(run?.currentStep).toBe('code-review');
-      const stats = await app.get(HistoryService).listStats(run?.id ?? 0);
+      const stats = await app.get(VisitRepository).listStats(run?.id ?? 0);
       expect(stats.filter((item) => item.step === 'code-review-security')).toHaveLength(1);
     } finally {
       await app.close();
@@ -836,7 +852,7 @@ describe('code-review step', () => {
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('process killed: time');
       expect(launches(spawn, 'code-review-security')).toHaveLength(1);
-      expect((await app.get(HistoryService).findRun('PROJ-101'))?.currentStep).toBe('code-review');
+      expect((await app.get(RunRepository).findRun('PROJ-101'))?.currentStep).toBe('code-review');
     } finally {
       await app.close();
     }
@@ -900,25 +916,26 @@ describe('code-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-98');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-98');
-      await history.putDocument(
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-98');
+      await documents.putDocument(
         run!,
         'requirements',
         `${JSON.stringify({ prompt: 'Ship the field\n', tickets: [], plan: { name: 'Drop', overview: '', items: ['Remove the pending rebase catch-up'], decision: 'approve' } })}\n`,
       );
       const first = await app.get(PipelineService).step('code-review', 'PROJ-98');
       expect(first.exitCode).toBe(0);
-      expect((await history.findRun('PROJ-98'))?.currentStep).toBe('implement');
+      expect((await runs.findRun('PROJ-98'))?.currentStep).toBe('implement');
       const sent = agent.mock.calls.map((call) => call[0]).find((call) => call.step === 'code-review-requirements');
       expect(sent?.prompt).toContain('Remove the pending rebase catch-up');
       expect(sent?.prompt).toContain('A behavior it removes is not a missing requirement');
       expect(sent?.prompt).toContain('The list below is the current one');
       expect(sent?.prompt).toContain('is required and is never returned');
-      const again = await history.findRun('PROJ-98');
+      const again = await runs.findRun('PROJ-98');
       again!.currentStep = 'code-review';
       again!.status = 'waiting';
-      await history.saveRun(again!);
+      await runs.saveRun(again!);
       agent.mockClear();
       const second = await app.get(PipelineService).step('code-review', 'PROJ-98');
       expect(second.exitCode).toBe(0);
@@ -929,7 +946,7 @@ describe('code-review step', () => {
       expect(resumed?.prompt).toContain(
         'Do not return a finding that brings back what the failing pipeline log shows as the cause',
       );
-      const next = await history.findRun('PROJ-98');
+      const next = await runs.findRun('PROJ-98');
       expect(next?.currentStep).toBe('commit');
       expect(next?.attemptsReview).toBe(1);
     } finally {
@@ -951,19 +968,20 @@ describe('code-review step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-99');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-99');
-      await history.putDocument(
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-99');
+      await documents.putDocument(
         run!,
         'requirements',
         `${JSON.stringify({ prompt: 'Ship the field\n', tickets: [], plan: { name: 'Drop', overview: '', items: ['Remove the pending rebase catch-up'], decision: 'approve' } })}\n`,
       );
       const first = await app.get(PipelineService).step('code-review', 'PROJ-99');
       expect(first.exitCode).toBe(0);
-      const again = await history.findRun('PROJ-99');
+      const again = await runs.findRun('PROJ-99');
       again!.currentStep = 'code-review';
       again!.status = 'failed';
-      await history.saveRun(again!);
+      await runs.saveRun(again!);
       agent.mockClear();
       const second = await app.get(PipelineService).step('code-review', 'PROJ-99');
       expect(second.exitCode).toBe(0);
@@ -973,7 +991,7 @@ describe('code-review step', () => {
       expect(resumed?.prompt).toContain('Remove the pending rebase catch-up');
       expect(resumed?.prompt).toContain('Do not return that behavior again');
       expect(resumed?.prompt).not.toContain('You were interrupted before the decision');
-      const next = await history.findRun('PROJ-99');
+      const next = await runs.findRun('PROJ-99');
       expect(next?.currentStep).toBe('commit');
       expect(next?.attemptsReview).toBe(1);
     } finally {
@@ -1022,16 +1040,17 @@ async function seed(
   attemptsReview = 0,
   agentCalls = 0,
 ): Promise<void> {
-  const history = app.get(HistoryService);
-  const seeded = await history.begin(key, 'code-review');
+  const runs = app.get(RunRepository);
+  const documents = app.get(DocumentRepository);
+  const seeded = await runs.begin(key, 'code-review');
   seeded.status = 'waiting';
   seeded.currentStep = 'implement-improve';
   seeded.attemptsReview = attemptsReview;
   seeded.agentCalls = agentCalls;
-  await history.saveRun(seeded);
-  await history.putDocument(seeded, 'requirements', `${JSON.stringify({ prompt: 'Ship the field\n' })}\n`);
-  await history.putDocument(seeded, 'repos', 'billing-api\n');
-  await history.putDocument(seeded, 'implementation', '- changed the field parser\n');
+  await runs.saveRun(seeded);
+  await documents.putDocument(seeded, 'requirements', `${JSON.stringify({ prompt: 'Ship the field\n' })}\n`);
+  await documents.putDocument(seeded, 'repos', 'billing-api\n');
+  await documents.putDocument(seeded, 'implementation', '- changed the field parser\n');
 }
 
 async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeof boot> {

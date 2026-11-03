@@ -1,5 +1,8 @@
 import { realpathSync } from 'fs';
-import type { HistoryService } from '../../history/history.service';
+import type { DocumentRepository } from '../../history/document.repository';
+import type { FlowRepository } from '../../history/flow.repository';
+import type { RunRepository } from '../../history/run.repository';
+import type { VisitRepository } from '../../history/visit.repository';
 import type { OpenedStep } from '../../pipeline/step-run';
 import type { SandboxMount } from '../../sandbox/sandbox-launch';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -10,10 +13,15 @@ import { handoffSection } from '../shared/handoff';
 import { mountsForStep, repoNames } from '../shared/repo-names';
 import { approvedChecklist } from './code-review.prompts';
 
-export async function repoMounts(history: HistoryService, key: string): Promise<SandboxMount[]> {
-  const names = repoNames((await history.latestBody(key, 'repos')) ?? '');
-  const run = await history.findRun(key);
-  return mountsForStep(history.root(), key, names, run?.targetPath ?? null).map((mount) => ({
+export async function repoMounts(
+  runs: RunRepository,
+  documents: DocumentRepository,
+  root: string,
+  key: string,
+): Promise<SandboxMount[]> {
+  const names = repoNames((await documents.latestBody(key, 'repos')) ?? '');
+  const run = await runs.findRun(key);
+  return mountsForStep(root, key, names, run?.targetPath ?? null).map((mount) => ({
     ...mount,
     readonly: true,
   }));
@@ -23,30 +31,38 @@ export function pathMount(path: string): SandboxMount[] {
   return [{ hostPath: realpathSync(path), containerPath: '/work', readonly: true }];
 }
 
-export async function storedCheckout(history: HistoryService, key: string): Promise<boolean> {
-  const run = await history.findRun(key);
-  return Boolean(run?.targetPath) && !(await history.hasDocument(key, 'implementation'));
+export async function storedCheckout(
+  runs: RunRepository,
+  documents: DocumentRepository,
+  key: string,
+): Promise<boolean> {
+  const run = await runs.findRun(key);
+  return Boolean(run?.targetPath) && !(await documents.hasDocument(key, 'implementation'));
 }
 
-export async function foreignReview(history: HistoryService, runId: number): Promise<boolean> {
-  return !(await history.activePhases(runId)).includes('implementation');
+export async function foreignReview(flows: FlowRepository, runId: number): Promise<boolean> {
+  return !(await flows.activePhases(runId)).includes('implementation');
 }
 
-export async function foreignReviewOf(history: HistoryService, key: string): Promise<boolean> {
-  const run = await history.findRun(key);
-  return run ? foreignReview(history, run.id) : false;
+export async function foreignReviewOf(runs: RunRepository, flows: FlowRepository, key: string): Promise<boolean> {
+  const run = await runs.findRun(key);
+  return run ? foreignReview(flows, run.id) : false;
 }
 
-export async function detachForeign(history: HistoryService, prepare: PrepareStep, opened: OpenedStep): Promise<void> {
+export async function detachForeign(
+  documents: DocumentRepository,
+  prepare: PrepareStep,
+  opened: OpenedStep,
+): Promise<void> {
   const names = storedProjects(opened.run.projects);
   if (names.length === 0) {
     throw new SwarmloopError('projects is missing');
   }
   await prepare.ensureDetached(opened.run, names, opened.run.prompt, true);
-  await history.putDocument(opened.run, 'repos', `${names.join('\n')}\n`);
+  await documents.putDocument(opened.run, 'repos', `${names.join('\n')}\n`);
 }
 
-export async function retrying(history: HistoryService, opened: OpenedStep): Promise<boolean> {
+export async function retrying(visits: VisitRepository, opened: OpenedStep): Promise<boolean> {
   if (opened.previousStep !== 'code-review') {
     return false;
   }
@@ -56,7 +72,7 @@ export async function retrying(history: HistoryService, opened: OpenedStep): Pro
   if (opened.previousStatus !== 'waiting') {
     return false;
   }
-  const last = [...(await history.listStats(opened.run.id))].reverse().find((item) => item.step === 'code-review');
+  const last = [...(await visits.listStats(opened.run.id))].reverse().find((item) => item.step === 'code-review');
   return last?.status === 'failed' || last?.status === 'blocked';
 }
 

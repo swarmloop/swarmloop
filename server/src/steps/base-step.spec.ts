@@ -6,7 +6,12 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { Clock } from '../core/clock';
-import { HistoryService } from '../history/history.service';
+import { AppConfig } from '../config/env';
+import { DocumentRepository } from '../history/document.repository';
+import { EventRepository } from '../history/event.repository';
+import { FlowRepository } from '../history/flow.repository';
+import { RunRepository } from '../history/run.repository';
+import { VisitRepository } from '../history/visit.repository';
 import type { VisitDraft } from '../history/visit';
 import { AGENT_RUNNER } from '../agent/agent-runner';
 import { PipelineModule } from '../pipeline/pipeline.module';
@@ -24,8 +29,15 @@ class StubStep extends BaseStep {
   thrown: unknown = null;
   failure: Partial<VisitDraft> = {};
 
-  constructor(history: HistoryService, clock: Clock) {
-    super(history, clock);
+  constructor(
+    runs: RunRepository,
+    documents: DocumentRepository,
+    visits: VisitRepository,
+    flows: FlowRepository,
+    clock: Clock,
+    config: AppConfig,
+  ) {
+    super(runs, documents, visits, flows, clock, config);
   }
 
   protected override failureVisit(): Partial<VisitDraft> {
@@ -46,10 +58,9 @@ describe('base step', () => {
       const result = await app.get(StubStep).execute('BASE-1');
       expect(result.exitCode).toBe(1);
       expect(result.message).toMatch(/ branch failed$/);
-      const history = app.get(HistoryService);
-      const run = await history.findRun('BASE-1');
+      const run = await app.get(RunRepository).findRun('BASE-1');
       expect(run?.status).toBe('failed');
-      const documents = await history.listDocuments(run?.id ?? 0);
+      const documents = await app.get(DocumentRepository).listDocuments(run?.id ?? 0);
       expect(documents.filter((document) => document.kind === 'error').map((document) => document.body)).toEqual([
         'branch failed\n',
       ]);
@@ -87,9 +98,8 @@ describe('base step', () => {
       app.get(StubStep).thrown = new FetchFailed('jira is down', [call]);
       const result = await app.get(StubStep).execute('BASE-3');
       expect(result.message).toMatch(/ jira is down$/);
-      const history = app.get(HistoryService);
-      const run = await history.findRun('BASE-3');
-      const calls = await history.listHttpCalls(run?.id ?? 0);
+      const run = await app.get(RunRepository).findRun('BASE-3');
+      const calls = await app.get(EventRepository).listHttpCalls(run?.id ?? 0);
       expect(calls.map((item) => [item.provider, item.url, item.statusCode])).toEqual([
         [call.provider, call.url, call.statusCode],
       ]);
@@ -106,9 +116,8 @@ describe('base step', () => {
       step.thrown = new Error('boom');
       step.failure = { mode: 'ask', samples: [] };
       await step.execute('BASE-5');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('BASE-5');
-      const stats = await history.listStats(run?.id ?? 0);
+      const run = await app.get(RunRepository).findRun('BASE-5');
+      const stats = await app.get(VisitRepository).listStats(run?.id ?? 0);
       expect(stats.map((item) => [item.step, item.status, item.mode])).toEqual([['branch', 'failed', 'ask']]);
     } finally {
       await app.close();

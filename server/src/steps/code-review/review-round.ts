@@ -2,7 +2,8 @@ import { readFileSync } from 'fs';
 import { basename, join } from 'path';
 import type { SwarmloopEnv } from '../../config/env';
 import { liveLogBody } from '../../acp/live-output';
-import type { HistoryService } from '../../history/history.service';
+import type { DocumentRepository } from '../../history/document.repository';
+import type { EventRepository } from '../../history/event.repository';
 import type { DocumentDraft, ExchangeDraft } from '../../history/visit';
 import type { PipelineResult } from '../../core/pipeline-result';
 import type { OpenedStep } from '../../pipeline/step-run';
@@ -53,7 +54,11 @@ export interface RoundInput {
   repeated: boolean;
 }
 
-export async function selectReviewers(history: HistoryService, input: SelectInput): Promise<Selection> {
+export async function selectReviewers(
+  documents: DocumentRepository,
+  root: string,
+  input: SelectInput,
+): Promise<Selection> {
   const { key, only, fresh, retry, same, repeated } = input;
   const kept: Opinion[] = [];
   const pending: Reviewer[] = [];
@@ -70,7 +75,7 @@ export async function selectReviewers(history: HistoryService, input: SelectInpu
       pending.push(reviewer);
       continue;
     }
-    const stored = !fresh && (Boolean(only) || retry || same) ? await history.latestBody(key, reviewer.kind) : null;
+    const stored = !fresh && (Boolean(only) || retry || same) ? await documents.latestBody(key, reviewer.kind) : null;
     if (stored) {
       try {
         const parsed = parseReview(stored);
@@ -86,7 +91,7 @@ export async function selectReviewers(history: HistoryService, input: SelectInpu
     }
     if (retry && !only) {
       try {
-        const parsed = parseReview(liveLogBody(history.root(), key, `code-review-${reviewer.name}`));
+        const parsed = parseReview(liveLogBody(root, key, `code-review-${reviewer.name}`));
         if (staleReturn(repeated, parsed.decision)) {
           stale.add(reviewer.name);
         } else {
@@ -111,7 +116,7 @@ export async function runRound(deps: ReviewDeps, input: RoundInput): Promise<Fin
     ...reviewJob(reviewer, input),
     stale: input.stale.has(reviewer.name),
   }));
-  const fix = fixNotes(await deps.history.listDocuments(input.opened.run.id), input.handoff);
+  const fix = fixNotes(await deps.documents.listDocuments(input.opened.run.id), input.handoff);
   const finished = await Promise.all(
     jobs.map((job) =>
       runJob(
@@ -206,7 +211,7 @@ export function othersOpen(only: string, opinions: Opinion[]): boolean {
 
 /** Done when nothing returned or the step is third-party. Otherwise the step goes back to implement. */
 export async function routeReview(
-  history: HistoryService,
+  events: EventRepository,
   ctx: StepContext,
   opinions: Opinion[],
   documents: DocumentDraft[],
@@ -231,7 +236,7 @@ export async function routeReview(
     );
   }
   opened.run.attemptsReview += 1;
-  await history.recordLoop(
+  await events.recordLoop(
     opened.run,
     'review',
     opened.run.attemptsReview,

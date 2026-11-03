@@ -1,4 +1,4 @@
-import type { HistoryService } from '../history/history.service';
+import type { DocumentRepository } from '../history/document.repository';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
 import type { SwarmloopEnv } from '../config/env';
@@ -24,12 +24,16 @@ export interface Step {
 }
 
 /** The document kind when it is not stored yet, or null when it is. */
-export async function requiredDocument(history: HistoryService, key: string, kind: string): Promise<string | null> {
-  return (await history.hasDocument(key, kind)) ? null : kind;
+export async function requiredDocument(
+  documents: DocumentRepository,
+  key: string,
+  kind: string,
+): Promise<string | null> {
+  return (await documents.hasDocument(key, kind)) ? null : kind;
 }
 
 /** `plan` when the requirements record holds no plan, or null when it does. */
-export async function storedPlan(history: HistoryService, key: string): Promise<string | null> {
-  const plan = readPlan(await history.latestBody(key, 'requirements'));
+export async function storedPlan(documents: DocumentRepository, key: string): Promise<string | null> {
+  const plan = readPlan(await documents.latestBody(key, 'requirements'));
   return plan ? null : 'plan';
 }

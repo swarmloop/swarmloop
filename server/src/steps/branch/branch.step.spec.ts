@@ -10,7 +10,7 @@ import { join } from 'path';
 import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DocumentEntity } from '../../history/entities';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
@@ -31,7 +31,7 @@ describe('branch step', () => {
       expect(git(demoTree, ['branch', '--show-current'])).toBe('feature/PROJ-30-ship-the-field');
       expect(git(otherTree, ['branch', '--show-current'])).toBe('');
       expect(git(demo, ['branch', '--show-current'])).toBe('main');
-      const run = await app.get(HistoryService).findRun('PROJ-30');
+      const run = await app.get(RunRepository).findRun('PROJ-30');
       expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('waiting');
     } finally {
@@ -50,7 +50,7 @@ describe('branch step', () => {
       const again = await app.get(PipelineService).step('branch', 'vendor-api');
       expect(again.exitCode).toBe(0);
       expect(git(demoTree, ['branch', '--show-current'])).toBe('feature/vendor-api-add-plot-types');
-      expect((await app.get(HistoryService).findRun('vendor-api'))?.currentStep).toBe('implement');
+      expect((await app.get(RunRepository).findRun('vendor-api'))?.currentStep).toBe('implement');
     } finally {
       await app.close();
     }
@@ -64,7 +64,7 @@ describe('branch step', () => {
       const result = await app.get(PipelineService).step('branch', 'PROJ-31');
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('missing is not a worktree');
-      const run = await app.get(HistoryService).findRun('PROJ-31');
+      const run = await app.get(RunRepository).findRun('PROJ-31');
       expect(run?.currentStep).toBe('branch');
       expect(run?.status).toBe('failed');
     } finally {
@@ -123,11 +123,11 @@ async function boot(root: string): Promise<TestingModule> {
 }
 
 async function seed(app: TestingModule, key: string, repos: string, summary: string): Promise<void> {
-  const history = app.get(HistoryService);
-  const seeded = await history.begin(key, 'branch');
+  const runs = app.get(RunRepository);
+  const seeded = await runs.begin(key, 'branch');
   seeded.status = 'waiting';
   seeded.currentStep = 'branch';
-  await history.saveRun(seeded);
+  await runs.saveRun(seeded);
   const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
   const row = (kind: string, body: string) =>
     documents.create({

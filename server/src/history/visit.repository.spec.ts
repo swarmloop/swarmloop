@@ -1,5 +1,4 @@
 import { DocumentRepository } from './document.repository';
-import { HistoryService } from './history.service';
 import { repositoryDatabase, repositoryVisit } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
 import { VisitRepository } from './visit.repository';
@@ -12,7 +11,7 @@ describe('VisitRepository', () => {
       const runs = db.app.get(RunRepository);
       const run = await runs.begin('run-1', 'code-review');
       const stat = await visits.finishVisit(run, repositoryVisit());
-      expect(await db.app.get(HistoryService).listStats(run.id)).toEqual([stat]);
+      expect(await visits.listStats(run.id)).toEqual([stat]);
       expect(await visits.listSamples([stat.id])).toEqual([
         expect.objectContaining({ stepStatId: stat.id, cpuPercent: 10, rssBytes: 100 }),
       ]);
