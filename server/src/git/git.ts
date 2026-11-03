@@ -30,13 +30,14 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Pro
       },
       (error: unknown, stdout, stderr) => {
         if (error) {
+          const failure = error instanceof Error ? error : new Error(String(error));
           if (typeof stdout === 'string' && stdout.length > 0) {
-            (error as { stdout?: string }).stdout = stdout;
+            (failure as { stdout?: string }).stdout = stdout;
           }
           if (typeof stderr === 'string' && stderr.length > 0) {
-            (error as { stderr?: string }).stderr = stderr;
+            (failure as { stderr?: string }).stderr = stderr;
           }
-          fail(error);
+          fail(failure);
           return;
         }
         done(stdout);

@@ -55,8 +55,9 @@ export class RunCommand extends CommandRunner {
   }
 }
 
-export async function report(result: { exitCode: number; message: string }): Promise<void> {
+export function report(result: { exitCode: number; message: string }): Promise<void> {
   const stream = result.exitCode === 0 ? process.stdout : process.stderr;
   stream.write(`${result.message}\n`);
   process.exitCode = result.exitCode;
+  return Promise.resolve();
 }

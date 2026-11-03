@@ -14,7 +14,7 @@ export function ProjectPicker({
   projectOptions: string[];
   pickedProjects: string[];
   onChange: (value: string[]) => void;
-}) {
+}): React.ReactElement {
   return (
     <Autocomplete
       multiple

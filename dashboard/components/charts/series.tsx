@@ -3,7 +3,7 @@
 import { useTheme } from '@mui/material/styles';
 import { memory } from '../../lib/format';
 
-export function SeriesChart({ samples }: { samples: { cpu: number; memory: number }[] }) {
+export function SeriesChart({ samples }: { samples: { cpu: number; memory: number }[] }): React.ReactElement {
   const theme = useTheme();
   const width = 640;
   const height = 160;

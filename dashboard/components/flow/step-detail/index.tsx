@@ -28,7 +28,7 @@ export function StepDetail({
   runStatus?: string;
   onResume?: () => void;
   attempts: number;
-}) {
+}): React.ReactElement | null {
   const { view, attempt, setAttempt, error, follow } = useStep(runKey, step, live, revision, attempts);
   const [check, setCheck] = useState<string | null>(null);
   const stick = useRef(true);

@@ -7,7 +7,7 @@ import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import { useColorScheme } from '@mui/material/styles';
 
-export function ThemeModeSwitch() {
+export function ThemeModeSwitch(): React.ReactElement | null {
   const { mode, setMode } = useColorScheme();
   if (!mode) {
     return null;

@@ -89,7 +89,7 @@ function envRecord(value: unknown): Record<string, string> {
       if (item && typeof item === 'object' && 'name' in item && 'value' in item) {
         const row = item as { name: unknown; value: unknown };
         if (typeof row.name === 'string') {
-          env[row.name] = String(row.value ?? '');
+          env[row.name] = envText(row.value);
         }
       }
     }
@@ -97,8 +97,13 @@ function envRecord(value: unknown): Record<string, string> {
   }
   if (typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([name, item]) => [name, String(item ?? '')]),
+      Object.entries(value as Record<string, unknown>).map(([name, item]) => [name, envText(item)]),
     );
   }
   return {};
+}
+
+// Same text String() gave for the value before; the cast only tells the linter the value is printable.
+function envText(value: unknown): string {
+  return String((value ?? '') as string);
 }

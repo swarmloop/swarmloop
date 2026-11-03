@@ -2,6 +2,7 @@ import baseConfig from './eslint.config.mjs';
 import tseslint from 'typescript-eslint';
 
 const typedFiles = ['**/*.{ts,tsx}'];
+const testFiles = ['**/*.spec.ts', '**/*.spec-helpers.ts', '**/*.test.ts', '**/*.test.tsx'];
 // dashboard/tsconfig.json excludes these test and config files. dashboard/tsconfig.test.json includes them.
 const dashboardTestFiles = ['dashboard/**/*.test.{ts,tsx}', 'dashboard/vitest.*.ts', 'dashboard/test/fake-socket.ts'];
 // Size rules are warnings until part 51, after the split parts (35-38) have broken up the large legacy files.
@@ -38,7 +39,7 @@ export default tseslint.config(
     rules: typedRules,
   },
   {
-    files: ['**/*.spec.ts', '**/*.test.ts', '**/*.test.tsx'],
+    files: testFiles,
     rules: {
       '@typescript-eslint/no-floating-promises': 'off',
       '@typescript-eslint/require-await': 'off',
@@ -52,7 +53,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.spec.ts', '**/*.test.ts', '**/*.test.tsx'],
+    files: testFiles,
     rules: { 'max-lines': maxLines(800) },
   },
   {
@@ -66,5 +67,10 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  {
+    // Next.js writes this file, and its reference line is not ours to change (the base config says the same).
+    files: ['dashboard/next-env.d.ts'],
+    rules: { '@typescript-eslint/triple-slash-reference': 'off' },
   },
 );

@@ -3,6 +3,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { createServer, Server } from 'http';
+import type { ServerResponse } from 'http';
 import { mkdtemp, readFile, writeFile } from 'fs/promises';
 import { existsSync, mkdirSync, realpathSync } from 'fs';
 import { tmpdir } from 'os';
@@ -848,7 +849,7 @@ function origin(req: { headers: { host?: string } }): string {
   return `http://${req.headers.host}`;
 }
 
-function send(res: import('http').ServerResponse, body: unknown): void {
+function send(res: ServerResponse, body: unknown): void {
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify(body));
 }

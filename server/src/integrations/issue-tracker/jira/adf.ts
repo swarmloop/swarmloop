@@ -41,6 +41,7 @@ export function adfToMarkdown(node: unknown): string {
     case 'inlineCard':
     case 'blockCard':
       return current.attrs?.url ?? '';
+    case undefined:
     default:
       return (current.content ?? [])
         .map((child) => adfToMarkdown(child))

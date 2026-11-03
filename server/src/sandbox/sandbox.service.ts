@@ -262,7 +262,7 @@ function defaultDocker(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile('docker', args, { encoding: 'utf8', timeout: 30_000 }, (error, stdout) => {
       if (error) {
-        reject(error);
+        reject(error instanceof Error ? error : new Error(String(error)));
         return;
       }
       resolve(stdout);

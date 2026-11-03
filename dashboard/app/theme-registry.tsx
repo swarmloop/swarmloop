@@ -5,7 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
 import { theme } from '../theme/theme';
 
-export function ThemeRegistry({ children }: { children: React.ReactNode }) {
+export function ThemeRegistry({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
     <AppRouterCacheProvider>
       <ThemeProvider theme={theme} defaultMode="system">

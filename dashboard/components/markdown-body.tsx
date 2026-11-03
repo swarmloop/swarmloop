@@ -3,7 +3,7 @@
 import Markdown from 'react-markdown';
 import Box from '@mui/material/Box';
 
-export function MarkdownBody({ text }: { text: string }) {
+export function MarkdownBody({ text }: { text: string }): React.ReactElement {
   const json = prettyJson(text);
   if (json) {
     return (

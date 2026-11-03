@@ -1,6 +1,10 @@
 import { HistoryScreen } from '../../../../components/history-screen';
 
-export default async function HistoryPage({ params }: { params: Promise<{ key: string }> }) {
+export default async function HistoryPage({
+  params,
+}: {
+  params: Promise<{ key: string }>;
+}): Promise<React.ReactElement> {
   const { key } = await params;
   return <HistoryScreen runKey={decodeURIComponent(key)} />;
 }
