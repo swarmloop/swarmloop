@@ -65,8 +65,9 @@ export class CodexAuthStore {
     const marker = join(this.dir, 'seed.sha256');
     const hash = createHash('sha256').update(seed).digest('hex');
     let stored = await readText(file);
-    const isNew = stored === null || (await readText(marker)) !== hash;
-    if (isNew) {
+    let isNew = false;
+    if (stored === null || (await readText(marker)) !== hash) {
+      isNew = true;
       stored = Buffer.from(seed, 'base64').toString('utf8');
       parse(stored);
       await save(file, stored);
