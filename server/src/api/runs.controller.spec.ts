@@ -1,10 +1,10 @@
 import 'reflect-metadata';
-import { ChatService } from './chat.service';
-import { RunCommandsService } from './run-commands.service';
-import { RunQueriesService } from './run-queries.service';
-import { RunRebaseService } from './run-rebase.service';
+import type { ChatService } from './chat.service';
+import type { RunCommandsService } from './run-commands.service';
+import type { RunQueriesService } from './run-queries.service';
+import type { RunRebaseService } from './run-rebase.service';
 import { httpStatus, RunsController } from './runs.controller';
-import { ShellService } from './shell.service';
+import type { ShellService } from './shell.service';
 
 function controllerWith(commands: object = {}, rebases: object = {}): RunsController {
   return new RunsController(
