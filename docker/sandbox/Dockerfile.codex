@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends bash ca-certificates curl git \
+  && apt-get install -y --no-install-recommends bash ca-certificates curl git ripgrep \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --create-home --uid 1000 --shell /usr/sbin/nologin sandbox \
   && mkdir -p /work \
@@ -11,15 +11,18 @@ RUN apt-get update \
 RUN set -eu \
   && arch="$(uname -m)" \
   && case "$arch" in \
-    x86_64) file=codex-x86_64-unknown-linux-musl.tar.gz ;; \
-    aarch64|arm64) file=codex-aarch64-unknown-linux-musl.tar.gz ;; \
+    x86_64) triple=x86_64-unknown-linux-musl ;; \
+    aarch64|arm64) triple=aarch64-unknown-linux-musl ;; \
     *) echo "unsupported CPU: $arch" >&2; exit 1 ;; \
   esac \
   && mkdir -p /tmp/codex /opt/codex \
-  && curl -fsSL "https://github.com/openai/codex/releases/latest/download/${file}" -o "/tmp/codex/${file}" \
-  && tar -xzf "/tmp/codex/${file}" -C /tmp/codex \
-  && mv "/tmp/codex/${file%.tar.gz}" /opt/codex/codex-bin \
-  && chmod 755 /opt/codex/codex-bin \
+  && curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-${triple}.tar.gz" -o /tmp/codex/codex.tar.gz \
+  && curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-code-mode-host-${triple}.tar.gz" -o /tmp/codex/host.tar.gz \
+  && tar -xzf /tmp/codex/codex.tar.gz -C /tmp/codex \
+  && tar -xzf /tmp/codex/host.tar.gz -C /tmp/codex \
+  && mv "/tmp/codex/codex-${triple}" /opt/codex/codex-bin \
+  && mv "/tmp/codex/codex-code-mode-host-${triple}" /opt/codex/codex-code-mode-host \
+  && chmod 755 /opt/codex/codex-bin /opt/codex/codex-code-mode-host \
   && rm -rf /tmp/codex
 
 RUN cat > /usr/local/bin/codex <<'EOF'

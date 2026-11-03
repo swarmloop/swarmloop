@@ -217,13 +217,17 @@ export class AgentProcessRunner {
         usage: { tokensIn: 0, tokensOut: 0, usd: 0 },
       });
     }
+    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now());
     const started = this.clock.now();
     const startedAt = new Date(started).toISOString();
+    const workMounts = readOnlyTree(runtime.name, input.mode)
+      ? input.mounts.map((mount) => ({ ...mount, readonly: true }))
+      : input.mounts;
     const child = await this.sandbox.spawn({
       runtime: env.RUNTIME,
       runKey: input.runKey,
       step: input.step,
-      mounts: [...input.mounts, ...briefs],
+      mounts: [...workMounts, ...briefs],
       statePath,
       allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(env.RUNTIME)])],
       env: [
@@ -239,6 +243,21 @@ export class AgentProcessRunner {
       command: [runtime.command, ...args],
       userId,
     });
+    const earlyOut: Buffer[] = [];
+    const earlyErr: Buffer[] = [];
+    let closedEarly: number | null = null;
+    const keepOut = (chunk: Buffer): void => {
+      earlyOut.push(chunk);
+    };
+    const keepErr = (chunk: Buffer): void => {
+      earlyErr.push(chunk);
+    };
+    const rememberClose = (code: number | null): void => {
+      closedEarly = code ?? 1;
+    };
+    child.stdout?.on('data', keepOut);
+    child.stderr?.on('data', keepErr);
+    child.on('close', rememberClose);
     await recordLaunch(input.outputFile, input.runKey, input.liveStep ?? input.step);
     const baseline =
       priorOutput.length === 0 || priorOutput.endsWith('\n')
@@ -271,7 +290,6 @@ export class AgentProcessRunner {
     let lastActivity = started;
     let finishedByResult = false;
     let buffer = '';
-    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now());
 
     const billed = (): { tokensIn: number; tokensOut: number; usd: number } => {
       if (!billedFromStream) {
@@ -418,6 +436,15 @@ export class AgentProcessRunner {
       lastActivity = this.clock.now();
       note(chunk.toString('utf8'));
     };
+    child.stdout?.off('data', keepOut);
+    child.stderr?.off('data', keepErr);
+    child.off('close', rememberClose);
+    for (const chunk of earlyOut) {
+      onData(chunk);
+    }
+    for (const chunk of earlyErr) {
+      onErr(chunk);
+    }
     child.stdout?.on('data', onData);
     child.stderr?.on('data', onErr);
 
@@ -457,6 +484,9 @@ export class AgentProcessRunner {
         note(`${error.code ?? 'error'}: ${error.message}\n`);
         finish(1);
       });
+      if (closedEarly !== null) {
+        finish(closedEarly);
+      }
       child.on('close', (code) => finish(code ?? 1));
       // A killed child that never closes must not leave the step running.
       const watch = setInterval(() => {
@@ -654,6 +684,10 @@ function continueAfterLimit(input: {
     return false;
   }
   return !callsExceeded(input.callsSoFar, input.maxCalls);
+}
+
+function readOnlyTree(runtime: string, mode: string | undefined): boolean {
+  return runtime === 'codex' && (mode === 'plan' || mode === 'ask');
 }
 
 function foldAttempt(first: AgentRunResult | null, second: AgentRunResult): AgentRunResult {

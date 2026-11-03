@@ -73,8 +73,7 @@ describe('CodexRuntime', () => {
       '--skip-git-repo-check',
       '-m',
       'gpt-6.1-sol',
-      '--sandbox',
-      'read-only',
+      '--dangerously-bypass-approvals-and-sandbox',
       'resume',
       'thread-1',
       'read the worktrees',
@@ -93,8 +92,7 @@ describe('CodexRuntime', () => {
       '--skip-git-repo-check',
       '-m',
       'gpt-6.1-sol',
-      '--sandbox',
-      'read-only',
+      '--dangerously-bypass-approvals-and-sandbox',
       'read the worktrees',
     ]);
     const withBrief = runtime.printArgs({

@@ -25,12 +25,14 @@ export class CodexRuntime extends AbstractAgentRuntime {
   }
 
   override printArgs(input: AgentPrintInput): string[] {
-    const args = ['exec', '--json', '--skip-git-repo-check', '-m', input.model];
-    if (input.mode === 'plan' || input.mode === 'ask') {
-      args.push('--sandbox', 'read-only');
-    } else {
-      args.push('--dangerously-bypass-approvals-and-sandbox');
-    }
+    const args = [
+      'exec',
+      '--json',
+      '--skip-git-repo-check',
+      '-m',
+      input.model,
+      '--dangerously-bypass-approvals-and-sandbox',
+    ];
     if (input.resumeChatId) {
       args.push('resume', input.resumeChatId);
     }
