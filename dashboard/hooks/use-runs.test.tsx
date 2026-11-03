@@ -109,5 +109,4 @@ describe('useRuns', () => {
     await waitFor(() => expect(screen.queryByText('Run one')).not.toBeInTheDocument());
     expect(screen.getByText('Run two')).toBeInTheDocument();
   });
-
 });

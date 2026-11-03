@@ -17,7 +17,7 @@ function Watching({ children }: { children: ReactNode }) {
   useEffect(() => {
     watchRun('run-1');
   }, [watchRun]);
-  return children;
+  return <>{children}</>;
 }
 
 function Wrapper({ children }: { children: ReactNode }) {
@@ -89,5 +89,4 @@ describe('useStep', () => {
 
     expect(await screen.findByText('step is gone')).toBeInTheDocument();
   });
-
 });

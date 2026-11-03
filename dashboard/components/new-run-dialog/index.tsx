@@ -146,7 +146,9 @@ export function NewRunDialog({
             onClose();
           }
         })
-      : createRun({ prompt: text, phases: chosen, projects: pickedProjects } satisfies CreateRunBody).then((body) => done(body.key));
+      : createRun({ prompt: text, phases: chosen, projects: pickedProjects } satisfies CreateRunBody).then((body) =>
+          done(body.key),
+        );
     request
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'run failed'))
       .finally(() => setBusy(false));

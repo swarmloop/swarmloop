@@ -36,12 +36,12 @@ describe('WaitingPanel', () => {
     await user.click(submit);
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith(next));
-  expect(sendAnswers).toHaveBeenCalledWith('run-1', {
+    expect(sendAnswers).toHaveBeenCalledWith('run-1', {
       answers: [
         { kind: 'question', id: 'q1', body: 'postgres' },
         { kind: 'paste', id: 'p1', body: 'port=5432' },
       ],
-      });
+    });
   });
 
   it('shows the error when the answers are rejected', async () => {

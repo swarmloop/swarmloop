@@ -19,7 +19,7 @@ async function pickProject(user: UserEvent, name: string): Promise<void> {
 
 beforeEach(() => {
   vi.mocked(listProjects).mockResolvedValue({ projects: ['swarmloop', 'docs'] });
-  vi.mocked(createRun).mockResolvedValue({ key: 'run-9' });
+  vi.mocked(createRun).mockResolvedValue({ key: 'run-9', status: 'running' });
 });
 
 describe('NewRunDialog', () => {
@@ -56,10 +56,10 @@ describe('NewRunDialog', () => {
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('run-9'));
     expect(createRun).toHaveBeenCalledWith({
-        prompt: 'Ship it',
-        phases: ['requirements', 'brainstorm', 'implementation', 'code-review'],
-        projects: ['swarmloop'],
-      });
+      prompt: 'Ship it',
+      phases: ['requirements', 'brainstorm', 'implementation', 'code-review'],
+      projects: ['swarmloop'],
+    });
   });
 
   it('hands the prompt and phases to onSubmit instead of posting', async () => {
