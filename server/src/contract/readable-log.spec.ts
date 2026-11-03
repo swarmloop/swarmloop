@@ -1,4 +1,3 @@
-import assert from 'node:assert/strict';
 import { logFinished, readableLog, reviewChipStatus, usageFromLog } from './readable-log';
 
 describe('readableLog', () => {
@@ -38,8 +37,7 @@ describe('readableLog', () => {
       'process exited 0',
     ].join('\n');
 
-    assert.equal(
-      readableLog(raw),
+    expect(readableLog(raw)).toBe(
       [
         'thinking',
         '    Look at the tree.',
@@ -66,8 +64,8 @@ describe('readableLog', () => {
         '    process exited 0',
       ].join('\n'),
     );
-    assert.equal(readableLog(raw).includes('example.test'), false);
-    assert.deepEqual(usageFromLog(raw), { tokensIn: 10, tokensOut: 2 });
+    expect(readableLog(raw).includes('example.test')).toBe(false);
+    expect(usageFromLog(raw)).toStrictEqual({ tokensIn: 10, tokensOut: 2 });
   });
 
   it('counts cache tokens as input', () => {
@@ -75,30 +73,30 @@ describe('readableLog', () => {
       type: 'result',
       usage: { inputTokens: 10, outputTokens: 2, cacheReadTokens: 100, cacheWriteTokens: 4 },
     });
-    assert.deepEqual(usageFromLog(raw), { tokensIn: 114, tokensOut: 2 });
+    expect(usageFromLog(raw)).toStrictEqual({ tokensIn: 114, tokensOut: 2 });
   });
 
   it('treats a result or exit line as finished', () => {
-    assert.equal(logFinished(`${JSON.stringify({ type: 'thinking', text: 'look' })}\n`), false);
-    assert.equal(logFinished(`${JSON.stringify({ type: 'result', usage: {} })}\n`), true);
-    assert.equal(logFinished('process exited 0\n'), true);
-    assert.equal(logFinished('process killed: idle\n'), true);
-    assert.equal(logFinished('thinking\nprocess killed: time\nthinking\n'), false);
-    assert.equal(logFinished('process killed: time\nprocess started\n'), false);
+    expect(logFinished(`${JSON.stringify({ type: 'thinking', text: 'look' })}\n`)).toBe(false);
+    expect(logFinished(`${JSON.stringify({ type: 'result', usage: {} })}\n`)).toBe(true);
+    expect(logFinished('process exited 0\n')).toBe(true);
+    expect(logFinished('process killed: idle\n')).toBe(true);
+    expect(logFinished('thinking\nprocess killed: time\nthinking\n')).toBe(false);
+    expect(logFinished('process killed: time\nprocess started\n')).toBe(false);
     const quoted =
       '{"type":"tool_call","snippet":"reviewChipStatus(\'decision: return\\\\nprocess exited 0\\\\n\')"}\n';
-    assert.equal(logFinished(quoted), false);
-    assert.equal(reviewChipStatus(quoted), null);
-    assert.equal(reviewChipStatus('decision: return\nprocess exited 0\n'), 'waiting');
-    assert.equal(reviewChipStatus('decision: ok\nprocess exited 0\n'), 'done');
+    expect(logFinished(quoted)).toBe(false);
+    expect(reviewChipStatus(quoted)).toBe(null);
+    expect(reviewChipStatus('decision: return\nprocess exited 0\n')).toBe('waiting');
+    expect(reviewChipStatus('decision: ok\nprocess exited 0\n')).toBe('done');
     const prompt = JSON.stringify({
       type: 'user',
       message: {
         content: [{ type: 'text', text: '```\ndecision: ok\n```\nEnd with `decision: return` when it breaks.\n' }],
       },
     });
-    assert.equal(reviewChipStatus(`${prompt}\nprocess exited 1\n`), 'failed');
+    expect(reviewChipStatus(`${prompt}\nprocess exited 1\n`)).toBe('failed');
     const answered = `${prompt}\n${JSON.stringify({ type: 'result', result: 'notes\ndecision: return\n' })}\n`;
-    assert.equal(reviewChipStatus(answered), 'waiting');
+    expect(reviewChipStatus(answered)).toBe('waiting');
   });
 });
