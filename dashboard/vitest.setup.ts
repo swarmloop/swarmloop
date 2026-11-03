@@ -1,8 +1,14 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
+import { resetFakeSocket } from './test/fake-socket';
 
 afterEach(cleanup);
+
+afterEach(() => {
+  vi.resetAllMocks();
+  resetFakeSocket();
+});
 
 // jsdom has no matchMedia, and MUI's color-scheme code reads it.
 Object.defineProperty(window, 'matchMedia', {
