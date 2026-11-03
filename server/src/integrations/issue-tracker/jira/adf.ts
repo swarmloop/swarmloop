@@ -13,7 +13,11 @@ export function adfToMarkdown(node: unknown): string {
   const current = node as AdfNode;
   switch (current.type) {
     case 'doc':
-      return (current.content ?? []).map((child) => adfToMarkdown(child)).filter(Boolean).join('\n\n').trim();
+      return (current.content ?? [])
+        .map((child) => adfToMarkdown(child))
+        .filter(Boolean)
+        .join('\n\n')
+        .trim();
     case 'paragraph':
       return inline(current);
     case 'heading':
@@ -38,7 +42,10 @@ export function adfToMarkdown(node: unknown): string {
     case 'blockCard':
       return current.attrs?.url ?? '';
     default:
-      return (current.content ?? []).map((child) => adfToMarkdown(child)).filter(Boolean).join('\n');
+      return (current.content ?? [])
+        .map((child) => adfToMarkdown(child))
+        .filter(Boolean)
+        .join('\n');
   }
 }
 

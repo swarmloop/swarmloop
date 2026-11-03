@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { liveSocket } from '../lib/live';
-import { RunsView, RunSummary } from '@contract/api';
+import type { RunsView, RunSummary } from '@contract/api';
 
 export function useLive(): {
   runs: RunSummary[];

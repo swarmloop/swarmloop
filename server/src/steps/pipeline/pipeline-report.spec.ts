@@ -1,7 +1,15 @@
 import { cancelErrorNote, parsePipelineRefs, renderFail, renderNone, renderPass, type Seen } from './pipeline-report';
 
 function item(overrides: Partial<Seen> = {}): Seen {
-  return { project: 'app', id: 5, sha: 'abc123', url: 'https://ci.example/5', status: 'success', jobs: [], ...overrides };
+  return {
+    project: 'app',
+    id: 5,
+    sha: 'abc123',
+    url: 'https://ci.example/5',
+    status: 'success',
+    jobs: [],
+    ...overrides,
+  };
 }
 
 describe('pipeline report', () => {

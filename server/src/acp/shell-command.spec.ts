@@ -12,7 +12,11 @@ describe('parseShell', () => {
   it('keeps vendor words and reserved feature commands apart', () => {
     expect(parseShell([], keys)).toEqual({ type: 'attach', key: null, vendor: [] });
     expect(parseShell(['mcp', 'list'], keys)).toEqual({ type: 'attach', key: null, vendor: ['mcp', 'list'] });
-    expect(parseShell(['PROJ-1', 'mcp', 'list'], keys)).toEqual({ type: 'attach', key: 'PROJ-1', vendor: ['mcp', 'list'] });
+    expect(parseShell(['PROJ-1', 'mcp', 'list'], keys)).toEqual({
+      type: 'attach',
+      key: 'PROJ-1',
+      vendor: ['mcp', 'list'],
+    });
     expect(parseShell(['rewind', '--to', '4'], keys)).toEqual({ type: 'rewind', key: null, to: '4' });
     expect(parseShell(['step', 'commit', 'check', 'the', 'form'], keys)).toEqual({
       type: 'step',
@@ -20,8 +24,16 @@ describe('parseShell', () => {
       step: 'commit',
       prompt: 'check the form',
     });
-    expect(parseShell(['replay', 'start', 'again'], keys)).toEqual({ type: 'replay', key: null, prompt: 'start again' });
-    expect(parseShell(['review', '/tmp/demo', 'look'], keys)).toEqual({ type: 'review', path: '/tmp/demo', prompt: 'look' });
+    expect(parseShell(['replay', 'start', 'again'], keys)).toEqual({
+      type: 'replay',
+      key: null,
+      prompt: 'start again',
+    });
+    expect(parseShell(['review', '/tmp/demo', 'look'], keys)).toEqual({
+      type: 'review',
+      path: '/tmp/demo',
+      prompt: 'look',
+    });
     expect(parseShell(['rewind'], ['rewind'])).toEqual({ type: 'attach', key: 'rewind', vendor: [] });
     expect(pickSnapshot([{ id: 4 }, { id: 9 }], '9')).toBe(9);
     expect(pickSnapshot([{ id: 4 }, { id: 9 }], '1')).toBeNull();
@@ -31,7 +43,9 @@ describe('parseShell', () => {
 describe('host checkout', () => {
   it('maps nest paths back to the host', () => {
     expect(hostCheckout('/checkouts/demo', '/tmp/swarmloop', '/tmp/outside')).toBe('/tmp/outside/demo');
-    expect(hostCheckout('/app/worktrees/PROJ-1', '/tmp/swarmloop', '/tmp/outside')).toBe('/tmp/swarmloop/worktrees/PROJ-1');
+    expect(hostCheckout('/app/worktrees/PROJ-1', '/tmp/swarmloop', '/tmp/outside')).toBe(
+      '/tmp/swarmloop/worktrees/PROJ-1',
+    );
     expect(hostCheckout('/tmp/already', '/tmp/swarmloop', '/tmp/outside')).toBe('/tmp/already');
   });
 });

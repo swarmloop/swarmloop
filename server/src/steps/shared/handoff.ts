@@ -1,5 +1,5 @@
-import { HistoryService } from '../../history/history.service';
-import { DocumentDraft } from '../../history/visit';
+import type { HistoryService } from '../../history/history.service';
+import type { DocumentDraft } from '../../history/visit';
 
 export function textDocument(kind: string, body: string): DocumentDraft {
   return { kind, fileName: '', body };
@@ -29,7 +29,12 @@ export function withHandoff(
   return handoff?.trim() ? [...sections, { heading: 'What previous steps did', body: handoff }] : sections;
 }
 
-export async function recordHandoff(history: HistoryService, key: string, step: string, body: string): Promise<DocumentDraft> {
+export async function recordHandoff(
+  history: HistoryService,
+  key: string,
+  step: string,
+  body: string,
+): Promise<DocumentDraft> {
   return textDocument('handoff', mergeHandoff(await history.latestBody(key, 'handoff'), step, body));
 }
 
@@ -53,7 +58,8 @@ function splitHandoff(text: string): { step: string; body: string }[] {
 }
 
 export function composedReturn(documents: { kind: string; body: string }[]): string | null {
-  const latest = (kind: string): string | null => [...documents].reverse().find((item) => item.kind === kind)?.body ?? null;
+  const latest = (kind: string): string | null =>
+    [...documents].reverse().find((item) => item.kind === kind)?.body ?? null;
   const stored = latest('return');
   if (stored?.trim()) {
     return stored;

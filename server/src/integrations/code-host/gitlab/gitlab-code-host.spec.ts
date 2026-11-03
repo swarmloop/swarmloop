@@ -1,4 +1,4 @@
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import { FetchFailed } from '../../../core/swarmloop-error';
 import { GitlabCodeHost } from './gitlab-code-host';
 
@@ -45,7 +45,11 @@ describe('gitlab host', () => {
     });
     expect(result.record.iid).toBe(12);
     expect(seen[0]?.method).toBe('POST');
-    const body = JSON.parse(seen[0]?.body ?? '{}') as { source_branch: string; target_branch: string; description: string };
+    const body = JSON.parse(seen[0]?.body ?? '{}') as {
+      source_branch: string;
+      target_branch: string;
+      description: string;
+    };
     expect(body).toEqual({
       source_branch: 'feature/PROJ-1-ship',
       target_branch: 'main',
@@ -92,7 +96,10 @@ describe('gitlab host', () => {
 
   it('reads the newest pipeline and keeps a yellow job off the trace', async () => {
     const seen = mockFetch([
-      [{ id: 3, status: 'success' }, { id: 9, status: 'failed' }],
+      [
+        { id: 3, status: 'success' },
+        { id: 9, status: 'failed' },
+      ],
       { id: 9, status: 'failed', web_url: 'https://gitlab.example/group/demo/-/pipelines/9' },
       [
         { id: 7, name: 'unit', stage: 'test', status: 'failed', allow_failure: false },
@@ -156,7 +163,9 @@ describe('gitlab host', () => {
     const host = service();
     const result = await host.readBranchPipeline({ project: 'group/demo', ref: 'feature/PROJ-1' });
     expect(result.snapshot?.status).toBe('canceled');
-    expect(result.snapshot?.jobs).toEqual([{ id: 7, name: 'unit', stage: 'test', status: 'failed', allowFailure: false }]);
+    expect(result.snapshot?.jobs).toEqual([
+      { id: 7, name: 'unit', stage: 'test', status: 'failed', allowFailure: false },
+    ]);
     expect(seen[2]?.url).toContain('failed');
     expect(seen[2]?.url).toContain('canceled');
     const trace = await host.readJobTrace('group/demo', 7);
@@ -232,9 +241,9 @@ describe('gitlab host', () => {
   it('names a missing token and does not call gitlab', async () => {
     const fetchMock = jest.fn();
     global.fetch = fetchMock;
-    await expect(service({ GITLAB_TOKEN: '' }).findMergeRequest({ project: 'group/demo', source: 'feature/x' })).rejects.toThrow(
-      /GITLAB_TOKEN is missing/,
-    );
+    await expect(
+      service({ GITLAB_TOKEN: '' }).findMergeRequest({ project: 'group/demo', source: 'feature/x' }),
+    ).rejects.toThrow(/GITLAB_TOKEN is missing/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -290,30 +299,32 @@ interface Seen {
 
 function mockFetch(bodies: unknown[], status: number | number[] = 200, nextPage: (string | null)[] = []): Seen[] {
   const seen: Seen[] = [];
-  global.fetch = jest.fn(async (url: string, init?: { method?: string; body?: string; headers?: Record<string, string> }) => {
-    const method = init?.method ?? 'GET';
-    seen.push({ method, url: String(url), body: init?.body ?? '', headers: init?.headers ?? {} });
-    const payload = bodies[seen.length - 1] ?? bodies[0];
-    const code = Array.isArray(status) ? (status[seen.length - 1] ?? 200) : status;
-    const page = nextPage[seen.length - 1] ?? null;
-    return {
-      status: code,
-      ok: code >= 200 && code < 300,
-      url: String(url),
-      headers: {
-        get: (name: string) => {
-          const key = name.toLowerCase();
-          if (key === 'content-type') {
-            return 'application/json';
-          }
-          if (key === 'x-next-page') {
-            return page;
-          }
-          return null;
+  global.fetch = jest.fn(
+    async (url: string, init?: { method?: string; body?: string; headers?: Record<string, string> }) => {
+      const method = init?.method ?? 'GET';
+      seen.push({ method, url: String(url), body: init?.body ?? '', headers: init?.headers ?? {} });
+      const payload = bodies[seen.length - 1] ?? bodies[0];
+      const code = Array.isArray(status) ? (status[seen.length - 1] ?? 200) : status;
+      const page = nextPage[seen.length - 1] ?? null;
+      return {
+        status: code,
+        ok: code >= 200 && code < 300,
+        url: String(url),
+        headers: {
+          get: (name: string) => {
+            const key = name.toLowerCase();
+            if (key === 'content-type') {
+              return 'application/json';
+            }
+            if (key === 'x-next-page') {
+              return page;
+            }
+            return null;
+          },
         },
-      },
-      arrayBuffer: async () => Buffer.from(typeof payload === 'string' ? payload : JSON.stringify(payload ?? null)),
-    };
-  }) as unknown as typeof fetch;
+        arrayBuffer: async () => Buffer.from(typeof payload === 'string' ? payload : JSON.stringify(payload ?? null)),
+      };
+    },
+  ) as unknown as typeof fetch;
   return seen;
 }

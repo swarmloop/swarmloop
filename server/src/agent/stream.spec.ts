@@ -41,14 +41,26 @@ describe('stream usage', () => {
 
   it('keeps the finished assistant message and ignores the joined result', () => {
     const lines = [
-      JSON.stringify({ type: 'assistant', timestamp_ms: 1, message: { content: [{ type: 'text', text: 'The checklist.' }] } }),
       JSON.stringify({
         type: 'assistant',
-        message: { content: [{ type: 'text', text: 'implementation:\n- skipped the duplicate\n\nsummary:\n- both screens print every launch\n' }] },
+        timestamp_ms: 1,
+        message: { content: [{ type: 'text', text: 'The checklist.' }] },
+      }),
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'text',
+              text: 'implementation:\n- skipped the duplicate\n\nsummary:\n- both screens print every launch\n',
+            },
+          ],
+        },
       }),
       JSON.stringify({
         type: 'result',
-        result: 'The checklist.implementation:\n- skipped the duplicate\n\nsummary:\n- both screens print every launch\n',
+        result:
+          'The checklist.implementation:\n- skipped the duplicate\n\nsummary:\n- both screens print every launch\n',
       }),
     ];
     let text = '';
@@ -62,7 +74,9 @@ describe('stream usage', () => {
       text = next.text;
       locked = next.locked;
     }
-    const partial = readStreamLine(JSON.stringify({ type: 'assistant', timestamp_ms: 2, message: { content: [{ type: 'text', text: ' more' }] } }));
+    const partial = readStreamLine(
+      JSON.stringify({ type: 'assistant', timestamp_ms: 2, message: { content: [{ type: 'text', text: ' more' }] } }),
+    );
     if (partial) {
       const after = takeAnswer(text, locked, partial);
       text = after.text;

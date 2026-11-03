@@ -1,4 +1,4 @@
-import { AgentRunResult } from '../../agent/agent-runner';
+import type { AgentRunResult } from '../../agent/agent-runner';
 import { agentFailure, refusedWrite, withRefusal } from './agent-result';
 
 const WRITE_REFUSED = 'Cannot write to /work/x/a.php while in plan mode.';
@@ -47,7 +47,9 @@ describe('refusedWrite', () => {
 describe('withRefusal', () => {
   it('adds the refused write only when there is one', () => {
     expect(withRefusal('plan is missing', null)).toBe('plan is missing');
-    expect(withRefusal('plan is missing', WRITE_REFUSED)).toBe(`plan is missing; a write was refused: ${WRITE_REFUSED}`);
+    expect(withRefusal('plan is missing', WRITE_REFUSED)).toBe(
+      `plan is missing; a write was refused: ${WRITE_REFUSED}`,
+    );
   });
 });
 

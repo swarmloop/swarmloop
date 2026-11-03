@@ -1,4 +1,4 @@
-import { PlanFields } from '../../integrations/requirements-source/requirements-record';
+import type { PlanFields } from '../../integrations/requirements-source/requirements-record';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { bulletSection, section } from '../shared/markdown-section';
 
@@ -107,7 +107,11 @@ export function correctedItems(text: string, output = ''): string[] | null {
 }
 
 /** Checklist the implement answer corrected. Null when the answer leaves the approved plan. */
-export function correctedPlan(requirementsBody: string, text: string, output = ''): { requirements: string; handoff: string } | null {
+export function correctedPlan(
+  requirementsBody: string,
+  text: string,
+  output = '',
+): { requirements: string; handoff: string } | null {
   const items = correctedItems(text, output);
   if (!items) {
     return null;
@@ -248,7 +252,9 @@ function asPlan(value: unknown): PlanFields | null {
   if (!isRecord(value) || !Array.isArray(value.items)) {
     return null;
   }
-  const items = value.items.filter((item): item is string => typeof item === 'string' && item.trim() !== '' && item.trim() !== 'none');
+  const items = value.items.filter(
+    (item): item is string => typeof item === 'string' && item.trim() !== '' && item.trim() !== 'none',
+  );
   if (items.length === 0) {
     return null;
   }
@@ -276,9 +282,7 @@ function textOf(record: Record<string, unknown>): string | null {
   if (!Array.isArray(content)) {
     return null;
   }
-  const text = content
-    .map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : ''))
-    .join('');
+  const text = content.map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : '')).join('');
   return text === '' ? null : text;
 }
 
@@ -298,4 +302,3 @@ function jsonRecord(line: string): Record<string, unknown> | null {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
-

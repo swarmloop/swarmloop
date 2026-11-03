@@ -1,16 +1,18 @@
 import { readFileSync } from 'fs';
 import { basename, join } from 'path';
-import { SwarmloopEnv } from '../../config/env';
+import type { SwarmloopEnv } from '../../config/env';
 import { liveLogBody } from '../../acp/live-output';
-import { HistoryService } from '../../history/history.service';
-import { DocumentDraft } from '../../history/visit';
-import { OpenedStep } from '../../pipeline/step-run';
-import { agentStateDir, SandboxMount } from '../../sandbox/sandbox-launch';
+import type { HistoryService } from '../../history/history.service';
+import type { DocumentDraft } from '../../history/visit';
+import type { OpenedStep } from '../../pipeline/step-run';
+import type { SandboxMount } from '../../sandbox/sandbox-launch';
+import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { withReturnNotes } from '../implement/implement-record';
 import { textDocument, withHandoff } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
 import { parseReview } from './code-review-record';
-import { decidedOk, Finished, fixNotes, Opinion, recordAngle, REVIEWERS, Reviewer, ReviewDeps, runJob } from './reviewer';
+import type { Finished, Opinion, Reviewer, ReviewDeps } from './reviewer';
+import { decidedOk, fixNotes, recordAngle, REVIEWERS, runJob } from './reviewer';
 
 export interface Selection {
   kept: Opinion[];
@@ -101,9 +103,28 @@ export async function selectReviewers(history: HistoryService, input: SelectInpu
 
 /** Runs every pending angle together, then stores their visits once all of them have finished. */
 export async function runRound(deps: ReviewDeps, input: RoundInput): Promise<Finished[]> {
-  const jobs = input.pending.map((reviewer) => ({ ...reviewJob(reviewer, input), stale: input.stale.has(reviewer.name) }));
+  const jobs = input.pending.map((reviewer) => ({
+    ...reviewJob(reviewer, input),
+    stale: input.stale.has(reviewer.name),
+  }));
   const fix = fixNotes(await deps.history.listDocuments(input.opened.run.id), input.handoff);
-  const finished = await Promise.all(jobs.map((job) => runJob(deps, input.opened, input.key, input.env, job, fix, input.plan, input.returned, input.auto, input.fresh, input.retry)));
+  const finished = await Promise.all(
+    jobs.map((job) =>
+      runJob(
+        deps,
+        input.opened,
+        input.key,
+        input.env,
+        job,
+        fix,
+        input.plan,
+        input.returned,
+        input.auto,
+        input.fresh,
+        input.retry,
+      ),
+    ),
+  );
   for (const item of finished) {
     await recordAngle(deps, input.opened, item, input.repeated);
   }
@@ -120,7 +141,10 @@ export function reviewReturn(returned: string | null): boolean {
 
 export function sameReviewedDiff(root: string, key: string, patch: string): boolean {
   try {
-    const previous = readFileSync(join(agentStateDir(root, key, 'code-review-requirements'), 'briefs', 'diff.md'), 'utf8');
+    const previous = readFileSync(
+      join(agentStateDir(root, key, 'code-review-requirements'), 'briefs', 'diff.md'),
+      'utf8',
+    );
     return previous === patch;
   } catch {
     return false;
@@ -129,7 +153,9 @@ export function sameReviewedDiff(root: string, key: string, patch: string): bool
 
 export function acceptRepeated(documents: DocumentDraft[], opinions: Opinion[]): DocumentDraft[] {
   const kinds = new Set(opinions.filter((item) => item.decision === 'return').map((item) => item.kind));
-  return documents.map((document) => (kinds.has(document.kind) ? { ...document, body: decidedOk(document.body) } : document));
+  return documents.map((document) =>
+    kinds.has(document.kind) ? { ...document, body: decidedOk(document.body) } : document,
+  );
 }
 
 function staleReturn(repeated: boolean, decision: 'ok' | 'return'): boolean {
@@ -140,7 +166,10 @@ function reviewJob(reviewer: Reviewer, input: RoundInput) {
   const names = input.mounts.map((mount) => basename(mount.hostPath));
   const notesSection = input.notes?.trim() ? [{ heading: 'Implementation', body: input.notes }] : [];
   const planSection = input.plan.trim() ? [{ heading: 'Plan', body: input.plan }] : [];
-  const sections = withHandoff(withReturnNotes([input.diff, ...notesSection, ...planSection], input.returned), input.handoff);
+  const sections = withHandoff(
+    withReturnNotes([input.diff, ...notesSection, ...planSection], input.returned),
+    input.handoff,
+  );
   return {
     reviewer,
     model: input.env.MODEL_PLAN,

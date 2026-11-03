@@ -31,7 +31,9 @@ describe('runs api', () => {
           resumed: false,
           killReason: null,
         },
-        httpCalls: [{ provider: 'jira', method: 'GET', url: 'http://jira', statusCode: 200, durationMs: 1, error: null }],
+        httpCalls: [
+          { provider: 'jira', method: 'GET', url: 'http://jira', statusCode: 200, durationMs: 1, error: null },
+        ],
       });
       await history.putDocument(run, 'requirements', 'body\n');
       await history.noteFlow('PROJ-20', ['requirements'], null);
@@ -245,7 +247,10 @@ describe('runs api', () => {
 
   it('keeps a run when stop fails', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-delete-busy-'));
-    const pipeline = { startDetached: jest.fn(), stop: jest.fn().mockResolvedValue({ exitCode: 1, message: 'proj-71 is still running' }) };
+    const pipeline = {
+      startDetached: jest.fn(),
+      stop: jest.fn().mockResolvedValue({ exitCode: 1, message: 'proj-71 is still running' }),
+    };
     const prepare = { removeWorktrees: jest.fn() };
     const app = await boot(root, pipeline, prepare);
     try {

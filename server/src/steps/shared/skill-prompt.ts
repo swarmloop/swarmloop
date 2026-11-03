@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { SandboxMount } from '../../sandbox/sandbox-launch';
+import type { SandboxMount } from '../../sandbox/sandbox-launch';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { bulletSection } from './markdown-section';
 import { requirementsBrief } from './requirements-brief';
@@ -13,7 +13,10 @@ export function summaryOr(text: string, fallback: string): string {
   try {
     return parseSummary(text);
   } catch (error) {
-    if (!(error instanceof SwarmloopError) || (error.message !== 'summary is missing' && error.message !== 'summary is empty')) {
+    if (
+      !(error instanceof SwarmloopError) ||
+      (error.message !== 'summary is missing' && error.message !== 'summary is empty')
+    ) {
       throw error;
     }
     const body = fallback.trim();
@@ -29,7 +32,10 @@ export function plainSummary(text: string): string {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => {
-      const cleaned = line.replace(/^[`*]+/, '').replace(/[`*]+$/, '').trim();
+      const cleaned = line
+        .replace(/^[`*]+/, '')
+        .replace(/[`*]+$/, '')
+        .trim();
       if (!cleaned) {
         return false;
       }
@@ -49,7 +55,9 @@ export function plainSummary(text: string): string {
 
 export function workingDirectoryBlock(names: string[], mounts: SandboxMount[]): string {
   const labeled = mounts.map((mount, index) => ({
-    name: mount.containerPath.startsWith('/work/') ? mount.containerPath.slice('/work/'.length) : (names[index] ?? names[0] ?? 'work'),
+    name: mount.containerPath.startsWith('/work/')
+      ? mount.containerPath.slice('/work/'.length)
+      : (names[index] ?? names[0] ?? 'work'),
     path: mount.containerPath,
     state: sourceState(mount.hostPath),
   }));
@@ -63,7 +71,8 @@ export function workingDirectoryBlock(names: string[], mounts: SandboxMount[]): 
   return ['Working directories, and nowhere else:', ...lines, stay('these paths')].join('\n');
 }
 
-export const LOCAL_RUN_RULE = 'Do not start a service, a database, or the application. Do not run tests on this machine.';
+export const LOCAL_RUN_RULE =
+  'Do not start a service, a database, or the application. Do not run tests on this machine.';
 
 export const AGENT_LANGUAGE_RULE = 'Always write in English, even when the request is in another language.';
 
@@ -90,7 +99,10 @@ export function skillPrompt(
   } catch {
     throw new SwarmloopError(`${skill} skill is missing`);
   }
-  const where = mounts.length > 0 ? workingDirectoryBlock(names, mounts) : ['Worktrees:', ...names.map((name) => `- ${name}`)].join('\n');
+  const where =
+    mounts.length > 0
+      ? workingDirectoryBlock(names, mounts)
+      : ['Worktrees:', ...names.map((name) => `- ${name}`)].join('\n');
   const parts = [where, '', LOCAL_RUN_RULE, '', text.trimEnd(), '', 'Requirements:', requirementsBrief(requirements)];
   for (const section of sections) {
     parts.push('', `${section.heading}:`, section.body.trimEnd());

@@ -12,7 +12,13 @@ describe('documentsByKind', () => {
         { kind: 'log', attempt: 2 },
       ]),
       [
-        ['log', [{ kind: 'log', attempt: 1 }, { kind: 'log', attempt: 2 }]],
+        [
+          'log',
+          [
+            { kind: 'log', attempt: 1 },
+            { kind: 'log', attempt: 2 },
+          ],
+        ],
         ['plan', [{ kind: 'plan', attempt: 1 }]],
       ],
     );

@@ -6,17 +6,24 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { Repository } from 'typeorm';
+import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DocumentEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
-import { AGENT_RUNNER, AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
+import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
+import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { REBASE_CONFLICT } from '../../git/rebase-worktree';
 
-const reply = ['implementation:', '- fixed the empty case', '', 'summary:', '- fixed the empty case because the return was right'].join('\n');
+const reply = [
+  'implementation:',
+  '- fixed the empty case',
+  '',
+  'summary:',
+  '- fixed the empty case because the return was right',
+].join('\n');
 
 describe('implement-improve step', () => {
   it('stores a second implementation note and waits for code review', async () => {
@@ -65,7 +72,9 @@ describe('implement-improve step', () => {
       await seed(app, 'PROJ-74');
       const run = await app.get(HistoryService).findRun('PROJ-74');
       await app.get(HistoryService).putDocument(run!, 'return', '## quality\nuse theme.alpha\n');
-      await app.get(HistoryService).putDocument(run!, 'handoff', '## implement\n- changed the parser so empty fields stay\n');
+      await app
+        .get(HistoryService)
+        .putDocument(run!, 'handoff', '## implement\n- changed the parser so empty fields stay\n');
       const done = await app.get(PipelineService).step('implement-improve', 'PROJ-74');
       expect(done.exitCode).toBe(0);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
@@ -88,7 +97,9 @@ describe('implement-improve step', () => {
     await writeEnv(root);
     featureTree(root, 'PROJ-73', 'api');
     featureTree(root, 'PROJ-73', 'web');
-    const agent = jest.fn().mockResolvedValue(result('implementation:\n- api fix\n- web fix\n\nsummary:\n- both match the plan\n'));
+    const agent = jest
+      .fn()
+      .mockResolvedValue(result('implementation:\n- api fix\n- web fix\n\nsummary:\n- both match the plan\n'));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-73', 'api\nweb\n');
@@ -110,7 +121,11 @@ describe('implement-improve step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-stands-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-76', 'billing-api');
-    const agent = jest.fn().mockResolvedValue(result('implementation:\n- The first pass stands.\n\nsummary:\n- the files already match the plan\n'));
+    const agent = jest
+      .fn()
+      .mockResolvedValue(
+        result('implementation:\n- The first pass stands.\n\nsummary:\n- the files already match the plan\n'),
+      );
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-76');
@@ -213,7 +228,16 @@ describe('implement-improve step', () => {
     await writeEnv(root);
     const worktree = featureTree(root, 'PROJ-72', 'billing-api');
     const agent = jest.fn().mockImplementation(async () => {
-      git(worktree, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '--allow-empty', '-m', 'nope']);
+      git(worktree, [
+        '-c',
+        'user.email=dev@example.com',
+        '-c',
+        'user.name=Dev',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'nope',
+      ]);
       return result(reply);
     });
     const app = await boot(root, agent);
@@ -326,7 +350,16 @@ describe('implement-improve step', () => {
     const agent = jest.fn(async () => {
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
       return result(
-        ['plan:', '- fix the failing test', '', 'implementation:', '- fixed the test', '', 'summary:', '- the pipeline log required it'].join('\n'),
+        [
+          'plan:',
+          '- fix the failing test',
+          '',
+          'implementation:',
+          '- fixed the test',
+          '',
+          'summary:',
+          '- the pipeline log required it',
+        ].join('\n'),
       );
     });
     const app = await boot(root, agent);
@@ -364,7 +397,9 @@ describe('implement-improve step', () => {
       const done = await app.get(PipelineService).step('implement-improve', 'PROJ-181');
       expect(done.exitCode).toBe(0);
       const history = app.get(HistoryService);
-      const record = JSON.parse((await history.latestBody('PROJ-181', 'requirements')) ?? '{}') as { plan?: { items?: string[] } };
+      const record = JSON.parse((await history.latestBody('PROJ-181', 'requirements')) ?? '{}') as {
+        plan?: { items?: string[] };
+      };
       expect(record.plan?.items).toEqual(['add the field']);
       expect(await history.latestBody('PROJ-181', 'handoff')).not.toContain('outranks the checklist');
     } finally {
@@ -406,8 +441,16 @@ async function boot(root: string, agent: jest.Mock) {
 async function failedCommit(app: Awaited<ReturnType<typeof boot>>, key: string, sha: string): Promise<void> {
   const history = app.get(HistoryService);
   const run = await history.findRun(key);
-  await history.putDocument(run!, 'pipeline_ref', `project: acme/billing-api\nref: feature/${key}-ship-the-field\nsha: ${sha}\n`);
-  await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nFAIL api/runs.service.spec.ts expected running\n');
+  await history.putDocument(
+    run!,
+    'pipeline_ref',
+    `project: acme/billing-api\nref: feature/${key}-ship-the-field\nsha: ${sha}\n`,
+  );
+  await history.putDocument(
+    run!,
+    'return',
+    '## pipeline\nresult: fail\njob: test\n\nFAIL api/runs.service.spec.ts expected running\n',
+  );
 }
 
 async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, repos = 'billing-api\n'): Promise<void> {

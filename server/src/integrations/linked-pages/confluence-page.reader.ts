@@ -1,7 +1,7 @@
-import { IssuePage } from '../issue-tracker/issue-bundle';
+import type { IssuePage } from '../issue-tracker/issue-bundle';
 import { request } from '../http';
 import { FetchFailed } from '../../core/swarmloop-error';
-import { PageReadContext, PageReader } from './page-reader';
+import type { PageReadContext, PageReader } from './page-reader';
 
 export class ConfluencePageReader implements PageReader {
   constructor(private readonly base: string) {}

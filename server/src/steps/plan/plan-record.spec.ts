@@ -4,7 +4,10 @@ import { correctedPlan, parsePlan, planFromAgent, reviewedItems, withInstruction
 describe('withInstructions', () => {
   it('appends the prompt and asks for a new plan only when asked', () => {
     const body = `${JSON.stringify({ prompt: 'Ship the field', plan: { name: 'Field', overview: '', items: ['add it'], decision: 'approve' } })}\n`;
-    const revised = JSON.parse(withInstructions(body, 'Prefer the parser', true)) as { prompt: string; plan: { decision: string } };
+    const revised = JSON.parse(withInstructions(body, 'Prefer the parser', true)) as {
+      prompt: string;
+      plan: { decision: string };
+    };
     expect(revised.prompt).toBe('Ship the field\n\nPrefer the parser');
     expect(revised.plan.decision).toBe('revise');
     const kept = JSON.parse(withInstructions(body, 'Prefer the parser', false)) as { plan: { decision: string } };
@@ -71,9 +74,16 @@ describe('correctedPlan', () => {
   const body = `${JSON.stringify({ prompt: 'Ship the field', plan: { name: 'Field', overview: 'Ship it.', items: ['add the field'], decision: 'approve' } }, null, 2)}\n`;
 
   it('replaces the checklist with the stored plan object', () => {
-    const plan = { name: 'Replacement', overview: 'From the log.', items: ['fix the failing test'], decision: 'approve' };
+    const plan = {
+      name: 'Replacement',
+      overview: 'From the log.',
+      items: ['fix the failing test'],
+      decision: 'approve',
+    };
     const corrected = correctedPlan(body, ['plan:', JSON.stringify(plan, null, 2), ''].join('\n'));
-    const record = JSON.parse(corrected?.requirements ?? '{}') as { plan?: { name?: string; overview?: string; items?: string[]; decision?: string } };
+    const record = JSON.parse(corrected?.requirements ?? '{}') as {
+      plan?: { name?: string; overview?: string; items?: string[]; decision?: string };
+    };
     expect(record.plan?.items).toEqual(['fix the failing test']);
     expect(record.plan?.name).toBe('Field');
     expect(record.plan?.overview).toBe('Ship it.');
@@ -117,6 +127,9 @@ describe('reviewedItems', () => {
         },
       },
     });
-    expect(reviewedItems('I will replace the checklist.', stream)).toEqual(['Add the field on the offer index', 'Backfill null rows']);
+    expect(reviewedItems('I will replace the checklist.', stream)).toEqual([
+      'Add the field on the offer index',
+      'Backfill null rows',
+    ]);
   });
 });

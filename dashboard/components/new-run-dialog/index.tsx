@@ -10,8 +10,9 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { api } from '../../lib/api';
 import { mergeNames } from '../../lib/names';
-import { PHASES, PhaseName } from '@contract/steps';
-import { ProjectsView, RunRef } from '@contract/api';
+import type { PhaseName } from '@contract/steps';
+import { PHASES } from '@contract/steps';
+import type { ProjectsView, RunRef } from '@contract/api';
 import { PhasePicker } from './phase-picker';
 import { ProjectPicker } from './project-picker';
 
@@ -149,7 +150,9 @@ export function NewRunDialog({
           method: 'POST',
           body: JSON.stringify({ prompt: text, phases: chosen, projects: pickedProjects }),
         }).then((body) => done(body.key));
-    request.catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'run failed')).finally(() => setBusy(false));
+    request
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'run failed'))
+      .finally(() => setBusy(false));
   };
 
   return (
@@ -168,7 +171,12 @@ export function NewRunDialog({
           slotProps={{ inputLabel: { shrink: true } }}
         />
         <PhasePicker picked={picked} frozen={frozen} setPicked={setPicked} />
-        <ProjectPicker frozenProjects={frozenProjects} projectOptions={projectOptions} pickedProjects={pickedProjects} onChange={changeProjects} />
+        <ProjectPicker
+          frozenProjects={frozenProjects}
+          projectOptions={projectOptions}
+          pickedProjects={pickedProjects}
+          onChange={changeProjects}
+        />
         {note ? <Typography variant="body2">{note}</Typography> : null}
         {error ? (
           <Typography color="error" variant="body2">

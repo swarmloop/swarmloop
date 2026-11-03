@@ -14,7 +14,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { duration, memory, money, tokens } from '../../../lib/format';
 import { latestPhaseLabels } from '../../../lib/phases';
-import { FlowView } from '@contract/api';
+import type { FlowView } from '@contract/api';
 import { statusColor } from '../../../theme/theme';
 
 export function RunHeader({
@@ -62,7 +62,13 @@ export function RunHeader({
               {flow.key}
             </Typography>
             {flow.projects.map((project) => (
-              <Chip key={project} size="small" variant="outlined" label={project} sx={{ height: 22, bgcolor: 'transparent', fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+              <Chip
+                key={project}
+                size="small"
+                variant="outlined"
+                label={project}
+                sx={{ height: 22, bgcolor: 'transparent', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+              />
             ))}
           </Box>
         </Box>
@@ -87,7 +93,19 @@ export function RunHeader({
           {rebaseError}
         </Typography>
       ) : null}
-      <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 2, rowGap: 0.75, fontFamily: 'var(--font-mono)', fontSize: 13, color: 'text.secondary' }}>
+      <Box
+        sx={{
+          mt: 1.5,
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          columnGap: 2,
+          rowGap: 0.75,
+          fontFamily: 'var(--font-mono)',
+          fontSize: 13,
+          color: 'text.secondary',
+        }}
+      >
         {metricItems.map(({ Icon, text, tip, color }) => (
           <Tooltip key={tip} title={tip}>
             <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color }}>
@@ -100,7 +118,13 @@ export function RunHeader({
       {launches.length > 0 ? (
         <Box sx={{ mt: 0.75, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
           {latestPhaseLabels(launches).map((label) => (
-            <Chip key={label} size="small" variant="outlined" label={label} sx={{ height: 22, bgcolor: 'transparent', fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+            <Chip
+              key={label}
+              size="small"
+              variant="outlined"
+              label={label}
+              sx={{ height: 22, bgcolor: 'transparent', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+            />
           ))}
         </Box>
       ) : null}

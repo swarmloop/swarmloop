@@ -1,4 +1,15 @@
-import { callsExceeded, DecisionWatch, hasModelDecision, judgeLimits, LimitSnapshot, noteDecision, overSpend, priceTokens, retryCrash, shouldResume, turnUsd } from './limits';
+import type { DecisionWatch, LimitSnapshot } from './limits';
+import {
+  callsExceeded,
+  hasModelDecision,
+  judgeLimits,
+  noteDecision,
+  overSpend,
+  priceTokens,
+  retryCrash,
+  shouldResume,
+  turnUsd,
+} from './limits';
 import { withRetries } from '../integrations/http';
 import { readStreamLine } from './stream';
 
@@ -49,8 +60,14 @@ describe('limits', () => {
 
   it('retries a non-empty crash until the launch cap and leaves a decision down', () => {
     const prompt = [
-      JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: 'Read the diff.\n\ndecision: ok\n' }] } }),
-      JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: 'use theme.alpha\ndecision: return\n' }] } }),
+      JSON.stringify({
+        type: 'user',
+        message: { content: [{ type: 'text', text: 'Read the diff.\n\ndecision: ok\n' }] },
+      }),
+      JSON.stringify({
+        type: 'user',
+        message: { content: [{ type: 'text', text: 'use theme.alpha\ndecision: return\n' }] },
+      }),
       'Error: [unavailable] Error',
     ].join('\n');
     const under = {
@@ -75,7 +92,9 @@ describe('limits', () => {
     expect(retryCrash({ ...under, killReason: 'idle' })).toBe(false);
     expect(retryCrash({ ...under, halted: true })).toBe(false);
     expect(retryCrash({ ...under, callsSoFar: 20 })).toBe(false);
-    expect(retryCrash({ ...under, decided: watched(`${prompt}\n${answer('notes\ndecision: return\n')}\n`) })).toBe(false);
+    expect(retryCrash({ ...under, decided: watched(`${prompt}\n${answer('notes\ndecision: return\n')}\n`) })).toBe(
+      false,
+    );
     expect(retryCrash({ ...under, decided: watched(`${answer('**decision: return**')}\n`) })).toBe(false);
     expect(retryCrash({ ...under, decided: watched('notes\ndecision: return\n') })).toBe(false);
     expect(callsExceeded(20, 20)).toBe(true);

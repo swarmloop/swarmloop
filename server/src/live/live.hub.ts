@@ -116,7 +116,12 @@ function total(steps: Map<string, LiveUsage>): LiveUsage {
 }
 
 function sameSpend(left: LiveUsage | undefined, right: LiveUsage): boolean {
-  return left !== undefined && left.tokensIn === right.tokensIn && left.tokensOut === right.tokensOut && left.usd === right.usd;
+  return (
+    left !== undefined &&
+    left.tokensIn === right.tokensIn &&
+    left.tokensOut === right.tokensOut &&
+    left.usd === right.usd
+  );
 }
 
 function peakOf(steps: Map<string, LiveSample[]> | undefined): LivePeaks {

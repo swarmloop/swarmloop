@@ -6,7 +6,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'f
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { Repository } from 'typeorm';
+import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DenyPathEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
@@ -445,7 +445,6 @@ describe('commit step', () => {
       await app.close();
     }
   });
-
 });
 
 async function boot(root: string, codeHost = 'gitlab', host: { baseUrl?: string; token?: string } = {}) {

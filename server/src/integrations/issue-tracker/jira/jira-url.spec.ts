@@ -9,10 +9,15 @@ describe('jira issue urls', () => {
   });
 
   it('reads a board url and an issue path', () => {
-    expect(sameSiteIssueKey('https://example.atlassian.net/jira/software/projects/PROJ/boards/1?selectedIssue=PROJ-41', base)).toBe(
+    expect(
+      sameSiteIssueKey(
+        'https://example.atlassian.net/jira/software/projects/PROJ/boards/1?selectedIssue=PROJ-41',
+        base,
+      ),
+    ).toBe('PROJ-41');
+    expect(sameSiteIssueKey('https://example.atlassian.net/jira/software/projects/PROJ/issues/proj-41', base)).toBe(
       'PROJ-41',
     );
-    expect(sameSiteIssueKey('https://example.atlassian.net/jira/software/projects/PROJ/issues/proj-41', base)).toBe('PROJ-41');
   });
 
   it('ignores another site and a confluence page', () => {

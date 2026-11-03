@@ -99,6 +99,6 @@ function addedNote(names: string[]): string {
   return [
     'Added repositories:',
     ...names.map((name) => `- ${name} is mounted at /work/${name}.`),
-    'They were not in the earlier read. Write this task\'s contract changes there. That belongs to this task.',
+    "They were not in the earlier read. Write this task's contract changes there. That belongs to this task.",
   ].join('\n');
 }

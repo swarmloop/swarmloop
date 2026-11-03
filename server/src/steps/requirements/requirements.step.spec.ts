@@ -1,22 +1,24 @@
 import 'reflect-metadata';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { createServer, Server } from 'http';
 import { mkdtemp, readFile, writeFile } from 'fs/promises';
 import { existsSync, mkdirSync, realpathSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { AddressInfo } from 'net';
-import { Repository } from 'typeorm';
+import type { AddressInfo } from 'net';
+import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { AgentExchangeEntity, DocumentEntity, HttpCallEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
-import { AGENT_RUNNER, AgentRunResult } from '../../agent/agent-runner';
+import type { AgentRunResult } from '../../agent/agent-runner';
+import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
+import type { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
 import { PASTE_READER } from '../../integrations/linked-pages/paste-page.reader';
 import { ISSUE_TRACKER } from '../../integrations/issue-tracker/tokens';
 import { requirementsBrief } from '../shared/requirements-brief';
@@ -41,47 +43,47 @@ describe('requirements step', () => {
       expect(paste).toHaveBeenCalledTimes(1);
       expect(agent).not.toHaveBeenCalled();
 
-    const documents = await app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity)).find();
-    const requirements = documents.filter((row) => row.kind === 'requirements');
-    expect(requirements).toHaveLength(1);
-    const stored = requirements[0]?.body ?? '';
-    const record = JSON.parse(stored) as {
-      tickets: { key: string; comments: { body: string }[]; acceptanceCriteria: string }[];
-      epic: { key: string; summary: string; comments: { body: string }[] };
-      epics: { key: string }[];
-      files: { name: string; source: string; body: string | null }[];
-      pages: { source: string; id: string; body: string }[];
-    };
-    expect(stored.trimStart().startsWith('{')).toBe(true);
-    expect(stored.indexOf('"scope"')).toBeLessThan(stored.indexOf('"tickets"'));
-    expect((JSON.parse(stored) as { scope: string[] }).scope).toEqual(['PROJ-2']);
-    expect(record.tickets[0]?.key).toBe('PROJ-2');
-    expect(record.tickets[0]?.acceptanceCriteria).toContain('Must ship');
-    expect(record.tickets[0]?.comments.map((comment) => comment.body)).toEqual(
-      expect.arrayContaining([expect.stringContaining('First note'), expect.stringContaining('Second note')]),
-    );
-    expect(record.epic?.key).toBe('PROJ-1');
-    expect(record.epic?.summary).toBe('Big epic');
-    expect(record.epic?.comments.map((comment) => comment.body)).toEqual(
-      expect.arrayContaining([expect.stringContaining('Epic note')]),
-    );
-    expect(record.epics.map((epic) => epic.key)).toEqual(['PROJ-1']);
-    expect(record.files.find((file) => file.name === 'note.txt')?.body).toBe('file-body');
-    expect(record.files.find((file) => file.source === 'paste')?.body).toBe('pasted-body');
-    expect(record.files.find((file) => file.body === 'spec-body')).toBeTruthy();
-    expect(record.pages.find((page) => page.id === '42')?.body).toContain('Page');
-    expect(existsSync(join(runDir, 'requirements.json'))).toBe(false);
-    expect(existsSync(join(runDir, 'requirements.md'))).toBe(false);
-    expect(existsSync(join(runDir, 'sources'))).toBe(false);
-    expect(existsSync(join(runDir, 'state.json'))).toBe(false);
-    const exchanges = await app.get<Repository<AgentExchangeEntity>>(getRepositoryToken(AgentExchangeEntity)).find();
-    expect(exchanges).toHaveLength(0);
-    const calls = await app.get<Repository<HttpCallEntity>>(getRepositoryToken(HttpCallEntity)).find();
-    expect(calls.length).toBeGreaterThan(0);
-    expect(calls.every((call) => !call.url.includes(TOKEN) && !(call.error ?? '').includes(TOKEN))).toBe(true);
-    const db = await readFile(join(root, 'data', 'swarmloop.sqlite'));
-    expect(db.includes(Buffer.from(TOKEN))).toBe(false);
-    const run = await app.get(HistoryService).findRun('PROJ-2');
+      const documents = await app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity)).find();
+      const requirements = documents.filter((row) => row.kind === 'requirements');
+      expect(requirements).toHaveLength(1);
+      const stored = requirements[0]?.body ?? '';
+      const record = JSON.parse(stored) as {
+        tickets: { key: string; comments: { body: string }[]; acceptanceCriteria: string }[];
+        epic: { key: string; summary: string; comments: { body: string }[] };
+        epics: { key: string }[];
+        files: { name: string; source: string; body: string | null }[];
+        pages: { source: string; id: string; body: string }[];
+      };
+      expect(stored.trimStart().startsWith('{')).toBe(true);
+      expect(stored.indexOf('"scope"')).toBeLessThan(stored.indexOf('"tickets"'));
+      expect((JSON.parse(stored) as { scope: string[] }).scope).toEqual(['PROJ-2']);
+      expect(record.tickets[0]?.key).toBe('PROJ-2');
+      expect(record.tickets[0]?.acceptanceCriteria).toContain('Must ship');
+      expect(record.tickets[0]?.comments.map((comment) => comment.body)).toEqual(
+        expect.arrayContaining([expect.stringContaining('First note'), expect.stringContaining('Second note')]),
+      );
+      expect(record.epic?.key).toBe('PROJ-1');
+      expect(record.epic?.summary).toBe('Big epic');
+      expect(record.epic?.comments.map((comment) => comment.body)).toEqual(
+        expect.arrayContaining([expect.stringContaining('Epic note')]),
+      );
+      expect(record.epics.map((epic) => epic.key)).toEqual(['PROJ-1']);
+      expect(record.files.find((file) => file.name === 'note.txt')?.body).toBe('file-body');
+      expect(record.files.find((file) => file.source === 'paste')?.body).toBe('pasted-body');
+      expect(record.files.find((file) => file.body === 'spec-body')).toBeTruthy();
+      expect(record.pages.find((page) => page.id === '42')?.body).toContain('Page');
+      expect(existsSync(join(runDir, 'requirements.json'))).toBe(false);
+      expect(existsSync(join(runDir, 'requirements.md'))).toBe(false);
+      expect(existsSync(join(runDir, 'sources'))).toBe(false);
+      expect(existsSync(join(runDir, 'state.json'))).toBe(false);
+      const exchanges = await app.get<Repository<AgentExchangeEntity>>(getRepositoryToken(AgentExchangeEntity)).find();
+      expect(exchanges).toHaveLength(0);
+      const calls = await app.get<Repository<HttpCallEntity>>(getRepositoryToken(HttpCallEntity)).find();
+      expect(calls.length).toBeGreaterThan(0);
+      expect(calls.every((call) => !call.url.includes(TOKEN) && !(call.error ?? '').includes(TOKEN))).toBe(true);
+      const db = await readFile(join(root, 'data', 'swarmloop.sqlite'));
+      expect(db.includes(Buffer.from(TOKEN))).toBe(false);
+      const run = await app.get(HistoryService).findRun('PROJ-2');
       expect(run?.status).toBe('waiting');
       expect(run?.currentStep).toBe('prepare');
     } finally {
@@ -105,7 +107,9 @@ describe('requirements step', () => {
       expect(hits['PROJ-404']).toBe(1);
       expect(hits['PROJ-7']).toBe(1);
       expect(hits['PROJ-6']).toBe(1);
-      const record = JSON.parse(await requirementsBody(app)) as { files: { url: string | null; body: string | null }[] };
+      const record = JSON.parse(await requirementsBody(app)) as {
+        files: { url: string | null; body: string | null }[];
+      };
       const linked = record.files.find((file) => file.url?.includes('/browse/PROJ-9'));
       expect(linked?.body).toContain('PROJ-9\nLinked story');
       expect(linked?.body).toContain('Status: Gotowe (done)');
@@ -448,7 +452,10 @@ describe('requirements step', () => {
       expect(second.exitCode).toBe(0);
       expect(hits['PROJ-2']).toBe(1);
       expect(hits['PROJ-8']).toBe(2);
-      const record = JSON.parse(await requirementsBody(app, 'PROJ-2')) as { tickets: { key: string }[]; prompt: string };
+      const record = JSON.parse(await requirementsBody(app, 'PROJ-2')) as {
+        tickets: { key: string }[];
+        prompt: string;
+      };
       expect(record.prompt).toContain('Also PROJ-8');
       expect(record.tickets.map((ticket) => ticket.key)).toEqual(['PROJ-2', 'PROJ-8']);
     } finally {
@@ -551,7 +558,9 @@ async function requirementsBody(app: TestingModule, key?: string): Promise<strin
   const documents = await app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity)).find();
   const runs = key ? await app.get<Repository<RunEntity>>(getRepositoryToken(RunEntity)).find() : [];
   const runId = key ? runs.find((run) => run.key === key)?.id : undefined;
-  const row = documents.find((document) => document.kind === 'requirements' && (runId === undefined || document.runId === runId));
+  const row = documents.find(
+    (document) => document.kind === 'requirements' && (runId === undefined || document.runId === runId),
+  );
   if (!row) {
     throw new Error('requirements record is missing');
   }
@@ -583,12 +592,7 @@ async function boot(
   return builder.compile();
 }
 
-async function writeEnv(
-  root: string,
-  base: string,
-  via: string,
-  extra: Record<string, string> = {},
-): Promise<void> {
+async function writeEnv(root: string, base: string, via: string, extra: Record<string, string> = {}): Promise<void> {
   const values: Record<string, string> = {
     RUNTIME: 'cursor',
     REQUIREMENTS_VIA: via,
@@ -688,10 +692,7 @@ async function listen(
         fields: {
           summary: 'Big epic',
           issuetype: { name: 'Epic' },
-          description: doc([
-            text('See '),
-            link('the page', `${origin(req)}/wiki/spaces/ENG/pages/42/Title`),
-          ]),
+          description: doc([text('See '), link('the page', `${origin(req)}/wiki/spaces/ENG/pages/42/Title`)]),
         },
       });
       return;
@@ -769,7 +770,11 @@ async function listen(
     if (url.pathname === '/rest/api/3/issue/PROJ-6') {
       send(res, {
         key: 'PROJ-6',
-        fields: { summary: 'Child change', issuetype: { name: 'Sub-task' }, description: doc([text('Schema lives here')]) },
+        fields: {
+          summary: 'Child change',
+          issuetype: { name: 'Sub-task' },
+          description: doc([text('Schema lives here')]),
+        },
       });
       return;
     }

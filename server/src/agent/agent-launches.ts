@@ -58,5 +58,12 @@ function logOpen(body: string): boolean {
     .map((line) => line.trim())
     .filter((line) => line !== '');
   const last = lines.at(-1) ?? '';
-  return last !== '' && last !== 'waiting for output' && last !== 'starting' && !last.startsWith('process exited') && !last.startsWith('process killed:') && !last.startsWith('{"type":"result"');
+  return (
+    last !== '' &&
+    last !== 'waiting for output' &&
+    last !== 'starting' &&
+    !last.startsWith('process exited') &&
+    !last.startsWith('process killed:') &&
+    !last.startsWith('{"type":"result"')
+  );
 }

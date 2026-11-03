@@ -1,5 +1,5 @@
-import { RunEntity } from '../history/entities';
-import { HistoryService } from '../history/history.service';
+import type { RunEntity } from '../history/entities';
+import type { HistoryService } from '../history/history.service';
 import { CHAT_LOCK, readChatLock, shellLockFresh } from './chat-lock';
 
 export interface ContainerProbe {

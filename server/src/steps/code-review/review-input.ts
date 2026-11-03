@@ -1,16 +1,19 @@
 import { realpathSync } from 'fs';
-import { HistoryService } from '../../history/history.service';
-import { OpenedStep } from '../../pipeline/step-run';
-import { SandboxMount } from '../../sandbox/sandbox-launch';
+import type { HistoryService } from '../../history/history.service';
+import type { OpenedStep } from '../../pipeline/step-run';
+import type { SandboxMount } from '../../sandbox/sandbox-launch';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { storedProjects } from '../prepare/checkout-path';
-import { PrepareStep } from '../prepare/prepare.step';
+import type { PrepareStep } from '../prepare/prepare.step';
 import { mountsForStep, repoNames } from '../shared/repo-names';
 
 export async function repoMounts(history: HistoryService, key: string): Promise<SandboxMount[]> {
   const names = repoNames((await history.latestBody(key, 'repos')) ?? '');
   const run = await history.findRun(key);
-  return mountsForStep(history.root(), key, names, run?.targetPath ?? null).map((mount) => ({ ...mount, readonly: true }));
+  return mountsForStep(history.root(), key, names, run?.targetPath ?? null).map((mount) => ({
+    ...mount,
+    readonly: true,
+  }));
 }
 
 export function pathMount(path: string): SandboxMount[] {

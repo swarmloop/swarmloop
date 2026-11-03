@@ -83,7 +83,11 @@ export class CodeHostRegistry {
 export type CodeHostName = CodeHostRegistry['names'][number];
 
 /** One host for this call. An empty list leaves the stored name alone. */
-export function assignCodeHost(run: { codeHost: string }, hosts: readonly (CodeHostName | null)[], replace: boolean): void {
+export function assignCodeHost(
+  run: { codeHost: string },
+  hosts: readonly (CodeHostName | null)[],
+  replace: boolean,
+): void {
   const found = [...new Set(hosts.filter((host): host is CodeHostName => host !== null))].sort();
   if (found.length > 1) {
     throw new SwarmloopError(`origins use ${found.join(' and ')}`);

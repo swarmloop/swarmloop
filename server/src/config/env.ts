@@ -1,6 +1,6 @@
-import { ConfigService } from '@nestjs/config';
-import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
-import { RequirementsVia } from '../integrations/requirements-source/requirements-source.registry';
+import type { ConfigService } from '@nestjs/config';
+import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
+import type { RequirementsVia } from '../integrations/requirements-source/requirements-source.registry';
 
 export interface SwarmloopEnv {
   RUNTIME: RuntimeName;

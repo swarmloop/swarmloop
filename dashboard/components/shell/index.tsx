@@ -1,6 +1,7 @@
 'use client';
 
-import { createContext, ReactElement, useContext, useMemo, useState } from 'react';
+import type { ReactElement } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import AddIcon from '@mui/icons-material/Add';
 import AppBar from '@mui/material/AppBar';
@@ -10,7 +11,7 @@ import Drawer from '@mui/material/Drawer';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import { useLive } from '../../hooks/use-live';
-import { RunSummary } from '@contract/api';
+import type { RunSummary } from '@contract/api';
 import { NewRunDialog } from '../new-run-dialog';
 import { RemoveRunDialog } from './remove-run-dialog';
 import { RunList } from './run-list';
@@ -40,7 +41,10 @@ export function Shell({ children }: { children: React.ReactNode }): ReactElement
   } catch {
     selected = matched;
   }
-  const visible = useMemo(() => runs.filter((run) => run.key.toLowerCase().includes(query.trim().toLowerCase())), [runs, query]);
+  const visible = useMemo(
+    () => runs.filter((run) => run.key.toLowerCase().includes(query.trim().toLowerCase())),
+    [runs, query],
+  );
 
   function closeRemove(): void {
     if (removing) {
@@ -72,7 +76,15 @@ export function Shell({ children }: { children: React.ReactNode }): ReactElement
 
   return (
     <DialogContext.Provider value={() => setOpen(true)}>
-      <AppBar position="fixed" sx={{ bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider', zIndex: (theme) => theme.zIndex.drawer + 1 }}>
+      <AppBar
+        position="fixed"
+        sx={{
+          bgcolor: 'background.paper',
+          borderBottom: 1,
+          borderColor: 'divider',
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+        }}
+      >
         <Toolbar>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flexGrow: 1 }}>
             <Box component="img" src="/logo.svg" alt="" width={36} height={36} sx={{ display: 'block' }} />
@@ -137,7 +149,13 @@ export function Shell({ children }: { children: React.ReactNode }): ReactElement
         <Toolbar />
         <Box sx={{ px: { xs: 2, md: 4 }, py: 3, maxWidth: 1180 }}>{children}</Box>
       </Box>
-      <RemoveRunDialog run={pendingRemove} removing={removing} error={removeError} onClose={closeRemove} onConfirm={() => void confirmRemove()} />
+      <RemoveRunDialog
+        run={pendingRemove}
+        removing={removing}
+        error={removeError}
+        onClose={closeRemove}
+        onConfirm={() => void confirmRemove()}
+      />
       <NewRunDialog
         open={open}
         onClose={() => setOpen(false)}

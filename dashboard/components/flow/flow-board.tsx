@@ -4,7 +4,7 @@ import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { stepLabel, withReport } from '../../lib/phases';
-import { FlowView } from '@contract/api';
+import type { FlowView } from '@contract/api';
 import { statusColor } from '../../theme/theme';
 
 export function FlowBoard({
@@ -24,7 +24,11 @@ export function FlowBoard({
       <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: 1.5 }}>
         {phases.map((phase) => (
           <Box key={phase.phase} sx={{ minWidth: 0 }}>
-            <Typography variant="overline" color="text.secondary" sx={{ display: 'block', letterSpacing: '0.06em', lineHeight: 1.3, mb: 1.25, whiteSpace: 'nowrap' }}>
+            <Typography
+              variant="overline"
+              color="text.secondary"
+              sx={{ display: 'block', letterSpacing: '0.06em', lineHeight: 1.3, mb: 1.25, whiteSpace: 'nowrap' }}
+            >
               {phase.phase}
             </Typography>
             <Box sx={{ display: 'grid', gap: 0.75 }}>
@@ -48,7 +52,11 @@ export function FlowBoard({
                       color: step.status === 'idle' ? 'text.secondary' : 'text.primary',
                       bgcolor: active ? 'background.default' : 'background.paper',
                       border: '1px solid',
-                      borderColor: failedStep(step.status) ? statusColor(step.status) : step.current ? 'primary.main' : 'divider',
+                      borderColor: failedStep(step.status)
+                        ? statusColor(step.status)
+                        : step.current
+                          ? 'primary.main'
+                          : 'divider',
                       borderRadius: 1.5,
                       transition: 'border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease',
                       boxShadow: (theme) =>
@@ -70,7 +78,10 @@ export function FlowBoard({
                         animation: step.status === 'running' ? 'swarmloop-pulse 1.6s ease-in-out infinite' : 'none',
                       }}
                     />
-                    <Box component="span" sx={{ fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
+                    <Box
+                      component="span"
+                      sx={{ fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.3, overflowWrap: 'anywhere' }}
+                    >
                       {stepLabel(step.name)}
                     </Box>
                     {step.attempts > 0 ? (
@@ -122,7 +133,14 @@ export function FlowBoard({
               >
                 <Typography
                   component="span"
-                  sx={{ position: 'absolute', right: 0, top: 14, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'text.secondary' }}
+                  sx={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 14,
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    color: 'text.secondary',
+                  }}
                 >
                   {edge.from} → implement · {edge.counter} × {edge.count}
                 </Typography>

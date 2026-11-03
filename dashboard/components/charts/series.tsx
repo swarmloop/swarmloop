@@ -38,16 +38,37 @@ export function SeriesChart({ samples }: { samples: { cpu: number; memory: numbe
           memory{last ? ` ${memory(last.memory)}` : ''}
         </span>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="CPU and memory" style={{ width: '100%', height: 180 }}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="CPU and memory"
+        style={{ width: '100%', height: 180 }}
+      >
         {[0, 0.5, 1].map((row) => {
           const y = top + row * plotHeight;
           return (
             <g key={row}>
               <line x1={left} x2={width - right} y1={y} y2={y} stroke={grid} />
-              <text x={left - 8} y={y} textAnchor="end" dominantBaseline="middle" fill={cpuAxis} fontSize="11" fontFamily={font}>
+              <text
+                x={left - 8}
+                y={y}
+                textAnchor="end"
+                dominantBaseline="middle"
+                fill={cpuAxis}
+                fontSize="11"
+                fontFamily={font}
+              >
                 {`${Math.round((1 - row) * 100)}%`}
               </text>
-              <text x={width - right + 8} y={y} textAnchor="start" dominantBaseline="middle" fill={memoryAxis} fontSize="11" fontFamily={font}>
+              <text
+                x={width - right + 8}
+                y={y}
+                textAnchor="start"
+                dominantBaseline="middle"
+                fill={memoryAxis}
+                fontSize="11"
+                fontFamily={font}
+              >
                 {memory(maxMemory * (1 - row))}
               </text>
             </g>

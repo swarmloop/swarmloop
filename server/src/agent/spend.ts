@@ -1,6 +1,7 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { ModelPrice, priceTokens } from './limits';
+import type { ModelPrice } from './limits';
+import { priceTokens } from './limits';
 import { CODE_REVIEWERS } from '../contract/steps';
 import { guessFromStream, usageFromStream } from './stream';
 
@@ -13,8 +14,17 @@ export interface Charge {
 
 const REVIEWERS = CODE_REVIEWERS;
 
-export function modelForStep(step: string, env: { MODEL_RESEARCH: string; MODEL_PLAN: string; MODEL_IMPLEMENT: string }): string | null {
-  if (step === 'research' || step === 'plan' || step === 'plan-improve' || step === 'merge-request' || step.startsWith('code-review-')) {
+export function modelForStep(
+  step: string,
+  env: { MODEL_RESEARCH: string; MODEL_PLAN: string; MODEL_IMPLEMENT: string },
+): string | null {
+  if (
+    step === 'research' ||
+    step === 'plan' ||
+    step === 'plan-improve' ||
+    step === 'merge-request' ||
+    step.startsWith('code-review-')
+  ) {
     return env.MODEL_PLAN;
   }
   if (step === 'implement' || step === 'implement-improve') {
@@ -49,7 +59,12 @@ export function chargeStream(model: string, raw: string, table: Record<string, M
   };
 }
 
-export async function chargeReview(root: string, key: string, env: { MODEL_PLAN: string; MODEL_IMPLEMENT: string; MODEL_RESEARCH: string }, table: Record<string, ModelPrice>): Promise<Charge | null> {
+export async function chargeReview(
+  root: string,
+  key: string,
+  env: { MODEL_PLAN: string; MODEL_IMPLEMENT: string; MODEL_RESEARCH: string },
+  table: Record<string, ModelPrice>,
+): Promise<Charge | null> {
   let found = false;
   const total: Charge = { tokensIn: 0, tokensOut: 0, usd: 0, priced: true };
   for (const name of REVIEWERS) {

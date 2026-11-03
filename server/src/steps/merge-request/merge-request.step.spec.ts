@@ -7,17 +7,19 @@ import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { Repository } from 'typeorm';
+import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { HttpCallEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
-import { AGENT_RUNNER, AgentRunResult } from '../../agent/agent-runner';
+import type { AgentRunResult } from '../../agent/agent-runner';
+import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
-import { MergeRequestDraft } from '../../integrations/code-host/code-host';
+import type { MergeRequestDraft } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import { FetchFailed, HttpCallDraft } from '../../core/swarmloop-error';
+import type { HttpCallDraft } from '../../core/swarmloop-error';
+import { FetchFailed } from '../../core/swarmloop-error';
 import { REBASE_MERGE_SKIP } from './merge-request.step';
 
 const TOKEN = 'super-secret-token';
@@ -28,10 +30,17 @@ describe('merge-request step', () => {
     featureTree(root, 'PROJ-200');
     const find = jest.fn(async () => ({ record: null, httpCalls: [call('GET')] }));
     const open = jest.fn(async (_draft: MergeRequestDraft) => ({
-      record: { project: 'group/demo', iid: 12, url: 'https://gitlab.example/group/demo/-/merge_requests/12', summary: '' },
+      record: {
+        project: 'group/demo',
+        iid: 12,
+        url: 'https://gitlab.example/group/demo/-/merge_requests/12',
+        summary: '',
+      },
       httpCalls: [call('POST')],
     }));
-    const agent = jest.fn(async (_input: { mounts: { readonly?: boolean }[]; prompt: string }) => result('Ships the field.\n'));
+    const agent = jest.fn(async (_input: { mounts: { readonly?: boolean }[]; prompt: string }) =>
+      result('Ships the field.\n'),
+    );
     const app = await boot(root, { find, open }, agent);
     try {
       await seed(app, 'PROJ-200');
@@ -106,7 +115,11 @@ describe('merge-request step', () => {
     }));
     const open = jest.fn();
     const update = jest.fn(async () => ({ httpCalls: [call('PUT')] }));
-    const app = await boot(root, { find, open, update }, jest.fn(async () => result('Ships the field.\n')));
+    const app = await boot(
+      root,
+      { find, open, update },
+      jest.fn(async () => result('Ships the field.\n')),
+    );
     try {
       const history = app.get(HistoryService);
       await seed(app, 'PROJ-212');
@@ -138,14 +151,24 @@ describe('merge-request step', () => {
     const find = jest.fn(async (query: { project: string }) => {
       if (query.project === 'group/web') {
         return {
-          record: { project: 'group/web', iid: 4, url: 'https://gitlab.example/group/web/-/merge_requests/4', summary: 'Web is open.' },
+          record: {
+            project: 'group/web',
+            iid: 4,
+            url: 'https://gitlab.example/group/web/-/merge_requests/4',
+            summary: 'Web is open.',
+          },
           httpCalls: [call('GET')],
         };
       }
       return { record: null, httpCalls: [call('GET')] };
     });
     const open = jest.fn(async (_draft: MergeRequestDraft) => ({
-      record: { project: 'group/demo', iid: 12, url: 'https://gitlab.example/group/demo/-/merge_requests/12', summary: '' },
+      record: {
+        project: 'group/demo',
+        iid: 12,
+        url: 'https://gitlab.example/group/demo/-/merge_requests/12',
+        summary: '',
+      },
       httpCalls: [call('POST')],
     }));
     const update = jest.fn(async () => ({ httpCalls: [call('PUT')] }));
@@ -196,10 +219,19 @@ describe('merge-request step', () => {
     const tree = featureTree(root, 'PROJ-209');
     git(tree, ['remote', 'set-head', 'origin', '-d']);
     const open = jest.fn(async (_draft: MergeRequestDraft) => ({
-      record: { project: 'group/demo', iid: 3, url: 'https://gitlab.example/group/demo/-/merge_requests/3', summary: '' },
+      record: {
+        project: 'group/demo',
+        iid: 3,
+        url: 'https://gitlab.example/group/demo/-/merge_requests/3',
+        summary: '',
+      },
       httpCalls: [call('POST')],
     }));
-    const app = await boot(root, { find: jest.fn(async () => ({ record: null, httpCalls: [call('GET')] })), open }, jest.fn(async () => result('Fallback.\n')));
+    const app = await boot(
+      root,
+      { find: jest.fn(async () => ({ record: null, httpCalls: [call('GET')] })), open },
+      jest.fn(async () => result('Fallback.\n')),
+    );
     try {
       await seed(app, 'PROJ-209');
       const opened = await app.get(PipelineService).step('merge-request', 'PROJ-209');

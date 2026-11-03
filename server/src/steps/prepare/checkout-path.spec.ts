@@ -13,7 +13,9 @@ describe('resolveCheckoutPath', () => {
   });
 
   it('joins a relative stored path under the root', () => {
-    expect(resolveCheckoutPath(repoRoot, '../', 'demo', 'elsewhere/demo')).toBe(resolve(repoRoot, '../', 'elsewhere/demo'));
+    expect(resolveCheckoutPath(repoRoot, '../', 'demo', 'elsewhere/demo')).toBe(
+      resolve(repoRoot, '../', 'elsewhere/demo'),
+    );
   });
 
   it('keeps an absolute stored path', () => {

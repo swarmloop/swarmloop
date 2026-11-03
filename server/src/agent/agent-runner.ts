@@ -11,9 +11,27 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import { SampleDraft } from '../history/visit';
 import type { AgentRuntime } from '../integrations/agent-runtime/agent-runtime';
 import { runtimeFor, runtimeForCommand } from '../integrations/agent-runtime/agent-runtime.registry';
-import { agentStateDir, modelApiHosts, modelCredential, prepareStateDir, SandboxMount, sandboxUserId } from '../sandbox/sandbox-launch';
+import {
+  agentStateDir,
+  modelApiHosts,
+  modelCredential,
+  prepareStateDir,
+  SandboxMount,
+  sandboxUserId,
+} from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { callsExceeded, DecisionWatch, hasModelDecision, judgeLimits, KillReason, noteDecision, priceTokens, retryCrash, SessionState, turnUsd } from './limits';
+import {
+  callsExceeded,
+  DecisionWatch,
+  hasModelDecision,
+  judgeLimits,
+  KillReason,
+  noteDecision,
+  priceTokens,
+  retryCrash,
+  SessionState,
+  turnUsd,
+} from './limits';
 import { syncChatMode } from './chat-mode';
 import { sessionGroup, sessionHome } from './session-group';
 import { RunStop } from './run-stop';
@@ -164,10 +182,19 @@ export class AgentProcessRunner {
     }
   }
 
-  private async once(input: AgentRunInput, runtime: AgentRuntime, resumed: boolean, priorOutput: string): Promise<AgentRunResult> {
+  private async once(
+    input: AgentRunInput,
+    runtime: AgentRuntime,
+    resumed: boolean,
+    priorOutput: string,
+  ): Promise<AgentRunResult> {
     const env = readEnv(this.config);
     const userId = sandboxUserId();
-    const statePath = agentStateDir(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), input.runKey, sessionHome(input.step));
+    const statePath = agentStateDir(
+      resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname),
+      input.runKey,
+      sessionHome(input.step),
+    );
     prepareStateDir(statePath, userId);
     if (runtime.syncsChatMode && input.resumeChatId) {
       syncChatMode(statePath, input.resumeChatId, input.mode);
@@ -202,7 +229,9 @@ export class AgentProcessRunner {
     });
     await recordLaunch(input.outputFile, input.runKey, input.liveStep ?? input.step);
     const baseline =
-      priorOutput.length === 0 || priorOutput.endsWith('\n') ? `${priorOutput}process started\n` : `${priorOutput}\nprocess started\n`;
+      priorOutput.length === 0 || priorOutput.endsWith('\n')
+        ? `${priorOutput}process started\n`
+        : `${priorOutput}\nprocess started\n`;
     await replaceLogFile(input.outputFile, baseline);
     this.live?.changed(input.runKey);
     this.live?.log({
@@ -453,7 +482,10 @@ export class AgentProcessRunner {
     if (buffer !== '') {
       decision = noteDecision(decision, readStreamLine(buffer), buffer);
     }
-    const ending = finishedByResult || !killReason ? `process exited ${finishedByResult ? 0 : exitCode}` : `process killed: ${killReason}`;
+    const ending =
+      finishedByResult || !killReason
+        ? `process exited ${finishedByResult ? 0 : exitCode}`
+        : `process killed: ${killReason}`;
     output = appendLine(output, ending);
     // The step result is already in memory. A log flush that never calls back must not leave the step running.
     void replaceLogFile(input.outputFile, visible()).catch(() => undefined);
@@ -549,13 +581,19 @@ export function spillPrompt(prompt: string, statePath: string, step: string): { 
   writeFileSync(file, prompt);
   chmodSync(file, 0o644);
   return {
-    text: [`Read /work/brief/${name} and follow that assignment exactly.`, 'That file is the whole brief. Do not ask for it again.'].join('\n'),
+    text: [
+      `Read /work/brief/${name} and follow that assignment exactly.`,
+      'That file is the whole brief. Do not ask for it again.',
+    ].join('\n'),
     mounts: [{ hostPath: dir, containerPath: '/work/brief', readonly: true }],
   };
 }
 
 function briefName(step: string): string {
-  const clean = step.replace(/[^A-Za-z0-9._-]/g, '-').replace(/^-+/, '').slice(0, 80);
+  const clean = step
+    .replace(/[^A-Za-z0-9._-]/g, '-')
+    .replace(/^-+/, '')
+    .slice(0, 80);
   const base = clean.length > 0 && clean !== '.' && clean !== '..' ? clean : 'brief';
   return `${base}.md`;
 }

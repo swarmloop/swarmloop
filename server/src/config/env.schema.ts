@@ -4,9 +4,15 @@ import { IssueTrackerRegistry } from '../integrations/issue-tracker/issue-tracke
 import { names } from '../integrations/requirements-source/requirements-source.registry';
 
 export const envSchema = Joi.object({
-  RUNTIME: Joi.string().valid(...RUNTIME_NAMES).required(),
-  REQUIREMENTS_VIA: Joi.string().valid(...names).required(),
-  ISSUE_TRACKER: Joi.string().valid(...IssueTrackerRegistry.names).required(),
+  RUNTIME: Joi.string()
+    .valid(...RUNTIME_NAMES)
+    .required(),
+  REQUIREMENTS_VIA: Joi.string()
+    .valid(...names)
+    .required(),
+  ISSUE_TRACKER: Joi.string()
+    .valid(...IssueTrackerRegistry.names)
+    .required(),
   JIRA_BASE_URL: Joi.string().allow('').required(),
   JIRA_EMAIL: Joi.string().allow('').required(),
   JIRA_API_TOKEN: Joi.string().allow('').required(),

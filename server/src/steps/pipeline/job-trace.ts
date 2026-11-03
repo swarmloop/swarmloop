@@ -19,25 +19,27 @@ export function readableJobTrace(raw: string): string {
 }
 
 function cleanTrace(raw: string): string[] {
-  return raw
-    // eslint-disable-next-line no-control-regex -- strips terminal escape sequences that the job log carries
-    .replace(/\u001b(?:\[[0-9;?]*[A-Za-z]|\][^\u0007]*(?:\u0007|\u001b\\))/g, '')
-    .split(/\r?\n/)
-    .map((line) => line.replace(/\r$/, '').replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z /, ''))
-    .filter((line) => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === 'trace truncated') {
-        return false;
-      }
-      if (trimmed.includes('section_start:') || trimmed.includes('section_end:')) {
-        return false;
-      }
-      if (/^[.*]+$/.test(trimmed) || /^\* test /.test(trimmed)) {
-        return false;
-      }
-      if (/^Compiling \d+ files/.test(trimmed) || /^Generated /.test(trimmed)) {
-        return false;
-      }
-      return true;
-    });
+  return (
+    raw
+      // eslint-disable-next-line no-control-regex -- strips terminal escape sequences that the job log carries
+      .replace(/\u001b(?:\[[0-9;?]*[A-Za-z]|\][^\u0007]*(?:\u0007|\u001b\\))/g, '')
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\r$/, '').replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z /, ''))
+      .filter((line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'trace truncated') {
+          return false;
+        }
+        if (trimmed.includes('section_start:') || trimmed.includes('section_end:')) {
+          return false;
+        }
+        if (/^[.*]+$/.test(trimmed) || /^\* test /.test(trimmed)) {
+          return false;
+        }
+        if (/^Compiling \d+ files/.test(trimmed) || /^Generated /.test(trimmed)) {
+          return false;
+        }
+        return true;
+      })
+  );
 }

@@ -45,16 +45,27 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
   }
 
   const phases = expandReviewPhases(flow.phases);
-  const runningElsewhere = flow.status === 'running' && replay !== null && pipelineStepOf(flow.currentStep) !== pipelineStepOf(replay);
+  const runningElsewhere =
+    flow.status === 'running' && replay !== null && pipelineStepOf(flow.currentStep) !== pipelineStepOf(replay);
   const launches = flow.launches ?? [];
   const original = launches.find((launch) => launch.fromStep === null)?.phases ?? [...PHASES];
   const latest = launches.at(-1)?.phases ?? original;
   const choice = replay ? replaySelection(original, latest, replay) : null;
   return (
     <Box>
-      <RunHeader flow={flow} openMs={openMs} rebasing={rebasing} stopping={stopping} rebaseError={rebaseError} onRebase={rebaseRun} onStop={() => setConfirmStop(true)} />
+      <RunHeader
+        flow={flow}
+        openMs={openMs}
+        rebasing={rebasing}
+        stopping={stopping}
+        rebaseError={rebaseError}
+        onRebase={rebaseRun}
+        onStop={() => setConfirmStop(true)}
+      />
       <FlowBoard phases={phases} returns={flow.returns} selected={selected} onSelect={selectStep} />
-      {flow.status === 'waiting' || flow.status === 'blocked' || flow.status === 'failed' ? <WaitingPanel flow={flow} onChange={applyWaiting} /> : null}
+      {flow.status === 'waiting' || flow.status === 'blocked' || flow.status === 'failed' ? (
+        <WaitingPanel flow={flow} onChange={applyWaiting} />
+      ) : null}
       {selected ? (
         <StepDetail
           key={selected}
@@ -67,13 +78,17 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
           onReplay={
             selected === 'code-review' || flow.status === 'running'
               ? undefined
-              : (REVIEW_STEPS as readonly string[]).includes(selected)
+              : REVIEW_STEPS.includes(selected)
                 ? () => startReviewer(selected)
                 : () => setReplay(pipelineStepOf(selected))
           }
           runStatus={pipelineStepOf(selected) === flow.currentStep ? flow.status : undefined}
           onResume={
-            pipelineStepOf(selected) === flow.currentStep && (flow.status === 'failed' || flow.status === 'blocked') && flow.resume === 'ready' ? resumeRun : undefined
+            pipelineStepOf(selected) === flow.currentStep &&
+            (flow.status === 'failed' || flow.status === 'blocked') &&
+            flow.resume === 'ready'
+              ? resumeRun
+              : undefined
           }
         />
       ) : null}

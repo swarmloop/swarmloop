@@ -95,7 +95,12 @@ export class JiraIssueTracker extends AbstractIssueTracker {
     return JSON.parse(response.body.toString('utf8')) as JiraField[];
   }
 
-  private async issue(base: string, headers: Record<string, string>, key: string, calls: HttpCallDraft[]): Promise<JiraIssue> {
+  private async issue(
+    base: string,
+    headers: Record<string, string>,
+    key: string,
+    calls: HttpCallDraft[],
+  ): Promise<JiraIssue> {
     const url = `${base}/rest/api/3/issue/${encodeURIComponent(key)}?fields=*all`;
     let response: Awaited<ReturnType<typeof request>>;
     try {
@@ -207,7 +212,9 @@ export class JiraIssueTracker extends AbstractIssueTracker {
     calls: HttpCallDraft[],
     acceptanceId: string | null,
   ): Promise<void> {
-    const attachmentUrls = new Set((issue.fields.attachment ?? []).map((item) => item.content).filter((url): url is string => Boolean(url)));
+    const attachmentUrls = new Set(
+      (issue.fields.attachment ?? []).map((item) => item.content).filter((url): url is string => Boolean(url)),
+    );
     const context: PageReadContext = { runKey, calls, headers, base };
     const seen = new Set<string>([issue.key, bundle.epic?.key].filter((key): key is string => Boolean(key)));
     const direct: string[] = [];

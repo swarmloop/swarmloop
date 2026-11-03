@@ -14,8 +14,15 @@ describe('chat lock', () => {
 
   it('treats a live sandbox as the owner of the feature', () => {
     const body = containerLockBody('waiting', 'swarmloop-demo-shell', 1_700_000_000_000);
-    expect(readChatLock(body)).toEqual({ status: 'waiting', container: 'swarmloop-demo-shell', since: 1_700_000_000_000 });
-    expect(readChatLock('waiting container swarmloop-demo-shell')).toEqual({ status: 'waiting', container: 'swarmloop-demo-shell' });
+    expect(readChatLock(body)).toEqual({
+      status: 'waiting',
+      container: 'swarmloop-demo-shell',
+      since: 1_700_000_000_000,
+    });
+    expect(readChatLock('waiting container swarmloop-demo-shell')).toEqual({
+      status: 'waiting',
+      container: 'swarmloop-demo-shell',
+    });
     expect(chatHeld(body, 'running', null)).toBe(true);
     expect(chatResume(body, null)).toBeNull();
   });

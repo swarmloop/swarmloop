@@ -1,4 +1,4 @@
-import { RunEntity } from '../history/entities';
+import type { RunEntity } from '../history/entities';
 import { containerLockBody } from './chat-lock';
 import { settleShell } from './shell-lock';
 

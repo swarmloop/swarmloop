@@ -41,7 +41,11 @@ function sources(text: string): string[] {
 function lastDecision(text: string): 'ok' | 'return' | null {
   let found: 'ok' | 'return' | null = null;
   for (const line of text.split(/\r?\n/)) {
-    const cleaned = line.trim().replace(/^[`*]+/, '').replace(/[`*]+$/, '').trim();
+    const cleaned = line
+      .trim()
+      .replace(/^[`*]+/, '')
+      .replace(/[`*]+$/, '')
+      .trim();
     const match = /^decision:\s*(ok|return)\s*$/.exec(cleaned);
     if (match?.[1] === 'ok' || match?.[1] === 'return') {
       found = match[1];

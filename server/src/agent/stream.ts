@@ -42,7 +42,9 @@ export function readStreamLine(line: string): StreamPiece | null {
     tokensOut: numberFrom(usage, ['output_tokens', 'outputTokens', 'completion_tokens']),
     cacheRead: numberFrom(usage, ['cacheReadTokens', 'cache_read_tokens', 'cache_read_input_tokens']),
     cacheWrite: numberFrom(usage, ['cacheWriteTokens', 'cache_write_tokens', 'cache_creation_input_tokens']),
-    reportedUsd: numberFrom(record, ['total_cost_usd', 'totalCostUsd', 'cost_usd']) ?? numberFrom(usage, ['total_cost_usd', 'totalCostUsd', 'cost_usd']),
+    reportedUsd:
+      numberFrom(record, ['total_cost_usd', 'totalCostUsd', 'cost_usd']) ??
+      numberFrom(usage, ['total_cost_usd', 'totalCostUsd', 'cost_usd']),
     guessedIn: guessed.tokensIn,
     guessedOut: guessed.tokensOut,
     guessKind: guessed.kind,
@@ -101,7 +103,13 @@ export function usageFromStream(raw: string): CountedUsage | null {
 }
 
 function counted(piece: StreamPiece): boolean {
-  return piece.tokensIn !== null || piece.tokensOut !== null || piece.cacheRead !== null || piece.cacheWrite !== null || piece.reportedUsd !== null;
+  return (
+    piece.tokensIn !== null ||
+    piece.tokensOut !== null ||
+    piece.cacheRead !== null ||
+    piece.cacheWrite !== null ||
+    piece.reportedUsd !== null
+  );
 }
 
 export interface UsageGuess {
@@ -154,7 +162,11 @@ export function addGuessedLine(state: UsageGuess, piece: StreamPiece): void {
   }
 }
 
-function guessLineTokens(record: Record<string, unknown>): { kind: StreamPiece['guessKind']; tokensIn: number; tokensOut: number } {
+function guessLineTokens(record: Record<string, unknown>): {
+  kind: StreamPiece['guessKind'];
+  tokensIn: number;
+  tokensOut: number;
+} {
   if (record.type === 'thinking') {
     return { kind: 'output', tokensIn: 0, tokensOut: tokensOf(typeof record.text === 'string' ? record.text : '') };
   }

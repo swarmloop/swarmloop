@@ -56,8 +56,11 @@ export function StepDetail({
     return null;
   }
   const visit = view.visits[attempt];
-  const label = visit ? shownStatus(visit.status, attempt === view.visits.length - 1, runStatus, step, visit.decision) : '';
-  const shownDuration = visit?.status === 'running' ? Math.max(0, now - Date.parse(revision)) : (visit?.durationMs ?? 0);
+  const label = visit
+    ? shownStatus(visit.status, attempt === view.visits.length - 1, runStatus, step, visit.decision)
+    : '';
+  const shownDuration =
+    visit?.status === 'running' ? Math.max(0, now - Date.parse(revision)) : (visit?.durationMs ?? 0);
   const shownAttempt = visit?.attempt ?? 0;
   const checks = visitChecks(visit);
   const shownChecks = checks.length > 0 ? checks : view.checks;

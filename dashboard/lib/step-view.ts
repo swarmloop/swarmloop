@@ -24,7 +24,9 @@ export function fileView(step: string, body: string): StepView {
         memPeak: 0,
         killReason: null,
         decision: null,
-        documents: [{ kind: 'log', attempt: 1, body: body || 'waiting for output\n', createdAt: new Date().toISOString() }],
+        documents: [
+          { kind: 'log', attempt: 1, body: body || 'waiting for output\n', createdAt: new Date().toISOString() },
+        ],
         exchanges: [],
         samples: [],
       },
@@ -38,7 +40,10 @@ export function withFileUsage(view: StepView): StepView {
   if (!visit || !log) {
     return view;
   }
-  const reported = visit.tokensIn > 0 || visit.tokensOut > 0 || visit.usd > 0 ? { tokensIn: visit.tokensIn, tokensOut: visit.tokensOut, usd: visit.usd } : undefined;
+  const reported =
+    visit.tokensIn > 0 || visit.tokensOut > 0 || visit.usd > 0
+      ? { tokensIn: visit.tokensIn, tokensOut: visit.tokensOut, usd: visit.usd }
+      : undefined;
   if (visit.status === 'running') {
     return withLog(view, log, visit.samples, reported);
   }
@@ -51,7 +56,12 @@ export function withFileUsage(view: StepView): StepView {
   return { ...view, visits };
 }
 
-export function withLog(view: StepView, body: string, samples: StepView['visits'][number]['samples'], reported?: LiveUsage): StepView {
+export function withLog(
+  view: StepView,
+  body: string,
+  samples: StepView['visits'][number]['samples'],
+  reported?: LiveUsage,
+): StepView {
   const index = view.visits.length - 1;
   const visit = view.visits[index];
   if (!visit) {
@@ -97,7 +107,10 @@ export function withLog(view: StepView, body: string, samples: StepView['visits'
     ...visit,
     documents,
     samples,
-    status: visit.decision === 'decision: ok' && reviewChipStatus(body) === 'waiting' ? 'done' : (reviewChipStatus(body) ?? visit.status),
+    status:
+      visit.decision === 'decision: ok' && reviewChipStatus(body) === 'waiting'
+        ? 'done'
+        : (reviewChipStatus(body) ?? visit.status),
     ...usage(samples),
     ...tokenUsage(body, reported),
   };
@@ -109,7 +122,9 @@ export function visitChecks(visit: StepView['visits'][number] | undefined): Step
     return [];
   }
   return visit.documents
-    .filter((item) => item.kind.startsWith('review_') && item.kind !== 'review_report' && item.kind !== 'review_residual')
+    .filter(
+      (item) => item.kind.startsWith('review_') && item.kind !== 'review_report' && item.kind !== 'review_residual',
+    )
     .map((item) => ({ name: item.kind.slice('review_'.length), decision: decisionLine(item.body), body: item.body }));
 }
 
@@ -134,7 +149,13 @@ export function decisionLine(body: string): string | null {
   );
 }
 
-export function shownStatus(status: string, latest: boolean, runStatus?: string, step?: string, decision?: string | null): string {
+export function shownStatus(
+  status: string,
+  latest: boolean,
+  runStatus?: string,
+  step?: string,
+  decision?: string | null,
+): string {
   if (step?.startsWith('code-review') && status !== 'running') {
     if (decision === 'decision: ok') {
       return 'done';
@@ -152,10 +173,14 @@ export function shownStatus(status: string, latest: boolean, runStatus?: string,
   return status;
 }
 
-export function tokenUsage(body: string, reported?: LiveUsage): { tokensIn: number; tokensOut: number; usd: number } | Record<string, never> {
+export function tokenUsage(
+  body: string,
+  reported?: LiveUsage,
+): { tokensIn: number; tokensOut: number; usd: number } | Record<string, never> {
   const parsed = usageFromLog(body);
   const tokensIn = reported && reported.tokensIn > 0 ? reported.tokensIn : (parsed?.tokensIn ?? reported?.tokensIn);
-  const tokensOut = reported && reported.tokensOut > 0 ? reported.tokensOut : (parsed?.tokensOut ?? reported?.tokensOut);
+  const tokensOut =
+    reported && reported.tokensOut > 0 ? reported.tokensOut : (parsed?.tokensOut ?? reported?.tokensOut);
   if (tokensIn === undefined || tokensOut === undefined) {
     return {};
   }
@@ -163,7 +188,12 @@ export function tokenUsage(body: string, reported?: LiveUsage): { tokensIn: numb
   return { tokensIn, tokensOut, usd };
 }
 
-export function usage(samples: { cpu: number; memory: number }[]): { cpuAvg: number; cpuPeak: number; memAvg: number; memPeak: number } {
+export function usage(samples: { cpu: number; memory: number }[]): {
+  cpuAvg: number;
+  cpuPeak: number;
+  memAvg: number;
+  memPeak: number;
+} {
   if (samples.length === 0) {
     return { cpuAvg: 0, cpuPeak: 0, memAvg: 0, memPeak: 0 };
   }
@@ -184,13 +214,19 @@ export function stepText(
   selected: { body: string } | undefined,
   checks: { body: string }[],
 ): { logs: string; document: string } {
-  const logs = selected ? '' : (visit?.documents.filter((item) => item.kind === 'log').map((item) => item.body).join('\n') ?? '');
-  const storedReport = step === 'code-review' ? visit?.documents.find((item) => item.kind === 'review_report')?.body : undefined;
+  const logs = selected
+    ? ''
+    : (visit?.documents
+        .filter((item) => item.kind === 'log')
+        .map((item) => item.body)
+        .join('\n') ?? '');
+  const storedReport =
+    step === 'code-review' ? visit?.documents.find((item) => item.kind === 'review_report')?.body : undefined;
   const report = reportAgrees(storedReport, visit?.decision) ? storedReport : undefined;
   const angleNotes = checks.map((item) => item.body).filter(Boolean);
   const document =
     selected?.body ??
-      (report ||
+    (report ||
       (angleNotes.length > 0 ? angleNotes.join('\n\n') : '') ||
       visit?.documents
         .filter((item) => item.kind !== 'log' && item.kind !== 'review_report')

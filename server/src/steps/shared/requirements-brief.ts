@@ -56,7 +56,11 @@ export function requirementsBrief(raw: string): string {
     return raw;
   }
   const keys = record.tickets.map((ticket) => ticket.key?.trim() ?? '').filter((key) => key.length > 0);
-  const lines = [keys.length > 0 ? `Work, and only this work: ${keys.join(', ')}.` : 'Work, and only this work.', TASK_SCOPE, LINKED_CONTEXT];
+  const lines = [
+    keys.length > 0 ? `Work, and only this work: ${keys.join(', ')}.` : 'Work, and only this work.',
+    TASK_SCOPE,
+    LINKED_CONTEXT,
+  ];
   const instructions = record.prompt?.trim() ?? '';
   if (instructions) {
     lines.push('', 'Instructions:', instructions);

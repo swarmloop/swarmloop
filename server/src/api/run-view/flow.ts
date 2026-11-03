@@ -1,10 +1,11 @@
 import { liveLogView } from '../../acp/live-output';
 import { activeDurationMs, toDurationParts } from '../../history/active-duration';
-import { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
+import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { continuesSameStep, countedVisits, isLoopStep, loopMark } from '../../core/pipeline-result';
-import { FlowItem, FlowView } from '../../contract/api';
-import { LiveUsage } from '../../contract/live';
-import { isReviewStep, pipelineStepOf, STEPS, StepName } from '../../contract/steps';
+import type { FlowItem, FlowView } from '../../contract/api';
+import type { LiveUsage } from '../../contract/live';
+import type { StepName } from '../../contract/steps';
+import { isReviewStep, pipelineStepOf, STEPS } from '../../contract/steps';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered } from '../../steps/shared/answers';
 import { items } from '../../steps/shared/markdown-section';
@@ -39,7 +40,12 @@ export function metrics(
   };
 }
 
-export function phases(run: RunEntity, stats: StepStatEntity[], documents: DocumentEntity[], root: string): FlowView['phases'] {
+export function phases(
+  run: RunEntity,
+  stats: StepStatEntity[],
+  documents: DocumentEntity[],
+  root: string,
+): FlowView['phases'] {
   const latestStats = new Map<string, StepStatEntity>();
   for (const stat of stats) {
     latestStats.set(stat.step, stat);
@@ -51,7 +57,11 @@ export function phases(run: RunEntity, stats: StepStatEntity[], documents: Docum
       const own = isReviewStep(name) ? latestStats.get(name) : undefined;
       const stat = own ?? latestStats.get(parent);
       const round = own ? reviewerRound(name, run, own, documents, root) : null;
-      const log = round ? null : isReviewStep(name) && (!own || parentRunning) ? liveLogView(root, run.key, name) : null;
+      const log = round
+        ? null
+        : isReviewStep(name) && (!own || parentRunning)
+          ? liveLogView(root, run.key, name)
+          : null;
       const status = chipStatus(name, run, stat, documents, log, round);
       return {
         name,
@@ -140,7 +150,13 @@ export function withSkip(said: string, step: string, skip: string | null): strin
   return `${note} ${said}`;
 }
 
-export function sentence(run: RunEntity, open: FlowItem[], documents: DocumentEntity[], stats: StepStatEntity[], maxReturns: number): string {
+export function sentence(
+  run: RunEntity,
+  open: FlowItem[],
+  documents: DocumentEntity[],
+  stats: StepStatEntity[],
+  maxReturns: number,
+): string {
   if (run.status === 'blocked') {
     return didNotFit(documents)
       ? run.currentStep === 'code-review'
@@ -183,7 +199,9 @@ export function sentence(run: RunEntity, open: FlowItem[], documents: DocumentEn
   }
   if (run.currentStep === 'implement' && run.status === 'waiting') {
     const returned = run.attemptsReview > 0 || run.attemptsPipeline > 0;
-    return returned ? 'The next continuation returns to implementation.' : 'The next continuation implements the approved plan.';
+    return returned
+      ? 'The next continuation returns to implementation.'
+      : 'The next continuation implements the approved plan.';
   }
   return `The next continuation continues at ${run.currentStep}.`;
 }
@@ -208,7 +226,8 @@ export function reason(run: RunEntity, documents: DocumentEntity[], stats: StepS
     return null;
   }
   const stat = [...stats].reverse().find((item) => item.step === run.currentStep);
-  const kind = run.currentStep === 'code-review' ? 'review_residual' : run.currentStep === 'pipeline' ? 'pipeline_log' : null;
+  const kind =
+    run.currentStep === 'code-review' ? 'review_residual' : run.currentStep === 'pipeline' ? 'pipeline_log' : null;
   const residual = (kind ? latest(documents, kind) : null) ?? latest(documents, 'error');
   const text = residual?.trim() || null;
   const head = stat?.killReason ?? null;

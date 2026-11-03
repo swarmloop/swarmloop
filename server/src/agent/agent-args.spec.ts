@@ -119,7 +119,9 @@ describe('spillPrompt', () => {
     const delivered = spillPrompt(prompt, root, 'code-review/quality');
     expect(delivered.text).toContain('Read /work/brief/code-review-quality.md');
     expect(Buffer.byteLength(delivered.text)).toBeLessThan(100_000);
-    expect(delivered.mounts).toEqual([{ hostPath: join(root, 'briefs'), containerPath: '/work/brief', readonly: true }]);
+    expect(delivered.mounts).toEqual([
+      { hostPath: join(root, 'briefs'), containerPath: '/work/brief', readonly: true },
+    ]);
     expect(readFileSync(join(root, 'briefs', 'code-review-quality.md'), 'utf8')).toBe(prompt);
   });
 });
@@ -135,9 +137,8 @@ describe('terminalArgs', () => {
       '--resume',
       'chat-1',
     ]);
-    expect(terminalArgs({ model: 'from-env', workspace: '/work', resumeChatId: null, vendor: ['mcp', 'list'] })).toEqual([
-      'mcp',
-      'list',
-    ]);
+    expect(
+      terminalArgs({ model: 'from-env', workspace: '/work', resumeChatId: null, vendor: ['mcp', 'list'] }),
+    ).toEqual(['mcp', 'list']);
   });
 });

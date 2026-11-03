@@ -1,6 +1,6 @@
-import { ExchangeDraft, SampleDraft } from '../../history/visit';
-import { KillReason } from '../../agent/limits';
-import { IssueBundle } from '../issue-tracker/issue-bundle';
+import type { ExchangeDraft, SampleDraft } from '../../history/visit';
+import type { KillReason } from '../../agent/limits';
+import type { IssueBundle } from '../issue-tracker/issue-bundle';
 
 export interface RequirementsInput {
   key: string;

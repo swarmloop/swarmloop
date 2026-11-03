@@ -1,4 +1,4 @@
-import { HttpCallDraft } from '../core/swarmloop-error';
+import type { HttpCallDraft } from '../core/swarmloop-error';
 
 export interface SampleDraft {
   sampledAt: string;

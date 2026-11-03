@@ -1,12 +1,13 @@
 'use client';
 
-import { Dispatch, RefObject, SetStateAction, useEffect, useRef, useState } from 'react';
+import type { Dispatch, RefObject, SetStateAction } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, runLog } from '../lib/api';
 import { liveSocket } from '../lib/live';
 import { liveLogStep } from '../lib/phases';
 import { fileView, withFileUsage, withLog } from '../lib/step-view';
-import { LiveLog, LiveUsage } from '@contract/live';
-import { StepView } from '@contract/api';
+import type { LiveLog, LiveUsage } from '@contract/live';
+import type { StepView } from '@contract/api';
 
 export function useStep(
   runKey: string,
@@ -25,7 +26,9 @@ export function useStep(
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const follow = useRef(true);
-  const latestLog = useRef<{ body: string; samples: StepView['visits'][number]['samples']; usage?: LiveUsage } | null>(null);
+  const latestLog = useRef<{ body: string; samples: StepView['visits'][number]['samples']; usage?: LiveUsage } | null>(
+    null,
+  );
 
   useEffect(() => {
     follow.current = true;

@@ -5,11 +5,12 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { Repository } from 'typeorm';
+import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DocumentEntity } from '../../history/entities';
 import { HistoryService } from '../../history/history.service';
-import { AGENT_RUNNER, AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
+import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
+import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { withPlan } from './plan-record';
 import { PipelineService } from '../../pipeline/pipeline.service';
@@ -54,7 +55,9 @@ describe('plan-improve step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-fix-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-51', 'billing-api'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field', '- cover the empty case'].join('\n')));
+    const agent = jest
+      .fn()
+      .mockResolvedValue(result(['plan:', '- add the field', '- cover the empty case'].join('\n')));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-51');

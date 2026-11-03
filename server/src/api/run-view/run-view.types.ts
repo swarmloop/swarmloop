@@ -1,4 +1,5 @@
-import { REVIEW_STEPS, StepName } from '../../contract/steps';
+import type { StepName } from '../../contract/steps';
+import { REVIEW_STEPS } from '../../contract/steps';
 
 export const PHASES: { phase: string; steps: readonly string[] }[] = [
   { phase: 'requirements', steps: ['requirements'] },

@@ -1,6 +1,7 @@
 import { count, duration, memory, money } from './format.ts';
 
-export type StepMetricKind = 'status' | 'duration' | 'attempt' | 'spend' | 'tokens-in' | 'tokens-out' | 'cpu' | 'memory';
+export type StepMetricKind =
+  'status' | 'duration' | 'attempt' | 'spend' | 'tokens-in' | 'tokens-out' | 'cpu' | 'memory';
 
 export interface StepMetric {
   kind: StepMetricKind;

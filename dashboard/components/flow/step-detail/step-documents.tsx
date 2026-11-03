@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactElement, RefObject } from 'react';
+import type { ReactElement, RefObject } from 'react';
 import Accordion from '@mui/material/Accordion';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import AccordionSummary from '@mui/material/AccordionSummary';
@@ -10,7 +10,7 @@ import Typography from '@mui/material/Typography';
 import { statusColor } from '../../../theme/theme';
 import { MarkdownBody } from '../../markdown-body';
 import { duration } from '../../../lib/format';
-import { StepView } from '@contract/api';
+import type { StepView } from '@contract/api';
 import { LogTranscript } from '../../log-transcript';
 import { StepChart } from './step-chart';
 
@@ -38,7 +38,8 @@ export function StepDocuments({
       {shownChecks.length > 0 ? (
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 2 }}>
           {shownChecks.map((item) => {
-            const tone = item.decision === 'decision: ok' ? 'done' : item.decision === 'decision: return' ? 'waiting' : '';
+            const tone =
+              item.decision === 'decision: ok' ? 'done' : item.decision === 'decision: return' ? 'waiting' : '';
             return (
               <Button
                 key={item.name}
@@ -74,7 +75,12 @@ export function StepDocuments({
       ) : null}
       {document ? <MarkdownBody text={document} /> : null}
       {visit?.exchanges.map((exchange, index) => (
-        <Accordion key={`${exchange.model}-${index}`} disableGutters elevation={0} sx={{ borderTop: 1, borderColor: 'divider', bgcolor: 'transparent' }}>
+        <Accordion
+          key={`${exchange.model}-${index}`}
+          disableGutters
+          elevation={0}
+          sx={{ borderTop: 1, borderColor: 'divider', bgcolor: 'transparent' }}
+        >
           <AccordionSummary>
             <Typography variant="body2">
               {exchange.model} · {duration(exchange.durationMs)}

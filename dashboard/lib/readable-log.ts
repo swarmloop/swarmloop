@@ -36,7 +36,11 @@ function agentDecision(raw: string): 'ok' | 'return' | null {
       continue;
     }
     for (const row of text.split('\n')) {
-      const cleaned = row.trim().replace(/^[`*]+/, '').replace(/[`*]+$/, '').trim();
+      const cleaned = row
+        .trim()
+        .replace(/^[`*]+/, '')
+        .replace(/[`*]+$/, '')
+        .trim();
       const match = /^decision:\s*(ok|return)\s*$/.exec(cleaned);
       if (match?.[1] === 'ok' || match?.[1] === 'return') {
         found = match[1];
@@ -71,7 +75,11 @@ function agentText(line: string): string | null {
     return null;
   }
   const text = content
-    .map((part) => (part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string' ? (part as { text: string }).text : ''))
+    .map((part) =>
+      part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string'
+        ? (part as { text: string }).text
+        : '',
+    )
     .join('');
   return text.length > 0 ? text : null;
 }
@@ -112,7 +120,11 @@ export function usageFromLog(raw: string): { tokensIn: number; tokensOut: number
     const tokensIn = numberField(record.usage, ['inputTokens', 'input_tokens', 'prompt_tokens']);
     const tokensOut = numberField(record.usage, ['outputTokens', 'output_tokens', 'completion_tokens']);
     const cacheRead = numberField(record.usage, ['cacheReadTokens', 'cache_read_tokens', 'cache_read_input_tokens']);
-    const cacheWrite = numberField(record.usage, ['cacheWriteTokens', 'cache_write_tokens', 'cache_creation_input_tokens']);
+    const cacheWrite = numberField(record.usage, [
+      'cacheWriteTokens',
+      'cache_write_tokens',
+      'cache_creation_input_tokens',
+    ]);
     if (tokensIn === null && tokensOut === null && cacheRead === null && cacheWrite === null) {
       continue;
     }
@@ -333,9 +345,7 @@ function textOf(record: Record<string, unknown>): string | null {
   if (!Array.isArray(content)) {
     return null;
   }
-  const text = content
-    .map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : ''))
-    .join('');
+  const text = content.map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : '')).join('');
   return text === '' ? null : text;
 }
 
@@ -344,12 +354,17 @@ function openedTool(record: Record<string, unknown>): { label: string; detail: s
   if (!isRecord(call)) {
     return null;
   }
-  const entry = Object.entries(call).find(([, body]) => isRecord(body) && (isRecord(body.args) || isRecord(body.result) || body.rejected !== undefined));
+  const entry = Object.entries(call).find(
+    ([, body]) => isRecord(body) && (isRecord(body.args) || isRecord(body.result) || body.rejected !== undefined),
+  );
   if (!entry) {
     return null;
   }
   const [name, body] = entry;
-  const label = name.replace(/ToolCall$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  const label = name
+    .replace(/ToolCall$/, '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase();
   const args = isRecord(body) && isRecord(body.args) ? body.args : {};
   return {
     label,

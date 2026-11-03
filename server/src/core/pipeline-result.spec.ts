@@ -1,4 +1,16 @@
-import { autoContinues, continues, continuesSameStep, countedVisits, diedLog, failedLaunches, loopMark, nextStep, normalizePhases, settle, visitStatus } from './pipeline-result';
+import {
+  autoContinues,
+  continues,
+  continuesSameStep,
+  countedVisits,
+  diedLog,
+  failedLaunches,
+  loopMark,
+  nextStep,
+  normalizePhases,
+  settle,
+  visitStatus,
+} from './pipeline-result';
 import { PHASES } from '../contract/steps';
 
 describe('visitStatus', () => {

@@ -87,7 +87,11 @@ export class ChatService {
       await this.history.putDocument(run, 'chat', `user: ${prompt}\n\n${result.responseText}`);
       return { text: result.responseText };
     } catch (error) {
-      if (error instanceof BadRequestException || error instanceof ConflictException || error instanceof NotFoundException) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ConflictException ||
+        error instanceof NotFoundException
+      ) {
         throw error;
       }
       const message = error instanceof SwarmloopError ? error.message : 'chat failed';
@@ -126,7 +130,13 @@ export class ChatService {
     return mountsForRun(workspace, targetPath);
   }
 
-  private async prompt(key: string, skill: string | undefined, text: string, directory: string, servers: McpServerSpec[]): Promise<string> {
+  private async prompt(
+    key: string,
+    skill: string | undefined,
+    text: string,
+    directory: string,
+    servers: McpServerSpec[],
+  ): Promise<string> {
     const name = skill?.trim() ?? '';
     const body = name ? this.skill(name) : '';
     const stored = await this.history.latestBody(key, 'requirements');

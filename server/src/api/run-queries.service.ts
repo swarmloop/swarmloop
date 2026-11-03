@@ -18,7 +18,18 @@ import { reviewDecision } from '../steps/code-review/code-review-record';
 import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
-import { latest, metrics, openItems, phases, reason, resumeState, returns, runName, sentence, withSkip } from './run-view/flow';
+import {
+  latest,
+  metrics,
+  openItems,
+  phases,
+  reason,
+  resumeState,
+  returns,
+  runName,
+  sentence,
+  withSkip,
+} from './run-view/flow';
 import { belongsToVisit, documentView, filesOf, withReturnNotes } from './run-view/documents';
 import { launchView, liveVisit } from './run-view/live';
 
@@ -55,8 +66,12 @@ export class RunQueriesService {
     const stats = await this.history.listStats(run.id);
     const pastes = await this.history.listPastes(key);
     const launches = await this.history.listFlows(run.id);
-    const open = openItems(run, documents, pastes.map((paste) => paste.url));
-    const shown = this.pipeline.claimed(run.key) && run.status !== 'done' ? ({ ...run, status: 'running' } as RunEntity) : run;
+    const open = openItems(
+      run,
+      documents,
+      pastes.map((paste) => paste.url),
+    );
+    const shown = this.pipeline.claimed(run.key) && run.status !== 'done' ? { ...run, status: 'running' } : run;
     const resume = resumeState(shown, open, documents);
     const maxReturns = readEnv(this.config).MAX_RETURNS;
     const reportMs = await this.history.codeReviewReportMs(run.id);
@@ -68,15 +83,27 @@ export class RunQueriesService {
       updatedAt: run.updatedAt,
       stepStartedAt: run.stepStartedAt,
       resume,
-      sentence: withSkip(sentence(shown, open, documents, stats, maxReturns), shown.currentStep, latest(documents, 'ci_skip')),
-      metrics: metrics(shown, stats, this.openSpend(shown), this.live?.peaksOf(run.key) ?? { cpuPeak: 0, memPeak: 0 }, reportMs),
+      sentence: withSkip(
+        sentence(shown, open, documents, stats, maxReturns),
+        shown.currentStep,
+        latest(documents, 'ci_skip'),
+      ),
+      metrics: metrics(
+        shown,
+        stats,
+        this.openSpend(shown),
+        this.live?.peaksOf(run.key) ?? { cpuPeak: 0, memPeak: 0 },
+        reportMs,
+      ),
       phases: phases(shown, stats, documents, this.history.root()),
       returns: returns(shown),
       items: open,
       paths: run.currentStep === 'commit' ? parsePaths(latest(documents, 'commit') ?? '') : [],
       reason: reason(shown, documents, stats),
       launches: launches.map(launchView),
-      projects: storedProjects(renderProjects([...storedProjects(run.projects), ...storedProjects(latest(documents, 'pending_repos'))])),
+      projects: storedProjects(
+        renderProjects([...storedProjects(run.projects), ...storedProjects(latest(documents, 'pending_repos'))]),
+      ),
     };
   }
 
@@ -95,7 +122,14 @@ export class RunQueriesService {
     const kinds = [...(STEP_KINDS[name] ?? []), 'error', 'log'];
     const visits = stats.map((stat, index) => {
       const owned = documents.filter((document) => document.stepStatId === stat.id);
-      const verdict = name === 'code-review' ? angleVerdict(owned.filter((document) => (REVIEW_KINDS as readonly string[]).includes(document.kind)).map((document) => document.body)) : null;
+      const verdict =
+        name === 'code-review'
+          ? angleVerdict(
+              owned
+                .filter((document) => (REVIEW_KINDS as readonly string[]).includes(document.kind))
+                .map((document) => document.body),
+            )
+          : null;
       return {
         id: stat.id,
         attempt: stat.attempt,
@@ -164,7 +198,12 @@ export class RunQueriesService {
         request: exchange.requestText,
         response: exchange.responseText,
       })),
-      loops: loops.map((loop) => ({ counter: loop.counter, attempt: loop.attempt, reason: loop.reason, createdAt: loop.createdAt })),
+      loops: loops.map((loop) => ({
+        counter: loop.counter,
+        attempt: loop.attempt,
+        reason: loop.reason,
+        createdAt: loop.createdAt,
+      })),
       calls: calls.map((call) => ({
         method: call.method,
         url: call.url,
@@ -172,7 +211,12 @@ export class RunQueriesService {
         durationMs: call.durationMs,
         error: call.error,
       })),
-      samples: samples.map((sample) => ({ stepStatId: sample.stepStatId, at: sample.sampledAt, cpu: sample.cpuPercent, memory: sample.rssBytes })),
+      samples: samples.map((sample) => ({
+        stepStatId: sample.stepStatId,
+        at: sample.sampledAt,
+        cpu: sample.cpuPercent,
+        memory: sample.rssBytes,
+      })),
       stats: stats.map((stat) => ({
         id: stat.id,
         step: stat.step,
@@ -211,11 +255,18 @@ export class RunQueriesService {
     const model = modelForStep(name, env);
     let charge: Charge | null = null;
     if (model && raw.trim() && raw !== 'waiting for output') {
-      charge = chargeStream(model, raw, await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME));
+      charge = chargeStream(
+        model,
+        raw,
+        await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME),
+      );
     }
-    const parentRunning = (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
+    const parentRunning =
+      (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
     const open = parentRunning && liveLogCurrent(this.history.root(), key, name);
-    const ownedStats = stats.filter((stat) => documents.some((document) => document.stepStatId === stat.id && document.kind === kind));
+    const ownedStats = stats.filter((stat) =>
+      documents.some((document) => document.stepStatId === stat.id && document.kind === kind),
+    );
     const visits: VisitView[] = ownedStats.map((stat, index) => {
       const latestDone = index === ownedStats.length - 1 && !parentRunning;
       const owned = documents.filter((document) => document.stepStatId === stat.id && document.kind === kind);
@@ -252,7 +303,14 @@ export class RunQueriesService {
     const live = parentRunning && !placeholder;
     if (live) {
       visits.push({
-        ...liveVisit(run.key, name, this.history.root(), visits.length, run.updatedAt, this.live?.samplesOf(run.key, name) ?? []),
+        ...liveVisit(
+          run.key,
+          name,
+          this.history.root(),
+          visits.length,
+          run.updatedAt,
+          this.live?.samplesOf(run.key, name) ?? [],
+        ),
         model,
         mode: 'agent',
         status: open ? 'running' : reviewerOutcome(raw, 'failed'),
@@ -263,7 +321,12 @@ export class RunQueriesService {
   }
 
   /** A reviewer visit is the same record as any other step: its own log, exchange, and chart. */
-  private async angleStep(run: RunEntity, name: string, documents: DocumentEntity[], stats: StepStatEntity[]): Promise<StepView> {
+  private async angleStep(
+    run: RunEntity,
+    name: string,
+    documents: DocumentEntity[],
+    stats: StepStatEntity[],
+  ): Promise<StepView> {
     const kind = `review_${name.slice('code-review-'.length)}`;
     const kinds = [kind, 'log', 'error'];
     const exchanges = await this.history.listExchanges(stats.map((stat) => stat.id));
@@ -303,10 +366,18 @@ export class RunQueriesService {
           .map((sample) => ({ at: sample.sampledAt, cpu: sample.cpuPercent, memory: sample.rssBytes })),
       };
     });
-    const parentRunning = (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
+    const parentRunning =
+      (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
     if (parentRunning && liveLogCurrent(this.history.root(), run.key, name)) {
       visits.push(
-        liveVisit(run.key, name, this.history.root(), stats.at(-1)?.attempt ?? 0, run.updatedAt, this.live?.samplesOf(run.key, name) ?? []),
+        liveVisit(
+          run.key,
+          name,
+          this.history.root(),
+          stats.at(-1)?.attempt ?? 0,
+          run.updatedAt,
+          this.live?.samplesOf(run.key, name) ?? [],
+        ),
       );
     }
     return { step: name, visits, checks: [] };

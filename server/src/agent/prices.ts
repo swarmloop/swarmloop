@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
-import { ModelPrice } from './limits';
+import type { ModelPrice } from './limits';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

@@ -35,7 +35,11 @@ export function section(text: string, name: string): string | null {
 }
 
 function heading(line: string): string {
-  return line.trim().replace(/^[`*]+/, '').replace(/[`*]+$/, '').trim();
+  return line
+    .trim()
+    .replace(/^[`*]+/, '')
+    .replace(/[`*]+$/, '')
+    .trim();
 }
 
 export function bulletList(lines: string[]): string {

@@ -185,7 +185,9 @@ export class HistoryService {
     }
     try {
       const parsed = JSON.parse(latest.phases) as unknown;
-      return normalizePhases(Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : undefined);
+      return normalizePhases(
+        Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : undefined,
+      );
     } catch {
       return [...PHASES];
     }
@@ -399,7 +401,15 @@ export class HistoryService {
 
   async durationByRun(): Promise<Map<number, number>> {
     const stats = await this.stepStats.find({
-      select: { id: true, runId: true, step: true, durationMs: true, stepStartedAt: true, startedAt: true, finishedAt: true },
+      select: {
+        id: true,
+        runId: true,
+        step: true,
+        durationMs: true,
+        stepStartedAt: true,
+        startedAt: true,
+        finishedAt: true,
+      },
       order: { id: 'ASC' },
     });
     const reports = await this.codeReviewReportMs();

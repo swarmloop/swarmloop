@@ -1,6 +1,6 @@
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
-import { StepOptions } from '../../core/pipeline-result';
+import type { StepOptions } from '../../core/pipeline-result';
 import { SwarmloopError } from '../../core/swarmloop-error';
 
 const JIRA_KEY = /[A-Z][A-Z0-9]+-\d+/g;
@@ -13,7 +13,7 @@ export async function readPrompt(options: StepOptions): Promise<string | undefin
   if (options.prompt === undefined && options.promptFile === undefined) {
     return undefined;
   }
-  const text = options.promptFile !== undefined ? await readPromptFile(options.promptFile) : options.prompt ?? '';
+  const text = options.promptFile !== undefined ? await readPromptFile(options.promptFile) : (options.prompt ?? '');
   if (!text.trim()) {
     throw new SwarmloopError('prompt is empty');
   }

@@ -3,8 +3,8 @@ import { randomBytes } from 'crypto';
 import { realpathSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { RunEntity } from '../history/entities';
-import { HistoryService } from '../history/history.service';
+import type { RunEntity } from '../history/entities';
+import type { HistoryService } from '../history/history.service';
 import { mountsForRun } from '../sandbox/sandbox-launch';
 
 export const SNAPSHOT = 'snapshot';
@@ -175,7 +175,11 @@ export async function snapshotRun(history: HistoryService, run: RunEntity, step:
       return;
     }
     const recorded = chat !== undefined ? chat : ((await history.latestChatId(run.id)) ?? '');
-    await history.putDocument(run, SNAPSHOT, renderSnapshot({ step, at: new Date().toISOString(), chat: recorded, repos }));
+    await history.putDocument(
+      run,
+      SNAPSHOT,
+      renderSnapshot({ step, at: new Date().toISOString(), chat: recorded, repos }),
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : 'snapshot failed';
     process.stderr.write(`${message}\n`);

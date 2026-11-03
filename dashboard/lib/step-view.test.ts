@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { decisionLine, fileView, reportAgrees, shownStatus, stepText, tokenUsage, usage, visitChecks, withFileUsage, withLog } from './step-view.ts';
+import {
+  decisionLine,
+  fileView,
+  reportAgrees,
+  shownStatus,
+  stepText,
+  tokenUsage,
+  usage,
+  visitChecks,
+  withFileUsage,
+  withLog,
+} from './step-view.ts';
 import type { StepView } from '@contract/api';
 
 const doneLog = 'decision: ok\n{"type":"result"}\n';
@@ -111,16 +122,22 @@ describe('stepText', () => {
 
   it('joins logs and prefers a selected check, then an agreeing report, then angle notes, then other documents', () => {
     assert.deepEqual(stepText('implement', undefined, undefined, []), { logs: '', document: '' });
-    assert.deepEqual(stepText('code-review', stored, { body: 'picked' }, [{ body: 'angle' }]), { logs: '', document: 'picked' });
+    assert.deepEqual(stepText('code-review', stored, { body: 'picked' }, [{ body: 'angle' }]), {
+      logs: '',
+      document: 'picked',
+    });
     assert.deepEqual(stepText('code-review', stored, undefined, []), { logs: 'L1\nL2', document: 'plan' });
     assert.deepEqual(stepText('code-review', { ...stored, decision: 'decision: ok' }, undefined, [{ body: 'angle' }]), {
       logs: 'L1\nL2',
       document: 'report\ndecision: ok',
     });
-    assert.deepEqual(stepText('implement', visit({ documents: [] }), undefined, [{ body: 'one' }, { body: '' }, { body: 'two' }]), {
-      logs: '',
-      document: 'one\n\ntwo',
-    });
+    assert.deepEqual(
+      stepText('implement', visit({ documents: [] }), undefined, [{ body: 'one' }, { body: '' }, { body: 'two' }]),
+      {
+        logs: '',
+        document: 'one\n\ntwo',
+      },
+    );
     assert.deepEqual(stepText('implement', stored, undefined, []), { logs: 'L1\nL2', document: 'plan' });
   });
 });
@@ -130,15 +147,29 @@ describe('tokenUsage', () => {
     assert.deepEqual(tokenUsage('plain'), {});
     assert.deepEqual(tokenUsage(usageLog), { tokensIn: 10, tokensOut: 4, usd: 0 });
     assert.deepEqual(tokenUsage('plain', { tokensIn: 0, tokensOut: 0, usd: 1 }), { tokensIn: 0, tokensOut: 0, usd: 1 });
-    assert.deepEqual(tokenUsage(usageLog, { tokensIn: 0, tokensOut: 9, usd: 1.25 }), { tokensIn: 10, tokensOut: 9, usd: 1.25 });
-    assert.deepEqual(tokenUsage(usageLog, { tokensIn: 7, tokensOut: 0, usd: 2 }), { tokensIn: 7, tokensOut: 4, usd: 2 });
+    assert.deepEqual(tokenUsage(usageLog, { tokensIn: 0, tokensOut: 9, usd: 1.25 }), {
+      tokensIn: 10,
+      tokensOut: 9,
+      usd: 1.25,
+    });
+    assert.deepEqual(tokenUsage(usageLog, { tokensIn: 7, tokensOut: 0, usd: 2 }), {
+      tokensIn: 7,
+      tokensOut: 4,
+      usd: 2,
+    });
   });
 });
 
 describe('usage', () => {
   it('averages samples and rounds memory', () => {
     assert.deepEqual(usage([]), { cpuAvg: 0, cpuPeak: 0, memAvg: 0, memPeak: 0 });
-    assert.deepEqual(usage([{ cpu: 1, memory: 10 }, { cpu: 2, memory: 11 }]), { cpuAvg: 1.5, cpuPeak: 2, memAvg: 11, memPeak: 11 });
+    assert.deepEqual(
+      usage([
+        { cpu: 1, memory: 10 },
+        { cpu: 2, memory: 11 },
+      ]),
+      { cpuAvg: 1.5, cpuPeak: 2, memAvg: 11, memPeak: 11 },
+    );
   });
 });
 
@@ -164,7 +195,11 @@ describe('withLog', () => {
   it('returns the same view when there is no visit or a finished chip already has samples', () => {
     const empty = { step: 'implement', checks: [], visits: [] };
     assert.equal(withLog(empty, 'body', []), empty);
-    const sampled = { step: 'code-review-quality', checks: [], visits: [visit({ status: 'done', samples: [{ at: 't', cpu: 1, memory: 2 }] })] };
+    const sampled = {
+      step: 'code-review-quality',
+      checks: [],
+      visits: [visit({ status: 'done', samples: [{ at: 't', cpu: 1, memory: 2 }] })],
+    };
     assert.equal(withLog(sampled, doneLog, [{ at: 'n', cpu: 9, memory: 9 }]), sampled);
     const quiet = { step: 'code-review-quality', checks: [], visits: [visit({ status: 'done', samples: [] })] };
     assert.equal(withLog(quiet, doneLog, []), quiet);
@@ -193,7 +228,9 @@ describe('withLog', () => {
       documents: [{ kind: 'log', attempt: 4, body: 'old', createdAt: 't' }],
     });
     const before = Date.now();
-    const next = withLog({ step: 'implement', checks: [], visits: [current] }, 'still going', [{ at: 't', cpu: 2, memory: 10 }]);
+    const next = withLog({ step: 'implement', checks: [], visits: [current] }, 'still going', [
+      { at: 't', cpu: 2, memory: 10 },
+    ]);
     const after = Date.now();
     const opened = next.visits[1];
     assert.equal(next.visits[0], current);
@@ -240,11 +277,19 @@ describe('withLog', () => {
     assert.equal(added.visits[0]?.documents[1]?.body, 'live');
     assertNow(added.visits[0]?.documents[1]?.createdAt ?? '', before, after);
 
-    const passed = withLog({ step: 'code-review', checks: [], visits: [visit({ status: 'running', decision: 'decision: ok' })] }, waitingLog, []);
+    const passed = withLog(
+      { step: 'code-review', checks: [], visits: [visit({ status: 'running', decision: 'decision: ok' })] },
+      waitingLog,
+      [],
+    );
     assert.equal(passed.visits[0]?.status, 'done');
     const failed = withLog({ step: 'code-review', checks: [], visits: [visit({ status: 'running' })] }, failedLog, []);
     assert.equal(failed.visits[0]?.status, 'failed');
-    const counted = withLog({ step: 'implement', checks: [], visits: [visit({ status: 'running' })] }, 'plain', [], { tokensIn: 8, tokensOut: 1, usd: 0.4 });
+    const counted = withLog({ step: 'implement', checks: [], visits: [visit({ status: 'running' })] }, 'plain', [], {
+      tokensIn: 8,
+      tokensOut: 1,
+      usd: 0.4,
+    });
     assert.equal(counted.visits[0]?.tokensIn, 8);
     assert.equal(counted.visits[0]?.tokensOut, 1);
     assert.equal(counted.visits[0]?.usd, 0.4);
@@ -255,9 +300,17 @@ describe('withFileUsage', () => {
   it('leaves a view with no log and copies token counts from a finished log', () => {
     const bare = { step: 's', checks: [], visits: [visit({ status: 'done' })] };
     assert.equal(withFileUsage(bare), bare);
-    const blank = { step: 's', checks: [], visits: [visit({ status: 'done', documents: [{ kind: 'log', attempt: 1, body: '', createdAt: 't' }] })] };
+    const blank = {
+      step: 's',
+      checks: [],
+      visits: [visit({ status: 'done', documents: [{ kind: 'log', attempt: 1, body: '', createdAt: 't' }] })],
+    };
     assert.equal(withFileUsage(blank), blank);
-    const plain = { step: 's', checks: [], visits: [visit({ status: 'done', documents: [{ kind: 'log', attempt: 1, body: 'plain', createdAt: 't' }] })] };
+    const plain = {
+      step: 's',
+      checks: [],
+      visits: [visit({ status: 'done', documents: [{ kind: 'log', attempt: 1, body: 'plain', createdAt: 't' }] })],
+    };
     assert.equal(withFileUsage(plain), plain);
     const current = visit({ status: 'done', documents: [{ kind: 'log', attempt: 1, body: usageLog, createdAt: 't' }] });
     const next = withFileUsage({ step: 's', checks: [], visits: [current] });

@@ -20,7 +20,10 @@ export function reviewedImplementation(text: string): string {
     }
     return body;
   } catch (error) {
-    if (error instanceof SwarmloopError && (error.message === 'implementation is missing' || error.message === 'implementation is empty')) {
+    if (
+      error instanceof SwarmloopError &&
+      (error.message === 'implementation is missing' || error.message === 'implementation is empty')
+    ) {
       return '';
     }
     throw error;

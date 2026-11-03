@@ -1,9 +1,19 @@
-import { ConfigService } from '@nestjs/config';
-import { readEnv, SwarmloopEnv } from '../../config/env';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../core/swarmloop-error';
+import type { ConfigService } from '@nestjs/config';
+import type { SwarmloopEnv } from '../../config/env';
+import { readEnv } from '../../config/env';
+import type { HttpCallDraft } from '../../core/swarmloop-error';
+import { FetchFailed, SwarmloopError } from '../../core/swarmloop-error';
 import { request } from '../http';
 import { remoteProject } from '../../steps/merge-request/merge-request-record';
-import { CodeHost, MergeRequestDraft, MergeRequestQuery, MergeRequestRecord, PipelineRef, PipelineSnapshot, SelectedHost } from './code-host';
+import type {
+  CodeHost,
+  MergeRequestDraft,
+  MergeRequestQuery,
+  MergeRequestRecord,
+  PipelineRef,
+  PipelineSnapshot,
+  SelectedHost,
+} from './code-host';
 
 export abstract class AbstractCodeHost implements CodeHost {
   abstract readonly name: SelectedHost['name'];
@@ -14,7 +24,9 @@ export abstract class AbstractCodeHost implements CodeHost {
     private readonly rejectedToken: string,
   ) {}
 
-  async findMergeRequest(query: MergeRequestQuery): Promise<{ record: MergeRequestRecord | null; httpCalls: HttpCallDraft[] }> {
+  async findMergeRequest(
+    query: MergeRequestQuery,
+  ): Promise<{ record: MergeRequestRecord | null; httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];
     try {
       const { root, headers } = this.credentials();
@@ -27,7 +39,9 @@ export abstract class AbstractCodeHost implements CodeHost {
     }
   }
 
-  async openMergeRequest(draft: MergeRequestDraft): Promise<{ record: MergeRequestRecord; httpCalls: HttpCallDraft[] }> {
+  async openMergeRequest(
+    draft: MergeRequestDraft,
+  ): Promise<{ record: MergeRequestRecord; httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];
     try {
       const { root, headers } = this.credentials();
@@ -48,7 +62,10 @@ export abstract class AbstractCodeHost implements CodeHost {
     try {
       const { root, headers } = this.credentials();
       const { url, method, payload } = this.updateRequest(root, project, iid, summary);
-      const response = await request(url, { ...headers, 'Content-Type': 'application/json' }, calls, { method, body: payload });
+      const response = await request(url, { ...headers, 'Content-Type': 'application/json' }, calls, {
+        method,
+        body: payload,
+      });
       this.assertStatus(response.status, calls, this.failure);
       return { httpCalls: calls };
     } catch (error) {
@@ -56,7 +73,10 @@ export abstract class AbstractCodeHost implements CodeHost {
     }
   }
 
-  abstract readBranchPipeline(ref: PipelineRef, jobs?: boolean): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
+  abstract readBranchPipeline(
+    ref: PipelineRef,
+    jobs?: boolean,
+  ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
 
   abstract readJobTrace(project: string, jobId: number): Promise<{ trace: string; httpCalls: HttpCallDraft[] }>;
 
@@ -150,7 +170,10 @@ export abstract class AbstractCodeHost implements CodeHost {
         return null;
       }
       const updated = await this.updateMergeRequest(draft.project, found.record.iid, draft.summary);
-      return { record: { ...found.record, summary: draft.summary }, httpCalls: [...calls, ...found.httpCalls, ...updated.httpCalls] };
+      return {
+        record: { ...found.record, summary: draft.summary },
+        httpCalls: [...calls, ...found.httpCalls, ...updated.httpCalls],
+      };
     } catch (foundError) {
       if (foundError instanceof FetchFailed) {
         throw new FetchFailed(foundError.message, [...calls, ...foundError.httpCalls]);

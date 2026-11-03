@@ -1,16 +1,16 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { basename, join } from 'path';
-import { SwarmloopEnv } from '../../config/env';
-import { DocumentDraft, ExchangeDraft } from '../../history/visit';
-import { OpenedStep } from '../../pipeline/step-run';
-import { SandboxMount } from '../../sandbox/sandbox-launch';
+import type { SwarmloopEnv } from '../../config/env';
+import type { DocumentDraft, ExchangeDraft } from '../../history/visit';
+import type { OpenedStep } from '../../pipeline/step-run';
+import type { SandboxMount } from '../../sandbox/sandbox-launch';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { launchAgent } from '../agent-step';
 import { agentFailure } from '../shared/agent-result';
 import { textDocument } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
 import { REPORT_CONTINUE, reportFollowUp } from './code-review.prompts';
-import { Opinion, ReviewDeps, Usage } from './reviewer';
+import type { Opinion, ReviewDeps, Usage } from './reviewer';
 
 const LABELS: Record<string, string> = {
   review_requirements: 'Requirements',
@@ -40,7 +40,10 @@ export async function writeReport(
   implementation: string | null,
   continued: boolean,
   auto?: boolean,
-): Promise<{ document: DocumentDraft; exchange: ExchangeDraft; usage: Usage } | { error: string; exchange: ExchangeDraft | null; usage: Usage }> {
+): Promise<
+  | { document: DocumentDraft; exchange: ExchangeDraft; usage: Usage }
+  | { error: string; exchange: ExchangeDraft | null; usage: Usage }
+> {
   const names = mounts.map((mount) => basename(mount.hostPath));
   const brief = reviewBrief(opinions);
   const sections = [
@@ -83,7 +86,12 @@ export async function writeReport(
       resumed: result.resumed,
       killReason: result.killReason,
     };
-    const spent: Usage = { tokensIn: result.tokensIn, tokensOut: result.tokensOut, usd: result.usd, samples: result.samples };
+    const spent: Usage = {
+      tokensIn: result.tokensIn,
+      tokensOut: result.tokensOut,
+      usd: result.usd,
+      samples: result.samples,
+    };
     const failure = agentFailure(result, 'code-review', 'ask');
     if (failure) {
       return { error: failure, exchange, usage: spent };

@@ -1,6 +1,6 @@
 import { liveLogBody } from '../../acp/live-output';
-import { LaunchView, VisitView } from '../../contract/api';
-import { LiveSample } from '../../contract/live';
+import type { LaunchView, VisitView } from '../../contract/api';
+import type { LiveSample } from '../../contract/live';
 
 export function liveVisit(
   key: string,
@@ -28,7 +28,14 @@ export function liveVisit(
     memPeak: 0,
     killReason: null,
     decision: null,
-    documents: [{ kind: 'log', attempt: previousAttempt + 1, body: body || 'waiting for output\n', createdAt: new Date().toISOString() }],
+    documents: [
+      {
+        kind: 'log',
+        attempt: previousAttempt + 1,
+        body: body || 'waiting for output\n',
+        createdAt: new Date().toISOString(),
+      },
+    ],
     exchanges: [],
     samples,
   };

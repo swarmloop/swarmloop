@@ -1,12 +1,18 @@
-import { AgentRunResult } from '../../agent/agent-runner';
+import type { AgentRunResult } from '../../agent/agent-runner';
 
 export function combineAgentResults(results: AgentRunResult[]): AgentRunResult | null {
   if (results.length === 0) {
     return null;
   }
   const last = results[results.length - 1];
-  const startedAt = results.reduce((min, item) => (item.startedAt < min ? item.startedAt : min), results[0]?.startedAt ?? '');
-  const finishedAt = results.reduce((max, item) => (item.finishedAt > max ? item.finishedAt : max), results[0]?.finishedAt ?? '');
+  const startedAt = results.reduce(
+    (min, item) => (item.startedAt < min ? item.startedAt : min),
+    results[0]?.startedAt ?? '',
+  );
+  const finishedAt = results.reduce(
+    (max, item) => (item.finishedAt > max ? item.finishedAt : max),
+    results[0]?.finishedAt ?? '',
+  );
   return {
     responseText: last?.responseText ?? '',
     chatId: last?.chatId ?? null,

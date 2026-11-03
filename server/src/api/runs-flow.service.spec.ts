@@ -19,13 +19,19 @@ describe('runs api', () => {
       await history.finishVisit(run, visit('requirements', 'waiting'));
       const flow = await app.get(RunQueriesService).flow('proj-6');
       expect(flow.items).toEqual([]);
-      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'requirements')?.status).toBe('done');
-      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'requirements')?.attempts).toBe(0);
+      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'requirements')?.status).toBe(
+        'done',
+      );
+      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'requirements')?.attempts).toBe(
+        0,
+      );
       expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'prepare')?.attempts).toBe(0);
       await mkdir(join(root, 'data'), { recursive: true });
       await writeFile(join(root, 'data', 'proj-6-requirements-launches.txt'), '1\n1\n');
       const recorded = await app.get(RunQueriesService).flow('proj-6');
-      expect(recorded.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'requirements')?.attempts).toBe(1);
+      expect(
+        recorded.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'requirements')?.attempts,
+      ).toBe(1);
     } finally {
       await app.close();
     }
@@ -43,7 +49,9 @@ describe('runs api', () => {
       expect(flow.currentStep).toBe('merge-request');
       expect(flow.sentence).toContain('CI skipped: there is no origin to push.');
       expect(flow.sentence).toContain('merge-request');
-      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'pipeline')?.status).toBe('skipped');
+      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'pipeline')?.status).toBe(
+        'skipped',
+      );
     } finally {
       await app.close();
     }
@@ -57,7 +65,9 @@ describe('runs api', () => {
       const run = await save(history, 'proj-pipe-red', 'implement', 'waiting');
       await history.finishVisit(run, visit('pipeline', 'waiting'));
       const flow = await app.get(RunQueriesService).flow('proj-pipe-red');
-      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'pipeline')?.status).toBe('failed');
+      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'pipeline')?.status).toBe(
+        'failed',
+      );
     } finally {
       await app.close();
     }
@@ -74,7 +84,9 @@ describe('runs api', () => {
         documents: [{ kind: 'review_quality', fileName: '', body: 'notes\ndecision: return\n' }],
       });
       const flow = await app.get(RunQueriesService).flow('proj-review-red');
-      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'code-review')?.status).toBe('failed');
+      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'code-review')?.status).toBe(
+        'failed',
+      );
     } finally {
       await app.close();
     }
@@ -103,7 +115,9 @@ describe('runs api', () => {
       const run = await save(history, 'proj-pipe-run', 'pipeline', 'running');
       await history.finishVisit(run, visit('pipeline', 'waiting'));
       const flow = await app.get(RunQueriesService).flow('proj-pipe-run');
-      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'pipeline')?.status).toBe('running');
+      expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'pipeline')?.status).toBe(
+        'running',
+      );
     } finally {
       await app.close();
     }
@@ -211,7 +225,9 @@ describe('runs api', () => {
       await history.finishVisit(run, visit('implement', 'done'));
       await history.putDocument(run, 'review_quality', 'use theme.alpha\ndecision: return\n');
       const step = await app.get(RunQueriesService).step('proj-21', 'implement');
-      expect(step.visits.at(-1)?.documents.some((item) => item.kind === 'return' && item.body.includes('use theme.alpha'))).toBe(true);
+      expect(
+        step.visits.at(-1)?.documents.some((item) => item.kind === 'return' && item.body.includes('use theme.alpha')),
+      ).toBe(true);
     } finally {
       await app.close();
     }
@@ -226,7 +242,10 @@ describe('runs api', () => {
         join(root, 'data', 'proj-20-code-review-quality-output.txt'),
         `${JSON.stringify({ type: 'thinking', text: 'look' })}\n${JSON.stringify({ type: 'result', result: 'notes\ndecision: ok\n', usage: { inputTokens: 8, outputTokens: 2 } })}\nprocess exited 0\n`,
       );
-      await writeFile(join(root, 'data', 'proj-20-code-review-security-output.txt'), `${JSON.stringify({ type: 'thinking', text: 'still' })}\n`);
+      await writeFile(
+        join(root, 'data', 'proj-20-code-review-security-output.txt'),
+        `${JSON.stringify({ type: 'thinking', text: 'still' })}\n`,
+      );
       await save(app.get(HistoryService), 'proj-20', 'code-review', 'running');
       const runs = app.get(RunQueriesService);
       const flow = await runs.flow('proj-20');
@@ -262,7 +281,10 @@ describe('runs api', () => {
       await mkdir(join(root, 'data'), { recursive: true });
       await writeFile(join(root, 'data', 'proj-32-code-review-requirements-output.txt'), 'starting\n');
       await writeFile(join(root, 'data', 'proj-32-code-review-report-output.txt'), 'starting\n');
-      await writeFile(join(root, 'data', 'proj-32-code-review-security-output.txt'), `${JSON.stringify({ type: 'thinking', text: 'still' })}\n`);
+      await writeFile(
+        join(root, 'data', 'proj-32-code-review-security-output.txt'),
+        `${JSON.stringify({ type: 'thinking', text: 'still' })}\n`,
+      );
       await save(app.get(HistoryService), 'proj-32', 'code-review', 'running');
       const runs = app.get(RunQueriesService);
       const chips = (await runs.flow('proj-32')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
@@ -297,7 +319,9 @@ describe('runs api', () => {
       });
       const runs = app.get(RunQueriesService);
       const chip = async (key: string) =>
-        (await runs.flow(key)).phases.find((phase) => phase.phase === 'code review')?.steps.find((step) => step.name === 'code-review');
+        (await runs.flow(key)).phases
+          .find((phase) => phase.phase === 'code review')
+          ?.steps.find((step) => step.name === 'code-review');
       expect((await chip('proj-33'))?.status).toBe('idle');
       expect((await chip('proj-34'))?.status).toBe('idle');
       await writeFile(join(root, 'data', 'proj-33-code-review-report-output.txt'), 'process started\n');
@@ -346,7 +370,9 @@ describe('runs api', () => {
         `${JSON.stringify({ type: 'thinking', text: 'nope' })}\nprocess exited 0\n`,
       );
       await save(app.get(HistoryService), 'proj-22', 'code-review', 'failed');
-      const chips = (await app.get(RunQueriesService).flow('proj-22')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
+      const chips =
+        (await app.get(RunQueriesService).flow('proj-22')).phases.find((phase) => phase.phase === 'code review')
+          ?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review-requirements')?.status).toBe('idle');
       expect(chips.find((step) => step.name === 'code-review-quality')?.status).toBe('done');
       expect(chips.find((step) => step.name === 'code-review-performance')?.status).toBe('failed');
@@ -368,7 +394,9 @@ describe('runs api', () => {
         documents: [{ kind: 'review_quality', fileName: '', body: 'notes\ndecision: ok\n' }],
       });
       await history.finishVisit(run, { ...visit('code-review', 'waiting'), documents: [] });
-      const chips = (await app.get(RunQueriesService).flow('proj-25')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
+      const chips =
+        (await app.get(RunQueriesService).flow('proj-25')).phases.find((phase) => phase.phase === 'code review')
+          ?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review-quality')?.attempts).toBe(1);
       const quality = await app.get(RunQueriesService).step('proj-25', 'code-review-quality');
       expect(quality.visits).toHaveLength(1);
@@ -389,7 +417,11 @@ describe('runs api', () => {
       await history.finishVisit(run, {
         ...visit('code-review', 'waiting'),
         documents: [
-          ...angles.map((name) => ({ kind: `review_${name}`, fileName: '', body: `old\ndecision: ${name === 'security' ? 'ok' : 'return'}\n` })),
+          ...angles.map((name) => ({
+            kind: `review_${name}`,
+            fileName: '',
+            body: `old\ndecision: ${name === 'security' ? 'ok' : 'return'}\n`,
+          })),
           { kind: 'review_report', fileName: '', body: 'The five reviews together are a return.\n' },
         ],
       });
@@ -405,7 +437,9 @@ describe('runs api', () => {
         [1, 'waiting', 'decision: return'],
         [2, 'done', 'decision: ok'],
       ]);
-      const chips = (await app.get(RunQueriesService).flow('proj-27')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
+      const chips =
+        (await app.get(RunQueriesService).flow('proj-27')).phases.find((phase) => phase.phase === 'code review')
+          ?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review')?.status).toBe('done');
       expect(chips.find((step) => step.name === 'code-review-quality')?.status).toBe('done');
     } finally {
@@ -427,9 +461,14 @@ describe('runs api', () => {
       await history.finishVisit(run, { ...visit('code-review', 'waiting'), documents: [] });
       await history.finishVisit(run, { ...visit('code-review', 'waiting'), documents: [] });
       await history.finishVisit(run, { ...visit('code-review', 'waiting'), documents: [] });
-      await writeFile(join(root, 'data', 'proj-26-code-review-performance-output.txt'), `${JSON.stringify({ type: 'thinking', text: 'again' })}\n`);
+      await writeFile(
+        join(root, 'data', 'proj-26-code-review-performance-output.txt'),
+        `${JSON.stringify({ type: 'thinking', text: 'again' })}\n`,
+      );
       await writeFile(join(root, 'data', 'proj-26-code-review-performance-launches.txt'), '1\n1\n');
-      const chips = (await app.get(RunQueriesService).flow('proj-26')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
+      const chips =
+        (await app.get(RunQueriesService).flow('proj-26')).phases.find((phase) => phase.phase === 'code review')
+          ?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review-performance')?.attempts).toBe(2);
       const performance = await app.get(RunQueriesService).step('proj-26', 'code-review-performance');
       expect(performance.visits.map((item) => item.attempt)).toEqual([1, 2]);
@@ -445,7 +484,10 @@ describe('runs api', () => {
       await mkdir(join(root, 'data'), { recursive: true });
       const history = app.get(HistoryService);
       await save(history, 'proj-32', 'code-review', 'running');
-      await writeFile(join(root, 'data', 'proj-32-code-review-regressions-output.txt'), 'thinking\nprocess killed: time\nthinking\n');
+      await writeFile(
+        join(root, 'data', 'proj-32-code-review-regressions-output.txt'),
+        'thinking\nprocess killed: time\nthinking\n',
+      );
       await writeFile(join(root, 'data', 'proj-32-code-review-regressions-launches.txt'), '1\n1\n');
       await writeFile(join(root, 'data', 'proj-32-code-review-quality-output.txt'), 'thinking\n');
       await writeFile(join(root, 'data', 'proj-32-code-review-quality-launches.txt'), '1\n1\n');
@@ -496,7 +538,10 @@ describe('runs api', () => {
       const killed = (await app.get(RunQueriesService).flow('proj-29')).phases.flatMap((phase) => phase.steps);
       expect(killed.find((step) => step.name === 'code-review-requirements')?.attempts).toBe(1);
       expect(killed.find((step) => step.name === 'code-review-requirements')?.status).toBe('failed');
-      await writeFile(join(root, 'data', 'proj-29-code-review-requirements-output.txt'), 'process killed: time\nprocess started\n');
+      await writeFile(
+        join(root, 'data', 'proj-29-code-review-requirements-output.txt'),
+        'process killed: time\nprocess started\n',
+      );
       const again = (await app.get(RunQueriesService).flow('proj-29')).phases.flatMap((phase) => phase.steps);
       expect(again.find((step) => step.name === 'code-review-requirements')?.status).toBe('running');
       await writeFile(
@@ -550,9 +595,11 @@ describe('runs api', () => {
       await writeFile(file('performance'), 'notes\ndecision: return\nprocess exited 0\n');
       await writeFile(file('security'), 'starting\n');
       const runs = app.get(RunQueriesService);
-      const chips = async () => (await runs.flow('proj-round')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
+      const chips = async () =>
+        (await runs.flow('proj-round')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
       const running = await chips();
-      const at = (steps: { name: string; status: string; attempts: number }[], name: string) => steps.find((step) => step.name === name);
+      const at = (steps: { name: string; status: string; attempts: number }[], name: string) =>
+        steps.find((step) => step.name === name);
       expect(at(running, 'code-review-requirements')?.attempts).toBe(2);
       expect(at(running, 'code-review-requirements')?.status).toBe('done');
       expect(at(running, 'code-review-regressions')?.attempts).toBe(2);
@@ -631,7 +678,9 @@ describe('runs api', () => {
       await writeFile(path, 'thinking\nprocess killed: time\n');
       const runs = app.get(RunQueriesService);
       const chip = async () =>
-        (await runs.flow('proj-kill')).phases.flatMap((phase) => phase.steps).find((step) => step.name === 'code-review-requirements');
+        (await runs.flow('proj-kill')).phases
+          .flatMap((phase) => phase.steps)
+          .find((step) => step.name === 'code-review-requirements');
       expect((await chip())?.attempts).toBe(2);
       expect((await chip())?.status).toBe('failed');
       await writeFile(path, 'thinking\nprocess killed: time\nprocess started\n');
@@ -652,7 +701,9 @@ describe('runs api', () => {
         `${JSON.stringify({ type: 'result', result: 'notes\ndecision: return\n' })}\nprocess exited 0\n`,
       );
       await save(app.get(HistoryService), 'proj-23', 'code-review', 'failed');
-      const chips = (await app.get(RunQueriesService).flow('proj-23')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
+      const chips =
+        (await app.get(RunQueriesService).flow('proj-23')).phases.find((phase) => phase.phase === 'code review')
+          ?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review-quality')?.status).toBe('waiting');
     } finally {
       await app.close();

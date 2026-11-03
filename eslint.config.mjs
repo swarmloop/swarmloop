@@ -35,7 +35,11 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': [
         'error',
-        { patterns: [{ regex: '^(?!\\./)', message: 'server/src/contract may import only its own files through ./ paths.' }] },
+        {
+          patterns: [
+            { regex: '^(?!\\./)', message: 'server/src/contract may import only its own files through ./ paths.' },
+          ],
+        },
       ],
     },
   },
