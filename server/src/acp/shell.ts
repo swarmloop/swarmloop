@@ -4,7 +4,8 @@ import { existsSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { isAbsolute, join, resolve } from 'path';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
-import { prepareCodexAuth } from '../integrations/agent-runtime/codex/codex-auth';
+import { SystemClock } from '../core/clock';
+import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
 import type { SandboxMount } from '../sandbox/sandbox-launch';
 import {
   agentStateDir,
@@ -169,8 +170,9 @@ async function attach(
   const userId = sandboxUserId();
   const statePath = agentStateDir(root, feature.key);
   prepareStateDir(statePath, userId);
-  const authPath =
-    runtime.name === 'codex' && config.codexAuth !== '' ? prepareCodexAuth(root, config.codexAuth, userId) : undefined;
+  const codexStore = new CodexAuthStore(join(root, 'data', 'codex'), codexAuthDeps(new SystemClock()));
+  const codexLogin =
+    runtime.name === 'codex' && config.codexAuth !== '' ? await codexStore.current(config.codexAuth) : config.codexAuth;
   const maskFile = join(tmpdir(), 'swarmloop-empty-env');
   if (!existsSync(maskFile)) {
     writeFileSync(maskFile, '');
@@ -199,14 +201,12 @@ async function attach(
         config.cursorKey,
         config.anthropicKey,
         config.oauthToken,
-        config.codexAuth,
+        codexLogin,
         config.codexApiKey,
       ),
     ],
     statePath,
     stateDaemonPath: statePath,
-    authPath,
-    authDaemonPath: authPath,
     stdin: interactive,
     tty: interactive,
   });

@@ -10,7 +10,7 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
 import { SampleDraft } from '../history/visit';
 import type { AgentRuntime } from '../integrations/agent-runtime/agent-runtime';
-import { CodexAuthStore } from '../integrations/agent-runtime/codex/codex-auth';
+import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
 import { runtimeFor, runtimeForCommand } from '../integrations/agent-runtime/agent-runtime.registry';
 import {
   agentStateDir,
@@ -192,7 +192,8 @@ export class AgentProcessRunner {
     if (env.RUNTIME !== 'codex' || env.CODEX_AUTH === '') {
       return env.CODEX_AUTH;
     }
-    this.codexAuth ??= new CodexAuthStore(join(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), 'data', 'codex'));
+    const dir = join(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), 'data', 'codex');
+    this.codexAuth ??= new CodexAuthStore(dir, codexAuthDeps(this.clock));
     return this.codexAuth.current(env.CODEX_AUTH);
   }
 

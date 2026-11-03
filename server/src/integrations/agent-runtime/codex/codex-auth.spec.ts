@@ -44,11 +44,12 @@ describe('codex auth store', () => {
       new Response(JSON.stringify({ access_token: 'at-2', refresh_token: 'rt-2' }), { status: 200 }),
     );
 
-  it('hands out a fresh login without calling the network', async () => {
+  it('refreshes a login that is new in .env at once, then leaves it alone', async () => {
     const fresh = new Date(NOW - 60_000).toISOString();
     const { store: s, calls } = store(ok);
-    expect(decode(await s.current(seed(fresh))).tokens.access_token).toBe('at-1');
-    expect(calls()).toBe(0);
+    expect(decode(await s.current(seed(fresh))).tokens.refresh_token).toBe('rt-2');
+    expect(decode(await s.current(seed(fresh))).tokens.refresh_token).toBe('rt-2');
+    expect(calls()).toBe(1);
   });
 
   it('refreshes a stale login once for five parallel callers', async () => {
@@ -73,9 +74,21 @@ describe('codex auth store', () => {
 
   it('takes a new login from .env when its value changes', async () => {
     const fresh = new Date(NOW - 60_000).toISOString();
-    const { store: s } = store(ok);
+    let n = 0;
+    const answer = (): Promise<Response> => {
+      n += 1;
+      return Promise.resolve(new Response(JSON.stringify({ access_token: `at-${n}`, refresh_token: `rt-n${n}` }), { status: 200 }));
+    };
+    const { store: s, calls } = store(answer);
     await s.current(seed(fresh, 'rt-1'));
-    expect(decode(await s.current(seed(fresh, 'rt-9'))).tokens.refresh_token).toBe('rt-9');
+    expect(decode(await s.current(seed(fresh, 'rt-9'))).tokens.refresh_token).toBe('rt-n2');
+    expect(calls()).toBe(2);
+  });
+
+  it('says so at once when a new login in .env was already used up', async () => {
+    const fresh = new Date(NOW - 60_000).toISOString();
+    const { store: s } = store(() => Promise.resolve(new Response('{}', { status: 400 })));
+    await expect(s.current(seed(fresh))).rejects.toThrow('Codex login expired');
   });
 
   it('tells the person to log in again when the refresh token is rejected', async () => {

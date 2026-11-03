@@ -11,7 +11,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Codex itself refreshes after about 8 days. The server does it earlier, so no container ever has to. */
 export const REFRESH_AFTER_MS = 3 * DAY_MS;
 const HARD_LIMIT_MS = 8 * DAY_MS;
-const EXPIRED = 'Codex login expired. Run `codex login`, put the new base64 of ~/.codex/auth.json into CODEX_AUTH and restart the server';
+const EXPIRED =
+  'Codex login expired. Run `codex login`, put the new base64 of ~/.codex/auth.json into CODEX_AUTH and restart the server';
 
 interface AuthFile {
   tokens?: { access_token?: string; refresh_token?: string; id_token?: string; account_id?: string };
@@ -22,6 +23,11 @@ interface AuthFile {
 export interface CodexAuthDeps {
   fetch: typeof fetch;
   now: () => number;
+}
+
+/** The real network, and time read through the app Clock. */
+export function codexAuthDeps(clock: { now(): number }): CodexAuthDeps {
+  return { fetch: (...args) => fetch(...args), now: () => clock.now() };
 }
 
 const queues = new Map<string, Promise<unknown>>();
@@ -36,7 +42,7 @@ export class CodexAuthStore {
 
   constructor(
     private readonly dir: string,
-    private readonly deps: CodexAuthDeps = { fetch: (...args) => fetch(...args), now: () => Date.now() },
+    private readonly deps: CodexAuthDeps,
   ) {}
 
   /** The base64 of a usable auth.json. `seed` is the CODEX_AUTH value from .env. */
@@ -59,14 +65,17 @@ export class CodexAuthStore {
     const marker = join(this.dir, 'seed.sha256');
     const hash = createHash('sha256').update(seed).digest('hex');
     let stored = await readText(file);
-    if (stored === null || (await readText(marker)) !== hash) {
+    const isNew = stored === null || (await readText(marker)) !== hash;
+    if (isNew) {
       stored = Buffer.from(seed, 'base64').toString('utf8');
       parse(stored);
       await save(file, stored);
       await save(marker, hash);
     }
     let auth = parse(stored);
-    if (this.stale(auth)) {
+    // A login that is new in .env is refreshed at once: if it was already used up elsewhere, the person hears it now,
+    // not from five containers that each fail on it.
+    if (isNew || this.stale(auth)) {
       try {
         auth = await this.refresh(auth);
         await save(file, JSON.stringify(auth, null, 2));
