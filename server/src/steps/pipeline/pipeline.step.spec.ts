@@ -116,6 +116,26 @@ describe('pipeline step', () => {
     }
   });
 
+  it('reads the pipeline on the sha written after a rerun', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-rerun-'));
+    const read = jest.fn((_ref: { project: string; ref: string; sha: string }) =>
+      Promise.resolve({ snapshot: shot('success', [job(8, 'lint', true)]), httpCalls: [call('GET')] }),
+    );
+    const app = await boot(root, read, jest.fn());
+    try {
+      await seed(app, 'PROJ-315', `${one}sha: ${'a'.repeat(40)}\n`);
+      const history = app.get(HistoryService);
+      const seeded = await history.findRun('PROJ-315');
+      await history.putDocument(seeded!, 'pipeline_ref', `${one}sha: ${'b'.repeat(40)}\n`);
+      const result = await app.get(PipelineService).step('pipeline', 'PROJ-315');
+      expect(result.exitCode).toBe(0);
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(read.mock.calls[0]?.[0].sha).toBe('b'.repeat(40));
+    } finally {
+      await app.close();
+    }
+  });
+
   it('returns to implement when a person resumes the same failed run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-resume-'));
     const read = jest.fn(() =>

@@ -1035,6 +1035,60 @@ describe('implement step', () => {
     }
   });
 
+  describe('pipeline return on an unchanged worktree', () => {
+    async function unchanged(key: string, refSha: (head: string) => string | null) {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-stale-'));
+      await writeEnv(root);
+      const worktree = featureTree(root, key, 'billing-api');
+      git(worktree, ['remote', 'set-url', 'origin', 'https://gitlab.example/group/billing-api.git']);
+      const head = git(worktree, ['rev-parse', 'HEAD']);
+      const agent = jest.fn(async (_input: AgentRunInput) => result(reply));
+      const app = await boot(root, agent);
+      await seed(app, key, 'approve');
+      const history = app.get(HistoryService);
+      const run = await history.findRun(key);
+      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const sha = refSha(head);
+      const lines = ['project: group/billing-api', `ref: feature/${key}-ship-the-field`];
+      await history.putDocument(run!, 'pipeline_ref', `${[...lines, ...(sha ? [`sha: ${sha}`] : [])].join('\n')}\n`);
+      return { app, history, head, done: await app.get(PipelineService).step('implement', key) };
+    }
+
+    it('asks for a new CI run when the failed pipeline ran on an older commit', async () => {
+      const old = 'a'.repeat(40);
+      const { app, history, head, done } = await unchanged('PROJ-160', () => old);
+      try {
+        expect(done.exitCode).toBe(0);
+        expect(done.message).toContain('no change needed: the failed pipeline ran on an older commit');
+        expect(await history.latestBody('PROJ-160', 'ci_rerun')).toBe(`billing-api ${old} -> ${head}\n`);
+        expect((await history.findRun('PROJ-160'))?.currentStep).toBe('commit');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('still fails when the pipeline ran on the current head', async () => {
+      const { app, history, done } = await unchanged('PROJ-161', (head) => head);
+      try {
+        expect(done.exitCode).toBe(1);
+        expect(done.message).toContain('pipeline failure left unfixed');
+        expect(await history.latestBody('PROJ-161', 'ci_rerun')).toBeNull();
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('still fails when the pipeline reference has no sha', async () => {
+      const { app, done } = await unchanged('PROJ-162', () => null);
+      try {
+        expect(done.exitCode).toBe(1);
+        expect(done.message).toContain('pipeline failure left unfixed');
+      } finally {
+        await app.close();
+      }
+    });
+  });
+
   it('keeps the corrected checklist from the first reply when the second changes the files', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-plan-second-'));
     await writeEnv(root);

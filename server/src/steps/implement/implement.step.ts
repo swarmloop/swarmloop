@@ -29,6 +29,7 @@ import {
   unmergedPaths,
 } from '../../git/rebase-worktree';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
+import { CI_RERUN, staleRepos } from '../pipeline/pipeline-report';
 import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
 import { parseImplementation, withReturnNotes } from './implement-record';
 
@@ -105,6 +106,17 @@ export class ImplementStep extends AgentStep {
         planOutput = againOutput;
       }
       if ((await worktreeSnapshot(mounts)) === before) {
+        const stale = await staleRepos(await this.history.latestBody(key, 'pipeline_ref'), mounts);
+        if (stale.length > 0) {
+          return ctx.end(
+            'ok',
+            0,
+            `${ctx.opened.startedAt} no change needed: the failed pipeline ran on an older commit`,
+            undefined,
+            [textDocument(CI_RERUN, `${stale.join('\n')}\n`)],
+            'commit',
+          );
+        }
         return this.unfixedPipelineFailure(ctx, key, planText, planOutput);
       }
     }
