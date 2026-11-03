@@ -1,0 +1,10 @@
+**/dist
+**/.next
+**/node_modules
+data
+worktrees
+runs
+docs
+skills
+*.md
+package-lock.json
