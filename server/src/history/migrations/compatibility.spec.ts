@@ -1,7 +1,8 @@
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { DataSource, DataSourceOptions } from 'typeorm';
+import type { DataSourceOptions } from 'typeorm';
+import { DataSource } from 'typeorm';
 import {
   AgentExchangeEntity,
   CheckoutEntity,
