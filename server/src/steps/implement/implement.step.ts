@@ -33,7 +33,7 @@ import {
   parkedConflict,
   rebaseFeatureRepos,
   unmergedPaths,
-} from '../../git/rebase-worktree';
+} from '../../git/rebase';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { CI_RERUN, staleRepos } from '../pipeline/pipeline-report';
 import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';

@@ -10,7 +10,7 @@ import { root } from '../history/run-paths';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { branchName, commitMessage, summaryForBranch } from '../steps/branch/branch-name';
 import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.step';
-import { REBASE_CONFLICT, rebaseFeatureRepos } from '../git/rebase-worktree';
+import { REBASE_CONFLICT, rebaseFeatureRepos } from '../git/rebase';
 import { repoNames } from '../steps/shared/repo-names';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { RunRef } from '../contract/api';

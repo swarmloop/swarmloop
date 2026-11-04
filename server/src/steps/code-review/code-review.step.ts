@@ -22,7 +22,7 @@ import { composedReturn, textDocument } from '../shared/handoff';
 import { withoutVerifyReturns } from '../follow-up';
 import { PrepareStep } from '../prepare/prepare.step';
 import { requiredDocument } from '../step';
-import { REBASE_CONFLICT } from '../../git/rebase-worktree';
+import { REBASE_CONFLICT } from '../../git/rebase';
 import { reviewDiffSection, writeReviewDiff } from './review-diff';
 import { REVIEWERS } from './reviewer';
 import {

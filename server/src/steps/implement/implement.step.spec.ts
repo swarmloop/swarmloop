@@ -19,7 +19,7 @@ import { AGENT_CONTINUE, AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import { REBASE_CONFLICT, rebaseFeatureRepos } from '../../git/rebase-worktree';
+import { REBASE_CONFLICT, rebaseFeatureRepos } from '../../git/rebase';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 
 const reply = [

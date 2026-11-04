@@ -17,7 +17,7 @@ import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.step';
-import { REBASE_CONFLICT, rebaseFeatureRepos, storedBase } from '../git/rebase-worktree';
+import { REBASE_CONFLICT, rebaseFeatureRepos, storedBase } from '../git/rebase';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { RunRebaseService } from './run-rebase.service';
 import { httpStatus } from './runs.controller';
