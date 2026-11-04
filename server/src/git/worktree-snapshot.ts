@@ -5,7 +5,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { Logger } from '@nestjs/common';
 import type { RunEntity } from '../history/entities';
-import type { HistoryService } from '../history/history.service';
+import type { DocumentRepository } from '../history/document.repository';
+import type { VisitRepository } from '../history/visit.repository';
 import type { Clock } from '../core/clock';
 import { rawEnv } from '../config/process-env';
 import { mountsForRun } from '../sandbox/sandbox-launch';
@@ -166,15 +167,21 @@ export function parseResume(body: string | null): { step: string; chat: string }
   return { step, chat };
 }
 
+export interface SnapshotDeps {
+  documents: DocumentRepository;
+  visits: VisitRepository;
+  root: string;
+}
+
 export async function snapshotRun(
-  history: HistoryService,
+  deps: SnapshotDeps,
   clock: Clock,
   run: RunEntity,
   step: string,
   chat?: string,
 ): Promise<void> {
   try {
-    const mounts = mountsForRun(join(history.root(), 'worktrees', run.key), run.targetPath);
+    const mounts = mountsForRun(join(deps.root, 'worktrees', run.key), run.targetPath);
     const repos: RepoTree[] = [];
     for (const mount of mounts) {
       const captured = await captureTree(mount.hostPath);
@@ -185,8 +192,8 @@ export async function snapshotRun(
     if (repos.length === 0) {
       return;
     }
-    const recorded = chat !== undefined ? chat : ((await history.latestChatId(run.id)) ?? '');
-    await history.putDocument(run, SNAPSHOT, renderSnapshot({ step, at: clock.iso(), chat: recorded, repos }));
+    const recorded = chat !== undefined ? chat : ((await deps.visits.latestChatId(run.id)) ?? '');
+    await deps.documents.putDocument(run, SNAPSHOT, renderSnapshot({ step, at: clock.iso(), chat: recorded, repos }));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'snapshot failed';
     logger.error(message);

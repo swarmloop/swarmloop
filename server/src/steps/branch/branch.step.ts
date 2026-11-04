@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
-import { HistoryService } from '../../history/history.service';
+import { AppConfig } from '../../config/env';
+import { DocumentRepository } from '../../history/document.repository';
+import { FlowRepository } from '../../history/flow.repository';
+import { root } from '../../history/run-paths';
+import { RunRepository } from '../../history/run.repository';
+import { VisitRepository } from '../../history/visit.repository';
 import { Clock } from '../../core/clock';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
@@ -16,22 +21,29 @@ export class BranchStep extends BaseStep {
   readonly name: StepName = 'branch';
   readonly requiredKind = 'repos';
 
-  constructor(history: HistoryService, clock: Clock) {
-    super(history, clock);
+  constructor(
+    runs: RunRepository,
+    documents: DocumentRepository,
+    visits: VisitRepository,
+    flows: FlowRepository,
+    clock: Clock,
+    config: AppConfig,
+  ) {
+    super(runs, documents, visits, flows, clock, config);
   }
 
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
-    const requirements = await this.history.latestBody(key, 'requirements');
+    const requirements = await this.documents.latestBody(key, 'requirements');
     if (!requirements) {
       throw new SwarmloopError('requirements is missing');
     }
-    const repos = await this.history.latestBody(key, 'repos');
+    const repos = await this.documents.latestBody(key, 'repos');
     const names = repoNames(repos ?? '');
     const name = branchName(key, summaryForBranch(requirements, key));
     for (const repo of names) {
       await this.ensure(key, repo);
     }
-    const handoff = await recordHandoff(this.history, key, 'branch', `- checked out ${name}\n`);
+    const handoff = await recordHandoff(this.documents, key, 'branch', `- checked out ${name}\n`);
     return ctx.end({
       outcome: 'ok',
       exitCode: 0,
@@ -41,7 +53,7 @@ export class BranchStep extends BaseStep {
   }
 
   async ensure(key: string, repo: string): Promise<void> {
-    const requirements = await this.history.latestBody(key, 'requirements');
+    const requirements = await this.documents.latestBody(key, 'requirements');
     if (!requirements) {
       throw new SwarmloopError('requirements is missing');
     }
@@ -49,7 +61,7 @@ export class BranchStep extends BaseStep {
   }
 
   private async checkout(key: string, repo: string, branch: string): Promise<void> {
-    const worktree = worktreePath(this.history.root(), key, repo);
+    const worktree = worktreePath(root(this.config), key, repo);
     if (!existsSync(worktree) || !statSync(worktree).isDirectory()) {
       throw new SwarmloopError(`${repo} is not a worktree`);
     }

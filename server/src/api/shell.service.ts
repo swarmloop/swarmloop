@@ -3,7 +3,12 @@ import { join, resolve, sep } from 'path';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Clock } from '../core/clock';
 import { RunEntity } from '../history/entities';
-import { HistoryService } from '../history/history.service';
+import { DocumentRepository } from '../history/document.repository';
+import { FlowRepository } from '../history/flow.repository';
+import { root } from '../history/run-paths';
+import { RunRepository } from '../history/run.repository';
+import { VisitRepository } from '../history/visit.repository';
+import { AppConfig } from '../config/env';
 import { assertKey } from '../core/pipeline-result';
 import { PHASES } from '../contract/steps';
 import { CHAT_LOCK, containerLockBody, readChatLock } from '../pipeline/chat-lock';
@@ -45,7 +50,11 @@ export function matchFeatures<T extends FeatureRow>(runs: T[], cwd: string, root
 @Injectable()
 export class ShellService {
   constructor(
-    private readonly history: HistoryService,
+    private readonly runs: RunRepository,
+    private readonly documents: DocumentRepository,
+    private readonly visits: VisitRepository,
+    private readonly flows: FlowRepository,
+    private readonly config: AppConfig,
     private readonly sandbox: SandboxService,
     private readonly clock: Clock,
   ) {}
@@ -55,18 +64,18 @@ export class ShellService {
     if (!cwd) {
       throw new BadRequestException('path is missing');
     }
-    const matches = matchFeatures(await this.history.listRuns(), cwd, this.history.root());
+    const matches = matchFeatures(await this.runs.listRuns(), cwd, root(this.config));
     if (matches.length > 1) {
       return {
         matches: matches.map((run) => ({ key: run.key, status: run.status, currentStep: run.currentStep })),
       };
     }
     if (matches.length === 1) {
-      return this.view(await settleShell(this.history, this.sandbox, matches[0], this.clock), false);
+      return this.view(await settleShell(this.runs, this.documents, this.sandbox, matches[0], this.clock), false);
     }
     const key = `run-${this.clock.now().toString(36)}`;
-    const created = await this.history.openWaiting(key, cwd);
-    await this.history.noteFlow(key, PHASES, null);
+    const created = await this.runs.openWaiting(key, cwd);
+    await this.flows.noteFlow(key, PHASES, null);
     return this.view(created, true);
   }
 
@@ -86,30 +95,36 @@ export class ShellService {
     if (!/^(waiting|blocked|failed|done)$/.test(run.status)) {
       throw new ConflictException(`${key} is already running`);
     }
-    await this.history.putDocument(run, CHAT_LOCK, containerLockBody(run.status, name, this.clock.now()));
+    await this.documents.putDocument(run, CHAT_LOCK, containerLockBody(run.status, name, this.clock.now()));
     run.status = 'running';
     run.ownerPid = null;
-    await this.history.saveRun(run);
+    await this.runs.saveRun(run);
     return { status: 'running' };
   }
 
   async unlock(key: string): Promise<ShellStatusView> {
     const run = await this.find(key);
-    const lock = readChatLock(await this.history.latestBody(key, CHAT_LOCK));
+    const lock = readChatLock(await this.documents.latestBody(key, CHAT_LOCK));
     if (!lock?.container) {
       return { status: run.status };
     }
-    await snapshotRun(this.history, this.clock, run, run.currentStep, '');
+    await snapshotRun(
+      { documents: this.documents, visits: this.visits, root: root(this.config) },
+      this.clock,
+      run,
+      run.currentStep,
+      '',
+    );
     run.status = lock.status;
     run.ownerPid = null;
-    await this.history.saveRun(run);
-    await this.history.putDocument(run, CHAT_LOCK, 'clear\n');
+    await this.runs.saveRun(run);
+    await this.documents.putDocument(run, CHAT_LOCK, 'clear\n');
     return { status: run.status };
   }
 
   async snapshots(key: string): Promise<SnapshotsView> {
     const run = await this.find(key);
-    const rows = await this.history.listDocuments(run.id);
+    const rows = await this.documents.listDocuments(run.id);
     const snapshots = rows
       .filter((row) => row.kind === SNAPSHOT)
       .map((row) => {
@@ -127,7 +142,7 @@ export class ShellService {
     if (!Number.isInteger(id)) {
       throw new BadRequestException('snapshot is missing');
     }
-    const rows = await this.history.listDocuments(run.id);
+    const rows = await this.documents.listDocuments(run.id);
     const row = rows.find((item) => item.id === id && item.kind === SNAPSHOT);
     if (!row) {
       throw new NotFoundException('snapshot is missing');
@@ -143,15 +158,15 @@ export class ShellService {
     run.currentStep = parsed.step || run.currentStep;
     run.status = 'waiting';
     run.ownerPid = null;
-    await this.history.saveRun(run);
+    await this.runs.saveRun(run);
     const resume = parsed.chat ? `step: ${parsed.step}\nchat: ${parsed.chat}\n` : 'clear\n';
-    await this.history.putDocument(run, SHELL_RESUME, resume);
+    await this.documents.putDocument(run, SHELL_RESUME, resume);
     return { step: run.currentStep };
   }
 
   private async ready(key: string): Promise<RunEntity> {
     const run = await this.find(key);
-    return settleShell(this.history, this.sandbox, run, this.clock);
+    return settleShell(this.runs, this.documents, this.sandbox, run, this.clock);
   }
 
   private async find(key: string): Promise<RunEntity> {
@@ -160,7 +175,7 @@ export class ShellService {
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : 'key is invalid');
     }
-    const run = await this.history.findRun(key);
+    const run = await this.runs.findRun(key);
     if (!run) {
       throw new NotFoundException(`${key} is missing`);
     }
@@ -168,7 +183,7 @@ export class ShellService {
   }
 
   private async view(run: RunEntity, created: boolean): Promise<ShellFeature> {
-    const mounts = mountsForRun(join(this.history.root(), 'worktrees', run.key), run.targetPath);
+    const mounts = mountsForRun(join(root(this.config), 'worktrees', run.key), run.targetPath);
     return {
       key: run.key,
       created,
@@ -181,7 +196,7 @@ export class ShellService {
   }
 
   private async resumeChat(run: RunEntity): Promise<string | null> {
-    const saved = parseResume(await this.history.latestBody(run.key, SHELL_RESUME));
+    const saved = parseResume(await this.documents.latestBody(run.key, SHELL_RESUME));
     if (saved && saved.step === run.currentStep) {
       return saved.chat;
     }

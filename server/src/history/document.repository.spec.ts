@@ -1,5 +1,4 @@
 import { DocumentRepository } from './document.repository';
-import { HistoryService } from './history.service';
 import { repositoryDatabase } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
 
@@ -12,7 +11,7 @@ describe('DocumentRepository', () => {
       expect(await documents.latestDocument('missing', 'requirements')).toBeNull();
       expect(await documents.hasDocument('missing', 'requirements')).toBe(false);
       await documents.putDocument(run, 'requirements', 'first');
-      expect(await db.app.get(HistoryService).latestBody(run.key, 'requirements')).toBe('first');
+      expect(await documents.latestBody(run.key, 'requirements')).toBe('first');
       expect(await documents.hasDocument(run.key, 'requirements')).toBe(true);
       await documents.putDocument(run, 'requirements', 'first');
       expect(await documents.listDocuments(run.id)).toHaveLength(1);

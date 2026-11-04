@@ -2,7 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { RunEntity } from '../../history/entities';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
+import { VisitRepository } from '../../history/visit.repository';
+import { FlowRepository } from '../../history/flow.repository';
+import { CheckoutRepository } from '../../history/checkout.repository';
+import { root } from '../../history/run-paths';
+import { AppConfig } from '../../config/env';
 import { Clock } from '../../core/clock';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
@@ -30,32 +36,37 @@ export class CommitStep extends BaseStep {
   readonly requiredKind = 'requirements';
 
   constructor(
-    history: HistoryService,
+    runs: RunRepository,
+    documents: DocumentRepository,
+    visits: VisitRepository,
+    flows: FlowRepository,
     clock: Clock,
+    config: AppConfig,
+    private readonly checkouts: CheckoutRepository,
     private readonly registry: CodeHostRegistry,
   ) {
-    super(history, clock);
+    super(runs, documents, visits, flows, clock, config);
   }
 
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
     const { opened } = ctx;
-    const requirements = await this.history.latestBody(key, 'requirements');
+    const requirements = await this.documents.latestBody(key, 'requirements');
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
     const summary = summaryForBranch(requirements, key);
     const branch = branchName(key, summary);
-    const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
+    const names = repoNames((await this.documents.latestBody(key, 'repos')) ?? '');
     const trees = this.trees(key, names);
     await this.assertBranch(trees, branch);
-    const phases = await this.history.activePhases(opened.run.id);
-    const stored = await this.history.latestBody(key, 'commit');
+    const phases = await this.flows.activePhases(opened.run.id);
+    const stored = await this.documents.latestBody(key, 'commit');
     const again = await this.resume(opened, stored);
     if (!phases.includes('ci') && !again) {
       const body = await this.preview(trees, branch);
       return this.end(ctx, 'waiting', 0, `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
     }
-    const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, await this.history.listDenyPaths());
+    const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, await this.checkouts.listDenyPaths());
     const rerun = planned.length === 0 && (await this.rerunPending(key));
     if (!rerun && planned.length === 0 && !(await this.somethingToPush(trees, branch))) {
       if (await this.publishedHead(trees, branch)) {
@@ -70,15 +81,15 @@ export class CommitStep extends BaseStep {
     const listed = planned.length > 0 ? renderPaths(planned).trimEnd() : '';
     const recordedHeads = heads.length > 0 ? `${heads.join('\n')}\n` : undefined;
     if (!pushed) {
-      await this.history.putDocument(opened.run, 'ci_skip', `${CI_SKIPPED}\n`);
+      await this.documents.putDocument(opened.run, 'ci_skip', `${CI_SKIPPED}\n`);
       const line = listed ? `${opened.startedAt} ${CI_SKIPPED}\n${listed}` : `${opened.startedAt} ${CI_SKIPPED}`;
       return this.end(ctx, 'ok', 0, line, listed ? `${listed}\n` : undefined);
     }
     const recorded = await this.rememberRefs(opened.run, trees, branch);
     if (recorded) {
-      const skip = await this.history.latestBody(key, 'ci_skip');
+      const skip = await this.documents.latestBody(key, 'ci_skip');
       if (skip?.trim()) {
-        await this.history.putDocument(opened.run, 'ci_skip', '');
+        await this.documents.putDocument(opened.run, 'ci_skip', '');
       }
     }
     const line = listed
@@ -98,14 +109,14 @@ export class CommitStep extends BaseStep {
     if (opened.previousStatus !== 'waiting') {
       return false;
     }
-    const stats = await this.history.listStats(opened.run.id);
+    const stats = await this.visits.listStats(opened.run.id);
     const last = [...stats].reverse().find((item) => item.step === 'commit');
     return last?.status === 'waiting';
   }
 
   private trees(key: string, names: string[]): Tree[] {
     return names.map((repo) => {
-      const path = worktreePath(this.history.root(), key, repo);
+      const path = worktreePath(root(this.config), key, repo);
       if (!existsSync(path) || !statSync(path).isDirectory()) {
         throw new SwarmloopError(`${repo} is not a worktree`);
       }
@@ -126,7 +137,7 @@ export class CommitStep extends BaseStep {
   }
 
   private async preview(trees: Tree[], branch: string): Promise<string> {
-    const planned = await this.plan(trees, await this.history.listDenyPaths());
+    const planned = await this.plan(trees, await this.checkouts.listDenyPaths());
     if (planned.length > 0) {
       return renderPaths(planned);
     }
@@ -193,11 +204,11 @@ export class CommitStep extends BaseStep {
 
   /** A `ci_rerun` document newer than the latest `commit` document asks for one new CI run. */
   private async rerunPending(key: string): Promise<boolean> {
-    const rerun = await this.history.latestDocument(key, CI_RERUN);
+    const rerun = await this.documents.latestDocument(key, CI_RERUN);
     if (!rerun) {
       return false;
     }
-    const commit = await this.history.latestDocument(key, 'commit');
+    const commit = await this.documents.latestDocument(key, 'commit');
     return !commit || commit.id < rerun.id;
   }
 
@@ -218,7 +229,7 @@ export class CommitStep extends BaseStep {
     message: string,
     codeHost: string,
   ): Promise<boolean> {
-    const denied = await this.history.listDenyPaths();
+    const denied = await this.checkouts.listDenyPaths();
     const pushed = await Promise.all(
       trees.map((tree) => this.publishTree(tree, planned, branch, message, denied, codeHost)),
     );
@@ -281,7 +292,7 @@ export class CommitStep extends BaseStep {
 
   /** Push a rewritten branch with the tip captured before the base fetch. Does not stage or commit. */
   async publishRebased(key: string, branch: string, leases: { repo: string; tip: string | null }[]): Promise<void> {
-    const run = await this.history.findRun(key);
+    const run = await this.runs.findRun(key);
     if (!run) {
       throw new SwarmloopError(`${key} is missing`);
     }
@@ -363,7 +374,7 @@ export class CommitStep extends BaseStep {
     if (blocks.length === 0) {
       return false;
     }
-    await this.history.putDocument(run, 'pipeline_ref', `${blocks.join('\n\n')}\n`);
+    await this.documents.putDocument(run, 'pipeline_ref', `${blocks.join('\n\n')}\n`);
     return true;
   }
 

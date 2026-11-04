@@ -1,5 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
+import { VisitRepository } from '../../history/visit.repository';
+import { FlowRepository } from '../../history/flow.repository';
+import { runDir } from '../../history/run-paths';
+import { AppConfig } from '../../config/env';
 import { Clock } from '../../core/clock';
 import { RunEntity } from '../../history/entities';
 import { SampleDraft, sampleSelf } from '../../history/visit';
@@ -23,19 +28,23 @@ export class RequirementsStep extends BaseStep {
   readonly acceptsProjects = true;
 
   constructor(
-    history: HistoryService,
+    runs: RunRepository,
+    documents: DocumentRepository,
+    visits: VisitRepository,
+    flows: FlowRepository,
     clock: Clock,
+    config: AppConfig,
     @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
     @Inject(REQUIREMENTS_SOURCE) private readonly source: RequirementsSource,
   ) {
-    super(history, clock);
+    super(runs, documents, visits, flows, clock, config);
   }
 
   async fetch(key: string): Promise<PipelineResult> {
-    const prior = await this.history.findRun(key);
+    const prior = await this.runs.findRun(key);
     const prompt = prior?.prompt ?? undefined;
     const keys = new Set<string>([key]);
-    const existing = parseRecord(await this.history.latestBody(key, 'requirements'));
+    const existing = parseRecord(await this.documents.latestBody(key, 'requirements'));
     for (const ticket of existing?.tickets ?? []) {
       if (ticket.key) {
         keys.add(ticket.key);
@@ -57,7 +66,7 @@ export class RequirementsStep extends BaseStep {
       return { exitCode: 1, message };
     }
     try {
-      const resolved = prompt ?? (await this.history.findRun(key))?.prompt ?? undefined;
+      const resolved = prompt ?? (await this.runs.findRun(key))?.prompt ?? undefined;
       if (resolved === undefined) {
         return { exitCode: 1, message: 'prompt is missing' };
       }
@@ -78,7 +87,7 @@ export class RequirementsStep extends BaseStep {
     if (effectivePrompt !== undefined) {
       opened.run.prompt = effectivePrompt;
       try {
-        await this.history.saveRun(opened.run);
+        await this.runs.saveRun(opened.run);
       } catch (error) {
         return { exitCode: 1, message: this.failureText(error) };
       }
@@ -91,7 +100,7 @@ export class RequirementsStep extends BaseStep {
         throw new SwarmloopError(unread);
       }
       const fetched = await this.collect(
-        this.history.runDir(key),
+        runDir(this.config, key),
         key,
         effectivePrompt,
         issueKeys,
@@ -100,14 +109,14 @@ export class RequirementsStep extends BaseStep {
       );
       const written = await this.source.write({
         key,
-        runDir: this.history.runDir(key),
+        runDir: runDir(this.config, key),
         bundle: fetched.bundle,
         bundles: fetched.bundles,
         prompt: effectivePrompt,
         issueKeys,
         agentCalls: opened.run.agentCalls,
         spentUsd: opened.run.spentUsd,
-        tokensInRun: await this.history.tokenTotal(opened.run.id),
+        tokensInRun: await this.visits.tokenTotal(opened.run.id),
       });
       samples.push(...written.samples, sampleSelf(this.clock.iso()));
       const stopped = stopReason(key, written);
@@ -167,7 +176,7 @@ export class RequirementsStep extends BaseStep {
     resume: boolean,
   ): Promise<{ bundle: IssueBundle; bundles: IssueBundle[]; httpCalls: HttpCallDraft[] }> {
     const progress = resume
-      ? parseProgress(await this.history.latestBody(key, 'requirements_progress'))
+      ? parseProgress(await this.documents.latestBody(key, 'requirements_progress'))
       : { issues: {} };
     const bundles: IssueBundle[] = [];
     const httpCalls: HttpCallDraft[] = [];
@@ -181,7 +190,7 @@ export class RequirementsStep extends BaseStep {
       bundles.push(fetched.bundle);
       httpCalls.push(...fetched.httpCalls);
       progress.issues[issueKey] = fetched.bundle;
-      await this.history.putDocument(run, 'requirements_progress', `${JSON.stringify(progress)}\n`);
+      await this.documents.putDocument(run, 'requirements_progress', `${JSON.stringify(progress)}\n`);
     }
     return {
       bundle: bundles[0] ?? promptBundle(key, prompt ?? ''),

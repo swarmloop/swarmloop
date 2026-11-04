@@ -3,7 +3,10 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { HistoryService } from '../history/history.service';
+import { RunRepository } from '../history/run.repository';
+import { DocumentRepository } from '../history/document.repository';
+import { VisitRepository } from '../history/visit.repository';
+import { FlowRepository } from '../history/flow.repository';
 import { PHASES } from '../contract/steps';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
@@ -15,10 +18,10 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      await save(history, 'alpha', 'prepare', 'waiting');
-      const second = await save(history, 'beta', 'implement', 'waiting', 2);
-      await save(history, 'alpha', 'prepare', 'waiting');
+      const runs = app.get(RunRepository);
+      await save(runs, 'alpha', 'prepare', 'waiting');
+      const second = await save(runs, 'beta', 'implement', 'waiting', 2);
+      await save(runs, 'alpha', 'prepare', 'waiting');
       const listed = await app.get(RunQueriesService).list();
       expect(listed.runs.map((run) => run.key)).toEqual(['beta', 'alpha']);
       const flow = await app.get(RunQueriesService).flow('beta');
@@ -36,18 +39,18 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-name-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
+      const runRepository = app.get(RunRepository);
       const runs = app.get(RunQueriesService);
       const long = `${'a'.repeat(120)}bc`;
-      const named = await save(history, 'named', 'prepare', 'waiting');
+      const named = await save(runRepository, 'named', 'prepare', 'waiting');
       named.prompt = 'Ship the field\nmore than the first line';
-      await history.saveRun(named);
-      const cut = await save(history, 'cut', 'prepare', 'waiting');
+      await runRepository.saveRun(named);
+      const cut = await save(runRepository, 'cut', 'prepare', 'waiting');
       cut.prompt = `${long}\nrest`;
-      await history.saveRun(cut);
-      const blank = await save(history, 'blank', 'prepare', 'waiting');
+      await runRepository.saveRun(cut);
+      const blank = await save(runRepository, 'blank', 'prepare', 'waiting');
       blank.prompt = '  \n';
-      await history.saveRun(blank);
+      await runRepository.saveRun(blank);
       const listed = await runs.list();
       const byKey = Object.fromEntries(listed.runs.map((run) => [run.key, run.name]));
       expect(byKey.named).toBe('Ship the field');
@@ -73,16 +76,17 @@ describe('runs api', () => {
     };
     const app = await boot(root, pipeline);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-3', 'research', 'waiting');
-      await history.putDocument(run, 'questions', '- which limit\n');
+      const runRepository = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await save(runRepository, 'proj-3', 'research', 'waiting');
+      await documents.putDocument(run, 'questions', '- which limit\n');
       const runs = app.get(RunCommandsService);
       await expect(runs.resume('proj-3')).rejects.toBeInstanceOf(BadRequestException);
       const answered = await runs.answers('proj-3', {
         answers: [{ kind: 'question', id: 'which limit', body: 'three' }],
       });
       expect(answered.resume).toBe('running');
-      expect(await history.latestBody('proj-3', 'answers')).toContain('answer: three');
+      expect(await documents.latestBody('proj-3', 'answers')).toContain('answer: three');
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-3');
     } finally {
       await app.close();
@@ -97,7 +101,7 @@ describe('runs api', () => {
     };
     const app = await boot(root, pipeline);
     try {
-      await save(app.get(HistoryService), 'proj-reviewer', 'code-review', 'waiting');
+      await save(app.get(RunRepository), 'proj-reviewer', 'code-review', 'waiting');
       await app.get(RunCommandsService).startStep('proj-reviewer', 'code-review-quality');
       expect(pipeline.startDetached).toHaveBeenCalledWith(
         'proj-reviewer',
@@ -117,7 +121,7 @@ describe('runs api', () => {
     };
     const app = await boot(root, pipeline);
     try {
-      await save(app.get(HistoryService), 'proj-11', 'implement-improve', 'failed');
+      await save(app.get(RunRepository), 'proj-11', 'implement-improve', 'failed');
       const result = await app.get(RunCommandsService).replay('proj-11', 'implement', 'Use the other parser');
       expect(result).toEqual({ key: 'proj-11', status: 'started' });
       expect(httpStatus(result)).toBe(202);
@@ -136,7 +140,8 @@ describe('runs api', () => {
     const app = await boot(root, pipeline);
     try {
       const runs = app.get(RunCommandsService);
-      const history = app.get(HistoryService);
+      const runRepository = app.get(RunRepository);
+      const flows = app.get(FlowRepository);
       await runs.start({
         key: 'proj-12',
         prompt: 'Review the checkout',
@@ -144,8 +149,8 @@ describe('runs api', () => {
         projects: ['demo'],
       });
       await runs.replay('proj-12', 'code-review', 'Skip the pipeline', ['requirements', 'code-review', 'ci']);
-      const run = await history.findRun('proj-12');
-      const rows = await history.listFlows(run?.id ?? 0);
+      const run = await runRepository.findRun('proj-12');
+      const rows = await flows.listFlows(run?.id ?? 0);
       expect(rows.map((row) => ({ phases: JSON.parse(row.phases) as string[], fromStep: row.fromStep }))).toEqual([
         { phases: ['requirements', 'code-review'], fromStep: null },
         { phases: ['requirements', 'code-review', 'ci'], fromStep: 'code-review' },
@@ -166,7 +171,7 @@ describe('runs api', () => {
     };
     const app = await boot(root, pipeline);
     try {
-      await save(app.get(HistoryService), 'proj-9', 'implement-improve', 'running');
+      await save(app.get(RunRepository), 'proj-9', 'implement-improve', 'running');
       const result = await app.get(RunCommandsService).stop('proj-9');
       expect(result).toEqual({ key: 'proj-9', status: 'stopped' });
       expect(httpStatus(result)).toBe(200);
@@ -181,7 +186,7 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-blocked-'));
     const app = await boot(root);
     try {
-      await save(app.get(HistoryService), 'proj-4', 'prepare', 'blocked');
+      await save(app.get(RunRepository), 'proj-4', 'prepare', 'blocked');
       await expect(app.get(RunCommandsService).resume('proj-4')).rejects.toBeInstanceOf(ConflictException);
     } finally {
       await app.close();
@@ -196,7 +201,7 @@ describe('runs api', () => {
     };
     const app = await boot(root, pipeline);
     try {
-      await save(app.get(HistoryService), 'proj-loop', 'code-review', 'blocked');
+      await save(app.get(RunRepository), 'proj-loop', 'code-review', 'blocked');
       const flow = await app.get(RunQueriesService).flow('proj-loop');
       expect(flow.resume).toBe('ready');
       await app.get(RunCommandsService).resume('proj-loop');
@@ -214,9 +219,10 @@ describe('runs api', () => {
     };
     const app = await boot(root, pipeline);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-fit', 'code-review', 'blocked');
-      await history.putDocument(run, 'error', 'code-review does not fit\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await save(runs, 'proj-fit', 'code-review', 'blocked');
+      await documents.putDocument(run, 'error', 'code-review does not fit\n');
       const flow = await app.get(RunQueriesService).flow('proj-fit');
       expect(flow.resume).toBe('ready');
       expect(flow.sentence).toContain('agent-call budget');
@@ -241,7 +247,7 @@ describe('runs api', () => {
         { path: '/tmp/checkout', phases: [...PHASES] },
         'code-review',
       );
-      expect((await app.get(HistoryService).findRun('proj-7'))?.prompt).toBe('Look here');
+      expect((await app.get(RunRepository).findRun('proj-7'))?.prompt).toBe('Look here');
     } finally {
       await app.close();
     }
@@ -252,14 +258,14 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
     const app = await boot(root, pipeline);
     try {
-      const history = app.get(HistoryService);
-      const previous = await save(history, 'PROJ-12', 'code-review', 'failed');
+      const runs = app.get(RunRepository);
+      const previous = await save(runs, 'PROJ-12', 'code-review', 'failed');
       previous.prompt = 'old brief\n';
-      await history.saveRun(previous);
-      await save(history, 'PROJ-12--2', 'done', 'done');
-      const live = await save(history, 'PROJ-12--3', 'code-review', 'running');
+      await runs.saveRun(previous);
+      await save(runs, 'PROJ-12--2', 'done', 'done');
+      const live = await save(runs, 'PROJ-12--3', 'code-review', 'running');
       live.ownerPid = process.pid;
-      await history.saveRun(live);
+      await runs.saveRun(live);
       const prompt = 'https://example.atlassian.net/browse/PROJ-12\nbranch: feature/PROJ-12-add-export';
       const started = await app.get(RunCommandsService).start({
         prompt,
@@ -273,8 +279,8 @@ describe('runs api', () => {
         projects: ['billing-api'],
         phases: ['requirements', 'code-review'],
       });
-      expect((await history.findRun('PROJ-12'))?.prompt).toBe('old brief\n');
-      expect((await history.findRun('PROJ-12--3'))?.status).toBe('running');
+      expect((await runs.findRun('PROJ-12'))?.prompt).toBe('old brief\n');
+      expect((await runs.findRun('PROJ-12--3'))?.status).toBe('running');
     } finally {
       await app.close();
     }
@@ -285,7 +291,7 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
     const app = await boot(root, pipeline);
     try {
-      await save(app.get(HistoryService), 'PROJ-12', 'done', 'done');
+      await save(app.get(RunRepository), 'PROJ-12', 'done', 'done');
       const prompt = 'https://example.atlassian.net/browse/PROJ-12\nbranch: feature/PROJ-12-add-export';
       const started = await app.get(RunCommandsService).start({
         prompt,
@@ -299,7 +305,7 @@ describe('runs api', () => {
         projects: ['billing-api'],
         phases: ['requirements', 'code-review'],
       });
-      expect((await app.get(HistoryService).findRun('PROJ-12'))?.status).toBe('done');
+      expect((await app.get(RunRepository).findRun('PROJ-12'))?.status).toBe('done');
     } finally {
       await app.close();
     }
@@ -346,9 +352,10 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-clones-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-9', 'prepare', 'waiting');
-      await history.finishVisit(run, visit('prepare', 'waiting'));
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runs, 'proj-9', 'prepare', 'waiting');
+      await visits.finishVisit(run, visit('prepare', 'waiting'));
       const flow = await app.get(RunQueriesService).flow('proj-9');
       expect(flow.sentence).toBe('The next continuation prepares the worktrees.');
       expect(flow.items).toEqual([]);

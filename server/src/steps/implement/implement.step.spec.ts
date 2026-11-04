@@ -11,7 +11,9 @@ import { PassThrough } from 'stream';
 import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DocumentEntity } from '../../history/entities';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
+import { VisitRepository } from '../../history/visit.repository';
 import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
 import { AGENT_CONTINUE, AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
@@ -63,13 +65,13 @@ describe('implement step', () => {
       const handoff = await documents.find({ where: { kind: 'handoff' } });
       expect(handoff[0]?.body).toContain('## implement');
       expect(handoff[0]?.body).toContain('empty fields stay');
-      const run = await app.get(HistoryService).findRun('PROJ-60');
+      const run = await app.get(RunRepository).findRun('PROJ-60');
       expect(run?.currentStep).toBe('implement-improve');
       expect(run?.status).toBe('waiting');
       expect(git(worktree, ['status', '--porcelain'])).toBe('');
       await app.get(PipelineService).step('implement', 'PROJ-60');
       expect(await documents.find({ where: { kind: 'implementation' } })).toHaveLength(1);
-      expect((await app.get(HistoryService).findRun('PROJ-60'))?.currentStep).toBe('implement-improve');
+      expect((await app.get(RunRepository).findRun('PROJ-60'))?.currentStep).toBe('implement-improve');
     } finally {
       await app.close();
     }
@@ -151,7 +153,7 @@ describe('implement step', () => {
       const done = await app.get(PipelineService).step('implement', 'PROJ-66');
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('billing-api was committed');
-      const run = await app.get(HistoryService).findRun('PROJ-66');
+      const run = await app.get(RunRepository).findRun('PROJ-66');
       expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('failed');
     } finally {
@@ -171,7 +173,7 @@ describe('implement step', () => {
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('plan is not approved');
       expect(agent).not.toHaveBeenCalled();
-      const run = await app.get(HistoryService).findRun('PROJ-61');
+      const run = await app.get(RunRepository).findRun('PROJ-61');
       expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('failed');
     } finally {
@@ -225,7 +227,7 @@ describe('implement step', () => {
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('billing-api branch is missing');
       expect(agent).not.toHaveBeenCalled();
-      expect((await app.get(HistoryService).findRun('PROJ-62'))?.status).toBe('failed');
+      expect((await app.get(RunRepository).findRun('PROJ-62'))?.status).toBe('failed');
     } finally {
       await app.close();
     }
@@ -264,9 +266,9 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-68', 'approve');
-      const run = await app.get(HistoryService).findRun('PROJ-68');
-      await app.get(HistoryService).putDocument(run!, 'review_quality', 'use theme.alpha\ndecision: return\n');
-      await app.get(HistoryService).putDocument(run!, 'handoff', '## plan\n- add the field\n');
+      const run = await app.get(RunRepository).findRun('PROJ-68');
+      await app.get(DocumentRepository).putDocument(run!, 'review_quality', 'use theme.alpha\ndecision: return\n');
+      await app.get(DocumentRepository).putDocument(run!, 'handoff', '## plan\n- add the field\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-68');
       expect(done.exitCode).toBe(0);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
@@ -323,7 +325,7 @@ describe('implement step', () => {
       const done = await app.get(PipelineService).step('implement', 'PROJ-63');
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('implementation is empty');
-      const run = await app.get(HistoryService).findRun('PROJ-63');
+      const run = await app.get(RunRepository).findRun('PROJ-63');
       expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('failed');
     } finally {
@@ -369,9 +371,10 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-116', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-116');
-      await history.putDocument(run!, REBASE_CONFLICT, 'pending-implement\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-116');
+      await documents.putDocument(run!, REBASE_CONFLICT, 'pending-implement\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-116');
       expect(done.exitCode).toBe(0);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
@@ -412,9 +415,10 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-64', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-64');
-      await history.putDocument(run!, REBASE_CONFLICT, 'pending-implement\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-64');
+      await documents.putDocument(run!, REBASE_CONFLICT, 'pending-implement\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-64');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
@@ -439,8 +443,8 @@ describe('implement step', () => {
       expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toBe(marked);
       expect(git(tree, ['show', 'HEAD:src/field.ts'])).toBe(marked.trim());
       expect(git(tree, ['ls-files', '-u'])).not.toContain('src/field.ts');
-      expect((await history.latestBody('PROJ-64', REBASE_CONFLICT))?.trim()).toBe('review');
-      expect((await history.findRun('PROJ-64'))?.currentStep).toBe('implement-improve');
+      expect((await documents.latestBody('PROJ-64', REBASE_CONFLICT))?.trim()).toBe('review');
+      expect((await runs.findRun('PROJ-64'))?.currentStep).toBe('implement-improve');
     } finally {
       await app.close();
     }
@@ -464,10 +468,11 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-117', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-117');
-      await history.putDocument(run!, 'implementation', '- changed the field parser\n');
-      await history.putDocument(run!, REBASE_CONFLICT, 'pending\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-117');
+      await documents.putDocument(run!, 'implementation', '- changed the field parser\n');
+      await documents.putDocument(run!, REBASE_CONFLICT, 'pending\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-117');
       expect(done.exitCode).toBe(0);
       expect(agent).not.toHaveBeenCalled();
@@ -528,16 +533,17 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-118', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-118');
-      await history.putDocument(run!, 'implementation', '- changed the field parser\n');
-      await history.putDocument(run!, REBASE_CONFLICT, 'pending\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-118');
+      await documents.putDocument(run!, 'implementation', '- changed the field parser\n');
+      await documents.putDocument(run!, REBASE_CONFLICT, 'pending\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-118');
       expect(done.exitCode).toBe(0);
       expect(done.message).not.toContain('pathspec');
       expect(agent).toHaveBeenCalledTimes(1);
       expect(git(tree, ['ls-files', '-u'])).not.toContain('src/overlap.ts');
-      expect((await history.findRun('PROJ-118'))?.currentStep).toBe('code-review');
+      expect((await runs.findRun('PROJ-118'))?.currentStep).toBe('code-review');
     } finally {
       await app.close();
     }
@@ -554,10 +560,11 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-65', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-65');
-      await history.putDocument(run!, 'implementation', '- changed the field parser\n');
-      await history.putDocument(run!, REBASE_CONFLICT, 'pending\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-65');
+      await documents.putDocument(run!, 'implementation', '- changed the field parser\n');
+      await documents.putDocument(run!, REBASE_CONFLICT, 'pending\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-65');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
@@ -573,9 +580,9 @@ describe('implement step', () => {
         .get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity))
         .find({ where: { kind: 'implementation' } });
       expect(notes.map((item) => item.body)).toEqual(['- changed the field parser\n']);
-      expect((await history.latestBody('PROJ-65', REBASE_CONFLICT))?.trim()).toBe('review');
-      expect((await history.latestBody('PROJ-65', 'rebase_merge_skip'))?.trim()).toBe('skip');
-      expect((await history.findRun('PROJ-65'))?.currentStep).toBe('code-review');
+      expect((await documents.latestBody('PROJ-65', REBASE_CONFLICT))?.trim()).toBe('review');
+      expect((await documents.latestBody('PROJ-65', 'rebase_merge_skip'))?.trim()).toBe('skip');
+      expect((await runs.findRun('PROJ-65'))?.currentStep).toBe('code-review');
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/PROJ-65-ship-the-field');
       expect(git(tree, ['show', 'HEAD:src/field.ts'])).toContain('field = 3');
     } finally {
@@ -597,10 +604,11 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-168', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-168');
-      await history.putDocument(run!, 'implementation', '- changed the field parser\n');
-      await history.putDocument(run!, REBASE_CONFLICT, 'pending\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-168');
+      await documents.putDocument(run!, 'implementation', '- changed the field parser\n');
+      await documents.putDocument(run!, REBASE_CONFLICT, 'pending\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-168');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
@@ -616,9 +624,9 @@ describe('implement step', () => {
         .get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity))
         .find({ where: { kind: 'implementation' } });
       expect(notes.map((item) => item.body)).toEqual(['- changed the field parser\n']);
-      expect((await history.latestBody('PROJ-168', REBASE_CONFLICT))?.trim()).toBe('review');
-      expect((await history.latestBody('PROJ-168', 'rebase_merge_skip'))?.trim()).toBe('skip');
-      expect((await history.findRun('PROJ-168'))?.currentStep).toBe('code-review');
+      expect((await documents.latestBody('PROJ-168', REBASE_CONFLICT))?.trim()).toBe('review');
+      expect((await documents.latestBody('PROJ-168', 'rebase_merge_skip'))?.trim()).toBe('skip');
+      expect((await runs.findRun('PROJ-168'))?.currentStep).toBe('code-review');
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/PROJ-168-ship-the-field');
       expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toBe(marked);
       expect(git(tree, ['show', 'HEAD:src/field.ts'])).toBe(marked.trim());
@@ -674,9 +682,10 @@ describe('implement step', () => {
       expect(existsSync(isAbsolute(state) ? state : join(tree, state))).toBe(true);
       expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
       await seed(app, 'PROJ-169', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-169');
-      await history.putDocument(run!, REBASE_CONFLICT, 'pending-implement\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-169');
+      await documents.putDocument(run!, REBASE_CONFLICT, 'pending-implement\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-169');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
@@ -691,8 +700,8 @@ describe('implement step', () => {
       expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toBe(marked);
       expect(git(tree, ['show', 'HEAD:src/field.ts'])).toBe(marked.trim());
       expect(git(tree, ['ls-files', '-u'])).not.toContain('src/field.ts');
-      expect((await history.latestBody('PROJ-169', REBASE_CONFLICT))?.trim()).toBe('review');
-      expect((await history.findRun('PROJ-169'))?.currentStep).toBe('implement-improve');
+      expect((await documents.latestBody('PROJ-169', REBASE_CONFLICT))?.trim()).toBe('review');
+      expect((await runs.findRun('PROJ-169'))?.currentStep).toBe('implement-improve');
     } finally {
       if (previous === undefined) {
         delete process.env.SWARMLOOP_ROOT;
@@ -717,9 +726,10 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-66', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-66');
-      await history.putDocument(run!, REBASE_CONFLICT, 'pending-implement\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-66');
+      await documents.putDocument(run!, REBASE_CONFLICT, 'pending-implement\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-66');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
@@ -728,9 +738,9 @@ describe('implement step', () => {
       expect(calls[0]?.prompt).toContain('The new base is origin/main.');
       expect(calls[1]?.prompt).toContain('add the field');
       expect(calls[1]?.prompt).not.toContain('The commit being replayed is');
-      expect((await history.latestBody('PROJ-66', 'implementation'))?.trim()).toContain('changed the field parser');
-      expect((await history.latestBody('PROJ-66', REBASE_CONFLICT))?.trim()).toBe('review');
-      expect((await history.findRun('PROJ-66'))?.currentStep).toBe('implement-improve');
+      expect((await documents.latestBody('PROJ-66', 'implementation'))?.trim()).toContain('changed the field parser');
+      expect((await documents.latestBody('PROJ-66', REBASE_CONFLICT))?.trim()).toBe('review');
+      expect((await runs.findRun('PROJ-66'))?.currentStep).toBe('implement-improve');
       expect(() =>
         git(tree, ['rev-parse', '--verify', 'refs/remotes/origin/feature/PROJ-66-ship-the-field']),
       ).toThrow();
@@ -762,15 +772,16 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-67', 'approve', 'billing-api\nother\n');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-67');
-      await history.putDocument(run!, 'implementation', '- changed the field parser\n');
-      await history.putDocument(run!, REBASE_CONFLICT, 'pending\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-67');
+      await documents.putDocument(run!, 'implementation', '- changed the field parser\n');
+      await documents.putDocument(run!, REBASE_CONFLICT, 'pending\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-67');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
       git(other, ['merge-base', '--is-ancestor', base, 'HEAD']);
-      expect((await history.findRun('PROJ-67'))?.currentStep).toBe('code-review');
+      expect((await runs.findRun('PROJ-67'))?.currentStep).toBe('code-review');
       expect(git(other, ['branch', '--show-current'])).toBe('feature/PROJ-67-ship-the-field');
     } finally {
       await app.close();
@@ -790,11 +801,12 @@ describe('implement step', () => {
       expect(spawn).toHaveBeenCalledTimes(2);
       expect(launchedPrompt(spawn.mock.calls[1])).toBe(AGENT_CONTINUE);
       expect(resumeArg(spawn.mock.calls[1])).toBe('impl-chat');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-131');
+      const runs = app.get(RunRepository);
+      const visitRepository = app.get(VisitRepository);
+      const run = await runs.findRun('PROJ-131');
       expect(run?.currentStep).toBe('implement-improve');
       expect(run?.agentCalls).toBe(2);
-      const stats = await history.listStats(run?.id ?? 0);
+      const stats = await visitRepository.listStats(run?.id ?? 0);
       const visits = stats.filter((item) => item.step === 'implement');
       expect(visits).toHaveLength(1);
       expect(visits[0]?.status).toBe('done');
@@ -829,20 +841,21 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-140', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-140');
-      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-140');
+      await documents.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-140');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
-      const record = JSON.parse((await history.latestBody('PROJ-140', 'requirements')) ?? '{}') as {
+      const record = JSON.parse((await documents.latestBody('PROJ-140', 'requirements')) ?? '{}') as {
         prompt?: string;
         plan?: { items?: string[]; decision?: string };
       };
       expect(record.plan?.items).toEqual(['fix the failing test']);
       expect(record.plan?.decision).toBe('approve');
       expect(record.prompt).toContain('Ship the field');
-      const handoff = await history.latestBody('PROJ-140', 'handoff');
+      const handoff = await documents.latestBody('PROJ-140', 'handoff');
       expect(handoff).toContain('dropped "add the field"');
       expect(handoff).toContain('added "fix the failing test"');
       expect(handoff).toContain('outranks the checklist');
@@ -861,12 +874,12 @@ describe('implement step', () => {
       await seed(app, 'PROJ-141', 'approve');
       const done = await app.get(PipelineService).step('implement', 'PROJ-141');
       expect(done.exitCode).toBe(0);
-      const history = app.get(HistoryService);
-      const record = JSON.parse((await history.latestBody('PROJ-141', 'requirements')) ?? '{}') as {
+      const documents = app.get(DocumentRepository);
+      const record = JSON.parse((await documents.latestBody('PROJ-141', 'requirements')) ?? '{}') as {
         plan?: { items?: string[] };
       };
       expect(record.plan?.items).toEqual(['add the field']);
-      expect(await history.latestBody('PROJ-141', 'handoff')).not.toContain('outranks the checklist');
+      expect(await documents.latestBody('PROJ-141', 'handoff')).not.toContain('outranks the checklist');
     } finally {
       await app.close();
     }
@@ -900,14 +913,15 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-145', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-145');
-      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-145');
+      await documents.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-145');
       expect(done.exitCode).toBe(0);
       expect(done.message).not.toContain('plan is empty');
       expect(agent).toHaveBeenCalledTimes(1);
-      const record = JSON.parse((await history.latestBody('PROJ-145', 'requirements')) ?? '{}') as {
+      const record = JSON.parse((await documents.latestBody('PROJ-145', 'requirements')) ?? '{}') as {
         prompt?: string;
         plan?: { name?: string; items?: string[]; decision?: string };
       };
@@ -915,7 +929,7 @@ describe('implement step', () => {
       expect(record.plan?.name).toBe('');
       expect(record.plan?.decision).toBe('approve');
       expect(record.prompt).toContain('Ship the field');
-      const handoff = await history.latestBody('PROJ-145', 'handoff');
+      const handoff = await documents.latestBody('PROJ-145', 'handoff');
       expect(handoff).toContain('dropped "add the field"');
       expect(handoff).toContain('added "fix the failing test"');
       expect(handoff).toContain('outranks the checklist');
@@ -935,17 +949,18 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-146', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-146');
-      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-146');
+      await documents.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-146');
       expect(done.exitCode).toBe(0);
       expect(done.message).not.toContain('plan is empty');
-      const record = JSON.parse((await history.latestBody('PROJ-146', 'requirements')) ?? '{}') as {
+      const record = JSON.parse((await documents.latestBody('PROJ-146', 'requirements')) ?? '{}') as {
         plan?: { items?: string[] };
       };
       expect(record.plan?.items).toEqual(['add the field']);
-      expect(await history.latestBody('PROJ-146', 'handoff')).not.toContain('outranks the checklist');
+      expect(await documents.latestBody('PROJ-146', 'handoff')).not.toContain('outranks the checklist');
     } finally {
       await app.close();
     }
@@ -984,18 +999,19 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-147', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-147');
-      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-147');
+      await documents.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-147');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
-      const record = JSON.parse((await history.latestBody('PROJ-147', 'requirements')) ?? '{}') as {
+      const record = JSON.parse((await documents.latestBody('PROJ-147', 'requirements')) ?? '{}') as {
         plan?: { items?: string[] };
       };
       expect(record.plan?.items).toEqual(['fix the failing test']);
-      expect(await history.latestBody('PROJ-147', 'implementation')).toContain('fixed the test');
-      expect(await history.latestBody('PROJ-147', 'handoff')).toContain('added "fix the failing test"');
+      expect(await documents.latestBody('PROJ-147', 'implementation')).toContain('fixed the test');
+      expect(await documents.latestBody('PROJ-147', 'handoff')).toContain('added "fix the failing test"');
     } finally {
       await app.close();
     }
@@ -1016,9 +1032,10 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-142', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-142');
-      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nFAIL nest npm test\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-142');
+      await documents.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nFAIL nest npm test\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-142');
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('pipeline failure left unfixed');
@@ -1027,7 +1044,7 @@ describe('implement step', () => {
       expect(calls[1]?.prompt).toContain('The pipeline failure still stands and the files are unchanged.');
       expect(calls[1]?.prompt).toContain('FAIL nest npm test');
       expect(calls[1]?.resumeChatId).toBe('impl-chat');
-      const after = await history.findRun('PROJ-142');
+      const after = await runs.findRun('PROJ-142');
       expect(after?.currentStep).toBe('implement');
       expect(after?.status).toBe('failed');
     } finally {
@@ -1045,34 +1062,35 @@ describe('implement step', () => {
       const agent = jest.fn(async (_input: AgentRunInput) => result(reply));
       const app = await boot(root, agent);
       await seed(app, key, 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun(key);
-      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun(key);
+      await documents.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
       const sha = refSha(head);
       const lines = ['project: group/billing-api', `ref: feature/${key}-ship-the-field`];
-      await history.putDocument(run!, 'pipeline_ref', `${[...lines, ...(sha ? [`sha: ${sha}`] : [])].join('\n')}\n`);
-      return { app, history, head, done: await app.get(PipelineService).step('implement', key) };
+      await documents.putDocument(run!, 'pipeline_ref', `${[...lines, ...(sha ? [`sha: ${sha}`] : [])].join('\n')}\n`);
+      return { app, runs, documents, head, done: await app.get(PipelineService).step('implement', key) };
     }
 
     it('asks for a new CI run when the failed pipeline ran on an older commit', async () => {
       const old = 'a'.repeat(40);
-      const { app, history, head, done } = await unchanged('PROJ-160', () => old);
+      const { app, runs, documents, head, done } = await unchanged('PROJ-160', () => old);
       try {
         expect(done.exitCode).toBe(0);
         expect(done.message).toContain('no change needed: the failed pipeline ran on an older commit');
-        expect(await history.latestBody('PROJ-160', 'ci_rerun')).toBe(`billing-api ${old} -> ${head}\n`);
-        expect((await history.findRun('PROJ-160'))?.currentStep).toBe('commit');
+        expect(await documents.latestBody('PROJ-160', 'ci_rerun')).toBe(`billing-api ${old} -> ${head}\n`);
+        expect((await runs.findRun('PROJ-160'))?.currentStep).toBe('commit');
       } finally {
         await app.close();
       }
     });
 
     it('still fails when the pipeline ran on the current head', async () => {
-      const { app, history, done } = await unchanged('PROJ-161', (head) => head);
+      const { app, documents, done } = await unchanged('PROJ-161', (head) => head);
       try {
         expect(done.exitCode).toBe(1);
         expect(done.message).toContain('pipeline failure left unfixed');
-        expect(await history.latestBody('PROJ-161', 'ci_rerun')).toBeNull();
+        expect(await documents.latestBody('PROJ-161', 'ci_rerun')).toBeNull();
       } finally {
         await app.close();
       }
@@ -1118,18 +1136,19 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-143', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-143');
-      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-143');
+      await documents.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-143');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
-      const record = JSON.parse((await history.latestBody('PROJ-143', 'requirements')) ?? '{}') as {
+      const record = JSON.parse((await documents.latestBody('PROJ-143', 'requirements')) ?? '{}') as {
         plan?: { items?: string[] };
       };
       expect(record.plan?.items).toEqual(['fix the failing test']);
-      expect(await history.latestBody('PROJ-143', 'implementation')).toContain('fixed the test');
-      expect(await history.latestBody('PROJ-143', 'handoff')).toContain('dropped "add the field"');
+      expect(await documents.latestBody('PROJ-143', 'implementation')).toContain('fixed the test');
+      expect(await documents.latestBody('PROJ-143', 'handoff')).toContain('dropped "add the field"');
     } finally {
       await app.close();
     }
@@ -1158,16 +1177,17 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-144', 'approve');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-144');
-      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-144');
+      await documents.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-144');
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('pipeline failure left unfixed');
-      const after = await history.findRun('PROJ-144');
+      const after = await runs.findRun('PROJ-144');
       expect(after?.currentStep).toBe('implement');
       expect(after?.status).toBe('failed');
-      const record = JSON.parse((await history.latestBody('PROJ-144', 'requirements')) ?? '{}') as {
+      const record = JSON.parse((await documents.latestBody('PROJ-144', 'requirements')) ?? '{}') as {
         plan?: { items?: string[]; decision?: string };
       };
       expect(record.plan?.items).toEqual(['fix the failing test']);
@@ -1214,18 +1234,19 @@ async function seed(
   decision: 'approve' | 'revise' | null,
   repos = 'billing-api\n',
 ): Promise<void> {
-  const history = app.get(HistoryService);
-  const seeded = await history.begin(key, 'implement');
+  const runs = app.get(RunRepository);
+  const documents = app.get(DocumentRepository);
+  const seeded = await runs.begin(key, 'implement');
   seeded.status = 'waiting';
   seeded.currentStep = 'implement';
-  await history.saveRun(seeded);
+  await runs.saveRun(seeded);
   const plan = decision ? { name: '', overview: '', items: ['add the field'], decision } : null;
-  await history.putDocument(
+  await documents.putDocument(
     seeded,
     'requirements',
     `${JSON.stringify({ prompt: 'Ship the field\n', tickets: [{ key, summary: 'Ship the field' }], plan }, null, 2)}\n`,
   );
-  await history.putDocument(seeded, 'repos', repos);
+  await documents.putDocument(seeded, 'repos', repos);
 }
 
 async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeof boot> {

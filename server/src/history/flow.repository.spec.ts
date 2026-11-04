@@ -2,7 +2,6 @@ import { PHASES } from '../contract/steps';
 import { DataSource } from 'typeorm';
 import { FlowEntity } from './entities';
 import { FlowRepository } from './flow.repository';
-import { HistoryService } from './history.service';
 import { repositoryDatabase } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
 
@@ -15,7 +14,7 @@ describe('FlowRepository', () => {
       const run = await db.app.get(RunRepository).findRun('run-1');
       expect(run).toEqual(expect.objectContaining({ status: 'waiting', ownerPid: null, stepStartedAt: null }));
       expect(await flows.activePhases(run!.id)).toEqual(['requirements', 'brainstorm']);
-      expect(await db.app.get(HistoryService).listFlows(run!.id)).toEqual([
+      expect(await flows.listFlows(run!.id)).toEqual([
         expect.objectContaining({ fromStep: null, phases: '["requirements","brainstorm"]' }),
       ]);
       await flows.noteFlow('run-1', ['implementation'], 'implement');

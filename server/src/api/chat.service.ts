@@ -4,7 +4,10 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { resolveRepoRoot } from '../config/repo-root';
-import { HistoryService } from '../history/history.service';
+import { DocumentRepository } from '../history/document.repository';
+import { root } from '../history/run-paths';
+import { RunRepository } from '../history/run.repository';
+import { VisitRepository } from '../history/visit.repository';
 import { AGENT_RUNNER, AgentProcessRunner } from '../agent/agent-runner';
 import { modelForStep } from '../agent/spend';
 import { CHAT_LOCK, chatLockBody } from '../pipeline/chat-lock';
@@ -22,7 +25,9 @@ import { ChatBody, ChatView } from '../contract/api';
 @Injectable()
 export class ChatService {
   constructor(
-    private readonly history: HistoryService,
+    private readonly runs: RunRepository,
+    private readonly documents: DocumentRepository,
+    private readonly visits: VisitRepository,
     private readonly config: AppConfig,
     private readonly clock: Clock,
     private readonly sandbox: SandboxService,
@@ -31,12 +36,12 @@ export class ChatService {
   ) {}
 
   async speak(key: string, body: ChatBody): Promise<ChatView> {
-    const found = await this.history.findRun(key);
+    const found = await this.runs.findRun(key);
     if (!found) {
       throw new NotFoundException(`${key} is missing`);
     }
-    const run = await settleShell(this.history, this.sandbox, found, this.clock);
-    if (shellHolding(await this.history.latestBody(key, CHAT_LOCK), run.status) || this.history.held(run)) {
+    const run = await settleShell(this.runs, this.documents, this.sandbox, found, this.clock);
+    if (shellHolding(await this.documents.latestBody(key, CHAT_LOCK), run.status) || this.runs.held(run)) {
       throw new ConflictException(`${key} is already running`);
     }
     const prompt = body.prompt?.trim() ?? '';
@@ -55,20 +60,21 @@ export class ChatService {
     let locked = false;
     try {
       if (/^(waiting|blocked|failed|done)$/.test(previous.status)) {
-        await this.history.putDocument(run, CHAT_LOCK, chatLockBody(previous.status, process.pid));
+        await this.documents.putDocument(run, CHAT_LOCK, chatLockBody(previous.status, process.pid));
       }
       locked = true;
       if (run.runtime !== env.RUNTIME) {
         run.runtime = env.RUNTIME;
-        await this.history.putDocument(run, 'shell_resume', 'clear\n');
+        await this.documents.putDocument(run, 'shell_resume', 'clear\n');
       }
       run.status = 'running';
       run.ownerPid = process.pid;
-      await this.history.saveRun(run);
+      await this.runs.saveRun(run);
       await this.sandbox.assertReady(env.RUNTIME);
       const result = await launchAgent({
         agent: this.agent,
-        history: this.history,
+        visits: this.visits,
+        root: root(this.config),
         run,
         key,
         step: 'chat',
@@ -85,7 +91,7 @@ export class ChatService {
       if (failed) {
         throw new BadRequestException(failed);
       }
-      await this.history.putDocument(run, 'chat', `user: ${prompt}\n\n${result.responseText}`);
+      await this.documents.putDocument(run, 'chat', `user: ${prompt}\n\n${result.responseText}`);
       return { text: result.responseText };
     } catch (error) {
       if (
@@ -103,12 +109,12 @@ export class ChatService {
         run.status = previous.status;
         run.ownerPid = previous.ownerPid;
         try {
-          await this.history.saveRun(run);
+          await this.runs.saveRun(run);
         } catch {
           // The chat result is the error to surface. The lock still names this process.
         }
         try {
-          await this.history.putDocument(run, CHAT_LOCK, 'clear\n');
+          await this.documents.putDocument(run, CHAT_LOCK, 'clear\n');
         } catch {
           // A leftover lock is ignored once a later step uses a different pid.
         }
@@ -124,7 +130,7 @@ export class ChatService {
       }
       return [{ hostPath: realpathSync(trimmed), containerPath: '/work' }];
     }
-    const workspace = join(this.history.root(), 'worktrees', key);
+    const workspace = join(root(this.config), 'worktrees', key);
     if (!targetPath && !existsSync(workspace)) {
       throw new BadRequestException('working directory is missing');
     }
@@ -140,7 +146,7 @@ export class ChatService {
   ): Promise<string> {
     const name = skill?.trim() ?? '';
     const body = name ? this.skill(name) : '';
-    const stored = await this.history.latestBody(key, 'requirements');
+    const stored = await this.documents.latestBody(key, 'requirements');
     let notes = '';
     try {
       notes = await this.services.block(key, text);

@@ -18,25 +18,29 @@ describe('service context', () => {
   const tracker = { fetch: jest.fn() };
   const host = { findMergeRequest: jest.fn() };
   const hosts = { byName: jest.fn(() => host) };
-  const history = {
-    root: () => '/tmp/swarmloop',
-    latestBody: jest.fn(),
-    findRun: jest.fn(async () => ({ codeHost: 'gitlab' })),
-  };
-  const service = new ServiceContextService(history as never, tracker, hosts as never);
+  const config = { env: { SWARMLOOP_ROOT: '/tmp/swarmloop' } };
+  const runs = { findRun: jest.fn(async () => ({ codeHost: 'gitlab' })) };
+  const documents = { latestBody: jest.fn() };
+  const service = new ServiceContextService(
+    runs as never,
+    documents as never,
+    config as never,
+    tracker,
+    hosts as never,
+  );
 
   afterEach(() => {
     tracker.fetch.mockReset();
     host.findMergeRequest.mockReset();
     hosts.byName.mockClear();
-    history.latestBody.mockReset();
-    history.findRun.mockReset();
-    history.findRun.mockResolvedValue({ codeHost: 'gitlab' });
+    documents.latestBody.mockReset();
+    runs.findRun.mockReset();
+    runs.findRun.mockResolvedValue({ codeHost: 'gitlab' });
   });
 
   it('adds jira and gitlab notes without credentials', async () => {
     tracker.fetch.mockResolvedValue({ bundle, httpCalls: [] });
-    history.latestBody.mockImplementation(async (_key: string, kind: string) => {
+    documents.latestBody.mockImplementation(async (_key: string, kind: string) => {
       if (kind === 'pipeline_ref') {
         return 'project: group/demo\nref: feature/PROJ-1\n';
       }
@@ -55,7 +59,7 @@ describe('service context', () => {
   });
 
   it('skips a ticket that is already in the requirements', async () => {
-    history.latestBody.mockImplementation(async (_key: string, kind: string) => {
+    documents.latestBody.mockImplementation(async (_key: string, kind: string) => {
       if (kind === 'requirements') {
         return 'PROJ-1 is described here';
       }
@@ -72,8 +76,8 @@ describe('service context', () => {
   });
 
   it('skips the merge request lookup before a code host is known', async () => {
-    history.findRun.mockResolvedValue({ codeHost: '' });
-    history.latestBody.mockImplementation(async (_key: string, kind: string) => {
+    runs.findRun.mockResolvedValue({ codeHost: '' });
+    documents.latestBody.mockImplementation(async (_key: string, kind: string) => {
       if (kind === 'pipeline_ref') {
         return 'project: group/demo\nref: feature/PROJ-1\n';
       }
@@ -85,7 +89,7 @@ describe('service context', () => {
 
   it('leaves the prompt alone when the host cannot read the services', async () => {
     tracker.fetch.mockRejectedValue(new Error('JIRA_API_TOKEN is missing'));
-    history.latestBody.mockImplementation(async (_key: string, kind: string) => {
+    documents.latestBody.mockImplementation(async (_key: string, kind: string) => {
       if (kind === 'pipeline_ref') {
         return 'project: group/demo\nref: feature/PROJ-1\n';
       }

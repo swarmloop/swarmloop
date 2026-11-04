@@ -79,7 +79,8 @@ describe('working directory block', () => {
           return emptyAgent();
         },
       } as never,
-      history: { root: () => root, tokenTotal: async () => 0 } as never,
+      visits: { tokenTotal: async () => 0 } as never,
+      root,
       run: { agentCalls: 0, spentUsd: 0 } as never,
       key: 'k',
       step: 'plan',
@@ -105,7 +106,8 @@ describe('working directory block', () => {
           return emptyAgent();
         },
       } as never,
-      history: { root: () => root, tokenTotal: async () => 0 } as never,
+      visits: { tokenTotal: async () => 0 } as never,
+      root,
       run: { agentCalls: 0, spentUsd: 0 } as never,
       key: 'k',
       step: 'plan',

@@ -8,7 +8,10 @@ import { chargeStream, modelForStep } from '../agent/spend';
 import { loadPriceTable } from '../agent/prices';
 import { resolveRepoRoot } from '../config/repo-root';
 import { RunEntity } from '../history/entities';
-import { HistoryService } from '../history/history.service';
+import { DocumentRepository } from '../history/document.repository';
+import { RunRepository } from '../history/run.repository';
+import { VisitRepository } from '../history/visit.repository';
+import { root } from '../history/run-paths';
 import { containerName } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -43,7 +46,9 @@ export class PipelineService implements OnModuleInit {
   private readonly inflight = new Set<string>();
 
   constructor(
-    private readonly history: HistoryService,
+    private readonly runs: RunRepository,
+    private readonly documents: DocumentRepository,
+    private readonly visits: VisitRepository,
     private readonly requirements: RequirementsStep,
     private readonly registry: StepRegistry,
     private readonly sandbox: SandboxService,
@@ -54,22 +59,22 @@ export class PipelineService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    for (const run of await this.history.listRuns()) {
+    for (const run of await this.runs.listRuns()) {
       if (run.status !== 'running' || this.inflight.has(run.key)) {
         continue;
       }
-      const body = await this.history.latestBody(run.key, CHAT_LOCK);
+      const body = await this.documents.latestBody(run.key, CHAT_LOCK);
       const shell = readChatLock(body);
       if (shell?.container) {
-        await settleShell(this.history, this.sandbox, run, this.clock);
+        await settleShell(this.runs, this.documents, this.sandbox, run, this.clock);
         continue;
       }
       const resume = chatResume(body, run.ownerPid);
       if (resume) {
         run.status = resume;
         run.ownerPid = null;
-        await this.history.saveRun(run);
-        await this.history.putDocument(run, CHAT_LOCK, 'clear\n');
+        await this.runs.saveRun(run);
+        await this.documents.putDocument(run, CHAT_LOCK, 'clear\n');
         continue;
       }
       await this.abandon(run);
@@ -100,14 +105,14 @@ export class PipelineService implements OnModuleInit {
     if (invalid) {
       return invalid;
     }
-    const run = await this.history.findRun(key);
+    const run = await this.runs.findRun(key);
     if (!run) {
       return { exitCode: 1, message: `${key} is missing` };
     }
     if (!this.inflight.has(key) && run.status !== 'running') {
       return { exitCode: 0, message: `${key} is stopped` };
     }
-    const lockBody = await this.history.latestBody(key, CHAT_LOCK);
+    const lockBody = await this.documents.latestBody(key, CHAT_LOCK);
     if (chatHeld(lockBody, run.status, run.ownerPid)) {
       try {
         await this.sandbox.kill(readChatLock(lockBody)?.container ?? containerName(key, 'chat'));
@@ -121,12 +126,12 @@ export class PipelineService implements OnModuleInit {
     if (stopped) {
       return stopped;
     }
-    const fresh = await this.history.findRun(key);
+    const fresh = await this.runs.findRun(key);
     if (fresh?.status === 'running') {
       fresh.status = 'failed';
       fresh.ownerPid = null;
       fresh.stepStartedAt = null;
-      await this.history.saveRun(fresh);
+      await this.runs.saveRun(fresh);
     }
     return { exitCode: 0, message: `${key} stopped` };
   }
@@ -144,7 +149,7 @@ export class PipelineService implements OnModuleInit {
     if (!text) {
       return { exitCode: 1, message: 'prompt is missing' };
     }
-    const run = await this.history.findRun(key);
+    const run = await this.runs.findRun(key);
     if (!run) {
       return { exitCode: 1, message: `${key} is missing` };
     }
@@ -152,12 +157,12 @@ export class PipelineService implements OnModuleInit {
     if (stopped) {
       return stopped;
     }
-    const fresh = (await this.history.findRun(key)) ?? run;
+    const fresh = (await this.runs.findRun(key)) ?? run;
     const full = await this.storeInstructions(fresh, name, text);
     fresh.currentStep = name;
     fresh.status = 'waiting';
     fresh.ownerPid = null;
-    await this.history.saveRun(fresh);
+    await this.runs.saveRun(fresh);
     this.runStop.clear(key);
     return this.startDetached(key, this.registry.get(name)?.acceptsPrompt ? { prompt: full } : {});
   }
@@ -176,7 +181,7 @@ export class PipelineService implements OnModuleInit {
       if (await this.busy(key, true)) {
         return { exitCode: 1, message: `${key} is already running` };
       }
-      const existing = await this.history.findRun(key);
+      const existing = await this.runs.findRun(key);
       if (!only && existing?.status === 'done') {
         return { exitCode: 0, message: `${key} is done` };
       }
@@ -217,10 +222,10 @@ export class PipelineService implements OnModuleInit {
         .catch(async (error: unknown) => {
           const message = error instanceof Error ? error.message : 'run failed';
           this.logger.error(message);
-          const run = await this.history.findRun(key);
+          const run = await this.runs.findRun(key);
           if (run?.status === 'running' && run.ownerPid === process.pid) {
             const now = this.clock.iso();
-            await this.history.finishVisit(run, {
+            await this.visits.finishVisit(run, {
               step: run.currentStep,
               model: null,
               mode: null,
@@ -243,7 +248,7 @@ export class PipelineService implements OnModuleInit {
             run.status = 'failed';
             run.ownerPid = null;
             run.stepStartedAt = null;
-            await this.history.saveRun(run);
+            await this.runs.saveRun(run);
           }
         })
         .finally(() => this.inflight.delete(key));
@@ -323,7 +328,7 @@ export class PipelineService implements OnModuleInit {
         ? chargeStream(model, saved, prices)
         : null;
     run.spentUsd += charge?.usd ?? 0;
-    await this.history.finishVisit(run, {
+    await this.visits.finishVisit(run, {
       step: run.currentStep,
       model,
       mode: null,
@@ -349,27 +354,27 @@ export class PipelineService implements OnModuleInit {
     run.status = 'failed';
     run.ownerPid = null;
     run.stepStartedAt = null;
-    await this.history.saveRun(run);
+    await this.runs.saveRun(run);
   }
 
   private savedOutput(run: RunEntity): string {
-    return liveLogBody(this.history.root(), run.key, run.currentStep);
+    return liveLogBody(root(this.config), run.key, run.currentStep);
   }
 
   private async pinProjects(key: string, names: string[]): Promise<void> {
     const body = renderProjects(names);
-    const existing = await this.history.findRun(key);
+    const existing = await this.runs.findRun(key);
     if (existing) {
       if (!storedProjects(existing.projects).length) {
         existing.projects = body;
-        await this.history.saveRun(existing);
+        await this.runs.saveRun(existing);
       }
       return;
     }
-    const created = await this.history.openWaiting(key, '');
+    const created = await this.runs.openWaiting(key, '');
     created.targetPath = null;
     created.projects = body;
-    await this.history.saveRun(created);
+    await this.runs.saveRun(created);
   }
 
   private async savedStep(key: string): Promise<{ step: StepName } | PipelineResult> {
@@ -380,7 +385,7 @@ export class PipelineService implements OnModuleInit {
     if (await this.busy(key)) {
       return { exitCode: 1, message: `${key} is already running` };
     }
-    const existing = await this.history.findRun(key);
+    const existing = await this.runs.findRun(key);
     if (existing?.status === 'done') {
       return { exitCode: 0, message: `${key} is done` };
     }
@@ -411,9 +416,9 @@ export class PipelineService implements OnModuleInit {
       if (this.runStop.halted(key)) {
         return result;
       }
-      const run = await this.history.findRun(key);
-      const mark = loopMark(await this.history.latestBody(key, 'loop_mark'));
-      const stats = run ? await this.history.listStats(run.id) : [];
+      const run = await this.runs.findRun(key);
+      const mark = loopMark(await this.documents.latestBody(key, 'loop_mark'));
+      const stats = run ? await this.visits.listStats(run.id) : [];
       const env = this.config.env;
       if (
         run?.status === 'failed' &&
@@ -438,28 +443,28 @@ export class PipelineService implements OnModuleInit {
 
   /** Refuse a step that has not started once recorded spend is at the ceiling. */
   private async spendStop(key: string, step: StepName): Promise<string | null> {
-    const existing = await this.history.findRun(key);
+    const existing = await this.runs.findRun(key);
     if (!existing || !overSpend(existing.spentUsd, this.config.env.MAX_RUN_USD)) {
       return null;
     }
-    const stats = await this.history.listStats(existing.id);
+    const stats = await this.visits.listStats(existing.id);
     const last = [...stats].reverse().find((item) => item.step === step)?.status ?? null;
     if (continuesSameStep(existing.status, existing.currentStep, step, last)) {
       return null;
     }
     const message = `${key} is over the spend limit. ${step} was not started`;
-    await this.history.putDocument(existing, 'spend', `${message}\n`);
+    await this.documents.putDocument(existing, 'spend', `${message}\n`);
     return message;
   }
 
   private async markLoop(key: string): Promise<void> {
-    const run = await this.history.findRun(key);
+    const run = await this.runs.findRun(key);
     if (!run) {
       return;
     }
-    const stats = await this.history.listStats(run.id);
+    const stats = await this.visits.listStats(run.id);
     const mark = stats.reduce((max, item) => Math.max(max, item.id), 0);
-    await this.history.putDocument(run, 'loop_mark', `${mark}\n`);
+    await this.documents.putDocument(run, 'loop_mark', `${mark}\n`);
   }
 
   private async execute(name: StepName, key: string, options: StepOptions): Promise<PipelineResult> {
@@ -471,10 +476,10 @@ export class PipelineService implements OnModuleInit {
     if (step) {
       return step.execute(key, options);
     }
-    const prior = await this.history.findRun(key);
+    const prior = await this.runs.findRun(key);
     const previousStep = prior?.currentStep ?? name;
     const previousStatus = prior?.status ?? 'waiting';
-    const run = await this.history.begin(key, name);
+    const run = await this.runs.begin(key, name);
     if (options.path) {
       run.targetPath = realpathSync(options.path);
     }
@@ -482,9 +487,8 @@ export class PipelineService implements OnModuleInit {
     run.status = settled.status;
     run.currentStep = settled.currentStep;
     run.ownerPid = null;
-    await this.history.saveRun(run);
+    await this.runs.saveRun(run);
     const line = `${this.clock.iso()} ${name} not implemented`;
-    await this.history.appendProgress(key, line);
     return { exitCode: 1, message: line };
   }
 
@@ -495,12 +499,12 @@ export class PipelineService implements OnModuleInit {
       return null;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'repository failed';
-      const run = await this.history.findRun(key);
+      const run = await this.runs.findRun(key);
       if (run && run.status !== 'running') {
         run.status = 'failed';
         run.ownerPid = null;
-        await this.history.saveRun(run);
-        await this.history.putDocument(run, 'error', `${message}\n`);
+        await this.runs.saveRun(run);
+        await this.documents.putDocument(run, 'error', `${message}\n`);
       }
       return message;
     }
@@ -534,15 +538,15 @@ export class PipelineService implements OnModuleInit {
   private async storeInstructions(run: RunEntity, step: StepName, text: string): Promise<string> {
     const prompt = joinPrompt(run.prompt, text);
     run.prompt = prompt;
-    await this.history.saveRun(run);
+    await this.runs.saveRun(run);
     const target = this.registry.get(step);
     if (target?.acceptsPrompt) {
       return prompt;
     }
-    const body = await this.history.latestBody(run.key, 'requirements');
+    const body = await this.documents.latestBody(run.key, 'requirements');
     if (body) {
       const revise = target?.revisesRequirements === true;
-      await this.history.putDocument(run, 'requirements', withInstructions(body, text, revise));
+      await this.documents.putDocument(run, 'requirements', withInstructions(body, text, revise));
     }
     return prompt;
   }
@@ -569,15 +573,15 @@ export class PipelineService implements OnModuleInit {
     if (!ownClaim && this.inflight.has(key)) {
       return true;
     }
-    const existing = await this.history.findRun(key);
+    const existing = await this.runs.findRun(key);
     if (!existing) {
       return false;
     }
-    const settled = await settleShell(this.history, this.sandbox, existing, this.clock);
-    if (shellHolding(await this.history.latestBody(key, CHAT_LOCK), settled.status)) {
+    const settled = await settleShell(this.runs, this.documents, this.sandbox, existing, this.clock);
+    if (shellHolding(await this.documents.latestBody(key, CHAT_LOCK), settled.status)) {
       return true;
     }
-    return this.history.held(settled);
+    return this.runs.held(settled);
   }
 
   private keyError(key: string): PipelineResult | null {

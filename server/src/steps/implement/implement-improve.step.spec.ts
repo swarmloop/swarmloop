@@ -9,7 +9,8 @@ import { join } from 'path';
 import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DocumentEntity } from '../../history/entities';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
 import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
@@ -50,13 +51,13 @@ describe('implement-improve step', () => {
       const notes = await documents.find({ where: { kind: 'implementation' }, order: { id: 'ASC' } });
       expect(notes).toHaveLength(2);
       expect(notes[1]?.body).toBe('- fixed the empty case\n');
-      const run = await app.get(HistoryService).findRun('PROJ-70');
+      const run = await app.get(RunRepository).findRun('PROJ-70');
       expect(run?.currentStep).toBe('code-review');
       expect(run?.status).toBe('waiting');
       expect(git(worktree, ['status', '--porcelain'])).toBe('');
       await app.get(PipelineService).step('implement-improve', 'PROJ-70');
       expect(await documents.find({ where: { kind: 'implementation' } })).toHaveLength(2);
-      expect((await app.get(HistoryService).findRun('PROJ-70'))?.currentStep).toBe('code-review');
+      expect((await app.get(RunRepository).findRun('PROJ-70'))?.currentStep).toBe('code-review');
     } finally {
       await app.close();
     }
@@ -70,10 +71,10 @@ describe('implement-improve step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-74');
-      const run = await app.get(HistoryService).findRun('PROJ-74');
-      await app.get(HistoryService).putDocument(run!, 'return', '## quality\nuse theme.alpha\n');
+      const run = await app.get(RunRepository).findRun('PROJ-74');
+      await app.get(DocumentRepository).putDocument(run!, 'return', '## quality\nuse theme.alpha\n');
       await app
-        .get(HistoryService)
+        .get(DocumentRepository)
         .putDocument(run!, 'handoff', '## implement\n- changed the parser so empty fields stay\n');
       const done = await app.get(PipelineService).step('implement-improve', 'PROJ-74');
       expect(done.exitCode).toBe(0);
@@ -82,7 +83,7 @@ describe('implement-improve step', () => {
       expect(input.prompt).toContain('use theme.alpha');
       expect(input.prompt).toContain('What previous steps did:');
       expect(input.prompt).toContain('## implement');
-      const handoff = await app.get(HistoryService).latestBody('PROJ-74', 'handoff');
+      const handoff = await app.get(DocumentRepository).latestBody('PROJ-74', 'handoff');
       expect(handoff).toContain('## implement');
       expect(handoff).toContain('empty fields stay');
       expect(handoff).toContain('## implement-improve');
@@ -134,7 +135,7 @@ describe('implement-improve step', () => {
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       const notes = await documents.find({ where: { kind: 'implementation' }, order: { id: 'DESC' } });
       expect(notes[0]?.body).toBe('- changed the field parser\n');
-      expect((await app.get(HistoryService).findRun('PROJ-76'))?.currentStep).toBe('code-review');
+      expect((await app.get(RunRepository).findRun('PROJ-76'))?.currentStep).toBe('code-review');
     } finally {
       await app.close();
     }
@@ -151,14 +152,15 @@ describe('implement-improve step', () => {
       await failedCommit(app, 'PROJ-77', git(worktree, ['rev-parse', 'HEAD']));
       const done = await app.get(PipelineService).step('implement-improve', 'PROJ-77');
       expect(done.exitCode).toBe(0);
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-77');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-77');
       expect(run?.currentStep).toBe('code-review');
       expect(run?.status).toBe('waiting');
-      const returned = await history.latestBody('PROJ-77', 'return');
+      const returned = await documents.latestBody('PROJ-77', 'return');
       expect(returned).toContain('FAIL api/runs.service.spec.ts expected running');
       expect(returned).not.toContain('The files were not changed. Change the code or the failing test.');
-      expect(await history.latestBody('PROJ-77', 'implementation')).toBe('- changed the field parser\n');
+      expect(await documents.latestBody('PROJ-77', 'implementation')).toBe('- changed the field parser\n');
     } finally {
       await app.close();
     }
@@ -178,7 +180,7 @@ describe('implement-improve step', () => {
       await failedCommit(app, 'PROJ-78', git(worktree, ['rev-parse', 'HEAD']));
       const done = await app.get(PipelineService).step('implement-improve', 'PROJ-78');
       expect(done.exitCode).toBe(0);
-      expect((await app.get(HistoryService).findRun('PROJ-78'))?.currentStep).toBe('code-review');
+      expect((await app.get(RunRepository).findRun('PROJ-78'))?.currentStep).toBe('code-review');
     } finally {
       await app.close();
     }
@@ -195,7 +197,7 @@ describe('implement-improve step', () => {
       await failedCommit(app, 'PROJ-79', 'abc');
       const done = await app.get(PipelineService).step('implement-improve', 'PROJ-79');
       expect(done.exitCode).toBe(0);
-      expect((await app.get(HistoryService).findRun('PROJ-79'))?.currentStep).toBe('code-review');
+      expect((await app.get(RunRepository).findRun('PROJ-79'))?.currentStep).toBe('code-review');
     } finally {
       await app.close();
     }
@@ -215,7 +217,7 @@ describe('implement-improve step', () => {
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       const notes = await documents.find({ where: { kind: 'implementation' }, order: { id: 'DESC' } });
       expect(notes[0]?.body).toBe('- changed the field parser\n');
-      const run = await app.get(HistoryService).findRun('PROJ-71');
+      const run = await app.get(RunRepository).findRun('PROJ-71');
       expect(run?.currentStep).toBe('code-review');
       expect(run?.status).toBe('waiting');
     } finally {
@@ -246,7 +248,7 @@ describe('implement-improve step', () => {
       const done = await app.get(PipelineService).step('implement-improve', 'PROJ-72');
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('billing-api was committed');
-      expect((await app.get(HistoryService).findRun('PROJ-72'))?.status).toBe('failed');
+      expect((await app.get(RunRepository).findRun('PROJ-72'))?.status).toBe('failed');
     } finally {
       await app.close();
     }
@@ -288,17 +290,18 @@ describe('implement-improve step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-74');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-74');
-      await history.putDocument(run!, REBASE_CONFLICT, 'pending\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-74');
+      await documents.putDocument(run!, REBASE_CONFLICT, 'pending\n');
       const done = await app.get(PipelineService).step('implement-improve', 'PROJ-74');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
       expect(input.prompt).toContain('logical and technical gaps');
       expect(input.prompt).not.toContain('A rebase is in progress');
-      expect((await history.latestBody('PROJ-74', REBASE_CONFLICT))?.trim()).toBe('pending');
-      expect((await history.findRun('PROJ-74'))?.currentStep).toBe('code-review');
+      expect((await documents.latestBody('PROJ-74', REBASE_CONFLICT))?.trim()).toBe('pending');
+      expect((await runs.findRun('PROJ-74'))?.currentStep).toBe('code-review');
     } finally {
       await app.close();
     }
@@ -324,19 +327,20 @@ describe('implement-improve step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-75');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-75');
-      await history.putDocument(run!, REBASE_CONFLICT, 'pending\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-75');
+      await documents.putDocument(run!, REBASE_CONFLICT, 'pending\n');
       const done = await app.get(PipelineService).step('implement-improve', 'PROJ-75');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
       expect(input.prompt).toContain('logical and technical gaps');
       expect(input.prompt).not.toContain('finish the checklist in this visit');
-      const fresh = await history.findRun('PROJ-75');
+      const fresh = await runs.findRun('PROJ-75');
       expect(fresh?.currentStep).toBe('code-review');
       expect(fresh?.status).toBe('waiting');
-      expect((await history.latestBody('PROJ-75', REBASE_CONFLICT))?.trim()).toBe('pending');
+      expect((await documents.latestBody('PROJ-75', REBASE_CONFLICT))?.trim()).toBe('pending');
       expect(git(worktree, ['diff', '--name-only', '--diff-filter=U'])).toBe('');
     } finally {
       await app.close();
@@ -365,19 +369,20 @@ describe('implement-improve step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-180');
-      const history = app.get(HistoryService);
-      const run = await history.findRun('PROJ-180');
-      await history.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-180');
+      await documents.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
       const done = await app.get(PipelineService).step('implement-improve', 'PROJ-180');
       expect(done.exitCode).toBe(0);
-      const record = JSON.parse((await history.latestBody('PROJ-180', 'requirements')) ?? '{}') as {
+      const record = JSON.parse((await documents.latestBody('PROJ-180', 'requirements')) ?? '{}') as {
         prompt?: string;
         plan?: { items?: string[]; decision?: string };
       };
       expect(record.plan?.items).toEqual(['fix the failing test']);
       expect(record.plan?.decision).toBe('approve');
       expect(record.prompt).toContain('Ship the field');
-      const handoff = await history.latestBody('PROJ-180', 'handoff');
+      const handoff = await documents.latestBody('PROJ-180', 'handoff');
       expect(handoff).toContain('dropped "add the field"');
       expect(handoff).toContain('added "fix the failing test"');
       expect(handoff).toContain('outranks the checklist');
@@ -396,12 +401,12 @@ describe('implement-improve step', () => {
       await seed(app, 'PROJ-181');
       const done = await app.get(PipelineService).step('implement-improve', 'PROJ-181');
       expect(done.exitCode).toBe(0);
-      const history = app.get(HistoryService);
-      const record = JSON.parse((await history.latestBody('PROJ-181', 'requirements')) ?? '{}') as {
+      const documents = app.get(DocumentRepository);
+      const record = JSON.parse((await documents.latestBody('PROJ-181', 'requirements')) ?? '{}') as {
         plan?: { items?: string[] };
       };
       expect(record.plan?.items).toEqual(['add the field']);
-      expect(await history.latestBody('PROJ-181', 'handoff')).not.toContain('outranks the checklist');
+      expect(await documents.latestBody('PROJ-181', 'handoff')).not.toContain('outranks the checklist');
     } finally {
       await app.close();
     }
@@ -439,14 +444,15 @@ async function boot(root: string, agent: jest.Mock) {
 }
 
 async function failedCommit(app: Awaited<ReturnType<typeof boot>>, key: string, sha: string): Promise<void> {
-  const history = app.get(HistoryService);
-  const run = await history.findRun(key);
-  await history.putDocument(
+  const runs = app.get(RunRepository);
+  const documents = app.get(DocumentRepository);
+  const run = await runs.findRun(key);
+  await documents.putDocument(
     run!,
     'pipeline_ref',
     `project: acme/billing-api\nref: feature/${key}-ship-the-field\nsha: ${sha}\n`,
   );
-  await history.putDocument(
+  await documents.putDocument(
     run!,
     'return',
     '## pipeline\nresult: fail\njob: test\n\nFAIL api/runs.service.spec.ts expected running\n',
@@ -454,18 +460,19 @@ async function failedCommit(app: Awaited<ReturnType<typeof boot>>, key: string, 
 }
 
 async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, repos = 'billing-api\n'): Promise<void> {
-  const history = app.get(HistoryService);
-  const seeded = await history.begin(key, 'implement-improve');
+  const runs = app.get(RunRepository);
+  const documents = app.get(DocumentRepository);
+  const seeded = await runs.begin(key, 'implement-improve');
   seeded.status = 'waiting';
   seeded.currentStep = 'implement-improve';
-  await history.saveRun(seeded);
-  await history.putDocument(
+  await runs.saveRun(seeded);
+  await documents.putDocument(
     seeded,
     'requirements',
     `${JSON.stringify({ prompt: 'Ship the field\n', tickets: [{ key, summary: 'Ship the field' }], plan: { name: '', overview: '', items: ['add the field'], decision: 'approve' } }, null, 2)}\n`,
   );
-  await history.putDocument(seeded, 'repos', repos);
-  await history.putDocument(seeded, 'implementation', '- changed the field parser\n');
+  await documents.putDocument(seeded, 'repos', repos);
+  await documents.putDocument(seeded, 'implementation', '- changed the field parser\n');
 }
 
 async function writeEnv(root: string): Promise<void> {

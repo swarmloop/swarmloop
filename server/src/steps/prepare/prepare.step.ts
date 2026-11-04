@@ -2,7 +2,12 @@ import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, statSync } fr
 import { dirname, isAbsolute, join, resolve } from 'path';
 import { Injectable } from '@nestjs/common';
 import { AppConfig } from '../../config/env';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
+import { VisitRepository } from '../../history/visit.repository';
+import { FlowRepository } from '../../history/flow.repository';
+import { CheckoutRepository } from '../../history/checkout.repository';
+import { root } from '../../history/run-paths';
 import { Clock } from '../../core/clock';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
@@ -21,12 +26,16 @@ export class PrepareStep extends BaseStep {
   readonly revisesRequirements = true;
 
   constructor(
-    history: HistoryService,
+    runs: RunRepository,
+    documents: DocumentRepository,
+    visits: VisitRepository,
+    flows: FlowRepository,
     clock: Clock,
-    private readonly config: AppConfig,
+    config: AppConfig,
+    private readonly checkouts: CheckoutRepository,
     private readonly registry: CodeHostRegistry,
   ) {
-    super(history, clock);
+    super(runs, documents, visits, flows, clock, config);
   }
 
   protected override failureText(error: unknown): string {
@@ -37,7 +46,7 @@ export class PrepareStep extends BaseStep {
     const { opened } = ctx;
     const selected = storedProjects(opened.run.projects).map((name) => ({ name, path: '' }));
     const checkouts: { name: string; path: string }[] =
-      selected.length > 0 ? selected : await this.history.listCheckouts();
+      selected.length > 0 ? selected : await this.checkouts.listCheckouts();
     if (checkouts.length === 0) {
       throw new SwarmloopError('projects is missing');
     }
@@ -48,7 +57,7 @@ export class PrepareStep extends BaseStep {
     }
     assignCodeHost(opened.run, hosts, true);
     const handoff = await recordHandoff(
-      this.history,
+      this.documents,
       key,
       'prepare',
       `- prepared ${checkouts.map((checkout) => checkout.name).join(', ')}\n`,
@@ -65,12 +74,12 @@ export class PrepareStep extends BaseStep {
   }
 
   async listClones(): Promise<{ name: string }[]> {
-    const rows = await this.history.listCheckouts();
+    const rows = await this.checkouts.listCheckouts();
     return rows.map((row) => ({ name: row.name }));
   }
 
   listProjects(): { projects: string[] } {
-    return { projects: listGitProjects(this.history.root(), this.config.env.CHECKOUTS_ROOT) };
+    return { projects: listGitProjects(root(this.config), this.config.env.CHECKOUTS_ROOT) };
   }
 
   async addClone(name: string): Promise<{ name: string }> {
@@ -78,16 +87,16 @@ export class PrepareStep extends BaseStep {
     if (!CHECKOUT_NAME.test(trimmed)) {
       throw new SwarmloopError('checkout name is invalid');
     }
-    const path = resolveCheckoutPath(this.history.root(), this.config.env.CHECKOUTS_ROOT, trimmed, '');
+    const path = resolveCheckoutPath(root(this.config), this.config.env.CHECKOUTS_ROOT, trimmed, '');
     const located = { name: trimmed, path };
     this.assertCheckout(located);
     await this.assertGit(located);
-    await this.history.saveCheckout(trimmed, '');
+    await this.checkouts.saveCheckout(trimmed, '');
     return { name: trimmed };
   }
 
   async removeWorktrees(key: string): Promise<void> {
-    const directory = join(this.history.root(), 'worktrees', key);
+    const directory = join(root(this.config), 'worktrees', key);
     if (!existsSync(directory)) {
       return;
     }
@@ -129,14 +138,14 @@ export class PrepareStep extends BaseStep {
     const env = this.config.env;
     const located = {
       name: checkout.name,
-      path: resolveCheckoutPath(this.history.root(), env.CHECKOUTS_ROOT, checkout.name, checkout.path),
+      path: resolveCheckoutPath(root(this.config), env.CHECKOUTS_ROOT, checkout.name, checkout.path),
     };
     this.assertCheckout(located);
     await this.assertGit(located);
     const ref = await storedBase(located.path, located.name, prompt, { ...env, clock: this.clock }, 'prepare');
-    const worktree = join(this.history.root(), 'worktrees', key, located.name);
+    const worktree = join(root(this.config), 'worktrees', key, located.name);
     if (!existsSync(worktree)) {
-      mkdirSync(join(this.history.root(), 'worktrees', key), { recursive: true });
+      mkdirSync(join(root(this.config), 'worktrees', key), { recursive: true });
       await this.addWorktree(located, worktree, ref);
       return located;
     }

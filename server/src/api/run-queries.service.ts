@@ -3,7 +3,13 @@ import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { resolveRepoRoot } from '../config/repo-root';
 import { DocumentEntity, RunEntity, StepStatEntity } from '../history/entities';
-import { HistoryService } from '../history/history.service';
+import { RunRepository } from '../history/run.repository';
+import { DocumentRepository } from '../history/document.repository';
+import { VisitRepository } from '../history/visit.repository';
+import { FlowRepository } from '../history/flow.repository';
+import { EventRepository } from '../history/event.repository';
+import { CheckoutRepository } from '../history/checkout.repository';
+import { root } from '../history/run-paths';
 import { Charge, chargeStream, modelForStep } from '../agent/spend';
 import { loadPriceTable } from '../agent/prices';
 import { LiveHub } from '../live/live.hub';
@@ -36,7 +42,12 @@ import { launchView, liveVisit } from './run-view/live';
 @Injectable()
 export class RunQueriesService {
   constructor(
-    private readonly history: HistoryService,
+    private readonly runs: RunRepository,
+    private readonly documents: DocumentRepository,
+    private readonly visits: VisitRepository,
+    private readonly flows: FlowRepository,
+    private readonly events: EventRepository,
+    private readonly checkouts: CheckoutRepository,
     private readonly pipeline: PipelineService,
     private readonly config: AppConfig,
     private readonly clock: Clock,
@@ -44,8 +55,8 @@ export class RunQueriesService {
   ) {}
 
   async list(): Promise<RunsView> {
-    const runs = await this.history.listRuns();
-    const durations = await this.history.durationByRun();
+    const runs = await this.runs.listRuns();
+    const durations = await this.runs.durationByRun();
     return {
       runs: runs.map((run) => ({
         key: run.key,
@@ -62,11 +73,11 @@ export class RunQueriesService {
   }
 
   async flow(key: string): Promise<FlowView> {
-    const run = await requireRun(this.history, key);
-    const documents = await this.history.listDocuments(run.id);
-    const stats = await this.history.listStats(run.id);
-    const pastes = await this.history.listPastes(key);
-    const launches = await this.history.listFlows(run.id);
+    const run = await requireRun(this.runs, key);
+    const documents = await this.documents.listDocuments(run.id);
+    const stats = await this.visits.listStats(run.id);
+    const pastes = await this.checkouts.listPastes(key);
+    const launches = await this.flows.listFlows(run.id);
     const open = openItems(
       run,
       documents,
@@ -75,7 +86,7 @@ export class RunQueriesService {
     const shown = this.pipeline.claimed(run.key) && run.status !== 'done' ? { ...run, status: 'running' } : run;
     const resume = resumeState(shown, open, documents);
     const maxReturns = this.config.env.MAX_RETURNS;
-    const reportMs = await this.history.codeReviewReportMs(run.id);
+    const reportMs = await this.visits.codeReviewReportMs(run.id);
     return {
       key: run.key,
       name: runName(run.key, run.prompt),
@@ -96,7 +107,7 @@ export class RunQueriesService {
         this.live?.peaksOf(run.key) ?? { cpuPeak: 0, memPeak: 0 },
         reportMs,
       ),
-      phases: phases(shown, stats, documents, this.history.root()),
+      phases: phases(shown, stats, documents, root(this.config)),
       returns: returns(shown),
       items: open,
       paths: run.currentStep === 'commit' ? parsePaths(latest(documents, 'commit') ?? '') : [],
@@ -115,11 +126,11 @@ export class RunQueriesService {
     if (!isStep(name)) {
       throw new BadRequestException(`${name} is unknown`);
     }
-    const run = await requireRun(this.history, key);
-    const documents = await this.history.listDocuments(run.id);
-    const stats = (await this.history.listStats(run.id)).filter((stat) => stat.step === name);
-    const exchanges = await this.history.listExchanges(stats.map((stat) => stat.id));
-    const samples = await this.history.listSamples(stats.map((stat) => stat.id));
+    const run = await requireRun(this.runs, key);
+    const documents = await this.documents.listDocuments(run.id);
+    const stats = (await this.visits.listStats(run.id)).filter((stat) => stat.step === name);
+    const exchanges = await this.visits.listExchanges(stats.map((stat) => stat.id));
+    const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
     const kinds = [...(STEP_KINDS[name] ?? []), 'error', 'log'];
     const visits = stats.map((stat, index) => {
       const owned = documents.filter((document) => document.stepStatId === stat.id);
@@ -165,7 +176,7 @@ export class RunQueriesService {
     });
     if (run.status === 'running' && run.currentStep === name) {
       visits.push(
-        liveVisit(run.key, name, this.history.root(), stats.at(-1)?.attempt ?? 0, run.updatedAt, this.clock.now()),
+        liveVisit(run.key, name, root(this.config), stats.at(-1)?.attempt ?? 0, run.updatedAt, this.clock.now()),
       );
     }
     return {
@@ -182,14 +193,14 @@ export class RunQueriesService {
   }
 
   async readHistory(key: string): Promise<HistoryView> {
-    const run = await requireRun(this.history, key);
-    const documents = await this.history.listDocuments(run.id);
-    const stats = await this.history.listStats(run.id);
-    const exchanges = await this.history.listExchanges(stats.map((stat) => stat.id));
-    const samples = await this.history.listSamples(stats.map((stat) => stat.id));
-    const loops = await this.history.listLoops(run.id);
-    const calls = await this.history.listHttpCalls(run.id);
-    const launches = await this.history.listFlows(run.id);
+    const run = await requireRun(this.runs, key);
+    const documents = await this.documents.listDocuments(run.id);
+    const stats = await this.visits.listStats(run.id);
+    const exchanges = await this.visits.listExchanges(stats.map((stat) => stat.id));
+    const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
+    const loops = await this.events.listLoops(run.id);
+    const calls = await this.events.listHttpCalls(run.id);
+    const launches = await this.flows.listFlows(run.id);
     return {
       launches: launches.map(launchView),
       documents: documents.map(documentView),
@@ -244,16 +255,16 @@ export class RunQueriesService {
   }
 
   private async reviewerStep(key: string, name: string): Promise<StepView> {
-    const run = await requireRun(this.history, key);
-    const documents = await this.history.listDocuments(run.id);
-    const own = (await this.history.listStats(run.id)).filter((stat) => stat.step === name);
+    const run = await requireRun(this.runs, key);
+    const documents = await this.documents.listDocuments(run.id);
+    const own = (await this.visits.listStats(run.id)).filter((stat) => stat.step === name);
     if (own.length > 0) {
       return this.angleStep(run, name, documents, own);
     }
-    const stats = (await this.history.listStats(run.id)).filter((stat) => stat.step === 'code-review');
-    const samples = await this.history.listSamples(stats.map((stat) => stat.id));
+    const stats = (await this.visits.listStats(run.id)).filter((stat) => stat.step === 'code-review');
+    const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
     const kind = `review_${name.slice('code-review-'.length)}`;
-    const raw = liveLogBody(this.history.root(), key, name);
+    const raw = liveLogBody(root(this.config), key, name);
     const env = this.config.env;
     const model = modelForStep(name, env);
     let charge: Charge | null = null;
@@ -266,7 +277,7 @@ export class RunQueriesService {
     }
     const parentRunning =
       (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
-    const open = parentRunning && liveLogCurrent(this.history.root(), key, name);
+    const open = parentRunning && liveLogCurrent(root(this.config), key, name);
     const ownedStats = stats.filter((stat) =>
       documents.some((document) => document.stepStatId === stat.id && document.kind === kind),
     );
@@ -309,7 +320,7 @@ export class RunQueriesService {
         ...liveVisit(
           run.key,
           name,
-          this.history.root(),
+          root(this.config),
           visits.length,
           run.updatedAt,
           this.clock.now(),
@@ -333,8 +344,8 @@ export class RunQueriesService {
   ): Promise<StepView> {
     const kind = `review_${name.slice('code-review-'.length)}`;
     const kinds = [kind, 'log', 'error'];
-    const exchanges = await this.history.listExchanges(stats.map((stat) => stat.id));
-    const samples = await this.history.listSamples(stats.map((stat) => stat.id));
+    const exchanges = await this.visits.listExchanges(stats.map((stat) => stat.id));
+    const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
     const visits = stats.map((stat, index) => {
       const owned = documents.filter((document) => document.stepStatId === stat.id && document.kind === kind);
       const verdict = reviewDecision(owned.map((item) => item.body).join('\n'));
@@ -372,12 +383,12 @@ export class RunQueriesService {
     });
     const parentRunning =
       (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
-    if (parentRunning && liveLogCurrent(this.history.root(), run.key, name)) {
+    if (parentRunning && liveLogCurrent(root(this.config), run.key, name)) {
       visits.push(
         liveVisit(
           run.key,
           name,
-          this.history.root(),
+          root(this.config),
           stats.at(-1)?.attempt ?? 0,
           run.updatedAt,
           this.clock.now(),
@@ -389,8 +400,8 @@ export class RunQueriesService {
   }
 }
 
-export async function requireRun(history: HistoryService, key: string): Promise<RunEntity> {
-  const run = await history.findRun(key);
+export async function requireRun(runs: RunRepository, key: string): Promise<RunEntity> {
+  const run = await runs.findRun(key);
   if (!run) {
     throw new NotFoundException(`${key} is missing`);
   }

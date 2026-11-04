@@ -6,7 +6,8 @@ import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopConfigModule } from '../config/config.module';
-import { HistoryService } from '../history/history.service';
+import { RunRepository } from '../history/run.repository';
+import { DocumentRepository } from '../history/document.repository';
 import { AGENT_RUNNER } from '../agent/agent-runner';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CodeReviewStep } from '../steps/code-review/code-review.step';
@@ -42,18 +43,19 @@ describe('pipeline service', () => {
     const app = await boot(root);
     try {
       const pipeline = app.get(PipelineService);
-      const history = app.get(HistoryService);
-      const seeded = await history.begin('PROJ-62', 'prepare');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const seeded = await runs.begin('PROJ-62', 'prepare');
       seeded.status = 'waiting';
       seeded.currentStep = 'prepare';
-      await history.saveRun(seeded);
-      await history.putDocument(
+      await runs.saveRun(seeded);
+      await documents.putDocument(
         seeded,
         'requirements',
         withPlan('{"prompt":"ship the field"}\n', { name: '', overview: '', items: ['add the field'], decision: null }),
       );
       await pipeline.replay('PROJ-62', 'prepare', 'Narrow the scope');
-      const body = await history.latestBody('PROJ-62', 'requirements');
+      const body = await documents.latestBody('PROJ-62', 'requirements');
       expect((JSON.parse(body ?? '{}') as { plan: { decision: string } }).plan.decision).toBe('revise');
       await settle(pipeline, 'PROJ-62');
     } finally {
@@ -65,15 +67,15 @@ describe('pipeline service', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-abandon-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const seeded = await history.begin('PROJ-63', 'code-review');
+      const runs = app.get(RunRepository);
+      const seeded = await runs.begin('PROJ-63', 'code-review');
       seeded.status = 'running';
       seeded.currentStep = 'code-review';
-      await history.saveRun(seeded);
+      await runs.saveRun(seeded);
       const charge = jest.spyOn(app.get(CodeReviewStep), 'charge').mockResolvedValue(null);
       await app.get(PipelineService).onModuleInit();
       expect(charge).toHaveBeenCalledWith('PROJ-63', expect.anything(), expect.anything());
-      expect((await history.findRun('PROJ-63'))?.status).toBe('failed');
+      expect((await runs.findRun('PROJ-63'))?.status).toBe('failed');
     } finally {
       await app.close();
     }

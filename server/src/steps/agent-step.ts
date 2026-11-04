@@ -2,7 +2,11 @@ import { mkdirSync } from 'fs';
 import { join } from 'path';
 import type { AppConfig, SwarmloopEnv } from '../config/env';
 import type { RunEntity } from '../history/entities';
-import type { HistoryService } from '../history/history.service';
+import type { DocumentRepository } from '../history/document.repository';
+import type { FlowRepository } from '../history/flow.repository';
+import { root } from '../history/run-paths';
+import type { RunRepository } from '../history/run.repository';
+import type { VisitRepository } from '../history/visit.repository';
 import type { Clock } from '../core/clock';
 import type { DocumentDraft } from '../history/visit';
 import type { AgentProcessRunner, AgentRunResult } from '../agent/agent-runner';
@@ -23,7 +27,8 @@ import { AGENT_LANGUAGE_RULE } from './shared/skill-prompt';
 
 export async function launchAgent(input: {
   agent: AgentProcessRunner;
-  history: HistoryService;
+  visits: VisitRepository;
+  root: string;
   run: RunEntity;
   key: string;
   step: string;
@@ -40,7 +45,7 @@ export async function launchAgent(input: {
   resume?: boolean;
   continuePrompt?: string | null;
 }): Promise<AgentRunResult> {
-  const directory = join(input.history.root(), 'data');
+  const directory = join(input.root, 'data');
   mkdirSync(directory, { recursive: true });
   const sessionFile = join(directory, sessionFileName(input.key, input.step));
   const stored = await readSession(sessionFile, input.run.runtime);
@@ -52,7 +57,7 @@ export async function launchAgent(input: {
     model: input.model,
     agentCalls: input.run.agentCalls,
     spentUsd: input.run.spentUsd,
-    tokensInRun: await input.history.tokenTotal(input.run.id),
+    tokensInRun: await input.visits.tokenTotal(input.run.id),
     resumeChatId: input.resume === false ? null : (stored?.chatId ?? null),
     groupUsd: input.resume === false ? 0 : (stored?.usd ?? 0),
     runKey: input.key,
@@ -113,13 +118,16 @@ export abstract class AgentStep extends BaseStep {
   override readonly usesModel = true;
 
   constructor(
-    history: HistoryService,
+    runs: RunRepository,
+    documents: DocumentRepository,
+    visits: VisitRepository,
+    flows: FlowRepository,
     clock: Clock,
-    protected readonly config: AppConfig,
+    config: AppConfig,
     protected readonly sandbox: SandboxService,
     protected readonly agent: AgentProcessRunner,
   ) {
-    super(history, clock);
+    super(runs, documents, visits, flows, clock, config);
   }
 
   protected abstract settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number };
@@ -134,7 +142,7 @@ export abstract class AgentStep extends BaseStep {
       opened: stepCtx.opened,
       settings: this.settings(env),
       auto: options.auto,
-      workspace: join(this.history.root(), 'worktrees', key),
+      workspace: join(root(this.config), 'worktrees', key),
       prompt: '',
       agentResult: null,
       launched: [],
@@ -169,7 +177,7 @@ export abstract class AgentStep extends BaseStep {
     };
     try {
       await this.sandbox.assertReady(env.RUNTIME);
-      const requirements = await this.history.latestBody(key, 'requirements');
+      const requirements = await this.documents.latestBody(key, 'requirements');
       if (!requirements) {
         throw new SwarmloopError('requirements is missing');
       }
@@ -184,7 +192,8 @@ export abstract class AgentStep extends BaseStep {
   private async launch(run: ModelRun, launch: Parameters<ModelStepContext['launch']>[0]): Promise<AgentRunResult> {
     const result = await launchAgent({
       agent: this.agent,
-      history: this.history,
+      visits: this.visits,
+      root: root(this.config),
       run: run.opened.run,
       key: run.key,
       step: launch.label ? `${this.name}-${launch.label}` : this.name,

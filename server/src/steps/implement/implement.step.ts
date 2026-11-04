@@ -1,7 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { join } from 'path';
 import { AppConfig, SwarmloopEnv } from '../../config/env';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
+import { VisitRepository } from '../../history/visit.repository';
+import { FlowRepository } from '../../history/flow.repository';
+import { CheckoutRepository } from '../../history/checkout.repository';
+import { root } from '../../history/run-paths';
 import { Clock } from '../../core/clock';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../agent/session-group';
@@ -39,18 +44,22 @@ export class ImplementStep extends AgentStep {
   readonly requiredKind = 'plan';
 
   constructor(
-    history: HistoryService,
+    runs: RunRepository,
+    documents: DocumentRepository,
+    visits: VisitRepository,
+    flows: FlowRepository,
     clock: Clock,
     config: AppConfig,
     sandbox: SandboxService,
     private readonly commit: CommitStep,
+    private readonly checkouts: CheckoutRepository,
     @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
   ) {
-    super(history, clock, config, sandbox, agent);
+    super(runs, documents, visits, flows, clock, config, sandbox, agent);
   }
 
   override missingInput(key: string): Promise<string | null> {
-    return storedPlan(this.history, key);
+    return storedPlan(this.documents, key);
   }
 
   protected settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number } {
@@ -60,25 +69,25 @@ export class ImplementStep extends AgentStep {
   protected async write(key: string, ctx: ModelStepContext, options: StepOptions): Promise<PipelineResult> {
     const env = this.config.env;
     const auto = options.auto;
-    const plan = requireApprovedPlan(await this.history.latestBody(key, 'requirements'));
-    const names = repoNames((await this.history.latestBody(key, 'repos')) ?? '');
-    const mounts = mountsForStep(this.history.root(), key, names, ctx.opened.run.targetPath);
+    const plan = requireApprovedPlan(await this.documents.latestBody(key, 'requirements'));
+    const names = repoNames((await this.documents.latestBody(key, 'repos')) ?? '');
+    const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
       return ctx.end('blocked', 1, `${ctx.opened.startedAt} implement does not fit`);
     }
-    const notes = composedReturn(await this.history.listDocuments(ctx.opened.run.id));
+    const notes = composedReturn(await this.documents.listDocuments(ctx.opened.run.id));
     const sections = withHandoff(
       withReturnNotes([{ heading: 'Plan', body: plan }], notes),
-      await this.history.latestBody(key, 'handoff'),
+      await this.documents.latestBody(key, 'handoff'),
     );
     const branch = branchName(key, summaryForBranch(ctx.requirements, key));
-    const markerBody = ((await this.history.latestBody(key, REBASE_CONFLICT)) ?? '').trim();
+    const markerBody = ((await this.documents.latestBody(key, REBASE_CONFLICT)) ?? '').trim();
     const marker = markerBody.split('\n')[0]?.trim() ?? '';
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
     const full = skillPrompt('implement', ctx.requirements, names, sections, mounts);
-    const added = await this.history.latestBody(key, 'added_repos');
+    const added = await this.documents.latestBody(key, 'added_repos');
     const continued = await readSession(
-      join(this.history.root(), 'data', sessionFileName(key, 'implement')),
+      join(root(this.config), 'data', sessionFileName(key, 'implement')),
       ctx.opened.run.runtime,
     );
     const basePrompt = withAddedRepos(continued?.chatId ? implementFollowUp(plan, notes) : full, added);
@@ -106,7 +115,7 @@ export class ImplementStep extends AgentStep {
         planOutput = againOutput;
       }
       if ((await worktreeSnapshot(mounts)) === before) {
-        const stale = await staleRepos(await this.history.latestBody(key, 'pipeline_ref'), mounts);
+        const stale = await staleRepos(await this.documents.latestBody(key, 'pipeline_ref'), mounts);
         if (stale.length > 0) {
           return ctx.end(
             'ok',
@@ -125,7 +134,7 @@ export class ImplementStep extends AgentStep {
     const corrected = correctedPlan(ctx.requirements, planText, planOutput);
     const summary = corrected ? `${parseSummary(text).trimEnd()}\n${corrected.handoff}` : parseSummary(text);
     const status = await worktreeStatus(mounts);
-    const handoff = await recordHandoff(this.history, key, 'implement', summary);
+    const handoff = await recordHandoff(this.documents, key, 'implement', summary);
     const docs = corrected ? [handoff, textDocument('requirements', corrected.requirements)] : [handoff];
     return ctx.end(
       'ok',
@@ -146,7 +155,7 @@ export class ImplementStep extends AgentStep {
     const corrected = correctedPlan(ctx.requirements, planText, planOutput);
     const docs = corrected
       ? [
-          await recordHandoff(this.history, key, 'implement', corrected.handoff),
+          await recordHandoff(this.documents, key, 'implement', corrected.handoff),
           textDocument('requirements', corrected.requirements),
         ]
       : undefined;
@@ -166,19 +175,19 @@ export class ImplementStep extends AgentStep {
       return null;
     }
     const input = {
-      root: this.history.root(),
+      root: root(this.config),
       key,
       repos: names,
       branch,
       prompt: ctx.opened.run.prompt,
-      denied: await this.history.listDenyPaths(),
+      denied: await this.checkouts.listDenyPaths(),
       message: commitMessage(key, summaryForBranch(ctx.requirements, key)),
       hosts: { ...this.config.env, clock: this.clock },
     };
-    const mounts = mountsForStep(this.history.root(), key, names, ctx.opened.run.targetPath);
+    const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     let outcome: RebaseStop | null = null;
     for (const repo of names) {
-      const parked = await parkedConflict(worktreePath(this.history.root(), key, repo), repo, ctx.opened.run.prompt);
+      const parked = await parkedConflict(worktreePath(root(this.config), key, repo), repo, ctx.opened.run.prompt);
       if (parked) {
         outcome = parked;
         break;
@@ -209,7 +218,7 @@ export class ImplementStep extends AgentStep {
         allowHosts: packageRegistries(),
         resume: false,
       });
-      const cwd = worktreePath(this.history.root(), key, outcome.repo);
+      const cwd = worktreePath(root(this.config), key, outcome.repo);
       const still = await unmergedPaths(cwd);
       if (still.length > 0) {
         try {
@@ -221,18 +230,18 @@ export class ImplementStep extends AgentStep {
       outcome = await rebaseFeatureRepos(input);
     }
     if (marker === 'pending-implement') {
-      await this.history.putDocument(ctx.opened.run, REBASE_CONFLICT, 'review\n');
+      await this.documents.putDocument(ctx.opened.run, REBASE_CONFLICT, 'review\n');
       return null;
     }
     await this.commit.publishRebased(key, branch, outcome.leases);
-    await this.history.noteFlow(key, ['code-review', 'ci'], 'code-review');
-    const existing = (await this.history.latestBody(key, 'implementation')) ?? '';
+    await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review');
+    const existing = (await this.documents.latestBody(key, 'implementation')) ?? '';
     if (!existing.trim()) {
       throw new SwarmloopError('implementation is missing');
     }
     const body = existing.endsWith('\n') ? existing : `${existing}\n`;
     const status = await worktreeStatus(mounts);
-    const handoff = await recordHandoff(this.history, key, 'implement', '- resolved the rebase\n');
+    const handoff = await recordHandoff(this.documents, key, 'implement', '- resolved the rebase\n');
     return ctx.end(
       'ok',
       0,

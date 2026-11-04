@@ -1,5 +1,6 @@
 import type { RunEntity } from '../history/entities';
-import type { HistoryService } from '../history/history.service';
+import type { DocumentRepository } from '../history/document.repository';
+import type { RunRepository } from '../history/run.repository';
 import type { Clock } from '../core/clock';
 import { CHAT_LOCK, readChatLock, shellLockFresh } from './chat-lock';
 
@@ -9,12 +10,13 @@ export interface ContainerProbe {
 
 /** Drop a shell lock whose container is already gone. An unanswered docker call keeps the lock. */
 export async function settleShell(
-  history: HistoryService,
+  runs: RunRepository,
+  documents: DocumentRepository,
   probe: ContainerProbe,
   run: RunEntity,
   clock: Clock,
 ): Promise<RunEntity> {
-  const lock = readChatLock(await history.latestBody(run.key, CHAT_LOCK));
+  const lock = readChatLock(await documents.latestBody(run.key, CHAT_LOCK));
   if (!lock?.container || run.status !== 'running') {
     return run;
   }
@@ -26,8 +28,8 @@ export async function settleShell(
   }
   run.status = lock.status;
   run.ownerPid = null;
-  const saved = await history.saveRun(run);
-  await history.putDocument(saved, CHAT_LOCK, 'clear\n');
+  const saved = await runs.saveRun(run);
+  await documents.putDocument(saved, CHAT_LOCK, 'clear\n');
   return saved;
 }
 

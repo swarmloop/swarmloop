@@ -10,7 +10,9 @@ import { PassThrough } from 'stream';
 import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { DocumentEntity } from '../../history/entities';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
+import { VisitRepository } from '../../history/visit.repository';
 import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
@@ -34,12 +36,13 @@ describe('research step', () => {
       .fn()
       .mockResolvedValue(result(['summary:', '- looking', 'questions:', '- which field is optional?'].join('\n')));
     const app = await boot(root, agent);
-    const history = app.get(HistoryService);
-    const seeded = await history.begin('PROJ-20', 'prepare');
+    const runs = app.get(RunRepository);
+    const documentRepository = app.get(DocumentRepository);
+    const seeded = await runs.begin('PROJ-20', 'prepare');
     seeded.status = 'waiting';
     seeded.currentStep = 'research';
-    await history.saveRun(seeded);
-    await history.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
+    await runs.saveRun(seeded);
+    await documentRepository.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
     try {
       const first = await app.get(PipelineService).step('research', 'PROJ-20');
       expect(first.exitCode).toBe(0);
@@ -53,8 +56,8 @@ describe('research step', () => {
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       expect((await documents.find({ where: { kind: 'repos' } }))[0]?.body).toBe('billing-api\ncatalog-api\n');
       expect((await documents.find({ where: { kind: 'questions' } }))[0]?.body).toContain('which field is optional?');
-      expect((await history.findRun('PROJ-20'))?.currentStep).toBe('research');
-      expect((await history.findRun('PROJ-20'))?.status).toBe('waiting');
+      expect((await runs.findRun('PROJ-20'))?.currentStep).toBe('research');
+      expect((await runs.findRun('PROJ-20'))?.status).toBe('waiting');
 
       await app.get(PipelineService).step('research', 'PROJ-20');
       expect(await documents.find({ where: { kind: 'repos' } })).toHaveLength(1);
@@ -70,13 +73,14 @@ describe('research step', () => {
     mkdirSync(join(root, 'worktrees', 'PROJ-22', 'other'), { recursive: true });
     const agent = jest.fn().mockResolvedValue(result(['summary:', '- looking', 'questions:', '- none'].join('\n')));
     const app = await boot(root, agent);
-    const history = app.get(HistoryService);
-    const seeded = await history.begin('PROJ-22', 'prepare');
+    const runs = app.get(RunRepository);
+    const documentRepository = app.get(DocumentRepository);
+    const seeded = await runs.begin('PROJ-22', 'prepare');
     seeded.status = 'waiting';
     seeded.currentStep = 'research';
     seeded.projects = 'app\n';
-    await history.saveRun(seeded);
-    await history.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
+    await runs.saveRun(seeded);
+    await documentRepository.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
     try {
       const done = await app.get(PipelineService).step('research', 'PROJ-22');
       expect(done.exitCode).toBe(0);
@@ -98,17 +102,18 @@ describe('research step', () => {
     mkdirSync(join(root, 'worktrees', 'PROJ-21', 'billing-api'), { recursive: true });
     const agent = jest.fn().mockResolvedValue(result(['summary:', '- looking', 'questions:', '- none'].join('\n')));
     const app = await boot(root, agent);
-    const history = app.get(HistoryService);
-    const seeded = await history.begin('PROJ-21', 'prepare');
+    const runs = app.get(RunRepository);
+    const documents = app.get(DocumentRepository);
+    const seeded = await runs.begin('PROJ-21', 'prepare');
     seeded.status = 'waiting';
     seeded.currentStep = 'research';
-    await history.saveRun(seeded);
-    await history.putDocument(seeded, 'requirements', '{"prompt":"ship it"}\n');
+    await runs.saveRun(seeded);
+    await documents.putDocument(seeded, 'requirements', '{"prompt":"ship it"}\n');
     try {
       const done = await app.get(PipelineService).step('research', 'PROJ-21');
       expect(done.exitCode).toBe(0);
       expect(done.message).toContain('billing-api');
-      const run = await history.findRun('PROJ-21');
+      const run = await runs.findRun('PROJ-21');
       expect(run?.currentStep).toBe('plan');
       expect(run?.status).toBe('waiting');
       expect(run?.agentCalls).toBe(1);
@@ -127,7 +132,7 @@ describe('research step', () => {
     ]);
     const app = await bootLive(root, spawn);
     try {
-      const history = await seed(app, root, 'PROJ-30');
+      await seed(app, root, 'PROJ-30');
       const done = await app.get(PipelineService).step('research', 'PROJ-30');
       expect(done.exitCode).toBe(0);
       expect(spawn).toHaveBeenCalledTimes(3);
@@ -136,10 +141,10 @@ describe('research step', () => {
       expect(launchedPrompt(spawn.mock.calls[2])).toContain('You were interrupted before the summary');
       expect(resumeArg(spawn.mock.calls[1])).toBe('research-chat');
       expect(resumeArg(spawn.mock.calls[2])).toBe('research-chat');
-      const run = await history.findRun('PROJ-30');
+      const run = await app.get(RunRepository).findRun('PROJ-30');
       expect(run?.currentStep).toBe('plan');
       expect(run?.agentCalls).toBe(3);
-      const stats = await history.listStats(run?.id ?? 0);
+      const stats = await app.get(VisitRepository).listStats(run?.id ?? 0);
       expect(stats.filter((item) => item.step === 'research')).toHaveLength(1);
       expect(stats.find((item) => item.step === 'research')?.killReason ?? null).toBeNull();
     } finally {
@@ -175,16 +180,16 @@ describe('research step', () => {
     ]);
     const app = await bootLive(root, spawn);
     try {
-      const history = await seed(app, root, 'PROJ-32');
+      await seed(app, root, 'PROJ-32');
       const done = await app.get(PipelineService).step('research', 'PROJ-32');
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('process killed: time');
       expect(spawn).toHaveBeenCalledTimes(3);
       expect(launchedPrompt(spawn.mock.calls[2])).toContain('You were interrupted before the summary');
-      const run = await history.findRun('PROJ-32');
+      const run = await app.get(RunRepository).findRun('PROJ-32');
       expect(run?.status).toBe('failed');
       expect(run?.currentStep).toBe('research');
-      const stats = await history.listStats(run?.id ?? 0);
+      const stats = await app.get(VisitRepository).listStats(run?.id ?? 0);
       expect(stats.filter((item) => item.step === 'research')).toHaveLength(1);
       expect(stats.find((item) => item.step === 'research')?.killReason).toBe('process killed: time');
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
@@ -200,15 +205,15 @@ describe('research step', () => {
     const spawn = scripted([chatStream('research-chat', 'idle-partial'), doneStream(FINISHED)]);
     const app = await bootLive(root, spawn);
     try {
-      const history = await seed(app, root, 'PROJ-33');
+      await seed(app, root, 'PROJ-33');
       const done = await app.get(PipelineService).step('research', 'PROJ-33');
       expect(done.exitCode).toBe(0);
       expect(spawn).toHaveBeenCalledTimes(2);
       expect(launchedPrompt(spawn.mock.calls[1])).toContain('You were interrupted before the summary');
       expect(resumeArg(spawn.mock.calls[1])).toBe('research-chat');
-      const run = await history.findRun('PROJ-33');
+      const run = await app.get(RunRepository).findRun('PROJ-33');
       expect(run?.currentStep).toBe('plan');
-      const stats = await history.listStats(run?.id ?? 0);
+      const stats = await app.get(VisitRepository).listStats(run?.id ?? 0);
       expect(stats.filter((item) => item.step === 'research')).toHaveLength(1);
     } finally {
       await app.close();
@@ -288,21 +293,16 @@ function killed(reason: 'time' | 'idle', chatId: string | null = 'research-chat'
   return { ...result('partial'), chatId, killReason: reason, exitCode: 1 };
 }
 
-async function seed(
-  app: Awaited<ReturnType<typeof boot>>,
-  root: string,
-  key: string,
-  agentCalls = 0,
-): Promise<HistoryService> {
+async function seed(app: Awaited<ReturnType<typeof boot>>, root: string, key: string, agentCalls = 0): Promise<void> {
   mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
-  const history = app.get(HistoryService);
-  const seeded = await history.begin(key, 'prepare');
+  const runs = app.get(RunRepository);
+  const documents = app.get(DocumentRepository);
+  const seeded = await runs.begin(key, 'prepare');
   seeded.status = 'waiting';
   seeded.currentStep = 'research';
   seeded.agentCalls = agentCalls;
-  await history.saveRun(seeded);
-  await history.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
-  return history;
+  await runs.saveRun(seeded);
+  await documents.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
 }
 
 function result(responseText: string): AgentRunResult {

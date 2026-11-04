@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Logger } from '@nestjs/common';
-import type { HistoryService } from '../history/history.service';
+import type { DocumentRepository } from '../history/document.repository';
+import type { VisitRepository } from '../history/visit.repository';
 import type { RunEntity } from '../history/entities';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { captureTree, parseSnapshot, renderSnapshot, restoreTree, snapshotRun } from './worktree-snapshot';
@@ -57,15 +58,21 @@ describe('worktree snapshot', () => {
     const repo = mkdtempSync(join(tmpdir(), 'swarmloop-snapshot-error-'));
     git(repo, ['init']);
     writeFileSync(join(repo, 'kept'), 'one\n');
-    const history = {
-      root: () => repo,
-      latestChatId: jest.fn().mockResolvedValue(null),
-      putDocument: jest.fn().mockRejectedValue(new Error('boom')),
-    };
+    const visits = { latestChatId: jest.fn().mockResolvedValue(null) };
+    const documents = { putDocument: jest.fn().mockRejectedValue(new Error('boom')) };
     const run = { id: 1, key: 'PROJ-1', targetPath: repo } as unknown as RunEntity;
     const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     try {
-      await snapshotRun(history as unknown as HistoryService, new FakeClock(), run, 'implement');
+      await snapshotRun(
+        {
+          documents: documents as unknown as DocumentRepository,
+          visits: visits as unknown as VisitRepository,
+          root: repo,
+        },
+        new FakeClock(),
+        run,
+        'implement',
+      );
       expect(error).toHaveBeenCalledWith('boom');
     } finally {
       error.mockRestore();

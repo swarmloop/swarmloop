@@ -1,6 +1,9 @@
 import { join } from 'path';
 import { Inject, Injectable } from '@nestjs/common';
-import { HistoryService } from '../../history/history.service';
+import { AppConfig } from '../../config/env';
+import { DocumentRepository } from '../../history/document.repository';
+import { root } from '../../history/run-paths';
+import { RunRepository } from '../../history/run.repository';
 import { taskKeys } from '../requirements/requirements-input';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
@@ -10,7 +13,9 @@ import { ISSUE_TRACKER } from '../../integrations/issue-tracker/tokens';
 @Injectable()
 export class ServiceContextService {
   constructor(
-    private readonly history: HistoryService,
+    private readonly runs: RunRepository,
+    private readonly documents: DocumentRepository,
+    private readonly config: AppConfig,
     @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
     private readonly registry: CodeHostRegistry,
   ) {}
@@ -21,7 +26,7 @@ export class ServiceContextService {
    * Tokens stay in the host client.
    */
   async block(key: string, text: string): Promise<string> {
-    const stored = (await this.history.latestBody(key, 'requirements')) ?? '';
+    const stored = (await this.documents.latestBody(key, 'requirements')) ?? '';
     const known = new Set(taskKeys(stored, ''));
     const parts: string[] = [];
     for (const issue of taskKeys(text, key)) {
@@ -45,7 +50,7 @@ export class ServiceContextService {
 
   private async issue(runKey: string, issue: string): Promise<string | null> {
     try {
-      const fetched = await this.tracker.fetch(issue, join(this.history.root(), 'worktrees', runKey));
+      const fetched = await this.tracker.fetch(issue, join(root(this.config), 'worktrees', runKey));
       return renderIssue(fetched.bundle);
     } catch {
       return null;
@@ -53,17 +58,17 @@ export class ServiceContextService {
   }
 
   private async mergeRequest(key: string): Promise<string | null> {
-    const saved = await this.history.latestBody(key, 'merge_request');
+    const saved = await this.documents.latestBody(key, 'merge_request');
     const stored = saved ? storedMerge(saved) : null;
     if (stored) {
       return stored;
     }
-    const run = await this.history.findRun(key);
+    const run = await this.runs.findRun(key);
     if (!run?.codeHost) {
       return null;
     }
     const host = this.registry.byName(run.codeHost);
-    const body = await this.history.latestBody(key, 'pipeline_ref');
+    const body = await this.documents.latestBody(key, 'pipeline_ref');
     const lines: string[] = [];
     for (const ref of body ? pipelineRefs(body) : []) {
       try {

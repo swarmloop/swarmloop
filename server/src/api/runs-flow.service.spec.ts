@@ -3,7 +3,10 @@ import { utimesSync } from 'fs';
 import { mkdir, mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { HistoryService } from '../history/history.service';
+import { RunRepository } from '../history/run.repository';
+import { DocumentRepository } from '../history/document.repository';
+import { VisitRepository } from '../history/visit.repository';
+import { FlowRepository } from '../history/flow.repository';
 import { LiveHub } from '../live/live.hub';
 import { RunQueriesService } from './run-queries.service';
 import { boot, save, visit } from './runs.spec-helpers';
@@ -13,10 +16,12 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-later-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-6', 'commit', 'waiting');
-      await history.putDocument(run, 'questions', '- which limit\n');
-      await history.finishVisit(run, visit('requirements', 'waiting'));
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runs, 'proj-6', 'commit', 'waiting');
+      await documents.putDocument(run, 'questions', '- which limit\n');
+      await visits.finishVisit(run, visit('requirements', 'waiting'));
       const flow = await app.get(RunQueriesService).flow('proj-6');
       expect(flow.items).toEqual([]);
       expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'requirements')?.status).toBe(
@@ -41,10 +46,12 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-skip-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-9', 'merge-request', 'waiting');
-      await history.putDocument(run, 'ci_skip', 'CI skipped: there is no origin to push.\n');
-      await history.finishVisit(run, visit('pipeline', 'skipped'));
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runs, 'proj-9', 'merge-request', 'waiting');
+      await documents.putDocument(run, 'ci_skip', 'CI skipped: there is no origin to push.\n');
+      await visits.finishVisit(run, visit('pipeline', 'skipped'));
       const flow = await app.get(RunQueriesService).flow('proj-9');
       expect(flow.currentStep).toBe('merge-request');
       expect(flow.sentence).toContain('CI skipped: there is no origin to push.');
@@ -61,9 +68,10 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-pipe-red-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-pipe-red', 'implement', 'waiting');
-      await history.finishVisit(run, visit('pipeline', 'waiting'));
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runs, 'proj-pipe-red', 'implement', 'waiting');
+      await visits.finishVisit(run, visit('pipeline', 'waiting'));
       const flow = await app.get(RunQueriesService).flow('proj-pipe-red');
       expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'pipeline')?.status).toBe(
         'failed',
@@ -77,9 +85,10 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-red-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-review-red', 'implement', 'waiting');
-      await history.finishVisit(run, {
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runs, 'proj-review-red', 'implement', 'waiting');
+      await visits.finishVisit(run, {
         ...visit('code-review', 'waiting'),
         documents: [{ kind: 'review_quality', fileName: '', body: 'notes\ndecision: return\n' }],
       });
@@ -96,10 +105,11 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-pipe-green-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-pipe-green', 'done', 'done');
-      await history.finishVisit(run, visit('pipeline', 'waiting'));
-      await history.finishVisit(run, visit('pipeline', 'done'));
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runs, 'proj-pipe-green', 'done', 'done');
+      await visits.finishVisit(run, visit('pipeline', 'waiting'));
+      await visits.finishVisit(run, visit('pipeline', 'done'));
       const flow = await app.get(RunQueriesService).flow('proj-pipe-green');
       expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'pipeline')?.status).toBe('done');
     } finally {
@@ -111,9 +121,10 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-pipe-run-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-pipe-run', 'pipeline', 'running');
-      await history.finishVisit(run, visit('pipeline', 'waiting'));
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runs, 'proj-pipe-run', 'pipeline', 'running');
+      await visits.finishVisit(run, visit('pipeline', 'waiting'));
       const flow = await app.get(RunQueriesService).flow('proj-pipe-run');
       expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'pipeline')?.status).toBe(
         'running',
@@ -127,9 +138,10 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-error-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-8', 'prepare', 'failed');
-      await history.putDocument(run, 'error', 'checkouts is empty\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await save(runs, 'proj-8', 'prepare', 'failed');
+      await documents.putDocument(run, 'error', 'checkouts is empty\n');
       expect((await app.get(RunQueriesService).flow('proj-8')).reason).toBe('checkouts is empty');
     } finally {
       await app.close();
@@ -140,14 +152,15 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-chart-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-28', 'commit', 'waiting');
+      const runRepository = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runRepository, 'proj-28', 'commit', 'waiting');
       const now = new Date().toISOString();
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, {
         ...visit('code-review-quality', 'waiting'),
         documents: [{ kind: 'review_quality', fileName: '', body: 'old\ndecision: return\n' }],
       });
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, {
         ...visit('code-review-quality', 'done'),
         model: 'grok-4.7-high',
         mode: 'ask',
@@ -191,10 +204,11 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-second-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-30', 'code-review', 'waiting');
+      const runRepository = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runRepository, 'proj-30', 'code-review', 'waiting');
       const now = new Date().toISOString();
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, {
         ...visit('code-review', 'waiting'),
         samples: [{ sampledAt: now, cpuPercent: 40, rssBytes: 2048 }],
         documents: [{ kind: 'review_requirements', fileName: '', body: 'old\ndecision: return\n' }],
@@ -220,10 +234,12 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-return-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-21', 'implement', 'waiting');
-      await history.finishVisit(run, visit('implement', 'done'));
-      await history.putDocument(run, 'review_quality', 'use theme.alpha\ndecision: return\n');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runs, 'proj-21', 'implement', 'waiting');
+      await visits.finishVisit(run, visit('implement', 'done'));
+      await documents.putDocument(run, 'review_quality', 'use theme.alpha\ndecision: return\n');
       const step = await app.get(RunQueriesService).step('proj-21', 'implement');
       expect(
         step.visits.at(-1)?.documents.some((item) => item.kind === 'return' && item.body.includes('use theme.alpha')),
@@ -246,7 +262,7 @@ describe('runs api', () => {
         join(root, 'data', 'proj-20-code-review-security-output.txt'),
         `${JSON.stringify({ type: 'thinking', text: 'still' })}\n`,
       );
-      await save(app.get(HistoryService), 'proj-20', 'code-review', 'running');
+      await save(app.get(RunRepository), 'proj-20', 'code-review', 'running');
       const runs = app.get(RunQueriesService);
       const flow = await runs.flow('proj-20');
       const chips = flow.phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
@@ -285,7 +301,7 @@ describe('runs api', () => {
         join(root, 'data', 'proj-32-code-review-security-output.txt'),
         `${JSON.stringify({ type: 'thinking', text: 'still' })}\n`,
       );
-      await save(app.get(HistoryService), 'proj-32', 'code-review', 'running');
+      await save(app.get(RunRepository), 'proj-32', 'code-review', 'running');
       const runs = app.get(RunQueriesService);
       const chips = (await runs.flow('proj-32')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review-requirements')?.status).toBe('idle');
@@ -303,17 +319,18 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-report-starting-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
+      const runRepository = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
       await mkdir(join(root, 'data'), { recursive: true });
-      const ok = await save(history, 'proj-33', 'code-review', 'running');
+      const ok = await save(runRepository, 'proj-33', 'code-review', 'running');
       await writeFile(join(root, 'data', 'proj-33-code-review-report-output.txt'), 'starting\n');
-      await history.finishVisit(ok, {
+      await visits.finishVisit(ok, {
         ...visit('code-review', 'done'),
         documents: [{ kind: 'review_quality', fileName: '', body: 'notes\ndecision: ok\n' }],
       });
-      const returned = await save(history, 'proj-34', 'code-review', 'running');
+      const returned = await save(runRepository, 'proj-34', 'code-review', 'running');
       await writeFile(join(root, 'data', 'proj-34-code-review-report-output.txt'), 'starting\n');
-      await history.finishVisit(returned, {
+      await visits.finishVisit(returned, {
         ...visit('code-review', 'waiting'),
         documents: [{ kind: 'review_quality', fileName: '', body: 'notes\ndecision: return\n' }],
       });
@@ -340,7 +357,7 @@ describe('runs api', () => {
         join(root, 'data', 'proj-31-code-review-quality-output.txt'),
         `${JSON.stringify({ type: 'result', result: 'notes\ndecision: ok\n' })}\nprocess exited 0\n`,
       );
-      await save(app.get(HistoryService), 'proj-31', 'code-review', 'running');
+      await save(app.get(RunRepository), 'proj-31', 'code-review', 'running');
       const now = new Date().toISOString();
       app.get(LiveHub).log({
         key: 'proj-31',
@@ -369,7 +386,7 @@ describe('runs api', () => {
         join(root, 'data', 'proj-22-code-review-performance-output.txt'),
         `${JSON.stringify({ type: 'thinking', text: 'nope' })}\nprocess exited 0\n`,
       );
-      await save(app.get(HistoryService), 'proj-22', 'code-review', 'failed');
+      await save(app.get(RunRepository), 'proj-22', 'code-review', 'failed');
       const chips =
         (await app.get(RunQueriesService).flow('proj-22')).phases.find((phase) => phase.phase === 'code review')
           ?.steps ?? [];
@@ -385,15 +402,16 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-attempts-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-25', 'code-review', 'waiting');
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runs, 'proj-25', 'code-review', 'waiting');
       await mkdir(join(root, 'data'), { recursive: true });
       await writeFile(join(root, 'data', 'proj-25-code-review-quality-launches.txt'), '1\n');
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, {
         ...visit('code-review', 'done'),
         documents: [{ kind: 'review_quality', fileName: '', body: 'notes\ndecision: ok\n' }],
       });
-      await history.finishVisit(run, { ...visit('code-review', 'waiting'), documents: [] });
+      await visits.finishVisit(run, { ...visit('code-review', 'waiting'), documents: [] });
       const chips =
         (await app.get(RunQueriesService).flow('proj-25')).phases.find((phase) => phase.phase === 'code review')
           ?.steps ?? [];
@@ -411,10 +429,11 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-report-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-27', 'commit', 'failed');
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runs, 'proj-27', 'commit', 'failed');
       const angles = ['requirements', 'quality', 'regressions', 'security', 'performance'];
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, {
         ...visit('code-review', 'waiting'),
         documents: [
           ...angles.map((name) => ({
@@ -425,7 +444,7 @@ describe('runs api', () => {
           { kind: 'review_report', fileName: '', body: 'The five reviews together are a return.\n' },
         ],
       });
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, {
         ...visit('code-review', 'done'),
         documents: [
           ...angles.map((name) => ({ kind: `review_${name}`, fileName: '', body: `cleared\ndecision: ok\n` })),
@@ -452,15 +471,16 @@ describe('runs api', () => {
     const app = await boot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-26', 'code-review', 'running');
-      await history.finishVisit(run, {
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runs, 'proj-26', 'code-review', 'running');
+      await visits.finishVisit(run, {
         ...visit('code-review', 'done'),
         documents: [{ kind: 'review_performance', fileName: '', body: 'notes\ndecision: ok\n' }],
       });
-      await history.finishVisit(run, { ...visit('code-review', 'waiting'), documents: [] });
-      await history.finishVisit(run, { ...visit('code-review', 'waiting'), documents: [] });
-      await history.finishVisit(run, { ...visit('code-review', 'waiting'), documents: [] });
+      await visits.finishVisit(run, { ...visit('code-review', 'waiting'), documents: [] });
+      await visits.finishVisit(run, { ...visit('code-review', 'waiting'), documents: [] });
+      await visits.finishVisit(run, { ...visit('code-review', 'waiting'), documents: [] });
       await writeFile(
         join(root, 'data', 'proj-26-code-review-performance-output.txt'),
         `${JSON.stringify({ type: 'thinking', text: 'again' })}\n`,
@@ -482,8 +502,8 @@ describe('runs api', () => {
     const app = await boot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
-      const history = app.get(HistoryService);
-      await save(history, 'proj-32', 'code-review', 'running');
+      const runRepository = app.get(RunRepository);
+      await save(runRepository, 'proj-32', 'code-review', 'running');
       await writeFile(
         join(root, 'data', 'proj-32-code-review-regressions-output.txt'),
         'thinking\nprocess killed: time\nthinking\n',
@@ -504,7 +524,7 @@ describe('runs api', () => {
       const reporting = (await runs.flow('proj-32')).phases.flatMap((phase) => phase.steps);
       expect(reporting.find((step) => step.name === 'code-review')?.attempts).toBe(1);
       expect(reporting.find((step) => step.name === 'code-review')?.status).toBe('running');
-      await save(history, 'proj-33', 'research', 'running');
+      await save(runRepository, 'proj-33', 'research', 'running');
       await writeFile(join(root, 'data', 'proj-33-research-output.txt'), 'thinking\n');
       await writeFile(join(root, 'data', 'proj-33-research-launches.txt'), '1\n1\n');
       const researchChips = (await runs.flow('proj-33')).phases.flatMap((phase) => phase.steps);
@@ -521,7 +541,7 @@ describe('runs api', () => {
     const app = await boot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
-      await save(app.get(HistoryService), 'proj-29', 'code-review', 'running');
+      await save(app.get(RunRepository), 'proj-29', 'code-review', 'running');
       await writeFile(
         join(root, 'data', 'proj-29-code-review-requirements-output.txt'),
         'thinking\nprocess killed: time\nthinking\nfinishing the review\n',
@@ -565,12 +585,13 @@ describe('runs api', () => {
     const app = await boot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-round', 'code-review', 'running');
+      const runRepository = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runRepository, 'proj-round', 'code-review', 'running');
       const round1 = '2026-10-28T10:00:00.000Z';
       const round2 = '2026-10-28T11:00:00.000Z';
       run.stepStartedAt = round1;
-      await history.saveRun(run);
+      await runRepository.saveRun(run);
       const stored = [
         ['requirements', 'ok', 'done'],
         ['quality', 'return', 'waiting'],
@@ -579,13 +600,13 @@ describe('runs api', () => {
         ['performance', 'ok', 'done'],
       ] as const;
       for (const [name, decision, status] of stored) {
-        await history.finishVisit(run, {
+        await visits.finishVisit(run, {
           ...visit(`code-review-${name}`, status),
           documents: [{ kind: `review_${name}`, fileName: '', body: `round 1\ndecision: ${decision}\n` }],
         });
       }
       run.stepStartedAt = round2;
-      await history.saveRun(run);
+      await runRepository.saveRun(run);
       const file = (name: string) => join(root, 'data', `proj-round-code-review-${name}-output.txt`);
       await writeFile(file('quality'), 'notes\ndecision: ok\nprocess exited 0\n');
       const older = new Date(Date.parse(round2) - 60_000);
@@ -612,7 +633,7 @@ describe('runs api', () => {
       expect(at(running, 'code-review-security')?.status).toBe('waiting');
 
       run.status = 'waiting';
-      await history.saveRun(run);
+      await runRepository.saveRun(run);
       const held = await chips();
       expect(at(held, 'code-review-requirements')?.attempts).toBe(1);
       expect(at(held, 'code-review-requirements')?.status).toBe('done');
@@ -628,7 +649,7 @@ describe('runs api', () => {
       run.status = 'running';
       run.currentStep = 'code-review';
       run.stepStartedAt = round2;
-      await history.saveRun(run);
+      await runRepository.saveRun(run);
       const next = [
         ['requirements', 'return', 'waiting'],
         ['quality', 'ok', 'done'],
@@ -637,7 +658,7 @@ describe('runs api', () => {
         ['performance', 'ok', 'done'],
       ] as const;
       for (const [name, decision, status] of next) {
-        await history.finishVisit(run, {
+        await visits.finishVisit(run, {
           ...visit(`code-review-${name}`, status),
           documents: [{ kind: `review_${name}`, fileName: '', body: `round 2\ndecision: ${decision}\n` }],
         });
@@ -664,16 +685,17 @@ describe('runs api', () => {
     const app = await boot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-kill', 'code-review', 'running');
+      const runRepository = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runRepository, 'proj-kill', 'code-review', 'running');
       run.stepStartedAt = '2026-10-28T10:00:00.000Z';
-      await history.saveRun(run);
-      await history.finishVisit(run, {
+      await runRepository.saveRun(run);
+      await visits.finishVisit(run, {
         ...visit('code-review-requirements', 'done'),
         documents: [{ kind: 'review_requirements', fileName: '', body: 'round 1\ndecision: ok\n' }],
       });
       run.stepStartedAt = '2026-10-28T11:00:00.000Z';
-      await history.saveRun(run);
+      await runRepository.saveRun(run);
       const path = join(root, 'data', 'proj-kill-code-review-requirements-output.txt');
       await writeFile(path, 'thinking\nprocess killed: time\n');
       const runs = app.get(RunQueriesService);
@@ -700,7 +722,7 @@ describe('runs api', () => {
         join(root, 'data', 'proj-23-code-review-quality-output.txt'),
         `${JSON.stringify({ type: 'result', result: 'notes\ndecision: return\n' })}\nprocess exited 0\n`,
       );
-      await save(app.get(HistoryService), 'proj-23', 'code-review', 'failed');
+      await save(app.get(RunRepository), 'proj-23', 'code-review', 'failed');
       const chips =
         (await app.get(RunQueriesService).flow('proj-23')).phases.find((phase) => phase.phase === 'code review')
           ?.steps ?? [];
@@ -714,9 +736,10 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-error-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await save(history, 'proj-24', 'code-review', 'failed');
-      await history.finishVisit(run, {
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await save(runs, 'proj-24', 'code-review', 'failed');
+      await visits.finishVisit(run, {
         ...visit('code-review', 'failed'),
         documents: [
           { kind: 'review_quality', fileName: '', body: 'notes\ndecision: return\n' },
@@ -739,14 +762,15 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-duration-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await history.begin('proj-duration', 'implement');
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await runs.begin('proj-duration', 'implement');
       run.stepStartedAt = '2026-10-28T10:00:00.000Z';
-      await history.finishVisit(run, { ...visit('implement', 'done'), durationMs: 1_000 });
+      await visits.finishVisit(run, { ...visit('implement', 'done'), durationMs: 1_000 });
       run.stepStartedAt = '2026-10-28T10:01:00.000Z';
-      await history.finishVisit(run, { ...visit('code-review-quality', 'done'), durationMs: 8_000 });
-      await history.finishVisit(run, { ...visit('code-review-security', 'done'), durationMs: 3_000 });
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, { ...visit('code-review-quality', 'done'), durationMs: 8_000 });
+      await visits.finishVisit(run, { ...visit('code-review-security', 'done'), durationMs: 3_000 });
+      await visits.finishVisit(run, {
         ...visit('code-review', 'done'),
         durationMs: 11_000,
         exchange: {
@@ -765,11 +789,11 @@ describe('runs api', () => {
       run.currentStep = 'done';
       run.ownerPid = null;
       run.stepStartedAt = null;
-      await history.saveRun(run);
-      const short = await history.begin('proj-duration-short', 'code-review');
+      await runs.saveRun(run);
+      const short = await runs.begin('proj-duration-short', 'code-review');
       short.stepStartedAt = '2026-10-28T11:00:00.000Z';
-      await history.finishVisit(short, { ...visit('code-review-quality', 'done'), durationMs: 8_000 });
-      await history.finishVisit(short, {
+      await visits.finishVisit(short, { ...visit('code-review-quality', 'done'), durationMs: 8_000 });
+      await visits.finishVisit(short, {
         ...visit('code-review', 'done'),
         durationMs: 1_000,
         exchange: {
@@ -788,7 +812,7 @@ describe('runs api', () => {
       short.currentStep = 'done';
       short.ownerPid = null;
       short.stepStartedAt = null;
-      await history.saveRun(short);
+      await runs.saveRun(short);
       const listed = await app.get(RunQueriesService).list();
       const flow = await app.get(RunQueriesService).flow('proj-duration');
       const shortFlow = await app.get(RunQueriesService).flow('proj-duration-short');
@@ -805,8 +829,9 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-loop-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
-      const run = await history.begin('proj-loop', 'code-review');
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const run = await runs.begin('proj-loop', 'code-review');
       run.stepStartedAt = null;
       const report = (startedAt: string, finishedAt: string, durationMs: number) => ({
         model: 'grok-4.7-high',
@@ -819,38 +844,38 @@ describe('runs api', () => {
         resumed: false,
         killReason: null,
       });
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, {
         ...visit('code-review-quality', 'done'),
         durationMs: 3_000,
         startedAt: '2026-10-28T10:00:01.000Z',
         finishedAt: '2026-10-28T10:00:04.000Z',
       });
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, {
         ...visit('code-review', 'waiting'),
         durationMs: 5_000,
         startedAt: '2026-10-28T10:00:00.000Z',
         finishedAt: '2026-10-28T10:00:05.000Z',
         exchange: report('2026-10-28T10:00:04.000Z', '2026-10-28T10:00:05.000Z', 1_000),
       });
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, {
         ...visit('implement', 'done'),
         durationMs: 4_000,
         startedAt: '2026-10-28T10:10:00.000Z',
         finishedAt: '2026-10-28T10:10:04.000Z',
       });
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, {
         ...visit('code-review-quality', 'done'),
         durationMs: 4_000,
         startedAt: '2026-10-28T10:20:01.000Z',
         finishedAt: '2026-10-28T10:20:05.000Z',
       });
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, {
         ...visit('code-review-security', 'done'),
         durationMs: 9_000,
         startedAt: '2026-10-28T10:20:01.000Z',
         finishedAt: '2026-10-28T10:20:10.000Z',
       });
-      await history.finishVisit(run, {
+      await visits.finishVisit(run, {
         ...visit('code-review', 'done'),
         durationMs: 12_000,
         startedAt: '2026-10-28T10:20:00.000Z',
@@ -860,7 +885,7 @@ describe('runs api', () => {
       run.status = 'done';
       run.currentStep = 'done';
       run.ownerPid = null;
-      await history.saveRun(run);
+      await runs.saveRun(run);
       const listed = await app.get(RunQueriesService).list();
       const flow = await app.get(RunQueriesService).flow('proj-loop');
       expect(listed.runs.find((item) => item.key === 'proj-loop')?.durationMs).toBe(21_000);
@@ -874,13 +899,15 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-clock-'));
     const app = await boot(root);
     try {
-      const history = app.get(HistoryService);
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const flows = app.get(FlowRepository);
       const hub = app.get(LiveHub);
-      const run = await history.begin('proj-clock', 'research');
+      const run = await runs.begin('proj-clock', 'research');
       const started = run.stepStartedAt;
-      await history.saveRun(run);
-      expect((await history.findRun('proj-clock'))?.stepStartedAt).toBe(started);
-      await history.finishVisit(run, {
+      await runs.saveRun(run);
+      expect((await runs.findRun('proj-clock'))?.stepStartedAt).toBe(started);
+      await visits.finishVisit(run, {
         ...visit('prepare', 'done'),
         durationMs: 5_000,
         samples: [{ sampledAt: new Date().toISOString(), cpuPercent: 12, rssBytes: 1024 }],
@@ -899,13 +926,13 @@ describe('runs api', () => {
       expect(flow.metrics.cpuPeak).toBe(80);
       expect(flow.metrics.memPeak).toBe(4096);
       run.stepStartedAt = null;
-      await history.saveRun(run);
-      await history.finishVisit(run, { ...visit('research', 'failed'), durationMs: 4 });
+      await runs.saveRun(run);
+      await visits.finishVisit(run, { ...visit('research', 'failed'), durationMs: 4 });
       const later = await app.get(RunQueriesService).flow('proj-clock');
       expect(later.metrics.closedStarts).toEqual([started]);
       expect(later.metrics.durationMs).toBe(5_004);
-      await history.noteFlow('proj-wait', ['requirements'], null);
-      const waiting = await history.findRun('proj-wait');
+      await flows.noteFlow('proj-wait', ['requirements'], null);
+      const waiting = await runs.findRun('proj-wait');
       expect(waiting?.status).toBe('waiting');
       expect(waiting?.stepStartedAt).toBeNull();
     } finally {

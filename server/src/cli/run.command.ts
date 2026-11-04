@@ -1,5 +1,5 @@
 import { Command, CommandRunner, Option } from 'nest-commander';
-import { HistoryService } from '../history/history.service';
+import { FlowRepository } from '../history/flow.repository';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { assertKey, StepOptions } from '../core/pipeline-result';
 
@@ -11,7 +11,7 @@ import { assertKey, StepOptions } from '../core/pipeline-result';
 export class RunCommand extends CommandRunner {
   constructor(
     private readonly pipeline: PipelineService,
-    private readonly history: HistoryService,
+    private readonly flows: FlowRepository,
   ) {
     super();
   }
@@ -21,7 +21,7 @@ export class RunCommand extends CommandRunner {
     if (options.phases?.length) {
       try {
         assertKey(key);
-        await this.history.noteFlow(key, options.phases, null);
+        await this.flows.noteFlow(key, options.phases, null);
       } catch (error) {
         await report({ exitCode: 1, message: error instanceof Error ? error.message : 'phases are invalid' });
         return;

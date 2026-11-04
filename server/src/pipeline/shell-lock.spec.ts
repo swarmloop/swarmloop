@@ -13,14 +13,20 @@ describe('shell lock', () => {
   it('keeps a new lock while the container is still starting', async () => {
     const notes: string[] = [];
     const current = feature();
-    const history = {
+    const runs = { saveRun: async (value: RunEntity) => value };
+    const documents = {
       latestBody: async () => containerLockBody('waiting', 'swarmloop-proj-1-shell', Date.now()),
-      saveRun: async (value: RunEntity) => value,
       putDocument: async () => {
         notes.push('clear');
       },
     };
-    const settled = await settleShell(history as never, { containerExists: async () => false }, current, clock);
+    const settled = await settleShell(
+      runs as never,
+      documents as never,
+      { containerExists: async () => false },
+      current,
+      clock,
+    );
     expect(settled.status).toBe('running');
     expect(notes).toEqual([]);
   });
@@ -28,29 +34,43 @@ describe('shell lock', () => {
   it('clears a lock after the container is gone', async () => {
     const notes: string[] = [];
     const current = feature();
-    const history = {
-      latestBody: async () => containerLockBody('waiting', 'swarmloop-proj-1-shell', Date.now() - 60_000),
+    const runs = {
       saveRun: async (value: RunEntity) => {
         notes.push(value.status);
         return value;
       },
+    };
+    const documents = {
+      latestBody: async () => containerLockBody('waiting', 'swarmloop-proj-1-shell', Date.now() - 60_000),
       putDocument: async () => {
         notes.push('clear');
       },
     };
-    const settled = await settleShell(history as never, { containerExists: async () => false }, current, clock);
+    const settled = await settleShell(
+      runs as never,
+      documents as never,
+      { containerExists: async () => false },
+      current,
+      clock,
+    );
     expect(settled.status).toBe('waiting');
     expect(notes).toEqual(['waiting', 'clear']);
   });
 
   it('keeps the lock while the container is running', async () => {
     const current = feature();
-    const history = {
+    const runs = { saveRun: async (value: RunEntity) => value };
+    const documents = {
       latestBody: async () => containerLockBody('waiting', 'swarmloop-proj-1-shell', Date.now() - 60_000),
-      saveRun: async (value: RunEntity) => value,
       putDocument: async () => undefined,
     };
-    const settled = await settleShell(history as never, { containerExists: async () => true }, current, clock);
+    const settled = await settleShell(
+      runs as never,
+      documents as never,
+      { containerExists: async () => true },
+      current,
+      clock,
+    );
     expect(settled.status).toBe('running');
   });
 });

@@ -10,26 +10,30 @@ describe('ProjectAppendService', () => {
     const run = { id: 7, key: 'PROJ-20', status, projects: 'billing-api\n', prompt } as RunEntity;
     const docs: { kind: string; body: string }[] = repos === null ? [] : [{ kind: 'repos', body: repos }];
     const stats: { step: string; status: string }[] = [];
-    const history = {
+    const runs = {
       findRun: jest.fn(async () => run),
+      saveRun: jest.fn(async (saved: RunEntity) => {
+        run.projects = saved.projects;
+      }),
+    };
+    const documents = {
       latestBody: jest.fn(
         async (_key: string, kind: string) => [...docs].reverse().find((item) => item.kind === kind)?.body ?? null,
       ),
       putDocument: jest.fn(async (_run: RunEntity, kind: string, body: string) => {
         docs.push({ kind, body });
       }),
-      saveRun: jest.fn(async (saved: RunEntity) => {
-        run.projects = saved.projects;
-      }),
-      listStats: jest.fn(async () => stats),
     };
+    const visits = { listStats: jest.fn(async () => stats) };
     const prepare = {
       listProjects: () => ({ projects: ['billing-api', 'worker', 'handbook'] }),
       ensureDetached: jest.fn(async () => undefined),
     };
     const branch = { ensure: jest.fn(async () => undefined) };
     const service = new ProjectAppendService(
-      history as never,
+      runs as never,
+      documents as never,
+      visits as never,
       prepare as unknown as PrepareStep,
       branch as unknown as BranchStep,
     );

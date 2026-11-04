@@ -9,7 +9,8 @@ import type { Repository } from 'typeorm';
 import { DenyPathEntity } from '../history/entities';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { HistoryModule } from '../history/history.module';
-import type { HistoryService } from '../history/history.service';
+import type { DocumentRepository } from '../history/document.repository';
+import type { RunRepository } from '../history/run.repository';
 import { LiveModule } from '../live/live.module';
 import type { VisitDraft } from '../history/visit';
 import { PipelineService } from '../pipeline/pipeline.service';
@@ -99,9 +100,15 @@ export function visit(step: string, status: string): VisitDraft {
   };
 }
 
-export async function remember(history: HistoryService, key: string, step: string, status: string) {
-  const run = await save(history, key, step, status);
-  await history.putDocument(
+export async function remember(
+  runs: RunRepository,
+  documents: DocumentRepository,
+  key: string,
+  step: string,
+  status: string,
+) {
+  const run = await save(runs, key, step, status);
+  await documents.putDocument(
     run,
     'requirements',
     `${JSON.stringify({
@@ -113,7 +120,7 @@ export async function remember(history: HistoryService, key: string, step: strin
       pages: [],
     })}\n`,
   );
-  await history.putDocument(run, 'repos', 'demo\n');
+  await documents.putDocument(run, 'repos', 'demo\n');
   return run;
 }
 
@@ -194,11 +201,11 @@ export function hostFetch(bare: string, token: string): () => void {
   };
 }
 
-export async function save(history: HistoryService, key: string, step: string, status: string, attemptsReview = 0) {
-  const run = await history.begin(key, step);
+export async function save(runs: RunRepository, key: string, step: string, status: string, attemptsReview = 0) {
+  const run = await runs.begin(key, step);
   run.status = status;
   run.currentStep = step;
   run.ownerPid = null;
   run.attemptsReview = attemptsReview;
-  return history.saveRun(run);
+  return runs.saveRun(run);
 }

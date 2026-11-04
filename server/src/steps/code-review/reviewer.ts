@@ -1,7 +1,8 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { SwarmloopEnv } from '../../config/env';
-import type { HistoryService } from '../../history/history.service';
+import type { DocumentRepository } from '../../history/document.repository';
+import type { VisitRepository } from '../../history/visit.repository';
 import type { SampleDraft } from '../../history/visit';
 import type { AgentProcessRunner, AgentRunResult } from '../../agent/agent-runner';
 import { readSession } from '../../agent/agent-runner';
@@ -42,7 +43,9 @@ export interface Usage {
 }
 
 export interface ReviewDeps {
-  history: HistoryService;
+  documents: DocumentRepository;
+  visits: VisitRepository;
+  root: string;
   agent: AgentProcessRunner;
 }
 
@@ -68,7 +71,7 @@ export async function runJob(
   retry: boolean,
 ): Promise<Finished> {
   const step = `code-review-${job.reviewer.name}`;
-  const session = await readSession(join(deps.history.root(), 'data', sessionFileName(key, step)), opened.run.runtime);
+  const session = await readSession(join(deps.root, 'data', sessionFileName(key, step)), opened.run.runtime);
   const prompt =
     fresh || !session?.chatId
       ? job.prompt
@@ -102,7 +105,7 @@ async function one(
 ): Promise<Finished> {
   let refused: string | null = null;
   try {
-    const directory = join(deps.history.root(), 'data');
+    const directory = join(deps.root, 'data');
     mkdirSync(directory, { recursive: true });
     writeFileSync(join(directory, `${key}-code-review-${job.reviewer.name}-output.txt`), 'starting\n');
     const result = await launchReview(deps, opened, key, env, job, auto, fresh);
@@ -136,7 +139,8 @@ async function launchReview(
 ): Promise<AgentRunResult> {
   return launchAgent({
     agent: deps.agent,
-    history: deps.history,
+    visits: deps.visits,
+    root: deps.root,
     run: opened.run,
     key,
     step: `code-review-${job.reviewer.name}`,

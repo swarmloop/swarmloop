@@ -1,4 +1,4 @@
-import type { HistoryService } from '../../history/history.service';
+import type { DocumentRepository } from '../../history/document.repository';
 import type { DocumentDraft } from '../../history/visit';
 
 export function textDocument(kind: string, body: string): DocumentDraft {
@@ -30,12 +30,12 @@ export function withHandoff(
 }
 
 export async function recordHandoff(
-  history: HistoryService,
+  documents: DocumentRepository,
   key: string,
   step: string,
   body: string,
 ): Promise<DocumentDraft> {
-  return textDocument('handoff', mergeHandoff(await history.latestBody(key, 'handoff'), step, body));
+  return textDocument('handoff', mergeHandoff(await documents.latestBody(key, 'handoff'), step, body));
 }
 
 export function handoffSection(text: string | null, step: string): string {

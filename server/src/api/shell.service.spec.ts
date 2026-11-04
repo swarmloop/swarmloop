@@ -1,15 +1,20 @@
-import type { HistoryService } from '../history/history.service';
+import type { AppConfig } from '../config/env';
 import type { RunEntity } from '../history/entities';
+import type { DocumentRepository } from '../history/document.repository';
+import type { FlowRepository } from '../history/flow.repository';
+import type { RunRepository } from '../history/run.repository';
+import type { VisitRepository } from '../history/visit.repository';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { ShellService } from './shell.service';
+
+const config = { env: { SWARMLOOP_ROOT: '/tmp/swarmloop' } } as unknown as AppConfig;
 
 describe('shell open', () => {
   it('creates one waiting feature and does not start the pipeline', async () => {
     const notes: string[] = [];
     const runs: RunEntity[] = [];
-    const history = {
-      root: () => '/tmp/swarmloop',
+    const runRepository = {
       listRuns: async () => runs,
       openWaiting: async (key: string, targetPath: string) => {
         notes.push(`open ${targetPath}`);
@@ -24,14 +29,20 @@ describe('shell open', () => {
         runs.push(run);
         return run;
       },
+    };
+    const flowRepository = {
       noteFlow: async (key: string) => {
         notes.push(`flow ${key}`);
       },
-      latestBody: async () => null,
     };
+    const documentRepository = { latestBody: async () => null };
     const sandbox = { containerExists: async () => false };
     const service = new ShellService(
-      history as unknown as HistoryService,
+      runRepository as unknown as RunRepository,
+      documentRepository as unknown as DocumentRepository,
+      {} as VisitRepository,
+      flowRepository as unknown as FlowRepository,
+      config,
       sandbox as unknown as SandboxService,
       new FakeClock(),
     );
@@ -46,8 +57,7 @@ describe('shell open', () => {
 
   it('lists several matches and creates nothing', async () => {
     const notes: string[] = [];
-    const history = {
-      root: () => '/tmp/swarmloop',
+    const runRepository = {
       listRuns: async () => [
         { key: 'PROJ-1', targetPath: '/tmp/demo', status: 'waiting', currentStep: 'requirements' },
         { key: 'PROJ-2', targetPath: '/tmp', status: 'waiting', currentStep: 'plan' },
@@ -57,7 +67,15 @@ describe('shell open', () => {
         return {} as RunEntity;
       },
     };
-    const service = new ShellService(history as unknown as HistoryService, {} as SandboxService, new FakeClock());
+    const service = new ShellService(
+      runRepository as unknown as RunRepository,
+      {} as DocumentRepository,
+      {} as VisitRepository,
+      {} as FlowRepository,
+      config,
+      {} as SandboxService,
+      new FakeClock(),
+    );
     const result = await service.open('/tmp/demo');
     expect(result).toEqual({
       matches: [

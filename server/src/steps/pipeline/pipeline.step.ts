@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { AppConfig, type SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
-import { HistoryService } from '../../history/history.service';
+import { RunRepository } from '../../history/run.repository';
+import { DocumentRepository } from '../../history/document.repository';
+import { VisitRepository } from '../../history/visit.repository';
+import { FlowRepository } from '../../history/flow.repository';
+import { EventRepository } from '../../history/event.repository';
+import { root } from '../../history/run-paths';
 import { Clock } from '../../core/clock';
 import type { DocumentDraft } from '../../history/visit';
 import type { PipelineResult, StepOptions } from '../../core/pipeline-result';
@@ -31,19 +36,23 @@ export class PipelineStep extends BaseStep {
   readonly requiredKind = 'pipeline_ref';
 
   constructor(
-    history: HistoryService,
+    runs: RunRepository,
+    documents: DocumentRepository,
+    visits: VisitRepository,
+    flows: FlowRepository,
     clock: Clock,
-    private readonly config: AppConfig,
+    config: AppConfig,
+    private readonly events: EventRepository,
     private readonly registry: CodeHostRegistry,
   ) {
-    super(history, clock);
+    super(runs, documents, visits, flows, clock, config);
   }
 
   protected async run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
     const { opened, calls } = ctx;
     const env = this.config.env;
-    const records = parsePipelineRefs((await this.history.latestBody(key, 'pipeline_ref')) ?? '');
-    const skipped = (await this.history.latestBody(key, 'ci_skip'))?.trim() ?? '';
+    const records = parsePipelineRefs((await this.documents.latestBody(key, 'pipeline_ref')) ?? '');
+    const skipped = (await this.documents.latestBody(key, 'ci_skip'))?.trim() ?? '';
     if (records.length === 0 && skipped) {
       return this.finish(ctx, 'ok', 0, this.report(opened, skipped), 'skipped', skipped);
     }
@@ -58,7 +67,7 @@ export class PipelineStep extends BaseStep {
 
   /** Repo names that have a workflow file and no run. Null when the repo list is missing. */
   private async missingRuns(key: string, seen: Seen[]): Promise<string[] | null> {
-    const raw = await this.history.latestBody(key, 'repos');
+    const raw = await this.documents.latestBody(key, 'repos');
     if (!raw?.trim()) {
       return null;
     }
@@ -70,7 +79,7 @@ export class PipelineStep extends BaseStep {
     }
     const missing: string[] = [];
     for (const name of names) {
-      const dir = worktreePath(this.history.root(), key, name);
+      const dir = worktreePath(root(this.config), key, name);
       if (!hasCi(dir)) {
         continue;
       }
@@ -291,12 +300,12 @@ export class PipelineStep extends BaseStep {
     }
     opened.run.attemptsPipeline += 1;
     const reason = failures.map((failure) => `${failure.project} ${failure.name}`).join(',') || 'pipeline failed';
-    await this.history.recordLoop(opened.run, 'pipeline', opened.run.attemptsPipeline, reason);
+    await this.events.recordLoop(opened.run, 'pipeline', opened.run.attemptsPipeline, reason);
     return this.finish(ctx, 'waiting', 0, this.report(opened, 'pipeline failed', body), 'waiting', body, 'implement');
   }
 
   private async sameFailure(key: string, seen: Seen[]): Promise<boolean> {
-    const previous = (await this.history.latestBody(key, 'pipeline_log')) ?? '';
+    const previous = (await this.documents.latestBody(key, 'pipeline_log')) ?? '';
     const lines = new Set(previous.split('\n').map((line) => line.trim()));
     if (!lines.has('result: fail')) {
       return false;
@@ -374,7 +383,7 @@ export class PipelineStep extends BaseStep {
           : body?.includes('result: none')
             ? 'Nothing started.'
             : 'Pipeline passed.';
-      docs.push(await recordHandoff(this.history, opened.run.key, 'pipeline', `- ${head}\n`));
+      docs.push(await recordHandoff(this.documents, opened.run.key, 'pipeline', `- ${head}\n`));
     }
     return ctx.end({
       outcome,
