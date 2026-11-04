@@ -18,7 +18,10 @@ interface GithubPull {
   number?: number;
   html_url?: string;
   body?: string | null;
-  head?: { ref?: string };
+  head?: { ref?: string; sha?: string };
+  state?: string;
+  mergeable?: boolean | null;
+  mergeable_state?: string;
 }
 
 interface GithubRun {
@@ -102,6 +105,46 @@ export class GithubCodeHost extends AbstractCodeHost {
       const response = await request(this.clock, url, headers, calls, { method: 'POST' });
       this.assertStatus(response.status, calls, 'github pipeline failed');
       return { httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async diagnoseMissingPipeline(ref: PipelineRef): Promise<{ reason: string | null; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const owner = ref.project.split('/')[0] ?? '';
+      const pulls = await this.readJson(
+        `${root}/repos/${repoPath(ref.project)}/pulls?state=all&head=${encodeURIComponent(`${owner}:${ref.ref}`)}&per_page=100`,
+        headers,
+        calls,
+      );
+      if (!Array.isArray(pulls)) {
+        throw new SwarmloopError('github pipeline diagnosis failed');
+      }
+      const found = (pulls as GithubPull[]).find(
+        (pull) => pull.head?.ref === ref.ref && (!ref.sha || pull.head.sha === ref.sha),
+      );
+      if (!found?.number) {
+        return { reason: null, httpCalls: calls };
+      }
+      const pull = (await this.readJson(
+        `${root}/repos/${repoPath(ref.project)}/pulls/${found.number}`,
+        headers,
+        calls,
+      )) as GithubPull;
+      const link = pull.html_url ?? `PR #${found.number}`;
+      if (pull.state === 'closed') {
+        return { reason: `${link} is closed; pull_request CI will not start for new pushes.`, httpCalls: calls };
+      }
+      if (pull.mergeable === false || pull.mergeable_state === 'dirty') {
+        return {
+          reason: `${link} has merge conflicts with its base branch; GitHub does not start pull_request CI until they are resolved. Rebase this run onto the latest base.`,
+          httpCalls: calls,
+        };
+      }
+      return { reason: null, httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }

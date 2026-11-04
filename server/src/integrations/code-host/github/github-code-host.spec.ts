@@ -122,6 +122,40 @@ describe('github host', () => {
     expect(JSON.stringify(result.httpCalls)).not.toContain(TOKEN);
   });
 
+  it('explains why a conflicting pull request cannot start CI', async () => {
+    const seen = mockFetch([
+      [{ number: 12, head: { ref: 'feature/task', sha: 'abc' } }],
+      { state: 'open', mergeable: false, mergeable_state: 'dirty', html_url: 'https://github.com/acme/demo/pull/12' },
+    ]);
+    const result = await service().diagnoseMissingPipeline({ project: 'acme/demo', ref: 'feature/task', sha: 'abc' });
+    expect(result.reason).toContain('has merge conflicts');
+    expect(result.reason).toContain('Rebase');
+    expect(seen[1]?.url).toBe('https://api.github.com/repos/acme/demo/pulls/12');
+    expect(result.httpCalls).toHaveLength(2);
+    expect(JSON.stringify(result)).not.toContain(TOKEN);
+  });
+
+  it('reports a closed PR instead of recommending a rebase', async () => {
+    mockFetch([[{ number: 12, head: { ref: 'feature/task', sha: 'abc' } }], { state: 'closed', mergeable: false }]);
+    const result = await service().diagnoseMissingPipeline({ project: 'acme/demo', ref: 'feature/task', sha: 'abc' });
+    expect(result.reason).toContain('is closed');
+    expect(result.reason).not.toContain('Rebase');
+  });
+
+  it('does not diagnose another commit or guess while GitHub calculates mergeability', async () => {
+    mockFetch([[{ number: 12, head: { ref: 'feature/task', sha: 'old' } }]]);
+    expect(
+      (await service().diagnoseMissingPipeline({ project: 'acme/demo', ref: 'feature/task', sha: 'abc' })).reason,
+    ).toBeNull();
+    mockFetch([
+      [{ number: 12, head: { ref: 'feature/task', sha: 'abc' } }],
+      { state: 'open', mergeable: null, mergeable_state: 'unknown' },
+    ]);
+    expect(
+      (await service().diagnoseMissingPipeline({ project: 'acme/demo', ref: 'feature/task', sha: 'abc' })).reason,
+    ).toBeNull();
+  });
+
   it('lists a cancelled job on a canceled run and reads its log', async () => {
     const seen = mockFetch([
       {

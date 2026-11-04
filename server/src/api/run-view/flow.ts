@@ -228,7 +228,8 @@ export function reason(run: RunEntity, documents: DocumentEntity[], stats: StepS
   const stat = [...stats].reverse().find((item) => item.step === run.currentStep);
   const kind =
     run.currentStep === 'code-review' ? 'review_residual' : run.currentStep === 'pipeline' ? 'pipeline_log' : null;
-  const residual = (kind ? latest(documents, kind) : null) ?? latest(documents, 'error');
+  const current = stat ? documents.filter((document) => document.stepStatId === stat.id) : documents;
+  const residual = (kind ? latest(current, kind) : null) ?? latest(current, 'error');
   const text = residual?.trim() || null;
   const head = stat?.killReason ?? null;
   if (text && head) {

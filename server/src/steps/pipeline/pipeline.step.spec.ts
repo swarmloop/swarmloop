@@ -568,6 +568,12 @@ describe('pipeline step', () => {
     try {
       await seed(app, 'PROJ-311');
       const run = await app.get(RunRepository).findRun('PROJ-311');
+      const host = app.get(CodeHostRegistry).byName('gitlab');
+      host.diagnoseMissingPipeline = jest.fn(async () => ({
+        reason: 'PR has merge conflicts; rebase onto the latest base.',
+        httpCalls: [call('GET')],
+      }));
+      await app.get(DocumentRepository).putDocument(run!, 'pipeline_log', 'result: fail\njob: old-test\n');
       await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
       const workflow = join(root, 'worktrees', 'PROJ-311', 'demo', '.github', 'workflows');
       mkdirSync(workflow, { recursive: true });
@@ -580,6 +586,10 @@ describe('pipeline step', () => {
       const after = await app.get(RunRepository).findRun('PROJ-311');
       expect(after?.currentStep).toBe('pipeline');
       expect(after?.status).toBe('failed');
+      const error = await app.get(DocumentRepository).latestBody('PROJ-311', 'error');
+      expect(error).toContain('PR has merge conflicts');
+      expect(error).toContain('sha:');
+      expect(host.diagnoseMissingPipeline).toHaveBeenCalledTimes(1);
     } finally {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);

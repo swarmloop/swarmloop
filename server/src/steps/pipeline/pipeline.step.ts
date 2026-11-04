@@ -202,7 +202,20 @@ export class PipelineStep extends BaseStep {
     const missing = await this.missingRuns(opened.run.key, seen);
     if (missing && missing.length > 0) {
       const line = missing.map((name) => `${name} CI did not start`).join(', ');
-      return this.finish(ctx, 'failed', 1, this.report(opened, line), 'failed');
+      const notes: string[] = [line];
+      for (const record of records.filter((record) =>
+        seen.some((item) => item.project === record.project && item.status === 'none'),
+      )) {
+        notes.push(`project: ${record.project}`, `ref: ${record.ref}`, `sha: ${record.sha ?? 'unknown'}`);
+        const diagnosis = await host.diagnoseMissingPipeline?.(record);
+        if (diagnosis) {
+          calls.push(...diagnosis.httpCalls);
+          if (diagnosis.reason) {
+            notes.push(diagnosis.reason);
+          }
+        }
+      }
+      return this.finish(ctx, 'failed', 1, this.report(opened, notes.join('\n')), 'failed');
     }
     if (verdict === 'absent') {
       const body = renderNone(seen);
