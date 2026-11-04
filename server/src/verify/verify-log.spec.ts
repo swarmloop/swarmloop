@@ -58,6 +58,14 @@ describe('createVerifyLog', () => {
     expect(readFileSync(file, 'utf8')).toBe('== gate ==\none\nprocess exited 0\n== gate ==\ntwo\nprocess exited 1\n');
   });
 
+  it('labels a live agent call and closes it', async () => {
+    const { make, file } = setup();
+    const log = make('agent call 2 (implement)');
+    log.onOutput(line('$ npm test'));
+    await log.finish(0);
+    expect(readFileSync(file, 'utf8')).toBe('== agent call 2 (implement) ==\n$ npm test\nprocess exited 0\n');
+  });
+
   it('writes at most once every 300 ms', async () => {
     const { make, file, live, clock } = setup();
     const log = make();

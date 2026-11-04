@@ -1107,9 +1107,9 @@ describe('implement step', () => {
       await app.get(PipelineService).step('implement', 'PROJ-145');
       const [withManifest, without] = agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt);
       expect(withManifest).toContain(
-        'After you finish, swarmloop runs `npm ci` and then `npm test` and then `npm run lint` in node:22 on your worktree. You cannot run them here, write the code so they pass.',
+        'You can run `swarmloop-verify` (optionally with a repository name) in the shell. It runs `npm ci` and then `npm test` and then `npm run lint` in node:22 on your worktree. Run it when a coherent piece of work is done and always before your final summary. If it fails, fix the cause and run it again; do not call it after every small edit. When it says it is not configured, ignore it.',
       );
-      expect(without).not.toContain('After you finish, swarmloop runs');
+      expect(without).not.toContain('swarmloop-verify');
     } finally {
       await app.close();
     }

@@ -132,6 +132,9 @@ Add a git token to `.env` and run `docker compose up --build` again. This time l
 
 The manifest is read from the base ref of the repository (`origin/main`, else `origin/master`), never from the agent's worktree, so a run cannot change its own checks. The commands run in a container, not in the agent's. A pulled image is kept while it is local. An image built from a Dockerfile is tagged with a hash of `.swarmloop/` and reused until that folder changes. The `cache` paths are kept under `data/verify-cache/` and mounted again on the next run. Files that `install` creates must be in `.gitignore`, or the run fails and names them. `MAX_VERIFY_RETURNS` limits how often a failed check is sent back.
 
+The agent can run the checks itself with `swarmloop-verify` while it works.
+Rebuild the images with `docker/sandbox/build.sh` to add that command.
+
 ### 🎫 Jira (optional)
 
 Only for prompts that name a ticket. A prompt without one never calls Jira.
@@ -240,6 +243,7 @@ Passing review and CI is a minimum bar, not proof that the change is right. The 
 | `MAX_RETURNS` | Review returns to implementation | `10` |
 | `MAX_PIPELINE_RETURNS` | Red pipelines sent back | `6` |
 | `MAX_VERIFY_RETURNS` | Failed project checks sent back to implement | `3` |
+| `MAX_VERIFY_CALLS` | Agent-run project checks per implementation step | `8` |
 | `MAX_LAUNCHES` | Relaunches of a step that crashed before it decided | `3` |
 | `IDLE_TIMEOUT_MS` | Silence before the agent is killed | 15 minutes |
 | `*_TIMEOUT_MS` | Wall time per step | 3 to 30 minutes |

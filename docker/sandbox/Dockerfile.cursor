@@ -8,6 +8,9 @@ RUN apt-get update \
   && mkdir -p /work \
   && chown sandbox:sandbox /work
 
+COPY swarmloop-verify /usr/local/bin/swarmloop-verify
+RUN chmod 755 /usr/local/bin/swarmloop-verify
+
 USER sandbox
 ENV HOME=/home/sandbox
 RUN curl -fsSL https://cursor.com/install | bash

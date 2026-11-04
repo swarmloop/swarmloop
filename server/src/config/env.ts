@@ -22,6 +22,7 @@ export interface SwarmloopEnv {
   MAX_RETURNS: number;
   MAX_PIPELINE_RETURNS: number;
   MAX_VERIFY_RETURNS: number;
+  MAX_VERIFY_CALLS: number;
   MAX_LAUNCHES: number;
   MAX_RUN_USD: number;
   MAX_RUN_TOKENS: number | null;
@@ -83,6 +84,7 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     MAX_RETURNS: config.getOrThrow<number>('MAX_RETURNS'),
     MAX_PIPELINE_RETURNS: config.getOrThrow<number>('MAX_PIPELINE_RETURNS'),
     MAX_VERIFY_RETURNS: config.getOrThrow<number>('MAX_VERIFY_RETURNS'),
+    MAX_VERIFY_CALLS: config.getOrThrow<number>('MAX_VERIFY_CALLS'),
     MAX_LAUNCHES: config.getOrThrow<number>('MAX_LAUNCHES'),
     MAX_RUN_USD: config.getOrThrow<number>('MAX_RUN_USD'),
     MAX_RUN_TOKENS: optionalLimit(config.get('MAX_RUN_TOKENS')),
