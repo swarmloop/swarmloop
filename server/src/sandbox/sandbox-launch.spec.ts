@@ -68,7 +68,7 @@ describe('sandbox launch', () => {
         'ANTHROPIC_BASE_URL=http://198.18.0.2:3129',
       );
       expect(() => sandboxArgs(behind, home)).toThrow(SwarmloopError);
-      const elsewhere = [env[0]!, { name: 'ANTHROPIC_BASE_URL', value: 'https://evil.example' }];
+      const elsewhere = [env[0], { name: 'ANTHROPIC_BASE_URL', value: 'https://evil.example' }];
       expect(() => sandboxArgs({ ...behind, env: elsewhere, egress: { ip: '198.18.3.3' } }, home)).toThrow(
         SwarmloopError,
       );

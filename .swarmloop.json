@@ -9,7 +9,9 @@
     "npm test --prefix dashboard",
     "npx eslint .",
     "node --test scripts/ci-tools.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs docker/egress/proxy.test.mjs",
-    "node --test scripts/check-structure.test.mjs && node scripts/check-structure.mjs"
+    "node --test scripts/check-structure.test.mjs && node scripts/check-structure.mjs",
+    "npx eslint -c eslint.strict.config.mjs <the .ts and .tsx files you changed>  (the strict rules CI runs on changed files)",
+    "npx --yes prettier@3 --check --ignore-unknown <the files you changed>  (the autofix job)"
   ],
   "cache": ["/home/sandbox/.npm"]
 }
