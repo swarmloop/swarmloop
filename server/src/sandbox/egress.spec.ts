@@ -8,6 +8,7 @@ interface State {
   network?: { internal: boolean; subnet: string };
   image?: string;
   proxy?: { running: boolean; image: string; user: string; ip: string; bridge: boolean };
+  attached?: string[];
 }
 
 function fakeDocker(state: State) {
@@ -15,6 +16,12 @@ function fakeDocker(state: State) {
   const docker = jest.fn((args: string[]) => {
     calls.push(args);
     const [first, second] = args;
+    if (first === 'network' && second === 'inspect' && args.includes('{{json .Containers}}')) {
+      const containers = Object.fromEntries(
+        (state.attached ?? []).map((ip, index) => [`c${index}`, { IPv4Address: `${ip}/16` }]),
+      );
+      return Promise.resolve(`${JSON.stringify(containers)}\n`);
+    }
     if (first === 'network' && second === 'inspect') {
       return state.network
         ? Promise.resolve(
@@ -186,6 +193,23 @@ describe('Egress', () => {
     });
     await shell.egress.ensure();
     expect(shell.calls.some((call) => call[0] === 'run' || call[0] === 'rm')).toBe(false);
+  });
+
+  it('drops the policy of a container that is gone once it is no longer fresh', async () => {
+    const state: State = { image: 'sha256:abc' };
+    const { egress, policyDir, tick } = setup(state);
+    const gone = await egress.lease({ hosts: ['api.openai.com'] });
+    const alive = await egress.lease({ hosts: ['api.openai.com'] });
+    state.attached = [alive.ip];
+    const fresh = await egress.lease({ hosts: ['api.openai.com'] });
+    expect(readdirSync(policyDir)).toHaveLength(3);
+    tick(11 * 60_000);
+    await egress.lease({ hosts: ['api.openai.com'] });
+    const left = readdirSync(policyDir);
+    expect(left).not.toContain(`${gone.ip}.json`);
+    expect(left).not.toContain(`${fresh.ip}.json`);
+    expect(left).toContain(`${alive.ip}.json`);
+    expect(left).toHaveLength(2);
   });
 
   it('brings a removed proxy back for the next lease', async () => {

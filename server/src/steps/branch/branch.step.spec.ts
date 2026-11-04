@@ -56,6 +56,47 @@ describe('branch step', () => {
     }
   });
 
+  it('starts a branch without work of its own again from the new base', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-branch-base-'));
+    const demo = repoWithMain(root, 'demo');
+    const demoTree = addDetached(demo, join(root, 'worktrees', 'PROJ-31', 'demo'));
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-31', 'demo\n', 'Ship the field');
+      await app.get(PipelineService).step('branch', 'PROJ-31');
+      const base = commitOnMain(demo, 'second');
+      git(demoTree, ['fetch', 'origin']);
+      git(demoTree, ['switch', '--detach', 'origin/main']);
+      expect((await app.get(PipelineService).step('branch', 'PROJ-31')).exitCode).toBe(0);
+      expect(git(demoTree, ['branch', '--show-current'])).toBe('feature/PROJ-31-ship-the-field');
+      expect(git(demoTree, ['rev-parse', 'HEAD'])).toBe(base);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps the commits of a branch that has work of its own', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-branch-work-'));
+    const demo = repoWithMain(root, 'demo');
+    const demoTree = addDetached(demo, join(root, 'worktrees', 'PROJ-32', 'demo'));
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-32', 'demo\n', 'Ship the field');
+      await app.get(PipelineService).step('branch', 'PROJ-32');
+      writeFileSync(join(demoTree, 'WORK'), 'work\n');
+      git(demoTree, ['add', 'WORK']);
+      git(demoTree, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '-m', 'work']);
+      const work = git(demoTree, ['rev-parse', 'HEAD']);
+      commitOnMain(demo, 'second');
+      git(demoTree, ['fetch', 'origin']);
+      git(demoTree, ['switch', '--detach', 'origin/main']);
+      expect((await app.get(PipelineService).step('branch', 'PROJ-32')).exitCode).toBe(0);
+      expect(git(demoTree, ['rev-parse', 'HEAD'])).toBe(work);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('stops when a named repo has no worktree', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-branch-missing-'));
     const app = await boot(root);
@@ -172,6 +213,14 @@ function repoWithMain(root: string, dirName: string): string {
   git(clone, ['remote', 'add', 'origin', remote]);
   git(clone, ['push', '-u', 'origin', 'main']);
   return clone;
+}
+
+function commitOnMain(clone: string, name: string): string {
+  writeFileSync(join(clone, name), `${name}\n`);
+  git(clone, ['add', name]);
+  git(clone, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '-m', name]);
+  git(clone, ['push', 'origin', 'main']);
+  return git(clone, ['rev-parse', 'HEAD']);
 }
 
 function git(cwd: string, args: string[]): string {

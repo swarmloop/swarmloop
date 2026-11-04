@@ -14,6 +14,8 @@ export const EGRESS_PROXY = `http://${EGRESS_IP}:3128`;
 export const EGRESS_API = `http://${EGRESS_IP}:3129`;
 /** Long enough for the longest step; a policy left by a crashed server expires on its own. */
 const POLICY_TTL_MS = 26 * 60 * 60_000;
+/** Time between writing a policy and its container joining the network, with room for a slow image pull. */
+const POLICY_GRACE_MS = 10 * 60_000;
 
 export type EgressMode = 'proxy' | 'open';
 
@@ -107,8 +109,9 @@ export class Egress {
   /** A free address with its policy written before the container exists, so the first request already has it. */
   async lease(policy: EgressPolicy): Promise<EgressLease> {
     await this.ensure();
-    this.dropExpired();
-    const body = `${JSON.stringify({ ...policy, expires: this.deps.now() + POLICY_TTL_MS })}\n`;
+    await this.dropStale();
+    const now = this.deps.now();
+    const body = `${JSON.stringify({ ...policy, issued: now, expires: now + POLICY_TTL_MS })}\n`;
     for (let attempt = 0; attempt < 64; attempt += 1) {
       const ip = `198.18.${randomInt(1, 251)}.${randomInt(1, 255)}`;
       const file = join(this.deps.policyDir, `${ip}.json`);
@@ -125,17 +128,46 @@ export class Egress {
     throw new SwarmloopError('no free sandbox address');
   }
 
-  private dropExpired(): void {
+  /**
+   * Drops policies that expired, and those of containers that are gone: a server killed mid-step leaves its files
+   * behind. A fresh file is kept, because its container may not have started yet.
+   */
+  private async dropStale(): Promise<void> {
+    const now = this.deps.now();
+    const idle: { file: string; ip: string }[] = [];
     for (const name of readdirSync(this.deps.policyDir)) {
       const file = join(this.deps.policyDir, name);
       try {
-        const expires = (JSON.parse(readFileSync(file, 'utf8')) as { expires?: number }).expires ?? 0;
-        if (expires < this.deps.now()) {
+        const policy = JSON.parse(readFileSync(file, 'utf8')) as { issued?: number; expires?: number };
+        const expires = policy.expires ?? 0;
+        if (expires < now) {
           rmSync(file, { force: true });
+        } else if ((policy.issued ?? expires - POLICY_TTL_MS) < now - POLICY_GRACE_MS) {
+          idle.push({ file, ip: name.replace(/\.json$/, '') });
         }
       } catch {
         continue;
       }
+    }
+    if (idle.length === 0) {
+      return;
+    }
+    const attached = await this.attachedAddresses();
+    for (const item of idle) {
+      if (attached !== null && !attached.has(item.ip)) {
+        rmSync(item.file, { force: true });
+      }
+    }
+  }
+
+  /** The addresses of the containers on the sandbox network, or null when Docker does not say. */
+  private async attachedAddresses(): Promise<Set<string> | null> {
+    try {
+      const raw = await this.deps.docker(['network', 'inspect', '--format', '{{json .Containers}}', EGRESS_NETWORK]);
+      const containers = (JSON.parse(raw.trim() || '{}') ?? {}) as Record<string, { IPv4Address?: string }>;
+      return new Set(Object.values(containers).map((item) => (item.IPv4Address ?? '').split('/')[0] ?? ''));
+    } catch {
+      return null;
     }
   }
 

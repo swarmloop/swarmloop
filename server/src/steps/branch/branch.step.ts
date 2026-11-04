@@ -75,7 +75,10 @@ export class BranchStep extends BaseStep {
     }
     try {
       if (await hasBranch(worktree, branch)) {
-        await git(['-C', worktree, 'switch', branch]);
+        // A branch left by an earlier try of this key without work of its own starts again from the current base,
+        // so the run gets today's code and .swarmloop.json. A branch with commits keeps them.
+        const empty = await isAncestor(worktree, branch, 'HEAD');
+        await git(['-C', worktree, 'switch', ...(empty ? ['-C'] : []), branch]);
         return;
       }
       await git(['-C', worktree, 'switch', '-c', branch]);
@@ -85,6 +88,15 @@ export class BranchStep extends BaseStep {
       }
       throw new SwarmloopError(`${repo} branch failed: ${gitDetail(error)}`);
     }
+  }
+}
+
+async function isAncestor(worktree: string, older: string, newer: string): Promise<boolean> {
+  try {
+    await git(['-C', worktree, 'merge-base', '--is-ancestor', older, newer]);
+    return true;
+  } catch {
+    return false;
   }
 }
 
