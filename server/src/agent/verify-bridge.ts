@@ -2,6 +2,7 @@ import { lstat, mkdir, readdir, readFile, rename, rm, writeFile } from 'fs/promi
 import { join } from 'path';
 import type { Clock } from '../core/clock';
 import { delay } from '../core/delay';
+import type { LiveHub } from '../live/live.hub';
 import { containerName, type SandboxMount } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { readManifest } from '../verify/manifest';
@@ -28,6 +29,7 @@ export interface VerifyBridgeDeps {
   step: string;
   statePath: string;
   touch: () => void;
+  live?: LiveHub;
 }
 
 /** File bridge between an agent's home mount and server-owned project checks. */
@@ -39,13 +41,21 @@ export class VerifyBridge {
   private loop: Promise<void> | null = null;
   private readonly documents: DocumentDraft[] = [];
 
-  constructor(private readonly input: VerifyBridgeInput, private readonly deps: VerifyBridgeDeps) {
+  constructor(
+    private readonly input: VerifyBridgeInput,
+    private readonly deps: VerifyBridgeDeps,
+  ) {
     this.dir = join(deps.statePath, '.swarmloop', 'verify');
   }
 
   static async enabled(input: VerifyBridgeInput): Promise<boolean> {
     for (const repo of input.repos) {
-      if (await readManifest(repo.path, input.baseRef)) {
+      try {
+        if (await readManifest(repo.path, input.baseRef)) {
+          return true;
+        }
+      } catch {
+        // Let the agent start; VerifyService returns the manifest error when it is invoked.
         return true;
       }
     }
@@ -65,6 +75,7 @@ export class VerifyBridge {
     }
     await this.loop;
     await rm(this.dir, { recursive: true, force: true });
+    await rm(join(this.deps.statePath, '.swarmloop', 'verify.enabled'), { force: true });
     return this.documents;
   }
 
@@ -72,7 +83,11 @@ export class VerifyBridge {
     while (!this.stopped) {
       const request = await this.nextRequest();
       if (request) {
-        await this.answer(request.id, request.repo);
+        try {
+          await this.answer(request.id, request.repo);
+        } catch {
+          await this.writeResponse(request.id, 'exit: 2\nswarmloop could not run it\n');
+        }
         continue;
       }
       await delay(500);
@@ -132,6 +147,7 @@ export class VerifyBridge {
     const repos = requested === 'all' ? this.input.repos : this.input.repos.filter((item) => item.name === requested);
     const log = createVerifyLog({
       clock: this.deps.clock,
+      live: this.deps.live,
       root: this.deps.root,
       key: this.deps.key,
       label: `agent call ${this.calls} (${this.deps.step})`,
@@ -165,7 +181,9 @@ export class VerifyBridge {
     const exitCode = error ? 2 : failed ? 1 : 0;
     await log.finish(exitCode);
     if (exitCode === 0 && requested === 'all' && results.some((item) => item.result.status === 'ok')) {
-      const commands = results.flatMap((item) => (item.result.status === 'ok' ? item.result.commands : [])).map((item) => item.command);
+      const commands = results
+        .flatMap((item) => (item.result.status === 'ok' ? item.result.commands : []))
+        .map((item) => item.command);
       const mounts: SandboxMount[] = this.input.repos.map((repo) => ({ hostPath: repo.path, containerPath: '' }));
       const record: VerifyRecord = {
         result: 'pass',

@@ -252,6 +252,7 @@ export class AgentProcessRunner {
             key: input.runKey,
             step: input.liveStep ?? input.step,
             statePath,
+            live: this.live,
             touch: () => {
               lastActivity = this.clock.now();
             },

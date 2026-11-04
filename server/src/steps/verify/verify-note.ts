@@ -40,7 +40,10 @@ export function withVerifyNote(prompt: string, note: string): string {
 }
 
 /** The implementation-only bridge uses the prepared base ref, never agent-supplied commands. */
-export async function agentVerifyInput(mounts: SandboxMount[], maxCalls: number): Promise<VerifyBridgeInput | undefined> {
+export async function agentVerifyInput(
+  mounts: SandboxMount[],
+  maxCalls: number,
+): Promise<VerifyBridgeInput | undefined> {
   const first = mounts[0];
   if (!first) {
     return undefined;
