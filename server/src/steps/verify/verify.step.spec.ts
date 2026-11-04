@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -199,7 +199,7 @@ describe('verify step', () => {
     try {
       const worktree = await seed(app, root);
       await app.get(PipelineService).step('verify', KEY);
-      writeFileSync(join(worktree, 'README'), 'changed\n');
+      appendFileSync(join(worktree, 'README'), 'changed\n');
       await app.get(PipelineService).step('verify', KEY);
       const stored = await app.get(RunRepository).findRun(KEY);
       expect(stored?.currentStep).toBe('implement');
