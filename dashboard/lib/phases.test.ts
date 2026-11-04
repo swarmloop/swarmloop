@@ -28,6 +28,7 @@ void describe('liveLogStep', () => {
   void it('puts both implementation steps and every reviewer in their phase', () => {
     assert.equal(phaseOf('implement-swarmloop'), 'implementation');
     assert.equal(phaseOf('implement-improve'), 'implementation');
+    assert.equal(phaseOf('implement-improve-swarmloop'), 'implementation');
     assert.equal(phaseOf('code-review-security'), 'code-review');
   });
 
