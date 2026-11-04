@@ -32,6 +32,15 @@ describe('environmentNote', () => {
   });
 });
 
+describe('environmentNote with the registries kept to the setup', () => {
+  it('tells the agent it cannot install packages and not to rerun the setup', () => {
+    const note = environmentNote({ ...record, config: { ...record.config, network: 'setup' } });
+    expect(note).toContain('package registries are not reachable');
+    expect(note).not.toContain('run the setup again');
+    expect(note).not.toContain('Package registries are reachable');
+  });
+});
+
 describe('withEnvironment', () => {
   it('drops the ban on tests and appends the note', () => {
     const prompt =

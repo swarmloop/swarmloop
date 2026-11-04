@@ -276,7 +276,16 @@ export function sandboxUserId(
   return 1000;
 }
 
-export function sandboxArgs(launch: SandboxLaunch, home = homedir()): string[] {
+/** A Docker runtime such as `runsc` (gVisor), which gives each sandbox its own kernel. Empty is Docker's default. */
+export function sandboxEngine(value = rawEnv().SANDBOX_DOCKER_RUNTIME): string {
+  const engine = (value ?? '').trim();
+  if (engine !== '' && !/^[a-z][a-z0-9_.-]{0,63}$/.test(engine)) {
+    throw new SwarmloopError('SANDBOX_DOCKER_RUNTIME is not a runtime name');
+  }
+  return engine;
+}
+
+export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sandboxEngine()): string[] {
   if (launch.userId <= 0) {
     throw new SwarmloopError('sandbox user is root');
   }
@@ -305,6 +314,10 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir()): string[] {
   }
   const network = sandboxNetworkName(launch.allowHosts);
   const args = ['run', '--rm'];
+  const runtime = sandboxEngine(engine);
+  if (runtime !== '') {
+    args.push('--runtime', runtime);
+  }
   if (launch.tty) {
     args.push('-t');
   }
@@ -343,7 +356,9 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir()): string[] {
     }
   }
   if (launch.egress) {
-    args.push('--network', EGRESS_NETWORK, '--ip', launch.egress.ip);
+    // Names are resolved by the proxy. Docker before 25.0.5 forwards DNS from internal networks (CVE-2024-29018),
+    // so a resolver that answers nothing closes that channel on any engine.
+    args.push('--network', EGRESS_NETWORK, '--ip', launch.egress.ip, '--dns', '127.0.0.1');
     for (const item of egressEnv()) {
       args.push('--env', `${item.name}=${item.value}`);
     }

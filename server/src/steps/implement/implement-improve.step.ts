@@ -11,7 +11,6 @@ import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent
 import { sessionFileName } from '../../agent/session-group';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
-import { packageRegistries } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
@@ -82,12 +81,12 @@ export class ImplementImproveStep extends AgentStep {
     );
     const full = skillPrompt('implement-improve', ctx.requirements, names, sections, mounts);
     const chosen = continued?.chatId ? IMPLEMENT_IMPROVE_FOLLOW_UP : full;
-    const { prompt, project } = await agentWorkplace(
+    const { prompt, project, allowHosts } = await agentWorkplace(
       this.environments,
       { run: ctx.opened.run, key, step: this.name, mounts },
       withAddedRepos(chosen, await this.documents.latestBody(key, 'added_repos')),
     );
-    const agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries(), project });
+    const agentResult = await ctx.launch({ prompt, mounts, allowHosts, project });
     const text = agentResult.responseText;
     await assertUncommitted(mounts, branch, heads);
     const wrote = reviewedImplementation(text);

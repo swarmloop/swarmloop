@@ -29,6 +29,7 @@ export interface SwarmloopEnv {
   IDLE_TIMEOUT_MS: number;
   ALLOW_CI_CHANGES: boolean;
   SANDBOX_EGRESS: 'proxy' | 'open';
+  SANDBOX_DOCKER_RUNTIME: string;
   TICK_MS: number;
   REQUIREMENTS_TIMEOUT_MS: number;
   RESEARCH_TIMEOUT_MS: number;
@@ -91,6 +92,7 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     IDLE_TIMEOUT_MS: config.getOrThrow<number>('IDLE_TIMEOUT_MS'),
     ALLOW_CI_CHANGES: config.get<boolean>('ALLOW_CI_CHANGES') === true,
     SANDBOX_EGRESS: config.get<string>('SANDBOX_EGRESS') === 'open' ? 'open' : 'proxy',
+    SANDBOX_DOCKER_RUNTIME: config.get<string>('SANDBOX_DOCKER_RUNTIME') ?? '',
     TICK_MS: config.getOrThrow<number>('TICK_MS'),
     REQUIREMENTS_TIMEOUT_MS: config.getOrThrow<number>('REQUIREMENTS_TIMEOUT_MS'),
     RESEARCH_TIMEOUT_MS: config.getOrThrow<number>('RESEARCH_TIMEOUT_MS'),

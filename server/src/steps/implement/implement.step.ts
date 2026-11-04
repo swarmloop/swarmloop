@@ -99,13 +99,13 @@ export class ImplementStep extends AgentStep {
       return settled;
     }
     const heads = await featureHeads(mounts, branch);
-    const { prompt, project } = await agentWorkplace(
+    const { prompt, project, allowHosts } = await agentWorkplace(
       this.environments,
       { run: ctx.opened.run, key, step: this.name, mounts },
       basePrompt,
     );
     const before = await worktreeSnapshot(mounts);
-    let agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries(), project });
+    let agentResult = await ctx.launch({ prompt, mounts, allowHosts, project });
     await assertUncommitted(mounts, branch, heads);
     let planText = agentResult.responseText;
     let planOutput = agentResult.output ?? '';
@@ -113,7 +113,7 @@ export class ImplementStep extends AgentStep {
       agentResult = await ctx.launch({
         prompt: `The pipeline failure still stands and the files are unchanged.\n\n${notes?.trim() ?? ''}`,
         mounts,
-        allowHosts: packageRegistries(),
+        allowHosts,
         project,
       });
       await assertUncommitted(mounts, branch, heads);

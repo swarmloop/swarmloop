@@ -28,6 +28,15 @@ describe('fromSwarmloop', () => {
     });
   });
 
+  it('reads a network kept to the setup', () => {
+    expect(fromSwarmloop(JSON.stringify({ version: 1, image: 'a', network: 'setup' })).network).toBe('setup');
+    expect(fromSwarmloop(JSON.stringify({ version: 1, image: 'a' })).network).toBeUndefined();
+    expect(
+      fromDevcontainer(JSON.stringify({ image: 'a', customizations: { swarmloop: { network: 'setup' } } }), 'x.json')
+        .network,
+    ).toBe('setup');
+  });
+
   it('reads a Dockerfile under .swarmloop with that folder as the build context', () => {
     const config = fromSwarmloop(
       JSON.stringify({ version: 1, dockerfile: '.swarmloop/Dockerfile', setup: 'npm ci', checks: ['lint'] }),
@@ -41,6 +50,7 @@ describe('fromSwarmloop', () => {
     ['a dockerfile outside .swarmloop', { version: 1, dockerfile: 'Dockerfile' }],
     ['a cache outside the home', { version: 1, image: 'a', cache: ['/tmp/x'] }],
     ['version 2', { version: 2, image: 'a' }],
+    ['an unknown network', { version: 1, image: 'a', network: 'all' }],
   ])('rejects %s', (_name, raw) => {
     expect(() => fromSwarmloop(JSON.stringify(raw))).toThrow(SwarmloopError);
   });

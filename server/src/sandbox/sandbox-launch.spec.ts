@@ -12,6 +12,7 @@ import {
   mountsForRun,
   resolveDaemonPath,
   sandboxArgs,
+  sandboxEngine,
   sandboxUserId,
   stepContainers,
 } from './sandbox-launch';
@@ -34,11 +35,24 @@ function launch(patch: Partial<SandboxLaunch> = {}): SandboxLaunch {
 }
 
 describe('sandbox launch', () => {
+  describe('container runtime', () => {
+    it('uses the configured runtime, such as gVisor, and the default without one', () => {
+      const given = launch({ allowHosts: [] });
+      expect(sandboxArgs(given, home, 'runsc').slice(0, 4)).toEqual(['run', '--rm', '--runtime', 'runsc']);
+      expect(sandboxArgs(given, home, '')).not.toContain('--runtime');
+    });
+
+    it('refuses a value that is not a runtime name', () => {
+      expect(() => sandboxEngine('runsc --privileged')).toThrow(SwarmloopError);
+      expect(sandboxEngine(' runsc ')).toBe('runsc');
+    });
+  });
+
   describe('behind the egress proxy', () => {
     it('joins the internal network at its address and gets the proxy settings', () => {
       const args = sandboxArgs(launch({ allowHosts: ['*.cursor.sh'], egress: { ip: '198.18.3.3' } }), home);
       const text = args.join(' ');
-      expect(text).toContain('--network swarmloop-sandbox --ip 198.18.3.3');
+      expect(text).toContain('--network swarmloop-sandbox --ip 198.18.3.3 --dns 127.0.0.1');
       expect(text).toContain('HTTPS_PROXY=http://198.18.0.2:3128');
       expect(text).not.toContain('swarmloop-registry');
     });

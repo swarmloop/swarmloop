@@ -1,11 +1,14 @@
 import { environmentNote, withEnvironment } from '../../environment/environment-note';
 import type { ProjectEnvironments } from '../../environment/project-environments';
 import type { RunEntity } from '../../history/entities';
+import { packageRegistries } from '../../sandbox/sandbox-launch';
 import type { ProjectLaunch, SandboxMount } from '../../sandbox/sandbox-launch';
 
 export interface AgentWorkplace {
   prompt: string;
   project?: ProjectLaunch;
+  /** Hosts besides the model API. A project that keeps the registries to its setup gives the agent none. */
+  allowHosts: string[];
 }
 
 /**
@@ -19,7 +22,11 @@ export async function agentWorkplace(
 ): Promise<AgentWorkplace> {
   const environment = await environments.prepare(input);
   if (!environment) {
-    return { prompt };
+    return { prompt, allowHosts: packageRegistries() };
   }
-  return { prompt: withEnvironment(prompt, environmentNote(environment.record)), project: environment.launch };
+  return {
+    prompt: withEnvironment(prompt, environmentNote(environment.record)),
+    project: environment.launch,
+    allowHosts: environment.record.config.network === 'setup' ? [] : packageRegistries(),
+  };
 }

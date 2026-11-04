@@ -36,6 +36,10 @@ export const envSchema = Joi.object({
   IDLE_TIMEOUT_MS: Joi.number().required(),
   ALLOW_CI_CHANGES: Joi.boolean().default(false),
   SANDBOX_EGRESS: Joi.string().valid('proxy', 'open').default('proxy'),
+  SANDBOX_DOCKER_RUNTIME: Joi.string()
+    .pattern(/^[a-z][a-z0-9_.-]{0,63}$/)
+    .allow('')
+    .default(''),
   TICK_MS: Joi.number().required(),
   REQUIREMENTS_TIMEOUT_MS: Joi.number().required(),
   RESEARCH_TIMEOUT_MS: Joi.number().required(),

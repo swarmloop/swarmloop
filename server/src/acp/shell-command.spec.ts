@@ -59,6 +59,14 @@ describe('shell config', () => {
     expect(config.runtime).toBe('cursor');
     expect(config.model).toBe('from-env');
     expect(config.cursorKey).toBe('dummy');
+    expect(config.engine).toBe('');
+  });
+
+  it('reads the sandbox runtime as the server does', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'swarmloop-env-'));
+    const file = join(dir, 'env');
+    writeFileSync(file, 'RUNTIME=codex\nSANDBOX_DOCKER_RUNTIME=runsc\n');
+    expect(readShellConfig(file).engine).toBe('runsc');
   });
 });
 

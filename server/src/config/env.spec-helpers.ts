@@ -29,6 +29,7 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     IDLE_TIMEOUT_MS: 900_000,
     ALLOW_CI_CHANGES: false,
     SANDBOX_EGRESS: 'proxy',
+    SANDBOX_DOCKER_RUNTIME: '',
     TICK_MS: 15_000,
     REQUIREMENTS_TIMEOUT_MS: 600_000,
     RESEARCH_TIMEOUT_MS: 900_000,

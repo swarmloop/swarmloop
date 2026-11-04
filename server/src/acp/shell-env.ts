@@ -13,6 +13,8 @@ export interface ShellConfig {
   checkoutsRoot: string | undefined;
   /** `open` turns the egress proxy off, as on the server. */
   egress: string | undefined;
+  /** A Docker runtime such as `runsc`, as on the server. */
+  engine: string;
 }
 
 /** Reads the model key for the sandbox env only. Callers must not print the result. */
@@ -26,7 +28,7 @@ export function readShellConfig(file: string): ShellConfig {
   }
   for (const line of body.split('\n')) {
     const match =
-      /^(?:export\s+)?(RUNTIME|MODEL_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CODEX_AUTH|CODEX_API_KEY|CHECKOUTS_ROOT|SANDBOX_EGRESS)=(.*)$/.exec(
+      /^(?:export\s+)?(RUNTIME|MODEL_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CODEX_AUTH|CODEX_API_KEY|CHECKOUTS_ROOT|SANDBOX_EGRESS|SANDBOX_DOCKER_RUNTIME)=(.*)$/.exec(
         line.trim(),
       );
     if (!match) {
@@ -48,6 +50,7 @@ export function readShellConfig(file: string): ShellConfig {
     codexApiKey: values.get('CODEX_API_KEY') ?? '',
     checkoutsRoot: values.get('CHECKOUTS_ROOT'),
     egress: values.get('SANDBOX_EGRESS'),
+    engine: values.get('SANDBOX_DOCKER_RUNTIME') ?? '',
   };
 }
 

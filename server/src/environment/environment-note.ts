@@ -15,7 +15,9 @@ export function environmentNote(record: EnvironmentRecord): string {
   const lines = [
     `# Project environment`,
     `This container runs in ${record.image ?? config.image ?? 'the project image'} from ${config.source} of ${record.repo}, with the project's own toolchain.`,
-    'You may run any command in the working directory: build, lint, type check, tests, and the package manager. Package registries are reachable, so you can add or update a dependency; the lockfile it writes is committed with your work. There is no Docker, no database or other service, and no other network.',
+    config.network === 'setup'
+      ? 'You may run any command in the working directory: build, lint, type check, and tests. The dependencies were installed by the setup; package registries are not reachable, so you cannot add or update a dependency. When the task needs a new one, say so in the summary. There is no Docker, no database or other service, and no other network.'
+      : 'You may run any command in the working directory: build, lint, type check, tests, and the package manager. Package registries are reachable, so you can add or update a dependency; the lockfile it writes is committed with your work. There is no Docker, no database or other service, and no other network.',
   ];
   if (config.checks.length > 0) {
     lines.push(
@@ -31,14 +33,16 @@ export function environmentNote(record: EnvironmentRecord): string {
     'While you work, run the narrowest command that covers your change, such as one test file, and keep the output short: read the failures, not the whole log. Run the full checks once at the end.',
     'After a pipeline return, run the failing command here first, fix it, and run it again before you finish.',
   );
-  if (config.setup) {
+  if (config.setup && config.network !== 'setup') {
     lines.push(`If a dependency or a generated file is missing, run the setup again: \`${config.setup}\`.`);
   }
   lines.push(`Do not change CI configuration (${CI_CONFIG_HINT}): the commit refuses it.`);
   const setup = record.setup;
   if (setup && setup.exitCode !== 0) {
     lines.push(
-      `The setup \`${setup.command}\` failed with exit ${setup.exitCode}. Fix the cause when it is in the repository, or install what is missing yourself. Its last lines:`,
+      config.network === 'setup'
+        ? `The setup \`${setup.command}\` failed with exit ${setup.exitCode}. Fix the cause when it is in the repository, and say in the summary what could not be installed. Its last lines:`
+        : `The setup \`${setup.command}\` failed with exit ${setup.exitCode}. Fix the cause when it is in the repository, or install what is missing yourself. Its last lines:`,
       '```',
       setup.tail.trimEnd(),
       '```',

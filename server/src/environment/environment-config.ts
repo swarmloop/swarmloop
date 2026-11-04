@@ -18,7 +18,12 @@ export interface EnvironmentConfig {
   setup?: string;
   cache: string[];
   checks: string[];
+  /** `registries`: the agent may install packages itself. `setup`: only setup reaches the registries. */
+  network?: AgentNetwork;
 }
+
+export type AgentNetwork = 'registries' | 'setup';
+const NETWORKS: AgentNetwork[] = ['registries', 'setup'];
 
 function isCachePath(path: string): boolean {
   return path.startsWith(CACHE_ROOT) && !path.endsWith('/') && posix.normalize(path) === path;
@@ -41,6 +46,7 @@ const swarmloopSchema = Joi.object({
   setup: Joi.string().min(1),
   checks: Joi.array().items(Joi.string().min(1)),
   cache: Joi.array().items(cachePath),
+  network: Joi.string().valid(...NETWORKS),
 })
   .xor('image', 'dockerfile')
   .unknown(true);
@@ -85,6 +91,7 @@ export function fromSwarmloop(text: string): EnvironmentConfig {
     setup?: string;
     checks?: string[];
     cache?: string[];
+    network?: AgentNetwork;
   };
   const checks = value.checks ?? [];
   return {
@@ -94,6 +101,7 @@ export function fromSwarmloop(text: string): EnvironmentConfig {
     ...(value.setup ? { setup: value.setup } : {}),
     cache: value.cache ?? [],
     checks,
+    ...(value.network ? { network: value.network } : {}),
   };
 }
 
@@ -141,6 +149,7 @@ export function fromDevcontainer(text: string, file: string): EnvironmentConfig 
     ...(setup ? { setup } : {}),
     cache: strings(own.cache).filter(isCachePath),
     checks: strings(own.checks),
+    ...(NETWORKS.includes(own.network as AgentNetwork) ? { network: own.network as AgentNetwork } : {}),
   };
 }
 

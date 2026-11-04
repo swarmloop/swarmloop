@@ -225,7 +225,7 @@ async function attach(
         })
       : null;
   const { launch, release } = egress ? await withEgress(egress, base) : { launch: base, release: () => undefined };
-  const args = sandboxArgs(launch);
+  const args = sandboxArgs(launch, undefined, config.engine);
   await docker(['image', 'inspect', imageName(runtime.name)]);
   const name = containerName(feature.key, 'shell');
   await api.shellLock(feature.key, name);
