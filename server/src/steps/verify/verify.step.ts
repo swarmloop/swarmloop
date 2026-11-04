@@ -114,14 +114,14 @@ export class VerifyStep extends BaseStep {
         textDocument('verify_log', renderVerifyLog(record, this.clock.now() - opened.started)),
       ]);
     }
-    return this.failed(ctx, failed, { before, after, previous, documents, names: names.length });
+    return this.failed(ctx, failed, { after, previous, documents, names: names.length });
   }
 
   /** A check failed: send the run back to implement with the real output, unless it cannot help. */
   private async failed(
     ctx: StepContext,
     failed: Failed,
-    seen: { before: string; after: string; previous: VerifyRecord | null; documents: DocumentLike[]; names: number },
+    seen: { after: string; previous: VerifyRecord | null; documents: DocumentLike[]; names: number },
   ): Promise<PipelineResult> {
     const { opened } = ctx;
     const { result } = failed;
@@ -138,7 +138,7 @@ export class VerifyStep extends BaseStep {
     const output = this.report(failed, seen.names, result, command?.command, command?.exitCode, record.tail);
     const same =
       seen.previous?.result === 'fail' &&
-      seen.previous.snapshot === seen.before &&
+      seen.previous.snapshot === seen.after &&
       seen.previous.commands.join('\n') === record.commands.join('\n') &&
       seen.previous.tail === record.tail;
     if (same) {
