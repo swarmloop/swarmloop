@@ -17,7 +17,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
 import { CommitStep } from '../commit/commit.step';
-import { isPipelineReturn, isVerifyReturn, withAddedRepos } from '../follow-up';
+import { isPipelineReturn, withAddedRepos } from '../follow-up';
 import { git, gitDetail } from '../../git/git';
 import { AgentStep, ModelStepContext } from '../agent-step';
 import { composedReturn, recordHandoff, textDocument, withHandoff } from '../shared/handoff';
@@ -25,7 +25,8 @@ import { parseSummary, skillPrompt } from '../shared/skill-prompt';
 import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.step';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../shared/repo-names';
-import { agentVerifyInput, verifyNote, withVerifyNote } from '../verify/verify-note';
+import { EnvironmentService } from '../../environment/environment.service';
+import { agentWorkplace } from '../shared/agent-environment';
 import { storedPlan } from '../step';
 import {
   REBASE_CONFLICT,
@@ -55,6 +56,7 @@ export class ImplementStep extends AgentStep {
     private readonly commit: CommitStep,
     private readonly checkouts: CheckoutRepository,
     @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
+    private readonly environments: EnvironmentService,
   ) {
     super(runs, documents, visits, flows, clock, config, sandbox, agent);
   }
@@ -97,20 +99,22 @@ export class ImplementStep extends AgentStep {
       return settled;
     }
     const heads = await featureHeads(mounts, branch);
-    const prompt = withVerifyNote(basePrompt, await verifyNote(mounts));
-    const verify = await agentVerifyInput(mounts, env.MAX_VERIFY_CALLS);
+    const { prompt, project } = await agentWorkplace(
+      this.environments,
+      { run: ctx.opened.run, key, step: this.name, mounts },
+      basePrompt,
+    );
     const before = await worktreeSnapshot(mounts);
-    let agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries(), verify });
+    let agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries(), project });
     await assertUncommitted(mounts, branch, heads);
     let planText = agentResult.responseText;
     let planOutput = agentResult.output ?? '';
-    const verifyReturn = isVerifyReturn(notes);
-    if ((isPipelineReturn(notes) || verifyReturn) && (await worktreeSnapshot(mounts)) === before) {
+    if (isPipelineReturn(notes) && (await worktreeSnapshot(mounts)) === before) {
       agentResult = await ctx.launch({
-        prompt: `The ${verifyReturn ? 'verify' : 'pipeline'} failure still stands and the files are unchanged.\n\n${notes?.trim() ?? ''}`,
+        prompt: `The pipeline failure still stands and the files are unchanged.\n\n${notes?.trim() ?? ''}`,
         mounts,
         allowHosts: packageRegistries(),
-        verify,
+        project,
       });
       await assertUncommitted(mounts, branch, heads);
       const againOutput = agentResult.output ?? '';
@@ -119,9 +123,6 @@ export class ImplementStep extends AgentStep {
         planOutput = againOutput;
       }
       if ((await worktreeSnapshot(mounts)) === before) {
-        if (verifyReturn) {
-          return this.unfixedFailure(ctx, key, planText, planOutput, 'blocked', 'verify failure left unfixed');
-        }
         const stale = await staleRepos(await this.documents.latestBody(key, 'pipeline_ref'), mounts);
         if (stale.length > 0) {
           return ctx.end(
@@ -152,7 +153,7 @@ export class ImplementStep extends AgentStep {
     );
   }
 
-  /** A pipeline or verify failure that the retry left unchanged on disk: stop with the corrected checklist, if one came back. */
+  /** A pipeline failure that the retry left unchanged on disk: stop with the corrected checklist, if one came back. */
   private async unfixedFailure(
     ctx: ModelStepContext,
     key: string,

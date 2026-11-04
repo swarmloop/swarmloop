@@ -1,5 +1,12 @@
 import { SwarmloopError } from '../../core/swarmloop-error';
-import type { AgentPrintInput, AgentRuntime, AgentTerminalInput, RuntimeKeys, RuntimeName } from './agent-runtime';
+import type {
+  AgentPrintInput,
+  AgentRuntime,
+  AgentTerminalInput,
+  EgressCredential,
+  RuntimeKeys,
+  RuntimeName,
+} from './agent-runtime';
 
 export abstract class AbstractAgentRuntime implements AgentRuntime {
   abstract readonly name: RuntimeName;
@@ -13,6 +20,11 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
 
   abstract readonly apiHosts: readonly string[];
   abstract readonly credentialNames: readonly string[];
+
+  /** By default the key stays in the container: the vendor's login does not allow a stand-in. */
+  egressCredential(credential: { name: string; value: string }, _api: string): EgressCredential {
+    return { env: [credential] };
+  }
 
   abstract credential(keys: RuntimeKeys): { name: string; value: string };
 

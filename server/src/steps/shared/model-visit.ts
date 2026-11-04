@@ -25,7 +25,6 @@ export function modelVisit(input: {
   const documents = [
     ...(input.document ? [input.document] : []),
     ...(input.documents ?? []),
-    ...(agent?.verifyLogs ?? []),
     ...(agent?.output
       ? [{ kind: 'log', fileName: '', body: agent.output.endsWith('\n') ? agent.output : `${agent.output}\n` }]
       : []),

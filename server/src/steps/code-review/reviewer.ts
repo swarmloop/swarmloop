@@ -68,8 +68,6 @@ export async function runJob(
     prompt: string;
     mounts: SandboxMount[];
     stale: boolean;
-    /** The machine-checked line for reviewers, or empty. */
-    checked: string;
   },
   fix: { implement: string; reviewed: string },
   plan: string,
@@ -86,7 +84,7 @@ export async function runJob(
       : retry && !job.stale
         ? reviewContinue(job.reviewer.name)
         : reviewResume(job.reviewer.name, fix.implement, fix.reviewed, plan, returned);
-  const prompt = job.checked ? `${chosen}\n\n${job.checked}` : chosen;
+  const prompt = chosen;
   return one(
     deps,
     opened,

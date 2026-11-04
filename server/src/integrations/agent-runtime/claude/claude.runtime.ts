@@ -1,6 +1,9 @@
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
-import type { AgentPrintInput, RuntimeKeys } from '../agent-runtime';
+import type { AgentPrintInput, EgressCredential, RuntimeKeys } from '../agent-runtime';
+
+export const CLAUDE_KEY_PLACEHOLDER = 'sk-ant-api03-swarmloop-egress-placeholder';
+export const CLAUDE_OAUTH_PLACEHOLDER = 'sk-ant-oat01-swarmloop-egress-placeholder';
 
 export class ClaudeRuntime extends AbstractAgentRuntime {
   readonly name = 'claude' as const;
@@ -18,6 +21,25 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
       throw new SwarmloopError('ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is missing');
     }
     return { name: 'ANTHROPIC_API_KEY', value: keys.anthropicKey };
+  }
+
+  /** Claude Code sends the API key or the OAuth token to ANTHROPIC_BASE_URL. The proxy puts the real one in. */
+  override egressCredential(credential: { name: string; value: string }, api: string): EgressCredential {
+    const shared = [
+      { name: 'ANTHROPIC_BASE_URL', value: api },
+      { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
+    ];
+    const upstream = 'https://api.anthropic.com';
+    if (credential.name === 'CLAUDE_CODE_OAUTH_TOKEN') {
+      return {
+        env: [{ name: 'CLAUDE_CODE_OAUTH_TOKEN', value: CLAUDE_OAUTH_PLACEHOLDER }, ...shared],
+        api: { upstream, header: 'authorization', value: `Bearer ${credential.value}` },
+      };
+    }
+    return {
+      env: [{ name: 'ANTHROPIC_API_KEY', value: CLAUDE_KEY_PLACEHOLDER }, ...shared],
+      api: { upstream, header: 'x-api-key', value: credential.value },
+    };
   }
 
   briefArgs(): string[] {

@@ -21,14 +21,14 @@ export interface SwarmloopEnv {
   MAX_AGENT_CALLS: number;
   MAX_RETURNS: number;
   MAX_PIPELINE_RETURNS: number;
-  MAX_VERIFY_RETURNS: number;
-  MAX_VERIFY_CALLS: number;
   MAX_LAUNCHES: number;
   MAX_RUN_USD: number;
   MAX_RUN_TOKENS: number | null;
   STEP_USD_MAX: number | null;
   STEP_TOKEN_MAX: number | null;
   IDLE_TIMEOUT_MS: number;
+  ALLOW_CI_CHANGES: boolean;
+  SANDBOX_EGRESS: 'proxy' | 'open';
   TICK_MS: number;
   REQUIREMENTS_TIMEOUT_MS: number;
   RESEARCH_TIMEOUT_MS: number;
@@ -83,14 +83,14 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     MAX_AGENT_CALLS: config.getOrThrow<number>('MAX_AGENT_CALLS'),
     MAX_RETURNS: config.getOrThrow<number>('MAX_RETURNS'),
     MAX_PIPELINE_RETURNS: config.getOrThrow<number>('MAX_PIPELINE_RETURNS'),
-    MAX_VERIFY_RETURNS: config.getOrThrow<number>('MAX_VERIFY_RETURNS'),
-    MAX_VERIFY_CALLS: config.getOrThrow<number>('MAX_VERIFY_CALLS'),
     MAX_LAUNCHES: config.getOrThrow<number>('MAX_LAUNCHES'),
     MAX_RUN_USD: config.getOrThrow<number>('MAX_RUN_USD'),
     MAX_RUN_TOKENS: optionalLimit(config.get('MAX_RUN_TOKENS')),
     STEP_USD_MAX: optionalLimit(config.get('STEP_USD_MAX')),
     STEP_TOKEN_MAX: optionalLimit(config.get('STEP_TOKEN_MAX')),
     IDLE_TIMEOUT_MS: config.getOrThrow<number>('IDLE_TIMEOUT_MS'),
+    ALLOW_CI_CHANGES: config.get<boolean>('ALLOW_CI_CHANGES') === true,
+    SANDBOX_EGRESS: config.get<string>('SANDBOX_EGRESS') === 'open' ? 'open' : 'proxy',
     TICK_MS: config.getOrThrow<number>('TICK_MS'),
     REQUIREMENTS_TIMEOUT_MS: config.getOrThrow<number>('REQUIREMENTS_TIMEOUT_MS'),
     RESEARCH_TIMEOUT_MS: config.getOrThrow<number>('RESEARCH_TIMEOUT_MS'),

@@ -15,6 +15,25 @@ export function allowedPaths(repo: string, porcelain: string, denied: string[]):
     .map((path) => ({ repo, path }));
 }
 
+/** CI runs these with the repository's secrets, so a run may not change them unless ALLOW_CI_CHANGES is set. */
+export const CI_CONFIG = [
+  '.github/workflows/',
+  '.github/actions/',
+  '.gitlab-ci.yml',
+  '.gitlab/',
+  '.circleci/',
+  'Jenkinsfile',
+  'azure-pipelines.yml',
+  'bitbucket-pipelines.yml',
+];
+
+export function ciConfigPaths(paths: PlannedPath[]): PlannedPath[] {
+  return paths.filter(({ path }) => {
+    const normal = path.replace(/\\/g, '/').replace(/^\.\//, '');
+    return CI_CONFIG.some((entry) => (entry.endsWith('/') ? normal.startsWith(entry) : normal === entry));
+  });
+}
+
 export function isDenied(path: string, patterns: string[]): boolean {
   const normalized = path.replace(/\\/g, '/');
   return patterns.some((pattern) => {

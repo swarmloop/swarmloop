@@ -40,9 +40,7 @@ describe('codex auth store', () => {
   }
 
   const ok = (): Promise<Response> =>
-    Promise.resolve(
-      new Response(JSON.stringify({ access_token: 'at-2', refresh_token: 'rt-2' }), { status: 200 }),
-    );
+    Promise.resolve(new Response(JSON.stringify({ access_token: 'at-2', refresh_token: 'rt-2' }), { status: 200 }));
 
   it('refreshes a login that is new in .env at once, then leaves it alone', async () => {
     const fresh = new Date(NOW - 60_000).toISOString();
@@ -77,7 +75,9 @@ describe('codex auth store', () => {
     let n = 0;
     const answer = (): Promise<Response> => {
       n += 1;
-      return Promise.resolve(new Response(JSON.stringify({ access_token: `at-${n}`, refresh_token: `rt-n${n}` }), { status: 200 }));
+      return Promise.resolve(
+        new Response(JSON.stringify({ access_token: `at-${n}`, refresh_token: `rt-n${n}` }), { status: 200 }),
+      );
     };
     const { store: s, calls } = store(answer);
     await s.current(seed(fresh, 'rt-1'));

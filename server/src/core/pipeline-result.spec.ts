@@ -53,9 +53,8 @@ describe('phases', () => {
     expect(nextStep('requirements', selected)).toBe('code-review');
     expect(nextStep('prepare', selected)).toBe('code-review');
     expect(nextStep('plan-improve')).toBe('branch');
-    expect(nextStep('implement-improve')).toBe('verify');
-    expect(nextStep('verify')).toBe('code-review');
-    expect(nextStep('verify', ['requirements', 'implementation'])).toBe('done');
+    expect(nextStep('implement-improve')).toBe('code-review');
+    expect(nextStep('implement-improve', ['requirements', 'implementation'])).toBe('done');
     expect(nextStep('branch')).toBe('implement');
     expect(nextStep('plan-improve', normalizePhases(['requirements', 'brainstorm']))).toBe('done');
     expect(nextStep('code-review', selected)).toBe('done');

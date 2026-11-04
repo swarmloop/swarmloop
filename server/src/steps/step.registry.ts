@@ -12,7 +12,6 @@ import { PipelineStep } from './pipeline/pipeline.step';
 import { PrepareStep } from './prepare/prepare.step';
 import { RequirementsStep } from './requirements/requirements.step';
 import { ResearchStep } from './research/research.step';
-import { VerifyStep } from './verify/verify.step';
 import { Step } from './step';
 
 /** Every step with a service, by name. `done` has none. */
@@ -29,7 +28,6 @@ export class StepRegistry {
     planImprove: PlanImproveStep,
     implement: ImplementStep,
     implementImprove: ImplementImproveStep,
-    verify: VerifyStep,
     codeReview: CodeReviewStep,
     commit: CommitStep,
     mergeRequest: MergeRequestStep,
@@ -44,7 +42,6 @@ export class StepRegistry {
       planImprove,
       implement,
       implementImprove,
-      verify,
       codeReview,
       commit,
       mergeRequest,

@@ -6,7 +6,7 @@ import { isAbsolute, join, resolve } from 'path';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SystemClock } from '../core/clock';
 import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
-import type { SandboxMount } from '../sandbox/sandbox-launch';
+import type { SandboxLaunch, SandboxMount } from '../sandbox/sandbox-launch';
 import {
   agentStateDir,
   containerName,
@@ -30,6 +30,8 @@ import type { ShellCommand } from './shell-command';
 import { parseShell, pickSnapshot } from './shell-command';
 import type { ShellConfig } from './shell-env';
 import { readShellConfig } from './shell-env';
+import { Egress, egressMode } from '../sandbox/egress';
+import { withEgress } from '../sandbox/egress-launch';
 
 export async function runShell(argv: string[], cwd = process.cwd()): Promise<void> {
   const root = resolve(__dirname, '../../..');
@@ -177,7 +179,7 @@ async function attach(
   if (!existsSync(maskFile)) {
     writeFileSync(maskFile, '');
   }
-  const args = sandboxArgs({
+  const base: SandboxLaunch = {
     runtime: runtime.name,
     runKey: feature.key,
     step: 'shell',
@@ -209,15 +211,32 @@ async function attach(
     stateDaemonPath: statePath,
     stdin: interactive,
     tty: interactive,
-  });
+  };
+  const egress =
+    egressMode(config.egress) === 'proxy'
+      ? new Egress({
+          docker: dockerOutput,
+          policyDir: join(root, 'data', 'egress'),
+          daemonPath: (dir) => Promise.resolve(dir),
+          now: () => new SystemClock().now(),
+          uid: sandboxUserId(),
+          own: process.getuid?.() ?? 0,
+          adopt: true,
+        })
+      : null;
+  const { launch, release } = egress ? await withEgress(egress, base) : { launch: base, release: () => undefined };
+  const args = sandboxArgs(launch);
   await docker(['image', 'inspect', imageName(runtime.name)]);
   const name = containerName(feature.key, 'shell');
   await api.shellLock(feature.key, name);
   let code = 1;
   try {
-    await ensureNetwork(modelApiHosts(runtime.name));
+    if (!launch.egress) {
+      await ensureNetwork(modelApiHosts(runtime.name));
+    }
     code = await runDocker(args);
   } finally {
+    release();
     if ((await containerRunning(name)) !== true) {
       await api.shellUnlock(feature.key);
     }
@@ -275,6 +294,18 @@ function docker(args: string[]): Promise<void> {
         return;
       }
       resolveDone();
+    });
+  });
+}
+
+function dockerOutput(args: string[], timeoutMs?: number): Promise<string> {
+  return new Promise((resolveDone, reject) => {
+    execFile('docker', args, { encoding: 'utf8', timeout: timeoutMs }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error((stderr || error.message).trim()));
+        return;
+      }
+      resolveDone(stdout);
     });
   });
 }

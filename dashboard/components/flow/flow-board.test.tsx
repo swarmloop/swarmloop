@@ -10,7 +10,6 @@ const phases: FlowView['phases'] = [
     steps: [
       { name: 'implement', status: 'running', current: true, attempts: 2 },
       { name: 'implement-improve', status: 'idle', current: false, attempts: 0 },
-      { name: 'verify', status: 'idle', current: false, attempts: 0 },
     ],
   },
 ];
@@ -30,16 +29,6 @@ describe('FlowBoard', () => {
     await user.click(screen.getByRole('button', { name: 'implement-improve' }));
 
     expect(onSelect).toHaveBeenCalledWith('implement-improve');
-  });
-
-  it('shows verify as a step of the implementation phase', async () => {
-    const user = userEvent.setup();
-    const onSelect = vi.fn();
-    render(<FlowBoard phases={phases} returns={[]} selected={null} onSelect={onSelect} />);
-
-    await user.click(screen.getByRole('button', { name: 'verify' }));
-
-    expect(onSelect).toHaveBeenCalledWith('verify');
   });
 
   it('marks the current step and shows its attempt count', () => {

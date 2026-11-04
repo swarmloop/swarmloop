@@ -7,9 +7,6 @@ RUN apt-get update \
   && mkdir -p /work \
   && chown sandbox:sandbox /work
 
-COPY swarmloop-verify /usr/local/bin/swarmloop-verify
-RUN chmod 755 /usr/local/bin/swarmloop-verify
-
 # /home/sandbox is a tmpfs at run time, so the binary lives outside it.
 RUN set -eu \
   && arch="$(uname -m)" \
@@ -18,52 +15,23 @@ RUN set -eu \
     aarch64|arm64) triple=aarch64-unknown-linux-musl ;; \
     *) echo "unsupported CPU: $arch" >&2; exit 1 ;; \
   esac \
-  && mkdir -p /tmp/codex /opt/codex \
+  && mkdir -p /tmp/codex /opt/swarmloop/codex /opt/swarmloop/bin \
   && curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-${triple}.tar.gz" -o /tmp/codex/codex.tar.gz \
   && curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-code-mode-host-${triple}.tar.gz" -o /tmp/codex/host.tar.gz \
   && tar -xzf /tmp/codex/codex.tar.gz -C /tmp/codex \
   && tar -xzf /tmp/codex/host.tar.gz -C /tmp/codex \
-  && mv "/tmp/codex/codex-${triple}" /opt/codex/codex-bin \
-  && mv "/tmp/codex/codex-code-mode-host-${triple}" /opt/codex/codex-code-mode-host \
-  && chmod 755 /opt/codex/codex-bin /opt/codex/codex-code-mode-host \
+  && mv "/tmp/codex/codex-${triple}" /opt/swarmloop/codex/codex-bin \
+  && mv "/tmp/codex/codex-code-mode-host-${triple}" /opt/swarmloop/codex/codex-code-mode-host \
+  && chmod 755 /opt/swarmloop/codex/codex-bin /opt/swarmloop/codex/codex-code-mode-host \
   && rm -rf /tmp/codex
 
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 \
-  && rm -rf /var/lib/apt/lists/*
-
-COPY codex-auth-proxy.py /usr/local/bin/codex-auth-proxy
-RUN chmod 755 /usr/local/bin/codex-auth-proxy
-
-RUN cat > /usr/local/bin/codex <<'EOF'
+# Everything the CLI needs lives under /opt/swarmloop, so swarmloop can mount it into a project image.
+# The wrapper needs only sh, mkdir, chmod, rm and base64.
+RUN cat > /opt/swarmloop/bin/codex <<'EOF'
 #!/bin/sh
 set -eu
 export CODEX_HOME=/home/sandbox/.codex
 mkdir -p "$CODEX_HOME"
-if [ -d /codex-auth ]; then
-  if [ ! -f /codex-auth/auth.json ] && [ -n "${CODEX_AUTH:-}" ]; then
-    printf %s "$CODEX_AUTH" | base64 -d > /codex-auth/auth.json
-    chmod 600 /codex-auth/auth.json
-  fi
-  if [ -f /codex-auth/auth.json ]; then
-    cp /codex-auth/auth.json "$CODEX_HOME/auth.json"
-    chmod 600 "$CODEX_HOME/auth.json"
-    unset CODEX_AUTH
-    rm -f /tmp/codex-auth-proxy.ready
-    /usr/local/bin/codex-auth-proxy /codex-auth/auth.json &
-    i=0
-    while [ ! -f /tmp/codex-auth-proxy.ready ]; do
-      i=$((i + 1))
-      if [ "$i" -gt 50 ]; then
-        echo "codex auth proxy failed" >&2
-        exit 1
-      fi
-      sleep 0.05
-    done
-    export CODEX_REFRESH_TOKEN_URL_OVERRIDE=http://127.0.0.1:8765/oauth/token
-    exec /opt/codex/codex-bin "$@"
-  fi
-fi
 if [ -n "${CODEX_AUTH:-}" ]; then
   printf %s "$CODEX_AUTH" | base64 -d > "$CODEX_HOME/auth.json"
   chmod 600 "$CODEX_HOME/auth.json"
@@ -71,9 +39,15 @@ if [ -n "${CODEX_AUTH:-}" ]; then
 else
   rm -f "$CODEX_HOME/auth.json"
 fi
-exec /opt/codex/codex-bin "$@"
+exec /opt/swarmloop/codex/codex-bin "$@"
 EOF
-RUN chmod 755 /usr/local/bin/codex
+# A project image may lack CA certificates and ripgrep, so the bundle carries its own.
+RUN mkdir -p /opt/swarmloop/certs \
+  && cp /etc/ssl/certs/ca-certificates.crt /opt/swarmloop/certs/ca-certificates.crt \
+  && cp /usr/bin/rg /opt/swarmloop/bin/rg \
+  && chmod -R a+rX /opt/swarmloop \
+  && chmod 755 /opt/swarmloop/bin/codex \
+  && ln -sfn /opt/swarmloop/bin/codex /usr/local/bin/codex
 
 USER sandbox
 WORKDIR /work

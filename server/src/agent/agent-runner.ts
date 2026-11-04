@@ -17,10 +17,11 @@ import {
   modelApiHosts,
   modelCredential,
   prepareStateDir,
+  type ProjectLaunch,
   SandboxMount,
   sandboxUserId,
 } from '../sandbox/sandbox-launch';
-import { SandboxService, type SandboxChild } from '../sandbox/sandbox.service';
+import { SandboxService } from '../sandbox/sandbox.service';
 import {
   callsExceeded,
   DecisionWatch,
@@ -39,9 +40,6 @@ import { RunStop } from './run-stop';
 import { loadPriceTable } from './prices';
 import { recordLaunch } from './agent-launches';
 import { addGuessedLine, emptyUsageGuess, readStreamLine, takeAnswer } from './stream';
-import { VerifyBridge, type VerifyBridgeInput } from './verify-bridge';
-import type { VerifyService } from '../verify/verify.service';
-import type { DocumentDraft } from '../history/visit';
 
 export const AGENT_RUNNER = Symbol('AGENT_RUNNER');
 
@@ -71,7 +69,8 @@ export interface AgentRunInput {
    * Null leaves that kill as the result. Omitted uses the shared default.
    */
   continuePrompt?: string | null;
-  verify?: VerifyBridgeInput;
+  /** Run in the project image with the CLI mounted into it, instead of the agent image. */
+  project?: ProjectLaunch;
 }
 
 /** Used when a pipeline step does not pass its own continue prompt. */
@@ -95,7 +94,6 @@ export interface AgentRunResult {
   durationMs: number;
   startedAt: string;
   finishedAt: string;
-  verifyLogs?: DocumentDraft[];
 }
 
 @Injectable()
@@ -109,7 +107,6 @@ export class AgentProcessRunner {
     private readonly sandbox: SandboxService,
     private readonly runStop: RunStop,
     @Optional() private readonly live?: LiveHub,
-    @Optional() private readonly verifier?: VerifyService,
   ) {}
 
   async run(input: AgentRunInput): Promise<AgentRunResult> {
@@ -242,49 +239,27 @@ export class AgentProcessRunner {
       ? input.mounts.map((mount) => ({ ...mount, readonly: true }))
       : input.mounts;
     let lastActivity = this.clock.now();
-    const bridge =
-      input.verify && this.verifier && (await VerifyBridge.enabled(input.verify))
-        ? new VerifyBridge(input.verify, {
-            clock: this.clock,
-            sandbox: this.sandbox,
-            verifier: this.verifier,
-            root: resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname),
-            key: input.runKey,
-            step: input.liveStep ?? input.step,
-            statePath,
-            live: this.live,
-            touch: () => {
-              lastActivity = this.clock.now();
-            },
-          })
-        : null;
-    await bridge?.start();
-    let child: SandboxChild;
-    try {
-      child = await this.sandbox.spawn({
-        runtime: env.RUNTIME,
-        runKey: input.runKey,
-        step: input.step,
-        mounts: [...workMounts, ...briefs],
-        statePath,
-        allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(env.RUNTIME)])],
-        env: [
-          modelCredential(
-            env.RUNTIME,
-            env.CURSOR_API_KEY,
-            env.ANTHROPIC_API_KEY,
-            env.CLAUDE_CODE_OAUTH_TOKEN,
-            await this.codexLogin(env),
-            env.CODEX_API_KEY,
-          ),
-        ],
-        command: [runtime.command, ...args],
-        userId,
-      });
-    } catch (error) {
-      await bridge?.stop();
-      throw error;
-    }
+    const child = await this.sandbox.spawn({
+      runtime: env.RUNTIME,
+      runKey: input.runKey,
+      step: input.step,
+      mounts: [...workMounts, ...briefs],
+      statePath,
+      allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(env.RUNTIME)])],
+      env: [
+        modelCredential(
+          env.RUNTIME,
+          env.CURSOR_API_KEY,
+          env.ANTHROPIC_API_KEY,
+          env.CLAUDE_CODE_OAUTH_TOKEN,
+          await this.codexLogin(env),
+          env.CODEX_API_KEY,
+        ),
+      ],
+      command: [runtime.command, ...args],
+      userId,
+      ...(input.project ? { project: input.project } : {}),
+    });
     const earlyOut: Buffer[] = [];
     const earlyErr: Buffer[] = [];
     let closedEarly: number | null = null;
@@ -549,7 +524,6 @@ export class AgentProcessRunner {
     child.stderr?.off('data', onErr);
     clearInterval(timer);
     await writing;
-    const verifyLogs = await bridge?.stop();
     const finished = this.clock.now();
     const priced = billed();
     await this.writeSession(input.sessionFile, {
@@ -589,7 +563,6 @@ export class AgentProcessRunner {
       durationMs: finished - started,
       startedAt,
       finishedAt: new Date(finished).toISOString(),
-      verifyLogs,
     };
   }
 
@@ -751,6 +724,5 @@ function foldAttempt(first: AgentRunResult | null, second: AgentRunResult): Agen
     chatId: second.chatId ?? first.chatId,
     durationMs: first.durationMs + second.durationMs,
     startedAt: first.startedAt,
-    verifyLogs: [...(first.verifyLogs ?? []), ...(second.verifyLogs ?? [])],
   };
 }

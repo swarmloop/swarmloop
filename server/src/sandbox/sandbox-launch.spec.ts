@@ -34,6 +34,117 @@ function launch(patch: Partial<SandboxLaunch> = {}): SandboxLaunch {
 }
 
 describe('sandbox launch', () => {
+  describe('behind the egress proxy', () => {
+    it('joins the internal network at its address and gets the proxy settings', () => {
+      const args = sandboxArgs(launch({ allowHosts: ['*.cursor.sh'], egress: { ip: '198.18.3.3' } }), home);
+      const text = args.join(' ');
+      expect(text).toContain('--network swarmloop-sandbox --ip 198.18.3.3');
+      expect(text).toContain('HTTPS_PROXY=http://198.18.0.2:3128');
+      expect(text).not.toContain('swarmloop-registry');
+    });
+
+    it('accepts the proxy base URL only behind the proxy and only with its exact value', () => {
+      const env = [
+        { name: 'ANTHROPIC_API_KEY', value: 'sk-ant-placeholder' },
+        { name: 'ANTHROPIC_BASE_URL', value: 'http://198.18.0.2:3129' },
+      ];
+      const behind = launch({ runtime: 'claude', command: ['claude'], allowHosts: ['api.anthropic.com'], env });
+      expect(sandboxArgs({ ...behind, egress: { ip: '198.18.3.3' } }, home).join(' ')).toContain(
+        'ANTHROPIC_BASE_URL=http://198.18.0.2:3129',
+      );
+      expect(() => sandboxArgs(behind, home)).toThrow(SwarmloopError);
+      const elsewhere = [env[0]!, { name: 'ANTHROPIC_BASE_URL', value: 'https://evil.example' }];
+      expect(() => sandboxArgs({ ...behind, env: elsewhere, egress: { ip: '198.18.3.3' } }, home)).toThrow(
+        SwarmloopError,
+      );
+    });
+
+    it('refuses an address outside the sandbox range', () => {
+      expect(() => sandboxArgs(launch({ allowHosts: ['*.cursor.sh'], egress: { ip: '198.18.0.2' } }), home)).toThrow(
+        SwarmloopError,
+      );
+    });
+
+    it('matches a vendor host against its wildcard and nothing else', () => {
+      expect(() => sandboxArgs(launch({ allowHosts: ['api2.cursor.sh'] }), home)).not.toThrow();
+      expect(() => sandboxArgs(launch({ allowHosts: ['cursor.sh.evil.com'] }), home)).toThrow(SwarmloopError);
+    });
+  });
+
+  describe('in the project image', () => {
+    const project = {
+      image: 'swarmloop-env-demo:0123456789ab',
+      cliVolume: 'swarmloop-cli-claude-0123456789ab',
+      path: '/usr/local/bin:/usr/bin:/bin',
+      certFile: true,
+      caches: [{ daemonPath: '/Users/dev/swarmloop/data/env-cache/demo/npm', containerPath: '/home/sandbox/.npm' }],
+    };
+    const command = ['claude', '--print', 'hello'];
+
+    it('runs the CLI from the volume as the entrypoint of the project image', () => {
+      const args = sandboxArgs(launch({ runtime: 'claude', command, project }), home);
+      const text = args.join(' ');
+      expect(text).toContain('type=volume,src=swarmloop-cli-claude-0123456789ab,dst=/opt/swarmloop,readonly=true');
+      expect(text).toContain('--entrypoint /opt/swarmloop/bin/claude swarmloop-env-demo:0123456789ab --print hello');
+      expect(text).not.toContain('swarmloop-agent-claude');
+      expect(text).toContain('PATH=/opt/swarmloop/bin:/usr/local/bin:/usr/bin:/bin');
+      expect(text).toContain('HOME=/home/sandbox');
+      expect(text).toContain('NODE_EXTRA_CA_CERTS=/opt/swarmloop/certs/ca-certificates.crt');
+      expect(text).toContain('SSL_CERT_FILE=/opt/swarmloop/certs/ca-certificates.crt');
+      expect(text).toContain('type=bind,src=/Users/dev/swarmloop/data/env-cache/demo/npm,dst=/home/sandbox/.npm');
+    });
+
+    it('gives tests an executable /tmp and keeps the same hardening', () => {
+      const args = sandboxArgs(launch({ runtime: 'claude', command, project }), home);
+      expect(args).toContain('/tmp:rw,exec,nosuid,nodev,size=1g,mode=1777');
+      expect(args[args.indexOf('--pids-limit') + 1]).toBe('1024');
+      expect(args).toEqual(expect.arrayContaining(['--cap-drop', 'ALL', 'no-new-privileges', '--read-only']));
+      expect(args[args.indexOf('--user') + 1]).toBe('501:501');
+    });
+
+    it('leaves the image CA bundle alone when it has one', () => {
+      const args = sandboxArgs(launch({ runtime: 'claude', command, project: { ...project, certFile: false } }), home);
+      expect(args.join(' ')).not.toContain('SSL_CERT_FILE');
+      expect(args.join(' ')).toContain('NODE_EXTRA_CA_CERTS');
+    });
+
+    it.each([
+      ['a strange image', { image: 'x; rm -rf /' }],
+      ['a foreign volume', { cliVolume: 'my-volume' }],
+      ['a cache outside the home', { caches: [{ daemonPath: '/Users/dev/c', containerPath: '/etc/x' }] }],
+      [
+        'a cache from the ssh folder',
+        { caches: [{ daemonPath: '/Users/dev/.ssh', containerPath: '/home/sandbox/.npm' }] },
+      ],
+    ])('refuses %s', (_name, patch) => {
+      expect(() =>
+        sandboxArgs(launch({ runtime: 'claude', command, project: { ...project, ...patch } }), home),
+      ).toThrow(SwarmloopError);
+    });
+
+    it('runs a setup command with sh and no agent command', () => {
+      const args = sandboxArgs(
+        launch({ runtime: 'claude', command: [], project: { ...project, shell: 'npm ci' } }),
+        home,
+      );
+      expect(args.slice(-5)).toEqual(['--entrypoint', 'sh', 'swarmloop-env-demo:0123456789ab', '-c', 'npm ci']);
+      expect(() =>
+        sandboxArgs(launch({ runtime: 'claude', command, project: { ...project, shell: 'npm ci' } }), home),
+      ).toThrow(SwarmloopError);
+    });
+
+    it('refuses a command that is not an agent CLI', () => {
+      expect(() => sandboxArgs(launch({ command: ['sh', '-c', 'x'], project }), home)).toThrow(SwarmloopError);
+    });
+
+    it('keeps the agent image and the small /tmp without a project', () => {
+      const args = sandboxArgs(launch(), home);
+      expect(args).toContain('swarmloop-agent-cursor');
+      expect(args).toContain('/tmp:rw,nosuid,nodev,size=64m,mode=1777');
+      expect(args.join(' ')).not.toContain('/opt/swarmloop');
+    });
+  });
+
   it('mounts only the worktree, with no egress and no host credentials', () => {
     const args = sandboxArgs(launch(), home);
     expect(args).toContain('--network');
@@ -71,12 +182,6 @@ describe('sandbox launch', () => {
         'swarmloop-proj-1--3-implement',
       ]),
     ).toEqual([base, `${base}-security`]);
-  });
-
-  it('shares one Codex login directory between containers', () => {
-    const args = sandboxArgs(launch({ authPath: '/tmp/codex-auth' }), home);
-    expect(args.join(' ')).toContain('type=bind,src=/tmp/codex-auth,dst=/codex-auth,readonly=false');
-    expect(sandboxArgs(launch(), home).join(' ')).not.toContain('/codex-auth');
   });
 
   it('binds the feature home and allocates a terminal only when asked', () => {

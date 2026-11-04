@@ -16,8 +16,7 @@ import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { visitStatus } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
 import type { OpenedStep } from '../pipeline/step-run';
-import type { SandboxMount } from '../sandbox/sandbox-launch';
-import type { VerifyBridgeInput } from '../agent/verify-bridge';
+import type { ProjectLaunch, SandboxMount } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { StepContext } from './base-step';
@@ -45,7 +44,7 @@ export async function launchAgent(input: {
   auto?: boolean;
   resume?: boolean;
   continuePrompt?: string | null;
-  verify?: VerifyBridgeInput;
+  project?: ProjectLaunch;
 }): Promise<AgentRunResult> {
   const directory = join(input.root, 'data');
   mkdirSync(directory, { recursive: true });
@@ -72,7 +71,7 @@ export async function launchAgent(input: {
     approveMcps: input.approveMcps,
     auto: input.auto,
     continuePrompt: input.continuePrompt,
-    verify: input.verify,
+    project: input.project,
   });
   input.run.agentCalls += result.calls;
   input.run.spentUsd += result.usd;
@@ -98,7 +97,7 @@ export interface ModelStepContext {
     label?: string;
     continuePrompt?: string;
     resume?: boolean;
-    verify?: VerifyBridgeInput;
+    project?: ProjectLaunch;
   }) => Promise<AgentRunResult>;
 }
 
@@ -212,7 +211,7 @@ export abstract class AgentStep extends BaseStep {
       allowHosts: launch.allowHosts,
       resume: launch.resume,
       continuePrompt: launch.continuePrompt,
-      verify: launch.verify,
+      project: launch.project,
     });
     run.prompt = run.prompt ? `${run.prompt}\n\n${launch.prompt}` : launch.prompt;
     run.launched.push(result);

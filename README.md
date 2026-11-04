@@ -26,7 +26,7 @@ Every step runs in a locked container. Every prompt, diff, review, token, and do
 
 | Feature | What you get |
 | --- | --- |
-| 🔒 **Sandbox** | No network unless allowlisted, read-only root, no capabilities, no Docker socket. One model key inside. Git and Jira tokens stay out. |
+| 🔒 **Sandbox** | The only way out is a proxy that lets each step reach its own hosts. Claude and Codex API keys never enter the container. Read-only root, no capabilities, no Docker socket. Git and Jira tokens stay out. |
 | 🧵 **Parallel runs** | Several tasks at once, even in one repository. Each run has its own worktree and branch. Your working copy is not touched. |
 | 🗂 **One history** | Prompt, plan, diff, reviews, model exchanges, tokens, dollars, CPU, and memory in one SQLite file. |
 | 🔀 **Cursor, Claude, or Codex** | One line in `.env`. Research, plan, and implementation each pick their own model. |
@@ -111,29 +111,46 @@ Add a git token to `.env` and run `docker compose up --build` again. This time l
 
 </details>
 
-### 🧪 Project manifest
+### 🧪 Project environment
 
-`.swarmloop.json` in the repository root is optional. Without it nothing changes. With it, the `verify` step runs your checks after `implement-improve` and before the reviewers. A failing check goes back to `implement` with the real output. When the checks pass, the reviewers are told, so they spend their budget on what a machine cannot check.
+Without any file the agent works as before: it writes code and CI is the judge. Describe the project's environment, and the implementation agent works inside it, with your toolchain, and checks its own work before the reviewers see it.
 
-```json
-{ "version": 1, "image": "node:22", "install": "npm ci", "verify": ["npm test"], "cache": ["/home/sandbox/.npm"] }
-```
+Give one of these, swarmloop reads the first it finds on the committed branch:
 
-`version` is always `1`. The other keys:
+1. `.swarmloop.json` in the repository root:
 
-| Key | Meaning |
-| --- | --- |
-| `image` | Docker image the commands run in. Give this or `dockerfile`, not both. |
-| `dockerfile` | A file under `.swarmloop/` that builds the image. |
-| `install` | One command that installs dependencies. Optional. |
-| `verify` | The commands to run, in order. At least one. |
-| `cache` | Absolute paths below `/home/sandbox/` that survive between runs. |
-| `timeoutMin` | Minutes for the whole run, 1 to 60. Default `15`. |
+   ```json
+   {
+     "version": 1,
+     "image": "node:22-bookworm-slim",
+     "setup": "npm ci",
+     "checks": ["npm run lint", "npm test"],
+     "cache": ["/home/sandbox/.npm"]
+   }
+   ```
 
-The manifest is read from the base ref of the repository (`origin/main`, else `origin/master`), never from the agent's worktree, so a run cannot change its own checks. The commands run in a container, not in the agent's. A pulled image is kept while it is local. An image built from a Dockerfile is tagged with a hash of `.swarmloop/` and reused until that folder changes. The `cache` paths are kept under `data/verify-cache/` and mounted again on the next run. Files that `install` creates must be in `.gitignore`, or the run fails and names them. `MAX_VERIFY_RETURNS` limits how often a failed check is sent back.
+   | Key | Meaning |
+   | --- | --- |
+   | `image` | The image to work in. Give this or `dockerfile`, not both. |
+   | `dockerfile` | A file under `.swarmloop/` that builds the image, with `.swarmloop/` as its build context. |
+   | `setup` | One command that installs dependencies. Optional. |
+   | `checks` | Commands the agent must run and see pass before it finishes. Optional. |
+   | `cache` | Absolute paths below `/home/sandbox/` that survive between runs, such as a package-manager cache. |
 
-The agent can run the checks itself with `swarmloop-verify` while it works.
-Rebuild the images with `docker/sandbox/build.sh` to add that command.
+2. `.devcontainer/devcontainer.json`, if the project already has one: `image`, or `build.dockerfile` with `build.context`, and `onCreateCommand`, `updateContentCommand` and `postCreateCommand` as the setup. Add the checks as `"customizations": { "swarmloop": { "checks": ["npm test"] } }`. `features` and Docker Compose are not supported yet: put those tools in the Dockerfile.
+
+How it runs:
+
+- The image is pulled once, or built from the committed Dockerfile and reused until a file in its build context changes.
+- The image must be Debian or Ubuntu based and have `bash`, because the Claude and Cursor CLIs need glibc. `scripts/agent-env-probe.sh <image>` tells you whether it works. If it does not, the step stops and says so.
+- `setup` runs once per run, before the first implementation step, in the image, with the package registries and no model key. If it fails, the run goes on and the agent gets its last lines.
+- `implement` and `implement-improve` run in the image, with the agent CLI mounted read-only from its own image. Everything else of the sandbox stays: no root, no capabilities, read-only system, no Docker, the network only through the egress proxy, for the model and the package registries, no secret but the model key. The agent may run any command in its worktree: tests, lint, type checks, and the package manager, so it can add or upgrade a dependency. The lockfile it writes is committed with the code.
+- The agent is told to run `checks` when a piece of work is done and before its summary, and to fix what fails. Without `checks` it finds the commands in the README, the package scripts or the CI config.
+- The reviewers and CI come after it, as before. CI stays the final judge.
+- The environment is read once per run and kept, so a change the agent makes to it counts from the next run.
+- Keep it the same as CI: the same image or version, and one command, such as `npm run check`, that both CI and `checks` call.
+
+Commits never contain CI configuration (`.github/workflows/`, `.github/actions/`, `.gitlab-ci.yml`, `.gitlab/`, `.circleci/`, `Jenkinsfile`, `azure-pipelines.yml`, `bitbucket-pipelines.yml`): CI runs it with your repository's secrets. A run that changes it stops at the commit and names the files. Set `ALLOW_CI_CHANGES=true` to allow it. CI can still run scripts from the repository that the agent may change, so keep secrets out of jobs that run on feature branches.
 
 ### 🎫 Jira (optional)
 
@@ -153,9 +170,11 @@ Every model step runs in a fresh container. The server starts it for the step an
 
 - **Disk.** Only this run's worktrees are mounted. Reviewers get them read-only. Home, `~/.ssh`, and other repositories are not there. A `.env` file inside a worktree is covered by an empty file.
 - **Parallel.** Each run gets its own worktree of every repository in `worktrees/<run>/` and its own `feature/<run>-…` branch, so several runs, even in one repository, go at once. A run locks only itself, and `MAX_RUN_USD` counts each run separately.
-- **Network.** `--network none` unless the step names hosts. A model step reaches only its vendor's API. Implementation may also reach package registries: npm, Yarn, PyPI, Go, RubyGems, crates.io, and Maven. Any other public host is refused before the container starts.
+- **Network.** A step that names no hosts runs with `--network none`. Every other step runs on `swarmloop-sandbox`, an internal Docker network with no route out. Its only exit is the `swarmloop-egress` proxy container, which the server starts by itself. Before a container starts, the server writes a policy for that container's address: which hosts it may reach. The proxy refuses everything else. It lets a model step reach only its vendor's API. Implementation and setup may also reach package registries: npm, Yarn, PyPI, Go, RubyGems, crates.io, Packagist, Maven, and Gradle. Only HTTPS on port 443 passes, plus plain HTTP to those same hosts. The container gets `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `NODE_USE_ENV_PROXY` and `JAVA_TOOL_OPTIONS`, so npm, pip, Go, Composer, cargo, Node and Gradle go through the proxy. Maven ignores these: give it a `<proxy>` for `198.18.0.2:3128` in `settings.xml`. A tool that ignores them is not let out at all, because there is no other route. A refused request is logged: `docker logs swarmloop-egress` shows the address and host. If a project needs another host, set `SANDBOX_EGRESS=open` for a while to check. That brings back the old per-host networks, which don't filter by host.
+- **Model key.** Claude (API key or `CLAUDE_CODE_OAUTH_TOKEN`) and Codex with `CODEX_API_KEY` get a placeholder key, and their API address points at the proxy. The proxy replaces the placeholder with the real key, so the agent cannot print it, send it anywhere, or leave it in a file. A Cursor key and a Codex ChatGPT login (`CODEX_AUTH`) can't be replaced this way, so those stay in the container, but they can only reach their own vendor.
+- **What the proxy can't stop.** The proxy only sees host names, not what is sent to them. An agent that wants to leak code could publish it to a package registry under an account of its own. Keep secrets out of the worktree: the empty `.env` mask below covers only `.env` files.
 - **Process.** Never root: a launch as root is refused. All Linux capabilities are dropped, `no-new-privileges` is set, the root filesystem is read-only, and the container gets at most 256 processes. There is no Docker socket, so it cannot start another container.
-- **Secrets.** The only secret passed in is the model key. Jira, GitLab, and GitHub tokens stay in the server process.
+- **Secrets.** Jira, GitLab, and GitHub tokens stay in the server process. The model key is covered above.
 - **Lifetime.** The step time limit, silence longer than `IDLE_TIMEOUT_MS`, or a token ceiling kills the container. It never outlives its step.
 - **Git.** The agent does not commit and does not push. The server does, after the reviewers pass, and only for paths outside `deny_paths`.
 
@@ -171,6 +190,8 @@ Every model step runs in a fresh container. The server starts it for the step an
 - Each phase can use its own model: `MODEL_RESEARCH`, `MODEL_PLAN`, and `MODEL_IMPLEMENT`.
 - Dollars come from the vendor's published price list, cached for a day.
 - Another agent is the same three pieces: a sandbox image under `docker/sandbox`, its API hosts and key, and the code that reads its output. The pipeline, the history, and the panel stay as they are.
+- `docker/sandbox/build.sh` builds the three agent images and the `swarmloop-egress` proxy image (`docker-compose build` builds them too). Run it again after you update swarmloop. Docker reuses its cache, so to get newer CLIs and certificates run `docker/sandbox/build.sh --fresh`, every few months is enough. Each image keeps its whole CLI under `/opt/swarmloop`, together with a CA certificate bundle (the public root list of Debian's `ca-certificates` package) and, for Codex, `rg`. swarmloop can therefore mount the CLI into another image.
+- `scripts/agent-env-probe.sh <image>...` shows whether each CLI starts in a given image, for example `scripts/agent-env-probe.sh node:22-bookworm-slim php:8.3-cli`. Claude and Cursor need a glibc image with `bash`, so Debian or Ubuntu based. Alpine images do not work for them. Codex is one static binary and starts anywhere.
 
 ### 🎫 Jira, Confluence, and Google Drive
 
@@ -192,7 +213,7 @@ A prompt without a ticket number never calls Jira. Jira is the tracker that ship
 ```mermaid
 flowchart LR
   R["📝 Requirements"] --> P["🧭 Planning<br/>prepare · research<br/>plan · plan-improve"]
-  P --> I["🔨 Implementation<br/>branch · implement<br/>implement-improve · verify"]
+  P --> I["🔨 Implementation<br/>branch · implement<br/>implement-improve"]
   I --> C{"🔍 Code review<br/>5 reviewers + report"}
   C -- ok --> D["🚢 CI<br/>commit · merge-request<br/>pipeline"]
   C -. return .-> I
@@ -242,10 +263,10 @@ Passing review and CI is a minimum bar, not proof that the change is right. The 
 | `MAX_AGENT_CALLS` | Model processes per run | `100` |
 | `MAX_RETURNS` | Review returns to implementation | `10` |
 | `MAX_PIPELINE_RETURNS` | Red pipelines sent back | `6` |
-| `MAX_VERIFY_RETURNS` | Failed project checks sent back to implement | `3` |
-| `MAX_VERIFY_CALLS` | Agent-run project checks per implementation step | `8` |
 | `MAX_LAUNCHES` | Relaunches of a step that crashed before it decided | `3` |
 | `IDLE_TIMEOUT_MS` | Silence before the agent is killed | 15 minutes |
+| `ALLOW_CI_CHANGES` | Let a run commit CI configuration | `false` |
+| `SANDBOX_EGRESS` | `proxy`: all traffic goes through the egress proxy. `open`: per-host networks without the proxy, for debugging only. | `proxy` |
 | `*_TIMEOUT_MS` | Wall time per step | 3 to 30 minutes |
 
 ### 📊 Statistics for every step

@@ -14,7 +14,6 @@ import { PipelineStep } from './pipeline/pipeline.step';
 import { PrepareStep } from './prepare/prepare.step';
 import { RequirementsStep } from './requirements/requirements.step';
 import { ResearchStep } from './research/research.step';
-import { VerifyStep } from './verify/verify.step';
 import { StepRegistry } from './step.registry';
 
 const SERVICES: [Type<unknown>, Exclude<StepName, 'done'>][] = [
@@ -26,7 +25,6 @@ const SERVICES: [Type<unknown>, Exclude<StepName, 'done'>][] = [
   [PlanImproveStep, 'plan-improve'],
   [ImplementStep, 'implement'],
   [ImplementImproveStep, 'implement-improve'],
-  [VerifyStep, 'verify'],
   [CodeReviewStep, 'code-review'],
   [CommitStep, 'commit'],
   [MergeRequestStep, 'merge-request'],

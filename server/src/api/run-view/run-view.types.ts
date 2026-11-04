@@ -4,7 +4,7 @@ import { REVIEW_STEPS } from '../../contract/steps';
 export const PHASES: { phase: string; steps: readonly string[] }[] = [
   { phase: 'requirements', steps: ['requirements'] },
   { phase: 'planning', steps: ['prepare', 'research', 'plan', 'plan-improve'] },
-  { phase: 'implementation', steps: ['branch', 'implement', 'implement-improve', 'verify'] },
+  { phase: 'implementation', steps: ['branch', 'implement', 'implement-improve'] },
   { phase: 'code review', steps: REVIEW_STEPS },
   { phase: 'ci', steps: ['commit', 'merge-request', 'pipeline', 'done'] },
 ];
@@ -24,7 +24,6 @@ export const STEP_KINDS: Partial<Record<StepName, string[]>> = {
   'plan-improve': ['requirements'],
   implement: ['implementation'],
   'implement-improve': ['implementation'],
-  verify: ['verify_log'],
   'code-review': [...REVIEW_KINDS, 'review_residual', 'review_report'],
   commit: ['commit'],
   'merge-request': ['merge_request'],

@@ -18,7 +18,7 @@ export function writeFiles(repo: string, files: Record<string, string>): void {
 
 /** A temporary repository on branch main with one commit holding the files. */
 export function makeRepo(files: Record<string, string> = { 'README.md': 'x\n' }): string {
-  const repo = mkdtempSync(join(tmpdir(), 'swarmloop-verify-'));
+  const repo = mkdtempSync(join(tmpdir(), 'swarmloop-repo-'));
   runGit(repo, ['init', '-q', '-b', 'main']);
   commitFiles(repo, files);
   return repo;

@@ -1,4 +1,12 @@
-import { allowedPaths, deniedIndexPaths, isDenied, parsePaths, renderPaths, stageSelection } from './commit-paths';
+import {
+  allowedPaths,
+  ciConfigPaths,
+  deniedIndexPaths,
+  isDenied,
+  parsePaths,
+  renderPaths,
+  stageSelection,
+} from './commit-paths';
 
 describe('commit paths', () => {
   it('drops a denied path and keeps the rest', () => {
@@ -37,6 +45,28 @@ describe('commit paths', () => {
     expect(parsePaths(body)).toEqual([
       { repo: 'demo', path: 'src/field.ts' },
       { repo: 'web', path: 'app/page.ts' },
+    ]);
+  });
+});
+
+describe('ciConfigPaths', () => {
+  it('finds GitHub and GitLab CI files and nothing else', () => {
+    const paths = [
+      '.github/workflows/ci.yml',
+      '.github/actions/setup/action.yml',
+      '.github/CODEOWNERS',
+      '.gitlab-ci.yml',
+      'docs/.gitlab-ci.yml',
+      '.gitlab/ci/test.yml',
+      'Jenkinsfile',
+      'src/workflows/a.ts',
+    ].map((path) => ({ repo: 'demo', path }));
+    expect(ciConfigPaths(paths).map((item) => item.path)).toEqual([
+      '.github/workflows/ci.yml',
+      '.github/actions/setup/action.yml',
+      '.gitlab-ci.yml',
+      '.gitlab/ci/test.yml',
+      'Jenkinsfile',
     ]);
   });
 });

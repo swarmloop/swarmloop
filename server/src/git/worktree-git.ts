@@ -2,6 +2,7 @@ import { basename } from 'path';
 import type { SandboxMount } from '../sandbox/sandbox-launch';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { git, gitDetail } from './git';
+import { captureTree } from './worktree-snapshot';
 
 export async function featureHeads(
   mounts: SandboxMount[],
@@ -43,15 +44,24 @@ export async function assertUncommitted(
   }
 }
 
-/** Porcelain status plus the diff against HEAD, so two stamps match only when both are unchanged. */
+/**
+ * Two stamps match only when every repository has the same HEAD and the same content, untracked files included.
+ * `git diff HEAD` cannot see an edit inside a file git does not track yet, so the stamp is the tree of a temporary index.
+ */
 export async function worktreeSnapshot(mounts: SandboxMount[]): Promise<string> {
-  const status = await worktreeStatus(mounts);
-  const diffs: string[] = [];
+  const parts: string[] = [];
   for (const mount of mounts) {
     const repo = basename(mount.hostPath);
-    diffs.push(await gitAt(mount.hostPath, repo, ['diff', 'HEAD'], 'status failed'));
+    const captured = await captureTree(mount.hostPath);
+    if (captured) {
+      parts.push(`${repo}\n${captured.head}\n${captured.tree}`);
+      continue;
+    }
+    const status = await gitAt(mount.hostPath, repo, ['status', '--porcelain'], 'status failed');
+    const diff = await gitAt(mount.hostPath, repo, ['diff', 'HEAD'], 'status failed');
+    parts.push(`${repo}\n${status}\n${diff}`);
   }
-  return `${status}\n${diffs.join('\0')}`;
+  return parts.join('\0');
 }
 
 export async function worktreeStatus(mounts: SandboxMount[]): Promise<string> {

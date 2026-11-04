@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { IMPLEMENT_IMPROVE_FOLLOW_UP, implementFollowUp } from './implement/implement.prompts';
 import { REPORT_CONTINUE, reviewContinue, reviewResume } from './code-review/code-review.prompts';
-import { isPipelineReturn, isVerifyReturn, withAddedRepos, withoutVerifyReturns } from './follow-up';
+import { withAddedRepos } from './follow-up';
 import { PLAN_IMPROVE_FOLLOW_UP } from './plan-improve/plan-improve.prompts';
 import { planFollowUp } from './plan/plan.prompts';
 import { LINKED_CONTEXT, TASK_SCOPE } from './shared/requirements-brief';
@@ -169,31 +169,5 @@ describe('return follow-ups', () => {
     expect(reviewContinue('security')).toContain('Do not start over');
     expect(REPORT_CONTINUE).toContain('Do not start over');
     expect(REPORT_CONTINUE).toContain('Do not end with a decision line');
-  });
-});
-
-describe('verify return', () => {
-  const returned = 'verify failed (it ran in node:22, not in your container)\ncommand: npm test\nexit code: 1\nboom\n';
-
-  it('is told apart from a pipeline return', () => {
-    expect(isVerifyReturn(returned)).toBe(true);
-    expect(isVerifyReturn('## pipeline\nresult: fail\n')).toBe(false);
-    expect(isVerifyReturn(null)).toBe(false);
-    expect(isPipelineReturn(returned)).toBe(false);
-  });
-
-  it('gets the same prompt line as a pipeline return', () => {
-    const prompt = implementFollowUp('plan:\n- delete the run\n', returned);
-    expect(prompt).toContain('Change the code or that test. Do not leave the files as they are.');
-    expect(prompt).not.toContain('say that behavior now holds');
-  });
-
-  it('is hidden from code review, which then sees the return before it', () => {
-    const documents = [
-      { kind: 'return', body: '## quality\ndecision: return\n' },
-      { kind: 'return', body: returned },
-      { kind: 'verify_log', body: 'result: fail\n' },
-    ];
-    expect(withoutVerifyReturns(documents)).toEqual([documents[0], documents[2]]);
   });
 });

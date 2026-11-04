@@ -25,6 +25,14 @@ services:
     command: ['true']
     restart: 'no'
 
+  egress:
+    image: swarmloop-egress
+    build:
+      context: ./docker/egress
+    command: ['--version']
+    entrypoint: ['node']
+    restart: 'no'
+
   # PhpStorm starts bin/sloop on the host. That script needs server/dist, which the image build does not leave on disk.
   sloop:
     image: swarmloop-server
@@ -65,6 +73,8 @@ services:
       sandbox-claude:
         condition: service_completed_successfully
       sandbox-codex:
+        condition: service_completed_successfully
+      egress:
         condition: service_completed_successfully
     healthcheck:
       test:

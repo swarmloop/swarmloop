@@ -5,6 +5,7 @@ import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.re
 import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { rawEnv } from '../config/process-env';
+import { EGRESS_API, EGRESS_NETWORK, egressEnv, isLeaseIp } from './egress';
 
 export interface SandboxMount {
   hostPath: string;
@@ -36,13 +37,53 @@ export interface SandboxLaunch {
   /** Durable home for the vendor session. Replaces the /home/sandbox tmpfs. */
   statePath?: string;
   stateDaemonPath?: string;
-  /** Shared Codex login. Every container refreshes this one file. */
-  authPath?: string;
-  authDaemonPath?: string;
+  /** Run in the project's own image, with the agent CLI mounted read-only from a volume. */
+  project?: ProjectLaunch;
+  /** The address on the internal sandbox network. Its policy on the egress proxy decides what it reaches. */
+  egress?: { ip: string };
   /** Attach the caller's stdin. */
   stdin?: boolean;
   /** Allocate a terminal. Only the interactive vendor screen needs one. */
   tty?: boolean;
+}
+
+export interface ProjectLaunch {
+  image: string;
+  /** The volume that holds the agent image's /opt/swarmloop. */
+  cliVolume: string;
+  /** PATH of the project image. The CLI directory goes in front of it. */
+  path: string;
+  /** The image has no CA bundle of its own, so OpenSSL tools use the one from the CLI volume. */
+  certFile: boolean;
+  /** Package-manager caches below /home/sandbox, kept between runs. */
+  caches: { daemonPath: string; containerPath: string }[];
+  /** A shell command to run instead of the agent CLI, for the setup of the environment. */
+  shell?: string;
+}
+
+export const CLI_ROOT = '/opt/swarmloop';
+const CLI_CERTS = `${CLI_ROOT}/certs/ca-certificates.crt`;
+const PROJECT_TMP = '/tmp:rw,exec,nosuid,nodev,size=1g,mode=1777';
+/** Test runners and JVM builds start many threads, and every thread counts. Still a ceiling against a fork bomb. */
+const PROJECT_PIDS = '1024';
+const AGENT_COMMANDS = new Set(['agent', 'claude', 'codex']);
+
+function assertProject(project: ProjectLaunch, command: string[], home: string): void {
+  const valid =
+    /^[A-Za-z0-9][A-Za-z0-9_./:@-]{0,254}$/.test(project.image) &&
+    /^swarmloop-cli-[a-z]+-[0-9a-f]{12}$/.test(project.cliVolume) &&
+    /^[A-Za-z0-9_./:-]+$/.test(project.path) &&
+    (project.shell === undefined ? AGENT_COMMANDS.has(command[0] ?? '') : command.length === 0 && project.shell !== '');
+  if (!valid) {
+    throw new SwarmloopError('sandbox project image is not allowed');
+  }
+  for (const cache of project.caches) {
+    const path = cache.containerPath;
+    if (!path.startsWith('/home/sandbox/') || path.split('/').includes('..') || path.endsWith('/')) {
+      throw new SwarmloopError(`cache path ${path} is not allowed`);
+    }
+    assertDaemonPath(cache.daemonPath, home);
+  }
 }
 
 const WORKTREE = /^\/work(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$/;
@@ -60,11 +101,38 @@ const REGISTRIES = new Set([
   'repo1.maven.org',
   'repo.packagist.org',
   'packagist.org',
+  // Composer downloads the archives of GitHub packages from these two.
+  'api.github.com',
+  'codeload.github.com',
+  'sum.golang.org',
+  'static.crates.io',
+  'index.rubygems.org',
+  'repo.yarnpkg.com',
+  'plugins.gradle.org',
+  'services.gradle.org',
+  'downloads.gradle.org',
 ]);
 export const SANDBOX_PIDS = '256';
 
 const MODEL_HOSTS = new Set(RUNTIME_NAMES.flatMap((name) => runtimeFor(name).apiHosts));
 const MODEL_ENV = new Set(RUNTIME_NAMES.flatMap((name) => runtimeFor(name).credentialNames));
+/** Settings a CLI behind the egress proxy may get on top of its placeholder key. */
+const EGRESS_ENV: Record<string, (value: string) => boolean> = {
+  ANTHROPIC_BASE_URL: (value) => value === EGRESS_API,
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: (value) => value === '1',
+};
+
+/** A rule is a host name, or `*.domain` for that domain and every name below it. */
+export function matchesHost(rule: string, name: string): boolean {
+  if (rule === name) {
+    return true;
+  }
+  if (!rule.startsWith('*.')) {
+    return false;
+  }
+  const domain = rule.slice(2);
+  return name === domain || name.endsWith(`.${domain}`);
+}
 
 export function packageRegistries(): string[] {
   return [...REGISTRIES];
@@ -217,9 +285,12 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir()): string[] {
   }
   for (const host of launch.allowHosts) {
     const name = hostName(host);
-    if (!isLocalHost(name) && !REGISTRIES.has(name) && !MODEL_HOSTS.has(name)) {
+    if (!isLocalHost(name) && !REGISTRIES.has(name) && ![...MODEL_HOSTS].some((rule) => matchesHost(rule, name))) {
       throw new SwarmloopError(`${name} is a production host`);
     }
+  }
+  if (launch.egress && !isLeaseIp(launch.egress.ip)) {
+    throw new SwarmloopError('sandbox address is not allowed');
   }
   for (const mount of launch.mounts) {
     assertMount(mount, home);
@@ -227,6 +298,10 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir()): string[] {
   const state = launch.stateDaemonPath ?? launch.statePath;
   if (state) {
     assertDaemonPath(state, home);
+  }
+  const project = launch.project;
+  if (project) {
+    assertProject(project, launch.command, home);
   }
   const network = sandboxNetworkName(launch.allowHosts);
   const args = ['run', '--rm'];
@@ -246,22 +321,33 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir()): string[] {
     '--security-opt',
     'no-new-privileges',
     '--pids-limit',
-    SANDBOX_PIDS,
+    project ? PROJECT_PIDS : SANDBOX_PIDS,
     '--read-only',
     '--tmpfs',
-    '/tmp:rw,nosuid,nodev,size=64m,mode=1777',
+    project ? PROJECT_TMP : '/tmp:rw,nosuid,nodev,size=64m,mode=1777',
   );
   if (state) {
     args.push('--mount', `type=bind,src=${state},dst=/home/sandbox,readonly=false`);
   } else {
     args.push('--tmpfs', `/home/sandbox:rw,nosuid,nodev,size=64m,uid=${launch.userId},gid=${launch.userId},mode=700`);
   }
-  const auth = launch.authDaemonPath ?? launch.authPath;
-  if (auth) {
-    assertDaemonPath(auth, home);
-    args.push('--mount', `type=bind,src=${auth},dst=/codex-auth,readonly=false`);
+  if (project) {
+    for (const cache of project.caches) {
+      args.push('--mount', `type=bind,src=${cache.daemonPath},dst=${cache.containerPath},readonly=false`);
+    }
+    args.push('--mount', `type=volume,src=${project.cliVolume},dst=${CLI_ROOT},readonly=true`);
+    args.push('--env', 'HOME=/home/sandbox', '--env', `PATH=${CLI_ROOT}/bin:${project.path}`);
+    args.push('--env', `NODE_EXTRA_CA_CERTS=${CLI_CERTS}`);
+    if (project.certFile) {
+      args.push('--env', `SSL_CERT_FILE=${CLI_CERTS}`);
+    }
   }
-  if (network === null) {
+  if (launch.egress) {
+    args.push('--network', EGRESS_NETWORK, '--ip', launch.egress.ip);
+    for (const item of egressEnv()) {
+      args.push('--env', `${item.name}=${item.value}`);
+    }
+  } else if (network === null) {
     args.push('--network', 'none');
   } else {
     args.push('--network', network);
@@ -270,7 +356,8 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir()): string[] {
     }
   }
   for (const item of launch.env ?? []) {
-    if (!MODEL_ENV.has(item.name) || item.value === '' || /[\r\n\0]/.test(item.value)) {
+    const proxied = launch.egress !== undefined && EGRESS_ENV[item.name]?.(item.value) === true;
+    if ((!MODEL_ENV.has(item.name) && !proxied) || item.value === '' || /[\r\n\0]/.test(item.value)) {
       throw new SwarmloopError('sandbox env is not allowed');
     }
     args.push('--env', `${item.name}=${item.value}`);
@@ -282,7 +369,17 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir()): string[] {
     assertMask(mask, launch.mounts);
     args.push('--mount', `type=bind,src=${launch.maskFile},dst=${mask.containerFile},readonly=true`);
   }
-  args.push('--workdir', launch.mounts[0]?.containerPath ?? '/work', imageName(launch.runtime), ...launch.command);
+  const workdir = launch.mounts[0]?.containerPath ?? '/work';
+  if (project?.shell !== undefined) {
+    args.push('--workdir', workdir, '--entrypoint', 'sh', project.image, '-c', project.shell);
+    return args;
+  }
+  if (project) {
+    const [command, ...rest] = launch.command;
+    args.push('--workdir', workdir, '--entrypoint', `${CLI_ROOT}/bin/${command ?? ''}`, project.image, ...rest);
+    return args;
+  }
+  args.push('--workdir', workdir, imageName(launch.runtime), ...launch.command);
   return args;
 }
 

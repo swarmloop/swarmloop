@@ -21,7 +21,8 @@ import { composedReturn, recordHandoff, textDocument, withHandoff } from '../sha
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames } from '../shared/repo-names';
-import { agentVerifyInput, verifyNote, withVerifyNote } from '../verify/verify-note';
+import { EnvironmentService } from '../../environment/environment.service';
+import { agentWorkplace } from '../shared/agent-environment';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
 import { IMPLEMENT_IMPROVE_FOLLOW_UP } from './implement.prompts';
 import { reviewedImplementation, withReturnNotes } from './implement-record';
@@ -40,6 +41,7 @@ export class ImplementImproveStep extends AgentStep {
     config: AppConfig,
     sandbox: SandboxService,
     @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
+    private readonly environments: EnvironmentService,
   ) {
     super(runs, documents, visits, flows, clock, config, sandbox, agent);
   }
@@ -80,12 +82,12 @@ export class ImplementImproveStep extends AgentStep {
     );
     const full = skillPrompt('implement-improve', ctx.requirements, names, sections, mounts);
     const chosen = continued?.chatId ? IMPLEMENT_IMPROVE_FOLLOW_UP : full;
-    const prompt = withVerifyNote(
+    const { prompt, project } = await agentWorkplace(
+      this.environments,
+      { run: ctx.opened.run, key, step: this.name, mounts },
       withAddedRepos(chosen, await this.documents.latestBody(key, 'added_repos')),
-      await verifyNote(mounts),
     );
-    const verify = await agentVerifyInput(mounts, env.MAX_VERIFY_CALLS);
-    const agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries(), verify });
+    const agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries(), project });
     const text = agentResult.responseText;
     await assertUncommitted(mounts, branch, heads);
     const wrote = reviewedImplementation(text);

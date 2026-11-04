@@ -3,6 +3,9 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync }
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Injectable } from '@nestjs/common';
+import { rawEnv } from '../config/process-env';
+import { resolveRepoRoot } from '../config/repo-root';
+import { SystemClock } from '../core/clock';
 import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SwarmloopError } from '../core/swarmloop-error';
 import {
@@ -18,9 +21,12 @@ import {
   resolveDaemonPath,
   sandboxArgs,
   sandboxNetworkName,
+  sandboxUserId,
   hostName,
   stepContainers,
 } from './sandbox-launch';
+import { Egress, egressMode } from './egress';
+import { withEgress } from './egress-launch';
 
 export type DockerRunner = (args: string[], timeoutMs?: number) => Promise<string>;
 
@@ -33,9 +39,29 @@ export class SandboxService {
   private docker: DockerRunner = defaultDocker;
   private readonly maskFile = join(tmpdir(), 'swarmloop-empty-env');
   private binds: BindMount[] | null = null;
+  private egressProxy: Egress | null = null;
 
   useDocker(docker: DockerRunner): void {
     this.docker = docker;
+    this.egressProxy = null;
+  }
+
+  /** The egress proxy all sandboxes go out through. SANDBOX_EGRESS=open turns it off. */
+  egress(): Egress | null {
+    if (egressMode(rawEnv().SANDBOX_EGRESS) === 'open') {
+      return null;
+    }
+    const root = resolveRepoRoot(rawEnv().SWARMLOOP_ROOT, __dirname);
+    const clock = new SystemClock();
+    this.egressProxy ??= new Egress({
+      docker: (args, timeoutMs) => this.docker(args, timeoutMs),
+      policyDir: join(root, 'data', 'egress'),
+      daemonPath: async (dir) => (await this.stateDaemonPath(dir)) ?? dir,
+      now: () => clock.now(),
+      uid: sandboxUserId(),
+      own: process.getuid?.() ?? 0,
+    });
+    return this.egressProxy;
   }
 
   async assertReady(runtime: RuntimeName): Promise<void> {
@@ -51,18 +77,33 @@ export class SandboxService {
     }
   }
 
-  async spawn(launch: Omit<SandboxLaunch, 'maskFile' | 'envMasks'> & { envMasks?: EnvMask[] }): Promise<SandboxChild> {
+  async spawn(given: Omit<SandboxLaunch, 'maskFile' | 'envMasks'> & { envMasks?: EnvMask[] }): Promise<SandboxChild> {
+    const egress = this.egress();
+    const { launch, release } = egress ? await withEgress(egress, given) : { launch: given, release: () => undefined };
+    try {
+      const child = await this.spawnLaunch(launch);
+      child.once('close', release);
+      child.once('error', release);
+      return child;
+    } catch (error) {
+      release();
+      throw error;
+    }
+  }
+
+  private async spawnLaunch(
+    launch: Omit<SandboxLaunch, 'maskFile' | 'envMasks'> & { envMasks?: EnvMask[] },
+  ): Promise<SandboxChild> {
     const mounts = await this.withDaemonPaths(launch.mounts);
     if (launch.statePath) {
       prepareStateDir(launch.statePath, launch.userId);
     }
     const stateDaemonPath = await this.stateDaemonPath(launch.statePath, launch.stateDaemonPath);
-    const authDaemonPath = await this.stateDaemonPath(launch.authPath, launch.authDaemonPath);
     const envMasks = launch.envMasks ?? collectEnvMasks(mounts);
     const maskFile = await this.maskFor(launch.statePath, envMasks.length > 0);
-    const full: SandboxLaunch = { ...launch, mounts, stateDaemonPath, authDaemonPath, envMasks, maskFile };
+    const full: SandboxLaunch = { ...launch, mounts, stateDaemonPath, envMasks, maskFile };
     const args = sandboxArgs(full);
-    const network = sandboxNetworkName(full.allowHosts);
+    const network = full.egress ? null : sandboxNetworkName(full.allowHosts);
     if (network) {
       await this.ensureNetwork(
         network,
