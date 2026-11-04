@@ -7,11 +7,12 @@ import { AgentProcess } from './agent-process';
 describe('AgentProcess', () => {
   it('spawns the child through the sandbox', async () => {
     const child = fakeChild();
-    const service = { spawn: jest.fn().mockResolvedValue(child) } as unknown as SandboxService;
+    const spawn = jest.fn().mockResolvedValue(child);
+    const service = { spawn } as unknown as SandboxService;
 
     const process = await AgentProcess.spawn(service, new FakeClock(), {} as Parameters<SandboxService['spawn']>[0]);
 
-    expect(service.spawn).toHaveBeenCalledWith({});
+    expect(spawn).toHaveBeenCalledWith({});
     expect(process.containerName).toBe('box');
   });
 

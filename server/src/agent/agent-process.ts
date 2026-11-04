@@ -1,5 +1,5 @@
 import type { SandboxChild, SandboxService } from '../sandbox/sandbox.service';
-import { Clock } from '../core/clock';
+import type { Clock } from '../core/clock';
 import type { KillReason } from './limits';
 
 const SAMPLE_MS = 5_000;
@@ -125,8 +125,12 @@ export class AgentProcess {
     return exitCode;
   }
 
-  private readonly keepOut = (chunk: Buffer): void => this.earlyOut.push(chunk);
-  private readonly keepErr = (chunk: Buffer): void => this.earlyErr.push(chunk);
+  private readonly keepOut = (chunk: Buffer): void => {
+    this.earlyOut.push(chunk);
+  };
+  private readonly keepErr = (chunk: Buffer): void => {
+    this.earlyErr.push(chunk);
+  };
   private readonly rememberClose = (code: number | null): void => {
     this.closedEarly = code ?? 1;
   };

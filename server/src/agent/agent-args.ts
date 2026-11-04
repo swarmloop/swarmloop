@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { runtimeFor, runtimeForCommand } from '../integrations/agent-runtime/agent-runtime.registry';
-import { SandboxMount } from '../sandbox/sandbox-launch';
+import type { SandboxMount } from '../sandbox/sandbox-launch';
 import { sessionGroup } from './session-group';
 
 /** Brief files for a chat. A code reviewer mounts its own directory. */

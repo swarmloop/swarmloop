@@ -1,6 +1,7 @@
-import { Logger } from '@nestjs/common';
-import { Clock } from '../core/clock';
-import { judgeLimits, KillReason } from './limits';
+import type { Logger } from '@nestjs/common';
+import type { Clock } from '../core/clock';
+import type { KillReason } from './limits';
+import { judgeLimits } from './limits';
 
 export class LimitGuard {
   private warned = false;
@@ -14,10 +15,10 @@ export class LimitGuard {
       idleLimitMs: number;
       spentUsd: number;
       maxRunUsd: number;
-      stepUsdMax: number;
+      stepUsdMax: number | null;
       tokensInRun: number;
-      maxRunTokens: number;
-      stepTokenMax: number;
+      maxRunTokens: number | null;
+      stepTokenMax: number | null;
       auto: boolean;
     },
     private readonly state: {
