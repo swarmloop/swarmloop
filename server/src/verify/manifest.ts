@@ -70,7 +70,7 @@ export async function readManifest(repoPath: string, baseRef: string): Promise<R
   if (checked.error) {
     throw new SwarmloopError(`${MANIFEST_FILE}: ${checked.error.details.map((detail) => detail.message).join('; ')}`);
   }
-  const manifest = checked.value as SwarmloopManifest;
+  const manifest = checked.value;
   const warnings = Object.keys(manifest)
     .filter((key) => !(key in keys))
     .map((key) => `unknown key "${key}" ignored`);
