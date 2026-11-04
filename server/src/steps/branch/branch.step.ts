@@ -57,10 +57,13 @@ export class BranchStep extends BaseStep {
     if (!requirements) {
       throw new SwarmloopError('requirements is missing');
     }
-    await this.checkout(key, repo, branchName(key, summaryForBranch(requirements, key)));
+    // A run that has committed owns the commits of its branch. Before that, a branch of the same name was left by
+    // an earlier run of this key, such as one removed in the panel.
+    const committed = (await this.documents.latestBody(key, 'pipeline_ref')) !== null;
+    await this.checkout(key, repo, branchName(key, summaryForBranch(requirements, key)), committed);
   }
 
-  private async checkout(key: string, repo: string, branch: string): Promise<void> {
+  private async checkout(key: string, repo: string, branch: string, committed: boolean): Promise<void> {
     const worktree = worktreePath(root(this.config), key, repo);
     if (!existsSync(worktree) || !statSync(worktree).isDirectory()) {
       throw new SwarmloopError(`${repo} is not a worktree`);
@@ -75,10 +78,17 @@ export class BranchStep extends BaseStep {
     }
     try {
       if (await hasBranch(worktree, branch)) {
-        // A branch left by an earlier try of this key without work of its own starts again from the current base,
-        // so the run gets today's code and .swarmloop.json. A branch with commits keeps them.
-        const empty = await isAncestor(worktree, branch, 'HEAD');
-        await git(['-C', worktree, 'switch', ...(empty ? ['-C'] : []), branch]);
+        if (committed) {
+          await git(['-C', worktree, 'switch', branch]);
+          return;
+        }
+        // Someone else's branch starts again from the current base, so the run gets today's code and .swarmloop.json.
+        // Its commits stay under refs/swarmloop/earlier/, and the next push replaces the remote branch with a lease.
+        if (!(await isAncestor(worktree, branch, 'HEAD'))) {
+          const tip = await git(['-C', worktree, 'rev-parse', `refs/heads/${branch}`]);
+          await git(['-C', worktree, 'update-ref', `refs/swarmloop/earlier/${branch}`, tip]);
+        }
+        await git(['-C', worktree, 'switch', '-C', branch]);
         return;
       }
       await git(['-C', worktree, 'switch', '-c', branch]);

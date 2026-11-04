@@ -75,22 +75,50 @@ describe('branch step', () => {
     }
   });
 
-  it('keeps the commits of a branch that has work of its own', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-branch-work-'));
+  it('starts a branch an earlier run left with commits again from the base, and keeps those commits', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-branch-left-'));
     const demo = repoWithMain(root, 'demo');
     const demoTree = addDetached(demo, join(root, 'worktrees', 'PROJ-32', 'demo'));
     const app = await boot(root);
     try {
       await seed(app, 'PROJ-32', 'demo\n', 'Ship the field');
       await app.get(PipelineService).step('branch', 'PROJ-32');
-      writeFileSync(join(demoTree, 'WORK'), 'work\n');
-      git(demoTree, ['add', 'WORK']);
-      git(demoTree, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '-m', 'work']);
-      const work = git(demoTree, ['rev-parse', 'HEAD']);
-      commitOnMain(demo, 'second');
+      const earlier = commitIn(demoTree, 'WORK');
+      const base = commitOnMain(demo, 'second');
       git(demoTree, ['fetch', 'origin']);
       git(demoTree, ['switch', '--detach', 'origin/main']);
       expect((await app.get(PipelineService).step('branch', 'PROJ-32')).exitCode).toBe(0);
+      expect(git(demoTree, ['rev-parse', 'HEAD'])).toBe(base);
+      expect(git(demoTree, ['rev-parse', 'refs/swarmloop/earlier/feature/PROJ-32-ship-the-field'])).toBe(earlier);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps the commits of a branch once the run has committed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-branch-own-'));
+    const demo = repoWithMain(root, 'demo');
+    const demoTree = addDetached(demo, join(root, 'worktrees', 'PROJ-33', 'demo'));
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-33', 'demo\n', 'Ship the field');
+      await app.get(PipelineService).step('branch', 'PROJ-33');
+      const work = commitIn(demoTree, 'WORK');
+      const run = await app.get(RunRepository).findRun('PROJ-33');
+      const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
+      await documents.save(
+        documents.create({
+          runId: run?.id,
+          stepStatId: 0,
+          kind: 'pipeline_ref',
+          attempt: 1,
+          body: `ref: x\nsha: ${work}\n`,
+          path: '',
+          createdAt: new Date().toISOString(),
+        }),
+      );
+      git(demoTree, ['switch', '--detach', 'origin/main']);
+      expect((await app.get(PipelineService).step('branch', 'PROJ-33')).exitCode).toBe(0);
       expect(git(demoTree, ['rev-parse', 'HEAD'])).toBe(work);
     } finally {
       await app.close();
@@ -213,6 +241,13 @@ function repoWithMain(root: string, dirName: string): string {
   git(clone, ['remote', 'add', 'origin', remote]);
   git(clone, ['push', '-u', 'origin', 'main']);
   return clone;
+}
+
+function commitIn(tree: string, name: string): string {
+  writeFileSync(join(tree, name), `${name}\n`);
+  git(tree, ['add', name]);
+  git(tree, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '-m', name]);
+  return git(tree, ['rev-parse', 'HEAD']);
 }
 
 function commitOnMain(clone: string, name: string): string {
