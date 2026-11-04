@@ -83,7 +83,9 @@ export function liveLogStep(entry: string, watched: string): boolean {
 }
 
 export function phaseOf(step: string): PhaseName {
-  const name = pipelineStepOf(step);
+  const name = pipelineStepOf(
+    STEPS.find((candidate) => step === candidate || step.startsWith(`${candidate}-`)) ?? step,
+  );
   if (name === 'code-review') {
     return 'code-review';
   }
