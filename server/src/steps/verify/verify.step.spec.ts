@@ -197,7 +197,7 @@ describe('verify step', () => {
     const run = jest.fn().mockResolvedValue(failure('same tail'));
     const app = await boot(root, run);
     try {
-      const worktree = await seed(app, root);
+      const worktree = await seed(app, root, true);
       await app.get(PipelineService).step('verify', KEY);
       appendFileSync(join(worktree, 'README'), 'changed\n');
       await app.get(PipelineService).step('verify', KEY);
@@ -242,13 +242,16 @@ async function boot(root: string, run: jest.Mock, extra = '') {
     .compile();
 }
 
-async function seed(app: Awaited<ReturnType<typeof boot>>, root: string): Promise<string> {
+async function seed(app: Awaited<ReturnType<typeof boot>>, root: string, targetPath = false): Promise<string> {
   const worktree = featureTree(root, KEY, 'billing-api');
   const runs = app.get(RunRepository);
   const documents = app.get(DocumentRepository);
   const seeded = await runs.begin(KEY, 'verify');
   seeded.status = 'waiting';
   seeded.currentStep = 'verify';
+  if (targetPath) {
+    seeded.targetPath = worktree;
+  }
   await runs.saveRun(seeded);
   const plan = { name: '', overview: '', items: ['add the field'], decision: 'approve' };
   await documents.putDocument(
