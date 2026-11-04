@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "dockerfile": ".swarmloop/Dockerfile",
+  "install": "npm ci --prefix server && npm ci --prefix dashboard && bash scripts/ci-tools.sh dashboard-test && bash scripts/ci-tools.sh lint",
+  "verify": [
+    "npm run typecheck --prefix server",
+    "npm test --prefix server",
+    "npm run typecheck --prefix dashboard",
+    "npm test --prefix dashboard",
+    "npx eslint .",
+    "node --test scripts/ci-tools.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs",
+    "node --test scripts/check-structure.test.mjs && node scripts/check-structure.mjs"
+  ],
+  "cache": ["/home/sandbox/.npm"]
+}

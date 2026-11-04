@@ -22,7 +22,7 @@ import {
   stepContainers,
 } from './sandbox-launch';
 
-export type DockerRunner = (args: string[]) => Promise<string>;
+export type DockerRunner = (args: string[], timeoutMs?: number) => Promise<string>;
 
 export interface SandboxChild extends ChildProcess {
   containerName: string;
@@ -71,8 +71,18 @@ export class SandboxService {
     }
     const name = args[args.indexOf('--name') + 1] ?? '';
     await this.remove(name);
+    return this.spawnDocker(args);
+  }
+
+  /** Runs one docker command through the same runner as the other calls. */
+  run(args: string[], timeoutMs?: number): Promise<string> {
+    return this.docker(args, timeoutMs);
+  }
+
+  /** Starts a docker command that streams its output. The caller builds and checks the args. */
+  spawnDocker(args: string[]): SandboxChild {
     const child = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'] }) as SandboxChild;
-    child.containerName = name;
+    child.containerName = args[args.indexOf('--name') + 1] ?? '';
     return child;
   }
 
@@ -139,7 +149,7 @@ export class SandboxService {
     }
   }
 
-  private async maskFor(statePath: string | undefined, needed: boolean): Promise<string> {
+  async maskFor(statePath: string | undefined, needed: boolean): Promise<string> {
     if (!needed) {
       return this.maskFile;
     }
@@ -148,7 +158,7 @@ export class SandboxService {
     return resolveDaemonPath(local, await this.ownBinds());
   }
 
-  private async stateDaemonPath(path?: string, given?: string): Promise<string | undefined> {
+  async stateDaemonPath(path?: string, given?: string): Promise<string | undefined> {
     if (given) {
       return given;
     }
@@ -158,7 +168,7 @@ export class SandboxService {
     return resolveDaemonPath(path, await this.ownBinds());
   }
 
-  private async withDaemonPaths(mounts: SandboxMount[]): Promise<SandboxMount[]> {
+  async withDaemonPaths(mounts: SandboxMount[]): Promise<SandboxMount[]> {
     const binds = await this.ownBinds();
     return mounts.map((mount) => {
       if (mount.volume || mount.daemonPath) {
@@ -185,7 +195,7 @@ export class SandboxService {
     return this.binds;
   }
 
-  private async ensureNetwork(name: string, internal: boolean): Promise<void> {
+  async ensureNetwork(name: string, internal: boolean): Promise<void> {
     try {
       await this.docker(['network', 'inspect', name]);
     } catch {
@@ -259,11 +269,11 @@ function memoryBytes(value: number, unit: string): number {
   return Math.round(value * (scale[unit] ?? 1));
 }
 
-function defaultDocker(args: string[]): Promise<string> {
+function defaultDocker(args: string[], timeoutMs = 30_000): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile('docker', args, { encoding: 'utf8', timeout: 30_000 }, (error, stdout) => {
+    execFile('docker', args, { encoding: 'utf8', timeout: timeoutMs }, (error, stdout) => {
       if (error) {
-        reject(error instanceof Error ? error : new Error(String(error)));
+        reject(new Error(error.message, { cause: error }));
         return;
       }
       resolve(stdout);
