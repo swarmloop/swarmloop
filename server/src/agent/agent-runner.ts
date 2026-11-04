@@ -1,4 +1,3 @@
-import { chmodSync, mkdirSync, writeFileSync } from 'fs';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { Injectable, Logger, Optional } from '@nestjs/common';
@@ -11,7 +10,7 @@ import { Clock } from '../core/clock';
 import { SampleDraft } from '../history/visit';
 import type { AgentRuntime } from '../integrations/agent-runtime/agent-runtime';
 import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
-import { runtimeFor, runtimeForCommand } from '../integrations/agent-runtime/agent-runtime.registry';
+import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import {
   agentStateDir,
   modelApiHosts,
@@ -26,7 +25,6 @@ import {
   callsExceeded,
   DecisionWatch,
   hasModelDecision,
-  judgeLimits,
   KillReason,
   noteDecision,
   priceTokens,
@@ -35,11 +33,18 @@ import {
   turnUsd,
 } from './limits';
 import { syncChatMode } from './chat-mode';
-import { sessionGroup, sessionHome } from './session-group';
+import { sessionHome } from './session-group';
 import { RunStop } from './run-stop';
 import { loadPriceTable } from './prices';
 import { recordLaunch } from './agent-launches';
 import { addGuessedLine, emptyUsageGuess, readStreamLine, takeAnswer } from './stream';
+import { briefMounts, spillPrompt } from './agent-args';
+import { AgentProcess } from './agent-process';
+import { continueAfterLimit, foldAttempt } from './agent-session';
+import { LimitGuard } from './limit-guard';
+
+export { buildAgentArgs, reviewBriefMount, spillPrompt, terminalArgs } from './agent-args';
+export { readSession } from './agent-session';
 
 export const AGENT_RUNNER = Symbol('AGENT_RUNNER');
 
@@ -239,7 +244,7 @@ export class AgentProcessRunner {
       ? input.mounts.map((mount) => ({ ...mount, readonly: true }))
       : input.mounts;
     let lastActivity = this.clock.now();
-    const child = await this.sandbox.spawn({
+    const process = await AgentProcess.spawn(this.sandbox, this.clock, {
       runtime: env.RUNTIME,
       runKey: input.runKey,
       step: input.step,
@@ -260,21 +265,6 @@ export class AgentProcessRunner {
       userId,
       ...(input.project ? { project: input.project } : {}),
     });
-    const earlyOut: Buffer[] = [];
-    const earlyErr: Buffer[] = [];
-    let closedEarly: number | null = null;
-    const keepOut = (chunk: Buffer): void => {
-      earlyOut.push(chunk);
-    };
-    const keepErr = (chunk: Buffer): void => {
-      earlyErr.push(chunk);
-    };
-    const rememberClose = (code: number | null): void => {
-      closedEarly = code ?? 1;
-    };
-    child.stdout?.on('data', keepOut);
-    child.stderr?.on('data', keepErr);
-    child.on('close', rememberClose);
     await recordLaunch(input.outputFile, input.runKey, input.liveStep ?? input.step);
     const baseline =
       priorOutput.length === 0 || priorOutput.endsWith('\n')
@@ -303,7 +293,6 @@ export class AgentProcessRunner {
     let billedFromStream = false;
     let reportedUsd: number | null = null;
     let killReason: KillReason | null = null;
-    let warned = false;
     lastActivity = started;
     let finishedByResult = false;
     let buffer = '';
@@ -324,45 +313,40 @@ export class AgentProcessRunner {
       };
     };
     const sessionUsd = (): number => (input.groupUsd ?? 0) + billed().usd;
-    const check = (): void => {
-      const now = this.clock.now();
-      const step = billed();
-      const stepTokens = step.tokensIn + step.tokensOut;
-      const priced = step.usd;
-      const verdict = judgeLimits({
-        elapsedMs: now - started,
-        idleMs: now - lastActivity,
+    const guard = new LimitGuard(
+      this.logger,
+      this.clock,
+      {
+        model: input.model,
         timeLimitMs: input.timeLimitMs ?? env.REQUIREMENTS_TIMEOUT_MS,
         idleLimitMs: env.IDLE_TIMEOUT_MS,
         spentUsd: input.spentUsd,
-        stepUsd: priced ?? 0,
         maxRunUsd: env.MAX_RUN_USD,
         stepUsdMax: env.STEP_USD_MAX,
         tokensInRun: input.tokensInRun,
-        stepTokens,
         maxRunTokens: env.MAX_RUN_TOKENS,
         stepTokenMax: env.STEP_TOKEN_MAX,
-        warned,
-        enforceSpend: input.auto === true,
-      });
-      if (verdict.warn) {
-        warned = true;
-        this.logger.warn(`${input.model} reached 80% of its limit`);
-      }
-      if (verdict.kill && killReason === null && !finishedByResult) {
-        killReason = verdict.kill;
-        void this.writeSession(input.sessionFile, {
-          chatId,
-          resumed,
-          completed: false,
-          killReason,
-          usd: sessionUsd(),
-        });
-        child.kill('SIGTERM');
-        void this.sandbox.kill(child.containerName);
-        setTimeout(() => child.kill('SIGKILL'), 2000).unref();
-      }
-    };
+        auto: input.auto === true,
+      },
+      {
+        started: () => started,
+        lastActivity: () => lastActivity,
+        billed,
+        finished: () => finishedByResult,
+        killReason: () => killReason,
+        kill: (reason) => {
+          killReason = reason;
+          void this.writeSession(input.sessionFile, {
+            chatId,
+            resumed,
+            completed: false,
+            killReason,
+            usd: sessionUsd(),
+          });
+          process.kill();
+        },
+      },
+    );
 
     let publishTimer: ReturnType<typeof setTimeout> | null = null;
     let closed = false;
@@ -442,29 +426,16 @@ export class AgentProcessRunner {
         }
         if (piece.stops && !finishedByResult) {
           finishedByResult = true;
-          child.kill('SIGTERM');
-          void this.sandbox.kill(child.containerName);
+          process.kill(false);
         }
       }
-      check();
+      guard.check();
     };
 
     const onErr = (chunk: Buffer): void => {
       lastActivity = this.clock.now();
       note(chunk.toString('utf8'));
     };
-    child.stdout?.off('data', keepOut);
-    child.stderr?.off('data', keepErr);
-    child.off('close', rememberClose);
-    for (const chunk of earlyOut) {
-      onData(chunk);
-    }
-    for (const chunk of earlyErr) {
-      onErr(chunk);
-    }
-    child.stdout?.on('data', onData);
-    child.stderr?.on('data', onErr);
-
     let sampling = false;
     const takeSample = (): void => {
       if (sampling) {
@@ -472,7 +443,7 @@ export class AgentProcessRunner {
       }
       sampling = true;
       void this.sandbox
-        .stats(child.containerName)
+        .stats(process.containerName)
         .then((sample) => {
           samples.push({ sampledAt: this.clock.iso(), ...sample });
           publish();
@@ -481,48 +452,26 @@ export class AgentProcessRunner {
           sampling = false;
         });
     };
-    takeSample();
-    const timer = setInterval(() => {
-      takeSample();
-      check();
-    }, SAMPLE_MS);
-    timer.unref();
-
-    const exitCode = await new Promise<number>((resolve) => {
-      let settled = false;
-      const finish = (code: number): void => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        resolve(code);
-      };
-      child.on('error', (error: NodeJS.ErrnoException) => {
-        note(`${error.code ?? 'error'}: ${error.message}\n`);
-        finish(1);
-      });
-      if (closedEarly !== null) {
-        finish(closedEarly);
-      }
-      child.on('close', (code) => finish(code ?? 1));
-      // A killed child that never closes must not leave the step running.
-      const watch = setInterval(() => {
-        if (killReason === null && !finishedByResult) {
-          return;
-        }
-        clearInterval(watch);
-        setTimeout(() => finish(finishedByResult ? 0 : 1), 5_000).unref();
-      }, 500);
-      watch.unref();
-    });
+    const exitCode = await process.wait(
+      {
+        data: onData,
+        error: onErr,
+        processError: (error) => note(`${error.code ?? 'error'}: ${error.message}\n`),
+        sample: takeSample,
+        tick: () => guard.check(),
+      },
+      () => killReason !== null || finishedByResult,
+      {
+        idleLimitMs: env.IDLE_TIMEOUT_MS,
+        wallLimitMs: input.timeLimitMs ?? env.REQUIREMENTS_TIMEOUT_MS,
+        timeout: () => guard.check(),
+      },
+    );
     closed = true;
     if (publishTimer) {
       clearTimeout(publishTimer);
       publishTimer = null;
     }
-    child.stdout?.off('data', onData);
-    child.stderr?.off('data', onErr);
-    clearInterval(timer);
     await writing;
     const finished = this.clock.now();
     const priced = billed();
@@ -592,137 +541,11 @@ export class AgentProcessRunner {
   }
 }
 
-export async function readSession(path: string, runtime: string): Promise<SessionState | null> {
-  try {
-    const session = JSON.parse(await readFile(path, 'utf8')) as SessionState;
-    return session.runtime === runtime ? session : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Brief files for a chat. A code reviewer mounts its own directory. */
-export function reviewBriefMount(statePath: string, step: string): SandboxMount | null {
-  if (!sessionGroup(step) && !step.startsWith('code-review-')) {
-    return null;
-  }
-  const dir = join(statePath, 'briefs');
-  mkdirSync(dir, { recursive: true });
-  chmodSync(dir, 0o755);
-  return { hostPath: dir, containerPath: '/work/brief', readonly: true };
-}
-
-function briefMounts(statePath: string, step: string, spilled: SandboxMount[]): SandboxMount[] {
-  const review = reviewBriefMount(statePath, step);
-  if (!review || spilled.some((mount) => mount.containerPath === review.containerPath)) {
-    return spilled;
-  }
-  return [...spilled, review];
-}
-
-/** Linux rejects one argv string longer than MAX_ARG_STRLEN (128KiB). */
-const ARG_BYTE_LIMIT = 100_000;
-
-export function spillPrompt(prompt: string, statePath: string, step: string): { text: string; mounts: SandboxMount[] } {
-  if (Buffer.byteLength(prompt) <= ARG_BYTE_LIMIT) {
-    return { text: prompt, mounts: [] };
-  }
-  const name = briefName(step);
-  const dir = join(statePath, 'briefs');
-  mkdirSync(dir, { recursive: true });
-  chmodSync(dir, 0o755);
-  const file = join(dir, name);
-  writeFileSync(file, prompt);
-  chmodSync(file, 0o644);
-  return {
-    text: [
-      `Read /work/brief/${name} and follow that assignment exactly.`,
-      'That file is the whole brief. Do not ask for it again.',
-    ].join('\n'),
-    mounts: [{ hostPath: dir, containerPath: '/work/brief', readonly: true }],
-  };
-}
-
-function briefName(step: string): string {
-  const clean = step
-    .replace(/[^A-Za-z0-9._-]/g, '-')
-    .replace(/^-+/, '')
-    .slice(0, 80);
-  const base = clean.length > 0 && clean !== '.' && clean !== '..' ? clean : 'brief';
-  return `${base}.md`;
-}
-
-export function buildAgentArgs(
-  command: string,
-  input: {
-    model: string;
-    prompt: string;
-    mounts: SandboxMount[];
-    resumeChatId: string | null;
-    mode?: string;
-    approveMcps?: boolean;
-  },
-): string[] {
-  return runtimeForCommand(command).printArgs(input);
-}
-
-/** The vendor's own terminal. A forwarded subcommand keeps the words the person typed. */
-export function terminalArgs(input: {
-  model: string;
-  workspace: string;
-  resumeChatId: string | null;
-  vendor: string[];
-}): string[] {
-  return runtimeFor('cursor').terminalArgs(input);
-}
-
-const SAMPLE_MS = 5_000;
-
 function appendLine(body: string, line: string): string {
   const base = body.length === 0 || body.endsWith('\n') ? body : `${body}\n`;
   return `${base}${line}\n`;
 }
 
-/** Another launch after time or idle, in the same loop as a crash retry. usd, tokens, and calls stay down. */
-function continueAfterLimit(input: {
-  killReason: KillReason | null;
-  chatId: string | null;
-  halted: boolean;
-  callsSoFar: number;
-  maxCalls: number;
-  attempts: number;
-  maxLaunches: number;
-  continuePrompt: string | null | undefined;
-}): boolean {
-  if (input.continuePrompt === null || (input.killReason !== 'time' && input.killReason !== 'idle')) {
-    return false;
-  }
-  if (!input.chatId || input.halted || input.attempts >= input.maxLaunches) {
-    return false;
-  }
-  return !callsExceeded(input.callsSoFar, input.maxCalls);
-}
-
 function readOnlyTree(runtime: string, mode: string | undefined): boolean {
   return runtime === 'codex' && (mode === 'plan' || mode === 'ask');
-}
-
-function foldAttempt(first: AgentRunResult | null, second: AgentRunResult): AgentRunResult {
-  if (!first) {
-    return second;
-  }
-  return {
-    ...second,
-    tokensIn: first.tokensIn + second.tokensIn,
-    tokensOut: first.tokensOut + second.tokensOut,
-    usd: first.usd + second.usd,
-    calls: first.calls + second.calls,
-    samples: [...first.samples, ...second.samples],
-    resumed: first.resumed || second.resumed,
-    responseText: second.responseText || first.responseText,
-    output: `${first.output ?? ''}${second.output ?? ''}`,
-    chatId: second.chatId ?? first.chatId,
-    durationMs: first.durationMs + second.durationMs,
-    startedAt: first.startedAt,
-  };
 }
