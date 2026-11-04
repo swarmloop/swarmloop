@@ -16,6 +16,12 @@ describe('parseReview', () => {
     expect(parseReview('notes\n**decision: return**\n').decision).toBe('return');
   });
 
+  it('reads a decision line that carries a reason after the verdict', () => {
+    expect(parseReview('notes\ndecision: return — one broken behavior\n').decision).toBe('return');
+    expect(parseReview('notes\n**decision: ok** - nothing left\n').decision).toBe('ok');
+    expect(() => parseReview('notes\ndecision: okay then\n')).toThrow('decision is missing');
+  });
+
   it('keeps the later stream decision when an earlier attempt wrote a plain one', () => {
     const stream = `notes\ndecision: return\n${JSON.stringify({ type: 'result', result: 'cleared\ndecision: ok\n' })}\n`;
     expect(parseReview(stream).decision).toBe('ok');

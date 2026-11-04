@@ -110,7 +110,7 @@ function decisionLine(text: string): boolean {
       .replace(/^[`*]+/, '')
       .replace(/[`*]+$/, '')
       .trim();
-    return /^decision:\s*(ok|return|approve|revise)\s*$/.test(cleaned);
+    return /^decision:\s*(ok|return|approve|revise)[`*]*(?:\s*[-–—:.,;]\s*\S.*)?\s*$/.test(cleaned);
   });
 }
 

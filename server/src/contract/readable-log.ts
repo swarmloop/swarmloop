@@ -41,7 +41,7 @@ function agentDecision(raw: string): 'ok' | 'return' | null {
         .replace(/^[`*]+/, '')
         .replace(/[`*]+$/, '')
         .trim();
-      const match = /^decision:\s*(ok|return)\s*$/.exec(cleaned);
+      const match = /^decision:\s*(ok|return)[`*]*(?:\s*[-–—:.,;]\s*\S.*)?\s*$/.exec(cleaned);
       if (match?.[1] === 'ok' || match?.[1] === 'return') {
         found = match[1];
       }

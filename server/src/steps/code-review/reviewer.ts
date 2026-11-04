@@ -99,7 +99,7 @@ export async function runJob(
 }
 
 export function decidedOk(body: string): string {
-  const lines = body.split('\n').filter((line) => line.trim() !== 'decision: return');
+  const lines = body.split('\n').filter((line) => !/^decision:\s*return\b/.test(line.trim()));
   return `${lines.join('\n').trimEnd()}\ndecision: ok\n`;
 }
 
