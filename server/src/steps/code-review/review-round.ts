@@ -14,7 +14,7 @@ import { withReturnNotes } from '../implement/implement-record';
 import { returnNotes, textDocument, withHandoff } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
 import { parseReview } from './code-review-record';
-import { fixNotes } from './review-input';
+import { fixNotes, machineChecked } from './review-input';
 import { closeReview, recordAngle } from './review-report';
 import type { Finished, Opinion, Reviewer, ReviewDeps, Usage } from './reviewer';
 import { decidedOk, REVIEWERS, runJob } from './reviewer';
@@ -112,11 +112,14 @@ export async function selectReviewers(
 
 /** Runs every pending angle together, then stores their visits once all of them have finished. */
 export async function runRound(deps: ReviewDeps, input: RoundInput): Promise<Finished[]> {
+  const documents = await deps.documents.listDocuments(input.opened.run.id);
+  const checked = await machineChecked(documents, input.mounts);
   const jobs = input.pending.map((reviewer) => ({
     ...reviewJob(reviewer, input),
     stale: input.stale.has(reviewer.name),
+    checked,
   }));
-  const fix = fixNotes(await deps.documents.listDocuments(input.opened.run.id), input.handoff);
+  const fix = fixNotes(documents, input.handoff);
   const finished = await Promise.all(
     jobs.map((job) =>
       runJob(

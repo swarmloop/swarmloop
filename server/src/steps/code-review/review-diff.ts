@@ -204,7 +204,7 @@ async function inside(cwd: string): Promise<boolean> {
   }
 }
 
-async function baseRef(cwd: string): Promise<string | null> {
+export async function baseRef(cwd: string): Promise<string | null> {
   if (await hasRef(cwd, 'origin/main')) {
     return 'origin/main';
   }

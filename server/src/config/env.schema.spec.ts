@@ -39,6 +39,7 @@ const complete = {
   MAX_AGENT_CALLS: 50,
   MAX_RETURNS: 3,
   MAX_PIPELINE_RETURNS: 6,
+  MAX_VERIFY_RETURNS: 3,
   MAX_LAUNCHES: 3,
   MAX_RUN_USD: 50,
   IDLE_TIMEOUT_MS: 900_000,
@@ -86,6 +87,7 @@ describe('env schema', () => {
     expect(error).toBeUndefined();
     expect(value.MAX_AGENT_CALLS).toBe(50);
     expect(value.MAX_PIPELINE_RETURNS).toBe(6);
+    expect(value.MAX_VERIFY_RETURNS).toBe(3);
     expect(value.MODEL_PLAN).toBe('grok-4.7-high');
     const missing = envSchema.validate(
       { ...complete, MAX_AGENT_CALLS: undefined },
@@ -105,6 +107,11 @@ describe('env schema', () => {
     });
   });
 
+  it('rejects a verify return limit below 1', () => {
+    const { error } = envSchema.validate({ ...complete, MAX_VERIFY_RETURNS: 0 }, { abortEarly: false, convert: true });
+    expect(error?.message).toContain('MAX_VERIFY_RETURNS');
+  });
+
   it('reads an empty token limit as no cap', async () => {
     const config = await compileWith({ ...complete, MAX_RUN_TOKENS: '' });
     expect(config.env.MAX_RUN_TOKENS).toBeNull();
@@ -121,9 +128,10 @@ describe('env schema', () => {
   });
 
   it('keeps the defaults for values the file leaves out', async () => {
-    const { MAX_PIPELINE_RETURNS: _omitted, ...withoutDefaults } = complete;
+    const { MAX_PIPELINE_RETURNS: _omitted, MAX_VERIFY_RETURNS: _omittedVerify, ...withoutDefaults } = complete;
     const config = await compileWith(withoutDefaults);
     expect(config.env.MAX_PIPELINE_RETURNS).toBe(6);
+    expect(config.env.MAX_VERIFY_RETURNS).toBe(3);
     expect(config.env.CLAUDE_CODE_OAUTH_TOKEN).toBe('');
   });
 

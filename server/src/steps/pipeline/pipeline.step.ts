@@ -8,6 +8,7 @@ import { FlowRepository } from '../../history/flow.repository';
 import { EventRepository } from '../../history/event.repository';
 import { root } from '../../history/run-paths';
 import { Clock } from '../../core/clock';
+import { delay } from '../../core/delay';
 import type { DocumentDraft } from '../../history/visit';
 import type { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import type { StepName } from '../../contract/steps';
@@ -394,8 +395,4 @@ export class PipelineStep extends BaseStep {
       visit: { documents: docs.length > 0 ? docs : undefined },
     });
   }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

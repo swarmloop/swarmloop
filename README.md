@@ -111,6 +111,27 @@ Add a git token to `.env` and run `docker compose up --build` again. This time l
 
 </details>
 
+### 🧪 Project manifest
+
+`.swarmloop.json` in the repository root is optional. Without it nothing changes. With it, the `verify` step runs your checks after `implement-improve` and before the reviewers. A failing check goes back to `implement` with the real output. When the checks pass, the reviewers are told, so they spend their budget on what a machine cannot check.
+
+```json
+{ "version": 1, "image": "node:22", "install": "npm ci", "verify": ["npm test"], "cache": ["/home/sandbox/.npm"] }
+```
+
+`version` is always `1`. The other keys:
+
+| Key | Meaning |
+| --- | --- |
+| `image` | Docker image the commands run in. Give this or `dockerfile`, not both. |
+| `dockerfile` | A file under `.swarmloop/` that builds the image. |
+| `install` | One command that installs dependencies. Optional. |
+| `verify` | The commands to run, in order. At least one. |
+| `cache` | Absolute paths below `/home/sandbox/` that survive between runs. |
+| `timeoutMin` | Minutes for the whole run, 1 to 60. Default `15`. |
+
+The manifest is read from the base ref of the repository (`origin/main`, else `origin/master`), never from the agent's worktree, so a run cannot change its own checks. The commands run in a container, not in the agent's. A pulled image is kept while it is local. An image built from a Dockerfile is tagged with a hash of `.swarmloop/` and reused until that folder changes. The `cache` paths are kept under `data/verify-cache/` and mounted again on the next run. Files that `install` creates must be in `.gitignore`, or the run fails and names them. `MAX_VERIFY_RETURNS` limits how often a failed check is sent back.
+
 ### 🎫 Jira (optional)
 
 Only for prompts that name a ticket. A prompt without one never calls Jira.
@@ -168,7 +189,7 @@ A prompt without a ticket number never calls Jira. Jira is the tracker that ship
 ```mermaid
 flowchart LR
   R["📝 Requirements"] --> P["🧭 Planning<br/>prepare · research<br/>plan · plan-improve"]
-  P --> I["🔨 Implementation<br/>branch · implement<br/>implement-improve"]
+  P --> I["🔨 Implementation<br/>branch · implement<br/>implement-improve · verify"]
   I --> C{"🔍 Code review<br/>5 reviewers + report"}
   C -- ok --> D["🚢 CI<br/>commit · merge-request<br/>pipeline"]
   C -. return .-> I
@@ -218,6 +239,7 @@ Passing review and CI is a minimum bar, not proof that the change is right. The 
 | `MAX_AGENT_CALLS` | Model processes per run | `100` |
 | `MAX_RETURNS` | Review returns to implementation | `10` |
 | `MAX_PIPELINE_RETURNS` | Red pipelines sent back | `6` |
+| `MAX_VERIFY_RETURNS` | Failed project checks sent back to implement | `3` |
 | `MAX_LAUNCHES` | Relaunches of a step that crashed before it decided | `3` |
 | `IDLE_TIMEOUT_MS` | Silence before the agent is killed | 15 minutes |
 | `*_TIMEOUT_MS` | Wall time per step | 3 to 30 minutes |

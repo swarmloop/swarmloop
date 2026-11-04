@@ -62,7 +62,15 @@ export async function runJob(
   opened: OpenedStep,
   key: string,
   env: SwarmloopEnv,
-  job: { reviewer: Reviewer; model: string; prompt: string; mounts: SandboxMount[]; stale: boolean },
+  job: {
+    reviewer: Reviewer;
+    model: string;
+    prompt: string;
+    mounts: SandboxMount[];
+    stale: boolean;
+    /** The machine-checked line for reviewers, or empty. */
+    checked: string;
+  },
   fix: { implement: string; reviewed: string },
   plan: string,
   returned: string | null,
@@ -72,12 +80,13 @@ export async function runJob(
 ): Promise<Finished> {
   const step = `code-review-${job.reviewer.name}`;
   const session = await readSession(join(deps.root, 'data', sessionFileName(key, step)), opened.run.runtime);
-  const prompt =
+  const chosen =
     fresh || !session?.chatId
       ? job.prompt
       : retry && !job.stale
         ? reviewContinue(job.reviewer.name)
         : reviewResume(job.reviewer.name, fix.implement, fix.reviewed, plan, returned);
+  const prompt = job.checked ? `${chosen}\n\n${job.checked}` : chosen;
   return one(
     deps,
     opened,

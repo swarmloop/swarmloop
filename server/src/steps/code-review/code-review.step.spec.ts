@@ -22,6 +22,8 @@ import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { REPORT_CONTINUE, reviewContinue } from './code-review.prompts';
 import { REBASE_CONFLICT } from '../../git/rebase-worktree';
+import { worktreeSnapshot } from '../../git/worktree-git';
+import { renderVerifyLog, snapshotId } from '../verify/verify-record';
 
 const REFUSED_WRITE = JSON.stringify({
   type: 'system',
@@ -621,6 +623,69 @@ describe('code-review step', () => {
     } finally {
       await app.close();
     }
+  });
+
+  describe('machine-checked line', () => {
+    async function reviewPrompts(key: string, verifyLog: (snapshot: string) => string | null): Promise<string[]> {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-verified-'));
+      await writeEnv(root);
+      const worktree = join(root, 'worktrees', key, 'billing-api');
+      mkdirSync(worktree, { recursive: true });
+      git(worktree, ['init', '-b', 'main']);
+      writeFileSync(join(worktree, 'a.txt'), 'a\n');
+      git(worktree, ['add', 'a.txt']);
+      git(worktree, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '-m', 'a']);
+      writeFileSync(join(worktree, 'a.txt'), 'b\n');
+      const agent = jest.fn(async (input: AgentRunInput) => result(`notes\n\ndecision: ok\n`, input.step));
+      const app = await boot(root, agent);
+      try {
+        await seed(app, key);
+        const run = await app.get(RunRepository).findRun(key);
+        const mounts = [{ hostPath: worktree, containerPath: '/work/billing-api' }];
+        const snapshot = snapshotId(await worktreeSnapshot(mounts));
+        const body = verifyLog(snapshot);
+        if (body) {
+          await app.get(DocumentRepository).putDocument(run!, 'verify_log', body);
+        }
+        await app.get(PipelineService).step('code-review', key);
+        return agent.mock.calls
+          .map((call) => call[0])
+          .filter((call) => call.step !== 'code-review-report')
+          .map((call) => call.prompt);
+      } finally {
+        await app.close();
+      }
+    }
+
+    const line =
+      'Checked by machine on this exact tree: npm ci, npm test. Do not re-check what these cover; look for what they cannot find.';
+    const log = (result: 'pass' | 'fail', snapshot: string) =>
+      renderVerifyLog(
+        { result, snapshot, commands: ['npm ci', 'npm test'], exitCode: result === 'fail' ? 1 : null, tail: 'x' },
+        5000,
+      );
+
+    it('adds the line to every reviewer after a passing verify on this tree', async () => {
+      const prompts = await reviewPrompts('PROJ-88', (snapshot) => log('pass', snapshot));
+      expect(prompts).toHaveLength(5);
+      for (const prompt of prompts) {
+        expect(prompt).toContain(line);
+      }
+    });
+
+    it('leaves the line out without a verify_log, after a failed one, or on another tree', async () => {
+      for (const [key, verifyLog] of [
+        ['PROJ-89', () => null],
+        ['PROJ-91', (snapshot: string) => log('fail', snapshot)],
+        ['PROJ-92', () => log('pass', 'another-tree')],
+      ] as const) {
+        const prompts = await reviewPrompts(key, verifyLog);
+        expect(prompts).toHaveLength(5);
+        for (const prompt of prompts) {
+          expect(prompt).not.toContain('Checked by machine');
+        }
+      }
+    });
   });
 
   it('resumes the review chat with the full assignment', async () => {

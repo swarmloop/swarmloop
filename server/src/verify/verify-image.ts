@@ -137,3 +137,8 @@ async function removeOldTags(docker: DockerRunner, repository: string, current: 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+/** The image a manifest names, or the repository that its Dockerfile is built into. */
+export function imageName(manifest: SwarmloopManifest, project: string): string {
+  return manifest.image ?? `swarmloop-verify-${projectSlug(project)}`;
+}
