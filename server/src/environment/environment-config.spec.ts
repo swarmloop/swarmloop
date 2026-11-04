@@ -28,6 +28,12 @@ describe('fromSwarmloop', () => {
     });
   });
 
+  it('names the new key for a key of the first format', () => {
+    expect(() => fromSwarmloop(JSON.stringify({ version: 1, image: 'a', install: 'x', verify: ['y'] }))).toThrow(
+      '.swarmloop.json: "install" is now "setup", "verify" is now "checks"',
+    );
+  });
+
   it('reads a network kept to the setup', () => {
     expect(fromSwarmloop(JSON.stringify({ version: 1, image: 'a', network: 'setup' })).network).toBe('setup');
     expect(fromSwarmloop(JSON.stringify({ version: 1, image: 'a' })).network).toBeUndefined();
@@ -51,6 +57,7 @@ describe('fromSwarmloop', () => {
     ['a cache outside the home', { version: 1, image: 'a', cache: ['/tmp/x'] }],
     ['version 2', { version: 2, image: 'a' }],
     ['an unknown network', { version: 1, image: 'a', network: 'all' }],
+    ['the old install key', { version: 1, image: 'a', install: 'npm ci' }],
   ])('rejects %s', (_name, raw) => {
     expect(() => fromSwarmloop(JSON.stringify(raw))).toThrow(SwarmloopError);
   });

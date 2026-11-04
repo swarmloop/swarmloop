@@ -39,6 +39,9 @@ const dockerfilePath = Joi.string().custom((value: string, helpers) =>
     : helpers.message({ custom: `"dockerfile" must be a path under ${SWARMLOOP_DIR}/` }),
 );
 
+/** Keys of the first format. Unknown keys are allowed, so without this they would be dropped without a word. */
+const RENAMED: Record<string, string> = { install: 'setup', verify: 'checks' };
+
 const swarmloopSchema = Joi.object({
   version: Joi.number().valid(1).required(),
   image: Joi.string().min(1),
@@ -80,6 +83,12 @@ export function fromSwarmloop(text: string): EnvironmentConfig {
     raw = JSON.parse(text);
   } catch {
     throw new SwarmloopError(`${SWARMLOOP_FILE}: is not valid JSON`);
+  }
+  const renamed = Object.entries(RENAMED)
+    .filter(([old]) => typeof raw === 'object' && raw !== null && old in raw)
+    .map(([old, now]) => `"${old}" is now "${now}"`);
+  if (renamed.length > 0) {
+    throw new SwarmloopError(`${SWARMLOOP_FILE}: ${renamed.join(', ')}`);
   }
   const checked = swarmloopSchema.validate(raw, { abortEarly: false });
   if (checked.error) {

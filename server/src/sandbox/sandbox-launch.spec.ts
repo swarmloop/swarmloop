@@ -11,6 +11,7 @@ import {
   modelCredential,
   mountsForRun,
   resolveDaemonPath,
+  KEEP_PATH,
   sandboxArgs,
   sandboxEngine,
   sandboxUserId,
@@ -52,7 +53,7 @@ describe('sandbox launch', () => {
     it('joins the internal network at its address and gets the proxy settings', () => {
       const args = sandboxArgs(launch({ allowHosts: ['*.cursor.sh'], egress: { ip: '198.18.3.3' } }), home);
       const text = args.join(' ');
-      expect(text).toContain('--network swarmloop-sandbox --ip 198.18.3.3 --dns 127.0.0.1');
+      expect(text).toContain('--network swarmloop-sandbox --ip 198.18.3.3 --dns 198.18.0.2');
       expect(text).toContain('HTTPS_PROXY=http://198.18.0.2:3128');
       expect(text).not.toContain('swarmloop-registry');
     });
@@ -99,7 +100,17 @@ describe('sandbox launch', () => {
       const args = sandboxArgs(launch({ runtime: 'claude', command, project }), home);
       const text = args.join(' ');
       expect(text).toContain('type=volume,src=swarmloop-cli-claude-0123456789ab,dst=/opt/swarmloop,readonly=true');
-      expect(text).toContain('--entrypoint /opt/swarmloop/bin/claude swarmloop-env-demo:0123456789ab --print hello');
+      const image = args.indexOf('swarmloop-env-demo:0123456789ab');
+      expect(args.slice(image - 2, image + 6)).toEqual([
+        '--entrypoint',
+        'sh',
+        'swarmloop-env-demo:0123456789ab',
+        '-c',
+        KEEP_PATH,
+        'sh',
+        '/opt/swarmloop/bin/claude',
+        '--print',
+      ]);
       expect(text).not.toContain('swarmloop-agent-claude');
       expect(text).toContain('PATH=/opt/swarmloop/bin:/usr/local/bin:/usr/bin:/bin');
       expect(text).toContain('HOME=/home/sandbox');

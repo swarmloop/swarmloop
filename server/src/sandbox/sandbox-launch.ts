@@ -5,7 +5,7 @@ import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.re
 import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { rawEnv } from '../config/process-env';
-import { EGRESS_API, EGRESS_NETWORK, egressEnv, isLeaseIp } from './egress';
+import { EGRESS_API, EGRESS_IP, EGRESS_NETWORK, egressEnv, isLeaseIp } from './egress';
 
 export interface SandboxMount {
   hostPath: string;
@@ -67,6 +67,11 @@ const PROJECT_TMP = '/tmp:rw,exec,nosuid,nodev,size=1g,mode=1777';
 /** Test runners and JVM builds start many threads, and every thread counts. Still a ceiling against a fork bomb. */
 const PROJECT_PIDS = '1024';
 const AGENT_COMMANDS = new Set(['agent', 'claude', 'codex']);
+/**
+ * Agents run their commands in a login shell (`bash -lc`), and /etc/profile of Debian and Ubuntu images sets PATH
+ * anew, which drops the CLI directory and its `rg`. The home profile runs after it and puts the sandbox PATH back.
+ */
+export const KEEP_PATH = `printf 'export PATH="%s"\\n' "$PATH" > "$HOME/.profile" && cp "$HOME/.profile" "$HOME/.bash_profile" && exec "$@"`;
 
 function assertProject(project: ProjectLaunch, command: string[], home: string): void {
   const valid =
@@ -357,8 +362,8 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
   }
   if (launch.egress) {
     // Names are resolved by the proxy. Docker before 25.0.5 forwards DNS from internal networks (CVE-2024-29018),
-    // so a resolver that answers nothing closes that channel on any engine.
-    args.push('--network', EGRESS_NETWORK, '--ip', launch.egress.ip, '--dns', '127.0.0.1');
+    // so the resolver is the proxy's address, where nothing answers on port 53: a lookup fails at once on any engine.
+    args.push('--network', EGRESS_NETWORK, '--ip', launch.egress.ip, '--dns', EGRESS_IP);
     for (const item of egressEnv()) {
       args.push('--env', `${item.name}=${item.value}`);
     }
@@ -391,7 +396,8 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
   }
   if (project) {
     const [command, ...rest] = launch.command;
-    args.push('--workdir', workdir, '--entrypoint', `${CLI_ROOT}/bin/${command ?? ''}`, project.image, ...rest);
+    args.push('--workdir', workdir, '--entrypoint', 'sh', project.image, '-c', KEEP_PATH, 'sh');
+    args.push(`${CLI_ROOT}/bin/${command ?? ''}`, ...rest);
     return args;
   }
   args.push('--workdir', workdir, imageName(launch.runtime), ...launch.command);
