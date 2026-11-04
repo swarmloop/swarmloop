@@ -1,4 +1,4 @@
-import { isPipelineReturn } from '../follow-up';
+import { isPipelineReturn, isVerifyReturn } from '../follow-up';
 import { TASK_SCOPE } from '../shared/requirements-brief';
 
 export function rebaseConflictPrompt(input: {
@@ -37,7 +37,7 @@ export function implementFollowUp(plan: string, notes: string | null): string {
   if (notes?.trim()) {
     lines.push('', notes.trim(), '');
     lines.push(
-      isPipelineReturn(notes)
+      isPipelineReturn(notes) || isVerifyReturn(notes)
         ? 'A pipeline return is a test that failed on this commit. Change the code or that test. Do not leave the files as they are. Do not add a mechanism it did not name.'
         : 'The return is one list. Fix what it names, and do not undo what it says holds. Do not add a mechanism it did not name. In the summary, say that behavior now holds.',
     );

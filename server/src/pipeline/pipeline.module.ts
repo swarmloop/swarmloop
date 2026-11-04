@@ -15,6 +15,7 @@ import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { ResearchStep } from '../steps/research/research.step';
+import { VerifyStep } from '../steps/verify/verify.step';
 import { StepRegistry } from '../steps/step.registry';
 import { PipelineService } from './pipeline.service';
 
@@ -33,6 +34,7 @@ import { PipelineService } from './pipeline.service';
     PlanImproveStep,
     ImplementStep,
     ImplementImproveStep,
+    VerifyStep,
     CodeReviewStep,
     StepRegistry,
     PipelineService,

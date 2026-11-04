@@ -11,7 +11,9 @@ import { storedProjects } from '../prepare/checkout-path';
 import type { PrepareStep } from '../prepare/prepare.step';
 import { handoffSection } from '../shared/handoff';
 import { mountsForStep, repoNames } from '../shared/repo-names';
+import { worktreeSnapshot } from '../../git/worktree-git';
 import { approvedChecklist } from './code-review.prompts';
+import { latestVerifyLog, machineLine, snapshotId } from '../verify/verify-record';
 
 export async function repoMounts(
   runs: RunRepository,
@@ -82,6 +84,18 @@ export function approvedPlan(requirements: string): string {
     return '';
   }
   return approvedChecklist(plan.items);
+}
+
+/** The line for reviewers when the latest verify passed on the tree they review. Empty otherwise. */
+export async function machineChecked(
+  documents: { kind: string; body: string }[],
+  mounts: SandboxMount[],
+): Promise<string> {
+  const record = latestVerifyLog(documents);
+  if (record?.result !== 'pass' || record.commands.length === 0) {
+    return '';
+  }
+  return snapshotId(await worktreeSnapshot(mounts)) === record.snapshot ? machineLine(record.commands) : '';
 }
 
 export function fixNotes(

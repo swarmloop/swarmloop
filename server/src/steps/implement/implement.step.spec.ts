@@ -1052,6 +1052,69 @@ describe('implement step', () => {
     }
   });
 
+  it('blocks when a verify return leaves the worktree unchanged after the second launch', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-verify-unchanged-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-143', 'billing-api');
+    const agent = jest.fn(async (_input: AgentRunInput) => result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-143', 'approve');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await runs.findRun('PROJ-143');
+      await documents.putDocument(
+        run!,
+        'return',
+        'verify failed (it ran in node:22, not in your container)\ncommand: npm test\nexit code: 1\nFAIL src/a.spec.ts\n',
+      );
+      const done = await app.get(PipelineService).step('implement', 'PROJ-143');
+      expect(done.exitCode).toBe(1);
+      expect(done.message).toContain('verify failure left unfixed');
+      expect(done.message).not.toContain('pipeline failure');
+      expect(agent).toHaveBeenCalledTimes(2);
+      const calls = agent.mock.calls.map((call) => call[0]);
+      expect(calls[0]?.prompt).toContain('Do not leave the files as they are');
+      expect(calls[1]?.prompt).toContain('The verify failure still stands and the files are unchanged.');
+      expect(calls[1]?.prompt).toContain('FAIL src/a.spec.ts');
+      const after = await runs.findRun('PROJ-143');
+      expect(after?.currentStep).toBe('implement');
+      expect(after?.status).toBe('blocked');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('tells the agent what swarmloop runs when the base ref has a manifest, and nothing without one', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-manifest-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-144', 'billing-api');
+    featureTree(root, 'PROJ-145', 'billing-web');
+    const clone = join(root, 'billing-api');
+    writeFileSync(
+      join(clone, '.swarmloop.json'),
+      `${JSON.stringify({ version: 1, image: 'node:22', install: 'npm ci', verify: ['npm test', 'npm run lint'] })}\n`,
+    );
+    git(clone, ['add', '.swarmloop.json']);
+    git(clone, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '-m', 'manifest']);
+    git(clone, ['push', 'origin', 'main']);
+    const agent = jest.fn().mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-144', 'approve');
+      await app.get(PipelineService).step('implement', 'PROJ-144');
+      await seed(app, 'PROJ-145', 'approve', 'billing-web\n');
+      await app.get(PipelineService).step('implement', 'PROJ-145');
+      const [withManifest, without] = agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt);
+      expect(withManifest).toContain(
+        'After you finish, swarmloop runs `npm ci` and then `npm test` and then `npm run lint` in node:22 on your worktree. You cannot run them here, write the code so they pass.',
+      );
+      expect(without).not.toContain('After you finish, swarmloop runs');
+    } finally {
+      await app.close();
+    }
+  });
+
   describe('pipeline return on an unchanged worktree', () => {
     async function unchanged(key: string, refSha: (head: string) => string | null) {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-stale-'));

@@ -7,6 +7,7 @@ import {
   liveLogStep,
   markReviewFinished,
   markReviewLive,
+  phaseOf,
   replaySelection,
   reviewChipName,
   stepLabel,
@@ -22,6 +23,12 @@ void describe('liveLogStep', () => {
     assert.equal(liveLogStep('code-review-quality', 'code-review'), false);
     assert.equal(liveLogStep('code-review-quality', 'code-review-quality'), true);
     assert.equal(liveLogStep('code-review', 'code-review-quality'), false);
+  });
+
+  void it('keeps the verify log on verify and its phase in implementation', () => {
+    assert.equal(liveLogStep('verify', 'verify'), true);
+    assert.equal(liveLogStep('verify', 'implement-improve'), false);
+    assert.equal(phaseOf('verify'), 'implementation');
   });
 
   void it('maps a reviewer chip back to code-review and expands the board', () => {

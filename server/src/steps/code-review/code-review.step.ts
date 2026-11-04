@@ -19,6 +19,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { BaseStep, StepContext } from '../base-step';
 import { composedReturn, textDocument } from '../shared/handoff';
+import { withoutVerifyReturns } from '../follow-up';
 import { PrepareStep } from '../prepare/prepare.step';
 import { requiredDocument } from '../step';
 import { REBASE_CONFLICT } from '../../git/rebase-worktree';
@@ -132,7 +133,7 @@ export class CodeReviewStep extends BaseStep {
     const only = REVIEWERS.some((item) => item.name === options.reviewer) ? options.reviewer : undefined;
     const fresh = ((await this.documents.latestBody(key, REBASE_CONFLICT)) ?? '').trim() === 'review';
     const retry = fresh ? false : await retrying(this.visits, opened);
-    const returned = composedReturn(await this.documents.listDocuments(opened.run.id));
+    const returned = composedReturn(withoutVerifyReturns(await this.documents.listDocuments(opened.run.id)));
     const diff = await reviewDiffSection(mounts, await this.checkouts.listDenyPaths());
     const same = sameReviewedDiff(root(this.config), key, diff.patch);
     const repeated = reviewReturn(returned) && same;

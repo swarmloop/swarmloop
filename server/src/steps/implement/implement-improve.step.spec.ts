@@ -52,12 +52,12 @@ describe('implement-improve step', () => {
       expect(notes).toHaveLength(2);
       expect(notes[1]?.body).toBe('- fixed the empty case\n');
       const run = await app.get(RunRepository).findRun('PROJ-70');
-      expect(run?.currentStep).toBe('code-review');
+      expect(run?.currentStep).toBe('verify');
       expect(run?.status).toBe('waiting');
       expect(git(worktree, ['status', '--porcelain'])).toBe('');
       await app.get(PipelineService).step('implement-improve', 'PROJ-70');
       expect(await documents.find({ where: { kind: 'implementation' } })).toHaveLength(2);
-      expect((await app.get(RunRepository).findRun('PROJ-70'))?.currentStep).toBe('code-review');
+      expect((await app.get(RunRepository).findRun('PROJ-70'))?.currentStep).toBe('verify');
     } finally {
       await app.close();
     }
@@ -135,7 +135,7 @@ describe('implement-improve step', () => {
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       const notes = await documents.find({ where: { kind: 'implementation' }, order: { id: 'DESC' } });
       expect(notes[0]?.body).toBe('- changed the field parser\n');
-      expect((await app.get(RunRepository).findRun('PROJ-76'))?.currentStep).toBe('code-review');
+      expect((await app.get(RunRepository).findRun('PROJ-76'))?.currentStep).toBe('verify');
     } finally {
       await app.close();
     }
@@ -155,7 +155,7 @@ describe('implement-improve step', () => {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
       const run = await runs.findRun('PROJ-77');
-      expect(run?.currentStep).toBe('code-review');
+      expect(run?.currentStep).toBe('verify');
       expect(run?.status).toBe('waiting');
       const returned = await documents.latestBody('PROJ-77', 'return');
       expect(returned).toContain('FAIL api/runs.service.spec.ts expected running');
@@ -180,7 +180,7 @@ describe('implement-improve step', () => {
       await failedCommit(app, 'PROJ-78', git(worktree, ['rev-parse', 'HEAD']));
       const done = await app.get(PipelineService).step('implement-improve', 'PROJ-78');
       expect(done.exitCode).toBe(0);
-      expect((await app.get(RunRepository).findRun('PROJ-78'))?.currentStep).toBe('code-review');
+      expect((await app.get(RunRepository).findRun('PROJ-78'))?.currentStep).toBe('verify');
     } finally {
       await app.close();
     }
@@ -197,7 +197,7 @@ describe('implement-improve step', () => {
       await failedCommit(app, 'PROJ-79', 'abc');
       const done = await app.get(PipelineService).step('implement-improve', 'PROJ-79');
       expect(done.exitCode).toBe(0);
-      expect((await app.get(RunRepository).findRun('PROJ-79'))?.currentStep).toBe('code-review');
+      expect((await app.get(RunRepository).findRun('PROJ-79'))?.currentStep).toBe('verify');
     } finally {
       await app.close();
     }
@@ -218,7 +218,7 @@ describe('implement-improve step', () => {
       const notes = await documents.find({ where: { kind: 'implementation' }, order: { id: 'DESC' } });
       expect(notes[0]?.body).toBe('- changed the field parser\n');
       const run = await app.get(RunRepository).findRun('PROJ-71');
-      expect(run?.currentStep).toBe('code-review');
+      expect(run?.currentStep).toBe('verify');
       expect(run?.status).toBe('waiting');
     } finally {
       await app.close();
@@ -301,7 +301,7 @@ describe('implement-improve step', () => {
       expect(input.prompt).toContain('logical and technical gaps');
       expect(input.prompt).not.toContain('A rebase is in progress');
       expect((await documents.latestBody('PROJ-74', REBASE_CONFLICT))?.trim()).toBe('pending');
-      expect((await runs.findRun('PROJ-74'))?.currentStep).toBe('code-review');
+      expect((await runs.findRun('PROJ-74'))?.currentStep).toBe('verify');
     } finally {
       await app.close();
     }
@@ -338,7 +338,7 @@ describe('implement-improve step', () => {
       expect(input.prompt).toContain('logical and technical gaps');
       expect(input.prompt).not.toContain('finish the checklist in this visit');
       const fresh = await runs.findRun('PROJ-75');
-      expect(fresh?.currentStep).toBe('code-review');
+      expect(fresh?.currentStep).toBe('verify');
       expect(fresh?.status).toBe('waiting');
       expect((await documents.latestBody('PROJ-75', REBASE_CONFLICT))?.trim()).toBe('pending');
       expect(git(worktree, ['diff', '--name-only', '--diff-filter=U'])).toBe('');
@@ -407,6 +407,36 @@ describe('implement-improve step', () => {
       };
       expect(record.plan?.items).toEqual(['add the field']);
       expect(await documents.latestBody('PROJ-181', 'handoff')).not.toContain('outranks the checklist');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('tells the agent what swarmloop runs when the base ref has a manifest, and nothing without one', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-manifest-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-182', 'billing-api');
+    featureTree(root, 'PROJ-183', 'billing-web');
+    const clone = join(root, 'PROJ-182-billing-api');
+    writeFileSync(
+      join(clone, '.swarmloop.json'),
+      `${JSON.stringify({ version: 1, image: 'node:22', install: 'npm ci', verify: ['npm test'] })}\n`,
+    );
+    git(clone, ['add', '.swarmloop.json']);
+    git(clone, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '-m', 'manifest']);
+    git(clone, ['push', 'origin', 'main']);
+    const agent = jest.fn().mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-182');
+      await app.get(PipelineService).step('implement-improve', 'PROJ-182');
+      await seed(app, 'PROJ-183', 'billing-web\n');
+      await app.get(PipelineService).step('implement-improve', 'PROJ-183');
+      const [withManifest, without] = agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt);
+      expect(withManifest).toContain(
+        'After you finish, swarmloop runs `npm ci` and then `npm test` in node:22 on your worktree. You cannot run them here, write the code so they pass.',
+      );
+      expect(without).not.toContain('After you finish, swarmloop runs');
     } finally {
       await app.close();
     }

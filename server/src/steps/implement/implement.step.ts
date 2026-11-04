@@ -17,7 +17,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
 import { CommitStep } from '../commit/commit.step';
-import { isPipelineReturn, withAddedRepos } from '../follow-up';
+import { isPipelineReturn, isVerifyReturn, withAddedRepos } from '../follow-up';
 import { git, gitDetail } from '../../git/git';
 import { AgentStep, ModelStepContext } from '../agent-step';
 import { composedReturn, recordHandoff, textDocument, withHandoff } from '../shared/handoff';
@@ -25,6 +25,7 @@ import { parseSummary, skillPrompt } from '../shared/skill-prompt';
 import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.step';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../shared/repo-names';
+import { verifyNote, withVerifyNote } from '../verify/verify-note';
 import { storedPlan } from '../step';
 import {
   REBASE_CONFLICT,
@@ -96,15 +97,16 @@ export class ImplementStep extends AgentStep {
       return settled;
     }
     const heads = await featureHeads(mounts, branch);
-    const prompt = basePrompt;
+    const prompt = withVerifyNote(basePrompt, await verifyNote(mounts));
     const before = await worktreeSnapshot(mounts);
     let agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries() });
     await assertUncommitted(mounts, branch, heads);
     let planText = agentResult.responseText;
     let planOutput = agentResult.output ?? '';
-    if (isPipelineReturn(notes) && (await worktreeSnapshot(mounts)) === before) {
+    const verifyReturn = isVerifyReturn(notes);
+    if ((isPipelineReturn(notes) || verifyReturn) && (await worktreeSnapshot(mounts)) === before) {
       agentResult = await ctx.launch({
-        prompt: `The pipeline failure still stands and the files are unchanged.\n\n${notes?.trim() ?? ''}`,
+        prompt: `The ${verifyReturn ? 'verify' : 'pipeline'} failure still stands and the files are unchanged.\n\n${notes?.trim() ?? ''}`,
         mounts,
         allowHosts: packageRegistries(),
       });
@@ -115,6 +117,9 @@ export class ImplementStep extends AgentStep {
         planOutput = againOutput;
       }
       if ((await worktreeSnapshot(mounts)) === before) {
+        if (verifyReturn) {
+          return this.unfixedFailure(ctx, key, planText, planOutput, 'blocked', 'verify failure left unfixed');
+        }
         const stale = await staleRepos(await this.documents.latestBody(key, 'pipeline_ref'), mounts);
         if (stale.length > 0) {
           return ctx.end(
@@ -126,7 +131,7 @@ export class ImplementStep extends AgentStep {
             'commit',
           );
         }
-        return this.unfixedPipelineFailure(ctx, key, planText, planOutput);
+        return this.unfixedFailure(ctx, key, planText, planOutput, 'failed', 'pipeline failure left unfixed');
       }
     }
     const text = agentResult.responseText;
@@ -145,12 +150,14 @@ export class ImplementStep extends AgentStep {
     );
   }
 
-  /** A pipeline failure that the retry left unchanged on disk: stop with the corrected checklist, if one came back. */
-  private async unfixedPipelineFailure(
+  /** A pipeline or verify failure that the retry left unchanged on disk: stop with the corrected checklist, if one came back. */
+  private async unfixedFailure(
     ctx: ModelStepContext,
     key: string,
     planText: string,
     planOutput: string,
+    outcome: 'failed' | 'blocked',
+    text: string,
   ): Promise<PipelineResult> {
     const corrected = correctedPlan(ctx.requirements, planText, planOutput);
     const docs = corrected
@@ -159,7 +166,7 @@ export class ImplementStep extends AgentStep {
           textDocument('requirements', corrected.requirements),
         ]
       : undefined;
-    return ctx.end('failed', 1, `${ctx.opened.startedAt} pipeline failure left unfixed`, undefined, docs);
+    return ctx.end(outcome, 1, `${ctx.opened.startedAt} ${text}`, undefined, docs);
   }
 
   /** Finish an open rebase in the server. A stored checklist then goes to code review; an unfinished one returns to the checklist prompt. */
