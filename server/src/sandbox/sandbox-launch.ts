@@ -58,7 +58,10 @@ const REGISTRIES = new Set([
   'index.crates.io',
   'repo.maven.apache.org',
   'repo1.maven.org',
+  'repo.packagist.org',
+  'packagist.org',
 ]);
+export const SANDBOX_PIDS = '256';
 
 const MODEL_HOSTS = new Set(RUNTIME_NAMES.flatMap((name) => runtimeFor(name).apiHosts));
 const MODEL_ENV = new Set(RUNTIME_NAMES.flatMap((name) => runtimeFor(name).credentialNames));
@@ -243,7 +246,7 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir()): string[] {
     '--security-opt',
     'no-new-privileges',
     '--pids-limit',
-    '256',
+    SANDBOX_PIDS,
     '--read-only',
     '--tmpfs',
     '/tmp:rw,nosuid,nodev,size=64m,mode=1777',
@@ -305,7 +308,7 @@ function assertMount(mount: SandboxMount, home: string): void {
   sandboxMount(mount);
 }
 
-function assertDaemonPath(path: string, home: string): void {
+export function assertDaemonPath(path: string, home: string): void {
   if (!isAbsolute(path)) {
     throw new SwarmloopError('sandbox mount is not allowed');
   }
@@ -320,7 +323,7 @@ function assertDaemonPath(path: string, home: string): void {
   }
 }
 
-function assertMask(mask: EnvMask, mounts: SandboxMount[]): void {
+export function assertMask(mask: EnvMask, mounts: SandboxMount[]): void {
   const fits = mounts.some((mount) => mask.containerFile.startsWith(`${mount.containerPath}/`));
   if (!fits || mask.containerFile.includes('..')) {
     throw new SwarmloopError('sandbox mount is not allowed');

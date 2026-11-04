@@ -213,6 +213,11 @@ describe('sandbox launch', () => {
     expect(registry.join(' ')).not.toContain('--network host');
   });
 
+  it('accepts the Packagist hosts as registries', () => {
+    const args = sandboxArgs(launch({ allowHosts: ['repo.packagist.org', 'packagist.org'] }), home);
+    expect(args[args.indexOf('--network') + 1]).toBe('swarmloop-registry');
+  });
+
   it('masks env files and leaves the example', () => {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-env-mask-'));
     writeFileSync(join(root, '.env'), 'TOKEN=secret\n');
