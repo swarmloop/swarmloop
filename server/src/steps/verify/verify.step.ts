@@ -80,7 +80,7 @@ export class VerifyStep extends BaseStep {
             project: name,
             worktree: mount.hostPath,
             baseRef: base,
-            onOutput: log.onOutput,
+            onOutput: (line) => log.onOutput(line),
           })
         : { status: 'skipped' };
       if (result.status === 'skipped') {

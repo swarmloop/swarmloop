@@ -41,26 +41,26 @@ const passing: VerifyResult = {
 describe('verify step', () => {
   it('shows the commands in the log file and the live entry while they run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-verify-live-'));
-    const seen: { file: string; live: string[] } = { file: '', live: [] };
-    let log!: jest.SpyInstance;
+    const live: string[] = [];
+    let file = '';
     const run = jest.fn(async (input: { onOutput?: (line: VerifyOutputLine) => void }) => {
       input.onOutput?.({ command: 'npm test', stream: 'stdout', text: '$ npm test' });
       input.onOutput?.({ command: 'npm test', stream: 'stdout', text: 'running' });
-      const file = join(root, 'data', `${KEY}-verify-output.txt`);
-      for (let turn = 0; turn < 500 && log.mock.calls.length === 0; turn += 1) {
+      for (let turn = 0; turn < 500 && live.length === 0; turn += 1) {
         await new Promise((resolve) => setImmediate(resolve));
       }
-      seen.file = readFileSync(file, 'utf8');
-      seen.live = log.mock.calls.map((call) => (call[0] as { body: string }).body);
+      file = readFileSync(join(root, 'data', `${KEY}-verify-output.txt`), 'utf8');
       return passing;
     });
     const app = await boot(root, run);
-    log = jest.spyOn(app.get(LiveHub), 'log');
+    const log = jest.spyOn(app.get(LiveHub), 'log').mockImplementation((entry) => {
+      live.push(entry.body);
+    });
     try {
       await seed(app, root);
       await app.get(PipelineService).step('verify', KEY);
-      expect(seen.file).toContain('== gate ==\n$ npm test\n');
-      expect(seen.live[0]).toContain('== gate ==\n$ npm test\n');
+      expect(file).toContain('== gate ==\n$ npm test\n');
+      expect(live[0]).toContain('== gate ==\n$ npm test\n');
       const written = readFileSync(join(root, 'data', `${KEY}-verify-output.txt`), 'utf8');
       expect(written.endsWith('process exited 0\n')).toBe(true);
       expect(log).toHaveBeenLastCalledWith(expect.objectContaining({ key: KEY, step: 'verify' }));
@@ -80,7 +80,7 @@ describe('verify step', () => {
       expect(done.message).toContain('verify skipped: no .swarmloop.json');
       const stored = await app.get(RunRepository).findRun(KEY);
       expect(stored?.currentStep).toBe('code-review');
-      expect(await kinds(app)).toEqual(['handoff', 'implementation', 'repos', 'requirements'].sort());
+      expect(await kinds(app)).toEqual(['handoff', 'implementation', 'repos', 'requirements', 'snapshot'].sort());
       expect(existsSync(join(root, 'data', `${KEY}-verify-output.txt`))).toBe(false);
     } finally {
       await app.close();
@@ -100,7 +100,9 @@ describe('verify step', () => {
       expect(done.exitCode).toBe(0);
       const record = parseVerifyLog((await documents.latestBody(KEY, 'verify_log')) ?? '');
       expect(record).toMatchObject({ result: 'pass', commands: ['npm ci', 'npm test'] });
-      expect(await kinds(app)).toEqual(['handoff', 'implementation', 'repos', 'requirements', 'verify_log'].sort());
+      expect(await kinds(app)).toEqual(
+        ['handoff', 'implementation', 'repos', 'requirements', 'snapshot', 'verify_log'].sort(),
+      );
       const after = fixNotes(await documents.listDocuments(stored.id), await documents.latestBody(KEY, 'handoff'));
       expect(after).toEqual(before);
       expect((await app.get(RunRepository).findRun(KEY))?.currentStep).toBe('code-review');
@@ -125,7 +127,7 @@ describe('verify step', () => {
       expect(stored?.currentStep).toBe('implement');
       expect(stored?.status).toBe('waiting');
       expect(await kinds(app)).toEqual(
-        ['handoff', 'implementation', 'repos', 'requirements', 'return', 'verify_log'].sort(),
+        ['handoff', 'implementation', 'repos', 'requirements', 'return', 'snapshot', 'verify_log'].sort(),
       );
     } finally {
       await app.close();
@@ -164,7 +166,7 @@ describe('verify step', () => {
     try {
       const worktree = await seed(app, root);
       await app.get(PipelineService).step('verify', KEY);
-      writeFileSync(join(worktree, 'changed.txt'), 'changed\n');
+      writeFileSync(join(worktree, 'README'), 'changed\n');
       const done = await app.get(PipelineService).step('verify', KEY);
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('verify return limit reached');
@@ -197,7 +199,7 @@ describe('verify step', () => {
     try {
       const worktree = await seed(app, root);
       await app.get(PipelineService).step('verify', KEY);
-      writeFileSync(join(worktree, 'changed.txt'), 'changed\n');
+      writeFileSync(join(worktree, 'README'), 'changed\n');
       await app.get(PipelineService).step('verify', KEY);
       const stored = await app.get(RunRepository).findRun(KEY);
       expect(stored?.currentStep).toBe('implement');

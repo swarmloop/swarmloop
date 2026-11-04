@@ -1074,7 +1074,7 @@ describe('implement step', () => {
       expect(done.message).not.toContain('pipeline failure');
       expect(agent).toHaveBeenCalledTimes(2);
       const calls = agent.mock.calls.map((call) => call[0]);
-      expect(calls[0]?.prompt).toContain('Do not leave the files as they are');
+      expect(calls[0]?.prompt).toContain('FAIL src/a.spec.ts');
       expect(calls[1]?.prompt).toContain('The verify failure still stands and the files are unchanged.');
       expect(calls[1]?.prompt).toContain('FAIL src/a.spec.ts');
       const after = await runs.findRun('PROJ-143');
