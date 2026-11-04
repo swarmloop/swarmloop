@@ -139,6 +139,23 @@ export function matchesHost(rule: string, name: string): boolean {
   return name === domain || name.endsWith(`.${domain}`);
 }
 
+/**
+ * Packages with native code fetch a prebuilt binary from GitHub releases at install time (better-sqlite3, esbuild,
+ * sharp), and node-gyp falls back to the headers from nodejs.org. Only the setup gets these: github.com also takes
+ * pushes, so the agent, which holds the model key and writes the code, does not.
+ */
+const SETUP_DOWNLOADS = new Set([
+  'github.com',
+  'objects.githubusercontent.com',
+  'release-assets.githubusercontent.com',
+  'nodejs.org',
+]);
+
+/** Hosts of the one-time environment setup: the registries and the release downloads of native packages. */
+export function setupHosts(): string[] {
+  return [...REGISTRIES, ...SETUP_DOWNLOADS];
+}
+
 export function packageRegistries(): string[] {
   return [...REGISTRIES];
 }
@@ -299,7 +316,8 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
   }
   for (const host of launch.allowHosts) {
     const name = hostName(host);
-    if (!isLocalHost(name) && !REGISTRIES.has(name) && ![...MODEL_HOSTS].some((rule) => matchesHost(rule, name))) {
+    const known = REGISTRIES.has(name) || SETUP_DOWNLOADS.has(name);
+    if (!isLocalHost(name) && !known && ![...MODEL_HOSTS].some((rule) => matchesHost(rule, name))) {
       throw new SwarmloopError(`${name} is a production host`);
     }
   }

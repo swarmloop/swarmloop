@@ -9,12 +9,14 @@ import {
   agentStateDir,
   emptyEnvFile,
   modelCredential,
+  packageRegistries,
   mountsForRun,
   resolveDaemonPath,
   KEEP_PATH,
   sandboxArgs,
   sandboxEngine,
   sandboxUserId,
+  setupHosts,
   stepContainers,
 } from './sandbox-launch';
 
@@ -286,6 +288,12 @@ describe('sandbox launch', () => {
         home,
       ),
     ).toThrow('sandbox mount is not allowed');
+  });
+
+  it('gives the release downloads of native packages to the setup only', () => {
+    expect(setupHosts()).toEqual(expect.arrayContaining(['github.com', 'release-assets.githubusercontent.com']));
+    expect(packageRegistries()).not.toContain('github.com');
+    expect(() => sandboxArgs(launch({ allowHosts: setupHosts() }), home)).not.toThrow();
   });
 
   it('rejects a production host, the home directory, and root', () => {

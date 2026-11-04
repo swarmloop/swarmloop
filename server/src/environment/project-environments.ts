@@ -11,7 +11,7 @@ import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry
 import type { LiveHub } from '../live/live.hub';
 import { CLI_BIN, CliBundles } from '../sandbox/cli-bundle';
 import type { ProjectLaunch, SandboxMount } from '../sandbox/sandbox-launch';
-import { agentStateDir, imageName, packageRegistries, prepareStateDir, sandboxUserId } from '../sandbox/sandbox-launch';
+import { agentStateDir, imageName, prepareStateDir, sandboxUserId, setupHosts } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { type EnvironmentConfig, readEnvironmentConfig } from './environment-config';
 import { imagePath, projectSlug, resolveProjectImage } from './project-image';
@@ -209,7 +209,7 @@ export class ProjectEnvironments {
       step: input.step,
       mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
       statePath,
-      allowHosts: packageRegistries(),
+      allowHosts: setupHosts(),
       command: [],
       userId,
       project: { ...launch, shell: command },

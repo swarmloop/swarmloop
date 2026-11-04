@@ -121,7 +121,7 @@ describe('ProjectEnvironments', () => {
     expect(spawned[0]?.project?.shell).toBe('npm ci');
     expect(spawned[0]?.command).toEqual([]);
     expect(spawned[0]?.env).toBeUndefined();
-    expect(spawned[0]?.allowHosts.length).toBeGreaterThan(0);
+    expect(spawned[0]?.allowHosts).toEqual(expect.arrayContaining(['registry.npmjs.org', 'github.com', 'nodejs.org']));
     expect(records().at(-1)?.setup).toMatchObject({ command: 'npm ci', exitCode: 0 });
     expect(records().at(-1)?.setup?.tail).toContain('added 12 packages');
   });
