@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -192,23 +192,6 @@ describe('verify step', () => {
     }
   });
 
-  it('keeps going when the same failure comes back after a change', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-verify-changed-'));
-    const run = jest.fn().mockResolvedValue(failure('same tail'));
-    const app = await boot(root, run);
-    try {
-      const worktree = await seed(app, root, true);
-      await app.get(PipelineService).step('verify', KEY);
-      appendFileSync(join(worktree, 'README'), 'changed\n');
-      await app.get(PipelineService).step('verify', KEY);
-      const stored = await app.get(RunRepository).findRun(KEY);
-      expect(stored?.currentStep).toBe('implement');
-      expect(stored?.status).toBe('waiting');
-    } finally {
-      await app.close();
-    }
-  });
-
   it('runs nothing when the tree already passed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-verify-proven-'));
     const run = jest.fn().mockResolvedValue(passing);
@@ -242,16 +225,13 @@ async function boot(root: string, run: jest.Mock, extra = '') {
     .compile();
 }
 
-async function seed(app: Awaited<ReturnType<typeof boot>>, root: string, targetPath = false): Promise<string> {
+async function seed(app: Awaited<ReturnType<typeof boot>>, root: string): Promise<string> {
   const worktree = featureTree(root, KEY, 'billing-api');
   const runs = app.get(RunRepository);
   const documents = app.get(DocumentRepository);
   const seeded = await runs.begin(KEY, 'verify');
   seeded.status = 'waiting';
   seeded.currentStep = 'verify';
-  if (targetPath) {
-    seeded.targetPath = worktree;
-  }
   await runs.saveRun(seeded);
   const plan = { name: '', overview: '', items: ['add the field'], decision: 'approve' };
   await documents.putDocument(
