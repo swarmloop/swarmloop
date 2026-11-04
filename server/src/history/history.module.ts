@@ -47,14 +47,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     }),
     TypeOrmModule.forFeature(entities),
   ],
-  providers: [
-    RunRepository,
-    DocumentRepository,
-    VisitRepository,
-    FlowRepository,
-    EventRepository,
-    CheckoutRepository,
-  ],
+  providers: [RunRepository, DocumentRepository, VisitRepository, FlowRepository, EventRepository, CheckoutRepository],
   exports: [
     RunRepository,
     DocumentRepository,
