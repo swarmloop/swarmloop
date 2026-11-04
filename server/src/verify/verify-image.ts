@@ -8,7 +8,8 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import { rawEnv } from '../config/process-env';
 import { gitDetail } from '../git/git';
 import type { DockerRunner } from '../sandbox/sandbox.service';
-import { MANIFEST_DIR, SwarmloopManifest } from './manifest';
+import type { SwarmloopManifest } from './manifest';
+import { MANIFEST_DIR } from './manifest';
 
 const run = promisify(execFile);
 
@@ -100,7 +101,7 @@ async function exportDirectory(repoPath: string, baseRef: string, dir: string): 
 /** sha256 over the name and bytes of every file, in sorted order. */
 function hashDirectory(directory: string): string {
   const hash = createHash('sha256');
-  const files = (readdirSync(directory, { recursive: true, encoding: 'utf8' }) as string[])
+  const files = readdirSync(directory, { recursive: true, encoding: 'utf8' })
     .filter((name) => statSync(join(directory, name)).isFile())
     .sort();
   for (const name of files) {

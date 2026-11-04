@@ -1,13 +1,12 @@
 import { homedir } from 'os';
 import { SwarmloopError } from '../core/swarmloop-error';
+import type { EnvMask, SandboxMount } from '../sandbox/sandbox-launch';
 import {
   assertDaemonPath,
   assertMask,
   containerName,
-  EnvMask,
   packageRegistries,
   SANDBOX_PIDS,
-  SandboxMount,
   sandboxMount,
   sandboxNetworkName,
 } from '../sandbox/sandbox-launch';

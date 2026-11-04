@@ -66,12 +66,13 @@ export async function readManifest(repoPath: string, baseRef: string): Promise<R
   } catch {
     throw new SwarmloopError(`${MANIFEST_FILE}: is not valid JSON`);
   }
-  const { value, error } = schema.validate(raw, { abortEarly: false });
-  if (error) {
-    throw new SwarmloopError(`${MANIFEST_FILE}: ${error.details.map((detail) => detail.message).join('; ')}`);
+  const checked = schema.validate(raw, { abortEarly: false });
+  if (checked.error) {
+    throw new SwarmloopError(`${MANIFEST_FILE}: ${checked.error.details.map((detail) => detail.message).join('; ')}`);
   }
-  const warnings = Object.keys(value as object)
+  const manifest = checked.value as SwarmloopManifest;
+  const warnings = Object.keys(manifest)
     .filter((key) => !(key in keys))
     .map((key) => `unknown key "${key}" ignored`);
-  return { manifest: value, warnings };
+  return { manifest, warnings };
 }

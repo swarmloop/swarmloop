@@ -8,7 +8,8 @@ import { testEnv } from '../config/env.spec-helpers';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { makeRepo, writeFiles } from './git-repo.spec-helpers';
-import { VerifyOutputLine, VerifyService } from './verify.service';
+import type { VerifyOutputLine } from './verify.service';
+import { VerifyService } from './verify.service';
 
 interface Script {
   stdout?: string;

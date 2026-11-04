@@ -1,5 +1,6 @@
 import { SwarmloopError } from '../core/swarmloop-error';
-import { verifyArgs, VerifyLaunch } from './verify-args';
+import type { VerifyLaunch } from './verify-args';
+import { verifyArgs } from './verify-args';
 
 const home = '/Users/dev';
 
