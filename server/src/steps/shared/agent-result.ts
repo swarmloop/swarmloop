@@ -28,6 +28,7 @@ export function combineAgentResults(results: AgentRunResult[]): AgentRunResult |
     durationMs: results.reduce((max, item) => Math.max(max, item.durationMs), 0),
     startedAt,
     finishedAt,
+    verifyLogs: results.flatMap((item) => item.verifyLogs ?? []),
   };
 }
 

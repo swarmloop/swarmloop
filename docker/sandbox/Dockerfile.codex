@@ -7,6 +7,9 @@ RUN apt-get update \
   && mkdir -p /work \
   && chown sandbox:sandbox /work
 
+COPY swarmloop-verify /usr/local/bin/swarmloop-verify
+RUN chmod 755 /usr/local/bin/swarmloop-verify
+
 # /home/sandbox is a tmpfs at run time, so the binary lives outside it.
 RUN set -eu \
   && arch="$(uname -m)" \

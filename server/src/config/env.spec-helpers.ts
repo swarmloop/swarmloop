@@ -22,6 +22,7 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     MAX_RETURNS: 3,
     MAX_PIPELINE_RETURNS: 6,
     MAX_VERIFY_RETURNS: 3,
+    MAX_VERIFY_CALLS: 8,
     MAX_LAUNCHES: 3,
     MAX_RUN_USD: 50,
     MAX_RUN_TOKENS: null,

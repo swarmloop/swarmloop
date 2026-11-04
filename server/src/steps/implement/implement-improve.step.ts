@@ -21,7 +21,7 @@ import { composedReturn, recordHandoff, textDocument, withHandoff } from '../sha
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames } from '../shared/repo-names';
-import { verifyNote, withVerifyNote } from '../verify/verify-note';
+import { agentVerifyInput, verifyNote, withVerifyNote } from '../verify/verify-note';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
 import { IMPLEMENT_IMPROVE_FOLLOW_UP } from './implement.prompts';
 import { reviewedImplementation, withReturnNotes } from './implement-record';
@@ -84,7 +84,8 @@ export class ImplementImproveStep extends AgentStep {
       withAddedRepos(chosen, await this.documents.latestBody(key, 'added_repos')),
       await verifyNote(mounts),
     );
-    const agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries() });
+    const verify = await agentVerifyInput(mounts, env.MAX_VERIFY_CALLS);
+    const agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries(), verify });
     const text = agentResult.responseText;
     await assertUncommitted(mounts, branch, heads);
     const wrote = reviewedImplementation(text);

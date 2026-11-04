@@ -25,7 +25,7 @@ import { parseSummary, skillPrompt } from '../shared/skill-prompt';
 import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.step';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../shared/repo-names';
-import { verifyNote, withVerifyNote } from '../verify/verify-note';
+import { agentVerifyInput, verifyNote, withVerifyNote } from '../verify/verify-note';
 import { storedPlan } from '../step';
 import {
   REBASE_CONFLICT,
@@ -98,8 +98,9 @@ export class ImplementStep extends AgentStep {
     }
     const heads = await featureHeads(mounts, branch);
     const prompt = withVerifyNote(basePrompt, await verifyNote(mounts));
+    const verify = await agentVerifyInput(mounts, env.MAX_VERIFY_CALLS);
     const before = await worktreeSnapshot(mounts);
-    let agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries() });
+    let agentResult = await ctx.launch({ prompt, mounts, allowHosts: packageRegistries(), verify });
     await assertUncommitted(mounts, branch, heads);
     let planText = agentResult.responseText;
     let planOutput = agentResult.output ?? '';
@@ -109,6 +110,7 @@ export class ImplementStep extends AgentStep {
         prompt: `The ${verifyReturn ? 'verify' : 'pipeline'} failure still stands and the files are unchanged.\n\n${notes?.trim() ?? ''}`,
         mounts,
         allowHosts: packageRegistries(),
+        verify,
       });
       await assertUncommitted(mounts, branch, heads);
       const againOutput = agentResult.output ?? '';
