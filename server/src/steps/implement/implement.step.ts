@@ -12,7 +12,6 @@ import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent
 import { sessionFileName } from '../../agent/session-group';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
-import { packageRegistries } from '../../sandbox/sandbox-launch';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
@@ -139,6 +138,8 @@ export class ImplementStep extends AgentStep {
     }
     const text = agentResult.responseText;
     const body = parseImplementation(text);
+    await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
+    await assertUncommitted(mounts, branch, heads);
     const corrected = correctedPlan(ctx.requirements, planText, planOutput);
     const summary = corrected ? `${parseSummary(text).trimEnd()}\n${corrected.handoff}` : parseSummary(text);
     const status = await worktreeStatus(mounts);
@@ -216,16 +217,20 @@ export class ImplementStep extends AgentStep {
         return this.failConflict(ctx, outcome);
       }
       seen.add(id);
-      await ctx.launch({
-        prompt: `${rebaseConflictPrompt({
+      const workplace = await agentWorkplace(
+        this.environments,
+        { run: ctx.opened.run, key, step: this.name, mounts },
+        `${rebaseConflictPrompt({
           repo: outcome.repo,
           files: outcome.files,
           requirements: ctx.requirements,
           base: outcome.base,
           commit: outcome.commit,
         })}\n`,
+      );
+      await ctx.launch({
+        ...workplace,
         mounts,
-        allowHosts: packageRegistries(),
         resume: false,
       });
       const cwd = worktreePath(root(this.config), key, outcome.repo);
@@ -243,6 +248,7 @@ export class ImplementStep extends AgentStep {
       await this.documents.putDocument(ctx.opened.run, REBASE_CONFLICT, 'review\n');
       return null;
     }
+    await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
     await this.commit.publishRebased(key, branch, outcome.leases);
     await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review');
     const existing = (await this.documents.latestBody(key, 'implementation')) ?? '';

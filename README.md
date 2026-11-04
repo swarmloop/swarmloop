@@ -144,9 +144,10 @@ How it runs:
 
 - The image is pulled once, or built from the committed Dockerfile and reused until a file in its build context changes.
 - The image must be Debian or Ubuntu based and have `bash`, because the Claude and Cursor CLIs need glibc. `scripts/agent-env-probe.sh <image>` tells you whether it works. If it does not, the step stops and says so.
-- `setup` runs once per run, before the first implementation step, in the image, with the package registries and no model key. If it fails, the run goes on and the agent gets its last lines.
+- `setup` runs before implementation, in the project image, with the package registries and no model key. Successful setup is reused. A failure stops the step with its exit code and last lines; Resume retries setup.
 - `implement` and `implement-improve` run in the image, with the agent CLI mounted read-only from its own image. Everything else of the sandbox stays: no root, no capabilities, read-only system, no Docker, the network only through the egress proxy, for the model and the package registries, no secret but the model key. The agent may run any command in its worktree: tests, lint, type checks, and the package manager, so it can add or upgrade a dependency. The lockfile it writes is committed with the code.
-- The agent is told to run `checks` when a piece of work is done and before its summary, and to fix what fails. Without `checks` it finds the commands in the README, the package scripts or the CI config.
+- The agent runs `checks` while working. Before `implement`, `implement-improve`, or rebase resolution can finish, the server independently runs every declared check in each repository's project image, without network or model credentials. The first failure stops the step and records feedback for Resume. Checks must be executable shell commands, without placeholders. Without declared checks there is no local completion gate; CI remains the final judge.
+- Project containers receive a temporary, read-only copy of Git metadata, so tools can read tracked files and diffs even in linked worktrees. The original Git state, credentials and host configuration are not mounted.
 - The reviewers and CI come after it, as before. CI stays the final judge.
 - The environment is read once per run and kept, so a change the agent makes to it counts from the next run.
 - Keep it the same as CI: the same image or version, and one command, such as `npm run check`, that both CI and `checks` call.

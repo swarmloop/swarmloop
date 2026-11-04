@@ -14,12 +14,20 @@ import type { ProjectLaunch, SandboxMount } from '../sandbox/sandbox-launch';
 import { agentStateDir, imageName, prepareStateDir, sandboxUserId, setupHosts } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { type EnvironmentConfig, readEnvironmentConfig } from './environment-config';
+import { worktreeSnapshot } from '../git/worktree-git';
 import { imagePath, projectSlug, resolveProjectImage } from './project-image';
 
 export const ENVIRONMENT = 'environment';
 const SETUP_TIMEOUT_MS = 30 * 60_000;
 const TAIL_LINES = 80;
 const TAIL_CHARS = 6000;
+
+export interface EnvironmentInput {
+  run: RunEntity;
+  key: string;
+  step: string;
+  mounts: SandboxMount[];
+}
 
 /** What a run keeps about its environment: the config it started with and how the setup went. */
 export interface EnvironmentRecord {
@@ -60,12 +68,7 @@ export class ProjectEnvironments {
   }
 
   /** Null when no repository of the run describes an environment: the agent then works as before. */
-  async prepare(input: {
-    run: RunEntity;
-    key: string;
-    step: string;
-    mounts: SandboxMount[];
-  }): Promise<PreparedEnvironment | null> {
+  async prepare(input: EnvironmentInput): Promise<PreparedEnvironment | null> {
     const runtime = this.deps.env().RUNTIME;
     const record = await this.record(input);
     if (!record) {
@@ -87,13 +90,52 @@ export class ProjectEnvironments {
       caches: await this.caches(record.repo, record.config.cache),
     };
     const command = record.config.setup;
-    const done = record.setup && record.setup.command === command && record.setup.image === image;
+    const done = record.setup?.exitCode === 0 && record.setup.command === command && record.setup.image === image;
     if (command && !done) {
-      const result = await this.setup(input, launch, command, mount);
+      const result = await this.runShell(input, launch, command, mount, 'setup');
       record.setup = { command, image, ...result };
       await this.documents.putDocument(input.run, ENVIRONMENT, JSON.stringify(record));
+      await this.documents.putDocument(input.run, `${ENVIRONMENT}:${record.repo}`, JSON.stringify(record));
+    }
+    if (record.setup && record.setup.exitCode !== 0) {
+      throw new SwarmloopError(
+        `${record.repo} environment setup failed (exit ${record.setup.exitCode}):\n${record.setup.tail}`,
+      );
     }
     return { launch, record: { ...record, image } };
+  }
+
+  /** Server-owned completion gate. Each repository uses its own frozen commands and image. */
+  async check(input: EnvironmentInput): Promise<void> {
+    for (const mount of input.mounts) {
+      const prepared = await this.prepare({ ...input, mounts: [mount] });
+      if (!prepared) {
+        continue;
+      }
+      const before = prepared.record.config.checks.length > 0 ? await worktreeSnapshot(input.mounts) : null;
+      for (const command of prepared.record.config.checks) {
+        const result = await this.runShell(input, prepared.launch, command, mount, 'checks');
+        await this.documents.putDocument(
+          input.run,
+          'checks',
+          JSON.stringify({
+            repo: prepared.record.repo,
+            command,
+            ...result,
+          }),
+        );
+        if (result.exitCode !== 0) {
+          const body = `${prepared.record.repo}: required check failed (exit ${result.exitCode}):\n${result.tail}`;
+          await this.documents.putDocument(input.run, 'return', `## checks\n${body}\n`);
+          throw new SwarmloopError(body);
+        }
+      }
+      if (before !== null && (await worktreeSnapshot(input.mounts)) !== before) {
+        const body = `${prepared.record.repo}: required checks changed project files. Review those changes and rerun the checks before completing implementation.`;
+        await this.documents.putDocument(input.run, 'return', `## checks\n${body}\n`);
+        throw new SwarmloopError(body);
+      }
+    }
   }
 
   /** The config is read once per run and kept, so a change the agent commits does not move the run to another image. */
@@ -102,15 +144,24 @@ export class ProjectEnvironments {
     key: string;
     mounts: SandboxMount[];
   }): Promise<EnvironmentRecord | null> {
-    const stored = await this.documents.latestBody(input.key, ENVIRONMENT);
+    const repo = basename(input.mounts[0]?.hostPath ?? '');
+    const scoped = await this.documents.latestBody(input.key, `${ENVIRONMENT}:${repo}`);
+    const stored = scoped ?? (await this.documents.latestBody(input.key, ENVIRONMENT));
     if (stored) {
-      return JSON.parse(stored) as EnvironmentRecord;
+      const record = JSON.parse(stored) as EnvironmentRecord;
+      if (input.mounts.some((mount) => basename(mount.hostPath) === record.repo)) {
+        if (!scoped) {
+          await this.documents.putDocument(input.run, `${ENVIRONMENT}:${record.repo}`, JSON.stringify(record));
+        }
+        return record;
+      }
     }
     for (const mount of input.mounts) {
       const config = await readEnvironmentConfig(mount.hostPath);
       if (config) {
         const record: EnvironmentRecord = { repo: basename(mount.hostPath), config };
         await this.documents.putDocument(input.run, ENVIRONMENT, JSON.stringify(record));
+        await this.documents.putDocument(input.run, `${ENVIRONMENT}:${record.repo}`, JSON.stringify(record));
         return record;
       }
     }
@@ -184,15 +235,16 @@ export class ProjectEnvironments {
   }
 
   /** The setup runs in the project image with the package registries and no model key. Its output goes to the step log. */
-  private async setup(
+  private async runShell(
     input: { key: string; step: string; mounts: SandboxMount[] },
     launch: ProjectLaunch,
     command: string,
     mount: SandboxMount,
+    phase: 'setup' | 'checks',
   ): Promise<{ exitCode: number; tail: string }> {
     const root = resolveRepoRoot(this.deps.env().SWARMLOOP_ROOT, __dirname);
     const userId = sandboxUserId();
-    const statePath = agentStateDir(root, input.key, 'setup');
+    const statePath = agentStateDir(root, input.key, `${phase}-${basename(mount.hostPath)}`);
     const lines: string[] = [`$ ${command}`];
     let shown = 0;
     const show = (force = false) => {
@@ -209,7 +261,7 @@ export class ProjectEnvironments {
       step: input.step,
       mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
       statePath,
-      allowHosts: setupHosts(),
+      allowHosts: phase === 'setup' ? setupHosts() : [],
       command: [],
       userId,
       project: { ...launch, shell: command },
@@ -228,9 +280,14 @@ export class ProjectEnvironments {
     child.stdout?.on('data', take);
     child.stderr?.on('data', take);
     const exitCode = await new Promise<number>((resolve) => {
+      let timedOut = false;
       const timer = setTimeout(() => {
-        lines.push(`setup timed out after ${SETUP_TIMEOUT_MS / 60_000} min`);
-        void this.sandbox.kill(child.containerName);
+        timedOut = true;
+        lines.push(`${phase} timed out after ${SETUP_TIMEOUT_MS / 60_000} min`);
+        void this.sandbox.kill(child.containerName).then(
+          () => resolve(124),
+          () => resolve(124),
+        );
       }, SETUP_TIMEOUT_MS);
       child.once('error', (error: Error) => {
         clearTimeout(timer);
@@ -239,7 +296,7 @@ export class ProjectEnvironments {
       });
       child.once('close', (code: number | null) => {
         clearTimeout(timer);
-        resolve(code ?? 1);
+        resolve(timedOut ? 124 : (code ?? 1));
       });
     });
     if (partial) {
@@ -249,7 +306,7 @@ export class ProjectEnvironments {
     show(true);
     const directory = join(root, 'data');
     mkdirSync(directory, { recursive: true });
-    writeFileSync(join(directory, `${input.key}-setup-output.txt`), `${lines.join('\n')}\n`);
+    writeFileSync(join(directory, `${input.key}-${phase}-output.txt`), `${lines.join('\n')}\n`);
     return { exitCode, tail: lines.slice(-TAIL_LINES).join('\n').slice(-TAIL_CHARS) };
   }
 }

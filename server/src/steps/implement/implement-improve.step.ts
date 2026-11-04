@@ -90,6 +90,8 @@ export class ImplementImproveStep extends AgentStep {
     const text = agentResult.responseText;
     await assertUncommitted(mounts, branch, heads);
     const wrote = reviewedImplementation(text);
+    await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
+    await assertUncommitted(mounts, branch, heads);
     const body = wrote.trim() ? wrote : notes;
     const corrected = correctedPlan(ctx.requirements, text, agentResult.output ?? '');
     const summary = summaryOr(text, plainSummary(text) || '- checked the first pass\n');

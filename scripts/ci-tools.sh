@@ -19,6 +19,7 @@ case "$1" in
       typescript-eslint@8
       globals@16
       eslint-config-prettier@10
+      prettier@3
       @next/eslint-plugin-next@15
       eslint-plugin-react-hooks@5
       eslint-plugin-jsx-a11y@6

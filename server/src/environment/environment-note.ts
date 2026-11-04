@@ -49,6 +49,9 @@ export function environmentNote(record: EnvironmentRecord): string {
     );
   }
   lines.push('In the summary, name the checks you ran and their result.');
+  lines.push(
+    'After your answer, the server independently runs every declared check. A failed check stops this step; your summary cannot waive it.',
+  );
   return lines.join('\n');
 }
 

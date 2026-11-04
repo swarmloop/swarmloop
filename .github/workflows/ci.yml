@@ -54,7 +54,7 @@ jobs:
       - run: bash scripts/lint-changed.sh origin/${{ github.event.repository.default_branch }} --fix
       - run: npx eslint .
       - run: bash scripts/lint-changed.sh origin/${{ github.event.repository.default_branch }}
-      - run: node --test scripts/ci-tools.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs docker/egress/proxy.test.mjs
+      - run: node --test scripts/ci-tools.test.mjs scripts/check-worktree.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs docker/egress/proxy.test.mjs
 
   autofix:
     runs-on: ubuntu-latest

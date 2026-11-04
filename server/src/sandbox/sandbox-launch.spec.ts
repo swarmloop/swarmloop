@@ -98,6 +98,18 @@ describe('sandbox launch', () => {
     };
     const command = ['claude', '--print', 'hello'];
 
+    it('mounts portable Git metadata read-only and trusts only its repository path', () => {
+      const metadata = { hostPath: '/tmp/git-copy', containerPath: '/work/demo/.git', readonly: true };
+      const given = launch({ runtime: 'claude', command, project });
+      given.mounts.push(metadata);
+      const text = sandboxArgs(given, home).join(' ');
+      expect(text).toContain('dst=/work/demo/.git,readonly=true');
+      expect(text).toContain('GIT_CONFIG_VALUE_0=/work/demo');
+      expect(text).toContain('GIT_OPTIONAL_LOCKS=0');
+      metadata.readonly = false;
+      expect(() => sandboxArgs(given, home)).toThrow('git metadata must be read-only');
+    });
+
     it('runs the CLI from the volume as the entrypoint of the project image', () => {
       const args = sandboxArgs(launch({ runtime: 'claude', command, project }), home);
       const text = args.join(' ');

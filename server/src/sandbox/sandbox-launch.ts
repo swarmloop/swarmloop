@@ -91,7 +91,8 @@ function assertProject(project: ProjectLaunch, command: string[], home: string):
   }
 }
 
-const WORKTREE = /^\/work(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$/;
+const WORKTREE = /^\/work(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?(?:\/\.git)?$/;
+const GIT_METADATA = /^\/swarmloop-git\/git-[A-Za-z0-9]+$/;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
 const REGISTRIES = new Set([
   'registry.npmjs.org',
@@ -368,6 +369,14 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
     args.push('--tmpfs', `/home/sandbox:rw,nosuid,nodev,size=64m,uid=${launch.userId},gid=${launch.userId},mode=700`);
   }
   if (project) {
+    const repositories = launch.mounts.filter((mount) => mount.containerPath.endsWith('/.git'));
+    if (repositories.length > 0) {
+      args.push('--env', `GIT_CONFIG_COUNT=${repositories.length}`, '--env', 'GIT_OPTIONAL_LOCKS=0');
+      repositories.forEach((mount, index) => {
+        args.push('--env', `GIT_CONFIG_KEY_${index}=safe.directory`);
+        args.push('--env', `GIT_CONFIG_VALUE_${index}=${mount.containerPath.slice(0, -5)}`);
+      });
+    }
     for (const cache of project.caches) {
       args.push('--mount', `type=bind,src=${cache.daemonPath},dst=${cache.containerPath},readonly=false`);
     }
@@ -434,8 +443,11 @@ export function sandboxMount(mount: SandboxMount): string {
 }
 
 function assertMount(mount: SandboxMount, home: string): void {
-  if (!WORKTREE.test(mount.containerPath)) {
+  if (!WORKTREE.test(mount.containerPath) && !GIT_METADATA.test(mount.containerPath)) {
     throw new SwarmloopError('sandbox mount is not allowed');
+  }
+  if ((mount.containerPath.endsWith('/.git') || GIT_METADATA.test(mount.containerPath)) && !mount.readonly) {
+    throw new SwarmloopError('sandbox git metadata must be read-only');
   }
   assertDaemonPath(mount.hostPath, home);
   if (mount.daemonPath !== undefined) {

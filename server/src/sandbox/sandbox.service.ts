@@ -1,7 +1,7 @@
 import { spawn, ChildProcess, execFile } from 'child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync } from 'fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { Injectable } from '@nestjs/common';
 import { rawEnv } from '../config/process-env';
 import { resolveRepoRoot } from '../config/repo-root';
@@ -27,6 +27,7 @@ import {
 } from './sandbox-launch';
 import { Egress, egressMode } from './egress';
 import { withEgress } from './egress-launch';
+import { projectGitMount } from './project-git';
 
 export type DockerRunner = (args: string[], timeoutMs?: number) => Promise<string>;
 
@@ -79,14 +80,33 @@ export class SandboxService {
 
   async spawn(given: Omit<SandboxLaunch, 'maskFile' | 'envMasks'> & { envMasks?: EnvMask[] }): Promise<SandboxChild> {
     const egress = this.egress();
-    const { launch, release } = egress ? await withEgress(egress, given) : { launch: given, release: () => undefined };
+    const metadata: SandboxMount[] = [];
+    let release = () => undefined as void;
+    const cleanup = () => {
+      release();
+      for (const mount of metadata) {
+        rmSync(mount.hostPath, { recursive: true, force: true });
+      }
+    };
     try {
+      if (given.project && given.statePath) {
+        prepareStateDir(given.statePath, given.userId);
+        const directory = join(dirname(given.statePath), 'git-metadata');
+        mkdirSync(directory, { recursive: true });
+        for (const mount of given.mounts) {
+          metadata.push(...(await projectGitMount(mount, directory)));
+        }
+      }
+      const prepared = { ...given, mounts: [...given.mounts, ...metadata] };
+      const acquired = egress ? await withEgress(egress, prepared) : { launch: prepared, release: () => undefined };
+      release = acquired.release;
+      const { launch } = acquired;
       const child = await this.spawnLaunch(launch);
-      child.once('close', release);
-      child.once('error', release);
+      child.once('close', cleanup);
+      child.once('error', cleanup);
       return child;
     } catch (error) {
-      release();
+      cleanup();
       throw error;
     }
   }

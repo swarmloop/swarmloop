@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { mkdtempSync } from 'fs';
+import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
@@ -18,7 +18,15 @@ const manifest = {
   cache: ['/home/sandbox/.npm'],
 };
 
-function setup(options: { probe?: string | Error; setupCode?: number; config?: unknown } = {}) {
+function setup(
+  options: {
+    probe?: string | Error;
+    setupCode?: number;
+    checkCode?: number;
+    config?: unknown;
+    onCheck?: (repo: string) => void;
+  } = {},
+) {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-env-root-'));
   const repo = makeRepo({ '.swarmloop.json': JSON.stringify(options.config ?? manifest) });
   const stored: { kind: string; body: string }[] = [];
@@ -62,9 +70,14 @@ function setup(options: { probe?: string | Error; setupCode?: number; config?: u
         containerName: 'swarmloop-r1-implement',
       });
       setImmediate(() => {
+        if (launch.allowHosts.length === 0) {
+          options.onCheck?.(repo);
+        }
         child.stdout.write('added 12 packages\n');
         child.stderr.write('npm warn old\n');
-        setImmediate(() => child.emit('close', options.setupCode ?? 0));
+        setImmediate(() =>
+          child.emit('close', launch.allowHosts.length ? (options.setupCode ?? 0) : (options.checkCode ?? 0)),
+        );
       });
       return Promise.resolve(child);
     }),
@@ -84,7 +97,7 @@ function setup(options: { probe?: string | Error; setupCode?: number; config?: u
   };
   const records = () =>
     stored.filter((item) => item.kind === ENVIRONMENT).map((item) => JSON.parse(item.body) as EnvironmentRecord);
-  return { service, sandbox, input, spawned, records, run };
+  return { service, sandbox, input, spawned, records, run, stored };
 }
 
 describe('ProjectEnvironments', () => {
@@ -126,13 +139,56 @@ describe('ProjectEnvironments', () => {
     expect(records().at(-1)?.setup?.tail).toContain('added 12 packages');
   });
 
-  it('does not run a failed setup again and keeps its tail for the agent', async () => {
+  it('stops on a failed setup and retries it on the next attempt', async () => {
     const { service, input, spawned, records } = setup({ setupCode: 1 });
-    const prepared = await service.prepare(input);
-    await service.prepare(input);
-    expect(spawned).toHaveLength(1);
-    expect(prepared?.record.setup?.exitCode).toBe(1);
+    await expect(service.prepare(input)).rejects.toThrow('environment setup failed (exit 1)');
+    await expect(service.prepare(input)).rejects.toThrow('environment setup failed (exit 1)');
+    expect(spawned).toHaveLength(2);
     expect(records().at(-1)?.setup?.tail).toContain('npm warn old');
+  });
+
+  it('runs required checks without model credentials and records actual exit codes', async () => {
+    const { service, input, spawned, stored } = setup();
+    await service.check(input);
+    expect(spawned.map((launch) => launch.project?.shell)).toEqual(['npm ci', 'npm test']);
+    expect(spawned[1]?.allowHosts).toEqual([]);
+    expect(spawned[1]?.env).toBeUndefined();
+    expect(JSON.parse(stored.find((document) => document.kind === 'checks')!.body)).toMatchObject({
+      command: 'npm test',
+      exitCode: 0,
+    });
+  });
+
+  it('stops at the first failed check and leaves feedback for the next implementation attempt', async () => {
+    const { service, input, spawned, stored } = setup({
+      checkCode: 2,
+      config: { ...manifest, checks: ['php test.php', 'python3 test.py'] },
+    });
+    await expect(service.check(input)).rejects.toThrow('required check failed (exit 2)');
+    expect(spawned.map((launch) => launch.project?.shell)).toEqual(['npm ci', 'php test.php']);
+    expect(stored.find((document) => document.kind === 'return')?.body).toContain('php test.php');
+  });
+
+  it('uses each repository image and checks instead of reusing the first environment', async () => {
+    const { service, input, spawned } = setup();
+    const other = makeRepo({
+      '.swarmloop.json': JSON.stringify({ version: 1, image: 'python:3.12', checks: ['python3 -m unittest'] }),
+    });
+    const mounts = [...input.mounts, { hostPath: other, containerPath: '/work/other' }];
+    await service.check({ ...input, mounts });
+    expect(spawned.map((launch) => launch.project?.shell)).toEqual(['npm ci', 'npm test', 'python3 -m unittest']);
+    expect(spawned[2]?.project?.image).toBe('python:3.12');
+    expect(spawned[2]?.mounts[0]?.hostPath).toBe(other);
+    await service.check({ ...input, mounts });
+    expect(spawned.filter((launch) => launch.project?.shell === 'npm ci')).toHaveLength(1);
+  });
+
+  it('does not accept checks that rewrite the project after testing it', async () => {
+    const { service, input, stored } = setup({
+      onCheck: (repo) => writeFileSync(join(repo, 'changed.py'), 'print(2)\n'),
+    });
+    await expect(service.check(input)).rejects.toThrow('required checks changed project files');
+    expect(stored.find((document) => document.kind === 'return')?.body).toContain('rerun the checks');
   });
 
   it('keeps the config the run started with', async () => {

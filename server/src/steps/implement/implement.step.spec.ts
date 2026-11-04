@@ -21,6 +21,8 @@ import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { REBASE_CONFLICT, rebaseFeatureRepos } from '../../git/rebase-worktree';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
+import { EnvironmentService } from '../../environment/environment.service';
+import { SwarmloopError } from '../../core/swarmloop-error';
 
 const reply = [
   'implementation:',
@@ -414,6 +416,11 @@ describe('implement step', () => {
     });
     const app = await boot(root, agent);
     try {
+      jest.spyOn(app.get(EnvironmentService), 'prepare').mockResolvedValue({
+        launch: { image: 'test-image', cliVolume: 'test-cli', path: '/usr/bin', certFile: false, caches: [] },
+        record: { repo: 'billing-api', config: { source: '.swarmloop.json', cache: [], checks: [] } },
+      });
+      jest.spyOn(app.get(EnvironmentService), 'check').mockResolvedValue();
       await seed(app, 'PROJ-64', 'approve');
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -424,6 +431,8 @@ describe('implement step', () => {
       expect(agent).toHaveBeenCalledTimes(2);
       const calls = agent.mock.calls.map((call) => call[0]);
       const input = calls[0];
+      expect(input?.project?.image).toBe('test-image');
+      expect(input?.prompt).toContain('# Project environment');
       expect(input?.resumeChatId ?? null).toBeNull();
       expect(input?.prompt).toContain('src/field.ts');
       expect(input?.prompt).toContain('The new base is origin/main.');
@@ -1065,6 +1074,27 @@ describe('implement step', () => {
       expect(input.project).toBeUndefined();
       expect(input.prompt).not.toContain('# Project environment');
       expect(input.prompt).not.toContain('swarmloop-verify');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('does not finish implementation when the server check fails despite a successful agent answer', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-check-failure-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-146', 'billing-web');
+    const app = await boot(root, jest.fn().mockResolvedValue(result(reply)));
+    try {
+      await seed(app, 'PROJ-146', 'approve', 'billing-web\n');
+      jest
+        .spyOn(app.get(EnvironmentService), 'check')
+        .mockRejectedValue(new SwarmloopError('required check failed: phpunit'));
+      const done = await app.get(PipelineService).step('implement', 'PROJ-146');
+      expect(done.exitCode).toBe(1);
+      expect(done.message).toContain('required check failed: phpunit');
+      const run = await app.get(RunRepository).findRun('PROJ-146');
+      expect(run?.status).toBe('failed');
+      expect(run?.currentStep).toBe('implement');
     } finally {
       await app.close();
     }
