@@ -21,15 +21,7 @@ import { repoNames, worktreePath } from '../shared/repo-names';
 import { remoteProject } from '../merge-request/merge-request-record';
 import { BaseStep, StepContext } from '../base-step';
 import { CI_RERUN } from '../pipeline/pipeline-report';
-import {
-  allowedPaths,
-  ciConfigPaths,
-  deniedIndexPaths,
-  parsePaths,
-  PlannedPath,
-  renderPaths,
-  stageSelection,
-} from './commit-paths';
+import { allowedPaths, deniedIndexPaths, parsePaths, PlannedPath, renderPaths, stageSelection } from './commit-paths';
 
 interface Tree {
   repo: string;
@@ -75,13 +67,6 @@ export class CommitStep extends BaseStep {
       return this.end(ctx, 'waiting', 0, `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
     }
     const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, await this.checkouts.listDenyPaths());
-    const ci = this.config.env.ALLOW_CI_CHANGES ? [] : ciConfigPaths(planned);
-    if (ci.length > 0) {
-      const list = ci.map((item) => `${item.repo}/${item.path}`).join(', ');
-      throw new SwarmloopError(
-        `commit refused: CI configuration changes must be made by a person (${list}). Set ALLOW_CI_CHANGES=true to allow them.`,
-      );
-    }
     const rerun = planned.length === 0 && (await this.rerunPending(key));
     if (!rerun && planned.length === 0 && !(await this.somethingToPush(trees, branch))) {
       if (await this.publishedHead(trees, branch)) {

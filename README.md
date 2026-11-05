@@ -153,7 +153,7 @@ How it runs:
 - The environment is frozen during a run. When an explicit Rebase changes the base commit, it refreshes the environment from that commit, including its Dockerfile, and reruns setup. Uncommitted or feature-branch manifest edits do not replace these trusted checks.
 - Keep it the same as CI: the same image or version, and one command, such as `npm run check`, that both CI and `checks` call.
 
-Commits never contain CI configuration (`.github/workflows/`, `.github/actions/`, `.gitlab-ci.yml`, `.gitlab/`, `.circleci/`, `Jenkinsfile`, `azure-pipelines.yml`, `bitbucket-pipelines.yml`): CI runs it with your repository's secrets. A run that changes it stops at the commit and names the files. Set `ALLOW_CI_CHANGES=true` to allow it. CI can still run scripts from the repository that the agent may change, so keep secrets out of jobs that run on feature branches.
+CI configuration is committed like other project files when the task requires it; explicit deny paths still apply. CI can execute changed workflows and scripts on push or PR/MR creation, before human review. Keep privileged secrets and deployment credentials behind protected branches/environments and required approvals; restrict job-token permissions and isolate runners used for unreviewed code. Human review before merge does not by itself protect earlier CI execution. The legacy `ALLOW_CI_CHANGES` setting is no longer used.
 
 ### 🎫 Jira (optional)
 
@@ -268,7 +268,6 @@ Passing review and CI is a minimum bar, not proof that the change is right. The 
 | `MAX_PIPELINE_RETURNS` | Red pipelines sent back | `6` |
 | `MAX_LAUNCHES` | Relaunches of a step that crashed before it decided | `3` |
 | `IDLE_TIMEOUT_MS` | Silence before the agent is killed | 15 minutes |
-| `ALLOW_CI_CHANGES` | Let a run commit CI configuration | `false` |
 | `SANDBOX_EGRESS` | `proxy`: all traffic goes through the egress proxy. `open`: per-host networks without the proxy, for debugging only. | `proxy` |
 | `SANDBOX_DOCKER_RUNTIME` | Docker runtime of the sandboxes, such as `runsc` for gVisor | Docker's default |
 | `*_TIMEOUT_MS` | Wall time per step | 3 to 30 minutes |

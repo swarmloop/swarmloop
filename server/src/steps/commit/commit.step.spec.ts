@@ -18,6 +18,30 @@ import { PipelineService } from '../../pipeline/pipeline.service';
 import { CI_SKIPPED } from './commit.step';
 
 describe('commit step', () => {
+  it('commits and pushes GitHub and GitLab CI files without a separate permission flag', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-ci-files-'));
+    const tree = featureTree(root, 'PROJ-149');
+    const github = '.github/workflows/ci.yml';
+    const gitlab = '.gitlab-ci.yml';
+    mkdirSync(join(tree, '.github', 'workflows'), { recursive: true });
+    writeFileSync(join(tree, github), 'name: checks\non: pull_request\n');
+    writeFileSync(join(tree, gitlab), 'test:\n  script: echo test\n');
+    writeFileSync(join(tree, '.env'), 'TOKEN=secret\n');
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-149');
+      const done = await app.get(PipelineService).step('commit', 'PROJ-149');
+      expect(done.exitCode).toBe(0);
+      expect(git(tree, ['show', `HEAD:${github}`])).toBe('name: checks\non: pull_request');
+      expect(git(tree, ['show', `HEAD:${gitlab}`])).toBe('test:\n  script: echo test');
+      expect(git(tree, ['show', '--name-only', '--format=', 'HEAD'])).not.toContain('.env');
+      expect(git(tree, ['rev-parse', 'HEAD'])).toBe(git(tree, ['rev-parse', 'origin/feature/PROJ-149-ship-the-field']));
+      expect((await app.get(RunRepository).findRun('PROJ-149'))?.currentStep).toBe('merge-request');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('commits and pushes when ci is selected and origin exists', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-list-'));
     const tree = featureTree(root, 'PROJ-100');

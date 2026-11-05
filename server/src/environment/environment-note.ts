@@ -1,8 +1,5 @@
 import type { EnvironmentRecord } from './project-environments';
 
-/** CI configuration the commit step refuses; the agent is told in advance. */
-export const CI_CONFIG_HINT = '`.github/workflows/`, `.github/actions/`, `.gitlab-ci.yml`, `.gitlab/`';
-
 export function environmentNote(record: EnvironmentRecord): string {
   const { config } = record;
   const lines = [
@@ -32,7 +29,9 @@ export function environmentNote(record: EnvironmentRecord): string {
   if (config.setup && config.network !== 'setup') {
     lines.push(`If a dependency or a generated file is missing, run the setup again: \`${config.setup}\`.`);
   }
-  lines.push(`Do not change CI configuration (${CI_CONFIG_HINT}): the commit refuses it.`);
+  lines.push(
+    'CI configuration may be changed when required by the task. Describe changes to workflow triggers, permissions, secret access, and runners in the summary.',
+  );
   const setup = record.setup;
   if (setup && setup.exitCode !== 0) {
     lines.push(

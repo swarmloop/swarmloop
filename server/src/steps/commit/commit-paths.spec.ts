@@ -1,12 +1,4 @@
-import {
-  allowedPaths,
-  ciConfigPaths,
-  deniedIndexPaths,
-  isDenied,
-  parsePaths,
-  renderPaths,
-  stageSelection,
-} from './commit-paths';
+import { allowedPaths, deniedIndexPaths, isDenied, parsePaths, renderPaths, stageSelection } from './commit-paths';
 
 describe('commit paths', () => {
   it('drops a denied path and keeps the rest', () => {
@@ -49,24 +41,15 @@ describe('commit paths', () => {
   });
 });
 
-describe('ciConfigPaths', () => {
-  it('finds GitHub and GitLab CI files and nothing else', () => {
-    const paths = [
-      '.github/workflows/ci.yml',
-      '.github/actions/setup/action.yml',
-      '.github/CODEOWNERS',
-      '.gitlab-ci.yml',
-      'docs/.gitlab-ci.yml',
-      '.gitlab/ci/test.yml',
-      'Jenkinsfile',
-      'src/workflows/a.ts',
-    ].map((path) => ({ repo: 'demo', path }));
-    expect(ciConfigPaths(paths).map((item) => item.path)).toEqual([
-      '.github/workflows/ci.yml',
-      '.github/actions/setup/action.yml',
-      '.gitlab-ci.yml',
-      '.gitlab/ci/test.yml',
-      'Jenkinsfile',
+describe('CI paths', () => {
+  it('treats CI files as normal paths while respecting explicit deny paths', () => {
+    const porcelain = ' M .github/workflows/ci.yml\0?? .gitlab-ci.yml\0?? .env\0';
+    expect(allowedPaths('demo', porcelain, ['.env'])).toEqual([
+      { repo: 'demo', path: '.github/workflows/ci.yml' },
+      { repo: 'demo', path: '.gitlab-ci.yml' },
+    ]);
+    expect(allowedPaths('demo', porcelain, ['.env', '.github/workflows'])).toEqual([
+      { repo: 'demo', path: '.gitlab-ci.yml' },
     ]);
   });
 });

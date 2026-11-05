@@ -8,11 +8,12 @@ const record: EnvironmentRecord = {
 };
 
 describe('environmentNote', () => {
-  it('names the image, the checks and the CI rule', () => {
+  it('names the image, checks and task-scoped CI changes', () => {
     const note = environmentNote(record);
     expect(note).toContain('swarmloop-env-shop:0123456789ab from .swarmloop.json of shop');
     expect(note).toContain('- `npm test`\n- `npm run lint`');
-    expect(note).toContain('.github/workflows/');
+    expect(note).toContain('CI configuration may be changed when required by the task.');
+    expect(note).not.toContain('the commit refuses it');
     expect(note).not.toContain('setup `npm ci` failed');
     expect(note).toContain('run the setup again: `npm ci`');
     expect(note).toContain('narrowest command');
