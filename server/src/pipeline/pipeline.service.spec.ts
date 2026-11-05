@@ -97,6 +97,37 @@ describe('pipeline service', () => {
       await app.close();
     }
   });
+
+  it('settles when a detached run releases its key', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-idle-'));
+    const app = await boot(root);
+    let finish!: () => void;
+    let executing!: () => void;
+    const executionStarted = new Promise<void>((resolve) => {
+      executing = resolve;
+    });
+    try {
+      jest.spyOn(app.get(CodeReviewStep), 'execute').mockImplementation(
+        () => new Promise((resolve) => {
+          executing();
+          finish = () => resolve({ exitCode: 0, message: 'done' });
+        }),
+      );
+      const pipeline = app.get(PipelineService);
+      await pipeline.startDetached('PROJ-65', { path: root }, 'code-review');
+      await executionStarted;
+      const idle = pipeline.whenIdle('PROJ-65');
+      let settled = false;
+      void idle.then(() => { settled = true; });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      finish();
+      await idle;
+      expect(settled).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 /** A started step runs in the background. Wait for it to release the key before the app closes. */

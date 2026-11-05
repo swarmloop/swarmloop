@@ -44,6 +44,7 @@ import { STEPS, StepName } from '../contract/steps';
 export class PipelineService implements OnModuleInit {
   private readonly logger = new Logger(PipelineService.name);
   private readonly inflight = new Set<string>();
+  private readonly idleWaiters = new Map<string, Set<() => void>>();
 
   constructor(
     private readonly runs: RunRepository,
@@ -251,11 +252,11 @@ export class PipelineService implements OnModuleInit {
             await this.runs.saveRun(run);
           }
         })
-        .finally(() => this.inflight.delete(key));
+        .finally(() => this.release(key));
       return { exitCode: 0, message: `${key} started` };
     } finally {
       if (!started) {
-        this.inflight.delete(key);
+        this.release(key);
       }
     }
   }
@@ -516,6 +517,24 @@ export class PipelineService implements OnModuleInit {
 
   claimed(key: string): boolean {
     return this.inflight.has(key);
+  }
+
+  whenIdle(key: string): Promise<void> {
+    if (!this.inflight.has(key)) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const waiters = this.idleWaiters.get(key) ?? new Set<() => void>();
+      waiters.add(resolve);
+      this.idleWaiters.set(key, waiters);
+    });
+  }
+
+  private release(key: string): void {
+    this.inflight.delete(key);
+    const waiters = this.idleWaiters.get(key);
+    this.idleWaiters.delete(key);
+    waiters?.forEach((resolve) => resolve());
   }
 
   private async stopRunning(key: string, run: RunEntity): Promise<PipelineResult | null> {
