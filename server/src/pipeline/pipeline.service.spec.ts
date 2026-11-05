@@ -108,17 +108,20 @@ describe('pipeline service', () => {
     });
     try {
       jest.spyOn(app.get(CodeReviewStep), 'execute').mockImplementation(
-        () => new Promise((resolve) => {
-          executing();
-          finish = () => resolve({ exitCode: 0, message: 'done' });
-        }),
+        () =>
+          new Promise((resolve) => {
+            executing();
+            finish = () => resolve({ exitCode: 0, message: 'done' });
+          }),
       );
       const pipeline = app.get(PipelineService);
       await pipeline.startDetached('PROJ-65', { path: root }, 'code-review');
       await executionStarted;
       const idle = pipeline.whenIdle('PROJ-65');
       let settled = false;
-      void idle.then(() => { settled = true; });
+      void idle.then(() => {
+        settled = true;
+      });
       await Promise.resolve();
       expect(settled).toBe(false);
       finish();
