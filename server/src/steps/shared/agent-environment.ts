@@ -6,7 +6,7 @@ import { packageRegistries } from '../../sandbox/sandbox-launch';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import type { ProjectLaunch } from '../../sandbox/sandbox-launch';
 
-export interface AgentWorkplace {
+interface AgentWorkplace {
   prompt: string;
   /** Reuse the same execution policy for follow-up launches without preparing the environment again. */
   executionRules: string;

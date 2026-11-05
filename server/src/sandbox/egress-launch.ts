@@ -3,7 +3,7 @@ import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry
 import { EGRESS_API, type Egress, type EgressPolicy } from './egress';
 import { hostName, isLocalHost } from '../sandbox/sandbox-launch';
 
-export interface EgressReady {
+interface EgressReady {
   runtime: RuntimeName;
   allowHosts: string[];
   command: string[];

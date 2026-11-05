@@ -20,7 +20,7 @@ export function projectSlug(project: string): string {
   return project.toLowerCase().replace(/[^a-z0-9_.-]/g, '-');
 }
 
-export function imageRepository(project: string): string {
+function imageRepository(project: string): string {
   return `swarmloop-env-${projectSlug(project)}`;
 }
 

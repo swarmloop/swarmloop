@@ -7,9 +7,9 @@ import { SwarmloopError } from '../core/swarmloop-error';
 export const EGRESS_NETWORK = 'swarmloop-sandbox';
 export const EGRESS_SUBNET = '198.18.0.0/16';
 export const EGRESS_IP = '198.18.0.2';
-export const EGRESS_IMAGE = 'swarmloop-egress';
-export const EGRESS_CONTAINER = 'swarmloop-egress';
-export const EGRESS_PROXY = `http://${EGRESS_IP}:3128`;
+const EGRESS_IMAGE = 'swarmloop-egress';
+const EGRESS_CONTAINER = 'swarmloop-egress';
+const EGRESS_PROXY = `http://${EGRESS_IP}:3128`;
 /** The model API on the proxy. A CLI pointed here sends a placeholder key; the proxy sends the real one. */
 export const EGRESS_API = `http://${EGRESS_IP}:3129`;
 /** Long enough for the longest step; a policy left by a crashed server expires on its own. */
@@ -17,7 +17,7 @@ const POLICY_TTL_MS = 26 * 60 * 60_000;
 /** Time between writing a policy and its container joining the network, with room for a slow image pull. */
 const POLICY_GRACE_MS = 10 * 60_000;
 
-export type EgressMode = 'proxy' | 'open';
+type EgressMode = 'proxy' | 'open';
 
 export interface ApiPolicy {
   upstream: string;
@@ -30,12 +30,12 @@ export interface EgressPolicy {
   api?: ApiPolicy;
 }
 
-export interface EgressLease {
+interface EgressLease {
   ip: string;
   release: () => void;
 }
 
-export type Docker = (args: string[], timeoutMs?: number) => Promise<string>;
+type Docker = (args: string[], timeoutMs?: number) => Promise<string>;
 
 export function egressMode(value: string | undefined): EgressMode {
   return value === 'open' ? 'open' : 'proxy';

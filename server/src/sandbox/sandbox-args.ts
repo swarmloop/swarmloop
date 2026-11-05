@@ -2,7 +2,7 @@ import type { SandboxLaunch } from './sandbox-types';
 import { EGRESS_IP, EGRESS_NETWORK, egressEnv } from './egress';
 
 export const CLI_ROOT = '/opt/swarmloop';
-export const CLI_CERTS = `${CLI_ROOT}/certs/ca-certificates.crt`;
+const CLI_CERTS = `${CLI_ROOT}/certs/ca-certificates.crt`;
 
 export function projectImageArgs(args: string[], launch: SandboxLaunch): void {
   const project = launch.project;

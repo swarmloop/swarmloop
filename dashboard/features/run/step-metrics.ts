@@ -3,7 +3,7 @@ import { count, duration, memory, money } from '../../lib/format';
 export type StepMetricKind =
   'status' | 'duration' | 'attempt' | 'spend' | 'tokens-in' | 'tokens-out' | 'cpu' | 'memory';
 
-export interface StepMetric {
+interface StepMetric {
   kind: StepMetricKind;
   text: string;
   tip: string;

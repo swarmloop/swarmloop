@@ -30,13 +30,6 @@ export function reviewedImplementation(text: string): string {
   }
 }
 
-export function joinRepoNotes(parts: { name: string; body: string }[]): string {
-  if (parts.length === 1) {
-    return parts[0]?.body ?? '';
-  }
-  return `${parts.map((part) => `${part.name}:\n${part.body.trimEnd()}`).join('\n\n')}\n`;
-}
-
 export function withReturnNotes(
   sections: { heading: string; body: string }[],
   returned: string | null,

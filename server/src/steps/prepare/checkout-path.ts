@@ -17,7 +17,7 @@ export function resolveCheckoutPath(
   return resolve(checkoutsRootPath(repoRoot, checkoutsRoot), stored.length > 0 ? stored : name);
 }
 
-export function checkoutsRootPath(repoRoot: string, checkoutsRoot: string | undefined): string {
+function checkoutsRootPath(repoRoot: string, checkoutsRoot: string | undefined): string {
   const configured = checkoutsRoot?.trim() ?? '';
   if (configured.length === 0) {
     throw new SwarmloopError('CHECKOUTS_ROOT is missing');

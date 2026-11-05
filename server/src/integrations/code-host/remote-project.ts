@@ -1,6 +1,6 @@
 import { SwarmloopError } from '../../core/swarmloop-error';
 
-export interface RemoteProject {
+interface RemoteProject {
   host: string;
   project: string;
 }

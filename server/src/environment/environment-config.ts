@@ -3,9 +3,9 @@ import Joi from 'joi';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { git, gitDetail } from '../git/git';
 
-export const SWARMLOOP_FILE = '.swarmloop.json';
-export const SWARMLOOP_DIR = '.swarmloop';
-export const DEVCONTAINER_FILES = ['.devcontainer/devcontainer.json', '.devcontainer.json'];
+const SWARMLOOP_FILE = '.swarmloop.json';
+const SWARMLOOP_DIR = '.swarmloop';
+const DEVCONTAINER_FILES = ['.devcontainer/devcontainer.json', '.devcontainer.json'];
 const CACHE_ROOT = '/home/sandbox/';
 
 /** Where the agent's toolchain comes from: the image, one setup command, caches, and the checks it must run. */

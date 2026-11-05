@@ -1,6 +1,6 @@
 import type { FlowItem } from '@contract/api';
 
-export interface AnswerPresentation {
+interface AnswerPresentation {
   heading: string | null;
   label: string | null;
 }

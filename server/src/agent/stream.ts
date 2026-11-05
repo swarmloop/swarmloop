@@ -19,7 +19,7 @@ export interface StreamPiece {
   replaceText: boolean;
 }
 
-export interface CountedUsage {
+interface CountedUsage {
   input: number;
   output: number;
   cacheRead: number;
@@ -167,7 +167,7 @@ function counted(piece: StreamPiece): boolean {
   );
 }
 
-export interface UsageGuess {
+interface UsageGuess {
   context: number;
   tokensIn: number;
   tokensOut: number;

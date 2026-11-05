@@ -26,7 +26,7 @@ const SETUP_TIMEOUT_MS = 30 * 60_000;
 const TAIL_LINES = 80;
 const TAIL_CHARS = 6000;
 
-export interface EnvironmentInput {
+interface EnvironmentInput {
   run: RunEntity;
   key: string;
   step: string;
@@ -47,7 +47,7 @@ export interface PreparedEnvironment {
   record: EnvironmentRecord;
 }
 
-export interface EnvironmentDeps {
+interface EnvironmentDeps {
   env: () => Pick<SwarmloopEnv, 'RUNTIME' | 'SWARMLOOP_ROOT'>;
   clock: Clock;
   sandbox: Pick<SandboxService, 'run' | 'spawn' | 'kill' | 'stateDaemonPath'>;

@@ -7,7 +7,7 @@ import { PasteNeeded } from '../../core/swarmloop-error';
 
 export const PASTE_READER = Symbol('PASTE_READER');
 
-export interface PasteReader {
+interface PasteReader {
   read(url: string): Promise<string>;
 }
 

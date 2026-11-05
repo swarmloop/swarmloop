@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { Injectable } from '@nestjs/common';
 import { LiveLog, LiveSample, LiveUsage } from '../contract/live';
 
-export interface LivePeaks {
+interface LivePeaks {
   cpuPeak: number;
   memPeak: number;
 }

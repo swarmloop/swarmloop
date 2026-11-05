@@ -14,7 +14,7 @@ export class HttpStatusError extends Error {
   }
 }
 
-export function safeUrl(raw: string): string {
+function safeUrl(raw: string): string {
   const url = new URL(raw);
   url.username = '';
   url.password = '';
@@ -38,7 +38,7 @@ export function isReadable(contentType: string | null, body: Buffer): boolean {
   );
 }
 
-export function providerFor(url: string): HttpCallDraft['provider'] {
+function providerFor(url: string): HttpCallDraft['provider'] {
   const parsed = new URL(url);
   const path = parsed.pathname;
   const host = parsed.hostname.toLowerCase();
@@ -79,7 +79,7 @@ export async function withRetries<T>(
   throw last;
 }
 
-export function retryable(error: unknown): boolean {
+function retryable(error: unknown): boolean {
   if (error instanceof HttpStatusError) {
     return RETRYABLE.has(error.status);
   }

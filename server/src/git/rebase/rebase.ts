@@ -18,8 +18,8 @@ import { gitAt, gitRawAt, rebaseStderr } from './workflow';
 /** Set while a conflict rebase still has to be resolved, then reviewed on the new diff. */
 export const REBASE_CONFLICT = 'rebase_conflict';
 
-export { type RebaseHosts, type RebaseRepoInput, type RebaseStop } from './types';
 import type { RebaseHosts, RebaseRepoInput, RebaseStop } from './types';
+export type { RebaseStop } from './types';
 
 /** Squash each feature branch onto the fetched base. Stop at the first conflict. */
 export async function rebaseFeatureRepos(input: RebaseRepoInput): Promise<RebaseStop> {

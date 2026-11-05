@@ -1,17 +1,17 @@
-export type DriveKind = 'document' | 'spreadsheet' | 'presentation' | 'file' | 'folder';
+type DriveKind = 'document' | 'spreadsheet' | 'presentation' | 'file' | 'folder';
 
-export interface DriveTarget {
+interface DriveTarget {
   id: string;
   kind: DriveKind;
 }
 
-export interface DriveFetch {
+interface DriveFetch {
   status: number;
   contentType: string | null;
   body: Buffer;
 }
 
-export interface DrivePage {
+interface DrivePage {
   source: 'drive';
   id: string;
   kind: DriveKind;

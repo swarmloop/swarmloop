@@ -12,8 +12,6 @@ import { LiveHub } from '../live/live.hub';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { ProjectEnvironments } from './project-environments';
 
-export { ENVIRONMENT, type EnvironmentRecord, type PreparedEnvironment } from './project-environments';
-
 @Injectable()
 export class EnvironmentService extends ProjectEnvironments {
   constructor(

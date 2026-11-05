@@ -57,7 +57,7 @@ export async function cloneAuthor(cwd: string): Promise<string[]> {
   return args;
 }
 
-export async function localConfig(cwd: string, key: string): Promise<string> {
+async function localConfig(cwd: string, key: string): Promise<string> {
   try {
     return await git(['-C', cwd, 'config', '--local', '--get', key]);
   } catch {
@@ -119,7 +119,7 @@ export function copiedDestination(cwd: string, rel: string): string {
   return leaf ? join(dir, leaf) : cwd;
 }
 
-export function replaceLinkedDirectory(full: string): void {
+function replaceLinkedDirectory(full: string): void {
   try {
     const info = lstatSync(full);
     if (info.isDirectory()) {
@@ -208,7 +208,7 @@ export async function loadCloneIndex(
   await gitStdin(cwd, repo, hosts, ['update-index', '--index-info'], `${lines.join('\n')}\n`);
 }
 
-export function unmergedFromStageList(raw: string): string[] {
+function unmergedFromStageList(raw: string): string[] {
   const paths: string[] = [];
   for (const entry of parseStageList(raw)) {
     if (entry.stage === '0' || paths.includes(entry.path)) {

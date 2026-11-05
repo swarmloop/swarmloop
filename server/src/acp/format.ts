@@ -1,6 +1,6 @@
 import type { RunSummary } from '../contract/api';
 
-export function money(usd: number): string {
+function money(usd: number): string {
   if (usd === 0) {
     return '$0';
   }
@@ -9,10 +9,6 @@ export function money(usd: number): string {
 
 export function sessionTitle(run: RunSummary): string {
   return `${money(run.usd)} · ${run.key} · ${run.status} · ${run.currentStep} · ${when(run.updatedAt)}`;
-}
-
-export function flowTitle(flow: { key: string; status: string; currentStep: string; updatedAt: string }): string {
-  return `${flow.key} · ${flow.status} · ${flow.currentStep} · ${when(flow.updatedAt)}`;
 }
 
 function when(iso: string): string {

@@ -63,7 +63,26 @@ jobs:
       - run: bash scripts/lint-changed.sh origin/${{ github.event.repository.default_branch }} --fix
       - run: npx eslint .
       - run: bash scripts/lint-changed.sh origin/${{ github.event.repository.default_branch }}
+      - run: npx eslint --config eslint.strict.config.mjs . --ignore-pattern server/src/agent/agent-runner.ts
+      - run: 'echo "unmet: server/src/agent/agent-runner.ts exceeds the strict 400-line limit"'
       - run: node --test scripts/ci-tools.test.mjs scripts/check-worktree.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs docker/egress/proxy.test.mjs
+
+  knip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            dashboard/package-lock.json
+      - run: npm ci
+        working-directory: server
+      - run: npm ci
+        working-directory: dashboard
+      - run: npx --yes knip@5 --include files,exports,types
 
   autofix:
     runs-on: ubuntu-latest

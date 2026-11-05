@@ -10,7 +10,7 @@ import { answered } from '../../steps/shared/answers';
 import { items } from '../../steps/shared/markdown-section';
 import { chipStatus, chipAttempts, reportChip, reviewerRound } from './chips';
 import { latest } from './status';
-export { stepStatus, latest } from './status';
+export { latest } from './status';
 import { PHASES } from './run-view.types';
 
 export function metrics(

@@ -20,7 +20,7 @@ interface AuthFile {
   [key: string]: unknown;
 }
 
-export interface CodexAuthDeps {
+interface CodexAuthDeps {
   fetch: typeof fetch;
   now: () => number;
 }

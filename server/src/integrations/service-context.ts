@@ -86,7 +86,7 @@ export class ServiceContextService {
   }
 }
 
-export function renderIssue(bundle: IssueBundle): string {
+function renderIssue(bundle: IssueBundle): string {
   const lines = [`Jira ${bundle.key}: ${bundle.summary.trim()}`, bundle.descriptionMarkdown.trim()];
   if (bundle.acceptanceCriteria.trim()) {
     lines.push(`Acceptance: ${bundle.acceptanceCriteria.trim()}`);

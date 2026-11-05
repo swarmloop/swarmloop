@@ -1,0 +1,26 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": ["bin/*", "scripts/*.mjs", "docker/**/*.mjs", "eslint.config.mjs", "eslint.strict.config.mjs"],
+      "project": ["scripts/**/*.mjs", "docker/**/*.mjs", "*.mjs"]
+    },
+    "server": {
+      "entry": [
+        "src/main.ts",
+        "src/api-main.ts",
+        "src/acp/main.ts",
+        "src/**/*.module.ts",
+        "src/**/*.spec.ts",
+        "src/**/*.spec-helpers.ts",
+        "test/**/*.ts",
+        "src/history/data-source.ts"
+      ],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
+    "dashboard": {
+      "entry": ["app/**/*.{ts,tsx}", "**/*.test.{ts,tsx}", "test/**/*.ts", "vitest.config.ts", "vitest.setup.ts"],
+      "project": ["**/*.{ts,tsx}"]
+    }
+  }
+}

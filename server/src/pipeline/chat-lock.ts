@@ -4,7 +4,7 @@ const PID_LOCK = /^(waiting|blocked|failed|done) (\d+)$/;
 const CONTAINER_LOCK = /^(waiting|blocked|failed|done) container ([a-z0-9][a-z0-9_.-]+)(?: (\d+))?$/;
 const START_GRACE_MS = 10_000;
 
-export interface ChatLock {
+interface ChatLock {
   status: string;
   pid?: number;
   container?: string;
@@ -36,7 +36,7 @@ export function readChatLock(body: string | null | undefined): ChatLock | null {
   return { status: pid[1], pid: Number(pid[2]) };
 }
 
-export function ownerAlive(pid: number | null): boolean {
+function ownerAlive(pid: number | null): boolean {
   if (pid === null || pid <= 0) {
     return false;
   }

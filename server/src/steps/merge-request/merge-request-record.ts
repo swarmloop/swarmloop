@@ -1,5 +1,5 @@
 import { SwarmloopError } from '../../core/swarmloop-error';
-export { remoteProject, type RemoteProject } from '../../integrations/code-host/remote-project';
+export { remoteProject } from '../../integrations/code-host/remote-project';
 
 export function parseMergeRequests(body: string): { project: string; iid: number; url: string }[] {
   const records: { project: string; iid: number; url: string }[] = [];

@@ -12,7 +12,7 @@ export function isStep(value: string): value is StepName {
   return (STEPS as readonly string[]).includes(value);
 }
 
-export function phaseOf(step: StepName): PhaseName | null {
+function phaseOf(step: StepName): PhaseName | null {
   for (const phase of PHASES) {
     if (PHASE_STEPS[phase].includes(step)) {
       return phase;

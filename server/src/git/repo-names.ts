@@ -40,7 +40,7 @@ export function mountsForStep(root: string, key: string, names: string[], target
   return worktreeMounts(root, key, names);
 }
 
-export function worktreeMounts(root: string, key: string, names: string[]): SandboxMount[] {
+function worktreeMounts(root: string, key: string, names: string[]): SandboxMount[] {
   return [...names].sort().map((name) => {
     const hostPath = worktreePath(root, key, name);
     if (!existsSync(hostPath) || !statSync(hostPath).isDirectory()) {
@@ -49,18 +49,6 @@ export function worktreeMounts(root: string, key: string, names: string[]): Sand
     const containerPath = hostPath === join(root, 'worktrees', key) ? '/work' : `/work/${name}`;
     return { hostPath, containerPath };
   });
-}
-
-export function perRepoMounts(mounts: SandboxMount[], names: string[]): { name: string; mounts: SandboxMount[] }[] {
-  if (mounts.length === 1 && mounts[0]?.containerPath === '/work') {
-    return [{ name: names[0] ?? 'work', mounts }];
-  }
-  return mounts.map((mount, index) => ({
-    name: mount.containerPath.startsWith('/work/')
-      ? mount.containerPath.slice('/work/'.length)
-      : (names[index] ?? 'work'),
-    mounts: [mount],
-  }));
 }
 
 export function hasCi(dir: string): boolean {

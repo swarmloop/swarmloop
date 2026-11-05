@@ -1,13 +1,13 @@
 import type { RequirementsInput } from './requirements-source';
 import type { IssueBundle, IssueEpic, IssuePage } from '../issue-tracker/issue-bundle';
 
-export interface RecordNote {
+interface RecordNote {
   author: string;
   created: string;
   body: string;
 }
 
-export interface RecordFile {
+interface RecordFile {
   name: string;
   path: string;
   source: 'attachment' | 'link' | 'paste';
@@ -16,7 +16,7 @@ export interface RecordFile {
   encoding: 'utf8' | 'base64';
 }
 
-export interface RecordPage {
+interface RecordPage {
   source: 'confluence' | 'drive';
   id: string;
   title: string;
@@ -26,14 +26,14 @@ export interface RecordPage {
   encoding: 'utf8' | 'base64';
 }
 
-export interface RecordEpic {
+interface RecordEpic {
   key: string;
   summary: string;
   description: string;
   comments: RecordNote[];
 }
 
-export interface RecordTicket {
+interface RecordTicket {
   key: string;
   summary: string;
   description: string;
@@ -48,7 +48,7 @@ export interface PlanFields {
   decision: 'approve' | 'revise' | null;
 }
 
-export interface RequirementsRecord {
+interface RequirementsRecord {
   scope: string[];
   prompt: string | null;
   tickets: RecordTicket[];
