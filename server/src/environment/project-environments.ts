@@ -19,6 +19,8 @@ import { git } from '../git/git';
 import { imagePath, projectSlug, resolveProjectImage } from './project-image';
 
 export const ENVIRONMENT = 'environment';
+/** A completed check rejected the code; implementation can repair it using the saved feedback. */
+export class RequiredCheckFailed extends SwarmloopError {}
 const SETUP_TIMEOUT_MS = 30 * 60_000;
 const TAIL_LINES = 80;
 const TAIL_CHARS = 6000;
@@ -134,13 +136,13 @@ export class ProjectEnvironments {
         if (result.exitCode !== 0) {
           const body = `${prepared.record.repo}: required check failed (exit ${result.exitCode}):\n${result.tail}`;
           await this.documents.putDocument(input.run, 'return', `## checks\n${body}\n`);
-          throw new SwarmloopError(body);
+          throw new RequiredCheckFailed(body);
         }
       }
       if (before !== null && (await worktreeSnapshot(input.mounts)) !== before) {
         const body = `${prepared.record.repo}: required checks changed project files. Review those changes and rerun the checks before completing implementation.`;
         await this.documents.putDocument(input.run, 'return', `## checks\n${body}\n`);
-        throw new SwarmloopError(body);
+        throw new RequiredCheckFailed(body);
       }
     }
   }

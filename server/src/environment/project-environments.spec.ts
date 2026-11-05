@@ -8,7 +8,7 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { RunEntity } from '../history/entities';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import { commitFiles, makeRepo, runGit } from '../git/git-repo.spec-helpers';
-import { ENVIRONMENT, type EnvironmentRecord, ProjectEnvironments } from './project-environments';
+import { ENVIRONMENT, type EnvironmentRecord, ProjectEnvironments, RequiredCheckFailed } from './project-environments';
 
 const manifest = {
   version: 1,
@@ -190,7 +190,7 @@ describe('ProjectEnvironments', () => {
       checkCode: 2,
       config: { ...manifest, checks: ['php test.php', 'python3 test.py'] },
     });
-    await expect(service.check(input)).rejects.toThrow('required check failed (exit 2)');
+    await expect(service.check(input)).rejects.toThrow(RequiredCheckFailed);
     expect(spawned.map((launch) => launch.project?.shell)).toEqual(['npm ci', 'php test.php']);
     expect(stored.find((document) => document.kind === 'return')?.body).toContain('php test.php');
   });
@@ -213,7 +213,7 @@ describe('ProjectEnvironments', () => {
     const { service, input, stored } = setup({
       onCheck: (repo) => writeFileSync(join(repo, 'changed.py'), 'print(2)\n'),
     });
-    await expect(service.check(input)).rejects.toThrow('required checks changed project files');
+    await expect(service.check(input)).rejects.toThrow(RequiredCheckFailed);
     expect(stored.find((document) => document.kind === 'return')?.body).toContain('rerun the checks');
   });
 

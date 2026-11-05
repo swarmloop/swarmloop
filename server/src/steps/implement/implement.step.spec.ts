@@ -23,6 +23,8 @@ import { REBASE_CONFLICT, rebaseFeatureRepos } from '../../git/rebase';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { EnvironmentService } from '../../environment/environment.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
+import { RequiredCheckFailed } from '../../environment/project-environments';
+import { CommitStep } from '../commit/commit.step';
 
 const reply = [
   'implementation:',
@@ -565,6 +567,66 @@ describe('implement step', () => {
       await app.close();
     }
   });
+
+  it.each(['fixed', 'still-failing', 'infrastructure'] as const)(
+    'returns post-rebase check errors to implementation: %s',
+    async (mode) => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-rebase-checks-'));
+      await writeEnv(root);
+      const key = 'PROJ-185';
+      const tree = conflictedTree(root, key, 'billing-api');
+      const agent = jest.fn(async (input: AgentRunInput) => {
+        if (input.prompt.includes('The commit being replayed is')) {
+          writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 3;\n');
+        } else {
+          writeFileSync(join(tree, 'src', 'fixed.ts'), 'export const fixed = true;\n');
+        }
+        return result(reply);
+      });
+      const app = await boot(root, agent);
+      try {
+        await seed(app, key, 'approve');
+        const documents = app.get(DocumentRepository);
+        const runs = app.get(RunRepository);
+        const run = (await runs.findRun(key))!;
+        await documents.putDocument(run, 'implementation', '- existing implementation\n');
+        await documents.putDocument(run, REBASE_CONFLICT, 'pending\n');
+        const failure =
+          'billing-api: required check failed (exit 1):\n$ npm run typecheck\nCannot find module ../shared/repo-names';
+        let checks = 0;
+        jest.spyOn(app.get(EnvironmentService), 'check').mockImplementation(async () => {
+          checks += 1;
+          if (mode === 'infrastructure') throw new SwarmloopError('sandbox unavailable');
+          if (checks > 1 && mode === 'fixed') return;
+          await documents.putDocument(run, 'return', `## checks\n${failure}\n`);
+          throw new RequiredCheckFailed(failure);
+        });
+        const publish = jest.spyOn(app.get(CommitStep), 'publishRebased');
+        const first = await app.get(PipelineService).step('implement', key);
+        expect(first.exitCode).toBe(1);
+        expect(agent).toHaveBeenCalledTimes(1);
+        expect((await documents.latestBody(key, REBASE_CONFLICT))?.trim()).toBe(
+          mode === 'infrastructure' ? 'pending' : 'review',
+        );
+        const head = git(tree, ['rev-parse', 'HEAD']);
+        const second = await app.get(PipelineService).step('implement', key);
+        expect(publish).not.toHaveBeenCalled();
+        expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
+        if (mode === 'infrastructure') {
+          expect(agent).toHaveBeenCalledTimes(1);
+          expect(second.message).toContain('sandbox unavailable');
+          return;
+        }
+        expect(agent).toHaveBeenCalledTimes(2);
+        expect(agent.mock.calls[1][0].prompt).toContain(failure);
+        expect(second.exitCode).toBe(mode === 'fixed' ? 0 : 1);
+        expect((await documents.latestBody(key, REBASE_CONFLICT))?.trim()).toBe('review');
+        expect((await runs.findRun(key))?.currentStep).toBe(mode === 'fixed' ? 'implement-improve' : 'implement');
+      } finally {
+        await app.close();
+      }
+    },
+  );
 
   it('returns the existing implementation text after the rebase completes', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-resolve-'));

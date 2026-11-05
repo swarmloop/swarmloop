@@ -25,6 +25,7 @@ import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.step';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../shared/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
+import { RequiredCheckFailed } from '../../environment/project-environments';
 import { withEnvironment } from '../../environment/environment-note';
 import { agentWorkplace } from '../shared/agent-environment';
 import { storedPlan } from '../step';
@@ -251,7 +252,15 @@ export class ImplementStep extends AgentStep {
       await this.documents.putDocument(ctx.opened.run, REBASE_CONFLICT, 'review\n');
       return null;
     }
-    await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
+    try {
+      await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
+    } catch (error) {
+      if (error instanceof RequiredCheckFailed) {
+        // Git conflicts are resolved. Retry the normal implementation flow with the saved check output.
+        await this.documents.putDocument(ctx.opened.run, REBASE_CONFLICT, 'review\n');
+      }
+      throw error;
+    }
     await this.commit.publishRebased(key, branch, outcome.leases);
     await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review');
     const existing = (await this.documents.latestBody(key, 'implementation')) ?? '';
