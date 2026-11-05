@@ -220,21 +220,68 @@ export default tseslint.config(
         'error',
         {
           selector: "CallExpression[callee.object.name='socket'][callee.property.name=/^(on|off)$/]",
-          message: 'Subscribe to socket events only in hooks/use-live-bridge.ts',
+          message: 'Subscribe to socket events only in features/shell/use-live-bridge.ts',
         },
       ],
     },
   },
   {
-    files: ['dashboard/hooks/use-live-bridge.ts'],
+    files: ['dashboard/features/shell/use-live-bridge.ts'],
     rules: { 'no-restricted-syntax': 'off' },
   },
   {
-    files: ['dashboard/components/**/*.{js,mjs,ts,tsx}'],
+    files: ['dashboard/features/**/*.{js,mjs,ts,tsx}'],
+    plugins: { boundaries },
+    settings: {
+      'import/resolver': { node: { extensions: ['.js', '.ts', '.tsx'] } },
+      'boundaries/elements': [
+        ...['shell', 'runs', 'run', 'new-run'].map((feature) => ({
+          type: feature,
+          pattern: `dashboard/features/${feature}/**`,
+          mode: 'folder',
+        })),
+        { type: 'dashboard-lib', pattern: 'dashboard/lib/**', mode: 'folder' },
+        { type: 'dashboard-ui', pattern: 'dashboard/components/ui/**', mode: 'folder' },
+        { type: 'contract', pattern: 'server/src/contract/**', mode: 'folder' },
+      ],
+      'boundaries/ignore': ['dashboard/features/**/*.test.*'],
+    },
+    rules: {
+      'boundaries/element-types': [
+        'error',
+        {
+          default: 'disallow',
+          rules: [
+            {
+              from: ['shell', 'runs', 'run', 'new-run'],
+              allow: ['shell', 'runs', 'run', 'new-run', 'dashboard-lib', 'dashboard-ui', 'contract'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['dashboard/features/**/*.{js,mjs,ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
-        { patterns: [{ regex: '(^|/)lib/api$', message: 'Components call lib/endpoints, not lib/api.' }] },
+        {
+          patterns: [
+            {
+              regex: '^(\\.\\.?/)+(?:features/)?(shell|runs|run|new-run)/',
+              message: 'Import another feature through its index.ts.',
+            },
+            {
+              regex: '^(\\.\\.?/)+(?!.*components/ui/).*components/',
+              message: 'Features may import shared UI only from components/ui.',
+            },
+            {
+              regex: '^(\\.\\.?/)+(app|hooks)/',
+              message: 'Features may not import app routes or legacy hooks.',
+            },
+          ],
+        },
       ],
     },
   },

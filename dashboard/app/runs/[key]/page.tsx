@@ -1,4 +1,4 @@
-import { RunScreen } from '../../../components/flow/run-screen';
+import { RunScreen } from '../../../features/run';
 
 export default async function RunPage({
   params,
