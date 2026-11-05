@@ -1,91 +1,30 @@
 import { chmodSync, chownSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'fs';
 import { homedir } from 'os';
-import { dirname, isAbsolute, join, resolve, sep } from 'path';
+import { dirname, join, resolve, sep } from 'path';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { rawEnv } from '../config/process-env';
-import { EGRESS_API, EGRESS_IP, EGRESS_NETWORK, egressEnv, isLeaseIp } from './egress';
+import { EGRESS_API, isLeaseIp } from './egress';
+import { assertDaemonPath, assertMask, assertMount, assertProject, sandboxMount } from './sandbox-checks';
+import { CLI_ROOT, egressProxyArgs, projectImageArgs } from './sandbox-args';
+import type { SandboxLaunch } from './sandbox-types';
 
 import type { SandboxMount } from '../core/sandbox-mount';
+export type { EnvMask, ProjectLaunch, SandboxLaunch } from './sandbox-types';
 export type { SandboxMount } from '../core/sandbox-mount';
-
-export interface EnvMask {
-  hostFile: string;
-  containerFile: string;
-}
-
-export interface SandboxLaunch {
-  runtime: RuntimeName;
-  runKey: string;
-  step: string;
-  mounts: SandboxMount[];
-  envMasks: EnvMask[];
-  allowHosts: string[];
-  command: string[];
-  userId: number;
-  maskFile: string;
-  /** Only the runtime model key. Other tokens stay out of the container. */
-  env?: { name: string; value: string }[];
-  /** Durable home for the vendor session. Replaces the /home/sandbox tmpfs. */
-  statePath?: string;
-  stateDaemonPath?: string;
-  /** Run in the project's own image, with the agent CLI mounted read-only from a volume. */
-  project?: ProjectLaunch;
-  /** The address on the internal sandbox network. Its policy on the egress proxy decides what it reaches. */
-  egress?: { ip: string };
-  /** Attach the caller's stdin. */
-  stdin?: boolean;
-  /** Allocate a terminal. Only the interactive vendor screen needs one. */
-  tty?: boolean;
-}
-
-export interface ProjectLaunch {
-  image: string;
-  /** The volume that holds the agent image's /opt/swarmloop. */
-  cliVolume: string;
-  /** PATH of the project image. The CLI directory goes in front of it. */
-  path: string;
-  /** The image has no CA bundle of its own, so OpenSSL tools use the one from the CLI volume. */
-  certFile: boolean;
-  /** Package-manager caches below /home/sandbox, kept between runs. */
-  caches: { daemonPath: string; containerPath: string }[];
-  /** A shell command to run instead of the agent CLI, for the setup of the environment. */
-  shell?: string;
-}
-
-export const CLI_ROOT = '/opt/swarmloop';
-const CLI_CERTS = `${CLI_ROOT}/certs/ca-certificates.crt`;
+export { CLI_CERTS, CLI_ROOT } from './sandbox-args';
+export { assertDaemonPath, assertMask } from './sandbox-checks';
+export { sandboxMount } from './sandbox-checks';
 const PROJECT_TMP = '/tmp:rw,exec,nosuid,nodev,size=1g,mode=1777';
 /** Test runners and JVM builds start many threads, and every thread counts. Still a ceiling against a fork bomb. */
 const PROJECT_PIDS = '1024';
-const AGENT_COMMANDS = new Set(['agent', 'claude', 'codex']);
 /**
  * Agents run their commands in a login shell (`bash -lc`), and /etc/profile of Debian and Ubuntu images sets PATH
  * anew, which drops the CLI directory and its `rg`. The home profile runs after it and puts the sandbox PATH back.
  */
 export const KEEP_PATH = `printf 'export PATH="%s"\\n' "$PATH" > "$HOME/.profile" && cp "$HOME/.profile" "$HOME/.bash_profile" && exec "$@"`;
 
-function assertProject(project: ProjectLaunch, command: string[], home: string): void {
-  const valid =
-    /^[A-Za-z0-9][A-Za-z0-9_./:@-]{0,254}$/.test(project.image) &&
-    /^swarmloop-cli-[a-z]+-[0-9a-f]{12}$/.test(project.cliVolume) &&
-    /^[A-Za-z0-9_./:-]+$/.test(project.path) &&
-    (project.shell === undefined ? AGENT_COMMANDS.has(command[0] ?? '') : command.length === 0 && project.shell !== '');
-  if (!valid) {
-    throw new SwarmloopError('sandbox project image is not allowed');
-  }
-  for (const cache of project.caches) {
-    const path = cache.containerPath;
-    if (!path.startsWith('/home/sandbox/') || path.split('/').includes('..') || path.endsWith('/')) {
-      throw new SwarmloopError(`cache path ${path} is not allowed`);
-    }
-    assertDaemonPath(cache.daemonPath, home);
-  }
-}
-
-const WORKTREE = /^\/work(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?(?:\/\.git)?$/;
-const GIT_METADATA = /^\/swarmloop-git\/git-[A-Za-z0-9]+$/;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
 const REGISTRIES = new Set([
   'registry.npmjs.org',
@@ -361,40 +300,8 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
   } else {
     args.push('--tmpfs', `/home/sandbox:rw,nosuid,nodev,size=64m,uid=${launch.userId},gid=${launch.userId},mode=700`);
   }
-  if (project) {
-    const repositories = launch.mounts.filter((mount) => mount.containerPath.endsWith('/.git'));
-    if (repositories.length > 0) {
-      args.push('--env', `GIT_CONFIG_COUNT=${repositories.length}`, '--env', 'GIT_OPTIONAL_LOCKS=0');
-      repositories.forEach((mount, index) => {
-        args.push('--env', `GIT_CONFIG_KEY_${index}=safe.directory`);
-        args.push('--env', `GIT_CONFIG_VALUE_${index}=${mount.containerPath.slice(0, -5)}`);
-      });
-    }
-    for (const cache of project.caches) {
-      args.push('--mount', `type=bind,src=${cache.daemonPath},dst=${cache.containerPath},readonly=false`);
-    }
-    args.push('--mount', `type=volume,src=${project.cliVolume},dst=${CLI_ROOT},readonly=true`);
-    args.push('--env', 'HOME=/home/sandbox', '--env', `PATH=${CLI_ROOT}/bin:${project.path}`);
-    args.push('--env', `NODE_EXTRA_CA_CERTS=${CLI_CERTS}`);
-    if (project.certFile) {
-      args.push('--env', `SSL_CERT_FILE=${CLI_CERTS}`);
-    }
-  }
-  if (launch.egress) {
-    // Names are resolved by the proxy. Docker before 25.0.5 forwards DNS from internal networks (CVE-2024-29018),
-    // so the resolver is the proxy's address, where nothing answers on port 53: a lookup fails at once on any engine.
-    args.push('--network', EGRESS_NETWORK, '--ip', launch.egress.ip, '--dns', EGRESS_IP);
-    for (const item of egressEnv()) {
-      args.push('--env', `${item.name}=${item.value}`);
-    }
-  } else if (network === null) {
-    args.push('--network', 'none');
-  } else {
-    args.push('--network', network);
-    if (network === 'swarmloop-local') {
-      args.push('--add-host', 'host.docker.internal:host-gateway');
-    }
-  }
+  projectImageArgs(args, launch);
+  egressProxyArgs(args, launch, network);
   for (const item of launch.env ?? []) {
     const proxied = launch.egress !== undefined && EGRESS_ENV[item.name]?.(item.value) === true;
     if ((!MODEL_ENV.has(item.name) && !proxied) || item.value === '' || /[\r\n\0]/.test(item.value)) {
@@ -422,51 +329,4 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
   }
   args.push('--workdir', workdir, imageName(launch.runtime), ...launch.command);
   return args;
-}
-
-export function sandboxMount(mount: SandboxMount): string {
-  const access = mount.readonly ? 'true' : 'false';
-  if (mount.volume) {
-    if (mount.daemonPath !== undefined || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(mount.volume)) {
-      throw new SwarmloopError('sandbox mount is not allowed');
-    }
-    return `type=volume,src=${mount.volume},dst=${mount.containerPath},readonly=${access}`;
-  }
-  return `type=bind,src=${mount.daemonPath ?? mount.hostPath},dst=${mount.containerPath},readonly=${access}`;
-}
-
-function assertMount(mount: SandboxMount, home: string): void {
-  if (!WORKTREE.test(mount.containerPath) && !GIT_METADATA.test(mount.containerPath)) {
-    throw new SwarmloopError('sandbox mount is not allowed');
-  }
-  if ((mount.containerPath.endsWith('/.git') || GIT_METADATA.test(mount.containerPath)) && !mount.readonly) {
-    throw new SwarmloopError('sandbox git metadata must be read-only');
-  }
-  assertDaemonPath(mount.hostPath, home);
-  if (mount.daemonPath !== undefined) {
-    assertDaemonPath(mount.daemonPath, home);
-  }
-  sandboxMount(mount);
-}
-
-export function assertDaemonPath(path: string, home: string): void {
-  if (!isAbsolute(path)) {
-    throw new SwarmloopError('sandbox mount is not allowed');
-  }
-  const host = resolve(path);
-  const root = resolve(home);
-  const ssh = resolve(home, '.ssh');
-  if (host === root || host === ssh || host.startsWith(`${ssh}${sep}`) || root.startsWith(`${host}${sep}`)) {
-    throw new SwarmloopError('sandbox mount is not allowed');
-  }
-  if (host.endsWith(`${sep}docker.sock`) || host.endsWith(`${sep}.env`)) {
-    throw new SwarmloopError('sandbox mount is not allowed');
-  }
-}
-
-export function assertMask(mask: EnvMask, mounts: SandboxMount[]): void {
-  const fits = mounts.some((mount) => mask.containerFile.startsWith(`${mount.containerPath}/`));
-  if (!fits || mask.containerFile.includes('..')) {
-    throw new SwarmloopError('sandbox mount is not allowed');
-  }
 }

@@ -1,3 +1,9 @@
+import { agentDecision } from './readable-log-agent';
+import { claudeEvent } from './readable-log-claude';
+import { codexEvent } from './readable-log-codex';
+import { commonEvent } from './readable-log-events';
+import type { ParsedToolCall, ReadableLogEvent } from './readable-log-events';
+export { usageFromLog } from './readable-log-usage';
 export interface LogMessage {
   type: string;
   text: string;
@@ -27,63 +33,6 @@ export function reviewChipStatus(raw: string): 'done' | 'waiting' | 'failed' | n
   return 'failed';
 }
 
-/** The skill example lives in the user prompt. Only the agent's own decision line counts. */
-function agentDecision(raw: string): 'ok' | 'return' | null {
-  let found: 'ok' | 'return' | null = null;
-  for (const line of raw.split('\n')) {
-    const text = agentText(line);
-    if (!text) {
-      continue;
-    }
-    for (const row of text.split('\n')) {
-      const cleaned = row
-        .trim()
-        .replace(/^[`*]+/, '')
-        .replace(/[`*]+$/, '')
-        .trim();
-      const match = /^decision:\s*(ok|return)[`*]*(?:\s*[-–—:.,;]\s*\S.*)?\s*$/.exec(cleaned);
-      if (match?.[1] === 'ok' || match?.[1] === 'return') {
-        found = match[1];
-      }
-    }
-  }
-  return found;
-}
-
-function agentText(line: string): string | null {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith('{')) {
-    return line;
-  }
-  let record: { type?: unknown; result?: unknown; message?: { content?: unknown } };
-  try {
-    record = JSON.parse(trimmed) as { type?: unknown; result?: unknown; message?: { content?: unknown } };
-  } catch {
-    return line;
-  }
-  if (record.type === 'user') {
-    return null;
-  }
-  if (typeof record.result === 'string') {
-    return record.result;
-  }
-  const content = record.message?.content;
-  if (typeof content === 'string') {
-    return content;
-  }
-  if (!Array.isArray(content)) {
-    return null;
-  }
-  const text = content
-    .map((part) =>
-      part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string'
-        ? (part as { text: string }).text
-        : '',
-    )
-    .join('');
-  return text.length > 0 ? text : null;
-}
-
 /** Turns a stored agent stream into text a person can read. The stored body stays unchanged. */
 export function readableLog(raw: string): string {
   return logMessages(raw)
@@ -98,39 +47,6 @@ export function logMessages(raw: string): LogMessage[] {
     writer.add(line);
   }
   return writer.messages();
-}
-
-/** Token counts travel on the final result line. Earlier lines do not carry them. */
-export function usageFromLog(raw: string): { tokensIn: number; tokensOut: number } | null {
-  let found: { tokensIn: number; tokensOut: number } | null = null;
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith('{') || !trimmed.includes('"usage"')) {
-      continue;
-    }
-    let record: { usage?: unknown };
-    try {
-      record = JSON.parse(trimmed) as { usage?: unknown };
-    } catch {
-      continue;
-    }
-    if (!isRecord(record.usage)) {
-      continue;
-    }
-    const tokensIn = numberField(record.usage, ['inputTokens', 'input_tokens', 'prompt_tokens']);
-    const tokensOut = numberField(record.usage, ['outputTokens', 'output_tokens', 'completion_tokens']);
-    const cacheRead = numberField(record.usage, ['cacheReadTokens', 'cache_read_tokens', 'cache_read_input_tokens']);
-    const cacheWrite = numberField(record.usage, [
-      'cacheWriteTokens',
-      'cache_write_tokens',
-      'cache_creation_input_tokens',
-    ]);
-    if (tokensIn === null && tokensOut === null && cacheRead === null && cacheWrite === null) {
-      continue;
-    }
-    found = { tokensIn: (tokensIn ?? 0) + (cacheRead ?? 0) + (cacheWrite ?? 0), tokensOut: tokensOut ?? 0 };
-  }
-  return found;
 }
 
 interface Block {
@@ -159,69 +75,45 @@ class LogWriter {
     } catch {
       return;
     }
-    if (record.type === 'thinking') {
-      if (record.subtype === 'completed') {
-        this.closeSpeech();
-        return;
-      }
-      this.say('thinking', typeof record.text === 'string' ? record.text : '');
-      return;
-    }
-    if (record.type === 'system' || record.type === 'user') {
-      return;
-    }
-    if (record.type === 'assistant') {
-      this.say('assistant', textOf(record) ?? '');
-      return;
-    }
-    if (record.type === 'result') {
-      this.closeSpeech();
-      const fresh = novel(typeof record.result === 'string' ? record.result : '', this.said());
-      if (fresh) {
-        this.blocks.push({ type: 'result', text: fresh });
-      }
-      return;
-    }
-    if (record.type === 'item.completed') {
-      const item = record.item;
-      if (isRecord(item) && item.type === 'agent_message' && typeof item.text === 'string') {
-        this.say('assistant', item.text);
-      }
-      return;
-    }
-    if (record.type === 'error' || record.type === 'turn.failed') {
-      this.closeSpeech();
-      const text = failureText(record);
-      if (text) {
-        this.blocks.push({ type: String(record.type), text });
-      }
-      return;
-    }
-    if (record.type === 'tool_call') {
-      this.closeSpeech();
-      this.tool(record);
-      return;
-    }
-    if (record.type === 'connection' || record.type === 'retry') {
-      this.closeSpeech();
-      const text = eventText(record);
-      if (text) {
-        this.blocks.push({ type: String(record.type), text });
-      }
-      return;
-    }
-    if (typeof record.type === 'string') {
-      this.closeSpeech();
-      const text = typeof record.subtype === 'string' ? record.subtype : '';
-      if (text) {
-        this.blocks.push({ type: record.type, text });
-      }
-    }
+    const event = claudeEvent(record) ?? codexEvent(record) ?? commonEvent(record) ?? fallbackEvent(record);
+    this.apply(event);
   }
 
   messages(): LogMessage[] {
     this.closeSpeech();
     return this.blocks.map((block) => ({ type: block.type, text: block.text, code: codeKind(block) }));
+  }
+
+  private apply(event: ReadableLogEvent): void {
+    if (event.kind === 'ignore') {
+      return;
+    }
+    if (event.kind === 'close-speech') {
+      this.closeSpeech();
+      return;
+    }
+    if (event.kind === 'speech') {
+      this.say(event.type, event.text);
+      return;
+    }
+    if (event.kind === 'result') {
+      this.closeSpeech();
+      const fresh = novel(event.text, this.said());
+      if (fresh) {
+        this.blocks.push({ type: 'result', text: fresh });
+      }
+      return;
+    }
+    this.closeSpeech();
+    if (event.kind === 'tool') {
+      if (event.call) {
+        this.tool(event.call);
+      }
+      return;
+    }
+    if (event.text) {
+      this.blocks.push({ type: event.type, text: event.text });
+    }
   }
 
   private said(): string {
@@ -252,12 +144,8 @@ class LogWriter {
     this.speech = null;
   }
 
-  private tool(record: Record<string, unknown>): void {
-    const call = openedTool(record);
-    if (!call) {
-      return;
-    }
-    if (record.subtype === 'completed') {
+  private tool(call: ParsedToolCall): void {
+    if (call.completed) {
       const queue = this.openTools.get(call.label);
       const index = queue?.shift();
       if (index === undefined) {
@@ -277,6 +165,17 @@ class LogWriter {
     queue.push(index);
     this.openTools.set(call.label, queue);
   }
+}
+
+function fallbackEvent(record: Record<string, unknown>): ReadableLogEvent {
+  if (typeof record.type !== 'string') {
+    return { kind: 'ignore' };
+  }
+  return {
+    kind: 'block',
+    type: record.type,
+    text: typeof record.subtype === 'string' ? record.subtype : '',
+  };
 }
 
 function codeKind(block: Block): 'json' | 'shell' | null {
@@ -337,122 +236,4 @@ function covered(line: string, have: string): boolean {
 
 function tight(text: string): string {
   return text.replace(/\s+/g, '');
-}
-
-function eventText(record: Record<string, unknown>): string {
-  const subtype = typeof record.subtype === 'string' ? record.subtype : '';
-  const attempt = typeof record.attempt === 'number' ? `attempt ${record.attempt}` : '';
-  return [subtype, attempt].filter((part) => part !== '').join(', ');
-}
-
-function textOf(record: Record<string, unknown>): string | null {
-  if (typeof record.result === 'string') {
-    return record.result;
-  }
-  const message = record.message;
-  if (!isRecord(message)) {
-    return null;
-  }
-  const content = message.content;
-  if (typeof content === 'string') {
-    return content;
-  }
-  if (!Array.isArray(content)) {
-    return null;
-  }
-  const text = content.map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : '')).join('');
-  return text === '' ? null : text;
-}
-
-function openedTool(record: Record<string, unknown>): { label: string; detail: string; outcome: string } | null {
-  const call = record.tool_call;
-  if (!isRecord(call)) {
-    return null;
-  }
-  const entry = Object.entries(call).find(
-    ([, body]) => isRecord(body) && (isRecord(body.args) || isRecord(body.result) || body.rejected !== undefined),
-  );
-  if (!entry) {
-    return null;
-  }
-  const [name, body] = entry;
-  const label = name
-    .replace(/ToolCall$/, '')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .toLowerCase();
-  const args = isRecord(body) && isRecord(body.args) ? body.args : {};
-  return {
-    label,
-    detail: argDetail(label, args),
-    outcome: record.subtype === 'completed' ? outcome(isRecord(body) ? body.result : null) : '',
-  };
-}
-
-function argDetail(label: string, args: Record<string, unknown>): string {
-  if (label === 'shell' && typeof args.command === 'string') {
-    return args.command;
-  }
-  if (label === 'grep' && typeof args.pattern === 'string') {
-    const path = typeof args.path === 'string' ? ` ${args.path}` : '';
-    return `${args.pattern}${path}`;
-  }
-  if (typeof args.path === 'string') {
-    return args.path;
-  }
-  if (typeof args.targetDirectory === 'string' || typeof args.globPattern === 'string') {
-    return [args.targetDirectory, args.globPattern].filter((part) => typeof part === 'string').join(' ');
-  }
-  return '';
-}
-
-function outcome(result: unknown): string {
-  if (!isRecord(result)) {
-    return '';
-  }
-  if (result.rejected) {
-    return 'rejected';
-  }
-  const success = isRecord(result.success) ? result.success : null;
-  if (success && typeof success.totalFiles === 'number') {
-    return `${success.totalFiles} files`;
-  }
-  if (success && typeof success.stdout === 'string' && success.stdout.trim() !== '') {
-    return success.stdout.replace(/\s+$/, '');
-  }
-  if (success && typeof success.exitCode === 'number' && success.exitCode !== 0) {
-    return `exit ${success.exitCode}`;
-  }
-  const error = result.error ?? success?.error;
-  if (typeof error === 'string' && error !== '') {
-    return error.replace(/\s+$/, '');
-  }
-  return '';
-}
-
-function numberField(record: Record<string, unknown>, keys: string[]): number | null {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-  }
-  return null;
-}
-
-function failureText(record: Record<string, unknown>): string | null {
-  if (typeof record.message === 'string' && record.message.length > 0) {
-    return record.message;
-  }
-  const error = record.error;
-  if (typeof error === 'string' && error.length > 0) {
-    return error;
-  }
-  if (isRecord(error) && typeof error.message === 'string' && error.message.length > 0) {
-    return error.message;
-  }
-  return null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
