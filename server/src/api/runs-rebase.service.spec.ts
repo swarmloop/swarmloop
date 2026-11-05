@@ -20,6 +20,7 @@ import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.step';
 import { REBASE_CONFLICT, rebaseFeatureRepos, storedBase } from '../git/rebase-worktree';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { RunRebaseService } from './run-rebase.service';
+import { EnvironmentService } from '../environment/environment.service';
 import { httpStatus } from './runs.controller';
 import { boot, remember, featureWorktree, denyEnv, git, isAncestor, hostFetch } from './runs.spec-helpers';
 
@@ -41,9 +42,15 @@ describe('runs api', () => {
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
+      const refresh = jest.spyOn(app.get(EnvironmentService), 'refreshAfterRebase');
       await remember(runs, documents, 'proj-50', 'implement', 'failed');
       const result = await app.get(RunRebaseService).rebase('proj-50');
       expect(result).toEqual({ key: 'proj-50', status: 'started' });
+      expect(refresh).toHaveBeenCalledWith(
+        expect.objectContaining({ key: 'proj-50' }),
+        expect.any(Array),
+        new Map([['demo', base]]),
+      );
       expect(httpStatus(result)).toBe(202);
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-50');
       const fresh = await runs.findRun('proj-50');

@@ -1,7 +1,7 @@
 import { posix } from 'path';
 import Joi from 'joi';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { git } from '../git/git';
+import { git, gitDetail } from '../git/git';
 
 export const SWARMLOOP_FILE = '.swarmloop.json';
 export const SWARMLOOP_DIR = '.swarmloop';
@@ -54,14 +54,14 @@ const swarmloopSchema = Joi.object({
   .xor('image', 'dockerfile')
   .unknown(true);
 
-/** Reads the environment of a repository from its committed HEAD, so edits the agent makes do not change the run. */
-export async function readEnvironmentConfig(repoPath: string): Promise<EnvironmentConfig | null> {
-  const own = await committedFile(repoPath, SWARMLOOP_FILE);
+/** Reads a committed revision, so worktree edits cannot redefine the environment. */
+export async function readEnvironmentConfig(repoPath: string, ref = 'HEAD'): Promise<EnvironmentConfig | null> {
+  const own = await committedFile(repoPath, SWARMLOOP_FILE, ref);
   if (own !== null) {
     return fromSwarmloop(own);
   }
   for (const file of DEVCONTAINER_FILES) {
-    const text = await committedFile(repoPath, file);
+    const text = await committedFile(repoPath, file, ref);
     if (text !== null) {
       return fromDevcontainer(text, file);
     }
@@ -69,12 +69,17 @@ export async function readEnvironmentConfig(repoPath: string): Promise<Environme
   return null;
 }
 
-async function committedFile(repoPath: string, path: string): Promise<string | null> {
-  const listed = await git(['-C', repoPath, 'ls-tree', '--name-only', 'HEAD', '--', path]).catch(() => '');
+async function committedFile(repoPath: string, path: string, ref: string): Promise<string | null> {
+  let listed: string;
+  try {
+    listed = await git(['-C', repoPath, 'ls-tree', '--name-only', ref, '--', path]);
+  } catch (error) {
+    throw new SwarmloopError(`Cannot read project environment at ${ref}: ${gitDetail(error)}`);
+  }
   if (listed.trim() === '') {
     return null;
   }
-  return git(['-C', repoPath, 'show', `HEAD:${path}`]);
+  return git(['-C', repoPath, 'show', `${ref}:${path}`]);
 }
 
 export function fromSwarmloop(text: string): EnvironmentConfig {

@@ -149,7 +149,7 @@ How it runs:
 - The agent runs `checks` while working. Before `implement`, `implement-improve`, or rebase resolution can finish, the server independently runs every declared check in each repository's project image, without network or model credentials. The first failure stops the step and records feedback for Resume. Checks must be executable shell commands, without placeholders. Without declared checks there is no local completion gate; CI remains the final judge.
 - Project containers receive a temporary, read-only copy of Git metadata, so tools can read tracked files and diffs even in linked worktrees. The original Git state, credentials and host configuration are not mounted.
 - The reviewers and CI come after it, as before. CI stays the final judge.
-- The environment is read once per run and kept, so a change the agent makes to it counts from the next run.
+- The environment is frozen during a run. When an explicit Rebase changes the base commit, it refreshes the environment from that commit, including its Dockerfile, and reruns setup. Uncommitted or feature-branch manifest edits do not replace these trusted checks.
 - Keep it the same as CI: the same image or version, and one command, such as `npm run check`, that both CI and `checks` call.
 
 Commits never contain CI configuration (`.github/workflows/`, `.github/actions/`, `.gitlab-ci.yml`, `.gitlab/`, `.circleci/`, `Jenkinsfile`, `azure-pipelines.yml`, `bitbucket-pipelines.yml`): CI runs it with your repository's secrets. A run that changes it stops at the commit and names the files. Set `ALLOW_CI_CHANGES=true` to allow it. CI can still run scripts from the repository that the agent may change, so keep secrets out of jobs that run on feature branches.

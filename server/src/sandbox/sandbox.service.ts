@@ -1,5 +1,5 @@
 import { spawn, ChildProcess, execFile } from 'child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync } from 'fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { Injectable } from '@nestjs/common';
@@ -273,13 +273,16 @@ export class SandboxService {
 export function collectEnvMasks(mounts: { hostPath: string; containerPath: string }[]): EnvMask[] {
   const masks: EnvMask[] = [];
   for (const mount of mounts) {
+    if (mount.containerPath.endsWith('/.git') || mount.containerPath.startsWith('/swarmloop-git/')) {
+      continue;
+    }
     walkEnv(mount.hostPath, mount.containerPath, masks);
   }
   return masks;
 }
 
 function walkEnv(host: string, container: string, masks: EnvMask[]): void {
-  if (!existsSync(host)) {
+  if (!existsSync(host) || !statSync(host).isDirectory()) {
     return;
   }
   for (const entry of readdirSync(host, { withFileTypes: true })) {

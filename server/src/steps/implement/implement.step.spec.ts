@@ -92,10 +92,18 @@ describe('implement step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-69', 'approve');
-      const done = await app.get(PipelineService).step('implement', 'PROJ-69');
+      const pipeline = app.get(PipelineService);
+      const detached = jest.spyOn(pipeline, 'startDetached').mockResolvedValue({ exitCode: 0, message: 'started' });
+      await pipeline.replay('PROJ-69', 'implement', 'Move real bodies, not re-export facades.');
+      const run = (await app.get(RunRepository).findRun('PROJ-69'))!;
+      await app.get(DocumentRepository).putDocument(run, 'instructions:plan', 'Unrelated planning instruction');
+      detached.mockRestore();
+      const done = await pipeline.step('implement', 'PROJ-69');
       expect(done.exitCode).toBe(0);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
       expect(input.resumeChatId).toBe('plan-chat');
+      expect(input.prompt).toContain('Latest user instructions:\nMove real bodies, not re-export facades.');
+      expect(input.prompt).not.toContain('Unrelated planning instruction');
       expect(input.prompt).toContain('Read a file before editing it');
       expect(input.prompt).toContain('add the field');
       expect(input.prompt).not.toContain('# Implement');
@@ -695,6 +703,7 @@ describe('implement step', () => {
       const documents = app.get(DocumentRepository);
       const run = await runs.findRun('PROJ-169');
       await documents.putDocument(run!, REBASE_CONFLICT, 'pending-implement\n');
+      await documents.putDocument(run!, 'instructions:implement', 'Extract actual function bodies');
       const done = await app.get(PipelineService).step('implement', 'PROJ-169');
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
@@ -704,7 +713,9 @@ describe('implement step', () => {
       expect(calls[0]?.prompt).toContain('The commit being replayed is');
       expect(calls[0]?.prompt).toContain('Ship the field');
       expect(calls[0]?.prompt).toContain('Do not run git.');
+      expect(calls[0]?.prompt).not.toContain('Extract actual function bodies');
       expect(calls[1]?.prompt).toContain('add the field');
+      expect(calls[1]?.prompt).toContain('Extract actual function bodies');
       expect(calls[1]?.prompt).not.toContain('The commit being replayed is');
       expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toBe(marked);
       expect(git(tree, ['show', 'HEAD:src/field.ts'])).toBe(marked.trim());

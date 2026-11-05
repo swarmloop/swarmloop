@@ -38,6 +38,7 @@ export interface RebaseRepoInput {
   denied: string[];
   message: string;
   hosts: RebaseHosts;
+  onBase?: (repo: string, sha: string) => void;
 }
 
 /** Clean publishes the tips captured before the fetch. Conflict names the files still in progress. */
@@ -60,6 +61,7 @@ export async function rebaseFeatureRepos(input: RebaseRepoInput): Promise<Rebase
       denied: input.denied,
       message: input.message,
       hosts: input.hosts,
+      onBase: input.onBase,
     });
     if (outcome) {
       return outcome;
@@ -109,9 +111,11 @@ async function rebaseFeatureRepo(input: {
   denied: string[];
   message: string;
   hosts: RebaseHosts;
+  onBase?: RebaseRepoInput['onBase'];
 }): Promise<RebaseStop | null> {
   const state = await readRebaseState(input.cwd, input.repo);
   if (state) {
+    input.onBase?.(input.repo, state.baseSha);
     return resumeRebase({ ...input, state });
   }
   await abortMountedRebase(input.cwd, input.repo, input.hosts);
@@ -135,12 +139,16 @@ async function rebaseFeatureRepo(input: {
     throw new SwarmloopError(`${input.repo} rebase failed: ${leftover}`);
   }
   const base = await storedBase(input.cwd, input.repo, input.prompt, input.hosts, 'rebase');
+  const baseSha = await gitAt(input.cwd, input.repo, ['rev-parse', '--verify', `${base}^{commit}`], 'base failed');
+  if (base !== 'HEAD') {
+    input.onBase?.(input.repo, baseSha);
+  }
   await hideDeniedWorktree(input.cwd, input.repo, input.denied, input.hosts);
   const scratch = await mkdtemp(join(tmpdir(), 'swarmloop-rebase-'));
   const tmp = join(scratch, 'clone');
   let hidden = true;
   try {
-    const outcome = await squashOffMount({ ...input, base, tmp });
+    const outcome = await squashOffMount({ ...input, base: baseSha, tmp });
     try {
       await restoreHiddenWorktree(input.cwd, input.repo, input.hosts, '');
     } catch (error) {
@@ -150,7 +158,7 @@ async function rebaseFeatureRepo(input: {
       }
     }
     hidden = false;
-    return outcome;
+    return outcome?.kind === 'conflict' ? { ...outcome, base } : outcome;
   } catch (error) {
     if (hidden) {
       try {

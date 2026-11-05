@@ -15,6 +15,7 @@ import { agentStateDir, imageName, prepareStateDir, sandboxUserId, setupHosts } 
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { type EnvironmentConfig, readEnvironmentConfig } from './environment-config';
 import { worktreeSnapshot } from '../git/worktree-git';
+import { git } from '../git/git';
 import { imagePath, projectSlug, resolveProjectImage } from './project-image';
 
 export const ENVIRONMENT = 'environment';
@@ -32,6 +33,7 @@ export interface EnvironmentInput {
 /** What a run keeps about its environment: the config it started with and how the setup went. */
 export interface EnvironmentRecord {
   repo: string;
+  ref?: string;
   config: EnvironmentConfig;
   image?: string;
   setup?: { command: string; image: string; exitCode: number; tail: string };
@@ -78,8 +80,13 @@ export class ProjectEnvironments {
     if (!mount) {
       return null;
     }
+    if (record.config.dockerfile && !record.ref) {
+      throw new SwarmloopError(
+        `${record.repo}: environment has no saved base revision. Rebase this run before building its project image.`,
+      );
+    }
     const docker = (args: string[], timeoutMs?: number) => this.sandbox.run(args, timeoutMs);
-    const image = await resolveProjectImage(docker, mount.hostPath, record.repo, record.config);
+    const image = await resolveProjectImage(docker, mount.hostPath, record.repo, record.config, record.ref);
     const cliVolume = await this.bundles.ensure(runtime, imageName(runtime));
     const hasCerts = await this.probe(image, cliVolume, runtime);
     const launch: ProjectLaunch = {
@@ -144,26 +151,25 @@ export class ProjectEnvironments {
     key: string;
     mounts: SandboxMount[];
   }): Promise<EnvironmentRecord | null> {
-    const repo = basename(input.mounts[0]?.hostPath ?? '');
-    const scoped = await this.documents.latestBody(input.key, `${ENVIRONMENT}:${repo}`);
-    const stored = scoped ?? (await this.documents.latestBody(input.key, ENVIRONMENT));
-    if (stored) {
-      const record = JSON.parse(stored) as EnvironmentRecord;
-      if (input.mounts.some((mount) => basename(mount.hostPath) === record.repo)) {
-        if (!scoped) {
-          await this.documents.putDocument(input.run, `${ENVIRONMENT}:${record.repo}`, JSON.stringify(record));
-        }
+    const legacy = await this.documents.latestBody(input.key, ENVIRONMENT);
+    for (const mount of input.mounts) {
+      const repo = basename(mount.hostPath);
+      const scoped = await this.documents.latestBody(input.key, `${ENVIRONMENT}:${repo}`);
+      if (scoped === 'null') continue;
+      const record = JSON.parse(scoped ?? legacy ?? 'null') as EnvironmentRecord | null;
+      if (record?.repo === repo) {
+        if (!scoped) await this.documents.putDocument(input.run, `${ENVIRONMENT}:${repo}`, JSON.stringify(record));
         return record;
       }
-    }
-    for (const mount of input.mounts) {
-      const config = await readEnvironmentConfig(mount.hostPath);
+      const ref = await git(['-C', mount.hostPath, 'rev-parse', '--verify', 'HEAD^{commit}']);
+      const config = await readEnvironmentConfig(mount.hostPath, ref);
       if (config) {
-        const record: EnvironmentRecord = { repo: basename(mount.hostPath), config };
+        const record: EnvironmentRecord = { repo: basename(mount.hostPath), ref, config };
         await this.documents.putDocument(input.run, ENVIRONMENT, JSON.stringify(record));
         await this.documents.putDocument(input.run, `${ENVIRONMENT}:${record.repo}`, JSON.stringify(record));
         return record;
       }
+      await this.documents.putDocument(input.run, `${ENVIRONMENT}:${repo}`, 'null');
     }
     return null;
   }

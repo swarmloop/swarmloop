@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
+import { EnvironmentService } from '../environment/environment.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, writeFileSync } from 'fs';
 import { writeFile } from 'fs/promises';
@@ -70,6 +71,7 @@ export async function boot(
       RunQueriesService,
       RunCommandsService,
       RunRebaseService,
+      { provide: EnvironmentService, useValue: { refreshAfterRebase: jest.fn().mockResolvedValue(undefined) } },
       { provide: PipelineService, useValue: { claimed: () => false, ...pipeline } },
       { provide: ProjectAppendService, useValue: { add: jest.fn(), flush: jest.fn() } },
       { provide: PrepareStep, useValue: prepare },

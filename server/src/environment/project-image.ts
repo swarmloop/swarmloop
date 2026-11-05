@@ -30,6 +30,7 @@ export async function resolveProjectImage(
   repoPath: string,
   project: string,
   config: EnvironmentConfig,
+  ref = 'HEAD',
 ): Promise<string> {
   if (config.image) {
     if (!(await isLocal(docker, config.image))) {
@@ -44,7 +45,7 @@ export async function resolveProjectImage(
   const dockerfile = config.dockerfile ?? '';
   const context = config.context ?? '.';
   const repository = imageRepository(project);
-  const tag = `${repository}:${(await contentId(repoPath, dockerfile, context)).slice(0, 12)}`;
+  const tag = `${repository}:${(await contentId(repoPath, dockerfile, context, ref)).slice(0, 12)}`;
   if (await isLocal(docker, tag)) {
     return tag;
   }
@@ -52,7 +53,7 @@ export async function resolveProjectImage(
   try {
     const archive = join(dir, 'export.tar');
     const paths = context === '.' ? ['.'] : [context, dockerfile];
-    await run('git', ['-C', repoPath, 'archive', '--format=tar', '-o', archive, 'HEAD', ...paths], { env: rawEnv() });
+    await run('git', ['-C', repoPath, 'archive', '--format=tar', '-o', archive, ref, ...paths], { env: rawEnv() });
     await run('tar', ['-xf', archive, '-C', dir]);
     try {
       await docker(['build', '-t', tag, '-f', join(dir, dockerfile), join(dir, context)], IMAGE_TIMEOUT_MS);
@@ -67,18 +68,18 @@ export async function resolveProjectImage(
 }
 
 /** Git already hashes content: the tree of the build context and the blob of the Dockerfile name the image exactly. */
-async function contentId(repoPath: string, dockerfile: string, context: string): Promise<string> {
+async function contentId(repoPath: string, dockerfile: string, context: string, ref: string): Promise<string> {
   const read = async (spec: string): Promise<string> => {
     try {
       return (await git(['-C', repoPath, 'rev-parse', '--verify', '--quiet', spec])).trim();
     } catch (error) {
       throw new SwarmloopError(
-        `${spec.slice('HEAD:'.length) || 'the repository'} is not committed: ${gitDetail(error)}`,
+        `${spec.includes(':') ? spec.slice(spec.indexOf(':') + 1) : 'the repository'} is not committed: ${gitDetail(error)}`,
       );
     }
   };
-  const tree = await read(context === '.' ? 'HEAD^{tree}' : `HEAD:${context}`);
-  const file = await read(`HEAD:${dockerfile}`);
+  const tree = await read(context === '.' ? `${ref}^{tree}` : `${ref}:${context}`);
+  const file = await read(`${ref}:${dockerfile}`);
   return createHash('sha256').update(`${tree}\0${dockerfile}\0${file}`).digest('hex');
 }
 

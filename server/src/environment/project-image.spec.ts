@@ -1,15 +1,15 @@
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { dirname } from 'path';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { DockerRunner } from '../sandbox/sandbox.service';
-import { commitFiles, makeRepo } from '../git/git-repo.spec-helpers';
+import { commitFiles, makeRepo, runGit } from '../git/git-repo.spec-helpers';
 import type { EnvironmentConfig } from './environment-config';
 import { DEFAULT_PATH, imagePath, resolveProjectImage } from './project-image';
 
 function fakeDocker(local: string[] = [], listed: string[] = []) {
   const images = new Set(local);
   const calls: string[][] = [];
-  const built: { file: string; contextExists: boolean }[] = [];
+  const built: { file: string; contextExists: boolean; content: string }[] = [];
   const docker: DockerRunner = (args) => {
     calls.push(args);
     const [first, second] = args;
@@ -22,7 +22,11 @@ function fakeDocker(local: string[] = [], listed: string[] = []) {
     if (first === 'build') {
       images.add(args[2] ?? '');
       const file = args[4] ?? '';
-      built.push({ file, contextExists: existsSync(args[5] ?? '') && existsSync(file) && existsSync(dirname(file)) });
+      built.push({
+        file,
+        contextExists: existsSync(args[5] ?? '') && existsSync(file) && existsSync(dirname(file)),
+        content: readFileSync(file, 'utf8'),
+      });
     }
     if (first === 'pull') {
       images.add(args[1] ?? '');
@@ -41,6 +45,14 @@ const own: EnvironmentConfig = {
 };
 
 describe('resolveProjectImage', () => {
+  it('builds the explicit trusted revision even when the feature Dockerfile differs', async () => {
+    const repo = makeRepo({ '.swarmloop/Dockerfile': 'FROM node:22\n' });
+    const base = runGit(repo, ['rev-parse', 'HEAD']).trim();
+    commitFiles(repo, { '.swarmloop/Dockerfile': 'FROM untrusted-feature\n' });
+    const fake = fakeDocker();
+    await resolveProjectImage(fake.docker, repo, 'demo', own, base);
+    expect(fake.built[0]?.content).toBe('FROM node:22\n');
+  });
   it('pulls a named image only when it is missing', async () => {
     const config: EnvironmentConfig = { source: 'x', image: 'node:22', cache: [], checks: [] };
     const missing = fakeDocker();

@@ -146,4 +146,10 @@ describe('readEnvironmentConfig', () => {
   it('returns null without either file', async () => {
     expect(await readEnvironmentConfig(makeRepo())).toBeNull();
   });
+
+  it('does not treat an invalid revision as a repository without checks', async () => {
+    await expect(readEnvironmentConfig(makeRepo(), 'missing-revision')).rejects.toThrow(
+      'Cannot read project environment',
+    );
+  });
 });

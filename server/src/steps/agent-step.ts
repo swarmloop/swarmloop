@@ -193,6 +193,11 @@ export abstract class AgentStep extends BaseStep {
   }
 
   private async launch(run: ModelRun, launch: Parameters<ModelStepContext['launch']>[0]): Promise<AgentRunResult> {
+    const instructions =
+      launch.resume === false ? null : await this.documents.latestBody(run.key, `instructions:${this.name}`);
+    const prompt = instructions?.trim()
+      ? `${launch.prompt}\n\nLatest user instructions:\n${instructions}`
+      : launch.prompt;
     const result = await launchAgent({
       agent: this.agent,
       visits: this.visits,
@@ -205,7 +210,7 @@ export abstract class AgentStep extends BaseStep {
       model: run.settings.model,
       timeLimitMs: run.settings.timeLimitMs,
       auto: run.auto,
-      prompt: launch.prompt,
+      prompt,
       workspace: run.workspace,
       mounts: launch.mounts,
       allowHosts: launch.allowHosts,
@@ -213,7 +218,7 @@ export abstract class AgentStep extends BaseStep {
       continuePrompt: launch.continuePrompt,
       project: launch.project,
     });
-    run.prompt = run.prompt ? `${run.prompt}\n\n${launch.prompt}` : launch.prompt;
+    run.prompt = run.prompt ? `${run.prompt}\n\n${prompt}` : prompt;
     run.launched.push(result);
     run.agentResult = combineAgentResults(run.launched);
     run.refusal = refusedWrite(result.output) ?? run.refusal;

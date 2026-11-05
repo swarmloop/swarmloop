@@ -39,6 +39,6 @@ import { PipelineService } from './pipeline.service';
     PipelineService,
     EnvironmentService,
   ],
-  exports: [PipelineService, PrepareStep, ProjectAppendService, CommitStep, HistoryModule],
+  exports: [PipelineService, PrepareStep, ProjectAppendService, CommitStep, HistoryModule, EnvironmentService],
 })
 export class PipelineModule {}

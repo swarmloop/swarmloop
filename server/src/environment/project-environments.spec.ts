@@ -7,7 +7,7 @@ import { testEnv } from '../config/env.spec-helpers';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { RunEntity } from '../history/entities';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
-import { makeRepo } from '../git/git-repo.spec-helpers';
+import { commitFiles, makeRepo, runGit } from '../git/git-repo.spec-helpers';
 import { ENVIRONMENT, type EnvironmentRecord, ProjectEnvironments } from './project-environments';
 
 const manifest = {
@@ -101,6 +101,32 @@ function setup(
 }
 
 describe('ProjectEnvironments', () => {
+  it('requires a trusted base before rebuilding a legacy Dockerfile environment', async () => {
+    const { service, input, stored, sandbox } = setup();
+    stored.push({
+      kind: ENVIRONMENT,
+      body: JSON.stringify({
+        repo: input.mounts[0].hostPath.split('/').at(-1),
+        config: { dockerfile: 'Dockerfile', checks: [], cache: [] },
+      }),
+    });
+    await expect(service.prepare(input)).rejects.toThrow('Rebase this run');
+    expect(sandbox.spawn).not.toHaveBeenCalled();
+  });
+
+  it('freezes the initial revision and skips absent environments without hiding another repository', async () => {
+    const { service, input, stored, records } = setup();
+    const absent = makeRepo();
+    const mounts = [{ hostPath: absent, containerPath: '/work/empty' }, ...input.mounts];
+    const base = runGit(input.mounts[0].hostPath, ['rev-parse', 'HEAD']).trim();
+    await service.prepare({ ...input, mounts });
+    expect(records().at(-1)?.ref).toBe(base);
+    commitFiles(input.mounts[0].hostPath, { '.swarmloop.json': JSON.stringify({ ...manifest, checks: ['true'] }) });
+    expect(await service.prepare({ ...input, mounts })).not.toBeNull();
+    expect(records().at(-1)?.config.checks).toEqual(['npm test']);
+    expect(stored.some((item) => item.body === 'null')).toBe(true);
+  });
+
   it('returns null for a repository without an environment', async () => {
     const { service, input, sandbox } = setup();
     const bare = { ...input, mounts: [{ hostPath: makeRepo(), containerPath: '/work' }] };

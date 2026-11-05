@@ -539,6 +539,7 @@ export class PipelineService implements OnModuleInit {
     const prompt = joinPrompt(run.prompt, text);
     run.prompt = prompt;
     await this.runs.saveRun(run);
+    await this.documents.putDocument(run, `instructions:${step}`, text);
     const target = this.registry.get(step);
     if (target?.acceptsPrompt) {
       return prompt;

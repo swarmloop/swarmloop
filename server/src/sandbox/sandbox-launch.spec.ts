@@ -378,6 +378,20 @@ describe('sandbox launch', () => {
     expect(masks.map((mask) => mask.containerFile).sort()).toEqual(['/work/demo/.env', '/work/demo/apps/.env.local']);
   });
 
+  it('does not scan Git metadata or treat file mounts as directories', () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-file-mount-'));
+    const pointer = join(root, 'worktree-link');
+    writeFileSync(pointer, 'gitdir: /swarmloop-git/git-abcdef\n');
+    writeFileSync(join(root, '.env'), 'not-a-project-secret\n');
+    expect(
+      collectEnvMasks([
+        { hostPath: root, containerPath: '/swarmloop-git/git-abcdef' },
+        { hostPath: pointer, containerPath: '/work/app/.git' },
+        { hostPath: pointer, containerPath: '/work/file' },
+      ]),
+    ).toEqual([]);
+  });
+
   it('names a missing docker daemon and a missing image', async () => {
     const sandbox = new SandboxService();
     sandbox.useDocker(async () => {

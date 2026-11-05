@@ -16,6 +16,8 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import { RunRef } from '../contract/api';
 import { RunCommandsService } from './run-commands.service';
 import { requireRun } from './run-queries.service';
+import { EnvironmentService } from '../environment/environment.service';
+import { mountsForStep } from '../steps/shared/repo-names';
 
 @Injectable()
 export class RunRebaseService {
@@ -28,6 +30,7 @@ export class RunRebaseService {
     private readonly config: AppConfig,
     private readonly commands: RunCommandsService,
     private readonly clock: Clock,
+    private readonly environments: EnvironmentService,
   ) {}
 
   async rebase(key: string): Promise<RunRef> {
@@ -37,8 +40,15 @@ export class RunRebaseService {
     }
     const status = run.status;
     let stop: Awaited<ReturnType<typeof rebaseFeatureRepos>>;
+    const bases = new Map<string, string>();
     try {
-      stop = await this.rebaseWorktrees(run);
+      stop = await this.rebaseWorktrees(run, bases);
+      const names = repoNames((await this.documents.latestBody(run.key, 'repos')) ?? '');
+      await this.environments.refreshAfterRebase(
+        run,
+        mountsForStep(root(this.config), run.key, names, run.targetPath),
+        bases,
+      );
     } catch (error) {
       const message = error instanceof SwarmloopError ? error.message : 'rebase failed';
       throw new ConflictException(message);
@@ -66,7 +76,10 @@ export class RunRebaseService {
     return this.commands.accepted(key, await this.pipeline.startDetached(key));
   }
 
-  private async rebaseWorktrees(run: RunEntity): Promise<Awaited<ReturnType<typeof rebaseFeatureRepos>>> {
+  private async rebaseWorktrees(
+    run: RunEntity,
+    bases: Map<string, string>,
+  ): Promise<Awaited<ReturnType<typeof rebaseFeatureRepos>>> {
     const requirements = await this.documents.latestBody(run.key, 'requirements');
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
@@ -82,6 +95,9 @@ export class RunRebaseService {
       denied: await this.checkouts.listDenyPaths(),
       message: commitMessage(run.key, summary),
       hosts: { ...this.config.env, clock: this.clock },
+      onBase: (repo, sha) => {
+        bases.set(repo, sha);
+      },
     });
   }
 

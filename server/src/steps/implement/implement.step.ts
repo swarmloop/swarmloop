@@ -185,6 +185,7 @@ export class ImplementStep extends AgentStep {
     if (marker !== 'pending' && marker !== 'pending-implement') {
       return null;
     }
+    const bases = new Map<string, string>();
     const input = {
       root: root(this.config),
       key,
@@ -194,6 +195,9 @@ export class ImplementStep extends AgentStep {
       denied: await this.checkouts.listDenyPaths(),
       message: commitMessage(key, summaryForBranch(ctx.requirements, key)),
       hosts: { ...this.config.env, clock: this.clock },
+      onBase: (repo: string, sha: string) => {
+        bases.set(repo, sha);
+      },
     };
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     let outcome: RebaseStop | null = null;
@@ -244,6 +248,7 @@ export class ImplementStep extends AgentStep {
       }
       outcome = await rebaseFeatureRepos(input);
     }
+    await this.environments.refreshAfterRebase(ctx.opened.run, mounts, bases);
     if (marker === 'pending-implement') {
       await this.documents.putDocument(ctx.opened.run, REBASE_CONFLICT, 'review\n');
       return null;
