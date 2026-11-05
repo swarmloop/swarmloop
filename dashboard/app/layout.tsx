@@ -1,6 +1,6 @@
 import localFont from 'next/font/local';
 import InitColorSchemeScript from '@mui/material/InitColorSchemeScript';
-import { Shell } from '../components/shell';
+import { Shell } from '../features/shell';
 import { ThemeRegistry } from './theme-registry';
 
 // The fonts live in the repository, so `next build` needs no network (a Google Fonts fetch failed CI builds at random).

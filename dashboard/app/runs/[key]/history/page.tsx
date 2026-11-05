@@ -1,4 +1,4 @@
-import { HistoryScreen } from '../../../../components/history-screen';
+import { HistoryScreen } from '../../../../features/run';
 
 export default async function HistoryPage({
   params,

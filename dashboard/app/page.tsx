@@ -2,7 +2,7 @@
 
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import { useNewRun } from '../components/shell';
+import { useNewRun } from '../features/shell';
 
 export default function HomePage(): React.ReactElement {
   const open = useNewRun();
