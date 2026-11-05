@@ -3,10 +3,10 @@ import type { RunRepository } from '../../history/run.repository';
 import type { EventRepository } from '../../history/event.repository';
 import type { PipelineResult } from '../../core/pipeline-result';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
-import type { RunRebase } from '../../pipeline/run-rebase';
+import type { RunRebase } from '../run-rebase';
 import type { StepContext } from '../base-step';
 import { git } from '../../git/git';
-import { repoNames, worktreePath } from '../shared/repo-names';
+import { repoNames, worktreePath } from '../../git/repo-names';
 import { textDocument } from '../shared/handoff';
 import { originProject, type Seen } from './pipeline-report';
 

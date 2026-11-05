@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RunRebase } from '../../pipeline/run-rebase';
+import { RunRebase } from '../run-rebase';
 import { RunStop } from '../../agent/run-stop';
 import { missingPipeline } from './missing-pipeline';
 import { AppConfig, type SwarmloopEnv } from '../../config/env';
