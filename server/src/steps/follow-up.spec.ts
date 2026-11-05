@@ -17,8 +17,7 @@ const CODE_STANDARD =
   'Reach for an abstraction when it makes the code clearer and matches how the tree is already organized; do not add a file, helper, or layer that does not earn its place or that the task does not need. ' +
   'When a change leaves a component, file, export, import, comment, or commented-out code with no remaining use, remove that leftover in the same change. ' +
   'Keep the behavior complete and reliable: the cases the requirement names work, and errors are handled the way the tree already handles them. ' +
-  'Cover the change with tests in the style the tree already uses. ' +
-  'Tests run only in the GitLab or GitHub pipeline, never in this sandbox.';
+  'Cover the change with tests in the style the tree already uses.';
 
 const STEP_PAIRS = [
   { name: 'plan', skill: skillText('plan'), followUp: planFollowUp('') },
@@ -37,7 +36,7 @@ describe('step prompt invariants', () => {
     const gap =
       'Check the change for logical and technical gaps and fix only those. Start from the files this change touched. Open another file only to follow a call from the change or a test the return names. Do not sweep the tree with grep. When there is no gap, leave the files. A pipeline return changes the code or the failed test. Do not leave them. Do not widen the change. Do not implement a linked ticket.';
     const limits =
-      'Do not start a service, a database, or the application. Do not run tests. Do not run `git commit`, `git push`, or `git add -A`. Do not create a branch.';
+      'Do not start a service, a database, or the application. Do not run `git commit`, `git push`, or `git add -A`. Do not create a branch.';
     expect(review?.skill).toContain(gap);
     expect(review?.followUp).toContain(gap);
     expect(review?.skill).toContain(TASK_SCOPE);

@@ -25,6 +25,7 @@ import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.step';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../shared/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
+import { withEnvironment } from '../../environment/environment-note';
 import { agentWorkplace } from '../shared/agent-environment';
 import { storedPlan } from '../step';
 import { REBASE_CONFLICT, RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase';
@@ -80,7 +81,7 @@ export class ImplementStep extends AgentStep {
     const markerBody = ((await this.documents.latestBody(key, REBASE_CONFLICT)) ?? '').trim();
     const marker = markerBody.split('\n')[0]?.trim() ?? '';
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
-    const full = skillPrompt('implement', ctx.requirements, names, sections, mounts);
+    const full = skillPrompt('implement', ctx.requirements, names, sections, mounts, { deferExecutionRules: true });
     const added = await this.documents.latestBody(key, 'added_repos');
     const continued = await readSession(
       join(root(this.config), 'data', sessionFileName(key, 'implement')),
@@ -92,7 +93,7 @@ export class ImplementStep extends AgentStep {
       return settled;
     }
     const heads = await featureHeads(mounts, branch);
-    const { prompt, project, allowHosts } = await agentWorkplace(
+    const { prompt, project, allowHosts, executionRules } = await agentWorkplace(
       this.environments,
       { run: ctx.opened.run, key, step: this.name, mounts },
       basePrompt,
@@ -104,7 +105,10 @@ export class ImplementStep extends AgentStep {
     let planOutput = agentResult.output ?? '';
     if (isPipelineReturn(notes) && (await worktreeSnapshot(mounts)) === before) {
       agentResult = await ctx.launch({
-        prompt: `The pipeline failure still stands and the files are unchanged.\n\n${notes?.trim() ?? ''}`,
+        prompt: withEnvironment(
+          `The pipeline failure still stands and the files are unchanged.\n\n${notes?.trim() ?? ''}`,
+          executionRules,
+        ),
         mounts,
         allowHosts,
         project,

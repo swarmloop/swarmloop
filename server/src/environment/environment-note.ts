@@ -1,12 +1,5 @@
 import type { EnvironmentRecord } from './project-environments';
 
-/** The sentences that tell a blind agent not to run tests. With a project environment they are wrong. */
-const NO_TESTS = [
-  ' Tests run only in the GitLab or GitHub pipeline, never in this sandbox.',
-  ' Do not run tests on this machine.',
-  ' Do not run tests.',
-];
-
 /** CI configuration the commit step refuses; the agent is told in advance. */
 export const CI_CONFIG_HINT = '`.github/workflows/`, `.github/actions/`, `.gitlab-ci.yml`, `.gitlab/`';
 
@@ -14,6 +7,9 @@ export function environmentNote(record: EnvironmentRecord): string {
   const { config } = record;
   const lines = [
     `# Project environment`,
+    'These are the execution capabilities of the current implementation stage, including resumed sessions.',
+    'Planning and read-only review restrictions apply only to those earlier stages. A sandbox test ban copied from those stages into a checklist does not restrict this project environment.',
+    'Preserve explicit restrictions from the original task and later user instructions. If they conflict with required checks, explain the conflict rather than silently overriding them.',
     `This container runs in ${record.image ?? config.image ?? 'the project image'} from ${config.source} of ${record.repo}, with the project's own toolchain.`,
     config.network === 'setup'
       ? 'You may run any command in the working directory: build, lint, type check, and tests. The dependencies were installed by the setup; package registries are not reachable, so you cannot add or update a dependency. When the task needs a new one, say so in the summary. There is no Docker, no database or other service, and no other network.'
@@ -55,11 +51,7 @@ export function environmentNote(record: EnvironmentRecord): string {
   return lines.join('\n');
 }
 
-/** The prompt for an agent that has the toolchain: no ban on tests, and the environment block at the end. */
+/** Append the current environment policy without rewriting task requirements or saved checklists. */
 export function withEnvironment(prompt: string, note: string): string {
-  let text = prompt;
-  for (const sentence of NO_TESTS) {
-    text = text.split(sentence).join('');
-  }
-  return `${text.trimEnd()}\n\n${note}\n`;
+  return `${prompt.trimEnd()}\n\n${note}\n`;
 }

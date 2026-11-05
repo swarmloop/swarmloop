@@ -42,13 +42,11 @@ describe('environmentNote with the registries kept to the setup', () => {
 });
 
 describe('withEnvironment', () => {
-  it('drops the ban on tests and appends the note', () => {
-    const prompt =
-      'Edit only that path. Do not start a service, a database, or the application. Do not run tests. Do not commit. Cover the change with tests in the style the tree already uses. Tests run only in the GitLab or GitHub pipeline, never in this sandbox.\nDo not start a service, a database, or the application. Do not run tests on this machine.';
-    const text = withEnvironment(prompt, 'NOTE');
-    expect(text).not.toContain('Do not run tests');
-    expect(text).not.toContain('never in this sandbox');
-    expect(text).toContain('Do not start a service, a database, or the application. Do not commit.');
-    expect(text.endsWith('\n\nNOTE\n')).toBe(true);
+  it('preserves explicit task restrictions instead of deleting matching sentences', () => {
+    const prompt = 'Task: update docs. Do not run tests. Do not change CI configuration.';
+    const text = withEnvironment(prompt, environmentNote(record));
+    expect(text.startsWith(prompt)).toBe(true);
+    expect(text).toContain('Preserve explicit restrictions from the original task');
+    expect(text).toContain('A sandbox test ban copied from those stages into a checklist');
   });
 });

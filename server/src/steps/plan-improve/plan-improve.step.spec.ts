@@ -33,6 +33,8 @@ describe('plan-improve step', () => {
       expect(done.message).toContain('plan-improve done');
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
       expect(input.mode).toBe('plan');
+      expect(input.prompt).toContain('Do not copy these stage-local limits into the implementation checklist');
+      expect(input.prompt).not.toContain('Tests run only in the GitLab or GitHub pipeline');
       expect(input.model).toBe('opus-5.5-extra-high');
       expect(input.timeLimitMs).toBe(20 * 60 * 1000);
       expect(input.mounts.map((mount) => mount.containerPath)).toEqual(['/work/billing-api']);
@@ -118,6 +120,8 @@ describe('plan-improve step', () => {
       expect(done.exitCode).toBe(0);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
       expect(input.resumeChatId).toBe('chat-1');
+      expect(input.prompt).toContain('Do not copy these stage-local limits into the implementation checklist');
+      expect(input.prompt).not.toContain('Tests run only in the GitLab or GitHub pipeline');
       expect(input.prompt).toContain('logical gaps');
       expect(input.prompt).not.toContain('# Plan improve');
       expect(input.prompt).not.toContain('ship the field');

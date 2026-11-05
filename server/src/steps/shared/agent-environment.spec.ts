@@ -1,6 +1,8 @@
 import type { ProjectEnvironments, PreparedEnvironment } from '../../environment/project-environments';
 import type { RunEntity } from '../../history/entities';
 import { packageRegistries } from '../../sandbox/sandbox-launch';
+import { skillPrompt, LOCAL_RUN_RULE } from './skill-prompt';
+import { implementFollowUp, IMPLEMENT_IMPROVE_FOLLOW_UP } from '../implement/implement.prompts';
 import { agentWorkplace } from './agent-environment';
 
 const input = { run: {} as RunEntity, key: 'k', step: 'implement', mounts: [] };
@@ -26,9 +28,49 @@ function prepared(network?: 'registries' | 'setup'): PreparedEnvironment {
 }
 
 describe('agentWorkplace', () => {
+  it.each(['implement', 'implement-improve'])(
+    'uses current environment permissions for fresh and resumed %s',
+    async (step) => {
+      const first = skillPrompt(step, '{"prompt":"Update the field"}', ['shop'], [], [], { deferExecutionRules: true });
+      const resumed =
+        step === 'implement' ? implementFollowUp('- update the field', null) : IMPLEMENT_IMPROVE_FOLLOW_UP;
+      for (const prompt of [first, resumed]) {
+        const project = prepared();
+        project.record.config.checks = ['npm test'];
+        const place = await agentWorkplace(environments(project), { ...input, step }, prompt);
+        expect(place.prompt).not.toContain('Do not run tests');
+        expect(place.prompt).not.toContain('Tests run only');
+        expect(place.prompt).toContain('You may run any command');
+        expect(place.prompt).toContain('- `npm test`');
+        const fallback = await agentWorkplace(environments(null), { ...input, step }, prompt);
+        expect(fallback.prompt).toContain(LOCAL_RUN_RULE);
+        expect(fallback.project).toBeUndefined();
+      }
+    },
+  );
+
+  it('retains an old checklist and scopes inherited planning restrictions on resume', async () => {
+    const plan = '- Fix the field.\n- Do not run tests in this sandbox.';
+    const place = await agentWorkplace(
+      environments(prepared()),
+      input,
+      implementFollowUp(plan, '## checks\nFAIL npm test'),
+    );
+    expect(place.prompt).toContain(plan);
+    expect(place.prompt).toContain('including resumed sessions');
+    expect(place.prompt).toContain(
+      'A sandbox test ban copied from those stages into a checklist does not restrict this project environment.',
+    );
+    expect(place.prompt).toContain('After a pipeline return, run the failing command here first');
+  });
+
   it('lets an agent without a project environment reach the registries', async () => {
     const place = await agentWorkplace(environments(null), input, 'prompt');
-    expect(place).toEqual({ prompt: 'prompt', allowHosts: packageRegistries() });
+    expect(place).toEqual({
+      prompt: `prompt\n\n${LOCAL_RUN_RULE}\n`,
+      executionRules: LOCAL_RUN_RULE,
+      allowHosts: packageRegistries(),
+    });
   });
 
   it('gives the registries to the agent by default', async () => {

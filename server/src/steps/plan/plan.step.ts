@@ -15,7 +15,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { withAddedRepos } from '../follow-up';
 import { AgentStep, ModelStepContext } from '../agent-step';
 import { recordHandoff, textDocument, withHandoff } from '../shared/handoff';
-import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
+import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { unanswered } from '../shared/answers';
 import { mountsForStep, repoNames } from '../shared/repo-names';
 import { planFromAgent, readPlan, withPlan } from './plan-record';
@@ -74,7 +74,7 @@ export class PlanStep extends AgentStep {
     const full = skillPrompt('plan', ctx.requirements, names, sections, mounts);
     const chosen = continued?.chatId ? planFollowUp(answers) : full;
     const prompt = withAddedRepos(chosen, await this.documents.latestBody(key, 'added_repos'));
-    const agentResult = await ctx.launch({ prompt, mounts });
+    const agentResult = await ctx.launch({ prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`, mounts });
     const plan = planFromAgent(agentResult.responseText, agentResult.output ?? '');
     const body = withPlan(requirements, plan);
     const summary = summaryOr(

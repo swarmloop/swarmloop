@@ -74,6 +74,13 @@ export function workingDirectoryBlock(names: string[], mounts: SandboxMount[]): 
 export const LOCAL_RUN_RULE =
   'Do not start a service, a database, or the application. Do not run tests on this machine.';
 
+export const PLAN_EXECUTION_RULE = [
+  'The execution limits of this planning stage apply only to your current tools and actions.',
+  'Do not copy these stage-local limits into the implementation checklist or turn them into project requirements.',
+  'Plan the checks the change needs. Implementation uses its own execution environment to decide which commands can run locally.',
+  'When revising an existing checklist, remove inherited planning-stage execution limits, but preserve explicit restrictions in the original task or later user instructions.',
+].join(' ');
+
 export const AGENT_LANGUAGE_RULE = 'Always write in English, even when the request is in another language.';
 
 function sourceState(hostPath: string): string {
@@ -91,6 +98,7 @@ export function skillPrompt(
   names: string[],
   sections: { heading: string; body: string }[] = [],
   mounts: SandboxMount[] = [],
+  options: { deferExecutionRules?: boolean } = {},
 ): string {
   const file = join(__dirname, '../../../../skills', skill, 'SKILL.md');
   let text = '';
@@ -103,7 +111,8 @@ export function skillPrompt(
     mounts.length > 0
       ? workingDirectoryBlock(names, mounts)
       : ['Worktrees:', ...names.map((name) => `- ${name}`)].join('\n');
-  const parts = [where, '', LOCAL_RUN_RULE, '', text.trimEnd(), '', 'Requirements:', requirementsBrief(requirements)];
+  const executionRule = options.deferExecutionRules ? '' : LOCAL_RUN_RULE;
+  const parts = [where, '', executionRule, '', text.trimEnd(), '', 'Requirements:', requirementsBrief(requirements)];
   for (const section of sections) {
     parts.push('', `${section.heading}:`, section.body.trimEnd());
   }

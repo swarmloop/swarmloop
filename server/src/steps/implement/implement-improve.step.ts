@@ -79,7 +79,9 @@ export class ImplementImproveStep extends AgentStep {
       join(root(this.config), 'data', sessionFileName(key, 'implement-improve')),
       ctx.opened.run.runtime,
     );
-    const full = skillPrompt('implement-improve', ctx.requirements, names, sections, mounts);
+    const full = skillPrompt('implement-improve', ctx.requirements, names, sections, mounts, {
+      deferExecutionRules: true,
+    });
     const chosen = continued?.chatId ? IMPLEMENT_IMPROVE_FOLLOW_UP : full;
     const { prompt, project, allowHosts } = await agentWorkplace(
       this.environments,

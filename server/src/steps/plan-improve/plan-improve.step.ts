@@ -16,7 +16,7 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { withAddedRepos } from '../follow-up';
 import { AgentStep, ModelStepContext } from '../agent-step';
 import { recordHandoff, textDocument, withHandoff } from '../shared/handoff';
-import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
+import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { mountsForStep, repoNames } from '../shared/repo-names';
 import { storedPlan } from '../step';
 import { readPlan, reviewedItems, withPlan } from '../plan/plan-record';
@@ -70,7 +70,7 @@ export class PlanImproveStep extends AgentStep {
     );
     const chosen = continued?.chatId ? PLAN_IMPROVE_FOLLOW_UP : full;
     const prompt = withAddedRepos(chosen, await this.documents.latestBody(key, 'added_repos'));
-    const agentResult = await ctx.launch({ prompt, mounts });
+    const agentResult = await ctx.launch({ prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`, mounts });
     const items = reviewedItems(agentResult.responseText, agentResult.output ?? '');
     const next = { ...plan, items: items.length > 0 ? items : plan.items, decision: 'approve' as const };
     const summary = summaryOr(

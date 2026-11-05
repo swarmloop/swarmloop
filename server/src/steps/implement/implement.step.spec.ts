@@ -1037,6 +1037,45 @@ describe('implement step', () => {
     }
   });
 
+  it('keeps project execution rules on a resumed pipeline retry without preparing twice', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-retry-policy-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-148', 'billing-api');
+    mkdirSync(join(root, 'data'), { recursive: true });
+    writeFileSync(
+      join(root, 'data', 'PROJ-148-implement-session.json'),
+      JSON.stringify({ runtime: 'cursor', chatId: 'impl-chat', completed: true, usd: 0 }),
+    );
+    const agent = jest.fn().mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-148', 'approve');
+      const run = (await app.get(RunRepository).findRun('PROJ-148'))!;
+      await app
+        .get(DocumentRepository)
+        .putDocument(run, 'return', '## pipeline\nresult: fail\njob: test\n\nFAIL npm test\n');
+      const prepare = jest.spyOn(app.get(EnvironmentService), 'prepare').mockResolvedValue({
+        launch: { image: 'test-image', cliVolume: 'test-cli', path: '/usr/bin', certFile: false, caches: [] },
+        record: { repo: 'billing-api', config: { source: '.swarmloop.json', cache: [], checks: ['npm test'] } },
+      });
+      const done = await app.get(PipelineService).step('implement', 'PROJ-148');
+      expect(done.exitCode).toBe(1);
+      expect(done.message).toContain('pipeline failure left unfixed');
+      expect(prepare).toHaveBeenCalledTimes(1);
+      expect(agent).toHaveBeenCalledTimes(2);
+      for (const call of agent.mock.calls) {
+        const input = call[0] as AgentRunInput;
+        expect(input.resumeChatId).toBe('impl-chat');
+        expect(input.prompt).toContain('including resumed sessions');
+        expect(input.prompt).toContain('- `npm test`');
+        expect(input.prompt).not.toContain('Do not run tests');
+        expect(input.project?.image).toBe('test-image');
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
   it('fails when a pipeline return leaves the worktree unchanged', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-unchanged-'));
     await writeEnv(root);
@@ -1063,6 +1102,7 @@ describe('implement step', () => {
       const calls = agent.mock.calls.map((call) => call[0]);
       expect(calls[1]?.prompt).toContain('The pipeline failure still stands and the files are unchanged.');
       expect(calls[1]?.prompt).toContain('FAIL nest npm test');
+      expect(calls[1]?.prompt).toContain('Do not run tests on this machine.');
       expect(calls[1]?.resumeChatId).toBe('impl-chat');
       const after = await runs.findRun('PROJ-142');
       expect(after?.currentStep).toBe('implement');
