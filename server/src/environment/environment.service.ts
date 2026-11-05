@@ -4,7 +4,7 @@ import { Clock } from '../core/clock';
 import { basename } from 'path';
 import { git } from '../git/git';
 import type { RunEntity } from '../history/entities';
-import type { SandboxMount } from '../sandbox/sandbox-launch';
+import type { SandboxMount } from '../core/sandbox-mount';
 import { readEnvironmentConfig } from './environment-config';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { DocumentRepository } from '../history/document.repository';

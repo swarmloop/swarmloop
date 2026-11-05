@@ -4,18 +4,10 @@ import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { promptBase } from '../base-ref';
-import {
-  allowedPaths,
-  deniedIndexPaths,
-  isDenied,
-  porcelainPaths,
-  stageSelection,
-} from '../../steps/commit/commit-paths';
-import type { CodeHostEnv } from '../../integrations/code-host/abstract-code-host';
-import type { Clock } from '../../core/clock';
-import { authorArgs, git, gitDetail, gitMissing, gitRaw, gitStderr } from '../git';
-import { worktreePath } from '../../steps/shared/repo-names';
-import { unmergedFromStageList } from './clone-index';
+import { allowedPaths, deniedIndexPaths, isDenied, porcelainPaths, stageSelection } from '../../git/commit-paths';
+import { authorArgs, git, gitStderr } from '../git';
+import { worktreePath } from '../../git/repo-names';
+import { unmergedPaths } from './clone-index';
 import { branchHasAllowedChange, readRebaseState } from './conflict';
 import type { RebaseState } from './conflict';
 import { baseRefFor, publishedTip, squashOffMount } from './squash';
@@ -26,26 +18,8 @@ import { gitAt, gitRawAt, rebaseStderr } from './workflow';
 /** Set while a conflict rebase still has to be resolved, then reviewed on the new diff. */
 export const REBASE_CONFLICT = 'rebase_conflict';
 
-export interface RebaseHosts extends CodeHostEnv {
-  clock: Clock;
-}
-
-export interface RebaseRepoInput {
-  root: string;
-  key: string;
-  repos: string[];
-  branch: string;
-  prompt: string | null;
-  denied: string[];
-  message: string;
-  hosts: RebaseHosts;
-  onBase?: (repo: string, sha: string) => void;
-}
-
-/** Clean publishes the tips captured before the fetch. Conflict names the files still in progress. */
-export type RebaseStop =
-  | { kind: 'clean'; leases: { repo: string; tip: string | null }[] }
-  | { kind: 'conflict'; repo: string; files: string[]; stderr: string; base: string; commit: string };
+export { type RebaseHosts, type RebaseRepoInput, type RebaseStop } from './types';
+import type { RebaseHosts, RebaseRepoInput, RebaseStop } from './types';
 
 /** Squash each feature branch onto the fetched base. Stop at the first conflict. */
 export async function rebaseFeatureRepos(input: RebaseRepoInput): Promise<RebaseStop> {
@@ -70,18 +44,6 @@ export async function rebaseFeatureRepos(input: RebaseRepoInput): Promise<Rebase
     leases.push({ repo, tip });
   }
   return { kind: 'clean', leases };
-}
-
-export async function unmergedPaths(cwd: string): Promise<string[]> {
-  let raw = '';
-  try {
-    raw = await gitRaw(['-C', cwd, 'ls-files', '-u', '-z']);
-  } catch (error) {
-    if (!gitMissing(error)) {
-      throw new SwarmloopError(gitDetail(error));
-    }
-  }
-  return unmergedFromStageList(raw);
 }
 
 /** Parked rebase: the state file is present and the index is still unmerged. */

@@ -15,7 +15,7 @@ import { HttpCallDraft, SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { textDocument } from '../shared/handoff';
-import { repoNames, worktreePath } from '../shared/repo-names';
+import { repoNames, worktreePath } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { remoteProject, renderMergeRequest } from './merge-request-record';
 

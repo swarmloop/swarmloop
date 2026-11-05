@@ -12,7 +12,7 @@ import { StepName } from '../../contract/steps';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { recordHandoff } from '../shared/handoff';
-import { repoNames, worktreePath } from '../shared/repo-names';
+import { repoNames, worktreePath } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { branchName, summaryForBranch } from './branch-name';
 

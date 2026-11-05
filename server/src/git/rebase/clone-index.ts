@@ -1,8 +1,8 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, unlinkSync } from 'fs';
 import { dirname, isAbsolute, join, sep } from 'path';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import type { RebaseHosts } from './rebase';
-import { authorArgs, git, gitMissing, gitRaw, gitStderr } from '../git';
+import type { RebaseHosts } from './types';
+import { authorArgs, git, gitDetail, gitMissing, gitRaw, gitStderr } from '../git';
 import { rebaseStderr } from './workflow';
 
 type CopiedFile = { kind: 'file'; bytes: Buffer } | { kind: 'link'; target: string };
@@ -251,4 +251,16 @@ export async function gitStdin(
   } catch (error) {
     throw new SwarmloopError(`${repo} rebase failed: ${rebaseStderr(gitStderr(error), hosts)}`);
   }
+}
+
+export async function unmergedPaths(cwd: string): Promise<string[]> {
+  let raw = '';
+  try {
+    raw = await gitRaw(['-C', cwd, 'ls-files', '-u', '-z']);
+  } catch (error) {
+    if (!gitMissing(error)) {
+      throw new SwarmloopError(gitDetail(error));
+    }
+  }
+  return unmergedFromStageList(raw);
 }

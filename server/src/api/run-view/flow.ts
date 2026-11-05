@@ -1,15 +1,16 @@
-import { liveLogView } from '../../acp/live-output';
+import { liveLogView } from '../../agent/live-output';
 import { activeDurationMs, toDurationParts } from '../../history/active-duration';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { continuesSameStep, countedVisits, isLoopStep, loopMark } from '../../core/pipeline-result';
 import type { FlowItem, FlowView } from '../../contract/api';
 import type { LiveUsage } from '../../contract/live';
-import type { StepName } from '../../contract/steps';
-import { isReviewStep, pipelineStepOf, STEPS } from '../../contract/steps';
+import { isReviewStep, pipelineStepOf } from '../../contract/steps';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered } from '../../steps/shared/answers';
 import { items } from '../../steps/shared/markdown-section';
 import { chipStatus, chipAttempts, reportChip, reviewerRound } from './chips';
+import { latest } from './status';
+export { stepStatus, latest } from './status';
 import { PHASES } from './run-view.types';
 
 export function metrics(
@@ -75,27 +76,6 @@ export function phases(
     }
     return { phase: phase.phase, steps: [...steps, reportChip(run, stats, documents, root)] };
   });
-}
-
-export function stepStatus(name: string, run: RunEntity, stat: StepStatEntity | undefined): string {
-  if (name === 'done') {
-    return run.status === 'done' ? 'done' : 'idle';
-  }
-  if (stat?.status === 'skipped') {
-    return 'skipped';
-  }
-  if (name === run.currentStep) {
-    return run.status === 'done' ? 'done' : run.status;
-  }
-  if (isLoopStep(name) && stat?.status === 'waiting') {
-    return 'failed';
-  }
-  const current = STEPS.indexOf(run.currentStep as StepName);
-  const index = STEPS.indexOf(name as StepName);
-  if (index < current || stat) {
-    return 'done';
-  }
-  return 'idle';
 }
 
 export function returns(run: RunEntity): FlowView['returns'] {
@@ -240,11 +220,6 @@ export function reason(run: RunEntity, documents: DocumentEntity[], stats: StepS
 
 function didNotFit(documents: DocumentEntity[]): boolean {
   return (latest(documents, 'error') ?? '').includes('does not fit');
-}
-
-export function latest(documents: DocumentEntity[], kind: string): string | null {
-  const found = [...documents].reverse().find((document) => document.kind === kind);
-  return found?.body ?? null;
 }
 
 function pendingUrl(body: string | null): string | null {

@@ -1,10 +1,13 @@
 import type { DocumentRepository } from '../history/document.repository';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
+import type { RunEntity } from '../history/entities';
 import type { SwarmloopEnv } from '../config/env';
 import type { Charge } from '../agent/spend';
 import type { ModelPrice } from '../agent/limits';
 import { readPlan } from './plan/plan-record';
+
+export type StepSnapshot = (run: RunEntity, step: StepName) => Promise<void>;
 
 export interface Step {
   readonly name: StepName;
@@ -20,7 +23,7 @@ export interface Step {
   /** Prices a run abandoned in this step. Without it, the model stream is priced. */
   charge?(key: string, env: SwarmloopEnv, prices: Record<string, ModelPrice>): Promise<Charge | null>;
   missingInput(key: string, options: StepOptions): Promise<string | null>;
-  execute(key: string, options: StepOptions): Promise<PipelineResult>;
+  execute(key: string, options: StepOptions, snapshot?: StepSnapshot): Promise<PipelineResult>;
 }
 
 /** The document kind when it is not stored yet, or null when it is. */

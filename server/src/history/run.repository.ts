@@ -7,7 +7,7 @@ import { LiveHub } from '../live/live.hub';
 import { existsSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { sessionHome } from '../agent/session-group';
+import { sessionHome } from '../history/session-group';
 import { REVIEW_STEPS, STEPS } from '../contract/steps';
 import { activeDurationMs, toDurationParts } from './active-duration';
 import { DocumentRepository } from './document.repository';

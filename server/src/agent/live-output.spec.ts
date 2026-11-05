@@ -2,7 +2,7 @@ import { mkdirSync, readdirSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { liveLogBody, liveLogCurrent, liveLogFinished, liveLogView, replaceLogFile } from './live-output';
+import { liveLogBody, liveLogCurrent, liveLogFinished, liveLogView, replaceLogFile } from '../agent/live-output';
 
 describe('live log files', () => {
   it('reads a per-repo implement file and skips implement-improve', async () => {

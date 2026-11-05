@@ -3,7 +3,7 @@ import { join } from 'path';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
-import { replaceLogFile } from '../acp/live-output';
+import { replaceLogFile } from '../agent/live-output';
 import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
@@ -11,16 +11,18 @@ import { SampleDraft } from '../history/visit';
 import type { AgentRuntime } from '../integrations/agent-runtime/agent-runtime';
 import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
+import type { SandboxMount } from '../core/sandbox-mount';
 import {
   agentStateDir,
   modelApiHosts,
   modelCredential,
   prepareStateDir,
   type ProjectLaunch,
-  SandboxMount,
   sandboxUserId,
 } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
+import type { AgentRunResult } from './agent-result';
+export type { AgentRunResult } from './agent-result';
 import {
   callsExceeded,
   DecisionWatch,
@@ -33,7 +35,7 @@ import {
   turnUsd,
 } from './limits';
 import { syncChatMode } from './chat-mode';
-import { sessionHome } from './session-group';
+import { sessionHome } from '../history/session-group';
 import { RunStop } from './run-stop';
 import { loadPriceTable } from './prices';
 import { recordLaunch } from './agent-launches';
@@ -81,25 +83,6 @@ export interface AgentRunInput {
 /** Used when a pipeline step does not pass its own continue prompt. */
 export const AGENT_CONTINUE =
   'You were stopped by the time limit before you finished. Continue this same task from where you stopped. Do not start over and do not redo edits already made. End with the sections the first message asked for.';
-
-export interface AgentRunResult {
-  responseText: string;
-  chatId: string | null;
-  tokensIn: number;
-  tokensOut: number;
-  usd: number;
-  killReason: KillReason | null;
-  exitCode: number;
-  output?: string;
-  resumed: boolean;
-  /** Set while the stream was read. A later check does not parse the log again. */
-  decided?: boolean;
-  calls: number;
-  samples: SampleDraft[];
-  durationMs: number;
-  startedAt: string;
-  finishedAt: string;
-}
 
 @Injectable()
 export class AgentProcessRunner {

@@ -7,15 +7,8 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import { rawEnv } from '../config/process-env';
 import { EGRESS_API, EGRESS_IP, EGRESS_NETWORK, egressEnv, isLeaseIp } from './egress';
 
-export interface SandboxMount {
-  hostPath: string;
-  containerPath: string;
-  /** Path the Docker daemon bind-mounts. Equals hostPath when the server runs on the host. */
-  daemonPath?: string;
-  /** Named volume shared by the server and the sandbox. Mutually exclusive with daemonPath. */
-  volume?: string;
-  readonly?: boolean;
-}
+import type { SandboxMount } from '../core/sandbox-mount';
+export type { SandboxMount } from '../core/sandbox-mount';
 
 export interface EnvMask {
   hostFile: string;

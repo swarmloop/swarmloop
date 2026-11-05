@@ -1,14 +1,14 @@
 import { join } from 'path';
 import { Inject, Injectable } from '@nestjs/common';
-import { AppConfig } from '../../config/env';
-import { DocumentRepository } from '../../history/document.repository';
-import { root } from '../../history/run-paths';
-import { RunRepository } from '../../history/run.repository';
-import { taskKeys } from '../requirements/requirements-input';
-import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
-import { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
-import { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
-import { ISSUE_TRACKER } from '../../integrations/issue-tracker/tokens';
+import { AppConfig } from '../config/env';
+import { DocumentRepository } from '../history/document.repository';
+import { root } from '../history/run-paths';
+import { RunRepository } from '../history/run.repository';
+import { taskKeys } from '../core/task-keys';
+import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
+import { IssueBundle } from '../integrations/issue-tracker/issue-bundle';
+import { IssueTracker } from '../integrations/issue-tracker/issue-tracker';
+import { ISSUE_TRACKER } from '../integrations/issue-tracker/tokens';
 
 @Injectable()
 export class ServiceContextService {

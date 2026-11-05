@@ -2,7 +2,7 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { SandboxMount } from '../sandbox/sandbox-launch';
+import type { SandboxMount } from '../core/sandbox-mount';
 import { worktreeSnapshot } from './worktree-git';
 
 function git(repo: string, args: string[]): string {

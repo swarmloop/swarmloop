@@ -1,7 +1,7 @@
 import { readFile } from 'fs/promises';
 import { callsExceeded } from './limits';
 import type { KillReason, SessionState } from './limits';
-import type { AgentRunResult } from './agent-runner';
+import type { AgentRunResult } from './agent-result';
 
 export type { SessionState } from './limits';
 

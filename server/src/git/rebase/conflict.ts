@@ -2,9 +2,9 @@ import { existsSync, readFileSync, symlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { originRef, promptBase } from '../base-ref';
-import { isDenied } from '../../steps/commit/commit-paths';
+import { isDenied } from '../../git/commit-paths';
 import { git, gitMissing, gitRaw, gitStderr } from '../git';
-import type { RebaseHosts, RebaseStop } from './rebase';
+import type { RebaseHosts, RebaseStop } from './types';
 import {
   cloneArgs,
   copiedDestination,
@@ -18,7 +18,7 @@ import {
 } from './clone-index';
 import { resolveGitPath } from './hidden-worktree';
 import { gitAt, gitRawAt, rebaseStderr } from './workflow';
-import { unmergedPaths } from './rebase';
+import { unmergedPaths } from './clone-index';
 
 export interface RebaseState {
   baseSha: string;

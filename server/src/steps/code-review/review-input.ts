@@ -3,14 +3,14 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { FlowRepository } from '../../history/flow.repository';
 import type { RunRepository } from '../../history/run.repository';
 import type { VisitRepository } from '../../history/visit.repository';
-import type { OpenedStep } from '../../pipeline/step-run';
-import type { SandboxMount } from '../../sandbox/sandbox-launch';
+import type { OpenedStep } from '../../steps/step-run';
+import type { SandboxMount } from '../../core/sandbox-mount';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { readPlan } from '../plan/plan-record';
 import { storedProjects } from '../prepare/checkout-path';
 import type { PrepareStep } from '../prepare/prepare.step';
 import { handoffSection } from '../shared/handoff';
-import { mountsForStep, repoNames } from '../shared/repo-names';
+import { mountsForStep, repoNames } from '../../git/repo-names';
 import { approvedChecklist } from './code-review.prompts';
 
 export async function repoMounts(

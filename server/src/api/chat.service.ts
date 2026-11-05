@@ -12,7 +12,7 @@ import { AGENT_RUNNER, AgentProcessRunner } from '../agent/agent-runner';
 import { modelForStep } from '../agent/spend';
 import { CHAT_LOCK, chatLockBody } from '../pipeline/chat-lock';
 import { settleShell, shellHolding } from '../pipeline/shell-lock';
-import { ServiceContextService } from '../steps/shared/service-context';
+import { ServiceContextService } from '../integrations/service-context';
 import { launchAgent } from '../steps/agent-step';
 import { agentFailure } from '../steps/shared/agent-result';
 import { LOCAL_RUN_RULE } from '../steps/shared/skill-prompt';

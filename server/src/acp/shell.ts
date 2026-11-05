@@ -6,7 +6,8 @@ import { isAbsolute, join, resolve } from 'path';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SystemClock } from '../core/clock';
 import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
-import type { SandboxLaunch, SandboxMount } from '../sandbox/sandbox-launch';
+import type { SandboxMount } from '../core/sandbox-mount';
+import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import {
   agentStateDir,
   containerName,

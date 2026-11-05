@@ -1,5 +1,5 @@
 import { SwarmloopError } from '../../core/swarmloop-error';
-import type { RebaseHosts } from './rebase';
+import type { RebaseHosts } from './types';
 import { git, gitDetail, gitRaw, gitStderr, redact } from '../git';
 
 /** Full git stderr for a rebase failure, with both host tokens removed. A captured rebase stderr wins over a later command. */

@@ -1,4 +1,4 @@
-import type { RuntimeName } from './agent-runtime.registry';
+import type { RuntimeName } from './runtime-name';
 
 export type { RuntimeName };
 

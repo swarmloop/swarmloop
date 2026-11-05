@@ -17,6 +17,7 @@ import { REQUIREMENTS_SOURCE } from '../../integrations/requirements-source/requ
 import { RequirementsSource } from '../../integrations/requirements-source/requirements-source';
 import { ISSUE_TRACKER } from '../../integrations/issue-tracker/tokens';
 import { BaseStep, StepContext } from '../base-step';
+import type { StepSnapshot } from '../step';
 import { readPrompt, taskKeys, unreadSource } from './requirements-input';
 import { emptyWrite, RequirementsFinish, requirementsVisit, stopReason } from './requirements-visit';
 
@@ -57,7 +58,7 @@ export class RequirementsStep extends BaseStep {
     return Promise.resolve(null);
   }
 
-  override async execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
+  override async execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
     let prompt: string | undefined;
     try {
       prompt = await readPrompt(options);
@@ -70,7 +71,7 @@ export class RequirementsStep extends BaseStep {
       if (resolved === undefined) {
         return { exitCode: 1, message: 'prompt is missing' };
       }
-      return await super.execute(key, { ...options, prompt: resolved });
+      return await super.execute(key, { ...options, prompt: resolved }, snapshot);
     } catch (error) {
       return { exitCode: 1, message: this.failureText(error) };
     }

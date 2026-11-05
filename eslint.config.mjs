@@ -4,10 +4,58 @@ import prettier from 'eslint-config-prettier/flat';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
+import boundaries from 'eslint-plugin-boundaries';
 import tseslint from 'typescript-eslint';
 
 const sourceFiles = ['**/*.{js,mjs,ts,tsx}'];
 const dashboardFiles = ['dashboard/**/*.{js,mjs,ts,tsx}'];
+const serverLayers = [
+  'core',
+  'contract',
+  'config',
+  'live',
+  'history',
+  'git',
+  'integrations',
+  'sandbox',
+  'agent',
+  'environment',
+  'steps',
+  'pipeline',
+  'api',
+  'acp',
+  'cli',
+];
+const layerImports = {
+  core: [],
+  contract: [],
+  config: ['core', 'integrations'],
+  live: ['core'],
+  history: ['core', 'config', 'live'],
+  git: ['core', 'config', 'integrations'],
+  integrations: ['core', 'config', 'history'],
+  sandbox: ['core', 'config', 'integrations'],
+  agent: ['core', 'config', 'history', 'integrations', 'sandbox', 'live'],
+  environment: ['core', 'config', 'git', 'history', 'integrations', 'sandbox', 'live'],
+  steps: ['core', 'config', 'git', 'history', 'integrations', 'sandbox', 'agent', 'environment', 'live'],
+  pipeline: ['core', 'config', 'git', 'history', 'sandbox', 'agent', 'steps', 'live'],
+  api: [
+    'core',
+    'contract',
+    'config',
+    'live',
+    'history',
+    'git',
+    'integrations',
+    'sandbox',
+    'agent',
+    'environment',
+    'steps',
+    'pipeline',
+  ],
+  acp: ['core', 'config', 'integrations', 'sandbox'],
+  cli: ['core', 'config', 'history', 'pipeline'],
+};
 
 export default tseslint.config(
   {
@@ -28,6 +76,47 @@ export default tseslint.config(
   {
     files: ['server/**', 'scripts/**'],
     languageOptions: { globals: globals.node },
+  },
+  {
+    files: ['server/src/**/*.ts'],
+    plugins: { boundaries },
+    settings: {
+      'import/resolver': { node: { extensions: ['.js', '.ts', '.tsx'] } },
+      'boundaries/elements': serverLayers.map((type) => ({ type, pattern: `server/src/${type}/**`, mode: 'folder' })),
+      'boundaries/ignore': [
+        '**/*.spec.ts',
+        '**/*.spec-helpers.ts',
+        'server/src/main.ts',
+        'server/src/api-main.ts',
+        'server/src/**/*.module.ts',
+      ],
+    },
+    rules: {
+      'boundaries/element-types': [
+        'error',
+        {
+          default: 'disallow',
+          rules: Object.entries(layerImports).map(([from, allow]) => ({ from, allow: [...allow, from, 'contract'] })),
+        },
+      ],
+    },
+  },
+  {
+    files: ['server/src/config/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex:
+                '^(?!.*integrations/(agent-runtime/agent-runtime[.]registry|issue-tracker/issue-tracker[.]registry|requirements-source/requirements-source[.]registry)$).*integrations/',
+              message: 'Config may import only registries that list allowed names.',
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     // The contract is compiled by the dashboard too, so it may import only its own files.

@@ -21,6 +21,9 @@ export function findViolations({ root, rules, files }) {
 
   const pattern = new RegExp(rules.forbidPattern.pattern);
   for (const rel of files) {
+    if (!existsSync(join(root, rel))) {
+      continue;
+    }
     if (rules.forbidPattern.exclude.some((prefix) => rel.startsWith(prefix))) {
       continue;
     }

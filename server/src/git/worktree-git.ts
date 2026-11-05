@@ -1,8 +1,8 @@
 import { basename } from 'path';
-import type { SandboxMount } from '../sandbox/sandbox-launch';
+import type { SandboxMount } from '../core/sandbox-mount';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { git, gitDetail } from './git';
-import { captureTree } from './worktree-snapshot';
+import { captureTree } from './worktree-tree';
 
 export async function featureHeads(
   mounts: SandboxMount[],

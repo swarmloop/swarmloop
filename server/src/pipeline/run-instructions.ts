@@ -1,5 +1,5 @@
 import type { AppConfig } from '../config/env';
-import { liveLogBody } from '../acp/live-output';
+import { liveLogBody } from '../agent/live-output';
 import type { RunEntity } from '../history/entities';
 import type { DocumentRepository } from '../history/document.repository';
 import type { RunRepository } from '../history/run.repository';

@@ -7,7 +7,7 @@ import { Commands, type SkillCommand } from './commands';
 import type { JsonRpc } from './framing';
 import { encodeMessage, pushFrames } from './framing';
 import { sessionTitle } from './format';
-import { liveLogBody } from './live-output';
+import { liveLogBody } from '../core/live-output';
 import type { ServerApi } from './server-api';
 import { type Session, Sessions } from './sessions';
 

@@ -3,9 +3,9 @@ import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { deniedIndexPaths, isDenied, stageSelection } from '../../steps/commit/commit-paths';
+import { deniedIndexPaths, isDenied, stageSelection } from '../../git/commit-paths';
 import { authorArgs, git, gitMissing, gitRaw, gitStderr } from '../git';
-import type { RebaseHosts } from './rebase';
+import type { RebaseHosts } from './types';
 import { gitAt, gitRawAt, rebaseStderr } from './workflow';
 import { removeCopiedPath } from './clone-index';
 

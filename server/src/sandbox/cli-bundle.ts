@@ -1,5 +1,5 @@
 import { SwarmloopError } from '../core/swarmloop-error';
-import { CLI_ROOT } from './sandbox-launch';
+import { CLI_ROOT } from '../sandbox/sandbox-launch';
 import type { DockerRunner } from './sandbox.service';
 
 /** Every agent image keeps its whole CLI under CLI_ROOT, which is where a project image gets it mounted. */

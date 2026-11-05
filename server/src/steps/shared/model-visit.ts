@@ -1,6 +1,6 @@
 import type { AgentRunResult } from '../../agent/agent-runner';
 import type { DocumentDraft, VisitDraft } from '../../history/visit';
-import type { OpenedStep } from '../../pipeline/step-run';
+import type { OpenedStep } from '../../steps/step-run';
 import type { StepName } from '../../contract/steps';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
 

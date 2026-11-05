@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { remoteProject } from '../../steps/merge-request/merge-request-record';
+import { remoteProject } from './remote-project';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { CodeHost, SelectedHost } from './code-host';
 import type { CodeHostEnv } from './abstract-code-host';

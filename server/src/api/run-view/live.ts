@@ -1,4 +1,4 @@
-import { liveLogBody } from '../../acp/live-output';
+import { liveLogBody } from '../../agent/live-output';
 import type { LaunchView, VisitView } from '../../contract/api';
 import type { LiveSample } from '../../contract/live';
 
