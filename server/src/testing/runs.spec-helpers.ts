@@ -17,9 +17,9 @@ import type { VisitDraft } from '../history/visit';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
-import { RunCommandsService } from './run-commands.service';
-import { RunQueriesService } from './run-queries.service';
-import { RunRebaseService } from './run-rebase.service';
+import { RunCommandsService } from '../api/run-commands.service';
+import { RunQueriesService } from '../api/run-queries.service';
+import { RunRebaseService } from '../api/run-rebase.service';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
 
 export async function boot(

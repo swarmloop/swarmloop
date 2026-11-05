@@ -9,7 +9,7 @@ import { VisitRepository } from '../history/visit.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { LiveHub } from '../live/live.hub';
 import { RunQueriesService } from './run-queries.service';
-import { boot, save, visit } from './runs.spec-helpers';
+import { boot, save, visit } from '../testing/runs.spec-helpers';
 
 describe('runs api', () => {
   it('does not ask old questions on a later step', async () => {

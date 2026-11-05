@@ -183,6 +183,18 @@ export default tseslint.config(
     rules: { 'no-restricted-properties': 'off', 'no-restricted-syntax': 'off' },
   },
   {
+    files: ['server/src/**/*.spec.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.name='setTimeout']",
+          message: 'Use fake timers instead of sleeping in specs.',
+        },
+      ],
+    },
+  },
+  {
     files: dashboardFiles,
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     plugins: { '@next/next': nextPlugin, 'react-hooks': reactHooks },

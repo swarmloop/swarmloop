@@ -26,7 +26,10 @@ export default tseslint.config(
     ignores: dashboardTestFiles,
     extends: [tseslint.configs.recommendedTypeChecked],
     languageOptions: {
-      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+      parserOptions: {
+        projectService: { allowDefaultProject: ['server/test/e2e/*.ts'] },
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
     rules: typedRules,
   },

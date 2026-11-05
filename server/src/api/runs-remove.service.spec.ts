@@ -12,7 +12,7 @@ import { EventRepository } from '../history/event.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { LiveHub } from '../live/live.hub';
 import { RunCommandsService } from './run-commands.service';
-import { boot, save, visit, denyEnv } from './runs.spec-helpers';
+import { boot, save, visit, denyEnv } from '../testing/runs.spec-helpers';
 
 describe('runs api', () => {
   it('removes the rows and files of one run and leaves the shared store', async () => {
