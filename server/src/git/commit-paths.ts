@@ -4,7 +4,7 @@ export interface PlannedPath {
 }
 
 /** `add` is what `git add` may see. `staged` is an allowed change already in the index, including a staged deletion. */
-export interface StageSelection {
+interface StageSelection {
   add: string[];
   staged: string[];
 }

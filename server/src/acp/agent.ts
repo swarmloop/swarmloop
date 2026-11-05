@@ -14,7 +14,7 @@ import { type Session, Sessions } from './sessions';
 export type { SkillCommand } from './commands';
 export { parseCommand } from './commands';
 
-export interface SloopOptions {
+interface SloopOptions {
   api: ServerApi;
   skills: SkillCommand[];
   repoRoot: string;

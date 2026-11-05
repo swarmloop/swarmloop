@@ -2,7 +2,7 @@ import type { FlowView } from '@contract/api';
 import { PHASE_STEPS, PHASES, pipelineStepOf, REVIEW_STEPS, STEPS } from '@contract/steps';
 import type { PhaseName } from '@contract/steps';
 
-export const PHASE_LABEL: Record<PhaseName, string> = {
+const PHASE_LABEL: Record<PhaseName, string> = {
   requirements: 'requirements',
   brainstorm: 'planning',
   implementation: 'implementation',
@@ -99,7 +99,7 @@ export function phaseOf(step: string): PhaseName {
   return 'requirements';
 }
 
-export function phaseLabel(id: string): string {
+function phaseLabel(id: string): string {
   return (PHASE_LABEL as Record<string, string>)[id] ?? id;
 }
 

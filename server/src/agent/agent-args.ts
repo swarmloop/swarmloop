@@ -24,7 +24,7 @@ export function briefMounts(statePath: string, step: string, spilled: SandboxMou
 }
 
 /** Linux rejects one argv string longer than MAX_ARG_STRLEN (128KiB). */
-export const ARG_BYTE_LIMIT = 100_000;
+const ARG_BYTE_LIMIT = 100_000;
 
 export function spillPrompt(prompt: string, statePath: string, step: string): { text: string; mounts: SandboxMount[] } {
   if (Buffer.byteLength(prompt) <= ARG_BYTE_LIMIT) {
@@ -46,7 +46,7 @@ export function spillPrompt(prompt: string, statePath: string, step: string): { 
   };
 }
 
-export function briefName(step: string): string {
+function briefName(step: string): string {
   const clean = step
     .replace(/[^A-Za-z0-9._-]/g, '-')
     .replace(/^-+/, '')

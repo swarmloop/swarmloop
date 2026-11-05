@@ -2,7 +2,7 @@ import { SwarmloopError } from '../core/swarmloop-error';
 
 const UNSAFE = /[~^:?*[\\\s]/;
 
-export type PromptBase = { kind: 'named'; name: string } | { kind: 'default' };
+type PromptBase = { kind: 'named'; name: string } | { kind: 'default' };
 
 /** One `branch:` line in the prompt, or the default main/master base when the line is absent. */
 export function promptBase(prompt: string | null | undefined): PromptBase {

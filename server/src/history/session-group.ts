@@ -1,4 +1,4 @@
-export type SessionGroup = 'plan' | 'implement';
+type SessionGroup = 'plan' | 'implement';
 
 /** Research, plan, and plan-improve share one chat. Implement steps share another. Each code reviewer keeps its own. */
 export function sessionGroup(step: string): SessionGroup | null {

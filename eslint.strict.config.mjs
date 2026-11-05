@@ -5,8 +5,7 @@ const typedFiles = ['**/*.{ts,tsx}'];
 const testFiles = ['**/*.spec.ts', '**/*.spec-helpers.ts', '**/*.test.ts', '**/*.test.tsx'];
 // dashboard/tsconfig.json excludes these test and config files. dashboard/tsconfig.test.json includes them.
 const dashboardTestFiles = ['dashboard/**/*.test.{ts,tsx}', 'dashboard/vitest.*.ts', 'dashboard/test/fake-socket.ts'];
-// Size rules are warnings until part 51, after the split parts (35-38) have broken up the large legacy files.
-const maxLines = (max) => ['warn', { max, skipBlankLines: true, skipComments: true }];
+const maxLines = (max) => ['error', { max, skipBlankLines: true, skipComments: true }];
 const typedRules = {
   '@typescript-eslint/no-floating-promises': 'error',
   '@typescript-eslint/no-misused-promises': 'error',

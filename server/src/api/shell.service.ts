@@ -25,7 +25,7 @@ import {
 } from '../pipeline/worktree-snapshot';
 import { RewindView, ShellFeature, ShellMatch, ShellStatusView, SnapshotsView } from '../contract/api';
 
-export interface FeatureRow {
+interface FeatureRow {
   key: string;
   targetPath: string | null;
 }

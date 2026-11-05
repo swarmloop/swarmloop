@@ -103,7 +103,8 @@ function envRecord(value: unknown): Record<string, string> {
   return {};
 }
 
-// Same text String() gave for the value before; the cast only tells the linter the value is printable.
+// Keep JavaScript's original String() conversion for arbitrary environment values.
 function envText(value: unknown): string {
-  return String((value ?? '') as string);
+  const stringify: (value: unknown) => string = String;
+  return stringify(value ?? '');
 }

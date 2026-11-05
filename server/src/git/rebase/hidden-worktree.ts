@@ -12,11 +12,11 @@ import { removeCopiedPath } from './clone-index';
 /** Per-worktree ref for the files this run hides during rebase. */
 const HIDDEN_REF = 'refs/worktree/swarmloop-rebase';
 
-export function hiddenMessage(paths: string[]): string {
+function hiddenMessage(paths: string[]): string {
   return `swarmloop-rebase\n${paths.join('\n')}\n`;
 }
 
-export function hiddenPaths(message: string): string[] {
+function hiddenPaths(message: string): string[] {
   const lines = message.split('\n');
   if ((lines[0] ?? '').trim() !== 'swarmloop-rebase') {
     return [];

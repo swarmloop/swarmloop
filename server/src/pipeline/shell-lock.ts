@@ -4,7 +4,7 @@ import type { RunRepository } from '../history/run.repository';
 import type { Clock } from '../core/clock';
 import { CHAT_LOCK, readChatLock, shellLockFresh } from './chat-lock';
 
-export interface ContainerProbe {
+interface ContainerProbe {
   containerExists(name: string): Promise<boolean | null>;
 }
 

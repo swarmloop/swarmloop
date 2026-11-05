@@ -19,14 +19,14 @@ import { closeReview, recordAngle } from './review-report';
 import type { Finished, Opinion, Reviewer, ReviewDeps, Usage } from './reviewer';
 import { decidedOk, REVIEWERS, runJob } from './reviewer';
 
-export interface Selection {
+interface Selection {
   kept: Opinion[];
   pending: Reviewer[];
   recovered: DocumentDraft[];
   stale: Set<string>;
 }
 
-export interface SelectInput {
+interface SelectInput {
   key: string;
   only: string | undefined;
   fresh: boolean;
@@ -35,7 +35,7 @@ export interface SelectInput {
   repeated: boolean;
 }
 
-export interface RoundInput {
+interface RoundInput {
   opened: OpenedStep;
   key: string;
   env: SwarmloopEnv;

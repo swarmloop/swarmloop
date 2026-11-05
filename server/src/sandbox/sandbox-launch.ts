@@ -12,10 +12,7 @@ import type { SandboxLaunch } from './sandbox-types';
 
 import type { SandboxMount } from '../core/sandbox-mount';
 export type { EnvMask, ProjectLaunch, SandboxLaunch } from './sandbox-types';
-export type { SandboxMount } from '../core/sandbox-mount';
-export { CLI_CERTS, CLI_ROOT } from './sandbox-args';
-export { assertDaemonPath, assertMask } from './sandbox-checks';
-export { sandboxMount } from './sandbox-checks';
+export { CLI_ROOT } from './sandbox-args';
 const PROJECT_TMP = '/tmp:rw,exec,nosuid,nodev,size=1g,mode=1777';
 /** Test runners and JVM builds start many threads, and every thread counts. Still a ceiling against a fork bomb. */
 const PROJECT_PIDS = '1024';
@@ -50,7 +47,7 @@ const REGISTRIES = new Set([
   'services.gradle.org',
   'downloads.gradle.org',
 ]);
-export const SANDBOX_PIDS = '256';
+const SANDBOX_PIDS = '256';
 
 const MODEL_HOSTS = new Set(RUNTIME_NAMES.flatMap((name) => runtimeFor(name).apiHosts));
 const MODEL_ENV = new Set(RUNTIME_NAMES.flatMap((name) => runtimeFor(name).credentialNames));
@@ -61,7 +58,7 @@ const EGRESS_ENV: Record<string, (value: string) => boolean> = {
 };
 
 /** A rule is a host name, or `*.domain` for that domain and every name below it. */
-export function matchesHost(rule: string, name: string): boolean {
+function matchesHost(rule: string, name: string): boolean {
   if (rule === name) {
     return true;
   }

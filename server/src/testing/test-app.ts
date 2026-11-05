@@ -37,7 +37,7 @@ import type { Step } from '../steps/step';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { PipelineService } from '../pipeline/pipeline.service';
 
-export interface TestAppOptions {
+interface TestAppOptions {
   root?: string;
   runner?: ScriptedFakeAgentRunner;
 }
@@ -51,7 +51,7 @@ export class ScriptedFakeAgentRunner {
   }
 }
 
-export class FakeCodeHost {
+class FakeCodeHost {
   open(): Promise<{ url: string }> {
     return Promise.resolve({ url: 'https://code.example/test/merge_requests/1' });
   }

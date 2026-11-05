@@ -3,8 +3,6 @@ import { callsExceeded } from './limits';
 import type { KillReason, SessionState } from './limits';
 import type { AgentRunResult } from './agent-result';
 
-export type { SessionState } from './limits';
-
 export async function readSession(path: string, runtime: string): Promise<SessionState | null> {
   try {
     const session = JSON.parse(await readFile(path, 'utf8')) as SessionState;

@@ -11,7 +11,7 @@ export interface Session {
   cancelled: boolean;
 }
 
-export interface SessionOptions {
+interface SessionOptions {
   api: ServerApi;
   cwd?: string;
   clock: Clock;

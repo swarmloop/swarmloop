@@ -11,20 +11,20 @@ const logger = new Logger('WorktreeSnapshot');
 export const SNAPSHOT = 'snapshot';
 export const SHELL_RESUME = 'shell_resume';
 
-export interface RepoTree {
+interface RepoTree {
   repo: string;
   head: string;
   tree: string;
 }
 
-export interface SnapshotBody {
+interface SnapshotBody {
   step: string;
   at: string;
   chat: string;
   repos: RepoTree[];
 }
 
-export { captureTree, isGitRepo } from '../git/worktree-tree';
+export { captureTree } from '../git/worktree-tree';
 import { captureTree, git, ownsRepo } from '../git/worktree-tree';
 
 /** Local branch goes back to the snapshot commit, then the dirty tree is laid on top. Ignored files stay. */
@@ -110,7 +110,7 @@ export function parseResume(body: string | null): { step: string; chat: string }
   return { step, chat };
 }
 
-export interface SnapshotDeps {
+interface SnapshotDeps {
   documents: DocumentRepository;
   visits: VisitRepository;
   root: string;

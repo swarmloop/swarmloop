@@ -1,7 +1,7 @@
 import { readStreamLine, takeAnswer } from '../../agent/stream';
 import { SwarmloopError } from '../../core/swarmloop-error';
 
-export interface ReviewDecision {
+interface ReviewDecision {
   decision: 'ok' | 'return';
   body: string;
 }

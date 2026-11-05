@@ -4,7 +4,7 @@ import type { KillReason } from './limits';
 
 const SAMPLE_MS = 5_000;
 
-export interface AgentProcessHandlers {
+interface AgentProcessHandlers {
   data(chunk: Buffer): void;
   error(chunk: Buffer): void;
   processError(error: NodeJS.ErrnoException): void;
@@ -12,7 +12,7 @@ export interface AgentProcessHandlers {
   tick(): void;
 }
 
-export interface AgentProcessTimeouts {
+interface AgentProcessTimeouts {
   idleLimitMs: number;
   wallLimitMs: number;
   timeout(reason: Extract<KillReason, 'idle' | 'time'>): void;

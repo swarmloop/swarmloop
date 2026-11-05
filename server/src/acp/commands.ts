@@ -15,14 +15,14 @@ interface Command {
   rest: string;
 }
 
-export interface CommandOptions {
+interface CommandOptions {
   api: ServerApi;
   skills: SkillCommand[];
   repoRoot: string;
   checkoutsRoot?: string;
 }
 
-export interface CommandEvents {
+interface CommandEvents {
   name(session: Session, title: string): void;
   chunk(session: Session, text: string): void;
   watch(session: Session): Promise<void>;

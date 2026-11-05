@@ -76,7 +76,7 @@ export async function baseRefFor(cwd: string, prompt: string | null, sha: string
   return originRef(names[0] ?? 'main');
 }
 
-export async function squashMerge(tmp: string, tipSha: string, author: string[]): Promise<string> {
+async function squashMerge(tmp: string, tipSha: string, author: string[]): Promise<string> {
   try {
     await git(cloneArgs(tmp, [...author, 'merge', '--squash', tipSha]));
     return '';
@@ -85,7 +85,7 @@ export async function squashMerge(tmp: string, tipSha: string, author: string[])
   }
 }
 
-export async function tipInBase(
+async function tipInBase(
   tmp: string,
   tipSha: string,
   baseSha: string,
@@ -103,7 +103,7 @@ export async function tipInBase(
   }
 }
 
-export async function sameSquash(
+async function sameSquash(
   tmp: string,
   tipSha: string,
   baseSha: string,

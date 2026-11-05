@@ -17,7 +17,7 @@ export function git(repo: string, args: string[], extra?: Record<string, string>
   });
 }
 
-export async function isGitRepo(repo: string): Promise<boolean> {
+async function isGitRepo(repo: string): Promise<boolean> {
   try {
     return (await git(repo, ['rev-parse', '--is-inside-work-tree'])).trim() === 'true';
   } catch {
