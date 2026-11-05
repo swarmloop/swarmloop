@@ -39,6 +39,12 @@ export interface PipelineSnapshot {
   jobs: PipelineJob[];
 }
 
+export interface PipelineDiagnosis {
+  reason: string | null;
+  code?: 'merge-conflict' | 'closed';
+  httpCalls: HttpCallDraft[];
+}
+
 export interface SelectedHost {
   name: 'github' | 'gitlab';
   baseUrl: string;
@@ -61,7 +67,7 @@ export interface CodeHost {
     ref: PipelineRef,
     jobs?: boolean,
   ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
-  diagnoseMissingPipeline?(ref: PipelineRef): Promise<{ reason: string | null; httpCalls: HttpCallDraft[] }>;
+  diagnoseMissingPipeline?(ref: PipelineRef): Promise<PipelineDiagnosis>;
   readJobTrace(project: string, jobId: number): Promise<{ trace: string; httpCalls: HttpCallDraft[] }>;
   cancelPipeline(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }>;
 }

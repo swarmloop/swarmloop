@@ -11,6 +11,7 @@ import type {
   PipelineJob,
   PipelineRef,
   PipelineSnapshot,
+  PipelineDiagnosis,
   SelectedHost,
 } from '../code-host';
 
@@ -19,6 +20,10 @@ interface GitlabMergeRequest {
   web_url?: string;
   description?: string | null;
   source_branch?: string;
+  sha?: string;
+  state?: string;
+  has_conflicts?: boolean;
+  detailed_merge_status?: string;
 }
 
 interface GitlabPipeline {
@@ -108,6 +113,39 @@ export class GitlabCodeHost extends AbstractCodeHost {
           ? await this.failedJobs(base, headers, project, id, scopes, calls)
           : [];
       return { snapshot: { id, status, url: detail.web_url ?? '', jobs: listed }, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async diagnoseMissingPipeline(ref: PipelineRef): Promise<PipelineDiagnosis> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const url = `${root}/api/v4/projects/${encodeURIComponent(ref.project)}/merge_requests`;
+      const list = await this.readJson(
+        `${url}?state=all&source_branch=${encodeURIComponent(ref.ref)}&with_merge_status_recheck=true&per_page=100`,
+        headers,
+        calls,
+      );
+      if (!Array.isArray(list)) throw new SwarmloopError('gitlab pipeline diagnosis failed');
+      const found = (list as GitlabMergeRequest[]).find(
+        (mr) => mr.source_branch === ref.ref && (!ref.sha || mr.sha === ref.sha),
+      );
+      if (!found?.iid) return { reason: null, httpCalls: calls };
+      const mr = (await this.readJson(`${url}/${found.iid}`, headers, calls)) as GitlabMergeRequest;
+      if (mr.source_branch !== ref.ref || (ref.sha && mr.sha !== ref.sha)) return { reason: null, httpCalls: calls };
+      const link = mr.web_url ?? `MR !${found.iid}`;
+      if (mr.state === 'closed' || mr.state === 'merged')
+        return { reason: `${link} is ${mr.state}.`, code: 'closed', httpCalls: calls };
+      if (ref.sha && mr.state === 'opened' && (mr.has_conflicts === true || mr.detailed_merge_status === 'conflict')) {
+        return {
+          reason: `${link} has merge conflicts with its target branch.`,
+          code: 'merge-conflict',
+          httpCalls: calls,
+        };
+      }
+      return { reason: null, httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }

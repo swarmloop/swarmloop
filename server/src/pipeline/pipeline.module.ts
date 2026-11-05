@@ -18,6 +18,7 @@ import { ResearchStep } from '../steps/research/research.step';
 import { StepRegistry } from '../steps/step.registry';
 import { EnvironmentService } from '../environment/environment.service';
 import { PipelineService } from './pipeline.service';
+import { RunRebase } from './run-rebase';
 
 @Module({
   imports: [HistoryModule, ProvidersModule, SandboxModule],
@@ -37,8 +38,17 @@ import { PipelineService } from './pipeline.service';
     CodeReviewStep,
     StepRegistry,
     PipelineService,
+    RunRebase,
     EnvironmentService,
   ],
-  exports: [PipelineService, PrepareStep, ProjectAppendService, CommitStep, HistoryModule, EnvironmentService],
+  exports: [
+    PipelineService,
+    RunRebase,
+    PrepareStep,
+    ProjectAppendService,
+    CommitStep,
+    HistoryModule,
+    EnvironmentService,
+  ],
 })
 export class PipelineModule {}

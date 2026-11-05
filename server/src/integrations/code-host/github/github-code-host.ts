@@ -11,6 +11,7 @@ import type {
   PipelineJob,
   PipelineRef,
   PipelineSnapshot,
+  PipelineDiagnosis,
   SelectedHost,
 } from '../code-host';
 
@@ -110,7 +111,7 @@ export class GithubCodeHost extends AbstractCodeHost {
     }
   }
 
-  async diagnoseMissingPipeline(ref: PipelineRef): Promise<{ reason: string | null; httpCalls: HttpCallDraft[] }> {
+  async diagnoseMissingPipeline(ref: PipelineRef): Promise<PipelineDiagnosis> {
     const calls: HttpCallDraft[] = [];
     try {
       const { root, headers } = this.credentials();
@@ -135,12 +136,20 @@ export class GithubCodeHost extends AbstractCodeHost {
         calls,
       )) as GithubPull;
       const link = pull.html_url ?? `PR #${found.number}`;
+      if (pull.head && (pull.head.ref !== ref.ref || (ref.sha && pull.head.sha !== ref.sha))) {
+        return { reason: null, httpCalls: calls };
+      }
       if (pull.state === 'closed') {
-        return { reason: `${link} is closed; pull_request CI will not start for new pushes.`, httpCalls: calls };
+        return {
+          reason: `${link} is closed; pull_request CI will not start for new pushes.`,
+          code: 'closed',
+          httpCalls: calls,
+        };
       }
       if (pull.mergeable === false || pull.mergeable_state === 'dirty') {
         return {
           reason: `${link} has merge conflicts with its base branch; GitHub does not start pull_request CI until they are resolved. Rebase this run onto the latest base.`,
+          code: ref.sha && pull.head?.sha === ref.sha && pull.state === 'open' ? 'merge-conflict' : undefined,
           httpCalls: calls,
         };
       }

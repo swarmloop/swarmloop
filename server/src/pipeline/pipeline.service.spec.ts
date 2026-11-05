@@ -11,11 +11,42 @@ import { DocumentRepository } from '../history/document.repository';
 import { AGENT_RUNNER } from '../agent/agent-runner';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CodeReviewStep } from '../steps/code-review/code-review.step';
+import { PipelineStep } from '../steps/pipeline/pipeline.step';
 import { withPlan } from '../steps/plan/plan-record';
 import { PipelineModule } from './pipeline.module';
 import { PipelineService } from './pipeline.service';
 
 describe('pipeline service', () => {
+  it('continues Resume requested by the shared automatic rebase action without starting a second runner', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-rebase-resume-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const run = await runs.begin('PROJ-79', 'pipeline');
+      run.status = 'waiting';
+      await runs.saveRun(run);
+      const execute = jest
+        .spyOn(app.get(PipelineStep), 'execute')
+        .mockImplementationOnce(async () => ({
+          exitCode: 0,
+          message: 'rebase completed',
+          resume: true,
+        }))
+        .mockImplementationOnce(async () => {
+          const fresh = (await runs.findRun('PROJ-79'))!;
+          fresh.currentStep = 'done';
+          fresh.status = 'done';
+          await runs.saveRun(fresh);
+          return { exitCode: 0, message: 'CI passed' };
+        });
+      const result = await app.get(PipelineService).runThrough('PROJ-79');
+      expect(result.message).toBe('CI passed');
+      expect(execute).toHaveBeenCalledTimes(2);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('rejects a path on a step that does not take one', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-path-'));
     const app = await boot(root);

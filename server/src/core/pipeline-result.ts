@@ -4,6 +4,8 @@ import { PHASES, PHASE_STEPS, STEPS } from '../contract/steps';
 export interface PipelineResult {
   exitCode: number;
   message: string;
+  /** The shared rebase action requested Resume at the same pipeline step. */
+  resume?: boolean;
 }
 
 export function isStep(value: string): value is StepName {

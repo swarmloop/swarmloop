@@ -15,6 +15,8 @@ import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
+import { RunRebase } from '../../pipeline/run-rebase';
+import { RunStop } from '../../agent/run-stop';
 import type { PipelineJob, PipelineSnapshot } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { FetchFailed, type HttpCallDraft } from '../../core/swarmloop-error';
@@ -22,6 +24,77 @@ import { FetchFailed, type HttpCallDraft } from '../../core/swarmloop-error';
 const TOKEN = 'super-secret-token';
 
 describe('pipeline step', () => {
+  it.each(['start', 'resume', 'failure', 'dirty', 'limit', 'stop'] as const)(
+    'uses the button rebase action for missing CI: %s',
+    async (mode) => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-auto-rebase-'));
+      const app = await boot(
+        root,
+        jest.fn(async () => ({ snapshot: null, httpCalls: [] })),
+        jest.fn(),
+      );
+      try {
+        const key = 'PROJ-320';
+        const cwd = join(root, 'worktrees', key, 'demo');
+        gitRepo(cwd, 'https://gitlab.example/group/demo.git');
+        mkdirSync(join(cwd, '.github', 'workflows'), { recursive: true });
+        await writeFile(join(cwd, '.github', 'workflows', 'ci.yml'), 'name: CI\non: pull_request\n');
+        execFileSync('git', ['checkout', '-b', 'feature/task'], { cwd });
+        execFileSync('git', ['add', '.'], { cwd });
+        execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-m', 'base'], { cwd });
+        const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
+        await seed(app, key, `project: group/demo\nref: feature/task\nsha: ${sha}\n`, mode === 'limit' ? 6 : 0);
+        const documents = app.get(DocumentRepository);
+        const runs = app.get(RunRepository);
+        await documents.putDocument((await runs.findRun(key))!, 'repos', 'demo\n');
+        app.get(CodeHostRegistry).byName('gitlab').diagnoseMissingPipeline = jest.fn(async () => ({
+          reason: 'MR has conflicts',
+          code: 'merge-conflict' as const,
+          httpCalls: [],
+        }));
+        const action = jest.spyOn(app.get(RunRebase), 'rebase').mockImplementation(async () => {
+          if (mode === 'failure') throw new Error('fetch failed');
+          const run = (await runs.findRun(key))!;
+          run.currentStep = mode === 'resume' ? 'pipeline' : 'implement';
+          run.status = 'waiting';
+          await runs.saveRun(run);
+          return mode === 'resume' ? 'resume' : 'start';
+        });
+        if (mode === 'dirty') await writeFile(join(cwd, 'manual.txt'), 'manual edit');
+        if (mode === 'stop') jest.spyOn(app.get(RunStop), 'halted').mockReturnValue(true);
+        const result = await app.get(PipelineService).step('pipeline', key);
+        if (mode === 'stop') {
+          expect(action).not.toHaveBeenCalled();
+          expect(result.message).toContain('cancelled by Stop');
+          return;
+        }
+        if (mode === 'dirty' || mode === 'limit') {
+          expect(action).not.toHaveBeenCalled();
+          expect((await runs.findRun(key))?.status).toBe('blocked');
+          return;
+        }
+        expect(action).toHaveBeenCalledTimes(1);
+        expect(action).toHaveBeenCalledWith(key);
+        if (mode === 'failure') {
+          expect(result.exitCode).toBe(1);
+          expect((await runs.findRun(key))?.status).toBe('blocked');
+          expect(await documents.latestBody(key, 'error')).toContain('fetch failed');
+          return;
+        }
+        expect(result.resume).toBe(mode === 'resume');
+        expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim()).toBe(sha);
+        const again = (await runs.findRun(key))!;
+        again.currentStep = 'pipeline';
+        await runs.saveRun(again);
+        const repeated = await app.get(PipelineService).step('pipeline', key);
+        expect(repeated.message).toContain('already attempted');
+        expect(action).toHaveBeenCalledTimes(1);
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
   it('finishes when every pipeline succeeded', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-green-'));
     const read = jest.fn(() =>
@@ -569,10 +642,11 @@ describe('pipeline step', () => {
       await seed(app, 'PROJ-311');
       const run = await app.get(RunRepository).findRun('PROJ-311');
       const host = app.get(CodeHostRegistry).byName('gitlab');
-      host.diagnoseMissingPipeline = jest.fn(async () => ({
+      const diagnose = jest.fn(async () => ({
         reason: 'PR has merge conflicts; rebase onto the latest base.',
         httpCalls: [call('GET')],
       }));
+      host.diagnoseMissingPipeline = diagnose;
       await app.get(DocumentRepository).putDocument(run!, 'pipeline_log', 'result: fail\njob: old-test\n');
       await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
       const workflow = join(root, 'worktrees', 'PROJ-311', 'demo', '.github', 'workflows');
@@ -589,7 +663,7 @@ describe('pipeline step', () => {
       const error = await app.get(DocumentRepository).latestBody('PROJ-311', 'error');
       expect(error).toContain('PR has merge conflicts');
       expect(error).toContain('sha:');
-      expect(host.diagnoseMissingPipeline).toHaveBeenCalledTimes(1);
+      expect(diagnose).toHaveBeenCalledTimes(1);
     } finally {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);

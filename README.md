@@ -256,6 +256,8 @@ Passing review and CI is a minimum bar, not proof that the change is right. The 
 4. A clean rebase of a finished run reruns code review and CI on the new base and keeps the existing merge request.
 5. A failed or waiting run continues from its step. A run whose checklist was not finished goes back to implementation.
 
+When CI does not start and GitHub or GitLab confirms a merge conflict for the published SHA, Swarmloop automatically invokes the same Rebase action as the button, with the same repositories, base selection and continuation. Automatic invocation requires unchanged, clean worktrees, is attempted once per source SHA, and counts toward `MAX_PIPELINE_RETURNS`. Ordinary CI failures and unknown mergeability do not trigger it.
+
 ### 💰 Limits on money, tokens, and time
 
 | Setting | What it limits | `.env.example` |

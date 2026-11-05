@@ -125,11 +125,18 @@ describe('github host', () => {
   it('explains why a conflicting pull request cannot start CI', async () => {
     const seen = mockFetch([
       [{ number: 12, head: { ref: 'feature/task', sha: 'abc' } }],
-      { state: 'open', mergeable: false, mergeable_state: 'dirty', html_url: 'https://github.com/acme/demo/pull/12' },
+      {
+        state: 'open',
+        head: { ref: 'feature/task', sha: 'abc' },
+        mergeable: false,
+        mergeable_state: 'dirty',
+        html_url: 'https://github.com/acme/demo/pull/12',
+      },
     ]);
     const result = await service().diagnoseMissingPipeline({ project: 'acme/demo', ref: 'feature/task', sha: 'abc' });
     expect(result.reason).toContain('has merge conflicts');
     expect(result.reason).toContain('Rebase');
+    expect(result.code).toBe('merge-conflict');
     expect(seen[1]?.url).toBe('https://api.github.com/repos/acme/demo/pulls/12');
     expect(result.httpCalls).toHaveLength(2);
     expect(JSON.stringify(result)).not.toContain(TOKEN);
@@ -140,6 +147,7 @@ describe('github host', () => {
     const result = await service().diagnoseMissingPipeline({ project: 'acme/demo', ref: 'feature/task', sha: 'abc' });
     expect(result.reason).toContain('is closed');
     expect(result.reason).not.toContain('Rebase');
+    expect(result.code).toBe('closed');
   });
 
   it('does not diagnose another commit or guess while GitHub calculates mergeability', async () => {
@@ -147,6 +155,13 @@ describe('github host', () => {
     expect(
       (await service().diagnoseMissingPipeline({ project: 'acme/demo', ref: 'feature/task', sha: 'abc' })).reason,
     ).toBeNull();
+    mockFetch([
+      [{ number: 12, head: { ref: 'feature/task', sha: 'abc' } }],
+      { state: 'open', head: { ref: 'feature/task', sha: 'new' }, mergeable: false },
+    ]);
+    expect(
+      (await service().diagnoseMissingPipeline({ project: 'acme/demo', ref: 'feature/task', sha: 'abc' })).code,
+    ).toBeUndefined();
     mockFetch([
       [{ number: 12, head: { ref: 'feature/task', sha: 'abc' } }],
       { state: 'open', mergeable: null, mergeable_state: 'unknown' },

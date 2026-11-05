@@ -20,6 +20,7 @@ import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
 import { RunRebaseService } from './run-rebase.service';
+import { RunRebase } from '../pipeline/run-rebase';
 
 export async function boot(
   root: string,
@@ -71,6 +72,7 @@ export async function boot(
       RunQueriesService,
       RunCommandsService,
       RunRebaseService,
+      RunRebase,
       { provide: EnvironmentService, useValue: { refreshAfterRebase: jest.fn().mockResolvedValue(undefined) } },
       { provide: PipelineService, useValue: { claimed: () => false, ...pipeline } },
       { provide: ProjectAppendService, useValue: { add: jest.fn(), flush: jest.fn() } },

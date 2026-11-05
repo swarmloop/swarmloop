@@ -76,6 +76,10 @@ export class RunDriver {
       const mark = loopMark(await this.documents.latestBody(key, 'loop_mark'));
       const stats = run ? await this.visits.listStats(run.id) : [];
       const env = this.config.env;
+      if (result.resume && run?.status === 'waiting' && run.currentStep === step) {
+        stepOptions = { auto: true };
+        continue;
+      }
       if (
         run?.status === 'failed' &&
         run.currentStep === step &&

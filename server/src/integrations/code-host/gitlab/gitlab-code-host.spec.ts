@@ -13,6 +13,20 @@ describe('gitlab host', () => {
     global.fetch = original;
   });
 
+  it('confirms conflicts only for the requested MR head and ignores unknown mergeability', async () => {
+    const mr = { iid: 12, source_branch: 'feature/task', sha: 'abc', state: 'opened', has_conflicts: true };
+    const ref = { project: 'group/demo', ref: 'feature/task', sha: 'abc' };
+    const seen = mockFetch([[mr], mr]);
+    expect((await service().diagnoseMissingPipeline(ref)).code).toBe('merge-conflict');
+    expect(seen[0]?.url).toContain('with_merge_status_recheck=true');
+    mockFetch([[mr], { ...mr, sha: 'new' }]);
+    expect((await service().diagnoseMissingPipeline(ref)).code).toBeUndefined();
+    mockFetch([[mr], { ...mr, has_conflicts: false, detailed_merge_status: 'checking' }]);
+    expect((await service().diagnoseMissingPipeline(ref)).code).toBeUndefined();
+    mockFetch([[mr], { ...mr, state: 'closed' }]);
+    expect((await service().diagnoseMissingPipeline(ref)).code).toBe('closed');
+  });
+
   it('returns an open merge request and does not create another', async () => {
     const seen = mockFetch([opened()]);
     const result = await service().findMergeRequest({ project: 'group/demo', source: 'feature/PROJ-1-ship' });

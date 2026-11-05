@@ -1,4 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { RunRebase } from '../../pipeline/run-rebase';
+import { RunStop } from '../../agent/run-stop';
+import { missingPipeline } from './missing-pipeline';
 import { AppConfig, type SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { RunRepository } from '../../history/run.repository';
@@ -45,6 +48,8 @@ export class PipelineStep extends BaseStep {
     config: AppConfig,
     private readonly events: EventRepository,
     private readonly registry: CodeHostRegistry,
+    private readonly rebase: RunRebase,
+    private readonly runStop: RunStop,
   ) {
     super(runs, documents, visits, flows, clock, config);
   }
@@ -201,21 +206,20 @@ export class PipelineStep extends BaseStep {
     }
     const missing = await this.missingRuns(opened.run.key, seen);
     if (missing && missing.length > 0) {
-      const line = missing.map((name) => `${name} CI did not start`).join(', ');
-      const notes: string[] = [line];
-      for (const record of records.filter((record) =>
-        seen.some((item) => item.project === record.project && item.status === 'none'),
-      )) {
-        notes.push(`project: ${record.project}`, `ref: ${record.ref}`, `sha: ${record.sha ?? 'unknown'}`);
-        const diagnosis = await host.diagnoseMissingPipeline?.(record);
-        if (diagnosis) {
-          calls.push(...diagnosis.httpCalls);
-          if (diagnosis.reason) {
-            notes.push(diagnosis.reason);
-          }
-        }
-      }
-      return this.finish(ctx, 'failed', 1, this.report(opened, notes.join('\n')), 'failed');
+      return missingPipeline({
+        ctx,
+        documents: this.documents,
+        runs: this.runs,
+        events: this.events,
+        rebase: this.rebase,
+        halted: () => this.runStop.halted(opened.run.key),
+        root: root(this.config),
+        limit: env.MAX_PIPELINE_RETURNS,
+        host,
+        records,
+        seen,
+        missing,
+      });
     }
     if (verdict === 'absent') {
       const body = renderNone(seen);
