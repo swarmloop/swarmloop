@@ -1,5 +1,3 @@
-'use client';
-
 import Markdown from 'react-markdown';
 import Box from '@mui/material/Box';
 

@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactElement } from 'react';
+import type { Route } from 'next';
 import Link from 'next/link';
 import DataUsage from '@mui/icons-material/DataUsage';
 import MemoryIcon from '@mui/icons-material/Memory';
@@ -83,7 +84,7 @@ export function RunHeader({
               Stop
             </Button>
           ) : null}
-          <Button component={Link} href={`/runs/${flow.key}/history`} color="inherit">
+          <Button component={Link} href={`/runs/${flow.key}/history` as Route} color="inherit">
             All history
           </Button>
         </Box>

@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactElement } from 'react';
+import type { Route } from 'next';
 import { createContext, useContext, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import AddIcon from '@mui/icons-material/Add';
@@ -147,7 +148,7 @@ function ShellFrame({ children }: { children: React.ReactNode }): ReactElement {
           selected={selected}
           now={now}
           error={error}
-          onOpen={(key) => router.push(`/runs/${key}`)}
+          onOpen={(key) => router.push(`/runs/${key}` as Route)}
           onRemove={(run) => {
             setRemoveError(null);
             setPendingRemove(run);
@@ -170,7 +171,7 @@ function ShellFrame({ children }: { children: React.ReactNode }): ReactElement {
         onClose={() => setOpen(false)}
         onCreated={(key) => {
           setOpen(false);
-          router.push(`/runs/${key}`);
+          router.push(`/runs/${key}` as Route);
         }}
       />
     </DialogContext.Provider>
