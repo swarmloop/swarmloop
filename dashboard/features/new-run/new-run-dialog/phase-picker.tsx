@@ -4,9 +4,16 @@ import type { Dispatch, ReactElement, SetStateAction } from 'react';
 import Checkbox from '@mui/material/Checkbox';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import FormGroup from '@mui/material/FormGroup';
-import { PHASE_LABEL } from '../../run';
 import type { PhaseName } from '@contract/steps';
 import { PHASES } from '@contract/steps';
+
+const PHASE_LABEL: Record<PhaseName, string> = {
+  requirements: 'requirements',
+  brainstorm: 'planning',
+  implementation: 'implementation',
+  'code-review': 'code review',
+  ci: 'ci',
+};
 
 export function PhasePicker({
   picked,

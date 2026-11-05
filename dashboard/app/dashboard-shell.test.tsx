@@ -3,20 +3,20 @@ import userEvent from '@testing-library/user-event';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { usePathname, useRouter } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { listProjects, listRuns, removeRun } from '../../lib/endpoints';
-import { receive } from '../../test/fake-socket';
-import { runSummary } from '../../test/fixtures';
-import { Shell } from './index';
+import { listProjects, listRuns, removeRun } from '../lib/endpoints';
+import { receive } from '../test/fake-socket';
+import { runSummary } from '../test/fixtures';
+import { DashboardShell } from './dashboard-shell';
 
 vi.mock('next/navigation', () => ({ usePathname: vi.fn(), useRouter: vi.fn() }));
-vi.mock('../../lib/endpoints', () => ({
+vi.mock('../lib/endpoints', () => ({
   listRuns: vi.fn(),
   removeRun: vi.fn(),
   listProjects: vi.fn(),
   createRun: vi.fn(),
   setRunProjects: vi.fn(),
 }));
-vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
+vi.mock('../lib/live', async () => (await import('../test/fake-socket')).fakeLive());
 
 const theme = createTheme({ cssVariables: true, colorSchemes: { light: true, dark: true } });
 const push = vi.fn();
@@ -24,9 +24,9 @@ const push = vi.fn();
 function renderShell(): void {
   render(
     <ThemeProvider theme={theme}>
-      <Shell>
+      <DashboardShell>
         <p>page content</p>
-      </Shell>
+      </DashboardShell>
     </ThemeProvider>,
   );
 }

@@ -1,3 +1,3 @@
 export { Shell, useNewRun } from './shell';
-export { LiveBridgeProvider } from './use-live-bridge';
-export { useLiveActions, useLiveBridge } from './use-live-bridge';
+export { ThemeModeSwitch } from './theme-mode-switch';
+export { LiveBridgeProvider, useLiveActions, useLiveBridge } from './use-live-bridge';
