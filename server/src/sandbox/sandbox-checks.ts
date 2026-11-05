@@ -1,8 +1,7 @@
 import { isAbsolute, resolve, sep } from 'path';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { SandboxMount } from '../core/sandbox-mount';
-import type { EnvMask, ProjectLaunch } from './sandbox-launch';
-import { sandboxMount } from './sandbox-launch';
+import type { EnvMask, ProjectLaunch } from './sandbox-types';
 
 const WORKTREE = /^\/work(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?(?:\/\.git)?$/;
 const GIT_METADATA = /^\/swarmloop-git\/git-[A-Za-z0-9]+$/;
@@ -38,6 +37,17 @@ export function assertMount(mount: SandboxMount, home: string): void {
     assertDaemonPath(mount.daemonPath, home);
   }
   sandboxMount(mount);
+}
+
+export function sandboxMount(mount: SandboxMount): string {
+  const access = mount.readonly ? 'true' : 'false';
+  if (mount.volume) {
+    if (mount.daemonPath !== undefined || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(mount.volume)) {
+      throw new SwarmloopError('sandbox mount is not allowed');
+    }
+    return `type=volume,src=${mount.volume},dst=${mount.containerPath},readonly=${access}`;
+  }
+  return `type=bind,src=${mount.daemonPath ?? mount.hostPath},dst=${mount.containerPath},readonly=${access}`;
 }
 
 export function assertDaemonPath(path: string, home: string): void {

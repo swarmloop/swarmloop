@@ -6,59 +6,16 @@ import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-r
 import { SwarmloopError } from '../core/swarmloop-error';
 import { rawEnv } from '../config/process-env';
 import { EGRESS_API, isLeaseIp } from './egress';
-import { assertDaemonPath, assertMask, assertMount, assertProject } from './sandbox-checks';
-import { egressProxyArgs, projectImageArgs } from './sandbox-args';
+import { assertDaemonPath, assertMask, assertMount, assertProject, sandboxMount } from './sandbox-checks';
+import { CLI_ROOT, egressProxyArgs, projectImageArgs } from './sandbox-args';
+import type { SandboxLaunch } from './sandbox-types';
 
 import type { SandboxMount } from '../core/sandbox-mount';
+export type { EnvMask, ProjectLaunch, SandboxLaunch } from './sandbox-types';
 export type { SandboxMount } from '../core/sandbox-mount';
+export { CLI_CERTS, CLI_ROOT } from './sandbox-args';
 export { assertDaemonPath, assertMask } from './sandbox-checks';
-
-export interface EnvMask {
-  hostFile: string;
-  containerFile: string;
-}
-
-export interface SandboxLaunch {
-  runtime: RuntimeName;
-  runKey: string;
-  step: string;
-  mounts: SandboxMount[];
-  envMasks: EnvMask[];
-  allowHosts: string[];
-  command: string[];
-  userId: number;
-  maskFile: string;
-  /** Only the runtime model key. Other tokens stay out of the container. */
-  env?: { name: string; value: string }[];
-  /** Durable home for the vendor session. Replaces the /home/sandbox tmpfs. */
-  statePath?: string;
-  stateDaemonPath?: string;
-  /** Run in the project's own image, with the agent CLI mounted read-only from a volume. */
-  project?: ProjectLaunch;
-  /** The address on the internal sandbox network. Its policy on the egress proxy decides what it reaches. */
-  egress?: { ip: string };
-  /** Attach the caller's stdin. */
-  stdin?: boolean;
-  /** Allocate a terminal. Only the interactive vendor screen needs one. */
-  tty?: boolean;
-}
-
-export interface ProjectLaunch {
-  image: string;
-  /** The volume that holds the agent image's /opt/swarmloop. */
-  cliVolume: string;
-  /** PATH of the project image. The CLI directory goes in front of it. */
-  path: string;
-  /** The image has no CA bundle of its own, so OpenSSL tools use the one from the CLI volume. */
-  certFile: boolean;
-  /** Package-manager caches below /home/sandbox, kept between runs. */
-  caches: { daemonPath: string; containerPath: string }[];
-  /** A shell command to run instead of the agent CLI, for the setup of the environment. */
-  shell?: string;
-}
-
-export const CLI_ROOT = '/opt/swarmloop';
-export const CLI_CERTS = `${CLI_ROOT}/certs/ca-certificates.crt`;
+export { sandboxMount } from './sandbox-checks';
 const PROJECT_TMP = '/tmp:rw,exec,nosuid,nodev,size=1g,mode=1777';
 /** Test runners and JVM builds start many threads, and every thread counts. Still a ceiling against a fork bomb. */
 const PROJECT_PIDS = '1024';
@@ -372,15 +329,4 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
   }
   args.push('--workdir', workdir, imageName(launch.runtime), ...launch.command);
   return args;
-}
-
-export function sandboxMount(mount: SandboxMount): string {
-  const access = mount.readonly ? 'true' : 'false';
-  if (mount.volume) {
-    if (mount.daemonPath !== undefined || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(mount.volume)) {
-      throw new SwarmloopError('sandbox mount is not allowed');
-    }
-    return `type=volume,src=${mount.volume},dst=${mount.containerPath},readonly=${access}`;
-  }
-  return `type=bind,src=${mount.daemonPath ?? mount.hostPath},dst=${mount.containerPath},readonly=${access}`;
 }
