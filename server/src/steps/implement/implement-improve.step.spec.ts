@@ -16,7 +16,7 @@ import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import { REBASE_CONFLICT } from '../../git/rebase-worktree';
+import { REBASE_CONFLICT } from '../../git/rebase';
 
 const reply = [
   'implementation:',

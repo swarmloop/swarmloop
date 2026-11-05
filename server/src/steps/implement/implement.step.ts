@@ -27,13 +27,7 @@ import { mountsForStep, repoNames, worktreePath } from '../shared/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
 import { agentWorkplace } from '../shared/agent-environment';
 import { storedPlan } from '../step';
-import {
-  REBASE_CONFLICT,
-  RebaseStop,
-  parkedConflict,
-  rebaseFeatureRepos,
-  unmergedPaths,
-} from '../../git/rebase-worktree';
+import { REBASE_CONFLICT, RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { CI_RERUN, staleRepos } from '../pipeline/pipeline-report';
 import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
