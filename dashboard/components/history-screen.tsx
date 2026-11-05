@@ -2,6 +2,7 @@
 
 import type { ReactElement, ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import type { Route } from 'next';
 import Link from 'next/link';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Accordion from '@mui/material/Accordion';
@@ -45,7 +46,7 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
   const opened = view.files.find((item) => `${item.name}:${item.path}` === file);
   return (
     <Box>
-      <Button component={Link} href={`/runs/${runKey}`} color="inherit" sx={{ mb: 1 }}>
+      <Button component={Link} href={`/runs/${runKey}` as Route} color="inherit" sx={{ mb: 1 }}>
         Back to the flow
       </Button>
       <Typography variant="h5" sx={{ fontFamily: 'var(--font-mono)', mb: 2 }}>
