@@ -15,8 +15,9 @@ import { StepName } from '../../contract/steps';
 import { OpenedStep } from '../../steps/step-run';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
-import { authorArgs, git, gitDetail, gitMissing, gitRaw, originUrl, redact } from '../../git/git';
-import { textDocument } from '../shared/handoff';
+import { authorArgs, git, gitDetail, gitMissing, originUrl } from '../../git/git';
+import { endCommit } from './commit-result';
+import { gitAt, status, Tree } from './commit-git';
 import { repoNames, worktreePath } from '../../git/repo-names';
 import { remoteProject } from '../merge-request/merge-request-record';
 import { BaseStep, StepContext } from '../base-step';
@@ -29,11 +30,6 @@ import {
   renderPaths,
   stageSelection,
 } from '../../git/commit-paths';
-
-interface Tree {
-  repo: string;
-  path: string;
-}
 
 export const CI_SKIPPED = 'CI skipped: there is no origin to push.';
 
@@ -71,13 +67,13 @@ export class CommitStep extends BaseStep {
     const again = await this.resume(opened, stored);
     if (!phases.includes('ci') && !again) {
       const body = await this.preview(trees, branch);
-      return this.end(ctx, 'waiting', 0, `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
+      return endCommit(ctx, 'waiting', 0, `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
     }
     const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, await this.checkouts.listDenyPaths());
     const rerun = planned.length === 0 && (await this.rerunPending(key));
     if (!rerun && planned.length === 0 && !(await this.somethingToPush(trees, branch))) {
       if (await this.publishedHead(trees, branch)) {
-        return this.end(ctx, 'ok', 0, `${opened.startedAt} commit done\n${branch}`);
+        return endCommit(ctx, 'ok', 0, `${opened.startedAt} commit done\n${branch}`);
       }
       throw new SwarmloopError('nothing to commit');
     }
@@ -90,7 +86,7 @@ export class CommitStep extends BaseStep {
     if (!pushed) {
       await this.documents.putDocument(opened.run, 'ci_skip', `${CI_SKIPPED}\n`);
       const line = listed ? `${opened.startedAt} ${CI_SKIPPED}\n${listed}` : `${opened.startedAt} ${CI_SKIPPED}`;
-      return this.end(ctx, 'ok', 0, line, listed ? `${listed}\n` : undefined);
+      return endCommit(ctx, 'ok', 0, line, listed ? `${listed}\n` : undefined);
     }
     const recorded = await this.rememberRefs(opened.run, trees, branch);
     if (recorded) {
@@ -102,7 +98,7 @@ export class CommitStep extends BaseStep {
     const line = listed
       ? `${opened.startedAt} commit done\n${branch}\n${listed}`
       : `${opened.startedAt} commit done\n${branch}`;
-    return this.end(ctx, 'ok', 0, line, listed ? `${listed}\n` : recordedHeads);
+    return endCommit(ctx, 'ok', 0, line, listed ? `${listed}\n` : recordedHeads);
   }
 
   /** A failed or still-open commit retries its own path list. Arriving from the previous phase reads the tree again. */
@@ -133,7 +129,7 @@ export class CommitStep extends BaseStep {
 
   private async assertBranch(trees: Tree[], branch: string): Promise<void> {
     for (const tree of trees) {
-      const current = await this.gitAt(tree, ['branch', '--show-current'], 'branch failed');
+      const current = await gitAt(tree, ['branch', '--show-current'], 'branch failed');
       if (current === 'main' || current === 'master') {
         throw new SwarmloopError(`${tree.repo} branch is protected`);
       }
@@ -163,13 +159,13 @@ export class CommitStep extends BaseStep {
   private async plan(trees: Tree[], denied: string[]): Promise<PlannedPath[]> {
     const planned: PlannedPath[] = [];
     for (const tree of trees) {
-      planned.push(...allowedPaths(tree.repo, await this.status(tree), denied));
+      planned.push(...allowedPaths(tree.repo, await status(tree), denied));
     }
     return planned;
   }
 
   private async ahead(tree: Tree, branch: string): Promise<boolean> {
-    const head = await this.gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
+    const head = await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
     const remote = await this.optionalRev(tree, `refs/remotes/origin/${branch}`);
     if (remote) {
       return remote !== head;
@@ -201,7 +197,7 @@ export class CommitStep extends BaseStep {
       if (!remote) {
         continue;
       }
-      const head = await this.gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
+      const head = await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
       if (remote === head) {
         return true;
       }
@@ -252,15 +248,15 @@ export class CommitStep extends BaseStep {
         continue;
       }
       const published = await this.optionalRev(tree, `refs/remotes/origin/${branch}`);
-      if (published === (await this.gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed'))) {
-        await this.gitAt(
+      if (published === (await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed'))) {
+        await gitAt(
           tree,
           [...(await authorArgs(cwd)), 'commit', '--allow-empty', '--no-verify', '-m', 'Re-run CI'],
           'commit failed',
         );
       }
       await this.pushRef(tree, branch, published, codeHost, origin);
-      heads.push(`${tree.repo} ${await this.gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed')}`);
+      heads.push(`${tree.repo} ${await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed')}`);
     }
     return heads.length > 0;
   }
@@ -275,19 +271,19 @@ export class CommitStep extends BaseStep {
   ): Promise<boolean> {
     const cwd = tree.path;
     const wanted = new Set(planned.filter((item) => item.repo === tree.repo).map((item) => item.path));
-    const porcelain = await this.status(tree);
+    const porcelain = await status(tree);
     const held = deniedIndexPaths(porcelain, denied);
     if (held.length > 0) {
-      await this.gitAt(tree, ['reset', '-q', 'HEAD', '--', ...held], 'commit failed');
+      await gitAt(tree, ['reset', '-q', 'HEAD', '--', ...held], 'commit failed');
     }
     const selection = stageSelection(porcelain, denied);
     const add = selection.add.filter((path) => wanted.has(path));
     const staged = selection.staged.filter((path) => wanted.has(path));
     if (add.length > 0) {
-      await this.gitAt(tree, ['add', '--', ...add], 'commit failed');
+      await gitAt(tree, ['add', '--', ...add], 'commit failed');
     }
     if (add.length > 0 || staged.length > 0) {
-      await this.gitAt(tree, [...(await authorArgs(cwd)), 'commit', '--no-verify', '-m', message], 'commit failed');
+      await gitAt(tree, [...(await authorArgs(cwd)), 'commit', '--no-verify', '-m', message], 'commit failed');
     }
     const origin = await originUrl(cwd, tree.repo, 'origin failed');
     if (!origin) {
@@ -331,20 +327,20 @@ export class CommitStep extends BaseStep {
       if (origin.startsWith('git@') || origin.startsWith('ssh://')) {
         throw new SwarmloopError('code host is missing');
       }
-      await this.gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed');
+      await gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed');
       return true;
     }
     const host = this.registry.credentials(codeHost);
     const url = this.registry.byName(codeHost).pushUrl(origin);
     if (url) {
-      await this.gitAt(
+      await gitAt(
         tree,
         ['-c', `remote.origin.pushurl=${url}`, 'push', ...lease, 'origin', `HEAD:refs/heads/${branch}`],
         'push failed',
         { GIT_TERMINAL_PROMPT: '0' },
         host.token,
       );
-      await this.gitAt(tree, ['update-ref', `refs/remotes/origin/${branch}`, 'HEAD'], 'push failed');
+      await gitAt(tree, ['update-ref', `refs/remotes/origin/${branch}`, 'HEAD'], 'push failed');
       return true;
     }
     if (origin.startsWith('git@') || origin.startsWith('ssh://')) {
@@ -356,7 +352,7 @@ export class CommitStep extends BaseStep {
       }
       throw new SwarmloopError(`${tree.repo} origin is not ${host.baseKey}`);
     }
-    await this.gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed');
+    await gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed');
     return true;
   }
 
@@ -375,7 +371,7 @@ export class CommitStep extends BaseStep {
       } catch {
         continue;
       }
-      const sha = await this.gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
+      const sha = await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
       blocks.push(`project: ${project}\nref: ${branch}\nsha: ${sha}`);
     }
     if (blocks.length === 0) {
@@ -383,49 +379,5 @@ export class CommitStep extends BaseStep {
     }
     await this.documents.putDocument(run, 'pipeline_ref', `${blocks.join('\n\n')}\n`);
     return true;
-  }
-
-  private async status(tree: Tree): Promise<string> {
-    try {
-      return await gitRaw(['-C', tree.path, 'status', '--porcelain=v1', '-z', '-uall']);
-    } catch (error) {
-      throw new SwarmloopError(`${tree.repo} status failed: ${gitDetail(error)}`);
-    }
-  }
-
-  private async gitAt(
-    tree: Tree,
-    args: string[],
-    failure: string,
-    env?: NodeJS.ProcessEnv,
-    secret?: string,
-  ): Promise<string> {
-    try {
-      return await git(['-C', tree.path, ...args], env);
-    } catch (error) {
-      const detail = gitDetail(error);
-      const redacted = redact(detail, secret);
-      throw new SwarmloopError(`${tree.repo} ${failure}: ${redacted}`);
-    }
-  }
-
-  private end(
-    ctx: StepContext,
-    outcome: 'ok' | 'waiting',
-    exitCode: number,
-    line: string,
-    body?: string,
-  ): Promise<PipelineResult> {
-    const primary = body ? textDocument('commit', body) : null;
-    if (outcome === 'waiting') {
-      return ctx.end({ outcome, exitCode, line, visit: { document: primary } });
-    }
-    return ctx.end({
-      outcome,
-      exitCode,
-      line,
-      handoff: body?.trim() ? body : '- committed the branch\n',
-      visit: { documents: primary ? [primary] : undefined },
-    });
   }
 }

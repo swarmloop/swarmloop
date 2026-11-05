@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { resolveRepoRoot } from '../config/repo-root';
@@ -13,7 +13,6 @@ import { root } from '../history/run-paths';
 import { Charge, chargeStream, modelForStep } from '../agent/spend';
 import { loadPriceTable } from '../agent/prices';
 import { LiveHub } from '../live/live.hub';
-import { LiveUsage } from '../contract/live';
 import { liveLogBody, liveLogCurrent } from '../agent/live-output';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { isStep } from '../core/pipeline-result';
@@ -38,6 +37,9 @@ import {
 } from './run-view/flow';
 import { belongsToVisit, documentView, filesOf, withReturnNotes } from './run-view/documents';
 import { launchView, liveVisit } from './run-view/live';
+import { requireRun } from './run-queries-run';
+import { openSpend } from './run-queries-spend';
+export { requireRun } from './run-queries-run';
 
 @Injectable()
 export class RunQueriesService {
@@ -67,7 +69,7 @@ export class RunQueriesService {
         updatedAt: run.updatedAt,
         stepStartedAt: run.stepStartedAt,
         durationMs: durations.get(run.id) ?? 0,
-        usd: run.spentUsd + this.openSpend(run).usd,
+        usd: run.spentUsd + openSpend(run, this.pipeline, this.live).usd,
       })),
     };
   }
@@ -103,7 +105,7 @@ export class RunQueriesService {
       metrics: metrics(
         shown,
         stats,
-        this.openSpend(shown),
+        openSpend(shown, this.pipeline, this.live),
         this.live?.peaksOf(run.key) ?? { cpuPeak: 0, memPeak: 0 },
         reportMs,
       ),
@@ -244,14 +246,6 @@ export class RunQueriesService {
         memPeak: stat.memPeak,
       })),
     };
-  }
-
-  private openSpend(run: RunEntity): LiveUsage {
-    const running = run.status === 'running' || this.pipeline.claimed(run.key);
-    if (!running) {
-      return { tokensIn: 0, tokensOut: 0, usd: 0 };
-    }
-    return this.live?.spendOf(run.key) ?? { tokensIn: 0, tokensOut: 0, usd: 0 };
   }
 
   private async reviewerStep(key: string, name: string): Promise<StepView> {
@@ -398,12 +392,4 @@ export class RunQueriesService {
     }
     return { step: name, visits, checks: [] };
   }
-}
-
-export async function requireRun(runs: RunRepository, key: string): Promise<RunEntity> {
-  const run = await runs.findRun(key);
-  if (!run) {
-    throw new NotFoundException(`${key} is missing`);
-  }
-  return run;
 }

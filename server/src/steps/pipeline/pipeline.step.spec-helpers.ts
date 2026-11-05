@@ -1,0 +1,151 @@
+import 'reflect-metadata';
+
+import { execFileSync } from 'child_process';
+
+import { Test } from '@nestjs/testing';
+
+import { mkdirSync } from 'fs';
+
+import { writeFile } from 'fs/promises';
+
+import { join } from 'path';
+
+import { SwarmloopConfigModule } from '../../config/config.module';
+
+import { AppConfig } from '../../config/env';
+
+import { Clock } from '../../core/clock';
+
+import { RunRepository } from '../../history/run.repository';
+
+import { DocumentRepository } from '../../history/document.repository';
+
+import { PipelineModule } from '../../pipeline/pipeline.module';
+
+import type { PipelineJob, PipelineSnapshot } from '../../integrations/code-host/code-host';
+
+import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+
+import { type HttpCallDraft } from '../../core/swarmloop-error';
+
+export const TOKEN = 'super-secret-token';
+
+export function gitRepo(dir: string, origin: string): void {
+  mkdirSync(dir, { recursive: true });
+  execFileSync('git', ['init'], { cwd: dir });
+  execFileSync('git', ['remote', 'add', 'origin', origin], { cwd: dir });
+}
+
+export const one = `project: group/demo\nref: feature/PROJ-300-ship\n`;
+
+export const two = `${one}\nproject: group/web\nref: feature/PROJ-300-ship\n`;
+
+export function shot(status: string, jobs: PipelineJob[]): PipelineSnapshot {
+  return { id: 9, status, url: 'https://gitlab.example/group/demo/-/pipelines/9', jobs };
+}
+
+export function job(id: number, name: string, allowFailure: boolean, status = 'failed'): PipelineJob {
+  return { id, name, stage: 'test', status, allowFailure };
+}
+
+export function call(method: string): HttpCallDraft {
+  return {
+    provider: 'gitlab',
+    method,
+    url: 'https://gitlab.example/api/v4/projects/group%2Fdemo/pipelines',
+    statusCode: 200,
+    durationMs: 1,
+    error: null,
+  };
+}
+
+export function restore(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
+}
+
+export async function boot(
+  root: string,
+  read: jest.Mock,
+  trace: jest.Mock,
+  extra = 'PIPELINE_TIMEOUT_MS=0\n',
+  cancel: jest.Mock = jest.fn(() => Promise.resolve({ httpCalls: [] as HttpCallDraft[] })),
+) {
+  await writeFile(
+    join(root, '.env'),
+    [
+      'RUNTIME=cursor',
+      'REQUIREMENTS_VIA=direct',
+      'ISSUE_TRACKER=jira',
+      'JIRA_BASE_URL=',
+      'JIRA_EMAIL=',
+      'JIRA_API_TOKEN=',
+      'GITLAB_BASE_URL=https://gitlab.example',
+      `GITLAB_TOKEN=${TOKEN}`,
+      'GITHUB_BASE_URL=',
+      'GITHUB_TOKEN=',
+      'CURSOR_API_KEY=',
+      'ANTHROPIC_API_KEY=',
+      'MAX_AGENT_CALLS=20',
+      'MAX_RETURNS=3',
+      'MAX_LAUNCHES=3',
+      'MAX_RUN_USD=25',
+      'IDLE_TIMEOUT_MS=900000',
+      'TICK_MS=15000',
+      'REQUIREMENTS_TIMEOUT_MS=600000',
+      'RESEARCH_TIMEOUT_MS=900000',
+      'PLAN_TIMEOUT_MS=1200000',
+      'IMPLEMENT_TIMEOUT_MS=1800000',
+      'CODE_REVIEW_TIMEOUT_MS=900000',
+      'MERGE_REQUEST_TIMEOUT_MS=600000',
+      'PIPELINE_TIMEOUT_MS=1800000',
+      'PIPELINE_START_TIMEOUT_MS=180000',
+      'MODEL_RESEARCH=grok-4.7',
+      'MODEL_PLAN=opus-5.5-extra-high',
+      'MODEL_IMPLEMENT=grok-4.7',
+      'SWARMLOOP_API_PORT=3920',
+      'SWARMLOOP_API_HOST=127.0.0.1',
+      `SWARMLOOP_ROOT=${root}`,
+      extra,
+    ].join('\n'),
+  );
+  return Test.createTestingModule({
+    imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
+  })
+    .overrideProvider(CodeHostRegistry)
+    .useFactory({
+      factory: (config: AppConfig, clock: Clock) => {
+        const registry = CodeHostRegistry.create(config.env, clock);
+        jest.spyOn(registry, 'byName').mockReturnValue({
+          findMergeRequest: jest.fn(),
+          openMergeRequest: jest.fn(),
+          readBranchPipeline: read,
+          readJobTrace: trace,
+          cancelPipeline: cancel,
+        } as never);
+        return registry;
+      },
+      inject: [AppConfig, Clock],
+    })
+    .compile();
+}
+
+export async function seed(
+  app: Awaited<ReturnType<typeof boot>>,
+  key: string,
+  body = one,
+  attemptsPipeline = 0,
+): Promise<void> {
+  const runs = app.get(RunRepository);
+  const documents = app.get(DocumentRepository);
+  const seeded = await runs.begin(key, 'pipeline');
+  seeded.status = 'waiting';
+  seeded.currentStep = 'commit';
+  seeded.codeHost = 'gitlab';
+  seeded.attemptsPipeline = attemptsPipeline;
+  await runs.saveRun(seeded);
+  await documents.putDocument(seeded, 'pipeline_ref', body);
+}
