@@ -5,6 +5,8 @@
 
 # swarmloop
 
+[![CI](https://github.com/swarmloop/swarmloop/actions/workflows/ci.yml/badge.svg)](https://github.com/swarmloop/swarmloop/actions/workflows/ci.yml)
+
 **Coding agents that have to pass five reviewers and your CI before they reach you. A sandbox around every step, a record of every dollar.**
 
 <p>
