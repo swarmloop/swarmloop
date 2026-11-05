@@ -14,7 +14,7 @@ import { StepName } from '../../contract/steps';
 import { assignCodeHost, CodeHostRegistry, type CodeHostName } from '../../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail } from '../../git/git';
-import { storedBase } from '../../git/rebase-worktree';
+import { storedBase } from '../../git/rebase';
 import { recordHandoff } from '../shared/handoff';
 import { BaseStep, StepContext } from '../base-step';
 import { CHECKOUT_NAME, listGitProjects, resolveCheckoutPath, storedProjects } from './checkout-path';

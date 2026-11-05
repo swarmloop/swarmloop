@@ -21,7 +21,7 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { REPORT_CONTINUE, reviewContinue } from './code-review.prompts';
-import { REBASE_CONFLICT } from '../../git/rebase-worktree';
+import { REBASE_CONFLICT } from '../../git/rebase';
 
 const REFUSED_WRITE = JSON.stringify({
   type: 'system',
