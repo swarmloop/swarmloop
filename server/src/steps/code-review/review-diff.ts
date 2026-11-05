@@ -1,10 +1,10 @@
 import { chmodSync, mkdirSync, writeFileSync } from 'fs';
 import { basename, join } from 'path';
-import { sessionHome } from '../../agent/session-group';
-import type { SandboxMount } from '../../sandbox/sandbox-launch';
+import { sessionHome } from '../../history/session-group';
+import type { SandboxMount } from '../../core/sandbox-mount';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { isDenied } from '../commit/commit-paths';
+import { isDenied } from '../../git/commit-paths';
 import { gitMissing, gitRaw } from '../../git/git';
 
 export const REVIEW_DIFF_PATH = '/work/brief/diff.md';

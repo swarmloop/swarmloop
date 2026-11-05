@@ -1,5 +1,5 @@
 import type { ExchangeDraft, SampleDraft } from '../../history/visit';
-import type { KillReason } from '../../agent/limits';
+import type { KillReason } from '../../core/kill-reason';
 import type { IssueBundle } from '../issue-tracker/issue-bundle';
 
 export interface RequirementsInput {

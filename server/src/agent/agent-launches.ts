@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { appendFile, mkdir, readFile } from 'fs/promises';
 import { dirname, join } from 'path';
-import { liveLogBodies } from '../acp/live-output';
+import { liveLogBodies } from '../agent/live-output';
 
 /** One line per process. The first line also keeps launches already visible in the log. */
 export async function recordLaunch(outputFile: string, runKey: string, step: string): Promise<void> {

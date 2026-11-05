@@ -3,7 +3,7 @@ import type { Clock } from '../../core/clock';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../../core/swarmloop-error';
 import { request } from '../http';
-import { remoteProject } from '../../steps/merge-request/merge-request-record';
+import { remoteProject } from '../../integrations/code-host/remote-project';
 import type {
   CodeHost,
   MergeRequestDraft,

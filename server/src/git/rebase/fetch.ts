@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { originRef, promptBase } from '../base-ref';
-import type { RebaseHosts } from './rebase';
+import type { RebaseHosts } from './types';
 import { git, gitDetail, originUrl, redact } from '../git';
 import { cloneSource } from './clone-index';
 import { resolveGitPath } from './hidden-worktree';

@@ -8,7 +8,7 @@ import { FlowRepository } from '../../history/flow.repository';
 import { root } from '../../history/run-paths';
 import { Clock } from '../../core/clock';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent-runner';
-import { sessionFileName } from '../../agent/session-group';
+import { sessionFileName } from '../../history/session-group';
 import { PipelineResult } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -17,7 +17,7 @@ import { AgentStep, ModelStepContext } from '../agent-step';
 import { recordHandoff, textDocument, withHandoff } from '../shared/handoff';
 import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { unanswered } from '../shared/answers';
-import { mountsForStep, repoNames } from '../shared/repo-names';
+import { mountsForStep, repoNames } from '../../git/repo-names';
 import { planFromAgent, readPlan, withPlan } from './plan-record';
 import { planFollowUp } from './plan.prompts';
 

@@ -15,7 +15,14 @@ import { CHAT_LOCK, containerLockBody, readChatLock } from '../pipeline/chat-loc
 import { settleShell } from '../pipeline/shell-lock';
 import { mountsForRun } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { parseResume, parseSnapshot, restoreTree, SHELL_RESUME, SNAPSHOT, snapshotRun } from '../git/worktree-snapshot';
+import {
+  parseResume,
+  parseSnapshot,
+  restoreTree,
+  SHELL_RESUME,
+  SNAPSHOT,
+  snapshotRun,
+} from '../pipeline/worktree-snapshot';
 import { RewindView, ShellFeature, ShellMatch, ShellStatusView, SnapshotsView } from '../contract/api';
 
 export interface FeatureRow {

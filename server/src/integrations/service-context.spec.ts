@@ -1,5 +1,5 @@
 import { ServiceContextService, pipelineRef, pipelineRefs } from './service-context';
-import type { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
+import type { IssueBundle } from './issue-tracker/issue-bundle';
 
 const bundle: IssueBundle = {
   key: 'PROJ-1',

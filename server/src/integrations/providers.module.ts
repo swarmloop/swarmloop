@@ -6,7 +6,7 @@ import { RequirementsSourceModule } from './requirements-source/requirements-sou
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { AGENT_RUNNER, AgentProcessRunner } from '../agent/agent-runner';
 import { RunStop } from '../agent/run-stop';
-import { ServiceContextService } from '../steps/shared/service-context';
+import { ServiceContextService } from '../integrations/service-context';
 
 @Module({
   imports: [HistoryModule, SandboxModule, CodeHostModule, IssueTrackerModule, RequirementsSourceModule],

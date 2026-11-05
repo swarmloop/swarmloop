@@ -3,7 +3,8 @@ import { environmentNote, withEnvironment } from '../../environment/environment-
 import type { ProjectEnvironments } from '../../environment/project-environments';
 import type { RunEntity } from '../../history/entities';
 import { packageRegistries } from '../../sandbox/sandbox-launch';
-import type { ProjectLaunch, SandboxMount } from '../../sandbox/sandbox-launch';
+import type { SandboxMount } from '../../core/sandbox-mount';
+import type { ProjectLaunch } from '../../sandbox/sandbox-launch';
 
 export interface AgentWorkplace {
   prompt: string;

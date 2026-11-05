@@ -2,7 +2,7 @@ import type { PipelineJob, PipelineRef } from '../../integrations/code-host/code
 import { readableJobTrace } from './job-trace';
 import { basename } from 'path';
 import { git } from '../../git/git';
-import type { SandboxMount } from '../../sandbox/sandbox-launch';
+import type { SandboxMount } from '../../core/sandbox-mount';
 import { remoteProject } from '../merge-request/merge-request-record';
 
 export const CI_RERUN = 'ci_rerun';

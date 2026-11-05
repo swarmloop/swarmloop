@@ -1,19 +1,27 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
-import { RunEntity } from '../history/entities';
+import type { SandboxMount } from '../core/sandbox-mount';
+import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { root } from '../history/run-paths';
-import { branchName, commitMessage, summaryForBranch } from '../steps/branch/branch-name';
-import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.step';
+import { branchName, commitMessage, summaryForBranch } from './branch/branch-name';
+import { REBASE_MERGE_SKIP } from './merge-request/merge-request.step';
 import { REBASE_CONFLICT, rebaseFeatureRepos } from '../git/rebase';
-import { repoNames } from '../steps/shared/repo-names';
+import { repoNames } from '../git/repo-names';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { EnvironmentService } from '../environment/environment.service';
-import { mountsForStep } from '../steps/shared/repo-names';
+import { mountsForStep } from '../git/repo-names';
+
+export abstract class RunRebaseEnvironment {
+  abstract refreshAfterRebase(
+    run: RunEntity,
+    mounts: SandboxMount[],
+    bases: ReadonlyMap<string, string>,
+  ): Promise<void>;
+}
 
 @Injectable()
 export class RunRebase {
@@ -24,7 +32,7 @@ export class RunRebase {
     private readonly checkouts: CheckoutRepository,
     private readonly config: AppConfig,
     private readonly clock: Clock,
-    private readonly environments: EnvironmentService,
+    private readonly environments: RunRebaseEnvironment,
   ) {}
 
   async rebase(key: string): Promise<'resume' | 'start'> {

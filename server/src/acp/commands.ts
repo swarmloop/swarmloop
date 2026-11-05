@@ -1,6 +1,6 @@
 import { existsSync } from 'fs';
 import { basename, isAbsolute, join, resolve } from 'path';
-import { CHECKOUT_NAME } from '../steps/prepare/checkout-path';
+import { CHECKOUT_NAME } from '../core/checkout-name';
 import { nestCheckout } from './paths';
 import type { ServerApi } from './server-api';
 import type { Session } from './sessions';

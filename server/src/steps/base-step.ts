@@ -10,13 +10,13 @@ import type { Clock } from '../core/clock';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { visitStatus } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
-import type { OpenedStep } from '../pipeline/step-run';
-import { closeStep, openStep } from '../pipeline/step-run';
+import type { OpenedStep } from '../steps/step-run';
+import { closeStep, openStep } from '../steps/step-run';
 import type { HttpCallDraft } from '../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../core/swarmloop-error';
 import { recordHandoff } from './shared/handoff';
 import type { Step } from './step';
-import { requiredDocument } from './step';
+import { requiredDocument, type StepSnapshot } from './step';
 
 export interface StepEnd {
   outcome: 'ok' | 'failed' | 'blocked' | 'waiting';
@@ -54,12 +54,16 @@ export abstract class BaseStep implements Step {
     return requiredDocument(this.documents, key, this.requiredKind);
   }
 
-  execute(key: string, options: StepOptions = {}): Promise<PipelineResult> {
-    return this.perform(key, (ctx) => this.run(key, options, ctx));
+  execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
+    return this.perform(key, (ctx) => this.run(key, options, ctx), snapshot);
   }
 
   /** Opens the step, runs its body, and closes the visit. A throw closes it as failed. */
-  protected async perform(key: string, body: (ctx: StepContext) => Promise<PipelineResult>): Promise<PipelineResult> {
+  protected async perform(
+    key: string,
+    body: (ctx: StepContext) => Promise<PipelineResult>,
+    snapshot?: StepSnapshot,
+  ): Promise<PipelineResult> {
     const opened = await openStep(this.runs, this.clock, key, this.name);
     const calls: HttpCallDraft[] = [];
     let closed = false;
@@ -69,7 +73,7 @@ export abstract class BaseStep implements Step {
       clock: this.clock,
       end: (input) => {
         closed = true;
-        return this.close(opened, calls, input);
+        return this.close(opened, calls, input, snapshot);
       },
     };
     try {
@@ -101,7 +105,12 @@ export abstract class BaseStep implements Step {
 
   protected abstract run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult>;
 
-  private async close(opened: OpenedStep, calls: HttpCallDraft[], input: StepEnd): Promise<PipelineResult> {
+  private async close(
+    opened: OpenedStep,
+    calls: HttpCallDraft[],
+    input: StepEnd,
+    snapshot?: StepSnapshot,
+  ): Promise<PipelineResult> {
     const finishedAt = this.clock.iso();
     const visit: VisitDraft = {
       step: this.name,
@@ -127,9 +136,8 @@ export abstract class BaseStep implements Step {
       const handoff = await recordHandoff(this.documents, opened.run.key, this.name, input.handoff);
       visit.documents = [...(visit.documents ?? []), handoff];
     }
-    return closeStep({
+    const result = await closeStep({
       runs: this.runs,
-      documents: this.documents,
       visits: this.visits,
       flows: this.flows,
       root: root(this.config),
@@ -144,5 +152,7 @@ export abstract class BaseStep implements Step {
       moveTo: input.moveTo,
       visit,
     });
+    await snapshot?.(opened.run, this.name);
+    return result;
   }
 }

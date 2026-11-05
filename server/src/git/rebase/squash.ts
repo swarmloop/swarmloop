@@ -1,7 +1,7 @@
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { originRef, promptBase } from '../base-ref';
 import { git, gitDetail, gitMissing, gitStderr } from '../git';
-import type { RebaseHosts, RebaseStop } from './rebase';
+import type { RebaseHosts, RebaseStop } from './types';
 import { cloneArgs, cloneAuthor, cloneSource, cloneUnmerged, indexDirty } from './clone-index';
 import { landConflict, resetHard } from './conflict';
 import { gitAt, rebaseStderr } from './workflow';

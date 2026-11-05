@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { HistoryModule } from '../history/history.module';
-import { LiveGateway } from '../live/live.gateway';
+import { LiveGateway } from './live.gateway';
 import { LiveModule } from '../live/live.module';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { ProvidersModule } from '../integrations/providers.module';

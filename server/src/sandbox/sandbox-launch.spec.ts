@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { SandboxService, collectEnvMasks, parseDockerStats } from './sandbox.service';
-import type { SandboxLaunch } from './sandbox-launch';
+import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import {
   agentStateDir,
   emptyEnvFile,
@@ -18,7 +18,7 @@ import {
   sandboxUserId,
   setupHosts,
   stepContainers,
-} from './sandbox-launch';
+} from '../sandbox/sandbox-launch';
 
 const home = '/Users/dev';
 

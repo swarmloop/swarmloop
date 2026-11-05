@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RunRebase } from '../../pipeline/run-rebase';
+import { RunRebase } from '../run-rebase';
 import { RunStop } from '../../agent/run-stop';
 import { missingPipeline } from './missing-pipeline';
 import { AppConfig, type SwarmloopEnv } from '../../config/env';
@@ -15,11 +15,11 @@ import { delay } from '../../core/delay';
 import type { DocumentDraft } from '../../history/visit';
 import type { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import type { StepName } from '../../contract/steps';
-import type { OpenedStep } from '../../pipeline/step-run';
+import type { OpenedStep } from '../../steps/step-run';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import { FetchFailed, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { recordHandoff, returnNotes, textDocument } from '../shared/handoff';
-import { hasCi, repoNames, worktreePath } from '../shared/repo-names';
+import { hasCi, repoNames, worktreePath } from '../../git/repo-names';
 import { BaseStep, type StepContext } from '../base-step';
 import {
   cancelErrorNote,

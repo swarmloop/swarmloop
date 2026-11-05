@@ -1,5 +1,5 @@
 import type { SampleDraft, VisitDraft } from '../../history/visit';
-import type { KillReason } from '../../agent/limits';
+import type { KillReason } from '../../core/kill-reason';
 import type { RequirementsWrite } from '../../integrations/requirements-source/requirements-source';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
 

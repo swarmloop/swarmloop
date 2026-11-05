@@ -17,7 +17,7 @@ import { renderProjects, storedProjects } from '../prepare/checkout-path';
 import { AgentStep, ModelStepContext } from '../agent-step';
 import { recordHandoff, textDocument, withHandoff } from '../shared/handoff';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
-import { mountsForStep } from '../shared/repo-names';
+import { mountsForStep } from '../../git/repo-names';
 import { parseResearch } from './research-record';
 import { RESEARCH_CONTINUE } from './research.prompts';
 

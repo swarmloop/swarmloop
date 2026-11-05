@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { RunRef } from '../contract/api';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { RunRebase } from '../pipeline/run-rebase';
+import { RunRebase } from '../steps/run-rebase';
 import { RunCommandsService } from './run-commands.service';
 
 @Injectable()

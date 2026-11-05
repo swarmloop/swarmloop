@@ -3,8 +3,7 @@ import { readFile } from 'fs/promises';
 import type { StepOptions } from '../../core/pipeline-result';
 import { SwarmloopError } from '../../core/swarmloop-error';
 
-const JIRA_KEY = /[A-Z][A-Z0-9]+-\d+/g;
-const JIRA_KEY_EXACT = /^[A-Z][A-Z0-9]+-\d+$/;
+export { taskKeys } from '../../core/task-keys';
 
 export async function readPrompt(options: StepOptions): Promise<string | undefined> {
   if (options.prompt !== undefined && options.promptFile !== undefined) {
@@ -25,17 +24,6 @@ async function readPromptFile(path: string): Promise<string> {
     throw new SwarmloopError('prompt file is missing');
   }
   return readFile(path, 'utf8');
-}
-
-export function taskKeys(prompt: string, runId: string): string[] {
-  const found = new Set<string>();
-  if (JIRA_KEY_EXACT.test(runId)) {
-    found.add(runId);
-  }
-  for (const match of prompt.matchAll(JIRA_KEY)) {
-    found.add(match[0]);
-  }
-  return [...found];
 }
 
 export function unreadSource(prompt: string): string | null {

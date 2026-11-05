@@ -18,7 +18,7 @@ import { ResearchStep } from '../steps/research/research.step';
 import { StepRegistry } from '../steps/step.registry';
 import { EnvironmentService } from '../environment/environment.service';
 import { PipelineService } from './pipeline.service';
-import { RunRebase } from './run-rebase';
+import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
 
 @Module({
   imports: [HistoryModule, ProvidersModule, SandboxModule],
@@ -39,6 +39,7 @@ import { RunRebase } from './run-rebase';
     StepRegistry,
     PipelineService,
     RunRebase,
+    { provide: RunRebaseEnvironment, useExisting: EnvironmentService },
     EnvironmentService,
   ],
   exports: [

@@ -4,8 +4,8 @@ import { Server, Socket } from 'socket.io';
 import { FlowView } from '../contract/api';
 import { ClientToServerEvents, ServerToClientEvents } from '../contract/live';
 import { RunQueriesService } from '../api/run-queries.service';
-import { LiveHub } from './live.hub';
-import { PANEL_ORIGINS } from './origins';
+import { LiveHub } from '../live/live.hub';
+import { PANEL_ORIGINS } from '../live/origins';
 
 @WebSocketGateway({ cors: { origin: PANEL_ORIGINS }, transports: ['websocket'] })
 export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConnection {

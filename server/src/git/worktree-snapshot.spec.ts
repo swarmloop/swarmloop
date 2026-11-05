@@ -7,7 +7,7 @@ import type { DocumentRepository } from '../history/document.repository';
 import type { VisitRepository } from '../history/visit.repository';
 import type { RunEntity } from '../history/entities';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
-import { captureTree, parseSnapshot, renderSnapshot, restoreTree, snapshotRun } from './worktree-snapshot';
+import { captureTree, parseSnapshot, renderSnapshot, restoreTree, snapshotRun } from '../pipeline/worktree-snapshot';
 
 function git(repo: string, args: string[]): string {
   return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' });

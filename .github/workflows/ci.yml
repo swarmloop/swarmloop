@@ -35,6 +35,15 @@ jobs:
       - run: npm run typecheck
         working-directory: dashboard
 
+  cycles:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npx --yes madge@8 --circular --extensions ts,tsx --ts-config server/tsconfig.json server/src dashboard
+
   lint:
     runs-on: ubuntu-latest
     steps:

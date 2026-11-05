@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import type { RunQueriesService } from '../api/run-queries.service';
 import { LiveGateway } from './live.gateway';
-import { LiveHub } from './live.hub';
+import { LiveHub } from '../live/live.hub';
 
 describe('LiveGateway', () => {
   it('logs a live update that fails', async () => {

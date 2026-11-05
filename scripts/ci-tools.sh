@@ -23,6 +23,7 @@ case "$1" in
       @next/eslint-plugin-next@15
       eslint-plugin-react-hooks@5
       eslint-plugin-jsx-a11y@6
+      eslint-plugin-boundaries@5
       typescript@5
     )
     ;;

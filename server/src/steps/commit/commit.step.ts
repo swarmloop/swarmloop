@@ -12,16 +12,23 @@ import { AppConfig } from '../../config/env';
 import { Clock } from '../../core/clock';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
-import { OpenedStep } from '../../pipeline/step-run';
+import { OpenedStep } from '../../steps/step-run';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
 import { authorArgs, git, gitDetail, gitMissing, gitRaw, originUrl, redact } from '../../git/git';
 import { textDocument } from '../shared/handoff';
-import { repoNames, worktreePath } from '../shared/repo-names';
+import { repoNames, worktreePath } from '../../git/repo-names';
 import { remoteProject } from '../merge-request/merge-request-record';
 import { BaseStep, StepContext } from '../base-step';
 import { CI_RERUN } from '../pipeline/pipeline-report';
-import { allowedPaths, deniedIndexPaths, parsePaths, PlannedPath, renderPaths, stageSelection } from './commit-paths';
+import {
+  allowedPaths,
+  deniedIndexPaths,
+  parsePaths,
+  PlannedPath,
+  renderPaths,
+  stageSelection,
+} from '../../git/commit-paths';
 
 interface Tree {
   repo: string;

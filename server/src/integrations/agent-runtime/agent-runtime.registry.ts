@@ -1,11 +1,9 @@
 import type { AgentRuntime } from './agent-runtime';
+import type { RuntimeName } from './runtime-name';
+export { RUNTIME_NAMES, type RuntimeName } from './runtime-name';
 import { ClaudeRuntime } from './claude/claude.runtime';
 import { CodexRuntime } from './codex/codex.runtime';
 import { CursorRuntime } from './cursor/cursor.runtime';
-
-export const RUNTIME_NAMES = ['cursor', 'claude', 'codex'] as const;
-
-export type RuntimeName = (typeof RUNTIME_NAMES)[number];
 
 const runtimes: Record<RuntimeName, AgentRuntime> = {
   cursor: new CursorRuntime(),

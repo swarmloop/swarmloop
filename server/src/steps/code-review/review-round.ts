@@ -1,13 +1,13 @@
 import { readFileSync } from 'fs';
 import { basename, join } from 'path';
 import type { SwarmloopEnv } from '../../config/env';
-import { liveLogBody } from '../../acp/live-output';
+import { liveLogBody } from '../../agent/live-output';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { EventRepository } from '../../history/event.repository';
 import type { DocumentDraft, ExchangeDraft } from '../../history/visit';
 import type { PipelineResult } from '../../core/pipeline-result';
-import type { OpenedStep } from '../../pipeline/step-run';
-import type { SandboxMount } from '../../sandbox/sandbox-launch';
+import type { OpenedStep } from '../../steps/step-run';
+import type { SandboxMount } from '../../core/sandbox-mount';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
 import type { StepContext } from '../base-step';
 import { withReturnNotes } from '../implement/implement-record';

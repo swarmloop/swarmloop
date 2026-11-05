@@ -9,7 +9,7 @@ import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
 import { Clock } from '../../core/clock';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent-runner';
-import { sessionFileName } from '../../agent/session-group';
+import { sessionFileName } from '../../history/session-group';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -23,7 +23,7 @@ import { composedReturn, recordHandoff, textDocument, withHandoff } from '../sha
 import { parseSummary, skillPrompt } from '../shared/skill-prompt';
 import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.step';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
-import { mountsForStep, repoNames, worktreePath } from '../shared/repo-names';
+import { mountsForStep, repoNames, worktreePath } from '../../git/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
 import { RequiredCheckFailed } from '../../environment/project-environments';
 import { withEnvironment } from '../../environment/environment-note';

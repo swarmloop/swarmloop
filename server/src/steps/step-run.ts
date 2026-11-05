@@ -1,10 +1,8 @@
 import type { RunEntity } from '../history/entities';
-import type { DocumentRepository } from '../history/document.repository';
 import type { FlowRepository } from '../history/flow.repository';
 import type { RunRepository } from '../history/run.repository';
 import type { VisitRepository } from '../history/visit.repository';
 import type { VisitDraft } from '../history/visit';
-import { snapshotRun } from '../git/worktree-snapshot';
 import type { PipelineResult } from '../core/pipeline-result';
 import { settle } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
@@ -42,7 +40,6 @@ export async function openStep(runs: RunRepository, clock: Clock, key: string, s
 
 export async function closeStep(input: {
   runs: RunRepository;
-  documents: DocumentRepository;
   visits: VisitRepository;
   flows: FlowRepository;
   root: string;
@@ -73,11 +70,6 @@ export async function closeStep(input: {
   await input.visits.finishVisit(input.run, input.visit);
   input.run.stepStartedAt = null;
   await input.runs.saveRun(input.run);
-  await snapshotRun(
-    { documents: input.documents, visits: input.visits, root: input.root },
-    input.clock,
-    input.run,
-    input.step,
-  );
+
   return { exitCode: input.exitCode, message: input.line };
 }

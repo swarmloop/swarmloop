@@ -4,7 +4,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { repoNames } from '../shared/repo-names';
+import { repoNames } from '../../git/repo-names';
 import { BranchStep } from '../branch/branch.step';
 import { appendProjectNames } from './append-projects';
 import { CHECKOUT_NAME, renderProjects, storedProjects } from './checkout-path';

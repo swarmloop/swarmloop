@@ -21,6 +21,8 @@ import {
 } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
 import { STEPS } from '../contract/steps';
+import { root } from '../history/run-paths';
+import { snapshotRun } from './worktree-snapshot';
 import type { Step } from '../steps/step';
 
 const HOP_LIMIT = STEPS.length * 3;
@@ -133,7 +135,14 @@ export class RunDriver {
     }
     const step = this.registry.get(name);
     if (step) {
-      return step.execute(key, options);
+      return step.execute(key, options, (run, completedStep) =>
+        snapshotRun(
+          { documents: this.documents, visits: this.visits, root: root(this.config) },
+          this.clock,
+          run,
+          completedStep,
+        ),
+      );
     }
     const prior = await this.runs.findRun(key);
     const previousStep = prior?.currentStep ?? name;

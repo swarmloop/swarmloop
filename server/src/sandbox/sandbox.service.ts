@@ -8,6 +8,7 @@ import { resolveRepoRoot } from '../config/repo-root';
 import { SystemClock } from '../core/clock';
 import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SwarmloopError } from '../core/swarmloop-error';
+import type { SandboxMount } from '../core/sandbox-mount';
 import {
   BindMount,
   containerName,
@@ -17,14 +18,13 @@ import {
   isLocalHost,
   prepareStateDir,
   SandboxLaunch,
-  SandboxMount,
   resolveDaemonPath,
   sandboxArgs,
   sandboxNetworkName,
   sandboxUserId,
   hostName,
   stepContainers,
-} from './sandbox-launch';
+} from '../sandbox/sandbox-launch';
 import { Egress, egressMode } from './egress';
 import { withEgress } from './egress-launch';
 import { projectGitMount } from './project-git';

@@ -15,7 +15,7 @@ import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
-import { RunRebase } from '../../pipeline/run-rebase';
+import { RunRebase } from '../run-rebase';
 import { RunStop } from '../../agent/run-stop';
 import type { PipelineJob, PipelineSnapshot } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';

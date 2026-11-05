@@ -1,11 +1,11 @@
 import { existsSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
-import { liveLogFinished, liveLogView } from '../../acp/live-output';
+import { liveLogFinished, liveLogView } from '../../agent/live-output';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { launchCount } from '../../agent/agent-launches';
 import { isReviewStep, pipelineStepOf } from '../../contract/steps';
 import { reviewDecision } from '../../steps/code-review/code-review-record';
-import { stepStatus, latest } from './flow';
+import { stepStatus, latest } from './status';
 import type { FlowView } from '../../contract/api';
 import { REVIEW_KINDS } from './run-view.types';
 
