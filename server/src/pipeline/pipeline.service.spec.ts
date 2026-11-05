@@ -166,9 +166,7 @@ describe('pipeline service', () => {
 
 /** A started step runs in the background. Wait for it to release the key before the app closes. */
 async function settle(pipeline: PipelineService, key: string): Promise<void> {
-  for (let tries = 0; pipeline.claimed(key) && tries < 500; tries += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
+  await pipeline.whenIdle(key);
 }
 
 async function boot(root: string): Promise<TestingModule> {

@@ -22,7 +22,7 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { RunRebaseService } from './run-rebase.service';
 import { EnvironmentService } from '../environment/environment.service';
 import { httpStatus } from './runs.controller';
-import { boot, remember, featureWorktree, denyEnv, git, isAncestor, hostFetch } from './runs.spec-helpers';
+import { boot, remember, featureWorktree, denyEnv, git, isAncestor, hostFetch } from '../testing/runs.spec-helpers';
 
 describe('runs api', () => {
   it('rebases a failed implement run and continues that checklist', async () => {

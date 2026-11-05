@@ -112,11 +112,16 @@ describe('code-review step', () => {
     mkdirSync(join(root, 'worktrees', 'PROJ-81', 'billing-api'), { recursive: true });
     let open = 0;
     let peak = 0;
+    let releaseReviewers: (() => void) | undefined;
+    const reviewersReady = new Promise<void>((resolve) => {
+      releaseReviewers = resolve;
+    });
     const agent = jest.fn(async (input: AgentRunInput) => {
       if (!input.step.endsWith('report')) {
         open += 1;
         peak = Math.max(peak, open);
-        await new Promise((resolve) => setTimeout(resolve, 30));
+        if (open === 5) releaseReviewers?.();
+        await reviewersReady;
         open -= 1;
       }
       return {

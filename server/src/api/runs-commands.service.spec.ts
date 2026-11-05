@@ -11,7 +11,7 @@ import { PHASES } from '../contract/steps';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
 import { httpStatus } from './runs.controller';
-import { boot, save, visit } from './runs.spec-helpers';
+import { boot, save, visit } from '../testing/runs.spec-helpers';
 
 describe('runs api', () => {
   it('lists runs newest first and draws a return edge', async () => {
