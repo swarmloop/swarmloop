@@ -1,7 +1,12 @@
 import { createHash } from 'crypto';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { worktreeSnapshot } from '../git/worktree-git';
-import type { PreparedEnvironment } from './project-environments';
+
+/** What the fingerprint reads of a prepared environment. */
+interface FingerprintEnvironment {
+  launch: { image: string };
+  record: { config: { checks: string[] }; setup?: { command: string } };
+}
 
 /**
  * Identifies what a check run judges: every mounted tree (HEAD and content, untracked files included), the image the
@@ -9,7 +14,7 @@ import type { PreparedEnvironment } from './project-environments';
  */
 export async function checksFingerprint(
   input: { mounts: SandboxMount[] },
-  prepared: PreparedEnvironment,
+  prepared: FingerprintEnvironment,
   docker: (args: string[], timeoutMs?: number) => Promise<string>,
 ): Promise<string> {
   const imageId = (await docker(['image', 'inspect', '--format', '{{.Id}}', prepared.launch.image], 60_000)).trim();
