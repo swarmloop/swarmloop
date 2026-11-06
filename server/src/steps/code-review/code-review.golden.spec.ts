@@ -5,7 +5,8 @@ import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
-import { AGENT_RUNNER, type AgentRunInput } from '../../agent/agent-runner';
+import type { AgentRunInput } from '../../agent/agent-runner';
+import { AgentLauncher } from '../shared/agent-launcher';
 import { AppConfig } from '../../config/env';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -56,7 +57,7 @@ describe('code-review step golden traces', () => {
       app.get(EventRepository),
       app.get(PrepareStep),
       app.get(SandboxService),
-      app.get(AGENT_RUNNER),
+      app.get(AgentLauncher),
     );
     const done = await step.execute(KEY);
     // The reviewers run inside the step: each of their visits shares the kinds the step read.

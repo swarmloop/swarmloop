@@ -6,6 +6,7 @@ import { testEnv } from '../config/env.spec-helpers';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
+import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { ChatService } from './chat.service';
 
 describe('chat', () => {
@@ -51,11 +52,10 @@ describe('chat', () => {
     const chat = new ChatService(
       runRepository as never,
       documentRepository as never,
-      visitRepository as never,
       config(root),
       new FakeClock(),
       { assertReady: async () => undefined } as never,
-      { run: agent } as never,
+      new AgentLauncher({ run: agent } as never, visitRepository as never),
       { block: async () => 'Services:\nJira PROJ-1: Ship the field' } as never,
     );
     const spoken = await chat.speak('PROJ-1', {
@@ -93,11 +93,10 @@ describe('chat', () => {
     const chat = new ChatService(
       runRepository as never,
       documentRepository as never,
-      {} as never,
       config('/tmp'),
       new FakeClock(),
       { assertReady: async () => undefined } as never,
-      { run: jest.fn() } as never,
+      new AgentLauncher({ run: jest.fn() } as never, {} as never),
       {
         block: async () => '',
       } as never,
@@ -114,11 +113,10 @@ describe('chat', () => {
     const chat = new ChatService(
       runRepository as never,
       documentRepository as never,
-      {} as never,
       config('/tmp'),
       new FakeClock(),
       { assertReady: async () => undefined } as never,
-      { run: jest.fn() } as never,
+      new AgentLauncher({ run: jest.fn() } as never, {} as never),
       {
         block: async () => '',
       } as never,

@@ -1,4 +1,4 @@
-import type { AppConfig } from '../config/env';
+import type { AppConfig, SwarmloopEnv } from '../config/env';
 import type { DocumentRepository } from '../history/document.repository';
 import type { FlowRepository } from '../history/flow.repository';
 import { root } from '../history/run-paths';
@@ -89,7 +89,7 @@ abstract class StepCore implements Step {
     return this.kernel.config;
   }
 
-  describe(): StepDescriptor {
+  describe(_env: SwarmloopEnv): StepDescriptor {
     return {
       name: this.name,
       kind: this.usesModel ? 'agent' : 'server',
@@ -141,7 +141,7 @@ abstract class StepCore implements Step {
         outcome: 'failed',
         exitCode: 1,
         line: `${opened.startedAt} ${this.failureText(error)}`,
-        visit: this.failureVisit(),
+        visit: this.failureVisit(opened),
       });
     }
   }
@@ -156,7 +156,7 @@ abstract class StepCore implements Step {
   }
 
   /** Merged into the visit of a failed run. A step overrides it to keep the failed visit it has always recorded. */
-  protected failureVisit(): Partial<VisitDraft> {
+  protected failureVisit(_opened: OpenedStep): Partial<VisitDraft> {
     return {};
   }
 
@@ -217,9 +217,9 @@ export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore
   abstract readonly inputs: S;
   abstract readonly outputs: Artifact<unknown>[];
 
-  override describe(): StepDescriptor {
+  override describe(env: SwarmloopEnv): StepDescriptor {
     return {
-      ...super.describe(),
+      ...super.describe(env),
       inputs: Object.entries(this.inputs).map(([name, entry]) => ({
         name,
         kind: entry.artifact.kind,
@@ -236,10 +236,18 @@ export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore
   execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
     return this.perform(
       key,
-      async (ctx) => this.conclude(ctx, await this.work(await this.reader.read(key, this.inputs), ctx)),
+      async (ctx) => {
+        await this.ready(ctx);
+        return this.conclude(ctx, await this.work(await this.reader.read(key, this.inputs), ctx));
+      },
       snapshot,
       options,
     );
+  }
+
+  /** Runs before the inputs are read. A step overrides it to check what it needs from the machine. */
+  protected ready(_ctx: StepContext): Promise<void> {
+    return Promise.resolve();
   }
 
   /** Ends the visit as the route of the result says: its outputs first, then the handoff. */

@@ -2,7 +2,10 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
-import { launchAgent } from './agent-step';
+import { AgentLauncher } from './shared/agent-launcher';
+import { goldenApp } from './shared/model-golden.spec-helpers';
+import { StepKernel } from './step-kernel';
+import { ResearchStep } from './research/research.step';
 import { agentFailure, combineAgentResults } from './shared/agent-result';
 import { modelVisit } from './shared/model-visit';
 import { AGENT_LANGUAGE_RULE, skillPrompt, workingDirectoryBlock } from './shared/skill-prompt';
@@ -72,14 +75,15 @@ describe('working directory block', () => {
   it('puts English first on every agent prompt', async () => {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-lang-'));
     const prompts: string[] = [];
-    await launchAgent({
-      agent: {
+    await new AgentLauncher(
+      {
         run: async (input: AgentRunInput) => {
           prompts.push(input.prompt);
           return emptyAgent();
         },
       } as never,
-      visits: { tokenTotal: async () => 0 } as never,
+      { tokenTotal: async () => 0 } as never,
+    ).launch({
       root,
       run: { agentCalls: 0, spentUsd: 0 } as never,
       key: 'k',
@@ -98,15 +102,16 @@ describe('working directory block', () => {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-continue-'));
     const prompts: string[] = [];
     const continues: (string | null | undefined)[] = [];
-    await launchAgent({
-      agent: {
+    await new AgentLauncher(
+      {
         run: async (input: AgentRunInput) => {
           prompts.push(input.prompt);
           continues.push(input.continuePrompt);
           return emptyAgent();
         },
       } as never,
-      visits: { tokenTotal: async () => 0 } as never,
+      { tokenTotal: async () => 0 } as never,
+    ).launch({
       root,
       run: { agentCalls: 0, spentUsd: 0 } as never,
       key: 'k',
@@ -296,6 +301,41 @@ describe('agentFailure', () => {
     });
     expect(agentFailure({ ...emptyAgent(), exitCode: 0, output }, 'implement', 'agent')).toBeNull();
   });
+});
+
+describe('agent step without requirements', () => {
+  it.each([
+    ['absent', null],
+    ['blank', ''],
+  ])(
+    'fails the visit with the model and mode of its profile, and no exchange when requirements are %s',
+    async (_name, stored) => {
+      const agent = jest.fn();
+      const golden = await goldenApp('agent-missing-requirements', { agent });
+      try {
+        const run = await golden.runs.begin('PROJ-30', 'prepare');
+        run.status = 'waiting';
+        run.currentStep = 'research';
+        await golden.runs.saveRun(run);
+        if (stored !== null) {
+          await golden.seedDocuments.putDocument(run, 'requirements', stored);
+        }
+        const step = new ResearchStep(
+          new StepKernel(golden.runs, golden.documents, golden.visits, golden.flows, golden.clock, golden.config),
+          golden.sandbox,
+          golden.launcher,
+        );
+        const result = await step.execute('PROJ-30');
+        expect(result.message).toContain('requirements is missing');
+        const [stat] = await golden.visits.listStats(run.id);
+        expect(stat).toMatchObject({ step: 'research', status: 'failed', model: 'opus-5.5-extra-high', mode: 'plan' });
+        expect(await golden.visits.listExchanges([stat.id])).toEqual([]);
+        expect(agent).not.toHaveBeenCalled();
+      } finally {
+        await golden.close();
+      }
+    },
+  );
 });
 
 function emptyAgent(): AgentRunResult {

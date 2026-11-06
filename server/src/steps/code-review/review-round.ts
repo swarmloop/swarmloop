@@ -17,7 +17,7 @@ import { parseReview } from './code-review-record';
 import { fixNotes } from './review-input';
 import { closeReview, recordAngle } from './review-report';
 import type { Finished, Opinion, Reviewer, ReviewDeps, Usage } from './reviewer';
-import { decidedOk, REVIEWERS, runJob } from './reviewer';
+import { decidedOk, reviewModel, REVIEWERS, runJob } from './reviewer';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 
 interface Selection {
@@ -265,7 +265,7 @@ function reviewJob(reviewer: Reviewer, input: RoundInput) {
   );
   return {
     reviewer,
-    model: input.env.MODEL_PLAN,
+    model: reviewModel(input.env),
     prompt: skillPrompt(`code-review/${reviewer.name}`, input.requirements, names, sections, input.mounts),
     mounts: input.mounts,
   };

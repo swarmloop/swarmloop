@@ -161,7 +161,7 @@ describe('base step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-base-describe-'));
     const app = await boot(root);
     try {
-      expect(app.get(StubStep).describe()).toEqual({
+      expect(app.get(StubStep).describe({} as never)).toEqual({
         name: 'branch',
         kind: 'server',
         inputs: [],
@@ -181,7 +181,7 @@ describe('base step', () => {
         override readonly usesModel = true;
         override readonly capabilities = { prompt: true };
       }
-      const descriptor = new AgentStub(app.get(StepKernel)).describe();
+      const descriptor = new AgentStub(app.get(StepKernel)).describe({} as never);
       expect(descriptor.kind).toBe('agent');
       expect(descriptor.capabilities).toEqual({ prompt: true });
     } finally {

@@ -4,7 +4,7 @@ import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
-import { AGENT_RUNNER } from '../../agent/agent-runner';
+import { AgentLauncher } from '../shared/agent-launcher';
 import { AppConfig } from '../../config/env';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import type { PipelineResult, StepOptions } from '../../core/pipeline-result';
@@ -74,10 +74,10 @@ export async function goldenRun(input: GoldenCase): Promise<PipelineResult> {
             ...common,
             app.get(CommitStep),
             app.get(CheckoutRepository),
-            app.get(AGENT_RUNNER),
+            app.get(AgentLauncher),
             app.get(EnvironmentService),
           )
-        : new ImplementImproveStep(...common, app.get(AGENT_RUNNER), app.get(EnvironmentService));
+        : new ImplementImproveStep(...common, app.get(AgentLauncher), app.get(EnvironmentService));
     const result = await step.execute(input.key, input.options ?? {});
     const trace = await traceRun(app.get(DataSource), input.key, { [input.step]: documents.kinds });
     expectGolden(`${input.step}.${input.scenario}`, {

@@ -1,12 +1,13 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
 import { join } from 'path';
 import { SwarmloopEnv } from '../../config/env';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
-import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent-runner';
+import { readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../history/session-group';
-import { PipelineResult, StepOptions, nextStep } from '../../core/pipeline-result';
+import { StepOptions, nextStep } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -14,8 +15,9 @@ import { branchName, commitMessage, summaryForBranch } from '../branch/branch-na
 import { CommitStep } from '../commit/commit.step';
 import { isPipelineReturn, withAddedRepos } from '../follow-up';
 import { git, gitDetail } from '../../git/git';
-import { AgentStep, ModelStepContext } from '../agent-step';
-import { composedReturn, recordHandoff, textDocument, withHandoff } from '../shared/handoff';
+import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
+import { AgentLauncher } from '../shared/agent-launcher';
+import { composedReturn, textDocument, withHandoff } from '../shared/handoff';
 import { parseSummary, skillPrompt } from '../shared/skill-prompt';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import type { SandboxMount } from '../../core/sandbox-mount';
@@ -32,56 +34,81 @@ import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
 import { parseImplementation, withReturnNotes } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 
+const INPUTS = {
+  requirements: REQUIREMENTS_INPUT,
+  repos: lateInput(ARTIFACTS.repos),
+  rebaseConflict: lateInput(ARTIFACTS.rebaseConflict),
+  addedRepos: lateInput(ARTIFACTS.addedRepos),
+  pipelineRef: lateInput(ARTIFACTS.pipelineRef),
+  instructions: instructionsInput('implement'),
+} as const satisfies InputSpec;
+
 @Injectable()
-export class ImplementStep extends AgentStep {
+export class ImplementStep extends AgentStep<typeof INPUTS> {
+  readonly inputs = INPUTS;
   readonly name: StepName = 'implement';
-  readonly requiredKind = 'plan';
+  readonly outputs = [ARTIFACTS.implementation, ARTIFACTS.requirements];
 
   constructor(
     kernel: StepKernel,
     sandbox: SandboxService,
     private readonly commit: CommitStep,
     private readonly checkouts: CheckoutRepository,
-    @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
+    launcher: AgentLauncher,
     private readonly environments: EnvironmentService,
   ) {
-    super(kernel, sandbox, agent);
+    super(kernel, sandbox, launcher);
   }
 
   override missingInput(key: string): Promise<string | null> {
     return storedPlan(this.documents, key);
   }
 
-  protected settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number } {
-    return { mode: 'agent', model: env.MODEL_IMPLEMENT, timeLimitMs: env.IMPLEMENT_TIMEOUT_MS };
+  protected profile(env: SwarmloopEnv): AgentProfile {
+    return {
+      runtime: env.RUNTIME,
+      model: env.MODEL_IMPLEMENT,
+      mode: 'agent',
+      timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
+      session: 'resume',
+    };
   }
 
-  protected async write(key: string, ctx: ModelStepContext, options: StepOptions): Promise<PipelineResult> {
+  protected async produce(
+    input: StepInput<typeof INPUTS>,
+    ctx: ModelStepContext,
+    options: StepOptions,
+  ): Promise<StepResult> {
     const env = this.config.env;
+    const { key } = ctx.opened.run;
     const auto = options.auto;
-    const plan = requireApprovedPlan(await this.documents.latestBody(key, ARTIFACTS.requirements.kind));
+    const plan = requireApprovedPlan(input.requirements);
     const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
-      return ctx.end({ outcome: 'blocked', exitCode: 1, line: `${ctx.opened.startedAt} implement does not fit` });
+      return {
+        route: { to: 'block', reason: 'implement does not fit' },
+        summary: `${ctx.opened.startedAt} implement does not fit`,
+        outputs: [],
+      };
     }
     const notes = composedReturn(await this.documents.listDocuments(ctx.opened.run.id));
     const sections = withHandoff(
       withReturnNotes([{ heading: 'Plan', body: plan }], notes),
       await this.documents.latestBody(key, ARTIFACTS.handoff.kind),
     );
-    const branch = branchName(key, summaryForBranch(ctx.requirements, key));
+    const branch = branchName(key, summaryForBranch(input.requirements, key));
     const markerBody = ((await this.documents.latestBody(key, ARTIFACTS.rebaseConflict.kind)) ?? '').trim();
     const marker = markerBody.split('\n')[0]?.trim() ?? '';
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
-    const full = skillPrompt('implement', ctx.requirements, names, sections, mounts, { deferExecutionRules: true });
+    const full = skillPrompt('implement', input.requirements, names, sections, mounts, { deferExecutionRules: true });
     const added = await this.documents.latestBody(key, ARTIFACTS.addedRepos.kind);
     const continued = await readSession(
       join(root(this.config), 'data', sessionFileName(key, 'implement')),
       ctx.opened.run.runtime,
     );
     const basePrompt = withAddedRepos(continued?.chatId ? implementFollowUp(plan, notes) : full, added);
-    const settled = await this.settleRebase(key, ctx, marker, names, branch, storedStderr);
+    const settled = await this.settleRebase(input.requirements, ctx, marker, names, branch, storedStderr);
     if (settled) {
       return settled;
     }
@@ -115,33 +142,30 @@ export class ImplementStep extends AgentStep {
       if ((await worktreeSnapshot(mounts)) === before) {
         const stale = await staleRepos(await this.documents.latestBody(key, ARTIFACTS.pipelineRef.kind), mounts);
         if (stale.length > 0) {
-          return ctx.end({
-            outcome: 'ok',
-            exitCode: 0,
-            line: `${ctx.opened.startedAt} no change needed: the failed pipeline ran on an older commit`,
-            documents: [textDocument(ARTIFACTS.ciRerun.kind, `${stale.join('\n')}\n`)],
-            moveTo: 'commit',
-          });
+          return {
+            route: { to: 'jump', step: 'commit' },
+            summary: `${ctx.opened.startedAt} no change needed: the failed pipeline ran on an older commit`,
+            outputs: [],
+            visit: { documents: [textDocument(ARTIFACTS.ciRerun.kind, `${stale.join('\n')}\n`)] },
+          };
         }
-        return this.unfixedFailure(ctx, key, planText, planOutput, 'failed', 'pipeline failure left unfixed');
+        return this.unfixedFailure(input.requirements, ctx, planText, planOutput, 'pipeline failure left unfixed');
       }
     }
     const text = agentResult.responseText;
     const body = parseImplementation(text);
     await this.gate(ctx, key, mounts);
     await assertUncommitted(mounts, branch, heads);
-    const corrected = correctedPlan(ctx.requirements, planText, planOutput);
+    const corrected = correctedPlan(input.requirements, planText, planOutput);
     const summary = corrected ? `${parseSummary(text).trimEnd()}\n${corrected.handoff}` : parseSummary(text);
     const status = await worktreeStatus(mounts);
-    const handoff = await recordHandoff(this.documents, key, 'implement', summary);
-    const docs = corrected ? [handoff, textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] : [handoff];
-    return ctx.end({
-      outcome: 'ok',
-      exitCode: 0,
-      line: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
-      document: textDocument(ARTIFACTS.implementation.kind, body),
-      documents: docs,
-    });
+    return {
+      route: { to: 'next' },
+      summary: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
+      outputs: [{ artifact: ARTIFACTS.implementation, value: body }],
+      handoff: summary,
+      visit: corrected ? { documents: [textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] } : undefined,
+    };
   }
 
   /** implement-improve follows in the same pass and runs the one server gate over both passes' changes. */
@@ -152,33 +176,34 @@ export class ImplementStep extends AgentStep {
   }
 
   /** A pipeline failure that the retry left unchanged on disk: stop with the corrected checklist, if one came back. */
-  private async unfixedFailure(
+  private unfixedFailure(
+    requirements: string,
     ctx: ModelStepContext,
-    key: string,
     planText: string,
     planOutput: string,
-    outcome: 'failed' | 'blocked',
     text: string,
-  ): Promise<PipelineResult> {
-    const corrected = correctedPlan(ctx.requirements, planText, planOutput);
-    const docs = corrected
-      ? [
-          await recordHandoff(this.documents, key, 'implement', corrected.handoff),
-          textDocument(ARTIFACTS.requirements.kind, corrected.requirements),
-        ]
-      : undefined;
-    return ctx.end({ outcome, exitCode: 1, line: `${ctx.opened.startedAt} ${text}`, documents: docs });
+  ): StepResult {
+    const corrected = correctedPlan(requirements, planText, planOutput);
+    const line = `${ctx.opened.startedAt} ${text}`;
+    return {
+      route: { to: 'fail', error: { code: this.name, message: line } },
+      summary: line,
+      outputs: [],
+      handoff: corrected?.handoff,
+      visit: corrected ? { documents: [textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] } : undefined,
+    };
   }
 
   /** Finish an open rebase in the server. A stored checklist then goes to code review; an unfinished one returns to the checklist prompt. */
   private async settleRebase(
-    key: string,
+    requirements: string,
     ctx: ModelStepContext,
     marker: string,
     names: string[],
     branch: string,
     storedStderr: string,
-  ): Promise<PipelineResult | null> {
+  ): Promise<StepResult | null> {
+    const { key } = ctx.opened.run;
     if (marker !== 'pending' && marker !== 'pending-implement') {
       return null;
     }
@@ -190,7 +215,7 @@ export class ImplementStep extends AgentStep {
       branch,
       prompt: ctx.opened.run.prompt,
       denied: await this.checkouts.listDenyPaths(),
-      message: commitMessage(key, summaryForBranch(ctx.requirements, key)),
+      message: commitMessage(key, summaryForBranch(requirements, key)),
       hosts: { ...this.config.env, clock: this.clock },
       onBase: (repo: string, sha: string) => {
         bases.set(repo, sha);
@@ -224,7 +249,7 @@ export class ImplementStep extends AgentStep {
         `${rebaseConflictPrompt({
           repo: outcome.repo,
           files: outcome.files,
-          requirements: ctx.requirements,
+          requirements,
           base: outcome.base,
           commit: outcome.commit,
         })}\n`,
@@ -267,31 +292,24 @@ export class ImplementStep extends AgentStep {
     }
     const body = existing.endsWith('\n') ? existing : `${existing}\n`;
     const status = await worktreeStatus(mounts);
-    const handoff = await recordHandoff(this.documents, key, 'implement', '- resolved the rebase\n');
-    return ctx.end({
-      outcome: 'ok',
-      exitCode: 0,
-      line: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
-      document: textDocument(ARTIFACTS.implementation.kind, body),
-      documents: [
-        handoff,
-        textDocument(ARTIFACTS.rebaseConflict.kind, 'review\n'),
-        textDocument(ARTIFACTS.rebaseMergeSkip.kind, 'skip\n'),
-      ],
-      moveTo: 'code-review',
-    });
+    return {
+      route: { to: 'jump', step: 'code-review' },
+      summary: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
+      outputs: [{ artifact: ARTIFACTS.implementation, value: body }],
+      handoff: '- resolved the rebase\n',
+      visit: {
+        documents: [
+          textDocument(ARTIFACTS.rebaseConflict.kind, 'review\n'),
+          textDocument(ARTIFACTS.rebaseMergeSkip.kind, 'skip\n'),
+        ],
+      },
+    };
   }
 
-  private failConflict(
-    ctx: ModelStepContext,
-    outcome: Extract<RebaseStop, { kind: 'conflict' }>,
-  ): Promise<PipelineResult> {
+  private failConflict(ctx: ModelStepContext, outcome: Extract<RebaseStop, { kind: 'conflict' }>): StepResult {
     const detail = [outcome.files.join(', '), outcome.stderr.trim()].filter((part) => part.length > 0).join('\n');
-    return ctx.end({
-      outcome: 'failed',
-      exitCode: 1,
-      line: `${ctx.opened.startedAt} ${outcome.repo} rebase failed: ${detail}`,
-    });
+    const line = `${ctx.opened.startedAt} ${outcome.repo} rebase failed: ${detail}`;
+    return { route: { to: 'fail', error: { code: this.name, message: line } }, summary: line, outputs: [] };
   }
 }
 

@@ -20,7 +20,7 @@ async function improve(agent: jest.Mock) {
   const step = new PlanImproveStep(
     new StepKernel(golden.runs, golden.documents, golden.visits, golden.flows, golden.clock, golden.config),
     golden.sandbox,
-    golden.agent,
+    golden.launcher,
   );
   return { golden, step };
 }

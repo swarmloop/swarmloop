@@ -4,14 +4,14 @@ import type { SwarmloopEnv } from '../../config/env';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { SampleDraft } from '../../history/visit';
-import type { AgentProcessRunner, AgentRunResult } from '../../agent/agent-runner';
+import type { AgentRunResult } from '../../agent/agent-runner';
 import { readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../history/session-group';
 import type { OpenedStep } from '../../steps/step-run';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { reviewContinue, reviewResume } from './code-review.prompts';
-import { launchAgent } from '../agent-step';
+import type { AgentLauncher } from '../shared/agent-launcher';
 import { agentFailure, refusedWrite, withRefusal } from '../shared/agent-result';
 import { parseReview } from './code-review-record';
 import { CODE_REVIEWERS } from '../../contract/steps';
@@ -48,7 +48,12 @@ export interface ReviewDeps {
   documents: DocumentRepository;
   visits: VisitRepository;
   root: string;
-  agent: AgentProcessRunner;
+  launcher: AgentLauncher;
+}
+
+/** The model every reviewer and the report run on. */
+export function reviewModel(env: SwarmloopEnv): string {
+  return env.MODEL_PLAN;
 }
 
 export const REVIEWERS: Reviewer[] = [...CODE_REVIEWERS.map((name) => ({ name, kind: REVIEWS.of(name) }))];
@@ -140,9 +145,7 @@ async function launchReview(
   auto?: boolean,
   fresh = false,
 ): Promise<AgentRunResult> {
-  return launchAgent({
-    agent: deps.agent,
-    visits: deps.visits,
+  return deps.launcher.launch({
     root: deps.root,
     run: opened.run,
     key,
