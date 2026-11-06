@@ -23,7 +23,7 @@ import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { checkedRepoNames, mountsForStep, worktreePath } from '../../git/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
-import { RequiredCheckFailed } from '../../environment/project-environments';
+import { RequiredCheckFailed, RequiredCheckRepeated } from '../../environment/project-environments';
 import { withEnvironment } from '../../environment/environment-note';
 import { agentWorkplace } from '../shared/agent-environment';
 import { storedPlan } from '../step';
@@ -31,7 +31,7 @@ import { RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '.
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { staleRepos } from '../pipeline/pipeline-report';
 import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
-import { parseImplementation, withReturnNotes } from './implement-record';
+import { checkRepeatedBlock, parseImplementation, withReturnNotes } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
@@ -162,7 +162,10 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     }
     const text = agentResult.responseText;
     const body = parseImplementation(text);
-    await this.gate(ctx, key, mounts);
+    const blocked = await this.gate(ctx, key, mounts);
+    if (blocked) {
+      return blocked;
+    }
     await assertUncommitted(mounts, branch, heads);
     const corrected = correctedPlan(input.requirements, planText, planOutput);
     const summary = corrected ? `${parseSummary(text).trimEnd()}\n${corrected.handoff}` : parseSummary(text);
@@ -177,10 +180,18 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
   }
 
   /** implement-improve follows in the same pass and runs the one server gate over both passes' changes. */
-  private async gate(ctx: ModelStepContext, key: string, mounts: SandboxMount[]): Promise<void> {
+  private async gate(ctx: ModelStepContext, key: string, mounts: SandboxMount[]): Promise<StepResult | null> {
     if (nextStep(this.name, await this.flows.activePhases(ctx.opened.run.id)) !== 'implement-improve') {
-      await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
+      try {
+        await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
+      } catch (error) {
+        if (error instanceof RequiredCheckRepeated) {
+          return checkRepeatedBlock(ctx.opened.startedAt, this.name, error);
+        }
+        throw error;
+      }
     }
+    return null;
   }
 
   /** A pipeline failure that the retry left unchanged on disk: stop with the corrected checklist, if one came back. */

@@ -21,8 +21,9 @@ import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
 import { agentWorkplace } from '../shared/agent-environment';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
-import { IMPLEMENT_IMPROVE_FOLLOW_UP } from './implement.prompts';
-import { reviewedImplementation, withReturnNotes } from './implement-record';
+import { implementImproveFollowUp } from './implement.prompts';
+import { RequiredCheckRepeated } from '../../environment/project-environments';
+import { checkRepeatedBlock, reviewedImplementation, withReturnNotes } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
@@ -101,7 +102,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const full = skillPrompt('implement-improve', input.requirements, names, sections, mounts, {
       deferExecutionRules: true,
     });
-    const chosen = continued?.chatId ? IMPLEMENT_IMPROVE_FOLLOW_UP : full;
+    const chosen = continued?.chatId ? implementImproveFollowUp(returned) : full;
     const { prompt, project, allowHosts } = await agentWorkplace(
       this.environments,
       { run: ctx.opened.run, key, step: this.name, mounts },
@@ -111,7 +112,14 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const text = agentResult.responseText;
     await assertUncommitted(mounts, branch, heads);
     const wrote = reviewedImplementation(text);
-    await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
+    try {
+      await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
+    } catch (error) {
+      if (error instanceof RequiredCheckRepeated) {
+        return checkRepeatedBlock(ctx.opened.startedAt, this.name, error);
+      }
+      throw error;
+    }
     await assertUncommitted(mounts, branch, heads);
     const body = wrote.trim() ? wrote : notes;
     const corrected = correctedPlan(input.requirements, text, agentResult.output ?? '');

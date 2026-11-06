@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { IMPLEMENT_IMPROVE_FOLLOW_UP, implementFollowUp } from './implement/implement.prompts';
+import { implementImproveFollowUp, implementFollowUp } from './implement/implement.prompts';
 import { REPORT_CONTINUE, reviewContinue, reviewResume } from './code-review/code-review.prompts';
 import { withAddedRepos } from './follow-up';
 import { PLAN_IMPROVE_FOLLOW_UP } from './plan-improve/plan-improve.prompts';
@@ -23,7 +23,7 @@ const STEP_PAIRS = [
   { name: 'plan', skill: skillText('plan'), followUp: planFollowUp('') },
   { name: 'plan-improve', skill: skillText('plan-improve'), followUp: PLAN_IMPROVE_FOLLOW_UP },
   { name: 'implement', skill: skillText('implement'), followUp: implementFollowUp('plan:\n- add the field\n', null) },
-  { name: 'implement-improve', skill: skillText('implement-improve'), followUp: IMPLEMENT_IMPROVE_FOLLOW_UP },
+  { name: 'implement-improve', skill: skillText('implement-improve'), followUp: implementImproveFollowUp(null) },
 ];
 
 describe('step prompt invariants', () => {
@@ -49,7 +49,7 @@ describe('step prompt invariants', () => {
     for (const pair of STEP_PAIRS) {
       expect(pair.skill).toContain(TASK_SCOPE);
     }
-    for (const followUp of [planFollowUp(''), PLAN_IMPROVE_FOLLOW_UP, IMPLEMENT_IMPROVE_FOLLOW_UP]) {
+    for (const followUp of [planFollowUp(''), PLAN_IMPROVE_FOLLOW_UP, implementImproveFollowUp(null)]) {
       expect(followUp).toContain(TASK_SCOPE);
     }
     for (const name of ['research', 'plan', 'plan-improve', 'implement', 'code-review/requirements']) {
@@ -92,7 +92,7 @@ describe('step prompt invariants', () => {
     expect(skillText('implement')).toContain(sentence);
     expect(skillText('implement-improve')).toContain(sentence);
     expect(implementFollowUp('plan:\n- add the field\n', null)).toContain(sentence);
-    expect(IMPLEMENT_IMPROVE_FOLLOW_UP).toContain(sentence);
+    expect(implementImproveFollowUp(null)).toContain(sentence);
   });
 });
 
@@ -145,7 +145,7 @@ describe('return follow-ups', () => {
     expect(pipeline).toContain('Do not leave the files as they are');
     expect(pipeline).not.toContain('say that behavior now holds');
     expect(implementFollowUp('plan:\n- delete the run\n', null)).not.toContain('Fix the broken behavior');
-    expect(IMPLEMENT_IMPROVE_FOLLOW_UP).toContain('end with summary only');
+    expect(implementImproveFollowUp(null)).toContain('end with summary only');
     const review = reviewResume(
       'quality',
       '- waited for the writers\n- stop no longer returns early',

@@ -1,3 +1,4 @@
+import type { StepResult } from '../contract/step-contract';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { bulletSection } from '../shared/markdown-section';
 
@@ -35,4 +36,13 @@ export function withReturnNotes(
   returned: string | null,
 ): { heading: string; body: string }[] {
   return returned?.trim() ? [...sections, { heading: 'Why this returned', body: returned }] : sections;
+}
+
+/** A check that failed again on unchanged files: the run waits for a person, and the stored return notes stay. */
+export function checkRepeatedBlock(startedAt: string, step: string, error: Error): StepResult {
+  return {
+    route: { to: 'block', reason: error.message },
+    summary: `${startedAt} ${step} blocked: ${error.message}`,
+    outputs: [],
+  };
 }

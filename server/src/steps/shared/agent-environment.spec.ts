@@ -2,7 +2,7 @@ import type { ProjectEnvironments, PreparedEnvironment } from '../../environment
 import type { RunEntity } from '../../history/entities';
 import { packageRegistries } from '../../sandbox/sandbox-launch';
 import { skillPrompt, LOCAL_RUN_RULE } from './skill-prompt';
-import { implementFollowUp, IMPLEMENT_IMPROVE_FOLLOW_UP } from '../implement/implement.prompts';
+import { implementFollowUp, implementImproveFollowUp } from '../implement/implement.prompts';
 import { agentWorkplace } from './agent-environment';
 
 const input = { run: {} as RunEntity, key: 'k', step: 'implement', mounts: [] };
@@ -33,7 +33,7 @@ describe('agentWorkplace', () => {
     async (step) => {
       const first = skillPrompt(step, '{"prompt":"Update the field"}', ['shop'], [], [], { deferExecutionRules: true });
       const resumed =
-        step === 'implement' ? implementFollowUp('- update the field', null) : IMPLEMENT_IMPROVE_FOLLOW_UP;
+        step === 'implement' ? implementFollowUp('- update the field', null) : implementImproveFollowUp(null);
       for (const prompt of [first, resumed]) {
         const project = prepared();
         project.record.config.checks = ['npm test'];

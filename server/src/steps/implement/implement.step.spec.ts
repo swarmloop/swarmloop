@@ -29,7 +29,7 @@ import { EnvironmentService } from '../../environment/environment.service';
 
 import { SwarmloopError } from '../../core/swarmloop-error';
 
-import { RequiredCheckFailed } from '../../environment/project-environments';
+import { RequiredCheckFailed, RequiredCheckRepeated } from '../../environment/project-environments';
 
 import { RebasedPublisher } from '../shared/rebased-publisher';
 
@@ -178,6 +178,50 @@ describe('implement step', () => {
       expect(input.prompt).not.toContain('Ship the field');
       expect(input.prompt).not.toContain('Package registries');
       expect(input.prompt).not.toContain('What previous steps did');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('carries the return notes in the continued follow-up', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-follow-notes-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-95', 'billing-api');
+    mkdirSync(join(root, 'data'), { recursive: true });
+    writeFileSync(
+      join(root, 'data', 'PROJ-95-implement-session.json'),
+      `${JSON.stringify({ runtime: 'cursor', chatId: 'plan-chat', resumed: true, completed: true, killReason: null, usd: 1.2 })}\n`,
+    );
+    const agent = jest.fn().mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-95', 'approve');
+      const run = (await app.get(RunRepository).findRun('PROJ-95'))!;
+      await app.get(DocumentRepository).putDocument(run, 'return', '## quality\nuse theme.alpha\n');
+      await app.get(PipelineService).step('implement', 'PROJ-95');
+      const input = agent.mock.calls[0]?.[0] as AgentRunInput;
+      expect(input.resumeChatId).toBe('plan-chat');
+      expect(input.prompt).toContain('use theme.alpha');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('blocks the run when its own check gate repeats a failure', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-repeat-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-96', 'billing-api');
+    const agent = jest.fn().mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-96', 'approve');
+      jest.spyOn(app.get(FlowRepository), 'activePhases').mockResolvedValue(['code-review']);
+      const reason = 'billing-api: npm test failed again on unchanged files after a relaunch';
+      jest.spyOn(app.get(EnvironmentService), 'check').mockRejectedValue(new RequiredCheckRepeated(reason));
+      await app.get(PipelineService).step('implement', 'PROJ-96');
+      const run = await app.get(RunRepository).findRun('PROJ-96');
+      expect(run?.status).toBe('blocked');
+      expect(run?.currentStep).toBe('implement');
     } finally {
       await app.close();
     }

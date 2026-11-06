@@ -1,14 +1,20 @@
 import { EventEmitter } from 'events';
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { PassThrough } from 'stream';
 import { testEnv } from '../config/env.spec-helpers';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { RunEntity } from '../history/entities';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import { commitFiles, makeRepo, runGit } from '../git/git-repo.spec-helpers';
-import { ENVIRONMENT, type EnvironmentRecord, ProjectEnvironments, RequiredCheckFailed } from './project-environments';
+import {
+  ENVIRONMENT,
+  type EnvironmentRecord,
+  ProjectEnvironments,
+  RequiredCheckFailed,
+  RequiredCheckRepeated,
+} from './project-environments';
 
 const manifest = {
   version: 1,
@@ -320,6 +326,56 @@ describe('ProjectEnvironments', () => {
     it('throws RequiredCheckFailed with the failing command output', async () => {
       const { service, input } = setup({ checkCode: 3 });
       await expect(service.check(input)).rejects.toThrow(/: required check failed \(exit 3\):\n\$ npm test/);
+    });
+  });
+
+  describe('a failed check that repeats', () => {
+    const failures = (stored: { kind: string; body: string }[]) =>
+      stored
+        .filter((item) => item.kind.startsWith('checks_fail:'))
+        .map((item) => JSON.parse(item.body) as Record<string, string>);
+
+    it('stores the failed command, the fingerprint, the step and the time', async () => {
+      const { service, input, stored } = setup({ checkCode: 2 });
+      await expect(service.check(input)).rejects.not.toBeInstanceOf(RequiredCheckRepeated);
+      expect(failures(stored)).toEqual([
+        { command: 'npm test', fingerprint: expect.any(String), step: 'implement', at: expect.any(String) },
+      ]);
+    });
+
+    it('throws RequiredCheckRepeated for the same command on unchanged files and keeps the return notes', async () => {
+      const { service, input, stored } = setup({ checkCode: 2 });
+      await expect(service.check(input)).rejects.toThrow(RequiredCheckFailed);
+      await expect(service.check({ ...input, step: 'implement-improve' })).rejects.toThrow(
+        new RequiredCheckRepeated(
+          `${basename(input.mounts[0].hostPath)}: npm test failed again on unchanged files after a relaunch`,
+        ),
+      );
+      expect(stored.filter((item) => item.kind === 'return').at(-1)?.body).toContain('required check failed (exit 2)');
+    });
+
+    it('throws a plain RequiredCheckFailed when the files changed in between', async () => {
+      const { service, input } = setup({ checkCode: 2 });
+      await expect(service.check(input)).rejects.toThrow(RequiredCheckFailed);
+      writeFileSync(join(input.mounts[0].hostPath, 'new.txt'), 'x\n');
+      await expect(service.check(input)).rejects.not.toBeInstanceOf(RequiredCheckRepeated);
+    });
+
+    it('throws a plain RequiredCheckFailed when another command failed on the same files', async () => {
+      const { service, input, stored } = setup({ checkCode: 2 });
+      await expect(service.check(input)).rejects.toThrow(RequiredCheckFailed);
+      const [first] = failures(stored);
+      stored.push({
+        kind: stored.find((item) => item.kind.startsWith('checks_fail:'))!.kind,
+        body: JSON.stringify({ ...first, command: 'npm run lint' }),
+      });
+      await expect(service.check(input)).rejects.not.toBeInstanceOf(RequiredCheckRepeated);
+    });
+
+    it('writes nothing on a pass', async () => {
+      const { service, input, stored } = setup();
+      await service.check(input);
+      expect(failures(stored)).toEqual([]);
     });
   });
 });

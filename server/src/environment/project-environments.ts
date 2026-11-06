@@ -21,8 +21,11 @@ import { imagePath, projectSlug, resolveProjectImage } from './project-image';
 
 export const ENVIRONMENT = 'environment';
 const CHECKS_PASS = 'checks_pass';
+const CHECKS_FAIL = 'checks_fail';
 /** A completed check rejected the code; implementation can repair it using the saved feedback. */
 export class RequiredCheckFailed extends SwarmloopError {}
+/** The same check failed again on files no pass has changed: another launch would repeat it. */
+export class RequiredCheckRepeated extends RequiredCheckFailed {}
 const SETUP_TIMEOUT_MS = 30 * 60_000;
 const TAIL_LINES = 80;
 const TAIL_CHARS = 6000;
@@ -141,7 +144,7 @@ export class ProjectEnvironments {
         if (result.exitCode !== 0) {
           const body = `${prepared.record.repo}: required check failed (exit ${result.exitCode}):\n${result.tail}`;
           await this.documents.putDocument(input.run, 'return', `## checks\n${body}\n`);
-          throw new RequiredCheckFailed(body);
+          throw await this.failure(input, prepared.record.repo, command, fingerprint, body);
         }
       }
       if ((await this.fingerprint(input, prepared)) !== fingerprint) {
@@ -155,6 +158,26 @@ export class ProjectEnvironments {
         JSON.stringify({ fingerprint, step: input.step, at: this.clock.iso() }),
       );
     }
+  }
+
+  /** Records the failure; it is a repeat when the last one was the same command on the same files. */
+  private async failure(
+    input: EnvironmentInput,
+    repo: string,
+    command: string,
+    fingerprint: string,
+    body: string,
+  ): Promise<RequiredCheckFailed> {
+    const stored = await this.documents.latestBody(input.key, `${CHECKS_FAIL}:${repo}`);
+    const last = stored ? (JSON.parse(stored) as { command: string; fingerprint: string }) : null;
+    await this.documents.putDocument(
+      input.run,
+      `${CHECKS_FAIL}:${repo}`,
+      JSON.stringify({ command, fingerprint, step: input.step, at: this.clock.iso() }),
+    );
+    return last?.command === command && last.fingerprint === fingerprint
+      ? new RequiredCheckRepeated(`${repo}: ${command} failed again on unchanged files after a relaunch`)
+      : new RequiredCheckFailed(body);
   }
 
   private fingerprint(input: EnvironmentInput, prepared: PreparedEnvironment): Promise<string> {
