@@ -138,6 +138,7 @@ describe('model visit duration', () => {
       now: Date.now(),
       opened: {
         run: { stepStartedAt: new Date(started).toISOString() } as never,
+        attemptId: 'attempt-1',
         prior: null,
         previousStep: 'research',
         previousStatus: 'waiting',
@@ -179,6 +180,7 @@ describe('combineAgentResults', () => {
       now: Date.now(),
       opened: {
         run: { stepStartedAt: new Date().toISOString() } as never,
+        attemptId: 'attempt-1',
         prior: null,
         previousStep: 'research',
         previousStatus: 'waiting',

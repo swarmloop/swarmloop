@@ -11,6 +11,7 @@ import { ARTIFACTS } from './contract/artifacts';
 
 export interface OpenedStep {
   run: RunEntity;
+  attemptId: string;
   prior: RunEntity | null;
   previousStep: string;
   previousStatus: string;
@@ -29,8 +30,10 @@ function failureText(line: string): string {
 export async function openStep(runs: RunRepository, clock: Clock, key: string, step: StepName): Promise<OpenedStep> {
   const started = clock.now();
   const prior = await runs.findRun(key);
+  const run = await runs.begin(key, step);
   return {
-    run: await runs.begin(key, step),
+    run,
+    attemptId: run.activeAttempt ?? '',
     prior,
     previousStep: prior?.currentStep ?? step,
     previousStatus: prior?.status ?? 'waiting',
@@ -46,6 +49,7 @@ export async function closeStep(input: {
   root: string;
   clock: Clock;
   run: RunEntity;
+  attemptId: string;
   previousStep: string;
   previousStatus: string;
   step: StepName;
@@ -68,9 +72,8 @@ export async function closeStep(input: {
     input.visit.documents = docs;
     input.visit.document = null;
   }
-  await input.visits.finishVisit(input.run, input.visit);
-  input.run.stepStartedAt = null;
-  await input.runs.saveRun(input.run);
+  await input.visits.finalize(input.attemptId, input.run, input.visit);
+  input.runs.notify(input.run.key);
 
   return { exitCode: input.exitCode, message: input.line };
 }

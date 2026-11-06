@@ -213,6 +213,7 @@ abstract class StepCore implements Step {
       root: root(this.config),
       clock: this.clock,
       run: opened.run,
+      attemptId: opened.attemptId,
       previousStep: opened.previousStep,
       previousStatus: opened.previousStatus,
       step: this.name,

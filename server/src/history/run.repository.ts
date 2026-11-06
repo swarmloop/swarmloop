@@ -2,7 +2,9 @@ import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
+import { randomUUID } from 'crypto';
 import { Clock } from '../core/clock';
+import { SERVER_INSTANCE } from '../core/server-instance';
 import { LiveHub } from '../live/live.hub';
 import { existsSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
@@ -76,47 +78,91 @@ export class RunRepository {
   }
 
   async begin(key: string, step: string): Promise<RunEntity> {
-    const existing = await this.findRun(key);
+    return this.claim(key, step);
+  }
+
+  /** Takes the run for a step with one conditional write. The loser of a race gets `already running`. */
+  async claim(key: string, step: string): Promise<RunEntity> {
+    for (let tries = 0; tries < 2; tries++) {
+      const existing = await this.findRun(key);
+      if (!existing) {
+        return this.insertClaimed(key, step);
+      }
+      if (this.held(existing)) {
+        break;
+      }
+      const runtime = this.config.env.RUNTIME;
+      const now = this.clock.iso();
+      const claimed = await this.runs
+        .createQueryBuilder()
+        .update(RunEntity)
+        .set({
+          status: 'running',
+          currentStep: step,
+          runtime,
+          ownerPid: process.pid,
+          ownerInstance: SERVER_INSTANCE,
+          activeAttempt: randomUUID(),
+          stepStartedAt: now,
+          updatedAt: now,
+          revision: () => 'revision + 1',
+        })
+        .where('key = :key AND revision = :revision', { key, revision: existing.revision })
+        .execute();
+      if (claimed.affected) {
+        // Only the winner touches the live spend and the resume note; a loser must not disturb the run it lost to.
+        this.live?.clearSpend(key);
+        if (existing.runtime !== runtime) {
+          await this.documentRepository.putDocument(existing, 'shell_resume', 'clear\n');
+        }
+        const claimedRun = await this.runs.findOneByOrFail({ key });
+        this.notify(key);
+        return claimedRun;
+      }
+    }
+    throw new SwarmloopError(`${key} is already running`);
+  }
+
+  private async insertClaimed(key: string, step: string): Promise<RunEntity> {
+    const env = this.config.env;
     const now = this.clock.iso();
-    if (!existing) {
-      const env = this.config.env;
-      const created = this.runs.create({
-        key,
-        status: 'running',
-        currentStep: step,
-        runtime: env.RUNTIME,
-        requirementsVia: env.REQUIREMENTS_VIA,
-        issueTracker: env.ISSUE_TRACKER,
-        codeHost: '',
-        attemptsReview: 0,
-        attemptsQa: 0,
-        attemptsPipeline: 0,
-        agentCalls: 0,
-        spentUsd: 0,
-        targetPath: null,
-        projects: null,
-        ownerPid: process.pid,
-        prompt: null,
-        createdAt: now,
-        updatedAt: now,
-        stepStartedAt: now,
-      });
-      return this.saveRun(created);
+    const created = this.runs.create({
+      key,
+      status: 'running',
+      currentStep: step,
+      runtime: env.RUNTIME,
+      requirementsVia: env.REQUIREMENTS_VIA,
+      issueTracker: env.ISSUE_TRACKER,
+      codeHost: '',
+      attemptsReview: 0,
+      attemptsQa: 0,
+      attemptsPipeline: 0,
+      agentCalls: 0,
+      spentUsd: 0,
+      targetPath: null,
+      projects: null,
+      ownerPid: process.pid,
+      ownerInstance: SERVER_INSTANCE,
+      activeAttempt: randomUUID(),
+      revision: 0,
+      prompt: null,
+      createdAt: now,
+      updatedAt: now,
+      stepStartedAt: now,
+    });
+    try {
+      return await this.saveRun(created);
+    } catch (error) {
+      if (String(error).includes('UNIQUE constraint failed: runs.key')) {
+        throw new SwarmloopError(`${key} is already running`);
+      }
+      throw error;
     }
-    if (this.held(existing)) {
-      throw new SwarmloopError(`${key} is already running`);
-    }
-    this.live?.clearSpend(key);
-    const runtime = this.config.env.RUNTIME;
-    if (existing.runtime !== runtime) {
-      existing.runtime = runtime;
-      await this.documentRepository.putDocument(existing, 'shell_resume', 'clear\n');
-    }
-    existing.status = 'running';
-    existing.currentStep = step;
-    existing.ownerPid = process.pid;
-    existing.stepStartedAt = now;
-    return this.saveRun(existing);
+  }
+
+  /** Tells the dashboard about a write that bypassed `saveRun`. */
+  notify(key: string): void {
+    this.live?.changed(key);
   }
 
   async saveRun(run: RunEntity): Promise<RunEntity> {
@@ -152,7 +198,10 @@ export class RunRepository {
   }
 
   held(run: RunEntity): boolean {
-    return run.status === 'running' && pidAlive(run.ownerPid);
+    return (
+      run.status === 'running' &&
+      (pidAlive(run.ownerPid) || (run.ownerInstance === SERVER_INSTANCE && run.activeAttempt !== null))
+    );
   }
 
   async durationByRun(): Promise<Map<number, number>> {

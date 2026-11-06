@@ -1,27 +1,108 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, In, Repository } from 'typeorm';
+import type { EntityManager } from 'typeorm';
 import { summarizeSamples } from './visit';
 import type { VisitDraft } from './visit';
-import { StepStatEntity, ResourceSampleEntity, AgentExchangeEntity, HttpCallEntity, DocumentEntity } from './entities';
-import type { RunEntity } from './entities';
+import {
+  StepStatEntity,
+  ResourceSampleEntity,
+  AgentExchangeEntity,
+  HttpCallEntity,
+  DocumentEntity,
+  RunEntity,
+} from './entities';
+
+interface VisitTables {
+  stepStats: Repository<StepStatEntity>;
+  samples: Repository<ResourceSampleEntity>;
+  exchanges: Repository<AgentExchangeEntity>;
+  httpCalls: Repository<HttpCallEntity>;
+  documents: Repository<DocumentEntity>;
+}
+
+function tablesOf(manager: EntityManager): VisitTables {
+  return {
+    stepStats: manager.getRepository(StepStatEntity),
+    samples: manager.getRepository(ResourceSampleEntity),
+    exchanges: manager.getRepository(AgentExchangeEntity),
+    httpCalls: manager.getRepository(HttpCallEntity),
+    documents: manager.getRepository(DocumentEntity),
+  };
+}
+
+const DUPLICATE_ATTEMPT = 'UNIQUE constraint failed: step_stats.attempt_id';
 
 @Injectable()
 export class VisitRepository {
+  private readonly logger = new Logger(VisitRepository.name);
+
   constructor(
     @InjectRepository(StepStatEntity) private readonly stepStats: Repository<StepStatEntity>,
     @InjectRepository(ResourceSampleEntity) private readonly samples: Repository<ResourceSampleEntity>,
     @InjectRepository(AgentExchangeEntity) private readonly exchanges: Repository<AgentExchangeEntity>,
     @InjectRepository(HttpCallEntity) private readonly httpCalls: Repository<HttpCallEntity>,
     @InjectRepository(DocumentEntity) private readonly documents: Repository<DocumentEntity>,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   async finishVisit(run: RunEntity, visit: VisitDraft): Promise<StepStatEntity> {
-    const previous = await this.stepStats.count({ where: { runId: run.id, step: visit.step } });
+    return this.insertVisit(this.tables, run, visit, null);
+  }
+
+  /**
+   * Stores the visit and moves the run on in one transaction, if `attemptId` is still the run's active attempt.
+   * A repeat of an attempt returns its stored visit. A stale attempt stores nothing and returns null.
+   * Either way `run` ends up as the row in the database.
+   */
+  async finalize(attemptId: string, run: RunEntity, visit: VisitDraft): Promise<StepStatEntity | null> {
+    const stat = await this.dataSource
+      .transaction(async (manager) => {
+        const stored = await manager.getRepository(StepStatEntity).findOneBy({ attemptId });
+        if (stored) {
+          return stored;
+        }
+        const { id, ...fields } = run;
+        const moved = await manager
+          .getRepository(RunEntity)
+          .createQueryBuilder()
+          .update()
+          .set({
+            ...fields,
+            ownerPid: null,
+            stepStartedAt: null,
+            activeAttempt: null,
+            updatedAt: visit.finishedAt,
+            revision: () => 'revision + 1',
+          })
+          .where('id = :id AND active_attempt = :attemptId', { id, attemptId })
+          .execute();
+        return moved.affected ? this.insertVisit(tablesOf(manager), run, visit, attemptId) : null;
+      })
+      .catch(async (error: unknown) => {
+        if (String(error).includes(DUPLICATE_ATTEMPT)) {
+          return this.stepStats.findOneBy({ attemptId });
+        }
+        throw error;
+      });
+    if (!stat) {
+      this.logger.warn(`stale attempt ${attemptId} of ${run.key}`);
+    }
+    Object.assign(run, await this.dataSource.getRepository(RunEntity).findOneByOrFail({ id: run.id }));
+    return stat;
+  }
+
+  private async insertVisit(
+    { stepStats, samples, exchanges, httpCalls, documents }: VisitTables,
+    run: RunEntity,
+    visit: VisitDraft,
+    attemptId: string | null,
+  ): Promise<StepStatEntity> {
+    const previous = await stepStats.count({ where: { runId: run.id, step: visit.step } });
     const stats = summarizeSamples(visit.samples);
     const now = visit.finishedAt;
-    const stat = await this.stepStats.save(
-      this.stepStats.create({
+    const stat = await stepStats.save(
+      stepStats.create({
         runId: run.id,
         step: visit.step,
         attempt: previous + 1,
@@ -42,11 +123,12 @@ export class VisitRepository {
         memAvg: stats.memAvg,
         memPeak: stats.memPeak,
         resumed: visit.resumed ? 1 : 0,
+        attemptId,
       }),
     );
     for (const sample of visit.samples) {
-      await this.samples.save(
-        this.samples.create({
+      await samples.save(
+        samples.create({
           stepStatId: stat.id,
           sampledAt: sample.sampledAt,
           cpuPercent: sample.cpuPercent,
@@ -55,8 +137,8 @@ export class VisitRepository {
       );
     }
     for (const exchange of visit.exchanges ?? (visit.exchange ? [visit.exchange] : [])) {
-      await this.exchanges.save(
-        this.exchanges.create({
+      await exchanges.save(
+        exchanges.create({
           stepStatId: stat.id,
           model: exchange.model,
           startedAt: exchange.startedAt,
@@ -71,8 +153,8 @@ export class VisitRepository {
       );
     }
     for (const call of visit.httpCalls) {
-      await this.httpCalls.save(
-        this.httpCalls.create({
+      await httpCalls.save(
+        httpCalls.create({
           runId: run.id,
           stepStatId: stat.id,
           provider: call.provider,
@@ -86,13 +168,13 @@ export class VisitRepository {
       );
     }
     for (const document of visit.documents ?? (visit.document ? [visit.document] : [])) {
-      const latest = await this.documents.findOne({
+      const latest = await documents.findOne({
         where: { runId: run.id, kind: document.kind },
         order: { id: 'DESC' },
       });
       if (latest?.body !== document.body) {
-        await this.documents.save(
-          this.documents.create({
+        await documents.save(
+          documents.create({
             runId: run.id,
             stepStatId: stat.id,
             kind: document.kind,
@@ -105,6 +187,16 @@ export class VisitRepository {
       }
     }
     return stat;
+  }
+
+  private get tables(): VisitTables {
+    return {
+      stepStats: this.stepStats,
+      samples: this.samples,
+      exchanges: this.exchanges,
+      httpCalls: this.httpCalls,
+      documents: this.documents,
+    };
   }
 
   async saveStat(stat: StepStatEntity): Promise<void> {
