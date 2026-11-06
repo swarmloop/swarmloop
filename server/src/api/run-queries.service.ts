@@ -9,6 +9,7 @@ import { VisitRepository } from '../history/visit.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { EventRepository } from '../history/event.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
+import { StepEventLog } from '../history/step-event.log';
 import { root } from '../history/run-paths';
 import { Charge, chargeStream, modelForStep } from '../agent/spend';
 import { loadPriceTable } from '../agent/prices';
@@ -20,6 +21,7 @@ import { isReviewStep } from '../contract/steps';
 import { parsePaths } from '../git/commit-paths';
 import { renderProjects, storedProjects } from '../steps/prepare/checkout-path';
 import { reviewDecision } from '../steps/code-review/code-review-record';
+import type { StepEventPage } from '../contract/step-events';
 import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
@@ -37,7 +39,7 @@ import {
 } from './run-view/flow';
 import { belongsToVisit, documentView, filesOf, withReturnNotes } from './run-view/documents';
 import { launchView, liveVisit } from './run-view/live';
-import { requireRun } from './run-queries-run';
+import { eventPaging, requireRun } from './run-queries-run';
 import { openSpend } from './run-queries-spend';
 export { requireRun } from './run-queries-run';
 
@@ -50,6 +52,7 @@ export class RunQueriesService {
     private readonly flows: FlowRepository,
     private readonly events: EventRepository,
     private readonly checkouts: CheckoutRepository,
+    private readonly stepEventLog: StepEventLog,
     private readonly pipeline: PipelineService,
     private readonly config: AppConfig,
     private readonly clock: Clock,
@@ -119,6 +122,12 @@ export class RunQueriesService {
         renderProjects([...storedProjects(run.projects), ...storedProjects(latest(documents, 'pending_repos'))]),
       ),
     };
+  }
+
+  /** The events of a run, oldest first. `after` is a `seq`; `limit` is at most 500. */
+  async stepEventPage(key: string, query: { step?: string; after?: string; limit?: string }): Promise<StepEventPage> {
+    const run = await requireRun(this.runs, key);
+    return this.stepEventLog.page(run.id, eventPaging(query));
   }
 
   async step(key: string, name: string): Promise<StepView> {

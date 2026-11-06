@@ -17,7 +17,15 @@ async function plan(agent: jest.Mock, questions: string) {
   await golden.seedDocuments.putDocument(seeded, 'repos', 'billing-api\n');
   await golden.seedDocuments.putDocument(seeded, 'questions', questions);
   const step = new PlanStep(
-    new StepKernel(golden.runs, golden.documents, golden.visits, golden.flows, golden.clock, golden.config),
+    new StepKernel(
+      golden.runs,
+      golden.documents,
+      golden.visits,
+      golden.flows,
+      golden.clock,
+      golden.config,
+      golden.stepEvents,
+    ),
     golden.sandbox,
     golden.launcher,
   );

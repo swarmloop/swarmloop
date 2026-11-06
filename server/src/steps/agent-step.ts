@@ -90,6 +90,10 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
    */
   protected abstract produce(input: StepInput<S>, ctx: ModelStepContext, options: StepOptions): Promise<StepResult>;
 
+  protected override agentProfile(): AgentProfile {
+    return this.profile(this.config.env);
+  }
+
   protected override ready(): Promise<void> {
     return this.sandbox.assertReady(this.config.env.RUNTIME);
   }

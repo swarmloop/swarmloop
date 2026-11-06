@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Res } from '@nestjs/common';
 import {
   AddProjectBody,
   AnswersBody,
@@ -24,6 +24,7 @@ import {
   StartStepBody,
   StepView,
 } from '../contract/api';
+import type { StepEventPage } from '../contract/step-events';
 import { ChatService } from './chat.service';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
@@ -53,6 +54,16 @@ export class RunsController {
   @Get('runs/:key/history')
   history(@Param('key') key: string): Promise<HistoryView> {
     return this.queries.readHistory(key);
+  }
+
+  @Get('runs/:key/events')
+  events(
+    @Param('key') key: string,
+    @Query('step') step?: string,
+    @Query('after') after?: string,
+    @Query('limit') limit?: string,
+  ): Promise<StepEventPage> {
+    return this.queries.stepEventPage(key, { step, after, limit });
   }
 
   @Get('runs/:key/steps/:step')

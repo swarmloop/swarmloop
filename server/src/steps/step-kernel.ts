@@ -3,10 +3,11 @@ import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { DocumentRepository } from '../history/document.repository';
 import { FlowRepository } from '../history/flow.repository';
+import { StepEventLog } from '../history/step-event.log';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 
-/** The services every step is built on. A step takes this one dependency instead of six. */
+/** The services every step is built on. A step takes this one dependency instead of seven. */
 @Injectable()
 export class StepKernel {
   constructor(
@@ -16,5 +17,6 @@ export class StepKernel {
     readonly flows: FlowRepository,
     readonly clock: Clock,
     readonly config: AppConfig,
+    readonly stepEvents: StepEventLog,
   ) {}
 }

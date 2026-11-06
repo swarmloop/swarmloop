@@ -13,6 +13,20 @@
       "kind": "questions"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "plan"
+    },
+    {
+      "kind": "input.received",
+      "step": "plan"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "plan"
+    }
+  ],
   "flows": [],
   "loopEvents": [],
   "reads": {

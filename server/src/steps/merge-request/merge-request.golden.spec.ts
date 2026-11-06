@@ -8,6 +8,7 @@ import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { AppConfig } from '../../config/env';
+import { StepEventLog } from '../../history/step-event.log';
 import { Clock } from '../../core/clock';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
 import { runGit } from '../../git/git-repo.spec-helpers';
@@ -69,6 +70,7 @@ describe('merge-request step golden traces', () => {
         app.get(FlowRepository),
         app.get(Clock),
         app.get(AppConfig),
+        app.get(StepEventLog),
       ),
       app.get(CodeHostRegistry),
     );

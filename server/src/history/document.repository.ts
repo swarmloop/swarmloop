@@ -52,6 +52,21 @@ export class DocumentRepository {
     return found ? { id: found.id, body: found.body } : null;
   }
 
+  /** The id of the latest document of each kind that the run has. */
+  async latestIds(runId: number, kinds: string[]): Promise<Map<string, number>> {
+    if (kinds.length === 0) {
+      return new Map();
+    }
+    const found: { kind: string; id: number }[] = await this.documents
+      .createQueryBuilder('document')
+      .select('document.kind', 'kind')
+      .addSelect('MAX(document.id)', 'id')
+      .where('document.runId = :runId AND document.kind IN (:...kinds)', { runId, kinds })
+      .groupBy('document.kind')
+      .getRawMany();
+    return new Map(found.map(({ kind, id }) => [kind, Number(id)]));
+  }
+
   async hasDocument(key: string, kind: string): Promise<boolean> {
     const run = await this.runs.findOne({ where: { key } });
     if (!run) {

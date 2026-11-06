@@ -6,6 +6,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
 import { AppConfig } from '../../config/env';
+import { StepEventLog } from '../../history/step-event.log';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { CheckoutRepository } from '../../history/checkout.repository';
@@ -59,6 +60,7 @@ describe('prepare step golden traces', () => {
       app.get(FlowRepository),
       new FakeClock(),
       app.get(AppConfig),
+      app.get(StepEventLog),
     );
     const step = new PrepareStep(
       kernel,

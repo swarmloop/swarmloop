@@ -28,6 +28,20 @@ describe('httpStatus', () => {
 });
 
 describe('RunsController', () => {
+  it('passes the paging of the events to the queries', async () => {
+    const page = { events: [], next: null };
+    const queries = { stepEventPage: jest.fn().mockResolvedValue(page) };
+    const controller = new RunsController(
+      queries as unknown as RunQueriesService,
+      {} as RunCommandsService,
+      {} as RunRebaseService,
+      {} as ChatService,
+      {} as ShellService,
+    );
+    expect(await controller.events('proj-1', 'commit', '4', '50')).toBe(page);
+    expect(queries.stepEventPage).toHaveBeenCalledWith('proj-1', { step: 'commit', after: '4', limit: '50' });
+  });
+
   it('sets 202 when a created run starts', async () => {
     const commands = { start: jest.fn().mockResolvedValue({ key: 'proj-1', status: 'started' }) };
     const response = { status: jest.fn() };

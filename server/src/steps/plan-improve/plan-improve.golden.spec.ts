@@ -18,7 +18,15 @@ async function improve(agent: jest.Mock) {
   await golden.seedDocuments.putDocument(seeded, 'requirements', withPlan('{"prompt":"ship the field"}\n', unreviewed));
   await golden.seedDocuments.putDocument(seeded, 'repos', 'billing-api\n');
   const step = new PlanImproveStep(
-    new StepKernel(golden.runs, golden.documents, golden.visits, golden.flows, golden.clock, golden.config),
+    new StepKernel(
+      golden.runs,
+      golden.documents,
+      golden.visits,
+      golden.flows,
+      golden.clock,
+      golden.config,
+      golden.stepEvents,
+    ),
     golden.sandbox,
     golden.launcher,
   );

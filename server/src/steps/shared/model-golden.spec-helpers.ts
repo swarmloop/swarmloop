@@ -12,6 +12,7 @@ import { AppConfig } from '../../config/env';
 import { Clock } from '../../core/clock';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { DocumentRepository } from '../../history/document.repository';
+import { StepEventLog } from '../../history/step-event.log';
 import { FlowRepository } from '../../history/flow.repository';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
@@ -53,6 +54,7 @@ export async function goldenApp(prefix: string, options: GoldenOptions = {}) {
     flows: app.get(FlowRepository),
     clock: app.get(Clock),
     config: app.get(AppConfig),
+    stepEvents: app.get(StepEventLog),
     sandbox: app.get(SandboxService),
     launcher: app.get(AgentLauncher),
     trace: (key: string, step: string) => traceRun(app.get(DataSource), key, { [step]: documents.kinds }),

@@ -35,7 +35,15 @@ async function requirements(fetch: Fetch) {
     configure: (builder) => builder.overrideProvider(ISSUE_TRACKER).useValue(tracker),
   });
   const step = new RequirementsStep(
-    new StepKernel(golden.runs, golden.documents, golden.visits, golden.flows, golden.clock, golden.config),
+    new StepKernel(
+      golden.runs,
+      golden.documents,
+      golden.visits,
+      golden.flows,
+      golden.clock,
+      golden.config,
+      golden.stepEvents,
+    ),
     tracker,
     golden.app.get<RequirementsSource>(REQUIREMENTS_SOURCE),
   );

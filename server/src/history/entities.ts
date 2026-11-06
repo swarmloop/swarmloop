@@ -331,6 +331,37 @@ export class FlowEntity {
   createdAt!: string;
 }
 
+@Entity('step_events')
+@Index('IDX_step_events_run_seq', ['runId', 'seq'], { unique: true })
+export class StepEventEntity {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Column({ name: 'run_id', type: 'integer' })
+  runId!: number;
+
+  @Column({ name: 'attempt_id' })
+  attemptId!: string;
+
+  @Column()
+  step!: string;
+
+  @Column({ type: 'integer' })
+  seq!: number;
+
+  @Column()
+  kind!: string;
+
+  @Column({ type: 'text' })
+  payload!: string;
+
+  @Column({ name: 'occurred_at' })
+  occurredAt!: string;
+
+  @Column({ name: 'recorded_at' })
+  recordedAt!: string;
+}
+
 export const entities = [
   RunEntity,
   DocumentEntity,
@@ -343,4 +374,5 @@ export const entities = [
   CheckoutEntity,
   DenyPathEntity,
   FlowEntity,
+  StepEventEntity,
 ];

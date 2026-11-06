@@ -9,6 +9,36 @@
       "kind": "repos"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "research"
+    },
+    {
+      "kind": "input.received",
+      "step": "research"
+    },
+    {
+      "kind": "agent.launched",
+      "step": "research"
+    },
+    {
+      "kind": "agent.finished",
+      "step": "research"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "research"
+    },
+    {
+      "kind": "handoff.sent",
+      "step": "research"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "research"
+    }
+  ],
   "flows": [],
   "loopEvents": [],
   "reads": {

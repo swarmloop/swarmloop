@@ -1,5 +1,59 @@
 {
   "documentsOutsideVisits": [],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "requirements"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "requirements"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "prepare"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "prepare"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "research"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "research"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "research"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "research"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "research"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "research"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "research"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "research"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "research"
+    }
+  ],
   "flows": [],
   "loopEvents": [],
   "reads": {

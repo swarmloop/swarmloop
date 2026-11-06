@@ -5,6 +5,28 @@
       "kind": "pipeline_ref"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "pipeline"
+    },
+    {
+      "kind": "input.received",
+      "step": "pipeline"
+    },
+    {
+      "kind": "input.received",
+      "step": "pipeline"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "pipeline"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "pipeline"
+    }
+  ],
   "flows": [],
   "loopEvents": [],
   "reads": {

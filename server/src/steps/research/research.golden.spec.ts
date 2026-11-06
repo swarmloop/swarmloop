@@ -15,7 +15,15 @@ async function research(agent: jest.Mock) {
   await golden.runs.saveRun(seeded);
   await golden.seedDocuments.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
   const step = new ResearchStep(
-    new StepKernel(golden.runs, golden.documents, golden.visits, golden.flows, golden.clock, golden.config),
+    new StepKernel(
+      golden.runs,
+      golden.documents,
+      golden.visits,
+      golden.flows,
+      golden.clock,
+      golden.config,
+      golden.stepEvents,
+    ),
     golden.sandbox,
     golden.launcher,
   );

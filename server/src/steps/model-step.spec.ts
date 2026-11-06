@@ -325,7 +325,15 @@ describe('agent step without requirements', () => {
           await golden.seedDocuments.putDocument(run, 'requirements', stored);
         }
         const step = new ResearchStep(
-          new StepKernel(golden.runs, golden.documents, golden.visits, golden.flows, golden.clock, golden.config),
+          new StepKernel(
+            golden.runs,
+            golden.documents,
+            golden.visits,
+            golden.flows,
+            golden.clock,
+            golden.config,
+            golden.stepEvents,
+          ),
           golden.sandbox,
           golden.launcher,
         );
@@ -354,7 +362,15 @@ describe('agent step failure', () => {
       await golden.runs.saveRun(run);
       await golden.seedDocuments.putDocument(run, 'requirements', '{"prompt":"ship the field"}\n');
       const step = new ResearchStep(
-        new StepKernel(golden.runs, golden.documents, golden.visits, golden.flows, golden.clock, golden.config),
+        new StepKernel(
+          golden.runs,
+          golden.documents,
+          golden.visits,
+          golden.flows,
+          golden.clock,
+          golden.config,
+          golden.stepEvents,
+        ),
         golden.sandbox,
         golden.launcher,
       );

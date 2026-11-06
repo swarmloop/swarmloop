@@ -9,6 +9,116 @@
       "kind": "repos"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "commit"
+    },
+    {
+      "kind": "input.received",
+      "step": "commit"
+    },
+    {
+      "kind": "input.received",
+      "step": "commit"
+    },
+    {
+      "kind": "input.received",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "commit"
+    },
+    {
+      "kind": "handoff.sent",
+      "step": "commit"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "commit"
+    }
+  ],
   "flows": [],
   "git": {
     "demo": {

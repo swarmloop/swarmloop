@@ -1,7 +1,8 @@
 import { execFile } from 'child_process';
 import { realpathSync } from 'fs';
-import { isAbsolute, join, resolve, sep } from 'path';
+import { basename, isAbsolute, join, resolve, sep } from 'path';
 import { rawEnv } from '../config/process-env';
+import { startCommandSpan } from '../core/step-event-scope';
 import { SwarmloopError } from '../core/swarmloop-error';
 
 export function git(args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
@@ -17,6 +18,14 @@ const GIT_OUTPUT_CAP = 64_000_000;
 function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Promise<string> {
   const command = withSafeDirectory(args, checkoutRoots());
   const env = extra ? { ...rawEnv(), ...extra } : undefined;
+  const directory = directoryArg(args);
+  const finish = startCommandSpan({
+    actor: 'server',
+    repo: directory ? basename(directory) : '',
+    cwd: directory ? resolve(directory) : process.cwd(),
+    executable: 'git',
+    args,
+  });
   return new Promise((done, fail) => {
     const child = execFile(
       'git',
@@ -29,6 +38,7 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Pro
         ...(input === undefined ? {} : { stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'] }),
       },
       (error: unknown, stdout, stderr) => {
+        finish(commandOutcome(error));
         if (error) {
           const message =
             typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'
@@ -55,6 +65,26 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Pro
       child.stdin.end(input);
     }
   });
+}
+
+/** How a git process ended. The timeout is the only thing that kills it on purpose, so another signal is a cancel. */
+function commandOutcome(error: unknown): {
+  exitCode: number | null;
+  signal: string | null;
+  timedOut: boolean;
+  cancelled: boolean;
+} {
+  if (!error) {
+    return { exitCode: 0, signal: null, timedOut: false, cancelled: false };
+  }
+  const { code, signal, killed } = error as { code?: unknown; signal?: unknown; killed?: unknown };
+  const signalName = typeof signal === 'string' ? signal : null;
+  return {
+    exitCode: typeof code === 'number' ? code : null,
+    signal: signalName,
+    timedOut: killed === true,
+    cancelled: signalName !== null && killed !== true,
+  };
 }
 
 export function gitMissing(error: unknown): boolean {
