@@ -7,6 +7,8 @@ export function fileView(step: string, body: string): StepView {
   return {
     step,
     checks: [],
+    descriptor: { name: step, kind: 'agent' },
+    eventsCursor: 0,
     visits: [
       {
         id: -1,

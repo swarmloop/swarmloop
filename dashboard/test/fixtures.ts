@@ -80,6 +80,8 @@ export function stepView(overrides: Partial<StepView> = {}): StepView {
     step: 'implement',
     visits: [visitView()],
     checks: [],
+    descriptor: { name: 'implement', kind: 'agent' },
+    eventsCursor: 0,
     ...overrides,
   };
 }

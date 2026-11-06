@@ -62,6 +62,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     HistoryModule,
     EnvironmentService,
     AgentLauncher,
+    StepRegistry,
   ],
 })
 export class PipelineModule {}

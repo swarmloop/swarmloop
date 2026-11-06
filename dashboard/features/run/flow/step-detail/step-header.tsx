@@ -8,14 +8,16 @@ import Schedule from '@mui/icons-material/Schedule';
 import Speed from '@mui/icons-material/Speed';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Link from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { statusColor } from '../../../../theme/theme';
 import { stepLabel } from '../../phases';
+import { problemId } from '../../transcript/problem-card';
 import type { StepMetricKind } from '../../step-metrics';
 import { stepMetrics } from '../../step-metrics';
 import { shownStatus } from '../../step-view';
-import type { StepView } from '@contract/api';
+import type { StepDescriptor, StepView } from '@contract/api';
 
 const stepMetricIcon: Partial<Record<StepMetricKind, typeof Schedule>> = {
   duration: Schedule,
@@ -25,6 +27,17 @@ const stepMetricIcon: Partial<Record<StepMetricKind, typeof Schedule>> = {
   cpu: Speed,
   memory: MemoryIcon,
 };
+
+function describe({ kind, agent, reviewers }: StepDescriptor): string {
+  const parts: string[] = [kind];
+  if (agent) {
+    parts.push(agent.model, agent.mode);
+  }
+  if (reviewers) {
+    parts.push(`reviewers: ${reviewers.map((item) => item.name).join(', ')}`);
+  }
+  return parts.join(' · ');
+}
 
 export function StepHeader({
   step,
@@ -40,6 +53,7 @@ export function StepHeader({
   label,
   shownDuration,
   shownAttempt,
+  problemId: problem,
 }: {
   step: string;
   runStatus?: string;
@@ -54,6 +68,8 @@ export function StepHeader({
   label: string;
   shownDuration: number;
   shownAttempt: number;
+  /** The `eventId` of the first problem the step recorded. */
+  problemId: string | null;
 }): ReactElement {
   return (
     <>
@@ -99,6 +115,14 @@ export function StepHeader({
             })}
         </Box>
       </Box>
+      <Typography sx={{ mt: 0.5, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'text.secondary' }}>
+        {describe(view.descriptor)}
+      </Typography>
+      {problem ? (
+        <Link href={`#${problemId(problem)}`} underline="always" sx={{ fontSize: 13 }}>
+          Error: go to the problem
+        </Link>
+      ) : null}
       {visit ? (
         <Box
           sx={{

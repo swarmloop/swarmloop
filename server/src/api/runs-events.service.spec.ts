@@ -48,4 +48,27 @@ describe('run events api', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it('gives a step view its descriptor and the last event seq of the run', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-events-'));
+    const app = await boot(root);
+    try {
+      const run = await save(app.get(RunRepository), 'proj-8', 'commit', 'waiting');
+      const queries = app.get(RunQueriesService);
+      const before = await queries.step('proj-8', 'implement');
+      expect(before.eventsCursor).toBe(0);
+      expect(before.descriptor.name).toBe('implement');
+      expect(before.descriptor.kind).toBe('agent');
+      expect(before.descriptor.agent?.model).toBeTruthy();
+      await app.get(StepEventLog).append([event(run.id, 1, 'commit'), event(run.id, 2, 'commit')]);
+      expect((await queries.step('proj-8', 'commit')).eventsCursor).toBe(2);
+      const reviewer = await queries.step('proj-8', 'code-review-quality');
+      expect(reviewer.descriptor.name).toBe('code-review');
+      expect(reviewer.descriptor.reviewers?.length).toBeGreaterThan(0);
+      expect((await queries.step('proj-8', 'done')).descriptor).toEqual({ name: 'done', kind: 'server' });
+    } finally {
+      await app.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

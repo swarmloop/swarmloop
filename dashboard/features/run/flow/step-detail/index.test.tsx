@@ -1,13 +1,15 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ComponentProps } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LiveBridgeProvider } from '../../../shell';
-import { getStep } from '../../../../lib/endpoints';
-import { stepView } from '../../../../test/fixtures';
+import { QueryWrapper } from '../../../../test/query-wrapper';
+import { getStep, getStepEvents } from '../../../../lib/endpoints';
+import { stepView, visitView } from '../../../../test/fixtures';
+import { commandEvents } from '../../../../test/step-events';
 import { StepDetail } from './index';
 
-vi.mock('../../../../lib/endpoints', () => ({ getStep: vi.fn(), getRunLog: vi.fn() }));
+vi.mock('../../../../lib/endpoints', () => ({ getStep: vi.fn(), getStepEvents: vi.fn(), getRunLog: vi.fn() }));
 vi.mock('../../../../lib/live', async () => (await import('../../../../test/fake-socket')).fakeLive());
 
 function detail(overrides: Partial<ComponentProps<typeof StepDetail>> = {}) {
@@ -21,11 +23,20 @@ function detail(overrides: Partial<ComponentProps<typeof StepDetail>> = {}) {
       attempts={0}
       {...overrides}
     />,
-    { wrapper: LiveBridgeProvider },
+    { wrapper: Wrapper },
+  );
+}
+
+function Wrapper({ children }: { children: ReactNode }) {
+  return (
+    <QueryWrapper>
+      <LiveBridgeProvider>{children}</LiveBridgeProvider>
+    </QueryWrapper>
   );
 }
 
 beforeEach(() => {
+  vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
   vi.mocked(getStep).mockResolvedValue(stepView());
 });
 
@@ -69,5 +80,50 @@ describe('StepDetail', () => {
 
     await screen.findByText('implement');
     expect(screen.queryByRole('button', { name: 'Resume' })).not.toBeInTheDocument();
+  });
+
+  it('shows recorded events as the transcript, with the error in place and linked from the header', async () => {
+    vi.mocked(getStep).mockResolvedValue(
+      stepView({
+        eventsCursor: 3,
+        visits: [
+          visitView({
+            documents: [
+              { kind: 'error', attempt: 1, body: 'boom from the document', createdAt: '2026-01-01T00:00:00.000Z' },
+            ],
+            exchanges: [{ model: 'claude-opus', durationMs: 2500, request: 'a', response: 'b' }],
+          }),
+        ],
+      }),
+    );
+    vi.mocked(getStepEvents).mockResolvedValue({
+      events: commandEvents(1, 's', { executable: 'make', exitCode: 2 }),
+      next: null,
+    });
+
+    detail();
+
+    expect(await screen.findByRole('group', { name: 'Error: exit code 2' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Error/ })).toHaveAttribute('href', '#problem-event-1');
+    expect(screen.queryByText('boom from the document')).not.toBeInTheDocument();
+    expect(screen.queryByText('claude-opus · 2.5s')).not.toBeInTheDocument();
+    expect(getStepEvents).toHaveBeenCalledWith('run-1', 'implement', 0);
+  });
+
+  it('keeps the log of a step with no events, marked legacy', async () => {
+    vi.mocked(getStep).mockResolvedValue(
+      stepView({
+        visits: [
+          visitView({
+            documents: [{ kind: 'log', attempt: 1, body: 'old log line', createdAt: '2026-01-01T00:00:00.000Z' }],
+          }),
+        ],
+      }),
+    );
+
+    detail();
+
+    expect(await screen.findByText('legacy: details not recorded')).toBeInTheDocument();
+    expect(screen.getByText('old log line')).toBeInTheDocument();
   });
 });
