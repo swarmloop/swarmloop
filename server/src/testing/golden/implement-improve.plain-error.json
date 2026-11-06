@@ -1,0 +1,86 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\n  \"prompt\": \"Ship the field\\n\",\n  \"tickets\": [\n    {\n      \"key\": \"PROJ-312\",\n      \"summary\": \"Ship the field\"\n    }\n  ],\n  \"plan\": {\n    \"name\": \"\",\n    \"overview\": \"\",\n    \"items\": [\n      \"add the field\"\n    ],\n    \"decision\": \"approve\"\n  }\n}\n",
+      "kind": "requirements"
+    },
+    {
+      "body": "billing-api\n",
+      "kind": "repos"
+    },
+    {
+      "body": "- changed the field parser\n",
+      "kind": "implementation"
+    },
+    {
+      "body": "null",
+      "kind": "environment:billing-api"
+    }
+  ],
+  "flows": [],
+  "git": {
+    "clone": {
+      "refs": ["refs/heads/feature/PROJ-312-ship-the-field", "refs/heads/main", "refs/remotes/origin/main"],
+      "subjects": ["billing-api"]
+    },
+    "worktree": {
+      "refs": ["refs/heads/feature/PROJ-312-ship-the-field", "refs/heads/main", "refs/remotes/origin/main"],
+      "subjects": ["billing-api"]
+    }
+  },
+  "loopEvents": [],
+  "reads": {
+    "implement-improve": [
+      "requirements",
+      "implementation",
+      "repos",
+      "*",
+      "handoff",
+      "added_repos",
+      "instructions:implement-improve"
+    ]
+  },
+  "result": {
+    "exitCode": 1,
+    "message": "<t> implement-improve failed"
+  },
+  "run": {
+    "agentCalls": 1,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "implement-improve",
+    "runtime": "cursor",
+    "spentUsd": 0.01,
+    "status": "failed"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "implement-improve failed\n",
+          "kind": "error"
+        }
+      ],
+      "exchanges": [
+        {
+          "chatId": "chat-1",
+          "model": "grok-4.7",
+          "requestText": "The only working directory is <work>/billing-api (billing-api). It has source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\n\n\n# Implement improve\n\nThe first pass is already in the working directory named at the top of this prompt.\n\nCheck the change for logical and technical gaps and fix only those. Start from the files this change touched. Open another file only to follow a call from the change or a test the return names. Do not sweep the tree with grep. When there is no gap, leave the files. A pipeline return changes the code or the failed test. Do not leave them. Do not widen the change. Do not implement a linked ticket.\n\nA pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix. When an item changes, end with one plan: block of \"- item\" lines, not a JSON object, holding the full corrected checklist, before implementation and summary. Without a contradiction, do not write plan:.\n\nThe task is the Work tickets together with the Instructions. The Instructions add to the tickets. They do not replace them. A behavior in the tickets stays in scope unless an instruction explicitly leaves it out.\n\nDo not start a service, a database, or the application. Do not run `git commit`, `git push`, or `git add -A`. Do not create a branch.\n\nIf a command is rejected, stop and say so. Do not search the machine. Do not read the home directory, `/opt`, `/proc`, or CLI config. Do not change permissions.\n\nPackage registries are reachable for a library install. Do not call Jira, GitLab, or any other host.\n\nEnd the answer with `summary`, and with `implementation` when this pass changed the files. `implementation` says what this pass changed. When nothing changed and the return is not a pipeline failure, omit `implementation`. `summary` says why the files were left or what changed.\n\n```\nimplementation:\n- item\n\nsummary:\n- why\n```\n\nRequirements:\nWork, and only this work: PROJ-312.\nThe task is the Work tickets together with the Instructions. The Instructions add to the tickets. They do not replace them. A behavior in the tickets stays in scope unless an instruction explicitly leaves it out.\nLinked tickets are context. They can change how the task is done. They are not a reason to drop a behavior the task requires, and they are not work to implement.\n\nInstructions:\nShip the field\n\nWork:\n\n## PROJ-312: Ship the field\n\nPlan:\n{\n  \"name\": \"\",\n  \"overview\": \"\",\n  \"items\": [\n    \"add the field\"\n  ],\n  \"decision\": \"approve\"\n}\n\nImplementation:\n- changed the field parser\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n",
+          "responseText": "implementation:\n- fixed the empty case\n\nsummary:\n- fixed the empty case"
+        }
+      ],
+      "exitCode": 1,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "agent",
+      "model": "grok-4.7",
+      "resumed": false,
+      "status": "failed",
+      "step": "implement-improve",
+      "tokensIn": 10,
+      "tokensOut": 4,
+      "usd": 0.01
+    }
+  ]
+}

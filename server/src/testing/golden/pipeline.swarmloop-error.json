@@ -1,0 +1,49 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "",
+      "kind": "pipeline_ref"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [],
+  "reads": {
+    "pipeline": ["pipeline_ref", "ci_skip"]
+  },
+  "result": {
+    "exitCode": 1,
+    "message": "<t> pipeline ref is missing"
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "pipeline",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "failed"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "pipeline ref is missing\n",
+          "kind": "error"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 1,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "failed",
+      "step": "pipeline",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

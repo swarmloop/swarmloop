@@ -1,0 +1,48 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\"prompt\":\"ship the field\"}\n",
+      "kind": "requirements"
+    },
+    {
+      "body": "billing-api\n",
+      "kind": "repos"
+    },
+    {
+      "body": "- which field is optional?\n",
+      "kind": "questions"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [],
+  "reads": {
+    "plan": ["requirements", "questions", "answers"]
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "plan",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "waiting"
+  },
+  "visits": [
+    {
+      "documents": [],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "plan",
+      "model": "opus-5.5-extra-high",
+      "resumed": false,
+      "status": "waiting",
+      "step": "plan",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\"prompt\":\"ship the field\"}\n",
+      "kind": "requirements"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [],
+  "reads": {
+    "research": ["requirements", "answers", "handoff", "instructions:research"]
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "research",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "failed"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "agent refused the task\n",
+          "kind": "error"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 1,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "plan",
+      "model": "opus-5.5-extra-high",
+      "resumed": false,
+      "status": "failed",
+      "step": "research",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

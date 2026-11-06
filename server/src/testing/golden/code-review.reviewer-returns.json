@@ -1,0 +1,227 @@
+{
+  "agentSteps": [
+    "code-review-performance",
+    "code-review-quality",
+    "code-review-regressions",
+    "code-review-report",
+    "code-review-requirements",
+    "code-review-security"
+  ],
+  "documentsOutsideVisits": [
+    {
+      "body": "{\"prompt\":\"Ship the field\\n\"}\n",
+      "kind": "requirements"
+    },
+    {
+      "body": "billing-api\n",
+      "kind": "repos"
+    },
+    {
+      "body": "- changed the field parser\n",
+      "kind": "implementation"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [
+    {
+      "attempt": 1,
+      "counter": "review",
+      "reason": "review_quality"
+    }
+  ],
+  "reads": {
+    "code-review": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
+    "code-review-performance": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
+    "code-review-quality": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
+    "code-review-regressions": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
+    "code-review-report": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
+    "code-review-requirements": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
+    "code-review-security": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"]
+  },
+  "result": {
+    "exitCode": 0,
+    "message": "<t> code-review waiting\nreview_requirements ok\nreview_quality return\nreview_regressions ok\nreview_security ok\nreview_performance ok"
+  },
+  "run": {
+    "agentCalls": 6,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 1,
+    "currentStep": "implement",
+    "runtime": "cursor",
+    "spentUsd": 0.060000000000000005,
+    "status": "waiting"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "code-review-requirements\n\ndecision: ok\n",
+          "kind": "review_requirements"
+        }
+      ],
+      "exchanges": [
+        {
+          "chatId": "code-review-requirements",
+          "model": "opus-5.5-extra-high",
+          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Requirements review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the code they call. Do not infer the change from file modification times. The task is the Work tickets together with the Instructions. The Instructions add to the tickets. They do not replace them. A behavior in the tickets stays in scope unless an instruction explicitly leaves it out. Linked tickets are context. They can change how the task is done. They are not a reason to drop a behavior the task requires, and they are not work to implement. A missing Context item is not a reason for decision: return. A missing behavior the task requires is a return. The Plan section is the approved checklist. A behavior that checklist removes is not a missing requirement. Extra behavior is judged only against the task. A change that makes a failed pipeline job on this branch pass is part of the task. It is not extra. Do not return it. Check that the change does what that task asks and does not add behavior it does not ask for.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nEnd with a `summary` list, then the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. On a later pass, `decision: ok` when that behavior is fixed, or when it is already what the approved plan asks and the files were left unchanged. Do not ask for a new subsystem. Do not return that behavior again.\n\n```\nsummary:\n- item\n\ndecision: ok\n```\n\nEnd with `decision: ok` when the diff matches the requirements. End with `decision: return` when it misses a requirement or does something extra. A change required by a failed pipeline job on this branch is not extra.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser",
+          "responseText": "code-review-requirements\n\ndecision: ok\n"
+        }
+      ],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "ask",
+      "model": "opus-5.5-extra-high",
+      "resumed": false,
+      "status": "done",
+      "step": "code-review-requirements",
+      "tokensIn": 10,
+      "tokensOut": 4,
+      "usd": 0.01
+    },
+    {
+      "documents": [
+        {
+          "body": "code-review-quality\n\ndecision: return\n",
+          "kind": "review_quality"
+        }
+      ],
+      "exchanges": [
+        {
+          "chatId": "code-review-quality",
+          "model": "opus-5.5-extra-high",
+          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Quality review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files, their tests, and the code they call. Do not infer the change from file modification times. Check clarity, the project's existing practices, and whether the tests cover the change. A component, file, export, import, comment, or commented-out code that this change left with no remaining use is a return.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nEnd with a `summary` list, then the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. On a later pass, `decision: ok` when that behavior is fixed. Do not ask for a new subsystem.\n\n```\nsummary:\n- item\n\ndecision: ok\n```\n\nEnd with `decision: ok` when the requested behavior is clear, the change left no unused component, file, export, import, comment, or commented-out code, and the last return of this angle is fixed. End with `decision: return` only when that behavior is still broken or that leftover remains.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser",
+          "responseText": "code-review-quality\n\ndecision: return\n"
+        }
+      ],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "ask",
+      "model": "opus-5.5-extra-high",
+      "resumed": false,
+      "status": "waiting",
+      "step": "code-review-quality",
+      "tokensIn": 10,
+      "tokensOut": 4,
+      "usd": 0.01
+    },
+    {
+      "documents": [
+        {
+          "body": "code-review-regressions\n\ndecision: ok\n",
+          "kind": "review_regressions"
+        }
+      ],
+      "exchanges": [
+        {
+          "chatId": "code-review-regressions",
+          "model": "opus-5.5-extra-high",
+          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Regressions review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the callers outside that diff. Do not infer the change from file modification times. Look for behavior outside the diff that this change breaks.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nEnd with a `summary` list, then the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. On a later pass, `decision: ok` when that behavior is fixed. Do not ask for a new subsystem.\n\n```\nsummary:\n- item\n\ndecision: ok\n```\n\nEnd with `decision: ok` when existing behavior still holds. End with `decision: return` when a caller or a stored case would break.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser",
+          "responseText": "code-review-regressions\n\ndecision: ok\n"
+        }
+      ],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "ask",
+      "model": "opus-5.5-extra-high",
+      "resumed": false,
+      "status": "done",
+      "step": "code-review-regressions",
+      "tokensIn": 10,
+      "tokensOut": 4,
+      "usd": 0.01
+    },
+    {
+      "documents": [
+        {
+          "body": "code-review-security\n\ndecision: ok\n",
+          "kind": "review_security"
+        }
+      ],
+      "exchanges": [
+        {
+          "chatId": "code-review-security",
+          "model": "opus-5.5-extra-high",
+          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Security review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the code they call. Do not infer the change from file modification times. Look for secrets, missing authorization, injection, and data that should not leave the service.\n\nWhen CI configuration or scripts change, check whether workflow triggers, token permissions, secret access, or runner selection allow unreviewed code to run with privileged access. Report concrete exposure in the diff, not hypothetical findings.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nEnd with a `summary` list, then the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. On a later pass, `decision: ok` when that behavior is fixed. Do not ask for a new subsystem.\n\n```\nsummary:\n- item\n\ndecision: ok\n```\n\nEnd with `decision: ok` when you find no critical issue. End with `decision: return` when a critical finding needs a fix.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser",
+          "responseText": "code-review-security\n\ndecision: ok\n"
+        }
+      ],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "ask",
+      "model": "opus-5.5-extra-high",
+      "resumed": false,
+      "status": "done",
+      "step": "code-review-security",
+      "tokensIn": 10,
+      "tokensOut": 4,
+      "usd": 0.01
+    },
+    {
+      "documents": [
+        {
+          "body": "code-review-performance\n\ndecision: ok\n",
+          "kind": "review_performance"
+        }
+      ],
+      "exchanges": [
+        {
+          "chatId": "code-review-performance",
+          "model": "opus-5.5-extra-high",
+          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Performance review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the code they call. Do not infer the change from file modification times. Look for unbounded work, repeated queries, and hot paths that got slower.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nEnd with a `summary` list, then the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. On a later pass, `decision: ok` when that behavior is fixed. Do not ask for a new subsystem.\n\n```\nsummary:\n- item\n\ndecision: ok\n```\n\nEnd with `decision: ok` when the change does not add a cost that should be fixed first. End with `decision: return` when it does.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser",
+          "responseText": "code-review-performance\n\ndecision: ok\n"
+        }
+      ],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "ask",
+      "model": "opus-5.5-extra-high",
+      "resumed": false,
+      "status": "done",
+      "step": "code-review-performance",
+      "tokensIn": 10,
+      "tokensOut": 4,
+      "usd": 0.01
+    },
+    {
+      "documents": [
+        {
+          "body": "## requirements\n- code-review-requirements\n\n## quality\n- code-review-quality\n\n## regressions\n- code-review-regressions\n\n## security\n- code-review-security\n\n## performance\n- code-review-performance\n",
+          "kind": "handoff"
+        },
+        {
+          "body": "The change needs work.\n",
+          "kind": "review_report"
+        },
+        {
+          "body": "The change needs work.\n",
+          "kind": "return"
+        }
+      ],
+      "exchanges": [
+        {
+          "chatId": "code-review-report",
+          "model": "opus-5.5-extra-high",
+          "requestText": "Write the merge request summary from the implementation and the five decisions copied below.\nThose decisions are the only reviews. Ignore an earlier draft in this chat.\nDo not search again. Do not add a finding none of them wrote. Do not end with a decision line.\nUse these parts, in this order: What changed, Code review, What holds when a check is ok, and What to fix only when a latest decision is return.\nWhat holds is behavior an ok check accepted. What to fix must not undo it.\n\nImplementation:\n- changed the field parser\n\n## Requirements\ndecision: ok\n\ncode-review-requirements\n\ndecision: ok\n\n## Quality\ndecision: return\n\ncode-review-quality\n\ndecision: return\n\n## Regressions\ndecision: ok\n\ncode-review-regressions\n\ndecision: ok\n\n## Security\ndecision: ok\n\ncode-review-security\n\ndecision: ok\n\n## Performance\ndecision: ok\n\ncode-review-performance\n\ndecision: ok",
+          "responseText": "The change needs work.\n"
+        }
+      ],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "ask",
+      "model": "opus-5.5-extra-high",
+      "resumed": false,
+      "status": "waiting",
+      "step": "code-review",
+      "tokensIn": 10,
+      "tokensOut": 4,
+      "usd": 0.01
+    }
+  ]
+}

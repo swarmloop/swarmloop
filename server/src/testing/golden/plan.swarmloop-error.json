@@ -1,0 +1,53 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\"prompt\":\"ship the field\"}\n",
+      "kind": "requirements"
+    },
+    {
+      "body": "billing-api\n",
+      "kind": "repos"
+    },
+    {
+      "body": "",
+      "kind": "questions"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [],
+  "reads": {
+    "plan": ["requirements", "questions", "answers", "repos", "handoff", "added_repos", "instructions:plan"]
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "plan",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "failed"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "agent refused the task\n",
+          "kind": "error"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 1,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "plan",
+      "model": "opus-5.5-extra-high",
+      "resumed": false,
+      "status": "failed",
+      "step": "plan",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

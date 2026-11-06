@@ -1,0 +1,73 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\"issues\":{\"PROJ-1\":{\"key\":\"PROJ-1\",\"summary\":\"Summary of PROJ-1\",\"descriptionMarkdown\":\"Description of PROJ-1\",\"acceptanceCriteria\":\"Must ship\",\"epic\":null,\"comments\":[],\"attachments\":[],\"links\":[],\"confluence\":[],\"pages\":[]}}}\n",
+      "kind": "requirements_progress"
+    },
+    {
+      "body": "{\"issues\":{\"PROJ-1\":{\"key\":\"PROJ-1\",\"summary\":\"Summary of PROJ-1\",\"descriptionMarkdown\":\"Description of PROJ-1\",\"acceptanceCriteria\":\"Must ship\",\"epic\":null,\"comments\":[],\"attachments\":[],\"links\":[],\"confluence\":[],\"pages\":[]},\"PROJ-2\":{\"key\":\"PROJ-2\",\"summary\":\"Summary of PROJ-2\",\"descriptionMarkdown\":\"Description of PROJ-2\",\"acceptanceCriteria\":\"Must ship\",\"epic\":null,\"comments\":[],\"attachments\":[],\"links\":[],\"confluence\":[],\"pages\":[]}}}\n",
+      "kind": "requirements_progress"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [],
+  "reads": {
+    "requirements": ["requirements_progress", "handoff"]
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "prepare",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "waiting"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "{\"url\":\"https://wiki.example/page\"}\n",
+          "kind": "pending"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "waiting",
+      "step": "requirements",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    },
+    {
+      "documents": [
+        {
+          "body": "{\n  \"scope\": [\n    \"PROJ-1\",\n    \"PROJ-2\"\n  ],\n  \"prompt\": \"Ship the field for PROJ-1 and PROJ-2\\n\",\n  \"tickets\": [\n    {\n      \"key\": \"PROJ-1\",\n      \"summary\": \"Summary of PROJ-1\",\n      \"description\": \"Description of PROJ-1\",\n      \"acceptanceCriteria\": \"Must ship\",\n      \"comments\": []\n    },\n    {\n      \"key\": \"PROJ-2\",\n      \"summary\": \"Summary of PROJ-2\",\n      \"description\": \"Description of PROJ-2\",\n      \"acceptanceCriteria\": \"Must ship\",\n      \"comments\": []\n    }\n  ],\n  \"epic\": null,\n  \"epics\": [],\n  \"files\": [],\n  \"pages\": [],\n  \"plan\": null\n}\n",
+          "kind": "requirements"
+        },
+        {
+          "body": "## requirements\n- requirements done\n",
+          "kind": "handoff"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "done",
+      "step": "requirements",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

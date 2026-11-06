@@ -1,0 +1,54 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{}\n",
+      "kind": "requirements"
+    }
+  ],
+  "flows": [],
+  "git": {
+    "log": ["app"],
+    "refs": ["refs/heads/main", "refs/remotes/origin/main"],
+    "worktrees": 2
+  },
+  "loopEvents": [],
+  "reads": {
+    "prepare": ["handoff"]
+  },
+  "result": {
+    "exitCode": 0,
+    "message": "<t> prepare done\nRun unit tests from the worktree. The shared Docker stack can serve only one worktree at a time."
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "research",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "waiting"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "## prepare\n- prepared app\n",
+          "kind": "handoff"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "done",
+      "step": "prepare",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{}\n",
+      "kind": "requirements"
+    }
+  ],
+  "flows": [],
+  "git": {
+    "log": ["app"],
+    "refs": ["refs/heads/main", "refs/remotes/origin/main"],
+    "worktrees": 2
+  },
+  "loopEvents": [],
+  "reads": {
+    "prepare": ["handoff"]
+  },
+  "result": {
+    "exitCode": 1,
+    "message": "<t> handoff is locked"
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "prepare",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "failed"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "handoff is locked\n",
+          "kind": "error"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 1,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "failed",
+      "step": "prepare",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

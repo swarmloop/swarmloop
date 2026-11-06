@@ -1,0 +1,69 @@
+{
+  "agentSteps": [
+    "code-review-performance",
+    "code-review-quality",
+    "code-review-regressions",
+    "code-review-requirements",
+    "code-review-security"
+  ],
+  "documentsOutsideVisits": [
+    {
+      "body": "{\"prompt\":\"Ship the field\\n\"}\n",
+      "kind": "requirements"
+    },
+    {
+      "body": "billing-api\n",
+      "kind": "repos"
+    },
+    {
+      "body": "- changed the field parser\n",
+      "kind": "implementation"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [],
+  "reads": {
+    "code-review": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
+    "code-review-performance": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
+    "code-review-quality": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
+    "code-review-regressions": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
+    "code-review-requirements": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
+    "code-review-security": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"]
+  },
+  "result": {
+    "exitCode": 1,
+    "message": "<t> reviewer refused"
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "code-review",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "failed"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "reviewer refused\n",
+          "kind": "error"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 1,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "ask",
+      "model": null,
+      "resumed": false,
+      "status": "failed",
+      "step": "code-review",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}
