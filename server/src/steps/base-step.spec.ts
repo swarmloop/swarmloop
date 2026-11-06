@@ -12,20 +12,24 @@ import { VisitRepository } from '../history/visit.repository';
 import type { VisitDraft } from '../history/visit';
 import { AGENT_RUNNER } from '../agent/agent-runner';
 import { PipelineModule } from '../pipeline/pipeline.module';
-import { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { StepName } from '../contract/steps';
 import { PASTE_READER } from '../integrations/linked-pages/paste-page.reader';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../core/swarmloop-error';
 import { ARTIFACTS } from './contract/artifacts';
 import type { InputSpec, Route, StepInput, StepResult } from './contract/step-contract';
-import { BaseStep, LegacyStep, StepContext } from './base-step';
+import { BaseStep, StepContext } from './base-step';
 import { StepKernel } from './step-kernel';
 
-/** Throws whatever the test sets, so each case drives one path through `LegacyStep.execute`. */
+const STUB_INPUTS = {
+  repos: { artifact: ARTIFACTS.repos, need: 'start', late: true },
+} as const satisfies InputSpec;
+
+/** Throws whatever the test sets, so each case drives one path through `BaseStep.execute`. */
 @Injectable()
-class StubStep extends LegacyStep {
+class StubStep extends BaseStep<typeof STUB_INPUTS> {
   readonly name: StepName = 'branch';
-  readonly requiredKind = 'repos';
+  readonly inputs = STUB_INPUTS;
+  readonly outputs = [];
   thrown: unknown = null;
   failure: Partial<VisitDraft> = {};
 
@@ -37,7 +41,7 @@ class StubStep extends LegacyStep {
     return this.failure;
   }
 
-  protected async run(_key: string, _options: StepOptions, _ctx: StepContext): Promise<PipelineResult> {
+  protected async work(): Promise<StepResult> {
     throw this.thrown;
   }
 }
@@ -164,7 +168,7 @@ describe('base step', () => {
       expect(app.get(StubStep).describe({} as never)).toEqual({
         name: 'branch',
         kind: 'server',
-        inputs: [],
+        inputs: [{ name: 'repos', kind: 'repos', need: 'start' }],
         outputs: [],
         capabilities: {},
       });

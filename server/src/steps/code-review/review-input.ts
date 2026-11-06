@@ -8,7 +8,7 @@ import type { SandboxMount } from '../../core/sandbox-mount';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { readPlan } from '../plan/plan-record';
 import { storedProjects } from '../prepare/checkout-path';
-import type { PrepareStep } from '../prepare/prepare.step';
+import type { CheckoutService } from '../shared/checkout.service';
 import { handoffSection } from '../shared/handoff';
 import { mountsForStep, repoNames } from '../../git/repo-names';
 import { approvedChecklist } from './code-review.prompts';
@@ -52,14 +52,14 @@ export async function foreignReviewOf(runs: RunRepository, flows: FlowRepository
 
 export async function detachForeign(
   documents: DocumentRepository,
-  prepare: PrepareStep,
+  worktrees: CheckoutService,
   opened: OpenedStep,
 ): Promise<void> {
   const names = storedProjects(opened.run.projects);
   if (names.length === 0) {
     throw new SwarmloopError('projects is missing');
   }
-  await prepare.ensureDetached(opened.run, names, opened.run.prompt, true);
+  await worktrees.ensureDetached(opened.run, names, opened.run.prompt, true);
   await documents.putDocument(opened.run, ARTIFACTS.repos.kind, `${names.join('\n')}\n`);
 }
 

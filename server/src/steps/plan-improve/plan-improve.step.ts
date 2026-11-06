@@ -14,7 +14,7 @@ import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS
 import { AgentLauncher } from '../shared/agent-launcher';
 import { withHandoff } from '../shared/handoff';
 import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../shared/skill-prompt';
-import { mountsForStep, repoNames } from '../../git/repo-names';
+import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { storedPlan } from '../step';
 import { readPlan, reviewedItems, withPlan } from '../plan/plan-record';
 import { PLAN_IMPROVE_FOLLOW_UP } from './plan-improve.prompts';
@@ -58,9 +58,9 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     if (!plan) {
       throw new SwarmloopError('plan is missing');
     }
-    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
+    const names = checkedRepoNames((await ctx.reread(ARTIFACTS.repos)) ?? []);
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
-    const prior = await this.documents.latestBody(key, ARTIFACTS.handoff.kind);
+    const prior = await ctx.reread(ARTIFACTS.handoff);
     const continued = await readSession(
       join(root(this.config), 'data', sessionFileName(key, 'plan-improve')),
       ctx.opened.run.runtime,
@@ -73,7 +73,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
       mounts,
     );
     const chosen = continued?.chatId ? PLAN_IMPROVE_FOLLOW_UP : full;
-    const prompt = withAddedRepos(chosen, await this.documents.latestBody(key, ARTIFACTS.addedRepos.kind));
+    const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));
     const agentResult = await ctx.launch({ prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`, mounts });
     const items = reviewedItems(agentResult.responseText, agentResult.output ?? '');
     const next = { ...plan, items: items.length > 0 ? items : plan.items, decision: 'approve' as const };

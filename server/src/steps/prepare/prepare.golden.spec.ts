@@ -15,6 +15,7 @@ import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
+import { CheckoutService } from '../shared/checkout.service';
 import { PrepareStep } from './prepare.step';
 import { boot, git, repoWithMain, seedRequirements } from './prepare.step.spec-helpers';
 
@@ -51,17 +52,18 @@ describe('prepare step golden traces', () => {
       store.latestBody = (key, kind) => (kind === 'handoff' ? Promise.reject(failOn) : real.latestBody(key, kind));
     }
     const documents = recordingDocuments(store);
+    const kernel = new StepKernel(
+      runs,
+      documents,
+      app.get(VisitRepository),
+      app.get(FlowRepository),
+      new FakeClock(),
+      app.get(AppConfig),
+    );
     const step = new PrepareStep(
-      new StepKernel(
-        runs,
-        documents,
-        app.get(VisitRepository),
-        app.get(FlowRepository),
-        new FakeClock(),
-        app.get(AppConfig),
-      ),
+      kernel,
       app.get(CheckoutRepository),
-      app.get(CodeHostRegistry),
+      new CheckoutService(kernel, app.get(CodeHostRegistry)),
     );
     const done = await step.execute(KEY);
     const trail = await traceRun(app.get(DataSource), KEY, { prepare: documents.kinds });

@@ -23,8 +23,8 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import { lateInput } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
-import { composedReturn, textDocument } from '../shared/handoff';
-import { PrepareStep } from '../prepare/prepare.step';
+import { returnedNotes, textDocument } from '../shared/handoff';
+import { CheckoutService } from '../shared/checkout.service';
 import { requiredDocument } from '../step';
 import { reviewDiffSection, writeReviewDiff } from './review-diff';
 import { REVIEWERS, reviewModel } from './reviewer';
@@ -64,7 +64,7 @@ const INPUTS = {
 export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'code-review';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.reviewReport, ARTIFACTS.return];
+  readonly outputs = [ARTIFACTS.reviewReport, ARTIFACTS.return, ARTIFACTS.repos, ARTIFACTS.rebaseConflict];
   override readonly usesModel = true;
   override readonly capabilities: StepCapabilities = { path: true };
 
@@ -72,7 +72,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     kernel: StepKernel,
     private readonly checkouts: CheckoutRepository,
     private readonly events: EventRepository,
-    private readonly prepare: PrepareStep,
+    private readonly worktrees: CheckoutService,
     private readonly sandbox: SandboxService,
     private readonly launcher: AgentLauncher,
   ) {
@@ -143,7 +143,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       if (!(await foreignReview(this.flows, opened.run.id))) {
         throw new SwarmloopError('implementation is missing');
       }
-      await detachForeign(this.documents, this.prepare, opened);
+      await detachForeign(this.documents, this.worktrees, opened);
       thirdParty = true;
     }
     if (checkout) {
@@ -155,9 +155,9 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     }
     const mounts = checkout ? pathMount(checkout) : await repoMounts(this.runs, this.documents, root(this.config), key);
     const only = REVIEWERS.some((item) => item.name === options.reviewer) ? options.reviewer : undefined;
-    const fresh = ((await this.documents.latestBody(key, ARTIFACTS.rebaseConflict.kind)) ?? '').trim() === 'review';
+    const fresh = ((await ctx.reread(ARTIFACTS.rebaseConflict)) ?? '').trim() === 'review';
     const retry = fresh ? false : await retrying(this.visits, opened);
-    const returned = composedReturn(await this.documents.listDocuments(opened.run.id));
+    const returned = await returnedNotes(this.documents, opened.run.id);
     const diff = await reviewDiffSection(mounts, await this.checkouts.listDenyPaths());
     const same = sameReviewedDiff(root(this.config), key, diff.patch);
     const repeated = reviewReturn(returned) && same;
@@ -174,7 +174,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       return closeReview(ctx, 'failed', 1, `${opened.startedAt} code-review does not fit`, [], []);
     }
     writeReviewDiff(root(this.config), key, diff.patch);
-    const handoff = await this.documents.latestBody(key, ARTIFACTS.handoff.kind);
+    const handoff = await ctx.reread(ARTIFACTS.handoff);
     const plan = approvedPlan(requirements);
     const finished = await runRound(deps, {
       opened,

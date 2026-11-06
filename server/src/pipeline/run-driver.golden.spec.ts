@@ -9,9 +9,11 @@ import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
-import { LegacyStep, type StepContext, type StepEnd } from '../steps/base-step';
+import { BaseStep, type StepContext, type StepEnd } from '../steps/base-step';
+import { ARTIFACTS } from '../steps/contract/artifacts';
+import type { InputSpec } from '../steps/contract/step-contract';
 import { StepRegistry } from '../steps/step.registry';
-import type { Step } from '../steps/step';
+import type { Step, StepSnapshot } from '../steps/step';
 import { createTestApp } from '../testing/test-app';
 import {
   expectGolden,
@@ -25,9 +27,12 @@ const KEY = 'PROJ-1';
 
 type Script = (visit: number, ctx: StepContext) => Omit<StepEnd, 'line'>;
 
-class DriverStep extends LegacyStep {
-  override readonly requiredKind = 'requirements';
-  override readonly usesModel = false;
+const INPUTS = { requirements: { artifact: ARTIFACTS.requirements, need: 'start' } } as const satisfies InputSpec;
+
+/** Ends each visit as its script says, through the step context. */
+class DriverStep extends BaseStep<typeof INPUTS> {
+  readonly inputs = INPUTS;
+  readonly outputs = [];
   count = 0;
 
   constructor(
@@ -39,11 +44,22 @@ class DriverStep extends LegacyStep {
     super(new StepKernel(base.runs, recorder, base.visits, base.flows, base.clock, base.config));
   }
 
-  protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
-    await this.documents.latestBody(key, 'requirements');
-    this.count += 1;
-    const end = this.script(this.count, ctx);
-    return ctx.end({ ...end, line: `${ctx.opened.startedAt} ${this.name} ${end.outcome}` });
+  override execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
+    return this.perform(
+      key,
+      async (ctx) => {
+        await this.reader.read(key, this.inputs);
+        this.count += 1;
+        const end = this.script(this.count, ctx);
+        return ctx.end({ ...end, line: `${ctx.opened.startedAt} ${this.name} ${end.outcome}` });
+      },
+      snapshot,
+      options,
+    );
+  }
+
+  protected work(): never {
+    throw new Error('DriverStep ends its visits in execute');
   }
 }
 

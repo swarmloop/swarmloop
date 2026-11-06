@@ -17,7 +17,7 @@ import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
-import { CommitStep } from '../commit/commit.step';
+import { RebasedPublisher } from '../shared/rebased-publisher';
 import { ImplementImproveStep } from './implement-improve.step';
 import { ImplementStep } from './implement.step';
 import { boot, featureTree, seed, writeEnv } from './implement.step.spec-helpers';
@@ -72,7 +72,7 @@ export async function goldenRun(input: GoldenCase): Promise<PipelineResult> {
       input.step === 'implement'
         ? new ImplementStep(
             ...common,
-            app.get(CommitStep),
+            app.get(RebasedPublisher),
             app.get(CheckoutRepository),
             app.get(AgentLauncher),
             app.get(EnvironmentService),

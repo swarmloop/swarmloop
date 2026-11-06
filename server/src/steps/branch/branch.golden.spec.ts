@@ -16,6 +16,7 @@ import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
+import { BranchCheckout } from '../shared/branch-checkout';
 import { BranchStep } from './branch.step';
 
 const KEY = 'PROJ-30';
@@ -39,16 +40,15 @@ describe('branch step golden traces', () => {
     await seed(app, trees);
     stub?.();
     const documents = recordingDocuments(app.get(DocumentRepository));
-    const step = new BranchStep(
-      new StepKernel(
-        app.get(RunRepository),
-        documents,
-        app.get(VisitRepository),
-        app.get(FlowRepository),
-        app.get(Clock),
-        app.get(AppConfig),
-      ),
+    const kernel = new StepKernel(
+      app.get(RunRepository),
+      documents,
+      app.get(VisitRepository),
+      app.get(FlowRepository),
+      app.get(Clock),
+      app.get(AppConfig),
     );
+    const step = new BranchStep(kernel, new BranchCheckout(kernel));
     const result = await step.execute(KEY);
     const git = Object.fromEntries(
       Object.entries(trees).map(([repo, tree]) => [

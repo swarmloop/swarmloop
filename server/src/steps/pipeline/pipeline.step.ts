@@ -41,7 +41,7 @@ const INPUTS = {
 export class PipelineStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'pipeline';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.pipelineLog, ARTIFACTS.return];
+  readonly outputs = [ARTIFACTS.pipelineLog, ARTIFACTS.return, ARTIFACTS.pipelineRebases];
 
   constructor(
     kernel: StepKernel,

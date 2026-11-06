@@ -18,7 +18,7 @@ import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
-import { PrepareStep } from '../prepare/prepare.step';
+import { CheckoutService } from '../shared/checkout.service';
 import { CodeReviewStep } from './code-review.step';
 import { boot, reply, result, seed, writeEnv } from './code-review.step.spec-helpers';
 
@@ -55,7 +55,7 @@ describe('code-review step golden traces', () => {
       ),
       app.get(CheckoutRepository),
       app.get(EventRepository),
-      app.get(PrepareStep),
+      app.get(CheckoutService),
       app.get(SandboxService),
       app.get(AgentLauncher),
     );

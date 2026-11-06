@@ -5,7 +5,8 @@ import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { repoNames } from '../../git/repo-names';
-import { BranchStep } from '../branch/branch.step';
+import { BranchCheckout } from '../shared/branch-checkout';
+import { CheckoutService } from '../shared/checkout.service';
 import { appendProjectNames } from './append-projects';
 import { CHECKOUT_NAME, renderProjects, storedProjects } from './checkout-path';
 import { PrepareStep } from './prepare.step';
@@ -20,7 +21,8 @@ export class ProjectAppendService {
     private readonly documents: DocumentRepository,
     private readonly visits: VisitRepository,
     private readonly prepare: PrepareStep,
-    private readonly branch: BranchStep,
+    private readonly worktrees: CheckoutService,
+    private readonly branches: BranchCheckout,
   ) {}
 
   async add(key: string, name: string): Promise<{ projects: string[]; applied: boolean }> {
@@ -69,14 +71,14 @@ export class ProjectAppendService {
     if (added.length === 0) {
       return projects;
     }
-    await this.prepare.ensureDetached(run, added, run.prompt, false);
+    await this.worktrees.ensureDetached(run, added, run.prompt, false);
     const stats = await this.visits.listStats(run.id);
     const branchDone = [...stats].reverse().find((stat) => stat.step === 'branch')?.status === 'done';
     if (branchDone) {
       const requirements = await this.documents.latestBody(run.key, ARTIFACTS.requirements.kind);
       const committed = (await this.documents.latestBody(run.key, ARTIFACTS.pipelineRef.kind)) !== null;
       for (const name of added) {
-        await this.branch.ensure(run.key, name, requirements, committed);
+        await this.branches.ensure(run.key, name, requirements, committed);
       }
     }
     run.projects = renderProjects(projects);

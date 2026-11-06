@@ -13,11 +13,12 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import type { StepKernel } from './step-kernel';
 import { BaseStep } from './base-step';
 import type { StepContext } from './base-step';
+import { outputDrafts } from './contract/output-writer';
 import { routeToEnd } from './contract/route';
 import type { AgentProfile, InputSpec, StepDescriptor, StepInput, StepResult } from './contract/step-contract';
 import { agentFailure, combineAgentResults, refusedWrite, withRefusal } from './shared/agent-result';
 import type { AgentLauncher } from './shared/agent-launcher';
-import { recordHandoff, textDocument } from './shared/handoff';
+import { recordHandoff } from './shared/handoff';
 import { modelVisit } from './shared/model-visit';
 import type { StepName } from '../contract/steps';
 import { artifact } from './contract/artifact';
@@ -40,6 +41,8 @@ export function instructionsInput(step: StepName): { artifact: Artifact; need: '
 export interface ModelStepContext {
   opened: OpenedStep;
   workspace: string;
+  reread: StepContext['reread'];
+  write: StepContext['write'];
   launch: (input: {
     prompt: string;
     mounts: SandboxMount[];
@@ -117,6 +120,8 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     const ctx: ModelStepContext = {
       opened,
       workspace: run.workspace,
+      reread: (artifact) => stepCtx.reread(artifact),
+      write: (artifact, value) => stepCtx.write(artifact, value),
       launch: (launch) => this.launch(run, launch),
     };
     try {
@@ -151,7 +156,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
   /** Builds the model visit of a finished body, with its documents in order. The base step then closes it. */
   private async finish(run: ModelRun, result: StepResult): Promise<StepResult> {
     const { outcome, exitCode } = routeToEnd(result.route, result.exitCode);
-    const documents = result.outputs.map((item) => textDocument(item.artifact.kind, item.artifact.format(item.value)));
+    const documents = outputDrafts(this.name, this.outputs, result.outputs);
     if (result.handoff !== undefined) {
       documents.push(await recordHandoff(this.documents, run.key, this.name, result.handoff));
     }

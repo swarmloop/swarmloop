@@ -22,7 +22,7 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 import { SandboxService } from '../../sandbox/sandbox.service';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
 import { FetchFailed } from '../../core/swarmloop-error';
-import { REBASE_MERGE_SKIP } from './merge-request.step';
+import { ARTIFACTS } from '../contract/artifacts';
 
 const TOKEN = 'super-secret-token';
 
@@ -130,13 +130,13 @@ describe('merge-request step', () => {
       if (!run) {
         throw new Error('run is missing');
       }
-      await documents.putDocument(run, REBASE_MERGE_SKIP, 'skip\n');
+      await documents.putDocument(run, ARTIFACTS.rebaseMergeSkip.kind, 'skip\n');
       const skipped = await app.get(PipelineService).step('merge-request', 'PROJ-212');
       expect(skipped.exitCode).toBe(0);
       expect(open).not.toHaveBeenCalled();
       expect(update).not.toHaveBeenCalled();
       expect(await documents.latestBody('PROJ-212', 'merge_request')).toContain('Already open.');
-      expect((await documents.latestBody('PROJ-212', REBASE_MERGE_SKIP))?.trim()).toBe('clear');
+      expect((await documents.latestBody('PROJ-212', ARTIFACTS.rebaseMergeSkip.kind))?.trim()).toBe('clear');
       expect((await runs.findRun('PROJ-212'))?.currentStep).toBe('pipeline');
       expect((await runs.findRun('PROJ-212'))?.status).toBe('waiting');
       const again = await app.get(PipelineService).step('merge-request', 'PROJ-212');

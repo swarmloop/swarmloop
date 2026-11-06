@@ -10,7 +10,7 @@ export interface Artifact<T = string> extends Codec<T> {
   kind: string;
   writers: readonly StepName[];
   readers: readonly StepName[];
-  /** Written by a person or a provider, not by a step. */
+  /** Written by a person, a provider or the step kernel (handoff, error, log), not by the step's own result. */
   external?: boolean;
 }
 

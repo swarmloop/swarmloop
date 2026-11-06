@@ -14,7 +14,7 @@ import { DocumentRepository } from '../history/document.repository';
 
 import { FlowRepository } from '../history/flow.repository';
 
-import { REBASE_MERGE_SKIP } from '../steps/merge-request/merge-request.step';
+import { ARTIFACTS } from '../steps/contract/artifacts';
 
 import { REBASE_CONFLICT } from '../git/rebase';
 
@@ -58,7 +58,7 @@ describe('runs api', () => {
       const fresh = await runs.findRun('proj-50');
       expect(fresh?.status).toBe('waiting');
       expect(fresh?.currentStep).toBe('implement');
-      expect(await documents.latestBody('proj-50', REBASE_MERGE_SKIP)).toBeNull();
+      expect(await documents.latestBody('proj-50', ARTIFACTS.rebaseMergeSkip.kind)).toBeNull();
       git(tree, ['merge-base', '--is-ancestor', base, 'HEAD']);
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-50-ship-the-field');
       expect(git(tree, ['log', '--oneline'])).toContain('field');
@@ -100,7 +100,7 @@ describe('runs api', () => {
       const fresh = await runs.findRun('proj-51');
       expect(fresh?.status).toBe('waiting');
       expect(fresh?.currentStep).toBe('code-review');
-      expect((await documents.latestBody('proj-51', REBASE_MERGE_SKIP))?.trim()).toBe('skip');
+      expect((await documents.latestBody('proj-51', ARTIFACTS.rebaseMergeSkip.kind))?.trim()).toBe('skip');
       const rows = await flows.listFlows(fresh?.id ?? 0);
       expect(JSON.parse(rows.at(-1)?.phases ?? '[]')).toEqual(['requirements', 'code-review', 'ci']);
       expect(rows.at(-1)?.fromStep).toBe('code-review');
@@ -191,7 +191,7 @@ describe('runs api', () => {
       const fresh = await runs.findRun('proj-54');
       expect(fresh?.status).toBe('done');
       expect(fresh?.currentStep).toBe('done');
-      expect(await documents.latestBody('proj-54', REBASE_MERGE_SKIP)).toBeNull();
+      expect(await documents.latestBody('proj-54', ARTIFACTS.rebaseMergeSkip.kind)).toBeNull();
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-54-ship-the-field');
     } finally {
       await app.close();
@@ -234,7 +234,7 @@ describe('runs api', () => {
       const fresh = await runs.findRun('proj-58');
       expect(fresh?.status).toBe('waiting');
       expect(fresh?.currentStep).toBe('implement-improve');
-      expect(await documents.latestBody('proj-58', REBASE_MERGE_SKIP)).toBeNull();
+      expect(await documents.latestBody('proj-58', ARTIFACTS.rebaseMergeSkip.kind)).toBeNull();
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-58-ship-the-field');
     } finally {
       await app.close();
@@ -288,7 +288,7 @@ describe('runs api', () => {
       expect(fresh?.status).toBe('waiting');
       expect(fresh?.currentStep).toBe('implement');
       expect((await documents.latestBody('proj-56', REBASE_CONFLICT))?.trim()).toBe('pending');
-      expect(await documents.latestBody('proj-56', REBASE_MERGE_SKIP)).toBeNull();
+      expect(await documents.latestBody('proj-56', ARTIFACTS.rebaseMergeSkip.kind)).toBeNull();
       expect(isAncestor(demo, demoBase)).toBe(true);
       expect(git(demo, ['branch', '--show-current'])).toBe('feature/proj-56-ship-the-field');
       expect(git(other, ['diff', '--name-only', '--diff-filter=U'])).toContain('src/field.ts');

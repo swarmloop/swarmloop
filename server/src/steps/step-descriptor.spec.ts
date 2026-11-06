@@ -69,9 +69,9 @@ describe('step descriptors', () => {
   it('lists the outputs of a step it migrated', () => {
     const described = app.get(StepRegistry).describe({} as never);
     const kinds = (step: string) => described.find((item) => item.name === step)?.outputs;
-    expect(kinds('commit')).toEqual(['commit']);
-    expect(kinds('pipeline')).toEqual(['pipeline_log', 'return']);
-    expect(kinds('merge-request')).toEqual(['merge_request']);
+    expect(kinds('commit')).toEqual(['commit', 'pipeline_ref', 'ci_skip']);
+    expect(kinds('pipeline')).toEqual(['pipeline_log', 'return', 'pipeline_rebases']);
+    expect(kinds('merge-request')).toEqual(['merge_request', 'rebase_merge_skip']);
     expect(kinds('branch')).toEqual([]);
   });
 });
