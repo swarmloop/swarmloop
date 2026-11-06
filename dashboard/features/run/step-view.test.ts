@@ -49,6 +49,8 @@ function assertNow(iso: string, before: number, after: number): void {
   assert.equal(time >= before && time <= after, true);
 }
 
+const recorded = { descriptor: { name: 'implement', kind: 'agent' as const }, eventsCursor: 0 };
+
 describe('decisionLine', () => {
   it('keeps the last decision line', () => {
     assert.equal(decisionLine('a\n decision: ok \nnope\ndecision: return'), 'decision: return');
@@ -193,22 +195,28 @@ describe('fileView', () => {
 
 describe('withLog', () => {
   it('returns the same view when there is no visit or a finished chip already has samples', () => {
-    const empty = { step: 'implement', checks: [], visits: [] };
+    const empty = { step: 'implement', checks: [], ...recorded, visits: [] };
     assert.equal(withLog(empty, 'body', []), empty);
     const sampled = {
       step: 'code-review-quality',
       checks: [],
+      ...recorded,
       visits: [visit({ status: 'done', samples: [{ at: 't', cpu: 1, memory: 2 }] })],
     };
     assert.equal(withLog(sampled, doneLog, [{ at: 'n', cpu: 9, memory: 9 }]), sampled);
-    const quiet = { step: 'code-review-quality', checks: [], visits: [visit({ status: 'done', samples: [] })] };
+    const quiet = {
+      step: 'code-review-quality',
+      checks: [],
+      ...recorded,
+      visits: [visit({ status: 'done', samples: [] })],
+    };
     assert.equal(withLog(quiet, doneLog, []), quiet);
   });
 
   it('stores samples on a finished chip that had none', () => {
     const current = visit({ status: 'failed', samples: [], tokensIn: 5 });
     const samples = [{ at: 't', cpu: 4, memory: 50 }];
-    const next = withLog({ step: 'code-review-quality', checks: [], visits: [current] }, doneLog, samples);
+    const next = withLog({ step: 'code-review-quality', checks: [], ...recorded, visits: [current] }, doneLog, samples);
     assert.equal(next.visits[0]?.status, 'failed');
     assert.equal(next.visits[0]?.tokensIn, 5);
     assert.deepEqual(next.visits[0]?.samples, samples);
@@ -228,7 +236,7 @@ describe('withLog', () => {
       documents: [{ kind: 'log', attempt: 4, body: 'old', createdAt: 't' }],
     });
     const before = Date.now();
-    const next = withLog({ step: 'implement', checks: [], visits: [current] }, 'still going', [
+    const next = withLog({ step: 'implement', checks: [], ...recorded, visits: [current] }, 'still going', [
       { at: 't', cpu: 2, memory: 10 },
     ]);
     const after = Date.now();
@@ -257,7 +265,7 @@ describe('withLog', () => {
       tokensIn: 1,
       documents: [{ kind: 'log', attempt: 1, body: 'old', createdAt: '2020-01-01T00:00:00.000Z' }],
     });
-    const replaced = withLog({ step: 'implement', checks: [], visits: [logged] }, 'new', []);
+    const replaced = withLog({ step: 'implement', checks: [], ...recorded, visits: [logged] }, 'new', []);
     assert.equal(replaced.visits[0]?.documents[0]?.body, 'new');
     assert.equal(replaced.visits[0]?.documents[0]?.createdAt, '2020-01-01T00:00:00.000Z');
     assert.equal(replaced.visits[0]?.status, 'running');
@@ -269,7 +277,7 @@ describe('withLog', () => {
       documents: [{ kind: 'note', attempt: 2, body: 'n', createdAt: '2020-01-01T00:00:00.000Z' }],
     });
     const before = Date.now();
-    const added = withLog({ step: 'implement', checks: [], visits: [noted] }, 'live', []);
+    const added = withLog({ step: 'implement', checks: [], ...recorded, visits: [noted] }, 'live', []);
     const after = Date.now();
     assert.equal(added.visits[0]?.documents[0]?.body, 'n');
     assert.equal(added.visits[0]?.documents[1]?.kind, 'log');
@@ -278,18 +286,32 @@ describe('withLog', () => {
     assertNow(added.visits[0]?.documents[1]?.createdAt ?? '', before, after);
 
     const passed = withLog(
-      { step: 'code-review', checks: [], visits: [visit({ status: 'running', decision: 'decision: ok' })] },
+      {
+        step: 'code-review',
+        checks: [],
+        ...recorded,
+        visits: [visit({ status: 'running', decision: 'decision: ok' })],
+      },
       waitingLog,
       [],
     );
     assert.equal(passed.visits[0]?.status, 'done');
-    const failed = withLog({ step: 'code-review', checks: [], visits: [visit({ status: 'running' })] }, failedLog, []);
+    const failed = withLog(
+      { step: 'code-review', checks: [], ...recorded, visits: [visit({ status: 'running' })] },
+      failedLog,
+      [],
+    );
     assert.equal(failed.visits[0]?.status, 'failed');
-    const counted = withLog({ step: 'implement', checks: [], visits: [visit({ status: 'running' })] }, 'plain', [], {
-      tokensIn: 8,
-      tokensOut: 1,
-      usd: 0.4,
-    });
+    const counted = withLog(
+      { step: 'implement', checks: [], ...recorded, visits: [visit({ status: 'running' })] },
+      'plain',
+      [],
+      {
+        tokensIn: 8,
+        tokensOut: 1,
+        usd: 0.4,
+      },
+    );
     assert.equal(counted.visits[0]?.tokensIn, 8);
     assert.equal(counted.visits[0]?.tokensOut, 1);
     assert.equal(counted.visits[0]?.usd, 0.4);
@@ -298,22 +320,24 @@ describe('withLog', () => {
 
 describe('withFileUsage', () => {
   it('leaves a view with no log and copies token counts from a finished log', () => {
-    const bare = { step: 's', checks: [], visits: [visit({ status: 'done' })] };
+    const bare = { step: 's', checks: [], ...recorded, visits: [visit({ status: 'done' })] };
     assert.equal(withFileUsage(bare), bare);
     const blank = {
       step: 's',
       checks: [],
+      ...recorded,
       visits: [visit({ status: 'done', documents: [{ kind: 'log', attempt: 1, body: '', createdAt: 't' }] })],
     };
     assert.equal(withFileUsage(blank), blank);
     const plain = {
       step: 's',
       checks: [],
+      ...recorded,
       visits: [visit({ status: 'done', documents: [{ kind: 'log', attempt: 1, body: 'plain', createdAt: 't' }] })],
     };
     assert.equal(withFileUsage(plain), plain);
     const current = visit({ status: 'done', documents: [{ kind: 'log', attempt: 1, body: usageLog, createdAt: 't' }] });
-    const next = withFileUsage({ step: 's', checks: [], visits: [current] });
+    const next = withFileUsage({ step: 's', checks: [], ...recorded, visits: [current] });
     assert.equal(next.visits[0]?.tokensIn, 10);
     assert.equal(next.visits[0]?.tokensOut, 4);
     assert.equal(next.visits[0]?.usd, 0);
@@ -321,6 +345,7 @@ describe('withFileUsage', () => {
     const running = withFileUsage({
       step: 's',
       checks: [],
+      ...recorded,
       visits: [visit({ status: 'running', documents: [{ kind: 'log', attempt: 1, body: usageLog, createdAt: 't' }] })],
     });
     assert.equal(running.visits[0]?.tokensIn, 10);

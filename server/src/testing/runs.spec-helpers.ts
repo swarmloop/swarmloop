@@ -15,12 +15,20 @@ import type { RunRepository } from '../history/run.repository';
 import { LiveModule } from '../live/live.module';
 import type { VisitDraft } from '../history/visit';
 import { PipelineService } from '../pipeline/pipeline.service';
+import { StepRegistry } from '../steps/step.registry';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { RunCommandsService } from '../api/run-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
+
+const agent = { runtime: 'claude', model: 'opus', mode: 'agent', timeLimitMs: 1000, session: 'fresh' as const };
+const descriptors = [
+  { name: 'implement', kind: 'agent', agent },
+  { name: 'code-review', kind: 'agent', agent, reviewers: [{ name: 'quality', model: 'opus', mode: 'agent' }] },
+  { name: 'commit', kind: 'server' },
+];
 
 export async function boot(
   root: string,
@@ -76,6 +84,7 @@ export async function boot(
       { provide: RunRebaseEnvironment, useExisting: EnvironmentService },
       { provide: EnvironmentService, useValue: { refreshAfterRebase: jest.fn().mockResolvedValue(undefined) } },
       { provide: PipelineService, useValue: { claimed: () => false, ...pipeline } },
+      { provide: StepRegistry, useValue: { describe: () => descriptors } },
       { provide: ProjectAppendService, useValue: { add: jest.fn(), flush: jest.fn() } },
       { provide: PrepareStep, useValue: prepare },
     ],

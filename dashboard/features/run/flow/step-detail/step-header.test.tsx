@@ -18,6 +18,7 @@ function header(overrides: Partial<ComponentProps<typeof StepHeader>> = {}) {
     label: 'done',
     shownDuration: 1000,
     shownAttempt: 2,
+    problemId: null,
     ...overrides,
   };
   render(<StepHeader {...props} />);
@@ -59,5 +60,48 @@ describe('StepHeader', () => {
 
     expect(props.onReplay).toHaveBeenCalledTimes(1);
     expect(props.onResume).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the kind, model and mode of an agent step', () => {
+    header({
+      view: stepView({
+        descriptor: {
+          name: 'implement',
+          kind: 'agent',
+          agent: { runtime: 'claude', model: 'opus', mode: 'agent', timeLimitMs: 1, session: 'fresh' },
+        },
+      }),
+    });
+
+    expect(screen.getByText('agent · opus · agent')).toBeInTheDocument();
+  });
+
+  it('shows the reviewers of code-review', () => {
+    header({
+      view: stepView({
+        descriptor: {
+          name: 'code-review',
+          kind: 'agent',
+          reviewers: [
+            { name: 'quality', model: 'opus', mode: 'agent' },
+            { name: 'security', model: 'opus', mode: 'agent' },
+          ],
+        },
+      }),
+    });
+
+    expect(screen.getByText('agent · reviewers: quality, security')).toBeInTheDocument();
+  });
+
+  it('links to the first problem of the step', () => {
+    header({ problemId: 'event-7' });
+
+    expect(screen.getByRole('link', { name: /Error/ })).toHaveAttribute('href', '#problem-event-7');
+  });
+
+  it('has no problem link when the step recorded none', () => {
+    header();
+
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 });

@@ -83,10 +83,21 @@ export interface VisitView {
   samples: { at: string; cpu: number; memory: number }[];
 }
 
+/** What a step is: its kind, and the agent profile or the reviewers when it runs models. */
+export interface StepDescriptor {
+  name: string;
+  kind: 'server' | 'agent';
+  agent?: { runtime: string; model: string; mode: string; timeLimitMs: number; session: 'resume' | 'fresh' };
+  reviewers?: { name: string; model: string; mode: string }[];
+}
+
 export interface StepView {
   step: string;
   visits: VisitView[];
   checks: { name: string; decision: string | null; body: string }[];
+  descriptor: StepDescriptor;
+  /** The last event `seq` of the run: it changes when there are new events to read. 0 means none. */
+  eventsCursor: number;
 }
 
 export interface HistoryView {

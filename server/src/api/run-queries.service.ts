@@ -16,6 +16,7 @@ import { loadPriceTable } from '../agent/prices';
 import { LiveHub } from '../live/live.hub';
 import { liveLogBody, liveLogCurrent } from '../agent/live-output';
 import { PipelineService } from '../pipeline/pipeline.service';
+import { StepRegistry } from '../steps/step.registry';
 import { isStep } from '../core/pipeline-result';
 import { isReviewStep } from '../contract/steps';
 import { parsePaths } from '../git/commit-paths';
@@ -39,7 +40,7 @@ import {
 } from './run-view/flow';
 import { belongsToVisit, documentView, filesOf, withReturnNotes } from './run-view/documents';
 import { launchView, liveVisit } from './run-view/live';
-import { eventPaging, requireRun } from './run-queries-run';
+import { eventPaging, requireRun, stepMeta } from './run-queries-run';
 import { openSpend } from './run-queries-spend';
 export { requireRun } from './run-queries-run';
 
@@ -54,6 +55,7 @@ export class RunQueriesService {
     private readonly checkouts: CheckoutRepository,
     private readonly stepEventLog: StepEventLog,
     private readonly pipeline: PipelineService,
+    private readonly registry: StepRegistry,
     private readonly config: AppConfig,
     private readonly clock: Clock,
     @Optional() private readonly live?: LiveHub,
@@ -192,6 +194,7 @@ export class RunQueriesService {
     }
     return {
       step: name,
+      ...(await this.meta(run, name)),
       visits: withReturnNotes(name, visits, documents, this.clock.now()),
       checks:
         name === 'code-review'
@@ -335,7 +338,7 @@ export class RunQueriesService {
         ...(charge ? { tokensIn: charge.tokensIn, tokensOut: charge.tokensOut, usd: charge.usd } : {}),
       });
     }
-    return { step: name, visits, checks: [] };
+    return { step: name, ...(await this.meta(run, name)), visits, checks: [] };
   }
 
   /** A reviewer visit is the same record as any other step: its own log, exchange, and chart. */
@@ -399,6 +402,10 @@ export class RunQueriesService {
         ),
       );
     }
-    return { step: name, visits, checks: [] };
+    return { step: name, ...(await this.meta(run, name)), visits, checks: [] };
+  }
+
+  private meta(run: RunEntity, name: string): ReturnType<typeof stepMeta> {
+    return stepMeta(this.registry, this.stepEventLog, this.config.env, run, name);
   }
 }

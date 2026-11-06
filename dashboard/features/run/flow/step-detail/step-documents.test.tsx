@@ -1,9 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createRef, type ComponentProps } from 'react';
+import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { duration } from '../../../../lib/format';
 import { visitView } from '../../../../test/fixtures';
+import { QueryWrapper } from '../../../../test/query-wrapper';
+import { stepEvent } from '../../../../test/step-events';
 import { StepDocuments } from './step-documents';
 
 const checks = [
@@ -19,11 +21,12 @@ function documents(overrides: Partial<ComponentProps<typeof StepDocuments>> = {}
     visit: visitView(),
     logs: '',
     document: '',
-    logBox: createRef<HTMLDivElement>(),
-    stick: { current: true },
+    runKey: 'run-1',
+    step: 'implement',
+    events: [],
     ...overrides,
   };
-  render(<StepDocuments {...props} />);
+  render(<StepDocuments {...props} />, { wrapper: QueryWrapper });
   return props;
 }
 
@@ -54,5 +57,34 @@ describe('StepDocuments', () => {
     });
 
     expect(screen.getByText(`claude-opus · ${duration(2500)}`)).toBeInTheDocument();
+  });
+
+  it('puts the log of a visit with no events in a card marked legacy', () => {
+    documents({ logs: 'starting the agent' });
+
+    expect(screen.getByText('legacy: details not recorded')).toBeInTheDocument();
+    expect(screen.getByText('starting the agent')).toBeInTheDocument();
+  });
+
+  it('shows the transcript instead of the log and the exchanges when events were recorded', () => {
+    documents({
+      logs: 'starting the agent',
+      events: [stepEvent(1, { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4 })],
+      visit: visitView({
+        exchanges: [{ model: 'claude-opus', durationMs: 2500, request: 'list files', response: 'three files' }],
+      }),
+    });
+
+    expect(screen.getByText(/diff · document 4/)).toBeInTheDocument();
+    expect(screen.queryByText('legacy: details not recorded')).not.toBeInTheDocument();
+    expect(screen.queryByText('starting the agent')).not.toBeInTheDocument();
+    expect(screen.queryByText(`claude-opus · ${duration(2500)}`)).not.toBeInTheDocument();
+  });
+
+  it('shows neither the transcript nor the legacy log while the events load', () => {
+    documents({ logs: 'starting the agent', events: null });
+
+    expect(screen.queryByText('legacy: details not recorded')).not.toBeInTheDocument();
+    expect(screen.queryByText('starting the agent')).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,10 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import type { SwarmloopEnv } from '../config/env';
+import type { StepView } from '../contract/api';
+import { pipelineStepOf } from '../contract/steps';
 import type { RunEntity } from '../history/entities';
+import type { StepEventLog } from '../history/step-event.log';
+import type { StepRegistry } from '../steps/step.registry';
 import type { RunRepository } from '../history/run.repository';
 
 export async function requireRun(runs: RunRepository, key: string): Promise<RunEntity> {
@@ -28,4 +33,22 @@ export function eventPaging(query: { step?: string; after?: string; limit?: stri
   limit?: number;
 } {
   return { step: query.step, after: count(query.after, 'after'), limit: count(query.limit, 'limit') };
+}
+
+/** What a step is, and how far the events of the run go. A reviewer is a part of `code-review`; `done` has no entry. */
+export async function stepMeta(
+  registry: StepRegistry,
+  log: StepEventLog,
+  env: SwarmloopEnv,
+  run: RunEntity,
+  name: string,
+): Promise<Pick<StepView, 'descriptor' | 'eventsCursor'>> {
+  const step = pipelineStepOf(name);
+  const found = registry.describe(env).find((entry) => entry.name === step);
+  return {
+    descriptor: found
+      ? { name: found.name, kind: found.kind, agent: found.agent, reviewers: found.reviewers }
+      : { name: step, kind: 'server' },
+    eventsCursor: await log.lastSeq(run.id),
+  };
 }

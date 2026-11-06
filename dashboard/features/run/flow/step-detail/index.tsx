@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import { useStep } from '../../use-step';
+import { firstProblemId } from '../../transcript/transcript-model';
+import { useStepEvents } from '../../transcript/use-step-events';
 import { shownStatus, stepText, visitChecks } from '../../step-view';
 import { StepDocuments } from './step-documents';
 import { StepHeader } from './step-header';
@@ -31,19 +33,11 @@ export function StepDetail({
 }): React.ReactElement | null {
   const { view, attempt, setAttempt, error, follow } = useStep(runKey, step, live, revision, attempts);
   const [check, setCheck] = useState<string | null>(null);
-  const stick = useRef(true);
-  const logBox = useRef<HTMLDivElement | null>(null);
+  const { events, error: eventsError } = useStepEvents(runKey, step, view?.eventsCursor ?? null);
 
   useEffect(() => {
     setCheck(null);
   }, [runKey, step]);
-
-  useEffect(() => {
-    const node = logBox.current;
-    if (node && stick.current) {
-      node.scrollTop = node.scrollHeight;
-    }
-  }, [view]);
 
   if (error) {
     return (
@@ -65,7 +59,13 @@ export function StepDetail({
   const checks = visitChecks(visit);
   const shownChecks = checks.length > 0 ? checks : view.checks;
   const selected = shownChecks.find((item) => item.name === check);
-  const { logs, document } = stepText(step, visit, selected, checks);
+  // A step that recorded events shows its errors and returns in the transcript, not as documents.
+  const recorded = events !== null && events.length > 0;
+  const shownVisit =
+    recorded && visit
+      ? { ...visit, documents: visit.documents.filter((item) => item.kind !== 'error' && item.kind !== 'return') }
+      : visit;
+  const { logs, document } = stepText(step, shownVisit, selected, checks);
   return (
     <Paper sx={{ mt: 3, p: 2.5, border: 1, borderColor: 'divider' }}>
       <StepHeader
@@ -82,16 +82,23 @@ export function StepDetail({
         label={label}
         shownDuration={shownDuration}
         shownAttempt={shownAttempt}
+        problemId={events ? firstProblemId(events, step) : null}
       />
+      {eventsError ? (
+        <Typography color="error" sx={{ mt: 2 }}>
+          {eventsError}
+        </Typography>
+      ) : null}
       <StepDocuments
+        runKey={runKey}
+        step={step}
+        events={eventsError ? [] : events}
         shownChecks={shownChecks}
         check={check}
         setCheck={setCheck}
         visit={visit}
         logs={logs}
         document={document}
-        logBox={logBox}
-        stick={stick}
       />
     </Paper>
   );

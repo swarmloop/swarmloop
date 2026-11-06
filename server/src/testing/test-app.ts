@@ -17,6 +17,7 @@ import { RunsController } from '../api/runs.controller';
 import { ShellService } from '../api/shell.service';
 import { AGENT_RUNNER } from '../agent/agent-runner';
 import { SwarmloopConfigModule } from '../config/config.module';
+import type { SwarmloopEnv } from '../config/env';
 import { Clock } from '../core/clock';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { STEPS, type StepName } from '../contract/steps';
@@ -98,7 +99,10 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<{
   const runner = options.runner ?? new ScriptedFakeAgentRunner();
   const codeHost = new FakeCodeHost();
   const steps = new Map<StepName, Step>();
-  const registry = { get: (name: StepName) => steps.get(name) ?? null };
+  const registry = {
+    get: (name: StepName) => steps.get(name) ?? null,
+    describe: (env: SwarmloopEnv) => [...steps.values()].map((step) => step.describe(env)),
+  };
   const module = await Test.createTestingModule({
     imports: [
       SwarmloopConfigModule.forRoot(join(root, '.env')),
