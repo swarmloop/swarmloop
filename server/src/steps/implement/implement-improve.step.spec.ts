@@ -17,7 +17,8 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { EnvironmentService } from '../../environment/environment.service';
-import { RequiredCheckFailed } from '../../environment/project-environments';
+import { RequiredCheckFailed, RequiredCheckRepeated } from '../../environment/project-environments';
+import { implementImproveFollowUp } from './implement.prompts';
 import { REBASE_CONFLICT } from '../../git/rebase';
 
 const reply = [
@@ -303,6 +304,117 @@ describe('implement-improve step', () => {
     } finally {
       await app.close();
     }
+  });
+
+  describe('a failed server check', () => {
+    const FIX_LINE = 'The server check below failed on your files. Run it, fix the cause, run it again.';
+    const checksBody = 'billing-api: required check failed (exit 1):\n$ npm run lint\nerror: no-unused-vars';
+
+    async function chat(root: string, key: string): Promise<void> {
+      mkdirSync(join(root, 'data'), { recursive: true });
+      writeFileSync(
+        join(root, 'data', `${key}-implement-session.json`),
+        `${JSON.stringify({ runtime: 'cursor', chatId: 'implement-chat', resumed: true, completed: true, killReason: null, usd: 1 })}\n`,
+      );
+    }
+
+    async function failing(app: Awaited<ReturnType<typeof boot>>, key: string, error: RequiredCheckFailed) {
+      jest.spyOn(app.get(EnvironmentService), 'check').mockImplementationOnce(async (input) => {
+        await app.get(DocumentRepository).putDocument(input.run, 'return', `## checks\n${checksBody}\n`);
+        throw error;
+      });
+      return app.get(PipelineService).step('implement-improve', key);
+    }
+
+    it('reaches the relaunched pass, also when the chat is continued', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-checks-'));
+      await writeEnv(root);
+      featureTree(root, 'PROJ-90', 'billing-api');
+      await chat(root, 'PROJ-90');
+      const agent = jest.fn().mockResolvedValue(result(reply));
+      const app = await boot(root, agent);
+      try {
+        await seed(app, 'PROJ-90');
+        expect((await failing(app, 'PROJ-90', new RequiredCheckFailed(checksBody))).exitCode).toBe(1);
+        const done = await app.get(PipelineService).step('implement-improve', 'PROJ-90');
+        expect(done.exitCode).toBe(0);
+        const prompt = (agent.mock.calls[1]?.[0] as AgentRunInput).prompt;
+        expect((agent.mock.calls[1]?.[0] as AgentRunInput).resumeChatId).toBe('implement-chat');
+        expect(prompt).toContain('Why this returned:');
+        expect(prompt).toContain(`${FIX_LINE}\n## checks\n${checksBody}`);
+        expect(prompt).toContain(implementImproveFollowUp(`## checks\n${checksBody}\n`));
+      } finally {
+        await app.close();
+      }
+    });
+
+    it("sends today's follow-up text byte for byte when nothing failed", async () => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-plain-'));
+      await writeEnv(root);
+      featureTree(root, 'PROJ-91', 'billing-api');
+      await chat(root, 'PROJ-91');
+      const agent = jest.fn().mockResolvedValue(result(reply));
+      const app = await boot(root, agent);
+      try {
+        await seed(app, 'PROJ-91');
+        await app.get(PipelineService).step('implement-improve', 'PROJ-91');
+        expect((agent.mock.calls[0]?.[0] as AgentRunInput).prompt).toContain(implementImproveFollowUp(null));
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('blocks the run instead of launching again when the same check fails on unchanged files', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-repeat-'));
+      await writeEnv(root);
+      featureTree(root, 'PROJ-92', 'billing-api');
+      const agent = jest.fn().mockResolvedValue(result(reply));
+      const app = await boot(root, agent);
+      try {
+        await seed(app, 'PROJ-92');
+        const reason = 'billing-api: npm run lint failed again on unchanged files after a relaunch';
+        await failing(app, 'PROJ-92', new RequiredCheckFailed(checksBody));
+        await failing(app, 'PROJ-92', new RequiredCheckRepeated(reason));
+        expect(agent).toHaveBeenCalledTimes(2);
+        const run = await app.get(RunRepository).findRun('PROJ-92');
+        expect(run?.status).toBe('blocked');
+        expect(run?.currentStep).toBe('implement-improve');
+        expect(await app.get(DocumentRepository).latestBody('PROJ-92', 'return')).toContain(checksBody);
+      } finally {
+        await app.close();
+      }
+    });
+    it('reaches code review after the agent fixes the file, with no manual step', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-e2e-'));
+      await writeEnv(root);
+      const tree = featureTree(root, 'PROJ-93', 'billing-api');
+      const prompts: string[] = [];
+      const agent = jest.fn((input: AgentRunInput) => {
+        prompts.push(input.prompt);
+        if (prompts.length === 2) writeFileSync(join(tree, 'fixed.ts'), 'export const fixed = true;\n');
+        return Promise.resolve(result(reply));
+      });
+      const app = await boot(root, agent);
+      try {
+        await seed(app, 'PROJ-93');
+        let fingerprint: string | null = null;
+        jest.spyOn(app.get(EnvironmentService), 'check').mockImplementation(async (input) => {
+          const files = git(tree, ['status', '--porcelain']);
+          if (files.includes('fixed.ts')) return;
+          if (fingerprint === files) throw new RequiredCheckRepeated('repeated');
+          fingerprint = files;
+          await app.get(DocumentRepository).putDocument(input.run, 'return', `## checks\n${checksBody}\n`);
+          throw new RequiredCheckFailed(checksBody);
+        });
+        await app.get(PipelineService).runThrough('PROJ-93', { auto: true });
+        expect(prompts[1]).toContain(checksBody);
+        const run = await app.get(RunRepository).findRun('PROJ-93');
+        expect(run?.currentStep).not.toBe('implement-improve');
+        expect(run?.status).not.toBe('blocked');
+      } finally {
+        await app.close();
+      }
+    });
   });
 
   it('reviews while a rebase marker is pending and leaves that marker', async () => {

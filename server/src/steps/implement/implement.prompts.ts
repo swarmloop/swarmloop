@@ -46,16 +46,25 @@ export function implementFollowUp(plan: string, notes: string | null): string {
   return lines.join('\n');
 }
 
-export const IMPLEMENT_IMPROVE_FOLLOW_UP = [
-  'Check the change for logical and technical gaps and fix only those. Start from the files this change touched. Open another file only to follow a call from the change or a test the return names. Do not sweep the tree with grep. When there is no gap, leave the files. A pipeline return changes the code or the failed test. Do not leave them. Do not widen the change. Do not implement a linked ticket.',
-  TASK_SCOPE,
-  'Do not start a service, a database, or the application. Do not run `git commit`, `git push`, or `git add -A`. Do not create a branch.',
-  'A pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix.',
-  'When an item changes, end with one plan: block of "- item" lines, not a JSON object, holding the full corrected checklist, before implementation and summary. Without a contradiction, do not write plan:.',
-  'When this pass changed the files, end with implementation and summary. When nothing changed and the return is not a pipeline failure, end with summary only.',
-  'implementation:',
-  '- item',
-  '',
-  'summary:',
-  '- why',
-].join('\n');
+const CHECK_FAILED_LINE = 'The server check below failed on your files. Run it, fix the cause, run it again.';
+
+export function implementImproveFollowUp(notes: string | null): string {
+  const lines = [
+    'Check the change for logical and technical gaps and fix only those. Start from the files this change touched. Open another file only to follow a call from the change or a test the return names. Do not sweep the tree with grep. When there is no gap, leave the files. A pipeline return changes the code or the failed test. Do not leave them. Do not widen the change. Do not implement a linked ticket.',
+    TASK_SCOPE,
+    'Do not start a service, a database, or the application. Do not run `git commit`, `git push`, or `git add -A`. Do not create a branch.',
+    'A pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix.',
+    'When an item changes, end with one plan: block of "- item" lines, not a JSON object, holding the full corrected checklist, before implementation and summary. Without a contradiction, do not write plan:.',
+    'When this pass changed the files, end with implementation and summary. When nothing changed and the return is not a pipeline failure, end with summary only.',
+  ];
+  const returned = notes?.trim();
+  if (returned) {
+    lines.push('', 'Why this returned:');
+    if (returned.startsWith('## checks')) {
+      lines.push(CHECK_FAILED_LINE);
+    }
+    lines.push(returned, '');
+  }
+  lines.push('implementation:', '- item', '', 'summary:', '- why');
+  return lines.join('\n');
+}
