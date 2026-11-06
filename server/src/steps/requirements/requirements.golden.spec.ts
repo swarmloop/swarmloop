@@ -1,4 +1,5 @@
 import { PasteNeeded, SwarmloopError } from '../../core/swarmloop-error';
+import { StepKernel } from '../step-kernel';
 import type { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
 import type { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
 import { ISSUE_TRACKER } from '../../integrations/issue-tracker/tokens';
@@ -34,12 +35,7 @@ async function requirements(fetch: Fetch) {
     configure: (builder) => builder.overrideProvider(ISSUE_TRACKER).useValue(tracker),
   });
   const step = new RequirementsStep(
-    golden.runs,
-    golden.documents,
-    golden.visits,
-    golden.flows,
-    golden.clock,
-    golden.config,
+    new StepKernel(golden.runs, golden.documents, golden.visits, golden.flows, golden.clock, golden.config),
     tracker,
     golden.app.get<RequirementsSource>(REQUIREMENTS_SOURCE),
   );

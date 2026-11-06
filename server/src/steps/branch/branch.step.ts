@@ -1,12 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { StepKernel } from '../step-kernel';
 import { existsSync, statSync } from 'fs';
-import { AppConfig } from '../../config/env';
-import { DocumentRepository } from '../../history/document.repository';
-import { FlowRepository } from '../../history/flow.repository';
 import { root } from '../../history/run-paths';
-import { RunRepository } from '../../history/run.repository';
-import { VisitRepository } from '../../history/visit.repository';
-import { Clock } from '../../core/clock';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -22,15 +17,8 @@ export class BranchStep extends BaseStep {
   readonly name: StepName = 'branch';
   readonly requiredKind = ARTIFACTS.repos.kind;
 
-  constructor(
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
-  ) {
-    super(runs, documents, visits, flows, clock, config);
+  constructor(kernel: StepKernel) {
+    super(kernel);
   }
 
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {

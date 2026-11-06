@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { StepKernel } from '../step-kernel';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -38,12 +39,14 @@ describe('pipeline step golden traces', () => {
     await seed(app, KEY, body);
     const documents = recordingDocuments(app.get(DocumentRepository));
     const step = new PipelineStep(
-      app.get(RunRepository),
-      documents,
-      app.get(VisitRepository),
-      app.get(FlowRepository),
-      new FakeClock(),
-      app.get(AppConfig),
+      new StepKernel(
+        app.get(RunRepository),
+        documents,
+        app.get(VisitRepository),
+        app.get(FlowRepository),
+        new FakeClock(),
+        app.get(AppConfig),
+      ),
       app.get(EventRepository),
       app.get(CodeHostRegistry),
       app.get(RunRebase),

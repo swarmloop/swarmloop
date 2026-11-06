@@ -5,11 +5,8 @@ import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopConfigModule } from '../config/config.module';
-import { Clock } from '../core/clock';
-import { AppConfig } from '../config/env';
 import { DocumentRepository } from '../history/document.repository';
 import { EventRepository } from '../history/event.repository';
-import { FlowRepository } from '../history/flow.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import type { VisitDraft } from '../history/visit';
@@ -20,6 +17,7 @@ import { StepName } from '../contract/steps';
 import { PASTE_READER } from '../integrations/linked-pages/paste-page.reader';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../core/swarmloop-error';
 import { BaseStep, StepContext } from './base-step';
+import { StepKernel } from './step-kernel';
 
 /** Throws whatever the test sets, so each case drives one path through `BaseStep.execute`. */
 @Injectable()
@@ -29,15 +27,8 @@ class StubStep extends BaseStep {
   thrown: unknown = null;
   failure: Partial<VisitDraft> = {};
 
-  constructor(
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
-  ) {
-    super(runs, documents, visits, flows, clock, config);
+  constructor(kernel: StepKernel) {
+    super(kernel);
   }
 
   protected override failureVisit(): Partial<VisitDraft> {
@@ -133,6 +124,38 @@ describe('base step', () => {
       await app.close();
     }
   });
+
+  it('describes a server step from its class', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-base-describe-'));
+    const app = await boot(root);
+    try {
+      expect(app.get(StubStep).describe()).toEqual({
+        name: 'branch',
+        kind: 'server',
+        inputs: [],
+        outputs: [],
+        capabilities: {},
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('describes a model step as an agent', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-base-describe-agent-'));
+    const app = await boot(root);
+    try {
+      class AgentStub extends StubStep {
+        override readonly usesModel = true;
+        override readonly capabilities = { prompt: true };
+      }
+      const descriptor = new AgentStub(app.get(StepKernel)).describe();
+      expect(descriptor.kind).toBe('agent');
+      expect(descriptor.capabilities).toEqual({ prompt: true });
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 async function boot(root: string): Promise<TestingModule> {
@@ -176,7 +199,7 @@ async function boot(root: string): Promise<TestingModule> {
   );
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
-    providers: [StubStep],
+    providers: [StepKernel, StubStep],
   })
     .overrideProvider(PASTE_READER)
     .useValue({ read: jest.fn() })

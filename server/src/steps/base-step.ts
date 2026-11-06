@@ -15,8 +15,10 @@ import { closeStep, openStep } from '../steps/step-run';
 import type { HttpCallDraft } from '../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../core/swarmloop-error';
 import { recordHandoff } from './shared/handoff';
+import type { StepCapabilities, StepDescriptor } from './contract/step-contract';
 import type { Step } from './step';
 import { requiredDocument, type StepSnapshot } from './step';
+import type { StepKernel } from './step-kernel';
 
 export interface StepEnd {
   outcome: 'ok' | 'failed' | 'blocked' | 'waiting';
@@ -40,15 +42,43 @@ export abstract class BaseStep implements Step {
   abstract readonly name: StepName;
   abstract readonly requiredKind: string;
   readonly usesModel: boolean = false;
+  readonly capabilities: StepCapabilities = {};
 
-  constructor(
-    protected readonly runs: RunRepository,
-    protected readonly documents: DocumentRepository,
-    protected readonly visits: VisitRepository,
-    protected readonly flows: FlowRepository,
-    protected readonly clock: Clock,
-    protected readonly config: AppConfig,
-  ) {}
+  constructor(protected readonly kernel: StepKernel) {}
+
+  protected get runs(): RunRepository {
+    return this.kernel.runs;
+  }
+
+  protected get documents(): DocumentRepository {
+    return this.kernel.documents;
+  }
+
+  protected get visits(): VisitRepository {
+    return this.kernel.visits;
+  }
+
+  protected get flows(): FlowRepository {
+    return this.kernel.flows;
+  }
+
+  protected get clock(): Clock {
+    return this.kernel.clock;
+  }
+
+  protected get config(): AppConfig {
+    return this.kernel.config;
+  }
+
+  describe(): StepDescriptor {
+    return {
+      name: this.name,
+      kind: this.usesModel ? 'agent' : 'server',
+      inputs: [],
+      outputs: [],
+      capabilities: this.capabilities,
+    };
+  }
 
   missingInput(key: string, _options?: StepOptions): Promise<string | null> {
     return requiredDocument(this.documents, key, this.requiredKind);

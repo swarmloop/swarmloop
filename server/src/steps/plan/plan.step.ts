@@ -1,12 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { StepCapabilities } from '../contract/step-contract';
+import { StepKernel } from '../step-kernel';
 import { join } from 'path';
-import { AppConfig, SwarmloopEnv } from '../../config/env';
-import { RunRepository } from '../../history/run.repository';
-import { DocumentRepository } from '../../history/document.repository';
-import { VisitRepository } from '../../history/visit.repository';
-import { FlowRepository } from '../../history/flow.repository';
+import { SwarmloopEnv } from '../../config/env';
 import { root } from '../../history/run-paths';
-import { Clock } from '../../core/clock';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../history/session-group';
 import { PipelineResult } from '../../core/pipeline-result';
@@ -26,19 +23,10 @@ import { ARTIFACTS } from '../contract/artifacts';
 export class PlanStep extends AgentStep {
   readonly name: StepName = 'plan';
   readonly requiredKind = ARTIFACTS.repos.kind;
-  readonly revisesRequirements = true;
+  override readonly capabilities: StepCapabilities = { revisesRequirements: true };
 
-  constructor(
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
-    sandbox: SandboxService,
-    @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
-  ) {
-    super(runs, documents, visits, flows, clock, config, sandbox, agent);
+  constructor(kernel: StepKernel, sandbox: SandboxService, @Inject(AGENT_RUNNER) agent: AgentProcessRunner) {
+    super(kernel, sandbox, agent);
   }
 
   protected settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number } {
@@ -49,7 +37,7 @@ export class PlanStep extends AgentStep {
     const questions = (await this.documents.latestBody(key, ARTIFACTS.questions.kind)) ?? '';
     const answers = (await this.documents.latestBody(key, ARTIFACTS.answers.kind)) ?? '';
     if (unanswered(questions, answers).length > 0) {
-      return ctx.end('waiting', 0, `${ctx.opened.startedAt} questions are open`);
+      return ctx.end({ outcome: 'waiting', exitCode: 0, line: `${ctx.opened.startedAt} questions are open` });
     }
     const requirements = (await this.documents.latestBody(key, ARTIFACTS.requirements.kind)) ?? '';
     const stored = readPlan(requirements);
@@ -60,13 +48,13 @@ export class PlanStep extends AgentStep {
         'plan',
         stored.items.map((item) => `- ${item}`).join('\n'),
       );
-      return ctx.end(
-        'ok',
-        0,
-        `${ctx.opened.startedAt} plan done`,
-        textDocument(ARTIFACTS.requirements.kind, requirements),
-        [handoff],
-      );
+      return ctx.end({
+        outcome: 'ok',
+        exitCode: 0,
+        line: `${ctx.opened.startedAt} plan done`,
+        document: textDocument(ARTIFACTS.requirements.kind, requirements),
+        documents: [handoff],
+      });
     }
     const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
@@ -87,12 +75,12 @@ export class PlanStep extends AgentStep {
       plainSummary(agentResult.responseText) || plan.items.map((item) => `- ${item}`).join('\n'),
     );
     const handoff = await recordHandoff(this.documents, key, 'plan', summary);
-    return ctx.end(
-      'ok',
-      0,
-      `${ctx.opened.startedAt} plan done\n${plan.items.join('\n')}`,
-      textDocument(ARTIFACTS.requirements.kind, body),
-      [handoff],
-    );
+    return ctx.end({
+      outcome: 'ok',
+      exitCode: 0,
+      line: `${ctx.opened.startedAt} plan done\n${plan.items.join('\n')}`,
+      document: textDocument(ARTIFACTS.requirements.kind, body),
+      documents: [handoff],
+    });
   }
 }

@@ -1,4 +1,5 @@
 import { SwarmloopError } from '../../core/swarmloop-error';
+import { StepKernel } from '../step-kernel';
 import { result } from '../implement/implement.step.spec-helpers';
 import { expectGolden } from '../../testing/step-trace.spec-helpers';
 import { withPlan } from '../plan/plan-record';
@@ -17,12 +18,7 @@ async function improve(agent: jest.Mock) {
   await golden.seedDocuments.putDocument(seeded, 'requirements', withPlan('{"prompt":"ship the field"}\n', unreviewed));
   await golden.seedDocuments.putDocument(seeded, 'repos', 'billing-api\n');
   const step = new PlanImproveStep(
-    golden.runs,
-    golden.documents,
-    golden.visits,
-    golden.flows,
-    golden.clock,
-    golden.config,
+    new StepKernel(golden.runs, golden.documents, golden.visits, golden.flows, golden.clock, golden.config),
     golden.sandbox,
     golden.agent,
   );

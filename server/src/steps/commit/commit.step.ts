@@ -1,15 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { StepKernel } from '../step-kernel';
 import { existsSync, statSync } from 'fs';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { RunEntity } from '../../history/entities';
-import { RunRepository } from '../../history/run.repository';
-import { DocumentRepository } from '../../history/document.repository';
-import { VisitRepository } from '../../history/visit.repository';
-import { FlowRepository } from '../../history/flow.repository';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
-import { AppConfig } from '../../config/env';
-import { Clock } from '../../core/clock';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { OpenedStep } from '../../steps/step-run';
@@ -39,16 +34,11 @@ export class CommitStep extends BaseStep {
   readonly requiredKind = ARTIFACTS.requirements.kind;
 
   constructor(
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
+    kernel: StepKernel,
     private readonly checkouts: CheckoutRepository,
     private readonly registry: CodeHostRegistry,
   ) {
-    super(runs, documents, visits, flows, clock, config);
+    super(kernel);
   }
 
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {

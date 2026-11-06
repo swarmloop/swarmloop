@@ -1,11 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { RunRepository } from '../../history/run.repository';
-import { DocumentRepository } from '../../history/document.repository';
-import { VisitRepository } from '../../history/visit.repository';
-import { FlowRepository } from '../../history/flow.repository';
+import type { StepCapabilities } from '../contract/step-contract';
+import { StepKernel } from '../step-kernel';
 import { runDir } from '../../history/run-paths';
-import { AppConfig } from '../../config/env';
-import { Clock } from '../../core/clock';
 import { RunEntity } from '../../history/entities';
 import { SampleDraft, sampleSelf } from '../../history/visit';
 import { FetchFailed, HttpCallDraft, SwarmloopError, PasteNeeded } from '../../core/swarmloop-error';
@@ -26,20 +22,14 @@ import { ARTIFACTS } from '../contract/artifacts';
 export class RequirementsStep extends BaseStep {
   readonly name: StepName = 'requirements';
   readonly requiredKind = ARTIFACTS.requirements.kind;
-  readonly acceptsPrompt = true;
-  readonly acceptsProjects = true;
+  override readonly capabilities: StepCapabilities = { prompt: true, projects: true };
 
   constructor(
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
+    kernel: StepKernel,
     @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
     @Inject(REQUIREMENTS_SOURCE) private readonly source: RequirementsSource,
   ) {
-    super(runs, documents, visits, flows, clock, config);
+    super(kernel);
   }
 
   async fetch(key: string): Promise<PipelineResult> {

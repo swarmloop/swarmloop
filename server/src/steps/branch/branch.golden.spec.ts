@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { StepKernel } from '../step-kernel';
 import { mkdirSync, writeFileSync } from 'fs';
 import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -39,12 +40,14 @@ describe('branch step golden traces', () => {
     stub?.();
     const documents = recordingDocuments(app.get(DocumentRepository));
     const step = new BranchStep(
-      app.get(RunRepository),
-      documents,
-      app.get(VisitRepository),
-      app.get(FlowRepository),
-      app.get(Clock),
-      app.get(AppConfig),
+      new StepKernel(
+        app.get(RunRepository),
+        documents,
+        app.get(VisitRepository),
+        app.get(FlowRepository),
+        app.get(Clock),
+        app.get(AppConfig),
+      ),
     );
     const result = await step.execute(KEY);
     const git = Object.fromEntries(

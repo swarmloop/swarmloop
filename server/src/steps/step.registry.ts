@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { SwarmloopEnv } from '../config/env';
 import { StepName } from '../contract/steps';
 import { BranchStep } from './branch/branch.step';
 import { CommitStep } from './commit/commit.step';
@@ -12,6 +13,7 @@ import { PipelineStep } from './pipeline/pipeline.step';
 import { PrepareStep } from './prepare/prepare.step';
 import { RequirementsStep } from './requirements/requirements.step';
 import { ResearchStep } from './research/research.step';
+import { StepDescriptor } from './contract/step-contract';
 import { Step } from './step';
 
 /** Every step with a service, by name. `done` has none. */
@@ -54,5 +56,9 @@ export class StepRegistry {
 
   get(name: StepName): Step | null {
     return this.steps.get(name) ?? null;
+  }
+
+  describe(env: SwarmloopEnv): StepDescriptor[] {
+    return [...this.steps.values()].map((step) => step.describe(env));
   }
 }

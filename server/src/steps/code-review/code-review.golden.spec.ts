@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { StepKernel } from '../step-kernel';
 import { mkdirSync } from 'fs';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -43,12 +44,14 @@ describe('code-review step golden traces', () => {
     await seed(app, KEY);
     const documents = recordingDocuments(app.get(DocumentRepository));
     const step = new CodeReviewStep(
-      app.get(RunRepository),
-      documents,
-      app.get(VisitRepository),
-      app.get(FlowRepository),
-      new FakeClock(),
-      app.get(AppConfig),
+      new StepKernel(
+        app.get(RunRepository),
+        documents,
+        app.get(VisitRepository),
+        app.get(FlowRepository),
+        new FakeClock(),
+        app.get(AppConfig),
+      ),
       app.get(CheckoutRepository),
       app.get(EventRepository),
       app.get(PrepareStep),

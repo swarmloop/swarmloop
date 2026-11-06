@@ -1,4 +1,5 @@
 import { DataSource } from 'typeorm';
+import { StepKernel } from '../steps/step-kernel';
 import type { StepName } from '../contract/steps';
 import { STEPS } from '../contract/steps';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
@@ -35,7 +36,7 @@ class DriverStep extends BaseStep {
     base: { runs: RunRepository; visits: VisitRepository; flows: FlowRepository; clock: Clock; config: AppConfig },
     private readonly script: Script,
   ) {
-    super(base.runs, recorder, base.visits, base.flows, base.clock, base.config);
+    super(new StepKernel(base.runs, recorder, base.visits, base.flows, base.clock, base.config));
   }
 
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {

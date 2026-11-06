@@ -1,26 +1,22 @@
 import { mkdirSync } from 'fs';
+import type { StepKernel } from './step-kernel';
 import { join } from 'path';
-import type { AppConfig, SwarmloopEnv } from '../config/env';
+import type { SwarmloopEnv } from '../config/env';
 import type { RunEntity } from '../history/entities';
-import type { DocumentRepository } from '../history/document.repository';
-import type { FlowRepository } from '../history/flow.repository';
 import { root } from '../history/run-paths';
-import type { RunRepository } from '../history/run.repository';
 import type { VisitRepository } from '../history/visit.repository';
-import type { Clock } from '../core/clock';
 import type { DocumentDraft } from '../history/visit';
 import type { AgentProcessRunner, AgentRunResult } from '../agent/agent-runner';
 import { readSession } from '../agent/agent-runner';
 import { sessionFileName } from '../history/session-group';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { visitStatus } from '../core/pipeline-result';
-import type { StepName } from '../contract/steps';
 import type { OpenedStep } from '../steps/step-run';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { ProjectLaunch } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { SwarmloopError } from '../core/swarmloop-error';
-import type { StepContext } from './base-step';
+import type { StepContext, StepEnd } from './base-step';
 import { BaseStep } from './base-step';
 import { agentFailure, combineAgentResults, refusedWrite, withRefusal } from './shared/agent-result';
 import { modelVisit } from './shared/model-visit';
@@ -80,18 +76,16 @@ export async function launchAgent(input: {
   return result;
 }
 
+type ModelStepEnd = Pick<StepEnd, 'outcome' | 'exitCode' | 'line' | 'moveTo'> & {
+  document?: DocumentDraft;
+  documents?: DocumentDraft[];
+};
+
 export interface ModelStepContext {
   opened: OpenedStep;
   requirements: string;
   workspace: string;
-  end: (
-    outcome: 'ok' | 'failed' | 'waiting' | 'blocked',
-    exitCode: number,
-    line: string,
-    document?: DocumentDraft,
-    documents?: DocumentDraft[],
-    moveTo?: StepName,
-  ) => Promise<PipelineResult>;
+  end: (input: ModelStepEnd) => Promise<PipelineResult>;
   launch: (input: {
     prompt: string;
     mounts: SandboxMount[];
@@ -123,16 +117,11 @@ export abstract class AgentStep extends BaseStep {
   override readonly usesModel = true;
 
   constructor(
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
+    kernel: StepKernel,
     protected readonly sandbox: SandboxService,
     protected readonly agent: AgentProcessRunner,
   ) {
-    super(runs, documents, visits, flows, clock, config);
+    super(kernel);
   }
 
   protected abstract settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number };
@@ -158,7 +147,7 @@ export abstract class AgentStep extends BaseStep {
       opened: stepCtx.opened,
       requirements: '',
       workspace: run.workspace,
-      end: (outcome, exitCode, line, document, documents, moveTo) =>
+      end: ({ outcome, exitCode, line, document, documents, moveTo }) =>
         stepCtx.end({
           outcome,
           exitCode,
@@ -190,7 +179,11 @@ export abstract class AgentStep extends BaseStep {
       return await this.write(key, ctx, options);
     } catch (error) {
       const refusal = error === run.launchError ? null : run.refusal;
-      return ctx.end('failed', 1, `${stepCtx.opened.startedAt} ${withRefusal(this.failureText(error), refusal)}`);
+      return ctx.end({
+        outcome: 'failed',
+        exitCode: 1,
+        line: `${stepCtx.opened.startedAt} ${withRefusal(this.failureText(error), refusal)}`,
+      });
     }
   }
 
