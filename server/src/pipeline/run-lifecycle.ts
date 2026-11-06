@@ -17,7 +17,7 @@ import type { StepRegistry } from '../steps/step.registry';
 import type { RunStop } from '../agent/run-stop';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { assertKey, diedLog, isStep } from '../core/pipeline-result';
-import { describeFailure, failureStack } from '../core/step-failure';
+import { reportFailure } from '../steps/shared/step-failure';
 import { CHAT_LOCK, chatHeld, chatResume, readChatLock } from './chat-lock';
 import { flagError } from './flag-error';
 import { settleShell, shellHolding } from './shell-lock';
@@ -79,9 +79,9 @@ export class RunLifecycle implements OnModuleInit {
       void this.driver
         .drive(step, key, options)
         .catch(async (error: unknown) => {
-          const failure = describeFailure(only ?? 'unknown', error, this.config.env);
-          this.logger.error(`${failure.errorId} ${failureStack(error, this.config.env)}`);
-          const run = await this.runs.findRun(key);
+          // A failed lookup must not hide the crash: it is reported below with the key as the step.
+          const run = await this.runs.findRun(key).catch(() => null);
+          const failure = reportFailure(run?.currentStep ?? key, error, this.config.env);
           if (run?.status === 'running' && run.ownerPid === process.pid) {
             const now = this.clock.iso();
             await this.visits.finishVisit(run, {

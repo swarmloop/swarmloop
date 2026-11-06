@@ -32,7 +32,7 @@
   },
   "result": {
     "exitCode": 1,
-    "message": "<t> code-review failed"
+    "message": "<t> code-review failed: spawn failed (<id:1>)"
   },
   "run": {
     "agentCalls": 0,
@@ -48,7 +48,7 @@
     {
       "documents": [
         {
-          "body": "code-review failed\n",
+          "body": "code-review failed: spawn failed (<id:1>)\n",
           "kind": "error"
         }
       ],

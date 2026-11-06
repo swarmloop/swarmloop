@@ -122,7 +122,7 @@ describe('pipeline service', () => {
       const started = await pipeline.startDetached('PROJ-64', { path: root }, 'code-review');
       expect(started).toEqual({ exitCode: 0, message: 'PROJ-64 started' });
       await settle(pipeline, 'PROJ-64');
-      expect(error).toHaveBeenCalledWith(expect.stringMatching(/^E-[0-9a-z]{8} Error: boom/));
+      expect(error).toHaveBeenCalledWith(expect.stringMatching(/^E-[0-9a-z]{8} PROJ-64 failed: \nError: boom/));
     } finally {
       error.mockRestore();
       await app.close();

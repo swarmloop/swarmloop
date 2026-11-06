@@ -7,6 +7,7 @@ import type { OpenedStep } from '../../steps/step-run';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import type { PipelineResult } from '../../core/pipeline-result';
 import { visitStatus } from '../../core/pipeline-result';
+import { reportFailure } from '../shared/step-failure';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import type { StepContext } from '../base-step';
 import { assertRoute } from '../contract/returns';
@@ -109,7 +110,7 @@ export async function writeReport(
     }
     return { document: textDocument(ARTIFACTS.reviewReport.kind, `${text}\n`), exchange, usage: spent };
   } catch (error) {
-    const message = error instanceof SwarmloopError ? error.message : 'code-review failed';
+    const message = reportFailure('code-review', error, env).message;
     return { error: message, exchange: null, usage: empty };
   }
 }

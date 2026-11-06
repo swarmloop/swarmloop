@@ -8,12 +8,13 @@ import { root } from '../../history/run-paths';
 import { StepName } from '../../contract/steps';
 import { assignCodeHost, type CodeHostName } from '../../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../../core/swarmloop-error';
+import { reportFailure } from '../shared/step-failure';
 import { git, gitDetail } from '../../git/git';
 import { BaseStep, StepContext } from '../base-step';
 import { CheckoutService } from '../shared/checkout.service';
 import { CHECKOUT_NAME, listGitProjects, resolveCheckoutPath, storedProjects } from './checkout-path';
 import { ARTIFACTS } from '../contract/artifacts';
-import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
+import type { InputSpec, StepFailure, StepInput, StepResult } from '../contract/step-contract';
 
 /** The requirements record must exist to start. Prepare does not read it, so it is not loaded. */
 const INPUTS = {
@@ -36,8 +37,13 @@ export class PrepareStep extends BaseStep<typeof INPUTS> {
     super(kernel);
   }
 
-  protected override failureText(error: unknown): string {
-    return error instanceof SwarmloopError ? error.message : gitDetail(error);
+  protected override failureOf(error: unknown): StepFailure {
+    return reportFailure(
+      this.name,
+      error,
+      this.config.env,
+      error instanceof SwarmloopError ? undefined : gitDetail(error),
+    );
   }
 
   protected async work(_input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {

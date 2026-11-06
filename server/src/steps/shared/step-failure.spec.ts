@@ -1,5 +1,6 @@
-import { describeFailure, failureStack, newErrorId } from './step-failure';
-import { SwarmloopError } from './swarmloop-error';
+import { Logger } from '@nestjs/common';
+import { describeFailure, failureStack, newErrorId, reportFailure } from './step-failure';
+import { SwarmloopError } from '../../core/swarmloop-error';
 
 const ENV = { GITHUB_TOKEN: 'tok-value-1' };
 
@@ -40,5 +41,21 @@ describe('step failure', () => {
     expect(failureStack(error, ENV)).not.toContain('tok-value-1');
     error.stack = undefined;
     expect(failureStack(error, ENV)).toBe('bad ***');
+  });
+
+  it('takes the cause the caller names, redacted, over the message', () => {
+    const failure = describeFailure('prepare', new Error('Command failed: git'), ENV, 'fatal: tok-value-1 rejected');
+    expect(failure.message).toBe(`prepare failed: fatal: *** rejected (${failure.errorId})`);
+  });
+
+  it('logs the id of the failure it returns', () => {
+    const logged = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      const failure = reportFailure('plan', new Error('boom tok-value-1'), ENV);
+      expect(String(logged.mock.calls[0][0])).toContain(`${failure.errorId} plan failed:`);
+      expect(String(logged.mock.calls[0][0])).not.toContain('tok-value-1');
+    } finally {
+      logged.mockRestore();
+    }
   });
 });

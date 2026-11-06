@@ -9,7 +9,7 @@ import { readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../history/session-group';
 import type { OpenedStep } from '../../steps/step-run';
 import type { SandboxMount } from '../../core/sandbox-mount';
-import { SwarmloopError } from '../../core/swarmloop-error';
+import { reportFailure } from '../shared/step-failure';
 import { reviewContinue, reviewResume } from './code-review.prompts';
 import type { AgentLauncher } from '../shared/agent-launcher';
 import { agentFailure, refusedWrite, withRefusal } from '../shared/agent-result';
@@ -131,7 +131,7 @@ async function one(
       parsed: { kind: job.reviewer.kind, decision: parsed.decision, body: parsed.body },
     };
   } catch (error) {
-    const message = error instanceof SwarmloopError ? withRefusal(error.message, refused) : 'code-review failed';
+    const message = withRefusal(reportFailure('code-review', error, env).message, refused);
     return { reviewer: job.reviewer, model: job.model, prompt: job.prompt, result: null, error: message };
   }
 }

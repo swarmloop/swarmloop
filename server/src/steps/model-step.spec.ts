@@ -363,7 +363,12 @@ describe('agent step failure', () => {
       expect(id).toMatch(/^E-[0-9a-z]{8}$/);
       expect(stepResult.route).toEqual({
         to: 'fail',
-        error: { code: 'research', message: `research failed: agent crashed (${id})` },
+        error: {
+          code: 'STEP_FAILED',
+          category: 'internal',
+          errorId: id,
+          message: `research failed: agent crashed (${id})`,
+        },
       });
       expect(stepResult.summary).toContain(`research failed: agent crashed (${id})`);
       expect(logged).toHaveBeenCalledTimes(1);

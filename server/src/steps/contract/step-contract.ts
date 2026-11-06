@@ -1,4 +1,5 @@
 import type { StepName } from '../../contract/steps';
+import type { ErrorCategory } from '../../core/swarmloop-error';
 import type { PipelineResult } from '../../core/pipeline-result';
 import type { VisitDraft } from '../../history/visit';
 import type { Artifact } from './artifact';
@@ -31,6 +32,9 @@ export interface Issue {
 export interface StepFailure {
   code: string;
   message: string;
+  /** Set when the failure was described by `describeFailure`: the id the server log carries. */
+  errorId?: string;
+  category?: ErrorCategory;
 }
 
 export type Route =
