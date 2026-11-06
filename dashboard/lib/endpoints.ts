@@ -23,8 +23,9 @@ const post = (body?: unknown): RequestInit => ({
 export const listRuns = (): Promise<RunsView> => api<RunsView>('/runs');
 export const getFlow = (key: string): Promise<FlowView> => api<FlowView>(run(key));
 export const getStep = (key: string, name: string): Promise<StepView> => api<StepView>(step(key, name));
-export const getStepEvents = (key: string, name: string, after: number): Promise<StepEventPage> =>
-  api<StepEventPage>(`${run(key)}/events?step=${encodeURIComponent(name)}&after=${after}`);
+/** The events of one step, or of every step of the run when `name` is null. */
+export const getStepEvents = (key: string, name: string | null, after: number): Promise<StepEventPage> =>
+  api<StepEventPage>(`${run(key)}/events?${name === null ? '' : `step=${encodeURIComponent(name)}&`}after=${after}`);
 export const getHistory = (key: string): Promise<HistoryView> => api<HistoryView>(`${run(key)}/history`);
 export const listProjects = (): Promise<{ projects: string[] }> => api<{ projects: string[] }>('/checkouts/projects');
 export const getRunLog = (key: string, name: string): Promise<string | null> => runLog(key, name);

@@ -79,6 +79,14 @@
       "step": "implement"
     },
     {
+      "kind": "session.changed",
+      "step": "implement"
+    },
+    {
+      "kind": "context.manifest",
+      "step": "implement"
+    },
+    {
       "kind": "agent.launched",
       "step": "implement"
     },
@@ -100,6 +108,14 @@
     },
     {
       "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "session.changed",
+      "step": "implement"
+    },
+    {
+      "kind": "context.manifest",
       "step": "implement"
     },
     {

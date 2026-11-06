@@ -10,6 +10,8 @@ import type { InputSpec, Issue } from '../contract/step-contract';
 import { recordStepEvent } from '../../core/step-event-scope';
 
 const SUMMARY_CHARS = 120;
+/** The steps whose pass closes the issues they opened. */
+const RESOLVING_STEPS: StepName[] = ['code-review', 'pipeline'];
 
 /** The first non-empty line of a document, cut short. */
 function oneLine(body: string): string {
@@ -29,12 +31,15 @@ export function stepEventSink(log: StepEventLog, env: object): (event: StepEvent
   };
 }
 
-/** One `input.received` for each input the step read, with the document it got. */
+/** One `input.received` for each input the step read, with the document it got. A step that reads issues also records the handoff it took, once. */
 export async function recordInputs(
   documents: DocumentRepository,
+  log: StepEventLog,
   runId: number,
+  step: StepName,
   spec: InputSpec,
   input: Record<string, unknown>,
+  latestIssues: () => Promise<Issue[] | null>,
 ): Promise<void> {
   const read = Object.entries(spec).filter(([, entry]) => !entry.late);
   const ids = await documents.latestIds(
@@ -52,10 +57,32 @@ export async function recordInputs(
       summary: value === null || value === undefined ? 'absent' : oneLine(entry.artifact.format(value)),
     });
   }
+  if (Object.values(spec).some((entry) => entry.artifact.kind === ARTIFACTS.issues.kind)) {
+    await recordHandoffReceived(documents, log, runId, step, latestIssues);
+  }
+}
+
+async function recordHandoffReceived(
+  documents: DocumentRepository,
+  log: StepEventLog,
+  runId: number,
+  step: StepName,
+  latestIssues: () => Promise<Issue[] | null>,
+): Promise<void> {
+  const handoffId = (await documents.latestIds(runId, [ARTIFACTS.handoff.kind])).get(ARTIFACTS.handoff.kind);
+  if (handoffId === undefined || (await log.hasReceived(runId, step, handoffId))) {
+    return;
+  }
+  const issueIds = ((await latestIssues()) ?? []).map((issue) => issue.id);
+  if (issueIds.length > 0) {
+    recordStepEvent({ kind: 'handoff.received', handoffId, issueIds });
+  }
 }
 
 interface StepEndFacts {
   runId: number;
+  step: StepName;
+  attemptId: string;
   outcome: string;
   moveTo?: StepName;
   line: string;
@@ -65,7 +92,13 @@ interface StepEndFacts {
 }
 
 /** What a closed visit produced and sent on, ending with `attempt.finished`. */
-export async function recordEnd(documents: DocumentRepository, end: StepEndFacts): Promise<void> {
+export async function recordEnd(documents: DocumentRepository, log: StepEventLog, end: StepEndFacts): Promise<void> {
+  if (RESOLVING_STEPS.includes(end.step) && end.outcome === 'ok' && end.moveTo === undefined) {
+    const now = new Set(end.issues.map((issue) => issue.id));
+    for (const issueId of (await log.openIssues(end.runId, end.step)).filter((id) => !now.has(id))) {
+      recordStepEvent({ kind: 'issue.resolved', issueId, evidence: `${end.step} ${end.attemptId}` });
+    }
+  }
   for (const issue of end.issues) {
     recordStepEvent({ kind: 'issue.opened', issueId: issue.id, source: issue.source, title: issue.title });
   }

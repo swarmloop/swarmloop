@@ -7,28 +7,49 @@ import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import type { StepEvent } from '@contract/step-events';
 import { ActionCard } from './action-card';
-import { AgentCard } from './agent-card';
+import { AgentCard, SessionCard } from './agent-card';
 import { ArtifactCard } from './artifact-card';
 import { AttemptDivider } from './attempt-divider';
 import { CommandCard } from './command-card';
 import { HandoffCard } from './handoff-card';
 import { InputCard } from './input-card';
+import { IssueCard } from './issue-card';
 import { ProblemCard } from './problem-card';
-import { filterEvents, groupByAttempt, type TranscriptFilter, type TranscriptItem } from './transcript-model';
+import {
+  filterEvents,
+  groupByAttempt,
+  type IssueLinks,
+  type TranscriptFilter,
+  type TranscriptItem,
+} from './transcript-model';
 
 const FILTERS: TranscriptFilter[] = ['all', 'inputs', 'actions', 'problems'];
 
 /** How far from the bottom the reader still counts as being at the bottom. */
 const BOTTOM_SLACK = 48;
 
-function Card({ runKey, item }: { runKey: string; item: TranscriptItem }): ReactElement | null {
+function Card({
+  runKey,
+  item,
+  issues,
+}: {
+  runKey: string;
+  item: TranscriptItem;
+  issues: IssueLinks;
+}): ReactElement | null {
   const { event } = item;
   switch (event.kind) {
     case 'input.received':
+    case 'handoff.received':
+      return <InputCard event={event} issues={issues} />;
     case 'issue.opened':
-      return <InputCard event={event} />;
+    case 'issue.resolved':
+      return <IssueCard event={event} />;
+    case 'session.changed':
+    case 'context.manifest':
+      return <SessionCard event={event} />;
     case 'handoff.sent':
-      return item.side === 'right' ? <InputCard event={event} /> : <HandoffCard event={event} />;
+      return <HandoffCard event={event} />;
     case 'command.started':
       return <CommandCard runKey={runKey} event={event} end={item.end} />;
     case 'agent.launched':
@@ -48,12 +69,13 @@ function Card({ runKey, item }: { runKey: string; item: TranscriptItem }): React
 
 export function TranscriptFeed({
   runKey,
-  step,
   events,
+  issues = new Map(),
 }: {
   runKey: string;
-  step: string;
   events: StepEvent[];
+  /** The issues of the whole run, so a card can link to the window the issue came from. */
+  issues?: IssueLinks;
 }): ReactElement {
   const [filter, setFilter] = useState<TranscriptFilter>('all');
   const [unseen, setUnseen] = useState(false);
@@ -62,10 +84,10 @@ export function TranscriptFeed({
   const seen = useRef(0);
   const groups = useMemo(
     () =>
-      groupByAttempt(events, step)
+      groupByAttempt(events)
         .map((group) => ({ ...group, items: filterEvents(group.items, filter) }))
         .filter((group) => group.items.length > 0),
-    [events, step, filter],
+    [events, filter],
   );
 
   useEffect(() => {
@@ -122,10 +144,10 @@ export function TranscriptFeed({
               {group.items.map((item) =>
                 item.problem ? (
                   <ProblemCard key={item.event.eventId} eventId={item.event.eventId} problem={item.problem}>
-                    <Card runKey={runKey} item={item} />
+                    <Card runKey={runKey} item={item} issues={issues} />
                   </ProblemCard>
                 ) : (
-                  <Card key={item.event.eventId} runKey={runKey} item={item} />
+                  <Card key={item.event.eventId} runKey={runKey} item={item} issues={issues} />
                 ),
               )}
             </Box>

@@ -22,8 +22,8 @@ function documents(overrides: Partial<ComponentProps<typeof StepDocuments>> = {}
     logs: '',
     document: '',
     runKey: 'run-1',
-    step: 'implement',
     events: [],
+    issues: new Map(),
     ...overrides,
   };
   render(<StepDocuments {...props} />, { wrapper: QueryWrapper });

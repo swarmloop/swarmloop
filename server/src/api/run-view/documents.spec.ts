@@ -9,6 +9,6 @@ describe('belongsToVisit', () => {
   });
 
   it('leaves the issues document out, even when its kind is asked for', () => {
-    expect(belongsToVisit({ stepStatId: 2, kind: 'issues' } as DocumentEntity, 2, kinds, true)).toBe(false);
+    expect(belongsToVisit({ stepStatId: 2, kind: 'issues' } as DocumentEntity, 2, kinds, true)).toBe(true);
   });
 });

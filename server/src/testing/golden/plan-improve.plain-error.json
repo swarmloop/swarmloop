@@ -19,6 +19,14 @@
       "step": "plan-improve"
     },
     {
+      "kind": "session.changed",
+      "step": "plan-improve"
+    },
+    {
+      "kind": "context.manifest",
+      "step": "plan-improve"
+    },
+    {
       "kind": "agent.launched",
       "step": "plan-improve"
     },

@@ -6,12 +6,12 @@ import type { StepEvent } from '@contract/step-events';
 import { getStepEvents } from '../../../lib/endpoints';
 
 /**
- * Every event of a step, in `seq` order, as each page arrives. `events` is null while they load, and when there is no cursor yet. A new
+ * Every event of a step (of the run when `step` is null), in `seq` order, as each page arrives. `events` is null while they load, and when there is no cursor yet. A new
  * cursor (new events in the run) is a new query, so the list is read again.
  */
 export function useStepEvents(
   runKey: string,
-  step: string,
+  step: string | null,
   cursor: number | null,
 ): { events: StepEvent[] | null; error: string | null } {
   const query = useInfiniteQuery({

@@ -19,6 +19,14 @@
       "step": "research"
     },
     {
+      "kind": "session.changed",
+      "step": "research"
+    },
+    {
+      "kind": "context.manifest",
+      "step": "research"
+    },
+    {
       "kind": "agent.launched",
       "step": "research"
     },

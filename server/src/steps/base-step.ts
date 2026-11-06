@@ -20,6 +20,7 @@ import { FetchFailed } from '../core/swarmloop-error';
 import { recordHandoff } from './shared/handoff';
 import { recordEnd, recordInputs, stepEventSink } from './shared/step-event-recording';
 import type { Artifact } from './contract/artifact';
+import { ARTIFACTS } from './contract/artifacts';
 import { InputReader } from './contract/input-reader';
 import { outputDrafts } from './contract/output-writer';
 import { routeToEnd } from './contract/route';
@@ -279,8 +280,10 @@ abstract class StepCore implements Step {
       moveTo: input.moveTo,
       visit,
     });
-    await recordEnd(this.documents, {
+    await recordEnd(this.documents, this.kernel.stepEvents, {
       runId: opened.run.id,
+      step: this.name,
+      attemptId: opened.attemptId,
       outcome: input.outcome,
       moveTo: input.moveTo,
       line: input.line,
@@ -320,7 +323,15 @@ export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore
       async (ctx) => {
         await this.ready(ctx);
         const input = await this.reader.read(key, this.inputs);
-        await recordInputs(this.documents, ctx.opened.run.id, this.inputs, input);
+        await recordInputs(
+          this.documents,
+          this.kernel.stepEvents,
+          ctx.opened.run.id,
+          this.name,
+          this.inputs,
+          input,
+          () => ctx.reread(ARTIFACTS.issues),
+        );
         return this.conclude(ctx, await this.work(input, ctx));
       },
       snapshot,

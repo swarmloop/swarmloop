@@ -6,7 +6,7 @@ import { LiveBridgeProvider } from '../../../shell';
 import { QueryWrapper } from '../../../../test/query-wrapper';
 import { getStep, getStepEvents } from '../../../../lib/endpoints';
 import { stepView, visitView } from '../../../../test/fixtures';
-import { commandEvents } from '../../../../test/step-events';
+import { commandEvents, stepEvent } from '../../../../test/step-events';
 import { StepDetail } from './index';
 
 vi.mock('../../../../lib/endpoints', () => ({ getStep: vi.fn(), getStepEvents: vi.fn(), getRunLog: vi.fn() }));
@@ -108,6 +108,38 @@ describe('StepDetail', () => {
     expect(screen.queryByText('boom from the document')).not.toBeInTheDocument();
     expect(screen.queryByText('claude-opus · 2.5s')).not.toBeInTheDocument();
     expect(getStepEvents).toHaveBeenCalledWith('run-1', 'implement', 0);
+  });
+
+  it('reads the events of the run to link a received issue to its source', async () => {
+    vi.mocked(getStep).mockResolvedValue(
+      stepView({
+        visits: [
+          visitView({
+            documents: [{ kind: 'issues', attempt: 1, body: '[{"id":"i-1"}]', createdAt: '2026-01-01T00:00:00.000Z' }],
+          }),
+        ],
+      }),
+    );
+    vi.mocked(getStepEvents).mockImplementation((_key, name) =>
+      Promise.resolve({
+        events:
+          name === null
+            ? [
+                stepEvent(
+                  1,
+                  { kind: 'issue.opened', issueId: 'i-1', source: 'pipeline', title: 'lint failed' },
+                  { step: 'pipeline' },
+                ),
+              ]
+            : [stepEvent(5, { kind: 'handoff.received', handoffId: 3, issueIds: ['i-1'] })],
+        next: null,
+      }),
+    );
+
+    detail();
+
+    expect(await screen.findByRole('link', { name: 'i-1' })).toHaveAttribute('href', '#problem-event-1');
+    expect(getStepEvents).toHaveBeenCalledWith('run-1', null, 0);
   });
 
   it('keeps the log of a step with no events, marked legacy', async () => {

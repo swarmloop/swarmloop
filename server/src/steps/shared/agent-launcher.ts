@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { mkdirSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { AGENT_RUNNER, readSession } from '../../agent/agent-runner';
 import type { AgentProcessRunner, AgentRunResult } from '../../agent/agent-runner';
@@ -10,6 +10,7 @@ import { sessionFileName } from '../../history/session-group';
 import { VisitRepository } from '../../history/visit.repository';
 import type { ProjectLaunch } from '../../sandbox/sandbox-launch';
 import { AGENT_LANGUAGE_RULE } from './skill-prompt';
+import { promptSections } from './prompt-manifest';
 
 interface AgentLaunchRequest {
   root: string;
@@ -31,6 +32,20 @@ interface AgentLaunchRequest {
   project?: ProjectLaunch;
 }
 
+/**
+ * Why a launch starts a new chat. A session file that exists but gave no chat belongs to another runtime.
+ * `replay` is not told apart here: `PipelineService.replay` starts a run through the instructions document, and no flag reaches the launch.
+ */
+function newChatReason(
+  resume: boolean | undefined,
+  hasFile: boolean,
+): 'fresh by step policy' | 'runtime changed' | 'no stored chat' {
+  if (resume === false) {
+    return 'fresh by step policy';
+  }
+  return hasFile ? 'runtime changed' : 'no stored chat';
+}
+
 /** Starts one agent process for a step: the session file, the prompt prefix, and the run's spend counters. */
 @Injectable()
 export class AgentLauncher {
@@ -46,6 +61,19 @@ export class AgentLauncher {
     const stored = await readSession(sessionFile, request.run.runtime);
     const chatId = request.resume === false ? null : (stored?.chatId ?? null);
     const launch = { runtime: request.run.runtime, model: request.model, chatId, resumed: chatId !== null };
+    recordStepEvent({
+      kind: 'session.changed',
+      session: chatId === null ? 'new chat' : 'same chat',
+      runtime: launch.runtime,
+      model: launch.model,
+      reason: chatId !== null ? null : newChatReason(request.resume, existsSync(sessionFile)),
+    });
+    recordStepEvent({
+      kind: 'context.manifest',
+      sections: promptSections(request.prompt),
+      artifacts: request.mounts.map((mount) => mount.containerPath),
+      cut: [],
+    });
     recordStepEvent({ kind: 'agent.launched', ...launch });
     const result = await this.agent.run({
       prompt: `${AGENT_LANGUAGE_RULE}\n\n${request.prompt}`,

@@ -7,6 +7,7 @@ import { QueryWrapper } from '../../../test/query-wrapper';
 import { commandEvents, stepEvent } from '../../../test/step-events';
 import { overflowing, narrowViewport } from '../../../test/viewport';
 import { TranscriptFeed } from './transcript-feed';
+import { issueLinks } from './transcript-model';
 
 vi.mock('../../../lib/endpoints', () => ({ getHistory: vi.fn() }));
 
@@ -22,10 +23,10 @@ const input = stepEvent(1, {
 const artifact = stepEvent(3, { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4 });
 
 function feed(events: Parameters<typeof TranscriptFeed>[0]['events']) {
-  const view = render(<TranscriptFeed runKey="run-1" step="implement" events={events} />, { wrapper: QueryWrapper });
+  const view = render(<TranscriptFeed runKey="run-1" events={events} />, { wrapper: QueryWrapper });
   return {
     ...view,
-    again: (next: typeof events) => view.rerender(<TranscriptFeed runKey="run-1" step="implement" events={next} />),
+    again: (next: typeof events) => view.rerender(<TranscriptFeed runKey="run-1" events={next} />),
   };
 }
 
@@ -68,16 +69,16 @@ describe('TranscriptFeed', () => {
     feed([
       input,
       ...commandEvents(2, 's', { executable: 'make', exitCode: 1 }),
-      stepEvent(4, { kind: 'issue.opened', issueId: 'i', source: 'review', title: 'a bug' }),
+      stepEvent(4, { kind: 'handoff.received', handoffId: 7, issueIds: ['i'] }),
       artifact,
     ]);
 
     await user.click(screen.getByRole('button', { name: 'inputs' }));
     expect(screen.getByText(/the plan/)).toBeInTheDocument();
-    expect(screen.getByText(/a bug/)).toBeInTheDocument();
+    expect(screen.getByText(/handoff 7/)).toBeInTheDocument();
     expect(screen.queryByText(/make/)).not.toBeInTheDocument();
     const inputs = screen.getByTestId('transcript-feed').textContent ?? '';
-    expect(inputs.indexOf('the plan')).toBeLessThan(inputs.indexOf('a bug'));
+    expect(inputs.indexOf('the plan')).toBeLessThan(inputs.indexOf('handoff 7'));
 
     await user.click(screen.getByRole('button', { name: 'problems' }));
     expect(within(screen.getByTestId('transcript-feed')).getAllByRole('group')).toHaveLength(1);
@@ -154,5 +155,53 @@ describe('TranscriptFeed', () => {
     await act(async () => {});
 
     expect(getHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('links the input card of a returned issue to the source card and marks it resolved', () => {
+    const source = [
+      stepEvent(
+        1,
+        { kind: 'issue.opened', issueId: 'i-1', source: 'pipeline', title: 'lint failed' },
+        { step: 'pipeline' },
+      ),
+      stepEvent(9, { kind: 'issue.resolved', issueId: 'i-1', evidence: 'pipeline a-2' }, { step: 'pipeline' }),
+    ];
+    const target = [stepEvent(5, { kind: 'handoff.received', handoffId: 3, issueIds: ['i-1'] })];
+    render(<TranscriptFeed runKey="run-1" events={target} issues={issueLinks(source)} />, {
+      wrapper: QueryWrapper,
+    });
+
+    expect(screen.getByText('Input from pipeline / review')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'i-1' })).toHaveAttribute('href', '#problem-event-1');
+    expect(screen.getByText(/resolved/)).toBeInTheDocument();
+  });
+
+  it('shows the problem card of an issue and the card of its resolution side by side', () => {
+    feed([
+      stepEvent(1, { kind: 'issue.opened', issueId: 'i-1', source: 'pipeline', title: 'lint failed' }),
+      stepEvent(2, { kind: 'issue.resolved', issueId: 'i-1', evidence: 'pipeline a-2' }),
+    ]);
+
+    expect(screen.getByRole('group', { name: 'Error: lint failed' })).toHaveAttribute('id', 'problem-event-1');
+    expect(screen.getByText('Issue resolved')).toBeInTheDocument();
+  });
+
+  it('shows a handoff that carries issues as returned to its target step', () => {
+    const events = [
+      stepEvent(
+        1,
+        {
+          kind: 'handoff.sent',
+          handoffId: 3,
+          targetStep: 'implement',
+          artifactKinds: [],
+          issueIds: ['i-1'],
+        },
+        { step: 'pipeline' },
+      ),
+    ];
+    render(<TranscriptFeed runKey="run-1" events={events} />, { wrapper: QueryWrapper });
+
+    expect(screen.getByText('Returned to implement')).toBeInTheDocument();
   });
 });

@@ -23,3 +23,26 @@ export function AgentCard({
     </CardFrame>
   );
 }
+
+export function SessionCard({
+  event,
+}: {
+  event: Extract<StepEvent, { kind: 'session.changed' | 'context.manifest' }>;
+}): ReactElement {
+  if (event.kind === 'session.changed') {
+    return (
+      <CardFrame side="left" label="Session">
+        {event.session} · {event.model} · {event.runtime}
+        {event.reason ? ` · ${event.reason}` : ''}
+      </CardFrame>
+    );
+  }
+  const cut = event.cut.map((item) => `${item.what} ${item.size}`).join(', ');
+  return (
+    <CardFrame side="left" label="Context">
+      {event.sections.map((section) => `${section.heading} ${section.size}`).join(' · ')}
+      {event.artifacts.length > 0 ? ` · by reference: ${event.artifacts.join(', ')}` : ''}
+      {cut ? ` · cut: ${cut}` : ''}
+    </CardFrame>
+  );
+}
