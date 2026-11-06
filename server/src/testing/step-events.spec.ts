@@ -11,6 +11,7 @@ import type { StepName } from '../contract/steps';
 import type { StepEventLog } from '../history/step-event.log';
 import { BaseStep, VisitLeftOpen, type StepContext } from '../steps/base-step';
 import { ARTIFACTS } from '../steps/contract/artifacts';
+import { lateInput } from '../steps/agent-step';
 import type { InputSpec, StepResult } from '../steps/contract/step-contract';
 import { ResearchStep } from '../steps/research/research.step';
 import { StepKernel } from '../steps/step-kernel';
@@ -20,10 +21,29 @@ const INPUTS = { requirements: { artifact: ARTIFACTS.requirements, need: 'run' }
 
 type Golden = Awaited<ReturnType<typeof goldenApp>>;
 
+const RECEIVER_INPUTS = { ...INPUTS, returns: lateInput(ARTIFACTS.issues) } as const satisfies InputSpec;
+
+/** A server step that reads the issues sent back to it. */
+class ReceiverStep extends BaseStep<typeof RECEIVER_INPUTS> {
+  readonly inputs = RECEIVER_INPUTS;
+  readonly outputs = [ARTIFACTS.implementation];
+
+  constructor(
+    readonly name: StepName,
+    kernel: StepKernel,
+  ) {
+    super(kernel);
+  }
+
+  protected work(_input: unknown, ctx: StepContext): Promise<StepResult> {
+    return Promise.resolve({ route: { to: 'next' }, summary: `${ctx.opened.startedAt} done`, outputs: [] });
+  }
+}
+
 /** A server step whose body is the script of the spec. */
 class ProbeStep extends BaseStep<typeof INPUTS> {
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.implementation];
+  readonly outputs = [ARTIFACTS.implementation, ARTIFACTS.issues];
 
   constructor(
     readonly name: StepName,
@@ -54,6 +74,10 @@ const ALL_KINDS: Record<StepEventKind, true> = {
   'artifact.produced': true,
   'issue.opened': true,
   'handoff.sent': true,
+  'handoff.received': true,
+  'issue.resolved': true,
+  'session.changed': true,
+  'context.manifest': true,
 };
 
 describe('step events', () => {
@@ -168,9 +192,9 @@ describe('step events', () => {
     const events = await eventsOf('E-1');
     const kinds = events.map((event) => event.kind);
     expect(kinds[0]).toBe('attempt.started');
-    expect(kinds.slice(1, kinds.indexOf('agent.launched'))).toEqual(
-      new Array<string>(kinds.indexOf('agent.launched') - 1).fill('input.received'),
-    );
+    const before = kinds.slice(1, kinds.indexOf('agent.launched'));
+    expect(before.slice(-2)).toEqual(['session.changed', 'context.manifest']);
+    expect(before.slice(0, -2).every((kind) => kind === 'input.received')).toBe(true);
     expect(kinds.slice(kinds.indexOf('agent.launched'), kinds.indexOf('agent.launched') + 2)).toEqual([
       'agent.launched',
       'agent.finished',
@@ -219,6 +243,45 @@ describe('step events', () => {
       issueIds: [issue.id],
     });
     expect(events.at(-1)).toMatchObject({ kind: 'attempt.finished', route: 'implement' });
+  });
+
+  it('records a received handoff once, and its issues resolved by the next pass of the source', async () => {
+    await seed('E-1');
+    const run = await golden.runs.findRun('E-1');
+    const issue = issueOf('pipeline', 'job failed', 'lint failed');
+    const sender = probe('pipeline', (ctx) =>
+      Promise.resolve({
+        route: { to: 'return', step: 'implement', issues: [issue] },
+        summary: `${ctx.opened.startedAt} sent back`,
+        outputs: [{ artifact: ARTIFACTS.issues, value: [issue] }],
+        handoff: 'fix lint',
+      }),
+    );
+    await sender.execute('E-1');
+    const kernel = new StepKernel(
+      golden.runs,
+      golden.documents,
+      golden.visits,
+      golden.flows,
+      golden.clock,
+      golden.config,
+      golden.stepEvents,
+    );
+    const receiver = new ReceiverStep('implement', kernel);
+    await receiver.execute('E-1');
+    await receiver.execute('E-1');
+    await probe('pipeline', (ctx) => Promise.resolve(finished(ctx))).execute('E-1');
+
+    const events = await eventsOf('E-1');
+    const received = events.filter((event) => event.kind === 'handoff.received');
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({ step: 'implement', issueIds: [issue.id] });
+    expect(events.filter((event) => event.kind === 'issue.opened')).toHaveLength(1);
+    expect(events.find((event) => event.kind === 'issue.resolved')).toMatchObject({
+      step: 'pipeline',
+      issueId: issue.id,
+    });
+    expect(await golden.stepEvents.openIssues(run?.id ?? 0, 'pipeline')).toEqual([]);
   });
 
   it('writes an interrupted attempt when the body leaves the visit open', async () => {

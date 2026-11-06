@@ -23,6 +23,14 @@
       "step": "plan"
     },
     {
+      "kind": "session.changed",
+      "step": "plan"
+    },
+    {
+      "kind": "context.manifest",
+      "step": "plan"
+    },
+    {
       "kind": "agent.launched",
       "step": "plan"
     },

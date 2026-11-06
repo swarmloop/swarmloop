@@ -48,6 +48,14 @@ interface AgentLaunch {
   resumed: boolean;
 }
 
+/** `reason` is null when the chat goes on. */
+interface SessionChange {
+  session: 'same chat' | 'new chat';
+  runtime: string;
+  model: string;
+  reason: 'runtime changed' | 'no stored chat' | 'fresh by step policy' | 'replay' | null;
+}
+
 /** The part of an event that depends on its kind. */
 export type StepEventBody =
   | { kind: 'input.received'; name: string; inputKind: string; documentId: number | 'absent'; summary: string }
@@ -73,6 +81,16 @@ export type StepEventBody =
       targetStep: StepName | null;
       artifactKinds: string[];
       issueIds: string[];
+    }
+  | { kind: 'handoff.received'; handoffId: number; issueIds: string[] }
+  | { kind: 'issue.resolved'; issueId: string; evidence: string }
+  | ({ kind: 'session.changed' } & SessionChange)
+  | {
+      kind: 'context.manifest';
+      sections: { heading: string; size: number }[];
+      /** Files the agent got by reference, as paths inside the sandbox. */
+      artifacts: string[];
+      cut: { what: string; size: number }[];
     };
 
 export type StepEvent = StepEventBase & StepEventBody;

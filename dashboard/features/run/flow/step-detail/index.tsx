@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import { useStep } from '../../use-step';
-import { firstProblemId } from '../../transcript/transcript-model';
+import { firstProblemId, issueLinks } from '../../transcript/transcript-model';
 import { useStepEvents } from '../../transcript/use-step-events';
 import { shownStatus, stepText, visitChecks } from '../../step-view';
 import { StepDocuments } from './step-documents';
@@ -34,6 +34,10 @@ export function StepDetail({
   const { view, attempt, setAttempt, error, follow } = useStep(runKey, step, live, revision, attempts);
   const [check, setCheck] = useState<string | null>(null);
   const { events, error: eventsError } = useStepEvents(runKey, step, view?.eventsCursor ?? null);
+  // The source of a returned issue is another step, so its events are read only when this step took a handoff.
+  const received = events?.some((event) => event.kind === 'handoff.received') ?? false;
+  const run = useStepEvents(runKey, null, received ? (view?.eventsCursor ?? null) : null);
+  const issues = useMemo(() => issueLinks(run.events ?? []), [run.events]);
 
   useEffect(() => {
     setCheck(null);
@@ -82,7 +86,7 @@ export function StepDetail({
         label={label}
         shownDuration={shownDuration}
         shownAttempt={shownAttempt}
-        problemId={events ? firstProblemId(events, step) : null}
+        problemId={events ? firstProblemId(events) : null}
       />
       {eventsError ? (
         <Typography color="error" sx={{ mt: 2 }}>
@@ -91,8 +95,8 @@ export function StepDetail({
       ) : null}
       <StepDocuments
         runKey={runKey}
-        step={step}
         events={eventsError ? [] : events}
+        issues={issues}
         shownChecks={shownChecks}
         check={check}
         setCheck={setCheck}

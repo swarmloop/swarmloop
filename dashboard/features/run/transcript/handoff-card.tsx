@@ -5,7 +5,7 @@ import { CardFrame } from './card-frame';
 type Handoff = Extract<StepEvent, { kind: 'handoff.sent' }>;
 
 /** What a handoff carries, as one line. */
-export function handoffText(event: Handoff): string {
+function handoffText(event: Handoff): string {
   const parts = [
     `handoff ${event.handoffId}`,
     event.artifactKinds.length > 0 ? `artifacts: ${event.artifactKinds.join(', ')}` : '',
@@ -16,7 +16,10 @@ export function handoffText(event: Handoff): string {
 
 export function HandoffCard({ event }: { event: Handoff }): ReactElement {
   return (
-    <CardFrame side="left" label={`Handoff to ${event.targetStep ?? 'no step'}`}>
+    <CardFrame
+      side="left"
+      label={`${event.issueIds.length > 0 ? 'Returned' : 'Handoff'} to ${event.targetStep ?? 'no step'}`}
+    >
       {handoffText(event)}
     </CardFrame>
   );

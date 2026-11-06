@@ -39,19 +39,11 @@
       "step": "code-review"
     },
     {
-      "kind": "agent.launched",
+      "kind": "session.changed",
       "step": "code-review"
     },
     {
-      "kind": "agent.finished",
-      "step": "code-review"
-    },
-    {
-      "kind": "agent.launched",
-      "step": "code-review"
-    },
-    {
-      "kind": "agent.finished",
+      "kind": "context.manifest",
       "step": "code-review"
     },
     {
@@ -63,6 +55,14 @@
       "step": "code-review"
     },
     {
+      "kind": "session.changed",
+      "step": "code-review"
+    },
+    {
+      "kind": "context.manifest",
+      "step": "code-review"
+    },
+    {
       "kind": "agent.launched",
       "step": "code-review"
     },
@@ -71,11 +71,59 @@
       "step": "code-review"
     },
     {
+      "kind": "session.changed",
+      "step": "code-review"
+    },
+    {
+      "kind": "context.manifest",
+      "step": "code-review"
+    },
+    {
       "kind": "agent.launched",
       "step": "code-review"
     },
     {
       "kind": "agent.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "session.changed",
+      "step": "code-review"
+    },
+    {
+      "kind": "context.manifest",
+      "step": "code-review"
+    },
+    {
+      "kind": "agent.launched",
+      "step": "code-review"
+    },
+    {
+      "kind": "agent.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "session.changed",
+      "step": "code-review"
+    },
+    {
+      "kind": "context.manifest",
+      "step": "code-review"
+    },
+    {
+      "kind": "agent.launched",
+      "step": "code-review"
+    },
+    {
+      "kind": "agent.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "session.changed",
+      "step": "code-review"
+    },
+    {
+      "kind": "context.manifest",
       "step": "code-review"
     },
     {

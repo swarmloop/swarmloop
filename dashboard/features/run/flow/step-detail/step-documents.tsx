@@ -14,12 +14,13 @@ import type { StepView } from '@contract/api';
 import type { StepEvent } from '@contract/step-events';
 import { LogTranscript } from '../../log-transcript';
 import { TranscriptFeed } from '../../transcript/transcript-feed';
+import type { IssueLinks } from '../../transcript/transcript-model';
 import { StepChart } from './step-chart';
 
 export function StepDocuments({
   runKey,
-  step,
   events,
+  issues,
   shownChecks,
   check,
   setCheck,
@@ -28,9 +29,10 @@ export function StepDocuments({
   document,
 }: {
   runKey: string;
-  step: string;
   /** What the step recorded: null while it is read, empty for a visit from before events were kept. */
   events: StepEvent[] | null;
+  /** The issues of the whole run, for the link from a card to the window the issue came from. */
+  issues: IssueLinks;
   shownChecks: StepView['checks'];
   check: string | null;
   setCheck: (name: string) => void;
@@ -67,7 +69,7 @@ export function StepDocuments({
         </Box>
       ) : null}
       <StepChart visit={visit} />
-      {recorded ? <TranscriptFeed runKey={runKey} step={step} events={events} /> : null}
+      {recorded ? <TranscriptFeed runKey={runKey} events={events} issues={issues} /> : null}
       {events?.length === 0 && logs ? (
         <Box sx={{ mt: 2, border: 1, borderColor: 'divider', borderRadius: 1, p: 1, minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary">

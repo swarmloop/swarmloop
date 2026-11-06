@@ -75,6 +75,14 @@
       "step": "implement-improve"
     },
     {
+      "kind": "session.changed",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "context.manifest",
+      "step": "implement-improve"
+    },
+    {
       "kind": "agent.launched",
       "step": "implement-improve"
     },
