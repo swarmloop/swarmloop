@@ -22,11 +22,12 @@ import {
   renderFail,
   renderNone,
   renderPass,
+  failureIssues,
   type Failure,
   type Seen,
 } from './pipeline-report';
 import { ARTIFACTS } from '../contract/artifacts';
-import type { ArtifactValue, InputSpec, Route, StepInput, StepResult } from '../contract/step-contract';
+import type { ArtifactValue, InputSpec, Issue, Route, StepInput, StepResult } from '../contract/step-contract';
 
 type Verdict = 'green' | 'red' | 'wait' | 'manual' | 'stop' | 'absent';
 
@@ -41,7 +42,7 @@ const INPUTS = {
 export class PipelineStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'pipeline';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.pipelineLog, ARTIFACTS.return, ARTIFACTS.pipelineRebases];
+  readonly outputs = [ARTIFACTS.pipelineLog, ARTIFACTS.return, ARTIFACTS.issues, ARTIFACTS.pipelineRebases];
 
   constructor(
     kernel: StepKernel,
@@ -315,7 +316,8 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     opened.run.attemptsPipeline += 1;
     const reason = failures.map((failure) => `${failure.project} ${failure.name}`).join(',') || 'pipeline failed';
     await this.events.recordLoop(opened.run, 'pipeline', opened.run.attemptsPipeline, reason);
-    return this.finish('waiting', this.report(opened, 'pipeline failed', body), 'waiting', body, 'implement');
+    const issues = failureIssues(failures, body);
+    return this.finish('waiting', this.report(opened, 'pipeline failed', body), 'waiting', body, issues);
   }
 
   private async sameFailure(ctx: StepContext, seen: Seen[]): Promise<boolean> {
@@ -377,18 +379,21 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     line: string,
     visitStatus: string,
     body?: string,
-    moveTo?: 'implement',
+    issues?: Issue[],
   ): StepResult {
     const outputs: ArtifactValue[] = [];
     if (body) {
       outputs.push({ artifact: ARTIFACTS.pipelineLog, value: body });
     }
-    if (moveTo && body) {
-      outputs.push({ artifact: ARTIFACTS.return, value: returnNotes([{ source: 'pipeline', body }]).body });
+    if (issues && body) {
+      outputs.push(
+        { artifact: ARTIFACTS.return, value: returnNotes([{ source: 'pipeline', body }]).body },
+        { artifact: ARTIFACTS.issues, value: issues },
+      );
     }
     let handoff: string | undefined;
-    if (outcome === 'ok' || moveTo) {
-      const head = moveTo
+    if (outcome === 'ok' || issues) {
+      const head = issues
         ? 'Pipeline failed and returned to implement.'
         : body?.includes('CI skipped')
           ? body.trim()
@@ -397,11 +402,11 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
             : 'Pipeline passed.';
       handoff = `- ${head}\n`;
     }
-    return { route: routeOf(outcome, line, moveTo), summary: line, outputs, handoff, visit: { status: visitStatus } };
+    return { route: routeOf(outcome, line, issues), summary: line, outputs, handoff, visit: { status: visitStatus } };
   }
 }
 
-function routeOf(outcome: 'ok' | 'failed' | 'blocked' | 'waiting', line: string, moveTo?: 'implement'): Route {
+function routeOf(outcome: 'ok' | 'failed' | 'blocked' | 'waiting', line: string, issues?: Issue[]): Route {
   switch (outcome) {
     case 'ok':
       return { to: 'next' };
@@ -410,6 +415,6 @@ function routeOf(outcome: 'ok' | 'failed' | 'blocked' | 'waiting', line: string,
     case 'blocked':
       return { to: 'block', reason: line };
     case 'waiting':
-      return moveTo ? { to: 'return', step: moveTo, issues: [] } : { to: 'wait', reason: line };
+      return issues ? { to: 'return', step: 'implement', issues } : { to: 'wait', reason: line };
   }
 }

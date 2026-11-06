@@ -20,6 +20,7 @@ import type { Artifact } from './contract/artifact';
 import { InputReader } from './contract/input-reader';
 import { outputDrafts } from './contract/output-writer';
 import { routeToEnd } from './contract/route';
+import { assertRoute } from './contract/returns';
 import type { InputSpec, StepCapabilities, StepDescriptor, StepInput, StepResult } from './contract/step-contract';
 import type { Step } from './step';
 import type { StepSnapshot } from './step';
@@ -253,6 +254,7 @@ export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore
 
   /** Ends the visit as the route of the result says: its outputs first, then the handoff. */
   protected async conclude(ctx: StepContext, result: StepResult): Promise<PipelineResult> {
+    assertRoute(this.name, result.route);
     const documents = outputDrafts(this.name, this.outputs, result.outputs);
     if (result.handoff !== undefined) {
       documents.push(await recordHandoff(this.documents, ctx.opened.run.key, this.name, result.handoff));

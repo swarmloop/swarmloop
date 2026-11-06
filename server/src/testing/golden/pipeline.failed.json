@@ -42,6 +42,10 @@
           "kind": "return"
         },
         {
+          "body": "[{\"id\":\"pipeline-057c4b8bb6\",\"source\":\"pipeline\",\"title\":\"group/demo unit (test) failed\",\"body\":\"log 7\\n\"}]\n",
+          "kind": "issues"
+        },
+        {
           "body": "## pipeline\n- Pipeline failed and returned to implement.\n",
           "kind": "handoff"
         }

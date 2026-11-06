@@ -1,4 +1,5 @@
 import type { DocumentEntity } from '../../history/entities';
+import { ARTIFACTS } from '../../steps/contract/artifacts';
 import { composedReturn } from '../../steps/shared/handoff';
 
 export function belongsToVisit(
@@ -7,7 +8,8 @@ export function belongsToVisit(
   kinds: string[],
   latestVisit: boolean,
 ): boolean {
-  if (!kinds.includes(document.kind)) {
+  // The issues document is not shown in the dashboard until part l12.
+  if (document.kind === ARTIFACTS.issues.kind || !kinds.includes(document.kind)) {
     return false;
   }
   if (document.stepStatId === statId) {

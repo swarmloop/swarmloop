@@ -62,7 +62,10 @@ describe('step descriptors', () => {
     const declared = new Set(described?.inputs.map((input) => input.kind));
     const golden = goldenReads(step);
     expect(golden.filter((kind) => !declared.has(kind))).toEqual([]);
-    const guards = (described?.inputs ?? []).filter((input) => !golden.includes(input.kind)).map((input) => input.need);
+    // The goldens must not change in part l07, and the notes of `issues` come from the stored documents, not a read.
+    const guards = (described?.inputs ?? [])
+      .filter((input) => !golden.includes(input.kind) && input.kind !== 'issues')
+      .map((input) => input.need);
     expect(guards.every((need) => need === 'start')).toBe(true);
   });
 
@@ -70,7 +73,7 @@ describe('step descriptors', () => {
     const described = app.get(StepRegistry).describe({} as never);
     const kinds = (step: string) => described.find((item) => item.name === step)?.outputs;
     expect(kinds('commit')).toEqual(['commit', 'pipeline_ref', 'ci_skip']);
-    expect(kinds('pipeline')).toEqual(['pipeline_log', 'return', 'pipeline_rebases']);
+    expect(kinds('pipeline')).toEqual(['pipeline_log', 'return', 'issues', 'pipeline_rebases']);
     expect(kinds('merge-request')).toEqual(['merge_request', 'rebase_merge_skip']);
     expect(kinds('branch')).toEqual([]);
   });

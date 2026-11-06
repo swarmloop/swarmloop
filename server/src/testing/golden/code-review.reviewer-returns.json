@@ -201,6 +201,10 @@
         {
           "body": "The change needs work.\n",
           "kind": "return"
+        },
+        {
+          "body": "[{\"id\":\"quality-0f46fe0c60\",\"source\":\"quality\",\"title\":\"quality returned the change\",\"body\":\"code-review-quality\\n\\ndecision: return\\n\"}]\n",
+          "kind": "issues"
         }
       ],
       "exchanges": [

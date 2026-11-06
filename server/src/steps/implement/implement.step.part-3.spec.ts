@@ -21,6 +21,8 @@ import { EnvironmentService } from '../../environment/environment.service';
 
 import { SwarmloopError } from '../../core/swarmloop-error';
 
+import { ARTIFACTS } from '../contract/artifacts';
+import { issueOf } from '../shared/handoff';
 import { reply, result, boot, seed, writeEnv, featureTree, git } from './implement.step.spec-helpers';
 
 describe('implement step', () => {
@@ -47,6 +49,28 @@ describe('implement step', () => {
       };
       expect(record.plan?.items).toEqual(['add the field']);
       expect(await documents.latestBody('PROJ-146', 'handoff')).not.toContain('outranks the checklist');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('sends the stored issues to the agent when no return document is stored', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-issues-'));
+    await writeEnv(root);
+    const worktree = featureTree(root, 'PROJ-148', 'billing-api');
+    const agent = jest.fn(async (_input: AgentRunInput) => {
+      writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
+      return result(reply);
+    });
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-148', 'approve');
+      const documents = app.get(DocumentRepository);
+      const run = await app.get(RunRepository).findRun('PROJ-148');
+      const issues = [issueOf('pipeline', 'unit failed', 'Assertion failed\n')];
+      await documents.putDocument(run!, 'issues', ARTIFACTS.issues.format(issues));
+      await app.get(PipelineService).step('implement', 'PROJ-148');
+      expect(agent.mock.calls[0]?.[0].prompt).toContain('## pipeline\nAssertion failed');
     } finally {
       await app.close();
     }

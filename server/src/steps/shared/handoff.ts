@@ -1,13 +1,21 @@
+import { createHash } from 'node:crypto';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { DocumentDraft } from '../../history/visit';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
+import type { Issue } from '../contract/step-contract';
 
 export function textDocument(kind: string, body: string): DocumentDraft {
   return { kind, fileName: '', body };
 }
 
-export function returnNotes(parts: { source: string; body: string }[]): DocumentDraft {
+/** A problem sent back to a step. The same body from the same source always has the same id. */
+export function issueOf(source: string, title: string, body: string): Issue {
+  const digest = createHash('sha1').update(`${source}\n${body}`).digest('hex').slice(0, 10);
+  return { id: `${source}-${digest}`, source, title, body };
+}
+
+export function returnNotes(parts: Pick<Issue, 'source' | 'body'>[]): DocumentDraft {
   return textDocument(
     ARTIFACTS.return.kind,
     `${parts.map((part) => `## ${part.source}\n${part.body.trimEnd()}`).join('\n\n')}\n`,
@@ -65,12 +73,17 @@ function splitHandoff(text: string): { step: string; body: string }[] {
     });
 }
 
+/** The return notes: the stored ones, else the latest issues, else the ones the latest reviews and pipeline result call for. */
 export function composedReturn(documents: { kind: string; body: string }[]): string | null {
   const latest = (kind: string): string | null =>
     [...documents].reverse().find((item) => item.kind === kind)?.body ?? null;
   const stored = latest(ARTIFACTS.return.kind);
   if (stored?.trim()) {
     return stored;
+  }
+  const issues = ARTIFACTS.issues.parse(latest(ARTIFACTS.issues.kind) ?? '[]');
+  if (issues.length > 0) {
+    return returnNotes(issues).body;
   }
   const parts: { source: string; body: string }[] = [];
   for (const source of CODE_REVIEWERS) {

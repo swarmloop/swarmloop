@@ -36,6 +36,7 @@ import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
+  returns: lateInput(ARTIFACTS.issues),
   repos: lateInput(ARTIFACTS.repos),
   rebaseConflict: lateInput(ARTIFACTS.rebaseConflict),
   addedRepos: lateInput(ARTIFACTS.addedRepos),

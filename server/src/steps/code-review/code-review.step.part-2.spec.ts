@@ -26,6 +26,7 @@ import type { AgentRunInput } from '../../agent/agent-runner';
 
 import { PipelineService } from '../../pipeline/pipeline.service';
 
+import { ARTIFACTS } from '../contract/artifacts';
 import { reviewContinue } from './code-review.prompts';
 
 import { REBASE_CONFLICT } from '../../git/rebase';
@@ -88,6 +89,29 @@ describe('code-review step', () => {
       const next = await runs.findRun('PROJ-91');
       expect(next?.currentStep).toBe('implement');
       expect(next?.status).toBe('waiting');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('stores one issue per returning reviewer next to the return document', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-issues-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-92', 'billing-api'), { recursive: true });
+    const agent = jest.fn(async (input: AgentRunInput) => result(reply(input.step, 'return')));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-92');
+      const documents = app.get(DocumentRepository);
+      const run = await app.get(RunRepository).findRun('PROJ-92');
+      for (const name of ['requirements', 'regressions', 'security', 'performance']) {
+        await documents.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
+      }
+      await app.get(PipelineService).step('code-review', 'PROJ-92', { reviewer: 'quality' });
+      const issues = ARTIFACTS.issues.parse((await documents.latestBody('PROJ-92', 'issues')) ?? '[]');
+      expect(issues.map((issue) => issue.source)).toEqual(['quality']);
+      expect(issues[0]?.id).toMatch(/^quality-[0-9a-f]{10}$/);
+      expect(await documents.latestBody('PROJ-92', 'return')).toBeTruthy();
     } finally {
       await app.close();
     }
