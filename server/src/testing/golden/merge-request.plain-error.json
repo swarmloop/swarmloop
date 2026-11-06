@@ -1,0 +1,87 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\"prompt\":\"Ship the field\\n\",\"tickets\":[{\"key\":\"PROJ-200\",\"summary\":\"Ship the field\"}]}\n",
+      "kind": "requirements"
+    },
+    {
+      "body": "demo\n",
+      "kind": "repos"
+    },
+    {
+      "body": "changed the field\n",
+      "kind": "implementation"
+    },
+    {
+      "body": "Ships the field.\n",
+      "kind": "review_report"
+    }
+  ],
+  "flows": [],
+  "git": {
+    "demo": {
+      "branch": "feature/PROJ-200-ship-the-field",
+      "log": ["init"],
+      "refs": [
+        "refs/heads/feature/PROJ-200-ship-the-field <sha:1>",
+        "refs/heads/holder <sha:1>",
+        "refs/heads/main <sha:1>",
+        "refs/remotes/origin/HEAD <sha:1>",
+        "refs/remotes/origin/feature/PROJ-200-ship-the-field <sha:1>",
+        "refs/remotes/origin/main <sha:1>"
+      ]
+    }
+  },
+  "hostCalls": {
+    "find": [
+      [
+        {
+          "project": "group/demo",
+          "source": "feature/PROJ-200-ship-the-field"
+        }
+      ]
+    ],
+    "open": [],
+    "update": []
+  },
+  "loopEvents": [],
+  "reads": {
+    "merge-request": ["ci_skip", "requirements", "repos"]
+  },
+  "result": {
+    "exitCode": 1,
+    "message": "<t> merge-request failed"
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "merge-request",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "failed"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "merge-request failed\n",
+          "kind": "error"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 1,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "failed",
+      "step": "merge-request",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

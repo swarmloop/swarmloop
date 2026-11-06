@@ -1,0 +1,74 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "project: group/demo\nref: feature/PROJ-300-ship\n",
+      "kind": "pipeline_ref"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [
+    {
+      "attempt": 1,
+      "counter": "pipeline",
+      "reason": "group/demo unit"
+    }
+  ],
+  "reads": {
+    "pipeline": ["pipeline_ref", "ci_skip", "handoff"]
+  },
+  "result": {
+    "exitCode": 0,
+    "message": "<t> pipeline failed\nresult: fail\nproject: group/demo\npipeline: 9\njob: unit\nstage: test\nurl: https://gitlab.example/group/demo/-/pipelines/9\n\nlog 7"
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 1,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "implement",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "waiting"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "result: fail\nproject: group/demo\npipeline: 9\njob: unit\nstage: test\nurl: https://gitlab.example/group/demo/-/pipelines/9\n\nlog 7\n",
+          "kind": "pipeline_log"
+        },
+        {
+          "body": "## pipeline\nresult: fail\nproject: group/demo\npipeline: 9\njob: unit\nstage: test\nurl: https://gitlab.example/group/demo/-/pipelines/9\n\nlog 7\n",
+          "kind": "return"
+        },
+        {
+          "body": "## pipeline\n- Pipeline failed and returned to implement.\n",
+          "kind": "handoff"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [
+        {
+          "method": "GET",
+          "statusCode": 200,
+          "url": "https://gitlab.example/api/v4/projects/group%2Fdemo/pipelines"
+        },
+        {
+          "method": "GET",
+          "statusCode": 200,
+          "url": "https://gitlab.example/api/v4/projects/group%2Fdemo/pipelines"
+        }
+      ],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "waiting",
+      "step": "pipeline",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

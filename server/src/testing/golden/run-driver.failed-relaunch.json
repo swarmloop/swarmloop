@@ -1,0 +1,115 @@
+{
+  "documentsOutsideVisits": [],
+  "flows": [],
+  "loopEvents": [],
+  "reads": {
+    "branch": [],
+    "code-review": [],
+    "commit": [],
+    "implement": [],
+    "implement-improve": [],
+    "merge-request": [],
+    "pipeline": [],
+    "plan": [],
+    "plan-improve": [],
+    "prepare": ["requirements"],
+    "requirements": ["requirements"],
+    "research": ["requirements"]
+  },
+  "result": {
+    "exitCode": 1,
+    "message": "<t> research failed"
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "research",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "failed"
+  },
+  "visits": [
+    {
+      "documents": [],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "done",
+      "step": "requirements",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    },
+    {
+      "documents": [],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "done",
+      "step": "prepare",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    },
+    {
+      "documents": [
+        {
+          "body": "research failed\n",
+          "kind": "error"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 1,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "failed",
+      "step": "research",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    },
+    {
+      "documents": [],
+      "exchanges": [],
+      "exitCode": 1,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "failed",
+      "step": "research",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    },
+    {
+      "documents": [],
+      "exchanges": [],
+      "exitCode": 1,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "failed",
+      "step": "research",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

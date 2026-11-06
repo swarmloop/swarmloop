@@ -1,0 +1,55 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "PROJ-1 is over the spend limit. prepare was not started\n",
+      "kind": "spend"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [],
+  "reads": {
+    "branch": [],
+    "code-review": [],
+    "commit": [],
+    "implement": [],
+    "implement-improve": [],
+    "merge-request": [],
+    "pipeline": [],
+    "plan": [],
+    "plan-improve": [],
+    "prepare": [],
+    "requirements": ["requirements"],
+    "research": []
+  },
+  "result": {
+    "exitCode": 0,
+    "message": "PROJ-1 is over the spend limit. prepare was not started"
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "prepare",
+    "runtime": "cursor",
+    "spentUsd": 30,
+    "status": "waiting"
+  },
+  "visits": [
+    {
+      "documents": [],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "done",
+      "step": "requirements",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 30
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\"prompt\":\"Ship the field\\n\",\"tickets\":[{\"key\":\"PROJ-100\",\"summary\":\"Ship the field\"}]}\n",
+      "kind": "requirements"
+    },
+    {
+      "body": "demo\n",
+      "kind": "repos"
+    }
+  ],
+  "flows": [],
+  "git": {
+    "demo": {
+      "branch": "feature/PROJ-100-ship-the-field",
+      "log": ["feat(PROJ-100): Ship the field", "init"],
+      "refs": [
+        "refs/heads/feature/PROJ-100-ship-the-field <sha:1>",
+        "refs/heads/holder <sha:2>",
+        "refs/heads/main <sha:2>",
+        "refs/remotes/origin/feature/PROJ-100-ship-the-field <sha:1>",
+        "refs/remotes/origin/main <sha:2>"
+      ],
+      "status": []
+    }
+  },
+  "loopEvents": [],
+  "reads": {
+    "commit": ["requirements", "repos", "commit", "handoff"]
+  },
+  "result": {
+    "exitCode": 0,
+    "message": "<t> commit done\nfeature/PROJ-100-ship-the-field\ndemo\tsrc/field.ts"
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "merge-request",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "waiting"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "demo\tsrc/field.ts\n",
+          "kind": "commit"
+        },
+        {
+          "body": "## commit\ndemo\tsrc/field.ts\n",
+          "kind": "handoff"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "done",
+      "step": "commit",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

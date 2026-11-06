@@ -1,0 +1,49 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\n  \"prompt\": \"ship the field\",\n  \"plan\": {\n    \"name\": \"\",\n    \"overview\": \"\",\n    \"items\": [\n      \"add the field\"\n    ],\n    \"decision\": null\n  }\n}\n",
+      "kind": "requirements"
+    },
+    {
+      "body": "billing-api\n",
+      "kind": "repos"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [],
+  "reads": {
+    "plan-improve": ["requirements", "repos", "handoff", "added_repos", "instructions:plan-improve"]
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "plan-improve",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "failed"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "agent refused the task\n",
+          "kind": "error"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 1,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "plan",
+      "model": "opus-5.5-extra-high",
+      "resumed": false,
+      "status": "failed",
+      "step": "plan-improve",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

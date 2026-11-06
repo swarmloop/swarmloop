@@ -1,0 +1,60 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\n  \"prompt\": \"ship the field\",\n  \"plan\": {\n    \"name\": \"\",\n    \"overview\": \"\",\n    \"items\": [\n      \"add the field\"\n    ],\n    \"decision\": null\n  }\n}\n",
+      "kind": "requirements"
+    },
+    {
+      "body": "billing-api\n",
+      "kind": "repos"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [],
+  "reads": {
+    "plan-improve": ["requirements", "repos", "handoff", "added_repos", "instructions:plan-improve"]
+  },
+  "run": {
+    "agentCalls": 1,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "branch",
+    "runtime": "cursor",
+    "spentUsd": 0.01,
+    "status": "waiting"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "{\n  \"prompt\": \"ship the field\",\n  \"plan\": {\n    \"name\": \"\",\n    \"overview\": \"\",\n    \"items\": [\n      \"add the field\",\n      \"cover the empty case\"\n    ],\n    \"decision\": \"approve\"\n  }\n}\n",
+          "kind": "requirements"
+        },
+        {
+          "body": "## plan-improve\n- add the field\n- cover the empty case\n",
+          "kind": "handoff"
+        }
+      ],
+      "exchanges": [
+        {
+          "chatId": "chat-1",
+          "model": "opus-5.5-extra-high",
+          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Plan improve\n\nThe plan is already in the prompt. Check it for correctness, logical gaps, and inconsistencies. Fix those in the checklist. Return the full checklist implementation should follow.\n\nWhen an item is already right, keep it. When a choice is open, pick one ordinary path and put that choice in the checklist. Use the plan tool or a `plan` section. Either one replaces the checklist. The task is the Work tickets together with the Instructions. The Instructions add to the tickets. They do not replace them. A behavior in the tickets stays in scope unless an instruction explicitly leaves it out. Check that the checklist covers every behavior the task requires, and add an item for each one that is missing. Linked tickets are context. They can change how the task is done. They are not a reason to drop a behavior the task requires, and they are not work to implement. Do not add an item that belongs only to another ticket.\n\nKeep each item the smallest change that does the work; when an item adds more, rewrite it onto the existing path. Keep to the structure and patterns already in the tree, and keep it clean, simple, and straightforward: DRY, KISS, SOLID. Favor clear, well-factored code over clever or cramped code: each function, module, and layer has one clear responsibility. Reach for an abstraction when it makes the code clearer and matches how the tree is already organized; do not add a file, helper, or layer that does not earn its place or that the task does not need. When a change leaves a component, file, export, import, comment, or commented-out code with no remaining use, remove that leftover in the same change. Keep the behavior complete and reliable: the cases the requirement names work, and errors are handled the way the tree already handles them. Cover the change with tests in the style the tree already uses.\n\nDo not edit source files. Do not run git. Do not implement the items.\n\n```\nplan:\n- item\n\nsummary:\n- why\n```\n\nRequirements:\n{\n  \"prompt\": \"ship the field\",\n  \"plan\": {\n    \"name\": \"\",\n    \"overview\": \"\",\n    \"items\": [\n      \"add the field\"\n    ],\n    \"decision\": null\n  }\n}\n\n\nPlan:\n{\n  \"name\": \"\",\n  \"overview\": \"\",\n  \"items\": [\n    \"add the field\"\n  ],\n  \"decision\": null\n}\n\nThe execution limits of this planning stage apply only to your current tools and actions. Do not copy these stage-local limits into the implementation checklist or turn them into project requirements. Plan the checks the change needs. Implementation uses its own execution environment to decide which commands can run locally. When revising an existing checklist, remove inherited planning-stage execution limits, but preserve explicit restrictions in the original task or later user instructions.",
+          "responseText": "plan:\n- add the field\n- cover the empty case"
+        }
+      ],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "plan",
+      "model": "opus-5.5-extra-high",
+      "resumed": false,
+      "status": "done",
+      "step": "plan-improve",
+      "tokensIn": 10,
+      "tokensOut": 4,
+      "usd": 0.01
+    }
+  ]
+}

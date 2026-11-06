@@ -1,0 +1,60 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\"prompt\":\"ship the field\"}\n",
+      "kind": "requirements"
+    },
+    {
+      "body": "billing-api\ncatalog-api\n",
+      "kind": "repos"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [],
+  "reads": {
+    "research": ["requirements", "answers", "handoff", "instructions:research", "repos"]
+  },
+  "run": {
+    "agentCalls": 1,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "plan",
+    "runtime": "cursor",
+    "spentUsd": 0.01,
+    "status": "waiting"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "",
+          "kind": "questions"
+        },
+        {
+          "body": "## research\n- looked\n",
+          "kind": "handoff"
+        }
+      ],
+      "exchanges": [
+        {
+          "chatId": "chat-1",
+          "model": "opus-5.5-extra-high",
+          "requestText": "Working directories, and nowhere else:\n- billing-api at <work>/billing-api. It has no source files.\n- catalog-api at <work>/catalog-api. It has no source files.\nDo not look outside these paths. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Research\n\nThe working directory is named at the top of this prompt, including whether it has source files. Read only that path, and only when it has source files. Do not search anywhere else.\n\nWalk the tree with Glob, Read, and Grep. Do not use the shell to list directories.\n\nThe requirements record is already in the prompt. Use it. Do not rewrite it. Do not edit files. Do not run git. Do not call Jira. Do not create a plan. The repositories are already chosen and mounted. Do not name them and do not add a repos section.\n\nThe task is the Work tickets together with the Instructions. The Instructions add to the tickets. They do not replace them. A behavior in the tickets stays in scope unless an instruction explicitly leaves it out. Linked tickets are context. They can change how the task is done. They are not a reason to drop a behavior the task requires, and they are not work to implement. Do not treat another ticket as work to do, and do not ask a question about it.\n\nEnd the answer with these two sections and nothing after them. `summary` says what the tree shows, and what is still open when `questions` is not `none`.\n\n`questions` lists a decision the requirement leaves open only when two choices would build different things, and neither the requirement nor the tree decides it. A detail a later step can settle from the requirement or from ordinary practice is not a question. Use `- none` when no such decision is open.\n\nDo not ask to confirm an interpretation, and do not ask which of several reasonable options to take. When the requirement is ambiguous, or two of its instructions conflict, pick the choice that fits the tree and the requirement best and record it in `summary` as `- assumed: ...`. The reviewers check that choice later. A person is asked only when every choice would break something the requirement names and neither the requirement nor the tree shows which one is meant. Expect `- none` almost every time.\n\n```\nsummary:\n- why\n\nquestions:\n- none\n```\n\nRequirements:\n{\"prompt\":\"ship the field\"}\n",
+          "responseText": "summary:\n- looked\nquestions:\n- none"
+        }
+      ],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "plan",
+      "model": "opus-5.5-extra-high",
+      "resumed": false,
+      "status": "done",
+      "step": "research",
+      "tokensIn": 10,
+      "tokensOut": 4,
+      "usd": 0.01
+    }
+  ]
+}

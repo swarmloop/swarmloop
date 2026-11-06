@@ -1,0 +1,63 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\n  \"prompt\": \"Ship the field\\n\",\n  \"tickets\": [\n    {\n      \"key\": \"PROJ-305\",\n      \"summary\": \"Ship the field\"\n    }\n  ],\n  \"plan\": {\n    \"name\": \"\",\n    \"overview\": \"\",\n    \"items\": [\n      \"add the field\"\n    ],\n    \"decision\": \"approve\"\n  }\n}\n",
+      "kind": "requirements"
+    },
+    {
+      "body": "billing-api\n",
+      "kind": "repos"
+    }
+  ],
+  "flows": [],
+  "git": {
+    "clone": {
+      "refs": ["refs/heads/feature/PROJ-305-ship-the-field", "refs/heads/main", "refs/remotes/origin/main"],
+      "subjects": ["billing-api"]
+    },
+    "worktree": {
+      "refs": ["refs/heads/feature/PROJ-305-ship-the-field", "refs/heads/main", "refs/remotes/origin/main"],
+      "subjects": ["billing-api"]
+    }
+  },
+  "loopEvents": [],
+  "reads": {
+    "implement": ["requirements", "repos"]
+  },
+  "result": {
+    "exitCode": 1,
+    "message": "<t> implement does not fit"
+  },
+  "run": {
+    "agentCalls": 20,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "implement",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "blocked"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "implement does not fit\n",
+          "kind": "error"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 1,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "agent",
+      "model": "grok-4.7",
+      "resumed": false,
+      "status": "blocked",
+      "step": "implement",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

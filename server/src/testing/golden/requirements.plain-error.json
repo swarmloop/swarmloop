@@ -1,0 +1,45 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\"issues\":{\"PROJ-1\":{\"key\":\"PROJ-1\",\"summary\":\"Summary of PROJ-1\",\"descriptionMarkdown\":\"Description of PROJ-1\",\"acceptanceCriteria\":\"Must ship\",\"epic\":null,\"comments\":[],\"attachments\":[],\"links\":[],\"confluence\":[],\"pages\":[]}}}\n",
+      "kind": "requirements_progress"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [],
+  "reads": {
+    "requirements": ["requirements_progress"]
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "requirements",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "failed"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "requirements failed\n",
+          "kind": "error"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 1,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "failed",
+      "step": "requirements",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}
