@@ -60,6 +60,7 @@ describe('requirements step', () => {
       const seeded = await runs.begin('widget', 'requirements');
       seeded.status = 'running';
       seeded.ownerPid = 2_147_483_646;
+      seeded.ownerInstance = null;
       seeded.prompt = 'Ship the widget\n';
       seeded.currentStep = 'requirements';
       await runs.saveRun(seeded);

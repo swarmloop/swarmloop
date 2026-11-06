@@ -1,4 +1,4 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('runs')
 export class RunEntity {
@@ -50,6 +50,15 @@ export class RunEntity {
   @Column({ name: 'owner_pid', type: 'integer', nullable: true })
   ownerPid!: number | null;
 
+  @Column({ type: 'integer', default: 0 })
+  revision!: number;
+
+  @Column({ name: 'active_attempt', type: 'text', nullable: true })
+  activeAttempt!: string | null;
+
+  @Column({ name: 'owner_instance', type: 'text', nullable: true })
+  ownerInstance!: string | null;
+
   @Column({ type: 'text', nullable: true })
   prompt!: string | null;
 
@@ -91,6 +100,7 @@ export class DocumentEntity {
 }
 
 @Entity('step_stats')
+@Index('IDX_step_stats_attempt_id', ['attemptId'], { unique: true, where: '"attempt_id" IS NOT NULL' })
 export class StepStatEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -115,6 +125,9 @@ export class StepStatEntity {
 
   @Column({ name: 'step_started_at', type: 'text', nullable: true })
   stepStartedAt!: string | null;
+
+  @Column({ name: 'attempt_id', type: 'text', nullable: true })
+  attemptId!: string | null;
 
   @Column({ name: 'finished_at' })
   finishedAt!: string;

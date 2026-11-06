@@ -98,6 +98,16 @@ const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g
 const ERROR_ID = /\bE-[0-9a-z]{8}\b/g;
 const SHA = /\b[0-9a-f]{40}\b/g;
 const MOUNT = /(?<![\w.<>-])\/work\//g;
+/** Keys of the attempt bookkeeping: random ids and a counter that no golden pins. */
+const ATTEMPT_KEYS = new Set([
+  'revision',
+  'active_attempt',
+  'owner_instance',
+  'attempt_id',
+  'activeAttempt',
+  'ownerInstance',
+  'attemptId',
+]);
 const DURATION = /\b\d+(?:\.\d+)?\s?ms\b/g;
 
 function escapeRegExp(text: string): string {
@@ -128,7 +138,9 @@ export function normalizeTrace<T>(value: T): T {
     if (typeof node === 'number' && !Number.isInteger(node)) return Math.round(node * 1e6) / 1e6;
     if (Array.isArray(node)) return node.map((item) => walk(item));
     if (node !== null && typeof node === 'object') {
-      const entries = Object.entries(node).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+      const entries = Object.entries(node)
+        .filter(([k]) => !ATTEMPT_KEYS.has(k))
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
       return Object.fromEntries(entries.map(([k, v]) => [text(k), walk(v, k)]));
     }
     return node;

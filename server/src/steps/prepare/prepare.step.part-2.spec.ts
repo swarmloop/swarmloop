@@ -47,6 +47,7 @@ describe('prepare step', () => {
       }
       seeded.status = 'running';
       seeded.ownerPid = 2_147_483_646;
+      seeded.ownerInstance = null;
       seeded.currentStep = 'prepare';
       await runs.saveRun(seeded);
       const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
