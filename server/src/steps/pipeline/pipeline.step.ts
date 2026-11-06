@@ -31,13 +31,14 @@ import {
   type Failure,
   type Seen,
 } from './pipeline-report';
+import { ARTIFACTS } from '../contract/artifacts';
 
 type Verdict = 'green' | 'red' | 'wait' | 'manual' | 'stop' | 'absent';
 
 @Injectable()
 export class PipelineStep extends BaseStep {
   readonly name: StepName = 'pipeline';
-  readonly requiredKind = 'pipeline_ref';
+  readonly requiredKind = ARTIFACTS.pipelineRef.kind;
 
   constructor(
     runs: RunRepository,
@@ -57,8 +58,8 @@ export class PipelineStep extends BaseStep {
   protected async run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
     const { opened, calls } = ctx;
     const env = this.config.env;
-    const records = parsePipelineRefs((await this.documents.latestBody(key, 'pipeline_ref')) ?? '');
-    const skipped = (await this.documents.latestBody(key, 'ci_skip'))?.trim() ?? '';
+    const records = parsePipelineRefs((await this.documents.latestBody(key, ARTIFACTS.pipelineRef.kind)) ?? '');
+    const skipped = (await this.documents.latestBody(key, ARTIFACTS.ciSkip.kind))?.trim() ?? '';
     if (records.length === 0 && skipped) {
       return this.finish(ctx, 'ok', 0, this.report(opened, skipped), 'skipped', skipped);
     }
@@ -73,7 +74,7 @@ export class PipelineStep extends BaseStep {
 
   /** Repo names that have a workflow file and no run. Null when the repo list is missing. */
   private async missingRuns(key: string, seen: Seen[]): Promise<string[] | null> {
-    const raw = await this.documents.latestBody(key, 'repos');
+    const raw = await this.documents.latestBody(key, ARTIFACTS.repos.kind);
     if (!raw?.trim()) {
       return null;
     }
@@ -323,7 +324,7 @@ export class PipelineStep extends BaseStep {
   }
 
   private async sameFailure(key: string, seen: Seen[]): Promise<boolean> {
-    const previous = (await this.documents.latestBody(key, 'pipeline_log')) ?? '';
+    const previous = (await this.documents.latestBody(key, ARTIFACTS.pipelineLog.kind)) ?? '';
     const lines = new Set(previous.split('\n').map((line) => line.trim()));
     if (!lines.has('result: fail')) {
       return false;
@@ -388,7 +389,7 @@ export class PipelineStep extends BaseStep {
     const { opened } = ctx;
     const docs: DocumentDraft[] = [];
     if (body) {
-      docs.push(textDocument('pipeline_log', body));
+      docs.push(textDocument(ARTIFACTS.pipelineLog.kind, body));
     }
     if (moveTo && body) {
       docs.push(returnNotes([{ source: 'pipeline', body }]));

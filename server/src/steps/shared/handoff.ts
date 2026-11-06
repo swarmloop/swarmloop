@@ -1,12 +1,17 @@
 import type { DocumentRepository } from '../../history/document.repository';
 import type { DocumentDraft } from '../../history/visit';
+import { CODE_REVIEWERS } from '../../contract/steps';
+import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 
 export function textDocument(kind: string, body: string): DocumentDraft {
   return { kind, fileName: '', body };
 }
 
 export function returnNotes(parts: { source: string; body: string }[]): DocumentDraft {
-  return textDocument('return', `${parts.map((part) => `## ${part.source}\n${part.body.trimEnd()}`).join('\n\n')}\n`);
+  return textDocument(
+    ARTIFACTS.return.kind,
+    `${parts.map((part) => `## ${part.source}\n${part.body.trimEnd()}`).join('\n\n')}\n`,
+  );
 }
 
 export function mergeHandoff(previous: string | null, step: string, body: string): string {
@@ -35,7 +40,10 @@ export async function recordHandoff(
   step: string,
   body: string,
 ): Promise<DocumentDraft> {
-  return textDocument('handoff', mergeHandoff(await documents.latestBody(key, 'handoff'), step, body));
+  return textDocument(
+    ARTIFACTS.handoff.kind,
+    mergeHandoff(await documents.latestBody(key, ARTIFACTS.handoff.kind), step, body),
+  );
 }
 
 export function handoffSection(text: string | null, step: string): string {
@@ -60,18 +68,18 @@ function splitHandoff(text: string): { step: string; body: string }[] {
 export function composedReturn(documents: { kind: string; body: string }[]): string | null {
   const latest = (kind: string): string | null =>
     [...documents].reverse().find((item) => item.kind === kind)?.body ?? null;
-  const stored = latest('return');
+  const stored = latest(ARTIFACTS.return.kind);
   if (stored?.trim()) {
     return stored;
   }
   const parts: { source: string; body: string }[] = [];
-  for (const source of ['requirements', 'quality', 'regressions', 'security', 'performance']) {
-    const body = latest(`review_${source}`);
+  for (const source of CODE_REVIEWERS) {
+    const body = latest(REVIEWS.of(source));
     if (body && hasLine(body, 'decision: return')) {
       parts.push({ source, body });
     }
   }
-  const pipeline = latest('pipeline_log');
+  const pipeline = latest(ARTIFACTS.pipelineLog.kind);
   if (pipeline && hasLine(pipeline, 'result: fail')) {
     parts.push({ source: 'pipeline', body: pipeline });
   }

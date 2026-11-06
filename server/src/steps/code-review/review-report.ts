@@ -16,19 +16,20 @@ import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { REPORT_CONTINUE, reportFollowUp } from './code-review.prompts';
 import { decidedOk } from './reviewer';
 import type { Finished, Opinion, ReviewDeps, Usage } from './reviewer';
+import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 
 const LABELS: Record<string, string> = {
-  review_requirements: 'Requirements',
-  review_quality: 'Quality',
-  review_regressions: 'Regressions',
-  review_security: 'Security',
-  review_performance: 'Performance',
+  [REVIEWS.of('requirements')]: 'Requirements',
+  [REVIEWS.of('quality')]: 'Quality',
+  [REVIEWS.of('regressions')]: 'Regressions',
+  [REVIEWS.of('security')]: 'Security',
+  [REVIEWS.of('performance')]: 'Performance',
 };
 
 export function reviewBrief(opinions: { kind: string; decision: 'ok' | 'return'; body: string }[]): string {
   return opinions
     .map((opinion) => {
-      const name = LABELS[opinion.kind] ?? opinion.kind.replace(/^review_/, '');
+      const name = LABELS[opinion.kind] ?? opinion.kind.slice(REVIEWS.prefix.length);
       return [`## ${name}`, `decision: ${opinion.decision}`, '', opinion.body.trimEnd()].join('\n');
     })
     .join('\n\n');
@@ -106,7 +107,7 @@ export async function writeReport(
     if (!text) {
       return { error: 'code-review report is empty', exchange, usage: spent };
     }
-    return { document: textDocument('review_report', `${text}\n`), exchange, usage: spent };
+    return { document: textDocument(ARTIFACTS.reviewReport.kind, `${text}\n`), exchange, usage: spent };
   } catch (error) {
     const message = error instanceof SwarmloopError ? error.message : 'code-review failed';
     return { error: message, exchange: null, usage: empty };
@@ -150,8 +151,8 @@ export async function recordAngle(
     document: null,
     documents: [
       ...(parsed ? [textDocument(item.reviewer.kind, parsed.body)] : []),
-      ...(item.error ? [{ kind: 'error', fileName: '', body: `${item.error}\n` }] : []),
-      ...(log ? [{ kind: 'log', fileName: '', body: log }] : []),
+      ...(item.error ? [{ kind: ARTIFACTS.error.kind, fileName: '', body: `${item.error}\n` }] : []),
+      ...(log ? [{ kind: ARTIFACTS.log.kind, fileName: '', body: log }] : []),
     ],
     resumed: result.resumed,
   });
@@ -167,12 +168,12 @@ export async function noteHandoff(
   if (opinions.length === 0) {
     return drafts;
   }
-  let text = (await documents.latestBody(key, 'handoff')) ?? '';
+  let text = (await documents.latestBody(key, ARTIFACTS.handoff.kind)) ?? '';
   for (const opinion of opinions) {
-    const step = opinion.kind.replace(/^review_/, '');
+    const step = opinion.kind.slice(REVIEWS.prefix.length);
     text = mergeHandoff(text, step, summaryOr(opinion.body, plainSummary(opinion.body) || `- ${opinion.decision}`));
   }
-  return [...drafts, textDocument('handoff', text)];
+  return [...drafts, textDocument(ARTIFACTS.handoff.kind, text)];
 }
 
 /** Closes the code-review visit with its documents, exchanges and usage. */

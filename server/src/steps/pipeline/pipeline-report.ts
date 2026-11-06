@@ -5,8 +5,6 @@ import { git } from '../../git/git';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { remoteProject } from '../merge-request/merge-request-record';
 
-export const CI_RERUN = 'ci_rerun';
-
 export interface Seen {
   project: string;
   id: number | null;

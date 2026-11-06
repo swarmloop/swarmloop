@@ -9,6 +9,7 @@ import { git } from '../../git/git';
 import { repoNames, worktreePath } from '../../git/repo-names';
 import { textDocument } from '../shared/handoff';
 import { originProject, type Seen } from './pipeline-report';
+import { ARTIFACTS } from '../contract/artifacts';
 
 /** Only the trigger is automatic. Rebase itself is the action used by the API button. */
 export async function missingPipeline(input: {
@@ -50,7 +51,7 @@ export async function missingPipeline(input: {
     });
   if (closed) return end('blocked');
   if (conflicts.length === 0) return end('failed');
-  const history = JSON.parse((await documents.latestBody(run.key, 'pipeline_rebases')) ?? '[]') as string[];
+  const history = JSON.parse((await documents.latestBody(run.key, ARTIFACTS.pipelineRebases.kind)) ?? '[]') as string[];
   const sources = conflicts.map((ref) => `${ref.project}@${ref.sha ?? 'unknown'}`);
   if (history.some((source) => sources.includes(source)))
     return end('blocked', 'automatic rebase was already attempted for this SHA');
@@ -66,8 +67,8 @@ export async function missingPipeline(input: {
     line: `${ctx.opened.startedAt} automatic rebase\n${notes.join('\n')}`,
     visit: {
       documents: [
-        textDocument('pipeline_rebases', JSON.stringify([...history, ...sources])),
-        textDocument('pipeline_log', `result: rebase\n${notes.join('\n')}\n`),
+        textDocument(ARTIFACTS.pipelineRebases.kind, JSON.stringify([...history, ...sources])),
+        textDocument(ARTIFACTS.pipelineLog.kind, `result: rebase\n${notes.join('\n')}\n`),
       ],
     },
   });
@@ -81,7 +82,7 @@ export async function missingPipeline(input: {
     fresh.status = 'blocked';
     fresh.ownerPid = null;
     fresh.stepStartedAt = null;
-    await documents.putDocument(fresh, 'error', `${detail}\n`);
+    await documents.putDocument(fresh, ARTIFACTS.error.kind, `${detail}\n`);
     await runs.saveRun(fresh);
     return { exitCode: 1, message: detail };
   }
@@ -93,7 +94,7 @@ async function changedWorktree(
   documents: DocumentRepository,
   refs: PipelineRef[],
 ): Promise<string | null> {
-  const names = repoNames((await documents.latestBody(key, 'repos')) ?? '');
+  const names = repoNames((await documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
   for (const repo of names) {
     const cwd = worktreePath(root, key, repo);
     const project = await originProject(cwd);

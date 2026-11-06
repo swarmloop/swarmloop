@@ -15,11 +15,12 @@ import { recordHandoff } from '../shared/handoff';
 import { repoNames, worktreePath } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { branchName, summaryForBranch } from './branch-name';
+import { ARTIFACTS } from '../contract/artifacts';
 
 @Injectable()
 export class BranchStep extends BaseStep {
   readonly name: StepName = 'branch';
-  readonly requiredKind = 'repos';
+  readonly requiredKind = ARTIFACTS.repos.kind;
 
   constructor(
     runs: RunRepository,
@@ -33,11 +34,11 @@ export class BranchStep extends BaseStep {
   }
 
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
-    const requirements = await this.documents.latestBody(key, 'requirements');
+    const requirements = await this.documents.latestBody(key, ARTIFACTS.requirements.kind);
     if (!requirements) {
       throw new SwarmloopError('requirements is missing');
     }
-    const repos = await this.documents.latestBody(key, 'repos');
+    const repos = await this.documents.latestBody(key, ARTIFACTS.repos.kind);
     const names = repoNames(repos ?? '');
     const name = branchName(key, summaryForBranch(requirements, key));
     for (const repo of names) {
@@ -53,13 +54,13 @@ export class BranchStep extends BaseStep {
   }
 
   async ensure(key: string, repo: string): Promise<void> {
-    const requirements = await this.documents.latestBody(key, 'requirements');
+    const requirements = await this.documents.latestBody(key, ARTIFACTS.requirements.kind);
     if (!requirements) {
       throw new SwarmloopError('requirements is missing');
     }
     // A run that has committed owns the commits of its branch. Before that, a branch of the same name was left by
     // an earlier run of this key, such as one removed in the panel.
-    const committed = (await this.documents.latestBody(key, 'pipeline_ref')) !== null;
+    const committed = (await this.documents.latestBody(key, ARTIFACTS.pipelineRef.kind)) !== null;
     await this.checkout(key, repo, branchName(key, summaryForBranch(requirements, key)), committed);
   }
 

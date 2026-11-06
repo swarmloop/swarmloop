@@ -7,6 +7,7 @@ import type { PipelineResult } from '../core/pipeline-result';
 import { settle } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
 import type { Clock } from '../core/clock';
+import { ARTIFACTS } from './contract/artifacts';
 
 export interface OpenedStep {
   run: RunEntity;
@@ -61,8 +62,8 @@ export async function closeStep(input: {
   input.run.ownerPid = null;
   if (input.outcome === 'failed' || input.outcome === 'blocked') {
     const docs = input.visit.documents ?? (input.visit.document ? [input.visit.document] : []);
-    if (!docs.some((document) => document.kind === 'error')) {
-      docs.push({ kind: 'error', fileName: '', body: `${failureText(input.line)}\n` });
+    if (!docs.some((document) => document.kind === ARTIFACTS.error.kind)) {
+      docs.push({ kind: ARTIFACTS.error.kind, fileName: '', body: `${failureText(input.line)}\n` });
     }
     input.visit.documents = docs;
     input.visit.document = null;

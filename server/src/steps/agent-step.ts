@@ -25,6 +25,7 @@ import { BaseStep } from './base-step';
 import { agentFailure, combineAgentResults, refusedWrite, withRefusal } from './shared/agent-result';
 import { modelVisit } from './shared/model-visit';
 import { AGENT_LANGUAGE_RULE } from './shared/skill-prompt';
+import { ARTIFACTS, INSTRUCTIONS } from './contract/artifacts';
 
 export async function launchAgent(input: {
   agent: AgentProcessRunner;
@@ -181,7 +182,7 @@ export abstract class AgentStep extends BaseStep {
     };
     try {
       await this.sandbox.assertReady(env.RUNTIME);
-      const requirements = await this.documents.latestBody(key, 'requirements');
+      const requirements = await this.documents.latestBody(key, ARTIFACTS.requirements.kind);
       if (!requirements) {
         throw new SwarmloopError('requirements is missing');
       }
@@ -195,7 +196,7 @@ export abstract class AgentStep extends BaseStep {
 
   private async launch(run: ModelRun, launch: Parameters<ModelStepContext['launch']>[0]): Promise<AgentRunResult> {
     const instructions =
-      launch.resume === false ? null : await this.documents.latestBody(run.key, `instructions:${this.name}`);
+      launch.resume === false ? null : await this.documents.latestBody(run.key, INSTRUCTIONS.of(this.name));
     const prompt = instructions?.trim()
       ? `${launch.prompt}\n\nLatest user instructions:\n${instructions}`
       : launch.prompt;

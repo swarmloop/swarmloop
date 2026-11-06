@@ -9,11 +9,11 @@ import { FlowRepository } from '../history/flow.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { root } from '../history/run-paths';
 import { branchName, commitMessage, summaryForBranch } from './branch/branch-name';
-import { REBASE_MERGE_SKIP } from './merge-request/merge-request.step';
-import { REBASE_CONFLICT, rebaseFeatureRepos } from '../git/rebase';
+import { rebaseFeatureRepos } from '../git/rebase';
 import { repoNames } from '../git/repo-names';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { mountsForStep } from '../git/repo-names';
+import { ARTIFACTS } from './contract/artifacts';
 
 export abstract class RunRebaseEnvironment {
   abstract refreshAfterRebase(
@@ -45,7 +45,7 @@ export class RunRebase {
     const bases = new Map<string, string>();
     try {
       stop = await this.rebaseWorktrees(run, bases);
-      const names = repoNames((await this.documents.latestBody(run.key, 'repos')) ?? '');
+      const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
       await this.environments.refreshAfterRebase(
         run,
         mountsForStep(root(this.config), run.key, names, run.targetPath),
@@ -57,7 +57,11 @@ export class RunRebase {
     }
     if (stop.kind === 'conflict') {
       const unfinished = await this.checklistUnfinished(run);
-      await this.documents.putDocument(run, REBASE_CONFLICT, unfinished ? 'pending-implement\n' : 'pending\n');
+      await this.documents.putDocument(
+        run,
+        ARTIFACTS.rebaseConflict.kind,
+        unfinished ? 'pending-implement\n' : 'pending\n',
+      );
       return this.startAtImplement(run);
     }
     if (await this.checklistUnfinished(run)) {
@@ -67,7 +71,7 @@ export class RunRebase {
       return 'resume';
     }
     const fresh = await this.requireRun(key);
-    await this.documents.putDocument(fresh, REBASE_MERGE_SKIP, 'skip\n');
+    await this.documents.putDocument(fresh, ARTIFACTS.rebaseMergeSkip.kind, 'skip\n');
     await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review');
     const next = await this.requireRun(key);
     next.currentStep = 'code-review';
@@ -82,12 +86,12 @@ export class RunRebase {
     run: RunEntity,
     bases: Map<string, string>,
   ): Promise<Awaited<ReturnType<typeof rebaseFeatureRepos>>> {
-    const requirements = await this.documents.latestBody(run.key, 'requirements');
+    const requirements = await this.documents.latestBody(run.key, ARTIFACTS.requirements.kind);
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
     const summary = summaryForBranch(requirements, run.key);
-    const names = repoNames((await this.documents.latestBody(run.key, 'repos')) ?? '');
+    const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
     return rebaseFeatureRepos({
       root: root(this.config),
       key: run.key,
@@ -108,7 +112,7 @@ export class RunRebase {
     if (run.currentStep === 'implement') {
       return true;
     }
-    const notes = (await this.documents.latestBody(run.key, 'implementation')) ?? '';
+    const notes = (await this.documents.latestBody(run.key, ARTIFACTS.implementation.kind)) ?? '';
     return notes.trim().length === 0;
   }
 

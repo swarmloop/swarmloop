@@ -14,6 +14,8 @@ import { reviewContinue, reviewResume } from './code-review.prompts';
 import { launchAgent } from '../agent-step';
 import { agentFailure, refusedWrite, withRefusal } from '../shared/agent-result';
 import { parseReview } from './code-review-record';
+import { CODE_REVIEWERS } from '../../contract/steps';
+import { REVIEWS } from '../contract/artifacts';
 
 export interface Reviewer {
   name: string;
@@ -49,13 +51,7 @@ export interface ReviewDeps {
   agent: AgentProcessRunner;
 }
 
-export const REVIEWERS: Reviewer[] = [
-  { name: 'requirements', kind: 'review_requirements' },
-  { name: 'quality', kind: 'review_quality' },
-  { name: 'regressions', kind: 'review_regressions' },
-  { name: 'security', kind: 'review_security' },
-  { name: 'performance', kind: 'review_performance' },
-];
+export const REVIEWERS: Reviewer[] = [...CODE_REVIEWERS.map((name) => ({ name, kind: REVIEWS.of(name) }))];
 
 export async function runJob(
   deps: ReviewDeps,

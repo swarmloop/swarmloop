@@ -12,6 +12,7 @@ import type { PrepareStep } from '../prepare/prepare.step';
 import { handoffSection } from '../shared/handoff';
 import { mountsForStep, repoNames } from '../../git/repo-names';
 import { approvedChecklist } from './code-review.prompts';
+import { ARTIFACTS } from '../contract/artifacts';
 
 export async function repoMounts(
   runs: RunRepository,
@@ -19,7 +20,7 @@ export async function repoMounts(
   root: string,
   key: string,
 ): Promise<SandboxMount[]> {
-  const names = repoNames((await documents.latestBody(key, 'repos')) ?? '');
+  const names = repoNames((await documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
   const run = await runs.findRun(key);
   return mountsForStep(root, key, names, run?.targetPath ?? null).map((mount) => ({
     ...mount,
@@ -37,7 +38,7 @@ export async function storedCheckout(
   key: string,
 ): Promise<boolean> {
   const run = await runs.findRun(key);
-  return Boolean(run?.targetPath) && !(await documents.hasDocument(key, 'implementation'));
+  return Boolean(run?.targetPath) && !(await documents.hasDocument(key, ARTIFACTS.implementation.kind));
 }
 
 export async function foreignReview(flows: FlowRepository, runId: number): Promise<boolean> {
@@ -59,7 +60,7 @@ export async function detachForeign(
     throw new SwarmloopError('projects is missing');
   }
   await prepare.ensureDetached(opened.run, names, opened.run.prompt, true);
-  await documents.putDocument(opened.run, 'repos', `${names.join('\n')}\n`);
+  await documents.putDocument(opened.run, ARTIFACTS.repos.kind, `${names.join('\n')}\n`);
 }
 
 export async function retrying(visits: VisitRepository, opened: OpenedStep): Promise<boolean> {
@@ -89,7 +90,7 @@ export function fixNotes(
   handoff: string | null,
 ): { implement: string; reviewed: string } {
   const written = documents
-    .filter((item) => item.kind === 'implementation' && item.body.trim())
+    .filter((item) => item.kind === ARTIFACTS.implementation.kind && item.body.trim())
     .map((item) => item.body.trim());
   const implementWhat = written.length >= 2 ? written[written.length - 2] : (written.at(-1) ?? '');
   const reviewWhat = written.length >= 2 ? (written.at(-1) ?? '') : '';

@@ -1,6 +1,7 @@
 import type { PipelineResult } from '../../core/pipeline-result';
 import type { StepContext } from '../base-step';
 import { textDocument } from '../shared/handoff';
+import { ARTIFACTS } from '../contract/artifacts';
 
 export function endCommit(
   ctx: StepContext,
@@ -9,7 +10,7 @@ export function endCommit(
   line: string,
   body?: string,
 ): Promise<PipelineResult> {
-  const primary = body ? textDocument('commit', body) : null;
+  const primary = body ? textDocument(ARTIFACTS.commit.kind, body) : null;
   if (outcome === 'waiting') {
     return ctx.end({ outcome, exitCode, line, visit: { document: primary } });
   }

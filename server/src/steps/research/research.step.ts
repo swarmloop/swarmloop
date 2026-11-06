@@ -20,6 +20,7 @@ import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { mountsForStep } from '../../git/repo-names';
 import { parseResearch } from './research-record';
 import { RESEARCH_CONTINUE } from './research.prompts';
+import { ARTIFACTS } from '../contract/artifacts';
 
 @Injectable()
 export class ResearchStep extends AgentStep {
@@ -54,8 +55,8 @@ export class ResearchStep extends AgentStep {
     if (names.length === 0) {
       throw new SwarmloopError('worktrees is empty');
     }
-    const answers = (await this.documents.latestBody(ctx.opened.run.key, 'answers')) ?? '';
-    const prior = await this.documents.latestBody(ctx.opened.run.key, 'handoff');
+    const answers = (await this.documents.latestBody(ctx.opened.run.key, ARTIFACTS.answers.kind)) ?? '';
+    const prior = await this.documents.latestBody(ctx.opened.run.key, ARTIFACTS.handoff.kind);
     const sections = withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior);
     const mounts = mountsForStep(root(this.config), ctx.opened.run.key, names, null);
     const full = skillPrompt('research', ctx.requirements, names, sections, mounts);
@@ -63,7 +64,7 @@ export class ResearchStep extends AgentStep {
     const parsed = parseResearch(agentResult.responseText);
     const repos = renderProjects(names);
     const paused = parsed.questions !== '';
-    await this.documents.putDocument(ctx.opened.run, 'repos', repos);
+    await this.documents.putDocument(ctx.opened.run, ARTIFACTS.repos.kind, repos);
     const detail = (paused ? parsed.questions : repos).trimEnd();
     const word = paused ? 'waiting' : 'done';
     const summary = summaryOr(
@@ -75,7 +76,7 @@ export class ResearchStep extends AgentStep {
       paused ? 'waiting' : 'ok',
       0,
       `${ctx.opened.startedAt} research ${word}\n${detail}`,
-      textDocument('questions', parsed.questions),
+      textDocument(ARTIFACTS.questions.kind, parsed.questions),
       [handoff],
     );
   }

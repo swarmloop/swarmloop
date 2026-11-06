@@ -9,8 +9,9 @@ import { BranchStep } from '../branch/branch.step';
 import { appendProjectNames } from './append-projects';
 import { CHECKOUT_NAME, renderProjects, storedProjects } from './checkout-path';
 import { PrepareStep } from './prepare.step';
+import { ARTIFACTS } from '../contract/artifacts';
 
-const PENDING = 'pending_repos';
+const PENDING = ARTIFACTS.pendingRepos.kind;
 
 @Injectable()
 export class ProjectAppendService {
@@ -78,13 +79,13 @@ export class ProjectAppendService {
     }
     run.projects = renderProjects(projects);
     await this.runs.saveRun(run);
-    const repos = await this.documents.latestBody(run.key, 'repos');
+    const repos = await this.documents.latestBody(run.key, ARTIFACTS.repos.kind);
     if (repos?.trim()) {
-      await this.documents.putDocument(run, 'repos', renderProjects([...repoNames(repos), ...added]));
+      await this.documents.putDocument(run, ARTIFACTS.repos.kind, renderProjects([...repoNames(repos), ...added]));
     }
-    const earlier = mountedNames(await this.documents.latestBody(run.key, 'added_repos'));
+    const earlier = mountedNames(await this.documents.latestBody(run.key, ARTIFACTS.addedRepos.kind));
     const names = storedProjects(renderProjects([...earlier, ...added]));
-    await this.documents.putDocument(run, 'added_repos', `${addedNote(names)}\n`);
+    await this.documents.putDocument(run, ARTIFACTS.addedRepos.kind, `${addedNote(names)}\n`);
     return projects;
   }
 }

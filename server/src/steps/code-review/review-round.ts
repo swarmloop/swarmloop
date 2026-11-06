@@ -18,6 +18,7 @@ import { fixNotes } from './review-input';
 import { closeReview, recordAngle } from './review-report';
 import type { Finished, Opinion, Reviewer, ReviewDeps, Usage } from './reviewer';
 import { decidedOk, REVIEWERS, runJob } from './reviewer';
+import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 
 interface Selection {
   kept: Opinion[];
@@ -243,10 +244,10 @@ export async function routeReview(
     opened.run.attemptsReview,
     returning.map((item) => item.kind).join(','),
   );
-  const report = documents.find((item) => item.kind === 'review_report')?.body.trim();
+  const report = documents.find((item) => item.kind === ARTIFACTS.reviewReport.kind)?.body.trim();
   const leftover = report
-    ? textDocument('return', report.endsWith('\n') ? report : `${report}\n`)
-    : returnNotes(returning.map((item) => ({ source: item.kind.replace(/^review_/, ''), body: item.body })));
+    ? textDocument(ARTIFACTS.return.kind, report.endsWith('\n') ? report : `${report}\n`)
+    : returnNotes(returning.map((item) => ({ source: item.kind.slice(REVIEWS.prefix.length), body: item.body })));
   return closeReview(ctx, 'waiting', 0, line, [...documents, leftover], exchanges, 'implement', usage);
 }
 
