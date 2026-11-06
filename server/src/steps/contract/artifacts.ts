@@ -97,6 +97,7 @@ export const SERVICE_KINDS: Readonly<Record<string, string>> = {
   shell_resume: 'pipeline/worktree-snapshot',
   snapshot: 'pipeline/worktree-snapshot',
   environment: 'environment/project-environments',
+  checks_pass: 'environment/project-environments',
   loop_mark: 'pipeline/run-driver',
   spend: 'pipeline/run-driver',
 };

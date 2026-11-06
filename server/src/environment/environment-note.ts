@@ -1,7 +1,8 @@
 import type { EnvironmentRecord } from './project-environments';
 
-export function environmentNote(record: EnvironmentRecord): string {
+export function environmentNote(record: EnvironmentRecord, step?: string): string {
   const { config } = record;
+  const improving = step === 'implement-improve';
   const lines = [
     `# Project environment`,
     'These are the execution capabilities of the current implementation stage, including resumed sessions.',
@@ -14,7 +15,9 @@ export function environmentNote(record: EnvironmentRecord): string {
   ];
   if (config.checks.length > 0) {
     lines.push(
-      'Run these checks when a coherent piece of work is done and always before your final summary. When one fails, fix the cause and run it again. Do not run them after every small edit.',
+      improving
+        ? 'The implement agent already ran the full checks in its session. When this pass changes no file, do not run them again. When it changes files, run the narrowest command that covers the change, because the server runs the full checks after this answer, before code review. These are the checks:'
+        : 'Run these checks when a coherent piece of work is done and always before your final summary. When one fails, fix the cause and run it again. Do not run them after every small edit.',
       ...config.checks.map((check) => `- \`${check}\``),
     );
   } else {
@@ -45,7 +48,7 @@ export function environmentNote(record: EnvironmentRecord): string {
   }
   lines.push('In the summary, name the checks you ran and their result.');
   lines.push(
-    'After your answer, the server independently runs every declared check. A failed check stops this step; your summary cannot waive it.',
+    'The server runs every declared check after the implement-improve pass, before code review; a failed check stops the run there.',
   );
   return lines.join('\n');
 }

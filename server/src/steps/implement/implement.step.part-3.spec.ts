@@ -8,6 +8,7 @@ import { tmpdir } from 'os';
 
 import { join } from 'path';
 
+import { FlowRepository } from '../../history/flow.repository';
 import { RunRepository } from '../../history/run.repository';
 
 import { DocumentRepository } from '../../history/document.repository';
@@ -202,6 +203,7 @@ describe('implement step', () => {
     const app = await boot(root, jest.fn().mockResolvedValue(result(reply)));
     try {
       await seed(app, 'PROJ-146', 'approve', 'billing-web\n');
+      jest.spyOn(app.get(FlowRepository), 'activePhases').mockResolvedValue(['code-review']);
       jest
         .spyOn(app.get(EnvironmentService), 'check')
         .mockRejectedValue(new SwarmloopError('required check failed: phpunit'));
@@ -211,6 +213,22 @@ describe('implement step', () => {
       const run = await app.get(RunRepository).findRun('PROJ-146');
       expect(run?.status).toBe('failed');
       expect(run?.currentStep).toBe('implement');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('leaves the server check to implement-improve when it follows implement', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-gate-moved-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-147', 'billing-web');
+    const app = await boot(root, jest.fn().mockResolvedValue(result(reply)));
+    try {
+      await seed(app, 'PROJ-147', 'approve', 'billing-web\n');
+      const check = jest.spyOn(app.get(EnvironmentService), 'check').mockResolvedValue(undefined);
+      const done = await app.get(PipelineService).step('implement', 'PROJ-147');
+      expect(done.exitCode).toBe(0);
+      expect(check).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }

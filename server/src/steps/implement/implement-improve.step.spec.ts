@@ -16,6 +16,8 @@ import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
+import { EnvironmentService } from '../../environment/environment.service';
+import { RequiredCheckFailed } from '../../environment/project-environments';
 import { REBASE_CONFLICT } from '../../git/rebase';
 
 const reply = [
@@ -58,6 +60,27 @@ describe('implement-improve step', () => {
       await app.get(PipelineService).step('implement-improve', 'PROJ-70');
       expect(await documents.find({ where: { kind: 'implementation' } })).toHaveLength(2);
       expect((await app.get(RunRepository).findRun('PROJ-70'))?.currentStep).toBe('code-review');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('fails the visit on a failed server check and relaunches implement-improve', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-gate-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-71', 'billing-api');
+    const app = await boot(root, jest.fn().mockResolvedValue(result(reply)));
+    try {
+      await seed(app, 'PROJ-71');
+      jest
+        .spyOn(app.get(EnvironmentService), 'check')
+        .mockRejectedValue(new RequiredCheckFailed('billing-api: required check failed (exit 1)'));
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-71');
+      expect(done.exitCode).toBe(1);
+      expect(done.message).toContain('required check failed');
+      const run = await app.get(RunRepository).findRun('PROJ-71');
+      expect(run?.status).toBe('failed');
+      expect(run?.currentStep).toBe('implement-improve');
     } finally {
       await app.close();
     }

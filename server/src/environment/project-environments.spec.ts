@@ -25,6 +25,7 @@ function setup(
     checkCode?: number;
     config?: unknown;
     onCheck?: (repo: string) => void;
+    imageId?: () => string;
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-env-root-'));
@@ -43,7 +44,10 @@ function setup(
   const run = jest.fn((args: string[]) => {
     const [first, second] = args;
     if (first === 'image' && second === 'inspect' && args.includes('{{.Id}}')) {
-      return Promise.resolve('sha256:0123456789abcdef0123456789abcdef\n');
+      return Promise.resolve(
+        (args.at(-1) === manifest.image ? options.imageId?.() : undefined) ??
+          'sha256:0123456789abcdef0123456789abcdef\n',
+      );
     }
     if (first === 'image' && second === 'inspect' && args.includes('{{json .Config.Env}}')) {
       return Promise.resolve('["PATH=/usr/local/bin:/usr/bin:/bin"]');
@@ -82,12 +86,14 @@ function setup(
       return Promise.resolve(child);
     }),
   };
+  const live = { log: jest.fn() };
   const env = testEnv({ RUNTIME: 'codex', SWARMLOOP_ROOT: root });
   const service = new ProjectEnvironments({
     env: () => env,
     clock: new FakeClock(),
     sandbox: sandbox as unknown as ConstructorParameters<typeof ProjectEnvironments>[0]['sandbox'],
     documents,
+    live,
   });
   const input = {
     run: {} as RunEntity,
@@ -97,7 +103,7 @@ function setup(
   };
   const records = () =>
     stored.filter((item) => item.kind === ENVIRONMENT).map((item) => JSON.parse(item.body) as EnvironmentRecord);
-  return { service, sandbox, input, spawned, records, run, stored };
+  return { service, sandbox, input, spawned, records, run, stored, live };
 }
 
 describe('ProjectEnvironments', () => {
@@ -233,5 +239,87 @@ describe('ProjectEnvironments', () => {
     await expect(service.prepare(input)).rejects.toThrow(
       /node:22-alpine: the codex CLI does not start there .*bash.*Debian or Ubuntu/,
     );
+  });
+
+  describe('the checks gate on unchanged files', () => {
+    const ran = (spawned: SandboxLaunch[]) => spawned.filter((launch) => launch.project?.shell === 'npm test').length;
+    const checkDocs = (stored: { kind: string; body: string }[]) =>
+      stored.filter((item) => item.kind === 'checks').map((item) => JSON.parse(item.body) as Record<string, unknown>);
+
+    it('skips a second check on the same files with one skipped document and a log line', async () => {
+      const { service, input, spawned, stored, live } = setup();
+      await service.check(input);
+      await service.check({ ...input, step: 'implement-improve' });
+      expect(ran(spawned)).toBe(1);
+      const tail = 'skipped: these checks passed on the same files in implement';
+      expect(checkDocs(stored).at(-1)).toEqual({
+        repo: expect.any(String),
+        skipped: true,
+        sameAs: 'implement',
+        exitCode: 0,
+        tail,
+      });
+      expect(checkDocs(stored)).toHaveLength(2);
+      expect(live.log).toHaveBeenCalledWith({ key: 'r1', step: 'implement-improve', body: `${tail}\n` });
+    });
+
+    it.each([
+      [
+        'a tracked file changes',
+        (repo: string) => writeFileSync(join(repo, '.swarmloop.json'), `${JSON.stringify(manifest)}\n`),
+      ],
+      ['an untracked file appears', (repo: string) => writeFileSync(join(repo, 'new.txt'), 'x\n')],
+      [
+        'HEAD moves',
+        (repo: string) => {
+          commitFiles(repo, { 'moved.txt': 'x\n' });
+        },
+      ],
+    ])('runs all checks when %s', async (_name, change) => {
+      const { service, input, spawned } = setup();
+      await service.check(input);
+      change(input.mounts[0].hostPath);
+      await service.check(input);
+      expect(ran(spawned)).toBe(2);
+    });
+
+    it('runs all checks when another mounted repository changes', async () => {
+      const { service, input, spawned } = setup();
+      const other = makeRepo();
+      const mounts = [...input.mounts, { hostPath: other, containerPath: '/work/other' }];
+      await service.check({ ...input, mounts });
+      writeFileSync(join(other, 'edit.txt'), 'x\n');
+      await service.check({ ...input, mounts });
+      expect(ran(spawned)).toBe(2);
+    });
+
+    it('runs all checks when the image id differs', async () => {
+      let id = 'sha256:a\n';
+      const { service, input, spawned } = setup({ imageId: () => id });
+      await service.check(input);
+      id = 'sha256:b\n';
+      await service.check(input);
+      expect(ran(spawned)).toBe(2);
+    });
+
+    it.each([
+      ['a failed command', { checkCode: 2 }],
+      ['a timeout', { checkCode: 124 }],
+      [
+        'a check that changes project files',
+        { onCheck: (repo: string) => writeFileSync(join(repo, 'c.py'), `${Math.random()}\n`) },
+      ],
+    ])('stores no pass after %s, so the next check runs in full', async (_name, options) => {
+      const { service, input, spawned, stored } = setup(options);
+      await expect(service.check(input)).rejects.toThrow(RequiredCheckFailed);
+      expect(stored.some((item) => item.kind.startsWith('checks_pass:'))).toBe(false);
+      await expect(service.check(input)).rejects.toThrow(RequiredCheckFailed);
+      expect(ran(spawned)).toBe(2);
+    });
+
+    it('throws RequiredCheckFailed with the failing command output', async () => {
+      const { service, input } = setup({ checkCode: 3 });
+      await expect(service.check(input)).rejects.toThrow(/: required check failed \(exit 3\):\n\$ npm test/);
+    });
   });
 });
