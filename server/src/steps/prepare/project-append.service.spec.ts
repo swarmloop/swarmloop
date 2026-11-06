@@ -71,7 +71,7 @@ describe('ProjectAppendService', () => {
     const { stats, branch, service } = harness('waiting', 'billing-api\n');
     stats.push({ step: 'branch', status: 'done' });
     await service.add('PROJ-20', 'handbook');
-    expect(branch.ensure).toHaveBeenCalledWith('PROJ-20', 'handbook');
+    expect(branch.ensure).toHaveBeenCalledWith('PROJ-20', 'handbook', null, false);
   });
 
   it('waits until the running step closes, then prepares the worktree', async () => {

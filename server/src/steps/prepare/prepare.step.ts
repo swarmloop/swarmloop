@@ -5,21 +5,26 @@ import { dirname, isAbsolute, join, resolve } from 'path';
 import { Injectable } from '@nestjs/common';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
-import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { assignCodeHost, CodeHostRegistry, type CodeHostName } from '../../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail } from '../../git/git';
 import { storedBase } from '../../git/rebase';
-import { recordHandoff } from '../shared/handoff';
 import { BaseStep, StepContext } from '../base-step';
 import { CHECKOUT_NAME, listGitProjects, resolveCheckoutPath, storedProjects } from './checkout-path';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
+
+/** The requirements record must exist to start. Prepare does not read it, so it is not loaded. */
+const INPUTS = {
+  requirements: { artifact: ARTIFACTS.requirements, need: 'start', late: true },
+} as const satisfies InputSpec;
 
 @Injectable()
-export class PrepareStep extends BaseStep {
+export class PrepareStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'prepare';
-  readonly requiredKind = ARTIFACTS.requirements.kind;
+  readonly inputs = INPUTS;
+  readonly outputs = [];
   override readonly capabilities: StepCapabilities = { revisesRequirements: true };
 
   constructor(
@@ -34,8 +39,9 @@ export class PrepareStep extends BaseStep {
     return error instanceof SwarmloopError ? error.message : gitDetail(error);
   }
 
-  protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
+  protected async work(_input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const { opened } = ctx;
+    const { key } = opened.run;
     const selected = storedProjects(opened.run.projects).map((name) => ({ name, path: '' }));
     const checkouts: { name: string; path: string }[] =
       selected.length > 0 ? selected : await this.checkouts.listCheckouts();
@@ -48,21 +54,15 @@ export class PrepareStep extends BaseStep {
       hosts.push(await this.classified(located));
     }
     assignCodeHost(opened.run, hosts, true);
-    const handoff = await recordHandoff(
-      this.documents,
-      key,
-      'prepare',
-      `- prepared ${checkouts.map((checkout) => checkout.name).join(', ')}\n`,
-    );
-    return ctx.end({
-      outcome: 'ok',
-      exitCode: 0,
-      line: [
+    return {
+      route: { to: 'next' },
+      summary: [
         `${opened.startedAt} prepare done`,
         'Run unit tests from the worktree. The shared Docker stack can serve only one worktree at a time.',
       ].join('\n'),
-      visit: { documents: [handoff] },
-    });
+      outputs: [],
+      handoff: `- prepared ${checkouts.map((checkout) => checkout.name).join(', ')}\n`,
+    };
   }
 
   async listClones(): Promise<{ name: string }[]> {

@@ -12,16 +12,29 @@ import { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
 import { REQUIREMENTS_SOURCE } from '../../integrations/requirements-source/requirements-source.module';
 import { RequirementsSource } from '../../integrations/requirements-source/requirements-source';
 import { ISSUE_TRACKER } from '../../integrations/issue-tracker/tokens';
-import { BaseStep, StepContext } from '../base-step';
+import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import type { StepSnapshot } from '../step';
 import { readPrompt, taskKeys, unreadSource } from './requirements-input';
-import { emptyWrite, RequirementsFinish, requirementsVisit, stopReason } from './requirements-visit';
+import {
+  emptyWrite,
+  RequirementsFinish,
+  requirementsOutputs,
+  requirementsVisit,
+  stopReason,
+} from './requirements-visit';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { InputSpec, Route, StepInput, StepResult } from '../contract/step-contract';
+
+/** The progress is read when a pass resumes, not on every pass. */
+const INPUTS = {
+  requirementsProgress: { artifact: ARTIFACTS.requirementsProgress, need: 'optional', late: true },
+} as const satisfies InputSpec;
 
 @Injectable()
-export class RequirementsStep extends BaseStep {
+export class RequirementsStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'requirements';
-  readonly requiredKind = ARTIFACTS.requirements.kind;
+  readonly inputs = INPUTS;
+  readonly outputs = [ARTIFACTS.requirements, ARTIFACTS.pending];
   override readonly capabilities: StepCapabilities = { prompt: true, projects: true };
 
   constructor(
@@ -36,17 +49,13 @@ export class RequirementsStep extends BaseStep {
     const prior = await this.runs.findRun(key);
     const prompt = prior?.prompt ?? undefined;
     const keys = new Set<string>([key]);
-    const existing = parseRecord(await this.documents.latestBody(key, ARTIFACTS.requirements.kind));
+    const existing = parseRecord(await this.reader.reread(key, ARTIFACTS.requirements));
     for (const ticket of existing?.tickets ?? []) {
       if (ticket.key) {
         keys.add(ticket.key);
       }
     }
-    return this.perform(key, (ctx) => this.produce(ctx, prompt, [...keys]));
-  }
-
-  override missingInput(): Promise<string | null> {
-    return Promise.resolve(null);
+    return this.perform(key, async (ctx) => this.conclude(ctx, await this.produce(ctx, prompt, [...keys])));
   }
 
   override async execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
@@ -68,11 +77,12 @@ export class RequirementsStep extends BaseStep {
     }
   }
 
-  protected run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
-    return this.produce(ctx, options.prompt, taskKeys(options.prompt ?? '', key));
+  protected work(_input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
+    const { prompt } = ctx.options;
+    return this.produce(ctx, prompt, taskKeys(prompt ?? '', ctx.opened.run.key));
   }
 
-  private async produce(ctx: StepContext, prompt: string | undefined, issueKeys: string[]): Promise<PipelineResult> {
+  private async produce(ctx: StepContext, prompt: string | undefined, issueKeys: string[]): Promise<StepResult> {
     const { opened } = ctx;
     const key = opened.run.key;
     const effectivePrompt = prompt ?? opened.prior?.prompt ?? undefined;
@@ -81,7 +91,7 @@ export class RequirementsStep extends BaseStep {
       try {
         await this.runs.saveRun(opened.run);
       } catch (error) {
-        return { exitCode: 1, message: this.failureText(error) };
+        throw new VisitLeftOpen({ exitCode: 1, message: this.failureText(error) });
       }
     }
     const samples: SampleDraft[] = [sampleSelf(this.clock.iso())];
@@ -92,11 +102,11 @@ export class RequirementsStep extends BaseStep {
         throw new SwarmloopError(unread);
       }
       const fetched = await this.collect(
+        ctx,
         runDir(this.config, key),
         key,
         effectivePrompt,
         issueKeys,
-        opened.run,
         resuming(opened.prior),
       );
       const written = await this.source.write({
@@ -133,7 +143,7 @@ export class RequirementsStep extends BaseStep {
           exitCode: 0,
           message: error.message,
           body: `${JSON.stringify({ url: error.url })}\n`,
-          kind: ARTIFACTS.pending.kind,
+          artifact: ARTIFACTS.pending,
         });
       }
       return finish({
@@ -147,29 +157,27 @@ export class RequirementsStep extends BaseStep {
     }
   }
 
-  private finish(ctx: StepContext, samples: SampleDraft[], input: RequirementsFinish): Promise<PipelineResult> {
+  private finish(ctx: StepContext, samples: SampleDraft[], input: RequirementsFinish): StepResult {
     ctx.opened.run.agentCalls += input.written.calls;
     ctx.opened.run.spentUsd += input.written.usd;
-    return ctx.end({
-      outcome: input.outcome,
-      exitCode: input.exitCode,
-      line: `${ctx.opened.startedAt} ${input.message}`,
+    return {
+      route: routeOf(input),
+      summary: `${ctx.opened.startedAt} ${input.message}`,
+      outputs: requirementsOutputs(input),
       handoff: input.outcome === 'ok' ? `- ${input.message}\n` : undefined,
       visit: requirementsVisit(samples, input),
-    });
+    };
   }
 
   private async collect(
+    ctx: StepContext,
     runDir: string,
     key: string,
     prompt: string | undefined,
     issueKeys: string[],
-    run: RunEntity,
     resume: boolean,
   ): Promise<{ bundle: IssueBundle; bundles: IssueBundle[]; httpCalls: HttpCallDraft[] }> {
-    const progress = resume
-      ? parseProgress(await this.documents.latestBody(key, ARTIFACTS.requirementsProgress.kind))
-      : { issues: {} };
+    const progress = resume ? parseProgress(await ctx.reread(ARTIFACTS.requirementsProgress)) : { issues: {} };
     const bundles: IssueBundle[] = [];
     const httpCalls: HttpCallDraft[] = [];
     for (const issueKey of issueKeys) {
@@ -182,13 +190,26 @@ export class RequirementsStep extends BaseStep {
       bundles.push(fetched.bundle);
       httpCalls.push(...fetched.httpCalls);
       progress.issues[issueKey] = fetched.bundle;
-      await this.documents.putDocument(run, ARTIFACTS.requirementsProgress.kind, `${JSON.stringify(progress)}\n`);
+      await ctx.write(ARTIFACTS.requirementsProgress, `${JSON.stringify(progress)}\n`);
     }
     return {
       bundle: bundles[0] ?? promptBundle(key, prompt ?? ''),
       bundles,
       httpCalls,
     };
+  }
+}
+
+function routeOf(input: RequirementsFinish): Route {
+  switch (input.outcome) {
+    case 'ok':
+      return { to: 'next' };
+    case 'waiting':
+      return { to: 'wait', reason: input.message };
+    case 'blocked':
+      return { to: 'block', reason: input.message };
+    case 'failed':
+      return { to: 'fail', error: { code: 'requirements', message: input.message } };
   }
 }
 

@@ -1,24 +1,15 @@
-import type { PipelineResult } from '../../core/pipeline-result';
-import type { StepContext } from '../base-step';
-import { textDocument } from '../shared/handoff';
+import type { StepResult } from '../contract/step-contract';
 import { ARTIFACTS } from '../contract/artifacts';
 
-export function endCommit(
-  ctx: StepContext,
-  outcome: 'ok' | 'waiting',
-  exitCode: number,
-  line: string,
-  body?: string,
-): Promise<PipelineResult> {
-  const primary = body ? textDocument(ARTIFACTS.commit.kind, body) : null;
+export function commitResult(outcome: 'ok' | 'waiting', line: string, body?: string): StepResult {
+  const outputs = body ? [{ artifact: ARTIFACTS.commit, value: body }] : [];
   if (outcome === 'waiting') {
-    return ctx.end({ outcome, exitCode, line, visit: { document: primary } });
+    return { route: { to: 'wait', reason: 'commit waiting' }, summary: line, outputs };
   }
-  return ctx.end({
-    outcome,
-    exitCode,
-    line,
+  return {
+    route: { to: 'next' },
+    summary: line,
+    outputs,
     handoff: body?.trim() ? body : '- committed the branch\n',
-    visit: { documents: primary ? [primary] : undefined },
-  });
+  };
 }

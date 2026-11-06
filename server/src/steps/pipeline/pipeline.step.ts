@@ -8,14 +8,12 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 import { EventRepository } from '../../history/event.repository';
 import { root } from '../../history/run-paths';
 import { delay } from '../../core/delay';
-import type { DocumentDraft } from '../../history/visit';
-import type { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import type { StepName } from '../../contract/steps';
 import type { OpenedStep } from '../../steps/step-run';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import { FetchFailed, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
-import { recordHandoff, returnNotes, textDocument } from '../shared/handoff';
-import { hasCi, repoNames, worktreePath } from '../../git/repo-names';
+import { returnNotes } from '../shared/handoff';
+import { checkedRepoNames, hasCi, worktreePath } from '../../git/repo-names';
 import { BaseStep, type StepContext } from '../base-step';
 import {
   cancelErrorNote,
@@ -28,13 +26,22 @@ import {
   type Seen,
 } from './pipeline-report';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { ArtifactValue, InputSpec, Route, StepInput, StepResult } from '../contract/step-contract';
 
 type Verdict = 'green' | 'red' | 'wait' | 'manual' | 'stop' | 'absent';
 
+/** `repos` is read only when a green or absent pipeline asks whether CI started, so it is loaded there. */
+const INPUTS = {
+  pipelineRef: { artifact: ARTIFACTS.pipelineRef, need: 'start' },
+  ciSkip: { artifact: ARTIFACTS.ciSkip, need: 'optional' },
+  repos: { artifact: ARTIFACTS.repos, need: 'optional', late: true },
+} as const satisfies InputSpec;
+
 @Injectable()
-export class PipelineStep extends BaseStep {
+export class PipelineStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'pipeline';
-  readonly requiredKind = ARTIFACTS.pipelineRef.kind;
+  readonly inputs = INPUTS;
+  readonly outputs = [ARTIFACTS.pipelineLog, ARTIFACTS.return];
 
   constructor(
     kernel: StepKernel,
@@ -46,38 +53,38 @@ export class PipelineStep extends BaseStep {
     super(kernel);
   }
 
-  protected async run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
-    const { opened, calls } = ctx;
+  protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
+    const { opened } = ctx;
     const env = this.config.env;
-    const records = parsePipelineRefs((await this.documents.latestBody(key, ARTIFACTS.pipelineRef.kind)) ?? '');
-    const skipped = (await this.documents.latestBody(key, ARTIFACTS.ciSkip.kind))?.trim() ?? '';
+    const records = parsePipelineRefs(input.pipelineRef ?? '');
+    const skipped = input.ciSkip?.trim() ?? '';
     if (records.length === 0 && skipped) {
-      return this.finish(ctx, 'ok', 0, this.report(opened, skipped), 'skipped', skipped);
+      return this.finish('ok', this.report(opened, skipped), 'skipped', skipped);
     }
     this.registry.requiredCredentials(opened.run.codeHost);
     const host = this.registry.byName(opened.run.codeHost);
     if (records.length === 0) {
       throw new SwarmloopError('pipeline ref is missing');
     }
-    const watched = await this.watch(opened.run.key, records, calls, env, host);
-    return this.route(ctx, env, records, watched.seen, watched.verdict, host, options);
+    const watched = await this.watch(ctx, records, env, host);
+    return this.route(ctx, env, records, watched.seen, watched.verdict, host);
   }
 
   /** Repo names that have a workflow file and no run. Null when the repo list is missing. */
-  private async missingRuns(key: string, seen: Seen[]): Promise<string[] | null> {
-    const raw = await this.documents.latestBody(key, ARTIFACTS.repos.kind);
-    if (!raw?.trim()) {
+  private async missingRuns(ctx: StepContext, seen: Seen[]): Promise<string[] | null> {
+    const lines = await ctx.reread(ARTIFACTS.repos);
+    if (!lines || lines.length === 0) {
       return null;
     }
     let names: string[];
     try {
-      names = repoNames(raw);
+      names = checkedRepoNames(lines);
     } catch {
       return null;
     }
     const missing: string[] = [];
     for (const name of names) {
-      const dir = worktreePath(root(this.config), key, name);
+      const dir = worktreePath(root(this.config), ctx.opened.run.key, name);
       if (!hasCi(dir)) {
         continue;
       }
@@ -91,18 +98,18 @@ export class PipelineStep extends BaseStep {
   }
 
   private async watch(
-    key: string,
+    ctx: StepContext,
     records: PipelineRef[],
-    calls: HttpCallDraft[],
     env: SwarmloopEnv,
     host: CodeHost,
   ): Promise<{ seen: Seen[]; verdict: Verdict }> {
+    const { calls } = ctx;
     const deadline = this.clock.now() + env.PIPELINE_TIMEOUT_MS;
     const startDeadline = this.clock.now() + env.PIPELINE_START_TIMEOUT_MS;
     let seen = await this.load(records, calls, host, false);
     let verdict = this.verdict(seen);
     while (this.clock.now() < deadline && (verdict === 'wait' || verdict === 'absent' || verdict === 'green')) {
-      const missing = verdict === 'wait' ? null : await this.missingRuns(key, seen);
+      const missing = verdict === 'wait' ? null : await this.missingRuns(ctx, seen);
       if (verdict === 'green' && !(missing && missing.length > 0)) {
         break;
       }
@@ -172,35 +179,33 @@ export class PipelineStep extends BaseStep {
     seen: Seen[],
     verdict: Verdict,
     host: CodeHost,
-    options: StepOptions,
-  ): Promise<PipelineResult> {
+  ): Promise<StepResult> {
     const { opened, calls } = ctx;
     if (verdict === 'wait') {
       const settled = await this.cancelRunning(records, seen, calls, env, host);
       if (!settled.traces) {
-        return this.red(ctx, env, settled.seen, host, options, settled.note, false);
+        return this.red(ctx, env, settled.seen, host, settled.note, false);
       }
       const next = this.verdict(settled.seen);
       if (next === 'red' || next === 'wait') {
-        return this.red(ctx, env, settled.seen, host, options, settled.note, true);
+        return this.red(ctx, env, settled.seen, host, settled.note, true);
       }
       seen = settled.seen;
       verdict = next;
     }
     if (verdict === 'red') {
-      return this.red(ctx, env, seen, host, options);
+      return this.red(ctx, env, seen, host);
     }
     if (verdict === 'stop') {
-      return this.finish(ctx, 'failed', 1, this.report(opened, this.stopLine(seen)), 'failed');
+      return this.finish('failed', this.report(opened, this.stopLine(seen)), 'failed');
     }
     if (verdict === 'manual') {
-      return this.finish(ctx, 'waiting', 0, this.report(opened, 'pipeline is manual'), 'waiting');
+      return this.finish('waiting', this.report(opened, 'pipeline is manual'), 'waiting');
     }
-    const missing = await this.missingRuns(opened.run.key, seen);
+    const missing = await this.missingRuns(ctx, seen);
     if (missing && missing.length > 0) {
       return missingPipeline({
         ctx,
-        documents: this.documents,
         runs: this.runs,
         events: this.events,
         rebase: this.rebase,
@@ -215,7 +220,7 @@ export class PipelineStep extends BaseStep {
     }
     if (verdict === 'absent') {
       const body = renderNone(seen);
-      return this.finish(ctx, 'ok', 0, this.report(opened, 'nothing started', body), 'done', body);
+      return this.finish('ok', this.report(opened, 'nothing started', body), 'done', body);
     }
     const warnings = seen.flatMap((item) =>
       item.jobs
@@ -223,7 +228,7 @@ export class PipelineStep extends BaseStep {
         .map((job) => `${item.project} ${job.name}`),
     );
     const body = renderPass(seen, warnings);
-    return this.finish(ctx, 'ok', 0, this.report(opened, 'pipeline done', body), 'done', body);
+    return this.finish('ok', this.report(opened, 'pipeline done', body), 'done', body);
   }
 
   private async cancelRunning(
@@ -293,29 +298,28 @@ export class PipelineStep extends BaseStep {
     env: SwarmloopEnv,
     seen: Seen[],
     host: CodeHost,
-    options: StepOptions,
     note = '',
     traces = true,
-  ): Promise<PipelineResult> {
+  ): Promise<StepResult> {
     const { opened, calls } = ctx;
     const failures = traces ? await this.failures(seen, calls, host) : [];
     const body = traces ? renderFail(failures, seen, note) : `${note.trim()}\n`;
-    if (options.auto && (await this.sameFailure(opened.run.key, seen))) {
+    if (ctx.options.auto && (await this.sameFailure(ctx, seen))) {
       const report = this.report(opened, 'pipeline already failed for this commit', body);
-      return this.finish(ctx, 'failed', 1, report, 'failed', body);
+      return this.finish('failed', report, 'failed', body);
     }
     if (opened.run.attemptsPipeline >= env.MAX_PIPELINE_RETURNS) {
       const report = this.report(opened, 'pipeline return limit reached', body);
-      return this.finish(ctx, 'blocked', 1, report, 'blocked', body);
+      return this.finish('blocked', report, 'blocked', body);
     }
     opened.run.attemptsPipeline += 1;
     const reason = failures.map((failure) => `${failure.project} ${failure.name}`).join(',') || 'pipeline failed';
     await this.events.recordLoop(opened.run, 'pipeline', opened.run.attemptsPipeline, reason);
-    return this.finish(ctx, 'waiting', 0, this.report(opened, 'pipeline failed', body), 'waiting', body, 'implement');
+    return this.finish('waiting', this.report(opened, 'pipeline failed', body), 'waiting', body, 'implement');
   }
 
-  private async sameFailure(key: string, seen: Seen[]): Promise<boolean> {
-    const previous = (await this.documents.latestBody(key, ARTIFACTS.pipelineLog.kind)) ?? '';
+  private async sameFailure(ctx: StepContext, seen: Seen[]): Promise<boolean> {
+    const previous = (await ctx.reread(ARTIFACTS.pipelineLog)) ?? '';
     const lines = new Set(previous.split('\n').map((line) => line.trim()));
     if (!lines.has('result: fail')) {
       return false;
@@ -368,23 +372,21 @@ export class PipelineStep extends BaseStep {
     return body ? `${head}\n${body.trimEnd()}` : head;
   }
 
-  private async finish(
-    ctx: StepContext,
+  private finish(
     outcome: 'ok' | 'failed' | 'blocked' | 'waiting',
-    exitCode: number,
     line: string,
     visitStatus: string,
     body?: string,
     moveTo?: 'implement',
-  ): Promise<PipelineResult> {
-    const { opened } = ctx;
-    const docs: DocumentDraft[] = [];
+  ): StepResult {
+    const outputs: ArtifactValue[] = [];
     if (body) {
-      docs.push(textDocument(ARTIFACTS.pipelineLog.kind, body));
+      outputs.push({ artifact: ARTIFACTS.pipelineLog, value: body });
     }
     if (moveTo && body) {
-      docs.push(returnNotes([{ source: 'pipeline', body }]));
+      outputs.push({ artifact: ARTIFACTS.return, value: returnNotes([{ source: 'pipeline', body }]).body });
     }
+    let handoff: string | undefined;
     if (outcome === 'ok' || moveTo) {
       const head = moveTo
         ? 'Pipeline failed and returned to implement.'
@@ -393,15 +395,21 @@ export class PipelineStep extends BaseStep {
           : body?.includes('result: none')
             ? 'Nothing started.'
             : 'Pipeline passed.';
-      docs.push(await recordHandoff(this.documents, opened.run.key, 'pipeline', `- ${head}\n`));
+      handoff = `- ${head}\n`;
     }
-    return ctx.end({
-      outcome,
-      exitCode,
-      line,
-      status: visitStatus,
-      moveTo,
-      visit: { documents: docs.length > 0 ? docs : undefined },
-    });
+    return { route: routeOf(outcome, line, moveTo), summary: line, outputs, handoff, visit: { status: visitStatus } };
+  }
+}
+
+function routeOf(outcome: 'ok' | 'failed' | 'blocked' | 'waiting', line: string, moveTo?: 'implement'): Route {
+  switch (outcome) {
+    case 'ok':
+      return { to: 'next' };
+    case 'failed':
+      return { to: 'fail', error: { code: 'pipeline', message: line } };
+    case 'blocked':
+      return { to: 'block', reason: line };
+    case 'waiting':
+      return moveTo ? { to: 'return', step: moveTo, issues: [] } : { to: 'wait', reason: line };
   }
 }

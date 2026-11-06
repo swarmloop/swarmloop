@@ -2,18 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { StepKernel } from '../step-kernel';
 import { existsSync, statSync } from 'fs';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
-import { RunEntity } from '../../history/entities';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
-import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { OpenedStep } from '../../steps/step-run';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
 import { authorArgs, git, gitDetail, gitMissing, originUrl } from '../../git/git';
-import { endCommit } from './commit-result';
+import { commitResult } from './commit-result';
 import { gitAt, status, Tree } from './commit-git';
-import { repoNames, worktreePath } from '../../git/repo-names';
+import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { remoteProject } from '../merge-request/merge-request-record';
 import { BaseStep, StepContext } from '../base-step';
 import {
@@ -25,13 +23,24 @@ import {
   stageSelection,
 } from '../../git/commit-paths';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
 export const CI_SKIPPED = 'CI skipped: there is no origin to push.';
 
+/** `ci_skip` and `ci_rerun` are read where the path needs them, so a visit that stops earlier never reads them. */
+const INPUTS = {
+  requirements: { artifact: ARTIFACTS.requirements, need: 'start' },
+  repos: { artifact: ARTIFACTS.repos, need: 'run' },
+  commit: { artifact: ARTIFACTS.commit, need: 'optional' },
+  ciSkip: { artifact: ARTIFACTS.ciSkip, need: 'optional', late: true },
+  ciRerun: { artifact: ARTIFACTS.ciRerun, need: 'optional', late: true },
+} as const satisfies InputSpec;
+
 @Injectable()
-export class CommitStep extends BaseStep {
+export class CommitStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'commit';
-  readonly requiredKind = ARTIFACTS.requirements.kind;
+  readonly inputs = INPUTS;
+  readonly outputs = [ARTIFACTS.commit];
 
   constructor(
     kernel: StepKernel,
@@ -41,29 +50,30 @@ export class CommitStep extends BaseStep {
     super(kernel);
   }
 
-  protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
+  protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const { opened } = ctx;
-    const requirements = await this.documents.latestBody(key, ARTIFACTS.requirements.kind);
+    const { key } = opened.run;
+    const { requirements } = input;
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
     const summary = summaryForBranch(requirements, key);
     const branch = branchName(key, summary);
-    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
+    const names = checkedRepoNames(input.repos);
     const trees = this.trees(key, names);
     await this.assertBranch(trees, branch);
     const phases = await this.flows.activePhases(opened.run.id);
-    const stored = await this.documents.latestBody(key, ARTIFACTS.commit.kind);
+    const stored = input.commit;
     const again = await this.resume(opened, stored);
     if (!phases.includes('ci') && !again) {
       const body = await this.preview(trees, branch);
-      return endCommit(ctx, 'waiting', 0, `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
+      return commitResult('waiting', `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
     }
     const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, await this.checkouts.listDenyPaths());
-    const rerun = planned.length === 0 && (await this.rerunPending(key));
+    const rerun = planned.length === 0 && (await this.reader.newer(key, ARTIFACTS.ciRerun, ARTIFACTS.commit));
     if (!rerun && planned.length === 0 && !(await this.somethingToPush(trees, branch))) {
       if (await this.publishedHead(trees, branch)) {
-        return endCommit(ctx, 'ok', 0, `${opened.startedAt} commit done\n${branch}`);
+        return commitResult('ok', `${opened.startedAt} commit done\n${branch}`);
       }
       throw new SwarmloopError('nothing to commit');
     }
@@ -74,21 +84,21 @@ export class CommitStep extends BaseStep {
     const listed = planned.length > 0 ? renderPaths(planned).trimEnd() : '';
     const recordedHeads = heads.length > 0 ? `${heads.join('\n')}\n` : undefined;
     if (!pushed) {
-      await this.documents.putDocument(opened.run, ARTIFACTS.ciSkip.kind, `${CI_SKIPPED}\n`);
+      await ctx.write(ARTIFACTS.ciSkip, `${CI_SKIPPED}\n`);
       const line = listed ? `${opened.startedAt} ${CI_SKIPPED}\n${listed}` : `${opened.startedAt} ${CI_SKIPPED}`;
-      return endCommit(ctx, 'ok', 0, line, listed ? `${listed}\n` : undefined);
+      return commitResult('ok', line, listed ? `${listed}\n` : undefined);
     }
-    const recorded = await this.rememberRefs(opened.run, trees, branch);
+    const recorded = await this.rememberRefs(trees, branch, (body) => ctx.write(ARTIFACTS.pipelineRef, body));
     if (recorded) {
-      const skip = await this.documents.latestBody(key, ARTIFACTS.ciSkip.kind);
+      const skip = await ctx.reread(ARTIFACTS.ciSkip);
       if (skip?.trim()) {
-        await this.documents.putDocument(opened.run, ARTIFACTS.ciSkip.kind, '');
+        await ctx.write(ARTIFACTS.ciSkip, '');
       }
     }
     const line = listed
       ? `${opened.startedAt} commit done\n${branch}\n${listed}`
       : `${opened.startedAt} commit done\n${branch}`;
-    return endCommit(ctx, 'ok', 0, line, listed ? `${listed}\n` : recordedHeads);
+    return commitResult('ok', line, listed ? `${listed}\n` : recordedHeads);
   }
 
   /** A failed or still-open commit retries its own path list. Arriving from the previous phase reads the tree again. */
@@ -195,16 +205,6 @@ export class CommitStep extends BaseStep {
     return false;
   }
 
-  /** A `ci_rerun` document newer than the latest `commit` document asks for one new CI run. */
-  private async rerunPending(key: string): Promise<boolean> {
-    const rerun = await this.documents.latestDocument(key, ARTIFACTS.ciRerun.kind);
-    if (!rerun) {
-      return false;
-    }
-    const commit = await this.documents.latestDocument(key, ARTIFACTS.commit.kind);
-    return !commit || commit.id < rerun.id;
-  }
-
   private async somethingToPush(trees: Tree[], branch: string): Promise<boolean> {
     for (const tree of trees) {
       const cwd = tree.path;
@@ -302,7 +302,7 @@ export class CommitStep extends BaseStep {
       const captured = leases.find((lease) => lease.repo === tree.repo)?.tip ?? null;
       await this.pushRef(tree, branch, captured, run.codeHost, origin);
     }
-    await this.rememberRefs(run, trees, branch);
+    await this.rememberRefs(trees, branch, (body) => this.store(run, ARTIFACTS.pipelineRef, body));
   }
 
   private async pushRef(
@@ -347,7 +347,7 @@ export class CommitStep extends BaseStep {
   }
 
   /** True when this push recorded a host project. A filesystem origin does not. */
-  private async rememberRefs(run: RunEntity, trees: Tree[], branch: string): Promise<boolean> {
+  private async rememberRefs(trees: Tree[], branch: string, write: (body: string) => Promise<void>): Promise<boolean> {
     const blocks: string[] = [];
     for (const tree of trees) {
       const cwd = tree.path;
@@ -367,7 +367,7 @@ export class CommitStep extends BaseStep {
     if (blocks.length === 0) {
       return false;
     }
-    await this.documents.putDocument(run, ARTIFACTS.pipelineRef.kind, `${blocks.join('\n\n')}\n`);
+    await write(`${blocks.join('\n\n')}\n`);
     return true;
   }
 }

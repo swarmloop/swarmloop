@@ -9,7 +9,7 @@ import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
-import { BaseStep, type StepContext, type StepEnd } from '../steps/base-step';
+import { LegacyStep, type StepContext, type StepEnd } from '../steps/base-step';
 import { StepRegistry } from '../steps/step.registry';
 import type { Step } from '../steps/step';
 import { createTestApp } from '../testing/test-app';
@@ -25,7 +25,7 @@ const KEY = 'PROJ-1';
 
 type Script = (visit: number, ctx: StepContext) => Omit<StepEnd, 'line'>;
 
-class DriverStep extends BaseStep {
+class DriverStep extends LegacyStep {
   override readonly requiredKind = 'requirements';
   override readonly usesModel = false;
   count = 0;

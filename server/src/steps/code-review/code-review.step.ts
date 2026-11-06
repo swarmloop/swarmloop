@@ -14,7 +14,7 @@ import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { BaseStep, StepContext } from '../base-step';
+import { LegacyStep, StepContext } from '../base-step';
 import { composedReturn, textDocument } from '../shared/handoff';
 import { PrepareStep } from '../prepare/prepare.step';
 import { requiredDocument } from '../step';
@@ -44,7 +44,7 @@ import {
 import { ARTIFACTS } from '../contract/artifacts';
 
 @Injectable()
-export class CodeReviewStep extends BaseStep {
+export class CodeReviewStep extends LegacyStep {
   readonly name: StepName = 'code-review';
   readonly requiredKind = ARTIFACTS.implementation.kind;
   override readonly usesModel = true;

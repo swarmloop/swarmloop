@@ -2,7 +2,9 @@ import type { SampleDraft, VisitDraft } from '../../history/visit';
 import type { KillReason } from '../../core/kill-reason';
 import type { RequirementsWrite } from '../../integrations/requirements-source/requirements-source';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
+import type { Artifact } from '../contract/artifact';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { ArtifactValue } from '../contract/step-contract';
 
 export interface RequirementsFinish {
   written: RequirementsWrite;
@@ -11,7 +13,8 @@ export interface RequirementsFinish {
   exitCode: number;
   message: string;
   body: string | null;
-  kind?: string;
+  /** What `body` is stored as. The requirements record unless this says otherwise. */
+  artifact?: Artifact<string>;
 }
 
 export function requirementsVisit(samples: SampleDraft[], input: RequirementsFinish): Partial<VisitDraft> {
@@ -26,20 +29,12 @@ export function requirementsVisit(samples: SampleDraft[], input: RequirementsFin
     samples,
     exchange: input.written.exchange,
     httpCalls: input.calls,
-    ...visitDocuments(input),
     resumed: input.written.resumed,
   };
 }
 
-/** An ok visit keeps its record in `documents`, where the handoff note is added after it. */
-function visitDocuments(input: RequirementsFinish): Partial<Pick<VisitDraft, 'document' | 'documents'>> {
-  const document = input.body
-    ? { kind: input.kind ?? ARTIFACTS.requirements.kind, fileName: '', body: input.body }
-    : null;
-  if (input.outcome === 'ok') {
-    return { document: null, documents: document ? [document] : [] };
-  }
-  return { document };
+export function requirementsOutputs(input: RequirementsFinish): ArtifactValue[] {
+  return input.body ? [{ artifact: input.artifact ?? ARTIFACTS.requirements, value: input.body }] : [];
 }
 
 export function stopReason(
