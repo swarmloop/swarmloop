@@ -78,3 +78,8 @@ export function terminalArgs(input: {
 }): string[] {
   return runtimeFor('cursor').terminalArgs(input);
 }
+
+/** A read-only plan or ask run mounts the work tree read-only, so the agent cannot edit it. */
+export function readOnlyTree(runtime: string, mode: string | undefined): boolean {
+  return runtime === 'codex' && (mode === 'plan' || mode === 'ask');
+}

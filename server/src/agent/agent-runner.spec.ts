@@ -254,6 +254,14 @@ describe('AgentProcessRunner limit continuation', () => {
     expect(result.killReason).toBe('time');
   });
 
+  it('keeps the prompt on a crash retry', async () => {
+    const { spawn } = await start('crash', [{ chunks: [], code: 1 }, { chunks: [doneStream('done\n')] }], {
+      resumeChatId: null,
+    });
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(promptArg(spawn.mock.calls[1])).toBe('follow up');
+  });
+
   it('does not relaunch when the attempt has no chat id', async () => {
     const { result, spawn } = await start('noch', [{ chunks: [chatStream(null)] }], {
       resumeChatId: null,

@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { readOnlyTree } from './agent-args';
 import { buildAgentArgs, reviewBriefMount, spillPrompt, terminalArgs } from './agent-runner';
 
 describe('buildAgentArgs', () => {
@@ -140,5 +141,21 @@ describe('terminalArgs', () => {
     expect(
       terminalArgs({ model: 'from-env', workspace: '/work', resumeChatId: null, vendor: ['mcp', 'list'] }),
     ).toEqual(['mcp', 'list']);
+  });
+});
+
+describe('readOnlyTree', () => {
+  it('mounts the tree read-only for codex in plan and ask modes', () => {
+    expect(readOnlyTree('codex', 'plan')).toBe(true);
+    expect(readOnlyTree('codex', 'ask')).toBe(true);
+  });
+
+  it('keeps the tree writable for codex in agent mode or with no mode', () => {
+    expect(readOnlyTree('codex', 'agent')).toBe(false);
+    expect(readOnlyTree('codex', undefined)).toBe(false);
+  });
+
+  it('keeps the tree writable for another runtime in plan mode', () => {
+    expect(readOnlyTree('cursor', 'plan')).toBe(false);
   });
 });
