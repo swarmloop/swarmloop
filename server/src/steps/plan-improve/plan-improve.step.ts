@@ -1,17 +1,18 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
 import { join } from 'path';
 import { SwarmloopEnv } from '../../config/env';
 import { root } from '../../history/run-paths';
-import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent-runner';
+import { readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../history/session-group';
-import { PipelineResult } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { withAddedRepos } from '../follow-up';
-import { AgentStep, ModelStepContext } from '../agent-step';
-import { recordHandoff, textDocument, withHandoff } from '../shared/handoff';
+import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
+import { AgentLauncher } from '../shared/agent-launcher';
+import { withHandoff } from '../shared/handoff';
 import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { mountsForStep, repoNames } from '../../git/repo-names';
 import { storedPlan } from '../step';
@@ -19,25 +20,40 @@ import { readPlan, reviewedItems, withPlan } from '../plan/plan-record';
 import { PLAN_IMPROVE_FOLLOW_UP } from './plan-improve.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 
-@Injectable()
-export class PlanImproveStep extends AgentStep {
-  readonly name: StepName = 'plan-improve';
-  readonly requiredKind = 'plan';
+const INPUTS = {
+  requirements: REQUIREMENTS_INPUT,
+  repos: lateInput(ARTIFACTS.repos),
+  addedRepos: lateInput(ARTIFACTS.addedRepos),
+  instructions: instructionsInput('plan-improve'),
+} as const satisfies InputSpec;
 
-  constructor(kernel: StepKernel, sandbox: SandboxService, @Inject(AGENT_RUNNER) agent: AgentProcessRunner) {
-    super(kernel, sandbox, agent);
+@Injectable()
+export class PlanImproveStep extends AgentStep<typeof INPUTS> {
+  readonly inputs = INPUTS;
+  readonly name: StepName = 'plan-improve';
+  readonly outputs = [ARTIFACTS.requirements];
+
+  constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
+    super(kernel, sandbox, launcher);
   }
 
-  protected settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number } {
-    return { mode: 'plan', model: env.MODEL_PLAN, timeLimitMs: env.PLAN_TIMEOUT_MS };
+  protected profile(env: SwarmloopEnv): AgentProfile {
+    return {
+      runtime: env.RUNTIME,
+      model: env.MODEL_PLAN,
+      mode: 'plan',
+      timeLimitMs: env.PLAN_TIMEOUT_MS,
+      session: 'resume',
+    };
   }
 
   override missingInput(key: string): Promise<string | null> {
     return storedPlan(this.documents, key);
   }
 
-  protected async write(key: string, ctx: ModelStepContext): Promise<PipelineResult> {
-    const requirements = (await this.documents.latestBody(key, ARTIFACTS.requirements.kind)) ?? '';
+  protected async produce(input: StepInput<typeof INPUTS>, ctx: ModelStepContext): Promise<StepResult> {
+    const { key } = ctx.opened.run;
+    const { requirements } = input;
     const plan = readPlan(requirements);
     if (!plan) {
       throw new SwarmloopError('plan is missing');
@@ -51,7 +67,7 @@ export class PlanImproveStep extends AgentStep {
     );
     const full = skillPrompt(
       'plan-improve',
-      ctx.requirements,
+      input.requirements,
       names,
       withHandoff([{ heading: 'Plan', body: JSON.stringify(plan, null, 2) }], prior),
       mounts,
@@ -65,13 +81,11 @@ export class PlanImproveStep extends AgentStep {
       agentResult.responseText,
       plainSummary(agentResult.responseText) || next.items.map((item) => `- ${item}`).join('\n'),
     );
-    const handoff = await recordHandoff(this.documents, key, 'plan-improve', summary);
-    return ctx.end({
-      outcome: 'ok',
-      exitCode: 0,
-      line: `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`,
-      document: textDocument(ARTIFACTS.requirements.kind, withPlan(requirements, next)),
-      documents: [handoff],
-    });
+    return {
+      route: { to: 'next' },
+      summary: `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`,
+      outputs: [{ artifact: ARTIFACTS.requirements, value: withPlan(requirements, next) }],
+      handoff: summary,
+    };
   }
 }

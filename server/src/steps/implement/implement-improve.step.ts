@@ -1,18 +1,20 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
 import { join } from 'path';
 import { SwarmloopEnv } from '../../config/env';
 import { root } from '../../history/run-paths';
-import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent-runner';
+import { readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../history/session-group';
-import { PipelineResult, StepOptions } from '../../core/pipeline-result';
+import { StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
 import { withAddedRepos } from '../follow-up';
-import { AgentStep, ModelStepContext } from '../agent-step';
-import { composedReturn, recordHandoff, textDocument, withHandoff } from '../shared/handoff';
+import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
+import { AgentLauncher } from '../shared/agent-launcher';
+import { composedReturn, textDocument, withHandoff } from '../shared/handoff';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames } from '../../git/repo-names';
@@ -23,28 +25,48 @@ import { IMPLEMENT_IMPROVE_FOLLOW_UP } from './implement.prompts';
 import { reviewedImplementation, withReturnNotes } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 
+const INPUTS = {
+  requirements: REQUIREMENTS_INPUT,
+  implementation: { ...lateInput(ARTIFACTS.implementation), need: 'start' },
+  repos: lateInput(ARTIFACTS.repos),
+  addedRepos: lateInput(ARTIFACTS.addedRepos),
+  instructions: instructionsInput('implement-improve'),
+} as const satisfies InputSpec;
+
 @Injectable()
-export class ImplementImproveStep extends AgentStep {
+export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
+  readonly inputs = INPUTS;
   readonly name: StepName = 'implement-improve';
-  readonly requiredKind = ARTIFACTS.implementation.kind;
+  readonly outputs = [ARTIFACTS.implementation, ARTIFACTS.requirements];
 
   constructor(
     kernel: StepKernel,
     sandbox: SandboxService,
-    @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
+    launcher: AgentLauncher,
     private readonly environments: EnvironmentService,
   ) {
-    super(kernel, sandbox, agent);
+    super(kernel, sandbox, launcher);
   }
 
-  protected settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number } {
-    return { mode: 'agent', model: env.MODEL_IMPLEMENT, timeLimitMs: env.IMPLEMENT_TIMEOUT_MS };
+  protected profile(env: SwarmloopEnv): AgentProfile {
+    return {
+      runtime: env.RUNTIME,
+      model: env.MODEL_IMPLEMENT,
+      mode: 'agent',
+      timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
+      session: 'resume',
+    };
   }
 
-  protected async write(key: string, ctx: ModelStepContext, options: StepOptions): Promise<PipelineResult> {
+  protected async produce(
+    input: StepInput<typeof INPUTS>,
+    ctx: ModelStepContext,
+    options: StepOptions,
+  ): Promise<StepResult> {
     const env = this.config.env;
+    const { key } = ctx.opened.run;
     const auto = options.auto;
-    const plan = requireApprovedPlan(await this.documents.latestBody(key, ARTIFACTS.requirements.kind));
+    const plan = requireApprovedPlan(input.requirements);
     const notes = await this.documents.latestBody(key, ARTIFACTS.implementation.kind);
     if (!notes?.trim()) {
       throw new SwarmloopError('implementation is missing');
@@ -52,11 +74,11 @@ export class ImplementImproveStep extends AgentStep {
     const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
-      return ctx.end({
-        outcome: 'blocked',
-        exitCode: 1,
-        line: `${ctx.opened.startedAt} implement-improve does not fit`,
-      });
+      return {
+        route: { to: 'block', reason: 'implement-improve does not fit' },
+        summary: `${ctx.opened.startedAt} implement-improve does not fit`,
+        outputs: [],
+      };
     }
     const returned = composedReturn(await this.documents.listDocuments(ctx.opened.run.id));
     const sections = withHandoff(
@@ -69,13 +91,13 @@ export class ImplementImproveStep extends AgentStep {
       ),
       await this.documents.latestBody(key, ARTIFACTS.handoff.kind),
     );
-    const branch = branchName(key, summaryForBranch(ctx.requirements, key));
+    const branch = branchName(key, summaryForBranch(input.requirements, key));
     const heads = await featureHeads(mounts, branch);
     const continued = await readSession(
       join(root(this.config), 'data', sessionFileName(key, 'implement-improve')),
       ctx.opened.run.runtime,
     );
-    const full = skillPrompt('implement-improve', ctx.requirements, names, sections, mounts, {
+    const full = skillPrompt('implement-improve', input.requirements, names, sections, mounts, {
       deferExecutionRules: true,
     });
     const chosen = continued?.chatId ? IMPLEMENT_IMPROVE_FOLLOW_UP : full;
@@ -91,19 +113,17 @@ export class ImplementImproveStep extends AgentStep {
     await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
     await assertUncommitted(mounts, branch, heads);
     const body = wrote.trim() ? wrote : notes;
-    const corrected = correctedPlan(ctx.requirements, text, agentResult.output ?? '');
+    const corrected = correctedPlan(input.requirements, text, agentResult.output ?? '');
     const summary = summaryOr(text, plainSummary(text) || '- checked the first pass\n');
     const handoffBody = corrected ? `${summary.trimEnd()}\n${corrected.handoff}` : summary;
     const status = await worktreeStatus(mounts);
     const line = `${ctx.opened.startedAt} implement-improve done\n${body.trimEnd()}\n${status}`;
-    const handoff = await recordHandoff(this.documents, key, 'implement-improve', handoffBody);
-    const docs = corrected ? [handoff, textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] : [handoff];
-    return ctx.end({
-      outcome: 'ok',
-      exitCode: 0,
-      line,
-      document: textDocument(ARTIFACTS.implementation.kind, body),
-      documents: docs,
-    });
+    return {
+      route: { to: 'next' },
+      summary: line,
+      outputs: [{ artifact: ARTIFACTS.implementation, value: body }],
+      handoff: handoffBody,
+      visit: corrected ? { documents: [textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] } : undefined,
+    };
   }
 }

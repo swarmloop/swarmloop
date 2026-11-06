@@ -9,12 +9,11 @@ import type { PipelineResult } from '../../core/pipeline-result';
 import { visitStatus } from '../../core/pipeline-result';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import type { StepContext } from '../base-step';
-import { launchAgent } from '../agent-step';
 import { agentFailure } from '../shared/agent-result';
 import { mergeHandoff, textDocument } from '../shared/handoff';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { REPORT_CONTINUE, reportFollowUp } from './code-review.prompts';
-import { decidedOk } from './reviewer';
+import { decidedOk, reviewModel } from './reviewer';
 import type { Finished, Opinion, ReviewDeps, Usage } from './reviewer';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 
@@ -59,15 +58,13 @@ export async function writeReport(
   const prompt = continued
     ? reportFollowUp(brief, implementation)
     : skillPrompt('code-review/report', requirements, names, sections, mounts);
-  const model = env.MODEL_PLAN;
+  const model = reviewModel(env);
   const empty: Usage = { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] };
   try {
     const directory = join(deps.root, 'data');
     mkdirSync(directory, { recursive: true });
     writeFileSync(join(directory, `${key}-code-review-report-output.txt`), 'starting\n');
-    const result = await launchAgent({
-      agent: deps.agent,
-      visits: deps.visits,
+    const result = await deps.launcher.launch({
       root: deps.root,
       run: opened.run,
       key,

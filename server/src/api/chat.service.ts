@@ -1,19 +1,17 @@
 import { existsSync, readFileSync, realpathSync } from 'fs';
 import { join } from 'path';
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { resolveRepoRoot } from '../config/repo-root';
 import { DocumentRepository } from '../history/document.repository';
 import { root } from '../history/run-paths';
 import { RunRepository } from '../history/run.repository';
-import { VisitRepository } from '../history/visit.repository';
-import { AGENT_RUNNER, AgentProcessRunner } from '../agent/agent-runner';
 import { modelForStep } from '../agent/spend';
 import { CHAT_LOCK, chatLockBody } from '../pipeline/chat-lock';
 import { settleShell, shellHolding } from '../pipeline/shell-lock';
 import { ServiceContextService } from '../integrations/service-context';
-import { launchAgent } from '../steps/agent-step';
+import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { agentFailure } from '../steps/shared/agent-result';
 import { LOCAL_RUN_RULE } from '../steps/shared/skill-prompt';
 import { mountsForRun } from '../sandbox/sandbox-launch';
@@ -27,11 +25,10 @@ export class ChatService {
   constructor(
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
-    private readonly visits: VisitRepository,
     private readonly config: AppConfig,
     private readonly clock: Clock,
     private readonly sandbox: SandboxService,
-    @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
+    private readonly launcher: AgentLauncher,
     private readonly services: ServiceContextService,
   ) {}
 
@@ -71,9 +68,7 @@ export class ChatService {
       run.ownerPid = process.pid;
       await this.runs.saveRun(run);
       await this.sandbox.assertReady(env.RUNTIME);
-      const result = await launchAgent({
-        agent: this.agent,
-        visits: this.visits,
+      const result = await this.launcher.launch({
         root: root(this.config),
         run,
         key,

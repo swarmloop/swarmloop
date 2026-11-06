@@ -1,5 +1,12 @@
-import { Inject, Injectable } from '@nestjs/common';
-import type { StepCapabilities } from '../contract/step-contract';
+import { Injectable } from '@nestjs/common';
+import type {
+  AgentProfile,
+  InputSpec,
+  StepCapabilities,
+  StepDescriptor,
+  StepInput,
+  StepResult,
+} from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
 import { realpathSync } from 'fs';
 import { SwarmloopEnv } from '../../config/env';
@@ -7,19 +14,20 @@ import { CheckoutRepository } from '../../history/checkout.repository';
 import { EventRepository } from '../../history/event.repository';
 import { root } from '../../history/run-paths';
 import { VisitDraft } from '../../history/visit';
-import { AGENT_RUNNER, AgentProcessRunner } from '../../agent/agent-runner';
 import { Charge, chargeReview } from '../../agent/spend';
 import { ModelPrice } from '../../agent/limits';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { LegacyStep, StepContext } from '../base-step';
+import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
+import { lateInput } from '../agent-step';
+import { AgentLauncher } from '../shared/agent-launcher';
 import { composedReturn, textDocument } from '../shared/handoff';
 import { PrepareStep } from '../prepare/prepare.step';
 import { requiredDocument } from '../step';
 import { reviewDiffSection, writeReviewDiff } from './review-diff';
-import { REVIEWERS } from './reviewer';
+import { REVIEWERS, reviewModel } from './reviewer';
 import {
   approvedPlan,
   detachForeign,
@@ -42,11 +50,21 @@ import {
   tallyRound,
 } from './review-round';
 import { ARTIFACTS } from '../contract/artifacts';
+import { CODE_REVIEWERS } from '../../contract/steps';
+
+const INPUTS = {
+  implementation: { artifact: ARTIFACTS.implementation, need: 'optional' },
+  // Without requirements the review falls back to the run prompt, and a third-party review has none.
+  requirements: lateInput(ARTIFACTS.requirements),
+  repos: lateInput(ARTIFACTS.repos),
+  rebaseConflict: lateInput(ARTIFACTS.rebaseConflict),
+} as const satisfies InputSpec;
 
 @Injectable()
-export class CodeReviewStep extends LegacyStep {
+export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'code-review';
-  readonly requiredKind = ARTIFACTS.implementation.kind;
+  readonly inputs = INPUTS;
+  readonly outputs = [ARTIFACTS.reviewReport, ARTIFACTS.return];
   override readonly usesModel = true;
   override readonly capabilities: StepCapabilities = { path: true };
 
@@ -56,9 +74,29 @@ export class CodeReviewStep extends LegacyStep {
     private readonly events: EventRepository,
     private readonly prepare: PrepareStep,
     private readonly sandbox: SandboxService,
-    @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
+    private readonly launcher: AgentLauncher,
   ) {
     super(kernel);
+  }
+
+  override describe(env: SwarmloopEnv): StepDescriptor {
+    return { ...super.describe(env), reviewers: this.reviewers(env), agent: this.profile(env) };
+  }
+
+  /** The angles one round runs, each with the model and mode of its launch. */
+  reviewers(env: SwarmloopEnv): { name: string; model: string; mode: string }[] {
+    return CODE_REVIEWERS.map((name) => ({ name, model: reviewModel(env), mode: 'ask' }));
+  }
+
+  /** The launch that writes the report. The reviewers have their own, listed by `reviewers`. */
+  private profile(env: SwarmloopEnv): AgentProfile {
+    return {
+      runtime: env.RUNTIME,
+      model: reviewModel(env),
+      mode: 'ask',
+      timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
+      session: 'resume',
+    };
   }
 
   override async missingInput(key: string, options: StepOptions): Promise<string | null> {
@@ -69,7 +107,7 @@ export class CodeReviewStep extends LegacyStep {
     ) {
       return null;
     }
-    return requiredDocument(this.documents, key, this.requiredKind);
+    return requiredDocument(this.documents, key, ARTIFACTS.implementation.kind);
   }
 
   charge(key: string, env: SwarmloopEnv, prices: Record<string, ModelPrice>): Promise<Charge | null> {
@@ -80,29 +118,25 @@ export class CodeReviewStep extends LegacyStep {
     return { mode: 'ask', exchanges: [], samples: [], httpCalls: [] };
   }
 
-  protected async run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
+  /** The review ends its own visit, so `work` hands the closed result back through `VisitLeftOpen`. */
+  protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const env = this.config.env;
-    if (options.path) {
-      ctx.opened.run.targetPath = realpathSync(options.path);
+    if (ctx.options.path) {
+      ctx.opened.run.targetPath = realpathSync(ctx.options.path);
     }
     await this.sandbox.assertReady(env.RUNTIME);
-    return this.review(key, ctx, options, env);
+    throw new VisitLeftOpen(await this.review(input.implementation, ctx, env));
   }
 
-  private async review(
-    key: string,
-    ctx: StepContext,
-    options: StepOptions,
-    env: SwarmloopEnv,
-  ): Promise<PipelineResult> {
-    const { opened } = ctx;
+  private async review(notes: string | null, ctx: StepContext, env: SwarmloopEnv): Promise<PipelineResult> {
+    const { opened, options } = ctx;
+    const { key } = opened.run;
     const deps = {
       documents: this.documents,
       visits: this.visits,
       root: root(this.config),
-      agent: this.agent,
+      launcher: this.launcher,
     };
-    const notes = await this.documents.latestBody(key, ARTIFACTS.implementation.kind);
     const checkout = options.path ?? (notes?.trim() ? null : opened.run.targetPath);
     let thirdParty = Boolean(checkout);
     if (!thirdParty && !notes?.trim()) {
@@ -115,8 +149,7 @@ export class CodeReviewStep extends LegacyStep {
     if (checkout) {
       opened.run.targetPath = realpathSync(checkout);
     }
-    const requirements =
-      ((await this.documents.latestBody(key, ARTIFACTS.requirements.kind)) ?? '').trim() || opened.run.prompt || '';
+    const requirements = ((await ctx.reread(ARTIFACTS.requirements)) ?? '').trim() || opened.run.prompt || '';
     if (!thirdParty && !requirements.trim()) {
       throw new SwarmloopError('requirements is missing');
     }

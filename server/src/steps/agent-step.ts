@@ -1,91 +1,45 @@
-import { mkdirSync } from 'fs';
-import type { StepKernel } from './step-kernel';
 import { join } from 'path';
 import type { SwarmloopEnv } from '../config/env';
-import type { RunEntity } from '../history/entities';
 import { root } from '../history/run-paths';
-import type { VisitRepository } from '../history/visit.repository';
-import type { DocumentDraft } from '../history/visit';
-import type { AgentProcessRunner, AgentRunResult } from '../agent/agent-runner';
-import { readSession } from '../agent/agent-runner';
-import { sessionFileName } from '../history/session-group';
-import type { PipelineResult, StepOptions } from '../core/pipeline-result';
+import type { VisitDraft } from '../history/visit';
+import type { AgentRunResult } from '../agent/agent-runner';
 import { visitStatus } from '../core/pipeline-result';
+import type { StepOptions } from '../core/pipeline-result';
 import type { OpenedStep } from '../steps/step-run';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { ProjectLaunch } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { SwarmloopError } from '../core/swarmloop-error';
-import type { StepContext, StepEnd } from './base-step';
-import { LegacyStep } from './base-step';
+import type { StepKernel } from './step-kernel';
+import { BaseStep } from './base-step';
+import type { StepContext } from './base-step';
+import { routeToEnd } from './contract/route';
+import type { AgentProfile, InputSpec, StepDescriptor, StepInput, StepResult } from './contract/step-contract';
 import { agentFailure, combineAgentResults, refusedWrite, withRefusal } from './shared/agent-result';
+import type { AgentLauncher } from './shared/agent-launcher';
+import { recordHandoff, textDocument } from './shared/handoff';
 import { modelVisit } from './shared/model-visit';
-import { AGENT_LANGUAGE_RULE } from './shared/skill-prompt';
+import type { StepName } from '../contract/steps';
+import { artifact } from './contract/artifact';
+import type { Artifact } from './contract/artifact';
 import { ARTIFACTS, INSTRUCTIONS } from './contract/artifacts';
 
-export async function launchAgent(input: {
-  agent: AgentProcessRunner;
-  visits: VisitRepository;
-  root: string;
-  run: RunEntity;
-  key: string;
-  step: string;
-  mode: string;
-  model: string;
-  timeLimitMs: number;
-  prompt: string;
-  workspace: string;
-  mounts: SandboxMount[];
-  liveStep?: string;
-  allowHosts?: string[];
-  approveMcps?: boolean;
-  auto?: boolean;
-  resume?: boolean;
-  continuePrompt?: string | null;
-  project?: ProjectLaunch;
-}): Promise<AgentRunResult> {
-  const directory = join(input.root, 'data');
-  mkdirSync(directory, { recursive: true });
-  const sessionFile = join(directory, sessionFileName(input.key, input.step));
-  const stored = await readSession(sessionFile, input.run.runtime);
-  const result = await input.agent.run({
-    prompt: `${AGENT_LANGUAGE_RULE}\n\n${input.prompt}`,
-    workspace: input.workspace,
-    outputFile: join(directory, `${input.key}-${input.step}-output.txt`),
-    sessionFile,
-    model: input.model,
-    agentCalls: input.run.agentCalls,
-    spentUsd: input.run.spentUsd,
-    tokensInRun: await input.visits.tokenTotal(input.run.id),
-    resumeChatId: input.resume === false ? null : (stored?.chatId ?? null),
-    groupUsd: input.resume === false ? 0 : (stored?.usd ?? 0),
-    runKey: input.key,
-    step: input.step,
-    liveStep: input.liveStep,
-    mounts: input.mounts,
-    allowHosts: input.allowHosts,
-    mode: input.mode,
-    timeLimitMs: input.timeLimitMs,
-    approveMcps: input.approveMcps,
-    auto: input.auto,
-    continuePrompt: input.continuePrompt,
-    project: input.project,
-  });
-  input.run.agentCalls += result.calls;
-  input.run.spentUsd += result.usd;
-  return result;
+/** The requirements, which no agent step starts without. Every agent step declares it first. */
+export const REQUIREMENTS_INPUT = { artifact: ARTIFACTS.requirements, need: 'run' } as const;
+
+/** A kind the step loads itself, at the point it needs it. */
+export function lateInput<T>(artifact: Artifact<T>): { artifact: Artifact<T>; need: 'optional'; late: true } {
+  return { artifact, need: 'optional', late: true } as const;
 }
 
-type ModelStepEnd = Pick<StepEnd, 'outcome' | 'exitCode' | 'line' | 'moveTo'> & {
-  document?: DocumentDraft;
-  documents?: DocumentDraft[];
-};
+/** The instructions a person gave this step. */
+export function instructionsInput(step: StepName): { artifact: Artifact; need: 'optional'; late: true } {
+  return lateInput(artifact(INSTRUCTIONS.of(step), { writers: [], readers: [step], external: true }));
+}
 
 export interface ModelStepContext {
   opened: OpenedStep;
-  requirements: string;
   workspace: string;
-  end: (input: ModelStepEnd) => Promise<PipelineResult>;
   launch: (input: {
     prompt: string;
     mounts: SandboxMount[];
@@ -101,7 +55,7 @@ export interface ModelStepContext {
 interface ModelRun {
   key: string;
   opened: OpenedStep;
-  settings: { mode: string; model: string; timeLimitMs: number };
+  profile: AgentProfile;
   auto?: boolean;
   workspace: string;
   prompt: string;
@@ -113,30 +67,47 @@ interface ModelRun {
   launchError: SwarmloopError | null;
 }
 
-export abstract class AgentStep extends LegacyStep {
+export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseStep<S> {
   override readonly usesModel = true;
 
   constructor(
     kernel: StepKernel,
     protected readonly sandbox: SandboxService,
-    protected readonly agent: AgentProcessRunner,
+    private readonly launcher: AgentLauncher,
   ) {
     super(kernel);
   }
 
-  protected abstract settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number };
+  /** The runtime, model, mode, time limit and session policy of this step, known before it runs. */
+  protected abstract profile(env: SwarmloopEnv): AgentProfile;
 
-  protected abstract write(key: string, ctx: ModelStepContext, options: StepOptions): Promise<PipelineResult>;
+  /**
+   * The model body. Its documents are `outputs`, then the `handoff`, then the ones in `visit.documents`;
+   * the agent log is appended after them.
+   */
+  protected abstract produce(input: StepInput<S>, ctx: ModelStepContext, options: StepOptions): Promise<StepResult>;
 
-  /** The model body. The base step opens and closes the visit; this supplies the model visit through its context. */
-  protected async run(key: string, options: StepOptions, stepCtx: StepContext): Promise<PipelineResult> {
+  protected override ready(): Promise<void> {
+    return this.sandbox.assertReady(this.config.env.RUNTIME);
+  }
+
+  override describe(env: SwarmloopEnv): StepDescriptor {
+    return { ...super.describe(env), agent: this.profile(env) };
+  }
+
+  protected async work(input: StepInput<S>, stepCtx: StepContext): Promise<StepResult> {
     const env = this.config.env;
+    const { opened, options } = stepCtx;
+    // The reader only rejects an absent document. A blank one is as unusable as none.
+    if (!(input as { requirements: string }).requirements) {
+      throw new SwarmloopError('requirements is missing');
+    }
     const run: ModelRun = {
-      key,
-      opened: stepCtx.opened,
-      settings: this.settings(env),
+      key: opened.run.key,
+      opened,
+      profile: this.profile(env),
       auto: options.auto,
-      workspace: join(root(this.config), 'worktrees', key),
+      workspace: join(root(this.config), 'worktrees', opened.run.key),
       prompt: '',
       agentResult: null,
       launched: [],
@@ -144,47 +115,74 @@ export abstract class AgentStep extends LegacyStep {
       launchError: null,
     };
     const ctx: ModelStepContext = {
-      opened: stepCtx.opened,
-      requirements: '',
+      opened,
       workspace: run.workspace,
-      end: ({ outcome, exitCode, line, document, documents, moveTo }) =>
-        stepCtx.end({
-          outcome,
-          exitCode,
-          line,
-          moveTo,
-          visit: modelVisit({
-            opened: run.opened,
-            now: this.clock.now(),
-            step: this.name,
-            mode: run.settings.mode,
-            model: run.settings.model,
-            agent: run.agentResult,
-            prompt: run.prompt,
-            status: visitStatus(outcome),
-            exitCode,
-            document,
-            documents,
-          }),
-        }),
       launch: (launch) => this.launch(run, launch),
     };
     try {
-      await this.sandbox.assertReady(env.RUNTIME);
-      const requirements = await this.documents.latestBody(key, ARTIFACTS.requirements.kind);
-      if (!requirements) {
-        throw new SwarmloopError('requirements is missing');
-      }
-      ctx.requirements = requirements;
-      return await this.write(key, ctx, options);
+      return await this.finish(run, await this.produce(input, ctx, options));
     } catch (error) {
       const refusal = error === run.launchError ? null : run.refusal;
-      return ctx.end({
-        outcome: 'failed',
-        exitCode: 1,
-        line: `${stepCtx.opened.startedAt} ${withRefusal(this.failureText(error), refusal)}`,
-      });
+      return {
+        route: { to: 'fail', error: { code: this.name, message: this.failureText(error) } },
+        summary: `${opened.startedAt} ${withRefusal(this.failureText(error), refusal)}`,
+        outputs: [],
+        visit: this.modelVisitOf(run, 'failed', 1),
+      };
     }
+  }
+
+  /** Before `work` ran, the visit still names the model and mode, with no samples. */
+  protected override failureVisit(opened: OpenedStep): Partial<VisitDraft> {
+    const { mode, model } = this.profile(this.config.env);
+    return modelVisit({
+      opened,
+      now: this.clock.now(),
+      step: this.name,
+      mode,
+      model,
+      agent: null,
+      prompt: '',
+      status: 'failed',
+      exitCode: 1,
+    });
+  }
+
+  /** Builds the model visit of a finished body, with its documents in order. The base step then closes it. */
+  private async finish(run: ModelRun, result: StepResult): Promise<StepResult> {
+    const { outcome, exitCode } = routeToEnd(result.route, result.exitCode);
+    const documents = result.outputs.map((item) => textDocument(item.artifact.kind, item.artifact.format(item.value)));
+    if (result.handoff !== undefined) {
+      documents.push(await recordHandoff(this.documents, run.key, this.name, result.handoff));
+    }
+    documents.push(...(result.visit?.documents ?? []));
+    return {
+      route: result.route,
+      summary: result.summary,
+      exitCode: result.exitCode,
+      outputs: [],
+      visit: this.modelVisitOf(run, visitStatus(outcome), exitCode, documents),
+    };
+  }
+
+  private modelVisitOf(
+    run: ModelRun,
+    status: string,
+    exitCode: number,
+    documents?: NonNullable<VisitDraft['documents']>,
+  ): VisitDraft {
+    return modelVisit({
+      opened: run.opened,
+      now: this.clock.now(),
+      step: this.name,
+      mode: run.profile.mode,
+      model: run.profile.model,
+      agent: run.agentResult,
+      prompt: run.prompt,
+      status,
+      exitCode,
+      documents,
+    });
   }
 
   private async launch(run: ModelRun, launch: Parameters<ModelStepContext['launch']>[0]): Promise<AgentRunResult> {
@@ -193,17 +191,15 @@ export abstract class AgentStep extends LegacyStep {
     const prompt = instructions?.trim()
       ? `${launch.prompt}\n\nLatest user instructions:\n${instructions}`
       : launch.prompt;
-    const result = await launchAgent({
-      agent: this.agent,
-      visits: this.visits,
+    const result = await this.launcher.launch({
       root: root(this.config),
       run: run.opened.run,
       key: run.key,
       step: launch.label ? `${this.name}-${launch.label}` : this.name,
       liveStep: this.name,
-      mode: run.settings.mode,
-      model: run.settings.model,
-      timeLimitMs: run.settings.timeLimitMs,
+      mode: run.profile.mode,
+      model: run.profile.model,
+      timeLimitMs: run.profile.timeLimitMs,
       auto: run.auto,
       prompt,
       workspace: run.workspace,
@@ -217,7 +213,7 @@ export abstract class AgentStep extends LegacyStep {
     run.launched.push(result);
     run.agentResult = combineAgentResults(run.launched);
     run.refusal = refusedWrite(result.output) ?? run.refusal;
-    const failed = agentFailure(result, this.name, run.settings.mode);
+    const failed = agentFailure(result, this.name, run.profile.mode);
     if (failed) {
       run.launchError = new SwarmloopError(failed);
       throw run.launchError;

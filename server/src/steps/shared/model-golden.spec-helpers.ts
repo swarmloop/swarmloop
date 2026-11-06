@@ -5,7 +5,8 @@ import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
-import { AGENT_RUNNER, type AgentProcessRunner } from '../../agent/agent-runner';
+import { AGENT_RUNNER } from '../../agent/agent-runner';
+import { AgentLauncher } from './agent-launcher';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { AppConfig } from '../../config/env';
 import { Clock } from '../../core/clock';
@@ -53,7 +54,7 @@ export async function goldenApp(prefix: string, options: GoldenOptions = {}) {
     clock: app.get(Clock),
     config: app.get(AppConfig),
     sandbox: app.get(SandboxService),
-    agent: app.get<AgentProcessRunner>(AGENT_RUNNER),
+    launcher: app.get(AgentLauncher),
     trace: (key: string, step: string) => traceRun(app.get(DataSource), key, { [step]: documents.kinds }),
     close: async () => {
       await app.close();

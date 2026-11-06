@@ -83,5 +83,5 @@ export interface StepDescriptor {
   outputs: string[];
   capabilities: StepCapabilities;
   agent?: AgentProfile;
-  reviewers?: { name: string; model: string }[];
+  reviewers?: { name: string; model: string; mode: string }[];
 }

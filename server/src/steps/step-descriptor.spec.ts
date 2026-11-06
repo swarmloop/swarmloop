@@ -8,9 +8,25 @@ import { GOLDEN_DIR } from '../testing/step-trace.spec-helpers';
 import { boot } from './prepare/prepare.step.spec-helpers';
 import { StepRegistry } from './step.registry';
 
-const MIGRATED = ['requirements', 'prepare', 'branch', 'commit', 'merge-request', 'pipeline'] as const;
+const MIGRATED = [
+  'requirements',
+  'prepare',
+  'branch',
+  'commit',
+  'merge-request',
+  'pipeline',
+  'research',
+  'plan',
+  'plan-improve',
+  'implement',
+  'implement-improve',
+  'code-review',
+] as const;
 
-/** Every kind a step read in any of its golden traces. `handoff` is the base step's own read, not a declared input. */
+/**
+ * Every kind a step read in any of its golden traces. `handoff` is the base step's own read, and `*` lists every
+ * document, so neither is a declared input.
+ */
 function goldenReads(step: string): string[] {
   const kinds = new Set<string>();
   for (const name of readdirSync(GOLDEN_DIR).filter((file) => file.startsWith(`${step}.`))) {
@@ -20,6 +36,7 @@ function goldenReads(step: string): string[] {
     }
   }
   kinds.delete('handoff');
+  kinds.delete('*');
   return [...kinds].sort();
 }
 

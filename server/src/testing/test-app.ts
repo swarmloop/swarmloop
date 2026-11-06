@@ -19,16 +19,15 @@ import { AGENT_RUNNER } from '../agent/agent-runner';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { Clock } from '../core/clock';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
-import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { STEPS, type StepName } from '../contract/steps';
 import { HistoryModule } from '../history/history.module';
 import { LiveModule } from '../live/live.module';
 import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { LegacyStep, type StepContext } from '../steps/base-step';
+import { BaseStep, type StepContext } from '../steps/base-step';
 import { StepRegistry } from '../steps/step.registry';
-import type { StepCapabilities } from '../steps/contract/step-contract';
+import type { StepCapabilities, StepResult } from '../steps/contract/step-contract';
 import type { Step } from '../steps/step';
 import { StepKernel } from '../steps/step-kernel';
 import { PipelineModule } from '../pipeline/pipeline.module';
@@ -54,8 +53,9 @@ class FakeCodeHost {
   }
 }
 
-class ScriptedStep extends LegacyStep {
-  override readonly requiredKind = '';
+class ScriptedStep extends BaseStep<Record<string, never>> {
+  readonly inputs = {};
+  readonly outputs = [];
   override readonly usesModel = false;
   override readonly capabilities: StepCapabilities;
 
@@ -73,10 +73,10 @@ class ScriptedStep extends LegacyStep {
     return Promise.resolve(null);
   }
 
-  protected async run(_key: string, _options: StepOptions, context: StepContext): Promise<PipelineResult> {
+  protected async work(_input: object, context: StepContext): Promise<StepResult> {
     await this.runner.run({ step: this.name });
     if (this.name === 'merge-request') await this.codeHost.open();
-    return context.end({ outcome: 'ok', exitCode: 0, line: `${context.opened.startedAt} complete` });
+    return { route: { to: 'next' }, summary: `${context.opened.startedAt} complete`, outputs: [] };
   }
 }
 
