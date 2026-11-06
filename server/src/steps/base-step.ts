@@ -55,7 +55,7 @@ export class VisitLeftOpen extends Error {
 }
 
 /** What every step shares: the kernel services, and opening and closing a visit. */
-export abstract class StepCore implements Step {
+abstract class StepCore implements Step {
   abstract readonly name: StepName;
   readonly usesModel: boolean = false;
   readonly capabilities: StepCapabilities = {};
