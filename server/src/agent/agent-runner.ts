@@ -1,13 +1,11 @@
-import { readFile, writeFile } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
-import { replaceLogFile } from '../agent/live-output';
 import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
-import { SampleDraft } from '../history/visit';
 import type { AgentRuntime } from '../integrations/agent-runtime/agent-runtime';
 import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
@@ -23,30 +21,21 @@ import {
 import { SandboxService } from '../sandbox/sandbox.service';
 import type { AgentRunResult } from './agent-result';
 export type { AgentRunResult } from './agent-result';
-import {
-  callsExceeded,
-  DecisionWatch,
-  hasModelDecision,
-  KillReason,
-  noteDecision,
-  priceTokens,
-  retryCrash,
-  SessionState,
-  turnUsd,
-} from './limits';
+import { callsExceeded, type KillReason } from './limits';
 import { syncChatMode } from './chat-mode';
 import { sessionHome } from '../history/session-group';
 import { RunStop } from './run-stop';
 import { loadPriceTable } from './prices';
 import { recordLaunch } from './agent-launches';
-import { addGuessedLine, emptyUsageGuess, readStreamLine, takeAnswer } from './stream';
-import { briefMounts, spillPrompt } from './agent-args';
+import { briefMounts, readOnlyTree, spillPrompt } from './agent-args';
 import { AgentProcess } from './agent-process';
-import { continueAfterLimit, foldAttempt } from './agent-session';
+import { foldAttempt, relaunchPlan, writeSession } from './agent-session';
+import { AttemptMeter } from './agent-attempt';
 import { LimitGuard } from './limit-guard';
+import { AttemptLog } from './live-output';
 
 export { buildAgentArgs, reviewBriefMount, spillPrompt, terminalArgs } from './agent-args';
-export { readSession } from './agent-session';
+export { AGENT_CONTINUE, readSession } from './agent-session';
 
 export const AGENT_RUNNER = Symbol('AGENT_RUNNER');
 
@@ -80,9 +69,13 @@ export interface AgentRunInput {
   project?: ProjectLaunch;
 }
 
-/** Used when a pipeline step does not pass its own continue prompt. */
-export const AGENT_CONTINUE =
-  'You were stopped by the time limit before you finished. Continue this same task from where you stopped. Do not start over and do not redo edits already made. End with the sections the first message asked for.';
+/** What one launch needs before it is spawned. */
+interface Launch {
+  userId: ReturnType<typeof sandboxUserId>;
+  statePath: string;
+  args: string[];
+  briefs: SandboxMount[];
+}
 
 @Injectable()
 export class AgentProcessRunner {
@@ -105,21 +98,13 @@ export class AgentProcessRunner {
       }
       const runtime = runtimeFor(env.RUNTIME);
       await this.sandbox.assertReady(env.RUNTIME);
+      const carried = await this.carriedOutput(input);
       let calls = 0;
       let tries = 0;
-      let carried = '';
-      const opening = input.resumeChatId;
-      if (opening) {
-        try {
-          carried = await readFile(input.outputFile, 'utf8');
-        } catch {
-          carried = '';
-        }
-      }
       let prompt = input.prompt;
       let prior = carried;
-      let chatId = opening;
-      let resumed = opening !== null;
+      let chatId = input.resumeChatId;
+      let resumed = chatId !== null;
       let groupUsd = input.groupUsd ?? 0;
       let merged: AgentRunResult | null = null;
       for (;;) {
@@ -134,47 +119,42 @@ export class AgentProcessRunner {
         tries += 1;
         groupUsd += attempt.usd;
         prior = `${carried}${merged.output ?? ''}`;
-        const halted = this.runStop.halted(input.runKey);
-        const counted = {
-          halted,
-          callsSoFar: input.agentCalls + calls,
-          maxCalls: env.MAX_AGENT_CALLS,
-          attempts: tries,
-          maxLaunches: env.MAX_LAUNCHES,
-        };
-        if (
-          retryCrash({
-            exitCode: attempt.exitCode,
-            killReason: attempt.killReason,
-            decided: attempt.decided === true,
-            ...counted,
-          })
-        ) {
-          chatId = attempt.chatId ?? chatId;
-          resumed = chatId !== null;
-          continue;
+        const relaunch = relaunchPlan({
+          attempt,
+          chatId,
+          continuePrompt: input.continuePrompt,
+          budget: {
+            halted: this.runStop.halted(input.runKey),
+            callsSoFar: input.agentCalls + calls,
+            maxCalls: env.MAX_AGENT_CALLS,
+            attempts: tries,
+            maxLaunches: env.MAX_LAUNCHES,
+          },
+        });
+        if (!relaunch) {
+          if (!merged) {
+            throw new SwarmloopError('agent returned nothing');
+          }
+          return merged;
         }
-        if (
-          attempt.chatId &&
-          continueAfterLimit({
-            killReason: attempt.killReason,
-            chatId: attempt.chatId,
-            continuePrompt: input.continuePrompt,
-            ...counted,
-          })
-        ) {
-          chatId = attempt.chatId;
-          resumed = true;
-          prompt = typeof input.continuePrompt === 'string' ? input.continuePrompt : AGENT_CONTINUE;
-          continue;
-        }
-        if (!merged) {
-          throw new SwarmloopError('agent returned nothing');
-        }
-        return merged;
+        chatId = relaunch.chatId;
+        resumed = relaunch.resumed;
+        prompt = relaunch.prompt ?? prompt;
       }
     } finally {
       this.live?.dropSpend(input.runKey, input.liveStep ?? input.step);
+    }
+  }
+
+  /** The output of earlier launches in a resumed chat. The log keeps it, so the new attempt is appended to it. */
+  private async carriedOutput(input: AgentRunInput): Promise<string> {
+    if (!input.resumeChatId) {
+      return '';
+    }
+    try {
+      return await readFile(input.outputFile, 'utf8');
+    } catch {
+      return '';
     }
   }
 
@@ -188,6 +168,7 @@ export class AgentProcessRunner {
     return this.codexAuth.current(env.CODEX_AUTH);
   }
 
+  /** One launch of the process: spawn it, read its stream until it exits, and return what it did. */
   private async once(
     input: AgentRunInput,
     runtime: AgentRuntime,
@@ -195,9 +176,194 @@ export class AgentProcessRunner {
     priorOutput: string,
   ): Promise<AgentRunResult> {
     const env = this.config.env;
+    const launch = this.prepare(input, runtime, resumed);
+    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now());
+    const started = this.clock.now();
+    const startedAt = new Date(started).toISOString();
+    const workMounts = readOnlyTree(runtime.name, input.mode)
+      ? input.mounts.map((mount) => ({ ...mount, readonly: true }))
+      : input.mounts;
+    const process = await AgentProcess.spawn(this.sandbox, this.clock, {
+      runtime: env.RUNTIME,
+      runKey: input.runKey,
+      step: input.step,
+      mounts: [...workMounts, ...launch.briefs],
+      statePath: launch.statePath,
+      allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(env.RUNTIME)])],
+      env: [
+        modelCredential(
+          env.RUNTIME,
+          env.CURSOR_API_KEY,
+          env.ANTHROPIC_API_KEY,
+          env.CLAUDE_CODE_OAUTH_TOKEN,
+          await this.codexLogin(env),
+          env.CODEX_API_KEY,
+        ),
+      ],
+      command: [runtime.command, ...launch.args],
+      userId: launch.userId,
+      ...(input.project ? { project: input.project } : {}),
+    });
+    const step = input.liveStep ?? input.step;
+    await recordLaunch(input.outputFile, input.runKey, step);
+    const baseline =
+      priorOutput.length === 0 || priorOutput.endsWith('\n')
+        ? `${priorOutput}process started\n`
+        : `${priorOutput}\nprocess started\n`;
+    const meter = new AttemptMeter({
+      model: input.model,
+      prices,
+      groupUsd: input.groupUsd ?? 0,
+      resumed,
+    });
+    const log = new AttemptLog(input.outputFile, input.runKey, step, baseline, () => meter.billed(), this.live);
+    await log.begin();
+    const sessionUsd = (): number => (input.groupUsd ?? 0) + meter.billed().usd;
+
+    let chatId = input.resumeChatId;
+    let killReason: KillReason | null = null;
+    let finishedByResult = false;
+    let lastActivity = started;
+    let buffer = '';
+    const guard = new LimitGuard(
+      this.logger,
+      this.clock,
+      {
+        model: input.model,
+        timeLimitMs: input.timeLimitMs ?? env.REQUIREMENTS_TIMEOUT_MS,
+        idleLimitMs: env.IDLE_TIMEOUT_MS,
+        spentUsd: input.spentUsd,
+        maxRunUsd: env.MAX_RUN_USD,
+        stepUsdMax: env.STEP_USD_MAX,
+        tokensInRun: input.tokensInRun,
+        maxRunTokens: env.MAX_RUN_TOKENS,
+        stepTokenMax: env.STEP_TOKEN_MAX,
+        auto: input.auto === true,
+      },
+      {
+        started: () => started,
+        lastActivity: () => lastActivity,
+        billed: () => meter.billed(),
+        finished: () => finishedByResult,
+        killReason: () => killReason,
+        kill: (reason) => {
+          killReason = reason;
+          void writeSession(input.sessionFile, env.RUNTIME, {
+            chatId,
+            resumed,
+            completed: false,
+            killReason,
+            usd: sessionUsd(),
+          });
+          process.kill();
+        },
+      },
+    );
+
+    const onData = (chunk: Buffer): void => {
+      lastActivity = this.clock.now();
+      log.note(chunk.toString('utf8'));
+      buffer += chunk.toString('utf8');
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        const piece = meter.ingest(line);
+        if (!piece) {
+          continue;
+        }
+        if (piece.chatId) {
+          chatId = piece.chatId;
+          void writeSession(input.sessionFile, env.RUNTIME, {
+            chatId,
+            resumed,
+            completed: false,
+            killReason: null,
+            usd: sessionUsd(),
+          });
+        }
+        meter.count(piece);
+        if (piece.stops && !finishedByResult) {
+          finishedByResult = true;
+          process.kill(false);
+        }
+      }
+      guard.check();
+    };
+    const onErr = (chunk: Buffer): void => {
+      lastActivity = this.clock.now();
+      log.note(chunk.toString('utf8'));
+    };
+    let sampling = false;
+    const takeSample = (): void => {
+      if (sampling) {
+        return;
+      }
+      sampling = true;
+      void this.sandbox
+        .stats(process.containerName)
+        .then((sample) => {
+          log.addSample({ sampledAt: this.clock.iso(), ...sample });
+          log.publish();
+        })
+        .finally(() => {
+          sampling = false;
+        });
+    };
+    const exitCode = await process.wait(
+      {
+        data: onData,
+        error: onErr,
+        processError: (error) => log.note(`${error.code ?? 'error'}: ${error.message}\n`),
+        sample: takeSample,
+        tick: () => guard.check(),
+      },
+      () => killReason !== null || finishedByResult,
+      {
+        idleLimitMs: env.IDLE_TIMEOUT_MS,
+        wallLimitMs: input.timeLimitMs ?? env.REQUIREMENTS_TIMEOUT_MS,
+        timeout: () => guard.check(),
+      },
+    );
+    await log.close();
+    const finished = this.clock.now();
+    const priced = meter.billed();
+    await writeSession(input.sessionFile, env.RUNTIME, {
+      chatId,
+      resumed,
+      completed: finishedByResult || (killReason === null && exitCode === 0),
+      killReason: finishedByResult ? null : killReason,
+      usd: sessionUsd(),
+    });
+    meter.flush(buffer);
+    const ending =
+      finishedByResult || !killReason
+        ? `process exited ${finishedByResult ? 0 : exitCode}`
+        : `process killed: ${String(killReason)}`;
+    const output = log.finish(ending);
+    return {
+      responseText: meter.answer(),
+      chatId,
+      tokensIn: priced.tokensIn,
+      tokensOut: priced.tokensOut,
+      usd: priced.usd,
+      killReason: finishedByResult ? null : killReason,
+      exitCode: finishedByResult ? 0 : killReason ? 1 : exitCode,
+      output,
+      resumed,
+      decided: meter.decided(),
+      calls: 1,
+      samples: log.samples,
+      durationMs: finished - started,
+      startedAt,
+      finishedAt: new Date(finished).toISOString(),
+    };
+  }
+
+  /** Prepares the state directory, chat mode, prompt delivery, and arguments for one launch. */
+  private prepare(input: AgentRunInput, runtime: AgentRuntime, resumed: boolean): Launch {
     const userId = sandboxUserId();
     const statePath = agentStateDir(
-      resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname),
+      resolveRepoRoot(this.config.env.SWARMLOOP_ROOT, __dirname),
       input.runKey,
       sessionHome(input.step),
     );
@@ -220,282 +386,7 @@ export class AgentProcessRunner {
         usage: { tokensIn: 0, tokensOut: 0, usd: 0 },
       });
     }
-    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now());
-    const started = this.clock.now();
-    const startedAt = new Date(started).toISOString();
-    const workMounts = readOnlyTree(runtime.name, input.mode)
-      ? input.mounts.map((mount) => ({ ...mount, readonly: true }))
-      : input.mounts;
-    let lastActivity = this.clock.now();
-    const process = await AgentProcess.spawn(this.sandbox, this.clock, {
-      runtime: env.RUNTIME,
-      runKey: input.runKey,
-      step: input.step,
-      mounts: [...workMounts, ...briefs],
-      statePath,
-      allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(env.RUNTIME)])],
-      env: [
-        modelCredential(
-          env.RUNTIME,
-          env.CURSOR_API_KEY,
-          env.ANTHROPIC_API_KEY,
-          env.CLAUDE_CODE_OAUTH_TOKEN,
-          await this.codexLogin(env),
-          env.CODEX_API_KEY,
-        ),
-      ],
-      command: [runtime.command, ...args],
-      userId,
-      ...(input.project ? { project: input.project } : {}),
-    });
-    await recordLaunch(input.outputFile, input.runKey, input.liveStep ?? input.step);
-    const baseline =
-      priorOutput.length === 0 || priorOutput.endsWith('\n')
-        ? `${priorOutput}process started\n`
-        : `${priorOutput}\nprocess started\n`;
-    await replaceLogFile(input.outputFile, baseline);
-    this.live?.changed(input.runKey);
-    this.live?.log({
-      key: input.runKey,
-      step: input.liveStep ?? input.step,
-      body: baseline,
-      samples: [],
-      usage: { tokensIn: 0, tokensOut: 0, usd: 0 },
-    });
-    const samples: SampleDraft[] = [];
-    let responseText = '';
-    let answerLocked = false;
-    let decision: DecisionWatch = { text: '', locked: false, stream: false, plain: false };
-    let output = '';
-    let chatId = input.resumeChatId;
-    let tokensIn = 0;
-    let tokensOut = 0;
-    let cacheRead = 0;
-    let cacheWrite = 0;
-    const guess = emptyUsageGuess();
-    let billedFromStream = false;
-    let reportedUsd: number | null = null;
-    let killReason: KillReason | null = null;
-    lastActivity = started;
-    let finishedByResult = false;
-    let buffer = '';
-
-    const billed = (): { tokensIn: number; tokensOut: number; usd: number } => {
-      if (!billedFromStream) {
-        return {
-          tokensIn: guess.tokensIn,
-          tokensOut: guess.tokensOut,
-          usd: priceTokens(input.model, guess.tokensIn, guess.tokensOut, prices) ?? 0,
-        };
-      }
-      const priced = priceTokens(input.model, tokensIn, tokensOut, prices, cacheRead, cacheWrite) ?? 0;
-      return {
-        tokensIn: tokensIn + cacheRead + cacheWrite,
-        tokensOut,
-        usd: turnUsd(reportedUsd, priced, input.groupUsd ?? 0, resumed),
-      };
-    };
-    const sessionUsd = (): number => (input.groupUsd ?? 0) + billed().usd;
-    const guard = new LimitGuard(
-      this.logger,
-      this.clock,
-      {
-        model: input.model,
-        timeLimitMs: input.timeLimitMs ?? env.REQUIREMENTS_TIMEOUT_MS,
-        idleLimitMs: env.IDLE_TIMEOUT_MS,
-        spentUsd: input.spentUsd,
-        maxRunUsd: env.MAX_RUN_USD,
-        stepUsdMax: env.STEP_USD_MAX,
-        tokensInRun: input.tokensInRun,
-        maxRunTokens: env.MAX_RUN_TOKENS,
-        stepTokenMax: env.STEP_TOKEN_MAX,
-        auto: input.auto === true,
-      },
-      {
-        started: () => started,
-        lastActivity: () => lastActivity,
-        billed,
-        finished: () => finishedByResult,
-        killReason: () => killReason,
-        kill: (reason) => {
-          killReason = reason;
-          void this.writeSession(input.sessionFile, {
-            chatId,
-            resumed,
-            completed: false,
-            killReason,
-            usd: sessionUsd(),
-          });
-          process.kill();
-        },
-      },
-    );
-
-    let publishTimer: ReturnType<typeof setTimeout> | null = null;
-    let closed = false;
-    let writing: Promise<void> = Promise.resolve();
-    const visible = (): string => `${baseline}${output}`;
-    const snapshot = (): { at: string; cpu: number; memory: number }[] =>
-      samples.map((sample) => ({ at: sample.sampledAt, cpu: sample.cpuPercent, memory: sample.rssBytes }));
-    const usageNow = (): { tokensIn: number; tokensOut: number; usd: number } => billed();
-    const publish = (): void => {
-      publishTimer = null;
-      const body = visible();
-      if (!closed) {
-        writing = writing.then(() => replaceLogFile(input.outputFile, body)).catch(() => undefined);
-      }
-      this.live?.log({
-        key: input.runKey,
-        step: input.liveStep ?? input.step,
-        body: body === '' ? 'waiting for output\n' : body,
-        samples: snapshot(),
-        usage: usageNow(),
-      });
-    };
-    const note = (chunk: string): void => {
-      if (closed) {
-        return;
-      }
-      output += chunk;
-      if (!publishTimer) {
-        publishTimer = setTimeout(publish, 80);
-        publishTimer.unref();
-      }
-    };
-    const onData = (chunk: Buffer): void => {
-      lastActivity = this.clock.now();
-      note(chunk.toString('utf8'));
-      buffer += chunk.toString('utf8');
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-      for (const line of lines) {
-        const piece = readStreamLine(line);
-        decision = noteDecision(decision, piece, line);
-        if (!piece) {
-          continue;
-        }
-        if (piece.chatId) {
-          chatId = piece.chatId;
-          void this.writeSession(input.sessionFile, {
-            chatId,
-            resumed,
-            completed: false,
-            killReason: null,
-            usd: sessionUsd(),
-          });
-        }
-        const count = (current: number, next: number | null): number => {
-          if (next === null) {
-            return current;
-          }
-          billedFromStream = true;
-          return piece.addUsage ? current + next : next;
-        };
-        tokensIn = count(tokensIn, piece.tokensIn);
-        tokensOut = count(tokensOut, piece.tokensOut);
-        cacheRead = count(cacheRead, piece.cacheRead);
-        cacheWrite = count(cacheWrite, piece.cacheWrite);
-        if (piece.reportedUsd !== null) {
-          reportedUsd = piece.reportedUsd;
-          billedFromStream = true;
-        }
-        if (!billedFromStream) {
-          addGuessedLine(guess, piece);
-        }
-        if (piece.text || piece.finalMessage) {
-          const next = takeAnswer(responseText, answerLocked, piece);
-          responseText = next.text;
-          answerLocked = next.locked;
-        }
-        if (piece.stops && !finishedByResult) {
-          finishedByResult = true;
-          process.kill(false);
-        }
-      }
-      guard.check();
-    };
-
-    const onErr = (chunk: Buffer): void => {
-      lastActivity = this.clock.now();
-      note(chunk.toString('utf8'));
-    };
-    let sampling = false;
-    const takeSample = (): void => {
-      if (sampling) {
-        return;
-      }
-      sampling = true;
-      void this.sandbox
-        .stats(process.containerName)
-        .then((sample) => {
-          samples.push({ sampledAt: this.clock.iso(), ...sample });
-          publish();
-        })
-        .finally(() => {
-          sampling = false;
-        });
-    };
-    const exitCode = await process.wait(
-      {
-        data: onData,
-        error: onErr,
-        processError: (error) => note(`${error.code ?? 'error'}: ${error.message}\n`),
-        sample: takeSample,
-        tick: () => guard.check(),
-      },
-      () => killReason !== null || finishedByResult,
-      {
-        idleLimitMs: env.IDLE_TIMEOUT_MS,
-        wallLimitMs: input.timeLimitMs ?? env.REQUIREMENTS_TIMEOUT_MS,
-        timeout: () => guard.check(),
-      },
-    );
-    closed = true;
-    if (publishTimer) {
-      clearTimeout(publishTimer);
-      publishTimer = null;
-    }
-    await writing;
-    const finished = this.clock.now();
-    const priced = billed();
-    await this.writeSession(input.sessionFile, {
-      chatId,
-      resumed,
-      completed: finishedByResult || (killReason === null && exitCode === 0),
-      killReason: finishedByResult ? null : killReason,
-      usd: sessionUsd(),
-    });
-    if (buffer !== '') {
-      decision = noteDecision(decision, readStreamLine(buffer), buffer);
-    }
-    const ending =
-      finishedByResult || !killReason
-        ? `process exited ${finishedByResult ? 0 : exitCode}`
-        : `process killed: ${String(killReason)}`;
-    output = appendLine(output, ending);
-    // The step result is already in memory. A log flush that never calls back must not leave the step running.
-    void replaceLogFile(input.outputFile, visible()).catch(() => undefined);
-    if (publishTimer) {
-      clearTimeout(publishTimer);
-    }
-    publish();
-    return {
-      responseText,
-      chatId,
-      tokensIn: priced.tokensIn,
-      tokensOut: priced.tokensOut,
-      usd: priced.usd,
-      killReason: finishedByResult ? null : killReason,
-      exitCode: finishedByResult ? 0 : killReason ? 1 : exitCode,
-      output,
-      resumed,
-      decided: hasModelDecision(decision),
-      calls: 1,
-      samples,
-      durationMs: finished - started,
-      startedAt,
-      finishedAt: new Date(finished).toISOString(),
-    };
+    return { userId, statePath, args, briefs };
   }
 
   private empty(input: AgentRunInput, killReason: KillReason, exitCode: number, calls: number): AgentRunResult {
@@ -517,18 +408,4 @@ export class AgentProcessRunner {
       finishedAt: now,
     };
   }
-
-  private async writeSession(path: string, session: SessionState): Promise<void> {
-    const runtime = this.config.env.RUNTIME;
-    await writeFile(path, `${JSON.stringify({ ...session, runtime })}\n`);
-  }
-}
-
-function appendLine(body: string, line: string): string {
-  const base = body.length === 0 || body.endsWith('\n') ? body : `${body}\n`;
-  return `${base}${line}\n`;
-}
-
-function readOnlyTree(runtime: string, mode: string | undefined): boolean {
-  return runtime === 'codex' && (mode === 'plan' || mode === 'ask');
 }

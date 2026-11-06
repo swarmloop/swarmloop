@@ -1,8 +1,15 @@
-import { mkdirSync, readdirSync, writeFileSync } from 'fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { liveLogBody, liveLogCurrent, liveLogFinished, liveLogView, replaceLogFile } from '../agent/live-output';
+import {
+  AttemptLog,
+  liveLogBody,
+  liveLogCurrent,
+  liveLogFinished,
+  liveLogView,
+  replaceLogFile,
+} from '../agent/live-output';
 
 describe('live log files', () => {
   it('reads a per-repo implement file and skips implement-improve', async () => {
@@ -67,6 +74,25 @@ describe('live log files', () => {
     writeFileSync(file, 'first\n');
     await replaceLogFile(file, 'second\n');
     expect(liveLogBody(root, 'run-1', 'code-review-quality')).toBe('second\n');
+    expect(readdirSync(directory).some((name) => name.includes('.tmp'))).toBe(false);
+  });
+
+  it('finishes an attempt with one ending line and writes the whole body', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'sloop-attempt-log-'));
+    const directory = join(root, 'data');
+    mkdirSync(directory);
+    const file = join(directory, 'run-1-code-review-quality-output.txt');
+    const log = new AttemptLog(file, 'run-1', 'code-review-quality', 'process started\n', () => ({
+      tokensIn: 0,
+      tokensOut: 0,
+      usd: 0,
+    }));
+    await log.begin();
+    log.note('thinking\n');
+    await log.close();
+    expect(log.finish('process exited 0')).toBe('thinking\nprocess exited 0\n');
+    await log.close();
+    expect(readFileSync(file, 'utf8')).toBe('process started\nthinking\nprocess exited 0\n');
     expect(readdirSync(directory).some((name) => name.includes('.tmp'))).toBe(false);
   });
 });
