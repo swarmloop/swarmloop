@@ -15,11 +15,12 @@ import type { ProjectLaunch } from '../sandbox/sandbox-launch';
 import { agentStateDir, imageName, prepareStateDir, sandboxUserId, setupHosts } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { type EnvironmentConfig, readEnvironmentConfig } from './environment-config';
-import { worktreeSnapshot } from '../git/worktree-git';
+import { checksFingerprint } from './checks-fingerprint';
 import { git } from '../git/git';
 import { imagePath, projectSlug, resolveProjectImage } from './project-image';
 
 export const ENVIRONMENT = 'environment';
+const CHECKS_PASS = 'checks_pass';
 /** A completed check rejected the code; implementation can repair it using the saved feedback. */
 export class RequiredCheckFailed extends SwarmloopError {}
 const SETUP_TIMEOUT_MS = 30 * 60_000;
@@ -119,10 +120,13 @@ export class ProjectEnvironments {
   async check(input: EnvironmentInput): Promise<void> {
     for (const mount of input.mounts) {
       const prepared = await this.prepare({ ...input, mounts: [mount] });
-      if (!prepared) {
+      if (!prepared || prepared.record.config.checks.length === 0) {
         continue;
       }
-      const before = prepared.record.config.checks.length > 0 ? await worktreeSnapshot(input.mounts) : null;
+      const fingerprint = await this.fingerprint(input, prepared);
+      if (await this.skipIfPassed(input, prepared, fingerprint)) {
+        continue;
+      }
       for (const command of prepared.record.config.checks) {
         const result = await this.runShell(input, prepared.launch, command, mount, 'checks');
         await this.documents.putDocument(
@@ -140,12 +144,43 @@ export class ProjectEnvironments {
           throw new RequiredCheckFailed(body);
         }
       }
-      if (before !== null && (await worktreeSnapshot(input.mounts)) !== before) {
+      if ((await this.fingerprint(input, prepared)) !== fingerprint) {
         const body = `${prepared.record.repo}: required checks changed project files. Review those changes and rerun the checks before completing implementation.`;
         await this.documents.putDocument(input.run, 'return', `## checks\n${body}\n`);
         throw new RequiredCheckFailed(body);
       }
+      await this.documents.putDocument(
+        input.run,
+        `${CHECKS_PASS}:${prepared.record.repo}`,
+        JSON.stringify({ fingerprint, step: input.step, at: this.clock.iso() }),
+      );
     }
+  }
+
+  private fingerprint(input: EnvironmentInput, prepared: PreparedEnvironment): Promise<string> {
+    return checksFingerprint(input, prepared, (args, timeoutMs) => this.sandbox.run(args, timeoutMs));
+  }
+
+  /** True when these checks already passed on the same files: it records the skip and runs nothing. */
+  private async skipIfPassed(
+    input: EnvironmentInput,
+    prepared: PreparedEnvironment,
+    fingerprint: string,
+  ): Promise<boolean> {
+    const repo = prepared.record.repo;
+    const stored = await this.documents.latestBody(input.key, `${CHECKS_PASS}:${repo}`);
+    const pass = stored ? (JSON.parse(stored) as { fingerprint: string; step: string }) : null;
+    if (!pass || pass.fingerprint !== fingerprint) {
+      return false;
+    }
+    const tail = `skipped: these checks passed on the same files in ${pass.step}`;
+    await this.documents.putDocument(
+      input.run,
+      'checks',
+      JSON.stringify({ repo, skipped: true, sameAs: pass.step, exitCode: 0, tail }),
+    );
+    this.live?.log({ key: input.key, step: input.step, body: `${tail}\n` });
+    return true;
   }
 
   /** The config is read once per run and kept, so a change the agent commits does not move the run to another image. */

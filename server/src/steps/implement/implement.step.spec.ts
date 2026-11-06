@@ -14,6 +14,7 @@ import type { Repository } from 'typeorm';
 
 import { DocumentEntity } from '../../history/entities';
 
+import { FlowRepository } from '../../history/flow.repository';
 import { RunRepository } from '../../history/run.repository';
 
 import { DocumentRepository } from '../../history/document.repository';
@@ -64,6 +65,8 @@ describe('implement step', () => {
       const app = await boot(root, agent);
       try {
         await seed(app, key, 'approve');
+        // Without implement-improve next, implement keeps the server gate.
+        if (mode !== 'fixed') jest.spyOn(app.get(FlowRepository), 'activePhases').mockResolvedValue(['code-review']);
         const documents = app.get(DocumentRepository);
         const runs = app.get(RunRepository);
         const run = (await runs.findRun(key))!;

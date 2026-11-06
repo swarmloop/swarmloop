@@ -6,7 +6,7 @@ import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../history/session-group';
-import { PipelineResult, StepOptions } from '../../core/pipeline-result';
+import { PipelineResult, StepOptions, nextStep } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -18,6 +18,7 @@ import { AgentStep, ModelStepContext } from '../agent-step';
 import { composedReturn, recordHandoff, textDocument, withHandoff } from '../shared/handoff';
 import { parseSummary, skillPrompt } from '../shared/skill-prompt';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
+import type { SandboxMount } from '../../core/sandbox-mount';
 import { mountsForStep, repoNames, worktreePath } from '../../git/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
 import { RequiredCheckFailed } from '../../environment/project-environments';
@@ -127,7 +128,7 @@ export class ImplementStep extends AgentStep {
     }
     const text = agentResult.responseText;
     const body = parseImplementation(text);
-    await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
+    await this.gate(ctx, key, mounts);
     await assertUncommitted(mounts, branch, heads);
     const corrected = correctedPlan(ctx.requirements, planText, planOutput);
     const summary = corrected ? `${parseSummary(text).trimEnd()}\n${corrected.handoff}` : parseSummary(text);
@@ -141,6 +142,13 @@ export class ImplementStep extends AgentStep {
       document: textDocument(ARTIFACTS.implementation.kind, body),
       documents: docs,
     });
+  }
+
+  /** implement-improve follows in the same pass and runs the one server gate over both passes' changes. */
+  private async gate(ctx: ModelStepContext, key: string, mounts: SandboxMount[]): Promise<void> {
+    if (nextStep(this.name, await this.flows.activePhases(ctx.opened.run.id)) !== 'implement-improve') {
+      await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
+    }
   }
 
   /** A pipeline failure that the retry left unchanged on disk: stop with the corrected checklist, if one came back. */

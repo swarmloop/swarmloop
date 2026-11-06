@@ -25,7 +25,7 @@ export async function agentWorkplace(
   prompt: string,
 ): Promise<AgentWorkplace> {
   const environment = await environments.prepare(input);
-  const executionRules = environment ? environmentNote(environment.record) : LOCAL_RUN_RULE;
+  const executionRules = environment ? environmentNote(environment.record, input.step) : LOCAL_RUN_RULE;
   return {
     prompt: withEnvironment(prompt, executionRules),
     executionRules,

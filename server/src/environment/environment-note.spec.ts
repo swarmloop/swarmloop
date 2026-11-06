@@ -19,6 +19,23 @@ describe('environmentNote', () => {
     expect(note).toContain('narrowest command');
   });
 
+  it('tells implement-improve that the checks already ran and the server gate comes after it', () => {
+    const note = environmentNote(record, 'implement-improve');
+    expect(note).toContain('The implement agent already ran the full checks in its session.');
+    expect(note).toContain('When this pass changes no file, do not run them again.');
+    expect(note).not.toContain('always before your final summary');
+    expect(note).toContain('- `npm test`\n- `npm run lint`');
+  });
+
+  it('keeps the implement note except for the server sentence', () => {
+    const note = environmentNote(record, 'implement');
+    expect(note).toBe(environmentNote(record));
+    expect(note).toContain('always before your final summary');
+    expect(note).toContain(
+      'The server runs every declared check after the implement-improve pass, before code review;',
+    );
+  });
+
   it('asks the agent to find the checks when the repository names none', () => {
     expect(environmentNote({ ...record, config: { ...record.config, checks: [] } })).toContain('names no checks');
   });
