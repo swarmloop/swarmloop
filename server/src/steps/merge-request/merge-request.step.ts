@@ -18,9 +18,10 @@ import { textDocument } from '../shared/handoff';
 import { repoNames, worktreePath } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { remoteProject, renderMergeRequest } from './merge-request-record';
+import { ARTIFACTS } from '../contract/artifacts';
 
 /** Set on a done rebase so this pass leaves an existing merge request untouched. */
-export const REBASE_MERGE_SKIP = 'rebase_merge_skip';
+export const REBASE_MERGE_SKIP = ARTIFACTS.rebaseMergeSkip.kind;
 
 interface Tree {
   repo: string;
@@ -35,7 +36,7 @@ interface Tree {
 @Injectable()
 export class MergeRequestStep extends BaseStep {
   readonly name: StepName = 'merge-request';
-  readonly requiredKind = 'requirements';
+  readonly requiredKind = ARTIFACTS.requirements.kind;
 
   constructor(
     runs: RunRepository,
@@ -51,20 +52,20 @@ export class MergeRequestStep extends BaseStep {
 
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
     const { opened } = ctx;
-    const skipped = ((await this.documents.latestBody(key, 'ci_skip')) ?? '').trim();
+    const skipped = ((await this.documents.latestBody(key, ARTIFACTS.ciSkip.kind)) ?? '').trim();
     if (skipped) {
       return this.finish(ctx, `${opened.startedAt} ${skipped}`, undefined, '');
     }
     this.registry.requiredCredentials(opened.run.codeHost);
     const client = this.registry.byName(opened.run.codeHost);
     const phases = await this.flows.activePhases(opened.run.id);
-    const requirements = await this.documents.latestBody(key, 'requirements');
+    const requirements = await this.documents.latestBody(key, ARTIFACTS.requirements.kind);
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
     const title = summaryForBranch(requirements, key);
     const branch = branchName(key, title);
-    const names = repoNames((await this.documents.latestBody(key, 'repos')) ?? '');
+    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
     const trees = await this.trees(key, names, branch, ctx.calls, opened.run.codeHost, client);
     const drafted = await this.describe(key, trees, phases);
     const skip = ((await this.documents.latestBody(key, REBASE_MERGE_SKIP)) ?? '').trim() === 'skip';
@@ -121,12 +122,12 @@ export class MergeRequestStep extends BaseStep {
   }
 
   private async describe(key: string, trees: Tree[], phases: readonly PhaseName[]): Promise<Tree[]> {
-    const implementation = (await this.documents.latestBody(key, 'implementation'))?.trim() ?? '';
+    const implementation = (await this.documents.latestBody(key, ARTIFACTS.implementation.kind))?.trim() ?? '';
     if (!implementation) {
       throw new SwarmloopError('implementation is missing');
     }
     const summary = phases.includes('code-review')
-      ? ((await this.documents.latestBody(key, 'review_report'))?.trim() ?? '')
+      ? ((await this.documents.latestBody(key, ARTIFACTS.reviewReport.kind))?.trim() ?? '')
       : implementation;
     if (!summary) {
       throw new SwarmloopError('review report is missing');
@@ -219,7 +220,7 @@ export class MergeRequestStep extends BaseStep {
       exitCode: 0,
       line,
       handoff: handoff || undefined,
-      visit: { documents: body ? [textDocument('merge_request', body)] : undefined },
+      visit: { documents: body ? [textDocument(ARTIFACTS.mergeRequest.kind, body)] : undefined },
     });
   }
 }

@@ -25,11 +25,12 @@ import { agentWorkplace } from '../shared/agent-environment';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
 import { IMPLEMENT_IMPROVE_FOLLOW_UP } from './implement.prompts';
 import { reviewedImplementation, withReturnNotes } from './implement-record';
+import { ARTIFACTS } from '../contract/artifacts';
 
 @Injectable()
 export class ImplementImproveStep extends AgentStep {
   readonly name: StepName = 'implement-improve';
-  readonly requiredKind = 'implementation';
+  readonly requiredKind = ARTIFACTS.implementation.kind;
 
   constructor(
     runs: RunRepository,
@@ -52,12 +53,12 @@ export class ImplementImproveStep extends AgentStep {
   protected async write(key: string, ctx: ModelStepContext, options: StepOptions): Promise<PipelineResult> {
     const env = this.config.env;
     const auto = options.auto;
-    const plan = requireApprovedPlan(await this.documents.latestBody(key, 'requirements'));
-    const notes = await this.documents.latestBody(key, 'implementation');
+    const plan = requireApprovedPlan(await this.documents.latestBody(key, ARTIFACTS.requirements.kind));
+    const notes = await this.documents.latestBody(key, ARTIFACTS.implementation.kind);
     if (!notes?.trim()) {
       throw new SwarmloopError('implementation is missing');
     }
-    const names = repoNames((await this.documents.latestBody(key, 'repos')) ?? '');
+    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
       return ctx.end('blocked', 1, `${ctx.opened.startedAt} implement-improve does not fit`);
@@ -71,7 +72,7 @@ export class ImplementImproveStep extends AgentStep {
         ],
         returned,
       ),
-      await this.documents.latestBody(key, 'handoff'),
+      await this.documents.latestBody(key, ARTIFACTS.handoff.kind),
     );
     const branch = branchName(key, summaryForBranch(ctx.requirements, key));
     const heads = await featureHeads(mounts, branch);
@@ -86,7 +87,7 @@ export class ImplementImproveStep extends AgentStep {
     const { prompt, project, allowHosts } = await agentWorkplace(
       this.environments,
       { run: ctx.opened.run, key, step: this.name, mounts },
-      withAddedRepos(chosen, await this.documents.latestBody(key, 'added_repos')),
+      withAddedRepos(chosen, await this.documents.latestBody(key, ARTIFACTS.addedRepos.kind)),
     );
     const agentResult = await ctx.launch({ prompt, mounts, allowHosts, project });
     const text = agentResult.responseText;
@@ -101,7 +102,7 @@ export class ImplementImproveStep extends AgentStep {
     const status = await worktreeStatus(mounts);
     const line = `${ctx.opened.startedAt} implement-improve done\n${body.trimEnd()}\n${status}`;
     const handoff = await recordHandoff(this.documents, key, 'implement-improve', handoffBody);
-    const docs = corrected ? [handoff, textDocument('requirements', corrected.requirements)] : [handoff];
-    return ctx.end('ok', 0, line, textDocument('implementation', body), docs);
+    const docs = corrected ? [handoff, textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] : [handoff];
+    return ctx.end('ok', 0, line, textDocument(ARTIFACTS.implementation.kind, body), docs);
   }
 }

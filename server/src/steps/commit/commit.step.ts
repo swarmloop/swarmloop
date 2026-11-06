@@ -21,7 +21,6 @@ import { gitAt, status, Tree } from './commit-git';
 import { repoNames, worktreePath } from '../../git/repo-names';
 import { remoteProject } from '../merge-request/merge-request-record';
 import { BaseStep, StepContext } from '../base-step';
-import { CI_RERUN } from '../pipeline/pipeline-report';
 import {
   allowedPaths,
   deniedIndexPaths,
@@ -30,13 +29,14 @@ import {
   renderPaths,
   stageSelection,
 } from '../../git/commit-paths';
+import { ARTIFACTS } from '../contract/artifacts';
 
 export const CI_SKIPPED = 'CI skipped: there is no origin to push.';
 
 @Injectable()
 export class CommitStep extends BaseStep {
   readonly name: StepName = 'commit';
-  readonly requiredKind = 'requirements';
+  readonly requiredKind = ARTIFACTS.requirements.kind;
 
   constructor(
     runs: RunRepository,
@@ -53,17 +53,17 @@ export class CommitStep extends BaseStep {
 
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
     const { opened } = ctx;
-    const requirements = await this.documents.latestBody(key, 'requirements');
+    const requirements = await this.documents.latestBody(key, ARTIFACTS.requirements.kind);
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
     const summary = summaryForBranch(requirements, key);
     const branch = branchName(key, summary);
-    const names = repoNames((await this.documents.latestBody(key, 'repos')) ?? '');
+    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
     const trees = this.trees(key, names);
     await this.assertBranch(trees, branch);
     const phases = await this.flows.activePhases(opened.run.id);
-    const stored = await this.documents.latestBody(key, 'commit');
+    const stored = await this.documents.latestBody(key, ARTIFACTS.commit.kind);
     const again = await this.resume(opened, stored);
     if (!phases.includes('ci') && !again) {
       const body = await this.preview(trees, branch);
@@ -84,15 +84,15 @@ export class CommitStep extends BaseStep {
     const listed = planned.length > 0 ? renderPaths(planned).trimEnd() : '';
     const recordedHeads = heads.length > 0 ? `${heads.join('\n')}\n` : undefined;
     if (!pushed) {
-      await this.documents.putDocument(opened.run, 'ci_skip', `${CI_SKIPPED}\n`);
+      await this.documents.putDocument(opened.run, ARTIFACTS.ciSkip.kind, `${CI_SKIPPED}\n`);
       const line = listed ? `${opened.startedAt} ${CI_SKIPPED}\n${listed}` : `${opened.startedAt} ${CI_SKIPPED}`;
       return endCommit(ctx, 'ok', 0, line, listed ? `${listed}\n` : undefined);
     }
     const recorded = await this.rememberRefs(opened.run, trees, branch);
     if (recorded) {
-      const skip = await this.documents.latestBody(key, 'ci_skip');
+      const skip = await this.documents.latestBody(key, ARTIFACTS.ciSkip.kind);
       if (skip?.trim()) {
-        await this.documents.putDocument(opened.run, 'ci_skip', '');
+        await this.documents.putDocument(opened.run, ARTIFACTS.ciSkip.kind, '');
       }
     }
     const line = listed
@@ -207,11 +207,11 @@ export class CommitStep extends BaseStep {
 
   /** A `ci_rerun` document newer than the latest `commit` document asks for one new CI run. */
   private async rerunPending(key: string): Promise<boolean> {
-    const rerun = await this.documents.latestDocument(key, CI_RERUN);
+    const rerun = await this.documents.latestDocument(key, ARTIFACTS.ciRerun.kind);
     if (!rerun) {
       return false;
     }
-    const commit = await this.documents.latestDocument(key, 'commit');
+    const commit = await this.documents.latestDocument(key, ARTIFACTS.commit.kind);
     return !commit || commit.id < rerun.id;
   }
 
@@ -377,7 +377,7 @@ export class CommitStep extends BaseStep {
     if (blocks.length === 0) {
       return false;
     }
-    await this.documents.putDocument(run, 'pipeline_ref', `${blocks.join('\n\n')}\n`);
+    await this.documents.putDocument(run, ARTIFACTS.pipelineRef.kind, `${blocks.join('\n\n')}\n`);
     return true;
   }
 }

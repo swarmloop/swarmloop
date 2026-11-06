@@ -21,7 +21,6 @@ import { BaseStep, StepContext } from '../base-step';
 import { composedReturn, textDocument } from '../shared/handoff';
 import { PrepareStep } from '../prepare/prepare.step';
 import { requiredDocument } from '../step';
-import { REBASE_CONFLICT } from '../../git/rebase';
 import { reviewDiffSection, writeReviewDiff } from './review-diff';
 import { REVIEWERS } from './reviewer';
 import {
@@ -45,11 +44,12 @@ import {
   selectReviewers,
   tallyRound,
 } from './review-round';
+import { ARTIFACTS } from '../contract/artifacts';
 
 @Injectable()
 export class CodeReviewStep extends BaseStep {
   readonly name: StepName = 'code-review';
-  readonly requiredKind = 'implementation';
+  readonly requiredKind = ARTIFACTS.implementation.kind;
   override readonly usesModel = true;
   readonly acceptsPath = true;
 
@@ -110,7 +110,7 @@ export class CodeReviewStep extends BaseStep {
       root: root(this.config),
       agent: this.agent,
     };
-    const notes = await this.documents.latestBody(key, 'implementation');
+    const notes = await this.documents.latestBody(key, ARTIFACTS.implementation.kind);
     const checkout = options.path ?? (notes?.trim() ? null : opened.run.targetPath);
     let thirdParty = Boolean(checkout);
     if (!thirdParty && !notes?.trim()) {
@@ -124,13 +124,13 @@ export class CodeReviewStep extends BaseStep {
       opened.run.targetPath = realpathSync(checkout);
     }
     const requirements =
-      ((await this.documents.latestBody(key, 'requirements')) ?? '').trim() || opened.run.prompt || '';
+      ((await this.documents.latestBody(key, ARTIFACTS.requirements.kind)) ?? '').trim() || opened.run.prompt || '';
     if (!thirdParty && !requirements.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
     const mounts = checkout ? pathMount(checkout) : await repoMounts(this.runs, this.documents, root(this.config), key);
     const only = REVIEWERS.some((item) => item.name === options.reviewer) ? options.reviewer : undefined;
-    const fresh = ((await this.documents.latestBody(key, REBASE_CONFLICT)) ?? '').trim() === 'review';
+    const fresh = ((await this.documents.latestBody(key, ARTIFACTS.rebaseConflict.kind)) ?? '').trim() === 'review';
     const retry = fresh ? false : await retrying(this.visits, opened);
     const returned = composedReturn(await this.documents.listDocuments(opened.run.id));
     const diff = await reviewDiffSection(mounts, await this.checkouts.listDenyPaths());
@@ -149,7 +149,7 @@ export class CodeReviewStep extends BaseStep {
       return closeReview(ctx, 'failed', 1, `${opened.startedAt} code-review does not fit`, [], []);
     }
     writeReviewDiff(root(this.config), key, diff.patch);
-    const handoff = await this.documents.latestBody(key, 'handoff');
+    const handoff = await this.documents.latestBody(key, ARTIFACTS.handoff.kind);
     const plan = approvedPlan(requirements);
     const finished = await runRound(deps, {
       opened,
@@ -213,7 +213,7 @@ export class CodeReviewStep extends BaseStep {
     }
     const recorded = [...noted, written.document];
     if (fresh) {
-      recorded.push(textDocument(REBASE_CONFLICT, 'clear\n'));
+      recorded.push(textDocument(ARTIFACTS.rebaseConflict.kind, 'clear\n'));
     }
     return routeReview(
       this.events,

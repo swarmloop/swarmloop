@@ -153,6 +153,22 @@ export default tseslint.config(
     },
   },
   {
+    // Step code names a kind through ARTIFACTS. The Date selector is repeated: a later block replaces the options.
+    files: ['server/src/steps/**/*.ts'],
+    ignores: ['**/*.spec.ts', '**/*.spec-helpers.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: 'Read time through Clock.' },
+        {
+          selector:
+            'CallExpression[callee.property.name=/^(latestBody|latestDocument|hasDocument|putDocument)$/][arguments.1.type=/^(Literal|TemplateLiteral)$/]',
+          message: 'Use ARTIFACTS from steps/contract/artifacts.',
+        },
+      ],
+    },
+  },
+  {
     // Person-facing CLI, bootstrap, and prompt output is written directly, as the no-console exceptions are.
     // The stdout and stderr entries are off here, but the env and clock checks stay on.
     files: [

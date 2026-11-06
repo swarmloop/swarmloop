@@ -21,7 +21,6 @@ import { git, gitDetail } from '../../git/git';
 import { AgentStep, ModelStepContext } from '../agent-step';
 import { composedReturn, recordHandoff, textDocument, withHandoff } from '../shared/handoff';
 import { parseSummary, skillPrompt } from '../shared/skill-prompt';
-import { REBASE_MERGE_SKIP } from '../merge-request/merge-request.step';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { mountsForStep, repoNames, worktreePath } from '../../git/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
@@ -29,11 +28,12 @@ import { RequiredCheckFailed } from '../../environment/project-environments';
 import { withEnvironment } from '../../environment/environment-note';
 import { agentWorkplace } from '../shared/agent-environment';
 import { storedPlan } from '../step';
-import { REBASE_CONFLICT, RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase';
+import { RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
-import { CI_RERUN, staleRepos } from '../pipeline/pipeline-report';
+import { staleRepos } from '../pipeline/pipeline-report';
 import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
 import { parseImplementation, withReturnNotes } from './implement-record';
+import { ARTIFACTS } from '../contract/artifacts';
 
 @Injectable()
 export class ImplementStep extends AgentStep {
@@ -67,8 +67,8 @@ export class ImplementStep extends AgentStep {
   protected async write(key: string, ctx: ModelStepContext, options: StepOptions): Promise<PipelineResult> {
     const env = this.config.env;
     const auto = options.auto;
-    const plan = requireApprovedPlan(await this.documents.latestBody(key, 'requirements'));
-    const names = repoNames((await this.documents.latestBody(key, 'repos')) ?? '');
+    const plan = requireApprovedPlan(await this.documents.latestBody(key, ARTIFACTS.requirements.kind));
+    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
       return ctx.end('blocked', 1, `${ctx.opened.startedAt} implement does not fit`);
@@ -76,14 +76,14 @@ export class ImplementStep extends AgentStep {
     const notes = composedReturn(await this.documents.listDocuments(ctx.opened.run.id));
     const sections = withHandoff(
       withReturnNotes([{ heading: 'Plan', body: plan }], notes),
-      await this.documents.latestBody(key, 'handoff'),
+      await this.documents.latestBody(key, ARTIFACTS.handoff.kind),
     );
     const branch = branchName(key, summaryForBranch(ctx.requirements, key));
-    const markerBody = ((await this.documents.latestBody(key, REBASE_CONFLICT)) ?? '').trim();
+    const markerBody = ((await this.documents.latestBody(key, ARTIFACTS.rebaseConflict.kind)) ?? '').trim();
     const marker = markerBody.split('\n')[0]?.trim() ?? '';
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
     const full = skillPrompt('implement', ctx.requirements, names, sections, mounts, { deferExecutionRules: true });
-    const added = await this.documents.latestBody(key, 'added_repos');
+    const added = await this.documents.latestBody(key, ARTIFACTS.addedRepos.kind);
     const continued = await readSession(
       join(root(this.config), 'data', sessionFileName(key, 'implement')),
       ctx.opened.run.runtime,
@@ -121,14 +121,14 @@ export class ImplementStep extends AgentStep {
         planOutput = againOutput;
       }
       if ((await worktreeSnapshot(mounts)) === before) {
-        const stale = await staleRepos(await this.documents.latestBody(key, 'pipeline_ref'), mounts);
+        const stale = await staleRepos(await this.documents.latestBody(key, ARTIFACTS.pipelineRef.kind), mounts);
         if (stale.length > 0) {
           return ctx.end(
             'ok',
             0,
             `${ctx.opened.startedAt} no change needed: the failed pipeline ran on an older commit`,
             undefined,
-            [textDocument(CI_RERUN, `${stale.join('\n')}\n`)],
+            [textDocument(ARTIFACTS.ciRerun.kind, `${stale.join('\n')}\n`)],
             'commit',
           );
         }
@@ -143,12 +143,12 @@ export class ImplementStep extends AgentStep {
     const summary = corrected ? `${parseSummary(text).trimEnd()}\n${corrected.handoff}` : parseSummary(text);
     const status = await worktreeStatus(mounts);
     const handoff = await recordHandoff(this.documents, key, 'implement', summary);
-    const docs = corrected ? [handoff, textDocument('requirements', corrected.requirements)] : [handoff];
+    const docs = corrected ? [handoff, textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] : [handoff];
     return ctx.end(
       'ok',
       0,
       `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
-      textDocument('implementation', body),
+      textDocument(ARTIFACTS.implementation.kind, body),
       docs,
     );
   }
@@ -166,7 +166,7 @@ export class ImplementStep extends AgentStep {
     const docs = corrected
       ? [
           await recordHandoff(this.documents, key, 'implement', corrected.handoff),
-          textDocument('requirements', corrected.requirements),
+          textDocument(ARTIFACTS.requirements.kind, corrected.requirements),
         ]
       : undefined;
     return ctx.end(outcome, 1, `${ctx.opened.startedAt} ${text}`, undefined, docs);
@@ -249,7 +249,7 @@ export class ImplementStep extends AgentStep {
     }
     await this.environments.refreshAfterRebase(ctx.opened.run, mounts, bases);
     if (marker === 'pending-implement') {
-      await this.documents.putDocument(ctx.opened.run, REBASE_CONFLICT, 'review\n');
+      await this.documents.putDocument(ctx.opened.run, ARTIFACTS.rebaseConflict.kind, 'review\n');
       return null;
     }
     try {
@@ -257,13 +257,13 @@ export class ImplementStep extends AgentStep {
     } catch (error) {
       if (error instanceof RequiredCheckFailed) {
         // Git conflicts are resolved. Retry the normal implementation flow with the saved check output.
-        await this.documents.putDocument(ctx.opened.run, REBASE_CONFLICT, 'review\n');
+        await this.documents.putDocument(ctx.opened.run, ARTIFACTS.rebaseConflict.kind, 'review\n');
       }
       throw error;
     }
     await this.commit.publishRebased(key, branch, outcome.leases);
     await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review');
-    const existing = (await this.documents.latestBody(key, 'implementation')) ?? '';
+    const existing = (await this.documents.latestBody(key, ARTIFACTS.implementation.kind)) ?? '';
     if (!existing.trim()) {
       throw new SwarmloopError('implementation is missing');
     }
@@ -274,8 +274,12 @@ export class ImplementStep extends AgentStep {
       'ok',
       0,
       `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
-      textDocument('implementation', body),
-      [handoff, textDocument(REBASE_CONFLICT, 'review\n'), textDocument(REBASE_MERGE_SKIP, 'skip\n')],
+      textDocument(ARTIFACTS.implementation.kind, body),
+      [
+        handoff,
+        textDocument(ARTIFACTS.rebaseConflict.kind, 'review\n'),
+        textDocument(ARTIFACTS.rebaseMergeSkip.kind, 'skip\n'),
+      ],
       'code-review',
     );
   }

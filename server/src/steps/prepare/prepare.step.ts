@@ -18,11 +18,12 @@ import { storedBase } from '../../git/rebase';
 import { recordHandoff } from '../shared/handoff';
 import { BaseStep, StepContext } from '../base-step';
 import { CHECKOUT_NAME, listGitProjects, resolveCheckoutPath, storedProjects } from './checkout-path';
+import { ARTIFACTS } from '../contract/artifacts';
 
 @Injectable()
 export class PrepareStep extends BaseStep {
   readonly name: StepName = 'prepare';
-  readonly requiredKind = 'requirements';
+  readonly requiredKind = ARTIFACTS.requirements.kind;
   readonly revisesRequirements = true;
 
   constructor(

@@ -21,6 +21,7 @@ import { mountsForStep, repoNames } from '../../git/repo-names';
 import { storedPlan } from '../step';
 import { readPlan, reviewedItems, withPlan } from '../plan/plan-record';
 import { PLAN_IMPROVE_FOLLOW_UP } from './plan-improve.prompts';
+import { ARTIFACTS } from '../contract/artifacts';
 
 @Injectable()
 export class PlanImproveStep extends AgentStep {
@@ -49,14 +50,14 @@ export class PlanImproveStep extends AgentStep {
   }
 
   protected async write(key: string, ctx: ModelStepContext): Promise<PipelineResult> {
-    const requirements = (await this.documents.latestBody(key, 'requirements')) ?? '';
+    const requirements = (await this.documents.latestBody(key, ARTIFACTS.requirements.kind)) ?? '';
     const plan = readPlan(requirements);
     if (!plan) {
       throw new SwarmloopError('plan is missing');
     }
-    const names = repoNames((await this.documents.latestBody(key, 'repos')) ?? '');
+    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
-    const prior = await this.documents.latestBody(key, 'handoff');
+    const prior = await this.documents.latestBody(key, ARTIFACTS.handoff.kind);
     const continued = await readSession(
       join(root(this.config), 'data', sessionFileName(key, 'plan-improve')),
       ctx.opened.run.runtime,
@@ -69,7 +70,7 @@ export class PlanImproveStep extends AgentStep {
       mounts,
     );
     const chosen = continued?.chatId ? PLAN_IMPROVE_FOLLOW_UP : full;
-    const prompt = withAddedRepos(chosen, await this.documents.latestBody(key, 'added_repos'));
+    const prompt = withAddedRepos(chosen, await this.documents.latestBody(key, ARTIFACTS.addedRepos.kind));
     const agentResult = await ctx.launch({ prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`, mounts });
     const items = reviewedItems(agentResult.responseText, agentResult.output ?? '');
     const next = { ...plan, items: items.length > 0 ? items : plan.items, decision: 'approve' as const };
@@ -82,7 +83,7 @@ export class PlanImproveStep extends AgentStep {
       'ok',
       0,
       `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`,
-      textDocument('requirements', withPlan(requirements, next)),
+      textDocument(ARTIFACTS.requirements.kind, withPlan(requirements, next)),
       [handoff],
     );
   }

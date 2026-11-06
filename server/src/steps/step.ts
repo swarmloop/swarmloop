@@ -6,6 +6,7 @@ import type { SwarmloopEnv } from '../config/env';
 import type { Charge } from '../agent/spend';
 import type { ModelPrice } from '../agent/limits';
 import { readPlan } from './plan/plan-record';
+import { ARTIFACTS } from './contract/artifacts';
 
 export type StepSnapshot = (run: RunEntity, step: StepName) => Promise<void>;
 
@@ -37,6 +38,6 @@ export async function requiredDocument(
 
 /** `plan` when the requirements record holds no plan, or null when it does. */
 export async function storedPlan(documents: DocumentRepository, key: string): Promise<string | null> {
-  const plan = readPlan(await documents.latestBody(key, 'requirements'));
+  const plan = readPlan(await documents.latestBody(key, ARTIFACTS.requirements.kind));
   return plan ? null : 'plan';
 }

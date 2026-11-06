@@ -20,11 +20,12 @@ import { unanswered } from '../shared/answers';
 import { mountsForStep, repoNames } from '../../git/repo-names';
 import { planFromAgent, readPlan, withPlan } from './plan-record';
 import { planFollowUp } from './plan.prompts';
+import { ARTIFACTS } from '../contract/artifacts';
 
 @Injectable()
 export class PlanStep extends AgentStep {
   readonly name: StepName = 'plan';
-  readonly requiredKind = 'repos';
+  readonly requiredKind = ARTIFACTS.repos.kind;
   readonly revisesRequirements = true;
 
   constructor(
@@ -45,12 +46,12 @@ export class PlanStep extends AgentStep {
   }
 
   protected async write(key: string, ctx: ModelStepContext): Promise<PipelineResult> {
-    const questions = (await this.documents.latestBody(key, 'questions')) ?? '';
-    const answers = (await this.documents.latestBody(key, 'answers')) ?? '';
+    const questions = (await this.documents.latestBody(key, ARTIFACTS.questions.kind)) ?? '';
+    const answers = (await this.documents.latestBody(key, ARTIFACTS.answers.kind)) ?? '';
     if (unanswered(questions, answers).length > 0) {
       return ctx.end('waiting', 0, `${ctx.opened.startedAt} questions are open`);
     }
-    const requirements = (await this.documents.latestBody(key, 'requirements')) ?? '';
+    const requirements = (await this.documents.latestBody(key, ARTIFACTS.requirements.kind)) ?? '';
     const stored = readPlan(requirements);
     if (stored && stored.decision !== 'revise') {
       const handoff = await recordHandoff(
@@ -59,13 +60,17 @@ export class PlanStep extends AgentStep {
         'plan',
         stored.items.map((item) => `- ${item}`).join('\n'),
       );
-      return ctx.end('ok', 0, `${ctx.opened.startedAt} plan done`, textDocument('requirements', requirements), [
-        handoff,
-      ]);
+      return ctx.end(
+        'ok',
+        0,
+        `${ctx.opened.startedAt} plan done`,
+        textDocument(ARTIFACTS.requirements.kind, requirements),
+        [handoff],
+      );
     }
-    const names = repoNames((await this.documents.latestBody(key, 'repos')) ?? '');
+    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
-    const prior = await this.documents.latestBody(key, 'handoff');
+    const prior = await this.documents.latestBody(key, ARTIFACTS.handoff.kind);
     const sections = withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior);
     const continued = await readSession(
       join(root(this.config), 'data', sessionFileName(key, 'plan')),
@@ -73,7 +78,7 @@ export class PlanStep extends AgentStep {
     );
     const full = skillPrompt('plan', ctx.requirements, names, sections, mounts);
     const chosen = continued?.chatId ? planFollowUp(answers) : full;
-    const prompt = withAddedRepos(chosen, await this.documents.latestBody(key, 'added_repos'));
+    const prompt = withAddedRepos(chosen, await this.documents.latestBody(key, ARTIFACTS.addedRepos.kind));
     const agentResult = await ctx.launch({ prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`, mounts });
     const plan = planFromAgent(agentResult.responseText, agentResult.output ?? '');
     const body = withPlan(requirements, plan);
@@ -86,7 +91,7 @@ export class PlanStep extends AgentStep {
       'ok',
       0,
       `${ctx.opened.startedAt} plan done\n${plan.items.join('\n')}`,
-      textDocument('requirements', body),
+      textDocument(ARTIFACTS.requirements.kind, body),
       [handoff],
     );
   }

@@ -2,6 +2,7 @@ import type { SampleDraft, VisitDraft } from '../../history/visit';
 import type { KillReason } from '../../core/kill-reason';
 import type { RequirementsWrite } from '../../integrations/requirements-source/requirements-source';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
+import { ARTIFACTS } from '../contract/artifacts';
 
 export interface RequirementsFinish {
   written: RequirementsWrite;
@@ -32,7 +33,9 @@ export function requirementsVisit(samples: SampleDraft[], input: RequirementsFin
 
 /** An ok visit keeps its record in `documents`, where the handoff note is added after it. */
 function visitDocuments(input: RequirementsFinish): Partial<Pick<VisitDraft, 'document' | 'documents'>> {
-  const document = input.body ? { kind: input.kind ?? 'requirements', fileName: '', body: input.body } : null;
+  const document = input.body
+    ? { kind: input.kind ?? ARTIFACTS.requirements.kind, fileName: '', body: input.body }
+    : null;
   if (input.outcome === 'ok') {
     return { document: null, documents: document ? [document] : [] };
   }

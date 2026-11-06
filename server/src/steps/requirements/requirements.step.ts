@@ -20,11 +20,12 @@ import { BaseStep, StepContext } from '../base-step';
 import type { StepSnapshot } from '../step';
 import { readPrompt, taskKeys, unreadSource } from './requirements-input';
 import { emptyWrite, RequirementsFinish, requirementsVisit, stopReason } from './requirements-visit';
+import { ARTIFACTS } from '../contract/artifacts';
 
 @Injectable()
 export class RequirementsStep extends BaseStep {
   readonly name: StepName = 'requirements';
-  readonly requiredKind = 'requirements';
+  readonly requiredKind = ARTIFACTS.requirements.kind;
   readonly acceptsPrompt = true;
   readonly acceptsProjects = true;
 
@@ -45,7 +46,7 @@ export class RequirementsStep extends BaseStep {
     const prior = await this.runs.findRun(key);
     const prompt = prior?.prompt ?? undefined;
     const keys = new Set<string>([key]);
-    const existing = parseRecord(await this.documents.latestBody(key, 'requirements'));
+    const existing = parseRecord(await this.documents.latestBody(key, ARTIFACTS.requirements.kind));
     for (const ticket of existing?.tickets ?? []) {
       if (ticket.key) {
         keys.add(ticket.key);
@@ -142,7 +143,7 @@ export class RequirementsStep extends BaseStep {
           exitCode: 0,
           message: error.message,
           body: `${JSON.stringify({ url: error.url })}\n`,
-          kind: 'pending',
+          kind: ARTIFACTS.pending.kind,
         });
       }
       return finish({
@@ -177,7 +178,7 @@ export class RequirementsStep extends BaseStep {
     resume: boolean,
   ): Promise<{ bundle: IssueBundle; bundles: IssueBundle[]; httpCalls: HttpCallDraft[] }> {
     const progress = resume
-      ? parseProgress(await this.documents.latestBody(key, 'requirements_progress'))
+      ? parseProgress(await this.documents.latestBody(key, ARTIFACTS.requirementsProgress.kind))
       : { issues: {} };
     const bundles: IssueBundle[] = [];
     const httpCalls: HttpCallDraft[] = [];
@@ -191,7 +192,7 @@ export class RequirementsStep extends BaseStep {
       bundles.push(fetched.bundle);
       httpCalls.push(...fetched.httpCalls);
       progress.issues[issueKey] = fetched.bundle;
-      await this.documents.putDocument(run, 'requirements_progress', `${JSON.stringify(progress)}\n`);
+      await this.documents.putDocument(run, ARTIFACTS.requirementsProgress.kind, `${JSON.stringify(progress)}\n`);
     }
     return {
       bundle: bundles[0] ?? promptBundle(key, prompt ?? ''),
