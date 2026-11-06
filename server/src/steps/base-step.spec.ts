@@ -16,12 +16,14 @@ import { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { StepName } from '../contract/steps';
 import { PASTE_READER } from '../integrations/linked-pages/paste-page.reader';
 import { FetchFailed, HttpCallDraft, SwarmloopError } from '../core/swarmloop-error';
-import { BaseStep, StepContext } from './base-step';
+import { ARTIFACTS } from './contract/artifacts';
+import type { InputSpec, Route, StepInput, StepResult } from './contract/step-contract';
+import { BaseStep, LegacyStep, StepContext } from './base-step';
 import { StepKernel } from './step-kernel';
 
-/** Throws whatever the test sets, so each case drives one path through `BaseStep.execute`. */
+/** Throws whatever the test sets, so each case drives one path through `LegacyStep.execute`. */
 @Injectable()
-class StubStep extends BaseStep {
+class StubStep extends LegacyStep {
   readonly name: StepName = 'branch';
   readonly requiredKind = 'repos';
   thrown: unknown = null;
@@ -37,6 +39,36 @@ class StubStep extends BaseStep {
 
   protected async run(_key: string, _options: StepOptions, _ctx: StepContext): Promise<PipelineResult> {
     throw this.thrown;
+  }
+}
+
+const INPUTS = {
+  repos: { artifact: ARTIFACTS.repos, need: 'run' },
+  commit: { artifact: ARTIFACTS.commit, need: 'optional' },
+} as const satisfies InputSpec;
+
+/** Hands the test the inputs it was given, and returns the result the test sets. */
+class TemplateStub extends BaseStep<typeof INPUTS> {
+  readonly name: StepName = 'branch';
+  readonly inputs = INPUTS;
+  readonly outputs = [ARTIFACTS.commit, ARTIFACTS.pipelineLog];
+  route: Route = { to: 'next' };
+  seen: StepInput<typeof INPUTS> | null = null;
+  reread: string | null = null;
+
+  protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
+    this.seen = input;
+    await ctx.write(ARTIFACTS.ciSkip, 'skip\n');
+    this.reread = await ctx.reread(ARTIFACTS.ciSkip);
+    return {
+      route: this.route,
+      summary: 'stub done',
+      outputs: [
+        { artifact: ARTIFACTS.commit, value: 'a.ts\n' },
+        { artifact: ARTIFACTS.pipelineLog, value: 'result: pass\n' },
+      ],
+      handoff: '- stubbed\n',
+    };
   }
 }
 
@@ -155,6 +187,86 @@ describe('base step', () => {
     } finally {
       await app.close();
     }
+  });
+  describe('declared inputs', () => {
+    async function run(key: string, route: Route, seed = true) {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-base-template-'));
+      const app = await boot(root);
+      const step = new TemplateStub(app.get(StepKernel));
+      step.route = route;
+      if (seed) {
+        const runs = app.get(RunRepository);
+        const seeded = await runs.begin(key, 'branch');
+        seeded.status = 'waiting';
+        await runs.saveRun(seeded);
+        await app.get(DocumentRepository).putDocument(seeded, 'repos', 'demo\nbilling\n');
+      }
+      const result = await step.execute(key);
+      const stored = await app.get(RunRepository).findRun(key);
+      const documents = await app.get(DocumentRepository).listDocuments(stored?.id ?? 0);
+      return { app, step, result, stored, documents };
+    }
+
+    it('reads the declared inputs through their codec and hands them to work', async () => {
+      const { app, step } = await run('BASE-10', { to: 'next' });
+      try {
+        expect(step.seen).toEqual({ repos: ['demo', 'billing'], commit: null });
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('stores the outputs in the listed order, then the handoff', async () => {
+      const { app, documents } = await run('BASE-11', { to: 'next' });
+      try {
+        expect(documents.map((document) => document.kind)).toEqual([
+          'repos',
+          'ci_skip',
+          'commit',
+          'pipeline_log',
+          'handoff',
+        ]);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('stores a document with ctx.write and reads it back with ctx.reread', async () => {
+      const { app, step, documents } = await run('BASE-12', { to: 'next' });
+      try {
+        expect(step.reread).toBe('skip\n');
+        expect(documents.find((document) => document.kind === 'ci_skip')?.body).toBe('skip\n');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it.each<[string, string, number, Route]>([
+      ['wait', 'waiting', 0, { to: 'wait', reason: 'later' }],
+      ['block', 'blocked', 1, { to: 'block', reason: 'stuck' }],
+      ['fail', 'failed', 1, { to: 'fail', error: { code: 'x', message: 'broke' } }],
+    ])('ends a %s route as a %s run with exit code %s', async (name, status, exitCode, route) => {
+      const { app, result, stored } = await run(`BASE-2${name}`, route);
+      try {
+        expect(result.exitCode).toBe(exitCode);
+        expect(result.message).toBe('stub done');
+        expect(stored?.status).toBe(status);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('fails the visit with "<kind> is missing" when a run input is absent', async () => {
+      const { app, step, result, stored } = await run('BASE-13', { to: 'next' }, false);
+      try {
+        expect(result.exitCode).toBe(1);
+        expect(result.message).toMatch(/ repos is missing$/);
+        expect(stored?.status).toBe('failed');
+        expect(step.seen).toBeNull();
+      } finally {
+        await app.close();
+      }
+    });
   });
 });
 

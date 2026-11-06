@@ -57,6 +57,19 @@ const layerImports = {
   cli: ['core', 'config', 'history', 'pipeline'],
 };
 
+const STEP_SYNTAX = [
+  { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: 'Read time through Clock.' },
+  {
+    selector:
+      'CallExpression[callee.property.name=/^(latestBody|latestDocument|hasDocument|putDocument)$/][arguments.1.type=/^(Literal|TemplateLiteral)$/]',
+    message: 'Use ARTIFACTS from steps/contract/artifacts.',
+  },
+  {
+    selector: "CallExpression[callee.property.name='end'][arguments.length>=2]",
+    message: 'Pass one object to end: { outcome, exitCode, line, ... }.',
+  },
+];
+
 export default tseslint.config(
   {
     ignores: ['**/dist', '**/.next', '**/node_modules', 'data', 'worktrees', 'docs'],
@@ -156,18 +169,26 @@ export default tseslint.config(
     // Step code names a kind through ARTIFACTS. The Date selector is repeated: a later block replaces the options.
     files: ['server/src/steps/**/*.ts'],
     ignores: ['**/*.spec.ts', '**/*.spec-helpers.ts'],
+    rules: { 'no-restricted-syntax': ['error', ...STEP_SYNTAX] },
+  },
+  {
+    // The migrated steps read and write documents through their declared inputs and the step context. l06 widens
+    // this to all of steps/, and then this block and its repeated selectors go.
+    files: [
+      'server/src/steps/branch/branch.step.ts',
+      'server/src/steps/commit/commit.step.ts',
+      'server/src/steps/merge-request/merge-request.step.ts',
+      'server/src/steps/pipeline/pipeline.step.ts',
+      'server/src/steps/prepare/prepare.step.ts',
+      'server/src/steps/requirements/requirements.step.ts',
+    ],
     rules: {
       'no-restricted-syntax': [
         'error',
-        { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: 'Read time through Clock.' },
+        ...STEP_SYNTAX,
         {
-          selector:
-            'CallExpression[callee.property.name=/^(latestBody|latestDocument|hasDocument|putDocument)$/][arguments.1.type=/^(Literal|TemplateLiteral)$/]',
-          message: 'Use ARTIFACTS from steps/contract/artifacts.',
-        },
-        {
-          selector: "CallExpression[callee.property.name='end'][arguments.length>=2]",
-          message: 'Pass one object to end: { outcome, exitCode, line, ... }.',
+          selector: 'MemberExpression[object.type="ThisExpression"][property.name="documents"]',
+          message: 'Read through the declared inputs or ctx.reread, and write through ctx.write.',
         },
       ],
     },

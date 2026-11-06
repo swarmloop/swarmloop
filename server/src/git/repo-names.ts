@@ -6,10 +6,16 @@ import { SwarmloopError } from '../core/swarmloop-error';
 const REPO_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export function repoNames(body: string): string[] {
-  const names = body
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  return checkedRepoNames(
+    body
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0),
+  );
+}
+
+/** The names when there is at least one and each is a valid repo name. */
+export function checkedRepoNames(names: string[]): string[] {
   if (names.length === 0) {
     throw new SwarmloopError('repos is empty');
   }

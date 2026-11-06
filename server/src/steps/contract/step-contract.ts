@@ -1,16 +1,24 @@
 import type { StepName } from '../../contract/steps';
+import type { PipelineResult } from '../../core/pipeline-result';
 import type { VisitDraft } from '../../history/visit';
 import type { Artifact } from './artifact';
 
 export type InputNeed = 'start' | 'run' | 'optional';
 
-export type InputSpec = Record<string, { artifact: Artifact<unknown>; need: InputNeed }>;
+/**
+ * A `late` input is declared but not loaded by `read`: the step loads it with `ctx.reread` at the point it needs it,
+ * so a visit that stops earlier never reads it.
+ */
+export type InputSpec = Record<string, { artifact: Artifact<unknown>; need: InputNeed; late?: boolean }>;
 
-/** Each input name with its parsed value, or null for an optional input that is not stored. */
+/**
+ * Each loaded input name with its parsed value. Only a `run` input is always there: a `start` input is checked
+ * before the step is asked to run, and a visit that is not gated can still find it absent.
+ */
 export type StepInput<S extends InputSpec> = {
-  [K in keyof S]: S[K]['need'] extends 'optional'
-    ? ReturnType<S[K]['artifact']['parse']> | null
-    : ReturnType<S[K]['artifact']['parse']>;
+  [K in keyof S as S[K] extends { late: true } ? never : K]: S[K]['need'] extends 'run'
+    ? ReturnType<S[K]['artifact']['parse']>
+    : ReturnType<S[K]['artifact']['parse']> | null;
 };
 
 export interface Issue {
@@ -45,6 +53,8 @@ export interface StepResult {
   handoff?: string;
   exitCode?: number;
   visit?: Partial<VisitDraft>;
+  /** Runs once the visit is closed, and may replace the result the step returns. */
+  afterClose?(ended: PipelineResult): Promise<PipelineResult>;
 }
 
 export interface StepCapabilities {

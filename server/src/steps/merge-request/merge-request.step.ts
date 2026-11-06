@@ -2,18 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { StepKernel } from '../step-kernel';
 import { existsSync, statSync } from 'fs';
 import { root } from '../../history/run-paths';
-import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { PhaseName, StepName } from '../../contract/steps';
 import { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { HttpCallDraft, SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
 import { git, gitDetail, gitMissing } from '../../git/git';
-import { textDocument } from '../shared/handoff';
-import { repoNames, worktreePath } from '../../git/repo-names';
+import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { remoteProject, renderMergeRequest } from './merge-request-record';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
 /** Set on a done rebase so this pass leaves an existing merge request untouched. */
 export const REBASE_MERGE_SKIP = ARTIFACTS.rebaseMergeSkip.kind;
@@ -28,10 +27,21 @@ interface Tree {
   summary: string;
 }
 
+/** The late inputs are read where the path needs them: the goldens stop at a git error before they are read. */
+const INPUTS = {
+  ciSkip: { artifact: ARTIFACTS.ciSkip, need: 'optional' },
+  requirements: { artifact: ARTIFACTS.requirements, need: 'start' },
+  repos: { artifact: ARTIFACTS.repos, need: 'run' },
+  implementation: { artifact: ARTIFACTS.implementation, need: 'optional', late: true },
+  reviewReport: { artifact: ARTIFACTS.reviewReport, need: 'optional', late: true },
+  rebaseMergeSkip: { artifact: ARTIFACTS.rebaseMergeSkip, need: 'optional', late: true },
+} as const satisfies InputSpec;
+
 @Injectable()
-export class MergeRequestStep extends BaseStep {
+export class MergeRequestStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'merge-request';
-  readonly requiredKind = ARTIFACTS.requirements.kind;
+  readonly inputs = INPUTS;
+  readonly outputs = [ARTIFACTS.mergeRequest];
 
   constructor(
     kernel: StepKernel,
@@ -40,32 +50,37 @@ export class MergeRequestStep extends BaseStep {
     super(kernel);
   }
 
-  protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
+  protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const { opened } = ctx;
-    const skipped = ((await this.documents.latestBody(key, ARTIFACTS.ciSkip.kind)) ?? '').trim();
+    const { key } = opened.run;
+    const skipped = (input.ciSkip ?? '').trim();
     if (skipped) {
-      return this.finish(ctx, `${opened.startedAt} ${skipped}`, undefined, '');
+      return this.finish(`${opened.startedAt} ${skipped}`, undefined, '');
     }
     this.registry.requiredCredentials(opened.run.codeHost);
     const client = this.registry.byName(opened.run.codeHost);
     const phases = await this.flows.activePhases(opened.run.id);
-    const requirements = await this.documents.latestBody(key, ARTIFACTS.requirements.kind);
+    const { requirements } = input;
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
     const title = summaryForBranch(requirements, key);
     const branch = branchName(key, title);
-    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
-    const trees = await this.trees(key, names, branch, ctx.calls, opened.run.codeHost, client);
-    const drafted = await this.describeTrees(key, trees, phases);
-    const skip = ((await this.documents.latestBody(key, REBASE_MERGE_SKIP)) ?? '').trim() === 'skip';
-    const records = await this.ensure(drafted, title, ctx.calls, skip, client);
+    const trees = await this.trees(key, checkedRepoNames(input.repos), branch, ctx.calls, opened.run.codeHost, client);
+    const summary = await this.summary(ctx, phases);
+    const skip = ((await ctx.reread(ARTIFACTS.rebaseMergeSkip)) ?? '').trim() === 'skip';
+    const records = await this.ensure(
+      trees.map((tree) => ({ ...tree, summary })),
+      title,
+      ctx.calls,
+      skip,
+      client,
+    );
     if (skip) {
-      await this.documents.putDocument(opened.run, REBASE_MERGE_SKIP, 'clear\n');
+      await ctx.write(ARTIFACTS.rebaseMergeSkip, 'clear\n');
     }
-    const body = renderMergeRequest(records);
     const urls = records.map((record) => record.url).join('\n');
-    return this.finish(ctx, `${opened.startedAt} merge-request done\n${urls}`, body);
+    return this.finish(`${opened.startedAt} merge-request done\n${urls}`, renderMergeRequest(records));
   }
 
   private async trees(
@@ -111,18 +126,18 @@ export class MergeRequestStep extends BaseStep {
     return trees;
   }
 
-  private async describeTrees(key: string, trees: Tree[], phases: readonly PhaseName[]): Promise<Tree[]> {
-    const implementation = (await this.documents.latestBody(key, ARTIFACTS.implementation.kind))?.trim() ?? '';
+  private async summary(ctx: StepContext, phases: readonly PhaseName[]): Promise<string> {
+    const implementation = (await ctx.reread(ARTIFACTS.implementation))?.trim() ?? '';
     if (!implementation) {
       throw new SwarmloopError('implementation is missing');
     }
     const summary = phases.includes('code-review')
-      ? ((await this.documents.latestBody(key, ARTIFACTS.reviewReport.kind))?.trim() ?? '')
+      ? ((await ctx.reread(ARTIFACTS.reviewReport))?.trim() ?? '')
       : implementation;
     if (!summary) {
       throw new SwarmloopError('review report is missing');
     }
-    return trees.map((tree) => ({ ...tree, summary }));
+    return summary;
   }
 
   private async ensure(
@@ -199,18 +214,12 @@ export class MergeRequestStep extends BaseStep {
     }
   }
 
-  private finish(
-    ctx: StepContext,
-    line: string,
-    body?: string,
-    handoff = '- opened the merge request\n',
-  ): Promise<PipelineResult> {
-    return ctx.end({
-      outcome: 'ok',
-      exitCode: 0,
-      line,
+  private finish(line: string, body?: string, handoff = '- opened the merge request\n'): StepResult {
+    return {
+      route: { to: 'next' },
+      summary: line,
+      outputs: body ? [{ artifact: ARTIFACTS.mergeRequest, value: body }] : [],
       handoff: handoff || undefined,
-      visit: { documents: body ? [textDocument(ARTIFACTS.mergeRequest.kind, body)] : undefined },
-    });
+    };
   }
 }

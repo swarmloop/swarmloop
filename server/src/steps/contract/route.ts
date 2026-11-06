@@ -1,8 +1,11 @@
 import type { StepName } from '../../contract/steps';
-import type { StepEnd } from '../base-step';
 import type { Route } from './step-contract';
 
-type RouteEnd = Pick<StepEnd, 'outcome' | 'exitCode' | 'moveTo'>;
+interface RouteEnd {
+  outcome: 'ok' | 'failed' | 'blocked' | 'waiting';
+  exitCode: number;
+  moveTo?: StepName;
+}
 
 /** The end a route stands for. Block and fail exit 1, every other route exits 0, unless `exitCode` says otherwise. */
 export function routeToEnd(route: Route, exitCode?: number): RouteEnd {
@@ -22,6 +25,6 @@ export function routeToEnd(route: Route, exitCode?: number): RouteEnd {
   }
 }
 
-function end(outcome: StepEnd['outcome'], exitCode: number, moveTo?: StepName): RouteEnd {
+function end(outcome: RouteEnd['outcome'], exitCode: number, moveTo?: StepName): RouteEnd {
   return { outcome, exitCode, moveTo };
 }

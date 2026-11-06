@@ -17,7 +17,7 @@ import type { ProjectLaunch } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { StepContext, StepEnd } from './base-step';
-import { BaseStep } from './base-step';
+import { LegacyStep } from './base-step';
 import { agentFailure, combineAgentResults, refusedWrite, withRefusal } from './shared/agent-result';
 import { modelVisit } from './shared/model-visit';
 import { AGENT_LANGUAGE_RULE } from './shared/skill-prompt';
@@ -113,7 +113,7 @@ interface ModelRun {
   launchError: SwarmloopError | null;
 }
 
-export abstract class AgentStep extends BaseStep {
+export abstract class AgentStep extends LegacyStep {
   override readonly usesModel = true;
 
   constructor(

@@ -2,54 +2,57 @@ import { Injectable } from '@nestjs/common';
 import { StepKernel } from '../step-kernel';
 import { existsSync, statSync } from 'fs';
 import { root } from '../../history/run-paths';
-import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail, gitMissing } from '../../git/git';
-import { recordHandoff } from '../shared/handoff';
-import { repoNames, worktreePath } from '../../git/repo-names';
+import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { branchName, summaryForBranch } from './branch-name';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
+
+const INPUTS = {
+  requirements: { artifact: ARTIFACTS.requirements, need: 'run' },
+  repos: { artifact: ARTIFACTS.repos, need: 'start' },
+  pipelineRef: { artifact: ARTIFACTS.pipelineRef, need: 'optional' },
+} as const satisfies InputSpec;
 
 @Injectable()
-export class BranchStep extends BaseStep {
+export class BranchStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'branch';
-  readonly requiredKind = ARTIFACTS.repos.kind;
+  readonly inputs = INPUTS;
+  readonly outputs = [];
 
   constructor(kernel: StepKernel) {
     super(kernel);
   }
 
-  protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
-    const requirements = await this.documents.latestBody(key, ARTIFACTS.requirements.kind);
-    if (!requirements) {
-      throw new SwarmloopError('requirements is missing');
-    }
-    const repos = await this.documents.latestBody(key, ARTIFACTS.repos.kind);
-    const names = repoNames(repos ?? '');
-    const name = branchName(key, summaryForBranch(requirements, key));
-    for (const repo of names) {
-      await this.ensure(key, repo);
-    }
-    const handoff = await recordHandoff(this.documents, key, 'branch', `- checked out ${name}\n`);
-    return ctx.end({
-      outcome: 'ok',
-      exitCode: 0,
-      line: `${ctx.opened.startedAt} branch done\n${name}`,
-      visit: { documents: [handoff] },
-    });
-  }
-
-  async ensure(key: string, repo: string): Promise<void> {
-    const requirements = await this.documents.latestBody(key, ARTIFACTS.requirements.kind);
-    if (!requirements) {
-      throw new SwarmloopError('requirements is missing');
-    }
+  protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
+    const { key } = ctx.opened.run;
+    const name = this.branchFor(key, input.requirements);
     // A run that has committed owns the commits of its branch. Before that, a branch of the same name was left by
     // an earlier run of this key, such as one removed in the panel.
-    const committed = (await this.documents.latestBody(key, ARTIFACTS.pipelineRef.kind)) !== null;
-    await this.checkout(key, repo, branchName(key, summaryForBranch(requirements, key)), committed);
+    const committed = input.pipelineRef !== null;
+    for (const repo of checkedRepoNames(input.repos ?? [])) {
+      await this.checkout(key, repo, name, committed);
+    }
+    return {
+      route: { to: 'next' },
+      summary: `${ctx.opened.startedAt} branch done\n${name}`,
+      outputs: [],
+      handoff: `- checked out ${name}\n`,
+    };
+  }
+
+  async ensure(key: string, repo: string, requirements: string | null, committed: boolean): Promise<void> {
+    await this.checkout(key, repo, this.branchFor(key, requirements), committed);
+  }
+
+  private branchFor(key: string, requirements: string | null): string {
+    if (!requirements) {
+      throw new SwarmloopError('requirements is missing');
+    }
+    return branchName(key, summaryForBranch(requirements, key));
   }
 
   private async checkout(key: string, repo: string, branch: string, committed: boolean): Promise<void> {

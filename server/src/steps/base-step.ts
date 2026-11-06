@@ -10,12 +10,16 @@ import type { Clock } from '../core/clock';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { visitStatus } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
+import type { RunEntity } from '../history/entities';
 import type { OpenedStep } from '../steps/step-run';
 import { closeStep, openStep } from '../steps/step-run';
 import type { HttpCallDraft } from '../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../core/swarmloop-error';
-import { recordHandoff } from './shared/handoff';
-import type { StepCapabilities, StepDescriptor } from './contract/step-contract';
+import { recordHandoff, textDocument } from './shared/handoff';
+import type { Artifact } from './contract/artifact';
+import { InputReader } from './contract/input-reader';
+import { routeToEnd } from './contract/route';
+import type { InputSpec, StepCapabilities, StepDescriptor, StepInput, StepResult } from './contract/step-contract';
 import type { Step } from './step';
 import { requiredDocument, type StepSnapshot } from './step';
 import type { StepKernel } from './step-kernel';
@@ -33,18 +37,33 @@ export interface StepEnd {
 
 export interface StepContext {
   opened: OpenedStep;
+  options: StepOptions;
   calls: HttpCallDraft[];
   clock: Clock;
+  /** The latest stored value of a kind, read through the input reader. Null when nothing is stored. */
+  reread<T>(artifact: Artifact<T>): Promise<T | null>;
+  /** Stores a document outside the visit, such as progress a later pass resumes from. */
+  write<T>(artifact: Artifact<T>, value: T): Promise<void>;
   end(input: StepEnd): Promise<PipelineResult>;
 }
 
-export abstract class BaseStep implements Step {
+/** Thrown by a body that has left the visit open, to return its own result without closing it. */
+export class VisitLeftOpen extends Error {
+  constructor(readonly result: PipelineResult) {
+    super(result.message);
+  }
+}
+
+/** What every step shares: the kernel services, and opening and closing a visit. */
+abstract class StepCore implements Step {
   abstract readonly name: StepName;
-  abstract readonly requiredKind: string;
   readonly usesModel: boolean = false;
   readonly capabilities: StepCapabilities = {};
+  protected readonly reader: InputReader;
 
-  constructor(protected readonly kernel: StepKernel) {}
+  constructor(protected readonly kernel: StepKernel) {
+    this.reader = new InputReader(kernel.documents);
+  }
 
   protected get runs(): RunRepository {
     return this.kernel.runs;
@@ -80,27 +99,27 @@ export abstract class BaseStep implements Step {
     };
   }
 
-  missingInput(key: string, _options?: StepOptions): Promise<string | null> {
-    return requiredDocument(this.documents, key, this.requiredKind);
-  }
+  abstract missingInput(key: string, options?: StepOptions): Promise<string | null>;
 
-  execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
-    return this.perform(key, (ctx) => this.run(key, options, ctx), snapshot);
-  }
+  abstract execute(key: string, options?: StepOptions, snapshot?: StepSnapshot): Promise<PipelineResult>;
 
   /** Opens the step, runs its body, and closes the visit. A throw closes it as failed. */
   protected async perform(
     key: string,
     body: (ctx: StepContext) => Promise<PipelineResult>,
     snapshot?: StepSnapshot,
+    options: StepOptions = {},
   ): Promise<PipelineResult> {
     const opened = await openStep(this.runs, this.clock, key, this.name);
     const calls: HttpCallDraft[] = [];
     let closed = false;
     const ctx: StepContext = {
       opened,
+      options,
       calls,
       clock: this.clock,
+      reread: (artifact) => this.reader.reread(key, artifact),
+      write: (artifact, value) => this.store(opened.run, artifact, value),
       end: (input) => {
         closed = true;
         return this.close(opened, calls, input, snapshot);
@@ -109,6 +128,9 @@ export abstract class BaseStep implements Step {
     try {
       return await body(ctx);
     } catch (error) {
+      if (error instanceof VisitLeftOpen) {
+        return error.result;
+      }
       if (closed) {
         throw error;
       }
@@ -124,6 +146,11 @@ export abstract class BaseStep implements Step {
     }
   }
 
+  /** Stores a document of the run outside any visit. */
+  protected store<T>(run: RunEntity, artifact: Artifact<T>, value: T): Promise<void> {
+    return this.documents.putDocument(run, artifact.kind, artifact.format(value));
+  }
+
   protected failureText(error: unknown): string {
     return error instanceof SwarmloopError ? error.message : `${this.name} failed`;
   }
@@ -132,8 +159,6 @@ export abstract class BaseStep implements Step {
   protected failureVisit(): Partial<VisitDraft> {
     return {};
   }
-
-  protected abstract run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult>;
 
   private async close(
     opened: OpenedStep,
@@ -185,4 +210,66 @@ export abstract class BaseStep implements Step {
     await snapshot?.(opened.run, this.name);
     return result;
   }
+}
+
+/** A step on the declared contract: it states its inputs and outputs, and `work` turns the inputs into a result. */
+export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore {
+  abstract readonly inputs: S;
+  abstract readonly outputs: Artifact<unknown>[];
+
+  override describe(): StepDescriptor {
+    return {
+      ...super.describe(),
+      inputs: Object.entries(this.inputs).map(([name, entry]) => ({
+        name,
+        kind: entry.artifact.kind,
+        need: entry.need,
+      })),
+      outputs: this.outputs.map((output) => output.kind),
+    };
+  }
+
+  missingInput(key: string, _options?: StepOptions): Promise<string | null> {
+    return this.reader.missing(key, this.inputs, 'start');
+  }
+
+  execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
+    return this.perform(
+      key,
+      async (ctx) => this.conclude(ctx, await this.work(await this.reader.read(key, this.inputs), ctx)),
+      snapshot,
+      options,
+    );
+  }
+
+  /** Ends the visit as the route of the result says: its outputs first, then the handoff. */
+  protected async conclude(ctx: StepContext, result: StepResult): Promise<PipelineResult> {
+    const documents = result.outputs.map((item) => textDocument(item.artifact.kind, item.artifact.format(item.value)));
+    if (result.handoff !== undefined) {
+      documents.push(await recordHandoff(this.documents, ctx.opened.run.key, this.name, result.handoff));
+    }
+    const ended = await ctx.end({
+      ...routeToEnd(result.route, result.exitCode),
+      line: result.summary,
+      visit: { ...result.visit, ...(documents.length > 0 ? { documents } : {}) },
+    });
+    return result.afterClose ? result.afterClose(ended) : ended;
+  }
+
+  protected abstract work(input: StepInput<S>, ctx: StepContext): Promise<StepResult>;
+}
+
+/** A step that still reads its own documents: the old `run` path, and the one kind it needs before it starts. */
+export abstract class LegacyStep extends StepCore {
+  abstract readonly requiredKind: string;
+
+  missingInput(key: string, _options?: StepOptions): Promise<string | null> {
+    return requiredDocument(this.documents, key, this.requiredKind);
+  }
+
+  execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
+    return this.perform(key, (ctx) => this.run(key, options, ctx), snapshot, options);
+  }
+
+  protected abstract run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult>;
 }

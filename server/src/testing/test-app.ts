@@ -26,7 +26,7 @@ import { LiveModule } from '../live/live.module';
 import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { BaseStep, type StepContext } from '../steps/base-step';
+import { LegacyStep, type StepContext } from '../steps/base-step';
 import { StepRegistry } from '../steps/step.registry';
 import type { StepCapabilities } from '../steps/contract/step-contract';
 import type { Step } from '../steps/step';
@@ -54,7 +54,7 @@ class FakeCodeHost {
   }
 }
 
-class ScriptedStep extends BaseStep {
+class ScriptedStep extends LegacyStep {
   override readonly requiredKind = '';
   override readonly usesModel = false;
   override readonly capabilities: StepCapabilities;
