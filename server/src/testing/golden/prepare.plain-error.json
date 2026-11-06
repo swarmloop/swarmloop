@@ -17,7 +17,7 @@
   },
   "result": {
     "exitCode": 1,
-    "message": "<t> disk full"
+    "message": "<t> prepare failed: disk full (<id:1>)"
   },
   "run": {
     "agentCalls": 0,
@@ -33,7 +33,7 @@
     {
       "documents": [
         {
-          "body": "disk full\n",
+          "body": "prepare failed: disk full (<id:1>)\n",
           "kind": "error"
         }
       ],

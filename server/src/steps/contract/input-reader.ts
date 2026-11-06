@@ -1,4 +1,5 @@
 import type { DocumentRepository } from '../../history/document.repository';
+import { ERROR_CODES } from '../../contract/error-codes';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import type { Artifact } from './artifact';
 import type { InputNeed, InputSpec, StepInput } from './step-contract';
@@ -16,7 +17,7 @@ export class InputReader {
       }
       const value = await this.reread(key, entry.artifact);
       if (value === null && entry.need === 'run') {
-        throw new SwarmloopError(`${entry.artifact.kind} is missing`);
+        throw new SwarmloopError(`${entry.artifact.kind} is missing`, { code: ERROR_CODES.INPUT_MISSING });
       }
       input[name] = value;
     }

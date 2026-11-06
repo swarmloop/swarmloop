@@ -23,7 +23,7 @@
   },
   "result": {
     "exitCode": 1,
-    "message": "<t> branch failed"
+    "message": "<t> branch failed: disk gone (<id:1>)"
   },
   "run": {
     "agentCalls": 0,
@@ -39,7 +39,7 @@
     {
       "documents": [
         {
-          "body": "branch failed\n",
+          "body": "branch failed: disk gone (<id:1>)\n",
           "kind": "error"
         }
       ],

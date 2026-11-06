@@ -32,7 +32,7 @@
     {
       "documents": [
         {
-          "body": "plan failed\n",
+          "body": "plan failed: agent crashed (<id:1>)\n",
           "kind": "error"
         }
       ],

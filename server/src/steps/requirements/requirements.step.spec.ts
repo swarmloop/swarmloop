@@ -210,7 +210,10 @@ describe('requirements step', () => {
     try {
       jest.spyOn(app.get(RunRepository), 'begin').mockRejectedValueOnce(new Error('database is locked'));
       const result = await app.get(PipelineService).step('requirements', 'PROJ-2', { prompt: 'Build it' });
-      expect(result).toEqual({ exitCode: 1, message: 'requirements failed' });
+      expect(result).toEqual({
+        exitCode: 1,
+        message: expect.stringMatching(/^requirements failed: database is locked \(E-[0-9a-z]{8}\)$/),
+      });
     } finally {
       await app.close();
     }
@@ -226,7 +229,10 @@ describe('requirements step', () => {
         .spyOn(runs, 'saveRun')
         .mockImplementation((run) => (run.prompt ? Promise.reject(new Error('disk full')) : save(run)));
       const result = await app.get(PipelineService).step('requirements', 'PROJ-2', { prompt: 'Build it' });
-      expect(result).toEqual({ exitCode: 1, message: 'requirements failed' });
+      expect(result).toEqual({
+        exitCode: 1,
+        message: expect.stringMatching(/^requirements failed: disk full \(E-[0-9a-z]{8}\)$/),
+      });
       const stats = app.get<Repository<StepStatEntity>>(getRepositoryToken(StepStatEntity));
       expect(await stats.count()).toBe(0);
     } finally {

@@ -14,14 +14,22 @@ import type { RunEntity } from '../history/entities';
 import type { OpenedStep } from '../steps/step-run';
 import { closeStep, openStep } from '../steps/step-run';
 import type { HttpCallDraft } from '../core/swarmloop-error';
-import { FetchFailed, SwarmloopError } from '../core/swarmloop-error';
+import { reportFailure } from './shared/step-failure';
+import { FetchFailed } from '../core/swarmloop-error';
 import { recordHandoff } from './shared/handoff';
 import type { Artifact } from './contract/artifact';
 import { InputReader } from './contract/input-reader';
 import { outputDrafts } from './contract/output-writer';
 import { routeToEnd } from './contract/route';
 import { assertRoute } from './contract/returns';
-import type { InputSpec, StepCapabilities, StepDescriptor, StepInput, StepResult } from './contract/step-contract';
+import type {
+  InputSpec,
+  StepCapabilities,
+  StepDescriptor,
+  StepFailure,
+  StepInput,
+  StepResult,
+} from './contract/step-contract';
 import type { Step } from './step';
 import type { StepSnapshot } from './step';
 import type { StepKernel } from './step-kernel';
@@ -153,8 +161,13 @@ abstract class StepCore implements Step {
     return this.documents.putDocument(run, artifact.kind, artifact.format(value));
   }
 
+  /** Describes and logs a failure. A step overrides it to name a better cause. */
+  protected failureOf(error: unknown): StepFailure {
+    return reportFailure(this.name, error, this.config.env);
+  }
+
   protected failureText(error: unknown): string {
-    return error instanceof SwarmloopError ? error.message : `${this.name} failed`;
+    return this.failureOf(error).message;
   }
 
   /** Merged into the visit of a failed run. A step overrides it to keep the failed visit it has always recorded. */

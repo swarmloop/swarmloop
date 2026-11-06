@@ -12,7 +12,7 @@
   },
   "result": {
     "exitCode": 1,
-    "message": "<t> pipeline failed"
+    "message": "<t> pipeline failed: socket hang up (<id:1>)"
   },
   "run": {
     "agentCalls": 0,
@@ -28,7 +28,7 @@
     {
       "documents": [
         {
-          "body": "pipeline failed\n",
+          "body": "pipeline failed: socket hang up (<id:1>)\n",
           "kind": "error"
         }
       ],

@@ -50,7 +50,7 @@
   },
   "result": {
     "exitCode": 1,
-    "message": "<t> merge-request failed"
+    "message": "<t> merge-request failed: socket hang up (<id:1>)"
   },
   "run": {
     "agentCalls": 0,
@@ -66,7 +66,7 @@
     {
       "documents": [
         {
-          "body": "merge-request failed\n",
+          "body": "merge-request failed: socket hang up (<id:1>)\n",
           "kind": "error"
         }
       ],

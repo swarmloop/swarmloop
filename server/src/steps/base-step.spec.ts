@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -84,14 +84,48 @@ describe('base step', () => {
       app.get(StubStep).thrown = new Error('boom');
       const result = await app.get(StubStep).execute('BASE-1');
       expect(result.exitCode).toBe(1);
-      expect(result.message).toMatch(/ branch failed$/);
+      expect(result.message).toMatch(/ branch failed: boom \(E-[0-9a-z]{8}\)$/);
       const run = await app.get(RunRepository).findRun('BASE-1');
       expect(run?.status).toBe('failed');
       const documents = await app.get(DocumentRepository).listDocuments(run?.id ?? 0);
       expect(documents.filter((document) => document.kind === 'error').map((document) => document.body)).toEqual([
-        'branch failed\n',
+        expect.stringMatching(/^branch failed: boom \(E-[0-9a-z]{8}\)\n$/),
       ]);
     } finally {
+      await app.close();
+    }
+  });
+
+  it('logs the same error id as the text and masks a secret in both', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-base-redact-'));
+    const app = await boot(root);
+    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      app.get(StubStep).thrown = new Error('auth failed with glpat-secret123\nat somewhere');
+      const result = await app.get(StubStep).execute('BASE-7');
+      const id = /\((E-[0-9a-z]{8})\)$/.exec(result.message)?.[1];
+      expect(result.message).toMatch(/ branch failed: auth failed with \*\*\* \(E-[0-9a-z]{8}\)$/);
+      const logged = String(error.mock.calls[0][0]);
+      expect(logged).toContain(id);
+      expect(logged).toContain('at somewhere');
+      expect(logged).not.toContain('glpat-secret123');
+    } finally {
+      error.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('logs the error id and code of a SwarmloopError without changing its text', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-base-code-'));
+    const app = await boot(root);
+    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      app.get(StubStep).thrown = new SwarmloopError('repos is missing');
+      const result = await app.get(StubStep).execute('BASE-8');
+      expect(result.message).toMatch(/ repos is missing$/);
+      expect(String(error.mock.calls[0][0])).toMatch(/^E-[0-9a-z]{8} branch failed: code STEP_FAILED$/);
+    } finally {
+      error.mockRestore();
       await app.close();
     }
   });

@@ -95,6 +95,7 @@ export async function traceRun(dataSource: DataSource, key: string, reads: Recor
 
 const TIMESTAMP = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/g;
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+const ERROR_ID = /\bE-[0-9a-z]{8}\b/g;
 const SHA = /\b[0-9a-f]{40}\b/g;
 const MOUNT = /(?<![\w.<>-])\/work\//g;
 const DURATION = /\b\d+(?:\.\d+)?\s?ms\b/g;
@@ -118,6 +119,7 @@ export function normalizeTrace<T>(value: T): T {
       .replace(MOUNT, '<work>/')
       .replace(TIMESTAMP, '<t>')
       .replace(UUID, numbered(ids, 'id'))
+      .replace(ERROR_ID, numbered(ids, 'id'))
       .replace(SHA, numbered(shas, 'sha'))
       .replace(DURATION, '<ms>');
   const walk = (node: unknown, key?: string): unknown => {

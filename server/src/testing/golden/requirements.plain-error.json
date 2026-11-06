@@ -24,7 +24,7 @@
     {
       "documents": [
         {
-          "body": "requirements failed\n",
+          "body": "requirements failed: socket hang up (<id:1>)\n",
           "kind": "error"
         }
       ],

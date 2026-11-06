@@ -1,11 +1,13 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { Logger } from '@nestjs/common';
 import type { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
 import { AgentLauncher } from './shared/agent-launcher';
 import { goldenApp } from './shared/model-golden.spec-helpers';
 import { StepKernel } from './step-kernel';
 import { ResearchStep } from './research/research.step';
+import type { StepResult } from './contract/step-contract';
 import { agentFailure, combineAgentResults } from './shared/agent-result';
 import { modelVisit } from './shared/model-visit';
 import { AGENT_LANGUAGE_RULE, skillPrompt, workingDirectoryBlock } from './shared/skill-prompt';
@@ -336,6 +338,46 @@ describe('agent step without requirements', () => {
       }
     },
   );
+});
+
+describe('agent step failure', () => {
+  it('gives the route message and the summary one error id, and logs that id once', async () => {
+    const agent = jest.fn().mockRejectedValue(new Error('agent crashed'));
+    const golden = await goldenApp('agent-plain-failure', { agent, worktrees: ['PROJ-31/billing-api'] });
+    const logged = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      const run = await golden.runs.begin('PROJ-31', 'prepare');
+      run.status = 'waiting';
+      run.currentStep = 'research';
+      await golden.runs.saveRun(run);
+      await golden.seedDocuments.putDocument(run, 'requirements', '{"prompt":"ship the field"}\n');
+      const step = new ResearchStep(
+        new StepKernel(golden.runs, golden.documents, golden.visits, golden.flows, golden.clock, golden.config),
+        golden.sandbox,
+        golden.launcher,
+      );
+      const conclude = jest.spyOn(step as unknown as { conclude: () => Promise<unknown> }, 'conclude');
+      const result = await step.execute('PROJ-31');
+      const [, stepResult] = conclude.mock.calls[0] as unknown as [unknown, StepResult];
+      const id = /\((E-[0-9a-z]{8})\)$/.exec(result.message)?.[1];
+      expect(id).toMatch(/^E-[0-9a-z]{8}$/);
+      expect(stepResult.route).toEqual({
+        to: 'fail',
+        error: {
+          code: 'STEP_FAILED',
+          category: 'internal',
+          errorId: id,
+          message: `research failed: agent crashed (${id})`,
+        },
+      });
+      expect(stepResult.summary).toContain(`research failed: agent crashed (${id})`);
+      expect(logged).toHaveBeenCalledTimes(1);
+      expect(String(logged.mock.calls[0][0])).toMatch(new RegExp(`^${id} `));
+    } finally {
+      logged.mockRestore();
+      await golden.close();
+    }
+  });
 });
 
 function emptyAgent(): AgentRunResult {
