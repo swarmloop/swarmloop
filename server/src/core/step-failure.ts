@@ -5,7 +5,7 @@ import { redact } from './redact';
 import { SwarmloopError } from './swarmloop-error';
 import type { ErrorCategory } from './swarmloop-error';
 
-export interface StepFailure {
+interface StepFailure {
   errorId: string;
   code: ErrorCode;
   category: ErrorCategory;
