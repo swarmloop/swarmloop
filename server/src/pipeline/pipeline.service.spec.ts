@@ -122,7 +122,40 @@ describe('pipeline service', () => {
       const started = await pipeline.startDetached('PROJ-64', { path: root }, 'code-review');
       expect(started).toEqual({ exitCode: 0, message: 'PROJ-64 started' });
       await settle(pipeline, 'PROJ-64');
-      expect(error).toHaveBeenCalledWith('boom');
+      expect(error).toHaveBeenCalledWith(expect.stringMatching(/^E-[0-9a-z]{8} Error: boom/));
+    } finally {
+      error.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('stores a redacted crash with its error id and logs the same id', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-crash-'));
+    const app = await boot(root);
+    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      const runs = app.get(RunRepository);
+      jest.spyOn(app.get(CodeReviewStep), 'execute').mockImplementation(async () => {
+        const run = await runs.begin('PROJ-66', 'code-review');
+        run.status = 'running';
+        run.currentStep = 'code-review';
+        run.ownerPid = process.pid;
+        await runs.saveRun(run);
+        throw new Error('push to https://user:pass@host/x failed with ghp_abc123\nsecond line');
+      });
+      const pipeline = app.get(PipelineService);
+      await pipeline.startDetached('PROJ-66', { path: root }, 'code-review');
+      await settle(pipeline, 'PROJ-66');
+      const run = await runs.findRun('PROJ-66');
+      const documents = await app.get(DocumentRepository).listDocuments(run?.id ?? 0);
+      const bodies = documents.filter((document) => document.kind === 'error').map((document) => document.body);
+      expect(bodies).toHaveLength(1);
+      const match = /^code-review failed: (.*) \((E-[0-9a-z]{8})\)\n$/.exec(bodies[0]);
+      expect(match?.[1]).toBe('push to https://***@host/x failed with ***');
+      const logged = String(error.mock.calls[0][0]);
+      expect(logged.startsWith(`${match?.[2]} `)).toBe(true);
+      expect(logged).not.toContain('ghp_abc123');
+      expect(logged).not.toContain('user:pass');
     } finally {
       error.mockRestore();
       await app.close();

@@ -128,9 +128,10 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       return await this.finish(run, await this.produce(input, ctx, options));
     } catch (error) {
       const refusal = error === run.launchError ? null : run.refusal;
+      const text = this.failureText(error);
       return {
-        route: { to: 'fail', error: { code: this.name, message: this.failureText(error) } },
-        summary: `${opened.startedAt} ${withRefusal(this.failureText(error), refusal)}`,
+        route: { to: 'fail', error: { code: this.name, message: text } },
+        summary: `${opened.startedAt} ${withRefusal(text, refusal)}`,
         outputs: [],
         visit: this.modelVisitOf(run, 'failed', 1),
       };

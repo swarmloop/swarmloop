@@ -37,6 +37,7 @@ describe('input reader', () => {
   it('fails with "<kind> is missing" when a run input is absent', async () => {
     const { reader } = store({ repos: 'demo\n' });
     await expect(reader.read('K', SPEC)).rejects.toThrow('requirements is missing');
+    await expect(reader.read('K', SPEC)).rejects.toMatchObject({ code: 'INPUT_MISSING' });
   });
 
   it('gives null for a start or optional input that is absent, and keeps a blank body', async () => {

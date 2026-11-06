@@ -1,0 +1,13 @@
+/** Stable codes a failure carries. Only `STEP_FAILED` and `INPUT_MISSING` are used so far; the rest are for later parts. */
+export const ERROR_CODES = {
+  RUN_BUSY: 'RUN_BUSY',
+  REVISION_CONFLICT: 'REVISION_CONFLICT',
+  RESOURCE_UNKNOWN: 'RESOURCE_UNKNOWN',
+  CHECK_FAILED: 'CHECK_FAILED',
+  SESSION_INCOMPATIBLE: 'SESSION_INCOMPATIBLE',
+  REBASE_CONFLICT: 'REBASE_CONFLICT',
+  STEP_FAILED: 'STEP_FAILED',
+  INPUT_MISSING: 'INPUT_MISSING',
+} as const;
+
+export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

@@ -29,7 +29,7 @@
   },
   "result": {
     "exitCode": 1,
-    "message": "<t> commit failed"
+    "message": "<t> commit failed: disk gone (<id:1>)"
   },
   "run": {
     "agentCalls": 0,
@@ -45,7 +45,7 @@
     {
       "documents": [
         {
-          "body": "commit failed\n",
+          "body": "commit failed: disk gone (<id:1>)\n",
           "kind": "error"
         }
       ],

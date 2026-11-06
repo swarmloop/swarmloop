@@ -6,6 +6,7 @@ import type { RunRepository } from '../history/run.repository';
 import type { VisitRepository } from '../history/visit.repository';
 import type { VisitDraft } from '../history/visit';
 import { sampleSelf } from '../history/visit';
+import { Logger } from '@nestjs/common';
 import type { Clock } from '../core/clock';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { visitStatus } from '../core/pipeline-result';
@@ -14,6 +15,7 @@ import type { RunEntity } from '../history/entities';
 import type { OpenedStep } from '../steps/step-run';
 import { closeStep, openStep } from '../steps/step-run';
 import type { HttpCallDraft } from '../core/swarmloop-error';
+import { describeFailure, failureStack } from '../core/step-failure';
 import { FetchFailed, SwarmloopError } from '../core/swarmloop-error';
 import { recordHandoff } from './shared/handoff';
 import type { Artifact } from './contract/artifact';
@@ -154,7 +156,11 @@ abstract class StepCore implements Step {
   }
 
   protected failureText(error: unknown): string {
-    return error instanceof SwarmloopError ? error.message : `${this.name} failed`;
+    const failure = describeFailure(this.name, error, this.config.env);
+    const detail =
+      error instanceof SwarmloopError ? `code ${failure.code}` : `\n${failureStack(error, this.config.env)}`;
+    new Logger(this.name).error(`${failure.errorId} ${this.name} failed: ${detail}`);
+    return failure.message;
   }
 
   /** Merged into the visit of a failed run. A step overrides it to keep the failed visit it has always recorded. */

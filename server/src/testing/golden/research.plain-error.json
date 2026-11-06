@@ -24,7 +24,7 @@
     {
       "documents": [
         {
-          "body": "research failed\n",
+          "body": "research failed: agent crashed (<id:1>)\n",
           "kind": "error"
         }
       ],

@@ -17,6 +17,7 @@ import type { StepRegistry } from '../steps/step.registry';
 import type { RunStop } from '../agent/run-stop';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { assertKey, diedLog, isStep } from '../core/pipeline-result';
+import { describeFailure, failureStack } from '../core/step-failure';
 import { CHAT_LOCK, chatHeld, chatResume, readChatLock } from './chat-lock';
 import { flagError } from './flag-error';
 import { settleShell, shellHolding } from './shell-lock';
@@ -78,8 +79,8 @@ export class RunLifecycle implements OnModuleInit {
       void this.driver
         .drive(step, key, options)
         .catch(async (error: unknown) => {
-          const message = error instanceof Error ? error.message : 'run failed';
-          this.logger.error(message);
+          const failure = describeFailure(only ?? 'unknown', error, this.config.env);
+          this.logger.error(`${failure.errorId} ${failureStack(error, this.config.env)}`);
           const run = await this.runs.findRun(key);
           if (run?.status === 'running' && run.ownerPid === process.pid) {
             const now = this.clock.iso();
@@ -100,7 +101,7 @@ export class RunLifecycle implements OnModuleInit {
               exchange: null,
               httpCalls: [],
               document: null,
-              documents: [{ kind: 'error', fileName: '', body: `${message}\n` }],
+              documents: [{ kind: 'error', fileName: '', body: `${failure.message}\n` }],
               resumed: false,
             });
             run.status = 'failed';

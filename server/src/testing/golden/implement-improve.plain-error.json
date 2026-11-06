@@ -42,7 +42,7 @@
   },
   "result": {
     "exitCode": 1,
-    "message": "<t> implement-improve failed"
+    "message": "<t> implement-improve failed: boom (<id:1>)"
   },
   "run": {
     "agentCalls": 1,
@@ -58,7 +58,7 @@
     {
       "documents": [
         {
-          "body": "implement-improve failed\n",
+          "body": "implement-improve failed: boom (<id:1>)\n",
           "kind": "error"
         }
       ],

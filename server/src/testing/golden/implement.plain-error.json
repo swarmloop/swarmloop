@@ -30,7 +30,7 @@
   },
   "result": {
     "exitCode": 1,
-    "message": "<t> implement failed"
+    "message": "<t> implement failed: boom (<id:1>)"
   },
   "run": {
     "agentCalls": 1,
@@ -46,7 +46,7 @@
     {
       "documents": [
         {
-          "body": "implement failed\n",
+          "body": "implement failed: boom (<id:1>)\n",
           "kind": "error"
         }
       ],

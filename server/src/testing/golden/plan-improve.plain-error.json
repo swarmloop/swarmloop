@@ -28,7 +28,7 @@
     {
       "documents": [
         {
-          "body": "plan-improve failed\n",
+          "body": "plan-improve failed: agent crashed (<id:1>)\n",
           "kind": "error"
         }
       ],
