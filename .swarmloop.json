@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "dockerfile": ".swarmloop/Dockerfile",
+  "image": "node:22-bookworm",
   "setup": "npm ci --prefix server && npm ci --prefix dashboard && bash scripts/ci-tools.sh dashboard-test && bash scripts/ci-tools.sh lint",
   "checks": [
     "npm run typecheck --prefix server",
