@@ -1,6 +1,7 @@
 import { CODE_REVIEWERS, STEPS, type StepName } from '../../contract/steps';
 import { REBASE_CONFLICT } from '../../git/rebase';
-import { artifact, artifactFamily, linesCodec, type Artifact, type ArtifactFamily } from './artifact';
+import type { Issue } from './step-contract';
+import { artifact, artifactFamily, jsonArrayCodec, linesCodec, type Artifact, type ArtifactFamily } from './artifact';
 
 const WORK_STEPS: readonly StepName[] = STEPS.filter((step) => step !== 'done');
 const AGENT_STEPS: readonly StepName[] = ['research', 'plan', 'plan-improve', 'implement', 'implement-improve'];
@@ -48,6 +49,11 @@ export const ARTIFACTS = {
   pendingRepos: artifact('pending_repos', { writers: ['prepare'], readers: ['prepare'] }),
   handoff: artifact('handoff', { writers: [], readers: WORK_STEPS, external: true }),
   return: artifact('return', { writers: ['code-review', 'pipeline'], readers: ['implement', 'implement-improve'] }),
+  issues: artifact('issues', {
+    writers: ['code-review', 'pipeline'],
+    readers: ['implement', 'implement-improve'],
+    codec: jsonArrayCodec<Issue>(),
+  }),
   implementation: artifact('implementation', {
     writers: ['implement', 'implement-improve'],
     readers: ['implement', 'implement-improve', 'code-review', 'merge-request'],

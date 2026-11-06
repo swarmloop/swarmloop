@@ -260,6 +260,23 @@ describe('base step', () => {
       }
     });
 
+    it('fails the visit when the step returns or jumps where the tables do not allow', async () => {
+      const issues = [{ id: 'branch-1', source: 'branch', title: 't', body: 'b' }];
+      for (const [key, route] of [
+        ['BASE-14', { to: 'return', step: 'implement', issues }],
+        ['BASE-15', { to: 'jump', step: 'commit' }],
+      ] as [string, Route][]) {
+        const { app, result, stored } = await run(key, route);
+        try {
+          expect(result.exitCode).toBe(1);
+          expect(result.message).toMatch(/branch may not (return|jump) to /);
+          expect(stored?.status).toBe('failed');
+        } finally {
+          await app.close();
+        }
+      }
+    });
+
     it('fails the visit with "<kind> is missing" when a run input is absent', async () => {
       const { app, step, result, stored } = await run('BASE-13', { to: 'next' }, false);
       try {

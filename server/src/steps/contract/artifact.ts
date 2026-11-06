@@ -36,6 +36,14 @@ export const linesCodec: Codec<string[]> = {
   format: (lines) => `${lines.join('\n')}\n`,
 };
 
+/** A JSON array, one entry per item. */
+export function jsonArrayCodec<T>(): Codec<T[]> {
+  return {
+    parse: (body) => JSON.parse(body) as T[],
+    format: (items) => `${JSON.stringify(items)}\n`,
+  };
+}
+
 interface ArtifactSpec<T> {
   writers: readonly StepName[];
   readers: readonly StepName[];

@@ -1,3 +1,5 @@
+import { issueOf } from '../shared/handoff';
+import type { Issue } from '../contract/step-contract';
 import type { PipelineJob, PipelineRef } from '../../integrations/code-host/code-host';
 import { readableJobTrace } from './job-trace';
 import { basename } from 'path';
@@ -21,6 +23,16 @@ export interface Failure {
   stage: string;
   url: string;
   trace: string;
+}
+
+/** One issue per failed job, or one for the whole log when the jobs are not separable. */
+export function failureIssues(failures: Failure[], log: string): Issue[] {
+  if (failures.length === 0) {
+    return [issueOf('pipeline', 'pipeline failed', log)];
+  }
+  return failures.map((failure) =>
+    issueOf('pipeline', `${failure.project} ${failure.name} (${failure.stage}) failed`, failure.trace),
+  );
 }
 
 export function renderNone(seen: Seen[]): string {

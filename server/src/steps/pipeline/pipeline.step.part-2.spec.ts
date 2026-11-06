@@ -57,6 +57,38 @@ describe('pipeline step', () => {
     }
   });
 
+  it('gives two deliveries of the same pipeline log the same issue id, and another log another id', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-issue-'));
+    let log = 'log A\n';
+    const app = await boot(
+      root,
+      jest.fn(() => Promise.resolve({ snapshot: shot('failed', [job(7, 'unit', false)]), httpCalls: [call('GET')] })),
+      jest.fn(() => Promise.resolve({ trace: log, httpCalls: [call('GET')] })),
+    );
+    try {
+      const ids: string[] = [];
+      for (const key of ['PROJ-320', 'PROJ-321', 'PROJ-322']) {
+        if (key === 'PROJ-322') {
+          log = 'log B\n';
+        }
+        await seed(app, key);
+        await app.get(PipelineService).step('pipeline', key);
+        const issues = JSON.parse((await app.get(DocumentRepository).latestBody(key, 'issues')) ?? '[]') as {
+          id: string;
+          source: string;
+        }[];
+        expect(issues).toHaveLength(1);
+        expect(issues[0]?.source).toBe('pipeline');
+        ids.push(issues[0]?.id ?? '');
+      }
+      expect(ids[0]).toMatch(/^pipeline-[0-9a-f]{10}$/);
+      expect(ids[1]).toBe(ids[0]);
+      expect(ids[2]).not.toBe(ids[0]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('waits for a run that is not registered yet', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-late-'));
     const previousTick = process.env.TICK_MS;

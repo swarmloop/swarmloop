@@ -11,7 +11,7 @@ import type { SandboxMount } from '../../core/sandbox-mount';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
 import type { StepContext } from '../base-step';
 import { withReturnNotes } from '../implement/implement-record';
-import { returnNotes, textDocument, withHandoff } from '../shared/handoff';
+import { issueOf, returnNotes, textDocument, withHandoff } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
 import { parseReview } from './code-review-record';
 import { fixNotes } from './review-input';
@@ -228,12 +228,10 @@ export async function routeReview(
   if (returning.length === 0 || thirdParty) {
     return closeReview(
       ctx,
-      'ok',
-      0,
+      { to: 'next' },
       `${opened.startedAt} code-review done\n${summary}`,
       documents,
       exchanges,
-      undefined,
       usage,
     );
   }
@@ -245,10 +243,22 @@ export async function routeReview(
     returning.map((item) => item.kind).join(','),
   );
   const report = documents.find((item) => item.kind === ARTIFACTS.reviewReport.kind)?.body.trim();
+  const issues = returning.map((item) => {
+    const source = item.kind.slice(REVIEWS.prefix.length);
+    return issueOf(source, `${source} returned the change`, item.body);
+  });
   const leftover = report
     ? textDocument(ARTIFACTS.return.kind, report.endsWith('\n') ? report : `${report}\n`)
-    : returnNotes(returning.map((item) => ({ source: item.kind.slice(REVIEWS.prefix.length), body: item.body })));
-  return closeReview(ctx, 'waiting', 0, line, [...documents, leftover], exchanges, 'implement', usage);
+    : returnNotes(issues);
+  const listed = textDocument(ARTIFACTS.issues.kind, ARTIFACTS.issues.format(issues));
+  return closeReview(
+    ctx,
+    { to: 'return', step: 'implement', issues },
+    line,
+    [...documents, leftover, listed],
+    exchanges,
+    usage,
+  );
 }
 
 function staleReturn(repeated: boolean, decision: 'ok' | 'return'): boolean {

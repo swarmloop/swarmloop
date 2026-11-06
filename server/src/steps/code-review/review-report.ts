@@ -9,6 +9,9 @@ import type { PipelineResult } from '../../core/pipeline-result';
 import { visitStatus } from '../../core/pipeline-result';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import type { StepContext } from '../base-step';
+import { assertRoute } from '../contract/returns';
+import { routeToEnd } from '../contract/route';
+import type { Route } from '../contract/step-contract';
 import { agentFailure } from '../shared/agent-result';
 import { mergeHandoff, textDocument } from '../shared/handoff';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
@@ -173,18 +176,22 @@ export async function noteHandoff(
   return [...drafts, textDocument(ARTIFACTS.handoff.kind, text)];
 }
 
+export function failed(message: string): Route {
+  return { to: 'fail', error: { code: 'code-review', message } };
+}
+
 /** Closes the code-review visit with its documents, exchanges and usage. */
 export function closeReview(
   ctx: StepContext,
-  outcome: 'ok' | 'failed' | 'blocked' | 'waiting',
-  exitCode: number,
+  route: Route,
   line: string,
   documents: DocumentDraft[],
   exchanges: ExchangeDraft[],
-  moveTo?: 'implement',
   usage: Usage = { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] },
 ): Promise<PipelineResult> {
   const { opened } = ctx;
+  assertRoute('code-review', route);
+  const { outcome, exitCode, moveTo } = routeToEnd(route);
   return ctx.end({
     outcome,
     exitCode,

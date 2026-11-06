@@ -38,7 +38,7 @@ import {
   retrying,
   storedCheckout,
 } from './review-input';
-import { closeReview, noteHandoff, writeReport } from './review-report';
+import { closeReview, failed, noteHandoff, writeReport } from './review-report';
 import {
   othersOpen,
   reportDue,
@@ -64,7 +64,13 @@ const INPUTS = {
 export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'code-review';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.reviewReport, ARTIFACTS.return, ARTIFACTS.repos, ARTIFACTS.rebaseConflict];
+  readonly outputs = [
+    ARTIFACTS.reviewReport,
+    ARTIFACTS.return,
+    ARTIFACTS.issues,
+    ARTIFACTS.repos,
+    ARTIFACTS.rebaseConflict,
+  ];
   override readonly usesModel = true;
   override readonly capabilities: StepCapabilities = { path: true };
 
@@ -171,7 +177,13 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     });
     const calls = pending.length + (reportDue(only, kept, pending) ? 1 : 0);
     if (options.auto && calls > 0 && opened.run.agentCalls + calls > env.MAX_AGENT_CALLS) {
-      return closeReview(ctx, 'failed', 1, `${opened.startedAt} code-review does not fit`, [], []);
+      return closeReview(
+        ctx,
+        failed('code-review does not fit'),
+        `${opened.startedAt} code-review does not fit`,
+        [],
+        [],
+      );
     }
     writeReviewDiff(root(this.config), key, diff.patch);
     const handoff = await ctx.reread(ARTIFACTS.handoff);
@@ -196,19 +208,17 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     });
     const { reportContinued, opinions, stored, errors } = tallyRound(kept, recovered, finished, repeated);
     if (errors.length > 0) {
-      return closeReview(ctx, 'failed', 1, `${opened.startedAt} ${errors[0]}`, stored, [], undefined);
+      return closeReview(ctx, failed(errors[0]), `${opened.startedAt} ${errors[0]}`, stored, []);
     }
     const noted = await noteHandoff(this.documents, key, opinions, stored);
     if (only && othersOpen(only, opinions)) {
       const summary = opinions.map((item) => `${item.kind} ${item.decision}`).join('\n');
       return closeReview(
         ctx,
-        'waiting',
-        0,
+        { to: 'wait', reason: 'other reviewers are open' },
         `${opened.startedAt} code-review waiting\n${summary}`,
         noted,
         [],
-        undefined,
       );
     }
     const written = await writeReport(
@@ -227,12 +237,10 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     if ('error' in written) {
       return closeReview(
         ctx,
-        'failed',
-        1,
+        failed(written.error),
         `${opened.startedAt} ${written.error}`,
         noted,
         reportExchanges,
-        undefined,
         written.usage,
       );
     }
