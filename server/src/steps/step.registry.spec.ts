@@ -15,7 +15,12 @@ import { PipelineStep } from './pipeline/pipeline.step';
 import { PrepareStep } from './prepare/prepare.step';
 import { RequirementsStep } from './requirements/requirements.step';
 import { ResearchStep } from './research/research.step';
+import { ARTIFACTS } from './contract/artifacts';
+import { boot } from './prepare/prepare.step.spec-helpers';
 import { StepRegistry } from './step.registry';
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 const SERVICES: [Type<unknown>, Exclude<StepName, 'done'>][] = [
   [RequirementsStep, 'requirements'],
@@ -60,6 +65,25 @@ describe('step registry', () => {
       expect(descriptors.map((descriptor) => descriptor.name)).toEqual(SERVICES.map(([, name]) => name));
     } finally {
       await app.close();
+    }
+  });
+
+  it('has each artifact written by exactly the steps that list it in outputs', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-registry-writers-'));
+    const app = await boot(root);
+    try {
+      const described = app.get(StepRegistry).describe({} as SwarmloopEnv);
+      expect(described.map((descriptor) => descriptor.name)).toEqual(SERVICES.map(([, name]) => name));
+      for (const entry of Object.values(ARTIFACTS)) {
+        const listing = described.filter((descriptor) => descriptor.outputs.includes(entry.kind));
+        expect([entry.kind, listing.map((descriptor) => descriptor.name).sort()]).toEqual([
+          entry.kind,
+          [...entry.writers].sort(),
+        ]);
+      }
+    } finally {
+      await app.close();
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

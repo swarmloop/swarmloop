@@ -20,6 +20,7 @@ import { DocumentRepository } from '../../history/document.repository';
 
 import { PipelineService } from '../../pipeline/pipeline.service';
 
+import { CheckoutService } from '../shared/checkout.service';
 import { PrepareStep } from './prepare.step';
 
 import {
@@ -332,7 +333,7 @@ describe('prepare step', () => {
         }
         run.codeHost = 'github';
         await runs.saveRun(run);
-        await expect(app.get(PrepareStep).ensureDetached(run, ['other'], null, false)).rejects.toThrow(
+        await expect(app.get(CheckoutService).ensureDetached(run, ['other'], null, false)).rejects.toThrow(
           /origin is not github/,
         );
         expect((await runs.findRun('PROJ-34'))?.codeHost).toBe('github');

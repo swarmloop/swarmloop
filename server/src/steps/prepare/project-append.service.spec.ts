@@ -1,5 +1,6 @@
 import type { RunEntity } from '../../history/entities';
-import type { BranchStep } from '../branch/branch.step';
+import type { BranchCheckout } from '../shared/branch-checkout';
+import type { CheckoutService } from '../shared/checkout.service';
 import type { PrepareStep } from './prepare.step';
 import { ProjectAppendService } from './project-append.service';
 
@@ -25,26 +26,25 @@ describe('ProjectAppendService', () => {
       }),
     };
     const visits = { listStats: jest.fn(async () => stats) };
-    const prepare = {
-      listProjects: () => ({ projects: ['billing-api', 'worker', 'handbook'] }),
-      ensureDetached: jest.fn(async () => undefined),
-    };
+    const prepare = { listProjects: () => ({ projects: ['billing-api', 'worker', 'handbook'] }) };
+    const worktrees = { ensureDetached: jest.fn(async () => undefined) };
     const branch = { ensure: jest.fn(async () => undefined) };
     const service = new ProjectAppendService(
       runs as never,
       documents as never,
       visits as never,
       prepare as unknown as PrepareStep,
-      branch as unknown as BranchStep,
+      worktrees as unknown as CheckoutService,
+      branch as unknown as BranchCheckout,
     );
-    return { run, docs, stats, prepare, branch, service };
+    return { run, docs, stats, worktrees, branch, service };
   }
 
   it('prepares only the new worktree and leaves the feature branch for later', async () => {
-    const { run, docs, prepare, branch, service } = harness('waiting');
+    const { run, docs, worktrees, branch, service } = harness('waiting');
     const result = await service.add('PROJ-20', 'handbook');
     expect(result).toEqual({ projects: ['billing-api', 'handbook'], applied: true });
-    expect(prepare.ensureDetached).toHaveBeenCalledWith(run, ['handbook'], prompt, false);
+    expect(worktrees.ensureDetached).toHaveBeenCalledWith(run, ['handbook'], prompt, false);
     expect(branch.ensure).not.toHaveBeenCalled();
     expect(run.projects).toBe('billing-api\nhandbook\n');
     const note = docs.filter((item) => item.kind === 'added_repos').at(-1)?.body ?? '';
@@ -75,14 +75,14 @@ describe('ProjectAppendService', () => {
   });
 
   it('waits until the running step closes, then prepares the worktree', async () => {
-    const { run, docs, prepare, service } = harness('running');
+    const { run, docs, worktrees, service } = harness('running');
     const result = await service.add('PROJ-20', 'handbook');
     expect(result.applied).toBe(false);
-    expect(prepare.ensureDetached).not.toHaveBeenCalled();
+    expect(worktrees.ensureDetached).not.toHaveBeenCalled();
     expect(docs.filter((item) => item.kind === 'pending_repos').at(-1)?.body).toBe('handbook\n');
     run.status = 'waiting';
     await service.flush('PROJ-20');
-    expect(prepare.ensureDetached).toHaveBeenCalledTimes(1);
+    expect(worktrees.ensureDetached).toHaveBeenCalledTimes(1);
     expect(docs.filter((item) => item.kind === 'pending_repos').at(-1)?.body).toBe('');
   });
 });

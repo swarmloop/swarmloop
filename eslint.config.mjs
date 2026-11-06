@@ -60,14 +60,32 @@ const layerImports = {
 const STEP_SYNTAX = [
   { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: 'Read time through Clock.' },
   {
-    selector:
-      'CallExpression[callee.property.name=/^(latestBody|latestDocument|hasDocument|putDocument)$/][arguments.1.type=/^(Literal|TemplateLiteral)$/]',
-    message: 'Use ARTIFACTS from steps/contract/artifacts.',
-  },
-  {
     selector: "CallExpression[callee.property.name='end'][arguments.length>=2]",
     message: 'Pass one object to end: { outcome, exitCode, line, ... }.',
   },
+];
+
+const DOCUMENT_CALL = {
+  selector:
+    'CallExpression[callee.property.name=/^(latestBody|latestDocument|hasDocument|listDocuments|putDocument)$/]',
+  message: 'Read through the declared inputs or ctx.reread, and write through StepResult.outputs or ctx.write.',
+};
+
+// Folders under server/src/steps. A step reaches another step's behavior through a service in shared/, not its class.
+const STEP_FOLDERS = [
+  'branch',
+  'code-review',
+  'commit',
+  'contract',
+  'implement',
+  'merge-request',
+  'pipeline',
+  'plan',
+  'plan-improve',
+  'prepare',
+  'requirements',
+  'research',
+  'shared',
 ];
 
 export default tseslint.config(
@@ -166,14 +184,32 @@ export default tseslint.config(
     },
   },
   {
-    // Step code names a kind through ARTIFACTS. The Date selector is repeated: a later block replaces the options.
+    // Step code reads and writes documents through its declared inputs and outputs. The Date selector is repeated:
+    // a later block replaces the options.
     files: ['server/src/steps/**/*.ts'],
+    ignores: ['**/*.spec.ts', '**/*.spec-helpers.ts'],
+    rules: { 'no-restricted-syntax': ['error', ...STEP_SYNTAX, DOCUMENT_CALL] },
+  },
+  {
+    // The files that may call the document repository. Each reason is the whole case for the exception.
+    files: [
+      'server/src/steps/contract/**/*.ts', // the input reader is where a declared input is read
+      'server/src/steps/base-step.ts', // the step context writes outside the visit and records the handoff
+      'server/src/steps/agent-step.ts', // reads the instructions a person gave the step
+      'server/src/steps/step.ts', // checks the stored plan and the required kind before a step starts
+      'server/src/steps/run-rebase.ts', // a rebase of a stopped run has no visit to write through
+      'server/src/steps/shared/handoff.ts', // reads and merges the handoff document
+      'server/src/steps/shared/rebased-publisher.ts', // records the refs it pushed for the implement step
+      'server/src/steps/prepare/project-append.service.ts', // adds a project to a run between its visits
+      'server/src/steps/code-review/review-input.ts', // reads the run's repos and records the ones it detaches
+      'server/src/steps/code-review/review-round.ts', // reads the stored reviews a round continues from
+      'server/src/steps/code-review/review-report.ts', // reads the handoff the report is written from
+    ],
     ignores: ['**/*.spec.ts', '**/*.spec-helpers.ts'],
     rules: { 'no-restricted-syntax': ['error', ...STEP_SYNTAX] },
   },
   {
-    // The migrated steps read and write documents through their declared inputs and the step context. l06 widens
-    // this to all of steps/, and then this block and its repeated selectors go.
+    // These steps hold no document repository at all.
     files: [
       'server/src/steps/branch/branch.step.ts',
       'server/src/steps/commit/commit.step.ts',
@@ -186,6 +222,7 @@ export default tseslint.config(
       'no-restricted-syntax': [
         'error',
         ...STEP_SYNTAX,
+        DOCUMENT_CALL,
         {
           selector: 'MemberExpression[object.type="ThisExpression"][property.name="documents"]',
           message: 'Read through the declared inputs or ctx.reread, and write through ctx.write.',
@@ -193,6 +230,24 @@ export default tseslint.config(
       ],
     },
   },
+  ...STEP_FOLDERS.map((folder) => ({
+    // A step imports no step class of another folder.
+    files: [`server/src/steps/${folder}/**/*.ts`],
+    ignores: ['**/*.spec.ts', '**/*.spec-helpers.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: `(^\\.\\./|/steps/)(?!${folder}/)[^/]+/[^/]+\\.step$`,
+              message: 'Share behavior between steps through a service in steps/shared, not another step class.',
+            },
+          ],
+        },
+      ],
+    },
+  })),
   {
     // Person-facing CLI, bootstrap, and prompt output is written directly, as the no-console exceptions are.
     // The stdout and stderr entries are off here, but the env and clock checks stay on.

@@ -14,7 +14,7 @@ import { AgentLauncher } from '../shared/agent-launcher';
 import { withHandoff } from '../shared/handoff';
 import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { unanswered } from '../shared/answers';
-import { mountsForStep, repoNames } from '../../git/repo-names';
+import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { planFromAgent, readPlan, withPlan } from './plan-record';
 import { planFollowUp } from './plan.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -52,8 +52,8 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
 
   protected async produce(input: StepInput<typeof INPUTS>, ctx: ModelStepContext): Promise<StepResult> {
     const { key } = ctx.opened.run;
-    const questions = (await this.documents.latestBody(key, ARTIFACTS.questions.kind)) ?? '';
-    const answers = (await this.documents.latestBody(key, ARTIFACTS.answers.kind)) ?? '';
+    const questions = (await ctx.reread(ARTIFACTS.questions)) ?? '';
+    const answers = (await ctx.reread(ARTIFACTS.answers)) ?? '';
     if (unanswered(questions, answers).length > 0) {
       return {
         route: { to: 'wait', reason: 'questions are open' },
@@ -71,9 +71,9 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
         handoff: stored.items.map((item) => `- ${item}`).join('\n'),
       };
     }
-    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
+    const names = checkedRepoNames((await ctx.reread(ARTIFACTS.repos)) ?? []);
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
-    const prior = await this.documents.latestBody(key, ARTIFACTS.handoff.kind);
+    const prior = await ctx.reread(ARTIFACTS.handoff);
     const sections = withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior);
     const continued = await readSession(
       join(root(this.config), 'data', sessionFileName(key, 'plan')),
@@ -81,7 +81,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     );
     const full = skillPrompt('plan', input.requirements, names, sections, mounts);
     const chosen = continued?.chatId ? planFollowUp(answers) : full;
-    const prompt = withAddedRepos(chosen, await this.documents.latestBody(key, ARTIFACTS.addedRepos.kind));
+    const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));
     const agentResult = await ctx.launch({ prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`, mounts });
     const plan = planFromAgent(agentResult.responseText, agentResult.output ?? '');
     const body = withPlan(requirements, plan);

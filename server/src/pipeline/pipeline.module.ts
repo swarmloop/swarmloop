@@ -4,6 +4,9 @@ import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { BranchStep } from '../steps/branch/branch.step';
 import { CommitStep } from '../steps/commit/commit.step';
+import { BranchCheckout } from '../steps/shared/branch-checkout';
+import { CheckoutService } from '../steps/shared/checkout.service';
+import { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
 import { CodeReviewStep } from '../steps/code-review/code-review.step';
 import { ImplementImproveStep } from '../steps/implement/implement-improve.step';
@@ -31,6 +34,9 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     ResearchStep,
     BranchStep,
     CommitStep,
+    RebasedPublisher,
+    CheckoutService,
+    BranchCheckout,
     MergeRequestStep,
     PipelineStep,
     PlanStep,
@@ -52,6 +58,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     PrepareStep,
     ProjectAppendService,
     CommitStep,
+    RebasedPublisher,
     HistoryModule,
     EnvironmentService,
     AgentLauncher,

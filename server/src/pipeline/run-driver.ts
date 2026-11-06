@@ -144,6 +144,7 @@ export class RunDriver {
         ),
       );
     }
+    // Without a service for the step, the driver runs it from here. Only a registry without that step gets this far.
     const prior = await this.runs.findRun(key);
     const previousStep = prior?.currentStep ?? name;
     const previousStatus = prior?.status ?? 'waiting';

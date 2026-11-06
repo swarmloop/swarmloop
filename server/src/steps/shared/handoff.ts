@@ -86,6 +86,11 @@ export function composedReturn(documents: { kind: string; body: string }[]): str
   return parts.length > 0 ? returnNotes(parts).body : null;
 }
 
+/** The return notes of the run: the stored ones, or the ones its latest reviews and pipeline result call for. */
+export async function returnedNotes(documents: DocumentRepository, runId: number): Promise<string | null> {
+  return composedReturn(await documents.listDocuments(runId));
+}
+
 function hasLine(body: string, line: string): boolean {
   return body.split(/\r?\n/).some((item) => item.trim() === line);
 }

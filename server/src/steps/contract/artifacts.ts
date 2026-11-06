@@ -46,10 +46,7 @@ export const ARTIFACTS = {
     readers: ['prepare', 'plan', 'plan-improve', 'implement', 'implement-improve'],
   }),
   pendingRepos: artifact('pending_repos', { writers: ['prepare'], readers: ['prepare'] }),
-  handoff: artifact('handoff', {
-    writers: WORK_STEPS,
-    readers: WORK_STEPS,
-  }),
+  handoff: artifact('handoff', { writers: [], readers: WORK_STEPS, external: true }),
   return: artifact('return', { writers: ['code-review', 'pipeline'], readers: ['implement', 'implement-improve'] }),
   implementation: artifact('implementation', {
     writers: ['implement', 'implement-improve'],
@@ -58,7 +55,7 @@ export const ARTIFACTS = {
   answers: artifact('answers', { writers: [], readers: ['research', 'plan'], external: true }),
   questions: artifact('questions', { writers: ['research'], readers: ['plan'] }),
   pipelineRef: artifact('pipeline_ref', {
-    writers: ['commit'],
+    writers: ['commit', 'implement'],
     readers: ['branch', 'implement', 'pipeline'],
   }),
   pipelineLog: artifact('pipeline_log', {
@@ -81,8 +78,8 @@ export const ARTIFACTS = {
   reviewReport: artifact('review_report', { writers: ['code-review'], readers: ['merge-request'] }),
   requirementsProgress: artifact('requirements_progress', { writers: ['requirements'], readers: ['requirements'] }),
   pending: artifact('pending', { writers: ['requirements'], readers: [] }),
-  error: artifact('error', { writers: WORK_STEPS, readers: [] }),
-  log: artifact('log', { writers: [...AGENT_STEPS, 'code-review'], readers: [] }),
+  error: artifact('error', { writers: [], readers: [], external: true }),
+  log: artifact('log', { writers: [], readers: [], external: true }),
 } as const satisfies Record<string, Artifact<unknown>>;
 
 /** `instructions:<step>`, written when a person gives a step new instructions. */

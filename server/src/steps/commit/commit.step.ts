@@ -1,18 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { StepKernel } from '../step-kernel';
-import { existsSync, statSync } from 'fs';
-import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { CheckoutRepository } from '../../history/checkout.repository';
-import { root } from '../../history/run-paths';
 import { StepName } from '../../contract/steps';
 import { OpenedStep } from '../../steps/step-run';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
-import { authorArgs, git, gitDetail, gitMissing, originUrl } from '../../git/git';
+import { authorArgs, originUrl } from '../../git/git';
 import { commitResult } from './commit-result';
 import { gitAt, status, Tree } from './commit-git';
-import { checkedRepoNames, worktreePath } from '../../git/repo-names';
-import { remoteProject } from '../merge-request/merge-request-record';
+import { checkedRepoNames } from '../../git/repo-names';
+import { RebasedPublisher } from '../shared/rebased-publisher';
 import { BaseStep, StepContext } from '../base-step';
 import {
   allowedPaths,
@@ -40,12 +37,12 @@ const INPUTS = {
 export class CommitStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'commit';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.commit];
+  readonly outputs = [ARTIFACTS.commit, ARTIFACTS.pipelineRef, ARTIFACTS.ciSkip];
 
   constructor(
     kernel: StepKernel,
     private readonly checkouts: CheckoutRepository,
-    private readonly registry: CodeHostRegistry,
+    private readonly publisher: RebasedPublisher,
   ) {
     super(kernel);
   }
@@ -60,7 +57,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     const summary = summaryForBranch(requirements, key);
     const branch = branchName(key, summary);
     const names = checkedRepoNames(input.repos);
-    const trees = this.trees(key, names);
+    const trees = this.publisher.trees(key, names);
     await this.assertBranch(trees, branch);
     const phases = await this.flows.activePhases(opened.run.id);
     const stored = input.commit;
@@ -88,7 +85,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
       const line = listed ? `${opened.startedAt} ${CI_SKIPPED}\n${listed}` : `${opened.startedAt} ${CI_SKIPPED}`;
       return commitResult('ok', line, listed ? `${listed}\n` : undefined);
     }
-    const recorded = await this.rememberRefs(trees, branch, (body) => ctx.write(ARTIFACTS.pipelineRef, body));
+    const recorded = await this.publisher.rememberRefs(trees, branch, (body) => ctx.write(ARTIFACTS.pipelineRef, body));
     if (recorded) {
       const skip = await ctx.reread(ARTIFACTS.ciSkip);
       if (skip?.trim()) {
@@ -115,16 +112,6 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     const stats = await this.visits.listStats(opened.run.id);
     const last = [...stats].reverse().find((item) => item.step === 'commit');
     return last?.status === 'waiting';
-  }
-
-  private trees(key: string, names: string[]): Tree[] {
-    return names.map((repo) => {
-      const path = worktreePath(root(this.config), key, repo);
-      if (!existsSync(path) || !statSync(path).isDirectory()) {
-        throw new SwarmloopError(`${repo} is not a worktree`);
-      }
-      return { repo, path };
-    });
   }
 
   private async assertBranch(trees: Tree[], branch: string): Promise<void> {
@@ -166,25 +153,14 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
 
   private async ahead(tree: Tree, branch: string): Promise<boolean> {
     const head = await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
-    const remote = await this.optionalRev(tree, `refs/remotes/origin/${branch}`);
+    const remote = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch}`);
     if (remote) {
       return remote !== head;
     }
     const base =
-      (await this.optionalRev(tree, 'refs/remotes/origin/main')) ??
-      (await this.optionalRev(tree, 'refs/remotes/origin/master'));
+      (await this.publisher.optionalRev(tree, 'refs/remotes/origin/main')) ??
+      (await this.publisher.optionalRev(tree, 'refs/remotes/origin/master'));
     return base !== head;
-  }
-
-  private async optionalRev(tree: Tree, ref: string): Promise<string | null> {
-    try {
-      return await git(['-C', tree.path, 'rev-parse', '--verify', '--quiet', ref]);
-    } catch (error) {
-      if (gitMissing(error)) {
-        return null;
-      }
-      throw new SwarmloopError(`${tree.repo} branch failed: ${gitDetail(error)}`);
-    }
   }
 
   private async publishedHead(trees: Tree[], branch: string): Promise<boolean> {
@@ -193,7 +169,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
       if (!(await originUrl(cwd, tree.repo, 'origin failed'))) {
         continue;
       }
-      const remote = await this.optionalRev(tree, `refs/remotes/origin/${branch}`);
+      const remote = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch}`);
       if (!remote) {
         continue;
       }
@@ -237,7 +213,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
       if (!origin) {
         continue;
       }
-      const published = await this.optionalRev(tree, `refs/remotes/origin/${branch}`);
+      const published = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch}`);
       if (published === (await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed'))) {
         await gitAt(
           tree,
@@ -245,7 +221,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
           'commit failed',
         );
       }
-      await this.pushRef(tree, branch, published, codeHost, origin);
+      await this.publisher.pushRef(tree, branch, published, codeHost, origin);
       heads.push(`${tree.repo} ${await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed')}`);
     }
     return heads.length > 0;
@@ -279,95 +255,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     if (!origin) {
       return false;
     }
-    const published = await this.optionalRev(tree, `refs/remotes/origin/${branch}`);
-    return this.pushRef(tree, branch, published, codeHost, origin);
-  }
-
-  /** Push a rewritten branch with the tip captured before the base fetch. Does not stage or commit. */
-  async publishRebased(key: string, branch: string, leases: { repo: string; tip: string | null }[]): Promise<void> {
-    const run = await this.runs.findRun(key);
-    if (!run) {
-      throw new SwarmloopError(`${key} is missing`);
-    }
-    const trees = this.trees(
-      key,
-      leases.map((lease) => lease.repo),
-    );
-    for (const tree of trees) {
-      const cwd = tree.path;
-      const origin = await originUrl(cwd, tree.repo, 'origin failed');
-      if (!origin) {
-        continue;
-      }
-      const captured = leases.find((lease) => lease.repo === tree.repo)?.tip ?? null;
-      await this.pushRef(tree, branch, captured, run.codeHost, origin);
-    }
-    await this.rememberRefs(trees, branch, (body) => this.store(run, ARTIFACTS.pipelineRef, body));
-  }
-
-  private async pushRef(
-    tree: Tree,
-    branch: string,
-    published: string | null,
-    codeHost: string,
-    origin: string,
-  ): Promise<boolean> {
-    const lease = published ? [`--force-with-lease=refs/heads/${branch}:${published}`] : [];
-    if (!this.registry.has(codeHost)) {
-      if (origin.startsWith('git@') || origin.startsWith('ssh://')) {
-        throw new SwarmloopError('code host is missing');
-      }
-      await gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed');
-      return true;
-    }
-    const host = this.registry.credentials(codeHost);
-    const url = this.registry.byName(codeHost).pushUrl(origin);
-    if (url) {
-      await gitAt(
-        tree,
-        ['-c', `remote.origin.pushurl=${url}`, 'push', ...lease, 'origin', `HEAD:refs/heads/${branch}`],
-        'push failed',
-        { GIT_TERMINAL_PROMPT: '0' },
-        host.token,
-      );
-      await gitAt(tree, ['update-ref', `refs/remotes/origin/${branch}`, 'HEAD'], 'push failed');
-      return true;
-    }
-    if (origin.startsWith('git@') || origin.startsWith('ssh://')) {
-      if (!host.token.trim()) {
-        throw new SwarmloopError(`${tree.repo} push failed: ${host.tokenKey} is missing`);
-      }
-      if (!host.baseUrl.trim()) {
-        throw new SwarmloopError(`${tree.repo} push failed: ${host.baseKey} is missing`);
-      }
-      throw new SwarmloopError(`${tree.repo} origin is not ${host.baseKey}`);
-    }
-    await gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed');
-    return true;
-  }
-
-  /** True when this push recorded a host project. A filesystem origin does not. */
-  private async rememberRefs(trees: Tree[], branch: string, write: (body: string) => Promise<void>): Promise<boolean> {
-    const blocks: string[] = [];
-    for (const tree of trees) {
-      const cwd = tree.path;
-      const url = await originUrl(cwd, tree.repo, 'origin failed');
-      if (!url) {
-        continue;
-      }
-      let project = '';
-      try {
-        project = remoteProject(url).project;
-      } catch {
-        continue;
-      }
-      const sha = await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
-      blocks.push(`project: ${project}\nref: ${branch}\nsha: ${sha}`);
-    }
-    if (blocks.length === 0) {
-      return false;
-    }
-    await write(`${blocks.join('\n\n')}\n`);
-    return true;
+    const published = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch}`);
+    return this.publisher.pushRef(tree, branch, published, codeHost, origin);
   }
 }

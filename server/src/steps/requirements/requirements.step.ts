@@ -34,7 +34,7 @@ const INPUTS = {
 export class RequirementsStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'requirements';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.requirements, ARTIFACTS.pending];
+  readonly outputs = [ARTIFACTS.requirements, ARTIFACTS.pending, ARTIFACTS.requirementsProgress];
   override readonly capabilities: StepCapabilities = { prompt: true, projects: true };
 
   constructor(

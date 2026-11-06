@@ -14,10 +14,10 @@ import { branchName, summaryForBranch } from '../branch/branch-name';
 import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
-import { composedReturn, textDocument, withHandoff } from '../shared/handoff';
+import { returnedNotes, textDocument, withHandoff } from '../shared/handoff';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { correctedPlan, requireApprovedPlan } from '../plan/plan-record';
-import { mountsForStep, repoNames } from '../../git/repo-names';
+import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
 import { agentWorkplace } from '../shared/agent-environment';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
@@ -67,11 +67,11 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const { key } = ctx.opened.run;
     const auto = options.auto;
     const plan = requireApprovedPlan(input.requirements);
-    const notes = await this.documents.latestBody(key, ARTIFACTS.implementation.kind);
+    const notes = await ctx.reread(ARTIFACTS.implementation);
     if (!notes?.trim()) {
       throw new SwarmloopError('implementation is missing');
     }
-    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
+    const names = checkedRepoNames((await ctx.reread(ARTIFACTS.repos)) ?? []);
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
       return {
@@ -80,7 +80,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
         outputs: [],
       };
     }
-    const returned = composedReturn(await this.documents.listDocuments(ctx.opened.run.id));
+    const returned = await returnedNotes(this.documents, ctx.opened.run.id);
     const sections = withHandoff(
       withReturnNotes(
         [
@@ -89,7 +89,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
         ],
         returned,
       ),
-      await this.documents.latestBody(key, ARTIFACTS.handoff.kind),
+      await ctx.reread(ARTIFACTS.handoff),
     );
     const branch = branchName(key, summaryForBranch(input.requirements, key));
     const heads = await featureHeads(mounts, branch);
@@ -104,7 +104,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const { prompt, project, allowHosts } = await agentWorkplace(
       this.environments,
       { run: ctx.opened.run, key, step: this.name, mounts },
-      withAddedRepos(chosen, await this.documents.latestBody(key, ARTIFACTS.addedRepos.kind)),
+      withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos)),
     );
     const agentResult = await ctx.launch({ prompt, mounts, allowHosts, project });
     const text = agentResult.responseText;

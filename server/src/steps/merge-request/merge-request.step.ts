@@ -14,9 +14,6 @@ import { remoteProject, renderMergeRequest } from './merge-request-record';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
-/** Set on a done rebase so this pass leaves an existing merge request untouched. */
-export const REBASE_MERGE_SKIP = ARTIFACTS.rebaseMergeSkip.kind;
-
 interface Tree {
   repo: string;
   path: string;
@@ -41,7 +38,7 @@ const INPUTS = {
 export class MergeRequestStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'merge-request';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.mergeRequest];
+  readonly outputs = [ARTIFACTS.mergeRequest, ARTIFACTS.rebaseMergeSkip];
 
   constructor(
     kernel: StepKernel,

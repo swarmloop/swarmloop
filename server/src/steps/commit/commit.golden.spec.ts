@@ -15,7 +15,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import { FlowRepository } from '../../history/flow.repository';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
-import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { RebasedPublisher } from '../shared/rebased-publisher';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
 import { CommitStep } from './commit.step';
@@ -50,7 +50,7 @@ describe('commit step golden traces', () => {
         app.get(AppConfig),
       ),
       app.get(CheckoutRepository),
-      app.get(CodeHostRegistry),
+      app.get(RebasedPublisher),
     );
     const result = await step.execute(KEY);
     expectGolden(`commit.${name}`, {

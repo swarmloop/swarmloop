@@ -31,7 +31,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
   readonly name: StepName = 'research';
   override readonly capabilities: StepCapabilities = { revisesRequirements: true };
 
-  readonly outputs = [ARTIFACTS.questions];
+  readonly outputs = [ARTIFACTS.questions, ARTIFACTS.repos];
 
   constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
     super(kernel, sandbox, launcher);
@@ -57,8 +57,8 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     if (names.length === 0) {
       throw new SwarmloopError('worktrees is empty');
     }
-    const answers = (await this.documents.latestBody(ctx.opened.run.key, ARTIFACTS.answers.kind)) ?? '';
-    const prior = await this.documents.latestBody(ctx.opened.run.key, ARTIFACTS.handoff.kind);
+    const answers = (await ctx.reread(ARTIFACTS.answers)) ?? '';
+    const prior = await ctx.reread(ARTIFACTS.handoff);
     const sections = withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior);
     const mounts = mountsForStep(root(this.config), ctx.opened.run.key, names, null);
     const full = skillPrompt('research', input.requirements, names, sections, mounts);
@@ -66,7 +66,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     const parsed = parseResearch(agentResult.responseText);
     const repos = renderProjects(names);
     const paused = parsed.questions !== '';
-    await this.documents.putDocument(ctx.opened.run, ARTIFACTS.repos.kind, repos);
+    await ctx.write(ARTIFACTS.repos, ARTIFACTS.repos.parse(repos));
     const detail = (paused ? parsed.questions : repos).trimEnd();
     const word = paused ? 'waiting' : 'done';
     const summary = summaryOr(

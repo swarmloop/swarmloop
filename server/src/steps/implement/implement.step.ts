@@ -12,16 +12,16 @@ import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
-import { CommitStep } from '../commit/commit.step';
 import { isPipelineReturn, withAddedRepos } from '../follow-up';
 import { git, gitDetail } from '../../git/git';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
-import { composedReturn, textDocument, withHandoff } from '../shared/handoff';
+import { RebasedPublisher } from '../shared/rebased-publisher';
+import { returnedNotes, textDocument, withHandoff } from '../shared/handoff';
 import { parseSummary, skillPrompt } from '../shared/skill-prompt';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import type { SandboxMount } from '../../core/sandbox-mount';
-import { mountsForStep, repoNames, worktreePath } from '../../git/repo-names';
+import { checkedRepoNames, mountsForStep, worktreePath } from '../../git/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
 import { RequiredCheckFailed } from '../../environment/project-environments';
 import { withEnvironment } from '../../environment/environment-note';
@@ -47,12 +47,19 @@ const INPUTS = {
 export class ImplementStep extends AgentStep<typeof INPUTS> {
   readonly inputs = INPUTS;
   readonly name: StepName = 'implement';
-  readonly outputs = [ARTIFACTS.implementation, ARTIFACTS.requirements];
+  readonly outputs = [
+    ARTIFACTS.implementation,
+    ARTIFACTS.requirements,
+    ARTIFACTS.pipelineRef,
+    ARTIFACTS.ciRerun,
+    ARTIFACTS.rebaseConflict,
+    ARTIFACTS.rebaseMergeSkip,
+  ];
 
   constructor(
     kernel: StepKernel,
     sandbox: SandboxService,
-    private readonly commit: CommitStep,
+    private readonly publisher: RebasedPublisher,
     private readonly checkouts: CheckoutRepository,
     launcher: AgentLauncher,
     private readonly environments: EnvironmentService,
@@ -83,7 +90,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const { key } = ctx.opened.run;
     const auto = options.auto;
     const plan = requireApprovedPlan(input.requirements);
-    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
+    const names = checkedRepoNames((await ctx.reread(ARTIFACTS.repos)) ?? []);
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
       return {
@@ -92,17 +99,17 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
         outputs: [],
       };
     }
-    const notes = composedReturn(await this.documents.listDocuments(ctx.opened.run.id));
+    const notes = await returnedNotes(this.documents, ctx.opened.run.id);
     const sections = withHandoff(
       withReturnNotes([{ heading: 'Plan', body: plan }], notes),
-      await this.documents.latestBody(key, ARTIFACTS.handoff.kind),
+      await ctx.reread(ARTIFACTS.handoff),
     );
     const branch = branchName(key, summaryForBranch(input.requirements, key));
-    const markerBody = ((await this.documents.latestBody(key, ARTIFACTS.rebaseConflict.kind)) ?? '').trim();
+    const markerBody = ((await ctx.reread(ARTIFACTS.rebaseConflict)) ?? '').trim();
     const marker = markerBody.split('\n')[0]?.trim() ?? '';
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
     const full = skillPrompt('implement', input.requirements, names, sections, mounts, { deferExecutionRules: true });
-    const added = await this.documents.latestBody(key, ARTIFACTS.addedRepos.kind);
+    const added = await ctx.reread(ARTIFACTS.addedRepos);
     const continued = await readSession(
       join(root(this.config), 'data', sessionFileName(key, 'implement')),
       ctx.opened.run.runtime,
@@ -140,7 +147,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
         planOutput = againOutput;
       }
       if ((await worktreeSnapshot(mounts)) === before) {
-        const stale = await staleRepos(await this.documents.latestBody(key, ARTIFACTS.pipelineRef.kind), mounts);
+        const stale = await staleRepos(await ctx.reread(ARTIFACTS.pipelineRef), mounts);
         if (stale.length > 0) {
           return {
             route: { to: 'jump', step: 'commit' },
@@ -272,7 +279,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     }
     await this.environments.refreshAfterRebase(ctx.opened.run, mounts, bases);
     if (marker === 'pending-implement') {
-      await this.documents.putDocument(ctx.opened.run, ARTIFACTS.rebaseConflict.kind, 'review\n');
+      await ctx.write(ARTIFACTS.rebaseConflict, 'review\n');
       return null;
     }
     try {
@@ -280,13 +287,13 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     } catch (error) {
       if (error instanceof RequiredCheckFailed) {
         // Git conflicts are resolved. Retry the normal implementation flow with the saved check output.
-        await this.documents.putDocument(ctx.opened.run, ARTIFACTS.rebaseConflict.kind, 'review\n');
+        await ctx.write(ARTIFACTS.rebaseConflict, 'review\n');
       }
       throw error;
     }
-    await this.commit.publishRebased(key, branch, outcome.leases);
+    await this.publisher.publishRebased(key, branch, outcome.leases);
     await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review');
-    const existing = (await this.documents.latestBody(key, ARTIFACTS.implementation.kind)) ?? '';
+    const existing = (await ctx.reread(ARTIFACTS.implementation)) ?? '';
     if (!existing.trim()) {
       throw new SwarmloopError('implementation is missing');
     }

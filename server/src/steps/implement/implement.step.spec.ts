@@ -31,7 +31,7 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 
 import { RequiredCheckFailed } from '../../environment/project-environments';
 
-import { CommitStep } from '../commit/commit.step';
+import { RebasedPublisher } from '../shared/rebased-publisher';
 
 import {
   reply,
@@ -82,7 +82,7 @@ describe('implement step', () => {
           await documents.putDocument(run, 'return', `## checks\n${failure}\n`);
           throw new RequiredCheckFailed(failure);
         });
-        const publish = jest.spyOn(app.get(CommitStep), 'publishRebased');
+        const publish = jest.spyOn(app.get(RebasedPublisher), 'publishRebased');
         const first = await app.get(PipelineService).step('implement', key);
         expect(first.exitCode).toBe(1);
         expect(agent).toHaveBeenCalledTimes(1);
