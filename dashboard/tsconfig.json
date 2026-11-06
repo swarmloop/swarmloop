@@ -30,6 +30,7 @@
     "**/*.test.tsx",
     "vitest.config.ts",
     "vitest.setup.ts",
-    "test/fake-socket.ts"
+    "test/fake-socket.ts",
+    "test/viewport.ts"
   ]
 }

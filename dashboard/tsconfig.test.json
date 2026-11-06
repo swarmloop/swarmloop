@@ -1,5 +1,12 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["**/*.test.ts", "**/*.test.tsx", "vitest.config.ts", "vitest.setup.ts", "test/fake-socket.ts"],
+  "include": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "vitest.config.ts",
+    "vitest.setup.ts",
+    "test/fake-socket.ts",
+    "test/viewport.ts"
+  ],
   "exclude": ["node_modules"]
 }
