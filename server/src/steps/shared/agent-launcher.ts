@@ -10,7 +10,7 @@ import { VisitRepository } from '../../history/visit.repository';
 import type { ProjectLaunch } from '../../sandbox/sandbox-launch';
 import { AGENT_LANGUAGE_RULE } from './skill-prompt';
 
-export interface AgentLaunchRequest {
+interface AgentLaunchRequest {
   root: string;
   run: RunEntity;
   key: string;
