@@ -5,6 +5,68 @@
       "kind": "requirements"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.started",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.finished",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.started",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.finished",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.started",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.finished",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.started",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.finished",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.started",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.finished",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.started",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.finished",
+      "step": "prepare"
+    },
+    {
+      "kind": "handoff.sent",
+      "step": "prepare"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "prepare"
+    }
+  ],
   "flows": [],
   "git": {
     "log": ["app"],

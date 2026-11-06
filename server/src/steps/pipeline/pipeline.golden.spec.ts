@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
 import { AppConfig } from '../../config/env';
+import { StepEventLog } from '../../history/step-event.log';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { RunStop } from '../../agent/run-stop';
@@ -46,6 +47,7 @@ describe('pipeline step golden traces', () => {
         app.get(FlowRepository),
         new FakeClock(),
         app.get(AppConfig),
+        app.get(StepEventLog),
       ),
       app.get(EventRepository),
       app.get(CodeHostRegistry),

@@ -5,6 +5,16 @@
       "kind": "spend"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "requirements"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "requirements"
+    }
+  ],
   "flows": [],
   "loopEvents": [],
   "reads": {

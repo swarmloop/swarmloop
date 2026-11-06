@@ -1,5 +1,143 @@
 {
   "documentsOutsideVisits": [],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "requirements"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "requirements"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "prepare"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "prepare"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "research"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "research"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "plan"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "plan"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "plan-improve"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "plan-improve"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "branch"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "branch"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "implement"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "implement"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "implement"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "implement"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement-improve"
+    }
+  ],
   "flows": [],
   "loopEvents": [],
   "reads": {

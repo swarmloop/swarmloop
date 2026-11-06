@@ -17,6 +17,76 @@
       "kind": "review_report"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "input.received",
+      "step": "merge-request"
+    },
+    {
+      "kind": "input.received",
+      "step": "merge-request"
+    },
+    {
+      "kind": "input.received",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "merge-request"
+    },
+    {
+      "kind": "handoff.sent",
+      "step": "merge-request"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "merge-request"
+    }
+  ],
   "flows": [],
   "git": {
     "demo": {

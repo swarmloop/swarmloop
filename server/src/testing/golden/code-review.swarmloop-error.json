@@ -20,6 +20,52 @@
       "kind": "implementation"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "input.received",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "agent.launched",
+      "step": "code-review"
+    },
+    {
+      "kind": "agent.launched",
+      "step": "code-review"
+    },
+    {
+      "kind": "agent.launched",
+      "step": "code-review"
+    },
+    {
+      "kind": "agent.launched",
+      "step": "code-review"
+    },
+    {
+      "kind": "agent.launched",
+      "step": "code-review"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "code-review"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "code-review"
+    }
+  ],
   "flows": [],
   "loopEvents": [],
   "reads": {

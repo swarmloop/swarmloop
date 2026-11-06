@@ -13,6 +13,124 @@
       "kind": "environment:billing-api"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "implement"
+    },
+    {
+      "kind": "input.received",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "agent.launched",
+      "step": "implement"
+    },
+    {
+      "kind": "agent.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "implement"
+    },
+    {
+      "kind": "handoff.sent",
+      "step": "implement"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement"
+    }
+  ],
   "flows": [],
   "git": {
     "clone": {

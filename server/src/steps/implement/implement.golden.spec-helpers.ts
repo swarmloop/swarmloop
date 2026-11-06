@@ -6,6 +6,7 @@ import { join } from 'path';
 import { DataSource } from 'typeorm';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { AppConfig } from '../../config/env';
+import { StepEventLog } from '../../history/step-event.log';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import type { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { EnvironmentService } from '../../environment/environment.service';
@@ -65,6 +66,7 @@ export async function goldenRun(input: GoldenCase): Promise<PipelineResult> {
         app.get(FlowRepository),
         new FakeClock(),
         app.get(AppConfig),
+        app.get(StepEventLog),
       ),
       app.get(SandboxService),
     ] as const;

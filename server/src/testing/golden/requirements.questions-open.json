@@ -5,6 +5,20 @@
       "kind": "requirements_progress"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "requirements"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "requirements"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "requirements"
+    }
+  ],
   "flows": [],
   "loopEvents": [],
   "reads": {

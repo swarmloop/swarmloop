@@ -3,6 +3,7 @@ import { mkdirSync } from 'fs';
 import { join } from 'path';
 import { AGENT_RUNNER, readSession } from '../../agent/agent-runner';
 import type { AgentProcessRunner, AgentRunResult } from '../../agent/agent-runner';
+import { recordStepEvent } from '../../core/step-event-scope';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import type { RunEntity } from '../../history/entities';
 import { sessionFileName } from '../../history/session-group';
@@ -43,6 +44,9 @@ export class AgentLauncher {
     mkdirSync(directory, { recursive: true });
     const sessionFile = join(directory, sessionFileName(request.key, request.step));
     const stored = await readSession(sessionFile, request.run.runtime);
+    const chatId = request.resume === false ? null : (stored?.chatId ?? null);
+    const launch = { runtime: request.run.runtime, model: request.model, chatId, resumed: chatId !== null };
+    recordStepEvent({ kind: 'agent.launched', ...launch });
     const result = await this.agent.run({
       prompt: `${AGENT_LANGUAGE_RULE}\n\n${request.prompt}`,
       workspace: request.workspace,
@@ -52,7 +56,7 @@ export class AgentLauncher {
       agentCalls: request.run.agentCalls,
       spentUsd: request.run.spentUsd,
       tokensInRun: await this.visits.tokenTotal(request.run.id),
-      resumeChatId: request.resume === false ? null : (stored?.chatId ?? null),
+      resumeChatId: chatId,
       groupUsd: request.resume === false ? 0 : (stored?.usd ?? 0),
       runKey: request.key,
       step: request.step,
@@ -65,6 +69,16 @@ export class AgentLauncher {
       auto: request.auto,
       continuePrompt: request.continuePrompt,
       project: request.project,
+    });
+    recordStepEvent({
+      kind: 'agent.finished',
+      ...launch,
+      chatId: result.chatId,
+      resumed: result.resumed,
+      killReason: result.killReason,
+      tokensIn: result.tokensIn,
+      tokensOut: result.tokensOut,
+      usd: result.usd,
     });
     request.run.agentCalls += result.calls;
     request.run.spentUsd += result.usd;

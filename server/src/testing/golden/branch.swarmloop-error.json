@@ -9,6 +9,32 @@
       "kind": "repos"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "branch"
+    },
+    {
+      "kind": "input.received",
+      "step": "branch"
+    },
+    {
+      "kind": "input.received",
+      "step": "branch"
+    },
+    {
+      "kind": "input.received",
+      "step": "branch"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "branch"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "branch"
+    }
+  ],
   "flows": [],
   "git": {},
   "loopEvents": [],

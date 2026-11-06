@@ -10,6 +10,7 @@ import type { Clock } from '../core/clock';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { visitStatus } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
+import { recordStepEvent, runInStepScope } from '../core/step-event-scope';
 import type { RunEntity } from '../history/entities';
 import type { OpenedStep } from '../steps/step-run';
 import { closeStep, openStep } from '../steps/step-run';
@@ -17,13 +18,16 @@ import type { HttpCallDraft } from '../core/swarmloop-error';
 import { reportFailure } from './shared/step-failure';
 import { FetchFailed } from '../core/swarmloop-error';
 import { recordHandoff } from './shared/handoff';
+import { recordEnd, recordInputs, stepEventSink } from './shared/step-event-recording';
 import type { Artifact } from './contract/artifact';
 import { InputReader } from './contract/input-reader';
 import { outputDrafts } from './contract/output-writer';
 import { routeToEnd } from './contract/route';
 import { assertRoute } from './contract/returns';
 import type {
+  AgentProfile,
   InputSpec,
+  Issue,
   StepCapabilities,
   StepDescriptor,
   StepFailure,
@@ -42,6 +46,8 @@ export interface StepEnd {
   moveTo?: StepName;
   /** Body of this step's handoff section. Recorded inside the close, so a failure there is not a failed visit. */
   handoff?: string;
+  /** The problems this end sends back. They are recorded as events only. */
+  issues?: Issue[];
   visit?: Partial<VisitDraft>;
 }
 
@@ -70,6 +76,8 @@ abstract class StepCore implements Step {
   readonly usesModel: boolean = false;
   readonly capabilities: StepCapabilities = {};
   protected readonly reader: InputReader;
+  /** Whether the events of an attempt are recorded. A step on the declared contract records them. */
+  protected readonly recordsEvents: boolean = false;
 
   constructor(protected readonly kernel: StepKernel) {
     this.reader = new InputReader(kernel.documents);
@@ -113,6 +121,11 @@ abstract class StepCore implements Step {
 
   abstract execute(key: string, options?: StepOptions, snapshot?: StepSnapshot): Promise<PipelineResult>;
 
+  /** The agent profile of a step that runs a model, for the events of its attempts. */
+  protected agentProfile(): AgentProfile | null {
+    return null;
+  }
+
   /** Opens the step, runs its body, and closes the visit. A throw closes it as failed. */
   protected async perform(
     key: string,
@@ -121,6 +134,42 @@ abstract class StepCore implements Step {
     options: StepOptions = {},
   ): Promise<PipelineResult> {
     const opened = await openStep(this.runs, this.clock, key, this.name);
+    return this.recordsEvents
+      ? this.inEventScope(opened, () => this.attempt(opened, key, body, snapshot, options))
+      : this.attempt(opened, key, body, snapshot, options);
+  }
+
+  /** Runs `attempt` inside the scope that the events of this attempt are recorded in. */
+  private async inEventScope(opened: OpenedStep, attempt: () => Promise<PipelineResult>): Promise<PipelineResult> {
+    const log = this.kernel.stepEvents;
+    return runInStepScope(
+      {
+        runId: opened.run.id,
+        attemptId: opened.attemptId,
+        step: this.name,
+        root: root(this.config),
+        clock: this.clock,
+        sink: stepEventSink(log, this.config.env),
+      },
+      await log.lastSeq(opened.run.id),
+      () => {
+        recordStepEvent({
+          kind: 'attempt.started',
+          stepKind: this.usesModel ? 'agent' : 'server',
+          agent: this.agentProfile(),
+        });
+        return attempt();
+      },
+    );
+  }
+
+  private async attempt(
+    opened: OpenedStep,
+    key: string,
+    body: (ctx: StepContext) => Promise<PipelineResult>,
+    snapshot: StepSnapshot | undefined,
+    options: StepOptions,
+  ): Promise<PipelineResult> {
     const calls: HttpCallDraft[] = [];
     let closed = false;
     const ctx: StepContext = {
@@ -139,6 +188,13 @@ abstract class StepCore implements Step {
       return await body(ctx);
     } catch (error) {
       if (error instanceof VisitLeftOpen) {
+        if (!closed) {
+          recordStepEvent({
+            kind: 'attempt.interrupted',
+            route: `exit ${error.result.exitCode}`,
+            summary: error.result.message,
+          });
+        }
         return error.result;
       }
       if (closed) {
@@ -223,6 +279,14 @@ abstract class StepCore implements Step {
       moveTo: input.moveTo,
       visit,
     });
+    await recordEnd(this.documents, {
+      runId: opened.run.id,
+      outcome: input.outcome,
+      moveTo: input.moveTo,
+      line: input.line,
+      issues: input.issues ?? [],
+      stored: visit.documents ?? [],
+    });
     await snapshot?.(opened.run, this.name);
     return result;
   }
@@ -230,6 +294,7 @@ abstract class StepCore implements Step {
 
 /** A step on the declared contract: it states its inputs and outputs, and `work` turns the inputs into a result. */
 export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore {
+  protected override readonly recordsEvents = true;
   abstract readonly inputs: S;
   abstract readonly outputs: Artifact<unknown>[];
 
@@ -254,7 +319,9 @@ export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore
       key,
       async (ctx) => {
         await this.ready(ctx);
-        return this.conclude(ctx, await this.work(await this.reader.read(key, this.inputs), ctx));
+        const input = await this.reader.read(key, this.inputs);
+        await recordInputs(this.documents, ctx.opened.run.id, this.inputs, input);
+        return this.conclude(ctx, await this.work(input, ctx));
       },
       snapshot,
       options,
@@ -276,6 +343,7 @@ export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore
     const ended = await ctx.end({
       ...routeToEnd(result.route, result.exitCode),
       line: result.summary,
+      issues: result.route.to === 'return' ? result.route.issues : undefined,
       visit: { ...result.visit, ...(documents.length > 0 ? { documents } : {}) },
     });
     return result.afterClose ? result.afterClose(ended) : ended;

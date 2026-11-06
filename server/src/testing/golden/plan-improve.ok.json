@@ -9,6 +9,36 @@
       "kind": "repos"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "plan-improve"
+    },
+    {
+      "kind": "input.received",
+      "step": "plan-improve"
+    },
+    {
+      "kind": "agent.launched",
+      "step": "plan-improve"
+    },
+    {
+      "kind": "agent.finished",
+      "step": "plan-improve"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "plan-improve"
+    },
+    {
+      "kind": "handoff.sent",
+      "step": "plan-improve"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "plan-improve"
+    }
+  ],
   "flows": [],
   "loopEvents": [],
   "reads": {

@@ -8,6 +8,7 @@ import { DataSource } from 'typeorm';
 import type { AgentRunInput } from '../../agent/agent-runner';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { AppConfig } from '../../config/env';
+import { StepEventLog } from '../../history/step-event.log';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { CheckoutRepository } from '../../history/checkout.repository';
@@ -52,6 +53,7 @@ describe('code-review step golden traces', () => {
         app.get(FlowRepository),
         new FakeClock(),
         app.get(AppConfig),
+        app.get(StepEventLog),
       ),
       app.get(CheckoutRepository),
       app.get(EventRepository),

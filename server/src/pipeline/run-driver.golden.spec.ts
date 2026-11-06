@@ -4,6 +4,7 @@ import type { StepName } from '../contract/steps';
 import { STEPS } from '../contract/steps';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { DocumentRepository } from '../history/document.repository';
+import { StepEventLog } from '../history/step-event.log';
 import { FlowRepository } from '../history/flow.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -38,10 +39,17 @@ class DriverStep extends BaseStep<typeof INPUTS> {
   constructor(
     readonly name: StepName,
     readonly recorder: RecordingDocuments,
-    base: { runs: RunRepository; visits: VisitRepository; flows: FlowRepository; clock: Clock; config: AppConfig },
+    base: {
+      runs: RunRepository;
+      visits: VisitRepository;
+      flows: FlowRepository;
+      clock: Clock;
+      config: AppConfig;
+      stepEvents: StepEventLog;
+    },
     private readonly script: Script,
   ) {
-    super(new StepKernel(base.runs, recorder, base.visits, base.flows, base.clock, base.config));
+    super(new StepKernel(base.runs, recorder, base.visits, base.flows, base.clock, base.config, base.stepEvents));
   }
 
   override execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
@@ -74,6 +82,7 @@ async function drive(scripts: Partial<Record<StepName, Script>>, options: StepOp
       flows: app.app.get(FlowRepository),
       clock: app.app.get(Clock),
       config: app.app.get(AppConfig),
+      stepEvents: app.app.get(StepEventLog),
     };
     const documents = app.app.get(DocumentRepository);
     const steps = new Map<StepName, DriverStep>();

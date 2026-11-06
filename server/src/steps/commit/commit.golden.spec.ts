@@ -8,6 +8,7 @@ import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { AppConfig } from '../../config/env';
+import { StepEventLog } from '../../history/step-event.log';
 import { Clock } from '../../core/clock';
 import { runGit } from '../../git/git-repo.spec-helpers';
 import { CheckoutRepository } from '../../history/checkout.repository';
@@ -48,6 +49,7 @@ describe('commit step golden traces', () => {
         app.get(FlowRepository),
         app.get(Clock),
         app.get(AppConfig),
+        app.get(StepEventLog),
       ),
       app.get(CheckoutRepository),
       app.get(RebasedPublisher),

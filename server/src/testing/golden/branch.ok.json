@@ -9,6 +9,64 @@
       "kind": "repos"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "branch"
+    },
+    {
+      "kind": "input.received",
+      "step": "branch"
+    },
+    {
+      "kind": "input.received",
+      "step": "branch"
+    },
+    {
+      "kind": "input.received",
+      "step": "branch"
+    },
+    {
+      "kind": "command.started",
+      "step": "branch"
+    },
+    {
+      "kind": "command.finished",
+      "step": "branch"
+    },
+    {
+      "kind": "command.started",
+      "step": "branch"
+    },
+    {
+      "kind": "command.finished",
+      "step": "branch"
+    },
+    {
+      "kind": "command.started",
+      "step": "branch"
+    },
+    {
+      "kind": "command.finished",
+      "step": "branch"
+    },
+    {
+      "kind": "command.started",
+      "step": "branch"
+    },
+    {
+      "kind": "command.finished",
+      "step": "branch"
+    },
+    {
+      "kind": "handoff.sent",
+      "step": "branch"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "branch"
+    }
+  ],
   "flows": [],
   "git": {
     "demo": {

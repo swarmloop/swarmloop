@@ -17,6 +17,96 @@
       "kind": "environment:billing-api"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "input.received",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "agent.launched",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "agent.finished",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement-improve"
+    }
+  ],
   "flows": [],
   "git": {
     "clone": {

@@ -8,6 +8,7 @@ import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { AppConfig } from '../../config/env';
+import { StepEventLog } from '../../history/step-event.log';
 import { Clock } from '../../core/clock';
 import { runGit } from '../../git/git-repo.spec-helpers';
 import { DocumentRepository } from '../../history/document.repository';
@@ -47,6 +48,7 @@ describe('branch step golden traces', () => {
       app.get(FlowRepository),
       app.get(Clock),
       app.get(AppConfig),
+      app.get(StepEventLog),
     );
     const step = new BranchStep(kernel, new BranchCheckout(kernel));
     const result = await step.execute(KEY);

@@ -13,6 +13,24 @@
       "kind": "implementation"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "input.received",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement-improve"
+    }
+  ],
   "flows": [],
   "git": {
     "clone": {

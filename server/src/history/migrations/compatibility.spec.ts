@@ -14,6 +14,7 @@ import {
   PasteEntity,
   ResourceSampleEntity,
   RunEntity,
+  StepEventEntity,
   StepStatEntity,
 } from '../entities';
 import { historyDatabaseOptions } from '../history.module';
@@ -94,6 +95,16 @@ async function insertOneRowPerTable(dataSource: DataSource): Promise<void> {
   await dataSource.getRepository(CheckoutEntity).insert({ name: 'main', path: '/work/main' });
   await dataSource.getRepository(DenyPathEntity).insert({ pattern: '*.secret' });
   await dataSource.getRepository(FlowEntity).insert({ runId: 1, phases: '[]', createdAt: at });
+  await dataSource.getRepository(StepEventEntity).insert({
+    runId: 1,
+    attemptId: 'attempt-1',
+    step: 'research',
+    seq: 1,
+    kind: 'attempt.started',
+    payload: '{}',
+    occurredAt: at,
+    recordedAt: at,
+  });
 }
 
 async function snapshot(dataSource: DataSource) {

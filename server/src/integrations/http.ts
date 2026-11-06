@@ -1,4 +1,5 @@
 import type { Clock } from '../core/clock';
+import { recordStepEvent } from '../core/step-event-scope';
 import type { HttpCallDraft } from '../core/swarmloop-error';
 
 const RETRYABLE = new Set([429, 502, 503, 504]);
@@ -118,6 +119,13 @@ export async function request(
       durationMs: clock.now() - started,
       error: response.ok ? null : `HTTP ${response.status}`,
     });
+    recordStepEvent({
+      kind: 'http.call',
+      method,
+      url: safeUrl(response.url || url),
+      statusCode: response.status,
+      durationMs: clock.now() - started,
+    });
     return {
       status: response.status,
       contentType: response.headers.get('content-type'),
@@ -134,6 +142,7 @@ export async function request(
       durationMs: clock.now() - started,
       error: error instanceof Error ? error.message : 'request failed',
     });
+    recordStepEvent({ kind: 'http.call', method, url: safe, statusCode: status, durationMs: clock.now() - started });
     throw error;
   }
 }

@@ -9,6 +9,24 @@
       "kind": "repos"
     }
   ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "implement"
+    },
+    {
+      "kind": "input.received",
+      "step": "implement"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "implement"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement"
+    }
+  ],
   "flows": [],
   "git": {
     "clone": {

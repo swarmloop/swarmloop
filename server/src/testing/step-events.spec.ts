@@ -1,0 +1,271 @@
+import { execFileSync } from 'child_process';
+import { mkdirSync } from 'fs';
+import { join } from 'path';
+import { Logger } from '@nestjs/common';
+import { request } from '../integrations/http';
+import { issueOf } from '../steps/shared/handoff';
+import { result } from '../steps/implement/implement.step.spec-helpers';
+import { git } from '../git/git';
+import type { StepEventKind } from '../contract/step-events';
+import type { StepName } from '../contract/steps';
+import type { StepEventLog } from '../history/step-event.log';
+import { BaseStep, VisitLeftOpen, type StepContext } from '../steps/base-step';
+import { ARTIFACTS } from '../steps/contract/artifacts';
+import type { InputSpec, StepResult } from '../steps/contract/step-contract';
+import { ResearchStep } from '../steps/research/research.step';
+import { StepKernel } from '../steps/step-kernel';
+import { goldenApp } from '../steps/shared/model-golden.spec-helpers';
+
+const INPUTS = { requirements: { artifact: ARTIFACTS.requirements, need: 'run' } } as const satisfies InputSpec;
+
+type Golden = Awaited<ReturnType<typeof goldenApp>>;
+
+/** A server step whose body is the script of the spec. */
+class ProbeStep extends BaseStep<typeof INPUTS> {
+  readonly inputs = INPUTS;
+  readonly outputs = [ARTIFACTS.implementation];
+
+  constructor(
+    readonly name: StepName,
+    kernel: StepKernel,
+    private readonly script: (ctx: StepContext) => Promise<StepResult>,
+  ) {
+    super(kernel);
+  }
+
+  protected work(_input: unknown, ctx: StepContext): Promise<StepResult> {
+    return this.script(ctx);
+  }
+}
+
+/** Every kind a scenario wrote, so the last spec can check that none of the union is missing. */
+const seen = new Set<string>();
+
+const ALL_KINDS: Record<StepEventKind, true> = {
+  'input.received': true,
+  'attempt.started': true,
+  'attempt.finished': true,
+  'attempt.interrupted': true,
+  'command.started': true,
+  'command.finished': true,
+  'http.call': true,
+  'agent.launched': true,
+  'agent.finished': true,
+  'artifact.produced': true,
+  'issue.opened': true,
+  'handoff.sent': true,
+};
+
+describe('step events', () => {
+  let golden: Golden;
+  let repo: string;
+
+  async function seed(key: string): Promise<void> {
+    const run = await golden.runs.begin(key, 'prepare');
+    run.status = 'waiting';
+    run.currentStep = 'commit';
+    await golden.runs.saveRun(run);
+    await golden.seedDocuments.putDocument(run, 'requirements', '{"prompt":"ship the field"}\n');
+  }
+
+  async function eventsOf(key: string) {
+    const run = await golden.runs.findRun(key);
+    const page = await golden.stepEvents.page(run?.id ?? 0, { limit: 500 });
+    page.events.forEach((event) => seen.add(event.kind));
+    return page.events;
+  }
+
+  const probe = (name: StepName, script: (ctx: StepContext) => Promise<StepResult>, kernel?: StepKernel) =>
+    new ProbeStep(
+      name,
+      kernel ??
+        new StepKernel(
+          golden.runs,
+          golden.documents,
+          golden.visits,
+          golden.flows,
+          golden.clock,
+          golden.config,
+          golden.stepEvents,
+        ),
+      script,
+    );
+
+  const finished = (ctx: StepContext): StepResult => ({
+    route: { to: 'next' },
+    summary: `${ctx.opened.startedAt} done`,
+    outputs: [{ artifact: ARTIFACTS.implementation, value: 'a note' }],
+    handoff: 'notes for the next step',
+  });
+
+  beforeEach(async () => {
+    golden = await goldenApp('step-events', {
+      agent: jest.fn().mockResolvedValue(result('summary:\n- ok\nquestions:\n- none')),
+      worktrees: ['E-1/demo'],
+    });
+    repo = join(golden.root, 'worktrees', 'E-1', 'demo');
+    mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+  });
+
+  // The scenarios run in any order, so the kinds are compared once all of them have run.
+  afterAll(() => {
+    expect([...seen].sort()).toEqual(Object.keys(ALL_KINDS).sort());
+  });
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await golden.close();
+  });
+
+  it('writes a server step in order: attempt, inputs, work, artifacts, handoff, end', async () => {
+    await seed('E-1');
+    const step = probe('commit', async (ctx) => {
+      await git(['-C', repo, 'rev-parse', '--git-dir']);
+      jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }));
+      await request(golden.clock, 'https://code.example/api?token=abc', {}, ctx.calls);
+      return finished(ctx);
+    });
+    await step.execute('E-1');
+    const events = await eventsOf('E-1');
+    expect(events.map((event) => event.kind)).toEqual([
+      'attempt.started',
+      'input.received',
+      'command.started',
+      'command.finished',
+      'http.call',
+      'artifact.produced',
+      'handoff.sent',
+      'attempt.finished',
+    ]);
+    expect(events.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(events[0]).toMatchObject({ stepKind: 'server', agent: null });
+    expect(events[1]).toMatchObject({ name: 'requirements', documentId: 1, summary: '{"prompt":"ship the field"}' });
+    expect(events[2]).toMatchObject({ executable: 'git', repo: 'demo', cwd: 'worktrees/E-1/demo' });
+    expect(events[3]).toMatchObject({ exitCode: 0, timedOut: false, cancelled: false });
+    expect(events[4]).toMatchObject({ method: 'GET', url: 'https://code.example/api', statusCode: 200 });
+    expect(events[5]).toMatchObject({ artifactKind: 'implementation' });
+    expect(events[6]).toMatchObject({ targetStep: null, artifactKinds: ['implementation'], issueIds: [] });
+    expect(events[7]).toMatchObject({ route: 'ok', summary: expect.stringContaining('done') });
+  });
+
+  it('writes an agent step with the launch of its agent', async () => {
+    await seed('E-1');
+    const step = new ResearchStep(
+      new StepKernel(
+        golden.runs,
+        golden.documents,
+        golden.visits,
+        golden.flows,
+        golden.clock,
+        golden.config,
+        golden.stepEvents,
+      ),
+      golden.sandbox,
+      golden.launcher,
+    );
+    await step.execute('E-1');
+    const events = await eventsOf('E-1');
+    const kinds = events.map((event) => event.kind);
+    expect(kinds[0]).toBe('attempt.started');
+    expect(kinds.slice(1, kinds.indexOf('agent.launched'))).toEqual(
+      new Array<string>(kinds.indexOf('agent.launched') - 1).fill('input.received'),
+    );
+    expect(kinds.slice(kinds.indexOf('agent.launched'), kinds.indexOf('agent.launched') + 2)).toEqual([
+      'agent.launched',
+      'agent.finished',
+    ]);
+    expect(kinds.slice(-2)).toEqual(['handoff.sent', 'attempt.finished']);
+    expect(kinds).toContain('artifact.produced');
+    expect(events[0]).toMatchObject({ stepKind: 'agent', agent: { runtime: expect.any(String) } });
+  });
+
+  it('stores a token in git args as ***', async () => {
+    await seed('E-1');
+    const step = probe('commit', async (ctx) => {
+      await git(['-C', repo, 'remote', 'add', 'origin', 'https://user:ghp_abcDEF123456@host/x.git']);
+      return finished(ctx);
+    });
+    await step.execute('E-1');
+    const started = (await eventsOf('E-1')).find((event) => event.kind === 'command.started');
+    expect(started).toMatchObject({ args: ['-C', repo, 'remote', 'add', 'origin', 'https://***@host/x.git'] });
+  });
+
+  it('writes the error branch of a call, a failed command and the issues sent back', async () => {
+    await seed('E-1');
+    const step = probe('pipeline', async (ctx) => {
+      jest.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+      await request(golden.clock, 'https://code.example/api', {}, ctx.calls).catch(() => undefined);
+      await git(['-C', repo, 'rev-parse', 'no-such-ref']).catch(() => undefined);
+      const issue = issueOf('pipeline', 'job failed', 'lint failed');
+      return {
+        route: { to: 'return', step: 'implement', issues: [issue] },
+        summary: 'sent back',
+        outputs: [],
+        handoff: 'fix lint',
+      };
+    });
+    await step.execute('E-1');
+    const events = await eventsOf('E-1');
+    expect(events.find((event) => event.kind === 'http.call')).toMatchObject({ statusCode: null });
+    expect(events.find((event) => event.kind === 'command.finished')).toMatchObject({ exitCode: 128 });
+    const issue = issueOf('pipeline', 'job failed', 'lint failed');
+    expect(events.find((event) => event.kind === 'issue.opened')).toMatchObject({
+      issueId: issue.id,
+      title: 'job failed',
+    });
+    expect(events.find((event) => event.kind === 'handoff.sent')).toMatchObject({
+      targetStep: 'implement',
+      issueIds: [issue.id],
+    });
+    expect(events.at(-1)).toMatchObject({ kind: 'attempt.finished', route: 'implement' });
+  });
+
+  it('writes an interrupted attempt when the body leaves the visit open', async () => {
+    await seed('E-1');
+    const step = probe('commit', () => Promise.reject(new VisitLeftOpen({ exitCode: 1, message: 'stopped' })));
+    await step.execute('E-1');
+    const events = await eventsOf('E-1');
+    expect(events.at(-1)).toMatchObject({ kind: 'attempt.interrupted', summary: 'stopped' });
+    expect(events.map((event) => event.kind)).not.toContain('attempt.finished');
+  });
+
+  it('keeps the events and the seq of two runs that go at once apart', async () => {
+    await seed('E-1');
+    await seed('E-2');
+    const step = (key: string) =>
+      probe('commit', async (ctx) => {
+        await git(['-C', repo, 'rev-parse', '--git-dir']);
+        return finished({ ...ctx, opened: { ...ctx.opened, startedAt: key } });
+      });
+    await Promise.all([step('E-1').execute('E-1'), step('E-2').execute('E-2')]);
+    const [first, second] = [await eventsOf('E-1'), await eventsOf('E-2')];
+    expect(first.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(second.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(new Set(first.map((event) => event.attemptId)).size).toBe(1);
+    expect(new Set(second.map((event) => event.attemptId)).size).toBe(1);
+    expect(first[0].attemptId).not.toBe(second[0].attemptId);
+    expect(first.at(-1)).toMatchObject({ summary: expect.stringContaining('E-1') });
+    expect(second.at(-1)).toMatchObject({ summary: expect.stringContaining('E-2') });
+  });
+
+  it('does not fail the step when an event cannot be written', async () => {
+    await seed('E-1');
+    const logged = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const broken = Object.create(golden.stepEvents) as StepEventLog;
+    broken.append = jest.fn().mockRejectedValue(new Error('disk full'));
+    const kernel = new StepKernel(
+      golden.runs,
+      golden.documents,
+      golden.visits,
+      golden.flows,
+      golden.clock,
+      golden.config,
+      broken,
+    );
+    const outcome = await probe('commit', (ctx) => Promise.resolve(finished(ctx)), kernel).execute('E-1');
+    expect(outcome.exitCode).toBe(0);
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining('disk full'));
+    expect(await eventsOf('E-1')).toEqual([]);
+  });
+});

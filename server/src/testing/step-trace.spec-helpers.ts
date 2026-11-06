@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { DataSource } from 'typeorm';
+import { redact } from '../core/redact';
 import type { DocumentRepository } from '../history/document.repository';
 import {
   AgentExchangeEntity,
@@ -10,6 +11,7 @@ import {
   HttpCallEntity,
   LoopEventEntity,
   RunEntity,
+  StepEventEntity,
   StepStatEntity,
 } from '../history/entities';
 
@@ -67,6 +69,11 @@ export async function traceRun(dataSource: DataSource, key: string, reads: Recor
       ),
     });
   }
+  const events = await dataSource.getRepository(StepEventEntity).find({ where: { runId }, order: { seq: 'ASC' } });
+  for (const { payload } of events) {
+    // A stored payload is already masked, so masking it again changes nothing.
+    expect(redact(payload)).toBe(payload);
+  }
   return {
     run: {
       status: run.status,
@@ -89,6 +96,7 @@ export async function traceRun(dataSource: DataSource, key: string, reads: Recor
       attempt,
       reason,
     })),
+    events: events.map(({ kind, step }) => ({ kind, step })),
     reads: Object.fromEntries(Object.entries(reads).map(([step, kinds]) => [step, [...new Set(kinds)]])),
   };
 }

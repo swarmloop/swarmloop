@@ -1,8 +1,9 @@
 import { mkdirSync, writeFileSync } from 'fs';
-import { basename, join } from 'path';
+import { basename, dirname, join, relative } from 'path';
 import type { SwarmloopEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import type { Clock } from '../core/clock';
+import { startCommandSpan } from '../core/step-event-scope';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
@@ -322,17 +323,32 @@ export class ProjectEnvironments {
       }
     };
     show(true);
-    const child = await this.sandbox.spawn({
-      runtime: this.deps.env().RUNTIME,
-      runKey: input.key,
-      step: input.step,
-      mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
-      statePath,
-      allowHosts: phase === 'setup' ? setupHosts() : [],
-      command: [],
-      userId,
-      project: { ...launch, shell: command },
+    const outputFile = join(root, 'data', `${input.key}-${phase}-output.txt`);
+    const finish = startCommandSpan({
+      actor: 'server',
+      repo: basename(mount.hostPath),
+      cwd: mount.hostPath,
+      executable: 'sh',
+      args: [command],
+      output: relative(root, outputFile),
     });
+    let timedOut = false;
+    const child = await this.sandbox
+      .spawn({
+        runtime: this.deps.env().RUNTIME,
+        runKey: input.key,
+        step: input.step,
+        mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
+        statePath,
+        allowHosts: phase === 'setup' ? setupHosts() : [],
+        command: [],
+        userId,
+        project: { ...launch, shell: command },
+      })
+      .catch((error: unknown) => {
+        finish({ exitCode: null });
+        throw error;
+      });
     let partial = '';
     const take = (chunk: Buffer) => {
       const text = partial + chunk.toString('utf8');
@@ -347,7 +363,6 @@ export class ProjectEnvironments {
     child.stdout?.on('data', take);
     child.stderr?.on('data', take);
     const exitCode = await new Promise<number>((resolve) => {
-      let timedOut = false;
       const timer = setTimeout(() => {
         timedOut = true;
         lines.push(`${phase} timed out after ${SETUP_TIMEOUT_MS / 60_000} min`);
@@ -371,9 +386,9 @@ export class ProjectEnvironments {
     }
     lines.push(`exit ${exitCode}`);
     show(true);
-    const directory = join(root, 'data');
-    mkdirSync(directory, { recursive: true });
-    writeFileSync(join(directory, `${input.key}-${phase}-output.txt`), `${lines.join('\n')}\n`);
+    finish({ exitCode, timedOut });
+    mkdirSync(dirname(outputFile), { recursive: true });
+    writeFileSync(outputFile, `${lines.join('\n')}\n`);
     return { exitCode, tail: lines.slice(-TAIL_LINES).join('\n').slice(-TAIL_CHARS) };
   }
 }
