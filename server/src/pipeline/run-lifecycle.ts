@@ -18,10 +18,10 @@ import type { RunStop } from '../agent/run-stop';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { assertKey, diedLog, isStep } from '../core/pipeline-result';
 import { CHAT_LOCK, chatHeld, chatResume, readChatLock } from './chat-lock';
+import { flagError } from './flag-error';
 import { settleShell, shellHolding } from './shell-lock';
 import type { RunDriver } from './run-driver';
 import type { RunInstructions } from './run-instructions';
-import type { Step } from '../steps/step';
 import type { StepName } from '../contract/steps';
 import { STEPS } from '../contract/steps';
 
@@ -145,12 +145,18 @@ export class RunLifecycle implements OnModuleInit {
     if (pathError) return { exitCode: 1, message: pathError };
     const missing = await this.driver.missingInput(step, key, options);
     if (missing) return { exitCode: 1, message: `${missing} is missing` };
-    if (target?.acceptsPrompt && options.prompt === undefined && options.promptFile === undefined && !existingPrompt) {
+    if (
+      target?.capabilities.prompt &&
+      options.prompt === undefined &&
+      options.promptFile === undefined &&
+      !existingPrompt
+    ) {
       return { exitCode: 1, message: 'prompt is missing' };
     }
     const blocked = await this.driver.spendStop(key, step);
     if (blocked) return { exitCode: 1, message: blocked };
-    if (options.projects?.length && target?.acceptsProjects) await this.instructions.pinProjects(key, options.projects);
+    if (options.projects?.length && target?.capabilities.projects)
+      await this.instructions.pinProjects(key, options.projects);
     return step;
   }
 
@@ -316,12 +322,6 @@ export class RunLifecycle implements OnModuleInit {
   }
 }
 
-function flagError(step: Step | null, options: StepOptions): string | null {
-  if ((options.prompt !== undefined || options.promptFile !== undefined) && !step?.acceptsPrompt)
-    return 'prompt is only valid for requirements';
-  if (options.path && !step?.acceptsPath) return 'path is only valid for code-review';
-  return null;
-}
 function targetError(path: string | undefined): string | null {
   if (path === undefined) return null;
   if (!existsSync(path) || !statSync(path).isDirectory()) return 'path is not a directory';

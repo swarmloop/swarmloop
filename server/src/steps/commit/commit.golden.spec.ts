@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { StepKernel } from '../step-kernel';
 import { mkdirSync, writeFileSync } from 'fs';
 import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -40,12 +41,14 @@ describe('commit step golden traces', () => {
     stub?.();
     const documents = recordingDocuments(app.get(DocumentRepository));
     const step = new CommitStep(
-      app.get(RunRepository),
-      documents,
-      app.get(VisitRepository),
-      app.get(FlowRepository),
-      app.get(Clock),
-      app.get(AppConfig),
+      new StepKernel(
+        app.get(RunRepository),
+        documents,
+        app.get(VisitRepository),
+        app.get(FlowRepository),
+        app.get(Clock),
+        app.get(AppConfig),
+      ),
       app.get(CheckoutRepository),
       app.get(CodeHostRegistry),
     );

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { StepKernel } from '../step-kernel';
 import { mkdirSync, writeFileSync } from 'fs';
 import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -61,12 +62,14 @@ describe('merge-request step golden traces', () => {
     await seed(app, options.implementation !== false);
     const documents = recordingDocuments(app.get(DocumentRepository));
     const step = new MergeRequestStep(
-      app.get(RunRepository),
-      documents,
-      app.get(VisitRepository),
-      app.get(FlowRepository),
-      app.get(Clock),
-      app.get(AppConfig),
+      new StepKernel(
+        app.get(RunRepository),
+        documents,
+        app.get(VisitRepository),
+        app.get(FlowRepository),
+        app.get(Clock),
+        app.get(AppConfig),
+      ),
       app.get(CodeHostRegistry),
     );
     const result = await step.execute(KEY);

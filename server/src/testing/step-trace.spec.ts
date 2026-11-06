@@ -26,6 +26,10 @@ describe('normalizeTrace', () => {
     expect(normalizeTrace({ a: [SHA_B, SHA_A, SHA_B] })).toEqual({ a: ['<sha:1>', '<sha:2>', '<sha:1>'] });
   });
 
+  it('rounds float sums to six decimals and leaves integers alone', () => {
+    expect(normalizeTrace({ spentUsd: 0.060000000000000005, calls: 3 })).toEqual({ spentUsd: 0.06, calls: 3 });
+  });
+
   it('replaces durations', () => {
     expect(normalizeTrace({ text: 'took 1234ms', durationMs: 7 })).toEqual({ text: 'took <ms>', durationMs: '<ms>' });
   });

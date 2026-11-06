@@ -123,6 +123,7 @@ export function normalizeTrace<T>(value: T): T {
   const walk = (node: unknown, key?: string): unknown => {
     if (typeof node === 'string') return text(node);
     if (typeof node === 'number' && key === 'durationMs') return '<ms>';
+    if (typeof node === 'number' && !Number.isInteger(node)) return Math.round(node * 1e6) / 1e6;
     if (Array.isArray(node)) return node.map((item) => walk(item));
     if (node !== null && typeof node === 'object') {
       const entries = Object.entries(node).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));

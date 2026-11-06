@@ -1,4 +1,5 @@
 import { SwarmloopError } from '../../core/swarmloop-error';
+import { StepKernel } from '../step-kernel';
 import { result } from '../implement/implement.step.spec-helpers';
 import { expectGolden } from '../../testing/step-trace.spec-helpers';
 import { goldenApp } from '../shared/model-golden.spec-helpers';
@@ -14,12 +15,7 @@ async function research(agent: jest.Mock) {
   await golden.runs.saveRun(seeded);
   await golden.seedDocuments.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
   const step = new ResearchStep(
-    golden.runs,
-    golden.documents,
-    golden.visits,
-    golden.flows,
-    golden.clock,
-    golden.config,
+    new StepKernel(golden.runs, golden.documents, golden.visits, golden.flows, golden.clock, golden.config),
     golden.sandbox,
     golden.agent,
   );

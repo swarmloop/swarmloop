@@ -1,13 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { StepCapabilities } from '../contract/step-contract';
+import { StepKernel } from '../step-kernel';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { basename, join } from 'path';
-import { AppConfig, SwarmloopEnv } from '../../config/env';
-import { RunRepository } from '../../history/run.repository';
-import { DocumentRepository } from '../../history/document.repository';
-import { VisitRepository } from '../../history/visit.repository';
-import { FlowRepository } from '../../history/flow.repository';
+import { SwarmloopEnv } from '../../config/env';
 import { root } from '../../history/run-paths';
-import { Clock } from '../../core/clock';
 import { AGENT_RUNNER, AgentProcessRunner } from '../../agent/agent-runner';
 import { PipelineResult } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
@@ -26,19 +23,10 @@ import { ARTIFACTS } from '../contract/artifacts';
 export class ResearchStep extends AgentStep {
   readonly name: StepName = 'research';
   readonly requiredKind = 'worktrees';
-  readonly revisesRequirements = true;
+  override readonly capabilities: StepCapabilities = { revisesRequirements: true };
 
-  constructor(
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
-    sandbox: SandboxService,
-    @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
-  ) {
-    super(runs, documents, visits, flows, clock, config, sandbox, agent);
+  constructor(kernel: StepKernel, sandbox: SandboxService, @Inject(AGENT_RUNNER) agent: AgentProcessRunner) {
+    super(kernel, sandbox, agent);
   }
 
   protected settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number } {
@@ -72,13 +60,13 @@ export class ResearchStep extends AgentStep {
       plainSummary(agentResult.responseText) || `- chose ${repos.trim().split('\n').join(', ')}`,
     );
     const handoff = await recordHandoff(this.documents, ctx.opened.run.key, 'research', summary);
-    return ctx.end(
-      paused ? 'waiting' : 'ok',
-      0,
-      `${ctx.opened.startedAt} research ${word}\n${detail}`,
-      textDocument(ARTIFACTS.questions.kind, parsed.questions),
-      [handoff],
-    );
+    return ctx.end({
+      outcome: paused ? 'waiting' : 'ok',
+      exitCode: 0,
+      line: `${ctx.opened.startedAt} research ${word}\n${detail}`,
+      document: textDocument(ARTIFACTS.questions.kind, parsed.questions),
+      documents: [handoff],
+    });
   }
 }
 

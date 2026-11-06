@@ -1,13 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { StepKernel } from '../step-kernel';
 import { join } from 'path';
-import { AppConfig, SwarmloopEnv } from '../../config/env';
-import { RunRepository } from '../../history/run.repository';
-import { DocumentRepository } from '../../history/document.repository';
-import { VisitRepository } from '../../history/visit.repository';
-import { FlowRepository } from '../../history/flow.repository';
+import { SwarmloopEnv } from '../../config/env';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
-import { Clock } from '../../core/clock';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../history/session-group';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
@@ -41,19 +37,14 @@ export class ImplementStep extends AgentStep {
   readonly requiredKind = 'plan';
 
   constructor(
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
+    kernel: StepKernel,
     sandbox: SandboxService,
     private readonly commit: CommitStep,
     private readonly checkouts: CheckoutRepository,
     @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
     private readonly environments: EnvironmentService,
   ) {
-    super(runs, documents, visits, flows, clock, config, sandbox, agent);
+    super(kernel, sandbox, agent);
   }
 
   override missingInput(key: string): Promise<string | null> {
@@ -71,7 +62,7 @@ export class ImplementStep extends AgentStep {
     const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
-      return ctx.end('blocked', 1, `${ctx.opened.startedAt} implement does not fit`);
+      return ctx.end({ outcome: 'blocked', exitCode: 1, line: `${ctx.opened.startedAt} implement does not fit` });
     }
     const notes = composedReturn(await this.documents.listDocuments(ctx.opened.run.id));
     const sections = withHandoff(
@@ -123,14 +114,13 @@ export class ImplementStep extends AgentStep {
       if ((await worktreeSnapshot(mounts)) === before) {
         const stale = await staleRepos(await this.documents.latestBody(key, ARTIFACTS.pipelineRef.kind), mounts);
         if (stale.length > 0) {
-          return ctx.end(
-            'ok',
-            0,
-            `${ctx.opened.startedAt} no change needed: the failed pipeline ran on an older commit`,
-            undefined,
-            [textDocument(ARTIFACTS.ciRerun.kind, `${stale.join('\n')}\n`)],
-            'commit',
-          );
+          return ctx.end({
+            outcome: 'ok',
+            exitCode: 0,
+            line: `${ctx.opened.startedAt} no change needed: the failed pipeline ran on an older commit`,
+            documents: [textDocument(ARTIFACTS.ciRerun.kind, `${stale.join('\n')}\n`)],
+            moveTo: 'commit',
+          });
         }
         return this.unfixedFailure(ctx, key, planText, planOutput, 'failed', 'pipeline failure left unfixed');
       }
@@ -144,13 +134,13 @@ export class ImplementStep extends AgentStep {
     const status = await worktreeStatus(mounts);
     const handoff = await recordHandoff(this.documents, key, 'implement', summary);
     const docs = corrected ? [handoff, textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] : [handoff];
-    return ctx.end(
-      'ok',
-      0,
-      `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
-      textDocument(ARTIFACTS.implementation.kind, body),
-      docs,
-    );
+    return ctx.end({
+      outcome: 'ok',
+      exitCode: 0,
+      line: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
+      document: textDocument(ARTIFACTS.implementation.kind, body),
+      documents: docs,
+    });
   }
 
   /** A pipeline failure that the retry left unchanged on disk: stop with the corrected checklist, if one came back. */
@@ -169,7 +159,7 @@ export class ImplementStep extends AgentStep {
           textDocument(ARTIFACTS.requirements.kind, corrected.requirements),
         ]
       : undefined;
-    return ctx.end(outcome, 1, `${ctx.opened.startedAt} ${text}`, undefined, docs);
+    return ctx.end({ outcome, exitCode: 1, line: `${ctx.opened.startedAt} ${text}`, documents: docs });
   }
 
   /** Finish an open rebase in the server. A stored checklist then goes to code review; an unfinished one returns to the checklist prompt. */
@@ -270,18 +260,18 @@ export class ImplementStep extends AgentStep {
     const body = existing.endsWith('\n') ? existing : `${existing}\n`;
     const status = await worktreeStatus(mounts);
     const handoff = await recordHandoff(this.documents, key, 'implement', '- resolved the rebase\n');
-    return ctx.end(
-      'ok',
-      0,
-      `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
-      textDocument(ARTIFACTS.implementation.kind, body),
-      [
+    return ctx.end({
+      outcome: 'ok',
+      exitCode: 0,
+      line: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
+      document: textDocument(ARTIFACTS.implementation.kind, body),
+      documents: [
         handoff,
         textDocument(ARTIFACTS.rebaseConflict.kind, 'review\n'),
         textDocument(ARTIFACTS.rebaseMergeSkip.kind, 'skip\n'),
       ],
-      'code-review',
-    );
+      moveTo: 'code-review',
+    });
   }
 
   private failConflict(
@@ -289,7 +279,11 @@ export class ImplementStep extends AgentStep {
     outcome: Extract<RebaseStop, { kind: 'conflict' }>,
   ): Promise<PipelineResult> {
     const detail = [outcome.files.join(', '), outcome.stderr.trim()].filter((part) => part.length > 0).join('\n');
-    return ctx.end('failed', 1, `${ctx.opened.startedAt} ${outcome.repo} rebase failed: ${detail}`);
+    return ctx.end({
+      outcome: 'failed',
+      exitCode: 1,
+      line: `${ctx.opened.startedAt} ${outcome.repo} rebase failed: ${detail}`,
+    });
   }
 }
 

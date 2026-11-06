@@ -1,12 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { StepKernel } from '../step-kernel';
 import { join } from 'path';
-import { AppConfig, SwarmloopEnv } from '../../config/env';
-import { RunRepository } from '../../history/run.repository';
-import { DocumentRepository } from '../../history/document.repository';
-import { VisitRepository } from '../../history/visit.repository';
-import { FlowRepository } from '../../history/flow.repository';
+import { SwarmloopEnv } from '../../config/env';
 import { root } from '../../history/run-paths';
-import { Clock } from '../../core/clock';
 import { AGENT_RUNNER, AgentProcessRunner, readSession } from '../../agent/agent-runner';
 import { sessionFileName } from '../../history/session-group';
 import { PipelineResult } from '../../core/pipeline-result';
@@ -28,17 +24,8 @@ export class PlanImproveStep extends AgentStep {
   readonly name: StepName = 'plan-improve';
   readonly requiredKind = 'plan';
 
-  constructor(
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
-    sandbox: SandboxService,
-    @Inject(AGENT_RUNNER) agent: AgentProcessRunner,
-  ) {
-    super(runs, documents, visits, flows, clock, config, sandbox, agent);
+  constructor(kernel: StepKernel, sandbox: SandboxService, @Inject(AGENT_RUNNER) agent: AgentProcessRunner) {
+    super(kernel, sandbox, agent);
   }
 
   protected settings(env: SwarmloopEnv): { mode: string; model: string; timeLimitMs: number } {
@@ -79,12 +66,12 @@ export class PlanImproveStep extends AgentStep {
       plainSummary(agentResult.responseText) || next.items.map((item) => `- ${item}`).join('\n'),
     );
     const handoff = await recordHandoff(this.documents, key, 'plan-improve', summary);
-    return ctx.end(
-      'ok',
-      0,
-      `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`,
-      textDocument(ARTIFACTS.requirements.kind, withPlan(requirements, next)),
-      [handoff],
-    );
+    return ctx.end({
+      outcome: 'ok',
+      exitCode: 0,
+      line: `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`,
+      document: textDocument(ARTIFACTS.requirements.kind, withPlan(requirements, next)),
+      documents: [handoff],
+    });
   }
 }

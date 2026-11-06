@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { StepKernel } from '../step-kernel';
 import { mkdirSync } from 'fs';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -51,12 +52,14 @@ describe('prepare step golden traces', () => {
     }
     const documents = recordingDocuments(store);
     const step = new PrepareStep(
-      runs,
-      documents,
-      app.get(VisitRepository),
-      app.get(FlowRepository),
-      new FakeClock(),
-      app.get(AppConfig),
+      new StepKernel(
+        runs,
+        documents,
+        app.get(VisitRepository),
+        app.get(FlowRepository),
+        new FakeClock(),
+        app.get(AppConfig),
+      ),
       app.get(CheckoutRepository),
       app.get(CodeHostRegistry),
     );

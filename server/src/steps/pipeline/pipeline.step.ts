@@ -1,16 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import { StepKernel } from '../step-kernel';
 import { RunRebase } from '../run-rebase';
 import { RunStop } from '../../agent/run-stop';
 import { missingPipeline } from './missing-pipeline';
-import { AppConfig, type SwarmloopEnv } from '../../config/env';
+import { type SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
-import { RunRepository } from '../../history/run.repository';
-import { DocumentRepository } from '../../history/document.repository';
-import { VisitRepository } from '../../history/visit.repository';
-import { FlowRepository } from '../../history/flow.repository';
 import { EventRepository } from '../../history/event.repository';
 import { root } from '../../history/run-paths';
-import { Clock } from '../../core/clock';
 import { delay } from '../../core/delay';
 import type { DocumentDraft } from '../../history/visit';
 import type { PipelineResult, StepOptions } from '../../core/pipeline-result';
@@ -41,18 +37,13 @@ export class PipelineStep extends BaseStep {
   readonly requiredKind = ARTIFACTS.pipelineRef.kind;
 
   constructor(
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
+    kernel: StepKernel,
     private readonly events: EventRepository,
     private readonly registry: CodeHostRegistry,
     private readonly rebase: RunRebase,
     private readonly runStop: RunStop,
   ) {
-    super(runs, documents, visits, flows, clock, config);
+    super(kernel);
   }
 
   protected async run(key: string, options: StepOptions, ctx: StepContext): Promise<PipelineResult> {

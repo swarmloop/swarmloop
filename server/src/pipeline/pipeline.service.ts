@@ -136,6 +136,6 @@ export class PipelineService implements OnModuleInit {
   }
 
   private registryPromptOptions(name: StepName, prompt: string): StepOptions {
-    return this.registry.get(name)?.acceptsPrompt ? { prompt } : {};
+    return this.registry.get(name)?.capabilities.prompt ? { prompt } : {};
   }
 }

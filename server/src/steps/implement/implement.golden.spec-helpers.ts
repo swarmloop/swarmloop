@@ -1,4 +1,5 @@
 import { rmSync } from 'fs';
+import { StepKernel } from '../step-kernel';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -57,12 +58,14 @@ export async function goldenRun(input: GoldenCase): Promise<PipelineResult> {
     await input.prepare?.({ app, root, worktree });
     const documents = recordingDocuments(app.get(DocumentRepository));
     const common = [
-      app.get(RunRepository),
-      documents,
-      app.get(VisitRepository),
-      app.get(FlowRepository),
-      new FakeClock(),
-      app.get(AppConfig),
+      new StepKernel(
+        app.get(RunRepository),
+        documents,
+        app.get(VisitRepository),
+        app.get(FlowRepository),
+        new FakeClock(),
+        app.get(AppConfig),
+      ),
       app.get(SandboxService),
     ] as const;
     const step =

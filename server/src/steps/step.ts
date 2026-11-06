@@ -7,20 +7,15 @@ import type { Charge } from '../agent/spend';
 import type { ModelPrice } from '../agent/limits';
 import { readPlan } from './plan/plan-record';
 import { ARTIFACTS } from './contract/artifacts';
+import type { StepCapabilities, StepDescriptor } from './contract/step-contract';
 
 export type StepSnapshot = (run: RunEntity, step: StepName) => Promise<void>;
 
 export interface Step {
   readonly name: StepName;
   readonly usesModel: boolean;
-  /** Takes instructions as its prompt. */
-  readonly acceptsPrompt?: boolean;
-  /** Takes a checkout path. */
-  readonly acceptsPath?: boolean;
-  /** Takes the project list when it starts. */
-  readonly acceptsProjects?: boolean;
-  /** Instructions given to this step revise the requirements document. */
-  readonly revisesRequirements?: boolean;
+  readonly capabilities: StepCapabilities;
+  describe(env: SwarmloopEnv): StepDescriptor;
   /** Prices a run abandoned in this step. Without it, the model stream is priced. */
   charge?(key: string, env: SwarmloopEnv, prices: Record<string, ModelPrice>): Promise<Charge | null>;
   missingInput(key: string, options: StepOptions): Promise<string | null>;

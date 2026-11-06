@@ -17,23 +17,20 @@ import { RunsController } from '../api/runs.controller';
 import { ShellService } from '../api/shell.service';
 import { AGENT_RUNNER } from '../agent/agent-runner';
 import { SwarmloopConfigModule } from '../config/config.module';
-import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { STEPS, type StepName } from '../contract/steps';
 import { HistoryModule } from '../history/history.module';
-import { FlowRepository } from '../history/flow.repository';
-import { DocumentRepository } from '../history/document.repository';
-import { RunRepository } from '../history/run.repository';
-import { VisitRepository } from '../history/visit.repository';
 import { LiveModule } from '../live/live.module';
 import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { BaseStep, type StepContext } from '../steps/base-step';
 import { StepRegistry } from '../steps/step.registry';
+import type { StepCapabilities } from '../steps/contract/step-contract';
 import type { Step } from '../steps/step';
+import { StepKernel } from '../steps/step-kernel';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { PipelineService } from '../pipeline/pipeline.service';
 
@@ -60,23 +57,16 @@ class FakeCodeHost {
 class ScriptedStep extends BaseStep {
   override readonly requiredKind = '';
   override readonly usesModel = false;
-  readonly acceptsPrompt: boolean;
-  readonly acceptsProjects: boolean;
+  override readonly capabilities: StepCapabilities;
 
   constructor(
     readonly name: StepName,
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
+    kernel: StepKernel,
     private readonly runner: { run(input: { step: string }): Promise<void> },
     private readonly codeHost: FakeCodeHost,
   ) {
-    super(runs, documents, visits, flows, clock, config);
-    this.acceptsPrompt = name === 'requirements';
-    this.acceptsProjects = name === 'prepare';
+    super(kernel);
+    this.capabilities = { prompt: name === 'requirements', projects: name === 'prepare' };
   }
 
   override missingInput(): Promise<null> {
@@ -133,20 +123,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<{
 
   for (const name of STEPS) {
     if (name === 'done') continue;
-    steps.set(
-      name,
-      new ScriptedStep(
-        name,
-        module.get(RunRepository),
-        module.get(DocumentRepository),
-        module.get(VisitRepository),
-        module.get(FlowRepository),
-        clock,
-        module.get(AppConfig),
-        module.get(AGENT_RUNNER),
-        codeHost,
-      ),
-    );
+    steps.set(name, new ScriptedStep(name, module.get(StepKernel), module.get(AGENT_RUNNER), codeHost));
   }
 
   const app = module.createNestApplication();

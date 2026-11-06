@@ -1,12 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { StepKernel } from '../step-kernel';
 import { existsSync, statSync } from 'fs';
-import { RunRepository } from '../../history/run.repository';
-import { DocumentRepository } from '../../history/document.repository';
-import { VisitRepository } from '../../history/visit.repository';
-import { FlowRepository } from '../../history/flow.repository';
 import { root } from '../../history/run-paths';
-import { AppConfig } from '../../config/env';
-import { Clock } from '../../core/clock';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { PhaseName, StepName } from '../../contract/steps';
 import { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-host';
@@ -39,15 +34,10 @@ export class MergeRequestStep extends BaseStep {
   readonly requiredKind = ARTIFACTS.requirements.kind;
 
   constructor(
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
+    kernel: StepKernel,
     private readonly registry: CodeHostRegistry,
   ) {
-    super(runs, documents, visits, flows, clock, config);
+    super(kernel);
   }
 
   protected async run(key: string, _options: StepOptions, ctx: StepContext): Promise<PipelineResult> {
@@ -67,7 +57,7 @@ export class MergeRequestStep extends BaseStep {
     const branch = branchName(key, title);
     const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
     const trees = await this.trees(key, names, branch, ctx.calls, opened.run.codeHost, client);
-    const drafted = await this.describe(key, trees, phases);
+    const drafted = await this.describeTrees(key, trees, phases);
     const skip = ((await this.documents.latestBody(key, REBASE_MERGE_SKIP)) ?? '').trim() === 'skip';
     const records = await this.ensure(drafted, title, ctx.calls, skip, client);
     if (skip) {
@@ -121,7 +111,7 @@ export class MergeRequestStep extends BaseStep {
     return trees;
   }
 
-  private async describe(key: string, trees: Tree[], phases: readonly PhaseName[]): Promise<Tree[]> {
+  private async describeTrees(key: string, trees: Tree[], phases: readonly PhaseName[]): Promise<Tree[]> {
     const implementation = (await this.documents.latestBody(key, ARTIFACTS.implementation.kind))?.trim() ?? '';
     if (!implementation) {
       throw new SwarmloopError('implementation is missing');

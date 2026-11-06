@@ -165,6 +165,10 @@ export default tseslint.config(
             'CallExpression[callee.property.name=/^(latestBody|latestDocument|hasDocument|putDocument)$/][arguments.1.type=/^(Literal|TemplateLiteral)$/]',
           message: 'Use ARTIFACTS from steps/contract/artifacts.',
         },
+        {
+          selector: "CallExpression[callee.property.name='end'][arguments.length>=2]",
+          message: 'Pass one object to end: { outcome, exitCode, line, ... }.',
+        },
       ],
     },
   },

@@ -15,6 +15,7 @@ import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { ResearchStep } from '../steps/research/research.step';
+import { StepKernel } from '../steps/step-kernel';
 import { StepRegistry } from '../steps/step.registry';
 import { EnvironmentService } from '../environment/environment.service';
 import { PipelineService } from './pipeline.service';
@@ -36,6 +37,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     ImplementStep,
     ImplementImproveStep,
     CodeReviewStep,
+    StepKernel,
     StepRegistry,
     PipelineService,
     RunRebase,

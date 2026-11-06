@@ -1,14 +1,10 @@
 import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, statSync } from 'fs';
+import type { StepCapabilities } from '../contract/step-contract';
+import { StepKernel } from '../step-kernel';
 import { dirname, isAbsolute, join, resolve } from 'path';
 import { Injectable } from '@nestjs/common';
-import { AppConfig } from '../../config/env';
-import { RunRepository } from '../../history/run.repository';
-import { DocumentRepository } from '../../history/document.repository';
-import { VisitRepository } from '../../history/visit.repository';
-import { FlowRepository } from '../../history/flow.repository';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
-import { Clock } from '../../core/clock';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { assignCodeHost, CodeHostRegistry, type CodeHostName } from '../../integrations/code-host/code-host.registry';
@@ -24,19 +20,14 @@ import { ARTIFACTS } from '../contract/artifacts';
 export class PrepareStep extends BaseStep {
   readonly name: StepName = 'prepare';
   readonly requiredKind = ARTIFACTS.requirements.kind;
-  readonly revisesRequirements = true;
+  override readonly capabilities: StepCapabilities = { revisesRequirements: true };
 
   constructor(
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
+    kernel: StepKernel,
     private readonly checkouts: CheckoutRepository,
     private readonly registry: CodeHostRegistry,
   ) {
-    super(runs, documents, visits, flows, clock, config);
+    super(kernel);
   }
 
   protected override failureText(error: unknown): string {

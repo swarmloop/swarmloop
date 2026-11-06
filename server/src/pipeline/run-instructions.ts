@@ -43,12 +43,12 @@ export class RunInstructions {
     await this.runs.saveRun(run);
     await this.documents.putDocument(run, `instructions:${step}`, text);
     const target = this.registry.get(step);
-    if (target?.acceptsPrompt) {
+    if (target?.capabilities.prompt) {
       return prompt;
     }
     const body = await this.documents.latestBody(run.key, 'requirements');
     if (body) {
-      const revise = target?.revisesRequirements === true;
+      const revise = target?.capabilities.revisesRequirements === true;
       await this.documents.putDocument(run, 'requirements', withInstructions(body, text, revise));
     }
     return prompt;

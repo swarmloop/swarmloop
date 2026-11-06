@@ -22,8 +22,8 @@ import {
 import type { StepName } from '../contract/steps';
 import { STEPS } from '../contract/steps';
 import { root } from '../history/run-paths';
+import { flagError } from './flag-error';
 import { snapshotRun } from './worktree-snapshot';
-import type { Step } from '../steps/step';
 
 const HOP_LIMIT = STEPS.length * 3;
 
@@ -198,13 +198,6 @@ export class RunDriver {
     if (blocked) return { exitCode: 1, message: blocked };
     return this.execute(name, key, options);
   }
-}
-
-function flagError(step: Step | null, options: StepOptions): string | null {
-  if ((options.prompt !== undefined || options.promptFile !== undefined) && !step?.acceptsPrompt)
-    return 'prompt is only valid for requirements';
-  if (options.path && !step?.acceptsPath) return 'path is only valid for code-review';
-  return null;
 }
 
 function targetError(path: string | undefined): string | null {

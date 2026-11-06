@@ -1,14 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { StepCapabilities } from '../contract/step-contract';
+import { StepKernel } from '../step-kernel';
 import { realpathSync } from 'fs';
-import { AppConfig, SwarmloopEnv } from '../../config/env';
+import { SwarmloopEnv } from '../../config/env';
 import { CheckoutRepository } from '../../history/checkout.repository';
-import { DocumentRepository } from '../../history/document.repository';
 import { EventRepository } from '../../history/event.repository';
-import { FlowRepository } from '../../history/flow.repository';
 import { root } from '../../history/run-paths';
-import { RunRepository } from '../../history/run.repository';
-import { VisitRepository } from '../../history/visit.repository';
-import { Clock } from '../../core/clock';
 import { VisitDraft } from '../../history/visit';
 import { AGENT_RUNNER, AgentProcessRunner } from '../../agent/agent-runner';
 import { Charge, chargeReview } from '../../agent/spend';
@@ -51,22 +48,17 @@ export class CodeReviewStep extends BaseStep {
   readonly name: StepName = 'code-review';
   readonly requiredKind = ARTIFACTS.implementation.kind;
   override readonly usesModel = true;
-  readonly acceptsPath = true;
+  override readonly capabilities: StepCapabilities = { path: true };
 
   constructor(
-    runs: RunRepository,
-    documents: DocumentRepository,
-    visits: VisitRepository,
-    flows: FlowRepository,
-    clock: Clock,
-    config: AppConfig,
+    kernel: StepKernel,
     private readonly checkouts: CheckoutRepository,
     private readonly events: EventRepository,
     private readonly prepare: PrepareStep,
     private readonly sandbox: SandboxService,
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
   ) {
-    super(runs, documents, visits, flows, clock, config);
+    super(kernel);
   }
 
   override async missingInput(key: string, options: StepOptions): Promise<string | null> {

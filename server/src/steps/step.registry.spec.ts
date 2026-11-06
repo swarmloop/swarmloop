@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import type { Type } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { SwarmloopEnv } from '../config/env';
 import type { StepName } from '../contract/steps';
 import { BranchStep } from './branch/branch.step';
 import { CommitStep } from './commit/commit.step';
@@ -42,6 +43,21 @@ describe('step registry', () => {
         expect(registry.get(name)?.name).toBe(name);
       }
       expect(registry.get('done')).toBeNull();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('describes every registered step once', async () => {
+    const app = await Test.createTestingModule({
+      providers: [
+        StepRegistry,
+        ...SERVICES.map(([token, name]) => ({ provide: token, useValue: { name, describe: () => ({ name }) } })),
+      ],
+    }).compile();
+    try {
+      const descriptors = app.get(StepRegistry).describe({} as SwarmloopEnv);
+      expect(descriptors.map((descriptor) => descriptor.name)).toEqual(SERVICES.map(([, name]) => name));
     } finally {
       await app.close();
     }
