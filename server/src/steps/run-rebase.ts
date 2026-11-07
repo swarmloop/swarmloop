@@ -14,6 +14,7 @@ import { repoNames } from '../git/repo-names';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { mountsForStep } from '../git/repo-names';
 import { ARTIFACTS } from './contract/artifacts';
+import { writeRunState } from '../history/run-state';
 
 export abstract class RunRebaseEnvironment {
   abstract refreshAfterRebase(
@@ -74,9 +75,7 @@ export class RunRebase {
     await this.documents.putDocument(fresh, ARTIFACTS.rebaseMergeSkip.kind, 'skip\n');
     await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review');
     const next = await this.requireRun(key);
-    next.currentStep = 'code-review';
-    next.status = 'waiting';
-    next.ownerPid = null;
+    writeRunState(next, { status: 'waiting', currentStep: 'code-review' });
     next.stepStartedAt = null;
     await this.runs.saveRun(next);
     return 'start';
@@ -122,9 +121,7 @@ export class RunRebase {
       await this.flows.noteFlow(run.key, ['implementation', 'code-review', 'ci'], 'implement');
     }
     const fresh = await this.requireRun(run.key);
-    fresh.currentStep = 'implement';
-    fresh.status = 'waiting';
-    fresh.ownerPid = null;
+    writeRunState(fresh, { status: 'waiting', currentStep: 'implement' });
     fresh.stepStartedAt = null;
     await this.runs.saveRun(fresh);
     return 'start';

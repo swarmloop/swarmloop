@@ -57,8 +57,21 @@ const layerImports = {
   cli: ['core', 'config', 'history', 'pipeline'],
 };
 
+const DATE_SYNTAX = {
+  selector: "NewExpression[callee.name='Date'][arguments.length=0]",
+  message: 'Read time through Clock.',
+};
+
+// The fields of a run that one module writes: history/run-state.ts. Every other writer calls it.
+const RUN_STATE_WRITE = {
+  selector:
+    'AssignmentExpression[left.type="MemberExpression"][left.property.name=/^(status|currentStep|ownerPid|ownerInstance|activeAttempt|state|stateReason)$/]',
+  message: 'Write the state of a run through history/run-state.ts (writeRunState, claim, release or finalize).',
+};
+
 const STEP_SYNTAX = [
-  { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: 'Read time through Clock.' },
+  DATE_SYNTAX,
+  RUN_STATE_WRITE,
   {
     selector: "CallExpression[callee.property.name='end'][arguments.length>=2]",
     message: 'Pass one object to end: { outcome, exitCode, line, ... }.',
@@ -177,10 +190,7 @@ export default tseslint.config(
         { object: 'process', property: 'env', message: 'Read config through AppConfig, or rawEnv() outside Nest.' },
         { object: 'Date', property: 'now', message: 'Read time through Clock.' },
       ],
-      'no-restricted-syntax': [
-        'error',
-        { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: 'Read time through Clock.' },
-      ],
+      'no-restricted-syntax': ['error', DATE_SYNTAX, RUN_STATE_WRITE],
     },
   },
   {
@@ -277,6 +287,11 @@ export default tseslint.config(
       '**/*.spec-helpers.ts',
     ],
     rules: { 'no-restricted-properties': 'off', 'no-restricted-syntax': 'off' },
+  },
+  {
+    // The one module that writes the state of a run. The clock rule stays on for it.
+    files: ['server/src/history/run-state.ts'],
+    rules: { 'no-restricted-syntax': ['error', DATE_SYNTAX] },
   },
   {
     files: ['server/src/**/*.spec.ts'],

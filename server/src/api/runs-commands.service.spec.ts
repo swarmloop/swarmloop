@@ -233,6 +233,50 @@ describe('runs api', () => {
     }
   });
 
+  it('resumes a block from a repeated required check into implement-improve with the stored notes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-check-'));
+    const pipeline = {
+      startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
+      claimed: () => false,
+    };
+    const app = await boot(root, pipeline);
+    try {
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await save(runs, 'proj-check', 'implement-improve', 'blocked');
+      await documents.putDocument(run, 'issues', '- the unit test for the field fails\n');
+      await documents.putDocument(run, 'error', 'repo: npm test failed again on unchanged files after a relaunch\n');
+      const flow = await app.get(RunQueriesService).flow('proj-check');
+      expect(flow.resume).toBe('ready');
+      expect(flow.state).toBe('blocked');
+      expect(flow.stateReason?.code).toBe('CHECK_FAILED');
+      expect(flow.actions).toEqual(['resume', 'replay']);
+      expect(flow.sentence).toContain('Resume returns to implementation with the stored notes');
+      await expect(app.get(RunCommandsService).resume('proj-check')).resolves.toEqual({
+        key: 'proj-check',
+        status: 'started',
+      });
+      expect(pipeline.startDetached).toHaveBeenCalledWith('proj-check', {});
+      expect(await documents.latestBody('proj-check', 'issues')).toBe('- the unit test for the field fails\n');
+      expect((await runs.findRun('proj-check'))?.currentStep).toBe('implement-improve');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('offers only Replay on a block that Resume cannot continue', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-actions-'));
+    const app = await boot(root);
+    try {
+      await save(app.get(RunRepository), 'proj-prepare', 'prepare', 'blocked');
+      const flow = await app.get(RunQueriesService).flow('proj-prepare');
+      expect(flow.resume).toBe('blocked');
+      expect(flow.actions).toEqual(['replay']);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('keeps the prompt when a checkout starts code review', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-path-'));
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-7 started' }) };

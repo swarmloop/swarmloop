@@ -23,6 +23,18 @@ import {
   StartStepBody,
 } from '../contract/api';
 import { requireRun, RunQueriesService } from './run-queries.service';
+import { writeRunState } from '../history/run-state';
+
+/** What `plan` decided for a new run. It is the payload of the start command. */
+export interface StartPlan {
+  key: string;
+  prompt?: string;
+  path?: string;
+  phases: PhaseName[];
+  phasesGiven: boolean;
+  projects: string[];
+  created?: boolean;
+}
 
 @Injectable()
 export class RunCommandsService {
@@ -54,7 +66,8 @@ export class RunCommandsService {
     }
   }
 
-  async start(body: CreateRunBody): Promise<RunRef> {
+  /** The checks of a new run, and the session it opens. Nothing is written. */
+  async plan(body: CreateRunBody): Promise<StartPlan> {
     const prompt = body.prompt?.trim() || undefined;
     const given = body.key?.trim() ?? '';
     if (!given && !prompt) {
@@ -81,7 +94,18 @@ export class RunCommandsService {
     if (!path && projects.length === 0) {
       throw new BadRequestException('projects is missing');
     }
-    if (!existing || (body.phases !== undefined && !this.runs.held(existing))) {
+    return { key, prompt, path, phases, phasesGiven: body.phases !== undefined, projects };
+  }
+
+  async start(body: CreateRunBody): Promise<RunRef> {
+    return this.startPlanned(await this.plan(body));
+  }
+
+  /** Starts the planned run. `created` says the command path made the run row just now. */
+  async startPlanned(plan: StartPlan): Promise<RunRef> {
+    const { key, prompt, path, phases, projects } = plan;
+    const existing = plan.created ? null : await this.runs.findRun(key);
+    if (!existing || (plan.phasesGiven && !this.runs.held(existing))) {
       await this.flows.noteFlow(key, phases, null);
     }
     const acceptsPrompt = !existing || existing.currentStep === 'requirements';
@@ -234,8 +258,7 @@ export class RunCommandsService {
       return;
     }
     const created = await this.runs.begin(key, 'code-review');
-    created.status = 'waiting';
-    created.ownerPid = null;
+    writeRunState(created, { status: 'waiting' });
     created.prompt = prompt;
     created.stepStartedAt = null;
     await this.runs.saveRun(created);

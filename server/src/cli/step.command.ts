@@ -1,6 +1,7 @@
 import { Command, CommandRunner, Option } from 'nest-commander';
+import { CommandService } from '../pipeline/command.service';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { StepOptions } from '../core/pipeline-result';
+import { isStep, StepOptions } from '../core/pipeline-result';
 import { report } from './run.command';
 
 @Command({
@@ -9,12 +10,25 @@ import { report } from './run.command';
   description: 'Run one step when its input exists',
 })
 export class StepCommand extends CommandRunner {
-  constructor(private readonly pipeline: PipelineService) {
+  constructor(
+    private readonly pipeline: PipelineService,
+    private readonly commands: CommandService,
+  ) {
     super();
   }
 
   async run(passed: string[], options: StepOptions = {}): Promise<void> {
-    await report(await this.pipeline.step(passed[0] ?? '', passed[1] ?? '', options));
+    const name = passed[0] ?? '';
+    const key = passed[1] ?? '';
+    if (!isStep(name)) {
+      await report({ exitCode: 1, message: `${name} is unknown` });
+      return;
+    }
+    await report(
+      await this.commands.inProcess('step', key, { step: name, ...options }, () =>
+        this.pipeline.step(name, key, options),
+      ),
+    );
   }
 
   @Option({ flags: '--prompt <text>', description: 'Human prompt. Required for requirements.' })

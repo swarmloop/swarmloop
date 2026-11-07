@@ -1,11 +1,13 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { SwarmloopEnv } from '../config/env';
-import type { StepView } from '../contract/api';
+import type { FlowItem, FlowView, StepView } from '../contract/api';
 import { pipelineStepOf } from '../contract/steps';
-import type { RunEntity } from '../history/entities';
+import type { CommandRepository } from '../history/command.repository';
+import type { DocumentEntity, RunEntity } from '../history/entities';
 import type { StepEventLog } from '../history/step-event.log';
 import type { StepRegistry } from '../steps/step.registry';
 import type { RunRepository } from '../history/run.repository';
+import { resumeState, stateView } from './run-view/flow';
 
 export async function requireRun(runs: RunRepository, key: string): Promise<RunEntity> {
   const run = await runs.findRun(key);
@@ -51,4 +53,19 @@ export async function stepMeta(
       : { name: step, kind: 'server' },
     eventsCursor: await log.lastSeq(run.id),
   };
+}
+
+/** The resume answer, the honest state and what the server allows in it, with the revision they were read at. */
+export async function runState(
+  commands: CommandRepository,
+  run: RunEntity,
+  open: FlowItem[],
+  documents: DocumentEntity[],
+): Promise<Pick<FlowView, 'resume' | 'state' | 'stateReason' | 'actions' | 'revision'>> {
+  const pending = await commands.pending(run.id);
+  const { state, reason, actions } = stateView(run, open, documents, {
+    stopping: pending.some((command) => command.type === 'stop'),
+    queued: pending.some((command) => command.state === 'accepted' && command.type !== 'stop'),
+  });
+  return { resume: resumeState(run, open, documents), state, stateReason: reason, actions, revision: run.revision };
 }

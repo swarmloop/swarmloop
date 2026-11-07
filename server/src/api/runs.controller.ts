@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, Post, Query, Res } from '@nestjs/common';
 import {
   AddProjectBody,
   AnswersBody,
@@ -24,11 +24,13 @@ import {
   StartStepBody,
   StepView,
 } from '../contract/api';
+import type { CommandInput, CommandReceipt, CommandType } from '../contract/command';
 import type { StepEventPage } from '../contract/step-events';
-import { ChatService } from './chat.service';
+import { CommandService } from '../pipeline/command.service';
+import type { SubmitOptions } from '../pipeline/command.service';
+import type { ReplayPayload, ShellPayload, StepPayload } from './command-handlers';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
-import { RunRebaseService } from './run-rebase.service';
 import { ShellService } from './shell.service';
 
 /** A started run is accepted; anything else the run answers with is OK. */
@@ -40,9 +42,8 @@ export function httpStatus(result: RunRef): number {
 export class RunsController {
   constructor(
     private readonly queries: RunQueriesService,
-    private readonly commands: RunCommandsService,
-    private readonly rebases: RunRebaseService,
-    private readonly chat: ChatService,
+    private readonly runs: RunCommandsService,
+    private readonly commands: CommandService,
     private readonly shell: ShellService,
   ) {}
 
@@ -77,8 +78,18 @@ export class RunsController {
   }
 
   @Post('runs/shell')
-  openShell(@Body() body: OpenShellBody): Promise<ShellFeature | { matches: ShellMatch[] }> {
-    return this.shell.open(body.path ?? '');
+  async openShell(
+    @Body() body: OpenShellBody,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<(ShellFeature | { matches: ShellMatch[] }) & Partial<CommandReceipt>> {
+    const found = await this.shell.locate(body.path ?? '');
+    if ('matches' in found) {
+      return found;
+    }
+    const payload: ShellPayload = { op: 'open', path: found.cwd };
+    return this.dispatch('shell', found.key, payload, idempotencyKey, {
+      create: found.created ? { targetPath: found.cwd } : undefined,
+    });
   }
 
   @Get('runs/:key/shell')
@@ -87,13 +98,23 @@ export class RunsController {
   }
 
   @Post('runs/:key/shell/lock')
-  lockShell(@Param('key') key: string, @Body() body: LockShellBody): Promise<ShellStatusView> {
-    return this.shell.lock(key, body.container ?? '');
+  lockShell(
+    @Param('key') key: string,
+    @Body() body: LockShellBody,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<ShellStatusView & CommandReceipt> {
+    return this.dispatch('shell', key, { op: 'lock', container: body.container ?? '' }, idempotencyKey, {
+      expectedRevision: body.expectedRevision,
+    });
   }
 
   @Post('runs/:key/shell/unlock')
-  unlockShell(@Param('key') key: string): Promise<ShellStatusView> {
-    return this.shell.unlock(key);
+  unlockShell(
+    @Param('key') key: string,
+    @Body() body?: CommandInput,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<ShellStatusView & CommandReceipt> {
+    return this.dispatch('shell', key, { op: 'unlock' }, idempotencyKey, { expectedRevision: body?.expectedRevision });
   }
 
   @Get('runs/:key/snapshots')
@@ -102,28 +123,47 @@ export class RunsController {
   }
 
   @Post('runs/:key/rewind')
-  rewind(@Param('key') key: string, @Body() body: RewindBody): Promise<RewindView> {
-    return this.shell.rewind(key, Number(body.id));
+  rewind(
+    @Param('key') key: string,
+    @Body() body: RewindBody,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<RewindView & CommandReceipt> {
+    return this.dispatch('rewind', key, { id: body.id }, idempotencyKey, { expectedRevision: body.expectedRevision });
   }
 
   @Post('runs')
   async create(
     @Body() body: CreateRunBody,
     @Res({ passthrough: true }) response: { status(code: number): void },
-  ): Promise<RunRef> {
-    const result = await this.commands.start(body);
+  ): Promise<RunRef & CommandReceipt> {
+    const plan = await this.runs.plan(body);
+    const result = await this.dispatch<RunRef>('start', plan.key, { ...plan }, undefined, {
+      create: { targetPath: null },
+      expectedRevision: body.expectedRevision,
+    });
     response.status(httpStatus(result));
     return result;
   }
 
   @Post('runs/:key/answers')
-  answers(@Param('key') key: string, @Body() body: AnswersBody): Promise<FlowView> {
-    return this.commands.answers(key, body);
+  answers(
+    @Param('key') key: string,
+    @Body() body: AnswersBody,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<FlowView & CommandReceipt> {
+    return this.dispatch('answer', key, { answers: body.answers }, idempotencyKey, {
+      expectedRevision: body.expectedRevision,
+    });
   }
 
   @Post('runs/:key/chat')
-  chatWith(@Param('key') key: string, @Body() body: ChatBody): Promise<ChatView> {
-    return this.chat.speak(key, body);
+  chatWith(
+    @Param('key') key: string,
+    @Body() body: ChatBody,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<ChatView & CommandReceipt> {
+    const { expectedRevision, ...payload } = body;
+    return this.dispatch('chat', key, payload, idempotencyKey, { expectedRevision });
   }
 
   @Post('runs/:key/steps/:step')
@@ -132,8 +172,11 @@ export class RunsController {
     @Param('step') step: string,
     @Body() body: StartStepBody,
     @Res({ passthrough: true }) response: { status(code: number): void },
-  ): Promise<RunRef> {
-    const result = await this.commands.startStep(key, step, body);
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<RunRef & CommandReceipt> {
+    const { expectedRevision, ...rest } = body ?? {};
+    const payload: StepPayload = { step, body: rest };
+    const result = await this.dispatch<RunRef>('step', key, payload, idempotencyKey, { expectedRevision });
     response.status(httpStatus(result));
     return result;
   }
@@ -144,8 +187,12 @@ export class RunsController {
     @Param('step') step: string,
     @Body() body: ReplayBody,
     @Res({ passthrough: true }) response: { status(code: number): void },
-  ): Promise<RunRef> {
-    const result = await this.commands.replay(key, step, body.prompt ?? '', body.phases);
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<RunRef & CommandReceipt> {
+    const payload: ReplayPayload = { step, prompt: body.prompt ?? '', phases: body.phases };
+    const result = await this.dispatch<RunRef>('replay', key, payload, idempotencyKey, {
+      expectedRevision: body.expectedRevision,
+    });
     response.status(httpStatus(result));
     return result;
   }
@@ -154,30 +201,48 @@ export class RunsController {
   async stop(
     @Param('key') key: string,
     @Res({ passthrough: true }) response: { status(code: number): void },
-  ): Promise<RunRef> {
-    const result = await this.commands.stop(key);
+    @Body() body?: CommandInput,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<RunRef & CommandReceipt> {
+    const result = await this.dispatch<RunRef>('stop', key, {}, idempotencyKey, {
+      expectedRevision: body?.expectedRevision,
+    });
     response.status(httpStatus(result));
     return result;
   }
 
   @Delete('runs/:key')
-  remove(@Param('key') key: string): Promise<RemovedRunView> {
-    return this.commands.remove(key);
+  remove(
+    @Param('key') key: string,
+    @Body() body?: CommandInput,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<RemovedRunView & CommandReceipt> {
+    return this.dispatch('remove', key, {}, idempotencyKey, { expectedRevision: body?.expectedRevision });
   }
 
   @Post('runs/:key/rebase')
   async rebase(
     @Param('key') key: string,
     @Res({ passthrough: true }) response: { status(code: number): void },
-  ): Promise<RunRef> {
-    const result = await this.rebases.rebase(key);
+    @Body() body?: CommandInput,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<RunRef & CommandReceipt> {
+    const result = await this.dispatch<RunRef>('rebase', key, {}, idempotencyKey, {
+      expectedRevision: body?.expectedRevision,
+    });
     response.status(httpStatus(result));
     return result;
   }
 
   @Post('runs/:key/projects')
-  addProject(@Param('key') key: string, @Body() body: AddProjectBody): Promise<ProjectsView> {
-    return this.commands.addProject(key, body.name ?? '');
+  addProject(
+    @Param('key') key: string,
+    @Body() body: AddProjectBody,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<ProjectsView & CommandReceipt> {
+    return this.dispatch('projects', key, { name: body.name ?? '' }, idempotencyKey, {
+      expectedRevision: body.expectedRevision,
+    });
   }
 
   @Post('runs/:key/resume')
@@ -185,9 +250,32 @@ export class RunsController {
     @Param('key') key: string,
     @Body() body: ResumeBody,
     @Res({ passthrough: true }) response: { status(code: number): void },
-  ): Promise<RunRef> {
-    const result = await this.commands.resume(key, body?.prompt);
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<RunRef & CommandReceipt> {
+    const result = await this.dispatch<RunRef>('resume', key, { prompt: body?.prompt }, idempotencyKey, {
+      expectedRevision: body?.expectedRevision,
+    });
     response.status(httpStatus(result));
     return result;
+  }
+
+  /** Every mutating route goes through here: accept the command, wait for its handler, add the receipt. */
+  private async dispatch<T extends object>(
+    type: CommandType,
+    key: string,
+    payload: Record<string, unknown> | object,
+    idempotencyKey: string | undefined,
+    options: Pick<SubmitOptions, 'create'> & { expectedRevision?: unknown } = {},
+  ): Promise<T & CommandReceipt> {
+    const { expectedRevision, create } = options;
+    if (expectedRevision !== undefined && !Number.isInteger(expectedRevision)) {
+      throw new BadRequestException('expectedRevision is not a count');
+    }
+    const { value, receipt } = await this.commands.submit<T>(type, key, payload as Record<string, unknown>, {
+      idempotencyKey: idempotencyKey?.trim() || undefined,
+      expectedRevision: expectedRevision as number | undefined,
+      create,
+    });
+    return { ...value, ...receipt };
   }
 }

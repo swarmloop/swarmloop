@@ -1,3 +1,6 @@
+import type { CommandInput } from './command';
+import type { RunAction, RunState, StateReason } from './run-state';
+
 export interface RunSummary {
   key: string;
   name: string;
@@ -40,6 +43,11 @@ export interface FlowView {
   updatedAt: string;
   stepStartedAt: string | null;
   resume: 'ready' | 'need-answers' | 'running' | 'blocked' | 'done';
+  state: RunState;
+  stateReason: StateReason | null;
+  /** What the server allows now. The buttons follow it. */
+  actions: RunAction[];
+  revision: number;
   sentence: string;
   metrics: {
     status: string;
@@ -143,7 +151,7 @@ export interface ShellMatch {
   currentStep: string;
 }
 
-export interface CreateRunBody {
+export interface CreateRunBody extends CommandInput {
   key?: string;
   prompt?: string;
   path?: string;
@@ -151,44 +159,44 @@ export interface CreateRunBody {
   phases?: string[];
 }
 
-export interface StartStepBody {
+export interface StartStepBody extends CommandInput {
   prompt?: string;
   path?: string;
 }
 
-export interface ReplayBody {
+export interface ReplayBody extends CommandInput {
   prompt?: string;
   phases?: string[];
 }
 
-export interface ResumeBody {
+export interface ResumeBody extends CommandInput {
   prompt?: string;
 }
 
-export interface AnswersBody {
+export interface AnswersBody extends CommandInput {
   answers?: { kind?: string; id?: string; body?: string }[];
 }
 
-export interface AddProjectBody {
+export interface AddProjectBody extends CommandInput {
   name?: string;
 }
 
-export interface ChatBody {
+export interface ChatBody extends CommandInput {
   prompt?: string;
   skill?: string;
   cwd?: string;
   mcpServers?: unknown;
 }
 
-export interface OpenShellBody {
+export interface OpenShellBody extends CommandInput {
   path?: string;
 }
 
-export interface LockShellBody {
+export interface LockShellBody extends CommandInput {
   container?: string;
 }
 
-export interface RewindBody {
+export interface RewindBody extends CommandInput {
   id?: number;
 }
 

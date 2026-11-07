@@ -26,9 +26,7 @@ export async function settleShell(
   if (shellLockFresh(lock, clock.now())) {
     return run;
   }
-  run.status = lock.status;
-  run.ownerPid = null;
-  const saved = await runs.saveRun(run);
+  const saved = await runs.release(run, { status: lock.status });
   await documents.putDocument(saved, CHAT_LOCK, 'clear\n');
   return saved;
 }

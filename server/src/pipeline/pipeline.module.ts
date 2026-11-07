@@ -22,6 +22,7 @@ import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { StepKernel } from '../steps/step-kernel';
 import { StepRegistry } from '../steps/step.registry';
 import { EnvironmentService } from '../environment/environment.service';
+import { CommandService } from './command.service';
 import { PipelineService } from './pipeline.service';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
 
@@ -48,12 +49,14 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     StepKernel,
     StepRegistry,
     PipelineService,
+    CommandService,
     RunRebase,
     { provide: RunRebaseEnvironment, useExisting: EnvironmentService },
     EnvironmentService,
   ],
   exports: [
     PipelineService,
+    CommandService,
     RunRebase,
     PrepareStep,
     ProjectAppendService,

@@ -9,6 +9,7 @@ import { root } from '../history/run-paths';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { AppConfig } from '../config/env';
+import { SwarmloopError } from '../core/swarmloop-error';
 import { assertKey } from '../core/pipeline-result';
 import { PHASES } from '../contract/steps';
 import { CHAT_LOCK, containerLockBody, readChatLock } from '../pipeline/chat-lock';
@@ -54,6 +55,10 @@ export function matchFeatures<T extends FeatureRow>(runs: T[], cwd: string, root
   });
 }
 
+function toMatches(runs: RunEntity[]): ShellMatch[] {
+  return runs.map((run) => ({ key: run.key, status: run.status, currentStep: run.currentStep }));
+}
+
 @Injectable()
 export class ShellService {
   constructor(
@@ -66,24 +71,43 @@ export class ShellService {
     private readonly clock: Clock,
   ) {}
 
-  async open(path: string): Promise<ShellFeature | { matches: ShellMatch[] }> {
+  /** Which run `path` belongs to: one match, several matches, or a new run key. Nothing is written. */
+  async locate(path: string): Promise<{ matches: ShellMatch[] } | { key: string; cwd: string; created: boolean }> {
     const cwd = path.trim();
     if (!cwd) {
       throw new BadRequestException('path is missing');
     }
     const matches = matchFeatures(await this.runs.listRuns(), cwd, root(this.config));
     if (matches.length > 1) {
-      return {
-        matches: matches.map((run) => ({ key: run.key, status: run.status, currentStep: run.currentStep })),
-      };
+      return { matches: toMatches(matches) };
+    }
+    if (matches.length === 1) {
+      return { key: matches[0].key, cwd, created: false };
+    }
+    return { key: `run-${this.clock.now().toString(36)}`, cwd, created: true };
+  }
+
+  /** `created` says the command path made the run row for this path just now. */
+  async open(path: string, created = false): Promise<ShellFeature | { matches: ShellMatch[] }> {
+    const cwd = path.trim();
+    if (!cwd) {
+      throw new BadRequestException('path is missing');
+    }
+    const matches = matchFeatures(await this.runs.listRuns(), cwd, root(this.config));
+    if (matches.length > 1) {
+      return { matches: toMatches(matches) };
+    }
+    if (matches.length === 1 && created) {
+      await this.flows.noteFlow(matches[0].key, PHASES, null);
+      return this.view(matches[0], true);
     }
     if (matches.length === 1) {
       return this.view(await settleShell(this.runs, this.documents, this.sandbox, matches[0], this.clock), false);
     }
     const key = `run-${this.clock.now().toString(36)}`;
-    const created = await this.runs.openWaiting(key, cwd);
+    const opened = await this.runs.openWaiting(key, cwd);
     await this.flows.noteFlow(key, PHASES, null);
-    return this.view(created, true);
+    return this.view(opened, true);
   }
 
   async describe(key: string): Promise<ShellFeature> {
@@ -103,9 +127,11 @@ export class ShellService {
       throw new ConflictException(`${key} is already running`);
     }
     await this.documents.putDocument(run, CHAT_LOCK, containerLockBody(run.status, name, this.clock.now()));
-    run.status = 'running';
-    run.ownerPid = null;
-    await this.runs.saveRun(run);
+    try {
+      await this.runs.claim(key, run.currentStep);
+    } catch (error) {
+      throw error instanceof SwarmloopError ? new ConflictException(error.message) : error;
+    }
     return { status: 'running' };
   }
 
@@ -122,11 +148,9 @@ export class ShellService {
       run.currentStep,
       '',
     );
-    run.status = lock.status;
-    run.ownerPid = null;
-    await this.runs.saveRun(run);
-    await this.documents.putDocument(run, CHAT_LOCK, 'clear\n');
-    return { status: run.status };
+    const released = await this.runs.release(run, { status: lock.status });
+    await this.documents.putDocument(released, CHAT_LOCK, 'clear\n');
+    return { status: released.status };
   }
 
   async snapshots(key: string): Promise<SnapshotsView> {
@@ -162,13 +186,10 @@ export class ShellService {
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : 'rewind failed');
     }
-    run.currentStep = parsed.step || run.currentStep;
-    run.status = 'waiting';
-    run.ownerPid = null;
-    await this.runs.saveRun(run);
+    const moved = await this.runs.release(run, { status: 'waiting', currentStep: parsed.step || run.currentStep });
     const resume = parsed.chat ? `step: ${parsed.step}\nchat: ${parsed.chat}\n` : 'clear\n';
-    await this.documents.putDocument(run, SHELL_RESUME, resume);
-    return { step: run.currentStep };
+    await this.documents.putDocument(moved, SHELL_RESUME, resume);
+    return { step: moved.currentStep };
   }
 
   private async ready(key: string): Promise<RunEntity> {

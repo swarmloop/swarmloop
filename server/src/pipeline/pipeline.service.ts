@@ -91,10 +91,7 @@ export class PipelineService implements OnModuleInit {
     if (stopped) return stopped;
     const fresh = (await this.runs.findRun(key)) ?? run;
     const full = await this.instructions.storeInstructions(fresh, name, text);
-    fresh.currentStep = name;
-    fresh.status = 'waiting';
-    fresh.ownerPid = null;
-    await this.runs.saveRun(fresh);
+    await this.runs.release(fresh, { status: 'waiting', currentStep: name });
     this.runStop.clear(key);
     return this.startDetached(key, this.registryPromptOptions(name, full));
   }

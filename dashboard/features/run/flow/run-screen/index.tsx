@@ -76,7 +76,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
           attempts={phases.flatMap((phase) => phase.steps).find((step) => step.name === selected)?.attempts ?? 0}
           now={now}
           onReplay={
-            selected === 'code-review' || flow.status === 'running'
+            selected === 'code-review' || flow.status === 'running' || !flow.actions.includes('replay')
               ? undefined
               : REVIEW_STEPS.includes(selected)
                 ? () => startReviewer(selected)
@@ -86,7 +86,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
           onResume={
             pipelineStepOf(selected) === flow.currentStep &&
             (flow.status === 'failed' || flow.status === 'blocked') &&
-            flow.resume === 'ready'
+            flow.actions.includes('resume')
               ? resumeRun
               : undefined
           }

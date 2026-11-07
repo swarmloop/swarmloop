@@ -8,6 +8,7 @@ import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { resumeRun, sendAnswers } from '../../../lib/endpoints';
+import { inState } from '../../../lib/run-actions';
 import { answerPresentation } from '../../../lib/answer-field';
 import type { AnswersBody, FlowView } from '@contract/api';
 
@@ -35,7 +36,7 @@ export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (fl
   const resume = (): void => {
     setBusy(true);
     resumeRun(flow.key)
-      .then(() => onChange({ ...flow, status: 'running', resume: 'running', stepStartedAt: null }))
+      .then(() => onChange({ ...inState(flow, 'running'), status: 'running', resume: 'running', stepStartedAt: null }))
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'resume failed'))
       .finally(() => setBusy(false));
   };
@@ -85,9 +86,9 @@ export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (fl
           {error}
         </Typography>
       ) : null}
-      {flow.resume === 'blocked' ? null : (
+      {flow.actions.includes('answer') || flow.actions.includes('resume') ? (
         <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-          {flow.items.length > 0 ? (
+          {flow.actions.includes('answer') && flow.items.length > 0 ? (
             <Button variant="contained" disabled={busy || !complete} onClick={save}>
               Submit
             </Button>
@@ -97,7 +98,7 @@ export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (fl
             </Button>
           )}
         </Box>
-      )}
+      ) : null}
     </Paper>
   );
 }

@@ -2,6 +2,10 @@ import { liveLogView } from '../../agent/live-output';
 import { activeDurationMs, toDurationParts } from '../../history/active-duration';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { continuesSameStep, countedVisits, isLoopStep, loopMark } from '../../core/pipeline-result';
+import { blockCode, deriveState } from '../../history/run-state';
+import { actionsFor, REASON } from '../../contract/run-state';
+import type { StateFacts } from '../../history/run-state';
+import type { RunAction, RunState, StateReason } from '../../contract/run-state';
 import type { FlowItem, FlowView } from '../../contract/api';
 import type { LiveUsage } from '../../contract/live';
 import { isReviewStep, pipelineStepOf } from '../../contract/steps';
@@ -106,15 +110,35 @@ export function openItems(run: RunEntity, documents: DocumentEntity[], pasteUrls
   return itemsOut;
 }
 
+/** The honest state of the run and what the server allows in it. */
+export function stateView(
+  run: RunEntity,
+  open: FlowItem[],
+  documents: DocumentEntity[],
+  facts: StateFacts = {},
+): { state: RunState; reason: StateReason | null; actions: RunAction[] } {
+  const { state, reason } = deriveState(run, {
+    ...facts,
+    needsAnswers: open.length > 0,
+    returned:
+      run.status === 'waiting' &&
+      run.currentStep === 'implement' &&
+      (run.attemptsReview > 0 || run.attemptsPipeline > 0),
+    blockCode: run.status === 'blocked' ? blockCode(run.currentStep, latest(documents, 'error')) : undefined,
+  });
+  return { state, reason, actions: actionsFor(state, reason?.code ?? null) };
+}
+
 export function resumeState(run: RunEntity, open: FlowItem[], documents: DocumentEntity[]): FlowView['resume'] {
-  if (run.status === 'done') {
+  const { state, actions } = stateView(run, open, documents);
+  if (state === 'done') {
     return 'done';
   }
-  if (run.status === 'running') {
+  if (state === 'running' || state === 'stopping') {
     return 'running';
   }
-  if (run.status === 'blocked') {
-    return didNotFit(documents) || isLoopStep(run.currentStep) ? 'ready' : 'blocked';
+  if (state === 'blocked') {
+    return actions.includes('resume') ? 'ready' : 'blocked';
   }
   if (open.some((item) => item.answer.trim() === '')) {
     return 'need-answers';
@@ -138,6 +162,9 @@ export function sentence(
   maxReturns: number,
 ): string {
   if (run.status === 'blocked') {
+    if (blockCode(run.currentStep, latest(documents, 'error')) === REASON.checkFailed) {
+      return 'A required check failed again on unchanged files. Resume returns to implementation with the stored notes.';
+    }
     return didNotFit(documents)
       ? run.currentStep === 'code-review'
         ? 'This step cannot start with the remaining agent-call budget. Resume retries from stored reviews.'

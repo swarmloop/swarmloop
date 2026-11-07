@@ -6,6 +6,7 @@ import { DocumentEntity, RunEntity, StepStatEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
+import { CommandRepository } from '../history/command.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { EventRepository } from '../history/event.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
@@ -26,21 +27,10 @@ import type { StepEventPage } from '../contract/step-events';
 import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
-import {
-  latest,
-  metrics,
-  openItems,
-  phases,
-  reason,
-  resumeState,
-  returns,
-  runName,
-  sentence,
-  withSkip,
-} from './run-view/flow';
+import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
 import { belongsToVisit, documentView, filesOf, withReturnNotes } from './run-view/documents';
 import { launchView, liveVisit } from './run-view/live';
-import { eventPaging, requireRun, stepMeta } from './run-queries-run';
+import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
 import { openSpend } from './run-queries-spend';
 export { requireRun } from './run-queries-run';
 
@@ -51,6 +41,7 @@ export class RunQueriesService {
     private readonly documents: DocumentRepository,
     private readonly visits: VisitRepository,
     private readonly flows: FlowRepository,
+    private readonly commands: CommandRepository,
     private readonly events: EventRepository,
     private readonly checkouts: CheckoutRepository,
     private readonly stepEventLog: StepEventLog,
@@ -91,7 +82,7 @@ export class RunQueriesService {
       pastes.map((paste) => paste.url),
     );
     const shown = this.pipeline.claimed(run.key) && run.status !== 'done' ? { ...run, status: 'running' } : run;
-    const resume = resumeState(shown, open, documents);
+    const state = await runState(this.commands, shown, open, documents);
     const maxReturns = this.config.env.MAX_RETURNS;
     const reportMs = await this.visits.codeReviewReportMs(run.id);
     return {
@@ -101,7 +92,7 @@ export class RunQueriesService {
       currentStep: run.currentStep,
       updatedAt: run.updatedAt,
       stepStartedAt: run.stepStartedAt,
-      resume,
+      ...state,
       sentence: withSkip(
         sentence(shown, open, documents, stats, maxReturns),
         shown.currentStep,

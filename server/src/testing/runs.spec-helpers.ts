@@ -14,7 +14,9 @@ import type { DocumentRepository } from '../history/document.repository';
 import type { RunRepository } from '../history/run.repository';
 import { LiveModule } from '../live/live.module';
 import type { VisitDraft } from '../history/visit';
+import { CommandService } from '../pipeline/command.service';
 import { PipelineService } from '../pipeline/pipeline.service';
+import { writeRunState } from '../history/run-state';
 import { StepRegistry } from '../steps/step.registry';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
@@ -79,6 +81,7 @@ export async function boot(
     providers: [
       RunQueriesService,
       RunCommandsService,
+      CommandService,
       RunRebaseService,
       RunRebase,
       { provide: RunRebaseEnvironment, useExisting: EnvironmentService },
@@ -217,9 +220,7 @@ export function hostFetch(bare: string, token: string): () => void {
 
 export async function save(runs: RunRepository, key: string, step: string, status: string, attemptsReview = 0) {
   const run = await runs.begin(key, step);
-  run.status = status;
-  run.currentStep = step;
-  run.ownerPid = null;
+  writeRunState(run, { status, currentStep: step });
   run.attemptsReview = attemptsReview;
   return runs.saveRun(run);
 }

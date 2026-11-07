@@ -86,7 +86,7 @@ describe('run attempts', () => {
       visit.httpCalls = [
         { provider: 'other', method: 'GET', url: null as never, statusCode: 200, durationMs: 1, error: null },
       ];
-      await expect(visits.finalize(run.activeAttempt as string, run, visit)).rejects.toThrow();
+      await expect(visits.finalize(run.activeAttempt, run, visit)).rejects.toThrow();
       expect(await rowCounts(dataSource)).toEqual([0, 0, 0, 0, 0]);
       expect(await runs.findRun('A-4')).toEqual(before);
     } finally {
@@ -125,7 +125,7 @@ describe('run attempts', () => {
       expect(runs.held(run)).toBe(false);
       run.ownerInstance = SERVER_INSTANCE;
       run.status = 'running';
-      await visits.finalize(run.activeAttempt as string, run, repositoryVisit());
+      await visits.finalize(run.activeAttempt, run, repositoryVisit());
       expect(runs.held(run)).toBe(false);
     } finally {
       await database.close();

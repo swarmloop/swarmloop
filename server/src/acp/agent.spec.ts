@@ -575,6 +575,10 @@ function flowView(view: FlowFixture): FlowView {
     name: view.key,
     stepStartedAt: null,
     resume: 'running',
+    state: 'running',
+    stateReason: null,
+    actions: ['stop', 'replay'],
+    revision: 0,
     metrics: {
       status: view.status,
       durationMs: 0,
