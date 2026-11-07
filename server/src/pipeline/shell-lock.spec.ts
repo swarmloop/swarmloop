@@ -35,9 +35,9 @@ describe('shell lock', () => {
     const notes: string[] = [];
     const current = feature();
     const runs = {
-      saveRun: async (value: RunEntity) => {
-        notes.push(value.status);
-        return value;
+      release: async (value: RunEntity, change: { status: string }) => {
+        notes.push(change.status);
+        return { ...value, status: change.status };
       },
     };
     const documents = {

@@ -1,4 +1,4 @@
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('runs')
 export class RunEntity {
@@ -58,6 +58,14 @@ export class RunEntity {
 
   @Column({ name: 'owner_instance', type: 'text', nullable: true })
   ownerInstance!: string | null;
+
+  /** The honest state of the run. Null on a row written before it existed; `deriveState` reads those. */
+  @Column({ type: 'text', nullable: true })
+  state!: string | null;
+
+  /** JSON `{ code, message }` for the state. */
+  @Column({ name: 'state_reason', type: 'text', nullable: true })
+  stateReason!: string | null;
 
   @Column({ type: 'text', nullable: true })
   prompt!: string | null;
@@ -362,6 +370,40 @@ export class StepEventEntity {
   recordedAt!: string;
 }
 
+@Entity('commands')
+@Index('IDX_commands_run_idempotency', ['runId', 'idempotencyKey'], { unique: true })
+export class CommandEntity {
+  @PrimaryColumn()
+  id!: string;
+
+  @Column({ name: 'run_id', type: 'integer' })
+  runId!: number;
+
+  @Column()
+  type!: string;
+
+  @Column({ type: 'text' })
+  payload!: string;
+
+  @Column({ name: 'idempotency_key', type: 'text', nullable: true })
+  idempotencyKey!: string | null;
+
+  @Column({ name: 'expected_revision', type: 'integer', nullable: true })
+  expectedRevision!: number | null;
+
+  @Column()
+  state!: string;
+
+  @Column({ type: 'text', nullable: true })
+  result!: string | null;
+
+  @Column({ name: 'created_at' })
+  createdAt!: string;
+
+  @Column({ name: 'updated_at' })
+  updatedAt!: string;
+}
+
 export const entities = [
   RunEntity,
   DocumentEntity,
@@ -375,4 +417,5 @@ export const entities = [
   DenyPathEntity,
   FlowEntity,
   StepEventEntity,
+  CommandEntity,
 ];

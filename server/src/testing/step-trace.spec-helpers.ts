@@ -106,9 +106,14 @@ const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g
 const ERROR_ID = /\bE-[0-9a-z]{8}\b/g;
 const SHA = /\b[0-9a-f]{40}\b/g;
 const MOUNT = /(?<![\w.<>-])\/work\//g;
-/** Keys of the attempt bookkeeping: random ids and a counter that no golden pins. */
+/** Keys of the attempt bookkeeping: random ids and a counter that no golden pins, and the run state and command ids. */
 const ATTEMPT_KEYS = new Set([
   'revision',
+  'state',
+  'state_reason',
+  'stateReason',
+  'commandId',
+  'command_id',
   'active_attempt',
   'owner_instance',
   'attempt_id',

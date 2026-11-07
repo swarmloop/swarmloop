@@ -17,6 +17,8 @@ import type { StepRegistry } from '../steps/step.registry';
 import type { RunStop } from '../agent/run-stop';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { assertKey, diedLog, isStep } from '../core/pipeline-result';
+import { writeRunState } from '../history/run-state';
+import { REASON } from '../contract/run-state';
 import { reportFailure } from '../steps/shared/step-failure';
 import { CHAT_LOCK, chatHeld, chatResume, readChatLock } from './chat-lock';
 import { flagError } from './flag-error';
@@ -57,9 +59,7 @@ export class RunLifecycle implements OnModuleInit {
       }
       const resume = chatResume(body, run.ownerPid);
       if (resume) {
-        run.status = resume;
-        run.ownerPid = null;
-        await this.runs.saveRun(run);
+        await this.runs.release(run, { status: resume });
         await this.documents.putDocument(run, CHAT_LOCK, 'clear\n');
         continue;
       }
@@ -84,7 +84,8 @@ export class RunLifecycle implements OnModuleInit {
           const failure = reportFailure(run?.currentStep ?? key, error, this.config.env);
           if (run?.status === 'running' && run.ownerPid === process.pid) {
             const now = this.clock.iso();
-            await this.visits.finishVisit(run, {
+            writeRunState(run, { status: 'failed', ownerPid: null });
+            await this.visits.finalize(run.activeAttempt, run, {
               step: run.currentStep,
               model: null,
               mode: null,
@@ -104,10 +105,6 @@ export class RunLifecycle implements OnModuleInit {
               documents: [{ kind: 'error', fileName: '', body: `${failure.message}\n` }],
               resumed: false,
             });
-            run.status = 'failed';
-            run.ownerPid = null;
-            run.stepStartedAt = null;
-            await this.runs.saveRun(run);
           }
         })
         .finally(() => this.release(key));
@@ -189,10 +186,11 @@ export class RunLifecycle implements OnModuleInit {
     }
     const fresh = await this.runs.findRun(key);
     if (fresh?.status === 'running') {
-      fresh.status = 'failed';
-      fresh.ownerPid = null;
-      fresh.stepStartedAt = null;
-      await this.runs.saveRun(fresh);
+      await this.runs.release(fresh, {
+        status: 'failed',
+        reason: { code: REASON.stopped, message: 'stopped' },
+        stepStartedAt: null,
+      });
     }
     return { exitCode: 0, message: `${key} stopped` };
   }
@@ -212,7 +210,8 @@ export class RunLifecycle implements OnModuleInit {
         ? chargeStream(model, saved, prices)
         : null;
     run.spentUsd += charge?.usd ?? 0;
-    await this.visits.finishVisit(run, {
+    writeRunState(run, { status: 'failed', ownerPid: null });
+    await this.visits.finalize(run.activeAttempt, run, {
       step: run.currentStep,
       model,
       mode: null,
@@ -235,10 +234,6 @@ export class RunLifecycle implements OnModuleInit {
       ],
       resumed: false,
     });
-    run.status = 'failed';
-    run.ownerPid = null;
-    run.stepStartedAt = null;
-    await this.runs.saveRun(run);
   }
 
   claimed(key: string): boolean {

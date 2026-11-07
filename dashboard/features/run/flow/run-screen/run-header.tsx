@@ -74,12 +74,12 @@ export function RunHeader({
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
-          {flow.status === 'failed' || flow.status === 'done' || flow.status === 'waiting' ? (
+          {flow.actions.includes('rebase') ? (
             <Button variant="outlined" disabled={rebasing} onClick={onRebase}>
               Rebase
             </Button>
           ) : null}
-          {flow.status === 'running' ? (
+          {flow.actions.includes('stop') ? (
             <Button color="error" variant="outlined" disabled={stopping} onClick={onStop}>
               Stop
             </Button>

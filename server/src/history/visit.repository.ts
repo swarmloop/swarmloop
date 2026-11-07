@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import type { EntityManager } from 'typeorm';
+import { releasedColumns } from './run-state';
+import { transaction } from './transaction';
 import { summarizeSamples } from './visit';
 import type { VisitDraft } from './visit';
 import {
@@ -55,36 +57,33 @@ export class VisitRepository {
    * A repeat of an attempt returns its stored visit. A stale attempt stores nothing and returns null.
    * Either way `run` ends up as the row in the database.
    */
-  async finalize(attemptId: string, run: RunEntity, visit: VisitDraft): Promise<StepStatEntity | null> {
-    const stat = await this.dataSource
-      .transaction(async (manager) => {
-        const stored = await manager.getRepository(StepStatEntity).findOneBy({ attemptId });
-        if (stored) {
-          return stored;
-        }
-        const { id, ...fields } = run;
-        const moved = await manager
-          .getRepository(RunEntity)
-          .createQueryBuilder()
-          .update()
-          .set({
-            ...fields,
-            ownerPid: null,
-            stepStartedAt: null,
-            activeAttempt: null,
-            updatedAt: visit.finishedAt,
-            revision: () => 'revision + 1',
-          })
-          .where('id = :id AND active_attempt = :attemptId', { id, attemptId })
-          .execute();
-        return moved.affected ? this.insertVisit(tablesOf(manager), run, visit, attemptId) : null;
-      })
-      .catch(async (error: unknown) => {
-        if (String(error).includes(DUPLICATE_ATTEMPT)) {
-          return this.stepStats.findOneBy({ attemptId });
-        }
-        throw error;
-      });
+  async finalize(attemptId: string | null, run: RunEntity, visit: VisitDraft): Promise<StepStatEntity | null> {
+    const stat = await transaction(this.dataSource, async (manager) => {
+      const stored = attemptId ? await manager.getRepository(StepStatEntity).findOneBy({ attemptId }) : null;
+      if (stored) {
+        return stored;
+      }
+      const { id, ...fields } = run;
+      const moved = await manager
+        .getRepository(RunEntity)
+        .createQueryBuilder()
+        .update()
+        .set({
+          ...fields,
+          ...releasedColumns(),
+          stepStartedAt: null,
+          updatedAt: visit.finishedAt,
+          revision: () => 'revision + 1',
+        })
+        .where('id = :id AND active_attempt IS :attemptId', { id, attemptId })
+        .execute();
+      return moved.affected ? this.insertVisit(tablesOf(manager), run, visit, attemptId) : null;
+    }).catch(async (error: unknown) => {
+      if (attemptId && String(error).includes(DUPLICATE_ATTEMPT)) {
+        return this.stepStats.findOneBy({ attemptId });
+      }
+      throw error;
+    });
     if (!stat) {
       this.logger.warn(`stale attempt ${attemptId} of ${run.key}`);
     }

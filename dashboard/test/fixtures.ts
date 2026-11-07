@@ -1,4 +1,6 @@
 import type { FlowView, HistoryView, RunSummary, StepView } from '@contract/api';
+import { actionsFor } from '@contract/run-state';
+import type { RunState } from '@contract/run-state';
 
 const at = '2026-01-01T00:00:00.000Z';
 
@@ -16,7 +18,14 @@ export function runSummary(): RunSummary {
   };
 }
 
+/** The state the server derives for a status. A waiting run with open items waits for a person. */
+function stateOf(status: string, open: boolean): RunState {
+  if (status === 'waiting') return open ? 'waiting' : 'idle';
+  return (['running', 'failed', 'done', 'blocked'] as const).find((state) => state === status) ?? 'idle';
+}
+
 export function flowView(overrides: Partial<FlowView> = {}): FlowView {
+  const state = overrides.state ?? stateOf(overrides.status ?? 'running', (overrides.items ?? []).length > 0);
   return {
     key: 'run-1',
     name: 'Run one',
@@ -25,6 +34,10 @@ export function flowView(overrides: Partial<FlowView> = {}): FlowView {
     updatedAt: at,
     stepStartedAt: null,
     resume: 'running',
+    state,
+    stateReason: null,
+    actions: actionsFor(state, overrides.stateReason?.code),
+    revision: 0,
     sentence: 'Run one is running.',
     metrics: {
       status: 'running',

@@ -15,7 +15,13 @@ describe('HTTP API golden path', () => {
       });
       const created: RunRef = await createdResponse.json();
       expect(createdResponse.status).toBe(202);
-      expect(created).toEqual({ key: 'TEST-1', status: 'started' });
+      expect(created).toEqual({
+        key: 'TEST-1',
+        status: 'started',
+        commandId: expect.any(String),
+        revision: 1,
+        state: 'idle',
+      });
       await testApp.pipeline.whenIdle(created.key);
       expect(runner.steps).toEqual([
         'requirements',

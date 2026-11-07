@@ -8,6 +8,7 @@ import { git } from '../../git/git';
 import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { originProject, type Seen } from './pipeline-report';
 import { ARTIFACTS } from '../contract/artifacts';
+import { writeRunState } from '../../history/run-state';
 
 /** Only the trigger is automatic. Rebase itself is the action used by the API button. */
 export async function missingPipeline(input: {
@@ -76,8 +77,7 @@ export async function missingPipeline(input: {
       } catch (error) {
         const detail = `automatic rebase failed: ${error instanceof Error ? error.message : 'unknown error'}`;
         const fresh = (await runs.findRun(run.key))!;
-        fresh.status = 'blocked';
-        fresh.ownerPid = null;
+        writeRunState(fresh, { status: 'blocked' });
         fresh.stepStartedAt = null;
         await ctx.write(ARTIFACTS.error, `${detail}\n`);
         await runs.saveRun(fresh);

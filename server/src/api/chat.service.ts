@@ -4,6 +4,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { resolveRepoRoot } from '../config/repo-root';
+import type { RunEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { root } from '../history/run-paths';
 import { RunRepository } from '../history/run.repository';
@@ -37,7 +38,7 @@ export class ChatService {
     if (!found) {
       throw new NotFoundException(`${key} is missing`);
     }
-    const run = await settleShell(this.runs, this.documents, this.sandbox, found, this.clock);
+    let run = await settleShell(this.runs, this.documents, this.sandbox, found, this.clock);
     if (shellHolding(await this.documents.latestBody(key, CHAT_LOCK), run.status) || this.runs.held(run)) {
       throw new ConflictException(`${key} is already running`);
     }
@@ -53,20 +54,14 @@ export class ChatService {
     const mounts = this.mounts(key, body.cwd, run.targetPath);
     const servers = readMcpServers(body.mcpServers);
     const restore = installMcp(mounts[0].hostPath, servers);
-    const previous = { status: run.status, ownerPid: run.ownerPid };
+    const previous = { status: run.status, ownerPid: run.ownerPid, stepStartedAt: run.stepStartedAt };
     let locked = false;
     try {
       if (/^(waiting|blocked|failed|done)$/.test(previous.status)) {
         await this.documents.putDocument(run, CHAT_LOCK, chatLockBody(previous.status, process.pid));
       }
       locked = true;
-      if (run.runtime !== env.RUNTIME) {
-        run.runtime = env.RUNTIME;
-        await this.documents.putDocument(run, 'shell_resume', 'clear\n');
-      }
-      run.status = 'running';
-      run.ownerPid = process.pid;
-      await this.runs.saveRun(run);
+      run = await this.take(run);
       await this.sandbox.assertReady(env.RUNTIME);
       const result = await this.launcher.launch({
         root: root(this.config),
@@ -101,10 +96,8 @@ export class ChatService {
     } finally {
       restore();
       if (locked) {
-        run.status = previous.status;
-        run.ownerPid = previous.ownerPid;
         try {
-          await this.runs.saveRun(run);
+          await this.runs.release(run, previous);
         } catch {
           // The chat result is the error to surface. The lock still names this process.
         }
@@ -114,6 +107,15 @@ export class ChatService {
           // A leftover lock is ignored once a later step uses a different pid.
         }
       }
+    }
+  }
+
+  /** The chat holds the run through the same claim a step uses, on the step the run is at. */
+  private async take(run: RunEntity): Promise<RunEntity> {
+    try {
+      return await this.runs.claim(run.key, run.currentStep);
+    } catch (error) {
+      throw error instanceof SwarmloopError ? new ConflictException(error.message) : error;
     }
   }
 

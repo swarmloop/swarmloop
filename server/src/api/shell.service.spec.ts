@@ -1,3 +1,5 @@
+import { ConflictException } from '@nestjs/common';
+import { SwarmloopError } from '../core/swarmloop-error';
 import type { AppConfig } from '../config/env';
 import type { RunEntity } from '../history/entities';
 import type { DocumentRepository } from '../history/document.repository';
@@ -84,5 +86,67 @@ describe('shell open', () => {
       ],
     });
     expect(notes).toEqual([]);
+  });
+});
+
+describe('shell lock', () => {
+  function lockService(calls: string[]): ShellService {
+    const run = { id: 1, key: 'proj-1', status: 'waiting', currentStep: 'plan', targetPath: null } as RunEntity;
+    const runRepository = {
+      findRun: async () => run,
+      claim: async (key: string, step: string) => {
+        calls.push(`claim ${key} ${step}`);
+        return { ...run, status: 'running' };
+      },
+    };
+    const documentRepository = {
+      latestBody: async () => null,
+      putDocument: async (_run: RunEntity, kind: string) => {
+        calls.push(`document ${kind}`);
+      },
+    };
+    return new ShellService(
+      runRepository as unknown as RunRepository,
+      documentRepository as unknown as DocumentRepository,
+      {} as VisitRepository,
+      {} as FlowRepository,
+      config,
+      { containerExists: async () => false } as unknown as SandboxService,
+      new FakeClock(),
+    );
+  }
+
+  it('holds the run with a claim after it writes the lock', async () => {
+    const calls: string[] = [];
+
+    const locked = await lockService(calls).lock('proj-1', 'proj-1-shell');
+
+    expect(locked).toEqual({ status: 'running' });
+    expect(calls).toEqual(['document chat_lock', 'claim proj-1 plan']);
+  });
+
+  it('answers 409 when another writer took the run first', async () => {
+    const service = lockService([]);
+    jest
+      .spyOn((service as unknown as { runs: RunRepository }).runs, 'claim')
+      .mockRejectedValue(new SwarmloopError('proj-1 is already running'));
+
+    await expect(service.lock('proj-1', 'proj-1-shell')).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('finds the run of a path without writing, and names a new key when none matches', async () => {
+    const runs: RunEntity[] = [{ id: 1, key: 'proj-1', targetPath: '/tmp/demo' } as RunEntity];
+    const service = new ShellService(
+      { listRuns: async () => runs } as unknown as RunRepository,
+      {} as DocumentRepository,
+      {} as VisitRepository,
+      {} as FlowRepository,
+      config,
+      {} as SandboxService,
+      new FakeClock(),
+    );
+
+    expect(await service.locate('/tmp/demo')).toEqual({ key: 'proj-1', cwd: '/tmp/demo', created: false });
+    expect(await service.locate('/tmp/other')).toMatchObject({ cwd: '/tmp/other', created: true });
   });
 });

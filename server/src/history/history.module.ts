@@ -5,6 +5,7 @@ import { join } from 'path';
 import type { BetterSqlite3ConnectionOptions } from 'typeorm/driver/better-sqlite3/BetterSqlite3ConnectionOptions';
 import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
+import { CommandRepository } from './command.repository';
 import { entities } from './entities';
 import { migrations } from './migrations';
 import { RunRepository } from './run.repository';
@@ -56,6 +57,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     EventRepository,
     CheckoutRepository,
     StepEventLog,
+    CommandRepository,
   ],
   exports: [
     RunRepository,
@@ -65,6 +67,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     EventRepository,
     CheckoutRepository,
     StepEventLog,
+    CommandRepository,
     TypeOrmModule,
   ],
 })

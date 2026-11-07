@@ -31,8 +31,14 @@ describe('chat', () => {
     const runRepository = {
       findRun: async () => run,
       held: () => false,
-      saveRun: async (value: unknown) => {
-        saved.push({ ...(value as object) });
+      claim: async () => {
+        Object.assign(run, { status: 'running', ownerPid: process.pid });
+        saved.push({ ...run });
+        return run;
+      },
+      release: async (value: typeof run, change: { status: string; ownerPid: number | null }) => {
+        Object.assign(value, { status: change.status, ownerPid: change.ownerPid });
+        saved.push({ ...value });
         return value;
       },
     };
@@ -79,7 +85,7 @@ describe('chat', () => {
     expect(run.status).toBe('waiting');
     expect(run.spentUsd).toBeCloseTo(0.21);
     await expect(readFile(join(project, '.cursor', 'mcp.json'), 'utf8')).rejects.toThrow();
-    expect(saved.length).toBeGreaterThan(0);
+    expect(saved.map((row) => (row as { status: string }).status)).toEqual(['running', 'waiting']);
     expect(documents.some((row) => row.startsWith(`chat_lock:waiting ${process.pid}`))).toBe(true);
     expect(documents.some((row) => row.startsWith('chat_lock:clear'))).toBe(true);
   });

@@ -7,6 +7,7 @@ import type { Server } from 'http';
 import { join } from 'path';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
+import { CommandHandlers } from '../api/command-handlers';
 import { ChatService } from '../api/chat.service';
 import { HealthController } from '../api/health.controller';
 import { LiveGateway } from '../api/live.gateway';
@@ -113,7 +114,15 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<{
       SandboxModule,
     ],
     controllers: [HealthController, RunsController],
-    providers: [RunQueriesService, RunCommandsService, RunRebaseService, ChatService, ShellService, LiveGateway],
+    providers: [
+      RunQueriesService,
+      RunCommandsService,
+      RunRebaseService,
+      ChatService,
+      ShellService,
+      CommandHandlers,
+      LiveGateway,
+    ],
   })
     .overrideProvider(Clock)
     .useValue(clock)

@@ -24,6 +24,7 @@ import { STEPS } from '../contract/steps';
 import { root } from '../history/run-paths';
 import { flagError } from './flag-error';
 import { snapshotRun } from './worktree-snapshot';
+import { writeRunState } from '../history/run-state';
 
 const HOP_LIMIT = STEPS.length * 3;
 
@@ -153,9 +154,7 @@ export class RunDriver {
       run.targetPath = realpathSync(options.path);
     }
     const settled = settle(previousStep, previousStatus, name, 'blocked');
-    run.status = settled.status;
-    run.currentStep = settled.currentStep;
-    run.ownerPid = null;
+    writeRunState(run, { status: settled.status, currentStep: settled.currentStep });
     await this.runs.saveRun(run);
     const line = `${this.clock.iso()} ${name} not implemented`;
     return { exitCode: 1, message: line };
@@ -169,8 +168,7 @@ export class RunDriver {
       const message = error instanceof Error ? error.message : 'repository failed';
       const run = await this.runs.findRun(key);
       if (run && run.status !== 'running') {
-        run.status = 'failed';
-        run.ownerPid = null;
+        writeRunState(run, { status: 'failed' });
         await this.runs.saveRun(run);
         await this.documents.putDocument(run, 'error', `${message}\n`);
       }

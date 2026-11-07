@@ -12,6 +12,7 @@ import {
   stopRun as stopEndpoint,
 } from '../../lib/endpoints';
 import { openElapsed, visitStored } from '../../lib/elapsed';
+import { inState } from '../../lib/run-actions';
 import { useLiveActions, useLiveBridge } from '../shell';
 import { applyFlow, applyReviewLog, type FlowMemory } from './flow-state';
 import { pipelineStepOf, REVIEW_STEPS, type PhaseName } from '@contract/steps';
@@ -195,7 +196,7 @@ export function useRunFlow(runKey: string): {
             heldMs: current.stepStartedAt ? openElapsed(current.stepStartedAt, Date.now()) : 0,
             heldStart: current.stepStartedAt,
           };
-          return { ...current, status: 'failed', resume: 'ready' };
+          return { ...inState(current, 'stopped'), status: 'failed', resume: 'ready' };
         });
         setNow(Date.now());
       })
@@ -215,7 +216,7 @@ export function useRunFlow(runKey: string): {
         setFlow((current) =>
           current
             ? {
-                ...current,
+                ...inState(current, 'running'),
                 status: 'running',
                 resume: 'running',
                 stepStartedAt: null,
@@ -239,7 +240,13 @@ export function useRunFlow(runKey: string): {
       memory.current = { ...memory.current, pinnedAt: run.updatedAt };
       setFlow((current) =>
         current
-          ? { ...current, status: 'running', currentStep: step, resume: 'running', stepStartedAt: null }
+          ? {
+              ...inState(current, 'running'),
+              status: 'running',
+              currentStep: step,
+              resume: 'running',
+              stepStartedAt: null,
+            }
           : current,
       );
       setReplay(null);
@@ -260,7 +267,13 @@ export function useRunFlow(runKey: string): {
         memory.current = { ...memory.current, pinnedAt: run.updatedAt };
         setFlow((current) =>
           current
-            ? { ...current, status: 'running', currentStep: 'code-review', resume: 'running', stepStartedAt: null }
+            ? {
+                ...inState(current, 'running'),
+                status: 'running',
+                currentStep: 'code-review',
+                resume: 'running',
+                stepStartedAt: null,
+              }
             : current,
         );
       })
@@ -277,7 +290,9 @@ export function useRunFlow(runKey: string): {
         followStep.current = true;
         memory.current = { ...memory.current, pinnedAt: run.updatedAt };
         setFlow((current) =>
-          current ? { ...current, status: 'running', resume: 'running', stepStartedAt: null } : current,
+          current
+            ? { ...inState(current, 'running'), status: 'running', resume: 'running', stepStartedAt: null }
+            : current,
         );
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'resume failed'));

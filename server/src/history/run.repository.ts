@@ -5,6 +5,8 @@ import { AppConfig } from '../config/env';
 import { randomUUID } from 'crypto';
 import { Clock } from '../core/clock';
 import { SERVER_INSTANCE } from '../core/server-instance';
+import { claimedColumns, stateColumns } from './run-state';
+import type { RunStateChange } from './run-state';
 import { LiveHub } from '../live/live.hub';
 import { existsSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
@@ -25,6 +27,7 @@ import {
   LoopEventEntity,
   FlowEntity,
   PasteEntity,
+  CommandEntity,
 } from './entities';
 
 @Injectable()
@@ -41,6 +44,7 @@ export class RunRepository {
     @InjectRepository(LoopEventEntity) private readonly loops: Repository<LoopEventEntity>,
     @InjectRepository(FlowEntity) private readonly flows: Repository<FlowEntity>,
     @InjectRepository(PasteEntity) private readonly pastes: Repository<PasteEntity>,
+    @InjectRepository(CommandEntity) private readonly commands: Repository<CommandEntity>,
     private readonly documentRepository: DocumentRepository,
     private readonly visitRepository: VisitRepository,
     @Optional() private readonly live?: LiveHub,
@@ -50,13 +54,13 @@ export class RunRepository {
     return this.runs.findOne({ where: { key } });
   }
 
-  async openWaiting(key: string, targetPath: string): Promise<RunEntity> {
+  /** A waiting run row that is not stored yet. */
+  newWaitingRun(key: string, targetPath: string | null): RunEntity {
     const env = this.config.env;
     const now = this.clock.iso();
     const created = this.runs.create({
       key,
-      status: 'waiting',
-      currentStep: 'requirements',
+      ...stateColumns({ currentStep: 'requirements', ownerInstance: null, activeAttempt: null }, { status: 'waiting' }),
       runtime: env.RUNTIME,
       requirementsVia: env.REQUIREMENTS_VIA,
       issueTracker: env.ISSUE_TRACKER,
@@ -68,13 +72,16 @@ export class RunRepository {
       spentUsd: 0,
       targetPath,
       projects: null,
-      ownerPid: null,
       prompt: null,
       createdAt: now,
       updatedAt: now,
       stepStartedAt: null,
     });
-    return this.saveRun(created);
+    return created;
+  }
+
+  async openWaiting(key: string, targetPath: string): Promise<RunEntity> {
+    return this.saveRun(this.newWaitingRun(key, targetPath));
   }
 
   async begin(key: string, step: string): Promise<RunEntity> {
@@ -97,12 +104,8 @@ export class RunRepository {
         .createQueryBuilder()
         .update(RunEntity)
         .set({
-          status: 'running',
-          currentStep: step,
+          ...claimedColumns(step, randomUUID()),
           runtime,
-          ownerPid: process.pid,
-          ownerInstance: SERVER_INSTANCE,
-          activeAttempt: randomUUID(),
           stepStartedAt: now,
           updatedAt: now,
           revision: () => 'revision + 1',
@@ -123,13 +126,34 @@ export class RunRepository {
     throw new SwarmloopError(`${key} is already running`);
   }
 
+  /**
+   * Gives the run back after a hold that stored no visit (a chat, a shell lock), if it is still the holder's.
+   * Another writer that took the run in between keeps it. Either way the row in the database is returned.
+   */
+  async release(run: RunEntity, change: RunStateChange & { stepStartedAt?: string | null }): Promise<RunEntity> {
+    const { stepStartedAt, ...state } = change;
+    await this.runs
+      .createQueryBuilder()
+      .update(RunEntity)
+      .set({
+        ...stateColumns(run, { ...state, activeAttempt: null }),
+        ...(stepStartedAt === undefined ? {} : { stepStartedAt }),
+        updatedAt: this.clock.iso(),
+        revision: () => 'revision + 1',
+      })
+      .where('id = :id AND active_attempt IS :attempt', { id: run.id, attempt: run.activeAttempt })
+      .execute();
+    const released = await this.runs.findOneByOrFail({ id: run.id });
+    this.notify(run.key);
+    return released;
+  }
+
   private async insertClaimed(key: string, step: string): Promise<RunEntity> {
     const env = this.config.env;
     const now = this.clock.iso();
     const created = this.runs.create({
       key,
-      status: 'running',
-      currentStep: step,
+      ...claimedColumns(step, randomUUID()),
       runtime: env.RUNTIME,
       requirementsVia: env.REQUIREMENTS_VIA,
       issueTracker: env.ISSUE_TRACKER,
@@ -141,9 +165,6 @@ export class RunRepository {
       spentUsd: 0,
       targetPath: null,
       projects: null,
-      ownerPid: process.pid,
-      ownerInstance: SERVER_INSTANCE,
-      activeAttempt: randomUUID(),
       revision: 0,
       prompt: null,
       createdAt: now,
@@ -192,6 +213,7 @@ export class RunRepository {
     await this.loops.delete({ runId: run.id });
     await this.flows.delete({ runId: run.id });
     await this.pastes.delete({ runKey: run.key });
+    await this.commands.delete({ runId: run.id });
     await this.runs.delete({ id: run.id });
     this.live?.clearSpend(run.key);
     this.live?.changed(run.key);

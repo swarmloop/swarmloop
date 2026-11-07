@@ -7,6 +7,7 @@ import { PHASES } from '../contract/steps';
 import type { PhaseName } from '../contract/steps';
 import { RunRepository } from './run.repository';
 import { FlowEntity } from './entities';
+import { writeRunState } from './run-state';
 
 @Injectable()
 export class FlowRepository {
@@ -22,8 +23,7 @@ export class FlowRepository {
     let run = await this.runRepository.findRun(key);
     if (!run) {
       run = await this.runRepository.begin(key, 'requirements');
-      run.status = 'waiting';
-      run.ownerPid = null;
+      writeRunState(run, { status: 'waiting' });
       run.stepStartedAt = null;
       run = await this.runRepository.saveRun(run);
     }

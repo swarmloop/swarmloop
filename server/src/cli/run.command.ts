@@ -1,5 +1,6 @@
 import { Command, CommandRunner, Option } from 'nest-commander';
 import { FlowRepository } from '../history/flow.repository';
+import { CommandService } from '../pipeline/command.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { assertKey, StepOptions } from '../core/pipeline-result';
 
@@ -11,6 +12,7 @@ import { assertKey, StepOptions } from '../core/pipeline-result';
 export class RunCommand extends CommandRunner {
   constructor(
     private readonly pipeline: PipelineService,
+    private readonly commands: CommandService,
     private readonly flows: FlowRepository,
   ) {
     super();
@@ -27,7 +29,9 @@ export class RunCommand extends CommandRunner {
         return;
       }
     }
-    await report(await this.pipeline.runThrough(key, options));
+    await report(
+      await this.commands.inProcess('resume', key, { ...options }, () => this.pipeline.runThrough(key, options)),
+    );
   }
 
   @Option({ flags: '--prompt <text>', description: 'Required human prompt. A Jira key in it is fetched.' })

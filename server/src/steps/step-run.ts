@@ -1,5 +1,6 @@
 import type { RunEntity } from '../history/entities';
 import type { FlowRepository } from '../history/flow.repository';
+import { blockCode, writeRunState } from '../history/run-state';
 import type { RunRepository } from '../history/run.repository';
 import type { VisitRepository } from '../history/visit.repository';
 import type { VisitDraft } from '../history/visit';
@@ -61,9 +62,7 @@ export async function closeStep(input: {
 }): Promise<PipelineResult> {
   const phases = await input.flows.activePhases(input.run.id);
   const settled = settle(input.previousStep, input.previousStatus, input.step, input.outcome, input.moveTo, phases);
-  input.run.status = settled.status;
-  input.run.currentStep = settled.currentStep;
-  input.run.ownerPid = null;
+  let error: string | null = null;
   if (input.outcome === 'failed' || input.outcome === 'blocked') {
     const docs = input.visit.documents ?? (input.visit.document ? [input.visit.document] : []);
     if (!docs.some((document) => document.kind === ARTIFACTS.error.kind)) {
@@ -71,7 +70,15 @@ export async function closeStep(input: {
     }
     input.visit.documents = docs;
     input.visit.document = null;
+    error = docs.find((document) => document.kind === ARTIFACTS.error.kind)?.body ?? null;
   }
+  const code = settled.status === 'blocked' ? blockCode(settled.currentStep, error) : null;
+  writeRunState(input.run, {
+    status: settled.status,
+    currentStep: settled.currentStep,
+    reason: code ? { code, message: failureText(input.line) } : undefined,
+    facts: code ? { blockCode: code } : undefined,
+  });
   await input.visits.finalize(input.attemptId, input.run, input.visit);
   input.runs.notify(input.run.key);
 
