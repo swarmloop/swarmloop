@@ -115,7 +115,7 @@ export function stepContainers(base: string, names: readonly string[]): string[]
 }
 
 /** The labels every run container carries, so a Stop finds it without guessing from its name. */
-export function runLabels(launch: Pick<SandboxLaunch, 'runKey' | 'step' | 'attemptId'>): string[] {
+function runLabels(launch: Pick<SandboxLaunch, 'runKey' | 'step' | 'attemptId'>): string[] {
   return [
     '--label',
     `swarmloop.run=${launch.runKey}`,
