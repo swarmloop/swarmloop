@@ -19,6 +19,7 @@ import { AgentLauncher } from '../shared/agent-launcher';
 import { RebasedPublisher } from '../shared/rebased-publisher';
 import { pipelineAnswers, returnedNotes, textDocument, withHandoff } from '../shared/handoff';
 import { parseSummary, skillPrompt } from '../shared/skill-prompt';
+import { bulletList, items, section } from '../shared/markdown-section';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { checkedRepoNames, mountsForStep, worktreePath } from '../../git/repo-names';
@@ -194,7 +195,9 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     }
     await assertUncommitted(mounts, branch, heads);
     const corrected = correctedPlan(input.requirements, planText, planOutput);
-    const summary = corrected ? `${parseSummary(text).trimEnd()}\n${corrected.handoff}` : parseSummary(text);
+    const reasons = corrected ? `${parseSummary(text).trimEnd()}\n${corrected.handoff}` : parseSummary(text);
+    const cause = items(section(text, 'cause') ?? '');
+    const summary = cause.length > 0 ? `cause:\n${bulletList(cause)}\n${reasons}` : reasons;
     const status = await worktreeStatus(mounts);
     return {
       route: { to: 'next' },

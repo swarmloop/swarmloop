@@ -452,6 +452,28 @@ describe('implement step', () => {
     }
   });
 
+  it('handoff shows the cause only when the answer has one', async () => {
+    const handoffFor = async (ticket: string, answer: string): Promise<string | null> => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-cause-'));
+      await writeEnv(root);
+      featureTree(root, ticket, 'billing-api');
+      const app = await boot(root, jest.fn().mockResolvedValue(result(answer)));
+      try {
+        await seed(app, ticket, 'approve');
+        await app.get(PipelineService).step('implement', ticket);
+        return await app.get(DocumentRepository).latestBody(ticket, 'handoff');
+      } finally {
+        await app.close();
+      }
+    };
+    const plain = await handoffFor('PROJ-150', reply);
+    const withCause = await handoffFor('PROJ-151', `cause:\n- the parser dropped the suffix\n\n${reply}`);
+    expect(plain).not.toContain('cause:');
+    expect(withCause).toBe(
+      plain?.replace('## implement\n', '## implement\ncause:\n- the parser dropped the suffix\n\n'),
+    );
+  });
+
   it('replaces the approved checklist when a pipeline return answers with the plan object', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-plan-json-'));
     await writeEnv(root);
