@@ -56,6 +56,24 @@ test('installs the pinned lint packages in the repository root', () => {
   ]);
 });
 
+test('installs the pinned check tools in the repository root', () => {
+  const { env, record } = stubNpm();
+
+  const result = spawnSync('bash', [script, 'checks'], { env, encoding: 'utf8' });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(readFileSync(record, 'utf8').split('\n').filter(Boolean), [
+    repoRoot,
+    'install',
+    '--no-save',
+    '--no-package-lock',
+    '--no-audit',
+    '--no-fund',
+    'knip@5',
+    'madge@8',
+  ]);
+});
+
 test('installs the pinned dashboard test packages in dashboard/', () => {
   const { env, record } = stubNpm();
 

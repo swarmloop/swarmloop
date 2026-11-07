@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Installs the pinned tools for one CI group into the group's directory, without saving them to package.json.
-# lint installs into the repository root; dashboard-test installs into dashboard/.
+# lint and checks install into the repository root; dashboard-test installs into dashboard/.
 # Usage: scripts/ci-tools.sh <group>
 
 if [ "$#" -ne 1 ]; then
@@ -25,6 +25,13 @@ case "$1" in
       eslint-plugin-jsx-a11y@6
       eslint-plugin-boundaries@5
       typescript@5
+    )
+    ;;
+  checks)
+    dir=.
+    packages=(
+      knip@5
+      madge@8
     )
     ;;
   dashboard-test)
