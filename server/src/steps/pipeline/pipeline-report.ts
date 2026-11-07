@@ -4,6 +4,7 @@ import type { PipelineJob, PipelineRef } from '../../integrations/code-host/code
 import { readableJobTrace } from './job-trace';
 import { basename } from 'path';
 import { git } from '../../git/git';
+import { captureTree, git as quietGit } from '../../git/worktree-tree';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { remoteProject } from '../merge-request/merge-request-record';
 
@@ -23,6 +24,8 @@ export interface Failure {
   stage: string;
   url: string;
   trace: string;
+  /** Why the log of this job could not be read; then `trace` is empty. */
+  unavailable?: string;
 }
 
 /** One issue per failed job, or one for the whole log when the jobs are not separable. */
@@ -136,9 +139,17 @@ export function parsePipelineRefs(body: string): PipelineRef[] {
   return records;
 }
 
+function safeProject(origin: string): string | null {
+  try {
+    return remoteProject(origin).project;
+  } catch {
+    return null;
+  }
+}
+
 export async function originProject(dir: string): Promise<string | null> {
   try {
-    return remoteProject(await git(['-C', dir, 'remote', 'get-url', 'origin'])).project;
+    return safeProject(await git(['-C', dir, 'remote', 'get-url', 'origin']));
   } catch {
     return null;
   }
@@ -160,6 +171,47 @@ export async function staleRepos(refBody: string | null, mounts: SandboxMount[])
     }
   }
   return lines;
+}
+
+/** The block text for failed jobs whose log could not be read, or null when every log was read. */
+export function renderUnreadable(failures: Failure[]): string | null {
+  const lost = failures.filter((failure) => failure.unavailable !== undefined);
+  if (lost.length === 0) {
+    return null;
+  }
+  const lines = ['CI_LOG_UNAVAILABLE: a failed job has no readable log, so there is nothing to return to the agent.'];
+  for (const failure of lost) {
+    lines.push(`- ${failure.project} ${failure.name}: ${failure.url}: ${failure.unavailable}`);
+  }
+  lines.push('Resume reads the log again.');
+  return `${lines.join('\n')}\n`;
+}
+
+/**
+ * Whether every repo with a `pipeline_ref` record still has the tree of the commit CI ran on.
+ * Null when no repo has a record, or a sha cannot be resolved here.
+ */
+export async function unchangedSincePipeline(refBody: string | null, mounts: SandboxMount[]): Promise<boolean | null> {
+  const records = parsePipelineRefs(refBody ?? '');
+  let compared = false;
+  for (const mount of mounts) {
+    const origin = await quietGit(mount.hostPath, ['remote', 'get-url', 'origin']).catch(() => '');
+    const project = origin ? safeProject(origin.trim()) : null;
+    const sha = records.find((record) => record.project === project)?.sha;
+    if (!project || !sha) {
+      continue;
+    }
+    const pipelineTree = await quietGit(mount.hostPath, ['rev-parse', `${sha}^{tree}`]).catch(() => null);
+    const current = await captureTree(mount.hostPath);
+    if (!pipelineTree || !current) {
+      return null;
+    }
+    compared = true;
+    if (current.tree !== pipelineTree.trim()) {
+      return false;
+    }
+  }
+  return compared ? true : null;
 }
 
 /** The title of the activity that waits for the pipelines of a commit. */

@@ -35,20 +35,21 @@ describe('pipeline step', () => {
     try {
       await seed(app, 'PROJ-309');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-309');
-      expect(result.exitCode).toBe(0);
-      expect(result.message).toContain('pipeline failed');
+      expect(result.message).toContain('CI_LOG_UNAVAILABLE');
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
       const run = await runs.findRun('PROJ-309');
-      expect(run?.currentStep).toBe('implement');
-      expect(run?.status).toBe('waiting');
-      expect(run?.attemptsPipeline).toBe(1);
-      const notes = await documents.latestBody('PROJ-309', 'return');
-      expect(notes).toContain('project: group/demo');
-      expect(notes).toContain('pipeline: 9');
-      expect(notes).toContain('job: unit');
-      expect(notes).toContain('https://gitlab.example/group/demo/-/pipelines/9');
-      expect(notes).toContain('gitlab pipeline failed');
+      expect(run?.status).toBe('blocked');
+      expect(run?.currentStep).toBe('pipeline');
+      expect(run?.attemptsPipeline).toBe(0);
+      const log = (await documents.latestBody('PROJ-309', 'pipeline_log')) ?? '';
+      expect(log).toContain('CI_LOG_UNAVAILABLE');
+      expect(log).toContain('unit');
+      expect(log).toContain('https://gitlab.example/group/demo/-/pipelines/9');
+      expect(log).toContain('gitlab pipeline failed');
+      expect(log).toContain('Resume reads the log again.');
+      expect(await documents.latestBody('PROJ-309', 'return')).toBeNull();
+      expect(await documents.latestBody('PROJ-309', 'issues')).toBeNull();
     } finally {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);

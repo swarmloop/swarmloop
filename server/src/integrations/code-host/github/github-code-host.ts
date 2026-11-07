@@ -1,7 +1,7 @@
 import type { Clock } from '../../../core/clock';
 import type { HttpCallDraft } from '../../../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
-import { request } from '../../http';
+import { request, withRetries } from '../../http';
 import { remoteProject } from '../remote-project';
 import { AbstractCodeHost, type CodeHostEnv } from '../abstract-code-host';
 import type {
@@ -14,6 +14,13 @@ import type {
   PipelineDiagnosis,
   SelectedHost,
 } from '../code-host';
+
+/** A log archive that answered 403/404 from the redirect host: it may lag a job that just failed. */
+class LogLagging extends Error {
+  constructor(readonly response: Awaited<ReturnType<typeof request>>) {
+    super(`HTTP ${response.status} for ${response.url}`);
+  }
+}
 
 interface GithubPull {
   number?: number;
@@ -104,7 +111,7 @@ export class GithubCodeHost extends AbstractCodeHost {
       const { root: api, headers } = this.credentials();
       const url = `${api}/repos/${repoPath(project)}/actions/runs/${id}/cancel`;
       const response = await request(this.clock, url, headers, calls, { method: 'POST' });
-      this.assertStatus(response.status, calls, 'github pipeline failed');
+      this.assertStatus(response, calls, 'github pipeline failed');
       return { httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
@@ -164,8 +171,23 @@ export class GithubCodeHost extends AbstractCodeHost {
     try {
       const { root: api, headers } = this.credentials();
       const url = `${api}/repos/${repoPath(project)}/actions/jobs/${jobId}/logs`;
-      const response = await request(this.clock, url, headers, calls);
-      this.assertStatus(response.status, calls, 'github pipeline failed');
+      const apiHost = this.apiHost();
+      const response = await withRetries(
+        async () => {
+          const result = await request(this.clock, url, headers, calls);
+          if ((result.status === 403 || result.status === 404) && new URL(result.url).hostname !== apiHost) {
+            throw new LogLagging(result);
+          }
+          return result;
+        },
+        (error) => error instanceof LogLagging,
+      ).catch((error: unknown) => {
+        if (error instanceof LogLagging) {
+          return error.response;
+        }
+        throw error;
+      });
+      this.assertStatus(response, calls, 'github pipeline failed');
       return { trace: response.body.toString('utf8'), httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
@@ -258,7 +280,7 @@ export class GithubCodeHost extends AbstractCodeHost {
       headers,
       calls,
     );
-    this.assertStatus(response.status, calls, 'github pipeline failed');
+    this.assertStatus(response, calls, 'github pipeline failed');
     let body: unknown;
     try {
       body = JSON.parse(response.body.toString('utf8')) as unknown;

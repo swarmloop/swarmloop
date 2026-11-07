@@ -128,6 +128,7 @@ export const ARTIFACTS = {
     readers: ['commit', 'merge-request', 'pipeline'],
     summarize: firstLine,
   }),
+  unfixedIssue: artifact('unfixed_issue', { writers: ['implement'], readers: ['implement'], summarize: firstLine }),
   ciRerun: artifact('ci_rerun', { writers: ['implement'], readers: ['commit'], summarize: firstLine }),
   rebaseConflict: artifact(REBASE_CONFLICT, {
     writers: ['implement', 'code-review'],

@@ -69,7 +69,7 @@ export abstract class AbstractCodeHost implements CodeHost {
         method,
         body: payload,
       });
-      this.assertStatus(response.status, calls, this.failure);
+      this.assertStatus(response, calls, this.failure);
       return { httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
@@ -128,7 +128,7 @@ export abstract class AbstractCodeHost implements CodeHost {
     failure = this.failure,
   ): Promise<unknown> {
     const response = await request(this.clock, url, headers, calls, body === undefined ? {} : { method: 'POST', body });
-    this.assertStatus(response.status, calls, failure);
+    this.assertStatus(response, calls, failure);
     try {
       return JSON.parse(response.body.toString('utf8')) as unknown;
     } catch {
@@ -149,9 +149,18 @@ export abstract class AbstractCodeHost implements CodeHost {
     }
   }
 
-  protected assertStatus(status: number, calls: HttpCallDraft[], failure: string): void {
+  protected apiHost(): string {
+    return new URL(this.endpoint(this.env).root).hostname;
+  }
+
+  protected assertStatus(response: { status: number; url: string }, calls: HttpCallDraft[], failure: string): void {
+    const { status } = response;
     if (status === 401 || status === 403) {
-      throw new FetchFailed(this.rejectedToken, calls);
+      const host = new URL(response.url).hostname;
+      throw new FetchFailed(
+        host === this.apiHost() ? this.rejectedToken : `job log unavailable: HTTP ${status} from ${host}`,
+        calls,
+      );
     }
     if (status < 200 || status >= 300) {
       throw new FetchFailed(`${failure}: HTTP ${status}`, calls);
