@@ -103,7 +103,7 @@ describe('StepDetail', () => {
 
     detail();
 
-    expect(await screen.findByRole('group', { name: 'Error: exit code 2' })).toBeInTheDocument();
+    expect(await screen.findByRole('article', { name: 'Error: exit code 2' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Error/ })).toHaveAttribute('href', '#problem-event-1');
     expect(screen.queryByText('boom from the document')).not.toBeInTheDocument();
     expect(screen.queryByText('claude-opus · 2.5s')).not.toBeInTheDocument();

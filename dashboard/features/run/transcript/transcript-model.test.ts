@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { StepEvent, StepEventBody } from '@contract/step-events';
 import { commandEvents, stepEvent } from '../../../test/step-events';
-import { filterEvents, firstProblemId, groupByAttempt, issueLinks, sideOf } from './transcript-model';
+import {
+  actorOf,
+  filterEvents,
+  firstProblemId,
+  groupByActor,
+  groupByAttempt,
+  issueLinks,
+  sideOf,
+} from './transcript-model';
 
 const agent = { runtime: 'claude', model: 'opus', mode: 'agent', timeLimitMs: 1000, session: 'fresh' as const };
 const launch = { runtime: 'claude', model: 'opus', chatId: null, resumed: false };
@@ -178,5 +186,77 @@ describe('issues across windows', () => {
     const link = { eventId: 'event-1', title: 'lint failed', source: 'pipeline', line: '', returnedTo: null };
     expect(issueLinks([opened, resolved]).get('i-1')).toEqual({ ...link, resolved: true });
     expect(issueLinks([opened]).get('i-1')).toEqual({ ...link, resolved: false });
+  });
+});
+
+describe('actorOf', () => {
+  const items = (events: StepEvent[]) => groupByAttempt(events).flatMap((group) => group.items);
+  const kindOf = (body: StepEventBody) => actorOf(items([stepEvent(1, body)])[0]).kind;
+
+  it('names the actor of each kind of card', () => {
+    expect(kindOf({ kind: 'agent.launched', ...launch })).toBe('agent');
+    expect(kindOf({ kind: 'artifact.produced', artifactKind: 'plan', documentId: 2, summary: 's' })).toBe('server');
+    expect(kindOf({ kind: 'http.call', method: 'GET', url: 'https://x.test', statusCode: 200, durationMs: 5 })).toBe(
+      'server',
+    );
+    expect(kindOf({ kind: 'activity.started', spanId: 'a', title: 'Check out' })).toBe('server');
+    expect(kindOf({ kind: 'handoff.received', handoffId: 4, issueIds: [] })).toBe('pipeline');
+    expect(kindOf({ kind: 'input.received', name: 'plan', inputKind: 'plan', documentId: 1, summary: 's' })).toBe(
+      'pipeline',
+    );
+    expect(
+      kindOf({
+        kind: 'input.received',
+        name: 'instructions',
+        inputKind: 'instructions:plan',
+        documentId: 1,
+        summary: 's',
+      }),
+    ).toBe('person');
+  });
+
+  it('takes a command from the one who ran it, and git from git', () => {
+    expect(actorOf(items(commandEvents(1, 's', { executable: 'make' }))[0]).kind).toBe('agent');
+    expect(actorOf(items(commandEvents(1, 's', { executable: 'git', exitCode: 1 }))[0])).toEqual({
+      kind: 'git',
+      name: 'Git',
+    });
+  });
+});
+
+describe('groupByActor', () => {
+  const input = (seq: number, name: string) =>
+    stepEvent(seq, { kind: 'input.received', name, inputKind: name, documentId: seq, summary: name });
+  const artifact = (seq: number) =>
+    stepEvent(seq, { kind: 'artifact.produced', artifactKind: 'plan', documentId: seq, summary: 'a plan' });
+  const grouped = (events: StepEvent[]) =>
+    groupByActor(groupByAttempt(events).flatMap((group) => group.items)).map((item) => item.grouped);
+
+  it('groups a run of cards from one actor on one side', () => {
+    expect(grouped([input(1, 'plan'), input(2, 'diff'), input(3, 'ref')])).toEqual([false, true, true]);
+  });
+
+  it('starts a new group when the actor changes', () => {
+    expect(grouped([artifact(1), ...commandEvents(2, 's', { executable: 'make' }), artifact(4)])).toEqual([
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it('starts a new group when the side changes', () => {
+    const events = [
+      stepEvent(1, { kind: 'handoff.sent', handoffId: 1, targetStep: null, artifactKinds: [], issueIds: [] }),
+      stepEvent(2, { kind: 'handoff.received', handoffId: 2, issueIds: [] }),
+    ];
+    expect(grouped(events)).toEqual([false, false]);
+  });
+
+  it('breaks at an attempt boundary when it is applied to each attempt', () => {
+    const events = [artifact(1), artifact(2), artifact(3)].map((event, index) =>
+      index === 2 ? { ...event, attemptId: 'attempt-2' } : event,
+    );
+    const marks = groupByAttempt(events).map((group) => groupByActor(group.items).map((item) => item.grouped));
+    expect(marks).toEqual([[false, true], [false]]);
   });
 });

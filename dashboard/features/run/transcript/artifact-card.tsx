@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import type { StepEvent } from '@contract/step-events';
-import { CardFrame } from './card-frame';
+import { Bubble } from './bubble';
 import { DocumentDetail } from './document-detail';
 
 export function ArtifactCard({
@@ -12,14 +12,15 @@ export function ArtifactCard({
 }): ReactElement {
   const kind = event.artifactKind.replace(/_/g, ' ');
   return (
-    <CardFrame
+    <Bubble
       side="left"
-      label="Artifact"
+      title="Artifact"
+      type="artifact"
       meta={`${kind} · document ${event.documentId}`}
       detail={<DocumentDetail runKey={runKey} kind={event.artifactKind} />}
       detailLabel="document"
     >
       {event.summary ?? `a ${kind} document was written`}
-    </CardFrame>
+    </Bubble>
   );
 }

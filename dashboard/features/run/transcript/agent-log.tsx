@@ -7,6 +7,7 @@ import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import { duration } from '../../../lib/format';
 import { LogTranscript } from '../log-transcript';
+import { DETAIL } from './tokens';
 
 export interface Exchange {
   model: string;
@@ -39,11 +40,17 @@ export function Exchanges({ exchanges }: { exchanges: Exchange[] }): ReactElemen
           </AccordionSummary>
           <AccordionDetails>
             <Typography variant="overline">Request</Typography>
-            <Typography component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+            <Typography
+              component="pre"
+              sx={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: DETAIL.fontSize }}
+            >
               {exchange.request}
             </Typography>
             <Typography variant="overline">Response</Typography>
-            <Typography component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+            <Typography
+              component="pre"
+              sx={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: DETAIL.fontSize }}
+            >
               {exchange.response}
             </Typography>
           </AccordionDetails>
@@ -77,7 +84,7 @@ export function AgentLogPanel({
             {tools ? 'show raw log' : open ? 'hide log' : 'show log'}
           </Button>
           {open ? (
-            <Box sx={{ mt: 1, maxHeight: 520, overflow: 'auto' }}>
+            <Box sx={{ mt: 1, maxHeight: DETAIL.maxHeight, overflow: 'auto' }}>
               <LogTranscript raw={agent.logs} />
             </Box>
           ) : null}

@@ -2,8 +2,9 @@ import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import type { StepEvent } from '@contract/step-events';
 import { duration } from '../../../lib/format';
-import { CardFrame } from './card-frame';
+import { Bubble } from './bubble';
 import { CommandBody } from './command-card';
+import { SPACE } from './tokens';
 import type { TranscriptItem } from './transcript-model';
 
 /** A named stretch of a step as one card. Its commands are inside, closed; the read-only git queries are only counted. */
@@ -21,15 +22,16 @@ export function ActivityCard({
     reads > 0 ? `${reads} git reads` : '',
   ].filter(Boolean);
   return (
-    <CardFrame
+    <Bubble
       side="left"
-      label="Activity"
+      title="Activity"
+      running={!finished}
       meta={parts.join(' · ')}
       detail={
         commands.length > 0 ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 0.5 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: SPACE.part }}>
             {commands.map((command) => (
-              <Box key={command.event.eventId} sx={{ minWidth: 0 }}>
+              <Box key={command.event.eventId}>
                 {command.event.kind === 'command.started' ? (
                   <CommandBody event={command.event} end={command.end} />
                 ) : null}
@@ -42,11 +44,11 @@ export function ActivityCard({
     >
       <div>{event.title}</div>
       {finished?.result ? <div>{finished.result}</div> : null}
-    </CardFrame>
+    </Bubble>
   );
 }
 
 /** A run of read-only git queries that no activity holds, as one card. */
 export function ReadsCard({ reads }: { reads: number }): ReactElement {
-  return <CardFrame side="left" label="Git">{`${reads} git reads`}</CardFrame>;
+  return <Bubble side="left" title="Git">{`${reads} git reads`}</Bubble>;
 }

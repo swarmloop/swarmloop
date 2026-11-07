@@ -3,6 +3,11 @@ import { isReadOnlyGit } from '@contract/git-reads';
 import type { StepEvent } from '@contract/step-events';
 
 export type Side = 'left' | 'right';
+export type ActorKind = 'server' | 'agent' | 'person' | 'pipeline' | 'git';
+export interface Actor {
+  kind: ActorKind;
+  name: string;
+}
 export type TranscriptFilter = 'all' | 'inputs' | 'actions' | 'problems';
 
 type AgentStart = Extract<StepEvent, { kind: 'attempt.started' }>['agent'];
@@ -49,6 +54,8 @@ export interface TranscriptItem {
   reads?: number;
   /** How the attempt ended, in words. Set on the card of `attempt.finished`. */
   outcome?: string;
+  /** The card before it in the attempt is from the same actor on the same side, so avatar and name show once. */
+  grouped?: boolean;
 }
 
 export interface AttemptGroup {
@@ -95,6 +102,65 @@ export function issueLinks(events: StepEvent[]): IssueLinks {
 /** Inputs of the step go right; everything the step did, or handed on, goes left. */
 export function sideOf(event: StepEvent): Side {
   return event.kind === 'input.received' || event.kind === 'handoff.received' ? 'right' : 'left';
+}
+
+const ACTOR_NAMES: Record<ActorKind, string> = {
+  server: 'Server',
+  agent: 'Agent',
+  person: 'You',
+  pipeline: 'Pipeline',
+  git: 'Git',
+};
+
+/** Who a card speaks for: the server, the agent, a person, the pipeline or git. */
+export function actorOf(item: TranscriptItem): Actor {
+  const { event } = item;
+  let kind: ActorKind;
+  if (item.reads) {
+    kind = 'git';
+  } else {
+    switch (event.kind) {
+      case 'command.started':
+        kind = event.executable === 'git' ? 'git' : event.actor;
+        break;
+      case 'agent.launched':
+      case 'agent.finished':
+      case 'agent.tool':
+      case 'agent.message':
+        kind = 'agent';
+        break;
+      case 'input.received':
+        kind = event.inputKind.startsWith('instructions') ? 'person' : 'pipeline';
+        break;
+      case 'handoff.received':
+      case 'handoff.sent':
+      case 'issue.opened':
+      case 'issue.resolved':
+      case 'attempt.started':
+      case 'attempt.finished':
+      case 'attempt.interrupted':
+        kind = 'pipeline';
+        break;
+      case 'activity.started':
+      case 'activity.finished':
+      case 'artifact.produced':
+      case 'command.finished':
+      case 'context.manifest':
+      case 'http.call':
+      case 'session.changed':
+        kind = 'server';
+    }
+  }
+  return { kind, name: ACTOR_NAMES[kind] };
+}
+
+/** Marks a card `grouped` when the one before it has the same side and actor. Apply it to the cards of one attempt. */
+export function groupByActor(items: TranscriptItem[]): TranscriptItem[] {
+  return items.map((item, index) => {
+    const before = items[index - 1];
+    const grouped = before !== undefined && before.side === item.side && actorOf(before).kind === actorOf(item).kind;
+    return { ...item, grouped };
+  });
 }
 
 /** A command as a person reads it: `-C <path>` shows the repo name. The event keeps the full args. */

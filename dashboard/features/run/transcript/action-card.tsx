@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import type { StepEvent } from '@contract/step-events';
 import { duration } from '../../../lib/format';
-import { CardFrame } from './card-frame';
+import { Bubble } from './bubble';
 import { httpAction } from './http-action';
 
 type Activity = Extract<StepEvent, { kind: 'attempt.finished' | 'attempt.interrupted' | 'http.call' }>;
@@ -9,9 +9,9 @@ type Activity = Extract<StepEvent, { kind: 'attempt.finished' | 'attempt.interru
 export function ActionCard({ event, outcome }: { event: Activity; outcome?: string }): ReactElement {
   if (event.kind === 'http.call') {
     return (
-      <CardFrame
+      <Bubble
         side="left"
-        label="HTTP call"
+        title="HTTP call"
         meta={`${event.statusCode ?? 'no response'} · ${duration(event.durationMs)}`}
         detail={
           <div>
@@ -20,12 +20,16 @@ export function ActionCard({ event, outcome }: { event: Activity; outcome?: stri
         }
       >
         {httpAction(event.method, event.url)}
-      </CardFrame>
+      </Bubble>
     );
   }
   return (
-    <CardFrame side="left" label="Attempt ended">
+    <Bubble
+      side="left"
+      title="Attempt ended"
+      type={event.kind === 'attempt.interrupted' ? 'warning' : event.route === 'ok' ? 'success' : 'activity'}
+    >
       {outcome ?? `${event.route}: ${event.summary}`}
-    </CardFrame>
+    </Bubble>
   );
 }

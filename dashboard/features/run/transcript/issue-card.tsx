@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import type { StepEvent } from '@contract/step-events';
 import Link from '@mui/material/Link';
-import { CardFrame } from './card-frame';
+import { Bubble } from './bubble';
 import { problemId } from './problem-card';
 import type { IssueLinks } from './transcript-model';
 
@@ -24,16 +24,16 @@ export function IssueCard({
   if (event.kind === 'issue.opened') {
     const state = issues.get(event.issueId)?.resolved ? 'resolved' : 'open';
     return (
-      <CardFrame side="left" label="Issue" meta={`from ${event.source} · ${state}`}>
+      <Bubble side="left" title="Issue" type="warning" meta={`from ${event.source} · ${state}`}>
         <div>{event.title}</div>
         {event.line ? <div>{event.line}</div> : null}
         {event.returnedTo ? <div>returned to {event.returnedTo}</div> : null}
-      </CardFrame>
+      </Bubble>
     );
   }
   const link = issues.get(event.issueId);
   return (
-    <CardFrame side="left" label="Issue resolved">
+    <Bubble side="left" title="Issue resolved" type="success">
       Resolved in attempt {attempt}: {evidenceWords(event.evidence)}
       {link ? (
         <>
@@ -41,6 +41,6 @@ export function IssueCard({
           <Link href={`#${problemId(link.eventId)}`}>{link.title}</Link>
         </>
       ) : null}
-    </CardFrame>
+    </Bubble>
   );
 }

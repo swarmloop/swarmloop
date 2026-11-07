@@ -69,8 +69,14 @@ export function StepDocuments({
         </Box>
       ) : null}
       <StepChart visit={visit} />
-      {recorded ? (
-        <TranscriptFeed runKey={runKey} events={events} issues={issues} agent={agentStep ? agent : null} />
+      {events === null || recorded ? (
+        <TranscriptFeed
+          runKey={runKey}
+          events={events}
+          issues={issues}
+          agent={agentStep ? agent : null}
+          live={visit?.status === 'running'}
+        />
       ) : null}
       {recorded && agentStep && !launched ? <AgentLogPanel agent={agent} tools={false} open /> : null}
       {events?.length === 0 && logs ? (
