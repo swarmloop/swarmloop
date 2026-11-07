@@ -16,7 +16,7 @@ interface File {
 }
 
 /** The requirements document of a run, read for a person. */
-export interface RequirementsView {
+interface RequirementsView {
   /** The ticket key and summary, or the first line of the prompt without markdown. */
   title: string;
   /** `2 tickets · 1 pages · plan: 9 items`, only the parts that are present. */
@@ -42,7 +42,7 @@ function text(value: unknown): string {
 }
 
 /** The first line of a markdown text, without its marks. */
-export function plainFirstLine(markdown: string): string {
+function plainFirstLine(markdown: string): string {
   const line = markdown.split('\n').find((item) => item.replace(/[#>*`\-_\s]/g, '') !== '') ?? '';
   return line
     .replace(/^[\s#>*\-+]+/, '')

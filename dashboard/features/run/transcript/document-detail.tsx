@@ -44,7 +44,7 @@ function jsonTable(body: string): ReactElement | null {
 }
 
 /** The document a card points at: the requirements as a structured view, JSON as a table, anything else as markdown. */
-export function DocumentBody({ kind, body }: { kind: string; body: string }): ReactElement {
+function DocumentBody({ kind, body }: { kind: string; body: string }): ReactElement {
   if (kind === 'requirements') {
     return <RequirementsDetail body={body} />;
   }
