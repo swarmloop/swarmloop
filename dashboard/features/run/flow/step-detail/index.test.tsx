@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ComponentProps, ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LiveBridgeProvider } from '../../../shell';
+import { type ComponentProps, type ReactNode, useEffect } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LiveBridgeProvider, useLiveActions } from '../../../shell';
+import { receive, resetFakeSocket } from '../../../../test/fake-socket';
 import { QueryWrapper } from '../../../../test/query-wrapper';
 import { getStep, getStepEvents } from '../../../../lib/endpoints';
 import { stepView, visitView } from '../../../../test/fixtures';
@@ -27,10 +28,19 @@ function detail(overrides: Partial<ComponentProps<typeof StepDetail>> = {}) {
   );
 }
 
+function Watch() {
+  const { watchRun } = useLiveActions();
+  useEffect(() => watchRun('run-1'), [watchRun]);
+  return null;
+}
+
 function Wrapper({ children }: { children: ReactNode }) {
   return (
     <QueryWrapper>
-      <LiveBridgeProvider>{children}</LiveBridgeProvider>
+      <LiveBridgeProvider>
+        <Watch />
+        {children}
+      </LiveBridgeProvider>
     </QueryWrapper>
   );
 }
@@ -39,6 +49,8 @@ beforeEach(() => {
   vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
   vi.mocked(getStep).mockResolvedValue(stepView());
 });
+
+afterEach(resetFakeSocket);
 
 describe('StepDetail', () => {
   it('shows the step label once the step loads', async () => {
@@ -140,6 +152,42 @@ describe('StepDetail', () => {
 
     expect(await screen.findByRole('link', { name: 'lint failed' })).toHaveAttribute('href', '#problem-event-1');
     expect(getStepEvents).toHaveBeenCalledWith('run-1', null, 0);
+  });
+
+  it('shows the events of a running step as they arrive and never reads the whole list again', async () => {
+    vi.mocked(getStep).mockResolvedValue(stepView({ eventsCursor: 2, visits: [visitView({ status: 'running' })] }));
+    const all = [
+      ...commandEvents(1, 'a', { executable: 'cmd-one' }),
+      ...commandEvents(3, 'b', { executable: 'cmd-two' }),
+      ...commandEvents(5, 'c', { executable: 'cmd-three' }),
+      ...commandEvents(7, 'd', { executable: 'cmd-four' }),
+    ];
+    vi.mocked(getStepEvents).mockImplementation((_key, name, after) =>
+      Promise.resolve({
+        events: name === null ? [] : all.filter((event) => event.seq > (after ?? 0) && event.seq <= held),
+        next: null,
+      }),
+    );
+    let held = 2;
+
+    detail();
+    expect(await screen.findByText(/cmd-one/)).toBeInTheDocument();
+
+    for (const [seq, name] of [
+      [4, 'cmd-two'],
+      [6, 'cmd-three'],
+      [8, 'cmd-four'],
+    ] as const) {
+      held = seq;
+      act(() => receive('events', { key: 'run-1', step: 'implement', seq }));
+      expect(await screen.findByText(new RegExp(name))).toBeInTheDocument();
+      expect(getStepEvents).toHaveBeenLastCalledWith('run-1', 'implement', seq - 2);
+    }
+    expect(screen.getByText(/cmd-one/)).toBeInTheDocument();
+    // After the first load, no request reads the list from the start.
+    const [, ...later] = vi.mocked(getStepEvents).mock.calls;
+    expect(later).toHaveLength(3);
+    expect(later.every(([, , after]) => (after ?? 0) > 0)).toBe(true);
   });
 
   it('keeps the log of a step with no events, marked legacy', async () => {

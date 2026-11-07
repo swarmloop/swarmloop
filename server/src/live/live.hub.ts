@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { Injectable } from '@nestjs/common';
-import { LiveLog, LiveSample, LiveUsage } from '../contract/live';
+import { LiveEvents, LiveLog, LiveSample, LiveUsage } from '../contract/live';
 
 interface LivePeaks {
   cpuPeak: number;
@@ -50,6 +50,10 @@ export class LiveHub {
     this.events.emit('log', entry);
   }
 
+  appended(entry: LiveEvents): void {
+    this.events.emit('events', entry);
+  }
+
   spendOf(key: string): LiveUsage | undefined {
     const steps = this.spend.get(key);
     if (!steps || steps.size === 0) {
@@ -95,6 +99,11 @@ export class LiveHub {
   onLog(listener: (entry: LiveLog) => void): () => void {
     this.events.on('log', listener);
     return () => this.events.off('log', listener);
+  }
+
+  onEvents(listener: (entry: LiveEvents) => void): () => void {
+    this.events.on('events', listener);
+    return () => this.events.off('events', listener);
   }
 
   onSpend(listener: (key: string) => void): () => void {

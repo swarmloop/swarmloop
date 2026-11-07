@@ -10,7 +10,7 @@ vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).f
 let watch: (key: string | null) => void = () => undefined;
 
 function Probe() {
-  const { runs, flow, logs, connected } = useLiveBridge((snapshot) => snapshot);
+  const { runs, flow, logs, events, connected } = useLiveBridge((snapshot) => snapshot);
   const { watchRun } = useLiveActions();
   useEffect(() => {
     watch = watchRun;
@@ -22,6 +22,7 @@ function Probe() {
         <p key={run.key}>{run.name}</p>
       ))}
       {flow ? <p>flow {flow.name}</p> : null}
+      {events ? <p>events {events.seq}</p> : null}
       {logs.map((entry) => (
         <p key={entry.step}>
           log {entry.step} {entry.body}
@@ -105,5 +106,16 @@ describe('useLiveBridge', () => {
     for (const event of ['connect', 'disconnect', 'runs', 'flow', 'log']) {
       expect(fakeSocket.listenerCount(event)).toBe(0);
     }
+  });
+
+  it('keeps the last events message of the watched run and ignores another run', () => {
+    render(<Probe />, { wrapper: LiveBridgeProvider });
+    act(() => watch('r1'));
+
+    act(() => receive('events', { key: 'r2', step: 'implement', seq: 9 }));
+    expect(screen.queryByText(/^events/)).not.toBeInTheDocument();
+
+    act(() => receive('events', { key: 'r1', step: 'implement', seq: 4 }));
+    expect(screen.getByText('events 4')).toBeInTheDocument();
   });
 });

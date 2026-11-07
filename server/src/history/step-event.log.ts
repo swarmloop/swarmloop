@@ -1,11 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, MoreThan, Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
 import type { StepEvent, StepEventKind, StepEventPage } from '../contract/step-events';
 import { Clock } from '../core/clock';
 import { redact } from '../core/redact';
-import { StepEventEntity } from './entities';
+import { LiveHub } from '../live/live.hub';
+import { RunEntity, StepEventEntity } from './entities';
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -43,6 +44,8 @@ export class StepEventLog {
     private readonly clock: Clock,
     private readonly config: AppConfig,
     @InjectRepository(StepEventEntity) private readonly events: Repository<StepEventEntity>,
+    @InjectRepository(RunEntity) private readonly runs: Repository<RunEntity>,
+    @Optional() private readonly live?: LiveHub,
   ) {}
 
   async append(events: StepEvent[]): Promise<void> {
@@ -61,6 +64,22 @@ export class StepEventLog {
         }),
       ),
     );
+    await this.notify(events[events.length - 1]);
+  }
+
+  /** Tells the live hub which event came last. The run key is found from the run id; a run without a row is not announced. */
+  private async notify(last: StepEvent | undefined): Promise<void> {
+    if (!last || !this.live) {
+      return;
+    }
+    try {
+      const run = await this.runs.findOne({ where: { id: last.runId } });
+      if (run) {
+        this.live.appended({ key: run.key, step: last.step, seq: last.seq });
+      }
+    } catch {
+      // The events are stored; a failed lookup only skips the push.
+    }
   }
 
   /** The last `seq` of a run, or 0 when it has no events. */

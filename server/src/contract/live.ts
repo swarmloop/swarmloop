@@ -20,11 +20,19 @@ export interface LiveLog {
   usage?: LiveUsage;
 }
 
+/** The last event a step appended; the client reads what is new with `after`. */
+export interface LiveEvents {
+  key: string;
+  step: string;
+  seq: number;
+}
+
 /** Type aliases, not interfaces: socket.io's EventsMap needs an index signature that interfaces lack. */
 export type ServerToClientEvents = {
   runs: (view: RunsView) => void;
   flow: (view: FlowView) => void;
   log: (entry: LiveLog) => void;
+  events: (entry: LiveEvents) => void;
 };
 
 export type ClientToServerEvents = {
