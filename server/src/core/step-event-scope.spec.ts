@@ -54,9 +54,8 @@ describe('step event scope', () => {
         cwd: '/srv/root',
         executable: 'agent',
         args: [],
-        output: 'data/out.txt',
       });
-      cancelled({ exitCode: null, signal: 'SIGKILL', cancelled: true });
+      cancelled({ exitCode: null, signal: 'SIGKILL', cancelled: true, output: 'killed\n' });
       return Promise.resolve();
     });
     expect(events.map((event) => event.kind)).toEqual([
@@ -74,7 +73,7 @@ describe('step event scope', () => {
       output: null,
     });
     expect(events[2]).toMatchObject({ cwd: '.', actor: 'agent' });
-    expect(events[3]).toMatchObject({ signal: 'SIGKILL', timedOut: false, cancelled: true, output: 'data/out.txt' });
+    expect(events[3]).toMatchObject({ signal: 'SIGKILL', timedOut: false, cancelled: true, output: 'killed' });
     expect(events[1]).toMatchObject({ spanId: (events[0] as { spanId: string }).spanId });
   });
 

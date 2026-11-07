@@ -65,6 +65,8 @@ export interface AgentRunInput {
    * Null leaves that kill as the result. Omitted uses the shared default.
    */
   continuePrompt?: string | null;
+  /** Called with each chunk of the agent's output as it arrives. */
+  onOutput?: (chunk: string) => void;
   /** Run in the project image with the CLI mounted into it, instead of the agent image. */
   project?: ProjectLaunch;
 }
@@ -263,6 +265,7 @@ export class AgentProcessRunner {
     const onData = (chunk: Buffer): void => {
       lastActivity = this.clock.now();
       log.note(chunk.toString('utf8'));
+      input.onOutput?.(chunk.toString('utf8'));
       buffer += chunk.toString('utf8');
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';

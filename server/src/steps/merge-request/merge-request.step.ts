@@ -12,6 +12,7 @@ import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { remoteProject, renderMergeRequest } from './merge-request-record';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { AttemptFacts } from '../../contract/step-events';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
 interface Tree {
@@ -66,18 +67,26 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     const trees = await this.trees(key, checkedRepoNames(input.repos), branch, ctx.calls, opened.run.codeHost, client);
     const summary = await this.summary(ctx, phases);
     const skip = ((await ctx.reread(ARTIFACTS.rebaseMergeSkip)) ?? '').trim() === 'skip';
-    const records = await this.ensure(
-      trees.map((tree) => ({ ...tree, summary })),
-      title,
-      ctx.calls,
-      skip,
-      client,
+    const records = await ctx.activity(
+      'Open merge request',
+      () =>
+        this.ensure(
+          trees.map((tree) => ({ ...tree, summary })),
+          title,
+          ctx.calls,
+          skip,
+          client,
+        ),
+      (done) =>
+        done.map((record, index) => `!${record.iid} ${trees[index].existing ? 'reused' : 'created'}`).join(', '),
     );
     if (skip) {
       await ctx.write(ARTIFACTS.rebaseMergeSkip, 'clear\n');
     }
     const urls = records.map((record) => record.url).join('\n');
-    return this.finish(`${opened.startedAt} merge-request done\n${urls}`, renderMergeRequest(records));
+    return this.finish(`${opened.startedAt} merge-request done\n${urls}`, renderMergeRequest(records), undefined, {
+      details: records.map((record) => record.url),
+    });
   }
 
   private async trees(
@@ -211,8 +220,14 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     }
   }
 
-  private finish(line: string, body?: string, handoff = '- opened the merge request\n'): StepResult {
+  private finish(
+    line: string,
+    body?: string,
+    handoff = '- opened the merge request\n',
+    facts?: AttemptFacts,
+  ): StepResult {
     return {
+      ...(facts ? { facts } : {}),
       route: { to: 'next' },
       summary: line,
       outputs: body ? [{ artifact: ARTIFACTS.mergeRequest, value: body }] : [],

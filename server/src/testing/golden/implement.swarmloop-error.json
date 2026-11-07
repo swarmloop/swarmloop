@@ -103,6 +103,14 @@
       "step": "implement"
     },
     {
+      "kind": "activity.started",
+      "step": "implement"
+    },
+    {
+      "kind": "activity.finished",
+      "step": "implement"
+    },
+    {
       "kind": "artifact.produced",
       "step": "implement"
     },

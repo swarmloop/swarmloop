@@ -10,7 +10,8 @@ import type { Clock } from '../core/clock';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { visitStatus } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
-import { recordStepEvent, runInStepScope } from '../core/step-event-scope';
+import type { AttemptFacts } from '../contract/step-events';
+import { recordStepEvent, runActivity, runInStepScope } from '../core/step-event-scope';
 import type { RunEntity } from '../history/entities';
 import type { OpenedStep } from '../steps/step-run';
 import { closeStep, openStep } from '../steps/step-run';
@@ -49,6 +50,8 @@ export interface StepEnd {
   handoff?: string;
   /** The problems this end sends back. They are recorded as events only. */
   issues?: Issue[];
+  /** What the attempt did, for the event that ends it. */
+  facts?: AttemptFacts;
   visit?: Partial<VisitDraft>;
 }
 
@@ -62,6 +65,8 @@ export interface StepContext {
   /** Stores a document outside the visit, such as progress a later pass resumes from. */
   write<T>(artifact: Artifact<T>, value: T): Promise<void>;
   end(input: StepEnd): Promise<PipelineResult>;
+  /** Runs `fn` as a named activity of the attempt. The commands inside it are shown under `title`, with `result` as its outcome. */
+  activity<T>(title: string, fn: () => Promise<T>, result?: (value: T) => string): Promise<T>;
 }
 
 /** Thrown by a body that has left the visit open, to return its own result without closing it. */
@@ -180,6 +185,7 @@ abstract class StepCore implements Step {
       clock: this.clock,
       reread: (artifact) => this.reader.reread(key, artifact),
       write: (artifact, value) => this.store(opened.run, artifact, value),
+      activity: runActivity,
       end: (input) => {
         closed = true;
         return this.close(opened, calls, input, snapshot);
@@ -289,6 +295,8 @@ abstract class StepCore implements Step {
       line: input.line,
       issues: input.issues ?? [],
       stored: visit.documents ?? [],
+      target: input.moveTo ?? (input.outcome === 'ok' ? (opened.run.currentStep as StepName) : null),
+      facts: input.facts,
     });
     await snapshot?.(opened.run, this.name);
     return result;
@@ -355,6 +363,7 @@ export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore
       ...routeToEnd(result.route, result.exitCode),
       line: result.summary,
       issues: result.route.to === 'return' ? result.route.issues : undefined,
+      facts: result.facts,
       visit: { ...result.visit, ...(documents.length > 0 ? { documents } : {}) },
     });
     return result.afterClose ? result.afterClose(ended) : ended;

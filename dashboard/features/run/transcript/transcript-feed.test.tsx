@@ -20,7 +20,12 @@ const input = stepEvent(1, {
   documentId: 3,
   summary: 'the plan',
 });
-const artifact = stepEvent(3, { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4 });
+const artifact = stepEvent(3, {
+  kind: 'artifact.produced',
+  artifactKind: 'diff',
+  documentId: 4,
+  summary: 'a diff of 3 files',
+});
 
 function feed(events: Parameters<typeof TranscriptFeed>[0]['events']) {
   const view = render(<TranscriptFeed runKey="run-1" events={events} />, { wrapper: QueryWrapper });
@@ -54,14 +59,18 @@ describe('TranscriptFeed', () => {
       input,
       stepEvent(2, { kind: 'attempt.finished', route: 'return', summary: 'tests failed' }),
       stepEvent(4, { kind: 'attempt.started', stepKind: 'server', agent: null }, second),
-      stepEvent(5, { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4 }, second),
+      stepEvent(
+        5,
+        { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4, summary: 'a diff of 3 files' },
+        second,
+      ),
     ]);
 
     const dividers = screen.getAllByRole('separator').map((item) => item.textContent);
-    expect(dividers).toEqual(['Attempt 1', 'Attempt 2 · return: tests failed']);
+    expect(dividers).toEqual(['Attempt 1 · first runMoved to return', 'Attempt 2 · run again']);
     const text = screen.getByTestId('transcript-feed').textContent ?? '';
-    expect(text.indexOf('the plan')).toBeLessThan(text.indexOf('tests failed'));
-    expect(text.indexOf('tests failed')).toBeLessThan(text.indexOf('diff'));
+    expect(text.indexOf('the plan')).toBeLessThan(text.lastIndexOf('Moved to return'));
+    expect(text.lastIndexOf('Moved to return')).toBeLessThan(text.indexOf('a diff'));
   });
 
   it('keeps the order when a filter is chosen', async () => {
@@ -75,10 +84,10 @@ describe('TranscriptFeed', () => {
 
     await user.click(screen.getByRole('button', { name: 'inputs' }));
     expect(screen.getByText(/the plan/)).toBeInTheDocument();
-    expect(screen.getByText(/handoff 7/)).toBeInTheDocument();
+    expect(screen.getByText(/From pipeline \/ review: 1 issues/)).toBeInTheDocument();
     expect(screen.queryByText(/make/)).not.toBeInTheDocument();
     const inputs = screen.getByTestId('transcript-feed').textContent ?? '';
-    expect(inputs.indexOf('the plan')).toBeLessThan(inputs.indexOf('handoff 7'));
+    expect(inputs.indexOf('the plan')).toBeLessThan(inputs.indexOf('From pipeline / review'));
 
     await user.click(screen.getByRole('button', { name: 'problems' }));
     expect(within(screen.getByTestId('transcript-feed')).getAllByRole('group')).toHaveLength(1);
@@ -118,38 +127,31 @@ describe('TranscriptFeed', () => {
     const user = userEvent.setup();
     const long = 'x'.repeat(400);
     const output = Array.from({ length: 5000 }, (_, index) => `line ${index} ${long}`).join('\n');
-    vi.mocked(getHistory).mockResolvedValue(
-      historyView({ files: [{ name: 'out', path: 'runs/out.txt', body: output }] }),
-    );
-    const { container } = feed(commandEvents(1, 's', { executable: 'curl', args: [long], output: 'runs/out.txt' }));
+    const { container } = feed(commandEvents(1, 's', { executable: 'curl', args: [long], output }));
 
     expect(screen.queryByText(/line 4999/)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Show output' }));
-    await act(async () => {});
 
     expect(await screen.findByText(/line 4999/)).toBeInTheDocument();
     expect(window.innerWidth).toBe(320);
     expect(overflowing(container)).toEqual([]);
   });
 
-  it('says so when the output of a command is not stored', async () => {
-    const user = userEvent.setup();
+  it('says so when the output of a command is not stored', () => {
     feed(commandEvents(1, 's', { executable: 'ls' }));
 
-    await user.click(screen.getByRole('button', { name: 'Show output' }));
-
-    expect(screen.getByText('output not stored')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show output' })).not.toBeInTheDocument();
   });
 
-  it('reads the history once for every command card that opens its output', async () => {
+  it('reads the history once for every card that opens its document', async () => {
     const user = userEvent.setup();
     vi.mocked(getHistory).mockResolvedValue(historyView());
     feed([
-      ...commandEvents(1, 'a', { executable: 'ls', output: 'runs/a.txt' }),
-      ...commandEvents(3, 'b', { executable: 'pwd', output: 'runs/b.txt' }),
+      stepEvent(1, { kind: 'artifact.produced', artifactKind: 'plan', documentId: 3, summary: 'a plan' }),
+      stepEvent(2, { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4, summary: 'a diff' }),
     ]);
 
-    for (const button of screen.getAllByRole('button', { name: 'Show output' })) {
+    for (const button of screen.getAllByRole('button', { name: 'Show document' })) {
       await user.click(button);
     }
     await act(async () => {});
@@ -172,7 +174,7 @@ describe('TranscriptFeed', () => {
     });
 
     expect(screen.getByText('Input from pipeline / review')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'i-1' })).toHaveAttribute('href', '#problem-event-1');
+    expect(screen.getByRole('link', { name: 'lint failed' })).toHaveAttribute('href', '#problem-event-1');
     expect(screen.getByText(/resolved/)).toBeInTheDocument();
   });
 
@@ -202,6 +204,6 @@ describe('TranscriptFeed', () => {
     ];
     render(<TranscriptFeed runKey="run-1" events={events} />, { wrapper: QueryWrapper });
 
-    expect(screen.getByText('Returned to implement')).toBeInTheDocument();
+    expect(screen.getByText('Passed to implement')).toBeInTheDocument();
   });
 });

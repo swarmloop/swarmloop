@@ -2,20 +2,30 @@ import type { ReactElement } from 'react';
 import type { StepEvent } from '@contract/step-events';
 import { duration } from '../../../lib/format';
 import { CardFrame } from './card-frame';
+import { httpAction } from './http-action';
 
 type Activity = Extract<StepEvent, { kind: 'attempt.finished' | 'attempt.interrupted' | 'http.call' }>;
 
-function text(event: Activity): string {
+export function ActionCard({ event, outcome }: { event: Activity; outcome?: string }): ReactElement {
   if (event.kind === 'http.call') {
-    return `${event.method} ${event.url} → ${event.statusCode ?? 'no response'} · ${duration(event.durationMs)}`;
+    return (
+      <CardFrame
+        side="left"
+        label="HTTP call"
+        meta={`${event.statusCode ?? 'no response'} · ${duration(event.durationMs)}`}
+        detail={
+          <div>
+            {event.method} {event.url} → {event.statusCode ?? 'no response'} · {duration(event.durationMs)}
+          </div>
+        }
+      >
+        {httpAction(event.method, event.url)}
+      </CardFrame>
+    );
   }
-  return `${event.route}: ${event.summary}`;
-}
-
-export function ActionCard({ event }: { event: Activity }): ReactElement {
   return (
-    <CardFrame side="left" label={event.kind === 'http.call' ? 'HTTP call' : 'Attempt ended'}>
-      {text(event)}
+    <CardFrame side="left" label="Attempt ended">
+      {outcome ?? `${event.route}: ${event.summary}`}
     </CardFrame>
   );
 }

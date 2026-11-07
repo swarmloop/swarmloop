@@ -17,11 +17,15 @@ import { checkedRepoNames, hasCi, worktreePath } from '../../git/repo-names';
 import { BaseStep, type StepContext } from '../base-step';
 import {
   cancelErrorNote,
+  ciResult,
+  ciTitle,
+  jobResults,
   originProject,
   parsePipelineRefs,
   renderFail,
   renderNone,
   renderPass,
+  stopLine,
   failureIssues,
   type Failure,
   type Seen,
@@ -67,8 +71,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     if (records.length === 0) {
       throw new SwarmloopError('pipeline ref is missing');
     }
-    const watched = await this.watch(ctx, records, env, host);
-    return this.route(ctx, env, records, watched.seen, watched.verdict, host);
+    const watched = await ctx.activity(ciTitle(records), () => this.watch(ctx, records, env, host), ciResult);
+    const result = await this.route(ctx, env, records, watched.seen, watched.verdict, host);
+    return { ...result, facts: { details: jobResults(watched.seen) } };
   }
 
   /** Repo names that have a workflow file and no run. Null when the repo list is missing. */
@@ -198,7 +203,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       return this.red(ctx, env, seen, host);
     }
     if (verdict === 'stop') {
-      return this.finish('failed', this.report(opened, this.stopLine(seen)), 'failed');
+      return this.finish('failed', this.report(opened, stopLine(seen)), 'failed');
     }
     if (verdict === 'manual') {
       return this.finish('waiting', this.report(opened, 'pipeline is manual'), 'waiting');
@@ -362,11 +367,6 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       });
     }
     return failures;
-  }
-
-  private stopLine(seen: Seen[]): string {
-    const project = seen.find((item) => item.status === 'skipped')?.project ?? 'pipeline';
-    return `${project} pipeline was skipped`;
   }
 
   private report(opened: OpenedStep, text: string, body = ''): string {

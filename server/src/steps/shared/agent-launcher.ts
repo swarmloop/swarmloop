@@ -3,7 +3,9 @@ import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { AGENT_RUNNER, readSession } from '../../agent/agent-runner';
 import type { AgentProcessRunner, AgentRunResult } from '../../agent/agent-runner';
-import { recordStepEvent } from '../../core/step-event-scope';
+import { AgentWorkFeed } from '../../contract/readable-log';
+import type { AgentWork } from '../../contract/readable-log';
+import { bindToStepScope, recordStepEvent } from '../../core/step-event-scope';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import type { RunEntity } from '../../history/entities';
 import { sessionFileName } from '../../history/session-group';
@@ -46,6 +48,18 @@ function newChatReason(
   return hasFile ? 'runtime changed' : 'no stored chat';
 }
 
+const MESSAGE_CHARS = 600;
+
+/** Records what the agent did: a tool call, or its own text cut to 600 characters. */
+function recordWork(work: AgentWork): void {
+  if (work.kind === 'message') {
+    recordStepEvent({ kind: 'agent.message', text: work.text.slice(0, MESSAGE_CHARS), chars: work.text.length });
+    return;
+  }
+  const { kind: _kind, ...tool } = work;
+  recordStepEvent({ kind: 'agent.tool', ...tool });
+}
+
 /** Starts one agent process for a step: the session file, the prompt prefix, and the run's spend counters. */
 @Injectable()
 export class AgentLauncher {
@@ -75,7 +89,11 @@ export class AgentLauncher {
       cut: [],
     });
     recordStepEvent({ kind: 'agent.launched', ...launch });
+    const feed = new AgentWorkFeed([request.workspace, ...request.mounts.map((mount) => mount.containerPath)], () =>
+      performance.now(),
+    );
     const result = await this.agent.run({
+      onOutput: bindToStepScope((chunk) => feed.push(chunk).forEach(recordWork)),
       prompt: `${AGENT_LANGUAGE_RULE}\n\n${request.prompt}`,
       workspace: request.workspace,
       outputFile: join(directory, `${request.key}-${request.step}-output.txt`),
@@ -98,6 +116,7 @@ export class AgentLauncher {
       continuePrompt: request.continuePrompt,
       project: request.project,
     });
+    feed.finish().forEach(recordWork);
     recordStepEvent({
       kind: 'agent.finished',
       ...launch,

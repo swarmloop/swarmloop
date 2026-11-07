@@ -19,7 +19,7 @@ const bodies: [StepEventBody, 'left' | 'right'][] = [
   [{ kind: 'http.call', method: 'GET', url: 'https://x.test', statusCode: 200, durationMs: 5 }, 'left'],
   [{ kind: 'agent.launched', ...launch }, 'left'],
   [{ kind: 'agent.finished', ...launch, killReason: null, tokensIn: 1, tokensOut: 2, usd: 0 }, 'left'],
-  [{ kind: 'artifact.produced', artifactKind: 'plan', documentId: 2 }, 'left'],
+  [{ kind: 'artifact.produced', artifactKind: 'plan', documentId: 2, summary: 'plan: 9 items' }, 'left'],
 ];
 
 describe('sideOf', () => {
@@ -54,7 +54,7 @@ describe('groupByAttempt', () => {
     stepEvent(2, { kind: 'input.received', name: 'plan', inputKind: 'plan', documentId: 1, summary: 'a plan' }),
     ...commandEvents(3, 's1', { executable: 'git' }),
     stepEvent(5, { kind: 'attempt.finished', route: 'return', summary: 'tests failed' }),
-    stepEvent(7, { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4 }, second),
+    stepEvent(7, { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4, summary: 'a diff' }, second),
   ];
 
   it('lists the attempts in order, each with its events in seq order', () => {
@@ -67,8 +67,8 @@ describe('groupByAttempt', () => {
   it('gives the reason and the runtime or model only when they changed', () => {
     const [first, next] = groupByAttempt(events);
 
-    expect(first).toMatchObject({ reason: null, runtime: 'claude', model: 'opus' });
-    expect(next).toMatchObject({ reason: 'return: tests failed', runtime: null, model: 'sonnet' });
+    expect(first).toMatchObject({ why: 'first run', modelName: 'opus', outcome: 'Moved to return' });
+    expect(next).toMatchObject({ why: 'run again', modelName: 'sonnet', outcome: null });
   });
 
   it('pairs a command with its end and reads the problem from it', () => {
@@ -119,7 +119,7 @@ describe('filterEvents', () => {
     stepEvent(1, { kind: 'input.received', name: 'plan', inputKind: 'plan', documentId: 1, summary: '' }),
     ...commandEvents(2, 'a', { executable: 'make', exitCode: 1 }),
     stepEvent(4, { kind: 'handoff.received', handoffId: 3, issueIds: ['i'] }),
-    stepEvent(5, { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4 }),
+    stepEvent(5, { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4, summary: 'a diff' }),
   ]);
   const items = group?.items ?? [];
   const seqs = (filter: Parameters<typeof filterEvents>[1]) =>
@@ -175,7 +175,8 @@ describe('issues across windows', () => {
   });
 
   it('links an issue to its first problem event and marks it resolved', () => {
-    expect(issueLinks([opened, resolved]).get('i-1')).toEqual({ eventId: 'event-1', resolved: true });
-    expect(issueLinks([opened]).get('i-1')).toEqual({ eventId: 'event-1', resolved: false });
+    const link = { eventId: 'event-1', title: 'lint failed', source: 'pipeline', line: '', returnedTo: null };
+    expect(issueLinks([opened, resolved]).get('i-1')).toEqual({ ...link, resolved: true });
+    expect(issueLinks([opened]).get('i-1')).toEqual({ ...link, resolved: false });
   });
 });

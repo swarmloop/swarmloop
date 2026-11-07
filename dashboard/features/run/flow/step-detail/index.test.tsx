@@ -138,7 +138,7 @@ describe('StepDetail', () => {
 
     detail();
 
-    expect(await screen.findByRole('link', { name: 'i-1' })).toHaveAttribute('href', '#problem-event-1');
+    expect(await screen.findByRole('link', { name: 'lint failed' })).toHaveAttribute('href', '#problem-event-1');
     expect(getStepEvents).toHaveBeenCalledWith('run-1', null, 0);
   });
 

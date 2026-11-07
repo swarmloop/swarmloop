@@ -1,5 +1,6 @@
 import type { StepResult } from '../contract/step-contract';
 import { SwarmloopError } from '../../core/swarmloop-error';
+import type { AttemptFacts } from '../../contract/step-events';
 import { bulletSection } from '../shared/markdown-section';
 
 export function parseImplementation(text: string): string {
@@ -45,4 +46,14 @@ export function checkRepeatedBlock(startedAt: string, step: string, error: Error
     summary: `${startedAt} ${step} blocked: ${error.message}`,
     outputs: [],
   };
+}
+
+/** The checks result as a line: `8 of 8 passed`. */
+export function checksLine(result: { passed: number; total: number }): string {
+  return result.total === 0 ? 'no checks' : `${result.passed} of ${result.total} passed`;
+}
+
+/** What the server checks said, for the event that ends an implement attempt. */
+export function implementFacts(checks: string | null): AttemptFacts | undefined {
+  return checks ? { details: [`checks: ${checks}`] } : undefined;
 }

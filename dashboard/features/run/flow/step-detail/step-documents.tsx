@@ -1,18 +1,15 @@
 'use client';
 
 import type { ReactElement } from 'react';
-import Accordion from '@mui/material/Accordion';
-import AccordionDetails from '@mui/material/AccordionDetails';
-import AccordionSummary from '@mui/material/AccordionSummary';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import { statusColor } from '../../../../theme/theme';
 import { MarkdownBody } from '../../../../components/ui/markdown-body';
-import { duration } from '../../../../lib/format';
 import type { StepView } from '@contract/api';
 import type { StepEvent } from '@contract/step-events';
 import { LogTranscript } from '../../log-transcript';
+import { AgentLogPanel, Exchanges, type AgentLog } from '../../transcript/agent-log';
 import { TranscriptFeed } from '../../transcript/transcript-feed';
 import type { IssueLinks } from '../../transcript/transcript-model';
 import { StepChart } from './step-chart';
@@ -41,6 +38,9 @@ export function StepDocuments({
   document: string;
 }): ReactElement {
   const recorded = events !== null && events.length > 0;
+  const agentStep = Boolean(visit?.model) || (visit?.exchanges.length ?? 0) > 0;
+  const launched = events?.some((event) => event.kind === 'agent.launched') ?? false;
+  const agent: AgentLog = { logs, running: visit?.status === 'running', exchanges: visit?.exchanges ?? [] };
   return (
     <>
       {shownChecks.length > 0 ? (
@@ -69,7 +69,10 @@ export function StepDocuments({
         </Box>
       ) : null}
       <StepChart visit={visit} />
-      {recorded ? <TranscriptFeed runKey={runKey} events={events} issues={issues} /> : null}
+      {recorded ? (
+        <TranscriptFeed runKey={runKey} events={events} issues={issues} agent={agentStep ? agent : null} />
+      ) : null}
+      {recorded && agentStep && !launched ? <AgentLogPanel agent={agent} tools={false} open /> : null}
       {events?.length === 0 && logs ? (
         <Box sx={{ mt: 2, border: 1, borderColor: 'divider', borderRadius: 1, p: 1, minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary">
@@ -81,31 +84,7 @@ export function StepDocuments({
         </Box>
       ) : null}
       {document ? <MarkdownBody text={document} /> : null}
-      {events?.length === 0 &&
-        visit?.exchanges.map((exchange, index) => (
-          <Accordion
-            key={`${exchange.model}-${index}`}
-            disableGutters
-            elevation={0}
-            sx={{ borderTop: 1, borderColor: 'divider', bgcolor: 'transparent' }}
-          >
-            <AccordionSummary>
-              <Typography variant="body2">
-                {exchange.model} · {duration(exchange.durationMs)}
-              </Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Typography variant="overline">Request</Typography>
-              <Typography component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                {exchange.request}
-              </Typography>
-              <Typography variant="overline">Response</Typography>
-              <Typography component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                {exchange.response}
-              </Typography>
-            </AccordionDetails>
-          </Accordion>
-        ))}
+      {events?.length === 0 ? <Exchanges exchanges={visit?.exchanges ?? []} /> : null}
     </>
   );
 }

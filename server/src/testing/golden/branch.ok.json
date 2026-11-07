@@ -27,11 +27,7 @@
       "step": "branch"
     },
     {
-      "kind": "command.started",
-      "step": "branch"
-    },
-    {
-      "kind": "command.finished",
+      "kind": "activity.started",
       "step": "branch"
     },
     {
@@ -56,6 +52,18 @@
     },
     {
       "kind": "command.finished",
+      "step": "branch"
+    },
+    {
+      "kind": "command.started",
+      "step": "branch"
+    },
+    {
+      "kind": "command.finished",
+      "step": "branch"
+    },
+    {
+      "kind": "activity.finished",
       "step": "branch"
     },
     {

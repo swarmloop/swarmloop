@@ -400,7 +400,7 @@ describe('implement-improve step', () => {
         let fingerprint: string | null = null;
         jest.spyOn(app.get(EnvironmentService), 'check').mockImplementation(async (input) => {
           const files = git(tree, ['status', '--porcelain']);
-          if (files.includes('fixed.ts')) return;
+          if (files.includes('fixed.ts')) return { passed: 0, total: 0 };
           if (fingerprint === files) throw new RequiredCheckRepeated('repeated');
           fingerprint = files;
           await app.get(DocumentRepository).putDocument(input.run, 'return', `## checks\n${checksBody}\n`);

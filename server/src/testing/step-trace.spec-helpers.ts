@@ -70,9 +70,13 @@ export async function traceRun(dataSource: DataSource, key: string, reads: Recor
     });
   }
   const events = await dataSource.getRepository(StepEventEntity).find({ where: { runId }, order: { seq: 'ASC' } });
-  for (const { payload } of events) {
+  for (const { kind, payload } of events) {
     // A stored payload is already masked, so masking it again changes nothing.
     expect(redact(payload)).toBe(payload);
+    if (kind === 'input.received') {
+      // An input is told by a sentence of what it holds, never by the first bracket of its body.
+      expect((JSON.parse(payload) as { summary: string }).summary).not.toMatch(/^[[{]$/);
+    }
   }
   return {
     run: {
