@@ -44,4 +44,14 @@ describe('LiveHub', () => {
     hub.clearSpend('run-1');
     expect(hub.peaksOf('run-1')).toEqual({ cpuPeak: 0, memPeak: 0 });
   });
+
+  it('passes an appended-events entry to its listeners until they unsubscribe', () => {
+    const hub = new LiveHub();
+    const seen: number[] = [];
+    const stop = hub.onEvents((entry) => seen.push(entry.seq));
+    hub.appended({ key: 'run-1', step: 'implement', seq: 4 });
+    stop();
+    hub.appended({ key: 'run-1', step: 'implement', seq: 5 });
+    expect(seen).toEqual([4]);
+  });
 });

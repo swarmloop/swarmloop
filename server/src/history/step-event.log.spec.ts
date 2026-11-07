@@ -1,5 +1,9 @@
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { LiveHub } from '../live/live.hub';
 import type { StepEvent } from '../contract/step-events';
 import { repositoryDatabase } from './repository.spec-helpers';
+import { RunEntity, StepEventEntity } from './entities';
+import { RunRepository } from './run.repository';
 import { StepEventLog } from './step-event.log';
 
 function event(seq: number, overrides: Partial<StepEvent> = {}): StepEvent {
@@ -75,5 +79,36 @@ describe('StepEventLog', () => {
     await log.append([event(1)]);
     await expect(log.append([event(1)])).rejects.toThrow();
     await log.append([event(1, { runId: 2 })]);
+  });
+
+  describe('live notification', () => {
+    function announcing(): { log: StepEventLog; seen: unknown[] } {
+      const hub = new LiveHub();
+      const seen: unknown[] = [];
+      hub.onEvents((entry) => seen.push(entry));
+      const announcer = new StepEventLog(
+        database.clock,
+        database.config,
+        database.app.get(getRepositoryToken(StepEventEntity)),
+        database.app.get(getRepositoryToken(RunEntity)),
+        hub,
+      );
+      return { log: announcer, seen };
+    }
+
+    it('announces a batch once, with the key, step and seq of its last event', async () => {
+      const run = await database.app.get(RunRepository).openWaiting('run-1', '/target');
+      const { log: announcer, seen } = announcing();
+      await announcer.append([event(1, { runId: run.id }), event(2, { runId: run.id, step: 'implement' })]);
+      expect(seen).toEqual([{ key: 'run-1', step: 'implement', seq: 2 }]);
+    });
+
+    it('announces nothing for an empty batch or a run without a row', async () => {
+      const { log: announcer, seen } = announcing();
+      await announcer.append([]);
+      await announcer.append([event(1, { runId: 99 })]);
+      expect(seen).toEqual([]);
+      expect(await announcer.lastSeq(99)).toBe(1);
+    });
   });
 });

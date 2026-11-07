@@ -2,7 +2,7 @@ import { Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestj
 import { OnGatewayConnection, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { FlowView } from '../contract/api';
-import { ClientToServerEvents, ServerToClientEvents } from '../contract/live';
+import { ClientToServerEvents, LiveEvents, ServerToClientEvents } from '../contract/live';
 import { RunQueriesService } from '../api/run-queries.service';
 import { LiveHub } from '../live/live.hub';
 import { PANEL_ORIGINS } from '../live/origins';
@@ -15,6 +15,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
   private readonly logger = new Logger(LiveGateway.name);
   private readonly stop: Array<() => void> = [];
   private readonly pending = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly eventWindows = new Map<string, { timer: ReturnType<typeof setTimeout>; latest: LiveEvents }>();
 
   constructor(
     private readonly hub: LiveHub,
@@ -29,6 +30,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
         this.server.to(room(entry.key)).emit('log', entry);
       }),
     );
+    this.stop.push(this.hub.onEvents((entry) => this.throttle(entry)));
   }
 
   onModuleDestroy(): void {
@@ -36,6 +38,9 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
       stop();
     }
     for (const timer of this.pending.values()) {
+      clearTimeout(timer);
+    }
+    for (const { timer } of this.eventWindows.values()) {
       clearTimeout(timer);
     }
   }
@@ -59,6 +64,23 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
     if (flow) {
       client.emit('flow', flow);
     }
+  }
+
+  /** At most one `events` message per run in a 500 ms window; the window ends with the latest entry. */
+  private throttle(entry: LiveEvents): void {
+    const window = this.eventWindows.get(entry.key);
+    if (window) {
+      window.latest = entry;
+      return;
+    }
+    const opened = {
+      latest: entry,
+      timer: setTimeout(() => {
+        this.eventWindows.delete(entry.key);
+        this.server.to(room(entry.key)).emit('events', opened.latest);
+      }, 500),
+    };
+    this.eventWindows.set(entry.key, opened);
   }
 
   private queue(key: string): void {

@@ -33,10 +33,11 @@ export function StepDetail({
 }): React.ReactElement | null {
   const { view, attempt, setAttempt, error, follow } = useStep(runKey, step, live, revision, attempts);
   const [check, setCheck] = useState<string | null>(null);
-  const { events, error: eventsError } = useStepEvents(runKey, step, view?.eventsCursor ?? null);
+  const running = view?.visits[attempt]?.status === 'running';
+  const { events, error: eventsError } = useStepEvents(runKey, step, view?.eventsCursor ?? null, running);
   // The source of a returned issue is another step, so its events are read only when this step took a handoff.
   const received = events?.some((event) => event.kind === 'handoff.received') ?? false;
-  const run = useStepEvents(runKey, null, received ? (view?.eventsCursor ?? null) : null);
+  const run = useStepEvents(runKey, null, received ? (view?.eventsCursor ?? null) : null, running);
   const issues = useMemo(() => issueLinks(run.events ?? []), [run.events]);
 
   useEffect(() => {
