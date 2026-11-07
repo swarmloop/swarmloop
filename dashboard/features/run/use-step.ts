@@ -28,9 +28,13 @@ export function useStep(
   const follow = useRef(true);
   const logs = useLiveBridge((snapshot) => snapshot.logs);
   const seenLogs = useRef(new WeakSet<LiveLog>());
-  const latestLog = useRef<{ body: string; samples: StepView['visits'][number]['samples']; usage?: LiveUsage } | null>(
-    null,
-  );
+  const latestLog = useRef<{
+    body: string;
+    samples: StepView['visits'][number]['samples'];
+    usage?: LiveUsage;
+    /** The attempt the log opened or updated in the view. */
+    attempt?: number;
+  } | null>(null);
 
   useEffect(() => {
     follow.current = true;
@@ -51,11 +55,14 @@ export function useStep(
         if (stopped) {
           return;
         }
-        const running = body.visits.at(-1)?.status === 'running';
-        const liveLog = latestLog.current;
-        if (!running && !liveLog) {
+        const last = body.visits.at(-1);
+        const running = last?.status === 'running';
+        // A stored visit that already holds the log's attempt ends it: the log must not open the next attempt.
+        const stale = !running && last !== undefined && last.attempt >= (latestLog.current?.attempt ?? Infinity);
+        if (stale) {
           latestLog.current = null;
         }
+        const liveLog = latestLog.current;
         const fetched = running ? withFileUsage(body) : body;
         setView(liveLog ? withLog(fetched, liveLog.body, liveLog.samples, liveLog.usage) : fetched);
         setAttempt((current) => (follow.current ? Math.max(body.visits.length - 1, 0) : current));
@@ -95,7 +102,16 @@ export function useStep(
     }
     const samples = entry.samples ?? [];
     latestLog.current = { body: entry.body, samples, usage: entry.usage };
-    setView((current) => (current ? withLog(current, entry.body, samples, entry.usage) : current));
+    setView((current) => {
+      if (!current) {
+        return current;
+      }
+      const next = withLog(current, entry.body, samples, entry.usage);
+      if (latestLog.current) {
+        latestLog.current.attempt = next.visits.at(-1)?.attempt;
+      }
+      return next;
+    });
   }, [logs, runKey, step]);
 
   useEffect(() => {

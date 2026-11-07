@@ -52,7 +52,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
   const latest = launches.at(-1)?.phases ?? original;
   const choice = replay ? replaySelection(original, latest, replay) : null;
   return (
-    <Box>
+    <Box sx={{ minWidth: 0 }}>
       <RunHeader
         flow={flow}
         openMs={openMs}

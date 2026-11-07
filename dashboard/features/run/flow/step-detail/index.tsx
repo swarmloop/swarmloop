@@ -71,7 +71,7 @@ export function StepDetail({
       : visit;
   const { logs, document } = stepText(step, shownVisit, selected, checks);
   return (
-    <Paper sx={{ mt: 3, p: 2.5, border: 1, borderColor: 'divider' }}>
+    <Paper sx={{ mt: 3, p: 2.5, border: 1, borderColor: 'divider', minWidth: 0 }}>
       <StepHeader
         step={step}
         runStatus={runStatus}

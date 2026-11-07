@@ -1,6 +1,7 @@
 import { liveLogBody } from '../../agent/live-output';
 import type { LaunchView, VisitView } from '../../contract/api';
 import type { LiveSample } from '../../contract/live';
+import { liveVisitKey } from '../../contract/visit-key';
 
 export function liveVisit(
   key: string,
@@ -15,6 +16,7 @@ export function liveVisit(
   const started = Date.parse(startedAt);
   return {
     id: -1,
+    key: liveVisitKey(step, previousAttempt + 1),
     attempt: previousAttempt + 1,
     status: 'running',
     model: null,

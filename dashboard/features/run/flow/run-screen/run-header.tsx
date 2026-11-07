@@ -52,7 +52,7 @@ export function RunHeader({
   return (
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
-        <Box sx={{ minWidth: 0 }}>
+        <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
           <Tooltip title={flow.name}>
             <Typography variant="h5" noWrap>
               {flow.name}

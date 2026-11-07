@@ -39,6 +39,11 @@ function Probe({ step }: { step: string }) {
   );
 }
 
+function Counting({ revision }: { revision: string }) {
+  const { view } = useStep('run-1', 'implement', false, revision, 0);
+  return <p>{view ? `attempts ${view.visits.map((item) => item.attempt).join(',')}` : 'loading'}</p>;
+}
+
 function runningStep(body: string) {
   return stepView({
     visits: [
@@ -88,5 +93,19 @@ describe('useStep', () => {
     render(<Probe step="implement" />, { wrapper: Wrapper });
 
     expect(await screen.findByText('step is gone')).toBeInTheDocument();
+  });
+
+  it('shows no next attempt when a refetch already holds the attempt of a stale log', async () => {
+    vi.mocked(getStep).mockResolvedValueOnce(runningStep('first line'));
+    const { rerender } = render(<Counting revision="1" />, { wrapper: Wrapper });
+    await screen.findByText('attempts 1');
+
+    let finish: (value: ReturnType<typeof stepView>) => void = () => undefined;
+    vi.mocked(getStep).mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    rerender(<Counting revision="2" />);
+    act(() => receive('log', { key: 'run-1', step: 'implement', body: 'last output' }));
+    await act(async () => finish(stepView({ visits: [visitView({ status: 'done' })] })));
+
+    expect(await screen.findByText('attempts 1')).toBeInTheDocument();
   });
 });

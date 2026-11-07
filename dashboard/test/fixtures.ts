@@ -1,6 +1,7 @@
 import type { FlowView, HistoryView, RunSummary, StepView } from '@contract/api';
 import { actionsFor } from '@contract/run-state';
 import type { RunState } from '@contract/run-state';
+import { visitKey } from '@contract/visit-key';
 
 const at = '2026-01-01T00:00:00.000Z';
 
@@ -85,6 +86,7 @@ export function visitView(overrides: Partial<StepView['visits'][number]> = {}): 
     exchanges: [],
     samples: [],
     ...overrides,
+    key: overrides.key ?? visitKey(overrides.id ?? 1),
   };
 }
 

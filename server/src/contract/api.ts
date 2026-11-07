@@ -72,6 +72,8 @@ export interface FlowView {
 
 export interface VisitView {
   id: number;
+  /** Unique in a `StepView`: `visit-<id>` for a stored visit, `live-<step>-<attempt>` for a live one. */
+  key: string;
   attempt: number;
   status: string;
   model: string | null;

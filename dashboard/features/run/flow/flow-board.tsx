@@ -118,7 +118,7 @@ export function FlowBoard({
             const span = from - 2 + 1;
             return (
               <Box
-                key={edge.counter}
+                key={`${edge.counter}:${index}`}
                 sx={{
                   position: 'absolute',
                   top: index * 36,
