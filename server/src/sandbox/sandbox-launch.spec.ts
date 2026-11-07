@@ -27,6 +27,7 @@ function launch(patch: Partial<SandboxLaunch> = {}): SandboxLaunch {
     runtime: 'cursor',
     runKey: 'PROJ-1',
     step: 'research',
+    attemptId: 'attempt-1',
     mounts: [{ hostPath: '/tmp/worktrees/PROJ-1/demo', containerPath: '/work/demo' }],
     envMasks: [{ hostFile: '/tmp/worktrees/PROJ-1/demo/.env', containerFile: '/work/demo/.env' }],
     allowHosts: [],
@@ -38,6 +39,35 @@ function launch(patch: Partial<SandboxLaunch> = {}): SandboxLaunch {
 }
 
 describe('sandbox launch', () => {
+  describe('run labels', () => {
+    it('labels every run container with its run, step and attempt', () => {
+      const labels = (args: string[]) => args.filter((arg, index) => args[index - 1] === '--label');
+      const project = {
+        image: 'swarmloop-env-demo:0123456789ab',
+        cliVolume: 'swarmloop-cli-claude-0123456789ab',
+        path: '/usr/local/bin:/usr/bin:/bin',
+        certFile: true,
+        caches: [],
+      };
+      const cases = [
+        launch(),
+        launch({ step: 'setup', runtime: 'claude', command: [], project: { ...project, shell: 'npm ci' } }),
+        launch({ step: 'checks', runtime: 'claude', command: [], project: { ...project, shell: 'npm test' } }),
+        launch({ step: 'code-review-security' }),
+        launch({ step: 'report' }),
+        launch({ step: 'chat' }),
+        launch({ step: 'shell', attemptId: '', stdin: true, tty: true }),
+      ];
+      for (const given of cases) {
+        expect(labels(sandboxArgs(given, home, ''))).toEqual([
+          'swarmloop.run=PROJ-1',
+          `swarmloop.step=${given.step}`,
+          `swarmloop.attempt=${given.attemptId}`,
+        ]);
+      }
+    });
+  });
+
   describe('container runtime', () => {
     it('uses the configured runtime, such as gVisor, and the default without one', () => {
       const given = launch({ allowHosts: [] });

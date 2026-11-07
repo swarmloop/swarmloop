@@ -62,6 +62,9 @@ export class RunDriver {
     let result: PipelineResult = { exitCode: 0, message: `${key} started` };
     let ran = false;
     for (let hop = 0; hop < HOP_LIMIT; hop += 1) {
+      if (this.runStop.halted(key)) {
+        return { exitCode: ran ? 0 : 1, message: `${key} stopped` };
+      }
       const blocked = await this.spendStop(key, step);
       if (blocked) {
         return { exitCode: ran ? 0 : 1, message: blocked };

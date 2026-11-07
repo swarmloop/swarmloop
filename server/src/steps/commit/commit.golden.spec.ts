@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { RunStop } from '../../agent/run-stop';
 import { StepKernel } from '../step-kernel';
 import { mkdirSync, writeFileSync } from 'fs';
 import { mkdtemp, rm, writeFile } from 'fs/promises';
@@ -53,6 +54,7 @@ describe('commit step golden traces', () => {
       ),
       app.get(CheckoutRepository),
       app.get(RebasedPublisher),
+      new RunStop(),
     );
     const result = await step.execute(KEY);
     expectGolden(`commit.${name}`, {

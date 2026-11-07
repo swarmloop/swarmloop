@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import type { StepName } from '../../contract/steps';
 import { requirementsView } from '../../contract/requirements-view';
 import { withoutTimestamp } from '../../contract/event-text';
+import { isStopNote } from '../../contract/run-state';
 import type { AttemptFacts, StepEvent } from '../../contract/step-events';
 import { redact } from '../../core/redact';
 import type { DocumentRepository } from '../../history/document.repository';
@@ -162,6 +163,10 @@ export async function recordEnd(documents: DocumentRepository, log: StepEventLog
       issueIds: end.issues.map((issue) => issue.id),
       summaries,
     });
+  }
+  if (isStopNote(end.line)) {
+    recordStepEvent({ kind: 'attempt.interrupted', route: 'stopped', summary: withoutTimestamp(end.line) });
+    return;
   }
   recordStepEvent({
     kind: 'attempt.finished',

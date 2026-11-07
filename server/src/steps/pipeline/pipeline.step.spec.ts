@@ -74,7 +74,7 @@ describe('pipeline step', () => {
         const result = await app.get(PipelineService).step('pipeline', key);
         if (mode === 'stop') {
           expect(action).not.toHaveBeenCalled();
-          expect(result.message).toContain('cancelled by Stop');
+          expect(result.message).toContain('Stopped by request');
           return;
         }
         if (mode === 'dirty' || mode === 'limit') {

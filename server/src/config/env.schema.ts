@@ -29,6 +29,7 @@ export const envSchema = Joi.object({
   MAX_RETURNS: Joi.number().integer().min(1).required(),
   MAX_PIPELINE_RETURNS: Joi.number().integer().min(1).default(6),
   MAX_LAUNCHES: Joi.number().integer().min(1).required(),
+  STOP_GRACE_S: Joi.number().integer().min(1).default(10),
   MAX_RUN_USD: Joi.number().required(),
   MAX_RUN_TOKENS: Joi.number().empty('').optional(),
   STEP_USD_MAX: Joi.number().empty('').optional(),

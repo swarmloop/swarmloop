@@ -164,26 +164,49 @@ export class SandboxService {
     }
   }
 
-  /** Stops the step container and every fan-out container under that name. */
-  async killFamily(runKey: string, step: string): Promise<void> {
-    const base = containerName(runKey, step);
-    await this.kill(base);
-    let listed = '';
+  /**
+   * Stops every container of the run: graceful first, then a kill, then a second listing to confirm.
+   * 'unknown' when docker did not answer or a container is still listed.
+   */
+  async stopRun(runKey: string, step: string, graceSeconds: number): Promise<'gone' | 'unknown'> {
     try {
-      listed = await this.docker(['ps', '--filter', `name=${base}`, '--format', '{{.Names}}']);
+      const listed = await this.runContainers(runKey, step);
+      for (const id of listed) {
+        await this.dockerAllowingGone(['stop', '-t', String(graceSeconds), id], (graceSeconds + 30) * 1000);
+      }
+      for (const id of listed) {
+        await this.dockerAllowingGone(['kill', id], 30_000);
+      }
+      return (await this.runContainers(runKey, step)).length === 0 ? 'gone' : 'unknown';
     } catch {
-      return;
+      return 'unknown';
     }
-    const names = stepContainers(
-      base,
-      listed
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0),
-    );
-    for (const name of names) {
-      if (name !== base) {
-        await this.kill(name);
+  }
+
+  /** The containers of a run by label. Containers from before the labels are found by name. Throws when docker fails. */
+  private async runContainers(runKey: string, step: string): Promise<string[]> {
+    const labeled = await this.listed(['ps', '-q', '--filter', `label=swarmloop.run=${runKey}`]);
+    const base = containerName(runKey, step);
+    const fallback = await this.listed(['ps', '--filter', `name=${base}`, '--format', '{{.Names}}']);
+    return [...new Set([...labeled, ...stepContainers(base, fallback)])];
+  }
+
+  private async listed(args: string[]): Promise<string[]> {
+    const raw = await this.docker(args);
+    return raw
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  }
+
+  /** Runs a stop or kill. A container that is already gone is the goal, not an error. */
+  private async dockerAllowingGone(args: string[], timeoutMs: number): Promise<void> {
+    try {
+      await this.docker(args, timeoutMs);
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      if (!text.includes('No such container') && !text.includes('is not running')) {
+        throw error;
       }
     }
   }

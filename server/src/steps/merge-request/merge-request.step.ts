@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { StepKernel } from '../step-kernel';
+import { RunStop } from '../../agent/run-stop';
+import { assertNotStopped } from '../shared/step-stopped';
 import { existsSync, statSync } from 'fs';
 import { root } from '../../history/run-paths';
 import { PhaseName, StepName } from '../../contract/steps';
@@ -44,6 +46,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
   constructor(
     kernel: StepKernel,
     private readonly registry: CodeHostRegistry,
+    private readonly runStop: RunStop,
   ) {
     super(kernel);
   }
@@ -67,6 +70,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     const trees = await this.trees(key, checkedRepoNames(input.repos), branch, ctx.calls, opened.run.codeHost, client);
     const summary = await this.summary(ctx, phases);
     const skip = ((await ctx.reread(ARTIFACTS.rebaseMergeSkip)) ?? '').trim() === 'skip';
+    assertNotStopped(this.runStop, key);
     const records = await ctx.activity(
       'Open merge request',
       () =>

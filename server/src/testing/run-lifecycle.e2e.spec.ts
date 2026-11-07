@@ -1,4 +1,5 @@
 import { join } from 'path';
+import { RunStop } from '../agent/run-stop';
 import { writeSession } from '../agent/agent-session';
 import type { AgentProcessRunner, AgentRunInput } from '../agent/agent-runner';
 import type { AgentRunResult } from '../agent/agent-result';
@@ -111,7 +112,11 @@ describe('a return is one issue in two windows', () => {
         },
       };
       const kernel = app.app.get(StepKernel);
-      const launcher = new AgentLauncher(fakeAgent as unknown as AgentProcessRunner, app.app.get(VisitRepository));
+      const launcher = new AgentLauncher(
+        fakeAgent as unknown as AgentProcessRunner,
+        app.app.get(VisitRepository),
+        new RunStop(),
+      );
       // The second visit starts a new chat.
       const implement = new ImplementProbe(kernel, launcher, join(app.root), (run) => run === 2);
       const pipeline = new PipelineProbe(kernel);

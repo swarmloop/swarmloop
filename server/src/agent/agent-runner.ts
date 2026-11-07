@@ -51,6 +51,7 @@ export interface AgentRunInput {
   resumeChatId: string | null;
   runKey: string;
   step: string;
+  attemptId: string;
   liveStep?: string;
   mounts: SandboxMount[];
   allowHosts?: string[];
@@ -189,6 +190,7 @@ export class AgentProcessRunner {
       runtime: env.RUNTIME,
       runKey: input.runKey,
       step: input.step,
+      attemptId: input.attemptId,
       mounts: [...workMounts, ...launch.briefs],
       statePath: launch.statePath,
       allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(env.RUNTIME)])],

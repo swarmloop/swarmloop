@@ -11,6 +11,7 @@ import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { boot, save } from '../testing/runs.spec-helpers';
 import { CommandService } from './command.service';
+import { RunStop } from '../agent/run-stop';
 
 async function app(name: string) {
   return boot(await mkdtemp(join(tmpdir(), `swarmloop-command-${name}-`)));
@@ -231,6 +232,36 @@ describe('CommandService', () => {
       expect(stored?.state).toBe('failed');
       expect(stored?.result).toContain('server restarted');
       expect(handler).not.toHaveBeenCalled();
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('keeps a Stop that was executing at a crash: the run is halted and the Stop runs again', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-command-stop-'));
+    const first = await boot(root);
+    let stopId = '';
+    try {
+      await save(first.get(RunRepository), 'proj-1', 'implement', 'running');
+      const repository = first.get(CommandRepository);
+      stopId = (await repository.accept({ type: 'stop', key: 'proj-1', payload: {}, admit: () => undefined })).command
+        .id;
+      await repository.start(stopId);
+    } finally {
+      await first.close();
+    }
+    const second = await boot(root);
+    try {
+      const commands = second.get(CommandService);
+      const handler = jest.fn().mockResolvedValue({ key: 'proj-1', status: 'stopped' });
+      commands.register('stop', handler);
+
+      await commands.recover();
+      expect(second.get(RunStop).halted('proj-1')).toBe(true);
+      await commands.idle();
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect((await second.get(CommandRepository).find(stopId))?.state).toBe('succeeded');
     } finally {
       await second.close();
     }

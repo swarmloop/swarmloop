@@ -183,6 +183,7 @@ async function attach(
   const base: SandboxLaunch = {
     runtime: runtime.name,
     runKey: feature.key,
+    attemptId: '',
     step: 'shell',
     mounts,
     envMasks: collectEnvMasks(mounts),

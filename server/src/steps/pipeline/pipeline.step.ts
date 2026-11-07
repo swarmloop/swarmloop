@@ -13,6 +13,7 @@ import type { OpenedStep } from '../../steps/step-run';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import { FetchFailed, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { returnNotes } from '../shared/handoff';
+import { assertNotStopped } from '../shared/step-stopped';
 import { checkedRepoNames, hasCi, worktreePath } from '../../git/repo-names';
 import { BaseStep, type StepContext } from '../base-step';
 import {
@@ -26,14 +27,16 @@ import {
   renderNone,
   renderPass,
   stopLine,
+  isRunning,
+  externalWork,
+  verdictOf,
+  type Verdict,
   failureIssues,
   type Failure,
   type Seen,
 } from './pipeline-report';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { ArtifactValue, InputSpec, Issue, Route, StepInput, StepResult } from '../contract/step-contract';
-
-type Verdict = 'green' | 'red' | 'wait' | 'manual' | 'stop' | 'absent';
 
 /** `repos` is read only when a green or absent pipeline asks whether CI started, so it is loaded there. */
 const INPUTS = {
@@ -112,8 +115,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     const { calls } = ctx;
     const deadline = this.clock.now() + env.PIPELINE_TIMEOUT_MS;
     const startDeadline = this.clock.now() + env.PIPELINE_START_TIMEOUT_MS;
+    assertNotStopped(this.runStop, ctx.opened.run.key);
     let seen = await this.load(records, calls, host, false);
-    let verdict = this.verdict(seen);
+    let verdict = verdictOf(seen);
     while (this.clock.now() < deadline && (verdict === 'wait' || verdict === 'absent' || verdict === 'green')) {
       const missing = verdict === 'wait' ? null : await this.missingRuns(ctx, seen);
       if (verdict === 'green' && !(missing && missing.length > 0)) {
@@ -128,8 +132,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         break;
       }
       await delay(pause);
+      assertNotStopped(this.runStop, ctx.opened.run.key, externalWork(seen));
       seen = await this.load(records, calls, host, false);
-      verdict = this.verdict(seen);
+      verdict = verdictOf(seen);
     }
     return { seen, verdict };
   }
@@ -157,27 +162,6 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     return loaded.map((item) => item.seen);
   }
 
-  private verdict(seen: Seen[]): Verdict {
-    const statuses = seen.map((item) => item.status);
-    if (statuses.includes('failed') || statuses.includes('canceled')) {
-      return 'red';
-    }
-    if (statuses.includes('skipped')) {
-      return 'stop';
-    }
-    if (statuses.includes('manual')) {
-      return 'manual';
-    }
-    const active = statuses.filter((status) => status !== 'none');
-    if (active.length === 0) {
-      return 'absent';
-    }
-    if (active.some((status) => status !== 'success')) {
-      return 'wait';
-    }
-    return 'green';
-  }
-
   private async route(
     ctx: StepContext,
     env: SwarmloopEnv,
@@ -192,7 +176,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       if (!settled.traces) {
         return this.red(ctx, env, settled.seen, host, settled.note, false);
       }
-      const next = this.verdict(settled.seen);
+      const next = verdictOf(settled.seen);
       if (next === 'red' || next === 'wait') {
         return this.red(ctx, env, settled.seen, host, settled.note, true);
       }
@@ -245,7 +229,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     host: CodeHost,
   ): Promise<{ seen: Seen[]; note: string; traces: boolean }> {
     const minutes = Math.round(env.PIPELINE_TIMEOUT_MS / 60000);
-    const running = seen.filter((item) => this.running(item));
+    const running = seen.filter((item) => isRunning(item));
     const errors: string[] = [];
     for (const item of running) {
       if (item.id === null) {
@@ -269,7 +253,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         const named = await this.load(records, calls, host);
         rows = running.map((item) => {
           const next = named.find((row) => row.project === item.project);
-          return next && next.id === item.id && this.running(next) ? next : item;
+          return next && next.id === item.id && isRunning(next) ? next : item;
         });
       } catch (error) {
         if (error instanceof FetchFailed) {
@@ -280,7 +264,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     }
     const deadline = this.clock.now() + env.PIPELINE_START_TIMEOUT_MS;
     let current = seen;
-    while (this.clock.now() < deadline && current.some((item) => this.running(item))) {
+    while (this.clock.now() < deadline && current.some((item) => isRunning(item))) {
       const pause = Math.min(env.TICK_MS, deadline - this.clock.now());
       if (pause <= 0) {
         break;
@@ -293,10 +277,6 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       note: `It was still running after ${minutes} minutes and swarmloop canceled it`,
       traces: true,
     };
-  }
-
-  private running(item: Seen): boolean {
-    return !['none', 'success', 'failed', 'canceled', 'skipped', 'manual'].includes(item.status);
   }
 
   private async red(

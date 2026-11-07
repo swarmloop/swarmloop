@@ -9,6 +9,7 @@ import type { CommandReceipt, CommandType } from '../contract/command';
 import { assertKey } from '../core/pipeline-result';
 import type { PipelineResult } from '../core/pipeline-result';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { RunStop } from '../agent/run-stop';
 
 interface CommandContext {
   commandId: string;
@@ -47,12 +48,14 @@ export class CommandService {
   private readonly inline = new Map<string, CommandHandler>();
   private readonly queues = new Map<string, Promise<void>>();
   private readonly scheduled = new Set<string>();
+  private readonly stops = new Set<Promise<void>>();
   private readonly waiters = new Map<string, ((outcome: Outcome) => void)[]>();
 
   constructor(
     private readonly commands: CommandRepository,
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
+    private readonly runStop: RunStop,
   ) {}
 
   register(type: CommandType, handler: CommandHandler): void {
@@ -129,11 +132,12 @@ export class CommandService {
 
   /** Resolves when every command accepted so far has run. */
   async idle(): Promise<void> {
-    await Promise.all([...this.queues.values()]);
+    await Promise.all([...this.queues.values(), ...this.stops]);
   }
 
-  /** At boot: an executing command is lost, an accepted one runs. */
+  /** At boot: an executing command is lost, an accepted one runs. A Stop is kept: its run is halted, and it runs again. */
   async recover(): Promise<void> {
+    for (const key of await this.commands.stoppingKeys()) this.runStop.halt(key);
     await this.commands.failExecuting('server restarted');
     for (const command of await this.commands.listAccepted()) {
       const key = await this.commands.keyOf(command);
@@ -173,7 +177,12 @@ export class CommandService {
     this.scheduled.add(command.id);
     const tail = command.type === 'stop' ? Promise.resolve() : (this.queues.get(key) ?? Promise.resolve());
     const next = tail.then(() => this.execute(command, key));
-    if (command.type !== 'stop') this.queues.set(key, next);
+    if (command.type !== 'stop') {
+      this.queues.set(key, next);
+      return;
+    }
+    this.stops.add(next);
+    void next.finally(() => this.stops.delete(next));
   }
 
   private async execute(command: CommandEntity, key: string): Promise<void> {

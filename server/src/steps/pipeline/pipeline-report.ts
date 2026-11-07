@@ -187,3 +187,35 @@ export function stopLine(seen: Seen[]): string {
   const project = seen.find((item) => item.status === 'skipped')?.project ?? 'pipeline';
   return `${project} pipeline was skipped`;
 }
+
+export function isRunning(item: Seen): boolean {
+  return !['none', 'success', 'failed', 'canceled', 'skipped', 'manual'].includes(item.status);
+}
+
+/** The pipelines that keep running after a Stop, with their link. */
+export function externalWork(seen: Seen[]): string[] {
+  return seen.filter(isRunning).map((item) => `${item.project} pipeline ${item.id ?? '?'} ${item.url}`.trim());
+}
+
+export type Verdict = 'green' | 'red' | 'wait' | 'manual' | 'stop' | 'absent';
+
+export function verdictOf(seen: Seen[]): Verdict {
+  const statuses = seen.map((item) => item.status);
+  if (statuses.includes('failed') || statuses.includes('canceled')) {
+    return 'red';
+  }
+  if (statuses.includes('skipped')) {
+    return 'stop';
+  }
+  if (statuses.includes('manual')) {
+    return 'manual';
+  }
+  const active = statuses.filter((status) => status !== 'none');
+  if (active.length === 0) {
+    return 'absent';
+  }
+  if (active.some((status) => status !== 'success')) {
+    return 'wait';
+  }
+  return 'green';
+}

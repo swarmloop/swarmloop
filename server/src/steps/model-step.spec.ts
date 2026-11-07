@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { RunStop } from '../agent/run-stop';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Logger } from '@nestjs/common';
@@ -85,6 +86,7 @@ describe('working directory block', () => {
         },
       } as never,
       { tokenTotal: async () => 0 } as never,
+      new RunStop(),
     ).launch({
       root,
       run: { agentCalls: 0, spentUsd: 0 } as never,
@@ -113,6 +115,7 @@ describe('working directory block', () => {
         },
       } as never,
       { tokenTotal: async () => 0 } as never,
+      new RunStop(),
     ).launch({
       root,
       run: { agentCalls: 0, spentUsd: 0 } as never,
