@@ -7,7 +7,7 @@ import Button from '@mui/material/Button';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 
-export interface AttemptItem {
+interface AttemptItem {
   /** Unique in the list. */
   key: string;
   label: string;
@@ -17,7 +17,7 @@ export interface AttemptItem {
 }
 
 /** The newest attempts shown as buttons; the rest sit behind the `Earlier` menu. */
-export const VISIBLE_ATTEMPTS = 8;
+const VISIBLE_ATTEMPTS = 8;
 
 export function AttemptSelector({
   items,
