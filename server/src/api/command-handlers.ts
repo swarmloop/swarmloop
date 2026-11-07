@@ -1,6 +1,7 @@
 import { Injectable, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common';
 import { AddProjectBody, StartStepBody } from '../contract/api';
 import { CommandService } from '../pipeline/command.service';
+import { Reconciler } from '../pipeline/reconciler';
 import { ChatService } from './chat.service';
 import { RunCommandsService, StartPlan } from './run-commands.service';
 import { RunRebaseService } from './run-rebase.service';
@@ -25,6 +26,7 @@ export interface ReplayPayload {
 export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
   constructor(
     private readonly executor: CommandService,
+    private readonly reconciler: Reconciler,
     private readonly runs: RunCommandsService,
     private readonly rebases: RunRebaseService,
     private readonly chat: ChatService,
@@ -57,8 +59,8 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     });
   }
 
-  /** The accepted commands of a server that stopped run now. */
+  /** The commands a server that stopped left behind: the reconciler settles them. */
   onApplicationBootstrap(): Promise<void> {
-    return this.executor.recover();
+    return this.reconciler.reconcileCommands();
   }
 }

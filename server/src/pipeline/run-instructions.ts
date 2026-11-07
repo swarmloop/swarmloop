@@ -1,9 +1,6 @@
-import type { AppConfig } from '../config/env';
-import { liveLogBody } from '../agent/live-output';
 import type { RunEntity } from '../history/entities';
 import type { DocumentRepository } from '../history/document.repository';
 import type { RunRepository } from '../history/run.repository';
-import { root } from '../history/run-paths';
 import { renderProjects, storedProjects } from '../steps/prepare/checkout-path';
 import type { StepRegistry } from '../steps/step.registry';
 import { joinPrompt, withInstructions } from '../steps/plan/plan-record';
@@ -14,12 +11,7 @@ export class RunInstructions {
     protected readonly runs: RunRepository,
     protected readonly documents: DocumentRepository,
     protected readonly registry: StepRegistry,
-    protected readonly config: AppConfig,
   ) {}
-
-  savedOutput(run: RunEntity): string {
-    return liveLogBody(root(this.config), run.key, run.currentStep);
-  }
 
   async pinProjects(key: string, names: string[]): Promise<void> {
     const body = renderProjects(names);

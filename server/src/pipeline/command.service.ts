@@ -6,6 +6,7 @@ import { RunRepository } from '../history/run.repository';
 import { blockCode, deriveState } from '../history/run-state';
 import { actionsFor } from '../contract/run-state';
 import type { CommandReceipt, CommandType } from '../contract/command';
+import { barrier } from '../core/barrier';
 import { assertKey } from '../core/pipeline-result';
 import type { PipelineResult } from '../core/pipeline-result';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -81,6 +82,7 @@ export class CommandService {
       create: options.create,
       admit: (run) => this.admit(type, key, run, options.run ? null : code),
     });
+    await barrier('after-accept');
     if (accepted.command.state === 'accepted') {
       if (options.run) this.inline.set(accepted.command.id, options.run);
       this.schedule(accepted.command, key);
@@ -135,14 +137,38 @@ export class CommandService {
     await Promise.all([...this.queues.values(), ...this.stops]);
   }
 
-  /** At boot: an executing command is lost, an accepted one runs. A Stop is kept: its run is halted, and it runs again. */
+  /**
+   * Settles the commands a process left behind. A Stop is kept: its run is halted and it runs again. Another
+   * executing command is settled from the facts, an accepted one runs. A command this process holds is left alone.
+   */
   async recover(): Promise<void> {
     for (const key of await this.commands.stoppingKeys()) this.runStop.halt(key);
-    await this.commands.failExecuting('server restarted');
+    for (const command of await this.commands.listExecuting()) {
+      if (this.scheduled.has(command.id)) continue;
+      await this.settleLost(command);
+    }
     for (const command of await this.commands.listAccepted()) {
       const key = await this.commands.keyOf(command);
       if (key) this.schedule(command, key);
     }
+  }
+
+  /**
+   * A command a dead process took: a Stop and a Remove run again (both can be repeated), a command whose run
+   * is done is confirmed, any other is failed.
+   */
+  private async settleLost(command: CommandEntity): Promise<void> {
+    if (command.type === 'stop' || command.type === 'remove') {
+      await this.commands.requeue(command.id);
+      return;
+    }
+    const key = await this.commands.keyOf(command);
+    const run = key ? await this.runs.findRun(key) : null;
+    if (run?.status === 'done') {
+      await this.commands.finish(command.id, 'succeeded', { value: null });
+      return;
+    }
+    await this.commands.finish(command.id, 'failed', { error: { message: 'server restarted' } });
   }
 
   /** `code` is the block reason an HTTP Resume is checked against. The CLI passes null: its run never refused a block. */

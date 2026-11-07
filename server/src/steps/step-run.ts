@@ -4,6 +4,7 @@ import { blockCode, writeRunState } from '../history/run-state';
 import type { RunRepository } from '../history/run.repository';
 import type { VisitRepository } from '../history/visit.repository';
 import type { VisitDraft } from '../history/visit';
+import { barrier } from '../core/barrier';
 import type { PipelineResult } from '../core/pipeline-result';
 import { settle } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
@@ -79,7 +80,9 @@ export async function closeStep(input: {
     reason: code ? { code, message: failureText(input.line) } : undefined,
     facts: code ? { blockCode: code } : undefined,
   });
+  await barrier('before-finalize');
   await input.visits.finalize(input.attemptId, input.run, input.visit);
+  await barrier('after-finalize');
   input.runs.notify(input.run.key);
 
   return { exitCode: input.exitCode, message: input.line };

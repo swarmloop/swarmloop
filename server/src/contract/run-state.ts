@@ -30,6 +30,7 @@ export const REASON = {
   loopLimit: 'LOOP_LIMIT',
   ciLogUnavailable: 'CI_LOG_UNAVAILABLE',
   blocked: 'BLOCKED',
+  recovering: 'RECOVERING',
 } as const;
 
 /** What a stopped step says. It also tells a stopped block from the others when only the error text is known. */

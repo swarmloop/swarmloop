@@ -9,6 +9,8 @@ import type { RunEntity } from './entities';
 export interface StateFacts {
   /** A Stop is accepted and has not finished. */
   stopping?: boolean;
+  /** The owner is gone and its container still runs: the run waits for it. */
+  recovering?: boolean;
   /** A command is accepted and the run is not claimed yet. */
   queued?: boolean;
   /** An open question or a link still waits for a person. */
@@ -46,6 +48,7 @@ export function deriveState(run: StateRow, facts: StateFacts = {}): { state: Run
   const reason = (code: string, message: string): StateReason => ({ code, message });
   switch (run.status) {
     case 'running':
+      if (facts.recovering) return { state: 'recovering', reason: stored };
       return { state: facts.stopping ? 'stopping' : 'running', reason: null };
     case 'done':
       return { state: 'done', reason: null };

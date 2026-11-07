@@ -5,6 +5,7 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import { AppConfig } from './config/env';
 import { assertEnvFile } from './config/load-env';
 import { resolveRepoRoot } from './config/repo-root';
+import { Reconciler } from './pipeline/reconciler';
 import { PANEL_ORIGINS } from './live/origins';
 
 async function bootstrap(): Promise<void> {
@@ -21,6 +22,7 @@ async function bootstrap(): Promise<void> {
     app.useWebSocketAdapter(new IoAdapter(app));
     const env = app.get(AppConfig).env;
     await app.listen(env.SWARMLOOP_API_PORT, env.SWARMLOOP_API_HOST);
+    app.get(Reconciler).schedule();
   } catch (error) {
     fail(error);
   }

@@ -23,6 +23,8 @@ export interface SwarmloopEnv {
   MAX_PIPELINE_RETURNS: number;
   MAX_LAUNCHES: number;
   STOP_GRACE_S: number;
+  RECONCILE_MS: number;
+  RECOVER_WAIT_MS: number;
   MAX_RUN_USD: number;
   MAX_RUN_TOKENS: number | null;
   STEP_USD_MAX: number | null;
@@ -86,6 +88,8 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     MAX_PIPELINE_RETURNS: config.getOrThrow<number>('MAX_PIPELINE_RETURNS'),
     MAX_LAUNCHES: config.getOrThrow<number>('MAX_LAUNCHES'),
     STOP_GRACE_S: config.getOrThrow<number>('STOP_GRACE_S'),
+    RECONCILE_MS: config.getOrThrow<number>('RECONCILE_MS'),
+    RECOVER_WAIT_MS: config.getOrThrow<number>('RECOVER_WAIT_MS'),
     MAX_RUN_USD: config.getOrThrow<number>('MAX_RUN_USD'),
     MAX_RUN_TOKENS: optionalLimit(config.get('MAX_RUN_TOKENS')),
     STEP_USD_MAX: optionalLimit(config.get('STEP_USD_MAX')),

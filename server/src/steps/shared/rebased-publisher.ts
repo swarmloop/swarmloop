@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { root } from '../../history/run-paths';
+import { barrier } from '../../core/barrier';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail, gitMissing, originUrl } from '../../git/git';
 import { worktreePath } from '../../git/repo-names';
@@ -64,6 +65,18 @@ export class RebasedPublisher {
   }
 
   async pushRef(
+    tree: Tree,
+    branch: string,
+    published: string | null,
+    codeHost: string,
+    origin: string,
+  ): Promise<boolean> {
+    const pushed = await this.push(tree, branch, published, codeHost, origin);
+    await barrier('after-push');
+    return pushed;
+  }
+
+  private async push(
     tree: Tree,
     branch: string,
     published: string | null,

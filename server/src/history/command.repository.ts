@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { DataSource, In, Not, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { Clock } from '../core/clock';
 import type { CommandState, CommandType } from '../contract/command';
 import type { RunState } from '../contract/run-state';
@@ -120,16 +120,14 @@ export class CommandRepository {
     await this.commands.update({ id }, { state, result: JSON.stringify(result ?? null), updatedAt: this.clock.iso() });
   }
 
-  /** A command that was executing when the server stopped. l15 replaces this with reconciliation. A Stop is not lost: it runs again. */
-  async failExecuting(reason: string): Promise<void> {
-    await this.commands.update(
-      { type: 'stop', state: 'executing' },
-      { state: 'accepted', updatedAt: this.clock.iso() },
-    );
-    await this.commands.update(
-      { type: Not('stop'), state: 'executing' },
-      { state: 'failed', result: JSON.stringify({ error: { message: reason } }), updatedAt: this.clock.iso() },
-    );
+  /** The commands a process took and has not finished. */
+  listExecuting(): Promise<CommandEntity[]> {
+    return this.commands.find({ where: { state: 'executing' }, order: { createdAt: 'ASC' } });
+  }
+
+  /** Gives a command that was executing back to the queue. */
+  async requeue(id: string): Promise<void> {
+    await this.commands.update({ id, state: 'executing' }, { state: 'accepted', updatedAt: this.clock.iso() });
   }
 
   /** The keys of the runs with a Stop that is accepted or executing: the stored intent. */

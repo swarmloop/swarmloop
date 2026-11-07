@@ -6,6 +6,7 @@ import type { AgentProcessRunner, AgentRunResult } from '../../agent/agent-runne
 import { RunStop } from '../../agent/run-stop';
 import { AgentWorkFeed } from '../../contract/readable-log';
 import type { AgentWork } from '../../contract/readable-log';
+import { outputFileFor } from '../../core/attempt-output';
 import { bindToStepScope, recordStepEvent } from '../../core/step-event-scope';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import type { RunEntity } from '../../history/entities';
@@ -100,7 +101,7 @@ export class AgentLauncher {
       onOutput: bindToStepScope((chunk) => feed.push(chunk).forEach(recordWork)),
       prompt: `${AGENT_LANGUAGE_RULE}\n\n${request.prompt}`,
       workspace: request.workspace,
-      outputFile: join(directory, `${request.key}-${request.step}-output.txt`),
+      outputFile: outputFileFor(request.root, request.key, request.step, request.run.activeAttempt),
       sessionFile,
       model: request.model,
       agentCalls: request.run.agentCalls,
