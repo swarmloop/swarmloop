@@ -95,6 +95,7 @@ export async function request(
   init: { method?: string; body?: string } = {},
 ): Promise<{
   status: number;
+  url: string;
   contentType: string | null;
   body: Buffer;
   headers: { get(name: string): string | null };
@@ -128,6 +129,7 @@ export async function request(
     });
     return {
       status: response.status,
+      url: response.url || url,
       contentType: response.headers.get('content-type'),
       body,
       headers: response.headers,

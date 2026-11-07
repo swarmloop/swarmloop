@@ -24,6 +24,7 @@ import {
   originProject,
   parsePipelineRefs,
   renderFail,
+  renderUnreadable,
   renderNone,
   renderPass,
   stopLine,
@@ -289,6 +290,10 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   ): Promise<StepResult> {
     const { opened, calls } = ctx;
     const failures = traces ? await this.failures(seen, calls, host) : [];
+    const unreadable = renderUnreadable(failures);
+    if (unreadable) {
+      return this.finish('blocked', this.report(opened, 'pipeline log unavailable', unreadable), 'blocked', unreadable);
+    }
     const body = traces ? renderFail(failures, seen, note) : `${note.trim()}\n`;
     if (ctx.options.auto && (await this.sameFailure(ctx, seen))) {
       const report = this.report(opened, 'pipeline already failed for this commit', body);
@@ -330,7 +335,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
           return { item, trace: trace.trace, calls: trace.httpCalls };
         } catch (error) {
           const message = error instanceof Error ? error.message : 'pipeline failed';
-          return { item, trace: message, calls: error instanceof FetchFailed ? error.httpCalls : [] };
+          return { item, trace: '', unavailable: message, calls: error instanceof FetchFailed ? error.httpCalls : [] };
         }
       }),
     );
@@ -344,6 +349,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         stage: row.item.job.stage,
         url: row.item.url,
         trace: row.trace,
+        ...(row.unavailable === undefined ? {} : { unavailable: row.unavailable }),
       });
     }
     return failures;

@@ -259,23 +259,29 @@ describe('implement step', () => {
   });
 
   describe('pipeline return on an unchanged worktree', () => {
-    async function unchanged(key: string, refSha: (head: string) => string | null) {
+    async function unchanged(key: string, refSha: (head: string) => string | null, earlierVisit = false) {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-stale-'));
       await writeEnv(root);
       const worktree = featureTree(root, key, 'billing-api');
       git(worktree, ['remote', 'set-url', 'origin', 'https://gitlab.example/group/billing-api.git']);
       const head = git(worktree, ['rev-parse', 'HEAD']);
+      if (earlierVisit) {
+        writeFileSync(join(worktree, 'fixed-earlier.ts'), 'export const fixed = true;\n');
+      }
       const agent = jest.fn(async (_input: AgentRunInput) => result(reply));
       const app = await boot(root, agent);
       await seed(app, key, 'approve');
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
       const run = await runs.findRun(key);
-      await documents.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+      const body = 'Assertion failed\n';
+      await documents.putDocument(run!, 'return', `## pipeline\nresult: fail\njob: test\n\n${body}`);
+      const issue = issueOf('pipeline', 'billing-api test (test) failed', body);
+      await documents.putDocument(run!, 'issues', JSON.stringify([issue]));
       const sha = refSha(head);
       const lines = ['project: group/billing-api', `ref: feature/${key}-ship-the-field`];
       await documents.putDocument(run!, 'pipeline_ref', `${[...lines, ...(sha ? [`sha: ${sha}`] : [])].join('\n')}\n`);
-      return { app, runs, documents, head, done: await app.get(PipelineService).step('implement', key) };
+      return { app, agent, runs, documents, head, issue, done: await app.get(PipelineService).step('implement', key) };
     }
 
     it('asks for a new CI run when the failed pipeline ran on an older commit', async () => {
@@ -297,6 +303,32 @@ describe('implement step', () => {
         expect(done.exitCode).toBe(1);
         expect(done.message).toContain('pipeline failure left unfixed');
         expect(await documents.latestBody('PROJ-161', 'ci_rerun')).toBeNull();
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('continues when an earlier visit left a fix on disk that differs from the pipeline commit', async () => {
+      const { app, runs, done } = await unchanged('PROJ-163', (head) => head, true);
+      try {
+        expect(done.exitCode).toBe(0);
+        expect(done.message).not.toContain('left unfixed');
+        expect((await runs.findRun('PROJ-163'))?.currentStep).not.toBe('implement');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('blocks the second unchanged answer to the same pipeline issue without a relaunch', async () => {
+      const { app, agent, issue, done } = await unchanged('PROJ-164', (head) => head);
+      try {
+        expect(done.exitCode).toBe(1);
+        expect(done.message).toContain('pipeline failure left unfixed');
+        expect(agent).toHaveBeenCalledTimes(2);
+        const second = await app.get(PipelineService).step('implement', 'PROJ-164');
+        expect(second.message).toContain(`pipeline failure left unfixed twice: ${issue.title}`);
+        expect(agent).toHaveBeenCalledTimes(3);
+        expect((await app.get(RunRepository).findRun('PROJ-164'))?.status).toBe('blocked');
       } finally {
         await app.close();
       }

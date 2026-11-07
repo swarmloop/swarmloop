@@ -75,6 +75,7 @@ describe('blockCode', () => {
     expect(blockCode('code-review', 'code-review does not fit')).toBe(REASON.didNotFit);
     expect(blockCode('pipeline', null)).toBe(REASON.loopLimit);
     expect(blockCode('prepare', 'x')).toBe(REASON.blocked);
+    expect(blockCode('pipeline', 'CI_LOG_UNAVAILABLE: a failed job has no readable log')).toBe(REASON.ciLogUnavailable);
   });
 });
 
@@ -93,6 +94,7 @@ describe('actionsFor', () => {
     ['blocked', REASON.checkFailed, ['resume', 'replay']],
     ['blocked', REASON.didNotFit, ['resume', 'replay']],
     ['blocked', REASON.loopLimit, ['resume', 'replay']],
+    ['blocked', REASON.ciLogUnavailable, ['resume', 'replay']],
     ['blocked', REASON.blocked, ['replay']],
     ['blocked', null, ['replay']],
   ];

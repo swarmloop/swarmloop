@@ -258,6 +258,44 @@ describe('github host', () => {
     );
   });
 
+  it('reads a job log after the blob host answers 403 twice', async () => {
+    const seen = mockLogs([403, 403, 200]);
+    const result = await service().readJobTrace('acme/demo', 4);
+    expect(result.trace).toBe('the log');
+    expect(seen).toHaveLength(3);
+    expect(result.httpCalls).toHaveLength(3);
+  });
+
+  it('says the log is unavailable when the blob host answers 403 three times', async () => {
+    const seen = mockLogs([403, 403, 403]);
+    const failure = service().readJobTrace('acme/demo', 4);
+    await expect(failure).rejects.toThrow(
+      'job log unavailable: HTTP 403 from productionresultssa16.blob.core.windows.net',
+    );
+    await expect(failure).rejects.not.toThrow('was rejected');
+    expect(seen).toHaveLength(3);
+  });
+
+  it('still names a rejected token for a 403 from the api host, after one attempt', async () => {
+    const seen = mockFetch([null], 403);
+    await expect(service().readJobTrace('acme/demo', 4)).rejects.toThrow('GITHUB_TOKEN was rejected');
+    expect(seen).toHaveLength(1);
+  });
+
+  it('never gives the token text for a response from another host', () => {
+    const host = service() as unknown as {
+      assertStatus(response: { status: number; url: string }, calls: unknown[], failure: string): void;
+    };
+    for (const status of [401, 403]) {
+      expect(() => host.assertStatus({ status, url: 'https://blob.example/log' }, [], 'x')).toThrow(
+        `job log unavailable: HTTP ${status} from blob.example`,
+      );
+    }
+    expect(() => host.assertStatus({ status: 403, url: 'https://api.github.com/x' }, [], 'x')).toThrow(
+      'GITHUB_TOKEN was rejected',
+    );
+  });
+
   it('builds a github https push url from ssh origin', () => {
     const host = service({ GITHUB_BASE_URL: 'https://github.com', GITHUB_TOKEN: 'tok' });
     expect(host.pushUrl('git@github.com:acme/demo.git')).toBe('https://x-access-token:tok@github.com/acme/demo.git');
@@ -308,6 +346,25 @@ function mockFetch(bodies: unknown[], status: number | number[] = 200): Seen[] {
       headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) },
       arrayBuffer: () =>
         Promise.resolve(Buffer.from(typeof payload === 'string' ? payload : JSON.stringify(payload ?? null))),
+    });
+  }) as unknown as typeof fetch;
+  return seen;
+}
+
+const BLOB = 'https://productionresultssa16.blob.core.windows.net/logs/4';
+
+/** The logs endpoint redirects to a blob host; each call answers the next status. */
+function mockLogs(statuses: number[]): string[] {
+  const seen: string[] = [];
+  global.fetch = jest.fn((url: string) => {
+    seen.push(String(url));
+    const code = statuses[seen.length - 1] ?? 200;
+    return Promise.resolve({
+      status: code,
+      ok: code === 200,
+      url: BLOB,
+      headers: { get: () => 'text/plain' },
+      arrayBuffer: () => Promise.resolve(Buffer.from('the log')),
     });
   }) as unknown as typeof fetch;
   return seen;

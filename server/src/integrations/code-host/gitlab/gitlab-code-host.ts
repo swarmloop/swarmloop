@@ -157,7 +157,7 @@ export class GitlabCodeHost extends AbstractCodeHost {
       const { root: base, headers } = this.credentials();
       const url = `${base}/api/v4/projects/${encodeURIComponent(project)}/pipelines/${id}/cancel`;
       const response = await request(this.clock, url, headers, calls, { method: 'POST' });
-      this.assertStatus(response.status, calls, 'gitlab pipeline failed');
+      this.assertStatus(response, calls, 'gitlab pipeline failed');
       return { httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
@@ -244,7 +244,7 @@ export class GitlabCodeHost extends AbstractCodeHost {
     failure: string,
   ): Promise<string> {
     const response = await request(this.clock, url, headers, calls);
-    this.assertStatus(response.status, calls, failure);
+    this.assertStatus(response, calls, failure);
     return response.body.toString('utf8');
   }
 
@@ -276,7 +276,7 @@ export class GitlabCodeHost extends AbstractCodeHost {
       }
       const url = `${base}/api/v4/projects/${project}/pipelines/${pipelineId}/jobs?${params.toString()}`;
       const response = await request(this.clock, url, headers, calls);
-      this.assertStatus(response.status, calls, 'gitlab pipeline failed');
+      this.assertStatus(response, calls, 'gitlab pipeline failed');
       const body = this.parseJson(response.body, calls);
       if (!Array.isArray(body)) {
         throw new FetchFailed('gitlab pipeline failed', calls);

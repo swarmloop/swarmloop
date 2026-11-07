@@ -28,6 +28,7 @@ export const REASON = {
   checkFailed: 'CHECK_FAILED',
   didNotFit: 'DID_NOT_FIT',
   loopLimit: 'LOOP_LIMIT',
+  ciLogUnavailable: 'CI_LOG_UNAVAILABLE',
   blocked: 'BLOCKED',
 } as const;
 
@@ -39,7 +40,13 @@ export function isStopNote(text: string): boolean {
   return text.includes(STOP_NOTE);
 }
 
-const RESUMABLE_BLOCKS: readonly string[] = [REASON.checkFailed, REASON.didNotFit, REASON.loopLimit, REASON.stopped];
+const RESUMABLE_BLOCKS: readonly string[] = [
+  REASON.checkFailed,
+  REASON.didNotFit,
+  REASON.loopLimit,
+  REASON.stopped,
+  REASON.ciLogUnavailable,
+];
 
 /** The one place that says which actions a state allows. Availability follows what the dashboard offered before. */
 export function actionsFor(state: RunState, reasonCode: string | null = null): RunAction[] {

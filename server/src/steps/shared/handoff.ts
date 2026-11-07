@@ -104,6 +104,21 @@ export async function returnedNotes(documents: DocumentRepository, runId: number
   return composedReturn(await documents.listDocuments(runId));
 }
 
+/** The pipeline issues sent back to implement, and the ids of those it already answered without a change. */
+export async function pipelineAnswers(
+  documents: DocumentRepository,
+  runId: number,
+): Promise<{ issues: Issue[]; unfixed: Set<string> }> {
+  const stored = await documents.listDocuments(runId);
+  const latest = (kind: string): string => [...stored].reverse().find((item) => item.kind === kind)?.body ?? '';
+  return {
+    issues: ARTIFACTS.issues
+      .parse(latest(ARTIFACTS.issues.kind) || '[]')
+      .filter((issue) => issue.source === 'pipeline'),
+    unfixed: new Set(latest(ARTIFACTS.unfixedIssue.kind).split('\n')),
+  };
+}
+
 function hasLine(body: string, line: string): boolean {
   return body.split(/\r?\n/).some((item) => item.trim() === line);
 }

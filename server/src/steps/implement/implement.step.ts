@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
+import type { AgentProfile, InputSpec, Issue, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
 import { join } from 'path';
 import { SwarmloopEnv } from '../../config/env';
@@ -17,7 +17,7 @@ import { git, gitDetail } from '../../git/git';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { RebasedPublisher } from '../shared/rebased-publisher';
-import { returnedNotes, textDocument, withHandoff } from '../shared/handoff';
+import { pipelineAnswers, returnedNotes, textDocument, withHandoff } from '../shared/handoff';
 import { parseSummary, skillPrompt } from '../shared/skill-prompt';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import type { SandboxMount } from '../../core/sandbox-mount';
@@ -29,7 +29,7 @@ import { agentWorkplace } from '../shared/agent-environment';
 import { storedPlan } from '../step';
 import { RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
-import { staleRepos } from '../pipeline/pipeline-report';
+import { staleRepos, unchangedSincePipeline } from '../pipeline/pipeline-report';
 import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
 import {
   checkRepeatedBlock,
@@ -59,6 +59,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.requirements,
     ARTIFACTS.pipelineRef,
     ARTIFACTS.ciRerun,
+    ARTIFACTS.unfixedIssue,
     ARTIFACTS.rebaseConflict,
     ARTIFACTS.rebaseMergeSkip,
   ];
@@ -137,7 +138,19 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     await assertUncommitted(mounts, branch, heads);
     let planText = agentResult.responseText;
     let planOutput = agentResult.output ?? '';
-    if (isPipelineReturn(notes) && (await worktreeSnapshot(mounts)) === before) {
+    const unchanged = async (): Promise<boolean> =>
+      (await unchangedSincePipeline(await ctx.reread(ARTIFACTS.pipelineRef), mounts)) ??
+      (await worktreeSnapshot(mounts)) === before;
+    const pipelineReturn = isPipelineReturn(notes);
+    const { issues: pipelineIssues, unfixed } = pipelineReturn
+      ? await pipelineAnswers(this.documents, ctx.opened.run.id)
+      : { issues: [], unfixed: new Set<string>() };
+    if (pipelineReturn && (await unchanged())) {
+      const repeated = pipelineIssues.find((issue) => unfixed.has(issue.id));
+      if (repeated) {
+        const line = `${ctx.opened.startedAt} pipeline failure left unfixed twice: ${repeated.title}`;
+        return { route: { to: 'block', reason: line }, summary: line, outputs: [] };
+      }
       agentResult = await ctx.launch({
         prompt: withEnvironment(
           `The pipeline failure still stands and the files are unchanged.\n\n${notes?.trim() ?? ''}`,
@@ -153,7 +166,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
         planText = agentResult.responseText;
         planOutput = againOutput;
       }
-      if ((await worktreeSnapshot(mounts)) === before) {
+      if (await unchanged()) {
         const stale = await staleRepos(await ctx.reread(ARTIFACTS.pipelineRef), mounts);
         if (stale.length > 0) {
           return {
@@ -163,7 +176,14 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
             visit: { documents: [textDocument(ARTIFACTS.ciRerun.kind, `${stale.join('\n')}\n`)] },
           };
         }
-        return this.unfixedFailure(input.requirements, ctx, planText, planOutput, 'pipeline failure left unfixed');
+        return this.unfixedFailure(
+          input.requirements,
+          ctx,
+          planText,
+          planOutput,
+          'pipeline failure left unfixed',
+          pipelineIssues,
+        );
       }
     }
     const text = agentResult.responseText;
@@ -217,15 +237,22 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     planText: string,
     planOutput: string,
     text: string,
+    issues: Issue[],
   ): StepResult {
     const corrected = correctedPlan(requirements, planText, planOutput);
     const line = `${ctx.opened.startedAt} ${text}`;
+    const documents = [
+      ...(issues.length > 0
+        ? [textDocument(ARTIFACTS.unfixedIssue.kind, issues.map((issue) => issue.id).join('\n'))]
+        : []),
+      ...(corrected ? [textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] : []),
+    ];
     return {
       route: { to: 'fail', error: { code: this.name, message: line } },
       summary: line,
       outputs: [],
       handoff: corrected?.handoff,
-      visit: corrected ? { documents: [textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] } : undefined,
+      visit: documents.length > 0 ? { documents } : undefined,
     };
   }
 
