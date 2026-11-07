@@ -1,5 +1,12 @@
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { correctedPlan, parsePlan, planFromAgent, reviewedItems, withInstructions } from './plan-record';
+import {
+  correctedItems,
+  correctedPlan,
+  parsePlan,
+  planFromAgent,
+  reviewedItems,
+  withInstructions,
+} from './plan-record';
 
 describe('withInstructions', () => {
   it('appends the prompt and asks for a new plan only when asked', () => {
@@ -19,6 +26,11 @@ describe('parsePlan', () => {
   it('keeps the checklist items', () => {
     const text = ['notes', 'plan:', '- add the field', '- cover the empty case', ''].join('\n');
     expect(parsePlan(text)).toBe('- add the field\n- cover the empty case\n');
+  });
+
+  it('keeps items that end with files and proof', () => {
+    const item = '- add X to Y - files: server/src/a.ts - proof: a.spec.ts "adds X"';
+    expect(parsePlan(`plan:\n${item}\n- old item\n`)).toBe(`${item}\n- old item\n`);
   });
 
   it('keeps the last checklist when a resumed answer repeats the section', () => {
@@ -96,6 +108,21 @@ describe('correctedPlan', () => {
     const corrected = correctedPlan(body, 'plan:\n- fix the failing test\n');
     const record = JSON.parse(corrected?.requirements ?? '{}') as { plan?: { items?: string[] } };
     expect(record.plan?.items).toEqual(['fix the failing test']);
+  });
+
+  it('does not report a change for items with a files and proof suffix', () => {
+    const item = 'add the field - files: a.ts - proof: a.spec.ts "adds it"';
+    const stored = `${JSON.stringify({ prompt: 'p', plan: { name: 'F', overview: '', items: [item], decision: 'approve' } })}\n`;
+    expect(correctedPlan(stored, `plan:\n- ${item}\n`)).toBeNull();
+    const plan = { name: '', overview: '', items: [item], decision: 'approve' };
+    expect(correctedPlan(stored, `plan:\n${JSON.stringify(plan)}\n`)).toBeNull();
+    expect(correctedItems(`plan:\n- ${item}\n`)).toEqual([item]);
+    expect(planFromAgent(`plan:\n- ${item}\n`, '').items).toEqual([item]);
+    const stream = JSON.stringify({
+      type: 'tool_call',
+      tool_call: { createPlanToolCall: { args: { todos: [{ content: item }] } } },
+    });
+    expect(planFromAgent('no section', stream).items).toEqual([item]);
   });
 
   it('leaves the plan when the section is not a checklist', () => {
