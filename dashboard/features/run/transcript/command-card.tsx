@@ -1,9 +1,8 @@
-import { type ReactElement, useState } from 'react';
+import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import type { StepEvent } from '@contract/step-events';
 import { duration } from '../../../lib/format';
-import { CardFrame } from './card-frame';
+import { Bubble, Code, Detail } from './bubble';
 import { commandLine } from './transcript-model';
 
 type Started = Extract<StepEvent, { kind: 'command.started' }>;
@@ -26,46 +25,31 @@ function inRepo(cwd: string, repo: string): string {
   return at < 0 ? cwd : parts.slice(at + 1).join('/') || '.';
 }
 
-const PRE = {
-  m: 0,
-  maxHeight: 320,
-  overflowY: 'auto',
-  overflowX: 'hidden',
-  minWidth: 0,
-  whiteSpace: 'pre-wrap',
-  overflowWrap: 'anywhere',
-  fontFamily: 'var(--font-mono)',
-  fontSize: 12,
-} as const;
-
-/** One command: the line, where and how it ended, and its output when it has some. The full args stay in the title. */
-export function CommandBody({ event, end }: { event: Started; end: Finished | null }): ReactElement {
-  const [open, setOpen] = useState(false);
+/** The line of a command, and where and how it ended. The full args stay in the title. */
+function CommandLine({ event, end }: { event: Started; end: Finished | null }): ReactElement {
   return (
     <>
-      <Box
-        component="code"
-        title={[event.executable, ...event.args].join(' ')}
-        sx={{ display: 'block', minWidth: 0, overflowWrap: 'anywhere', fontFamily: 'var(--font-mono)' }}
-      >
-        {commandLine(event)}
-      </Box>
+      <Code title={[event.executable, ...event.args].join(' ')}>{commandLine(event)}</Code>
       <Box sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
         {event.repo ? `${event.repo} · ${inRepo(event.cwd, event.repo)}` : inRepo(event.cwd, '')} · {event.actor} ·{' '}
         {status(end)}
         {end ? ` · exit ${end.exitCode ?? 'none'} · ${duration(end.durationMs)}` : ''}
       </Box>
+    </>
+  );
+}
+
+const lineCount = (output: string): number => output.split('\n').length;
+
+/** One command inside an activity bubble: the line, and its output behind the shared detail button. */
+export function CommandBody({ event, end }: { event: Started; end: Finished | null }): ReactElement {
+  return (
+    <>
+      <CommandLine event={event} end={end} />
       {end?.output ? (
-        <>
-          <Button size="small" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-            {open ? 'Hide output' : 'Show output'}
-          </Button>
-          {open ? (
-            <Box component="pre" sx={PRE}>
-              {end.output}
-            </Box>
-          ) : null}
-        </>
+        <Detail label="output" lines={lineCount(end.output)}>
+          <Code>{end.output}</Code>
+        </Detail>
       ) : null}
     </>
   );
@@ -73,8 +57,16 @@ export function CommandBody({ event, end }: { event: Started; end: Finished | nu
 
 export function CommandCard({ event, end }: { event: Started; end: Finished | null }): ReactElement {
   return (
-    <CardFrame side="left" label="Command">
-      <CommandBody event={event} end={end} />
-    </CardFrame>
+    <Bubble
+      side="left"
+      title="Command"
+      type="command"
+      running={end === null}
+      detail={end?.output ? <Code>{end.output}</Code> : undefined}
+      detailLabel="output"
+      detailLines={end?.output ? lineCount(end.output) : undefined}
+    >
+      <CommandLine event={event} end={end} />
+    </Bubble>
   );
 }

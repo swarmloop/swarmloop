@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import type { StepEvent } from '@contract/step-events';
 import Link from '@mui/material/Link';
-import { CardFrame } from './card-frame';
+import { Bubble } from './bubble';
 import { DocumentDetail } from './document-detail';
 import { problemId } from './problem-card';
 import type { IssueLinks } from './transcript-model';
@@ -23,22 +23,24 @@ export function InputCard({
   switch (event.kind) {
     case 'input.received':
       return (
-        <CardFrame
+        <Bubble
           side="right"
-          label={event.name}
+          type="input"
+          title={event.name}
           meta={event.documentId === 'absent' ? undefined : `document ${event.documentId}`}
           detail={event.documentId === 'absent' ? undefined : <DocumentDetail runKey={runKey} kind={event.inputKind} />}
           detailLabel="document"
         >
           <div>{inputText(event)}</div>
           {event.meta ? <div>{event.meta}</div> : null}
-        </CardFrame>
+        </Bubble>
       );
     case 'handoff.received':
       return (
-        <CardFrame
+        <Bubble
           side="right"
-          label={`Input from ${event.from ?? 'pipeline / review'}`}
+          type="input"
+          title={`Input from ${event.from ?? 'pipeline / review'}`}
           meta={`handoff ${event.handoffId}`}
           detail={<DocumentDetail runKey={runKey} kind="return" />}
           detailLabel="return notes"
@@ -60,7 +62,7 @@ export function InputCard({
               </div>
             );
           })}
-        </CardFrame>
+        </Bubble>
       );
   }
 }

@@ -337,6 +337,29 @@ export default tseslint.config(
     },
   },
   {
+    // A card sets no size, padding, border or radius, and no number: they belong to Bubble and transcript/tokens.ts.
+    // The socket selector is repeated: a later block replaces the options.
+    files: ['dashboard/features/run/transcript/*-card.tsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.object.name='socket'][callee.property.name=/^(on|off)$/]",
+          message: 'Subscribe to socket events only in features/shell/use-live-bridge.ts',
+        },
+        {
+          selector:
+            "JSXAttribute[name.name='sx'] Property[key.name=/^(width|maxWidth|minWidth|p|px|py|border|borderRadius)$/]",
+          message: 'A card sets no width, padding, border or radius in sx: they belong to Bubble.',
+        },
+        {
+          selector: "JSXAttribute[name.name='sx'] Property > Literal[raw=/^-?[0-9]/]",
+          message: 'A card has no number in sx: take it from transcript/tokens.ts.',
+        },
+      ],
+    },
+  },
+  {
     files: ['dashboard/features/shell/use-live-bridge.ts'],
     rules: { 'no-restricted-syntax': 'off' },
   },

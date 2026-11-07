@@ -46,7 +46,7 @@ describe('TranscriptFeed', () => {
   it('shows a failed command as an error with the word, an accessible name, its cause, id and action', () => {
     feed([...commandEvents(1, 's', { executable: 'make', args: ['test'], exitCode: 2 })]);
 
-    const card = screen.getByRole('group', { name: 'Error: exit code 2' });
+    const card = screen.getByRole('article', { name: 'Error: exit code 2' });
     expect(within(card).getByText('Error')).toBeInTheDocument();
     expect(within(card).getByText('exit code 2')).toBeInTheDocument();
     expect(within(card).getByText(/command: make test · id event-1/)).toBeInTheDocument();
@@ -82,18 +82,18 @@ describe('TranscriptFeed', () => {
       artifact,
     ]);
 
-    await user.click(screen.getByRole('button', { name: 'inputs' }));
+    await user.click(screen.getByRole('button', { name: /^inputs/ }));
     expect(screen.getByText(/the plan/)).toBeInTheDocument();
     expect(screen.getByText(/From pipeline \/ review: 1 issues/)).toBeInTheDocument();
     expect(screen.queryByText(/make/)).not.toBeInTheDocument();
     const inputs = screen.getByTestId('transcript-feed').textContent ?? '';
     expect(inputs.indexOf('the plan')).toBeLessThan(inputs.indexOf('From pipeline / review'));
 
-    await user.click(screen.getByRole('button', { name: 'problems' }));
-    expect(within(screen.getByTestId('transcript-feed')).getAllByRole('group')).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: /^problems/ }));
+    expect(within(screen.getByTestId('transcript-feed')).getAllByRole('article', { name: /^Error/ })).toHaveLength(1);
     expect(screen.queryByText(/the plan/)).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'all' }));
+    await user.click(screen.getByRole('button', { name: /^all/ }));
     expect(screen.getByText(/the plan/)).toBeInTheDocument();
   });
 
@@ -130,17 +130,20 @@ describe('TranscriptFeed', () => {
     const { container } = feed(commandEvents(1, 's', { executable: 'curl', args: [long], output }));
 
     expect(screen.queryByText(/line 4999/)).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Show output' }));
+    await user.click(screen.getByRole('button', { name: /^Show output/ }));
 
     expect(await screen.findByText(/line 4999/)).toBeInTheDocument();
     expect(window.innerWidth).toBe(320);
-    expect(overflowing(container)).toEqual([]);
+    // Code scrolls sideways inside its own block and the header cuts a long title with an ellipsis; the rest wraps.
+    const clipped = (element: HTMLElement) =>
+      element.closest('[data-code]') !== null || getComputedStyle(element).textOverflow === 'ellipsis';
+    expect(overflowing(container).filter((element) => !clipped(element))).toEqual([]);
   });
 
   it('says so when the output of a command is not stored', () => {
     feed(commandEvents(1, 's', { executable: 'ls' }));
 
-    expect(screen.queryByRole('button', { name: 'Show output' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Show output/ })).not.toBeInTheDocument();
   });
 
   it('reads the history once for every card that opens its document', async () => {
@@ -184,7 +187,7 @@ describe('TranscriptFeed', () => {
       stepEvent(2, { kind: 'issue.resolved', issueId: 'i-1', evidence: 'pipeline a-2' }),
     ]);
 
-    expect(screen.getByRole('group', { name: 'Error: lint failed' })).toHaveAttribute('id', 'problem-event-1');
+    expect(screen.getByRole('article', { name: 'Error: lint failed' })).toHaveAttribute('id', 'problem-event-1');
     expect(screen.getByText('Issue resolved')).toBeInTheDocument();
   });
 

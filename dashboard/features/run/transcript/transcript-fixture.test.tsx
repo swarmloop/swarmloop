@@ -256,7 +256,7 @@ describe('the step window for a fixture run', () => {
       stepEvent(2, { kind: 'agent.finished', ...launch, killReason: 'time limit', tokensIn: 1, tokensOut: 1, usd: 0 }),
     ]);
 
-    expect(screen.getByRole('group', { name: 'Error: killed: time limit' })).toBeInTheDocument();
+    expect(screen.getByRole('article', { name: 'Error: killed: time limit' })).toBeInTheDocument();
   });
 });
 

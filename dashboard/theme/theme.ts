@@ -45,6 +45,10 @@ export const theme = createTheme({
           '0%, 100%': { opacity: 1 },
           '50%': { opacity: 0.35 },
         },
+        '@keyframes swarmloop-fade': {
+          from: { opacity: 0 },
+          to: { opacity: 1 },
+        },
         '[data-light]': { '--swarmloop-skipped': '#8a847a' },
         '[data-dark]': { '--swarmloop-skipped': '#c4bbae' },
       },

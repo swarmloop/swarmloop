@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import type { StepEvent } from '@contract/step-events';
-import { CardFrame } from './card-frame';
+import { Bubble } from './bubble';
 import type { IssueLinks } from './transcript-model';
 
 type Handoff = Extract<StepEvent, { kind: 'handoff.sent' }>;
@@ -14,11 +14,11 @@ function carried(event: Handoff, issues: IssueLinks): string[] {
 export function HandoffCard({ event, issues }: { event: Handoff; issues: IssueLinks }): ReactElement {
   const lines = carried(event, issues);
   return (
-    <CardFrame side="left" label="Handoff" meta={`handoff ${event.handoffId}`}>
+    <Bubble side="left" title="Handoff" meta={`handoff ${event.handoffId}`}>
       <div>{event.targetStep ? `Passed to ${event.targetStep}` : 'Passed on'}</div>
       {lines.map((line, index) => (
         <div key={`${index}-${line}`}>{line}</div>
       ))}
-    </CardFrame>
+    </Bubble>
   );
 }

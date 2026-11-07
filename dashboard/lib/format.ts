@@ -52,3 +52,9 @@ export function when(iso: string): string {
     date,
   );
 }
+
+/** The time of day of an ISO time, `HH:MM:SS`. */
+export function clock(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : new Intl.DateTimeFormat('en-GB', { timeStyle: 'medium' }).format(date);
+}

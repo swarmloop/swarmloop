@@ -5,7 +5,8 @@ import Link from '@mui/material/Link';
 import type { StepEvent } from '@contract/step-events';
 import { duration, money, tokens } from '../../../lib/format';
 import { AgentLogPanel, type AgentLog } from './agent-log';
-import { CardFrame } from './card-frame';
+import { Bubble } from './bubble';
+import { DETAIL, SPACE } from './tokens';
 import type { AgentBubble, AgentWork } from './transcript-model';
 
 /** How many tool calls and messages show before `show all`. */
@@ -42,7 +43,11 @@ function WorkLine({ work }: { work: AgentWork }): ReactElement {
   }
   return (
     <Box
-      sx={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: work.status === 'failed' ? 'error.main' : undefined }}
+      sx={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: DETAIL.fontSize,
+        color: work.status === 'failed' ? 'error.main' : undefined,
+      }}
     >
       {work.tool} {work.target}
       {work.resultLine ? ` → ${work.resultLine}` : ''}
@@ -67,7 +72,7 @@ function WorkList({
   const shown = all ? work : work.slice(0, SHOWN_WORK);
   const noTools = ended && work.every((item) => item.kind === 'agent.message');
   return (
-    <Box sx={{ mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+    <Box sx={{ mt: SPACE.group, display: 'flex', flexDirection: 'column', gap: SPACE.group }}>
       {noTools ? <Box sx={{ color: 'text.secondary' }}>{`tool details not available from ${runtime}`}</Box> : null}
       {shown.map((item) => (
         <WorkLine key={item.eventId} work={item} />
@@ -98,9 +103,11 @@ export function AgentCard({ bubble, agent }: { bubble: AgentBubble; agent: Agent
       ].join(' · ')
     : 'running';
   return (
-    <CardFrame
+    <Bubble
       side="left"
-      label="Agent"
+      title="Agent"
+      type="agent"
+      running={finished === null}
       meta={spent}
       detail={context ? <div>{contextText(context)}</div> : undefined}
       detailLabel="context"
@@ -108,19 +115,20 @@ export function AgentCard({ bubble, agent }: { bubble: AgentBubble; agent: Agent
       <div>{`${launched.model} · ${launched.runtime} · ${chat}`}</div>
       <WorkList work={work} runtime={launched.runtime} ended={finished !== null} />
       {agent ? <AgentLogPanel agent={agent} tools={hasTools} /> : null}
-    </CardFrame>
+    </Bubble>
   );
 }
 
 /** The stop of an agent that was killed. It is a problem card, so the cause is in words. */
 export function KillCard({ event }: { event: Extract<StepEvent, { kind: 'agent.finished' }> }): ReactElement {
   return (
-    <CardFrame
+    <Bubble
       side="left"
-      label="Agent stopped"
+      title="Agent stopped"
+      type="agent"
       meta={`${tokens(event.tokensIn)} in · ${tokens(event.tokensOut)} out · ${money(event.usd)}`}
     >
       {event.model} was stopped: {event.killReason}
-    </CardFrame>
+    </Bubble>
   );
 }
