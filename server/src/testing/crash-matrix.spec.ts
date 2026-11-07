@@ -76,6 +76,7 @@ describe('crash matrix', () => {
     await app.app.get(CommandService).idle();
     await app.app.get(Reconciler).reconcileCommands();
     await app.app.get(CommandService).idle();
+    await app.pipeline.whenIdle(KEY);
 
     expect((await app.app.get(CommandRepository).find(accepted.id))?.state).toBe('succeeded');
     expect(app.runner.steps.filter((step) => step === 'research')).toHaveLength(1);

@@ -44,7 +44,7 @@ export class Reconciler implements OnModuleDestroy {
   private readonly logger = new Logger(Reconciler.name);
   private claimed: (key: string) => boolean = () => false;
   private timer: NodeJS.Timeout | null = null;
-  private ticking = false;
+  private tick: Promise<void> | null = null;
 
   constructor(
     private readonly runs: RunRepository,
@@ -71,12 +71,14 @@ export class Reconciler implements OnModuleDestroy {
    */
   schedule(): void {
     this.stop();
-    this.timer = setInterval(() => void this.tick(), this.config.env.RECONCILE_MS);
+    this.timer = setInterval(() => this.tickOnce(), this.config.env.RECONCILE_MS);
     this.timer.unref();
   }
 
-  onModuleDestroy(): void {
+  /** Stops the timer and waits for the tick that runs, so nothing reads the database after it closes. */
+  async onModuleDestroy(): Promise<void> {
     this.stop();
+    await this.tick;
   }
 
   private stop(): void {
@@ -84,16 +86,21 @@ export class Reconciler implements OnModuleDestroy {
     this.timer = null;
   }
 
-  /** A tick that comes while the last one still works is skipped. */
-  private async tick(): Promise<void> {
-    if (this.ticking) return;
-    this.ticking = true;
-    try {
-      await this.reconcileRuns();
-      await this.reconcileCommands();
-    } finally {
-      this.ticking = false;
-    }
+  /** A tick that comes while the last one still works is skipped. A failed tick is logged and the next one runs. */
+  private tickOnce(): void {
+    if (this.tick) return;
+    this.tick = this.reconcileAll()
+      .catch((error: unknown) => {
+        this.logger.warn(`reconcile failed: ${error instanceof Error ? error.message : String(error)}`);
+      })
+      .finally(() => {
+        this.tick = null;
+      });
+  }
+
+  private async reconcileAll(): Promise<void> {
+    await this.reconcileRuns();
+    await this.reconcileCommands();
   }
 
   /** The runs in `running`, `stopping` or `recovering`: all three are a `running` status. */
