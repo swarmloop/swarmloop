@@ -34,6 +34,8 @@ interface SelectInput {
   retry: boolean;
   same: boolean;
   repeated: boolean;
+  /** Whether the stored review `kind` counts for this generation and these files. */
+  counts: (kind: string) => Promise<boolean>;
 }
 
 interface RoundInput {
@@ -60,7 +62,7 @@ export async function selectReviewers(
   root: string,
   input: SelectInput,
 ): Promise<Selection> {
-  const { key, only, fresh, retry, same, repeated } = input;
+  const { key, only, fresh, retry, same, repeated, counts } = input;
   const kept: Opinion[] = [];
   const pending: Reviewer[] = [];
   const recovered: DocumentDraft[] = [];
@@ -76,7 +78,10 @@ export async function selectReviewers(
       pending.push(reviewer);
       continue;
     }
-    const stored = !fresh && (Boolean(only) || retry || same) ? await documents.latestBody(key, reviewer.kind) : null;
+    const stored =
+      !fresh && (Boolean(only) || retry || same) && (await counts(reviewer.kind))
+        ? await documents.latestBody(key, reviewer.kind)
+        : null;
     if (stored) {
       try {
         const parsed = parseReview(stored);

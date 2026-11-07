@@ -30,7 +30,10 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 
 import { FetchFailed } from '../../core/swarmloop-error';
 
-import { gitRepo, one, two, shot, job, call, restore, boot, seed } from './pipeline.step.spec-helpers';
+import { gitRepo, one, two, shot, job, call, restore, boot, seed, TOKEN } from './pipeline.step.spec-helpers';
+import { EnvironmentService } from '../../environment/environment.service';
+import { REBASE_JOURNAL, parseJournal } from '../../git/rebase';
+import { featureWorktree, git, hostFetch } from '../../testing/runs.spec-helpers';
 
 describe('pipeline step', () => {
   it.each(['start', 'resume', 'failure', 'dirty', 'limit', 'stop'] as const)(
@@ -103,6 +106,72 @@ describe('pipeline step', () => {
       }
     },
   );
+
+  it('goes through the journal and the generation when the merge request conflicts with its target', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-auto-journal-'));
+    const key = 'PROJ-321';
+    const { tree, clone } = featureWorktree(root, key);
+    const branch = `feature/${key}-ship-the-field`;
+    mkdirSync(join(tree, '.github', 'workflows'), { recursive: true });
+    await writeFile(join(tree, '.github', 'workflows', 'ci.yml'), 'name: CI\non: pull_request\n');
+    git(tree, ['add', '.']);
+    git(tree, ['commit', '-m', 'field']);
+    git(tree, ['push', '-u', 'origin', branch]);
+    const sha = git(tree, ['rev-parse', 'HEAD']);
+    git(clone, ['switch', 'main']);
+    await writeFile(join(clone, 'src', 'base.ts'), 'export const base = 1;\n');
+    git(clone, ['add', 'src/base.ts']);
+    git(clone, ['commit', '-m', 'base']);
+    git(clone, ['push', 'origin', 'main']);
+    const base = git(clone, ['rev-parse', 'main']);
+    git(tree, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/demo.git']);
+    const restoreFetch = hostFetch(join(root, 'demo.git'), TOKEN);
+    const previousSsh = process.env.GIT_SSH_COMMAND;
+    process.env.GIT_SSH_COMMAND = 'false';
+    const app = await boot(
+      root,
+      jest.fn(async () => ({ snapshot: null, httpCalls: [] })),
+      jest.fn(),
+    );
+    try {
+      jest.spyOn(app.get(EnvironmentService), 'refreshAfterRebase').mockResolvedValue(undefined);
+      await seed(app, key, `project: group/demo\nref: ${branch}\nsha: ${sha}\n`);
+      const documents = app.get(DocumentRepository);
+      const runs = app.get(RunRepository);
+      const run = (await runs.findRun(key))!;
+      await documents.putDocument(run, 'repos', 'demo\n');
+      await documents.putDocument(
+        run,
+        'requirements',
+        `${JSON.stringify({ prompt: 'Ship the field\n', tickets: [] })}\n`,
+      );
+      app.get(CodeHostRegistry).byName('gitlab').diagnoseMissingPipeline = jest.fn(async () => ({
+        reason: 'MR has conflicts',
+        code: 'merge-conflict' as const,
+        httpCalls: [],
+      }));
+      expect((await runs.findRun(key))?.generation).toBe(0);
+      await app.get(PipelineService).step('pipeline', key);
+      expect((await runs.findRun(key))?.generation).toBe(1);
+      const journal = parseJournal(await documents.latestBody(key, REBASE_JOURNAL));
+      expect(journal.demo).toMatchObject({
+        branch,
+        oldHead: sha,
+        baseSha: base,
+        checkpoint: 'completed',
+        generation: 1,
+      });
+      expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);
+    } finally {
+      if (previousSsh === undefined) {
+        delete process.env.GIT_SSH_COMMAND;
+      } else {
+        process.env.GIT_SSH_COMMAND = previousSsh;
+      }
+      restoreFetch();
+      await app.close();
+    }
+  });
 
   it('finishes when every pipeline succeeded', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-green-'));

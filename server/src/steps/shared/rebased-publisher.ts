@@ -10,6 +10,8 @@ import { gitAt, Tree } from '../commit/commit-git';
 import { remoteProject } from '../merge-request/merge-request-record';
 import { ARTIFACTS } from '../contract/artifacts';
 import { StepKernel } from '../step-kernel';
+import { stampGate, worktreesFingerprint } from './gate';
+import type { RunEntity } from '../../history/entities';
 
 /** Pushes a branch to its origin and records the refs pushed. Commit and implement both publish through it. */
 @Injectable()
@@ -62,6 +64,13 @@ export class RebasedPublisher {
     await this.rememberRefs(trees, branch, (body) =>
       this.kernel.documents.putDocument(run, ARTIFACTS.pipelineRef.kind, ARTIFACTS.pipelineRef.format(body)),
     );
+    await this.stampRefs(run, trees);
+  }
+
+  /** Ties the published SHAs, and so the CI result read next to them, to this generation and these files. */
+  async stampRefs(run: RunEntity, trees: Tree[]): Promise<void> {
+    const fingerprint = await worktreesFingerprint(trees.map((tree) => tree.path));
+    await stampGate(this.kernel.documents, run, ARTIFACTS.pipelineRef.kind, fingerprint);
   }
 
   async pushRef(
@@ -71,9 +80,55 @@ export class RebasedPublisher {
     codeHost: string,
     origin: string,
   ): Promise<boolean> {
-    const pushed = await this.push(tree, branch, published, codeHost, origin);
+    const pushed = await this.pushChecked(tree, branch, published, codeHost, origin);
     await barrier('after-push');
     return pushed;
+  }
+
+  /**
+   * A push that ends in an error may still have landed. The remote tip says which: the pushed SHA means it is done,
+   * the tip the lease expects means it never happened and the push runs again, anything else stops with the error.
+   */
+  private async pushChecked(
+    tree: Tree,
+    branch: string,
+    published: string | null,
+    codeHost: string,
+    origin: string,
+  ): Promise<boolean> {
+    try {
+      return await this.push(tree, branch, published, codeHost, origin);
+    } catch (error) {
+      let remote: string | null;
+      try {
+        remote = await this.remoteTip(tree, branch, codeHost, origin);
+      } catch {
+        throw error;
+      }
+      const head = await gitAt(tree, ['rev-parse', 'HEAD'], 'push failed');
+      if (remote === head) {
+        await gitAt(tree, ['update-ref', `refs/remotes/origin/${branch}`, 'HEAD'], 'push failed');
+        return true;
+      }
+      if (remote !== published) {
+        throw error;
+      }
+      return this.push(tree, branch, published, codeHost, origin);
+    }
+  }
+
+  /** The tip of the branch on the remote, read from the remote itself. Null when the branch is not there. */
+  private async remoteTip(tree: Tree, branch: string, codeHost: string, origin: string): Promise<string | null> {
+    const known = this.registry.has(codeHost);
+    const url = known ? this.registry.byName(codeHost).pushUrl(origin) : null;
+    const listed = await gitAt(
+      tree,
+      ['ls-remote', url ?? 'origin', `refs/heads/${branch}`],
+      'push failed',
+      { GIT_TERMINAL_PROMPT: '0' },
+      known ? this.registry.credentials(codeHost).token : undefined,
+    );
+    return listed.split(/\s/)[0] || null;
   }
 
   private async push(

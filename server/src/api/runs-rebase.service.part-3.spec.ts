@@ -9,6 +9,7 @@ import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
 
 import { rebaseFeatureRepos } from '../git/rebase';
+import { memoryJournal } from '../git/rebase/journal.spec-helpers';
 
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 
@@ -37,6 +38,7 @@ describe('runs api', () => {
         denied: ['.env'],
         message: 'feat(proj-72): Ship the field',
         hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '', clock: new FakeClock() },
+        journal: memoryJournal(),
       });
       expect(stop).toEqual({ kind: 'clean', leases: [{ repo: 'demo', tip: null }] });
       expect(existsSync(marker)).toBe(false);
@@ -77,6 +79,7 @@ describe('runs api', () => {
         denied: [],
         message: 'feat(proj-73): Ship the field',
         hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '', clock: new FakeClock() },
+        journal: memoryJournal(),
       });
       expect(stop.kind).toBe('clean');
       expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);

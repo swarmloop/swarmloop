@@ -27,6 +27,7 @@ import { AGENT_CONTINUE } from '../../agent/agent-runner';
 import { PipelineService } from '../../pipeline/pipeline.service';
 
 import { REBASE_CONFLICT, rebaseFeatureRepos } from '../../git/rebase';
+import { memoryJournal } from '../../git/rebase/journal.spec-helpers';
 
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 
@@ -240,6 +241,7 @@ describe('implement step', () => {
         denied: [],
         message: 'feat(PROJ-169): Ship the field',
         hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '', clock: new FakeClock() },
+        journal: memoryJournal(),
       });
       expect(stop.kind).toBe('conflict');
       const state = git(tree, ['rev-parse', '--git-path', 'swarmloop-rebase']);

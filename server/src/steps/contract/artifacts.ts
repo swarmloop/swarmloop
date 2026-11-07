@@ -1,5 +1,5 @@
 import { CODE_REVIEWERS, STEPS, type StepName } from '../../contract/steps';
-import { REBASE_CONFLICT } from '../../git/rebase';
+import { REBASE_CONFLICT, REBASE_JOURNAL } from '../../git/rebase';
 import type { Issue } from './step-contract';
 import { requirementsView } from '../../contract/requirements-view';
 import {
@@ -170,6 +170,7 @@ export const SERVICE_KINDS: Readonly<Record<string, string>> = {
   snapshot: 'pipeline/worktree-snapshot',
   environment: 'environment/project-environments',
   checks_pass: 'environment/project-environments',
+  [REBASE_JOURNAL]: 'git/rebase/journal',
   loop_mark: 'pipeline/run-driver',
   spend: 'pipeline/run-driver',
 };

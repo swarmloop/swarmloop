@@ -53,6 +53,10 @@ export class RunEntity {
   @Column({ type: 'integer', default: 0 })
   revision!: number;
 
+  /** Grows by one when a Replay or a Rebase is accepted. A gate counts only for the generation it was written in. */
+  @Column({ type: 'integer', default: 0 })
+  generation!: number;
+
   @Column({ name: 'active_attempt', type: 'text', nullable: true })
   activeAttempt!: string | null;
 
@@ -102,6 +106,10 @@ export class DocumentEntity {
 
   @Column()
   path!: string;
+
+  /** JSON `{ generation, fingerprint }` of a gate: what the document was written for. Null when it is no gate. */
+  @Column({ type: 'text', nullable: true })
+  stamp!: string | null;
 
   @Column({ name: 'created_at' })
   createdAt!: string;

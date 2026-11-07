@@ -13,7 +13,7 @@ import { SwarmloopEnv } from '../../config/env';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { EventRepository } from '../../history/event.repository';
 import { root } from '../../history/run-paths';
-import { VisitDraft } from '../../history/visit';
+import { DocumentDraft, VisitDraft } from '../../history/visit';
 import { Charge, chargeReview } from '../../agent/spend';
 import { ModelPrice } from '../../agent/limits';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
@@ -24,6 +24,8 @@ import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import { lateInput } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { returnedNotes, textDocument } from '../shared/handoff';
+import { gateCounts, stampGate, worktreesFingerprint } from '../shared/gate';
+import type { RunEntity } from '../../history/entities';
 import { CheckoutService } from '../shared/checkout.service';
 import { requiredDocument } from '../step';
 import { reviewDiffSection, writeReviewDiff } from './review-diff';
@@ -167,6 +169,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     const diff = await reviewDiffSection(mounts, await this.checkouts.listDenyPaths());
     const same = sameReviewedDiff(root(this.config), key, diff.patch);
     const repeated = reviewReturn(returned) && same;
+    const fingerprint = await worktreesFingerprint(mounts.map((mount) => mount.hostPath));
     const { kept, pending, recovered, stale } = await selectReviewers(this.documents, root(this.config), {
       key,
       only,
@@ -174,6 +177,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       retry,
       same,
       repeated,
+      counts: (kind) => gateCounts(this.documents, opened.run, kind, fingerprint),
     });
     const calls = pending.length + (reportDue(only, kept, pending) ? 1 : 0);
     if (options.auto && calls > 0 && opened.run.agentCalls + calls > env.MAX_AGENT_CALLS) {
@@ -208,18 +212,22 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     });
     const { reportContinued, opinions, stored, errors } = tallyRound(kept, recovered, finished, repeated);
     if (errors.length > 0) {
-      return closeReview(ctx, failed(errors[0]), `${opened.startedAt} ${errors[0]}`, stored, []);
+      const closed = await closeReview(ctx, failed(errors[0]), `${opened.startedAt} ${errors[0]}`, stored, []);
+      await this.stamp(opened.run, stored, fingerprint);
+      return closed;
     }
     const noted = await noteHandoff(this.documents, key, opinions, stored);
     if (only && othersOpen(only, opinions)) {
       const summary = opinions.map((item) => `${item.kind} ${item.decision}`).join('\n');
-      return closeReview(
+      const waiting = await closeReview(
         ctx,
         { to: 'wait', reason: 'other reviewers are open' },
         `${opened.startedAt} code-review waiting\n${summary}`,
         noted,
         [],
       );
+      await this.stamp(opened.run, stored, fingerprint);
+      return waiting;
     }
     const written = await writeReport(
       deps,
@@ -248,7 +256,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     if (fresh) {
       recorded.push(textDocument(ARTIFACTS.rebaseConflict.kind, 'clear\n'));
     }
-    return routeReview(
+    const routed = await routeReview(
       this.events,
       ctx,
       opinions,
@@ -257,5 +265,14 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       thirdParty,
       written.usage,
     );
+    await this.stamp(opened.run, [...stored, written.document], fingerprint);
+    return routed;
+  }
+
+  /** The reviews this round stored count for the generation and the files they judged, once their visit is closed. */
+  private async stamp(run: RunEntity, stored: DocumentDraft[], fingerprint: string): Promise<void> {
+    for (const document of stored) {
+      await stampGate(this.documents, run, document.kind, fingerprint);
+    }
   }
 }

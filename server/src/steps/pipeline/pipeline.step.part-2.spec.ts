@@ -12,13 +12,14 @@ import { RunRepository } from '../../history/run.repository';
 
 import { DocumentRepository } from '../../history/document.repository';
 
+import { stampStored } from '../shared/gate.spec-helpers';
 import { PipelineService } from '../../pipeline/pipeline.service';
 
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 
 import { FetchFailed } from '../../core/swarmloop-error';
 
-import { gitRepo, two, shot, job, call, restore, boot, seed } from './pipeline.step.spec-helpers';
+import { gitRepo, two, shot, job, call, restore, boot, seed, stampSettled } from './pipeline.step.spec-helpers';
 
 describe('pipeline step', () => {
   it('returns to implement when a job trace cannot be read', async () => {
@@ -129,6 +130,7 @@ describe('pipeline step', () => {
       const run = await app.get(RunRepository).findRun('PROJ-307');
       await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
       mkdirSync(join(root, 'worktrees', 'PROJ-307', 'demo'), { recursive: true });
+      await stampSettled(app, 'PROJ-307', ['demo']);
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-307');
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('nothing started');
@@ -191,6 +193,40 @@ describe('pipeline step', () => {
     }
   });
 
+  it.each(['generation', 'files', 'review'] as const)(
+    'routes back to code-review when the %s of the stamped gates is stale',
+    async (stale) => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-stale-'));
+      const read = jest.fn(() => Promise.resolve({ snapshot: null, httpCalls: [call('GET')] }));
+      const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=30\n');
+      try {
+        const key = 'PROJ-330';
+        await seed(app, key);
+        const runs = app.get(RunRepository);
+        const documents = app.get(DocumentRepository);
+        await documents.putDocument((await runs.findRun(key))!, 'repos', 'demo\n');
+        const tree = join(root, 'worktrees', key, 'demo');
+        gitRepo(tree, 'git@gitlab.example:group/demo.git');
+        if (stale === 'review') {
+          const run = (await runs.findRun(key))!;
+          await documents.putDocument(run, 'review_report', 'Ships the field.\n');
+          await stampStored(app, run, 'pipeline_ref', ['demo']);
+        } else {
+          await stampSettled(app, key, ['demo']);
+        }
+        if (stale === 'generation') await runs.bumpGeneration(key);
+        if (stale === 'files') await writeFile(join(tree, 'late.txt'), 'edited after the review\n');
+        const result = await app.get(PipelineService).step('pipeline', key);
+        expect(result.exitCode).toBe(0);
+        expect(result.message).toContain('stale');
+        expect((await runs.findRun(key))?.currentStep).toBe('code-review');
+        expect(await documents.latestBody(key, 'pipeline_log')).toBeNull();
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
   it('follows a pipeline that appears during the start window', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-appeared-'));
     let reads = 0;
@@ -216,6 +252,7 @@ describe('pipeline step', () => {
       const workflow = join(root, 'worktrees', 'PROJ-313', 'demo', '.github', 'workflows');
       mkdirSync(workflow, { recursive: true });
       await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
+      await stampSettled(app, 'PROJ-313', ['demo']);
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-313');
       expect(result.exitCode).toBe(0);
       expect(read).toHaveBeenCalledTimes(2);

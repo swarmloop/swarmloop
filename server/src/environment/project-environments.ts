@@ -17,6 +17,7 @@ import { agentStateDir, imageName, prepareStateDir, sandboxUserId, setupHosts } 
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { type EnvironmentConfig, readEnvironmentConfig } from './environment-config';
 import { checksFingerprint } from './checks-fingerprint';
+import { countsFor } from '../history/gate-stamp';
 import { git } from '../git/git';
 import { imagePath, projectSlug, resolveProjectImage } from './project-image';
 
@@ -161,7 +162,7 @@ export class ProjectEnvironments {
       await this.documents.putDocument(
         input.run,
         `${CHECKS_PASS}:${prepared.record.repo}`,
-        JSON.stringify({ fingerprint, step: input.step, at: this.clock.iso() }),
+        JSON.stringify({ generation: input.run.generation, fingerprint, step: input.step, at: this.clock.iso() }),
       );
     }
     return { passed, total };
@@ -199,8 +200,8 @@ export class ProjectEnvironments {
   ): Promise<boolean> {
     const repo = prepared.record.repo;
     const stored = await this.documents.latestBody(input.key, `${CHECKS_PASS}:${repo}`);
-    const pass = stored ? (JSON.parse(stored) as { fingerprint: string; step: string }) : null;
-    if (!pass || pass.fingerprint !== fingerprint) {
+    const pass = stored ? (JSON.parse(stored) as { generation?: number; fingerprint: string; step: string }) : null;
+    if (!pass || !countsFor(input.run, pass, fingerprint)) {
       return false;
     }
     const tail = `skipped: these checks passed on the same files in ${pass.step}`;

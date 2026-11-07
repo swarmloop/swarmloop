@@ -23,6 +23,7 @@ import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 
 import { REBASE_CONFLICT, rebaseFeatureRepos, storedBase } from '../git/rebase';
+import { memoryJournal } from '../git/rebase/journal.spec-helpers';
 
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 
@@ -61,6 +62,7 @@ describe('runs api', () => {
       denied: [],
       message: 'feat(proj-64): Ship the field',
       hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '', clock: new FakeClock() },
+      journal: memoryJournal(),
     };
     try {
       const stop = await rebaseFeatureRepos(input);
@@ -234,6 +236,7 @@ describe('runs api', () => {
       denied: [],
       message: 'feat(proj-67): Ship the field',
       hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '', clock: new FakeClock() },
+      journal: memoryJournal(),
     };
     try {
       const stop = await rebaseFeatureRepos(input);
@@ -307,6 +310,7 @@ describe('runs api', () => {
           denied: [],
           message: 'feat(proj-a): Ship the field',
           hosts,
+          journal: memoryJournal(),
         }),
         rebaseFeatureRepos({
           root,
@@ -317,6 +321,7 @@ describe('runs api', () => {
           denied: [],
           message: 'feat(proj-b): Ship the field',
           hosts,
+          journal: memoryJournal(),
         }),
       ]);
       expect(left).toEqual({ kind: 'clean', leases: [{ repo: 'demo', tip: null }] });
@@ -420,6 +425,7 @@ describe('runs api', () => {
       denied: ['.env'],
       message: `feat(${key}): Ship the field`,
       hosts,
+      journal: memoryJournal(),
     });
     try {
       const [left, right] = await Promise.all([
@@ -471,6 +477,7 @@ describe('runs api', () => {
         denied: [],
         message: 'feat(proj-71): Ship the field',
         hosts: { GITLAB_BASE_URL: '', GITLAB_TOKEN: '', GITHUB_BASE_URL: '', GITHUB_TOKEN: '', clock: new FakeClock() },
+        journal: memoryJournal(),
       });
       expect(stop.kind).toBe('clean');
       expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);

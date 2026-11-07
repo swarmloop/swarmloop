@@ -308,6 +308,22 @@ describe('ProjectEnvironments', () => {
       expect(ran(spawned)).toBe(2);
     });
 
+    it('stamps a pass with the generation and runs all checks again in the next generation', async () => {
+      const { service, input, spawned, stored } = setup();
+      input.run.generation = 0;
+      await service.check(input);
+      const pass = stored.find((item) => item.kind.startsWith('checks_pass:'));
+      expect(JSON.parse(pass?.body ?? '{}')).toMatchObject({ generation: 0, fingerprint: expect.any(String) });
+      input.run.generation = 1;
+      await service.check(input);
+      expect(ran(spawned)).toBe(2);
+      expect(
+        JSON.parse(stored.filter((item) => item.kind.startsWith('checks_pass:')).at(-1)?.body ?? '{}'),
+      ).toMatchObject({
+        generation: 1,
+      });
+    });
+
     it.each([
       ['a failed command', { checkCode: 2 }],
       ['a timeout', { checkCode: 124 }],

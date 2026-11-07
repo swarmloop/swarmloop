@@ -166,6 +166,7 @@ export class RunRepository {
       targetPath: null,
       projects: null,
       revision: 0,
+      generation: 0,
       prompt: null,
       createdAt: now,
       updatedAt: now,
@@ -191,6 +192,12 @@ export class RunRepository {
     const saved = await this.runs.save(run);
     this.live?.changed(saved.key);
     return saved;
+  }
+
+  /** Raises the generation by one in a single statement, so a restart cannot count the same command twice. */
+  async bumpGeneration(key: string): Promise<void> {
+    await this.runs.increment({ key }, 'generation', 1);
+    this.live?.changed(key);
   }
 
   async listRuns(): Promise<RunEntity[]> {

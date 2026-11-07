@@ -73,6 +73,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     const rerun = planned.length === 0 && (await this.reader.newer(key, ARTIFACTS.ciRerun, ARTIFACTS.commit));
     if (!rerun && planned.length === 0 && !(await this.somethingToPush(trees, branch))) {
       if (await this.publishedHead(trees, branch)) {
+        await this.publisher.stampRefs(opened.run, trees);
         return commitResult('ok', `${opened.startedAt} commit done\n${branch}`);
       }
       throw new SwarmloopError('nothing to commit');
@@ -97,6 +98,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     }
     const recorded = await this.publisher.rememberRefs(trees, branch, (body) => ctx.write(ARTIFACTS.pipelineRef, body));
     if (recorded) {
+      await this.publisher.stampRefs(opened.run, trees);
       const skip = await ctx.reread(ARTIFACTS.ciSkip);
       if (skip?.trim()) {
         await ctx.write(ARTIFACTS.ciSkip, '');

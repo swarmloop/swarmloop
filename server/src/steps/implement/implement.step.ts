@@ -27,7 +27,8 @@ import { RequiredCheckFailed, RequiredCheckRepeated } from '../../environment/pr
 import { withEnvironment } from '../../environment/environment-note';
 import { agentWorkplace } from '../shared/agent-environment';
 import { storedPlan } from '../step';
-import { RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase';
+import { runJournal } from '../shared/rebase-journal';
+import { RebaseStop, completeRebase, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { staleRepos, unchangedSincePipeline } from '../pipeline/pipeline-report';
 import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
@@ -279,6 +280,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       denied: await this.checkouts.listDenyPaths(),
       message: commitMessage(key, summaryForBranch(requirements, key)),
       hosts: { ...this.config.env, clock: this.clock },
+      journal: runJournal(this.documents, ctx.opened.run),
       onBase: (repo: string, sha: string) => {
         bases.set(repo, sha);
       },
@@ -333,6 +335,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       outcome = await rebaseFeatureRepos(input);
     }
     await this.environments.refreshAfterRebase(ctx.opened.run, mounts, bases);
+    await completeRebase(input.journal);
     if (marker === 'pending-implement') {
       await ctx.write(ARTIFACTS.rebaseConflict, 'review\n');
       return null;

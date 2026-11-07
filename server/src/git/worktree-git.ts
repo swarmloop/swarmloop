@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { basename } from 'path';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -62,6 +63,19 @@ export async function worktreeSnapshot(mounts: SandboxMount[]): Promise<string> 
     parts.push(`${repo}\n${status}\n${diff}`);
   }
   return parts.join('\0');
+}
+
+/**
+ * What a journal and a gate record of the files they judged: the content of every worktree, untracked files included,
+ * and not its HEAD, so committing the same files keeps it. A mount that is not a repository of its own adds only its name.
+ */
+export async function worktreeFingerprint(mounts: SandboxMount[]): Promise<string> {
+  const parts: string[] = [];
+  for (const mount of mounts) {
+    const captured = await captureTree(mount.hostPath);
+    parts.push(captured ? `${basename(mount.hostPath)}\n${captured.tree}` : basename(mount.hostPath));
+  }
+  return createHash('sha256').update(parts.join('\0')).digest('hex');
 }
 
 export async function worktreeStatus(mounts: SandboxMount[]): Promise<string> {

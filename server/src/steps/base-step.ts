@@ -40,6 +40,7 @@ import type {
 import type { Step } from './step';
 import type { StepSnapshot } from './step';
 import type { StepKernel } from './step-kernel';
+import { gateCounts } from './shared/gate';
 
 export interface StepEnd {
   outcome: 'ok' | 'failed' | 'blocked' | 'waiting';
@@ -65,6 +66,8 @@ export interface StepContext {
   reread<T>(artifact: Artifact<T>): Promise<T | null>;
   /** Stores a document outside the visit, such as progress a later pass resumes from. */
   write<T>(artifact: Artifact<T>, value: T): Promise<void>;
+  /** True when the gate `artifact` was stamped for the generation of this run and for `fingerprint`. */
+  gate(artifact: Artifact<unknown>, fingerprint: string): Promise<boolean>;
   end(input: StepEnd): Promise<PipelineResult>;
   /** Runs `fn` as a named activity of the attempt. The commands inside it are shown under `title`, with `result` as its outcome. */
   activity<T>(title: string, fn: () => Promise<T>, result?: (value: T) => string): Promise<T>;
@@ -186,6 +189,7 @@ abstract class StepCore implements Step {
       clock: this.clock,
       reread: (artifact) => this.reader.reread(key, artifact),
       write: (artifact, value) => this.store(opened.run, artifact, value),
+      gate: (artifact, fingerprint) => gateCounts(this.documents, opened.run, artifact.kind, fingerprint),
       activity: runActivity,
       end: (input) => {
         closed = true;
