@@ -310,7 +310,7 @@ export class ProjectEnvironments {
 
   /** The setup runs in the project image with the package registries and no model key. Its output goes to the step log. */
   private async runShell(
-    input: { key: string; step: string; mounts: SandboxMount[] },
+    input: { run: RunEntity; key: string; step: string; mounts: SandboxMount[] },
     launch: ProjectLaunch,
     command: string,
     mount: SandboxMount,
@@ -343,6 +343,7 @@ export class ProjectEnvironments {
         runtime: this.deps.env().RUNTIME,
         runKey: input.key,
         step: input.step,
+        attemptId: input.run.activeAttempt ?? '',
         mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
         statePath,
         allowHosts: phase === 'setup' ? setupHosts() : [],

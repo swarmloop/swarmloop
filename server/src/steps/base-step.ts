@@ -18,6 +18,7 @@ import { closeStep, openStep } from '../steps/step-run';
 import type { HttpCallDraft } from '../core/swarmloop-error';
 import { reportFailure } from './shared/step-failure';
 import { FetchFailed } from '../core/swarmloop-error';
+import { StepStopped } from './shared/step-stopped';
 import { recordHandoff } from './shared/handoff';
 import { recordEnd, recordInputs, stepEventSink } from './shared/step-event-recording';
 import type { Artifact } from './contract/artifact';
@@ -206,6 +207,9 @@ abstract class StepCore implements Step {
       }
       if (closed) {
         throw error;
+      }
+      if (error instanceof StepStopped) {
+        return ctx.end({ outcome: 'blocked', exitCode: 1, line: `${opened.startedAt} ${error.message}` });
       }
       if (error instanceof FetchFailed) {
         calls.push(...error.httpCalls);

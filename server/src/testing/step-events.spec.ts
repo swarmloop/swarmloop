@@ -1,4 +1,5 @@
 import { AGENT_RUNNER } from '../agent/agent-runner';
+import { StepStopped } from '../steps/shared/step-stopped';
 import { execFileSync } from 'child_process';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
@@ -406,6 +407,20 @@ describe('step events', () => {
     await step.execute('E-1');
     const events = await eventsOf('E-1');
     expect(events.at(-1)).toMatchObject({ kind: 'attempt.interrupted', summary: 'stopped' });
+    expect(events.map((event) => event.kind)).not.toContain('attempt.finished');
+  });
+
+  it('ends a stopped step blocked with the code STOPPED and an interrupted attempt', async () => {
+    await seed('E-1');
+    const step = probe('commit', () => Promise.reject(new StepStopped(['demo pipeline 7 https://ci.example/7'])));
+    const ended = await step.execute('E-1');
+    const run = await golden.runs.findRun('E-1');
+    expect(run).toMatchObject({ status: 'blocked', state: 'stopped' });
+    expect(JSON.parse(run?.stateReason ?? '{}')).toMatchObject({ code: 'STOPPED' });
+    expect(ended.message).toContain('Stop is not a rollback');
+    const events = await eventsOf('E-1');
+    expect(events.at(-1)).toMatchObject({ kind: 'attempt.interrupted', route: 'stopped' });
+    expect(events.at(-1)).toMatchObject({ summary: expect.stringContaining('demo pipeline 7 https://ci.example/7') });
     expect(events.map((event) => event.kind)).not.toContain('attempt.finished');
   });
 

@@ -9,6 +9,8 @@ import { authorArgs, originUrl } from '../../git/git';
 import { commitResult } from './commit-result';
 import { gitAt, status, Tree } from './commit-git';
 import { checkedRepoNames } from '../../git/repo-names';
+import { RunStop } from '../../agent/run-stop';
+import { assertNotStopped } from '../shared/step-stopped';
 import { RebasedPublisher } from '../shared/rebased-publisher';
 import { BaseStep, StepContext } from '../base-step';
 import {
@@ -43,6 +45,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     kernel: StepKernel,
     private readonly checkouts: CheckoutRepository,
     private readonly publisher: RebasedPublisher,
+    private readonly runStop: RunStop,
   ) {
     super(kernel);
   }
@@ -74,6 +77,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
       }
       throw new SwarmloopError('nothing to commit');
     }
+    assertNotStopped(this.runStop, key);
     const heads: string[] = [];
     const message = commitMessage(key, summary);
     const pushed = await ctx.activity(

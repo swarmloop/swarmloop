@@ -271,6 +271,7 @@ When CI does not start and GitHub or GitLab confirms a merge conflict for the pu
 | `MAX_RETURNS` | Review returns to implementation | `10` |
 | `MAX_PIPELINE_RETURNS` | Red pipelines sent back | `6` |
 | `MAX_LAUNCHES` | Relaunches of a step that crashed before it decided | `3` |
+| `STOP_GRACE_S` | Seconds a container gets to stop on Stop before it is killed | `10` |
 | `IDLE_TIMEOUT_MS` | Silence before the agent is killed | 15 minutes |
 | `SANDBOX_EGRESS` | `proxy`: all traffic goes through the egress proxy. `open`: per-host networks without the proxy, for debugging only. | `proxy` |
 | `SANDBOX_DOCKER_RUNTIME` | Docker runtime of the sandboxes, such as `runsc` for gVisor | Docker's default |

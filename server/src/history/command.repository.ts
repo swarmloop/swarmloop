@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, Not, Repository } from 'typeorm';
 import { Clock } from '../core/clock';
 import type { CommandState, CommandType } from '../contract/command';
 import type { RunState } from '../contract/run-state';
@@ -120,12 +120,23 @@ export class CommandRepository {
     await this.commands.update({ id }, { state, result: JSON.stringify(result ?? null), updatedAt: this.clock.iso() });
   }
 
-  /** A command that was executing when the server stopped. l15 replaces this with reconciliation. */
+  /** A command that was executing when the server stopped. l15 replaces this with reconciliation. A Stop is not lost: it runs again. */
   async failExecuting(reason: string): Promise<void> {
     await this.commands.update(
-      { state: 'executing' },
+      { type: 'stop', state: 'executing' },
+      { state: 'accepted', updatedAt: this.clock.iso() },
+    );
+    await this.commands.update(
+      { type: Not('stop'), state: 'executing' },
       { state: 'failed', result: JSON.stringify({ error: { message: reason } }), updatedAt: this.clock.iso() },
     );
+  }
+
+  /** The keys of the runs with a Stop that is accepted or executing: the stored intent. */
+  async stoppingKeys(): Promise<string[]> {
+    const stops = await this.commands.find({ where: { type: 'stop', state: In(['accepted', 'executing']) } });
+    const keys = await Promise.all(stops.map((command) => this.keyOf(command)));
+    return keys.filter((key): key is string => key !== null);
   }
 
   /** The commands of a run that are accepted or executing. */

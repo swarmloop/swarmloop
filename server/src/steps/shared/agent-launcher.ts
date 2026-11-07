@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { AGENT_RUNNER, readSession } from '../../agent/agent-runner';
 import type { AgentProcessRunner, AgentRunResult } from '../../agent/agent-runner';
+import { RunStop } from '../../agent/run-stop';
 import { AgentWorkFeed } from '../../contract/readable-log';
 import type { AgentWork } from '../../contract/readable-log';
 import { bindToStepScope, recordStepEvent } from '../../core/step-event-scope';
@@ -11,6 +12,7 @@ import type { RunEntity } from '../../history/entities';
 import { sessionFileName } from '../../history/session-group';
 import { VisitRepository } from '../../history/visit.repository';
 import type { ProjectLaunch } from '../../sandbox/sandbox-launch';
+import { assertNotStopped } from './step-stopped';
 import { AGENT_LANGUAGE_RULE } from './skill-prompt';
 import { promptSections } from './prompt-manifest';
 
@@ -66,9 +68,11 @@ export class AgentLauncher {
   constructor(
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
     private readonly visits: VisitRepository,
+    private readonly runStop: RunStop,
   ) {}
 
   async launch(request: AgentLaunchRequest): Promise<AgentRunResult> {
+    assertNotStopped(this.runStop, request.key);
     const directory = join(request.root, 'data');
     mkdirSync(directory, { recursive: true });
     const sessionFile = join(directory, sessionFileName(request.key, request.step));
@@ -106,6 +110,7 @@ export class AgentLauncher {
       groupUsd: request.resume === false ? 0 : (stored?.usd ?? 0),
       runKey: request.key,
       step: request.step,
+      attemptId: request.run.activeAttempt ?? '',
       liveStep: request.liveStep,
       mounts: request.mounts,
       allowHosts: request.allowHosts,

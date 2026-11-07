@@ -10,6 +10,8 @@ export interface SandboxLaunch {
   runtime: RuntimeName;
   runKey: string;
   step: string;
+  /** The attempt that starts the container. Empty for a container that no attempt owns, such as the shell. */
+  attemptId: string;
   mounts: SandboxMount[];
   envMasks: EnvMask[];
   allowHosts: string[];

@@ -109,6 +109,7 @@ function input(root: string, outputFile: string, patch: Partial<AgentRunInput> =
     resumeChatId: 'chat-1',
     runKey: 'run1',
     step: 'implement',
+    attemptId: 'attempt-1',
     mounts: [{ hostPath: root, containerPath: '/work/demo' }],
     mode: 'agent',
     timeLimitMs: 60_000,

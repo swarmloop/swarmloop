@@ -9,7 +9,6 @@ import type { RunEntity } from '../history/entities';
 import type { DocumentRepository } from '../history/document.repository';
 import type { RunRepository } from '../history/run.repository';
 import type { VisitRepository } from '../history/visit.repository';
-import { containerName } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import type { Clock } from '../core/clock';
 import type { RequirementsStep } from '../steps/requirements/requirements.step';
@@ -18,7 +17,8 @@ import type { RunStop } from '../agent/run-stop';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { assertKey, diedLog, isStep } from '../core/pipeline-result';
 import { writeRunState } from '../history/run-state';
-import { REASON } from '../contract/run-state';
+import { ERROR_CODES } from '../contract/error-codes';
+import { REASON, STOP_NOTE } from '../contract/run-state';
 import { reportFailure } from '../steps/shared/step-failure';
 import { CHAT_LOCK, chatHeld, chatResume, readChatLock } from './chat-lock';
 import { flagError } from './flag-error';
@@ -76,6 +76,7 @@ export class RunLifecycle implements OnModuleInit {
       if ('exitCode' in prepared) return prepared;
       const { step } = prepared;
       started = true;
+      this.runStop.clear(key);
       void this.driver
         .drive(step, key, options)
         .catch(async (error: unknown) => {
@@ -167,16 +168,13 @@ export class RunLifecycle implements OnModuleInit {
     if (!run) {
       return { exitCode: 1, message: `${key} is missing` };
     }
-    if (!this.inflight.has(key) && run.status !== 'running') {
+    if (!this.inflight.has(key) && run.status !== 'running' && !this.runStop.halted(key)) {
       return { exitCode: 0, message: `${key} is stopped` };
     }
     const lockBody = await this.documents.latestBody(key, CHAT_LOCK);
     if (chatHeld(lockBody, run.status, run.ownerPid)) {
-      try {
-        await this.sandbox.kill(readChatLock(lockBody)?.container ?? containerName(key, 'chat'));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : `${key} is still running`;
-        return { exitCode: 1, message };
+      if ((await this.sandbox.stopRun(key, 'shell', this.config.env.STOP_GRACE_S)) === 'unknown') {
+        return { exitCode: 1, message: silentMessage(key) };
       }
       return { exitCode: 0, message: `${key} stopped` };
     }
@@ -184,14 +182,16 @@ export class RunLifecycle implements OnModuleInit {
     if (stopped) {
       return stopped;
     }
+    // The driver has left and no labeled container is listed. A step that closed on its own stays as it ended.
     const fresh = await this.runs.findRun(key);
-    if (fresh?.status === 'running') {
+    if (fresh?.status === 'running' || fresh?.status === 'failed') {
       await this.runs.release(fresh, {
-        status: 'failed',
-        reason: { code: REASON.stopped, message: 'stopped' },
+        status: 'blocked',
+        reason: { code: REASON.stopped, message: STOP_NOTE },
         stepStartedAt: null,
       });
     }
+    this.runStop.clear(key);
     return { exitCode: 0, message: `${key} stopped` };
   }
 
@@ -259,20 +259,36 @@ export class RunLifecycle implements OnModuleInit {
   }
 
   async stopRunning(key: string, run: RunEntity): Promise<PipelineResult | null> {
-    if (!this.inflight.has(key) && run.status !== 'running') {
-      this.runStop.clear(key);
+    if (!this.inflight.has(key) && run.status !== 'running' && !this.runStop.halted(key)) {
       return null;
     }
     this.runStop.halt(key);
-    if (isStep(run.currentStep) && run.currentStep !== 'done') {
-      await this.sandbox.killFamily(key, run.currentStep);
+    if ((await this.stopContainers(key, run)) === 'unknown') {
+      return this.dockerSilent(key);
     }
     const idle = await this.untilIdle(key);
     if (!idle) {
       return { exitCode: 1, message: `${key} is still running` };
     }
-    this.runStop.clear(key);
-    return null;
+    // The driver may have started a container before it saw the intent: list again now that it has left.
+    return (await this.stopContainers(key, run)) === 'unknown' ? this.dockerSilent(key) : null;
+  }
+
+  private stopContainers(key: string, run: RunEntity): Promise<'gone' | 'unknown'> {
+    return this.sandbox.stopRun(key, run.currentStep, this.config.env.STOP_GRACE_S);
+  }
+
+  /** Docker did not answer: the run is blocked, not stopped, and the intent stays until a Resume. */
+  private async dockerSilent(key: string): Promise<PipelineResult> {
+    const fresh = await this.runs.findRun(key);
+    if (fresh?.status === 'running') {
+      await this.runs.release(fresh, {
+        status: 'blocked',
+        reason: { code: ERROR_CODES.RESOURCE_UNKNOWN, message: silentMessage(key) },
+        stepStartedAt: null,
+      });
+    }
+    return { exitCode: 1, message: silentMessage(key) };
   }
 
   protected untilIdle(key: string): Promise<boolean> {
@@ -318,6 +334,9 @@ export class RunLifecycle implements OnModuleInit {
   }
 }
 
+function silentMessage(key: string): string {
+  return `${key} is blocked: docker did not answer`;
+}
 function targetError(path: string | undefined): string | null {
   if (path === undefined) return null;
   if (!existsSync(path) || !statSync(path).isDirectory()) return 'path is not a directory';

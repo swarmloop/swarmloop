@@ -31,7 +31,15 @@ export const REASON = {
   blocked: 'BLOCKED',
 } as const;
 
-const RESUMABLE_BLOCKS: readonly string[] = [REASON.checkFailed, REASON.didNotFit, REASON.loopLimit];
+/** What a stopped step says. It also tells a stopped block from the others when only the error text is known. */
+export const STOP_NOTE = 'Stopped by request. Commits, pushes and merge requests stay: Stop is not a rollback.';
+
+/** True for the text a stopped step ends with. */
+export function isStopNote(text: string): boolean {
+  return text.includes(STOP_NOTE);
+}
+
+const RESUMABLE_BLOCKS: readonly string[] = [REASON.checkFailed, REASON.didNotFit, REASON.loopLimit, REASON.stopped];
 
 /** The one place that says which actions a state allows. Availability follows what the dashboard offered before. */
 export function actionsFor(state: RunState, reasonCode: string | null = null): RunAction[] {

@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, readFile, writeFile } from 'fs/promises';
+import { RunStop } from '../agent/run-stop';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { AppConfig } from '../config/env';
@@ -61,7 +62,7 @@ describe('chat', () => {
       config(root),
       new FakeClock(),
       { assertReady: async () => undefined } as never,
-      new AgentLauncher({ run: agent } as never, visitRepository as never),
+      new AgentLauncher({ run: agent } as never, visitRepository as never, new RunStop()),
       { block: async () => 'Services:\nJira PROJ-1: Ship the field' } as never,
     );
     const spoken = await chat.speak('PROJ-1', {
@@ -102,7 +103,7 @@ describe('chat', () => {
       config('/tmp'),
       new FakeClock(),
       { assertReady: async () => undefined } as never,
-      new AgentLauncher({ run: jest.fn() } as never, {} as never),
+      new AgentLauncher({ run: jest.fn() } as never, {} as never, new RunStop()),
       {
         block: async () => '',
       } as never,
@@ -122,7 +123,7 @@ describe('chat', () => {
       config('/tmp'),
       new FakeClock(),
       { assertReady: async () => undefined } as never,
-      new AgentLauncher({ run: jest.fn() } as never, {} as never),
+      new AgentLauncher({ run: jest.fn() } as never, {} as never, new RunStop()),
       {
         block: async () => '',
       } as never,

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { RunStop } from '../../agent/run-stop';
 import { StepKernel } from '../step-kernel';
 import { mkdirSync, writeFileSync } from 'fs';
 import { mkdtemp, rm, writeFile } from 'fs/promises';
@@ -73,6 +74,7 @@ describe('merge-request step golden traces', () => {
         app.get(StepEventLog),
       ),
       app.get(CodeHostRegistry),
+      new RunStop(),
     );
     const result = await step.execute(KEY);
     expectGolden(`merge-request.${name}`, {

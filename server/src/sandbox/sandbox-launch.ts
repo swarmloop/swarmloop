@@ -114,6 +114,18 @@ export function stepContainers(base: string, names: readonly string[]): string[]
   return names.filter((name) => name === base || name.startsWith(`${base}-`));
 }
 
+/** The labels every run container carries, so a Stop finds it without guessing from its name. */
+export function runLabels(launch: Pick<SandboxLaunch, 'runKey' | 'step' | 'attemptId'>): string[] {
+  return [
+    '--label',
+    `swarmloop.run=${launch.runKey}`,
+    '--label',
+    `swarmloop.step=${launch.step}`,
+    '--label',
+    `swarmloop.attempt=${launch.attemptId}`,
+  ];
+}
+
 export function containerName(runKey: string, step: string): string {
   const name = `swarmloop-${runKey}-${step}`.toLowerCase();
   if (!/^[a-z0-9][a-z0-9_.-]+$/.test(name)) {
@@ -280,6 +292,7 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
   args.push(
     '--name',
     containerName(launch.runKey, launch.step),
+    ...runLabels(launch),
     '--user',
     `${launch.userId}:${launch.userId}`,
     '--cap-drop',
