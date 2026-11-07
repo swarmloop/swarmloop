@@ -34,10 +34,19 @@ import type { Step } from '../steps/step';
 import { StepKernel } from '../steps/step-kernel';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { PipelineService } from '../pipeline/pipeline.service';
+import { Reconciler } from '../pipeline/reconciler';
+
+type FakeSandbox = Record<string, (...args: never[]) => Promise<unknown>>;
 
 interface TestAppOptions {
   root?: string;
   runner?: ScriptedFakeAgentRunner;
+  /** Replaces calls of the fake sandbox, for a spec that needs a container. */
+  sandbox?: FakeSandbox;
+  /** Lines of the `.env` that replace the defaults of `testEnv`. */
+  env?: Record<string, string>;
+  /** The app removes the root when it closes. Defaults to true for a root it made. */
+  ownsRoot?: boolean;
 }
 
 export class ScriptedFakeAgentRunner {
@@ -82,7 +91,7 @@ class ScriptedStep extends BaseStep<Record<string, never>> {
   }
 }
 
-export async function createTestApp(options: TestAppOptions = {}): Promise<{
+export interface TestApp {
   app: INestApplication;
   root: string;
   clock: FakeClock;
@@ -91,11 +100,15 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<{
   pipeline: PipelineService;
   url: string;
   close(): Promise<void>;
-}> {
-  const ownsRoot = options.root === undefined;
+  /** A restart: this app stops and a new one starts on the same root and database. The new app owns the root. */
+  restart(): Promise<TestApp>;
+}
+
+export async function createTestApp(options: TestAppOptions = {}): Promise<TestApp> {
+  const ownsRoot = options.ownsRoot ?? options.root === undefined;
   const root = options.root ?? (await mkdtemp(join(tmpdir(), 'swarmloop-test-app-')));
   mkdirSync(root, { recursive: true });
-  await writeFile(join(root, '.env'), testEnv(root));
+  await writeFile(join(root, '.env'), testEnv(root, options.env));
   const clock = new FakeClock();
   const runner = options.runner ?? new ScriptedFakeAgentRunner();
   const codeHost = new FakeCodeHost();
@@ -131,7 +144,13 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<{
     .overrideProvider(AGENT_RUNNER)
     .useValue({ run: (input: { step: string }) => runner.run(input.step) })
     .overrideProvider(SandboxService)
-    .useValue({ assertReady: () => Promise.resolve(), kill: () => Promise.resolve() })
+    .useValue({
+      assertReady: () => Promise.resolve(),
+      kill: () => Promise.resolve(),
+      attemptRunning: () => Promise.resolve(false),
+      killAttempt: () => Promise.resolve(true),
+      ...options.sandbox,
+    })
     .compile();
 
   for (const name of STEPS) {
@@ -147,6 +166,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<{
     if (ownsRoot) await rm(root, { recursive: true, force: true });
     throw error;
   }
+  app.get(Reconciler).schedule();
   const server = app.getHttpServer() as Server;
   const address = server.address() as AddressInfo | null;
   if (!address || typeof address === 'string') {
@@ -170,10 +190,14 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<{
         if (ownsRoot) await rm(root, { recursive: true, force: true });
       }
     },
+    restart: async () => {
+      await app.close();
+      return createTestApp({ ...options, root, runner, ownsRoot });
+    },
   };
 }
 
-function testEnv(root: string): string {
+function testEnv(root: string, overrides: Record<string, string> = {}): string {
   return [
     'RUNTIME=cursor',
     'REQUIREMENTS_VIA=direct',
@@ -207,6 +231,7 @@ function testEnv(root: string): string {
     'SWARMLOOP_API_PORT=0',
     'SWARMLOOP_API_HOST=127.0.0.1',
     `SWARMLOOP_ROOT=${root}`,
+    ...Object.entries(overrides).map(([name, value]) => `${name}=${value}`),
     '',
   ].join('\n');
 }

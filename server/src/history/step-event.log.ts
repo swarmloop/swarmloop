@@ -69,6 +69,12 @@ export class StepEventLog {
     return last?.seq ?? 0;
   }
 
+  /** The last event an attempt recorded, or null when it recorded none. */
+  async lastOfAttempt(runId: number, attemptId: string): Promise<StepEvent | null> {
+    const last = await this.events.findOne({ where: { runId, attemptId }, order: { seq: 'DESC' } });
+    return last ? toEvent(last) : null;
+  }
+
   /** Events after `after`, oldest first. `next` is set when the page is full. */
   async page(runId: number, query: { step?: string; after?: number; limit?: number }): Promise<StepEventPage> {
     const limit = Math.min(Math.max(query.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);

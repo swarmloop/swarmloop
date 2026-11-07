@@ -14,6 +14,7 @@ import { StepName } from '../contract/steps';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { RunDriver } from './run-driver';
 import { RunInstructions } from './run-instructions';
+import { Reconciler } from './reconciler';
 import { RunLifecycle } from './run-lifecycle';
 
 @Injectable()
@@ -33,8 +34,9 @@ export class PipelineService implements OnModuleInit {
     clock: Clock,
     private readonly runStop: RunStop,
     projects: ProjectAppendService,
+    reconciler: Reconciler,
   ) {
-    this.instructions = new RunInstructions(runs, documents, registry, config);
+    this.instructions = new RunInstructions(runs, documents, registry);
     this.driver = new RunDriver(runs, documents, registry, config, visits, runStop, clock, projects);
     this.lifecycle = new RunLifecycle(
       runs,
@@ -48,6 +50,7 @@ export class PipelineService implements OnModuleInit {
       requirements,
       this.driver,
       this.instructions,
+      reconciler,
     );
   }
 

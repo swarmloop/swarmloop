@@ -7,6 +7,7 @@ import { rawEnv } from '../config/process-env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { SystemClock } from '../core/clock';
 import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
+import { barrier } from '../core/barrier';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { SandboxMount } from '../core/sandbox-mount';
 import {
@@ -132,7 +133,9 @@ export class SandboxService {
     }
     const name = args[args.indexOf('--name') + 1] ?? '';
     await this.remove(name);
-    return this.spawnDocker(args);
+    const child = this.spawnDocker(args);
+    await barrier('after-container-create');
+    return child;
   }
 
   /** Runs one docker command through the same runner as the other calls. */
@@ -208,6 +211,27 @@ export class SandboxService {
       if (!text.includes('No such container') && !text.includes('is not running')) {
         throw error;
       }
+    }
+  }
+
+  /** True while a container of the attempt runs, false when none does, null when docker did not answer. */
+  async attemptRunning(attemptId: string): Promise<boolean | null> {
+    try {
+      return (await this.listed(['ps', '-q', '--filter', `label=swarmloop.attempt=${attemptId}`])).length > 0;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Kills and removes the containers of an attempt. False when docker did not answer or one is still listed. */
+  async killAttempt(attemptId: string): Promise<boolean> {
+    try {
+      for (const id of await this.listed(['ps', '-aq', '--filter', `label=swarmloop.attempt=${attemptId}`])) {
+        await this.dockerAllowingGone(['rm', '-f', id], 30_000);
+      }
+      return (await this.attemptRunning(attemptId)) === false;
+    } catch {
+      return false;
     }
   }
 

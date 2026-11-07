@@ -8,6 +8,7 @@ import { BranchCheckout } from '../steps/shared/branch-checkout';
 import { CheckoutService } from '../steps/shared/checkout.service';
 import { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
+import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
 import { CodeReviewStep } from '../steps/code-review/code-review.step';
 import { ImplementImproveStep } from '../steps/implement/implement-improve.step';
 import { ImplementStep } from '../steps/implement/implement.step';
@@ -23,6 +24,7 @@ import { StepKernel } from '../steps/step-kernel';
 import { StepRegistry } from '../steps/step.registry';
 import { EnvironmentService } from '../environment/environment.service';
 import { CommandService } from './command.service';
+import { Reconciler } from './reconciler';
 import { PipelineService } from './pipeline.service';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
 
@@ -39,6 +41,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     CheckoutService,
     BranchCheckout,
     MergeRequestStep,
+    MergeRequestLookup,
     PipelineStep,
     PlanStep,
     PlanImproveStep,
@@ -50,6 +53,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     StepRegistry,
     PipelineService,
     CommandService,
+    Reconciler,
     RunRebase,
     { provide: RunRebaseEnvironment, useExisting: EnvironmentService },
     EnvironmentService,
@@ -57,6 +61,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
   exports: [
     PipelineService,
     CommandService,
+    Reconciler,
     RunRebase,
     PrepareStep,
     ProjectAppendService,

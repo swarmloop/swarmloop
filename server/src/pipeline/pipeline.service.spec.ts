@@ -247,6 +247,9 @@ async function boot(root: string): Promise<TestingModule> {
     .overrideProvider(AGENT_RUNNER)
     .useValue({ run: jest.fn() })
     .overrideProvider(SandboxService)
-    .useValue({ assertReady: jest.fn().mockResolvedValue(undefined) })
+    .useValue({
+      assertReady: jest.fn().mockResolvedValue(undefined),
+      attemptRunning: jest.fn().mockResolvedValue(false),
+    })
     .compile();
 }

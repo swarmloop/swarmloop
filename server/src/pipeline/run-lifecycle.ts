@@ -2,9 +2,6 @@ import type { OnModuleInit } from '@nestjs/common';
 import { Logger } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import type { AppConfig } from '../config/env';
-import { chargeStream, modelForStep } from '../agent/spend';
-import { loadPriceTable } from '../agent/prices';
-import { resolveRepoRoot } from '../config/repo-root';
 import type { RunEntity } from '../history/entities';
 import type { DocumentRepository } from '../history/document.repository';
 import type { RunRepository } from '../history/run.repository';
@@ -15,13 +12,15 @@ import type { RequirementsStep } from '../steps/requirements/requirements.step';
 import type { StepRegistry } from '../steps/step.registry';
 import type { RunStop } from '../agent/run-stop';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
-import { assertKey, diedLog, isStep } from '../core/pipeline-result';
+import { assertKey, isStep } from '../core/pipeline-result';
 import { writeRunState } from '../history/run-state';
 import { ERROR_CODES } from '../contract/error-codes';
 import { REASON, STOP_NOTE } from '../contract/run-state';
 import { reportFailure } from '../steps/shared/step-failure';
-import { CHAT_LOCK, chatHeld, chatResume, readChatLock } from './chat-lock';
+import { CHAT_LOCK, chatHeld } from './chat-lock';
 import { flagError } from './flag-error';
+import type { Reconciler } from './reconciler';
+import { silentMessage } from './reconciler';
 import { settleShell, shellHolding } from './shell-lock';
 import type { RunDriver } from './run-driver';
 import type { RunInstructions } from './run-instructions';
@@ -44,27 +43,11 @@ export class RunLifecycle implements OnModuleInit {
     private readonly requirements: RequirementsStep,
     private readonly driver: RunDriver,
     private readonly instructions: RunInstructions,
+    private readonly reconciler: Reconciler,
   ) {}
 
   async onModuleInit(): Promise<void> {
-    for (const run of await this.runs.listRuns()) {
-      if (run.status !== 'running' || this.inflight.has(run.key)) {
-        continue;
-      }
-      const body = await this.documents.latestBody(run.key, CHAT_LOCK);
-      const shell = readChatLock(body);
-      if (shell?.container) {
-        await settleShell(this.runs, this.documents, this.sandbox, run, this.clock);
-        continue;
-      }
-      const resume = chatResume(body, run.ownerPid);
-      if (resume) {
-        await this.runs.release(run, { status: resume });
-        await this.documents.putDocument(run, CHAT_LOCK, 'clear\n');
-        continue;
-      }
-      await this.abandon(run);
-    }
+    await this.reconciler.start((key) => this.inflight.has(key));
   }
 
   async startDetached(key: string, options: StepOptions = {}, only?: StepName): Promise<PipelineResult> {
@@ -195,47 +178,6 @@ export class RunLifecycle implements OnModuleInit {
     return { exitCode: 0, message: `${key} stopped` };
   }
 
-  private async abandon(run: RunEntity): Promise<void> {
-    const now = this.clock.iso();
-    const note = 'process died\n';
-    const saved = this.instructions.savedOutput(run);
-    const log = diedLog(saved);
-    const env = this.config.env;
-    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now());
-    const model = modelForStep(run.currentStep, env);
-    const step = isStep(run.currentStep) ? this.registry.get(run.currentStep) : null;
-    const charge = step?.charge
-      ? await step.charge(run.key, env, prices)
-      : model
-        ? chargeStream(model, saved, prices)
-        : null;
-    run.spentUsd += charge?.usd ?? 0;
-    writeRunState(run, { status: 'failed', ownerPid: null });
-    await this.visits.finalize(run.activeAttempt, run, {
-      step: run.currentStep,
-      model,
-      mode: null,
-      startedAt: run.stepStartedAt ?? run.updatedAt,
-      finishedAt: now,
-      durationMs: stepElapsed(run.stepStartedAt, this.clock.now()),
-      status: 'failed',
-      exitCode: 1,
-      killReason: 'process died',
-      tokensIn: charge?.tokensIn ?? 0,
-      tokensOut: charge?.tokensOut ?? 0,
-      usd: charge?.usd ?? 0,
-      samples: [],
-      exchange: null,
-      httpCalls: [],
-      document: null,
-      documents: [
-        { kind: 'log', fileName: '', body: log },
-        { kind: 'error', fileName: '', body: note },
-      ],
-      resumed: false,
-    });
-  }
-
   claimed(key: string): boolean {
     return this.inflight.has(key);
   }
@@ -334,9 +276,6 @@ export class RunLifecycle implements OnModuleInit {
   }
 }
 
-function silentMessage(key: string): string {
-  return `${key} is blocked: docker did not answer`;
-}
 function targetError(path: string | undefined): string | null {
   if (path === undefined) return null;
   if (!existsSync(path) || !statSync(path).isDirectory()) return 'path is not a directory';

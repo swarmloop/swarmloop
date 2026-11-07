@@ -126,6 +126,7 @@ function lifecycleWith(run: Partial<RunEntity>, stopRun: jest.Mock) {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
   const claim = () => (lifecycle as unknown as { inflight: Set<string> }).inflight.add(state.key);
   const leave = () => (lifecycle as unknown as { release(key: string): void }).release(state.key);
