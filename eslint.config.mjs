@@ -57,6 +57,14 @@ const layerImports = {
   cli: ['core', 'config', 'history', 'pipeline'],
 };
 
+const SOCKET_SYNTAX = {
+  selector: "CallExpression[callee.object.name='socket'][callee.property.name=/^(on|off)$/]",
+  message: 'Subscribe to socket events only in features/shell/use-live-bridge.ts',
+};
+const KEY_ID_SYNTAX = {
+  selector: "JSXAttribute[name.name='key'] > JSXExpressionContainer > MemberExpression[property.name='id']",
+  message: 'An id can be -1 for a live visit: key a list by the visit `key`.',
+};
 const DATE_SYNTAX = {
   selector: "NewExpression[callee.name='Date'][arguments.length=0]",
   message: 'Read time through Clock.',
@@ -327,13 +335,15 @@ export default tseslint.config(
   {
     files: dashboardFiles,
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "CallExpression[callee.object.name='socket'][callee.property.name=/^(on|off)$/]",
-          message: 'Subscribe to socket events only in features/shell/use-live-bridge.ts',
-        },
-      ],
+      'no-restricted-syntax': ['error', SOCKET_SYNTAX],
+    },
+  },
+  {
+    // A synthetic visit has the id -1, so a key built from an id repeats. Use the visit's `key`.
+    // The socket selector is repeated: a later block replaces the options.
+    files: ['dashboard/features/run/**/*.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error', SOCKET_SYNTAX, KEY_ID_SYNTAX],
     },
   },
   {
@@ -343,10 +353,8 @@ export default tseslint.config(
     rules: {
       'no-restricted-syntax': [
         'error',
-        {
-          selector: "CallExpression[callee.object.name='socket'][callee.property.name=/^(on|off)$/]",
-          message: 'Subscribe to socket events only in features/shell/use-live-bridge.ts',
-        },
+        SOCKET_SYNTAX,
+        KEY_ID_SYNTAX,
         {
           selector:
             "JSXAttribute[name.name='sx'] Property[key.name=/^(width|maxWidth|minWidth|p|px|py|border|borderRadius)$/]",

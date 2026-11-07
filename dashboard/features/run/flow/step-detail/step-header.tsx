@@ -11,7 +11,9 @@ import Button from '@mui/material/Button';
 import Link from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import { duration } from '../../../../lib/format';
 import { statusColor } from '../../../../theme/theme';
+import { AttemptSelector } from '../../attempt-selector';
 import { stepLabel } from '../../phases';
 import { problemId } from '../../transcript/problem-card';
 import type { StepMetricKind } from '../../step-metrics';
@@ -73,8 +75,8 @@ export function StepHeader({
 }): ReactElement {
   return (
     <>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, minWidth: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
           <Typography sx={{ fontFamily: 'var(--font-mono)' }}>{stepLabel(step)}</Typography>
           {!step.startsWith('code-review-') && (runStatus === 'failed' || runStatus === 'blocked') ? (
             <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: statusColor(runStatus) }}>
@@ -92,28 +94,25 @@ export function StepHeader({
             </Button>
           ) : null}
         </Box>
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
-          {(view.visits.length > 1 || attempts > 0) &&
-            view.visits.map((item, index) => {
-              const color = statusColor(
-                shownStatus(item.status, index === view.visits.length - 1, runStatus, step, item.decision),
-              );
-              return (
-                <Button
-                  key={item.id}
-                  size="small"
-                  variant={index === attempt ? 'contained' : 'text'}
-                  onClick={() => {
-                    follow.current = index === view.visits.length - 1;
-                    setAttempt(index);
-                  }}
-                  sx={index === attempt ? { bgcolor: color, '&:hover': { bgcolor: color } } : { color }}
-                >
-                  {item.attempt}
-                </Button>
-              );
+        {view.visits.length > 1 || attempts > 0 ? (
+          <AttemptSelector
+            items={view.visits.map((item, index) => {
+              const status = shownStatus(item.status, index === view.visits.length - 1, runStatus, step, item.decision);
+              return {
+                key: item.key,
+                label: String(item.attempt),
+                color: statusColor(status),
+                menuText: `${item.attempt} · ${status} · ${duration(item.durationMs)}`,
+              };
             })}
-        </Box>
+            selected={view.visits[attempt]?.key}
+            onSelect={(key) => {
+              const index = view.visits.findIndex((item) => item.key === key);
+              follow.current = index === view.visits.length - 1;
+              setAttempt(index);
+            }}
+          />
+        ) : null}
       </Box>
       <Typography sx={{ mt: 0.5, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'text.secondary' }}>
         {describe(view.descriptor)}

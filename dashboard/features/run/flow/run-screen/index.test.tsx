@@ -41,6 +41,13 @@ beforeEach(() => {
 });
 
 describe('RunScreen', () => {
+  it('lets the main column shrink so the page never scrolls sideways', async () => {
+    const { container } = render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+    await screen.findByRole('heading', { name: 'Run one' });
+
+    expect(container.firstElementChild).toHaveStyle({ minWidth: '0' });
+  });
+
   it('shows Loading the run. until the flow loads, then the flow name and board', async () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 

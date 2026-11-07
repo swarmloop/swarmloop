@@ -1,6 +1,16 @@
 import { reviewChipStatus, usageFromLog } from '@contract/readable-log';
 import type { LiveUsage } from '@contract/live';
 import type { StepView } from '@contract/api';
+import { liveVisitKey } from '@contract/visit-key';
+
+type Visit = StepView['visits'][number];
+
+/** One visit per attempt, in increasing attempt order. When two visits share an attempt the later one wins. */
+export function mergeVisits(visits: Visit[]): Visit[] {
+  const byAttempt = new Map<number, Visit>();
+  visits.forEach((visit) => byAttempt.set(visit.attempt, visit));
+  return [...byAttempt.values()].sort((a, b) => a.attempt - b.attempt);
+}
 
 export function fileView(step: string, body: string): StepView {
   const done = reviewChipStatus(body);
@@ -12,6 +22,7 @@ export function fileView(step: string, body: string): StepView {
     visits: [
       {
         id: -1,
+        key: liveVisitKey(step, 1),
         attempt: 1,
         status: done ?? 'running',
         model: null,
@@ -80,9 +91,10 @@ export function withLog(
     }
     const attempt = visit.attempt + 1;
     const counted = tokenUsage(body, reported);
-    const opened: StepView['visits'][number] = {
+    const opened: Visit = {
       ...visit,
       id: -1,
+      key: liveVisitKey(view.step, attempt),
       attempt,
       status: reviewChipStatus(body) ?? 'running',
       durationMs: 0,
@@ -99,7 +111,7 @@ export function withLog(
       opened.tokensOut = 0;
       opened.usd = 0;
     }
-    return { ...view, visits: [...view.visits, opened] };
+    return { ...view, visits: mergeVisits([...view.visits, opened]) };
   }
   const documents = visit.documents.some((item) => item.kind === 'log')
     ? visit.documents.map((item) => (item.kind === 'log' ? { ...item, body } : item))

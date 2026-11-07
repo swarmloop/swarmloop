@@ -52,4 +52,16 @@ describe('RunHeader', () => {
 
     expect(screen.getByRole('link', { name: 'All history' })).toHaveAttribute('href', '/runs/run-1/history');
   });
+
+  it('cuts a very long title with an ellipsis and keeps the full text in a tooltip', async () => {
+    const user = userEvent.setup();
+    const name = 'long title '.repeat(30).slice(0, 300);
+    header('done', { flow: flowView({ status: 'done', name }) });
+
+    const title = screen.getByRole('heading', { name });
+    expect(title).toHaveStyle({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+    expect(title.parentElement).toHaveStyle({ minWidth: '0' });
+    await user.hover(title);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(name);
+  });
 });

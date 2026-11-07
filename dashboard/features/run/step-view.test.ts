@@ -3,6 +3,7 @@ import { describe, it } from 'vitest';
 import {
   decisionLine,
   fileView,
+  mergeVisits,
   reportAgrees,
   shownStatus,
   stepText,
@@ -22,6 +23,7 @@ const usageLog = '{"usage":{"inputTokens":10,"outputTokens":4}}';
 function visit(partial: Partial<StepView['visits'][number]> = {}): StepView['visits'][number] {
   return {
     id: 1,
+    key: 'visit-1',
     attempt: 1,
     status: 'running',
     model: null,
@@ -350,5 +352,62 @@ describe('withFileUsage', () => {
     });
     assert.equal(running.visits[0]?.tokensIn, 10);
     assert.equal(running.visits[0]?.tokensOut, 4);
+  });
+});
+
+describe('merging the live visit with the stored ones', () => {
+  const stored = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      visit({ id: index + 1, key: `visit-${index + 1}`, attempt: index + 1, status: 'done' }),
+    );
+  const live = (attempt: number) => visit({ id: -1, key: `live-implement-${attempt}`, attempt, status: 'running' });
+  const view = (visits: StepView['visits']): StepView => ({ step: 'implement', checks: [], ...recorded, visits });
+
+  function assertOrdered(next: StepView): void {
+    const attempts = next.visits.map((item) => item.attempt);
+    assert.deepEqual(
+      attempts,
+      Array.from({ length: attempts.length }, (_, index) => index + 1),
+    );
+    assert.equal(new Set(next.visits.map((item) => item.key)).size, next.visits.length);
+  }
+
+  it('keeps unique, increasing attempts from the server list, a live log and a refetch', () => {
+    const first = view([...stored(13), live(14)]);
+    assertOrdered(first);
+
+    const logged = withLog(first, 'more output', []);
+    assertOrdered(logged);
+    assert.equal(logged.visits.length, 14);
+    assert.equal(logged.visits.at(-1)?.documents[0]?.body, 'more output');
+
+    const refetched = view([...stored(14), live(15)]);
+    const again = withLog(refetched, 'more output', []);
+    assertOrdered(again);
+    assert.equal(again.visits.length, 15);
+    assert.equal(again.visits.at(-1)?.key, 'live-implement-15');
+  });
+
+  it('opens the next attempt once after the last visit finished', () => {
+    const opened = withLog(view(stored(13)), 'live', []);
+    assertOrdered(opened);
+    assert.equal(opened.visits.at(-1)?.key, 'live-implement-14');
+    assert.equal(withLog(opened, 'live again', []).visits.length, 14);
+  });
+
+  it('sorts by attempt and lets the later visit win a shared attempt', () => {
+    const merged = mergeVisits([
+      visit({ key: 'b', attempt: 2 }),
+      visit({ key: 'a', attempt: 1 }),
+      visit({ key: 'c', attempt: 2 }),
+    ]);
+    assert.deepEqual(
+      merged.map((item) => item.key),
+      ['a', 'c'],
+    );
+  });
+
+  it('gives a file view a live key', () => {
+    assert.equal(fileView('code-review-quality', 'x').visits[0]?.key, 'live-code-review-quality-1');
   });
 });

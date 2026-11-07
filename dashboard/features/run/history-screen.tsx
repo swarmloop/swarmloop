@@ -12,6 +12,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import Typography from '@mui/material/Typography';
+import { AttemptSelector } from './attempt-selector';
 import { SeriesChart } from './series';
 import { MarkdownBody } from '../../components/ui/markdown-body';
 import { getHistory } from '../../lib/endpoints';
@@ -20,6 +21,7 @@ import { documentsByKind, tokensByModel } from './history';
 import { latestPhaseLabels } from './phases';
 import { LogTranscript } from './log-transcript';
 import type { HistoryView } from '@contract/api';
+import { visitKey } from '@contract/visit-key';
 
 export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
   const [view, setView] = useState<HistoryView | null>(null);
@@ -147,7 +149,7 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
       <Section title="Metrics">
         {view.stats.length === 0 ? <Empty /> : null}
         {view.stats.map((stat) => (
-          <Typography key={stat.id} sx={{ fontFamily: 'var(--font-mono)', fontSize: 13, py: 0.5 }}>
+          <Typography key={visitKey(stat.id)} sx={{ fontFamily: 'var(--font-mono)', fontSize: 13, py: 0.5 }}>
             {stat.step} #{stat.attempt} · {duration(stat.durationMs)} · {money(stat.usd)} · cpu{' '}
             {stat.cpuPeak.toFixed(0)}% · mem {memory(stat.memPeak)}
           </Typography>
@@ -159,17 +161,17 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
             </Typography>
           ))}
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', my: 2 }}>
-          {view.stats.map((stat) => (
-            <Button
-              key={stat.id}
-              size="small"
-              variant={stat.id === visit ? 'contained' : 'text'}
-              onClick={() => setVisit(stat.id)}
-            >
-              {stat.step} {stat.attempt}
-            </Button>
-          ))}
+        <Box sx={{ my: 2, minWidth: 0 }}>
+          <AttemptSelector
+            items={view.stats.map((stat) => ({
+              key: visitKey(stat.id),
+              label: `${stat.step} ${stat.attempt}`,
+              color: 'primary.main',
+              menuText: `${stat.step} #${stat.attempt} · ${duration(stat.durationMs)}`,
+            }))}
+            selected={visit === null ? undefined : visitKey(visit)}
+            onSelect={(key) => setVisit(view.stats.find((stat) => visitKey(stat.id) === key)?.id ?? null)}
+          />
         </Box>
         <SeriesChart samples={samples} />
         {view.loops.map((loop) => (

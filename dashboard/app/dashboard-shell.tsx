@@ -157,9 +157,9 @@ function DashboardFrame({
           }}
         />
       </Drawer>
-      <Box component="main" sx={{ ml: `${DrawerWidth}px`, minHeight: '100vh' }}>
+      <Box component="main" sx={{ ml: `${DrawerWidth}px`, minHeight: '100vh', minWidth: 0 }}>
         <Toolbar />
-        <Box sx={{ px: { xs: 2, md: 4 }, py: 3, maxWidth: 1180 }}>{children}</Box>
+        <Box sx={{ px: { xs: 2, md: 4 }, py: 3, maxWidth: 1180, minWidth: 0 }}>{children}</Box>
       </Box>
       <RemoveRunDialog
         run={pendingRemove}

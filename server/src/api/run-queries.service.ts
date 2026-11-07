@@ -29,6 +29,7 @@ import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
 import { belongsToVisit, documentView, filesOf, withReturnNotes } from './run-view/documents';
+import { visitKey } from '../contract/visit-key';
 import { launchView, liveVisit } from './run-view/live';
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
 import { openSpend } from './run-queries-spend';
@@ -148,6 +149,7 @@ export class RunQueriesService {
           : null;
       return {
         id: stat.id,
+        key: visitKey(stat.id),
         attempt: stat.attempt,
         status: verdict === 'ok' ? 'done' : verdict === 'return' ? 'waiting' : stat.status,
         model: stat.model,
@@ -286,6 +288,7 @@ export class RunQueriesService {
       const verdict = reviewDecision(`${ownedText}\n${log}`);
       return {
         id: stat.id,
+        key: visitKey(stat.id),
         attempt: index + 1,
         status: verdict === 'ok' ? 'done' : verdict === 'return' ? 'waiting' : reviewerOutcome(log, stat.status),
         model,
@@ -348,6 +351,7 @@ export class RunQueriesService {
       const verdict = reviewDecision(owned.map((item) => item.body).join('\n'));
       return {
         id: stat.id,
+        key: visitKey(stat.id),
         attempt: stat.attempt,
         status: verdict === 'ok' ? 'done' : verdict === 'return' ? 'waiting' : stat.status,
         model: stat.model,
