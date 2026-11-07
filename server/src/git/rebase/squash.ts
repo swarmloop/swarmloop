@@ -2,6 +2,7 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { originRef, promptBase } from '../base-ref';
 import { git, gitDetail, gitMissing, gitStderr } from '../git';
 import type { RebaseHosts, RebaseStop } from './types';
+import type { RebaseJournal } from './journal';
 import { cloneArgs, cloneAuthor, cloneSource, cloneUnmerged, indexDirty } from './clone-index';
 import { landConflict, resetHard } from './conflict';
 import { gitAt, rebaseStderr } from './workflow';
@@ -15,6 +16,7 @@ export async function squashOffMount(input: {
   denied: string[];
   message: string;
   hosts: RebaseHosts;
+  journal: RebaseJournal;
   base: string;
 }): Promise<RebaseStop | null> {
   const baseSha = await gitAt(input.cwd, input.repo, ['rev-parse', input.base], 'rebase failed', input.hosts);
@@ -39,7 +41,7 @@ export async function squashOffMount(input: {
     throw new SwarmloopError(`${input.repo} rebase failed: ${contained ? 'already in the base' : 'empty squash'}`);
   }
   if (await sameSquash(input.tmp, tipSha, baseSha, input.message, input.repo, input.hosts)) {
-    await resetHard(input.cwd, input.repo, input.hosts, tipSha);
+    await resetHard(input.cwd, input.repo, input.hosts, input.journal, 'oldHead');
     return null;
   }
   try {
@@ -54,7 +56,9 @@ export async function squashOffMount(input: {
     'rebase failed',
     input.hosts,
   );
-  await resetHard(input.cwd, input.repo, input.hosts, 'FETCH_HEAD');
+  const squashSha = await gitAt(input.cwd, input.repo, ['rev-parse', 'FETCH_HEAD'], 'rebase failed', input.hosts);
+  await input.journal.advance(input.repo, 'applying', { squashSha });
+  await resetHard(input.cwd, input.repo, input.hosts, input.journal, 'squashSha');
   return null;
 }
 

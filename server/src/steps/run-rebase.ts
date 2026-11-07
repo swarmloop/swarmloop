@@ -9,12 +9,17 @@ import { FlowRepository } from '../history/flow.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { root } from '../history/run-paths';
 import { branchName, commitMessage, summaryForBranch } from './branch/branch-name';
-import { rebaseFeatureRepos } from '../git/rebase';
+import { completeRebase, rebaseFeatureRepos } from '../git/rebase';
 import { repoNames } from '../git/repo-names';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { mountsForStep } from '../git/repo-names';
 import { ARTIFACTS } from './contract/artifacts';
 import { writeRunState } from '../history/run-state';
+import { runJournal } from './shared/rebase-journal';
+import type { RebaseJournal } from '../git/rebase';
+
+/** The steps that read a review or a CI result. */
+const AFTER_REVIEW: readonly string[] = ['commit', 'merge-request', 'pipeline'];
 
 export abstract class RunRebaseEnvironment {
   abstract refreshAfterRebase(
@@ -36,22 +41,28 @@ export class RunRebase {
     private readonly environments: RunRebaseEnvironment,
   ) {}
 
-  async rebase(key: string): Promise<'resume' | 'start'> {
+  /** A reconciler resume of an unfinished journal is not a new command: it does not raise the generation. */
+  async rebase(key: string, resume = false): Promise<'resume' | 'start'> {
     const run = await this.requireRun(key);
     if (run.status !== 'failed' && run.status !== 'done' && run.status !== 'waiting') {
       throw new ConflictException(`${key} is ${run.status}`);
     }
     const status = run.status;
+    if (!resume) {
+      await this.runs.bumpGeneration(key);
+    }
+    const journal = runJournal(this.documents, await this.requireRun(key));
     let stop: Awaited<ReturnType<typeof rebaseFeatureRepos>>;
     const bases = new Map<string, string>();
     try {
-      stop = await this.rebaseWorktrees(run, bases);
+      stop = await this.rebaseWorktrees(run, bases, journal);
       const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
       await this.environments.refreshAfterRebase(
         run,
         mountsForStep(root(this.config), run.key, names, run.targetPath),
         bases,
       );
+      await completeRebase(journal);
     } catch (error) {
       const message = error instanceof SwarmloopError ? error.message : 'rebase failed';
       throw new ConflictException(message);
@@ -68,11 +79,15 @@ export class RunRebase {
     if (await this.checklistUnfinished(run)) {
       return this.startAtImplement(run);
     }
-    if (status === 'failed' || status === 'waiting') {
-      return 'resume';
+    if (status === 'done') {
+      await this.documents.putDocument(await this.requireRun(key), ARTIFACTS.rebaseMergeSkip.kind, 'skip\n');
+      return this.startAtReview(key);
     }
-    const fresh = await this.requireRun(key);
-    await this.documents.putDocument(fresh, ARTIFACTS.rebaseMergeSkip.kind, 'skip\n');
+    // Every review and CI result of the old generation is stale: a step that reads them goes back through code-review.
+    return AFTER_REVIEW.includes(run.currentStep) ? this.startAtReview(key) : 'resume';
+  }
+
+  private async startAtReview(key: string): Promise<'start'> {
     await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review');
     const next = await this.requireRun(key);
     writeRunState(next, { status: 'waiting', currentStep: 'code-review' });
@@ -84,6 +99,7 @@ export class RunRebase {
   private async rebaseWorktrees(
     run: RunEntity,
     bases: Map<string, string>,
+    journal: RebaseJournal,
   ): Promise<Awaited<ReturnType<typeof rebaseFeatureRepos>>> {
     const requirements = await this.documents.latestBody(run.key, ARTIFACTS.requirements.kind);
     if (!requirements?.trim()) {
@@ -100,6 +116,7 @@ export class RunRebase {
       denied: await this.checkouts.listDenyPaths(),
       message: commitMessage(run.key, summary),
       hosts: { ...this.config.env, clock: this.clock },
+      journal,
       onBase: (repo, sha) => {
         bases.set(repo, sha);
       },

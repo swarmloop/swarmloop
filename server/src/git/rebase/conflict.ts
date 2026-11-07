@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, symlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { ERROR_CODES } from '../../contract/error-codes';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { originRef, promptBase } from '../base-ref';
 import { isDenied } from '../../git/commit-paths';
@@ -19,6 +20,8 @@ import {
 import { resolveGitPath } from './hidden-worktree';
 import { gitAt, gitRawAt, rebaseStderr } from './workflow';
 import { unmergedPaths } from './clone-index';
+import { fingerprintOf } from './journal';
+import type { RebaseJournal, ResetTarget } from './journal';
 
 export interface RebaseState {
   baseSha: string;
@@ -63,6 +66,7 @@ export async function landConflict(input: {
   baseSha: string;
   message: string;
   hosts: RebaseHosts;
+  journal: RebaseJournal;
   stderr: string;
 }): Promise<RebaseStop> {
   const unmerged = await cloneUnmerged(input.tmp, input.repo, input.hosts);
@@ -89,7 +93,7 @@ export async function landConflict(input: {
     'rebase failed',
     input.hosts,
   );
-  await resetHard(input.cwd, input.repo, input.hosts, input.baseSha);
+  await resetHard(input.cwd, input.repo, input.hosts, input.journal, 'baseSha');
   for (const [path, file] of files) {
     const full = copiedDestination(input.cwd, path);
     removeCopiedPath(full);
@@ -124,8 +128,30 @@ export async function landConflict(input: {
   };
 }
 
-/** `--no-skip-worktree` is ignored when `--no-assume-unchanged` is in the same call. */
-export async function resetHard(cwd: string, repo: string, hosts: RebaseHosts, rev: string): Promise<void> {
+/**
+ * Resets to a SHA the journal holds for this repo, and only while the worktree still has the files the journal
+ * recorded. Anything else is blocked with `REBASE_CONFLICT`.
+ * `--no-skip-worktree` is ignored when `--no-assume-unchanged` is in the same call.
+ */
+export async function resetHard(
+  cwd: string,
+  repo: string,
+  hosts: RebaseHosts,
+  journal: RebaseJournal,
+  target: ResetTarget,
+): Promise<void> {
+  const entry = await journal.entry(repo);
+  const rev = entry?.[target];
+  if (!entry || !rev) {
+    throw new SwarmloopError(`${repo} rebase blocked: the journal holds no ${target}`, {
+      code: ERROR_CODES.REBASE_CONFLICT,
+    });
+  }
+  if ((await fingerprintOf(cwd)) !== entry.fingerprint) {
+    throw new SwarmloopError(`${repo} rebase blocked: the files changed since the journal was written`, {
+      code: ERROR_CODES.REBASE_CONFLICT,
+    });
+  }
   const raw = await gitRawAt(cwd, repo, ['ls-files', '-z']);
   if (raw.length > 0) {
     await gitStdin(cwd, repo, hosts, ['update-index', '--no-skip-worktree', '-z', '--stdin'], raw);

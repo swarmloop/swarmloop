@@ -171,6 +171,7 @@ export class RunCommandsService {
       throw new BadRequestException('prompt is missing');
     }
     await requireRun(this.runs, key);
+    await this.runs.bumpGeneration(key);
     if (phases !== undefined) {
       await this.flows.noteFlow(key, this.phases(phases), name);
     }

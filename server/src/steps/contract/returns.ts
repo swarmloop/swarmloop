@@ -11,6 +11,7 @@ export const RETURNS: Partial<Record<StepName, readonly StepName[]>> = {
 /** The steps a step may jump to, past the ones that follow it. */
 export const JUMPS: Partial<Record<StepName, readonly StepName[]>> = {
   implement: ['commit', 'code-review'],
+  pipeline: ['code-review'],
 };
 
 /** Throws when `step` ends with a return or a jump that the tables do not allow. */

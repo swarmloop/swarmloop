@@ -11,6 +11,7 @@ import { SwarmloopConfigModule } from '../../config/config.module';
 import { AppConfig } from '../../config/env';
 import { Clock } from '../../core/clock';
 import { HttpCallEntity } from '../../history/entities';
+import { stampStored } from '../shared/gate.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import type { AgentRunResult } from '../../agent/agent-runner';
@@ -483,6 +484,7 @@ async function seed(
   if (options.implementation !== false) {
     await documents.putDocument(seeded, 'implementation', 'changed the field\n');
     await documents.putDocument(seeded, 'review_report', 'Ships the field.\n');
+    await stampStored(app, seeded, 'review_report', (options.repos ?? 'demo\n').trim().split('\n'));
   }
 }
 

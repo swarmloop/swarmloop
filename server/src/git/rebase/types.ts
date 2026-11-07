@@ -1,5 +1,6 @@
 import type { Clock } from '../../core/clock';
 import type { CodeHostEnv } from '../../integrations/code-host/abstract-code-host';
+import type { RebaseJournal } from './journal';
 
 export interface RebaseHosts extends CodeHostEnv {
   clock: Clock;
@@ -14,6 +15,7 @@ export interface RebaseRepoInput {
   denied: string[];
   message: string;
   hosts: RebaseHosts;
+  journal: RebaseJournal;
   onBase?: (repo: string, sha: string) => void;
 }
 

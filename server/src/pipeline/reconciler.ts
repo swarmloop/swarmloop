@@ -22,7 +22,9 @@ import { StepEventLog } from '../history/step-event.log';
 import type { VisitDraft } from '../history/visit';
 import { VisitRepository } from '../history/visit.repository';
 import { SandboxService } from '../sandbox/sandbox.service';
+import { fingerprintOf, parseJournal, unfinished, REBASE_JOURNAL } from '../git/rebase';
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
+import { RunRebase } from '../steps/run-rebase';
 import { StepRegistry } from '../steps/step.registry';
 import { CHAT_LOCK, chatResume, readChatLock } from './chat-lock';
 import { CommandService } from './command.service';
@@ -57,6 +59,7 @@ export class Reconciler implements OnModuleDestroy {
     private readonly commands: CommandService,
     private readonly events: StepEventLog,
     private readonly mergeRequests: MergeRequestLookup,
+    private readonly rebases: RunRebase,
   ) {}
 
   /** The startup pass over the runs. `claimed` says which runs a step of this process holds. */
@@ -136,7 +139,45 @@ export class Reconciler implements OnModuleDestroy {
       await this.documents.putDocument(run, CHAT_LOCK, 'clear\n');
       return;
     }
+    if (await this.settleRebase(run)) return;
     await this.settleAttempt(run);
+  }
+
+  /**
+   * A journal below `completed` is read before the run continues or blocks. Files that no longer match the last
+   * checkpoint block it with `REBASE_CONFLICT`; otherwise the rebase resumes through `RunRebase`, without a new
+   * generation. A repo in `conflict` waits for a person, so it is neither.
+   */
+  private async settleRebase(run: RunEntity): Promise<boolean> {
+    const journal = parseJournal(await this.documents.latestBody(run.key, REBASE_JOURNAL));
+    if (!unfinished(journal)) return false;
+    const open = Object.entries(journal).filter(([, entry]) => entry.checkpoint !== 'completed');
+    if (open.some(([, entry]) => entry.generation !== run.generation)) return false;
+    if (open.some(([, entry]) => entry.checkpoint === 'conflict')) return false;
+    for (const [repo, entry] of open) {
+      if ((await fingerprintOf(entry.path)) === entry.fingerprint) continue;
+      await this.runs.release(run, {
+        status: 'blocked',
+        reason: {
+          code: ERROR_CODES.REBASE_CONFLICT,
+          message: `${repo} rebase blocked: the files changed since the journal was written`,
+        },
+        stepStartedAt: null,
+      });
+      return true;
+    }
+    await this.runs.release(run, { status: 'failed', stepStartedAt: null });
+    try {
+      await this.rebases.rebase(run.key, true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'rebase failed';
+      await this.runs.release((await this.runs.findRun(run.key)) ?? run, {
+        status: 'blocked',
+        reason: { code: ERROR_CODES.REBASE_CONFLICT, message },
+        stepStartedAt: null,
+      });
+    }
+    return true;
   }
 
   /** The owner is this process and its step is in flight, or a chat of this process holds the run. */

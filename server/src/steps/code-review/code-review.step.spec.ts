@@ -14,6 +14,7 @@ import type { Repository } from 'typeorm';
 
 import { AgentExchangeEntity, DocumentEntity, LoopEventEntity } from '../../history/entities';
 
+import { putStamped } from '../shared/gate.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
 
 import { DocumentRepository } from '../../history/document.repository';
@@ -260,13 +261,12 @@ describe('code-review step', () => {
     try {
       await seed(app, 'PROJ-87');
       const runs = app.get(RunRepository);
-      const documents = app.get(DocumentRepository);
       const run = await runs.findRun('PROJ-87');
       run!.status = 'failed';
       run!.currentStep = 'code-review';
       await runs.saveRun(run!);
       for (const name of ['requirements', 'quality', 'regressions', 'security']) {
-        await documents.putDocument(run!, `review_${name}`, `notes\ndecision: ok\n`);
+        await putStamped(app, run!, `review_${name}`, `notes\ndecision: ok\n`, ['billing-api']);
       }
       const done = await app.get(PipelineService).step('code-review', 'PROJ-87');
       expect(done.exitCode).toBe(0);
@@ -372,7 +372,6 @@ describe('code-review step', () => {
     try {
       await seed(app, 'PROJ-88', 1, 17);
       const runs = app.get(RunRepository);
-      const documents = app.get(DocumentRepository);
       const visits = app.get(VisitRepository);
       const run = await runs.findRun('PROJ-88');
       run!.status = 'waiting';
@@ -399,10 +398,10 @@ describe('code-review step', () => {
         resumed: false,
       });
       for (const name of ['requirements', 'security', 'performance']) {
-        await documents.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
+        await putStamped(app, run!, `review_${name}`, 'notes\ndecision: ok\n', ['billing-api']);
       }
-      await documents.putDocument(run!, 'review_quality', 'theme.alpha\ndecision: return\n');
-      await documents.putDocument(run!, 'review_regressions', 'statusColor\ndecision: return\n');
+      await putStamped(app, run!, 'review_quality', 'theme.alpha\ndecision: return\n', ['billing-api']);
+      await putStamped(app, run!, 'review_regressions', 'statusColor\ndecision: return\n', ['billing-api']);
       const done = await app.get(PipelineService).step('code-review', 'PROJ-88');
       expect(done.message).not.toContain('does not fit');
       expect(agent.mock.calls.map((call) => call[0].step).sort()).toEqual(['code-review-report']);
@@ -431,14 +430,13 @@ describe('code-review step', () => {
     try {
       await seed(app, 'PROJ-94');
       const runs = app.get(RunRepository);
-      const documents = app.get(DocumentRepository);
       const run = await runs.findRun('PROJ-94');
       run!.status = 'failed';
       run!.currentStep = 'code-review';
       await runs.saveRun(run!);
-      await documents.putDocument(run!, 'review_requirements', 'notes\ndecision: return\n');
+      await putStamped(app, run!, 'review_requirements', 'notes\ndecision: return\n', ['billing-api']);
       for (const name of ['quality', 'regressions', 'performance']) {
-        await documents.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
+        await putStamped(app, run!, `review_${name}`, 'notes\ndecision: ok\n', ['billing-api']);
       }
       const done = await app.get(PipelineService).step('code-review', 'PROJ-94');
       expect(done.exitCode).toBe(0);
@@ -462,12 +460,11 @@ describe('code-review step', () => {
     try {
       await seed(app, 'PROJ-89');
       const runs = app.get(RunRepository);
-      const documents = app.get(DocumentRepository);
       const run = await runs.findRun('PROJ-89');
-      await documents.putDocument(run!, 'review_requirements', 'notes\ndecision: ok\n');
-      await documents.putDocument(run!, 'review_security', 'notes\ndecision: ok\n');
-      await documents.putDocument(run!, 'review_performance', 'notes\ndecision: ok\n');
-      await documents.putDocument(run!, 'review_regressions', 'notes\ndecision: return\n');
+      await putStamped(app, run!, 'review_requirements', 'notes\ndecision: ok\n', ['billing-api']);
+      await putStamped(app, run!, 'review_security', 'notes\ndecision: ok\n', ['billing-api']);
+      await putStamped(app, run!, 'review_performance', 'notes\ndecision: ok\n', ['billing-api']);
+      await putStamped(app, run!, 'review_regressions', 'notes\ndecision: return\n', ['billing-api']);
       const done = await app.get(PipelineService).step('code-review', 'PROJ-89', { reviewer: 'quality' });
       expect(agent).toHaveBeenCalledTimes(1);
       expect(agent.mock.calls[0]?.[0]?.step).toBe('code-review-quality');

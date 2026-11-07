@@ -18,6 +18,7 @@ import { Clock } from '../../core/clock';
 
 import { RunRepository } from '../../history/run.repository';
 
+import { stampStored } from '../shared/gate.spec-helpers';
 import { DocumentRepository } from '../../history/document.repository';
 
 import { PipelineModule } from '../../pipeline/pipeline.module';
@@ -148,4 +149,13 @@ export async function seed(
   seeded.attemptsPipeline = attemptsPipeline;
   await runs.saveRun(seeded);
   await documents.putDocument(seeded, 'pipeline_ref', body);
+}
+
+/** The review report and the published refs of a run that passed code-review on the worktrees of `repos`. */
+export async function stampSettled(app: Awaited<ReturnType<typeof boot>>, key: string, repos: string[]): Promise<void> {
+  const run = (await app.get(RunRepository).findRun(key))!;
+  await app.get(DocumentRepository).putDocument(run, 'review_report', 'Ships the field.\n');
+  for (const kind of ['pipeline_ref', 'review_report']) {
+    await stampStored(app, run, kind, repos);
+  }
 }

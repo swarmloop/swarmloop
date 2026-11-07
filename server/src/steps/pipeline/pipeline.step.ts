@@ -3,6 +3,7 @@ import { StepKernel } from '../step-kernel';
 import { RunRebase } from '../run-rebase';
 import { RunStop } from '../../agent/run-stop';
 import { missingPipeline } from './missing-pipeline';
+import { backToReview, staleGates } from './stale-gates';
 import { type SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { EventRepository } from '../../history/event.repository';
@@ -208,6 +209,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         seen,
         missing,
       });
+    }
+    if (await staleGates(ctx, root(this.config), await this.flows.activePhases(opened.run.id))) {
+      return backToReview(ctx, this.flows);
     }
     if (verdict === 'absent') {
       const body = renderNone(seen);

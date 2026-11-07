@@ -14,6 +14,7 @@ import type { Repository } from 'typeorm';
 
 import { DocumentEntity, LoopEventEntity } from '../../history/entities';
 
+import { putStamped } from '../shared/gate.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
 
 import { DocumentRepository } from '../../history/document.repository';
@@ -57,10 +58,9 @@ describe('code-review step', () => {
     try {
       await seed(app, 'PROJ-90');
       const runs = app.get(RunRepository);
-      const documents = app.get(DocumentRepository);
       const run = await runs.findRun('PROJ-90');
       for (const name of ['requirements', 'regressions', 'security', 'performance']) {
-        await documents.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
+        await putStamped(app, run!, `review_${name}`, 'notes\ndecision: ok\n', ['billing-api']);
       }
       const done = await app.get(PipelineService).step('code-review', 'PROJ-90', { reviewer: 'quality' });
       expect(done.exitCode).toBe(0);
@@ -79,10 +79,9 @@ describe('code-review step', () => {
     try {
       await seed(app, 'PROJ-91');
       const runs = app.get(RunRepository);
-      const documents = app.get(DocumentRepository);
       const run = await runs.findRun('PROJ-91');
       for (const name of ['requirements', 'regressions', 'security', 'performance']) {
-        await documents.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
+        await putStamped(app, run!, `review_${name}`, 'notes\ndecision: ok\n', ['billing-api']);
       }
       const done = await app.get(PipelineService).step('code-review', 'PROJ-91', { reviewer: 'quality' });
       expect(done.exitCode).toBe(0);
@@ -105,7 +104,7 @@ describe('code-review step', () => {
       const documents = app.get(DocumentRepository);
       const run = await app.get(RunRepository).findRun('PROJ-92');
       for (const name of ['requirements', 'regressions', 'security', 'performance']) {
-        await documents.putDocument(run!, `review_${name}`, 'notes\ndecision: ok\n');
+        await putStamped(app, run!, `review_${name}`, 'notes\ndecision: ok\n', ['billing-api']);
       }
       await app.get(PipelineService).step('code-review', 'PROJ-92', { reviewer: 'quality' });
       const issues = ARTIFACTS.issues.parse((await documents.latestBody('PROJ-92', 'issues')) ?? '[]');
@@ -280,7 +279,7 @@ describe('code-review step', () => {
       run!.currentStep = 'code-review';
       run!.status = 'failed';
       await runs.saveRun(run!);
-      await documents.putDocument(run!, 'review_quality', 'notes\n\ndecision: ok\n');
+      await putStamped(app, run!, 'review_quality', 'notes\n\ndecision: ok\n', ['billing-api']);
       await documents.putDocument(run!, REBASE_CONFLICT, 'review\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-97');
       expect(done.exitCode).toBe(0);

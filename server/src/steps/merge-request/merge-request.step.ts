@@ -14,6 +14,7 @@ import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { remoteProject, renderMergeRequest } from './merge-request-record';
 import { ARTIFACTS } from '../contract/artifacts';
+import { worktreesFingerprint } from '../shared/gate';
 import type { AttemptFacts } from '../../contract/step-events';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
@@ -68,7 +69,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     const title = summaryForBranch(requirements, key);
     const branch = branchName(key, title);
     const trees = await this.trees(key, checkedRepoNames(input.repos), branch, ctx.calls, opened.run.codeHost, client);
-    const summary = await this.summary(ctx, phases);
+    const summary = await this.summary(ctx, phases, trees);
     const skip = ((await ctx.reread(ARTIFACTS.rebaseMergeSkip)) ?? '').trim() === 'skip';
     assertNotStopped(this.runStop, key);
     const records = await ctx.activity(
@@ -136,14 +137,17 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     return trees;
   }
 
-  private async summary(ctx: StepContext, phases: readonly PhaseName[]): Promise<string> {
+  private async summary(ctx: StepContext, phases: readonly PhaseName[], trees: Tree[]): Promise<string> {
     const implementation = (await ctx.reread(ARTIFACTS.implementation))?.trim() ?? '';
     if (!implementation) {
       throw new SwarmloopError('implementation is missing');
     }
-    const summary = phases.includes('code-review')
-      ? ((await ctx.reread(ARTIFACTS.reviewReport))?.trim() ?? '')
-      : implementation;
+    if (!phases.includes('code-review')) {
+      return implementation;
+    }
+    const fingerprint = await worktreesFingerprint(trees.map((tree) => tree.path));
+    const counted = await ctx.gate(ARTIFACTS.reviewReport, fingerprint);
+    const summary = counted ? ((await ctx.reread(ARTIFACTS.reviewReport))?.trim() ?? '') : '';
     if (!summary) {
       throw new SwarmloopError('review report is missing');
     }

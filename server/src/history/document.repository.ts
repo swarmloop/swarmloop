@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Clock } from '../core/clock';
 import { LiveHub } from '../live/live.hub';
 import { RunEntity, DocumentEntity } from './entities';
+import type { GateStamp } from './gate-stamp';
 
 @Injectable()
 export class DocumentRepository {
@@ -30,10 +31,26 @@ export class DocumentRepository {
         attempt: 0,
         body,
         path: '',
+        stamp: null,
         createdAt: this.clock.iso(),
       }),
     );
     this.live?.changed(run.key);
+  }
+
+  /** Stamps the latest document of `kind` as a gate for a generation and the files it judged. */
+  async stampLatest(run: RunEntity, kind: string, stamp: GateStamp): Promise<void> {
+    const latest = await this.documents.findOne({ where: { runId: run.id, kind }, order: { id: 'DESC' } });
+    if (latest) {
+      await this.documents.update({ id: latest.id }, { stamp: JSON.stringify(stamp) });
+    }
+  }
+
+  /** The stamp of the latest document of `kind`. Null when there is none or it has no stamp. */
+  async latestStamp(key: string, kind: string): Promise<GateStamp | null> {
+    const run = await this.runs.findOne({ where: { key } });
+    const latest = run && (await this.documents.findOne({ where: { runId: run.id, kind }, order: { id: 'DESC' } }));
+    return latest?.stamp ? (JSON.parse(latest.stamp) as GateStamp) : null;
   }
 
   async latestBody(key: string, kind: string): Promise<string | null> {

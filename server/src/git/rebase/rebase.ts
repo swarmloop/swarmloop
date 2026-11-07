@@ -13,6 +13,8 @@ import type { RebaseState } from './conflict';
 import { baseRefFor, publishedTip, squashOffMount } from './squash';
 import { commitAllowed, hideDeniedWorktree, resolveGitPath, restoreHiddenWorktree } from './hidden-worktree';
 import { storedBase } from './fetch';
+import { atOrPast, fingerprintOf, protectRef } from './journal';
+import type { JournalEntry, RebaseJournal } from './journal';
 import { gitAt, gitRawAt, rebaseStderr } from './workflow';
 
 /** Set while a conflict rebase still has to be resolved, then reviewed on the new diff. */
@@ -24,10 +26,12 @@ export type { RebaseStop } from './types';
 /** Squash each feature branch onto the fetched base. Stop at the first conflict. */
 export async function rebaseFeatureRepos(input: RebaseRepoInput): Promise<RebaseStop> {
   promptBase(input.prompt);
+  const stored = await input.journal.open();
   const leases: { repo: string; tip: string | null }[] = [];
   for (const repo of input.repos) {
     const cwd = checkout(input.root, input.key, repo);
-    const tip = await publishedTip(cwd, input.branch);
+    const entry = stored[repo];
+    const tip = entry ? entry.expectedRemoteTip : await publishedTip(cwd, input.branch);
     const outcome = await rebaseFeatureRepo({
       cwd,
       repo,
@@ -36,6 +40,9 @@ export async function rebaseFeatureRepos(input: RebaseRepoInput): Promise<Rebase
       denied: input.denied,
       message: input.message,
       hosts: input.hosts,
+      journal: input.journal,
+      tip,
+      entry,
       onBase: input.onBase,
     });
     if (outcome) {
@@ -74,46 +81,82 @@ async function rebaseFeatureRepo(input: {
   denied: string[];
   message: string;
   hosts: RebaseHosts;
+  journal: RebaseJournal;
+  tip: string | null;
+  entry: JournalEntry | undefined;
   onBase?: RebaseRepoInput['onBase'];
 }): Promise<RebaseStop | null> {
-  const state = await readRebaseState(input.cwd, input.repo);
+  const { cwd, repo, journal } = input;
+  const { entry } = input;
+  if (entry && atOrPast(entry, 'applied')) {
+    // Applied before a restart or a retry: never apply it twice.
+    if (entry.checkpoint !== 'completed') {
+      input.onBase?.(repo, entry.baseSha);
+    }
+    return null;
+  }
+  const state = await readRebaseState(cwd, repo);
   if (state) {
-    input.onBase?.(input.repo, state.baseSha);
-    return resumeRebase({ ...input, state });
+    input.onBase?.(repo, state.baseSha);
+    if (!entry) {
+      await startEntry(input, { baseSha: state.baseSha, checkpoint: 'conflict' });
+    }
+    const resumed = await resumeRebase({ ...input, state });
+    await journal.advance(repo, 'applied', { fingerprint: await fingerprintOf(cwd) });
+    return resumed;
   }
-  await abortMountedRebase(input.cwd, input.repo, input.hosts);
-  const current = await gitAt(input.cwd, input.repo, ['branch', '--show-current'], 'branch failed');
+  if (entry?.checkpoint === 'applying' && entry.squashSha && (await headOf(cwd, repo)) === entry.squashSha) {
+    // The reset to the squash landed and the checkpoint did not: finish it.
+    await restoreHiddenWorktree(cwd, repo, input.hosts, '');
+    await journal.advance(repo, 'applied', { fingerprint: await fingerprintOf(cwd) });
+    return null;
+  }
+  const stored = entry && entry.checkpoint !== 'prepared' ? entry.baseSha : '';
+  if (!entry || entry.checkpoint === 'prepared') {
+    await startEntry(input, { baseSha: '', checkpoint: 'prepared' });
+  }
+  await abortMountedRebase(cwd, repo, input.hosts);
+  const current = await gitAt(cwd, repo, ['branch', '--show-current'], 'branch failed');
   if (current !== input.branch) {
-    throw new SwarmloopError(`${input.repo} branch is missing`);
+    throw new SwarmloopError(`${repo} branch is missing`);
   }
-  const porcelain = await gitRawAt(input.cwd, input.repo, ['status', '--porcelain=v1', '-z', '-uall']);
+  const porcelain = await gitRawAt(cwd, repo, ['status', '--porcelain=v1', '-z', '-uall']);
   const deniedDirty = porcelainPaths(porcelain).filter((path) => isDenied(path, input.denied));
   if (
     deniedDirty.length > 0 &&
-    allowedPaths(input.repo, porcelain, input.denied).length === 0 &&
-    !(await branchHasAllowedChange(input.cwd, input.prompt, input.denied))
+    allowedPaths(repo, porcelain, input.denied).length === 0 &&
+    !(await branchHasAllowedChange(cwd, input.prompt, input.denied))
   ) {
-    throw new SwarmloopError(`${input.repo} rebase failed: ${deniedDirty[0]}`);
+    throw new SwarmloopError(`${repo} rebase failed: ${deniedDirty[0]}`);
   }
-  await commitAllowed(input.cwd, input.repo, input.denied, input.message);
-  const after = await gitRawAt(input.cwd, input.repo, ['status', '--porcelain=v1', '-z', '-uall']);
+  await commitAllowed(cwd, repo, input.denied, input.message);
+  const after = await gitRawAt(cwd, repo, ['status', '--porcelain=v1', '-z', '-uall']);
   const leftover = porcelainPaths(after).find((path) => !isDenied(path, input.denied));
   if (leftover) {
-    throw new SwarmloopError(`${input.repo} rebase failed: ${leftover}`);
+    throw new SwarmloopError(`${repo} rebase failed: ${leftover}`);
   }
-  const base = await storedBase(input.cwd, input.repo, input.prompt, input.hosts, 'rebase');
-  const baseSha = await gitAt(input.cwd, input.repo, ['rev-parse', '--verify', `${base}^{commit}`], 'base failed');
+  // The base is fetched once. A retry applies to the stored SHA, never to a moving `origin/<main>`.
+  const base = stored
+    ? await baseRefFor(cwd, input.prompt, stored)
+    : await storedBase(cwd, repo, input.prompt, input.hosts, 'rebase');
+  const baseSha = await gitAt(cwd, repo, ['rev-parse', '--verify', `${stored || base}^{commit}`], 'base failed');
   if (base !== 'HEAD') {
-    input.onBase?.(input.repo, baseSha);
+    input.onBase?.(repo, baseSha);
   }
-  await hideDeniedWorktree(input.cwd, input.repo, input.denied, input.hosts);
+  await journal.advance(repo, 'changes_preserved', {
+    baseSha,
+    oldHead: await headOf(cwd, repo),
+    fingerprint: await fingerprintOf(cwd),
+  });
+  await hideDeniedWorktree(cwd, repo, input.denied, input.hosts);
+  await journal.advance(repo, 'applying', { fingerprint: await fingerprintOf(cwd) });
   const scratch = await mkdtemp(join(tmpdir(), 'swarmloop-rebase-'));
   const tmp = join(scratch, 'clone');
   let hidden = true;
   try {
     const outcome = await squashOffMount({ ...input, base: baseSha, tmp });
     try {
-      await restoreHiddenWorktree(input.cwd, input.repo, input.hosts, '');
+      await restoreHiddenWorktree(cwd, repo, input.hosts, '');
     } catch (error) {
       // Restore cannot apply onto an unmerged index. The conflict still returns; resume restores this ref.
       if (outcome?.kind !== 'conflict') {
@@ -121,11 +164,16 @@ async function rebaseFeatureRepo(input: {
       }
     }
     hidden = false;
-    return outcome?.kind === 'conflict' ? { ...outcome, base } : outcome;
+    if (outcome?.kind === 'conflict') {
+      await journal.advance(repo, 'conflict');
+      return { ...outcome, base };
+    }
+    await journal.advance(repo, 'applied', { fingerprint: await fingerprintOf(cwd) });
+    return outcome;
   } catch (error) {
     if (hidden) {
       try {
-        await restoreHiddenWorktree(input.cwd, input.repo, input.hosts, '');
+        await restoreHiddenWorktree(cwd, repo, input.hosts, '');
       } catch {
         // Restore failed. Report the rebase error.
       }
@@ -134,6 +182,26 @@ async function rebaseFeatureRepo(input: {
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
+}
+
+/** The entry of a rebase that starts now, written before the first change. */
+async function startEntry(
+  input: { cwd: string; repo: string; branch: string; journal: RebaseJournal; tip: string | null },
+  start: Pick<JournalEntry, 'baseSha' | 'checkpoint'>,
+): Promise<void> {
+  await input.journal.put(input.repo, {
+    path: input.cwd,
+    branch: input.branch,
+    oldHead: await headOf(input.cwd, input.repo),
+    fingerprint: await fingerprintOf(input.cwd),
+    protectRef: protectRef(input.branch),
+    expectedRemoteTip: input.tip,
+    ...start,
+  });
+}
+
+function headOf(cwd: string, repo: string): Promise<string> {
+  return gitAt(cwd, repo, ['rev-parse', 'HEAD'], 'rebase failed');
 }
 
 async function resumeRebase(input: {

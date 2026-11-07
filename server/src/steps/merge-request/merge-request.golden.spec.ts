@@ -15,6 +15,7 @@ import type { HttpCallDraft } from '../../core/swarmloop-error';
 import { runGit } from '../../git/git-repo.spec-helpers';
 import { DocumentRepository } from '../../history/document.repository';
 import { FlowRepository } from '../../history/flow.repository';
+import { stampStored } from '../shared/gate.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
@@ -146,6 +147,7 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, implementation: boole
   if (implementation) {
     await documents.putDocument(seeded, 'implementation', 'changed the field\n');
     await documents.putDocument(seeded, 'review_report', 'Ships the field.\n');
+    await stampStored(app, seeded, 'review_report', ['demo']);
   }
 }
 
