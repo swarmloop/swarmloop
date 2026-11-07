@@ -1,3 +1,4 @@
+import { AGENT_RUNNER } from '../agent/agent-runner';
 import { execFileSync } from 'child_process';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
@@ -78,6 +79,10 @@ const ALL_KINDS: Record<StepEventKind, true> = {
   'issue.resolved': true,
   'session.changed': true,
   'context.manifest': true,
+  'agent.tool': true,
+  'agent.message': true,
+  'activity.started': true,
+  'activity.finished': true,
 };
 
 describe('step events', () => {
@@ -164,12 +169,12 @@ describe('step events', () => {
     ]);
     expect(events.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(events[0]).toMatchObject({ stepKind: 'server', agent: null });
-    expect(events[1]).toMatchObject({ name: 'requirements', documentId: 1, summary: '{"prompt":"ship the field"}' });
+    expect(events[1]).toMatchObject({ name: 'requirements', documentId: 1, summary: 'ship the field' });
     expect(events[2]).toMatchObject({ executable: 'git', repo: 'demo', cwd: 'worktrees/E-1/demo' });
     expect(events[3]).toMatchObject({ exitCode: 0, timedOut: false, cancelled: false });
     expect(events[4]).toMatchObject({ method: 'GET', url: 'https://code.example/api', statusCode: 200 });
     expect(events[5]).toMatchObject({ artifactKind: 'implementation' });
-    expect(events[6]).toMatchObject({ targetStep: null, artifactKinds: ['implementation'], issueIds: [] });
+    expect(events[6]).toMatchObject({ targetStep: 'merge-request', artifactKinds: ['implementation'], issueIds: [] });
     expect(events[7]).toMatchObject({ route: 'ok', summary: expect.stringContaining('done') });
   });
 
@@ -202,6 +207,117 @@ describe('step events', () => {
     expect(kinds.slice(-2)).toEqual(['handoff.sent', 'attempt.finished']);
     expect(kinds).toContain('artifact.produced');
     expect(events[0]).toMatchObject({ stepKind: 'agent', agent: { runtime: expect.any(String) } });
+  });
+
+  it('records an activity with its commands as children, and finishes one that throws', async () => {
+    await seed('E-1');
+    const step = probe('commit', async (ctx) => {
+      await ctx.activity(
+        'Check out feature/x',
+        async () => {
+          await git(['-C', repo, 'rev-parse', '--git-dir']);
+          await git(['-C', repo, 'status', '--porcelain']);
+        },
+        () => 'on feature/x at abc1234',
+      );
+      await ctx
+        .activity('Break', async () => {
+          await git(['-C', repo, 'rev-parse', 'no-such-ref']).catch(() => undefined);
+          throw new Error('nope\nsecond line');
+        })
+        .catch(() => undefined);
+      return finished(ctx);
+    });
+    await step.execute('E-1');
+    const events = await eventsOf('E-1');
+    const [first, second] = events.filter((event) => event.kind === 'activity.started');
+    const commands = events.filter((event) => event.kind === 'command.started');
+    expect(first).toMatchObject({ title: 'Check out feature/x', parentSpanId: null });
+    expect(commands.map((event) => event.parentSpanId)).toEqual([
+      (first as { spanId: string }).spanId,
+      (first as { spanId: string }).spanId,
+      (second as { spanId: string }).spanId,
+    ]);
+    expect(events.filter((event) => event.kind === 'activity.finished')).toMatchObject([
+      { title: 'Check out feature/x', result: 'on feature/x at abc1234', failed: false },
+      { title: 'Break', result: 'failed: nope', failed: true },
+    ]);
+    expect(events.find((event) => event.kind === 'artifact.produced')).toMatchObject({ parentSpanId: null });
+  });
+
+  it('keeps the output of a failed command and of one that is not a read, and drops a successful read', async () => {
+    await seed('E-1');
+    const step = probe('commit', async (ctx) => {
+      await git(['-C', repo, 'rev-parse', '--git-dir']);
+      await git(['-C', repo, 'rev-parse', 'no-such-ref']).catch(() => undefined);
+      await git(['-C', repo, 'config', '--list']);
+      return finished(ctx);
+    });
+    await step.execute('E-1');
+    const ends = (await eventsOf('E-1')).filter((event) => event.kind === 'command.finished');
+    expect(ends[0]).toMatchObject({ exitCode: 0, output: null });
+    expect(ends[1]).toMatchObject({ exitCode: 128, output: expect.stringContaining('no-such-ref') });
+    expect(ends[2]).toMatchObject({ exitCode: 0, output: expect.stringContaining('core.') });
+  });
+
+  it('writes the tools and the messages of an agent as its stream arrives, before it finishes', async () => {
+    await seed('E-1');
+    const stream = [
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'x'.repeat(700) }] } },
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', id: 't', name: 'Bash', input: { command: 'ls' } }] },
+      },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't', content: 'a.ts' }] } },
+    ]
+      .map((record) => JSON.stringify(record))
+      .join('\n');
+    golden.app
+      .get<{ run: jest.Mock }>(AGENT_RUNNER)
+      .run.mockImplementationOnce((input: { onOutput: (chunk: string) => void }) => {
+        input.onOutput(`${stream}\n`);
+        return Promise.resolve(result('summary:\n- ok\nquestions:\n- none'));
+      });
+    const step = new ResearchStep(
+      new StepKernel(
+        golden.runs,
+        golden.documents,
+        golden.visits,
+        golden.flows,
+        golden.clock,
+        golden.config,
+        golden.stepEvents,
+      ),
+      golden.sandbox,
+      golden.launcher,
+    );
+    await step.execute('E-1');
+    const events = await eventsOf('E-1');
+    const kinds = events.map((event) => event.kind);
+    const launched = kinds.indexOf('agent.launched');
+    expect(kinds.slice(launched, launched + 4)).toEqual([
+      'agent.launched',
+      'agent.message',
+      'agent.tool',
+      'agent.finished',
+    ]);
+    expect(events[launched + 1]).toMatchObject({ chars: 700, text: 'x'.repeat(600) });
+    expect(events[launched + 2]).toMatchObject({ tool: 'shell', target: 'ls', status: 'ok', resultLine: 'exit 0' });
+  });
+
+  it('names the step a pass goes to for next and for jump', async () => {
+    await seed('E-1');
+    await probe('commit', (ctx) => Promise.resolve(finished(ctx))).execute('E-1');
+    await probe('implement', (ctx) =>
+      Promise.resolve({
+        route: { to: 'jump', step: 'commit' },
+        summary: `${ctx.opened.startedAt} jump`,
+        outputs: [],
+        handoff: 'on',
+      }),
+    ).execute('E-1');
+    const sent = (await eventsOf('E-1')).filter((event) => event.kind === 'handoff.sent');
+    expect(sent.map((event) => (event as { targetStep: string }).targetStep)).toEqual(['merge-request', 'commit']);
   });
 
   it('stores a token in git args as ***', async () => {

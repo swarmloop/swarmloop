@@ -29,7 +29,7 @@ interface CommandEnd {
   durationMs: number;
   timedOut: boolean;
   cancelled: boolean;
-  /** Where the output is, relative to the root. Null when it is not stored. */
+  /** The last lines of the output, redacted. Null when there is none to show. */
   output: string | null;
 }
 
@@ -56,11 +56,42 @@ interface SessionChange {
   reason: 'runtime changed' | 'no stored chat' | 'fresh by step policy' | 'replay' | null;
 }
 
+/** What an attempt did, beyond its result line. */
+export interface AttemptFacts {
+  /** The checks result, a reviewer's decision, the merge request URL or the job results, one per line. */
+  details?: string[];
+}
+
 /** The part of an event that depends on its kind. */
 export type StepEventBody =
-  | { kind: 'input.received'; name: string; inputKind: string; documentId: number | 'absent'; summary: string }
+  | {
+      kind: 'input.received';
+      name: string;
+      inputKind: string;
+      documentId: number | 'absent';
+      summary: string;
+      meta?: string;
+    }
+  | {
+      kind: 'agent.tool';
+      tool: string;
+      target: string;
+      status: 'ok' | 'failed' | 'unfinished';
+      durationMs: number;
+      resultLine: string;
+    }
+  | { kind: 'agent.message'; text: string; chars: number }
+  | { kind: 'activity.started'; spanId: string; title: string }
+  | {
+      kind: 'activity.finished';
+      spanId: string;
+      title: string;
+      result: string;
+      failed: boolean;
+      durationMs: number;
+    }
   | { kind: 'attempt.started'; stepKind: 'agent' | 'server'; agent: AgentProfileSummary | null }
-  | { kind: 'attempt.finished'; route: string; summary: string }
+  | { kind: 'attempt.finished'; route: string; summary: string; facts?: AttemptFacts }
   | { kind: 'attempt.interrupted'; route: string; summary: string }
   | ({ kind: 'command.started' } & CommandStart)
   | ({ kind: 'command.finished' } & CommandEnd)
@@ -73,16 +104,26 @@ export type StepEventBody =
       tokensOut: number;
       usd: number;
     } & AgentLaunch)
-  | { kind: 'artifact.produced'; artifactKind: string; documentId: number }
-  | { kind: 'issue.opened'; issueId: string; source: string; title: string }
+  | { kind: 'artifact.produced'; artifactKind: string; documentId: number; summary: string }
+  | {
+      kind: 'issue.opened';
+      issueId: string;
+      source: string;
+      title: string;
+      /** The first line of the body, and the step the issue went back to. */
+      line?: string;
+      returnedTo?: StepName | null;
+    }
   | {
       kind: 'handoff.sent';
       handoffId: number;
       targetStep: StepName | null;
       artifactKinds: string[];
       issueIds: string[];
+      /** One line for each document passed on. */
+      summaries?: string[];
     }
-  | { kind: 'handoff.received'; handoffId: number; issueIds: string[] }
+  | { kind: 'handoff.received'; handoffId: number; issueIds: string[]; from?: string }
   | { kind: 'issue.resolved'; issueId: string; evidence: string }
   | ({ kind: 'session.changed' } & SessionChange)
   | {

@@ -193,8 +193,15 @@ export function closeReview(
   const { opened } = ctx;
   assertRoute('code-review', route);
   const { outcome, exitCode, moveTo } = routeToEnd(route);
+  const decisions = documents
+    .filter((document) => REVIEWS.matches(document.kind))
+    .map(
+      (document) =>
+        `${document.kind.slice(REVIEWS.prefix.length)}: ${/^decision:\s*(\w+)/m.exec(document.body)?.[1] ?? 'none'}`,
+    );
   return ctx.end({
     outcome,
+    ...(decisions.length > 0 ? { facts: { details: decisions } } : {}),
     exitCode,
     line,
     moveTo,

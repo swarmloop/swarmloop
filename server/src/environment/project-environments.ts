@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'fs';
-import { basename, dirname, join, relative } from 'path';
+import { basename, dirname, join } from 'path';
 import type { SwarmloopEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import type { Clock } from '../core/clock';
@@ -121,14 +121,18 @@ export class ProjectEnvironments {
   }
 
   /** Server-owned completion gate. Each repository uses its own frozen commands and image. */
-  async check(input: EnvironmentInput): Promise<void> {
+  async check(input: EnvironmentInput): Promise<{ passed: number; total: number }> {
+    let passed = 0;
+    let total = 0;
     for (const mount of input.mounts) {
       const prepared = await this.prepare({ ...input, mounts: [mount] });
       if (!prepared || prepared.record.config.checks.length === 0) {
         continue;
       }
       const fingerprint = await this.fingerprint(input, prepared);
+      total += prepared.record.config.checks.length;
       if (await this.skipIfPassed(input, prepared, fingerprint)) {
+        passed += prepared.record.config.checks.length;
         continue;
       }
       for (const command of prepared.record.config.checks) {
@@ -147,6 +151,7 @@ export class ProjectEnvironments {
           await this.documents.putDocument(input.run, 'return', `## checks\n${body}\n`);
           throw await this.failure(input, prepared.record.repo, command, fingerprint, body);
         }
+        passed += 1;
       }
       if ((await this.fingerprint(input, prepared)) !== fingerprint) {
         const body = `${prepared.record.repo}: required checks changed project files. Review those changes and rerun the checks before completing implementation.`;
@@ -159,6 +164,7 @@ export class ProjectEnvironments {
         JSON.stringify({ fingerprint, step: input.step, at: this.clock.iso() }),
       );
     }
+    return { passed, total };
   }
 
   /** Records the failure; it is a repeat when the last one was the same command on the same files. */
@@ -330,7 +336,6 @@ export class ProjectEnvironments {
       cwd: mount.hostPath,
       executable: 'sh',
       args: [command],
-      output: relative(root, outputFile),
     });
     let timedOut = false;
     const child = await this.sandbox
@@ -386,7 +391,7 @@ export class ProjectEnvironments {
     }
     lines.push(`exit ${exitCode}`);
     show(true);
-    finish({ exitCode, timedOut });
+    finish({ exitCode, timedOut, output: lines.join('\n') });
     mkdirSync(dirname(outputFile), { recursive: true });
     writeFileSync(outputFile, `${lines.join('\n')}\n`);
     return { exitCode, tail: lines.slice(-TAIL_LINES).join('\n').slice(-TAIL_CHARS) };

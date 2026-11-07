@@ -75,9 +75,15 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
       throw new SwarmloopError('nothing to commit');
     }
     const heads: string[] = [];
-    const pushed = rerun
-      ? await this.republish(trees, branch, opened.run.codeHost, heads)
-      : await this.publish(trees, planned, branch, commitMessage(key, summary), opened.run.codeHost);
+    const message = commitMessage(key, summary);
+    const pushed = await ctx.activity(
+      `Commit ${planned.length} files`,
+      () =>
+        rerun
+          ? this.republish(trees, branch, opened.run.codeHost, heads)
+          : this.publish(trees, planned, branch, message, opened.run.codeHost),
+      () => message.split('\n')[0],
+    );
     const listed = planned.length > 0 ? renderPaths(planned).trimEnd() : '';
     const recordedHeads = heads.length > 0 ? `${heads.join('\n')}\n` : undefined;
     if (!pushed) {

@@ -12,6 +12,8 @@ export interface Artifact<T = string> extends Codec<T> {
   readers: readonly StepName[];
   /** Written by a person, a provider or the step kernel (handoff, error, log), not by the step's own result. */
   external?: boolean;
+  /** One line of at most 160 characters that tells what a value holds. Never raw JSON. */
+  summarize(value: T): string;
 }
 
 export interface ArtifactFamily {
@@ -19,6 +21,30 @@ export interface ArtifactFamily {
   of(suffix: string): string;
   kinds: readonly string[];
   matches(kind: string): boolean;
+}
+
+const SUMMARY_CHARS = 160;
+
+/** The first non-empty line, cut to one summary line. A JSON body is named by its keys or its length, never by its first bracket. */
+export function firstLine(text: string): string {
+  const line = text.split('\n').find((item) => item.trim() !== '') ?? '';
+  const trimmed = line.trim();
+  if (/^[[{]/.test(trimmed)) {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      return (
+        Array.isArray(parsed) ? `${parsed.length} entries` : `fields: ${Object.keys(parsed as object).join(', ')}`
+      ).slice(0, SUMMARY_CHARS);
+    } catch {
+      // Not JSON that parses: the line stays as it is.
+    }
+  }
+  return trimmed.slice(0, SUMMARY_CHARS);
+}
+
+/** `<n> <noun>: <first>` for a list. */
+export function listSummary(count: number, noun: string, first: string | undefined): string {
+  return `${count} ${noun}${first ? `: ${first}` : ''}`.slice(0, SUMMARY_CHARS);
 }
 
 const textCodec: Codec<string> = {
@@ -49,6 +75,7 @@ interface ArtifactSpec<T> {
   readers: readonly StepName[];
   codec?: Codec<T>;
   external?: boolean;
+  summarize(value: T): string;
 }
 
 export function artifact(kind: string, spec: ArtifactSpec<string>): Artifact<string>;
@@ -60,6 +87,7 @@ export function artifact<T>(kind: string, spec: ArtifactSpec<T>): Artifact<T> {
     writers: spec.writers,
     readers: spec.readers,
     ...(spec.external ? { external: true } : {}),
+    summarize: (value) => spec.summarize(value).slice(0, SUMMARY_CHARS),
     parse: (body) => codec.parse(body),
     format: (value) => codec.format(value),
   };

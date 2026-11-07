@@ -249,7 +249,7 @@ describe('implement step', () => {
     const app = await boot(root, jest.fn().mockResolvedValue(result(reply)));
     try {
       await seed(app, 'PROJ-147', 'approve', 'billing-web\n');
-      const check = jest.spyOn(app.get(EnvironmentService), 'check').mockResolvedValue(undefined);
+      const check = jest.spyOn(app.get(EnvironmentService), 'check').mockResolvedValue({ passed: 0, total: 0 });
       const done = await app.get(PipelineService).step('implement', 'PROJ-147');
       expect(done.exitCode).toBe(0);
       expect(check).not.toHaveBeenCalled();

@@ -21,7 +21,7 @@ import type { AgentLauncher } from './shared/agent-launcher';
 import { recordHandoff } from './shared/handoff';
 import { modelVisit } from './shared/model-visit';
 import type { StepName } from '../contract/steps';
-import { artifact } from './contract/artifact';
+import { artifact, firstLine } from './contract/artifact';
 import type { Artifact } from './contract/artifact';
 import { ARTIFACTS, INSTRUCTIONS } from './contract/artifacts';
 
@@ -35,7 +35,9 @@ export function lateInput<T>(artifact: Artifact<T>): { artifact: Artifact<T>; ne
 
 /** The instructions a person gave this step. */
 export function instructionsInput(step: StepName): { artifact: Artifact; need: 'optional'; late: true } {
-  return lateInput(artifact(INSTRUCTIONS.of(step), { writers: [], readers: [step], external: true }));
+  return lateInput(
+    artifact(INSTRUCTIONS.of(step), { writers: [], readers: [step], external: true, summarize: firstLine }),
+  );
 }
 
 export interface ModelStepContext {
@@ -43,6 +45,7 @@ export interface ModelStepContext {
   workspace: string;
   reread: StepContext['reread'];
   write: StepContext['write'];
+  activity: StepContext['activity'];
   launch: (input: {
     prompt: string;
     mounts: SandboxMount[];
@@ -126,6 +129,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       workspace: run.workspace,
       reread: (artifact) => stepCtx.reread(artifact),
       write: (artifact, value) => stepCtx.write(artifact, value),
+      activity: (title, fn, result) => stepCtx.activity(title, fn, result),
       launch: (launch) => this.launch(run, launch),
     };
     try {

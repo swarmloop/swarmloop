@@ -1,3 +1,4 @@
+import { resultText, toolLabel } from './readable-log-events';
 import type { ParsedToolCall, ReadableLogEvent } from './readable-log-events';
 
 export function claudeEvent(record: Record<string, unknown>): ReadableLogEvent | null {
@@ -8,7 +9,10 @@ export function claudeEvent(record: Record<string, unknown>): ReadableLogEvent |
     return { kind: 'speech', type: 'thinking', text: typeof record.text === 'string' ? record.text : '' };
   }
   if (record.type === 'assistant') {
-    return { kind: 'speech', type: 'assistant', text: textOf(record) ?? '' };
+    return messageTools(record) ?? { kind: 'speech', type: 'assistant', text: textOf(record) ?? '' };
+  }
+  if (record.type === 'user') {
+    return toolResults(record);
   }
   if (record.type === 'result') {
     return { kind: 'result', text: typeof record.result === 'string' ? record.result : '' };
@@ -20,6 +24,63 @@ export function claudeEvent(record: Record<string, unknown>): ReadableLogEvent |
     return { kind: 'block', type: record.type, text: eventText(record) };
   }
   return null;
+}
+
+function contentParts(record: Record<string, unknown>): Record<string, unknown>[] {
+  const content = isRecord(record.message) ? record.message.content : null;
+  return Array.isArray(content) ? content.filter(isRecord) : [];
+}
+
+/** An assistant message that calls tools: its text, then each call. Null when it calls none. */
+function messageTools(record: Record<string, unknown>): ReadableLogEvent | null {
+  const parts = contentParts(record);
+  if (!parts.some((part) => part.type === 'tool_use')) {
+    return null;
+  }
+  const events: ReadableLogEvent[] = [];
+  for (const part of parts) {
+    if (part.type === 'text' && typeof part.text === 'string') {
+      events.push({ kind: 'speech', type: 'assistant', text: part.text });
+    } else if (part.type === 'tool_use' && typeof part.name === 'string') {
+      const label = toolLabel(part.name);
+      const input = isRecord(part.input) ? part.input : {};
+      const args = {
+        command: input.command,
+        pattern: input.pattern,
+        path: input.file_path ?? input.path,
+        globPattern: label === 'glob' ? input.pattern : undefined,
+      };
+      const id = typeof part.id === 'string' ? part.id : undefined;
+      events.push({ kind: 'tool', call: { label, detail: argDetail(label, args), outcome: '', completed: false, id } });
+    }
+  }
+  return { kind: 'many', events };
+}
+
+/** The results a user message carries for earlier calls. Null for a user message that is not one. */
+function toolResults(record: Record<string, unknown>): ReadableLogEvent | null {
+  const results = contentParts(record).filter((part) => part.type === 'tool_result');
+  if (results.length === 0) {
+    return null;
+  }
+  const events = results.map((part): ReadableLogEvent => {
+    const outcome = resultText(part.content);
+    const failed = part.is_error === true;
+    const code = /^Exit code (\d+)/.exec(outcome)?.[1];
+    return {
+      kind: 'tool',
+      call: {
+        label: '',
+        detail: '',
+        outcome,
+        completed: true,
+        id: typeof part.tool_use_id === 'string' ? part.tool_use_id : undefined,
+        exit: code ? Number(code) : failed ? 1 : 0,
+        failed,
+      },
+    };
+  });
+  return { kind: 'many', events };
 }
 
 function textOf(record: Record<string, unknown>): string | null {
@@ -64,11 +125,16 @@ function openedTool(record: Record<string, unknown>): ParsedToolCall | null {
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .toLowerCase();
   const args = isRecord(body) && isRecord(body.args) ? body.args : {};
+  const result = isRecord(body) && isRecord(body.result) ? body.result : null;
+  const success = result && isRecord(result.success) ? result.success : null;
+  const exit = typeof success?.exitCode === 'number' ? success.exitCode : undefined;
   return {
     label,
     detail: argDetail(label, args),
     outcome: record.subtype === 'completed' ? outcome(isRecord(body) ? body.result : null) : '',
     completed: record.subtype === 'completed',
+    exit,
+    failed: Boolean(result?.rejected || result?.error || success?.error || (exit !== undefined && exit !== 0)),
   };
 }
 

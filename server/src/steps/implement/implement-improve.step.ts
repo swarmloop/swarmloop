@@ -23,7 +23,13 @@ import { agentWorkplace } from '../shared/agent-environment';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
 import { implementImproveFollowUp } from './implement.prompts';
 import { RequiredCheckRepeated } from '../../environment/project-environments';
-import { checkRepeatedBlock, reviewedImplementation, withReturnNotes } from './implement-record';
+import {
+  checkRepeatedBlock,
+  checksLine,
+  implementFacts,
+  reviewedImplementation,
+  withReturnNotes,
+} from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
@@ -112,8 +118,15 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const text = agentResult.responseText;
     await assertUncommitted(mounts, branch, heads);
     const wrote = reviewedImplementation(text);
+    let checks: string;
     try {
-      await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
+      checks = checksLine(
+        await ctx.activity(
+          'Server checks',
+          () => this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts }),
+          checksLine,
+        ),
+      );
     } catch (error) {
       if (error instanceof RequiredCheckRepeated) {
         return checkRepeatedBlock(ctx.opened.startedAt, this.name, error);
@@ -132,6 +145,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       summary: line,
       outputs: [{ artifact: ARTIFACTS.implementation, value: body }],
       handoff: handoffBody,
+      facts: implementFacts(checks),
       visit: corrected ? { documents: [textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] } : undefined,
     };
   }

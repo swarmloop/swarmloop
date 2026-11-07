@@ -19,6 +19,14 @@
       "step": "pipeline"
     },
     {
+      "kind": "activity.started",
+      "step": "pipeline"
+    },
+    {
+      "kind": "activity.finished",
+      "step": "pipeline"
+    },
+    {
       "kind": "artifact.produced",
       "step": "pipeline"
     },

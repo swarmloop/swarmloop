@@ -1,3 +1,4 @@
+import type { AttemptFacts } from '../../contract/step-events';
 import type { StepName } from '../../contract/steps';
 import type { ErrorCategory } from '../../core/swarmloop-error';
 import type { PipelineResult } from '../../core/pipeline-result';
@@ -55,6 +56,8 @@ export interface StepResult {
   summary: string;
   outputs: ArtifactValue[];
   handoff?: string;
+  /** What the attempt did, for the event that ends it. */
+  facts?: AttemptFacts;
   exitCode?: number;
   visit?: Partial<VisitDraft>;
   /** Runs once the visit is closed, and may replace the result the step returns. */

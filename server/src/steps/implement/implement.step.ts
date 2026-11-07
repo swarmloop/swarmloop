@@ -31,7 +31,13 @@ import { RebaseStop, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '.
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { staleRepos } from '../pipeline/pipeline-report';
 import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
-import { checkRepeatedBlock, parseImplementation, withReturnNotes } from './implement-record';
+import {
+  checkRepeatedBlock,
+  checksLine,
+  implementFacts,
+  parseImplementation,
+  withReturnNotes,
+} from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
@@ -162,7 +168,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     }
     const text = agentResult.responseText;
     const body = parseImplementation(text);
-    const blocked = await this.gate(ctx, key, mounts);
+    const { blocked, checks } = await this.gate(ctx, key, mounts);
     if (blocked) {
       return blocked;
     }
@@ -175,23 +181,33 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       summary: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
       outputs: [{ artifact: ARTIFACTS.implementation, value: body }],
       handoff: summary,
+      facts: implementFacts(checks),
       visit: corrected ? { documents: [textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] } : undefined,
     };
   }
 
   /** implement-improve follows in the same pass and runs the one server gate over both passes' changes. */
-  private async gate(ctx: ModelStepContext, key: string, mounts: SandboxMount[]): Promise<StepResult | null> {
-    if (nextStep(this.name, await this.flows.activePhases(ctx.opened.run.id)) !== 'implement-improve') {
-      try {
-        await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
-      } catch (error) {
-        if (error instanceof RequiredCheckRepeated) {
-          return checkRepeatedBlock(ctx.opened.startedAt, this.name, error);
-        }
-        throw error;
-      }
+  private async gate(
+    ctx: ModelStepContext,
+    key: string,
+    mounts: SandboxMount[],
+  ): Promise<{ blocked: StepResult | null; checks: string | null }> {
+    if (nextStep(this.name, await this.flows.activePhases(ctx.opened.run.id)) === 'implement-improve') {
+      return { blocked: null, checks: null };
     }
-    return null;
+    try {
+      const checks = await ctx.activity(
+        'Server checks',
+        () => this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts }),
+        checksLine,
+      );
+      return { blocked: null, checks: checksLine(checks) };
+    } catch (error) {
+      if (error instanceof RequiredCheckRepeated) {
+        return { blocked: checkRepeatedBlock(ctx.opened.startedAt, this.name, error), checks: null };
+      }
+      throw error;
+    }
   }
 
   /** A pipeline failure that the retry left unchanged on disk: stop with the corrected checklist, if one came back. */

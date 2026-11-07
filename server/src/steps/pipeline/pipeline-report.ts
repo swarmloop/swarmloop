@@ -161,3 +161,29 @@ export async function staleRepos(refBody: string | null, mounts: SandboxMount[])
   }
   return lines;
 }
+
+/** The title of the activity that waits for the pipelines of a commit. */
+export function ciTitle(records: PipelineRef[]): string {
+  return `Wait for CI on ${records[0]?.sha?.slice(0, 7) ?? records[0]?.ref}`;
+}
+
+/** How the wait for CI came out, for its activity: `passed`, or `failed: <job>`. */
+export function ciResult({ seen, verdict }: { seen: Seen[]; verdict: string }): string {
+  if (verdict === 'green') {
+    return 'passed';
+  }
+  const failed = seen.find((item) => item.status === 'failed');
+  const job = failed?.jobs.find((item) => item.status === 'failed' && !item.allowFailure);
+  return `failed: ${job?.name ?? failed?.project ?? 'pipeline'}`;
+}
+
+/** One line for each project: its pipeline status. */
+export function jobResults(seen: Seen[]): string[] {
+  return seen.map((item) => `${item.project}: ${item.status}`);
+}
+
+/** The line of a run that CI skipped. */
+export function stopLine(seen: Seen[]): string {
+  const project = seen.find((item) => item.status === 'skipped')?.project ?? 'pipeline';
+  return `${project} pipeline was skipped`;
+}

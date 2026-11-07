@@ -11,11 +11,7 @@
       "step": "prepare"
     },
     {
-      "kind": "command.started",
-      "step": "prepare"
-    },
-    {
-      "kind": "command.finished",
+      "kind": "activity.started",
       "step": "prepare"
     },
     {
@@ -56,6 +52,18 @@
     },
     {
       "kind": "command.finished",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.started",
+      "step": "prepare"
+    },
+    {
+      "kind": "command.finished",
+      "step": "prepare"
+    },
+    {
+      "kind": "activity.finished",
       "step": "prepare"
     },
     {

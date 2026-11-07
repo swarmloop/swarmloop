@@ -78,7 +78,7 @@ describe('implement step', () => {
         jest.spyOn(app.get(EnvironmentService), 'check').mockImplementation(async () => {
           checks += 1;
           if (mode === 'infrastructure') throw new SwarmloopError('sandbox unavailable');
-          if (checks > 1 && mode === 'fixed') return;
+          if (checks > 1 && mode === 'fixed') return { passed: 0, total: 0 };
           await documents.putDocument(run, 'return', `## checks\n${failure}\n`);
           throw new RequiredCheckFailed(failure);
         });
@@ -540,7 +540,7 @@ describe('implement step', () => {
         launch: { image: 'test-image', cliVolume: 'test-cli', path: '/usr/bin', certFile: false, caches: [] },
         record: { repo: 'billing-api', config: { source: '.swarmloop.json', cache: [], checks: [] } },
       });
-      jest.spyOn(app.get(EnvironmentService), 'check').mockResolvedValue();
+      jest.spyOn(app.get(EnvironmentService), 'check').mockResolvedValue({ passed: 0, total: 0 });
       await seed(app, 'PROJ-64', 'approve');
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);

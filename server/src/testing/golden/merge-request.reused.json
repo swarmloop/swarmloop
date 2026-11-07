@@ -75,6 +75,14 @@
       "step": "merge-request"
     },
     {
+      "kind": "activity.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "activity.finished",
+      "step": "merge-request"
+    },
+    {
       "kind": "artifact.produced",
       "step": "merge-request"
     },

@@ -57,8 +57,14 @@ export class PrepareStep extends BaseStep<typeof INPUTS> {
     }
     const hosts: (CodeHostName | null)[] = [];
     for (const checkout of checkouts) {
-      const located = await this.worktrees.prepareCheckout(key, checkout, opened.run.prompt);
-      hosts.push(await this.worktrees.classified(located));
+      await ctx.activity(
+        `Prepare worktree ${checkout.name}`,
+        async () => {
+          const located = await this.worktrees.prepareCheckout(key, checkout, opened.run.prompt);
+          hosts.push(await this.worktrees.classified(located));
+        },
+        () => 'ready',
+      );
     }
     assignCodeHost(opened.run, hosts, true);
     return {

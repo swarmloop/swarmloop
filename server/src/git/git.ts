@@ -38,7 +38,7 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Pro
         ...(input === undefined ? {} : { stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'] }),
       },
       (error: unknown, stdout, stderr) => {
-        finish(commandOutcome(error));
+        finish({ ...commandOutcome(error), output: `${stdout}${stderr}` });
         if (error) {
           const message =
             typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'

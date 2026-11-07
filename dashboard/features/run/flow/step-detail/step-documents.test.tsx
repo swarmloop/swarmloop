@@ -66,19 +66,19 @@ describe('StepDocuments', () => {
     expect(screen.getByText('starting the agent')).toBeInTheDocument();
   });
 
-  it('shows the transcript instead of the log and the exchanges when events were recorded', () => {
+  it('shows the transcript, the live log and the exchanges of an agent step when events were recorded', () => {
     documents({
       logs: 'starting the agent',
-      events: [stepEvent(1, { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4 })],
+      events: [stepEvent(1, { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4, summary: 'a diff' })],
       visit: visitView({
         exchanges: [{ model: 'claude-opus', durationMs: 2500, request: 'list files', response: 'three files' }],
       }),
     });
 
-    expect(screen.getByText(/diff · document 4/)).toBeInTheDocument();
+    expect(screen.getByText('a diff')).toBeInTheDocument();
     expect(screen.queryByText('legacy: details not recorded')).not.toBeInTheDocument();
-    expect(screen.queryByText('starting the agent')).not.toBeInTheDocument();
-    expect(screen.queryByText(`claude-opus · ${duration(2500)}`)).not.toBeInTheDocument();
+    expect(screen.getByText('starting the agent')).toBeInTheDocument();
+    expect(screen.getByText(`claude-opus · ${duration(2500)}`)).toBeInTheDocument();
   });
 
   it('shows neither the transcript nor the legacy log while the events load', () => {

@@ -32,9 +32,16 @@ export class BranchStep extends BaseStep<typeof INPUTS> {
     // A run that has committed owns the commits of its branch. Before that, a branch of the same name was left by
     // an earlier run of this key, such as one removed in the panel.
     const committed = input.pipelineRef !== null;
-    for (const repo of checkedRepoNames(input.repos ?? [])) {
-      await this.branches.checkout(key, repo, name, committed);
-    }
+    const repos = checkedRepoNames(input.repos ?? []);
+    await ctx.activity(
+      `Check out ${name}`,
+      async () => {
+        for (const repo of repos) {
+          await this.branches.checkout(key, repo, name, committed);
+        }
+      },
+      () => `on ${name}`,
+    );
     return {
       route: { to: 'next' },
       summary: `${ctx.opened.startedAt} branch done\n${name}`,
