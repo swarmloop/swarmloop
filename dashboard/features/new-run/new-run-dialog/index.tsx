@@ -8,7 +8,7 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { createRun, listProjects, setRunProjects } from '../../../lib/endpoints';
+import { createRun, listProjects, setRunProjects, ticketKeys } from '../../../lib/endpoints';
 import { mergeNames } from '../../../lib/names';
 import type { PhaseName } from '@contract/steps';
 import { PHASES } from '@contract/steps';
@@ -16,6 +16,7 @@ import type { CreateRunBody } from '@contract/api';
 import { PhasePicker } from './phase-picker';
 import { ProjectPicker } from './project-picker';
 
+const PREVIEW_DELAY_MS = 300;
 const DEFAULT_PHASES: PhaseName[] = [...PHASES];
 
 export function NewRunDialog({
@@ -50,6 +51,7 @@ export function NewRunDialog({
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [keys, setKeys] = useState<string[]>([]);
   const kept = useRef<string[]>(lockedProjects ?? []);
   const frozen: PhaseName[] = locked ?? ['requirements'];
   const chosen = PHASES.filter((phase) => phase === 'requirements' || picked.includes(phase));
@@ -86,6 +88,24 @@ export function NewRunDialog({
     kept.current = next;
     setPickedProjects(next);
   }, [open, lockedProjects]);
+
+  useEffect(() => {
+    const text = prompt.trim();
+    if (!open || !text) {
+      setKeys([]);
+      return;
+    }
+    let current = true;
+    const timer = setTimeout(() => {
+      ticketKeys({ prompt: text, key: runKey })
+        .then((body) => current && setKeys(body.keys))
+        .catch(() => current && setKeys([]));
+    }, PREVIEW_DELAY_MS);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [open, prompt, runKey]);
 
   const changeProjects = (value: string[]): void => {
     if (!frozenProjects) {
@@ -169,6 +189,11 @@ export function NewRunDialog({
           minRows={6}
           slotProps={{ inputLabel: { shrink: true } }}
         />
+        {prompt.trim() ? (
+          <Typography variant="body2" color="text.secondary">
+            {keys.length > 0 ? `Jira: ${keys.join(', ')}` : 'no Jira tickets'}
+          </Typography>
+        ) : null}
         <PhasePicker picked={picked} frozen={frozen} setPicked={setPicked} />
         <ProjectPicker
           frozenProjects={frozenProjects}

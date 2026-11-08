@@ -131,6 +131,23 @@ describe('runs api', () => {
     }
   });
 
+  it('names a run from a typed key, and from a slug when the prompt only looks like a key', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-slug-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunCommandsService);
+      const prompt = 'Use UTF-8, SHA-256, ISO-8601, GPT-4 and CVE-2026-1234';
+      const plain = await runs.plan({ prompt, projects: ['demo'] });
+      expect(plain.key).toMatch(/^run-/);
+      const typed = await runs.plan({ key: 'PROJ-123', prompt, projects: ['demo'] });
+      expect(typed.key).toBe('PROJ-123');
+      expect(await runs.ticketKeys({ prompt })).toEqual({ keys: [] });
+      expect(await runs.ticketKeys({ prompt, key: 'PROJ-123' })).toEqual({ keys: ['PROJ-123'] });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('keeps the original phase list and records a different replay', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-phases-'));
     const pipeline = {

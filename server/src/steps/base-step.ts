@@ -50,6 +50,8 @@ export interface StepEnd {
   moveTo?: StepName;
   /** Body of this step's handoff section. Recorded inside the close, so a failure there is not a failed visit. */
   handoff?: string;
+  /** Why a blocked run is blocked, when the step knows. Otherwise it comes from the error text. */
+  code?: string;
   /** The problems this end sends back. They are recorded as events only. */
   issues?: Issue[];
   /** What the attempt did, for the event that ends it. */
@@ -292,6 +294,7 @@ abstract class StepCore implements Step {
       exitCode: input.exitCode,
       line: input.line,
       moveTo: input.moveTo,
+      code: input.code,
       visit,
     });
     await recordEnd(this.documents, this.kernel.stepEvents, {
@@ -370,6 +373,7 @@ export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore
     const ended = await ctx.end({
       ...routeToEnd(result.route, result.exitCode),
       line: result.summary,
+      code: result.route.to === 'block' ? result.route.code : undefined,
       issues: result.route.to === 'return' ? result.route.issues : undefined,
       facts: result.facts,
       visit: { ...result.visit, ...(documents.length > 0 ? { documents } : {}) },

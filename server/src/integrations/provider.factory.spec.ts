@@ -2,7 +2,7 @@ import { createIssueTracker } from './issue-tracker/issue-tracker.registry';
 import { byName as createRequirementsSource } from './requirements-source/requirements-source.registry';
 
 describe('provider factory', () => {
-  const tracker = { fetch: jest.fn() };
+  const tracker = { fetch: jest.fn(), ticketKeys: jest.fn() };
   const agent = { write: jest.fn() };
   const direct = { write: jest.fn() };
 

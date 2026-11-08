@@ -53,8 +53,11 @@ export function deriveState(run: StateRow, facts: StateFacts = {}): { state: Run
     case 'done':
       return { state: 'done', reason: null };
     case 'blocked': {
-      // A code the stop path wrote stays: the error text of the last visit cannot say it.
-      const kept = stored?.code === REASON.stopped || stored?.code === ERROR_CODES.RESOURCE_UNKNOWN;
+      // A code the stop path or a step wrote stays: the error text of the last visit cannot say it.
+      const kept =
+        stored?.code === REASON.stopped ||
+        stored?.code === ERROR_CODES.RESOURCE_UNKNOWN ||
+        stored?.code === ERROR_CODES.INPUT_MISSING;
       const code = kept ? stored.code : (facts.blockCode ?? stored?.code ?? REASON.blocked);
       return {
         state: code === REASON.stopped ? 'stopped' : 'blocked',

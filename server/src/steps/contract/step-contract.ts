@@ -1,3 +1,4 @@
+import type { ErrorCode } from '../../contract/error-codes';
 import type { AttemptFacts } from '../../contract/step-events';
 import type { StepName } from '../../contract/steps';
 import type { ErrorCategory } from '../../core/swarmloop-error';
@@ -43,7 +44,7 @@ export type Route =
   | { to: 'jump'; step: StepName }
   | { to: 'return'; step: StepName; issues: Issue[] }
   | { to: 'wait'; reason: string }
-  | { to: 'block'; reason: string }
+  | { to: 'block'; reason: string; code?: ErrorCode }
   | { to: 'fail'; error: StepFailure };
 
 export interface ArtifactValue {

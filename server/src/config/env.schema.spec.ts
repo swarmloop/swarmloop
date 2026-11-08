@@ -123,6 +123,11 @@ describe('env schema', () => {
     expect(value.CODEX_API_KEY).toBe('');
   });
 
+  it('keeps JIRA_PROJECTS optional and empty by default', async () => {
+    const config = await compileWith(complete);
+    expect(config.env.JIRA_PROJECTS).toBe('');
+  });
+
   it('keeps the defaults for values the file leaves out', async () => {
     const { MAX_PIPELINE_RETURNS: _omitted, ...withoutDefaults } = complete;
     const config = await compileWith(withoutDefaults);

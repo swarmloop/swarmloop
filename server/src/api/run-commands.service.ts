@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 import { Clock } from '../core/clock';
 import { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
@@ -12,10 +12,13 @@ import { CHECKOUT_NAME, storedProjects } from '../steps/prepare/checkout-path';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { taskKeys } from '../steps/requirements/requirements-input';
+import { type IssueTracker, runKeys } from '../integrations/issue-tracker/issue-tracker';
+import { ISSUE_TRACKER } from '../integrations/issue-tracker/tokens';
 import {
   AnswersBody,
   CreateRunBody,
+  TicketKeysBody,
+  TicketKeysView,
   FlowView,
   ProjectsView,
   RemovedRunView,
@@ -48,6 +51,7 @@ export class RunCommandsService {
     private readonly prepare: PrepareStep,
     private readonly queries: RunQueriesService,
     private readonly clock: Clock,
+    @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
   ) {}
 
   async addProject(key: string, name: string): Promise<ProjectsView> {
@@ -66,6 +70,11 @@ export class RunCommandsService {
     }
   }
 
+  /** The keys a run with this prompt and run id would fetch from the tracker. */
+  async ticketKeys(body: TicketKeysBody): Promise<TicketKeysView> {
+    return { keys: await runKeys(this.tracker, body.key?.trim() ?? '', body.prompt ?? '') };
+  }
+
   /** The checks of a new run, and the session it opens. Nothing is written. */
   async plan(body: CreateRunBody): Promise<StartPlan> {
     const prompt = body.prompt?.trim() || undefined;
@@ -74,7 +83,7 @@ export class RunCommandsService {
       throw new BadRequestException('prompt is missing');
     }
     const phases = this.phases(body.phases);
-    let key = given || taskKeys(prompt ?? '', '')[0] || `run-${this.clock.now().toString(36)}`;
+    let key = given || (await this.tracker.ticketKeys(prompt ?? ''))[0] || `run-${this.clock.now().toString(36)}`;
     try {
       assertKey(key);
     } catch (error) {

@@ -16,6 +16,7 @@ export const envSchema = Joi.object({
   JIRA_BASE_URL: Joi.string().allow('').required(),
   JIRA_EMAIL: Joi.string().allow('').required(),
   JIRA_API_TOKEN: Joi.string().allow('').required(),
+  JIRA_PROJECTS: Joi.string().allow('').default(''),
   GITLAB_BASE_URL: Joi.string().allow('').required(),
   GITLAB_TOKEN: Joi.string().allow('').required(),
   GITHUB_BASE_URL: Joi.string().allow('').required(),

@@ -164,6 +164,7 @@ Only for prompts that name a ticket. A prompt without one never calls Jira.
 - `JIRA_BASE_URL` is your site, such as `https://your-team.atlassian.net`.
 - `JIRA_EMAIL` is the email you sign in to Atlassian with.
 - `JIRA_API_TOKEN` comes from [Atlassian API tokens](https://id.atlassian.com/manage-profile/security/api-tokens): **Create API token**.
+- `JIRA_PROJECTS` is a comma-separated list of project keys, such as `PROJ,OPS`. Only keys of these projects count as tickets in a prompt. Empty means every project that exists on the site.
 
 Run `docker compose up --build` again after saving.
 

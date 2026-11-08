@@ -16,6 +16,8 @@ import { AgentExchangeEntity, DocumentEntity, HttpCallEntity, StepStatEntity } f
 
 import { RunRepository } from '../../history/run.repository';
 
+import { DocumentRepository } from '../../history/document.repository';
+
 import { PipelineService } from '../../pipeline/pipeline.service';
 
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -322,6 +324,63 @@ describe('requirements step', () => {
       const run = await app.get(RunRepository).findRun('widget');
       expect(run?.status).toBe('waiting');
       expect(run?.currentStep).toBe('prepare');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('continues with the prompt and notes a ticket Jira does not know', async () => {
+    const server = await listen(404);
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-404-'));
+    await writeEnv(root, server.base, 'direct', { JIRA_PROJECTS: 'PROJ' });
+    const app = await boot(root, server.base, 'direct', jest.fn(), jest.fn(), false);
+    try {
+      const result = await app.get(PipelineService).run('widget', { prompt: 'Do PROJ-1 today' });
+      expect(result.exitCode).toBe(0);
+      const record = JSON.parse(await requirementsBody(app, 'widget')) as { prompt: string; tickets: unknown[] };
+      expect(record.prompt).toBe('Do PROJ-1 today\n');
+      expect(record.tickets).toEqual([]);
+      const handoff = await app.get(DocumentRepository).latestBody('widget', 'handoff');
+      expect(handoff).toContain('- requirements done');
+      expect(handoff).toContain('- PROJ-1 was not found in Jira');
+      expect((await app.get(RunRepository).findRun('widget'))?.status).not.toBe('failed');
+    } finally {
+      await app.close();
+      await server.close();
+    }
+  });
+
+  it('blocks once when the typed run id is a Jira key and Jira is not set up', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-block-'));
+    await writeEnv(root, '', 'direct', { JIRA_BASE_URL: '', JIRA_EMAIL: '', JIRA_API_TOKEN: '' });
+    const app = await boot(root, '', 'direct', jest.fn(), jest.fn(), false);
+    try {
+      const result = await app.get(PipelineService).run('PROJ-123', { prompt: 'Do the ticket' });
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain(
+        'this run id is a Jira key, but JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN are not set',
+      );
+      const run = await app.get(RunRepository).findRun('PROJ-123');
+      expect(run?.status).toBe('blocked');
+      expect(run?.currentStep).toBe('requirements');
+      expect(JSON.parse(run?.stateReason ?? '{}')).toMatchObject({ code: 'INPUT_MISSING' });
+      const documents = await app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity)).find();
+      expect(documents.filter((row) => row.kind === 'requirements')).toHaveLength(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('does not fail requirements for words that only look like keys', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plain-'));
+    await writeEnv(root, '', 'direct', { JIRA_BASE_URL: '', JIRA_EMAIL: '', JIRA_API_TOKEN: '' });
+    const app = await boot(root, '', 'direct', jest.fn(), jest.fn(), false);
+    try {
+      const result = await app.get(PipelineService).run('widget', { prompt: 'Store UTF-8 text, hash with SHA-256' });
+      expect(result.exitCode).toBe(0);
+      expect(await requirementsBody(app, 'widget')).toContain('UTF-8');
+      const calls = await app.get<Repository<HttpCallEntity>>(getRepositoryToken(HttpCallEntity)).find();
+      expect(calls).toHaveLength(0);
     } finally {
       await app.close();
     }

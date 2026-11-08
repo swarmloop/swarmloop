@@ -21,6 +21,7 @@ import { writeRunState } from '../history/run-state';
 import { StepRegistry } from '../steps/step.registry';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
+import { ISSUE_TRACKER } from '../integrations/issue-tracker/tokens';
 import { RunCommandsService } from '../api/run-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
 import { RunRebaseService } from '../api/run-rebase.service';
@@ -92,6 +93,10 @@ export async function boot(
       { provide: StepRegistry, useValue: { describe: () => descriptors } },
       { provide: ProjectAppendService, useValue: { add: jest.fn(), flush: jest.fn() } },
       { provide: PrepareStep, useValue: prepare },
+      {
+        provide: ISSUE_TRACKER,
+        useValue: { fetch: jest.fn(), ticketKeys: async (text: string) => text.match(/PROJ-\d+/g) ?? [] },
+      },
     ],
   }).compile();
 }

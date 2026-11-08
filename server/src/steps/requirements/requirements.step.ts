@@ -4,17 +4,18 @@ import { StepKernel } from '../step-kernel';
 import { runDir } from '../../history/run-paths';
 import { RunEntity } from '../../history/entities';
 import { SampleDraft, sampleSelf } from '../../history/visit';
-import { FetchFailed, HttpCallDraft, SwarmloopError, PasteNeeded } from '../../core/swarmloop-error';
+import { FetchFailed, HttpCallDraft, IssueNotFound, SwarmloopError, PasteNeeded } from '../../core/swarmloop-error';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
+import { ERROR_CODES } from '../../contract/error-codes';
 import { StepName } from '../../contract/steps';
 import { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
-import { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
+import { IssueTracker, runKeys } from '../../integrations/issue-tracker/issue-tracker';
 import { REQUIREMENTS_SOURCE } from '../../integrations/requirements-source/requirements-source.module';
 import { RequirementsSource } from '../../integrations/requirements-source/requirements-source';
 import { ISSUE_TRACKER } from '../../integrations/issue-tracker/tokens';
 import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import type { StepSnapshot } from '../step';
-import { readPrompt, taskKeys, unreadSource } from './requirements-input';
+import { readPrompt, unreadSource } from './requirements-input';
 import {
   emptyWrite,
   RequirementsFinish,
@@ -77,9 +78,9 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
     }
   }
 
-  protected work(_input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
+  protected async work(_input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const { prompt } = ctx.options;
-    return this.produce(ctx, prompt, taskKeys(prompt ?? '', ctx.opened.run.key));
+    return this.produce(ctx, prompt, await runKeys(this.tracker, ctx.opened.run.key, prompt ?? ''));
   }
 
   private async produce(ctx: StepContext, prompt: string | undefined, issueKeys: string[]): Promise<StepResult> {
@@ -109,13 +110,14 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
         issueKeys,
         resuming(opened.prior),
       );
+      const loadedKeys = issueKeys.filter((issueKey) => !fetched.missing.includes(issueKey));
       const written = await this.source.write({
         key,
         runDir: runDir(this.config, key),
         bundle: fetched.bundle,
         bundles: fetched.bundles,
         prompt: effectivePrompt,
-        issueKeys,
+        issueKeys: loadedKeys,
         agentCalls: opened.run.agentCalls,
         spentUsd: opened.run.spentUsd,
         tokensInRun: await this.visits.tokenTotal(opened.run.id),
@@ -131,6 +133,7 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
         outcome: 'ok',
         exitCode: 0,
         message: 'requirements done',
+        notes: fetched.missing.map((issueKey) => `${issueKey} was not found in Jira`),
         body: written.body,
       });
     } catch (error) {
@@ -144,6 +147,17 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
           message: error.message,
           body: `${JSON.stringify({ url: error.url })}\n`,
           artifact: ARTIFACTS.pending,
+        });
+      }
+      if (error instanceof SwarmloopError && error.code === ERROR_CODES.INPUT_MISSING) {
+        return finish({
+          written: emptyWrite(),
+          calls: [],
+          outcome: 'blocked',
+          code: error.code,
+          exitCode: 1,
+          message: error.message,
+          body: null,
         });
       }
       return finish({
@@ -164,7 +178,10 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
       route: routeOf(input),
       summary: `${ctx.opened.startedAt} ${input.message}`,
       outputs: requirementsOutputs(input),
-      handoff: input.outcome === 'ok' ? `- ${input.message}\n` : undefined,
+      handoff:
+        input.outcome === 'ok'
+          ? [input.message, ...(input.notes ?? [])].map((line) => `- ${line}\n`).join('')
+          : undefined,
       visit: requirementsVisit(samples, input),
     };
   }
@@ -176,17 +193,28 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
     prompt: string | undefined,
     issueKeys: string[],
     resume: boolean,
-  ): Promise<{ bundle: IssueBundle; bundles: IssueBundle[]; httpCalls: HttpCallDraft[] }> {
+  ): Promise<{ bundle: IssueBundle; bundles: IssueBundle[]; httpCalls: HttpCallDraft[]; missing: string[] }> {
     const progress = resume ? parseProgress(await ctx.reread(ARTIFACTS.requirementsProgress)) : { issues: {} };
     const bundles: IssueBundle[] = [];
     const httpCalls: HttpCallDraft[] = [];
+    const missing: string[] = [];
     for (const issueKey of issueKeys) {
       const cached = progress.issues[issueKey];
       if (cached) {
         bundles.push(cached);
         continue;
       }
-      const fetched = await this.tracker.fetch(issueKey, runDir);
+      let fetched: Awaited<ReturnType<IssueTracker['fetch']>>;
+      try {
+        fetched = await this.tracker.fetch(issueKey, runDir);
+      } catch (error) {
+        if (error instanceof IssueNotFound) {
+          httpCalls.push(...error.httpCalls);
+          missing.push(issueKey);
+          continue;
+        }
+        throw error;
+      }
       bundles.push(fetched.bundle);
       httpCalls.push(...fetched.httpCalls);
       progress.issues[issueKey] = fetched.bundle;
@@ -196,6 +224,7 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
       bundle: bundles[0] ?? promptBundle(key, prompt ?? ''),
       bundles,
       httpCalls,
+      missing,
     };
   }
 }
@@ -207,7 +236,7 @@ function routeOf(input: RequirementsFinish): Route {
     case 'waiting':
       return { to: 'wait', reason: input.message };
     case 'blocked':
-      return { to: 'block', reason: input.message };
+      return { to: 'block', reason: input.message, code: input.code };
     case 'failed':
       return { to: 'fail', error: { code: 'requirements', message: input.message } };
   }
