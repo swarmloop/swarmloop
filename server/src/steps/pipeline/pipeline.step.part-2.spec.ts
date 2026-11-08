@@ -19,7 +19,18 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 
 import { FetchFailed } from '../../core/swarmloop-error';
 
-import { gitRepo, two, shot, job, call, restore, boot, seed, stampSettled } from './pipeline.step.spec-helpers';
+import {
+  gitRepo,
+  two,
+  shot,
+  job,
+  call,
+  restore,
+  boot,
+  fakeWait,
+  seed,
+  stampSettled,
+} from './pipeline.step.spec-helpers';
 
 describe('pipeline step', () => {
   it('returns to implement when a job trace cannot be read', async () => {
@@ -152,13 +163,15 @@ describe('pipeline step', () => {
     const previousTick = process.env.TICK_MS;
     const previousTimeout = process.env.PIPELINE_TIMEOUT_MS;
     const previousStart = process.env.PIPELINE_START_TIMEOUT_MS;
+    const clock = fakeWait();
     const app = await boot(
       root,
       read,
       jest.fn(),
       'TICK_MS=1\nPIPELINE_START_TIMEOUT_MS=50\nPIPELINE_TIMEOUT_MS=1500\n',
+      undefined,
+      clock,
     );
-    const started = Date.now();
     try {
       await seed(app, 'PROJ-311');
       const run = await app.get(RunRepository).findRun('PROJ-311');
@@ -174,10 +187,9 @@ describe('pipeline step', () => {
       mkdirSync(workflow, { recursive: true });
       await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-311');
-      expect(Date.now() - started).toBeLessThan(700);
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('demo CI did not start');
-      expect(read.mock.calls.length).toBeGreaterThan(0);
+      expect(read.mock.calls.length).toBeGreaterThan(1);
       const after = await app.get(RunRepository).findRun('PROJ-311');
       expect(after?.currentStep).toBe('pipeline');
       expect(after?.status).toBe('failed');
@@ -189,6 +201,7 @@ describe('pipeline step', () => {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);
       restore('PIPELINE_START_TIMEOUT_MS', previousStart);
+      jest.restoreAllMocks();
       await app.close();
     }
   });
@@ -270,11 +283,14 @@ describe('pipeline step', () => {
       reads += 1;
       return Promise.resolve({ snapshot: shot(reads < 4 ? 'running' : 'success', []), httpCalls: [call('GET')] });
     });
+    const clock = fakeWait();
     const app = await boot(
       root,
       read,
       jest.fn(),
       'TICK_MS=30\nPIPELINE_START_TIMEOUT_MS=40\nPIPELINE_TIMEOUT_MS=500\n',
+      undefined,
+      clock,
     );
     try {
       await seed(app, 'PROJ-314');
@@ -284,6 +300,7 @@ describe('pipeline step', () => {
       expect(read.mock.calls.every((entry) => entry[1] === false)).toBe(true);
       expect((await app.get(RunRepository).findRun('PROJ-314'))?.currentStep).toBe('done');
     } finally {
+      jest.restoreAllMocks();
       await app.close();
     }
   });
@@ -299,11 +316,14 @@ describe('pipeline step', () => {
     const previousTick = process.env.TICK_MS;
     const previousTimeout = process.env.PIPELINE_TIMEOUT_MS;
     const previousStart = process.env.PIPELINE_START_TIMEOUT_MS;
+    const clock = fakeWait();
     const app = await boot(
       root,
       read,
       jest.fn(),
-      'TICK_MS=1\nPIPELINE_START_TIMEOUT_MS=800\nPIPELINE_TIMEOUT_MS=5000\n',
+      'TICK_MS=100\nPIPELINE_START_TIMEOUT_MS=800\nPIPELINE_TIMEOUT_MS=5000\n',
+      undefined,
+      clock,
     );
     try {
       await seed(app, 'PROJ-312', two);
@@ -316,9 +336,7 @@ describe('pipeline step', () => {
         mkdirSync(workflow, { recursive: true });
         await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
       }
-      const started = Date.now();
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-312');
-      expect(Date.now() - started).toBeLessThan(2500);
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('web CI did not start');
       expect(read.mock.calls.length).toBeGreaterThan(2);
@@ -329,6 +347,7 @@ describe('pipeline step', () => {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);
       restore('PIPELINE_START_TIMEOUT_MS', previousStart);
+      jest.restoreAllMocks();
       await app.close();
     }
   });
