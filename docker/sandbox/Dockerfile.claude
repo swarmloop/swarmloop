@@ -7,9 +7,10 @@ RUN apt-get update \
   && mkdir -p /work \
   && chown sandbox:sandbox /work
 
+ARG CLAUDE_VERSION=2.1.319
 USER sandbox
 ENV HOME=/home/sandbox
-RUN curl -fsSL https://claude.ai/install.sh | bash
+RUN curl -fsSL https://claude.ai/install.sh | bash -s "$CLAUDE_VERSION"
 USER root
 # /home/sandbox is a tmpfs at run time, so the install has to live outside it. No system language runtime.
 # Everything the CLI needs lives under /opt/swarmloop, so swarmloop can mount it into a project image.
@@ -23,5 +24,14 @@ RUN set -eu \
   && cp /etc/ssl/certs/ca-certificates.crt /opt/swarmloop/certs/ca-certificates.crt \
   && chmod -R a+rX /opt/swarmloop \
   && ln -sfn /opt/swarmloop/bin/claude /usr/local/bin/claude
+# The build fails when the installed CLI is not the pinned version.
+RUN claude --version | grep -qF "$CLAUDE_VERSION"
+ARG SOURCE_URL=unknown
+ARG REVISION=unknown
+ARG VERSION=dev
+LABEL org.opencontainers.image.source=$SOURCE_URL \
+      org.opencontainers.image.revision=$REVISION \
+      org.opencontainers.image.version=$VERSION \
+      io.swarmloop.cli-version=$CLAUDE_VERSION
 USER sandbox
 WORKDIR /work

@@ -8,21 +8,32 @@ RUN apt-get update \
   && mkdir -p /work \
   && chown sandbox:sandbox /work
 
-USER sandbox
-ENV HOME=/home/sandbox
-RUN curl -fsSL https://cursor.com/install | bash
-USER root
-# The launcher looks for node beside itself. /home/sandbox is a tmpfs at run time, so the install has to live outside it.
+# The installer takes no version, so the versioned archive is downloaded directly. The launcher looks for node beside itself.
+# /home/sandbox is a tmpfs at run time, so the install has to live outside it.
 # Everything the CLI needs lives under /opt/swarmloop, so swarmloop can mount it into a project image.
+ARG CURSOR_VERSION=2025.11.25-d5b3271
 RUN set -eu \
-  && src="$(readlink -f /home/sandbox/.local/bin/agent)" \
-  && dir="$(dirname "$src")" \
+  && case "$(uname -m)" in \
+    x86_64) arch=x64 ;; \
+    aarch64|arm64) arch=arm64 ;; \
+    *) echo "unsupported CPU: $(uname -m)" >&2; exit 1 ;; \
+  esac \
   && mkdir -p /opt/swarmloop/cursor-agent /opt/swarmloop/bin \
-  && cp -a "$dir"/. /opt/swarmloop/cursor-agent/ \
+  && curl -fsSL "https://downloads.cursor.com/lab/${CURSOR_VERSION}/linux/${arch}/agent-cli-package.tar.gz" \
+    | tar -xz --strip-components=1 -C /opt/swarmloop/cursor-agent \
   && ln -sfn /opt/swarmloop/cursor-agent/cursor-agent /opt/swarmloop/bin/agent \
   && mkdir -p /opt/swarmloop/certs \
   && cp /etc/ssl/certs/ca-certificates.crt /opt/swarmloop/certs/ca-certificates.crt \
   && chmod -R a+rX /opt/swarmloop \
   && ln -sfn /opt/swarmloop/bin/agent /usr/local/bin/agent
+# The build fails when the installed CLI is not the pinned version.
+RUN /opt/swarmloop/bin/agent --version | grep -qF "$CURSOR_VERSION"
+ARG SOURCE_URL=unknown
+ARG REVISION=unknown
+ARG VERSION=dev
+LABEL org.opencontainers.image.source=$SOURCE_URL \
+      org.opencontainers.image.revision=$REVISION \
+      org.opencontainers.image.version=$VERSION \
+      io.swarmloop.cli-version=$CURSOR_VERSION
 USER sandbox
 WORKDIR /work
