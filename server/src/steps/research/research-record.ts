@@ -26,7 +26,7 @@ interface ImpactItem {
 export function parseImpact(text: string): { items: ImpactItem[]; notes: string[] } {
   const found: ImpactItem[] = [];
   const notes: string[] = [];
-  for (const line of items(section(text, 'impact') ?? '')) {
+  for (const line of items(section(text, 'impact') ?? '').filter((item) => item !== 'none')) {
     const [capability, file, status, ...extra] = line.split('|').map((part) => part.trim());
     const base = status?.split(' ')[0] ?? '';
     if (!capability || !file || extra.length > 0 || !IMPACT_STATUSES.some((known) => known === base)) {

@@ -57,6 +57,10 @@ describe('parseImpact', () => {
     expect(renderImpact(parsed.items)).toContain('- live agent log | step-documents.tsx | unreachable\n');
   });
 
+  it('treats a none line as an empty list without a note', () => {
+    expect(parseImpact('impact:\n- none\n')).toEqual({ items: [], notes: [] });
+  });
+
   it('ignores malformed lines with a note', () => {
     const parsed = parseImpact(
       ['impact:', '- no bars here', '- a | b | maybe', '- a | b | kept | extra', '- ok | f.ts | kept', '- none'].join(
@@ -64,7 +68,7 @@ describe('parseImpact', () => {
       ),
     );
     expect(parsed.items).toEqual([{ capability: 'ok', file: 'f.ts', status: 'kept' }]);
-    expect(parsed.notes).toHaveLength(4);
+    expect(parsed.notes).toHaveLength(3);
     expect(parsed.notes[0]).toBe('ignored impact line: no bars here');
   });
 });
