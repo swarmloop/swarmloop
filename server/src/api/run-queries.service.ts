@@ -117,6 +117,7 @@ export class RunQueriesService {
       projects: storedProjects(
         renderProjects([...storedProjects(run.projects), ...storedProjects(latest(documents, 'pending_repos'))]),
       ),
+      workspace: run.workspace === 'removed' ? 'removed' : null,
     };
   }
 

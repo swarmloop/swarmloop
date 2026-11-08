@@ -2,7 +2,7 @@ import { spawn, ChildProcess, execFile } from 'child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { rawEnv } from '../config/process-env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { SystemClock } from '../core/clock';
@@ -232,6 +232,34 @@ export class SandboxService {
       return (await this.attemptRunning(attemptId)) === false;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Removes dangling images and build cache older than 24 hours. Tagged images, volumes and containers stay.
+   * A docker that fails is logged: housekeeping never stops a run.
+   */
+  async pruneDocker(): Promise<void> {
+    for (const args of [
+      ['image', 'prune', '-f'],
+      ['builder', 'prune', '-f', '--filter', 'until=24h'],
+    ]) {
+      try {
+        await this.docker(args, 300_000);
+      } catch (error) {
+        new Logger(SandboxService.name).warn(
+          `docker ${args[0]} prune failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+
+  /** What docker takes on the disk, as `docker system df` prints it. */
+  async dockerUsage(): Promise<string> {
+    try {
+      return (await this.docker(['system', 'df'])).trim();
+    } catch {
+      return 'unavailable';
     }
   }
 

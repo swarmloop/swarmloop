@@ -13,6 +13,7 @@ import { CHAT_LOCK, chatLockBody } from '../pipeline/chat-lock';
 import { settleShell, shellHolding } from '../pipeline/shell-lock';
 import { ServiceContextService } from '../integrations/service-context';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { agentFailure } from '../steps/shared/agent-result';
 import { LOCAL_RUN_RULE } from '../steps/shared/skill-prompt';
 import { mountsForRun } from '../sandbox/sandbox-launch';
@@ -31,6 +32,7 @@ export class ChatService {
     private readonly sandbox: SandboxService,
     private readonly launcher: AgentLauncher,
     private readonly services: ServiceContextService,
+    private readonly workspace: WorkspaceGuard,
   ) {}
 
   async speak(key: string, body: ChatBody): Promise<ChatView> {
@@ -50,6 +52,9 @@ export class ChatService {
     const model = modelForStep('implement', env);
     if (!model) {
       throw new BadRequestException('MODEL_IMPLEMENT is missing');
+    }
+    if (!body.cwd?.trim()) {
+      await this.workspace.ensureForRequest(run);
     }
     const mounts = this.mounts(key, body.cwd, run.targetPath);
     const servers = readMcpServers(body.mcpServers);

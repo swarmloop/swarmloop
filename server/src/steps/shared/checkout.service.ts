@@ -6,6 +6,7 @@ import { assignCodeHost, CodeHostRegistry, type CodeHostName } from '../../integ
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail } from '../../git/git';
 import { storedBase } from '../../git/rebase';
+import { git as quietGit } from '../../git/worktree-tree';
 import { CHECKOUT_NAME, resolveCheckoutPath } from '../prepare/checkout-path';
 import { StepKernel } from '../step-kernel';
 
@@ -50,7 +51,7 @@ export class CheckoutService {
     const worktree = join(root(this.kernel.config), 'worktrees', key, located.name);
     if (!existsSync(worktree)) {
       mkdirSync(join(root(this.kernel.config), 'worktrees', key), { recursive: true });
-      await this.addWorktree(located, worktree, ref);
+      await this.addWorktree(key, located, worktree, ref);
       return located;
     }
     if (!(await this.registered(located, worktree))) {
@@ -58,7 +59,7 @@ export class CheckoutService {
         throw new SwarmloopError(`${located.name} worktree path is not empty`);
       }
       rmSync(worktree, { recursive: true, force: true });
-      await this.addWorktree(located, worktree, ref);
+      await this.addWorktree(key, located, worktree, ref);
       return located;
     }
     if (ref !== 'HEAD') {
@@ -98,15 +99,68 @@ export class CheckoutService {
     }
   }
 
-  private async addWorktree(checkout: { name: string; path: string }, worktree: string, ref: string): Promise<void> {
+  /**
+   * The one place that adds a worktree. The registration is locked right away, so a `git worktree prune` that a
+   * person runs in their own checkout (where the container paths do not exist) leaves it alone. Without `branch` the
+   * worktree is detached at `ref`; with it the worktree is on that branch, created from `ref` when `create` is set.
+   */
+  async addWorktree(
+    key: string,
+    checkout: { name: string; path: string },
+    worktree: string,
+    ref: string,
+    branch?: { name: string; create: boolean },
+  ): Promise<void> {
+    const args = !branch
+      ? ['--detach', worktree, ref]
+      : branch.create
+        ? ['-b', branch.name, worktree, ref]
+        : [worktree, branch.name];
     try {
-      await git(['-C', checkout.path, 'worktree', 'add', '--detach', worktree, ref]);
+      await git(['-C', checkout.path, 'worktree', 'add', ...args]);
+      await this.lockWorktree(key, checkout, worktree);
     } catch (error) {
       throw new SwarmloopError(`${checkout.name} worktree failed: ${gitDetail(error)}`);
     }
   }
 
-  private async registered(checkout: { name: string; path: string }, worktree: string): Promise<boolean> {
+  /**
+   * Marks the registration as swarmloop's, so a prune or gc from a person's own checkout leaves it alone. It is
+   * bookkeeping, not a step of the run, so it does not show as a command in the trace of the step.
+   */
+  async lockWorktree(key: string, checkout: { name: string; path: string }, worktree: string): Promise<void> {
+    await quietGit(checkout.path, ['worktree', 'lock', '--reason', `swarmloop run ${key}`, worktree]);
+  }
+
+  /** Drops the registration of a worktree whose directory is gone, so the path can be added again. */
+  async forgetWorktree(checkout: { name: string; path: string }, worktree: string): Promise<void> {
+    try {
+      await git(['-C', checkout.path, 'worktree', 'unlock', worktree]);
+    } catch (error) {
+      if (!gitDetail(error).includes('not locked')) {
+        throw new SwarmloopError(`${checkout.name} worktree failed: ${gitDetail(error)}`);
+      }
+    }
+    await git(['-C', checkout.path, 'worktree', 'prune']);
+  }
+
+  /** The one place that removes a worktree: unlock first, then remove. Ignored files such as node_modules go with it. */
+  async removeWorktree(checkout: { name: string; path: string }, worktree: string): Promise<void> {
+    try {
+      await git(['-C', checkout.path, 'worktree', 'unlock', worktree]);
+    } catch (error) {
+      if (!gitDetail(error).includes('not locked')) {
+        throw new SwarmloopError(`${checkout.name} worktree failed: ${gitDetail(error)}`);
+      }
+    }
+    try {
+      await git(['-C', checkout.path, 'worktree', 'remove', '--force', worktree]);
+    } catch (error) {
+      throw new SwarmloopError(`${checkout.name} worktree failed: ${gitDetail(error)}`);
+    }
+  }
+
+  async registered(checkout: { name: string; path: string }, worktree: string): Promise<boolean> {
     try {
       const listed = await git(['-C', checkout.path, 'worktree', 'list', '--porcelain']);
       return listsWorktree(listed, worktree);
@@ -139,7 +193,7 @@ export class CheckoutService {
   }
 }
 
-function leftoverOnly(worktree: string): boolean {
+export function leftoverOnly(worktree: string): boolean {
   return readdirSync(worktree).every((entry) => entry === '.git');
 }
 

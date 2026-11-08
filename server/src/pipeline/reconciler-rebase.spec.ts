@@ -10,7 +10,9 @@ import { RunRepository } from '../history/run.repository';
 import { RunRebase } from '../steps/run-rebase';
 import { createTestApp } from '../testing/test-app';
 import type { TestApp } from '../testing/test-app';
+import { SwarmloopError } from '../core/swarmloop-error';
 import { Reconciler } from './reconciler';
+import { WorkspaceGuard } from './workspace-guard';
 
 const KEY = 'PROJ-1';
 
@@ -83,4 +85,30 @@ describe('reconciler and the rebase journal', () => {
     expect(rebase).not.toHaveBeenCalled();
     expect((await app.app.get(RunRepository).findRun(KEY))?.status).not.toBe('blocked');
   });
+});
+
+describe('reconciler and a workspace that cannot be restored', () => {
+  let app: TestApp;
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await app.close();
+  });
+
+  it.each([ERROR_CODES.WORKSPACE_LOST, ERROR_CODES.BRANCH_IN_USE, ERROR_CODES.BRANCH_DIVERGED])(
+    'blocks with %s and never relaunches',
+    async (code) => {
+      app = await createTestApp();
+      const run = await journaled(app, 'applied');
+      jest.spyOn(app.app.get(WorkspaceGuard), 'ensure').mockRejectedValue(new SwarmloopError('demo cannot', { code }));
+      const rebase = jest.spyOn(app.app.get(RunRebase), 'rebase');
+
+      await app.app.get(Reconciler).reconcile(run);
+
+      expect(rebase).not.toHaveBeenCalled();
+      const blocked = await app.app.get(RunRepository).findRun(KEY);
+      expect(blocked?.status).toBe('blocked');
+      expect(JSON.parse(blocked?.stateReason ?? '{}')).toEqual({ code, message: 'demo cannot' });
+    },
+  );
 });

@@ -5,8 +5,7 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { SampleDraft } from '../../history/visit';
 import type { AgentRunResult } from '../../agent/agent-runner';
-import { readSession } from '../../agent/agent-runner';
-import { sessionFileName } from '../../history/session-group';
+import { resumableChat } from '../../agent/agent-session';
 import type { OpenedStep } from '../../steps/step-run';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { reportFailure } from '../shared/step-failure';
@@ -78,7 +77,7 @@ export async function runJob(
   retry: boolean,
 ): Promise<Finished> {
   const step = `code-review-${job.reviewer.name}`;
-  const session = await readSession(join(deps.root, 'data', sessionFileName(key, step)), opened.run.runtime);
+  const session = await resumableChat(deps.root, key, step, opened.run.runtime);
   const chosen =
     fresh || !session?.chatId
       ? job.prompt

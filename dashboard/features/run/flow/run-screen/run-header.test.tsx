@@ -31,6 +31,18 @@ describe('RunHeader', () => {
     expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
   });
 
+  it('says when the workspace was removed and stays quiet otherwise', () => {
+    header('done', { flow: flowView({ status: 'done', workspace: 'removed' }) });
+
+    expect(screen.getByText('workspace removed')).toBeInTheDocument();
+  });
+
+  it('does not mention the workspace of a run that still has it', () => {
+    header('done');
+
+    expect(screen.queryByText('workspace removed')).not.toBeInTheDocument();
+  });
+
   it('offers Stop only while the run is running', async () => {
     const user = userEvent.setup();
     const props = header('running');

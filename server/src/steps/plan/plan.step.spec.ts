@@ -74,6 +74,7 @@ describe('plan step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-45', 'billing-api'), { recursive: true });
     mkdirSync(join(root, 'data'), { recursive: true });
+    mkdirSync(join(root, 'data', 'agent-state', 'PROJ-45', 'plan'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-45-plan-session.json'),
       `${JSON.stringify({ runtime: 'cursor', chatId: 'chat-1', resumed: true, completed: true, killReason: null, usd: 2 })}\n`,
@@ -151,6 +152,7 @@ describe('plan step', () => {
     mkdirSync(join(root, 'worktrees', 'PROJ-46', 'billing-api'), { recursive: true });
     mkdirSync(join(root, 'worktrees', 'PROJ-47', 'billing-api'), { recursive: true });
     mkdirSync(join(root, 'data'), { recursive: true });
+    mkdirSync(join(root, 'data', 'agent-state', 'PROJ-47', 'plan'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-47-plan-session.json'),
       `${JSON.stringify({ runtime: 'cursor', chatId: 'chat-1', resumed: true, completed: true, killReason: null, usd: 0 })}\n`,

@@ -1,12 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, Issue, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
-import { join } from 'path';
 import { SwarmloopEnv } from '../../config/env';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
-import { readSession } from '../../agent/agent-runner';
-import { sessionFileName } from '../../history/session-group';
+import { resumableChat } from '../../agent/agent-session';
 import { StepOptions, nextStep } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -120,10 +118,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
     const full = skillPrompt('implement', input.requirements, names, sections, mounts, { deferExecutionRules: true });
     const added = await ctx.reread(ARTIFACTS.addedRepos);
-    const continued = await readSession(
-      join(root(this.config), 'data', sessionFileName(key, 'implement')),
-      ctx.opened.run.runtime,
-    );
+    const continued = await resumableChat(root(this.config), key, 'implement', ctx.opened.run.runtime);
     const basePrompt = withAddedRepos(continued?.chatId ? implementFollowUp(plan, notes) : full, added);
     const settled = await this.settleRebase(input.requirements, ctx, marker, names, branch, storedStderr);
     if (settled) {
@@ -136,7 +131,14 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       basePrompt,
     );
     const before = await worktreeSnapshot(mounts);
-    let agentResult = await ctx.launch({ prompt, mounts, allowHosts, project, sections: ['implementation'] });
+    let agentResult = await ctx.launch({
+      prompt,
+      mounts,
+      allowHosts,
+      project,
+      sections: ['implementation'],
+      freshPrompt: continued?.chatId ? withEnvironment(withAddedRepos(full, added), executionRules) : undefined,
+    });
     await assertUncommitted(mounts, branch, heads);
     let planText = agentResult.responseText;
     let planOutput = agentResult.output ?? '';

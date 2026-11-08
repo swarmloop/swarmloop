@@ -266,6 +266,9 @@ When CI does not start and GitHub or GitLab confirms a merge conflict for the pu
 | Setting | What it limits | `.env.example` |
 | --- | --- | --- |
 | `MAX_RUN_USD` | Dollars per run. Once reached, the next step does not start. | `100` |
+| `RETAIN_DONE_DAYS` | Days a done run keeps worktrees, agent state and outputs. `0` keeps all. | `3` |
+| `MIN_FREE_GB` | Free disk below which old runs are cleaned and then steps are blocked (`DISK_LOW`). | `10` |
+| `DOCKER_PRUNE` | Daily removal of dangling images and build cache older than 24 h. | `true` |
 | `MAX_RUN_TOKENS` | Tokens per run. Kills the step. | off |
 | `STEP_TOKEN_MAX` | Tokens per step. Kills the step. | off |
 | `MAX_AGENT_CALLS` | Model processes per run | `100` |

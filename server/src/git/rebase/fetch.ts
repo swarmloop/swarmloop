@@ -32,6 +32,12 @@ export async function storedBase(
   throw new SwarmloopError(`${repo} has no ${missing}`);
 }
 
+/** Fetches one branch of origin into its remote-tracking ref. False when origin has no such branch. */
+export async function fetchBranch(cwd: string, repo: string, branch: string, hosts: RebaseHosts): Promise<boolean> {
+  const origin = await originUrl(cwd, repo, 'workspace failed');
+  return origin ? fetchSource(cwd, repo, origin, branch, hosts, 'prepare') : false;
+}
+
 const checkoutFetches = new Map<string, Promise<void>>();
 
 /** First attempt, then at most three retries when git reports `cannot lock ref`. */

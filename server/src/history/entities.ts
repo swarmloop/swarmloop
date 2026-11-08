@@ -57,6 +57,10 @@ export class RunEntity {
   @Column({ type: 'integer', default: 0 })
   generation!: number;
 
+  /** 'removed' after retention took the worktrees of a done run; the next action recreates them. */
+  @Column({ type: 'text', nullable: true })
+  workspace!: string | null;
+
   @Column({ name: 'active_attempt', type: 'text', nullable: true })
   activeAttempt!: string | null;
 

@@ -14,6 +14,7 @@ import { assertKey } from '../core/pipeline-result';
 import { PHASES } from '../contract/steps';
 import { CHAT_LOCK, containerLockBody, readChatLock } from '../pipeline/chat-lock';
 import { settleShell } from '../pipeline/shell-lock';
+import { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { mountsForRun } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 import {
@@ -69,6 +70,7 @@ export class ShellService {
     private readonly config: AppConfig,
     private readonly sandbox: SandboxService,
     private readonly clock: Clock,
+    private readonly workspace: WorkspaceGuard,
   ) {}
 
   /** Which run `path` belongs to: one match, several matches, or a new run key. Nothing is written. */
@@ -123,6 +125,7 @@ export class ShellService {
     if (run.status === 'running') {
       throw new ConflictException(`${key} is already running`);
     }
+    await this.workspace.ensureForRequest(run);
     if (!/^(waiting|blocked|failed|done)$/.test(run.status)) {
       throw new ConflictException(`${key} is already running`);
     }
@@ -211,6 +214,7 @@ export class ShellService {
   }
 
   private async view(run: RunEntity, created: boolean): Promise<ShellFeature> {
+    await this.workspace.ensureForRequest(run);
     const mounts = mountsForRun(join(root(this.config), 'worktrees', run.key), run.targetPath);
     return {
       key: run.key,

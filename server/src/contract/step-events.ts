@@ -53,7 +53,7 @@ interface SessionChange {
   session: 'same chat' | 'new chat';
   runtime: string;
   model: string;
-  reason: 'runtime changed' | 'no stored chat' | 'fresh by step policy' | 'replay' | null;
+  reason: 'runtime changed' | 'no stored chat' | 'fresh by step policy' | 'replay' | 'chat state removed' | null;
 }
 
 /** What an attempt did, beyond its result line. */

@@ -1,4 +1,5 @@
-import { join } from 'path';
+import { mkdirSync } from 'fs';
+import { dirname, join } from 'path';
 import { RunStop } from '../agent/run-stop';
 import { writeSession } from '../agent/agent-session';
 import type { AgentProcessRunner, AgentRunInput } from '../agent/agent-runner';
@@ -6,6 +7,7 @@ import type { AgentRunResult } from '../agent/agent-result';
 import type { StepEvent } from '../contract/step-events';
 import type { StepName } from '../contract/steps';
 import { DocumentRepository } from '../history/document.repository';
+import { sessionHome } from '../history/session-group';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { REQUIREMENTS_INPUT, lateInput } from '../steps/agent-step';
@@ -88,6 +90,10 @@ describe('a return is one issue in two windows', () => {
     try {
       const fakeAgent = {
         run: async (input: AgentRunInput): Promise<AgentRunResult> => {
+          // The real runner prepares the state directory of the chat before it launches.
+          mkdirSync(join(dirname(input.sessionFile), 'agent-state', input.runKey, sessionHome(input.step)), {
+            recursive: true,
+          });
           await writeSession(input.sessionFile, 'cursor', {
             chatId: 'chat-1',
             resumed: false,

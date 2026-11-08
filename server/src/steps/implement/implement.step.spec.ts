@@ -147,11 +147,36 @@ describe('implement step', () => {
     }
   });
 
+  it('starts a fresh chat with the full prompt when the agent state of the stored chat is gone', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-gone-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-69', 'billing-api');
+    mkdirSync(join(root, 'data'), { recursive: true });
+    writeFileSync(
+      join(root, 'data', 'PROJ-69-implement-session.json'),
+      `${JSON.stringify({ runtime: 'cursor', chatId: 'plan-chat', resumed: true, completed: true, killReason: null, usd: 1.2 })}\n`,
+    );
+    const agent = jest.fn().mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-69', 'approve');
+      const done = await app.get(PipelineService).step('implement', 'PROJ-69');
+      expect(done.exitCode).toBe(0);
+      const input = agent.mock.calls[0]?.[0] as AgentRunInput;
+      expect(input.resumeChatId).toBeNull();
+      expect(input.prompt).toContain('# Implement');
+      expect(input.prompt).toContain('Ship the field');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('continues the implement chat with a short prompt', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-resume-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-69', 'billing-api');
     mkdirSync(join(root, 'data'), { recursive: true });
+    mkdirSync(join(root, 'data', 'agent-state', 'PROJ-69', 'implement'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-69-implement-session.json'),
       `${JSON.stringify({ runtime: 'cursor', chatId: 'plan-chat', resumed: true, completed: true, killReason: null, usd: 1.2 })}\n`,
@@ -188,6 +213,7 @@ describe('implement step', () => {
     await writeEnv(root);
     featureTree(root, 'PROJ-95', 'billing-api');
     mkdirSync(join(root, 'data'), { recursive: true });
+    mkdirSync(join(root, 'data', 'agent-state', 'PROJ-95', 'implement'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-95-implement-session.json'),
       `${JSON.stringify({ runtime: 'cursor', chatId: 'plan-chat', resumed: true, completed: true, killReason: null, usd: 1.2 })}\n`,
@@ -232,6 +258,7 @@ describe('implement step', () => {
     await writeEnv(root);
     featureTree(root, 'PROJ-68', 'billing-api');
     mkdirSync(join(root, 'data'), { recursive: true });
+    mkdirSync(join(root, 'data', 'agent-state', 'PROJ-68', 'plan'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-68-plan-session.json'),
       `${JSON.stringify({ runtime: 'cursor', chatId: 'plan-chat', resumed: true, completed: true, killReason: null, usd: 1.2 })}\n`,

@@ -8,7 +8,7 @@ import { SERVER_INSTANCE } from '../core/server-instance';
 import { claimedColumns, stateColumns } from './run-state';
 import type { RunStateChange } from './run-state';
 import { LiveHub } from '../live/live.hub';
-import { existsSync, readdirSync, rmSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { sessionHome } from '../history/session-group';
@@ -16,7 +16,7 @@ import { REVIEW_STEPS, STEPS } from '../contract/steps';
 import { activeDurationMs, toDurationParts } from './active-duration';
 import { DocumentRepository } from './document.repository';
 import { VisitRepository } from './visit.repository';
-import { root } from './run-paths';
+import { removeTree, root } from './run-paths';
 import {
   RunEntity,
   StepStatEntity,
@@ -200,6 +200,17 @@ export class RunRepository {
     this.live?.changed(key);
   }
 
+  /** Marks the worktrees of a run as removed by retention, in a single statement. */
+  async markWorkspaceRemoved(key: string): Promise<void> {
+    await this.runs.update({ key }, { workspace: 'removed' });
+    this.live?.changed(key);
+  }
+
+  async clearWorkspaceRemoved(key: string): Promise<void> {
+    await this.runs.update({ key }, { workspace: null });
+    this.live?.changed(key);
+  }
+
   async listRuns(): Promise<RunEntity[]> {
     return this.runs.find({ order: { createdAt: 'DESC', id: 'DESC' } });
   }
@@ -347,10 +358,6 @@ function removeStoredFiles(root: string, key: string, keys: readonly string[]): 
   }
   removeTree(join(root, 'data', 'agent-state', key));
   removeTree(join(root, 'runs', key));
-}
-
-function removeTree(path: string): void {
-  rmSync(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
 
 function pidAlive(pid: number | null): boolean {

@@ -12,6 +12,8 @@ import { StepRegistry } from '../steps/step.registry';
 import { PipelineResult, isStep, StepOptions } from '../core/pipeline-result';
 import { StepName } from '../contract/steps';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { WorkspaceGuard } from './workspace-guard';
+import { DiskGuard } from './disk-guard';
 import { RunDriver } from './run-driver';
 import { RunInstructions } from './run-instructions';
 import { Reconciler } from './reconciler';
@@ -35,9 +37,11 @@ export class PipelineService implements OnModuleInit {
     private readonly runStop: RunStop,
     projects: ProjectAppendService,
     reconciler: Reconciler,
+    workspace: WorkspaceGuard,
+    disk: DiskGuard,
   ) {
     this.instructions = new RunInstructions(runs, documents, registry);
-    this.driver = new RunDriver(runs, documents, registry, config, visits, runStop, clock, projects);
+    this.driver = new RunDriver(runs, documents, registry, config, visits, runStop, clock, projects, workspace, disk);
     this.lifecycle = new RunLifecycle(
       runs,
       documents,

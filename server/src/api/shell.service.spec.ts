@@ -8,6 +8,7 @@ import type { RunRepository } from '../history/run.repository';
 import type { VisitRepository } from '../history/visit.repository';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
+import type { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { ShellService } from './shell.service';
 
 const config = { env: { SWARMLOOP_ROOT: '/tmp/swarmloop' } } as unknown as AppConfig;
@@ -47,6 +48,7 @@ describe('shell open', () => {
       config,
       sandbox as unknown as SandboxService,
       new FakeClock(),
+      { ensureForRequest: async () => undefined } as unknown as WorkspaceGuard,
     );
     const created = await service.open('/tmp/demo');
     expect(created).toMatchObject({ created: true, status: 'waiting', currentStep: 'requirements' });
@@ -77,6 +79,7 @@ describe('shell open', () => {
       config,
       {} as SandboxService,
       new FakeClock(),
+      { ensureForRequest: async () => undefined } as unknown as WorkspaceGuard,
     );
     const result = await service.open('/tmp/demo');
     expect(result).toEqual({
@@ -113,6 +116,7 @@ describe('shell lock', () => {
       config,
       { containerExists: async () => false } as unknown as SandboxService,
       new FakeClock(),
+      { ensureForRequest: async () => undefined } as unknown as WorkspaceGuard,
     );
   }
 
@@ -144,6 +148,7 @@ describe('shell lock', () => {
       config,
       {} as SandboxService,
       new FakeClock(),
+      { ensureForRequest: async () => undefined } as unknown as WorkspaceGuard,
     );
 
     expect(await service.locate('/tmp/demo')).toEqual({ key: 'proj-1', cwd: '/tmp/demo', created: false });
