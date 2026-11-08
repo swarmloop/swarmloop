@@ -2,6 +2,7 @@ import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { EGRESS_API, type Egress, type EgressPolicy } from './egress';
 import { hostName, isLocalHost } from '../sandbox/sandbox-launch';
+import type { RunImages } from './image-resolver';
 
 interface EgressReady {
   runtime: RuntimeName;
@@ -9,6 +10,7 @@ interface EgressReady {
   command: string[];
   env?: { name: string; value: string }[];
   egress?: { ip: string };
+  images?: RunImages;
 }
 
 /**
@@ -40,7 +42,10 @@ export async function withEgress<T extends EgressReady>(
   }
   const [cli, ...rest] = launch.command;
   const command = cli !== undefined && args.length > 0 ? [cli, ...args, ...rest] : launch.command;
-  const lease = await egress.lease({ hosts: [...new Set(launch.allowHosts.map(hostName))], ...(api ? { api } : {}) });
+  const lease = await egress.lease(
+    { hosts: [...new Set(launch.allowHosts.map(hostName))], ...(api ? { api } : {}) },
+    launch.images?.egress.ref,
+  );
   return {
     launch: { ...launch, env, command, egress: { ip: lease.ip } },
     release: lease.release,

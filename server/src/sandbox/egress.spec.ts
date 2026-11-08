@@ -2,7 +2,16 @@ import { mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { EGRESS_IP, EGRESS_NETWORK, EGRESS_SUBNET, Egress, egressEnv, egressMode, isLeaseIp } from './egress';
+import {
+  EGRESS_CONTAINER,
+  EGRESS_IP,
+  EGRESS_NETWORK,
+  EGRESS_SUBNET,
+  Egress,
+  egressEnv,
+  egressMode,
+  isLeaseIp,
+} from './egress';
 
 interface State {
   network?: { internal: boolean; subnet: string };
@@ -113,7 +122,7 @@ describe('Egress', () => {
     );
     expect(run.join(' ')).toContain(`type=bind,src=/host${policyDir},dst=/policies,readonly=true`);
     expect(run.join(' ')).toContain('swarmloop.image=sha256:abc');
-    expect(calls).toContainEqual(['network', 'connect', 'bridge', 'swarmloop-egress']);
+    expect(calls).toContainEqual(['network', 'connect', 'bridge', EGRESS_CONTAINER]);
   });
 
   it('leaves a running proxy of the current image alone', async () => {

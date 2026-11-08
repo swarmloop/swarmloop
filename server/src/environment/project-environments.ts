@@ -13,13 +13,14 @@ import type { LiveHub } from '../live/live.hub';
 import { CLI_BIN, CliBundles } from '../sandbox/cli-bundle';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { ProjectLaunch } from '../sandbox/sandbox-launch';
-import { agentStateDir, imageName, prepareStateDir, sandboxUserId, setupHosts } from '../sandbox/sandbox-launch';
+import { agentImage, agentStateDir, prepareStateDir, sandboxUserId, setupHosts } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { type EnvironmentConfig, readEnvironmentConfig } from './environment-config';
 import { checksFingerprint } from './checks-fingerprint';
 import { countsFor } from '../history/gate-stamp';
 import { git } from '../git/git';
 import { imagePath, projectSlug, resolveProjectImage } from './project-image';
+import { storedImages } from './run-images';
 
 export const ENVIRONMENT = 'environment';
 const CHECKS_PASS = 'checks_pass';
@@ -96,7 +97,8 @@ export class ProjectEnvironments {
     }
     const docker = (args: string[], timeoutMs?: number) => this.sandbox.run(args, timeoutMs);
     const image = await resolveProjectImage(docker, mount.hostPath, record.repo, record.config, record.ref);
-    const cliVolume = await this.bundles.ensure(runtime, imageName(runtime));
+    const agentRef = (await storedImages(this.documents, input.key))?.agent.ref ?? agentImage(runtime).ref;
+    const cliVolume = await this.cliBundle(runtime, agentRef);
     const hasCerts = await this.probe(image, cliVolume, runtime);
     const launch: ProjectLaunch = {
       image,
@@ -119,6 +121,25 @@ export class ProjectEnvironments {
       );
     }
     return { launch, record: { ...record, image } };
+  }
+
+  /** The CLI volume of the agent image the run started with. */
+  private async cliBundle(runtime: RuntimeName, agentRef: string): Promise<string> {
+    const finish = startCommandSpan({
+      actor: 'server',
+      repo: '',
+      cwd: process.cwd(),
+      executable: 'cli bundle ready',
+      args: [],
+    });
+    try {
+      const volume = await this.bundles.ensure(runtime, agentRef);
+      finish({ exitCode: 0 });
+      return volume;
+    } catch (error) {
+      finish({ exitCode: 1, output: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
   }
 
   /** Server-owned completion gate. Each repository uses its own frozen commands and image. */
@@ -339,6 +360,7 @@ export class ProjectEnvironments {
       args: [command],
     });
     let timedOut = false;
+    const images = await storedImages(this.documents, input.key);
     const child = await this.sandbox
       .spawn({
         runtime: this.deps.env().RUNTIME,
@@ -351,6 +373,7 @@ export class ProjectEnvironments {
         command: [],
         userId,
         project: { ...launch, shell: command },
+        ...(images ? { images } : {}),
       })
       .catch((error: unknown) => {
         finish({ exitCode: null });

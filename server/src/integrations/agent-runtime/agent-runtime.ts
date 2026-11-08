@@ -45,7 +45,8 @@ export interface EgressCredential {
 export interface AgentRuntime {
   readonly name: RuntimeName;
   readonly command: 'agent' | 'claude' | 'codex';
-  readonly image: string;
+  /** The image component this CLI runs in. Where the image comes from is the resolver's business. */
+  readonly component: `agent-${RuntimeName}`;
   readonly apiHosts: readonly string[];
   readonly credentialNames: readonly string[];
   readonly syncsChatMode: boolean;

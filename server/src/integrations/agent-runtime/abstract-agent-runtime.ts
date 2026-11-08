@@ -15,8 +15,8 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
   abstract readonly syncsChatMode: boolean;
   abstract readonly priceSource: string;
 
-  get image(): string {
-    return `swarmloop-agent-${this.name}`;
+  get component(): `agent-${RuntimeName}` {
+    return `agent-${this.name}`;
   }
 
   abstract readonly apiHosts: readonly string[];

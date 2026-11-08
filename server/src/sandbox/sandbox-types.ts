@@ -1,5 +1,6 @@
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import type { SandboxMount } from '../core/sandbox-mount';
+import type { RunImages } from './image-resolver';
 
 export interface EnvMask {
   hostFile: string;
@@ -27,6 +28,8 @@ export interface SandboxLaunch {
   project?: ProjectLaunch;
   /** The address on the internal sandbox network. Its policy on the egress proxy decides what it reaches. */
   egress?: { ip: string };
+  /** The images the run started with. Without them the resolver names the current ones. */
+  images?: RunImages;
   /** Attach the caller's stdin. */
   stdin?: boolean;
   /** Allocate a terminal. Only the interactive vendor screen needs one. */

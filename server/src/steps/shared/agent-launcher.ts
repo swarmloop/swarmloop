@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { AGENT_RUNNER, readSession } from '../../agent/agent-runner';
@@ -12,7 +12,11 @@ import { bindToStepScope, recordStepEvent } from '../../core/step-event-scope';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import type { RunEntity } from '../../history/entities';
 import { sessionFileName } from '../../history/session-group';
+import { DocumentRepository } from '../../history/document.repository';
 import { VisitRepository } from '../../history/visit.repository';
+import { prepareRunImages } from '../../environment/run-images';
+import type { RunImages } from '../../sandbox/image-resolver';
+import { SandboxService } from '../../sandbox/sandbox.service';
 import type { ProjectLaunch } from '../../sandbox/sandbox-launch';
 import { assertNotStopped } from './step-stopped';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
@@ -88,10 +92,27 @@ export class AgentLauncher {
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
     private readonly visits: VisitRepository,
     private readonly runStop: RunStop,
+    @Optional() private readonly sandbox?: SandboxService,
+    @Optional() private readonly documents?: DocumentRepository,
   ) {}
+
+  /**
+   * Makes the images of the run ready before its first launch. A Stop seen before or during the pull ends it
+   * without a launch. Not an attempt: no counter of the run moves.
+   */
+  async prepareImages(run: RunEntity): Promise<RunImages | undefined> {
+    if (!this.sandbox || !this.documents) {
+      return undefined;
+    }
+    assertNotStopped(this.runStop, run.key);
+    const images = await prepareRunImages(this.sandbox, this.documents, run);
+    assertNotStopped(this.runStop, run.key);
+    return images;
+  }
 
   async launch(request: AgentLaunchRequest): Promise<AgentRunResult> {
     assertNotStopped(this.runStop, request.key);
+    await this.prepareImages(request.run);
     const directory = join(request.root, 'data');
     mkdirSync(directory, { recursive: true });
     const sessionFile = join(directory, sessionFileName(request.key, request.step));
