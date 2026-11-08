@@ -1,4 +1,7 @@
-import { chargeStream } from './spend';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { chargeReview, chargeStream } from './spend';
 import { parsePriceMarkdown } from './prices';
 
 const TABLE = parsePriceMarkdown(`
@@ -48,5 +51,17 @@ describe('spend', () => {
     expect(charged?.tokensIn).toBe(250);
     expect(charged?.tokensOut).toBe(250);
     expect(charged?.usd).toBeCloseTo(0.002, 6);
+  });
+
+  it('charges the reviewers of one attempt and ignores the files of an older one', () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-charge-review-'));
+    mkdirSync(join(root, 'data'));
+    const stream = (inputTokens: number): string =>
+      `${JSON.stringify({ type: 'result', usage: { inputTokens, outputTokens: 1 } })}\n`;
+    writeFileSync(join(root, 'data', 'K-1-code-review-quality-zzz-output.txt'), stream(900));
+    writeFileSync(join(root, 'data', 'K-1-code-review-quality-aaa-output.txt'), stream(100));
+    const env = { MODEL_PLAN: 'grok-4.7', MODEL_IMPLEMENT: 'grok-4.7', MODEL_RESEARCH: 'grok-4.7' };
+    const charge = chargeReview(root, 'K-1', env, TABLE, 'aaa');
+    expect(charge?.tokensIn).toBe(100);
   });
 });

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { appendFile, mkdir, readFile } from 'fs/promises';
 import { dirname, join } from 'path';
-import { liveLogBodies } from '../agent/live-output';
+import { stepOutput } from '../core/attempt-output';
 
 /** One line per process. The first line also keeps launches already visible in the log. */
 export async function recordLaunch(outputFile: string, runKey: string, step: string): Promise<void> {
@@ -17,17 +17,17 @@ export async function recordLaunch(outputFile: string, runKey: string, step: str
 }
 
 /** Launches of this step. The record wins. A log from before the record still counts. */
-export function launchCount(root: string, key: string, step: string): number {
+export function launchCount(root: string, key: string, step: string, attemptId: string | null = null): number {
   const recorded = recordedLaunches(root, key, step);
   if (recorded !== null) {
     return recorded;
   }
-  return liveLogBodies(root, key, step).reduce((sum, body) => sum + launchesInLog(body), 0);
+  return launchesInLog(stepOutput(root, key, step, attemptId));
 }
 
 /** A log is still being written. A finished last line is closed even when older launches remain in the record. */
-export function launchOpen(root: string, key: string, step: string): boolean {
-  return liveLogBodies(root, key, step).some((body) => logOpen(body));
+export function launchOpen(root: string, key: string, step: string, attemptId: string | null = null): boolean {
+  return logOpen(stepOutput(root, key, step, attemptId));
 }
 
 function recordedLaunches(root: string, key: string, step: string): number | null {

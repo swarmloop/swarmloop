@@ -2,7 +2,7 @@ import 'reflect-metadata';
 
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync, utimesSync, writeFileSync } from 'fs';
 
 import { mkdtemp, writeFile } from 'fs/promises';
 
@@ -27,6 +27,7 @@ import { PipelineService } from '../../pipeline/pipeline.service';
 
 import { REPORT_CONTINUE, reviewContinue } from './code-review.prompts';
 
+import { selectReviewers } from './review-round';
 import { reply, result, boot, seed, writeEnv } from './code-review.step.spec-helpers';
 
 describe('code-review step', () => {
@@ -475,5 +476,27 @@ describe('code-review step', () => {
     } finally {
       await app.close();
     }
+  });
+
+  it('does not recover an ok from a reviewer file of an older round', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-older-round-'));
+    mkdirSync(join(root, 'data'), { recursive: true });
+    const finished = (text: string): string =>
+      `${JSON.stringify({ type: 'result', result: text })}\nprocess exited 0\n`;
+    // Ids sort opposite to age: round 1 is 'zzz' and says ok, round 2 is 'aaa' and says return.
+    const older = join(root, 'data', 'PROJ-88-code-review-quality-zzz-output.txt');
+    const newer = join(root, 'data', 'PROJ-88-code-review-quality-aaa-output.txt');
+    writeFileSync(older, finished('notes\ndecision: ok\n'));
+    writeFileSync(newer, finished('notes\ndecision: return\n'));
+    utimesSync(older, new Date(1000), new Date(1000));
+    utimesSync(newer, new Date(2000), new Date(2000));
+    const documents = { latestBody: async () => null } as unknown as DocumentRepository;
+    const input = { key: 'PROJ-88', only: undefined, fresh: false, retry: true, same: false, repeated: false };
+    const counts = async (): Promise<boolean> => false;
+    const second = await selectReviewers(documents, root, { ...input, attemptId: 'aaa', counts });
+    expect(second.kept.find((item) => item.kind === 'review_quality')?.decision).toBe('return');
+    const missing = await selectReviewers(documents, root, { ...input, attemptId: 'missing', counts });
+    expect(missing.kept.find((item) => item.kind === 'review_quality')).toBeUndefined();
+    expect(missing.pending.some((reviewer) => reviewer.name === 'quality')).toBe(true);
   });
 });

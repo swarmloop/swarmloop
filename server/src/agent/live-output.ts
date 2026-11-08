@@ -13,7 +13,7 @@ export async function replaceLogFile(destination: string, body: string): Promise
   await rename(temporary, destination);
 }
 
-export { liveLogBody, liveLogBodies, liveLogCurrent, liveLogFinished, liveLogView } from '../core/live-output';
+export { liveLogFinished, logStillOpen } from '../core/live-output';
 
 interface LogUsage {
   tokensIn: number;

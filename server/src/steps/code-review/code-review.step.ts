@@ -35,6 +35,7 @@ import {
   detachForeign,
   foreignReview,
   foreignReviewOf,
+  interruptedAttempt,
   pathMount,
   repoMounts,
   retrying,
@@ -118,8 +119,13 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     return requiredDocument(this.documents, key, ARTIFACTS.implementation.kind);
   }
 
-  charge(key: string, env: SwarmloopEnv, prices: Record<string, ModelPrice>): Promise<Charge | null> {
-    return chargeReview(root(this.config), key, env, prices);
+  charge(
+    key: string,
+    env: SwarmloopEnv,
+    prices: Record<string, ModelPrice>,
+    attemptId: string | null,
+  ): Promise<Charge | null> {
+    return Promise.resolve(chargeReview(root(this.config), key, env, prices, attemptId));
   }
 
   protected override failureVisit(): Partial<VisitDraft> {
@@ -165,6 +171,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     const only = REVIEWERS.some((item) => item.name === options.reviewer) ? options.reviewer : undefined;
     const fresh = ((await ctx.reread(ARTIFACTS.rebaseConflict)) ?? '').trim() === 'review';
     const retry = fresh ? false : await retrying(this.visits, opened);
+    const attemptId = retry ? await interruptedAttempt(this.visits, opened) : null;
     const returned = await returnedNotes(this.documents, opened.run.id);
     const diff = await reviewDiffSection(mounts, await this.checkouts.listDenyPaths());
     const same = sameReviewedDiff(root(this.config), key, diff.patch);
@@ -175,6 +182,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       only,
       fresh,
       retry,
+      attemptId,
       same,
       repeated,
       counts: (kind) => gateCounts(this.documents, opened.run, kind, fingerprint),

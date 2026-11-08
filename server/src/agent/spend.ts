@@ -1,5 +1,4 @@
-import { readFile } from 'fs/promises';
-import { join } from 'path';
+import { stepOutput } from '../core/attempt-output';
 import type { ModelPrice } from './limits';
 import { priceTokens } from './limits';
 import { CODE_REVIEWERS } from '../contract/steps';
@@ -59,12 +58,13 @@ export function chargeStream(model: string, raw: string, table: Record<string, M
   };
 }
 
-export async function chargeReview(
+export function chargeReview(
   root: string,
   key: string,
   env: { MODEL_PLAN: string; MODEL_IMPLEMENT: string; MODEL_RESEARCH: string },
   table: Record<string, ModelPrice>,
-): Promise<Charge | null> {
+  attemptId: string | null,
+): Charge | null {
   let found = false;
   const total: Charge = { tokensIn: 0, tokensOut: 0, usd: 0, priced: true };
   for (const name of REVIEWERS) {
@@ -73,13 +73,7 @@ export async function chargeReview(
     if (!model) {
       continue;
     }
-    let raw = '';
-    try {
-      raw = await readFile(join(root, 'data', `${key}-${step}-output.txt`), 'utf8');
-    } catch {
-      raw = '';
-    }
-    const charge = chargeStream(model, raw, table);
+    const charge = chargeStream(model, stepOutput(root, key, step, attemptId), table);
     if (!charge) {
       continue;
     }

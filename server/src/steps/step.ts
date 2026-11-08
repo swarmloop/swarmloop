@@ -17,7 +17,12 @@ export interface Step {
   readonly capabilities: StepCapabilities;
   describe(env: SwarmloopEnv): StepDescriptor;
   /** Prices a run abandoned in this step. Without it, the model stream is priced. */
-  charge?(key: string, env: SwarmloopEnv, prices: Record<string, ModelPrice>): Promise<Charge | null>;
+  charge?(
+    key: string,
+    env: SwarmloopEnv,
+    prices: Record<string, ModelPrice>,
+    attemptId: string | null,
+  ): Promise<Charge | null>;
   missingInput(key: string, options: StepOptions): Promise<string | null>;
   execute(key: string, options: StepOptions, snapshot?: StepSnapshot): Promise<PipelineResult>;
 }

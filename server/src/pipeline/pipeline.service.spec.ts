@@ -105,7 +105,7 @@ describe('pipeline service', () => {
       await runs.saveRun(seeded);
       const charge = jest.spyOn(app.get(CodeReviewStep), 'charge').mockResolvedValue(null);
       await app.get(PipelineService).onModuleInit();
-      expect(charge).toHaveBeenCalledWith('PROJ-63', expect.anything(), expect.anything());
+      expect(charge).toHaveBeenCalledWith('PROJ-63', expect.anything(), expect.anything(), expect.anything());
       expect((await runs.findRun('PROJ-63'))?.status).toBe('failed');
     } finally {
       await app.close();
