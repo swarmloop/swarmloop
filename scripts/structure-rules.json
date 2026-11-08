@@ -40,6 +40,18 @@
     {
       "file": "deploy/compose.yml",
       "pattern": "(^|[\\s'\\\"])\\.{1,2}/"
+    },
+    {
+      "file": ".github/workflows/release.yml",
+      "pattern": "^\\s*branches\\s*:"
+    },
+    {
+      "file": ".github/workflows/release.yml",
+      "pattern": "^\\s*pull_request\\s*:"
+    },
+    {
+      "file": ".github/workflows/release.yml",
+      "pattern": "^\\s*schedule\\s*:"
     }
   ]
 }

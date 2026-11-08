@@ -1,0 +1,282 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      repo: ${{ steps.tag.outputs.repo }}
+      skip: ${{ steps.published.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate the tag and that it points at a commit on main
+        id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          echo "version=$(node scripts/release-tag.mjs "$TAG" "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+          echo "repo=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - name: Stop when the release is already published
+        id: published
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null || echo missing)"
+          if [ "$draft" = false ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "release $TAG is already published: nothing to do"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: validate
+    if: needs.validate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: swarmloop-server, file: docker/server/Dockerfile, context: . }
+          - { name: swarmloop-dashboard, file: docker/dashboard/Dockerfile, context: . }
+          - { name: swarmloop-agent-claude, file: docker/sandbox/Dockerfile.claude, context: docker/sandbox }
+          - { name: swarmloop-agent-codex, file: docker/sandbox/Dockerfile.codex, context: docker/sandbox }
+          - { name: swarmloop-agent-cursor, file: docker/sandbox/Dockerfile.cursor, context: docker/sandbox }
+          - { name: swarmloop-egress, file: docker/egress/Dockerfile, context: docker/egress }
+    env:
+      IMAGE: ${{ needs.validate.outputs.repo }}/${{ matrix.name }}
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Reuse, build or reject the image under this tag
+        id: plan
+        run: |
+          set -eu
+          existing=""
+          if config="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Image}}' 2>/dev/null)"; then
+            existing="$(jq -r '(if has("config") or has("Config") then . else (to_entries[0].value) end) | (.config // .Config).Labels["org.opencontainers.image.revision"] // "unknown"' <<< "$config")"
+          fi
+          echo "action=$(node scripts/release-tag.mjs classify "$existing" "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        if: steps.plan.outputs.action == 'build'
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            REVISION=${{ github.sha }}
+            SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
+      - name: Record the index digest and CLI version
+        env:
+          NAME: ${{ matrix.name }}
+        run: |
+          set -eu
+          index="$(mktemp)"
+          docker buildx imagetools inspect "$IMAGE:$VERSION" --raw > "$index"
+          digest="sha256:$(sha256sum "$index" | cut -d ' ' -f 1)"
+          rm "$index"
+          cli="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Image}}' \
+            | jq -r '(if has("config") or has("Config") then . else (to_entries[0].value) end) | (.config // .Config).Labels["io.swarmloop.cli-version"] // empty')"
+          jq -n --arg name "$NAME" --arg digest "$digest" --arg cli "$cli" \
+            '{($name): ({digest: $digest} + (if $cli == "" then {} else {cliVersion: $cli} end))}' > "$NAME.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.name }}
+          path: ${{ matrix.name }}.json
+
+  smoke-images:
+    needs: [validate, build]
+    if: needs.validate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        image:
+          - { name: swarmloop-agent-claude, cli: claude }
+          - { name: swarmloop-agent-codex, cli: codex }
+          - { name: swarmloop-agent-cursor, cli: agent }
+          - { name: swarmloop-egress, cli: none }
+    steps:
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: digest-${{ matrix.image.name }}
+      - name: Smoke the image
+        env:
+          NAME: ${{ matrix.image.name }}
+          CLI: ${{ matrix.image.cli }}
+          PLATFORM: linux/${{ matrix.arch }}
+          REPO: ${{ needs.validate.outputs.repo }}
+        run: |
+          set -eu
+          ref="$REPO/$NAME@$(jq -r ".[\"$NAME\"].digest" "$NAME.json")"
+          if [ "$CLI" = none ]; then
+            id="$(docker run -d --platform "$PLATFORM" "$ref")"
+            trap 'docker logs "$id"; docker rm -f "$id"' EXIT
+            for _ in $(seq 1 30); do
+              docker exec "$id" node -e "require('net').connect(3128, '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))" && break
+              sleep 1
+            done
+            docker exec "$id" node -e "require('net').connect(3128, '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))"
+            test "$(docker inspect -f '{{.State.Running}}' "$id")" = true
+          else
+            want="$(jq -r ".[\"$NAME\"].cliVersion" "$NAME.json")"
+            out="$(docker run --rm --platform "$PLATFORM" --entrypoint sh "$ref" -c "$CLI --version")"
+            echo "$out"
+            grep -qF "$want" <<< "$out"
+            docker run --rm --platform "$PLATFORM" --entrypoint sh "$ref" -c 'test -d /opt/swarmloop/bin && test -s /opt/swarmloop/certs/ca-certificates.crt'
+          fi
+
+  smoke-stack:
+    needs: [validate, smoke-images]
+    if: needs.validate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: digests
+      - name: Run the stack from the generated compose file
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          REPO: ${{ needs.validate.outputs.repo }}
+          DOCKER_DEFAULT_PLATFORM: linux/${{ matrix.arch }}
+        run: |
+          set -eu
+          jq -s add digests/*/*.json > components.json
+          node scripts/release-manifest.mjs components.json --version "$VERSION" --commit "$GITHUB_SHA" --repo "$REPO" --out out
+          bash scripts/smoke-stack.sh out/compose.yml out/.env.example
+
+  release:
+    needs: [validate, smoke-images, smoke-stack]
+    if: needs.validate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: digests
+      - name: Generate the artifacts and upload them to a draft release
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          REPO: ${{ needs.validate.outputs.repo }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          jq -s add digests/*/*.json > components.json
+          node scripts/release-manifest.mjs components.json --version "$VERSION" --commit "$GITHUB_SHA" --repo "$REPO" --out out
+          files="out/release-manifest.json out/compose.yml out/.env.example out/INSTALL.md"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" $files --clobber
+          else
+            gh release create "$TAG" $files --draft --verify-tag --title "$TAG" --notes "Install: see INSTALL.md"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest
+          path: out/release-manifest.json
+
+  public-pull:
+    needs: [validate, release]
+    if: needs.validate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-manifest
+      - name: Pull every image without logging in
+        run: |
+          set -u
+          export DOCKER_CONFIG="$(mktemp -d)"
+          failed=0
+          for name in $(jq -r '.components | keys[]' release-manifest.json); do
+            ref="$(jq -r --arg name "$name" '.components[$name]' release-manifest.json)"
+            if ! docker pull "$ref"; then
+              echo "package $name is not public: set its visibility to public in the GHCR package settings"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+  publish:
+    needs: [validate, build, smoke-images, smoke-stack, release, public-pull]
+    if: needs.validate.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the release
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "$TAG" --draft=false

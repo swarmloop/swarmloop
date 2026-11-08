@@ -1,0 +1,23 @@
+{
+  "version": "1.2.3",
+  "images": {
+    "agent-claude": "ghcr.io/acme/swarmloop-agent-claude@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "agent-codex": "ghcr.io/acme/swarmloop-agent-codex@sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "agent-cursor": "ghcr.io/acme/swarmloop-agent-cursor@sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "egress": "ghcr.io/acme/swarmloop-egress@sha256:6666666666666666666666666666666666666666666666666666666666666666"
+  },
+  "commit": "abc1234",
+  "components": {
+    "swarmloop-server": "ghcr.io/acme/swarmloop-server@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "swarmloop-dashboard": "ghcr.io/acme/swarmloop-dashboard@sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "swarmloop-agent-claude": "ghcr.io/acme/swarmloop-agent-claude@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "swarmloop-agent-codex": "ghcr.io/acme/swarmloop-agent-codex@sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "swarmloop-agent-cursor": "ghcr.io/acme/swarmloop-agent-cursor@sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "swarmloop-egress": "ghcr.io/acme/swarmloop-egress@sha256:6666666666666666666666666666666666666666666666666666666666666666"
+  },
+  "cliVersions": {
+    "swarmloop-agent-claude": "2.1.319",
+    "swarmloop-agent-codex": "0.167.0",
+    "swarmloop-agent-cursor": "2025.11.25-d5b3271"
+  }
+}

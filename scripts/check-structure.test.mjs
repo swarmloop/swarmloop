@@ -99,6 +99,20 @@ test('deploy/compose.yml may not build images or mount a source path', () => {
   );
 });
 
+test('release.yml reacts to tags only', () => {
+  const workflowRules = {
+    ...rules,
+    forbidInFile: rules.forbidInFile.filter(({ file }) => file === '.github/workflows/release.yml'),
+  };
+  const check = (text) =>
+    findViolations({ root: makeRoot({ '.github/workflows/release.yml': text }), rules: workflowRules, files: [] });
+
+  assert.deepEqual(check("on:\n  push:\n    tags: ['v*']\n"), []);
+  assert.equal(check('on:\n  push:\n    branches: [main]\n').length, 1);
+  assert.equal(check('on:\n  pull_request:\n').length, 1);
+  assert.equal(check("on:\n  schedule:\n    - cron: '0 0 * * *'\n").length, 1);
+});
+
 test('forbidOutside reports an image name outside the resolver and lets the resolver and its spec keep it', () => {
   const name = ['swarmloop', 'agent', 'claude'].join('-');
   const files = {
