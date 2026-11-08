@@ -18,6 +18,7 @@ import type { InputSpec, StepResult } from '../steps/contract/step-contract';
 import { ResearchStep } from '../steps/research/research.step';
 import { StepKernel } from '../steps/step-kernel';
 import { goldenApp } from '../steps/shared/model-golden.spec-helpers';
+import { recordStepEvent } from '../core/step-event-scope';
 
 const INPUTS = { requirements: { artifact: ARTIFACTS.requirements, need: 'run' } } as const satisfies InputSpec;
 
@@ -82,6 +83,7 @@ const ALL_KINDS: Record<StepEventKind, true> = {
   'context.manifest': true,
   'agent.tool': true,
   'agent.message': true,
+  'host.suspended': true,
   'activity.started': true,
   'activity.finished': true,
 };
@@ -304,6 +306,16 @@ describe('step events', () => {
     ]);
     expect(events[launched + 1]).toMatchObject({ chars: 700, text: 'x'.repeat(600) });
     expect(events[launched + 2]).toMatchObject({ tool: 'shell', target: 'ls', status: 'ok', resultLine: 'exit 0' });
+  });
+
+  it('stores the length of a host suspension that the step did not count', async () => {
+    await seed('E-1');
+    await probe('commit', (ctx) => {
+      recordStepEvent({ kind: 'host.suspended', durationMs: 2_400_000 });
+      return Promise.resolve(finished(ctx));
+    }).execute('E-1');
+    const events = await eventsOf('E-1');
+    expect(events.find((event) => event.kind === 'host.suspended')).toMatchObject({ durationMs: 2_400_000 });
   });
 
   it('names the step a pass goes to for next and for jump', async () => {

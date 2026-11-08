@@ -1,8 +1,7 @@
 import type { SandboxChild, SandboxService } from '../sandbox/sandbox.service';
-import type { Clock } from '../core/clock';
+import type { AwakeTime } from '../core/awake-time';
+import { SAMPLE_MS } from '../core/awake-time';
 import type { KillReason } from './limits';
-
-const SAMPLE_MS = 5_000;
 
 interface AgentProcessHandlers {
   data(chunk: Buffer): void;
@@ -13,6 +12,8 @@ interface AgentProcessHandlers {
 }
 
 interface AgentProcessTimeouts {
+  /** Awake time of this launch. Output touches it before it reaches the handlers. */
+  time: AwakeTime;
   idleLimitMs: number;
   wallLimitMs: number;
   timeout(reason: Extract<KillReason, 'idle' | 'time'>): void;
@@ -27,19 +28,14 @@ export class AgentProcess {
   constructor(
     private readonly child: SandboxChild,
     private readonly sandbox: SandboxService,
-    private readonly clock: Clock,
   ) {
     this.child.stdout?.on('data', this.keepOut);
     this.child.stderr?.on('data', this.keepErr);
     this.child.on('close', this.rememberClose);
   }
 
-  static async spawn(
-    sandbox: SandboxService,
-    clock: Clock,
-    launch: Parameters<SandboxService['spawn']>[0],
-  ): Promise<AgentProcess> {
-    return new AgentProcess(await sandbox.spawn(launch), sandbox, clock);
+  static async spawn(sandbox: SandboxService, launch: Parameters<SandboxService['spawn']>[0]): Promise<AgentProcess> {
+    return new AgentProcess(await sandbox.spawn(launch), sandbox);
   }
 
   get containerName(): string {
@@ -68,26 +64,16 @@ export class AgentProcess {
     for (const chunk of this.earlyErr) {
       handlers.error(chunk);
     }
-    let lastActivity = this.clock.now();
-    const started = lastActivity;
-    const data = (chunk: Buffer): void => {
-      lastActivity = this.clock.now();
-      handlers.data(chunk);
-    };
-    const error = (chunk: Buffer): void => {
-      lastActivity = this.clock.now();
-      handlers.error(chunk);
-    };
+    const data = (chunk: Buffer): void => handlers.data(chunk);
+    const error = (chunk: Buffer): void => handlers.error(chunk);
     this.child.stdout?.on('data', data);
     this.child.stderr?.on('data', error);
     handlers.sample();
     const timer = setInterval(() => {
-      const elapsed = this.clock.now() - started;
-      const idle = this.clock.now() - lastActivity;
       handlers.sample();
-      if (timeouts && elapsed >= timeouts.wallLimitMs) {
+      if (timeouts && timeouts.time.elapsedMs() >= timeouts.wallLimitMs) {
         timeouts.timeout('time');
-      } else if (timeouts && idle >= timeouts.idleLimitMs) {
+      } else if (timeouts && timeouts.time.idleMs() >= timeouts.idleLimitMs) {
         timeouts.timeout('idle');
       } else {
         handlers.tick();

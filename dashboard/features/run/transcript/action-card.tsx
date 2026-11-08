@@ -4,7 +4,10 @@ import { duration } from '../../../lib/format';
 import { Bubble } from './bubble';
 import { httpAction } from './http-action';
 
-type Activity = Extract<StepEvent, { kind: 'attempt.finished' | 'attempt.interrupted' | 'http.call' }>;
+type Activity = Extract<
+  StepEvent,
+  { kind: 'attempt.finished' | 'attempt.interrupted' | 'http.call' | 'host.suspended' }
+>;
 
 export function ActionCard({ event, outcome }: { event: Activity; outcome?: string }): ReactElement {
   if (event.kind === 'http.call') {
@@ -20,6 +23,13 @@ export function ActionCard({ event, outcome }: { event: Activity; outcome?: stri
         }
       >
         {httpAction(event.method, event.url)}
+      </Bubble>
+    );
+  }
+  if (event.kind === 'host.suspended') {
+    return (
+      <Bubble side="left" title="Host suspended" type="activity">
+        {duration(event.durationMs)}, not counted
       </Bubble>
     );
   }

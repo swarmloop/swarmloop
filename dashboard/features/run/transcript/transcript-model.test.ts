@@ -25,6 +25,7 @@ const bodies: [StepEventBody, 'left' | 'right'][] = [
   [{ kind: 'attempt.finished', route: 'next', summary: 'ok' }, 'left'],
   [{ kind: 'attempt.interrupted', route: 'wait', summary: 'stopped' }, 'left'],
   [{ kind: 'http.call', method: 'GET', url: 'https://x.test', statusCode: 200, durationMs: 5 }, 'left'],
+  [{ kind: 'host.suspended', durationMs: 2_400_000 }, 'left'],
   [{ kind: 'agent.launched', ...launch }, 'left'],
   [{ kind: 'agent.finished', ...launch, killReason: null, tokensIn: 1, tokensOut: 2, usd: 0 }, 'left'],
   [{ kind: 'artifact.produced', artifactKind: 'plan', documentId: 2, summary: 'plan: 9 items' }, 'left'],
@@ -199,6 +200,7 @@ describe('actorOf', () => {
     expect(kindOf({ kind: 'http.call', method: 'GET', url: 'https://x.test', statusCode: 200, durationMs: 5 })).toBe(
       'server',
     );
+    expect(kindOf({ kind: 'host.suspended', durationMs: 2_400_000 })).toBe('server');
     expect(kindOf({ kind: 'activity.started', spanId: 'a', title: 'Check out' })).toBe('server');
     expect(kindOf({ kind: 'handoff.received', handoffId: 4, issueIds: [] })).toBe('pipeline');
     expect(kindOf({ kind: 'input.received', name: 'plan', inputKind: 'plan', documentId: 1, summary: 's' })).toBe(

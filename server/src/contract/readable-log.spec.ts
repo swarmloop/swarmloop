@@ -1,4 +1,4 @@
-import { logFinished, readableLog, reviewChipStatus, usageFromLog } from './readable-log';
+import { AgentWorkFeed, logFinished, readableLog, reviewChipStatus, usageFromLog } from './readable-log';
 
 describe('readableLog', () => {
   it('separates each message and keeps the type with an indent', () => {
@@ -109,5 +109,23 @@ describe('readableLog', () => {
     expect(reviewChipStatus(`${prompt}\nprocess exited 1\n`)).toBe('failed');
     const answered = `${prompt}\n${JSON.stringify({ type: 'result', result: 'notes\ndecision: return\n' })}\n`;
     expect(reviewChipStatus(answered)).toBe('waiting');
+  });
+});
+
+describe('AgentWorkFeed', () => {
+  const started = (command: string) =>
+    `${JSON.stringify({ type: 'tool_call', subtype: 'started', tool_call: { shellToolCall: { args: { command } } } })}\n`;
+  const completed = `${JSON.stringify({
+    type: 'tool_call',
+    subtype: 'completed',
+    tool_call: { shellToolCall: { result: { success: {} } } },
+  })}\n`;
+
+  it('settles the tools of a later launch as they arrive after a tool of an earlier launch was left open', () => {
+    const feed = new AgentWorkFeed(['/work'], () => 0);
+    feed.push(started('sleep 100'));
+    expect(feed.finish()).toMatchObject([{ kind: 'tool', target: 'sleep 100', status: 'unfinished' }]);
+    expect(feed.push(started('npm test'))).toEqual([]);
+    expect(feed.push(completed)).toMatchObject([{ kind: 'tool', target: 'npm test', status: 'ok' }]);
   });
 });

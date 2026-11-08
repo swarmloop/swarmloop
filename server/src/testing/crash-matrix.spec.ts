@@ -237,6 +237,40 @@ describe('crash matrix', () => {
     expect((await runs.findRun(KEY))?.status).toBe('failed');
   });
 
+  it('the recovery wait does not count the time the host slept between two timer ticks', async () => {
+    const killAttempt = jest.fn().mockResolvedValue(true);
+    app = await createTestApp({
+      env: { RECONCILE_MS: '100' },
+      sandbox: { attemptRunning: () => Promise.resolve(true), killAttempt },
+    });
+    const reconciler = app.app.get(Reconciler);
+    const original = reconciler.reconcile.bind(reconciler);
+    let ticks = 0;
+    let settle: () => void = () => undefined;
+    jest.spyOn(reconciler, 'reconcile').mockImplementation(async (run) => {
+      await original(run);
+      ticks += 1;
+      settle();
+    });
+    const nextTicks = (count: number): Promise<void> => {
+      const target = ticks + count;
+      return new Promise((done) => {
+        settle = () => ticks >= target && done();
+      });
+    };
+    const runs = app.app.get(RunRepository);
+    const entering = nextTicks(1);
+    await orphan(app);
+    await entering;
+    expect((await runs.findRun(KEY))?.state).toBe('recovering');
+
+    app.clock.advance(600_000);
+    await nextTicks(2);
+
+    expect(killAttempt).not.toHaveBeenCalled();
+    expect((await runs.findRun(KEY))?.state).toBe('recovering');
+  });
+
   it('after-push: a merge request the host already has is stored and never opened again', async () => {
     const found = { project: 'group/app', iid: 7, url: 'https://code.example/group/app/-/merge_requests/7' };
     const openMergeRequest = jest.fn();

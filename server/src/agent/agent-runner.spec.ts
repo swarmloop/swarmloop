@@ -290,12 +290,12 @@ describe('AgentProcessRunner limit continuation', () => {
     const { result, spawn } = await start(
       'cap',
       [
-        { chunks: [chatStream('chat-9', 'time-1')], advance: 120_000 },
+        { chunks: [chatStream('chat-9', 'time-1')], advance: 10_000 },
         { chunks: [chatStream('chat-9', 'crash-1')], code: 1 },
-        { chunks: [chatStream('chat-9', 'time-2')], advance: 120_000 },
+        { chunks: [chatStream('chat-9', 'time-2')], advance: 10_000 },
         { chunks: [doneStream('should-not-run')] },
       ],
-      { resumeChatId: null },
+      { resumeChatId: null, timeLimitMs: 10_000 },
     );
     expect(spawn).toHaveBeenCalledTimes(3);
     expect(promptArg(spawn.mock.calls[0])).toBe('follow up');

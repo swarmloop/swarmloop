@@ -9,6 +9,8 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 import { EventRepository } from '../../history/event.repository';
 import { root } from '../../history/run-paths';
 import { delay } from '../../core/delay';
+import { AwakeTime } from '../../core/awake-time';
+import { recordStepEvent } from '../../core/step-event-scope';
 import type { StepName } from '../../contract/steps';
 import type { OpenedStep } from '../../steps/step-run';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
@@ -115,30 +117,37 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     host: CodeHost,
   ): Promise<{ seen: Seen[]; verdict: Verdict }> {
     const { calls } = ctx;
-    const deadline = this.clock.now() + env.PIPELINE_TIMEOUT_MS;
-    const startDeadline = this.clock.now() + env.PIPELINE_START_TIMEOUT_MS;
+    const awake = this.awakeTime(env);
     assertNotStopped(this.runStop, ctx.opened.run.key);
-    let seen = await this.load(records, calls, host, false);
+    let seen = await awake.run(() => this.load(records, calls, host, false));
     let verdict = verdictOf(seen);
-    while (this.clock.now() < deadline && (verdict === 'wait' || verdict === 'absent' || verdict === 'green')) {
-      const missing = verdict === 'wait' ? null : await this.missingRuns(ctx, seen);
+    while (
+      awake.elapsedMs() < env.PIPELINE_TIMEOUT_MS &&
+      (verdict === 'wait' || verdict === 'absent' || verdict === 'green')
+    ) {
+      const missing = verdict === 'wait' ? null : await awake.run(() => this.missingRuns(ctx, seen));
       if (verdict === 'green' && !(missing && missing.length > 0)) {
         break;
       }
       if (verdict === 'absent' && missing?.length === 0) {
         break;
       }
-      const limit = verdict === 'wait' ? deadline : startDeadline;
-      const pause = Math.min(env.TICK_MS, limit - this.clock.now());
+      const limit = verdict === 'wait' ? env.PIPELINE_TIMEOUT_MS : env.PIPELINE_START_TIMEOUT_MS;
+      const pause = Math.min(env.TICK_MS, limit - awake.elapsedMs());
       if (pause <= 0) {
         break;
       }
       await delay(pause);
       assertNotStopped(this.runStop, ctx.opened.run.key, externalWork(seen));
-      seen = await this.load(records, calls, host, false);
+      seen = await awake.run(() => this.load(records, calls, host, false));
       verdict = verdictOf(seen);
     }
     return { seen, verdict };
+  }
+
+  /** Awake time of one wait: the host sleeping between two polls does not count. */
+  private awakeTime(env: SwarmloopEnv): AwakeTime {
+    return new AwakeTime(this.clock, env.TICK_MS, (ms) => recordStepEvent({ kind: 'host.suspended', durationMs: ms }));
   }
 
   private async load(records: PipelineRef[], calls: HttpCallDraft[], host: CodeHost, jobs = true): Promise<Seen[]> {
@@ -267,15 +276,15 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       }
       return { seen, note: cancelErrorNote(rows, errors), traces: false };
     }
-    const deadline = this.clock.now() + env.PIPELINE_START_TIMEOUT_MS;
+    const awake = this.awakeTime(env);
     let current = seen;
-    while (this.clock.now() < deadline && current.some((item) => isRunning(item))) {
-      const pause = Math.min(env.TICK_MS, deadline - this.clock.now());
+    while (awake.elapsedMs() < env.PIPELINE_START_TIMEOUT_MS && current.some((item) => isRunning(item))) {
+      const pause = Math.min(env.TICK_MS, env.PIPELINE_START_TIMEOUT_MS - awake.elapsedMs());
       if (pause <= 0) {
         break;
       }
       await delay(pause);
-      current = await this.load(records, calls, host, false);
+      current = await awake.run(() => this.load(records, calls, host, false));
     }
     return {
       seen: current,

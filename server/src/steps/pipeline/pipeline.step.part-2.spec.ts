@@ -17,6 +17,7 @@ import { PipelineService } from '../../pipeline/pipeline.service';
 
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 
+import * as delays from '../../core/delay';
 import { FetchFailed } from '../../core/swarmloop-error';
 
 import {
@@ -31,6 +32,18 @@ import {
   seed,
   stampSettled,
 } from './pipeline.step.spec-helpers';
+
+/** `fakeWait` where the host also sleeps through the first wait. */
+function fakeWaitWithSleep(sleepMs: number) {
+  const clock = fakeWait();
+  let waits = 0;
+  jest.mocked(delays.delay).mockImplementation((ms) => {
+    waits += 1;
+    clock.advance(ms + (waits === 1 ? sleepMs : 0));
+    return Promise.resolve();
+  });
+  return clock;
+}
 
 describe('pipeline step', () => {
   it('returns to implement when a job trace cannot be read', async () => {
@@ -350,5 +363,109 @@ describe('pipeline step', () => {
       jest.restoreAllMocks();
       await app.close();
     }
+  });
+
+  describe('when the host sleeps between two polls', () => {
+    const SLEEP_MS = 40 * 60_000;
+
+    it('does not cancel a run for the time the host slept, with a poll interval above 15 s', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-sleep-'));
+      const clock = fakeWaitWithSleep(SLEEP_MS);
+      let reads = 0;
+      const read = jest.fn(() => {
+        reads += 1;
+        return Promise.resolve({ snapshot: shot(reads < 4 ? 'running' : 'success', []), httpCalls: [call('GET')] });
+      });
+      const cancel = jest.fn(() => Promise.resolve({ httpCalls: [] }));
+      const app = await boot(
+        root,
+        read,
+        jest.fn(),
+        'TICK_MS=30000\nPIPELINE_START_TIMEOUT_MS=300000\nPIPELINE_TIMEOUT_MS=1800000\n',
+        cancel,
+        clock,
+      );
+      try {
+        await seed(app, 'PROJ-315');
+        const result = await app.get(PipelineService).step('pipeline', 'PROJ-315');
+        expect(result.exitCode).toBe(0);
+        expect(cancel).not.toHaveBeenCalled();
+        expect((await app.get(RunRepository).findRun('PROJ-315'))?.currentStep).toBe('done');
+      } finally {
+        jest.restoreAllMocks();
+        await app.close();
+      }
+    });
+
+    it('keeps waiting for CI to start for the full start timeout after the host slept', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-sleep-start-'));
+      const clock = fakeWaitWithSleep(SLEEP_MS);
+      const read = jest.fn(() => {
+        return Promise.resolve({ snapshot: null, httpCalls: [call('GET')] });
+      });
+      const app = await boot(
+        root,
+        read,
+        jest.fn(),
+        'TICK_MS=30000\nPIPELINE_START_TIMEOUT_MS=300000\nPIPELINE_TIMEOUT_MS=1800000\n',
+        undefined,
+        clock,
+      );
+      try {
+        await seed(app, 'PROJ-316');
+        const run = await app.get(RunRepository).findRun('PROJ-316');
+        await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
+        const workflow = join(root, 'worktrees', 'PROJ-316', 'demo', '.github', 'workflows');
+        mkdirSync(workflow, { recursive: true });
+        await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
+        const result = await app.get(PipelineService).step('pipeline', 'PROJ-316');
+        expect(result.message).toContain('demo CI did not start');
+        // 300 s of awake time is ten polls; the sleep adds none.
+        expect(read.mock.calls.length).toBeGreaterThanOrEqual(10);
+      } finally {
+        jest.restoreAllMocks();
+        await app.close();
+      }
+    });
+
+    it('still times out when every poll is slow and the host stayed awake', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-slow-'));
+      const clock = fakeWait();
+      let canceled = false;
+      let reads = 0;
+      const read = jest.fn(() => {
+        reads += 1;
+        clock.advance(100_000);
+        const done = canceled || reads > 20;
+        return Promise.resolve({
+          snapshot: shot(canceled ? 'canceled' : reads > 20 ? 'success' : 'running', [
+            job(7, 'unit', false, done ? 'failed' : 'in_progress'),
+          ]),
+          httpCalls: [call('GET')],
+        });
+      });
+      const cancel = jest.fn(() => {
+        canceled = true;
+        return Promise.resolve({ httpCalls: [] });
+      });
+      const app = await boot(
+        root,
+        read,
+        jest.fn(() => Promise.resolve({ trace: 'log 7\n', httpCalls: [] })),
+        'TICK_MS=30000\nPIPELINE_START_TIMEOUT_MS=300000\nPIPELINE_TIMEOUT_MS=300000\n',
+        cancel,
+        clock,
+      );
+      try {
+        await seed(app, 'PROJ-317');
+        await app.get(PipelineService).step('pipeline', 'PROJ-317');
+        // 300 s of awake time is about three polls of 130 s each.
+        expect(read.mock.calls.length).toBeLessThanOrEqual(5);
+        expect(cancel).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.restoreAllMocks();
+        await app.close();
+      }
+    });
   });
 });
