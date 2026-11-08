@@ -29,7 +29,8 @@ export class AttemptMeter {
   private answerLocked = false;
   private resultSeen = false;
   private endedAfterResult = false;
-  private orphans = 0;
+  private backgroundEnded = false;
+  private contentBeforeResult = false;
 
   constructor(private readonly billing: AttemptBilling) {}
 
@@ -43,8 +44,8 @@ export class AttemptMeter {
   /** Adds a piece from `ingest` to the usage and the answer. The caller runs this after the session write, as the stream order requires. */
   count(piece: StreamPiece): void {
     this.endedAfterResult ||= this.resultSeen && piece.taskEnded;
+    this.noteBeforeResult(piece);
     this.resultSeen ||= piece.stops;
-    this.orphans += piece.orphan ? 1 : 0;
     this.tokensIn = this.add(this.tokensIn, piece.tokensIn, piece.addUsage);
     this.tokensOut = this.add(this.tokensOut, piece.tokensOut, piece.addUsage);
     this.cacheRead = this.add(this.cacheRead, piece.cacheRead, piece.addUsage);
@@ -96,13 +97,24 @@ export class AttemptMeter {
     return this.endedAfterResult && answered !== undefined && !answered(this.responseText);
   }
 
-  /** The CLI only reported tasks an earlier process left behind, then ended with an empty result. */
+  /** By structure, not wording: only stopped or killed background events, then an empty result. */
   orphanOnly(): boolean {
-    return this.resultSeen && this.orphans > 0 && this.responseText.trim() === '';
+    return this.resultSeen && this.backgroundEnded && !this.contentBeforeResult && this.responseText.trim() === '';
   }
 
   answer(): string {
     return this.responseText;
+  }
+
+  private noteBeforeResult(piece: StreamPiece): void {
+    if (this.resultSeen || piece.result) {
+      return;
+    }
+    if (piece.backgroundEvent === 'ended') {
+      this.backgroundEnded = true;
+    } else if (piece.backgroundEvent === 'other' || piece.guessKind !== 'none' || piece.text !== null) {
+      this.contentBeforeResult = true;
+    }
   }
 
   private add(current: number, next: number | null, addUsage: boolean): number {

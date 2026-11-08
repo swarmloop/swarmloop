@@ -17,8 +17,8 @@ export interface StreamPiece {
   chatId: string | null;
   /** A background task ended with `stopped` or `killed`. */
   taskEnded: boolean;
-  /** A task notification the CLI sends for work an earlier process left behind. */
-  orphan: boolean;
+  /** A system task or background event: `ended` when every task in it is stopped or killed, `other` otherwise. */
+  backgroundEvent: 'ended' | 'other' | null;
   text: string | null;
   replaceText: boolean;
 }
@@ -64,14 +64,37 @@ export function readStreamLine(line: string): StreamPiece | null {
       record.type === 'thread.started'
         ? stringFrom(record, ['thread_id'])
         : stringFrom(record, ['session_id', 'sessionId', 'chat_id', 'chatId']),
-    taskEnded: isTaskNotification(record) && (record.status === 'stopped' || record.status === 'killed'),
-    orphan: isTaskNotification(record) && JSON.stringify(record).includes(ORPHAN_NOTE),
+    taskEnded: isTaskNotification(record) && isEndedStatus(record.status),
+    backgroundEvent: backgroundEventOf(record),
     text: record.type === 'item.completed' ? (agentMessage(record) ?? text) : (failureText(record) ?? text),
     replaceText: (record.type === 'result' && text !== null) || agentMessage(record) !== null,
   };
 }
 
-const ORPHAN_NOTE = 'Orphaned by a previous Claude Code process exit';
+const BACKGROUND_SUBTYPES = ['task_notification', 'task_updated', 'background_tasks_changed'];
+
+function isEndedStatus(status: unknown): boolean {
+  return status === 'stopped' || status === 'killed';
+}
+
+function backgroundEventOf(record: Record<string, unknown>): StreamPiece['backgroundEvent'] {
+  if (record.type !== 'system' || typeof record.subtype !== 'string' || !BACKGROUND_SUBTYPES.includes(record.subtype)) {
+    return null;
+  }
+  const statuses = taskStatuses(record);
+  return statuses.length > 0 && statuses.every(isEndedStatus) ? 'ended' : 'other';
+}
+
+/** Task statuses of a background event, from `status`, `patch.status` and `tasks[].status`. The summary text is never read. */
+function taskStatuses(record: Record<string, unknown>): unknown[] {
+  const patch = record.patch && typeof record.patch === 'object' ? (record.patch as { status?: unknown }) : {};
+  const tasks = Array.isArray(record.tasks) ? record.tasks : [];
+  return [
+    record.status,
+    patch.status,
+    ...tasks.map((task) => (task && typeof task === 'object' ? (task as { status?: unknown }).status : undefined)),
+  ].filter((status) => status !== undefined);
+}
 
 function isTaskNotification(record: Record<string, unknown>): boolean {
   return record.type === 'system' && record.subtype === 'task_notification';
