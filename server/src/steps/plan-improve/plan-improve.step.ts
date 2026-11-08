@@ -12,7 +12,7 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
-import { withHandoff } from '../shared/handoff';
+import { appendImpact, withHandoff, withImpact } from '../shared/handoff';
 import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { storedPlan } from '../step';
@@ -23,6 +23,7 @@ import { ARTIFACTS } from '../contract/artifacts';
 const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
   repos: lateInput(ARTIFACTS.repos),
+  impact: lateInput(ARTIFACTS.impact),
   addedRepos: lateInput(ARTIFACTS.addedRepos),
   instructions: instructionsInput('plan-improve'),
 } as const satisfies InputSpec;
@@ -65,14 +66,15 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
       join(root(this.config), 'data', sessionFileName(key, 'plan-improve')),
       ctx.opened.run.runtime,
     );
+    const impact = await ctx.reread(ARTIFACTS.impact);
     const full = skillPrompt(
       'plan-improve',
       input.requirements,
       names,
-      withHandoff([{ heading: 'Plan', body: JSON.stringify(plan, null, 2) }], prior),
+      withImpact(withHandoff([{ heading: 'Plan', body: JSON.stringify(plan, null, 2) }], prior), impact),
       mounts,
     );
-    const chosen = continued?.chatId ? PLAN_IMPROVE_FOLLOW_UP : full;
+    const chosen = continued?.chatId ? appendImpact(PLAN_IMPROVE_FOLLOW_UP, impact) : full;
     const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));
     const agentResult = await ctx.launch({ prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`, mounts, sections: ['plan'] });
     const items = reviewedItems(agentResult.responseText, agentResult.output ?? '');

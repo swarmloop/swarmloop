@@ -42,6 +42,19 @@ export function withHandoff(
   return handoff?.trim() ? [...sections, { heading: 'What previous steps did', body: handoff }] : sections;
 }
 
+/** A resumed session's prompt with the `Impact` section added at its end. */
+export function appendImpact(prompt: string, impact: string | null): string {
+  return impact?.trim() ? `${prompt}\n\nImpact:\n${impact.trimEnd()}` : prompt;
+}
+
+/** The `Impact` section a step's prompt carries. Left out when the list is empty. */
+export function withImpact(
+  sections: { heading: string; body: string }[],
+  impact: string | null,
+): { heading: string; body: string }[] {
+  return impact?.trim() ? [...sections, { heading: 'Impact', body: impact }] : sections;
+}
+
 export async function recordHandoff(
   documents: DocumentRepository,
   key: string,

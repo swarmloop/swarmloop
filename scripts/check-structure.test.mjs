@@ -69,3 +69,14 @@ test('skips files under docs/refactor', () => {
 
   assert.deepEqual(violations, []);
 });
+
+test('forbidInFile reports the old sentence in that file only and not in another file', () => {
+  const { file, pattern } = rules.forbidInFile[0];
+  const sentence = `${pattern}.\n`;
+  const root = makeRoot({ [file]: sentence, 'skills/other/SKILL.md': sentence });
+
+  const violations = findViolations({ root, rules, files: [file, 'skills/other/SKILL.md'] });
+
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], new RegExp(`^${file}:1:`));
+});

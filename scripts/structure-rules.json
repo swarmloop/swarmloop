@@ -3,5 +3,11 @@
   "forbidPattern": {
     "pattern": "--prefix (nest|next)\\b|swarmloop-(nest|next)\\b",
     "exclude": ["docs/refactor/"]
-  }
+  },
+  "forbidInFile": [
+    {
+      "file": "skills/code-review/requirements/SKILL.md",
+      "pattern": "A behavior that checklist removes is not a missing requirement"
+    }
+  ]
 }

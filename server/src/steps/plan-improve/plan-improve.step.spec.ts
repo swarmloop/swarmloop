@@ -54,6 +54,28 @@ describe('plan-improve step', () => {
     }
   });
 
+  it('puts the Impact section in the prompt and leaves it out without a list', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-impact-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-58', 'billing-api'), { recursive: true });
+    mkdirSync(join(root, 'worktrees', 'PROJ-59', 'billing-api'), { recursive: true });
+    const agent = jest.fn().mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-58');
+      await seed(app, 'PROJ-59');
+      const run = await app.get(RunRepository).findRun('PROJ-59');
+      await app.get(DocumentRepository).putDocument(run!, 'impact', '- live agent log | step-documents.tsx | kept\n');
+      await app.get(PipelineService).step('plan-improve', 'PROJ-58');
+      await app.get(PipelineService).step('plan-improve', 'PROJ-59');
+      const [plain, withList] = agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt);
+      expect(plain).not.toContain('\nImpact:\n');
+      expect(withList).toContain('\nImpact:\n- live agent log | step-documents.tsx | kept');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('stores a corrected checklist and advances to implementation', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-fix-'));
     await writeEnv(root);

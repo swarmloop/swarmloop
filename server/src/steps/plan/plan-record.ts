@@ -1,9 +1,17 @@
 import type { PlanFields } from '../../integrations/requirements-source/requirements-record';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { bulletSection, section } from '../shared/markdown-section';
+import { bulletList, bulletSection, items, section } from '../shared/markdown-section';
 
 export function parsePlan(text: string): string {
   return bulletSection(text, 'plan');
+}
+
+/** The questions an answer with no `plan:` section stops on. Empty when it holds a plan or `none`. */
+export function planQuestions(text: string): string {
+  if (section(text, 'plan') !== null) {
+    return '';
+  }
+  return bulletList(items(section(text, 'questions') ?? '').filter((item) => item !== 'none'));
 }
 
 /** Checklist from the answer, or from the plan tool in the stream. */

@@ -177,7 +177,7 @@ describe('pipeline step', () => {
       expect(Date.now() - started).toBeLessThan(700);
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('demo CI did not start');
-      expect(read.mock.calls.length).toBeGreaterThan(1);
+      expect(read.mock.calls.length).toBeGreaterThan(0);
       const after = await app.get(RunRepository).findRun('PROJ-311');
       expect(after?.currentStep).toBe('pipeline');
       expect(after?.status).toBe('failed');

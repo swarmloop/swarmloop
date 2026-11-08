@@ -111,7 +111,12 @@ export const ARTIFACTS = {
     summarize: firstLine,
   }),
   answers: artifact('answers', { writers: [], readers: ['research', 'plan'], external: true, summarize: firstLine }),
-  questions: artifact('questions', { writers: ['research'], readers: ['plan'], summarize: firstLine }),
+  questions: artifact('questions', { writers: ['research', 'plan'], readers: ['plan'], summarize: firstLine }),
+  impact: artifact('impact', {
+    writers: ['research'],
+    readers: ['plan', 'plan-improve', 'code-review'],
+    summarize: firstLine,
+  }),
   pipelineRef: artifact('pipeline_ref', {
     writers: ['commit', 'implement'],
     readers: ['branch', 'implement', 'pipeline'],

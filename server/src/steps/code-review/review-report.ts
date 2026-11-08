@@ -14,7 +14,7 @@ import { assertRoute } from '../contract/returns';
 import { routeToEnd } from '../contract/route';
 import type { Route } from '../contract/step-contract';
 import { agentFailure } from '../shared/agent-result';
-import { mergeHandoff, textDocument } from '../shared/handoff';
+import { appendImpact, mergeHandoff, textDocument, withImpact } from '../shared/handoff';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { REPORT_CONTINUE, reportFollowUp } from './code-review.prompts';
 import { decidedOk, reviewModel } from './reviewer';
@@ -47,6 +47,7 @@ export async function writeReport(
   mounts: SandboxMount[],
   requirements: string,
   implementation: string | null,
+  impact: string | null,
   continued: boolean,
   auto?: boolean,
 ): Promise<
@@ -55,12 +56,15 @@ export async function writeReport(
 > {
   const names = mounts.map((mount) => basename(mount.hostPath));
   const brief = reviewBrief(opinions);
-  const sections = [
-    ...(implementation?.trim() ? [{ heading: 'Implementation', body: implementation }] : []),
-    { heading: 'Reviews', body: brief },
-  ];
+  const sections = withImpact(
+    [
+      ...(implementation?.trim() ? [{ heading: 'Implementation', body: implementation }] : []),
+      { heading: 'Reviews', body: brief },
+    ],
+    impact,
+  );
   const prompt = continued
-    ? reportFollowUp(brief, implementation)
+    ? appendImpact(reportFollowUp(brief, implementation), impact)
     : skillPrompt('code-review/report', requirements, names, sections, mounts);
   const model = reviewModel(env);
   const empty: Usage = { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] };
