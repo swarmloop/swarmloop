@@ -165,8 +165,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -f docker/server/Dockerfile -t swarmloop-server .
-      - run: docker build -f docker/dashboard/Dockerfile -t swarmloop-dashboard .
+      - name: Build all images from the PR
+        run: |
+          set -eu
+          args="--build-arg REVISION=${{ github.sha }} --build-arg VERSION=ci --build-arg SOURCE_URL=${{ github.server_url }}/${{ github.repository }}"
+          docker build $args -f docker/server/Dockerfile -t local/swarmloop-server:ci .
+          docker build $args -f docker/dashboard/Dockerfile -t local/swarmloop-dashboard:ci .
+          for runtime in cursor claude codex; do
+            docker build $args -f docker/sandbox/Dockerfile.$runtime -t local/swarmloop-agent-$runtime:ci docker/sandbox
+          done
+          docker build $args -t local/swarmloop-egress:ci docker/egress
+      - name: Start deploy/compose.yml in an empty directory
+        run: |
+          set -eu
+          work="$(mktemp -d)"
+          mkdir -p "$work/home" "$work/checkouts/fixture"
+          git -C "$work/checkouts/fixture" init -q
+          git -C "$work/checkouts/fixture" -c user.name=ci -c user.email=ci@example.com commit -q --allow-empty -m fixture
+          mkdir "$work/stack"
+          cp deploy/compose.yml "$work/stack/compose.yml"
+          cp deploy/.env.example "$work/stack/.env"
+          cd "$work/stack"
+          export SWARMLOOP_REGISTRY=local SWARMLOOP_VERSION=ci SWARMLOOP_HOME="$work/home" CHECKOUTS_ROOT="$work/checkouts"
+          trap 'docker compose logs; docker compose down -v' EXIT
+          docker compose up -d --wait
+          curl -fsS http://127.0.0.1:3920/health
+          curl -fsS http://127.0.0.1:3921/ > /dev/null
+          curl -fsS http://127.0.0.1:3921/swarmloop-api/health
+          SWARMLOOP_SOCKET_URL=http://live.example:4000 docker compose up -d --wait
+          curl -fsS http://127.0.0.1:3921/ | grep -F 'http://live.example:4000'
 
   structure-check:
     runs-on: ubuntu-latest

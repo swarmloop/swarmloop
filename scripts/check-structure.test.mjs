@@ -80,3 +80,21 @@ test('forbidInFile reports the old sentence in that file only and not in another
   assert.equal(violations.length, 1);
   assert.match(violations[0], new RegExp(`^${file}:1:`));
 });
+
+test('deploy/compose.yml may not build images or mount a source path', () => {
+  const composeRules = {
+    ...rules,
+    forbidInFile: rules.forbidInFile.filter(({ file }) => file === 'deploy/compose.yml'),
+  };
+  const check = (text) =>
+    findViolations({ root: makeRoot({ 'deploy/compose.yml': text }), rules: composeRules, files: [] });
+
+  assert.equal(check('services:\n  server:\n    build:\n      context: .\n').length > 0, true);
+  assert.equal(check('services:\n  server:\n    volumes:\n      - ./server:/app\n').length, 1);
+  assert.deepEqual(
+    check(
+      'services:\n  server:\n    image: ghcr.io/swarmloop/swarmloop-server:1\n    volumes:\n      - ${HOME_DIR}/data:/app/data\n',
+    ),
+    [],
+  );
+});

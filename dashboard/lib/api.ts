@@ -1,8 +1,9 @@
+import { apiBaseUrl } from './runtime-config';
+
 function apiUrl(path: string): string {
   const suffix = path.startsWith('/') ? path : `/${path}`;
   if (typeof window === 'undefined') {
-    const base = process.env.SWARMLOOP_API_URL ?? 'http://127.0.0.1:3920';
-    return `${base}${suffix}`;
+    return `${apiBaseUrl()}${suffix}`;
   }
   return `/swarmloop-api${suffix}`;
 }

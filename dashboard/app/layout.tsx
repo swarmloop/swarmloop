@@ -1,5 +1,6 @@
 import localFont from 'next/font/local';
 import InitColorSchemeScript from '@mui/material/InitColorSchemeScript';
+import { socketUrl } from '../lib/runtime-config';
 import { DashboardShell } from './dashboard-shell';
 import { ThemeRegistry } from './theme-registry';
 
@@ -20,11 +21,21 @@ const mono = localFont({
   variable: '--font-mono',
 });
 
+// The socket URL comes from the env at request time, so the page cannot be prerendered.
+export const dynamic = 'force-dynamic';
+
 export const metadata = { title: 'swarmloop' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__SWARMLOOP_SOCKET__=${JSON.stringify(socketUrl()).replace(/</g, '\\u003c')};`,
+          }}
+        />
+      </head>
       <body className={`${sans.variable} ${mono.variable}`}>
         <InitColorSchemeScript attribute="data" defaultMode="system" />
         <ThemeRegistry>

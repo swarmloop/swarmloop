@@ -8,6 +8,7 @@ RUN apt-get update \
   && chown sandbox:sandbox /work
 
 # /home/sandbox is a tmpfs at run time, so the binary lives outside it.
+ARG CODEX_VERSION=0.167.0
 RUN set -eu \
   && arch="$(uname -m)" \
   && case "$arch" in \
@@ -16,8 +17,8 @@ RUN set -eu \
     *) echo "unsupported CPU: $arch" >&2; exit 1 ;; \
   esac \
   && mkdir -p /tmp/codex /opt/swarmloop/codex /opt/swarmloop/bin \
-  && curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-${triple}.tar.gz" -o /tmp/codex/codex.tar.gz \
-  && curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-code-mode-host-${triple}.tar.gz" -o /tmp/codex/host.tar.gz \
+  && curl -fsSL "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-${triple}.tar.gz" -o /tmp/codex/codex.tar.gz \
+  && curl -fsSL "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-code-mode-host-${triple}.tar.gz" -o /tmp/codex/host.tar.gz \
   && tar -xzf /tmp/codex/codex.tar.gz -C /tmp/codex \
   && tar -xzf /tmp/codex/host.tar.gz -C /tmp/codex \
   && mv "/tmp/codex/codex-${triple}" /opt/swarmloop/codex/codex-bin \
@@ -49,5 +50,14 @@ RUN mkdir -p /opt/swarmloop/certs \
   && chmod 755 /opt/swarmloop/bin/codex \
   && ln -sfn /opt/swarmloop/bin/codex /usr/local/bin/codex
 
+# The build fails when the installed CLI is not the pinned version.
+RUN /opt/swarmloop/codex/codex-bin --version | grep -qF "$CODEX_VERSION"
+ARG SOURCE_URL=unknown
+ARG REVISION=unknown
+ARG VERSION=dev
+LABEL org.opencontainers.image.source=$SOURCE_URL \
+      org.opencontainers.image.revision=$REVISION \
+      org.opencontainers.image.version=$VERSION \
+      io.swarmloop.cli-version=$CODEX_VERSION
 USER sandbox
 WORKDIR /work

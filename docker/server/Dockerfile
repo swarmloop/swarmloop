@@ -31,6 +31,14 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY skills /app/skills
+COPY scripts/agent-env-probe.sh /app/scripts/agent-env-probe.sh
+
+ARG SOURCE_URL=unknown
+ARG REVISION=unknown
+ARG VERSION=dev
+LABEL org.opencontainers.image.source=$SOURCE_URL \
+      org.opencontainers.image.revision=$REVISION \
+      org.opencontainers.image.version=$VERSION
 
 ENV SWARMLOOP_ROOT=/app
 EXPOSE 3920
