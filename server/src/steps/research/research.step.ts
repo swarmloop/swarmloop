@@ -62,7 +62,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     const sections = withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior);
     const mounts = mountsForStep(root(this.config), ctx.opened.run.key, names, null);
     const full = skillPrompt('research', input.requirements, names, sections, mounts);
-    const agentResult = await ctx.launch({ prompt: full, mounts, continuePrompt: RESEARCH_CONTINUE });
+    const agentResult = await ctx.launch({ prompt: full, mounts, continuePrompt: RESEARCH_CONTINUE, sections: ['questions'] });
     const parsed = parseResearch(agentResult.responseText);
     const repos = renderProjects(names);
     const paused = parsed.questions !== '';

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { mkdtemp, readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -11,6 +11,9 @@ import { SystemClock } from '../core/clock';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import type { AgentRunInput } from './agent-runner';
 import { AGENT_CONTINUE, AgentProcessRunner, readSession } from './agent-runner';
+import { AGENT_BACKGROUND_KILLED_CONTINUE } from './agent-session';
+import { agentStateDir } from '../sandbox/sandbox-launch';
+import { sessionHome } from '../history/session-group';
 import * as limits from './limits';
 import { RunStop } from './run-stop';
 
@@ -309,6 +312,76 @@ describe('AgentProcessRunner limit continuation', () => {
   });
 });
 
+describe('AgentProcessRunner ended early', () => {
+  const claude = { RUNTIME: 'claude' } as const;
+  const answered = doneStream('implementation:\n- changed it\n');
+
+  it('relaunches once in the same chat with the foreground follow-up when background work was killed', async () => {
+    const { result, spawn } = await start(
+      'early',
+      [{ chunks: [killedStream('chat-9')] }, { chunks: [answered] }],
+      { resumeChatId: null, answered: (text) => text.includes('implementation:') },
+      claude,
+    );
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(promptArg(spawn.mock.calls[1])).toBe(AGENT_BACKGROUND_KILLED_CONTINUE);
+    expect(resumeArg(spawn.mock.calls[1])).toBe('chat-9');
+    expect(result.calls).toBe(2);
+    expect(result.backgroundKilled).toBe(false);
+    expect(result.responseText).toContain('implementation:');
+  });
+
+  it('relaunches only once and reports the kill when the second answer ends early too', async () => {
+    const { result, spawn } = await start(
+      'early-twice',
+      [{ chunks: [killedStream('chat-9')] }, { chunks: [killedStream('chat-9')] }, { chunks: [answered] }],
+      { resumeChatId: null, answered: (text) => text.includes('implementation:') },
+      claude,
+    );
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(result.backgroundKilled).toBe(true);
+  });
+
+  it('does not treat an answer as ended early when the launch names no sections', async () => {
+    const { result, spawn } = await start('early-none', [{ chunks: [killedStream('chat-9')] }], {}, claude);
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(result.backgroundKilled).toBe(false);
+  });
+
+  it('does not count an orphan-only resumed output as an attempt', async () => {
+    const orphan = {
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'b1',
+      status: 'stopped',
+      summary: 'Orphaned by a previous Claude Code process exit',
+    };
+    const { result, spawn } = await start(
+      'orphan',
+      [{ chunks: [`${JSON.stringify(orphan)}\n${doneStream('')}`] }, { chunks: [answered] }],
+      { resumeChatId: 'chat-1', answered: (text) => text.includes('implementation:') },
+      { ...claude, MAX_LAUNCHES: 1 },
+    );
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(promptArg(spawn.mock.calls[1])).toBe(AGENT_BACKGROUND_KILLED_CONTINUE);
+    expect(resumeArg(spawn.mock.calls[1])).toBe('chat-1');
+    expect(result.responseText).toContain('implementation:');
+  });
+
+  it.each([null, 'chat-1'])('writes the hook files into the state directory for resume %s', async (resumeChatId) => {
+    const { root } = await start('home', [{ chunks: [answered] }], { resumeChatId }, claude);
+    const state = agentStateDir(root, 'run1', sessionHome('implement'));
+    expect(existsSync(join(state, '.claude', 'settings.json'))).toBe(true);
+    expect(existsSync(join(state, '.claude', 'deny-background.sh'))).toBe(true);
+  });
+});
+
+function killedStream(chatId: string): string {
+  const killed = { type: 'system', subtype: 'task_notification', task_id: 'b1', status: 'killed', summary: 'tests' };
+  const talk = { type: 'assistant', message: { content: [{ type: 'text', text: "I'll report when it ends" }] } };
+  return `${chatStream(chatId)}${JSON.stringify(talk)}\n${doneStream("I'll report when it ends")}${JSON.stringify(killed)}\n`;
+}
+
 async function start(
   label: string,
   steps: { chunks: string[]; code?: number; advance?: number }[],
@@ -319,6 +392,7 @@ async function start(
   result: Awaited<ReturnType<AgentProcessRunner['run']>>;
   spawn: jest.Mock<Promise<EventEmitter>, unknown[]>;
   outputFile: string;
+  root: string;
 }> {
   const root = await mkdtemp(join(tmpdir(), `swarmloop-agent-${label}-`));
   const outputFile = join(root, 'data', 'run1-implement-output.txt');
@@ -338,7 +412,7 @@ async function start(
   const runner = new AgentProcessRunner(config(root, env), new SystemClock(), sandbox(spawn), stop);
   try {
     const result = await runner.run(input(root, outputFile, patch));
-    return { result, spawn, outputFile };
+    return { result, spawn, outputFile, root };
   } finally {
     clock?.mockRestore();
   }
@@ -366,11 +440,13 @@ function doneStream(text: string): string {
 }
 
 function writePriceCache(root: string): void {
-  writeFileSync(
-    join(root, 'data', 'price-cache-cursor.json'),
-    `${JSON.stringify({
-      fetchedAt: new Date().toISOString(),
-      prices: { m: { inputPerMillion: 1, outputPerMillion: 1, cacheReadPerMillion: 0, cacheWritePerMillion: 0 } },
-    })}\n`,
-  );
+  for (const runtime of ['cursor', 'claude']) {
+    writeFileSync(
+      join(root, 'data', `price-cache-${runtime}.json`),
+      `${JSON.stringify({
+        fetchedAt: new Date().toISOString(),
+        prices: { m: { inputPerMillion: 1, outputPerMillion: 1, cacheReadPerMillion: 0, cacheWritePerMillion: 0 } },
+      })}\n`,
+    );
+  }
 }

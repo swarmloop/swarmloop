@@ -25,6 +25,8 @@ describe('ClaudeRuntime', () => {
       '--model',
       'grok-4.7',
       '--verbose',
+      '--disallowedTools',
+      'Monitor,ScheduleWakeup,CronCreate,CronDelete,CronList,RemoteTrigger',
       '--permission-mode',
       'plan',
       'read the worktrees',
@@ -48,6 +50,8 @@ describe('ClaudeRuntime', () => {
       '--resume',
       'chat-1',
       '--verbose',
+      '--disallowedTools',
+      'Monitor,ScheduleWakeup,CronCreate,CronDelete,CronList,RemoteTrigger',
       '--dangerously-skip-permissions',
       'write the server',
     ]);

@@ -16,6 +16,7 @@ import type { StepContext } from './base-step';
 import { outputDrafts } from './contract/output-writer';
 import { routeToEnd } from './contract/route';
 import type { AgentProfile, InputSpec, StepDescriptor, StepInput, StepResult } from './contract/step-contract';
+import { ERROR_CODES } from '../contract/error-codes';
 import { agentFailure, combineAgentResults, refusedWrite, withRefusal } from './shared/agent-result';
 import type { AgentLauncher } from './shared/agent-launcher';
 import { recordHandoff } from './shared/handoff';
@@ -53,6 +54,8 @@ export interface ModelStepContext {
     label?: string;
     continuePrompt?: string;
     resume?: boolean;
+    /** The sections the answer must hold. A kill of background work that leaves one out fails the step as ended early. */
+    sections?: string[];
     project?: ProjectLaunch;
   }) => Promise<AgentRunResult>;
 }
@@ -221,6 +224,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       allowHosts: launch.allowHosts,
       resume: launch.resume,
       continuePrompt: launch.continuePrompt,
+      sections: launch.sections,
       project: launch.project,
     });
     run.prompt = run.prompt ? `${run.prompt}\n\n${prompt}` : prompt;
@@ -230,6 +234,13 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     const failed = agentFailure(result, this.name, run.profile.mode);
     if (failed) {
       run.launchError = new SwarmloopError(failed);
+      throw run.launchError;
+    }
+    if (result.backgroundKilled) {
+      run.launchError = new SwarmloopError(
+        `${this.name} failed: the agent ended its turn with background work still running`,
+        { code: ERROR_CODES.AGENT_ENDED_EARLY, category: 'model' },
+      );
       throw run.launchError;
     }
     return result;

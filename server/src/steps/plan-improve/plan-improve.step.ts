@@ -74,7 +74,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     );
     const chosen = continued?.chatId ? PLAN_IMPROVE_FOLLOW_UP : full;
     const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));
-    const agentResult = await ctx.launch({ prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`, mounts });
+    const agentResult = await ctx.launch({ prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`, mounts, sections: ['plan'] });
     const items = reviewedItems(agentResult.responseText, agentResult.output ?? '');
     const next = { ...plan, items: items.length > 0 ? items : plan.items, decision: 'approve' as const };
     const summary = summaryOr(

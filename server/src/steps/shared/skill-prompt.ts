@@ -83,6 +83,9 @@ export const PLAN_EXECUTION_RULE = [
 
 export const AGENT_LANGUAGE_RULE = 'Always write in English, even when the request is in another language.';
 
+export const AGENT_FOREGROUND_RULE =
+  'Run every command in the foreground and wait for it. When your answer ends, the process ends.';
+
 function sourceState(hostPath: string): string {
   try {
     const entries = readdirSync(hostPath).filter((name) => name !== '.git');

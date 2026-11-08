@@ -1,9 +1,15 @@
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
-import type { AgentPrintInput, EgressCredential, RuntimeKeys } from '../agent-runtime';
+import type { AgentPrintInput, EgressCredential, HomeFile, RuntimeKeys } from '../agent-runtime';
+import { DENY_BACKGROUND_HOOK, DENY_BACKGROUND_SCRIPT } from './claude-hook';
 
 export const CLAUDE_KEY_PLACEHOLDER = 'sk-ant-api03-swarmloop-egress-placeholder';
 export const CLAUDE_OAUTH_PLACEHOLDER = 'sk-ant-oat01-swarmloop-egress-placeholder';
+
+/** Tools that start work or a trigger that cannot outlive a print-mode turn. */
+const CLAUDE_DISALLOWED_TOOLS = 'Monitor,ScheduleWakeup,CronCreate,CronDelete,CronList,RemoteTrigger';
+
+const HOOK_DIR = '.claude';
 
 export class ClaudeRuntime extends AbstractAgentRuntime {
   readonly name = 'claude' as const;
@@ -50,8 +56,26 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
     return '--include-partial-messages';
   }
 
+  /** The state directory is the container's /home/sandbox, so the hook runs from there. */
+  override homeFiles(): HomeFile[] {
+    const settings = {
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: 'Bash',
+            hooks: [{ type: 'command', command: `sh /home/sandbox/${HOOK_DIR}/${DENY_BACKGROUND_HOOK}` }],
+          },
+        ],
+      },
+    };
+    return [
+      { path: `${HOOK_DIR}/settings.json`, content: `${JSON.stringify(settings, null, 2)}\n`, mode: 0o644 },
+      { path: `${HOOK_DIR}/${DENY_BACKGROUND_HOOK}`, content: DENY_BACKGROUND_SCRIPT, mode: 0o755 },
+    ];
+  }
+
   protected override appendPrintFlags(args: string[], input: AgentPrintInput): void {
-    args.push('--verbose');
+    args.push('--verbose', '--disallowedTools', CLAUDE_DISALLOWED_TOOLS);
     if (input.mode === 'plan' || input.mode === 'ask') {
       args.push('--permission-mode', 'plan');
       return;

@@ -19,6 +19,13 @@ export interface AgentPrintInput {
   approveMcps?: boolean;
 }
 
+/** A file a launch needs in the CLI home, relative to the state directory. */
+export interface HomeFile {
+  path: string;
+  content: string;
+  mode: number;
+}
+
 export interface AgentTerminalInput {
   model: string;
   workspace: string;
@@ -47,6 +54,8 @@ export interface AgentRuntime {
   briefArgs(): string[];
   printArgs(input: AgentPrintInput): string[];
   terminalArgs(input: AgentTerminalInput): string[];
+  /** Files written into the CLI home before every print launch. */
+  homeFiles(): HomeFile[];
   /** The credential for a container behind the egress proxy. */
   egressCredential(credential: { name: string; value: string }, api: string): EgressCredential;
 }

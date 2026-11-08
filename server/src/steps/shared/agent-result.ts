@@ -20,6 +20,7 @@ export function combineAgentResults(results: AgentRunResult[]): AgentRunResult |
     tokensOut: results.reduce((sum, item) => sum + item.tokensOut, 0),
     usd: results.reduce((sum, item) => sum + item.usd, 0),
     killReason: last?.killReason ?? null,
+    backgroundKilled: last?.backgroundKilled ?? false,
     exitCode: last?.exitCode ?? 0,
     output: foldedOutput(results),
     resumed: results.some((item) => item.resumed),
