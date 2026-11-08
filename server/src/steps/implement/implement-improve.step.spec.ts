@@ -278,11 +278,36 @@ describe('implement-improve step', () => {
     }
   });
 
+  it('starts a fresh chat with the full prompt when the agent state of the implement chat is gone', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-gone-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-73', 'billing-api');
+    mkdirSync(join(root, 'data'), { recursive: true });
+    writeFileSync(
+      join(root, 'data', 'PROJ-73-implement-session.json'),
+      `${JSON.stringify({ runtime: 'cursor', chatId: 'implement-chat', resumed: true, completed: true, killReason: null, usd: 1 })}\n`,
+    );
+    const agent = jest.fn().mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-73');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-73');
+      expect(done.exitCode).toBe(0);
+      const input = agent.mock.calls[0]?.[0] as AgentRunInput;
+      expect(input.resumeChatId).toBeNull();
+      expect(input.prompt).toContain('# Implement improve');
+      expect(input.prompt).toContain('Ship the field');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('continues the implement chat with the follow-up', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-resume-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-73', 'billing-api');
     mkdirSync(join(root, 'data'), { recursive: true });
+    mkdirSync(join(root, 'data', 'agent-state', 'PROJ-73', 'implement'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-73-implement-session.json'),
       `${JSON.stringify({ runtime: 'cursor', chatId: 'implement-chat', resumed: true, completed: true, killReason: null, usd: 1 })}\n`,
@@ -312,6 +337,7 @@ describe('implement-improve step', () => {
 
     async function chat(root: string, key: string): Promise<void> {
       mkdirSync(join(root, 'data'), { recursive: true });
+      mkdirSync(join(root, 'data', 'agent-state', key, 'implement'), { recursive: true });
       writeFileSync(
         join(root, 'data', `${key}-implement-session.json`),
         `${JSON.stringify({ runtime: 'cursor', chatId: 'implement-chat', resumed: true, completed: true, killReason: null, usd: 1 })}\n`,

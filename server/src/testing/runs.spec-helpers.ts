@@ -24,6 +24,7 @@ import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { RunCommandsService } from '../api/run-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
 import { RunRebaseService } from '../api/run-rebase.service';
+import { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
 
 const agent = { runtime: 'claude', model: 'opus', mode: 'agent', timeLimitMs: 1000, session: 'fresh' as const };
@@ -86,6 +87,7 @@ export async function boot(
       RunStop,
       RunRebaseService,
       RunRebase,
+      { provide: WorkspaceGuard, useValue: { ensureForRequest: async () => undefined } },
       { provide: RunRebaseEnvironment, useExisting: EnvironmentService },
       { provide: EnvironmentService, useValue: { refreshAfterRebase: jest.fn().mockResolvedValue(undefined) } },
       { provide: PipelineService, useValue: { claimed: () => false, ...pipeline } },

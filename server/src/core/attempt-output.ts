@@ -28,6 +28,13 @@ function isAttemptFile(name: string, key: string, step: string): boolean {
   );
 }
 
+/** True for any output file of this run: one per attempt, or the single file of a run from before attempts. */
+export function isOutputFileOf(name: string, key: string): boolean {
+  return [...STEPS, ...REVIEW_STEPS, 'code-review-report', 'chat'].some(
+    (step) => name === `${key}-${step}-output.txt` || isAttemptFile(name, key, step),
+  );
+}
+
 /** The file of one attempt, else (without an id) the newest attempt file, else the single file of a run from before attempts. */
 export function stepOutputPath(root: string, key: string, step: string, attemptId: string | null): string | null {
   const own = attemptId ? attemptOutputPath(root, key, step, attemptId) : null;

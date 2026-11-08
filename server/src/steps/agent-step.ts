@@ -53,6 +53,8 @@ export interface ModelStepContext {
     allowHosts?: string[];
     label?: string;
     continuePrompt?: string;
+    /** The full prompt, for the fresh chat that starts when the CLI no longer has the stored one. */
+    freshPrompt?: string;
     resume?: boolean;
     /** The sections the answer must hold. A kill of background work that leaves one out fails the step as ended early. */
     sections?: string[];
@@ -205,9 +207,9 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
   private async launch(run: ModelRun, launch: Parameters<ModelStepContext['launch']>[0]): Promise<AgentRunResult> {
     const instructions =
       launch.resume === false ? null : await this.documents.latestBody(run.key, INSTRUCTIONS.of(this.name));
-    const prompt = instructions?.trim()
-      ? `${launch.prompt}\n\nLatest user instructions:\n${instructions}`
-      : launch.prompt;
+    const withInstructions = (text: string): string =>
+      instructions?.trim() ? `${text}\n\nLatest user instructions:\n${instructions}` : text;
+    const prompt = withInstructions(launch.prompt);
     const result = await this.launcher.launch({
       root: root(this.config),
       run: run.opened.run,
@@ -224,6 +226,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       allowHosts: launch.allowHosts,
       resume: launch.resume,
       continuePrompt: launch.continuePrompt,
+      freshPrompt: launch.freshPrompt === undefined ? undefined : withInstructions(launch.freshPrompt),
       sections: launch.sections,
       project: launch.project,
     });

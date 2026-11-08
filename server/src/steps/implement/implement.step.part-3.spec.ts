@@ -132,6 +132,7 @@ describe('implement step', () => {
     await writeEnv(root);
     featureTree(root, 'PROJ-148', 'billing-api');
     mkdirSync(join(root, 'data'), { recursive: true });
+    mkdirSync(join(root, 'data', 'agent-state', 'PROJ-148', 'implement'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-148-implement-session.json'),
       JSON.stringify({ runtime: 'cursor', chatId: 'impl-chat', completed: true, usd: 0 }),
@@ -172,6 +173,7 @@ describe('implement step', () => {
     featureTree(root, 'PROJ-142', 'billing-api');
     const agent = jest.fn(async (_input: AgentRunInput) => {
       mkdirSync(join(root, 'data'), { recursive: true });
+      mkdirSync(join(root, 'data', 'agent-state', 'PROJ-142', 'implement'), { recursive: true });
       writeFileSync(
         join(root, 'data', 'PROJ-142-implement-session.json'),
         `${JSON.stringify({ runtime: 'cursor', chatId: 'impl-chat', resumed: true, completed: true, killReason: null, usd: 0 })}\n`,

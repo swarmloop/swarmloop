@@ -64,6 +64,7 @@ describe('chat', () => {
       { assertReady: async () => undefined } as never,
       new AgentLauncher({ run: agent } as never, visitRepository as never, new RunStop()),
       { block: async () => 'Services:\nJira PROJ-1: Ship the field' } as never,
+      { ensureForRequest: async () => undefined } as never,
     );
     const spoken = await chat.speak('PROJ-1', {
       prompt: 'what is open?',
@@ -107,6 +108,7 @@ describe('chat', () => {
       {
         block: async () => '',
       } as never,
+      { ensureForRequest: async () => undefined } as never,
     );
     await expect(chat.speak('PROJ-1', { prompt: 'hello' })).rejects.toBeInstanceOf(ConflictException);
   });
@@ -127,6 +129,7 @@ describe('chat', () => {
       {
         block: async () => '',
       } as never,
+      { ensureForRequest: async () => undefined } as never,
     );
     await expect(chat.speak('PROJ-1', { prompt: '  ' })).rejects.toBeInstanceOf(BadRequestException);
   });

@@ -98,6 +98,15 @@ describe('env schema', () => {
     expect(missing.error?.message).toContain('missing');
   });
 
+  it('defaults the retention, disk and docker settings and rejects a negative retention', () => {
+    const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
+    expect(value).toMatchObject({ RETAIN_DONE_DAYS: 3, MIN_FREE_GB: 10, DOCKER_PRUNE: true });
+    const off = envSchema.validate({ ...complete, DOCKER_PRUNE: 'false' }, { convert: true });
+    expect(off.value.DOCKER_PRUNE).toBe(false);
+    const bad = envSchema.validate({ ...complete, RETAIN_DONE_DAYS: -1 }, { convert: true });
+    expect(bad.error?.message).toContain('RETAIN_DONE_DAYS');
+  });
+
   it('provides the validated env through AppConfig', async () => {
     const config = await compileWith(complete);
     expect(config.env).toMatchObject({

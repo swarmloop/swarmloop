@@ -1,3 +1,5 @@
+import { ERROR_CODES } from './error-codes';
+
 /** The honest state of a run, next to the older `status`. */
 export const RUN_STATES = [
   'idle',
@@ -47,6 +49,10 @@ const RESUMABLE_BLOCKS: readonly string[] = [
   REASON.loopLimit,
   REASON.stopped,
   REASON.ciLogUnavailable,
+  ERROR_CODES.DISK_LOW,
+  ERROR_CODES.WORKSPACE_LOST,
+  ERROR_CODES.BRANCH_IN_USE,
+  ERROR_CODES.BRANCH_DIVERGED,
 ];
 
 /** The one place that says which actions a state allows. Availability follows what the dashboard offered before. */

@@ -1,4 +1,9 @@
-import { readFile, writeFile } from 'fs/promises';
+import { existsSync } from 'fs';
+import { readFile, rm, writeFile } from 'fs/promises';
+import { join } from 'path';
+import { recordStepEvent } from '../core/step-event-scope';
+import { sessionFileName, sessionHome } from '../history/session-group';
+import { agentStateDir } from '../sandbox/sandbox-launch';
 import { callsExceeded, retryCrash } from './limits';
 import type { KillReason, SessionState } from './limits';
 import type { AgentRunResult } from './agent-result';
@@ -22,6 +27,60 @@ export async function readSession(path: string, runtime: string): Promise<Sessio
 
 export async function writeSession(path: string, runtime: string, session: SessionState): Promise<void> {
   await writeFile(path, `${JSON.stringify({ ...session, runtime })}\n`);
+}
+
+/** True when a chat id is stored but the CLI state that holds the chat is gone, as after retention of a done run. */
+export function chatStateRemoved(root: string, key: string, step: string, session: SessionState | null): boolean {
+  return Boolean(session?.chatId) && !existsSync(agentStateDir(root, key, sessionHome(step)));
+}
+
+/** The stored session of a step, or null when its chat cannot be resumed: then the step starts a fresh chat. */
+export async function resumableChat(
+  root: string,
+  key: string,
+  step: string,
+  runtime: string,
+): Promise<SessionState | null> {
+  const session = await readSession(join(root, 'data', sessionFileName(key, step)), runtime);
+  return chatStateRemoved(root, key, step, session) ? null : session;
+}
+
+const MISSING_CHAT =
+  /(?:chat|session|conversation)\b[^\n]{0,80}\b(?:not found|does not exist|doesn't exist|no such|could not be found)|no (?:chat|session|conversation) found/i;
+
+/** True when the CLI answered that the chat it was asked to resume does not exist. */
+export function chatMissingAnswer(attempt: AgentRunResult): boolean {
+  return attempt.resumed && attempt.exitCode !== 0 && MISSING_CHAT.test(attempt.output ?? '');
+}
+
+/**
+ * The CLI answered that the stored chat does not exist: its session file goes. Returns the prompt of the fresh chat
+ * to start, or null when the step gave no full prompt or the fresh chat was started already.
+ */
+export async function dropMissingChat(
+  input: { sessionFile: string; model: string; runtime: string },
+  freshPrompt: string | undefined,
+): Promise<string | null> {
+  await rm(input.sessionFile, { force: true });
+  if (freshPrompt === undefined) {
+    return null;
+  }
+  recordStepEvent({
+    kind: 'session.changed',
+    session: 'new chat',
+    runtime: input.runtime,
+    model: input.model,
+    reason: 'chat state removed',
+  });
+  return freshPrompt;
+}
+
+/** The output of earlier launches in a resumed chat. The log keeps it, so the new attempt is appended to it. */
+export async function carriedOutput(input: { resumeChatId: string | null; outputFile: string }): Promise<string> {
+  if (!input.resumeChatId) {
+    return '';
+  }
+  return readFile(input.outputFile, 'utf8').catch(() => '');
 }
 
 /** How many launches and calls the run has used so far, and whether it was halted. */
@@ -77,6 +136,9 @@ export function relaunchPlan(input: {
   budget: LaunchBudget;
 }): Relaunch | null {
   const { attempt, budget } = input;
+  if (chatMissingAnswer(attempt)) {
+    return null;
+  }
   if (
     retryCrash({
       exitCode: attempt.exitCode,

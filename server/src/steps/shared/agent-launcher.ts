@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { AGENT_RUNNER, readSession } from '../../agent/agent-runner';
+import { chatStateRemoved } from '../../agent/agent-session';
 import type { AgentProcessRunner, AgentRunResult } from '../../agent/agent-runner';
 import { RunStop } from '../../agent/run-stop';
 import { AgentWorkFeed } from '../../contract/readable-log';
@@ -35,6 +36,8 @@ interface AgentLaunchRequest {
   auto?: boolean;
   resume?: boolean;
   continuePrompt?: string | null;
+  /** The full prompt for a fresh chat when `prompt` is a follow-up and the CLI no longer has the chat. */
+  freshPrompt?: string;
   sections?: string[];
   project?: ProjectLaunch;
 }
@@ -46,9 +49,13 @@ interface AgentLaunchRequest {
 function newChatReason(
   resume: boolean | undefined,
   hasFile: boolean,
-): 'fresh by step policy' | 'runtime changed' | 'no stored chat' {
+  removed: boolean,
+): 'fresh by step policy' | 'runtime changed' | 'no stored chat' | 'chat state removed' {
   if (resume === false) {
     return 'fresh by step policy';
+  }
+  if (removed) {
+    return 'chat state removed';
   }
   return hasFile ? 'runtime changed' : 'no stored chat';
 }
@@ -70,6 +77,10 @@ function recordWork(work: AgentWork): void {
   recordStepEvent({ kind: 'agent.tool', ...tool });
 }
 
+function withRules(prompt: string): string {
+  return `${AGENT_LANGUAGE_RULE}\n${AGENT_FOREGROUND_RULE}\n\n${prompt}`;
+}
+
 /** Starts one agent process for a step: the session file, the prompt prefix, and the run's spend counters. */
 @Injectable()
 export class AgentLauncher {
@@ -85,14 +96,15 @@ export class AgentLauncher {
     mkdirSync(directory, { recursive: true });
     const sessionFile = join(directory, sessionFileName(request.key, request.step));
     const stored = await readSession(sessionFile, request.run.runtime);
-    const chatId = request.resume === false ? null : (stored?.chatId ?? null);
+    const removed = chatStateRemoved(request.root, request.key, request.step, stored);
+    const chatId = request.resume === false || removed ? null : (stored?.chatId ?? null);
     const launch = { runtime: request.run.runtime, model: request.model, chatId, resumed: chatId !== null };
     recordStepEvent({
       kind: 'session.changed',
       session: chatId === null ? 'new chat' : 'same chat',
       runtime: launch.runtime,
       model: launch.model,
-      reason: chatId !== null ? null : newChatReason(request.resume, existsSync(sessionFile)),
+      reason: chatId !== null ? null : newChatReason(request.resume, existsSync(sessionFile), removed),
     });
     recordStepEvent({
       kind: 'context.manifest',
@@ -106,7 +118,8 @@ export class AgentLauncher {
     );
     const result = await this.agent.run({
       onOutput: bindToStepScope((chunk) => feed.push(chunk).forEach(recordWork)),
-      prompt: `${AGENT_LANGUAGE_RULE}\n${AGENT_FOREGROUND_RULE}\n\n${request.prompt}`,
+      prompt: withRules(request.prompt),
+      freshPrompt: request.freshPrompt === undefined ? undefined : withRules(request.freshPrompt),
       workspace: request.workspace,
       outputFile: outputFileFor(request.root, request.key, request.step, request.run.activeAttempt),
       sessionFile,

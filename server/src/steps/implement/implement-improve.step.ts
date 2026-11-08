@@ -1,16 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
-import { join } from 'path';
 import { SwarmloopEnv } from '../../config/env';
 import { root } from '../../history/run-paths';
-import { readSession } from '../../agent/agent-runner';
-import { sessionFileName } from '../../history/session-group';
+import { resumableChat } from '../../agent/agent-session';
 import { StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
+import { withEnvironment } from '../../environment/environment-note';
 import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
@@ -101,20 +100,25 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     );
     const branch = branchName(key, summaryForBranch(input.requirements, key));
     const heads = await featureHeads(mounts, branch);
-    const continued = await readSession(
-      join(root(this.config), 'data', sessionFileName(key, 'implement-improve')),
-      ctx.opened.run.runtime,
-    );
+    const continued = await resumableChat(root(this.config), key, 'implement-improve', ctx.opened.run.runtime);
     const full = skillPrompt('implement-improve', input.requirements, names, sections, mounts, {
       deferExecutionRules: true,
     });
     const chosen = continued?.chatId ? implementImproveFollowUp(returned) : full;
-    const { prompt, project, allowHosts } = await agentWorkplace(
+    const added = await ctx.reread(ARTIFACTS.addedRepos);
+    const { prompt, project, allowHosts, executionRules } = await agentWorkplace(
       this.environments,
       { run: ctx.opened.run, key, step: this.name, mounts },
-      withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos)),
+      withAddedRepos(chosen, added),
     );
-    const agentResult = await ctx.launch({ prompt, mounts, allowHosts, project, sections: ['implementation'] });
+    const agentResult = await ctx.launch({
+      prompt,
+      mounts,
+      allowHosts,
+      project,
+      sections: ['implementation'],
+      freshPrompt: continued?.chatId ? withEnvironment(withAddedRepos(full, added), executionRules) : undefined,
+    });
     const text = agentResult.responseText;
     await assertUncommitted(mounts, branch, heads);
     const wrote = reviewedImplementation(text);

@@ -61,6 +61,7 @@ export function flowView(overrides: Partial<FlowView> = {}): FlowView {
     reason: null,
     launches: [],
     projects: [],
+    workspace: null,
     ...overrides,
   };
 }

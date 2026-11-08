@@ -1,4 +1,3 @@
-import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
@@ -36,6 +35,9 @@ import {
   relaunchPlan,
   resendAfterOrphans,
   writeSession,
+  carriedOutput,
+  chatMissingAnswer,
+  dropMissingChat,
 } from './agent-session';
 import { AttemptMeter } from './agent-attempt';
 import { LimitGuard } from './limit-guard';
@@ -73,6 +75,8 @@ export interface AgentRunInput {
    * Null leaves that kill as the result. Omitted uses the shared default.
    */
   continuePrompt?: string | null;
+  /** The full prompt for a fresh chat, when `prompt` is a follow-up that only a resumed chat can use. */
+  freshPrompt?: string;
   /** Tells whether an answer holds what the step needs. Without it an answer is never treated as ended early. */
   answered?: (text: string) => boolean;
   /** Called with each chunk of the agent's output as it arrives. */
@@ -110,7 +114,7 @@ export class AgentProcessRunner {
       }
       const runtime = runtimeFor(env.RUNTIME);
       await this.sandbox.assertReady(env.RUNTIME);
-      const carried = await this.carriedOutput(input);
+      const carried = await carriedOutput(input);
       let calls = 0;
       let tries = 0;
       let prompt = input.prompt;
@@ -121,6 +125,7 @@ export class AgentProcessRunner {
       let merged: AgentRunResult | null = null;
       let endedEarlyUsed = false;
       let resent = false;
+      let freshPrompt = input.freshPrompt;
       for (;;) {
         const attempt = await this.once(
           { ...input, prompt, resumeChatId: chatId, groupUsd, agentCalls: input.agentCalls + calls },
@@ -145,6 +150,17 @@ export class AgentProcessRunner {
           prompt = AGENT_BACKGROUND_KILLED_CONTINUE;
           continue;
         }
+        const fresh = chatMissingAnswer(attempt)
+          ? await dropMissingChat({ ...input, runtime: env.RUNTIME }, freshPrompt)
+          : null;
+        if (fresh !== null) {
+          // The stored id points at nothing: one fresh chat with the full prompt, never a second try.
+          freshPrompt = undefined;
+          chatId = null;
+          resumed = false;
+          prompt = fresh;
+          continue;
+        }
         tries += 1;
         budget.attempts = tries;
         const relaunch = relaunchPlan({
@@ -167,18 +183,6 @@ export class AgentProcessRunner {
       }
     } finally {
       this.live?.dropSpend(input.runKey, input.liveStep ?? input.step);
-    }
-  }
-
-  /** The output of earlier launches in a resumed chat. The log keeps it, so the new attempt is appended to it. */
-  private async carriedOutput(input: AgentRunInput): Promise<string> {
-    if (!input.resumeChatId) {
-      return '';
-    }
-    try {
-      return await readFile(input.outputFile, 'utf8');
-    } catch {
-      return '';
     }
   }
 

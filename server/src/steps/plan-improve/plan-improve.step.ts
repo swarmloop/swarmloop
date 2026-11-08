@@ -1,11 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
-import { join } from 'path';
 import { SwarmloopEnv } from '../../config/env';
 import { root } from '../../history/run-paths';
-import { readSession } from '../../agent/agent-runner';
-import { sessionFileName } from '../../history/session-group';
+import { resumableChat } from '../../agent/agent-session';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -62,10 +60,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     const names = checkedRepoNames((await ctx.reread(ARTIFACTS.repos)) ?? []);
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     const prior = await ctx.reread(ARTIFACTS.handoff);
-    const continued = await readSession(
-      join(root(this.config), 'data', sessionFileName(key, 'plan-improve')),
-      ctx.opened.run.runtime,
-    );
+    const continued = await resumableChat(root(this.config), key, 'plan-improve', ctx.opened.run.runtime);
     const impact = await ctx.reread(ARTIFACTS.impact);
     const full = skillPrompt(
       'plan-improve',

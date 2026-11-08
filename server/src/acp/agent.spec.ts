@@ -597,6 +597,7 @@ function flowView(view: FlowFixture): FlowView {
     reason: null,
     launches: [],
     projects: [],
+    workspace: null,
     ...view,
     phases: view.phases.map((group) => ({
       phase: group.phase,

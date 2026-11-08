@@ -68,6 +68,8 @@ export interface FlowView {
   reason: string | null;
   launches: LaunchView[];
   projects: string[];
+  /** `removed` after retention took the worktrees of a done run; the next action recreates them. */
+  workspace: 'removed' | null;
 }
 
 export interface VisitView {

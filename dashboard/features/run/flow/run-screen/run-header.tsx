@@ -71,6 +71,9 @@ export function RunHeader({
                 sx={{ height: 22, bgcolor: 'transparent', fontFamily: 'var(--font-mono)', fontSize: 12 }}
               />
             ))}
+            {flow.workspace === 'removed' ? (
+              <Chip size="small" variant="outlined" label="workspace removed" sx={{ height: 22, fontSize: 12 }} />
+            ) : null}
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>

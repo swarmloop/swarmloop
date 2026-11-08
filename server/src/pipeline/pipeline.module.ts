@@ -23,6 +23,10 @@ import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { StepKernel } from '../steps/step-kernel';
 import { StepRegistry } from '../steps/step.registry';
 import { EnvironmentService } from '../environment/environment.service';
+import { DiskGuard } from './disk-guard';
+import { Housekeeping } from './housekeeping';
+import { RunRetention } from './run-retention';
+import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
 import { Reconciler } from './reconciler';
 import { PipelineService } from './pipeline.service';
@@ -40,6 +44,10 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     RebasedPublisher,
     CheckoutService,
     BranchCheckout,
+    WorkspaceGuard,
+    RunRetention,
+    DiskGuard,
+    Housekeeping,
     MergeRequestStep,
     MergeRequestLookup,
     PipelineStep,
@@ -62,6 +70,8 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     PipelineService,
     CommandService,
     Reconciler,
+    Housekeeping,
+    WorkspaceGuard,
     RunRebase,
     PrepareStep,
     ProjectAppendService,

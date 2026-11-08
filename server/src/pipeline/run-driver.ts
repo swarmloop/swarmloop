@@ -25,6 +25,9 @@ import { root } from '../history/run-paths';
 import { flagError } from './flag-error';
 import { snapshotRun } from './worktree-snapshot';
 import { writeRunState } from '../history/run-state';
+import type { WorkspaceGuard } from './workspace-guard';
+import { workspaceBlock } from './workspace-guard';
+import type { DiskGuard } from './disk-guard';
 
 const HOP_LIMIT = STEPS.length * 3;
 
@@ -38,6 +41,8 @@ export class RunDriver {
     private readonly runStop: RunStop,
     private readonly clock: Clock,
     private readonly projects: ProjectAppendService,
+    private readonly workspace?: WorkspaceGuard,
+    private readonly disk?: DiskGuard,
   ) {}
 
   async savedStep(
@@ -65,7 +70,7 @@ export class RunDriver {
       if (this.runStop.halted(key)) {
         return { exitCode: ran ? 0 : 1, message: `${key} stopped` };
       }
-      const blocked = await this.spendStop(key, step);
+      const blocked = await this.stopBefore(key, step);
       if (blocked) {
         return { exitCode: ran ? 0 : 1, message: blocked };
       }
@@ -120,6 +125,40 @@ export class RunDriver {
     const message = `${key} is over the spend limit. ${step} was not started`;
     await this.documents.putDocument(existing, 'spend', `${message}\n`);
     return message;
+  }
+
+  /** Why a step may not start: the spend limit first, then a workspace or disk that cannot be made ready. */
+  private async stopBefore(key: string, step: StepName): Promise<string | null> {
+    return (await this.spendStop(key, step)) ?? this.workspaceStop(key, step);
+  }
+
+  /**
+   * Brings the worktrees of the run back and checks the disk, before the step mounts anything. A run that cannot
+   * go on is blocked on the step it was about to start, and the message says why.
+   */
+  async workspaceStop(key: string, step: StepName): Promise<string | null> {
+    const run = step === 'done' ? null : await this.runs.findRun(key);
+    if (!run) {
+      return null;
+    }
+    try {
+      await this.workspace?.ensure(run);
+      await this.disk?.check(run, step);
+      return null;
+    } catch (error) {
+      const block = workspaceBlock(error);
+      if (!block) {
+        throw error;
+      }
+      await this.runs.release(run, {
+        status: 'blocked',
+        currentStep: step,
+        reason: { code: block.code, message: block.message },
+        stepStartedAt: null,
+      });
+      await this.documents.putDocument(run, 'error', `${block.message}\n`);
+      return block.message;
+    }
   }
 
   async markLoop(key: string): Promise<void> {
@@ -198,6 +237,8 @@ export class RunDriver {
     if (await busy(key)) return { exitCode: 1, message: `${key} is already running` };
     const blocked = await this.spendStop(key, name);
     if (blocked) return { exitCode: 1, message: blocked };
+    const unfit = await this.workspaceStop(key, name);
+    if (unfit) return { exitCode: 1, message: unfit };
     return this.execute(name, key, options);
   }
 }

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { mkdtemp, readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -348,6 +348,25 @@ describe('AgentProcessRunner ended early', () => {
     expect(result.backgroundKilled).toBe(false);
   });
 
+  it('starts one fresh chat with the full prompt when the CLI does not have the stored chat', async () => {
+    const missing = { chunks: ['Error: chat chat-1 not found\n'], code: 1 };
+    const { result, spawn, root } = await start('missing-chat', [missing, { chunks: [doneStream('done')] }], {
+      freshPrompt: 'the full prompt',
+    });
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(resumeArg(spawn.mock.calls[0])).toBe('chat-1');
+    expect(resumeArg(spawn.mock.calls[1])).toBeNull();
+    expect(promptArg(spawn.mock.calls[1])).toContain('the full prompt');
+    expect(result.exitCode).toBe(0);
+    expect(storedChat(root)).not.toBe('chat-1');
+  });
+
+  it('does not retry a missing chat when the step gave no full prompt', async () => {
+    const { spawn, root } = await start('missing-plain', [{ chunks: ['Error: chat chat-1 not found\n'], code: 1 }]);
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(existsSync(join(root, 'data', 'run1-plan-session.json'))).toBe(false);
+  });
+
   it('does not count an orphan-only resumed output as an attempt', async () => {
     const orphan = {
       type: 'system',
@@ -470,6 +489,12 @@ async function start(
   } finally {
     clock?.mockRestore();
   }
+}
+
+/** The chat id in the session file of these specs, null when there is none. */
+function storedChat(root: string): string | null {
+  const file = join(root, 'data', 'run1-plan-session.json');
+  return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as { chatId: string | null }).chatId : null;
 }
 
 function promptArg(call: unknown[] | undefined): string {

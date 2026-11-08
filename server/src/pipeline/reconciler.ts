@@ -28,6 +28,7 @@ import { RunRebase } from '../steps/run-rebase';
 import { StepRegistry } from '../steps/step.registry';
 import { CHAT_LOCK, chatResume, readChatLock } from './chat-lock';
 import { CommandService } from './command.service';
+import { WorkspaceGuard, workspaceBlock } from './workspace-guard';
 import { settleShell } from './shell-lock';
 
 /** Waits between the read-only probes of a docker that does not answer. */
@@ -60,6 +61,7 @@ export class Reconciler implements OnModuleDestroy {
     private readonly events: StepEventLog,
     private readonly mergeRequests: MergeRequestLookup,
     private readonly rebases: RunRebase,
+    private readonly workspace: WorkspaceGuard,
   ) {}
 
   /** The startup pass over the runs. `claimed` says which runs a step of this process holds. */
@@ -154,6 +156,7 @@ export class Reconciler implements OnModuleDestroy {
     const open = Object.entries(journal).filter(([, entry]) => entry.checkpoint !== 'completed');
     if (open.some(([, entry]) => entry.generation !== run.generation)) return false;
     if (open.some(([, entry]) => entry.checkpoint === 'conflict')) return false;
+    if (await this.workspaceBlocked(run)) return true;
     for (const [repo, entry] of open) {
       if ((await fingerprintOf(entry.path)) === entry.fingerprint) continue;
       await this.runs.release(run, {
@@ -178,6 +181,26 @@ export class Reconciler implements OnModuleDestroy {
       });
     }
     return true;
+  }
+
+  /**
+   * The worktrees are back before the rebase relaunches. A run that cannot get them is blocked with the code of the
+   * cause, never retried: only a person can fix a lost workspace, a branch in use or a diverged branch.
+   */
+  private async workspaceBlocked(run: RunEntity): Promise<boolean> {
+    try {
+      await this.workspace.ensure(run);
+      return false;
+    } catch (error) {
+      const block = workspaceBlock(error);
+      if (!block) throw error;
+      await this.runs.release(run, {
+        status: 'blocked',
+        reason: { code: block.code, message: block.message },
+        stepStartedAt: null,
+      });
+      return true;
+    }
   }
 
   /** The owner is this process and its step is in flight, or a chat of this process holds the run. */
