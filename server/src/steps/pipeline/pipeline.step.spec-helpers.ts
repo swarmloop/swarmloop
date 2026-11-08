@@ -16,6 +16,10 @@ import { AppConfig } from '../../config/env';
 
 import { Clock } from '../../core/clock';
 
+import * as delays from '../../core/delay';
+
+import { FakeClock } from '../../core/fake-clock.spec-helpers';
+
 import { RunRepository } from '../../history/run.repository';
 
 import { stampStored } from '../shared/gate.spec-helpers';
@@ -68,12 +72,23 @@ export function restore(key: string, value: string | undefined): void {
   }
 }
 
+/** A clock that the step's waits advance, so a spec never waits in wall time. Restore with jest.restoreAllMocks(). */
+export function fakeWait(): FakeClock {
+  const clock = new FakeClock();
+  jest.spyOn(delays, 'delay').mockImplementation((ms) => {
+    clock.advance(ms);
+    return Promise.resolve();
+  });
+  return clock;
+}
+
 export async function boot(
   root: string,
   read: jest.Mock,
   trace: jest.Mock,
   extra = 'PIPELINE_TIMEOUT_MS=0\n',
   cancel: jest.Mock = jest.fn(() => Promise.resolve({ httpCalls: [] as HttpCallDraft[] })),
+  clock?: Clock,
 ) {
   await writeFile(
     join(root, '.env'),
@@ -113,9 +128,13 @@ export async function boot(
       extra,
     ].join('\n'),
   );
-  return Test.createTestingModule({
+  const builder = Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
-  })
+  });
+  if (clock) {
+    builder.overrideProvider(Clock).useValue(clock);
+  }
+  return builder
     .overrideProvider(CodeHostRegistry)
     .useFactory({
       factory: (config: AppConfig, clock: Clock) => {
