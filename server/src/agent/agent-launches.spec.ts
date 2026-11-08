@@ -1,3 +1,4 @@
+import { utimesSync } from 'fs';
 import { mkdtemp, mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -29,5 +30,19 @@ describe('agent launches', () => {
     await writeFile(output, 'process killed: time\nprocess exited 0\nprocess exited 0\n');
     expect(launchOpen(root, 'proj-1', 'code-review-requirements')).toBe(false);
     expect(launchCount(root, 'proj-1', 'research')).toBe(0);
+  });
+
+  it('does not count an older attempt that is still open', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'launches-attempt-'));
+    await mkdir(join(root, 'data'));
+    const older = join(root, 'data', 'proj-1-implement-zzz-output.txt');
+    const newer = join(root, 'data', 'proj-1-implement-aaa-output.txt');
+    await writeFile(older, 'process started\nthinking\n');
+    await writeFile(newer, 'process exited 0\n');
+    utimesSync(older, new Date(1000), new Date(1000));
+    utimesSync(newer, new Date(2000), new Date(2000));
+    expect(launchOpen(root, 'proj-1', 'implement')).toBe(false);
+    expect(launchOpen(root, 'proj-1', 'implement', 'aaa')).toBe(false);
+    expect(launchOpen(root, 'proj-1', 'implement', 'zzz')).toBe(true);
   });
 });

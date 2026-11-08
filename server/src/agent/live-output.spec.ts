@@ -2,14 +2,11 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import {
-  AttemptLog,
-  liveLogBody,
-  liveLogCurrent,
-  liveLogFinished,
-  liveLogView,
-  replaceLogFile,
-} from '../agent/live-output';
+import { stepOutput } from '../core/attempt-output';
+import { AttemptLog, liveLogFinished, logStillOpen, replaceLogFile } from '../agent/live-output';
+
+const liveLogBody = (root: string, key: string, step: string): string => stepOutput(root, key, step, null);
+const liveLogCurrent = (root: string, key: string, step: string): boolean => logStillOpen(liveLogBody(root, key, step));
 
 describe('live log files', () => {
   it('reads a per-repo implement file and skips implement-improve', async () => {
@@ -53,10 +50,7 @@ describe('live log files', () => {
     writeFileSync(chat, 'asking\n');
     expect(liveLogCurrent(root, 'run-1', 'code-review-security')).toBe(true);
     expect(liveLogCurrent(root, 'run-1', 'code-review-performance')).toBe(true);
-    expect(liveLogView(root, 'run-1', 'code-review-security')).toEqual({
-      body: 'thinking\nprocess killed: time\nthinking\n',
-      current: true,
-    });
+    expect(liveLogBody(root, 'run-1', 'code-review-security')).toBe('thinking\nprocess killed: time\nthinking\n');
     writeFileSync(newer, 'notes\ndecision: ok\nprocess exited 0\n');
     expect(liveLogCurrent(root, 'run-1', 'code-review-performance')).toBe(false);
     expect(liveLogCurrent(root, 'run-1', 'code-review-security')).toBe(true);

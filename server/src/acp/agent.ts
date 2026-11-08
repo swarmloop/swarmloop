@@ -7,7 +7,7 @@ import { Commands, type SkillCommand } from './commands';
 import type { JsonRpc } from './framing';
 import { encodeMessage, pushFrames } from './framing';
 import { sessionTitle } from './format';
-import { liveLogBody } from '../core/live-output';
+import { stepOutput } from '../core/attempt-output';
 import type { ServerApi } from './server-api';
 import { type Session, Sessions } from './sessions';
 
@@ -303,7 +303,7 @@ export class Sloop {
   }
 
   private transcript(key: string, step: string): string {
-    const raw = liveLogBody(this.options.repoRoot, key, step).trim();
+    const raw = stepOutput(this.options.repoRoot, key, step, null).trim();
     if (!raw || raw === 'waiting for output') {
       return '';
     }

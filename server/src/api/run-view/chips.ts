@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, statSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import { join } from 'path';
-import { liveLogFinished, liveLogView } from '../../agent/live-output';
+import { liveLogFinished, logStillOpen } from '../../agent/live-output';
+import { stepOutput, stepOutputPath } from '../../core/attempt-output';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { launchCount } from '../../agent/agent-launches';
 import { isReviewStep, pipelineStepOf } from '../../contract/steps';
@@ -8,6 +9,12 @@ import { reviewDecision } from '../../steps/code-review/code-review-record';
 import { stepStatus, latest } from './status';
 import type { FlowView } from '../../contract/api';
 import { REVIEW_KINDS } from './run-view.types';
+
+/** The log of the running attempt of a step, and whether it is still being written. */
+export function activeLog(root: string, run: RunEntity, name: string): { body: string; current: boolean } {
+  const body = stepOutput(root, run.key, name, run.activeAttempt);
+  return { body, current: logStillOpen(body) };
+}
 
 export function chipStatus(
   name: string,
@@ -57,7 +64,7 @@ export function reportChip(
   documents: DocumentEntity[],
   root: string,
 ): FlowView['phases'][number]['steps'][number] {
-  const log = liveLogView(root, run.key, 'code-review-report');
+  const log = activeLog(root, run, 'code-review-report');
   const stored = (latest(documents, 'review_report') ?? '').trim();
   const verdict = angleVerdict(
     REVIEW_KINDS.map((kind) => latest(documents, kind) ?? '').filter((body) => body.trim() !== ''),
@@ -111,7 +118,7 @@ export function chipAttempts(
     return 0;
   }
   const recorded = join(root, 'data', `${run.key}-${name}-launches.txt`);
-  if (!existsSync(recorded) || launchCount(root, run.key, name) === 0) {
+  if (!existsSync(recorded) || launchCount(root, run.key, name, run.activeAttempt) === 0) {
     return 0;
   }
   return last;
@@ -160,22 +167,17 @@ export function reviewerRound(
   if (stat.stepStartedAt === run.stepStartedAt) {
     return { attempts: stat.attempt, status: stored };
   }
-  const path = join(root, 'data', `${run.key}-${name}-output.txt`);
+  const path = stepOutputPath(root, run.key, name, run.activeAttempt);
   let mtimeMs = 0;
   try {
-    mtimeMs = statSync(path).mtimeMs;
+    mtimeMs = path ? statSync(path).mtimeMs : 0;
   } catch {
     return { attempts: stat.attempt, status: stored };
   }
-  if (mtimeMs < Date.parse(run.stepStartedAt)) {
+  if (!path || mtimeMs < Date.parse(run.stepStartedAt)) {
     return { attempts: stat.attempt, status: stored };
   }
-  let body = '';
-  try {
-    body = readFileSync(path, 'utf8');
-  } catch {
-    return { attempts: stat.attempt, status: stored };
-  }
+  const body = stepOutput(root, run.key, name, run.activeAttempt);
   const trimmed = body.trim();
   if (trimmed === '' || trimmed === 'starting' || trimmed === 'waiting for output') {
     return { attempts: stat.attempt, status: stored };

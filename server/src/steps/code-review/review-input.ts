@@ -77,6 +77,12 @@ export async function retrying(visits: VisitRepository, opened: OpenedStep): Pro
   return last?.status === 'failed' || last?.status === 'blocked';
 }
 
+/** The attempt of the code-review visit that was interrupted: its reviewer files are the only ones a recovery may read. */
+export async function interruptedAttempt(visits: VisitRepository, opened: OpenedStep): Promise<string | null> {
+  const last = [...(await visits.listStats(opened.run.id))].reverse().find((item) => item.step === 'code-review');
+  return last?.attemptId ?? null;
+}
+
 export function approvedPlan(requirements: string): string {
   const plan = readPlan(requirements);
   if (!plan || plan.decision !== 'approve' || plan.items.length === 0) {

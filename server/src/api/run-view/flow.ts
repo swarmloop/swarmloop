@@ -1,4 +1,3 @@
-import { liveLogView } from '../../agent/live-output';
 import { activeDurationMs, toDurationParts } from '../../history/active-duration';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { continuesSameStep, countedVisits, isLoopStep, loopMark } from '../../core/pipeline-result';
@@ -12,7 +11,7 @@ import { isReviewStep, pipelineStepOf } from '../../contract/steps';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered } from '../../steps/shared/answers';
 import { items } from '../../steps/shared/markdown-section';
-import { chipStatus, chipAttempts, reportChip, reviewerRound } from './chips';
+import { activeLog, chipStatus, chipAttempts, reportChip, reviewerRound } from './chips';
 import { latest } from './status';
 export { latest } from './status';
 import { PHASES } from './run-view.types';
@@ -62,11 +61,7 @@ export function phases(
       const own = isReviewStep(name) ? latestStats.get(name) : undefined;
       const stat = own ?? latestStats.get(parent);
       const round = own ? reviewerRound(name, run, own, documents, root) : null;
-      const log = round
-        ? null
-        : isReviewStep(name) && (!own || parentRunning)
-          ? liveLogView(root, run.key, name)
-          : null;
+      const log = round ? null : isReviewStep(name) && (!own || parentRunning) ? activeLog(root, run, name) : null;
       const status = chipStatus(name, run, stat, documents, log, round);
       return {
         name,

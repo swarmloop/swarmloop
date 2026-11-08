@@ -1,4 +1,4 @@
-import { liveLogBody } from '../../agent/live-output';
+import { stepOutput } from '../../core/attempt-output';
 import type { LaunchView, VisitView } from '../../contract/api';
 import type { LiveSample } from '../../contract/live';
 import { liveVisitKey } from '../../contract/visit-key';
@@ -7,12 +7,13 @@ export function liveVisit(
   key: string,
   step: string,
   root: string,
+  attemptId: string | null,
   previousAttempt: number,
   startedAt: string,
   now: number,
   samples: LiveSample[] = [],
 ): VisitView {
-  const body = liveLogBody(root, key, step);
+  const body = stepOutput(root, key, step, attemptId);
   const started = Date.parse(startedAt);
   return {
     id: -1,

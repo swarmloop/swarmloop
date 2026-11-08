@@ -15,7 +15,8 @@ import { root } from '../history/run-paths';
 import { Charge, chargeStream, modelForStep } from '../agent/spend';
 import { loadPriceTable } from '../agent/prices';
 import { LiveHub } from '../live/live.hub';
-import { liveLogBody, liveLogCurrent } from '../agent/live-output';
+import { logStillOpen } from '../agent/live-output';
+import { stepOutput } from '../core/attempt-output';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { StepRegistry } from '../steps/step.registry';
 import { isStep } from '../core/pipeline-result';
@@ -25,6 +26,7 @@ import { renderProjects, storedProjects } from '../steps/prepare/checkout-path';
 import { reviewDecision } from '../steps/code-review/code-review-record';
 import type { StepEventPage } from '../contract/step-events';
 import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
+import type { LiveSample } from '../contract/live';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
@@ -181,9 +183,7 @@ export class RunQueriesService {
       };
     });
     if (run.status === 'running' && run.currentStep === name) {
-      visits.push(
-        liveVisit(run.key, name, root(this.config), stats.at(-1)?.attempt ?? 0, run.updatedAt, this.clock.now()),
-      );
+      visits.push(this.runningVisit(run, name, stats.at(-1)?.attempt ?? 0));
     }
     return {
       step: name,
@@ -263,7 +263,13 @@ export class RunQueriesService {
     const stats = (await this.visits.listStats(run.id)).filter((stat) => stat.step === 'code-review');
     const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
     const kind = `review_${name.slice('code-review-'.length)}`;
-    const raw = liveLogBody(root(this.config), key, name);
+    const parentRunning =
+      (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
+    const ownedStats = stats.filter((stat) =>
+      documents.some((document) => document.stepStatId === stat.id && document.kind === kind),
+    );
+    const attempt = parentRunning ? run.activeAttempt : (ownedStats.at(-1)?.attemptId ?? null);
+    const raw = stepOutput(root(this.config), key, name, attempt);
     const env = this.config.env;
     const model = modelForStep(name, env);
     let charge: Charge | null = null;
@@ -274,12 +280,7 @@ export class RunQueriesService {
         await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now()),
       );
     }
-    const parentRunning =
-      (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
-    const open = parentRunning && liveLogCurrent(root(this.config), key, name);
-    const ownedStats = stats.filter((stat) =>
-      documents.some((document) => document.stepStatId === stat.id && document.kind === kind),
-    );
+    const open = parentRunning && logStillOpen(raw);
     const visits: VisitView[] = ownedStats.map((stat, index) => {
       const latestDone = index === ownedStats.length - 1 && !parentRunning;
       const owned = documents.filter((document) => document.stepStatId === stat.id && document.kind === kind);
@@ -317,15 +318,7 @@ export class RunQueriesService {
     const live = parentRunning && !placeholder;
     if (live) {
       visits.push({
-        ...liveVisit(
-          run.key,
-          name,
-          root(this.config),
-          visits.length,
-          run.updatedAt,
-          this.clock.now(),
-          this.live?.samplesOf(run.key, name) ?? [],
-        ),
+        ...this.runningVisit(run, name, visits.length, this.live?.samplesOf(run.key, name)),
         model,
         mode: 'agent',
         status: open ? 'running' : reviewerOutcome(raw, 'failed'),
@@ -384,20 +377,23 @@ export class RunQueriesService {
     });
     const parentRunning =
       (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
-    if (parentRunning && liveLogCurrent(root(this.config), run.key, name)) {
-      visits.push(
-        liveVisit(
-          run.key,
-          name,
-          root(this.config),
-          stats.at(-1)?.attempt ?? 0,
-          run.updatedAt,
-          this.clock.now(),
-          this.live?.samplesOf(run.key, name) ?? [],
-        ),
-      );
+    if (parentRunning && logStillOpen(stepOutput(root(this.config), run.key, name, run.activeAttempt))) {
+      visits.push(this.runningVisit(run, name, stats.at(-1)?.attempt ?? 0, this.live?.samplesOf(run.key, name)));
     }
     return { step: name, ...(await this.meta(run, name)), visits, checks: [] };
+  }
+
+  private runningVisit(run: RunEntity, name: string, previousAttempt: number, samples?: LiveSample[]): VisitView {
+    return liveVisit(
+      run.key,
+      name,
+      root(this.config),
+      run.activeAttempt,
+      previousAttempt,
+      run.updatedAt,
+      this.clock.now(),
+      samples,
+    );
   }
 
   private meta(run: RunEntity, name: string): ReturnType<typeof stepMeta> {

@@ -7,7 +7,7 @@ import { resolveRepoRoot } from '../config/repo-root';
 import { ERROR_CODES } from '../contract/error-codes';
 import { REASON } from '../contract/run-state';
 import type { StepName } from '../contract/steps';
-import { hasFinalResult, readAttemptOutput } from '../core/attempt-output';
+import { hasFinalResult, stepOutput } from '../core/attempt-output';
 import { barrier } from '../core/barrier';
 import { Clock } from '../core/clock';
 import { delay } from '../core/delay';
@@ -187,7 +187,7 @@ export class Reconciler implements OnModuleDestroy {
   }
 
   private async settleAttempt(run: RunEntity): Promise<void> {
-    const output = readAttemptOutput(this.root, run.key, run.currentStep, run.activeAttempt);
+    const output = stepOutput(this.root, run.key, run.currentStep, run.activeAttempt);
     if (hasFinalResult(output)) {
       await this.interrupted(run, output);
       return;
@@ -286,7 +286,7 @@ export class Reconciler implements OnModuleDestroy {
     const model = modelForStep(run.currentStep, env);
     const step = isStep(run.currentStep) ? this.registry.get(run.currentStep) : null;
     const charge = step?.charge
-      ? await step.charge(run.key, env, prices)
+      ? await step.charge(run.key, env, prices, run.activeAttempt)
       : model
         ? chargeStream(model, saved, prices)
         : null;

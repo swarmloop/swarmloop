@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { basename, join } from 'path';
 import type { SwarmloopEnv } from '../../config/env';
-import { liveLogBody } from '../../agent/live-output';
+import { stepOutput } from '../../core/attempt-output';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { EventRepository } from '../../history/event.repository';
 import type { DocumentDraft, ExchangeDraft } from '../../history/visit';
@@ -32,6 +32,8 @@ interface SelectInput {
   only: string | undefined;
   fresh: boolean;
   retry: boolean;
+  /** The attempt of the code-review visit that was interrupted. Set when `retry`. */
+  attemptId: string | null;
   same: boolean;
   repeated: boolean;
   /** Whether the stored review `kind` counts for this generation and these files. */
@@ -62,7 +64,7 @@ export async function selectReviewers(
   root: string,
   input: SelectInput,
 ): Promise<Selection> {
-  const { key, only, fresh, retry, same, repeated, counts } = input;
+  const { key, only, fresh, retry, attemptId, same, repeated, counts } = input;
   const kept: Opinion[] = [];
   const pending: Reviewer[] = [];
   const recovered: DocumentDraft[] = [];
@@ -97,7 +99,7 @@ export async function selectReviewers(
     }
     if (retry && !only) {
       try {
-        const parsed = parseReview(liveLogBody(root, key, `code-review-${reviewer.name}`));
+        const parsed = parseReview(stepOutput(root, key, `code-review-${reviewer.name}`, attemptId));
         if (staleReturn(repeated, parsed.decision)) {
           stale.add(reviewer.name);
         } else {
