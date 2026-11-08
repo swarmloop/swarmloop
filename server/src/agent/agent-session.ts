@@ -7,6 +7,10 @@ import type { AgentRunResult } from './agent-result';
 export const AGENT_CONTINUE =
   'You were stopped by the time limit before you finished. Continue this same task from where you stopped. Do not start over and do not redo edits already made. End with the sections the first message asked for.';
 
+/** Sent when the agent's background work was killed with its answer, or a resumed chat only reported orphaned tasks. */
+export const AGENT_BACKGROUND_KILLED_CONTINUE =
+  'Your background work was killed when your last answer ended the process. Run the commands in the foreground and wait for them. End with the sections the first message asked for.';
+
 export async function readSession(path: string, runtime: string): Promise<SessionState | null> {
   try {
     const session = JSON.parse(await readFile(path, 'utf8')) as SessionState;
@@ -46,11 +50,21 @@ function continueAfterLimit(input: {
   if (input.continuePrompt === null || (input.killReason !== 'time' && input.killReason !== 'idle')) {
     return false;
   }
-  const { budget } = input;
-  if (!input.chatId || budget.halted || budget.attempts >= budget.maxLaunches) {
-    return false;
-  }
-  return !callsExceeded(budget.callsSoFar, budget.maxCalls);
+  return Boolean(input.chatId) && withinBudget(input.budget);
+}
+
+function withinBudget(budget: LaunchBudget): boolean {
+  return !budget.halted && budget.attempts < budget.maxLaunches && !callsExceeded(budget.callsSoFar, budget.maxCalls);
+}
+
+/** A resumed chat that only reported orphaned tasks gets the follow-up once, without counting as an attempt. */
+export function resendAfterOrphans(input: {
+  attempt: AgentRunResult;
+  resumed: boolean;
+  resent: boolean;
+  budget: LaunchBudget;
+}): boolean {
+  return input.resumed && input.attempt.orphanOnly === true && !input.resent && withinBudget(input.budget);
 }
 
 /** Decides whether the run launches again: a crash retry first, then a continue after a time or idle kill. */
@@ -58,6 +72,8 @@ export function relaunchPlan(input: {
   attempt: AgentRunResult;
   chatId: string | null;
   continuePrompt: string | null | undefined;
+  /** The one relaunch after an early end was already used. */
+  endedEarlyUsed: boolean;
   budget: LaunchBudget;
 }): Relaunch | null {
   const { attempt, budget } = input;
@@ -86,6 +102,15 @@ export function relaunchPlan(input: {
       resumed: true,
       prompt: typeof input.continuePrompt === 'string' ? input.continuePrompt : AGENT_CONTINUE,
     };
+  }
+  if (
+    attempt.chatId &&
+    attempt.killReason === null &&
+    attempt.backgroundKilled === true &&
+    !input.endedEarlyUsed &&
+    withinBudget(budget)
+  ) {
+    return { chatId: attempt.chatId, resumed: true, prompt: AGENT_BACKGROUND_KILLED_CONTINUE };
   }
   return null;
 }

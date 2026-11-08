@@ -82,7 +82,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     const full = skillPrompt('plan', input.requirements, names, sections, mounts);
     const chosen = continued?.chatId ? planFollowUp(answers) : full;
     const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));
-    const agentResult = await ctx.launch({ prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`, mounts });
+    const agentResult = await ctx.launch({ prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`, mounts, sections: ['plan'] });
     const plan = planFromAgent(agentResult.responseText, agentResult.output ?? '');
     const body = withPlan(requirements, plan);
     const summary = summaryOr(

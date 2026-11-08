@@ -15,6 +15,10 @@ export interface StreamPiece {
   /** The finished assistant message. Partials carry timestamp_ms and are not this. */
   finalMessage: boolean;
   chatId: string | null;
+  /** A background task ended with `stopped` or `killed`. */
+  taskEnded: boolean;
+  /** A task notification the CLI sends for work an earlier process left behind. */
+  orphan: boolean;
   text: string | null;
   replaceText: boolean;
 }
@@ -60,9 +64,17 @@ export function readStreamLine(line: string): StreamPiece | null {
       record.type === 'thread.started'
         ? stringFrom(record, ['thread_id'])
         : stringFrom(record, ['session_id', 'sessionId', 'chat_id', 'chatId']),
+    taskEnded: isTaskNotification(record) && (record.status === 'stopped' || record.status === 'killed'),
+    orphan: isTaskNotification(record) && JSON.stringify(record).includes(ORPHAN_NOTE),
     text: record.type === 'item.completed' ? (agentMessage(record) ?? text) : (failureText(record) ?? text),
     replaceText: (record.type === 'result' && text !== null) || agentMessage(record) !== null,
   };
+}
+
+const ORPHAN_NOTE = 'Orphaned by a previous Claude Code process exit';
+
+function isTaskNotification(record: Record<string, unknown>): boolean {
+  return record.type === 'system' && record.subtype === 'task_notification';
 }
 
 function uncachedInput(record: Record<string, unknown>, usage: Record<string, unknown>): number | null {

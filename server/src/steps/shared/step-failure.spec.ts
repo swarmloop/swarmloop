@@ -21,6 +21,14 @@ describe('step failure', () => {
     expect(describeFailure('plan', error)).toMatchObject({ code: 'INPUT_MISSING', category: 'user' });
   });
 
+  it('reports the code of an agent that ended early', () => {
+    const error = new SwarmloopError('implement failed: the agent ended its turn with background work still running', {
+      code: 'AGENT_ENDED_EARLY',
+      category: 'model',
+    });
+    expect(describeFailure('implement', error)).toMatchObject({ code: 'AGENT_ENDED_EARLY', category: 'model' });
+  });
+
   it('shows the redacted first line of a plain error with its id', () => {
     const failure = describeFailure('implement', new Error('push failed tok-value-1\nsecond line'), ENV);
     expect(failure.message).toBe(`implement failed: push failed *** (${failure.errorId})`);

@@ -15,11 +15,12 @@ import {
   modelApiHosts,
   modelCredential,
   prepareStateDir,
+  writeHomeFiles,
   type ProjectLaunch,
   sandboxUserId,
 } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
-import type { AgentRunResult } from './agent-result';
+import { emptyResult, type AgentRunResult } from './agent-result';
 export type { AgentRunResult } from './agent-result';
 import { callsExceeded, type KillReason } from './limits';
 import { syncChatMode } from './chat-mode';
@@ -29,7 +30,13 @@ import { loadPriceTable } from './prices';
 import { recordLaunch } from './agent-launches';
 import { briefMounts, readOnlyTree, spillPrompt } from './agent-args';
 import { AgentProcess } from './agent-process';
-import { foldAttempt, relaunchPlan, writeSession } from './agent-session';
+import {
+  AGENT_BACKGROUND_KILLED_CONTINUE,
+  foldAttempt,
+  relaunchPlan,
+  resendAfterOrphans,
+  writeSession,
+} from './agent-session';
 import { AttemptMeter } from './agent-attempt';
 import { LimitGuard } from './limit-guard';
 import { AttemptLog } from './live-output';
@@ -66,6 +73,8 @@ export interface AgentRunInput {
    * Null leaves that kill as the result. Omitted uses the shared default.
    */
   continuePrompt?: string | null;
+  /** Tells whether an answer holds what the step needs. Without it an answer is never treated as ended early. */
+  answered?: (text: string) => boolean;
   /** Called with each chunk of the agent's output as it arrives. */
   onOutput?: (chunk: string) => void;
   /** Run in the project image with the CLI mounted into it, instead of the agent image. */
@@ -97,7 +106,7 @@ export class AgentProcessRunner {
     try {
       const env = this.config.env;
       if (input.auto === true && callsExceeded(input.agentCalls, env.MAX_AGENT_CALLS)) {
-        return this.empty(input, 'calls', 1, 0);
+        return emptyResult('calls', 1, 0, this.clock.iso());
       }
       const runtime = runtimeFor(env.RUNTIME);
       await this.sandbox.assertReady(env.RUNTIME);
@@ -110,6 +119,8 @@ export class AgentProcessRunner {
       let resumed = chatId !== null;
       let groupUsd = input.groupUsd ?? 0;
       let merged: AgentRunResult | null = null;
+      let endedEarlyUsed = false;
+      let resent = false;
       for (;;) {
         const attempt = await this.once(
           { ...input, prompt, resumeChatId: chatId, groupUsd, agentCalls: input.agentCalls + calls },
@@ -119,20 +130,29 @@ export class AgentProcessRunner {
         );
         merged = foldAttempt(merged, attempt);
         calls += attempt.calls;
-        tries += 1;
         groupUsd += attempt.usd;
         prior = `${carried}${merged.output ?? ''}`;
+        const budget = {
+          halted: this.runStop.halted(input.runKey),
+          callsSoFar: input.agentCalls + calls,
+          maxCalls: env.MAX_AGENT_CALLS,
+          attempts: tries,
+          maxLaunches: env.MAX_LAUNCHES,
+        };
+        if (resendAfterOrphans({ attempt, resumed, resent, budget })) {
+          resent = true;
+          chatId = attempt.chatId ?? chatId;
+          prompt = AGENT_BACKGROUND_KILLED_CONTINUE;
+          continue;
+        }
+        tries += 1;
+        budget.attempts = tries;
         const relaunch = relaunchPlan({
           attempt,
           chatId,
           continuePrompt: input.continuePrompt,
-          budget: {
-            halted: this.runStop.halted(input.runKey),
-            callsSoFar: input.agentCalls + calls,
-            maxCalls: env.MAX_AGENT_CALLS,
-            attempts: tries,
-            maxLaunches: env.MAX_LAUNCHES,
-          },
+          endedEarlyUsed,
+          budget,
         });
         if (!relaunch) {
           if (!merged) {
@@ -140,6 +160,7 @@ export class AgentProcessRunner {
           }
           return merged;
         }
+        endedEarlyUsed ||= relaunch.prompt === AGENT_BACKGROUND_KILLED_CONTINUE;
         chatId = relaunch.chatId;
         resumed = relaunch.resumed;
         prompt = relaunch.prompt ?? prompt;
@@ -356,6 +377,8 @@ export class AgentProcessRunner {
       output,
       resumed,
       decided: meter.decided(),
+      backgroundKilled: meter.backgroundKilled(input.answered),
+      orphanOnly: meter.orphanOnly(),
       calls: 1,
       samples: log.samples,
       durationMs: finished - started,
@@ -373,6 +396,7 @@ export class AgentProcessRunner {
       sessionHome(input.step),
     );
     prepareStateDir(statePath, userId);
+    writeHomeFiles(runtime.homeFiles(), statePath, userId);
     if (runtime.syncsChatMode && input.resumeChatId) {
       syncChatMode(statePath, input.resumeChatId, input.mode);
     }
@@ -392,25 +416,5 @@ export class AgentProcessRunner {
       });
     }
     return { userId, statePath, args, briefs };
-  }
-
-  private empty(input: AgentRunInput, killReason: KillReason, exitCode: number, calls: number): AgentRunResult {
-    const now = this.clock.iso();
-    return {
-      responseText: '',
-      chatId: null,
-      tokensIn: 0,
-      tokensOut: 0,
-      usd: 0,
-      killReason,
-      exitCode,
-      output: '',
-      resumed: false,
-      calls,
-      samples: [],
-      durationMs: 0,
-      startedAt: now,
-      finishedAt: now,
-    };
   }
 }

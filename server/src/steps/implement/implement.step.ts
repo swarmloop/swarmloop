@@ -136,7 +136,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       basePrompt,
     );
     const before = await worktreeSnapshot(mounts);
-    let agentResult = await ctx.launch({ prompt, mounts, allowHosts, project });
+    let agentResult = await ctx.launch({ prompt, mounts, allowHosts, project, sections: ['implementation'] });
     await assertUncommitted(mounts, branch, heads);
     let planText = agentResult.responseText;
     let planOutput = agentResult.output ?? '';

@@ -14,7 +14,8 @@ import { sessionFileName } from '../../history/session-group';
 import { VisitRepository } from '../../history/visit.repository';
 import type { ProjectLaunch } from '../../sandbox/sandbox-launch';
 import { assertNotStopped } from './step-stopped';
-import { AGENT_LANGUAGE_RULE } from './skill-prompt';
+import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
+import { section } from './markdown-section';
 import { promptSections } from './prompt-manifest';
 
 interface AgentLaunchRequest {
@@ -34,6 +35,7 @@ interface AgentLaunchRequest {
   auto?: boolean;
   resume?: boolean;
   continuePrompt?: string | null;
+  sections?: string[];
   project?: ProjectLaunch;
 }
 
@@ -49,6 +51,11 @@ function newChatReason(
     return 'fresh by step policy';
   }
   return hasFile ? 'runtime changed' : 'no stored chat';
+}
+
+/** An answer is complete when every named section is in it. */
+function hasSections(names: string[]): (text: string) => boolean {
+  return (text) => names.every((name) => section(text, name) !== null);
 }
 
 const MESSAGE_CHARS = 600;
@@ -99,7 +106,7 @@ export class AgentLauncher {
     );
     const result = await this.agent.run({
       onOutput: bindToStepScope((chunk) => feed.push(chunk).forEach(recordWork)),
-      prompt: `${AGENT_LANGUAGE_RULE}\n\n${request.prompt}`,
+      prompt: `${AGENT_LANGUAGE_RULE}\n${AGENT_FOREGROUND_RULE}\n\n${request.prompt}`,
       workspace: request.workspace,
       outputFile: outputFileFor(request.root, request.key, request.step, request.run.activeAttempt),
       sessionFile,
@@ -120,6 +127,7 @@ export class AgentLauncher {
       approveMcps: request.approveMcps,
       auto: request.auto,
       continuePrompt: request.continuePrompt,
+      answered: request.sections && hasSections(request.sections),
       project: request.project,
     });
     feed.finish().forEach(recordWork);

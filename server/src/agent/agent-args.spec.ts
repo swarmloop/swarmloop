@@ -93,6 +93,21 @@ describe('buildAgentArgs', () => {
   });
 });
 
+describe('claude launch args', () => {
+  it.each(['agent', 'plan', 'ask'])('disallow the tools that outlive a turn in %s mode', (mode) => {
+    const args = buildAgentArgs('claude', {
+      model: 'm',
+      prompt: 'p',
+      mounts: [{ hostPath: '/tmp/demo', containerPath: '/work/demo' }],
+      resumeChatId: null,
+      mode,
+    });
+    expect(args[args.indexOf('--disallowedTools') + 1]).toBe(
+      'Monitor,ScheduleWakeup,CronCreate,CronDelete,CronList,RemoteTrigger',
+    );
+  });
+});
+
 describe('review brief mount', () => {
   it('mounts briefs for every turn of a shared chat', () => {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-review-brief-'));

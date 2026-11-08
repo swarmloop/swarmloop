@@ -4,6 +4,7 @@ import type {
   AgentRuntime,
   AgentTerminalInput,
   EgressCredential,
+  HomeFile,
   RuntimeKeys,
   RuntimeName,
 } from './agent-runtime';
@@ -58,6 +59,10 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
       args.push('--resume', input.resumeChatId);
     }
     return args;
+  }
+
+  homeFiles(): HomeFile[] {
+    return [];
   }
 
   protected appendPrintFlags(_args: string[], _input: AgentPrintInput): void {}

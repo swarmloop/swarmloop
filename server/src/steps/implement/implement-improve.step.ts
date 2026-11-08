@@ -114,7 +114,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       { run: ctx.opened.run, key, step: this.name, mounts },
       withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos)),
     );
-    const agentResult = await ctx.launch({ prompt, mounts, allowHosts, project });
+    const agentResult = await ctx.launch({ prompt, mounts, allowHosts, project, sections: ['implementation'] });
     const text = agentResult.responseText;
     await assertUncommitted(mounts, branch, heads);
     const wrote = reviewedImplementation(text);

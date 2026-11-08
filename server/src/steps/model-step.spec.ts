@@ -11,7 +11,7 @@ import { ResearchStep } from './research/research.step';
 import type { StepResult } from './contract/step-contract';
 import { agentFailure, combineAgentResults } from './shared/agent-result';
 import { modelVisit } from './shared/model-visit';
-import { AGENT_LANGUAGE_RULE, skillPrompt, workingDirectoryBlock } from './shared/skill-prompt';
+import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE, skillPrompt, workingDirectoryBlock } from './shared/skill-prompt';
 
 describe('working directory block', () => {
   it('names the single scratch directory mounted at /work', () => {
@@ -99,7 +99,7 @@ describe('working directory block', () => {
       workspace: root,
       mounts: [],
     });
-    expect(prompts[0]).toBe(`${AGENT_LANGUAGE_RULE}\n\nЗроби поле`);
+    expect(prompts[0]).toBe(`${AGENT_LANGUAGE_RULE}\n${AGENT_FOREGROUND_RULE}\n\nЗроби поле`);
   });
 
   it('passes a continue prompt through without the English rule', async () => {
@@ -129,7 +129,7 @@ describe('working directory block', () => {
       workspace: root,
       mounts: [],
     });
-    expect(prompts[0]).toBe(`${AGENT_LANGUAGE_RULE}\n\nЗроби поле`);
+    expect(prompts[0]).toBe(`${AGENT_LANGUAGE_RULE}\n${AGENT_FOREGROUND_RULE}\n\nЗроби поле`);
     expect(continues[0]).toBe('Finish the checklist.');
   });
 });
