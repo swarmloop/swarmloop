@@ -11,7 +11,7 @@ import type { SandboxMount } from '../../core/sandbox-mount';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
 import type { StepContext } from '../base-step';
 import { withReturnNotes } from '../implement/implement-record';
-import { issueOf, returnNotes, textDocument, withHandoff } from '../shared/handoff';
+import { issueOf, returnNotes, textDocument, withHandoff, withImpact } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
 import { parseReview } from './code-review-record';
 import { fixNotes } from './review-input';
@@ -53,6 +53,7 @@ interface RoundInput {
   returned: string | null;
   diff: { heading: string; body: string };
   plan: string;
+  impact: string | null;
   auto: boolean | undefined;
   fresh: boolean;
   retry: boolean;
@@ -276,9 +277,9 @@ function reviewJob(reviewer: Reviewer, input: RoundInput) {
   const names = input.mounts.map((mount) => basename(mount.hostPath));
   const notesSection = input.notes?.trim() ? [{ heading: 'Implementation', body: input.notes }] : [];
   const planSection = input.plan.trim() ? [{ heading: 'Plan', body: input.plan }] : [];
-  const sections = withHandoff(
-    withReturnNotes([input.diff, ...notesSection, ...planSection], input.returned),
-    input.handoff,
+  const sections = withImpact(
+    withHandoff(withReturnNotes([input.diff, ...notesSection, ...planSection], input.returned), input.handoff),
+    input.impact,
   );
   return {
     reviewer,

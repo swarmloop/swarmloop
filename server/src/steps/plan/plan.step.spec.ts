@@ -145,6 +145,80 @@ describe('plan step', () => {
     }
   });
 
+  it('puts the Impact section in the full and the follow-up prompt, and leaves it out when the list is empty', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-impact-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-46', 'billing-api'), { recursive: true });
+    mkdirSync(join(root, 'worktrees', 'PROJ-47', 'billing-api'), { recursive: true });
+    mkdirSync(join(root, 'data'), { recursive: true });
+    writeFileSync(
+      join(root, 'data', 'PROJ-47-plan-session.json'),
+      `${JSON.stringify({ runtime: 'cursor', chatId: 'chat-1', resumed: true, completed: true, killReason: null, usd: 0 })}\n`,
+    );
+    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-46', '');
+      await seed(app, 'PROJ-47', '');
+      await putImpact(app, 'PROJ-47', '- live agent log | step-documents.tsx | kept\n');
+      await app.get(PipelineService).step('plan', 'PROJ-46');
+      await app.get(PipelineService).step('plan', 'PROJ-47');
+      const [plain, resumed] = agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt);
+      expect(plain).not.toContain('\nImpact:\n');
+      expect(resumed).toContain('The requirements in this message are the whole task');
+      expect(resumed).toContain('\nImpact:\n- live agent log | step-documents.tsx | kept');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('puts the Impact section in the full prompt', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-impact-full-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-48', 'billing-api'), { recursive: true });
+    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-48', '');
+      await putImpact(app, 'PROJ-48', '- live agent log | step-documents.tsx | kept\n');
+      await app.get(PipelineService).step('plan', 'PROJ-48');
+      expect((agent.mock.calls[0]?.[0] as AgentRunInput).prompt).toContain(
+        '\nImpact:\n- live agent log | step-documents.tsx | kept',
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('waits and writes the questions document when the answer has questions and no plan', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-ask-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-49', 'billing-api'), { recursive: true });
+    const ask = 'This change makes the live agent log unreachable. Is that intended?';
+    const agent = jest
+      .fn()
+      .mockResolvedValueOnce(result(['questions:', `- ${ask}`, '', 'summary:', '- stopped'].join('\n')))
+      .mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-49', '');
+      const waiting = await app.get(PipelineService).step('plan', 'PROJ-49');
+      expect(waiting.message).toContain(ask);
+      const run = await app.get(RunRepository).findRun('PROJ-49');
+      expect(run?.currentStep).toBe('plan');
+      expect(run?.status).toBe('waiting');
+      const documents = app.get(DocumentRepository);
+      expect(await documents.latestBody('PROJ-49', 'questions')).toBe(`- ${ask}\n`);
+
+      await documents.putDocument(run!, 'answers', `question: ${ask}\nanswer: yes\n`);
+      await app.get(PipelineService).step('plan', 'PROJ-49');
+      expect(agent).toHaveBeenCalledTimes(2);
+      expect((await app.get(RunRepository).findRun('PROJ-49'))?.currentStep).toBe('plan-improve');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('fails when the checklist is empty', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-empty-'));
     await writeEnv(root);
@@ -289,6 +363,11 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, question
   await documents.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
   await documents.putDocument(seeded, 'repos', 'billing-api\n');
   await documents.putDocument(seeded, 'questions', questions);
+}
+
+async function putImpact(app: Awaited<ReturnType<typeof boot>>, key: string, body: string): Promise<void> {
+  const run = await app.get(RunRepository).findRun(key);
+  await app.get(DocumentRepository).putDocument(run!, 'impact', body);
 }
 
 async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeof boot> {

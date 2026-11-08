@@ -106,6 +106,36 @@ describe('code-review step', () => {
     }
   });
 
+  it('puts the Impact section in every reviewer prompt and the report prompt, and leaves it out without a list', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-impact-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-86', 'billing-api'), { recursive: true });
+    mkdirSync(join(root, 'worktrees', 'PROJ-87', 'billing-api'), { recursive: true });
+    const agent = jest.fn(async (input: AgentRunInput) =>
+      result(input.step.endsWith('report') ? 'Holds.\n' : 'notes\n\ndecision: ok\n', input.step),
+    );
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-86');
+      await seed(app, 'PROJ-87');
+      const run = await app.get(RunRepository).findRun('PROJ-87');
+      await app.get(DocumentRepository).putDocument(run!, 'impact', '- live agent log | step-documents.tsx | kept\n');
+      await app.get(PipelineService).step('code-review', 'PROJ-86');
+      const before = agent.mock.calls.length;
+      await app.get(PipelineService).step('code-review', 'PROJ-87');
+      const plain = agent.mock.calls.slice(0, before).map((call) => call[0]);
+      const listed = agent.mock.calls.slice(before).map((call) => call[0]);
+      expect(plain).toHaveLength(6);
+      expect(plain.some((call) => call.prompt.includes('\nImpact:\n'))).toBe(false);
+      expect(listed).toHaveLength(6);
+      for (const call of listed) {
+        expect(call.prompt).toContain('\nImpact:\n- live agent log | step-documents.tsx | kept');
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
   it('runs the five reviewers together and writes the report after they finish', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-parallel-'));
     await writeEnv(root);

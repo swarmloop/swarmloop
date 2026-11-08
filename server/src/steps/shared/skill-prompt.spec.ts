@@ -1,4 +1,8 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { parseSummary, summaryOr } from './skill-prompt';
+
+const skill = (name: string): string => readFileSync(join(__dirname, '../../../../skills', name, 'SKILL.md'), 'utf8');
 
 const old = ['implementation:', '- changed A', '', 'summary:', '- why', ''].join('\n');
 const withCause = ['cause:', '- the parser dropped the suffix', '', old].join('\n');
@@ -19,5 +23,48 @@ describe('summaryOr', () => {
   it('reads the summary and falls back when it is missing', () => {
     expect(summaryOr(withCause, 'fallback')).toBe('- why\n');
     expect(summaryOr('cause:\n- only a cause\n', 'fallback')).toBe('fallback\n');
+  });
+});
+
+describe('impact skill rules', () => {
+  it('research holds the impact section, the question form and the naming rule', () => {
+    const text = skill('research');
+    expect(text).toContain('- <capability> | <file> | kept | changed | removed | unreachable');
+    expect(text).toContain('This change makes <capability> <unreachable|go away|change>. Is that intended?');
+    expect(text).toContain('`Removes` or `Behavior change` section');
+    expect(text).toContain('answered `yes`');
+    expect(text).toContain('removed (named)');
+    expect(text).toContain('Dead code that nothing relies on');
+    expect(text.indexOf('impact:\n- capability')).toBeLessThan(text.indexOf('summary:\n- why'));
+  });
+
+  it('plan skills hold the keep: item format and the stop-with-question rule', () => {
+    const keep = '- keep: <capability> - files: <paths> - proof: <test>';
+    expect(skill('plan')).toContain(keep);
+    expect(skill('plan')).toContain('Stop and end with a `questions:` section');
+    expect(skill('plan-improve')).toContain(keep);
+    expect(skill('plan-improve')).toContain('- unnamed removal: <capability>');
+    expect(skill('plan')).toContain('`files:` (the paths it changes) and `proof:`');
+  });
+
+  it('requirements holds the removal rule and the dead-code exception, and not the old sentence', () => {
+    const text = skill('code-review/requirements');
+    expect(text).toContain('A behavior the diff removes or makes unreachable is a return unless the task names it');
+    expect(text).toContain('The approved checklist alone does not authorize a removal.');
+    expect(text).toContain('Dead code that nothing relies on');
+    expect(text).not.toContain('A behavior that checklist removes is not a missing requirement');
+    expect(text).toContain('name one broken behavior');
+    expect(text).toContain('decision: return');
+  });
+
+  it('regressions holds the reachability rule, the named-capability exception and the return lines', () => {
+    const text = skill('code-review/regressions');
+    expect(text).toContain('Read the Impact section');
+    expect(text).toContain('still reachable with the data the system writes now');
+    expect(text).toContain('always true or always false counts as removal');
+    expect(text).toContain('Name the capability in the return.');
+    expect(text).toContain('named in `Removes` or `Behavior change`');
+    expect(text).toContain('name one broken behavior');
+    expect(text).toContain('decision: return');
   });
 });

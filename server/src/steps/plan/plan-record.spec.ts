@@ -4,6 +4,7 @@ import {
   correctedPlan,
   parsePlan,
   planFromAgent,
+  planQuestions,
   reviewedItems,
   withInstructions,
 } from './plan-record';
@@ -157,6 +158,31 @@ describe('reviewedItems', () => {
     expect(reviewedItems('I will replace the checklist.', stream)).toEqual([
       'Add the field on the offer index',
       'Backfill null rows',
+    ]);
+  });
+});
+
+describe('planQuestions', () => {
+  it('reads the questions of an answer with no plan section', () => {
+    expect(planQuestions('questions:\n- Is that intended?\n\nsummary:\n- stopped\n')).toBe('- Is that intended?\n');
+  });
+
+  it('is empty for a plan, for none and for no section', () => {
+    expect(planQuestions('plan:\n- a\n\nquestions:\n- why?\n')).toBe('');
+    expect(planQuestions('questions:\n- none\n')).toBe('');
+    expect(planQuestions('summary:\n- x\n')).toBe('');
+  });
+});
+
+describe('keep items', () => {
+  it('parse like other items, and output without them is unchanged', () => {
+    const keep = '- keep: live agent log - files: step-documents.tsx - proof: step-documents.spec.tsx "shows the log"';
+    expect(reviewedItems(`plan:\n- add X - files: a.ts - proof: a.spec.ts\n${keep}\n`)).toEqual([
+      'add X - files: a.ts - proof: a.spec.ts',
+      keep.slice(2),
+    ]);
+    expect(reviewedItems('plan:\n- add X - files: a.ts - proof: a.spec.ts\n')).toEqual([
+      'add X - files: a.ts - proof: a.spec.ts',
     ]);
   });
 });

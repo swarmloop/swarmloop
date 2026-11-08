@@ -122,6 +122,58 @@ describe('research step', () => {
     }
   });
 
+  it('writes the impact document with and without the section, and notes malformed lines', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-impact-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-23', 'billing-api'), { recursive: true });
+    mkdirSync(join(root, 'worktrees', 'PROJ-24', 'billing-api'), { recursive: true });
+    const ask = 'This change makes the live agent log unreachable. Is that intended?';
+    const agent = jest
+      .fn()
+      .mockResolvedValueOnce(
+        result(
+          [
+            'impact:',
+            '- live agent log | step-documents.tsx | unreachable',
+            '- broken line',
+            '',
+            'summary:',
+            '- looked',
+            '',
+            'questions:',
+            `- ${ask}`,
+          ].join('\n'),
+        ),
+      )
+      .mockResolvedValue(result(['summary:', '- looked', 'questions:', '- none'].join('\n')));
+    const app = await boot(root, agent);
+    const runs = app.get(RunRepository);
+    const documents = app.get(DocumentRepository);
+    try {
+      for (const key of ['PROJ-23', 'PROJ-24']) {
+        const seeded = await runs.begin(key, 'prepare');
+        seeded.status = 'waiting';
+        seeded.currentStep = 'research';
+        await runs.saveRun(seeded);
+        await documents.putDocument(seeded, 'requirements', '{"prompt":"ship it"}\n');
+      }
+      const asked = await app.get(PipelineService).step('research', 'PROJ-23');
+      expect(asked.message).toContain(ask);
+      expect(asked.message).toContain('ignored impact line: broken line');
+      expect((await runs.findRun('PROJ-23'))?.status).toBe('waiting');
+      expect((await runs.findRun('PROJ-23'))?.currentStep).toBe('research');
+      expect(await documents.latestBody('PROJ-23', 'impact')).toBe(
+        '- live agent log | step-documents.tsx | unreachable\n',
+      );
+
+      await app.get(PipelineService).step('research', 'PROJ-24');
+      expect(await documents.latestBody('PROJ-24', 'impact')).toBe('');
+      expect((await runs.findRun('PROJ-24'))?.currentStep).toBe('plan');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('relaunches a time kill until the answer is finished', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-time-'));
     await writeEnv(root, { RESEARCH_TIMEOUT_MS: '0' });

@@ -60,6 +60,7 @@ const INPUTS = {
   // Without requirements the review falls back to the run prompt, and a third-party review has none.
   requirements: lateInput(ARTIFACTS.requirements),
   repos: lateInput(ARTIFACTS.repos),
+  impact: lateInput(ARTIFACTS.impact),
   rebaseConflict: lateInput(ARTIFACTS.rebaseConflict),
 } as const satisfies InputSpec;
 
@@ -200,6 +201,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     writeReviewDiff(root(this.config), key, diff.patch);
     const handoff = await ctx.reread(ARTIFACTS.handoff);
     const plan = approvedPlan(requirements);
+    const impact = await ctx.reread(ARTIFACTS.impact);
     const finished = await runRound(deps, {
       opened,
       key,
@@ -213,6 +215,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       returned,
       diff,
       plan,
+      impact,
       auto: options.auto,
       fresh,
       retry,
@@ -246,6 +249,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       mounts,
       requirements,
       notes,
+      impact,
       reportContinued,
       options.auto,
     );

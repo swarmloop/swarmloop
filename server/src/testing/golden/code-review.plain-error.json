@@ -109,12 +109,20 @@
   "flows": [],
   "loopEvents": [],
   "reads": {
-    "code-review": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
-    "code-review-performance": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
-    "code-review-quality": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
-    "code-review-regressions": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
-    "code-review-requirements": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"],
-    "code-review-security": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff"]
+    "code-review": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff", "impact"],
+    "code-review-performance": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff", "impact"],
+    "code-review-quality": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff", "impact"],
+    "code-review-regressions": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff", "impact"],
+    "code-review-requirements": [
+      "implementation",
+      "requirements",
+      "repos",
+      "rebase_conflict",
+      "*",
+      "handoff",
+      "impact"
+    ],
+    "code-review-security": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff", "impact"]
   },
   "result": {
     "exitCode": 1,

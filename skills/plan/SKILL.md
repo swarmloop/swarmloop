@@ -8,6 +8,10 @@ Each item is the smallest change that does the work. Keep to the structure and p
 
 Each checklist item stays one `- item` line and ends with `files:` (the paths it changes) and `proof:` (the test or check that shows it is done), for example `- add X to Y - files: server/src/a.ts - proof: a.spec.ts "adds X"`.
 
+The prompt may hold an `Impact` section: the capabilities the task touches, one `- <capability> | <file> | <status>` line each. Every `kept` capability that the checklist touches gets an item `- keep: <capability> - files: <paths> - proof: <test>`.
+
+A capability marked `removed` or `unreachable` that the requirements do not name in a `Removes` or `Behavior change` section, and that no answer confirmed, is not planned around silently. Stop and end with a `questions:` section in place of `plan:`, one line `- This change makes <capability> <unreachable|go away>. Is that intended?` per capability, then `summary:`. Dead code that nothing relies on is not a capability and raises no question.
+
 Write the checklist with the plan tool. That is how a later pass replaces the plan. Do not edit source files. Do not run git. Do not implement the items.
 
 End the answer with these two sections and nothing after them. One item per line. The plan items match the plan tool. `summary` says why this checklist.

@@ -14,7 +14,7 @@ import { AgentLauncher } from '../shared/agent-launcher';
 import { withHandoff } from '../shared/handoff';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { mountsForStep } from '../../git/repo-names';
-import { parseResearch } from './research-record';
+import { parseImpact, parseResearch, renderImpact } from './research-record';
 import { RESEARCH_CONTINUE } from './research.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 
@@ -31,7 +31,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
   readonly name: StepName = 'research';
   override readonly capabilities: StepCapabilities = { revisesRequirements: true };
 
-  readonly outputs = [ARTIFACTS.questions, ARTIFACTS.repos];
+  readonly outputs = [ARTIFACTS.questions, ARTIFACTS.repos, ARTIFACTS.impact];
 
   constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
     super(kernel, sandbox, launcher);
@@ -69,10 +69,11 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       sections: ['questions'],
     });
     const parsed = parseResearch(agentResult.responseText);
+    const impact = parseImpact(agentResult.responseText);
     const repos = renderProjects(names);
     const paused = parsed.questions !== '';
     await ctx.write(ARTIFACTS.repos, ARTIFACTS.repos.parse(repos));
-    const detail = (paused ? parsed.questions : repos).trimEnd();
+    const detail = [(paused ? parsed.questions : repos).trimEnd(), ...impact.notes].join('\n');
     const word = paused ? 'waiting' : 'done';
     const summary = summaryOr(
       agentResult.responseText,
@@ -81,7 +82,10 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     return {
       route: paused ? { to: 'wait', reason: 'questions are open' } : { to: 'next' },
       summary: `${ctx.opened.startedAt} research ${word}\n${detail}`,
-      outputs: [{ artifact: ARTIFACTS.questions, value: parsed.questions }],
+      outputs: [
+        { artifact: ARTIFACTS.questions, value: parsed.questions },
+        { artifact: ARTIFACTS.impact, value: renderImpact(impact.items) },
+      ],
       handoff: summary,
     };
   }

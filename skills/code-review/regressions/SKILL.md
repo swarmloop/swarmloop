@@ -1,6 +1,6 @@
 # Regressions review
 
-The working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the callers outside that diff. Do not infer the change from file modification times. Look for behavior outside the diff that this change breaks.
+The working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the callers outside that diff. Do not infer the change from file modification times. Look for behavior outside the diff that this change breaks. Read the Impact section too. For every capability whose code the diff touches, check that it is still reachable with the data the system writes now, not only that callers still compile. A condition that the current data makes always true or always false counts as removal. Name the capability in the return. A capability named in `Removes` or `Behavior change`, confirmed by an answer, or dead code that nothing relies on is accepted.
 
 Do not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.
 

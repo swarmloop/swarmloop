@@ -37,6 +37,15 @@ export function findViolations({ root, rules, files }) {
       }
     });
   }
+  for (const { file, pattern: forbidden } of rules.forbidInFile ?? []) {
+    const text = existsSync(join(root, file)) ? readText(join(root, file)) : null;
+    const forbiddenPattern = new RegExp(forbidden);
+    text?.split('\n').forEach((line, index) => {
+      if (forbiddenPattern.test(line)) {
+        violations.push(`${file}:${index + 1}: ${line.trim()}`);
+      }
+    });
+  }
   return violations;
 }
 
