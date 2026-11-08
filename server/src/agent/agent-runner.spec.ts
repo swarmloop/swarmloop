@@ -368,6 +368,60 @@ describe('AgentProcessRunner ended early', () => {
     expect(result.responseText).toContain('implementation:');
   });
 
+  const note = { type: 'system', subtype: 'task_notification', task_id: 'b1', status: 'stopped' };
+  it.each([
+    [
+      'the 2.1.319 wording',
+      { ...note, summary: "Background shell command didn't finish before the previous session ended" },
+    ],
+    ['no summary', note],
+    ['a killed status', { ...note, status: 'killed' }],
+    ['a task_updated entry', { type: 'system', subtype: 'task_updated', task_id: 'b1', patch: { status: 'stopped' } }],
+    [
+      'a background_tasks_changed entry',
+      { type: 'system', subtype: 'background_tasks_changed', tasks: [{ id: 'b1', status: 'stopped' }] },
+    ],
+  ])('does not count an orphan-only resumed output as an attempt: %s', async (_label, event) => {
+    const { result, spawn } = await start(
+      'orphan-variant',
+      [{ chunks: [`${chatStream('chat-1')}${JSON.stringify(event)}\n${doneStream('')}`] }, { chunks: [answered] }],
+      { resumeChatId: 'chat-1', answered: (text) => text.includes('implementation:') },
+      { ...claude, MAX_LAUNCHES: 1 },
+    );
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(promptArg(spawn.mock.calls[1])).toBe(AGENT_BACKGROUND_KILLED_CONTINUE);
+    expect(resumeArg(spawn.mock.calls[1])).toBe('chat-1');
+    expect(result.responseText).toContain('implementation:');
+  });
+
+  it('does not treat a resumed output with assistant text as orphan-only', async () => {
+    const talk = { type: 'assistant', message: { content: [{ type: 'text', text: 'working on it' }] } };
+    const { result, spawn } = await start(
+      'orphan-text',
+      [{ chunks: [`${JSON.stringify(note)}\n${JSON.stringify(talk)}\n${doneStream('working on it')}`] }],
+      { resumeChatId: 'chat-1' },
+      { ...claude, MAX_LAUNCHES: 1 },
+    );
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(result.orphanOnly).toBe(false);
+  });
+
+  it.each([
+    ['a running notification', { ...note, status: 'running' }],
+    [
+      'an assistant line before an empty result',
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'hi' }] } },
+    ],
+  ])('does not treat %s as orphan-only', async (_label, event) => {
+    const { spawn } = await start(
+      'orphan-other',
+      [{ chunks: [`${JSON.stringify(note)}\n${JSON.stringify(event)}\n${doneStream('')}`] }],
+      { resumeChatId: 'chat-1' },
+      { ...claude, MAX_LAUNCHES: 1 },
+    );
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
   it.each([null, 'chat-1'])('writes the hook files into the state directory for resume %s', async (resumeChatId) => {
     const { root } = await start('home', [{ chunks: [answered] }], { resumeChatId }, claude);
     const state = agentStateDir(root, 'run1', sessionHome('implement'));
