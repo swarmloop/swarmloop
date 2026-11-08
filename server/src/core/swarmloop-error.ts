@@ -25,6 +25,13 @@ export class FetchFailed extends SwarmloopError {
   }
 }
 
+export class IssueNotFound extends FetchFailed {
+  constructor(message: string, httpCalls: HttpCallDraft[] = []) {
+    super(message, httpCalls);
+    this.name = 'IssueNotFound';
+  }
+}
+
 export class PasteNeeded extends SwarmloopError {
   constructor(
     readonly url: string,

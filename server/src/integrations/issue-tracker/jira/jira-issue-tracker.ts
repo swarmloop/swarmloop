@@ -3,12 +3,14 @@ import { basename } from 'path';
 import { AppConfig } from '../../../config/env';
 import { Clock } from '../../../core/clock';
 import { HttpStatusError, request } from '../../http';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../../../core/swarmloop-error';
+import { ERROR_CODES } from '../../../contract/error-codes';
+import { FetchFailed, HttpCallDraft, IssueNotFound, SwarmloopError } from '../../../core/swarmloop-error';
 import { encodedBody, headersFor, LinkedPagesService } from '../../linked-pages/linked-pages';
 import { PageReadContext } from '../../linked-pages/page-reader';
 import { AbstractIssueTracker } from '../abstract-issue-tracker';
 import { IssueBundle, IssueNote } from '../issue-bundle';
 import { adfToMarkdown, collectUrls } from './adf';
+import { jiraConfigured, JiraTicketKeys } from './jira-ticket-keys';
 import { sameSiteIssueKey } from './jira-url';
 
 const ISSUE_KEY = /^[A-Z][A-Z0-9]+-\d+$/;
@@ -40,12 +42,19 @@ interface JiraField {
 
 @Injectable()
 export class JiraIssueTracker extends AbstractIssueTracker {
+  private readonly keys: JiraTicketKeys;
+
   constructor(
     private readonly config: AppConfig,
     private readonly linkedPages: LinkedPagesService,
     private readonly clock: Clock,
   ) {
     super();
+    this.keys = new JiraTicketKeys(config, clock, () => this.credentials());
+  }
+
+  ticketKeys(text: string): Promise<string[]> {
+    return this.keys.find(text);
   }
 
   protected async loadIssue(key: string, runDir: string, calls: HttpCallDraft[]): Promise<IssueBundle> {
@@ -77,9 +86,11 @@ export class JiraIssueTracker extends AbstractIssueTracker {
 
   private credentials(): { base: string; headers: Record<string, string> } {
     const env = this.config.env;
-    const missing = (['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN'] as const).find((name) => !env[name]);
-    if (missing) {
-      throw new SwarmloopError(`${missing} is missing`);
+    if (!jiraConfigured(env)) {
+      throw new SwarmloopError(
+        'this run id is a Jira key, but JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN are not set',
+        { code: ERROR_CODES.INPUT_MISSING, category: 'user' },
+      );
     }
     const token = Buffer.from(`${env.JIRA_EMAIL}:${env.JIRA_API_TOKEN}`).toString('base64');
     return {
@@ -108,10 +119,10 @@ export class JiraIssueTracker extends AbstractIssueTracker {
       response = await request(this.clock, url, headers, calls);
     } catch (error) {
       const status = error instanceof HttpStatusError ? error.status : 'failed';
-      throw new FetchFailed(`issue fetch failed for ${key}: HTTP ${status}`, calls);
+      throw notFoundOr(key, status, calls);
     }
     if (response.status < 200 || response.status >= 300) {
-      throw new FetchFailed(`issue fetch failed for ${key}: HTTP ${response.status}`, calls);
+      throw notFoundOr(key, response.status, calls);
     }
     return JSON.parse(response.body.toString('utf8')) as JiraIssue;
   }
@@ -329,6 +340,11 @@ export class JiraIssueTracker extends AbstractIssueTracker {
 
 /** Jira's status category keys. Status names are localized; these are not. */
 const STATUS_CATEGORIES: Record<string, string> = { new: 'to do', indeterminate: 'in progress', done: 'done' };
+
+function notFoundOr(key: string, status: number | string, calls: HttpCallDraft[]): FetchFailed {
+  const message = `issue fetch failed for ${key}: HTTP ${status}`;
+  return status === 404 ? new IssueNotFound(message, calls) : new FetchFailed(message, calls);
+}
 
 function statusText(issue: JiraIssue): string {
   const name = issue.fields.status?.name?.trim() ?? '';

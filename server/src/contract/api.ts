@@ -153,6 +153,15 @@ export interface ShellMatch {
   currentStep: string;
 }
 
+export interface TicketKeysBody {
+  prompt: string;
+  key?: string;
+}
+
+export interface TicketKeysView {
+  keys: string[];
+}
+
 export interface CreateRunBody extends CommandInput {
   key?: string;
   prompt?: string;

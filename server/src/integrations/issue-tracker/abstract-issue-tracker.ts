@@ -24,5 +24,7 @@ export abstract class AbstractIssueTracker implements IssueTracker {
     }
   }
 
+  abstract ticketKeys(text: string): Promise<string[]>;
+
   protected abstract loadIssue(key: string, runDir: string, calls: HttpCallDraft[]): Promise<IssueBundle>;
 }

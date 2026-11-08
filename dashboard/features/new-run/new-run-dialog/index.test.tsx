@@ -1,13 +1,14 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRun, listProjects } from '../../../lib/endpoints';
+import { createRun, listProjects, ticketKeys } from '../../../lib/endpoints';
 import { NewRunDialog } from './index';
 
 vi.mock('../../../lib/endpoints', () => ({
   listProjects: vi.fn(),
   createRun: vi.fn(),
   setRunProjects: vi.fn(),
+  ticketKeys: vi.fn(),
 }));
 
 const allPhases = ['requirements', 'brainstorm', 'implementation', 'code-review', 'ci'];
@@ -20,6 +21,7 @@ async function pickProject(user: UserEvent, name: string): Promise<void> {
 beforeEach(() => {
   vi.mocked(listProjects).mockResolvedValue({ projects: ['swarmloop', 'docs'] });
   vi.mocked(createRun).mockResolvedValue({ key: 'run-9', status: 'running' });
+  vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
 });
 
 describe('NewRunDialog', () => {
@@ -34,6 +36,19 @@ describe('NewRunDialog', () => {
 
     await pickProject(user, 'swarmloop');
     expect(start).toBeEnabled();
+  });
+
+  it('lists the Jira keys that will be fetched, or says there are none', async () => {
+    const user = userEvent.setup();
+    vi.mocked(ticketKeys).mockResolvedValueOnce({ keys: ['PROJ-12', 'PROJ-13'] });
+    render(<NewRunDialog open onClose={vi.fn()} />);
+
+    await user.type(screen.getByRole('textbox', { name: /Prompt/ }), 'Do PROJ-12 and PROJ-13');
+    expect(await screen.findByText('Jira: PROJ-12, PROJ-13')).toBeInTheDocument();
+
+    vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
+    await user.type(screen.getByRole('textbox', { name: /Prompt/ }), ' now');
+    expect(await screen.findByText('no Jira tickets')).toBeInTheDocument();
   });
 
   it('starts with all five phases checked', () => {

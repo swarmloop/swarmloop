@@ -30,7 +30,10 @@ function bundle(key: string): IssueBundle {
 type Fetch = IssueTracker['fetch'];
 
 async function requirements(fetch: Fetch) {
-  const tracker: IssueTracker = { fetch: (...args) => fetch(...args) };
+  const tracker: IssueTracker = {
+    fetch: (...args) => fetch(...args),
+    ticketKeys: async (text) => text.match(/PROJ-\d+/g) ?? [],
+  };
   const golden = await goldenApp('requirements-golden', {
     configure: (builder) => builder.overrideProvider(ISSUE_TRACKER).useValue(tracker),
   });

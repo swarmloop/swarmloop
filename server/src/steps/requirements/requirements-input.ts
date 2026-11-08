@@ -3,8 +3,6 @@ import { readFile } from 'fs/promises';
 import type { StepOptions } from '../../core/pipeline-result';
 import { SwarmloopError } from '../../core/swarmloop-error';
 
-export { taskKeys } from '../../core/task-keys';
-
 export async function readPrompt(options: StepOptions): Promise<string | undefined> {
   if (options.prompt !== undefined && options.promptFile !== undefined) {
     throw new SwarmloopError('prompt and prompt-file are both set');

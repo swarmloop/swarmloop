@@ -15,7 +15,7 @@ const bundle: IssueBundle = {
 };
 
 describe('service context', () => {
-  const tracker = { fetch: jest.fn() };
+  const tracker = { fetch: jest.fn(), ticketKeys: jest.fn() };
   const host = { findMergeRequest: jest.fn() };
   const hosts = { byName: jest.fn(() => host) };
   const config = { env: { SWARMLOOP_ROOT: '/tmp/swarmloop' } };
@@ -29,8 +29,13 @@ describe('service context', () => {
     hosts as never,
   );
 
+  beforeEach(() => {
+    tracker.ticketKeys.mockImplementation(async (text: string) => text.match(/PROJ-\d+/g) ?? []);
+  });
+
   afterEach(() => {
     tracker.fetch.mockReset();
+    tracker.ticketKeys.mockReset();
     host.findMergeRequest.mockReset();
     hosts.byName.mockClear();
     documents.latestBody.mockReset();

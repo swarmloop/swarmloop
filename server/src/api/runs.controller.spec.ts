@@ -46,6 +46,12 @@ describe('RunsController', () => {
     expect(queries.stepEventPage).toHaveBeenCalledWith('proj-1', { step: 'commit', after: '4', limit: '50' });
   });
 
+  it('answers the keys a prompt would fetch', async () => {
+    const runs = { ticketKeys: jest.fn().mockResolvedValue({ keys: ['PROJ-12'] }) };
+    expect(await controllerWith(runs).ticketKeys({ prompt: 'Do PROJ-12' })).toEqual({ keys: ['PROJ-12'] });
+    expect(runs.ticketKeys).toHaveBeenCalledWith({ prompt: 'Do PROJ-12' });
+  });
+
   it('sets 202 when a created run starts', async () => {
     const runs = { plan: jest.fn().mockResolvedValue({ key: 'proj-1', phases: [], phasesGiven: false, projects: [] }) };
     const commands = answering({ key: 'proj-1', status: 'started' });

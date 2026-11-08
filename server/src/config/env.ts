@@ -9,6 +9,7 @@ export interface SwarmloopEnv {
   JIRA_BASE_URL: string;
   JIRA_EMAIL: string;
   JIRA_API_TOKEN: string;
+  JIRA_PROJECTS: string;
   GITLAB_BASE_URL: string;
   GITLAB_TOKEN: string;
   GITHUB_BASE_URL: string;
@@ -74,6 +75,7 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     JIRA_BASE_URL: config.getOrThrow<string>('JIRA_BASE_URL'),
     JIRA_EMAIL: config.getOrThrow<string>('JIRA_EMAIL'),
     JIRA_API_TOKEN: config.getOrThrow<string>('JIRA_API_TOKEN'),
+    JIRA_PROJECTS: config.get<string>('JIRA_PROJECTS') ?? '',
     GITLAB_BASE_URL: config.getOrThrow<string>('GITLAB_BASE_URL'),
     GITLAB_TOKEN: config.getOrThrow<string>('GITLAB_TOKEN'),
     GITHUB_BASE_URL: config.getOrThrow<string>('GITHUB_BASE_URL'),

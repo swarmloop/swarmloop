@@ -167,6 +167,10 @@ export async function listen(
       res.end('nope');
       return;
     }
+    if (url.pathname === '/rest/api/3/project/PROJ') {
+      send(res, { key: 'PROJ' });
+      return;
+    }
     if (url.pathname === '/rest/api/3/field') {
       send(res, [{ id: 'customfield_10037', name: 'Acceptance criteria' }]);
       return;

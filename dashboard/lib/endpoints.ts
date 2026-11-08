@@ -10,6 +10,8 @@ import type {
   RunRef,
   RunsView,
   StepView,
+  TicketKeysBody,
+  TicketKeysView,
 } from '@contract/api';
 import type { StepEventPage } from '@contract/step-events';
 
@@ -31,6 +33,8 @@ export const listProjects = (): Promise<{ projects: string[] }> => api<{ project
 export const getRunLog = (key: string, name: string): Promise<string | null> => runLog(key, name);
 
 export const createRun = (body: CreateRunBody): Promise<RunRef> => api<RunRef>('/runs', post(body));
+export const ticketKeys = (body: TicketKeysBody): Promise<TicketKeysView> =>
+  api<TicketKeysView>('/runs/ticket-keys', post(body));
 export const setRunProjects = (key: string, name: string): Promise<ProjectsView> =>
   api<ProjectsView>(`${run(key)}/projects`, post({ name } satisfies AddProjectBody));
 export const sendAnswers = (key: string, body: AnswersBody): Promise<FlowView> =>

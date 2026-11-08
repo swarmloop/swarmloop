@@ -9,6 +9,7 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     JIRA_BASE_URL: '',
     JIRA_EMAIL: '',
     JIRA_API_TOKEN: '',
+    JIRA_PROJECTS: '',
     GITLAB_BASE_URL: '',
     GITLAB_TOKEN: '',
     GITHUB_BASE_URL: '',

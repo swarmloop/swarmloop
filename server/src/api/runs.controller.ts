@@ -23,6 +23,8 @@ import {
   SnapshotsView,
   StartStepBody,
   StepView,
+  TicketKeysBody,
+  TicketKeysView,
 } from '../contract/api';
 import type { CommandInput, CommandReceipt, CommandType } from '../contract/command';
 import type { StepEventPage } from '../contract/step-events';
@@ -75,6 +77,11 @@ export class RunsController {
   @Get('runs/:key')
   flow(@Param('key') key: string): Promise<FlowView> {
     return this.queries.flow(key);
+  }
+
+  @Post('runs/ticket-keys')
+  ticketKeys(@Body() body: TicketKeysBody): Promise<TicketKeysView> {
+    return this.runs.ticketKeys(body);
   }
 
   @Post('runs/shell')

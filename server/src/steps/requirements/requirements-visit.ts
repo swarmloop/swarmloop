@@ -1,4 +1,5 @@
 import type { SampleDraft, VisitDraft } from '../../history/visit';
+import type { ErrorCode } from '../../contract/error-codes';
 import type { KillReason } from '../../core/kill-reason';
 import type { RequirementsWrite } from '../../integrations/requirements-source/requirements-source';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
@@ -12,6 +13,10 @@ export interface RequirementsFinish {
   outcome: 'ok' | 'failed' | 'blocked' | 'waiting';
   exitCode: number;
   message: string;
+  /** Lines the handoff carries after the message. */
+  notes?: string[];
+  /** The error code of a block. */
+  code?: ErrorCode;
   body: string | null;
   /** What `body` is stored as. The requirements record unless this says otherwise. */
   artifact?: Artifact<string>;
