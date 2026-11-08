@@ -100,10 +100,15 @@ class LogWriter {
     return this.blocks.map((block) => ({ type: block.type, text: block.text, code: codeKind(block) }));
   }
 
-  /** The blocks since the last call that are settled: a tool still open waits, unless `final`. */
+  /**
+   * The blocks since the last call that are settled: a tool still open waits, unless `final`.
+   * A final call also forgets the tools still open, so a completion of a later launch cannot close one of an earlier launch.
+   */
   settled(final: boolean): Block[] {
     if (final) {
       this.closeSpeech();
+      this.openTools.clear();
+      this.openIds.clear();
     }
     const out: Block[] = [];
     while (this.taken < this.blocks.length) {

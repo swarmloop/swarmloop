@@ -250,6 +250,12 @@ describe('the step window for a fixture run', () => {
     expect(screen.getByText('tool details not available from other')).toBeInTheDocument();
   });
 
+  it('shows a host suspension as one line that says it is not counted', () => {
+    feed([stepEvent(1, { kind: 'host.suspended', durationMs: 40 * 60_000 })]);
+
+    expect(screen.getByText('40m 0s, not counted')).toBeInTheDocument();
+  });
+
   it('turns the kill reason of an agent into a problem card', () => {
     feed([
       stepEvent(1, { kind: 'agent.launched', ...launch }),

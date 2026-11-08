@@ -10,6 +10,7 @@ import type { StepName } from '../contract/steps';
 import { hasFinalResult, stepOutput } from '../core/attempt-output';
 import { barrier } from '../core/barrier';
 import { Clock } from '../core/clock';
+import { AwakeTime } from '../core/awake-time';
 import { delay } from '../core/delay';
 import { diedLog, isStep } from '../core/pipeline-result';
 import { SERVER_INSTANCE } from '../core/server-instance';
@@ -48,6 +49,9 @@ export class Reconciler implements OnModuleDestroy {
   private claimed: (key: string) => boolean = () => false;
   private timer: NodeJS.Timeout | null = null;
   private tick: Promise<void> | null = null;
+  private awake: AwakeTime | null = null;
+  /** Host suspensions seen by the timer, so a wait that began before one does not count it. */
+  private readonly slept: { at: number; ms: number }[] = [];
 
   constructor(
     private readonly runs: RunRepository,
@@ -76,6 +80,7 @@ export class Reconciler implements OnModuleDestroy {
    */
   schedule(): void {
     this.stop();
+    this.awake = new AwakeTime(this.clock, this.config.env.RECONCILE_MS);
     this.timer = setInterval(() => this.tickOnce(), this.config.env.RECONCILE_MS);
     this.timer.unref();
   }
@@ -93,6 +98,8 @@ export class Reconciler implements OnModuleDestroy {
 
   /** A tick that comes while the last one still works is skipped. A failed tick is logged and the next one runs. */
   private tickOnce(): void {
+    const gap = this.awake?.observe() ?? 0;
+    if (gap > 0) this.slept.push({ at: this.clock.now(), ms: gap });
     if (this.tick) return;
     this.tick = this.reconcileAll()
       .catch((error: unknown) => {
@@ -233,7 +240,8 @@ export class Reconciler implements OnModuleDestroy {
         await this.runs.saveRun(run);
         return;
       }
-      if (this.clock.now() - since < this.config.env.RECOVER_WAIT_MS) return;
+      const asleep = this.slept.filter((gap) => gap.at > since).reduce((sum, gap) => sum + gap.ms, 0);
+      if (this.clock.now() - since - asleep < this.config.env.RECOVER_WAIT_MS) return;
       if (!(await this.sandbox.killAttempt(attemptId!))) {
         await this.blocked(run);
         return;

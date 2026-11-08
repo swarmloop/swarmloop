@@ -5,6 +5,7 @@ import { resolveRepoRoot } from '../config/repo-root';
 import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
+import { AwakeTime, SAMPLE_MS } from '../core/awake-time';
 import type { AgentRuntime } from '../integrations/agent-runtime/agent-runtime';
 import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
@@ -81,6 +82,9 @@ export interface AgentRunInput {
   answered?: (text: string) => boolean;
   /** Called with each chunk of the agent's output as it arrives. */
   onOutput?: (chunk: string) => void;
+  /** `onSuspended` gets the length of a host suspension that is not counted. `onLaunchEnd` runs when a launch ends, whatever the reason. */
+  onSuspended?: (ms: number) => void;
+  onLaunchEnd?: () => void;
   /** Run in the project image with the CLI mounted into it, instead of the agent image. */
   project?: ProjectLaunch;
 }
@@ -207,11 +211,11 @@ export class AgentProcessRunner {
     const launch = this.prepare(input, runtime, resumed);
     const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now());
     const started = this.clock.now();
-    const startedAt = new Date(started).toISOString();
+    const awake = new AwakeTime(this.clock, SAMPLE_MS, input.onSuspended);
     const workMounts = readOnlyTree(runtime.name, input.mode)
       ? input.mounts.map((mount) => ({ ...mount, readonly: true }))
       : input.mounts;
-    const process = await AgentProcess.spawn(this.sandbox, this.clock, {
+    const process = await AgentProcess.spawn(this.sandbox, {
       runtime: env.RUNTIME,
       runKey: input.runKey,
       step: input.step,
@@ -252,11 +256,9 @@ export class AgentProcessRunner {
     let chatId = input.resumeChatId;
     let killReason: KillReason | null = null;
     let finishedByResult = false;
-    let lastActivity = started;
     let buffer = '';
     const guard = new LimitGuard(
       this.logger,
-      this.clock,
       {
         model: input.model,
         timeLimitMs: input.timeLimitMs ?? env.REQUIREMENTS_TIMEOUT_MS,
@@ -270,8 +272,7 @@ export class AgentProcessRunner {
         auto: input.auto === true,
       },
       {
-        started: () => started,
-        lastActivity: () => lastActivity,
+        awake,
         billed: () => meter.billed(),
         finished: () => finishedByResult,
         killReason: () => killReason,
@@ -290,7 +291,7 @@ export class AgentProcessRunner {
     );
 
     const onData = (chunk: Buffer): void => {
-      lastActivity = this.clock.now();
+      awake.touch();
       log.note(chunk.toString('utf8'));
       input.onOutput?.(chunk.toString('utf8'));
       buffer += chunk.toString('utf8');
@@ -320,7 +321,7 @@ export class AgentProcessRunner {
       guard.check();
     };
     const onErr = (chunk: Buffer): void => {
-      lastActivity = this.clock.now();
+      awake.touch();
       log.note(chunk.toString('utf8'));
     };
     let sampling = false;
@@ -349,12 +350,14 @@ export class AgentProcessRunner {
       },
       () => killReason !== null || finishedByResult,
       {
+        time: awake,
         idleLimitMs: env.IDLE_TIMEOUT_MS,
         wallLimitMs: input.timeLimitMs ?? env.REQUIREMENTS_TIMEOUT_MS,
         timeout: () => guard.check(),
       },
     );
     await log.close();
+    input.onLaunchEnd?.();
     const finished = this.clock.now();
     const priced = meter.billed();
     await writeSession(input.sessionFile, env.RUNTIME, {
@@ -386,7 +389,7 @@ export class AgentProcessRunner {
       calls: 1,
       samples: log.samples,
       durationMs: finished - started,
-      startedAt,
+      startedAt: new Date(started).toISOString(),
       finishedAt: new Date(finished).toISOString(),
     };
   }

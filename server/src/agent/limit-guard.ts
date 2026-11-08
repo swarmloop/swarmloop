@@ -1,5 +1,5 @@
 import type { Logger } from '@nestjs/common';
-import type { Clock } from '../core/clock';
+import type { AwakeTime } from '../core/awake-time';
 import type { KillReason } from './limits';
 import { judgeLimits } from './limits';
 
@@ -8,7 +8,6 @@ export class LimitGuard {
 
   constructor(
     private readonly logger: Logger,
-    private readonly clock: Clock,
     private readonly input: {
       model: string;
       timeLimitMs: number;
@@ -22,8 +21,7 @@ export class LimitGuard {
       auto: boolean;
     },
     private readonly state: {
-      started: () => number;
-      lastActivity: () => number;
+      awake: AwakeTime;
       billed: () => { tokensIn: number; tokensOut: number; usd: number };
       finished: () => boolean;
       killReason: () => KillReason | null;
@@ -32,11 +30,10 @@ export class LimitGuard {
   ) {}
 
   check(): void {
-    const now = this.clock.now();
     const step = this.state.billed();
     const verdict = judgeLimits({
-      elapsedMs: now - this.state.started(),
-      idleMs: now - this.state.lastActivity(),
+      elapsedMs: this.state.awake.elapsedMs(),
+      idleMs: this.state.awake.idleMs(),
       timeLimitMs: this.input.timeLimitMs,
       idleLimitMs: this.input.idleLimitMs,
       spentUsd: this.input.spentUsd,

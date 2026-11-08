@@ -147,6 +147,7 @@ export function actorOf(item: TranscriptItem): Actor {
       case 'command.finished':
       case 'context.manifest':
       case 'http.call':
+      case 'host.suspended':
       case 'session.changed':
         kind = 'server';
     }
@@ -275,6 +276,7 @@ class ItemBuilder {
       case 'attempt.finished':
       case 'attempt.interrupted':
       case 'http.call':
+      case 'host.suspended':
         if (!repeatedIssue(this.shown, event)) {
           this.push({ event, side: sideOf(event), end: null, problem: problemOf(event, null) });
         }

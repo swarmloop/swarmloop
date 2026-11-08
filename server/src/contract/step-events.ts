@@ -81,6 +81,7 @@ export type StepEventBody =
       resultLine: string;
     }
   | { kind: 'agent.message'; text: string; chars: number }
+  | { kind: 'host.suspended'; durationMs: number }
   | { kind: 'activity.started'; spanId: string; title: string }
   | {
       kind: 'activity.finished';
