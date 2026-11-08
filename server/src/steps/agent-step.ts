@@ -102,8 +102,9 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     return this.profile(this.config.env);
   }
 
-  protected override ready(): Promise<void> {
-    return this.sandbox.assertReady(this.config.env.RUNTIME);
+  protected override async ready(ctx: StepContext): Promise<void> {
+    await this.sandbox.assertReady(this.config.env.RUNTIME);
+    await this.launcher.prepareImages(ctx.opened.run);
   }
 
   override describe(env: SwarmloopEnv): StepDescriptor {

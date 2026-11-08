@@ -12,7 +12,7 @@ import {
   agentStateDir,
   containerName,
   hostName,
-  imageName,
+  agentImage,
   isLocalHost,
   modelApiHosts,
   modelCredential,
@@ -33,6 +33,8 @@ import type { ShellConfig } from './shell-env';
 import { readShellConfig } from './shell-env';
 import { Egress, egressMode } from '../sandbox/egress';
 import { withEgress } from '../sandbox/egress-launch';
+import { ImagePreparation } from '../sandbox/image-prepare';
+import { resolveImage } from '../sandbox/image-resolver';
 
 export async function runShell(argv: string[], cwd = process.cwd()): Promise<void> {
   const root = resolve(__dirname, '../../..');
@@ -180,7 +182,13 @@ async function attach(
   if (!existsSync(maskFile)) {
     writeFileSync(maskFile, '');
   }
+  const preparation = new ImagePreparation(dockerOutput);
+  const images = {
+    agent: await preparation.prepare(agentImage(runtime.name)),
+    egress: await preparation.prepare(resolveImage('egress')),
+  };
   const base: SandboxLaunch = {
+    images,
     runtime: runtime.name,
     runKey: feature.key,
     attemptId: '',
@@ -228,7 +236,7 @@ async function attach(
       : null;
   const { launch, release } = egress ? await withEgress(egress, base) : { launch: base, release: () => undefined };
   const args = sandboxArgs(launch, undefined, config.engine);
-  await docker(['image', 'inspect', imageName(runtime.name)]);
+  await docker(['image', 'inspect', images.agent.ref]);
   const name = containerName(feature.key, 'shell');
   await api.shellLock(feature.key, name);
   let code = 1;

@@ -3,6 +3,7 @@ import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { resolveImage } from './image-resolver';
 import { SandboxService, collectEnvMasks, parseDockerStats } from './sandbox.service';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import {
@@ -155,7 +156,7 @@ describe('sandbox launch', () => {
         '/opt/swarmloop/bin/claude',
         '--print',
       ]);
-      expect(text).not.toContain('swarmloop-agent-claude');
+      expect(text).not.toContain(resolveImage('agent-claude').ref);
       expect(text).toContain('PATH=/opt/swarmloop/bin:/usr/local/bin:/usr/bin:/bin');
       expect(text).toContain('HOME=/home/sandbox');
       expect(text).toContain('NODE_EXTRA_CA_CERTS=/opt/swarmloop/certs/ca-certificates.crt');
@@ -208,7 +209,7 @@ describe('sandbox launch', () => {
 
     it('keeps the agent image and the small /tmp without a project', () => {
       const args = sandboxArgs(launch(), home);
-      expect(args).toContain('swarmloop-agent-cursor');
+      expect(args).toContain(resolveImage('agent-cursor').ref);
       expect(args).toContain('/tmp:rw,nosuid,nodev,size=64m,mode=1777');
       expect(args.join(' ')).not.toContain('/opt/swarmloop');
     });
@@ -229,7 +230,7 @@ describe('sandbox launch', () => {
     expect(args.join('\n')).not.toContain('docker.sock');
     expect(args).not.toContain('-e');
     expect(args).not.toContain('--env');
-    const imageAt = args.indexOf('swarmloop-agent-cursor');
+    const imageAt = args.indexOf(resolveImage('agent-cursor').ref);
     expect(args[imageAt + 1]).toBe('agent');
   });
 

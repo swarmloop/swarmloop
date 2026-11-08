@@ -2,13 +2,13 @@ import { randomInt } from 'crypto';
 import { chownSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { resolveImage } from './image-resolver';
 
 /** The internal network every sandbox lives on. It has no route out: the egress proxy is the only way. */
 export const EGRESS_NETWORK = 'swarmloop-sandbox';
 export const EGRESS_SUBNET = '198.18.0.0/16';
 export const EGRESS_IP = '198.18.0.2';
-const EGRESS_IMAGE = 'swarmloop-egress';
-const EGRESS_CONTAINER = 'swarmloop-egress';
+export const EGRESS_CONTAINER = 'swarmloop-egress';
 const EGRESS_PROXY = `http://${EGRESS_IP}:3128`;
 /** The model API on the proxy. A CLI pointed here sends a placeholder key; the proxy sends the real one. */
 export const EGRESS_API = `http://${EGRESS_IP}:3129`;
@@ -99,16 +99,16 @@ export class Egress {
   constructor(private readonly deps: EgressDeps) {}
 
   /** Checked before every lease, so a proxy that was removed or stopped comes back for the next step. */
-  ensure(): Promise<void> {
-    this.ready ??= this.setUp().finally(() => {
+  ensure(image = resolveImage('egress').ref): Promise<void> {
+    this.ready ??= this.setUp(image).finally(() => {
       this.ready = null;
     });
     return this.ready;
   }
 
   /** A free address with its policy written before the container exists, so the first request already has it. */
-  async lease(policy: EgressPolicy): Promise<EgressLease> {
-    await this.ensure();
+  async lease(policy: EgressPolicy, image?: string): Promise<EgressLease> {
+    await this.ensure(image);
     await this.dropStale();
     const now = this.deps.now();
     const body = `${JSON.stringify({ ...policy, issued: now, expires: now + POLICY_TTL_MS })}\n`;
@@ -171,15 +171,15 @@ export class Egress {
     }
   }
 
-  private async setUp(): Promise<void> {
+  private async setUp(image: string): Promise<void> {
     mkdirSync(this.deps.policyDir, { recursive: true, mode: 0o700 });
     this.reader = this.readerOf(this.deps.policyDir);
     await this.ensureNetwork();
     let imageId: string;
     try {
-      imageId = (await this.deps.docker(['image', 'inspect', '--format', '{{.Id}}', EGRESS_IMAGE])).trim();
+      imageId = (await this.deps.docker(['image', 'inspect', '--format', '{{.Id}}', image])).trim();
     } catch {
-      throw new SwarmloopError(`image ${EGRESS_IMAGE} is missing: run docker/sandbox/build.sh`);
+      throw new SwarmloopError(`image ${image} is missing: run docker/sandbox/build.sh`);
     }
     if (await this.proxyUp(imageId)) {
       return;
@@ -219,7 +219,7 @@ export class Egress {
         EGRESS_NETWORK,
         '--ip',
         EGRESS_IP,
-        EGRESS_IMAGE,
+        image,
       ]);
       await this.deps.docker(['network', 'connect', 'bridge', EGRESS_CONTAINER]);
     } catch (error) {

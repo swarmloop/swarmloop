@@ -4,6 +4,14 @@
     "pattern": "--prefix (nest|next)\\b|swarmloop-(nest|next)\\b",
     "exclude": ["docs/refactor/"]
   },
+  "forbidOutside": [
+    {
+      "include": "server/src/",
+      "allowFiles": ["server/src/sandbox/image-resolver"],
+      "allowLine": "-placeholder|mkdtemp|EGRESS_CONTAINER",
+      "pattern": "swarmloop-(agent-|egress)"
+    }
+  ],
   "forbidInFile": [
     {
       "file": "skills/code-review/requirements/SKILL.md",

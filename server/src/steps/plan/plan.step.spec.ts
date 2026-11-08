@@ -19,6 +19,7 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
+import { ERROR_CODES } from '../../contract/error-codes';
 
 const REFUSED_WRITE = JSON.stringify({
   type: 'system',
@@ -265,6 +266,28 @@ describe('plan step', () => {
       const result = await app.get(PipelineService).step('plan', 'PROJ-43');
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('docker is not running');
+      expect(agent).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('blocks the run with the image code and keeps its attempts when the images cannot be prepared', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-images-'));
+    await writeEnv(root);
+    const agent = jest.fn();
+    const refused = new SwarmloopError('image repo@sha256:abc cannot be pulled: unauthorized', {
+      code: ERROR_CODES.REGISTRY_AUTH,
+    });
+    const app = await boot(root, agent, refused);
+    try {
+      await seed(app, 'PROJ-44', '');
+      const result = await app.get(PipelineService).step('plan', 'PROJ-44');
+      const run = await app.get(RunRepository).findRun('PROJ-44');
+      expect(result.exitCode).toBe(1);
+      expect(run?.status).toBe('blocked');
+      expect(JSON.parse(run?.stateReason ?? '{}').code).toBe('REGISTRY_AUTH');
+      expect([run?.attemptsReview, run?.attemptsQa, run?.attemptsPipeline, run?.agentCalls]).toEqual([0, 0, 0, 0]);
       expect(agent).not.toHaveBeenCalled();
     } finally {
       await app.close();

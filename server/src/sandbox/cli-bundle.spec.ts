@@ -44,8 +44,8 @@ describe('CliBundles', () => {
     const docker = fakeDocker(state);
     const bundles = new CliBundles(docker);
     const [first, second] = await Promise.all([
-      bundles.ensure('codex', 'swarmloop-agent-codex'),
-      bundles.ensure('codex', 'swarmloop-agent-codex'),
+      bundles.ensure('codex', 'agent-image'),
+      bundles.ensure('codex', 'agent-image'),
     ]);
     expect(first).toBe('swarmloop-cli-codex-0123456789ab');
     expect(second).toBe(first);
@@ -58,7 +58,7 @@ describe('CliBundles', () => {
 
   it('does not copy again into a complete volume', async () => {
     const docker = fakeDocker({ complete: true, volumes: [] });
-    await new CliBundles(docker).ensure('claude', 'swarmloop-agent-claude');
+    await new CliBundles(docker).ensure('claude', 'agent-image');
     expect(docker.mock.calls.some((call) => (call[0].at(-1) ?? '').includes('cp -a'))).toBe(false);
   });
 
@@ -73,7 +73,7 @@ describe('CliBundles', () => {
       inUse: ['swarmloop-cli-claude-bbbbbbbbbbbb'],
     };
     const docker = fakeDocker(state);
-    await new CliBundles(docker).ensure('claude', 'swarmloop-agent-claude');
+    await new CliBundles(docker).ensure('claude', 'agent-image');
     const removed = docker.mock.calls.filter((call) => call[0][1] === 'rm').map((call) => call[0][2]);
     expect(removed).toEqual(['swarmloop-cli-claude-aaaaaaaaaaaa', 'swarmloop-cli-claude-bbbbbbbbbbbb']);
   });
@@ -82,8 +82,8 @@ describe('CliBundles', () => {
     const state = { complete: false, volumes: [] as string[], missing: true };
     const docker = fakeDocker(state);
     const bundles = new CliBundles(docker);
-    await expect(bundles.ensure('cursor', 'swarmloop-agent-cursor')).rejects.toThrow('run docker/sandbox/build.sh');
+    await expect(bundles.ensure('cursor', 'agent-image')).rejects.toThrow('run docker/sandbox/build.sh');
     state.missing = false;
-    await expect(bundles.ensure('cursor', 'swarmloop-agent-cursor')).resolves.toBe('swarmloop-cli-cursor-0123456789ab');
+    await expect(bundles.ensure('cursor', 'agent-image')).resolves.toBe('swarmloop-cli-cursor-0123456789ab');
   });
 });

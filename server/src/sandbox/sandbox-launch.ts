@@ -6,6 +6,7 @@ import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-r
 import { SwarmloopError } from '../core/swarmloop-error';
 import { rawEnv } from '../config/process-env';
 import { EGRESS_API, isLeaseIp } from './egress';
+import { resolveImage, type ResolvedImage } from './image-resolver';
 import { assertDaemonPath, assertMask, assertMount, assertProject, sandboxMount } from './sandbox-checks';
 import { CLI_ROOT, egressProxyArgs, projectImageArgs } from './sandbox-args';
 import type { SandboxLaunch } from './sandbox-types';
@@ -105,8 +106,13 @@ export function modelCredential(
   return runtimeFor(runtime).credential({ cursorKey, anthropicKey, oauthToken, codexAuth, codexApiKey });
 }
 
-export function imageName(runtime: RuntimeName): string {
-  return runtimeFor(runtime).image;
+function launchImage(launch: Pick<SandboxLaunch, 'runtime' | 'images'>): string {
+  return launch.images?.agent.ref ?? agentImage(launch.runtime).ref;
+}
+
+/** The agent image of a runtime as the resolver names it now. A run that stored its images passes those instead. */
+export function agentImage(runtime: RuntimeName): ResolvedImage {
+  return resolveImage(runtimeFor(runtime).component);
 }
 
 /** Containers for one step, including fan-out names such as code-review-security. */
@@ -351,6 +357,6 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
     args.push(`${CLI_ROOT}/bin/${command ?? ''}`, ...rest);
     return args;
   }
-  args.push('--workdir', workdir, imageName(launch.runtime), ...launch.command);
+  args.push('--workdir', workdir, launchImage(launch), ...launch.command);
   return args;
 }

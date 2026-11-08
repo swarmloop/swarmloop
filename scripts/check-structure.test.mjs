@@ -98,3 +98,20 @@ test('deploy/compose.yml may not build images or mount a source path', () => {
     [],
   );
 });
+
+test('forbidOutside reports an image name outside the resolver and lets the resolver and its spec keep it', () => {
+  const name = ['swarmloop', 'agent', 'claude'].join('-');
+  const files = {
+    'server/src/sandbox/foo.ts': `const image = '${name}';\n`,
+    'server/src/sandbox/image-resolver.ts': `const image = '${name}';\n`,
+    'server/src/sandbox/image-resolver.spec.ts': `const image = '${name}';\n`,
+    'server/src/agent/foo.spec.ts': `mkdtemp(join(tmpdir(), '${name}-'));\n`,
+    'docker-compose.yml': `image: ${name}\n`,
+  };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], /^server\/src\/sandbox\/foo\.ts:1:/);
+});

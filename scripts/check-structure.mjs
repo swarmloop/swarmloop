@@ -37,6 +37,26 @@ export function findViolations({ root, rules, files }) {
       }
     });
   }
+  for (const { include, allowFiles, allowLine, pattern: outside } of rules.forbidOutside ?? []) {
+    const outsidePattern = new RegExp(outside);
+    const allowed = new RegExp(allowLine);
+    for (const rel of files) {
+      if (
+        !rel.startsWith(include) ||
+        allowFiles.some((prefix) => rel.startsWith(prefix)) ||
+        !existsSync(join(root, rel))
+      ) {
+        continue;
+      }
+      readText(join(root, rel))
+        ?.split('\n')
+        .forEach((line, index) => {
+          if (outsidePattern.test(line) && !allowed.test(line)) {
+            violations.push(`${rel}:${index + 1}: ${line.trim()}`);
+          }
+        });
+    }
+  }
   for (const { file, pattern: forbidden } of rules.forbidInFile ?? []) {
     const text = existsSync(join(root, file)) ? readText(join(root, file)) : null;
     const forbiddenPattern = new RegExp(forbidden);

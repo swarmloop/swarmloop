@@ -15,7 +15,7 @@ import {
   containerName,
   emptyEnvFile,
   EnvMask,
-  imageName,
+  agentImage,
   isLocalHost,
   prepareStateDir,
   SandboxLaunch,
@@ -27,6 +27,8 @@ import {
   stepContainers,
 } from '../sandbox/sandbox-launch';
 import { Egress, egressMode } from './egress';
+import { ImagePreparation } from './image-prepare';
+import type { RunImages } from './image-resolver';
 import { withEgress } from './egress-launch';
 import { projectGitMount } from './project-git';
 
@@ -42,10 +44,23 @@ export class SandboxService {
   private readonly maskFile = join(tmpdir(), 'swarmloop-empty-env');
   private binds: BindMount[] | null = null;
   private egressProxy: Egress | null = null;
+  /** The images each run started with, as its `images` document says. A launch of the run uses these. */
+  private readonly runImages = new Map<string, RunImages>();
+  /** Pulls and checks the release images before a launch. It runs on whatever docker runner is set. */
+  readonly images = new ImagePreparation((args, timeoutMs) => this.docker(args, timeoutMs));
 
   useDocker(docker: DockerRunner): void {
     this.docker = docker;
     this.egressProxy = null;
+  }
+
+  /** The images this process already made ready for the run, so its later launches check nothing again. */
+  imagesOf(runKey: string): RunImages | undefined {
+    return this.runImages.get(runKey);
+  }
+
+  startedWith(runKey: string, images: RunImages): void {
+    this.runImages.set(runKey, images);
   }
 
   /** The egress proxy all sandboxes go out through. SANDBOX_EGRESS=open turns it off. */
@@ -67,13 +82,13 @@ export class SandboxService {
   }
 
   async assertReady(runtime: RuntimeName): Promise<void> {
-    try {
-      await this.docker(['info']);
-    } catch {
-      throw new SwarmloopError('docker is not running');
+    await this.images.dockerUp();
+    const image = agentImage(runtime);
+    if (image.registry) {
+      return;
     }
     try {
-      await this.docker(['image', 'inspect', imageName(runtime)]);
+      await this.docker(['image', 'inspect', image.ref]);
     } catch {
       throw new SwarmloopError('sandbox image is missing');
     }
@@ -98,7 +113,8 @@ export class SandboxService {
           metadata.push(...(await projectGitMount(mount, directory)));
         }
       }
-      const prepared = { ...given, mounts: [...given.mounts, ...metadata] };
+      const images = given.images ?? this.runImages.get(given.runKey);
+      const prepared = { ...given, ...(images ? { images } : {}), mounts: [...given.mounts, ...metadata] };
       const acquired = egress ? await withEgress(egress, prepared) : { launch: prepared, release: () => undefined };
       release = acquired.release;
       const { launch } = acquired;
