@@ -1,4 +1,4 @@
-import { chmodSync, chownSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync } from 'fs';
+import { chmodSync, chownSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join, resolve, sep } from 'path';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
@@ -223,6 +223,20 @@ export function prepareStateDir(path: string, userId: number): void {
     chmodSync(path, 0o700);
   } catch {
     chmodSync(path, 0o777);
+  }
+}
+
+/** Writes files into a state directory so the sandbox user can read them. Paths are relative to it. */
+export function writeHomeFiles(
+  files: readonly { path: string; content: string; mode: number }[],
+  statePath: string,
+  userId: number,
+): void {
+  for (const file of files) {
+    const path = join(statePath, file.path);
+    prepareStateDir(dirname(path), userId);
+    writeFileSync(path, file.content);
+    chmodSync(path, file.mode);
   }
 }
 

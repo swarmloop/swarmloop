@@ -1,6 +1,5 @@
-import { chmodSync, writeFileSync } from 'fs';
 import { readFile } from 'fs/promises';
-import { dirname, join } from 'path';
+import { join } from 'path';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
@@ -16,11 +15,12 @@ import {
   modelApiHosts,
   modelCredential,
   prepareStateDir,
+  writeHomeFiles,
   type ProjectLaunch,
   sandboxUserId,
 } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
-import type { AgentRunResult } from './agent-result';
+import { emptyResult, type AgentRunResult } from './agent-result';
 export type { AgentRunResult } from './agent-result';
 import { callsExceeded, type KillReason } from './limits';
 import { syncChatMode } from './chat-mode';
@@ -30,7 +30,13 @@ import { loadPriceTable } from './prices';
 import { recordLaunch } from './agent-launches';
 import { briefMounts, readOnlyTree, spillPrompt } from './agent-args';
 import { AgentProcess } from './agent-process';
-import { AGENT_BACKGROUND_KILLED_CONTINUE, foldAttempt, relaunchPlan, writeSession } from './agent-session';
+import {
+  AGENT_BACKGROUND_KILLED_CONTINUE,
+  foldAttempt,
+  relaunchPlan,
+  resendAfterOrphans,
+  writeSession,
+} from './agent-session';
 import { AttemptMeter } from './agent-attempt';
 import { LimitGuard } from './limit-guard';
 import { AttemptLog } from './live-output';
@@ -100,7 +106,7 @@ export class AgentProcessRunner {
     try {
       const env = this.config.env;
       if (input.auto === true && callsExceeded(input.agentCalls, env.MAX_AGENT_CALLS)) {
-        return this.empty(input, 'calls', 1, 0);
+        return emptyResult('calls', 1, 0, this.clock.iso());
       }
       const runtime = runtimeFor(env.RUNTIME);
       await this.sandbox.assertReady(env.RUNTIME);
@@ -126,32 +132,27 @@ export class AgentProcessRunner {
         calls += attempt.calls;
         groupUsd += attempt.usd;
         prior = `${carried}${merged.output ?? ''}`;
-        if (
-          resumed &&
-          attempt.orphanOnly === true &&
-          !resent &&
-          !this.runStop.halted(input.runKey) &&
-          !callsExceeded(input.agentCalls + calls, env.MAX_AGENT_CALLS)
-        ) {
-          // Orphan notifications are not an answer: ask again in this chat without counting an attempt.
+        const budget = {
+          halted: this.runStop.halted(input.runKey),
+          callsSoFar: input.agentCalls + calls,
+          maxCalls: env.MAX_AGENT_CALLS,
+          attempts: tries,
+          maxLaunches: env.MAX_LAUNCHES,
+        };
+        if (resendAfterOrphans({ attempt, resumed, resent, budget })) {
           resent = true;
           chatId = attempt.chatId ?? chatId;
           prompt = AGENT_BACKGROUND_KILLED_CONTINUE;
           continue;
         }
         tries += 1;
+        budget.attempts = tries;
         const relaunch = relaunchPlan({
           attempt,
           chatId,
           continuePrompt: input.continuePrompt,
           endedEarlyUsed,
-          budget: {
-            halted: this.runStop.halted(input.runKey),
-            callsSoFar: input.agentCalls + calls,
-            maxCalls: env.MAX_AGENT_CALLS,
-            attempts: tries,
-            maxLaunches: env.MAX_LAUNCHES,
-          },
+          budget,
         });
         if (!relaunch) {
           if (!merged) {
@@ -395,7 +396,7 @@ export class AgentProcessRunner {
       sessionHome(input.step),
     );
     prepareStateDir(statePath, userId);
-    this.writeHomeFiles(runtime, statePath, userId);
+    writeHomeFiles(runtime.homeFiles(), statePath, userId);
     if (runtime.syncsChatMode && input.resumeChatId) {
       syncChatMode(statePath, input.resumeChatId, input.mode);
     }
@@ -415,35 +416,5 @@ export class AgentProcessRunner {
       });
     }
     return { userId, statePath, args, briefs };
-  }
-
-  /** Writes the runtime's CLI home files on every launch, resumed ones included. */
-  private writeHomeFiles(runtime: AgentRuntime, statePath: string, userId: number): void {
-    for (const file of runtime.homeFiles()) {
-      const path = join(statePath, file.path);
-      prepareStateDir(dirname(path), userId);
-      writeFileSync(path, file.content);
-      chmodSync(path, file.mode);
-    }
-  }
-
-  private empty(input: AgentRunInput, killReason: KillReason, exitCode: number, calls: number): AgentRunResult {
-    const now = this.clock.iso();
-    return {
-      responseText: '',
-      chatId: null,
-      tokensIn: 0,
-      tokensOut: 0,
-      usd: 0,
-      killReason,
-      exitCode,
-      output: '',
-      resumed: false,
-      calls,
-      samples: [],
-      durationMs: 0,
-      startedAt: now,
-      finishedAt: now,
-    };
   }
 }

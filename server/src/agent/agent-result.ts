@@ -23,3 +23,23 @@ export interface AgentRunResult {
   startedAt: string;
   finishedAt: string;
 }
+
+/** A result for a launch that never started. */
+export function emptyResult(killReason: KillReason, exitCode: number, calls: number, now: string): AgentRunResult {
+  return {
+    responseText: '',
+    chatId: null,
+    tokensIn: 0,
+    tokensOut: 0,
+    usd: 0,
+    killReason,
+    exitCode,
+    output: '',
+    resumed: false,
+    calls,
+    samples: [],
+    durationMs: 0,
+    startedAt: now,
+    finishedAt: now,
+  };
+}

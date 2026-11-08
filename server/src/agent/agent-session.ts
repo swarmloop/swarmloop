@@ -57,6 +57,16 @@ function withinBudget(budget: LaunchBudget): boolean {
   return !budget.halted && budget.attempts < budget.maxLaunches && !callsExceeded(budget.callsSoFar, budget.maxCalls);
 }
 
+/** A resumed chat that only reported orphaned tasks gets the follow-up once, without counting as an attempt. */
+export function resendAfterOrphans(input: {
+  attempt: AgentRunResult;
+  resumed: boolean;
+  resent: boolean;
+  budget: LaunchBudget;
+}): boolean {
+  return input.resumed && input.attempt.orphanOnly === true && !input.resent && withinBudget(input.budget);
+}
+
 /** Decides whether the run launches again: a crash retry first, then a continue after a time or idle kill. */
 export function relaunchPlan(input: {
   attempt: AgentRunResult;
