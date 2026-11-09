@@ -6,6 +6,7 @@ import type {
   FlowView,
   HistoryView,
   ProjectsView,
+  ReadinessView,
   ReplayBody,
   RunRef,
   RunsView,
@@ -22,6 +23,7 @@ const post = (body?: unknown): RequestInit => ({
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });
 
+export const getReadiness = (): Promise<ReadinessView> => api<ReadinessView>('/readiness');
 export const listRuns = (): Promise<RunsView> => api<RunsView>('/runs');
 export const getFlow = (key: string): Promise<FlowView> => api<FlowView>(run(key));
 export const getStep = (key: string, name: string): Promise<StepView> => api<StepView>(step(key, name));

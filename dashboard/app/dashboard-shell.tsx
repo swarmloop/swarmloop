@@ -13,6 +13,7 @@ import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
 import { NewRunDialog } from '../features/new-run';
+import { useReadiness } from '../features/readiness';
 import { RemoveRunDialog, RunList, useRuns } from '../features/runs';
 import { Shell, ThemeModeSwitch, useNewRun } from '../features/shell';
 
@@ -42,6 +43,7 @@ function DashboardFrame({
   const router = useRouter();
   const { runs, now, error, connected, removeRun } = useRuns();
   const openNewRun = useNewRun();
+  const { blocker } = useReadiness();
   const [query, setQuery] = useState('');
   const [pendingRemove, setPendingRemove] = useState<RunSummary | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -120,9 +122,11 @@ function DashboardFrame({
             </Typography>
           </Box>
           <ThemeModeSwitch />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openNewRun}>
-            New run
-          </Button>
+          <Box component="span" title={blocker?.action}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={openNewRun} disabled={blocker !== null}>
+              New run
+            </Button>
+          </Box>
         </Toolbar>
       </AppBar>
       <Drawer

@@ -307,6 +307,20 @@ describe('github host', () => {
       service({ GITHUB_TOKEN: '' }).findMergeRequest({ project: 'acme/demo', source: 'feature/PROJ-1-ship' }),
     ).rejects.toThrow('GITHUB_TOKEN is missing');
   });
+
+  it('reads the current user with one GET', async () => {
+    const seen = mockFetch([{ id: 1 }]);
+    await service().readCurrentUser();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.method).toBe('GET');
+    expect(seen[0]?.url).toBe('https://api.github.com/user');
+    expect(seen[0]?.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it('names a rejected token when the current user is refused', async () => {
+    mockFetch([{}], 401);
+    await expect(service().readCurrentUser()).rejects.toThrow('was rejected');
+  });
 });
 
 function service(overrides: Partial<CodeHostEnv> = {}): GithubCodeHost {

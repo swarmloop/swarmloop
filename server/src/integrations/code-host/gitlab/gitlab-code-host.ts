@@ -187,6 +187,10 @@ export class GitlabCodeHost extends AbstractCodeHost {
     };
   }
 
+  protected userUrl(root: string): string {
+    return `${root}/api/v4/user`;
+  }
+
   protected findUrl(root: string, query: MergeRequestQuery): string {
     return `${root}/api/v4/projects/${encodeURIComponent(query.project)}/merge_requests?state=opened&source_branch=${encodeURIComponent(query.source)}`;
   }

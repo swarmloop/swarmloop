@@ -60,18 +60,18 @@ export class DiskGuard {
     if (await this.lowerThan(minimum)) {
       await this.pruneDocker();
     }
-    const free = await this.smallest();
+    const free = await this.smallestFree();
     if (free < minimum) {
       throw new SwarmloopError(await this.message(run.key, step, free), { code: ERROR_CODES.DISK_LOW });
     }
   }
 
   private async lowerThan(minimum: number): Promise<boolean> {
-    return (await this.smallest()) < minimum;
+    return (await this.smallestFree()) < minimum;
   }
 
   /** The free space of the emptier of the volumes of `data/` and `worktrees/`. */
-  private async smallest(): Promise<number> {
+  async smallestFree(): Promise<number> {
     const base = root(this.config);
     const readings = [];
     for (const name of ['data', 'worktrees']) {

@@ -72,6 +72,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     Reconciler,
     Housekeeping,
     WorkspaceGuard,
+    DiskGuard,
     RunRebase,
     PrepareStep,
     ProjectAppendService,

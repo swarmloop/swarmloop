@@ -18,7 +18,18 @@ export SWARMLOOP_HOME="$work/home" CHECKOUTS_ROOT="$work/checkouts"
 trap 'docker compose logs; docker compose down -v' EXIT
 docker compose up -d --wait
 curl -fsS http://127.0.0.1:3920/health
+# Every item must be ok except the credentials, which the fixture does not set.
+assert_ready='
+  const items = JSON.parse(require("fs").readFileSync(0, "utf8")).items;
+  const bad = items.filter((item) => !["model-credential", "code-host-token"].includes(item.id) && item.status !== "ok");
+  if (items.length === 0 || bad.length > 0) {
+    console.error("readiness is not ok:", JSON.stringify(bad, null, 2));
+    process.exit(1);
+  }
+'
+curl -fsS http://127.0.0.1:3920/readiness | node -e "$assert_ready"
 curl -fsS http://127.0.0.1:3921/ > /dev/null
 curl -fsS http://127.0.0.1:3921/swarmloop-api/health
+curl -fsS http://127.0.0.1:3921/swarmloop-api/readiness | node -e "$assert_ready"
 SWARMLOOP_SOCKET_URL=http://live.example:4000 docker compose up -d --wait
 curl -fsS http://127.0.0.1:3921/ | grep -F 'http://live.example:4000'
