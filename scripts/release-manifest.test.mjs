@@ -58,8 +58,9 @@ test('the compose file pins every image by digest and has no registry or version
     true,
   );
   for (const text of [compose, env]) {
-    assert.doesNotMatch(text, /SWARMLOOP_REGISTRY|SWARMLOOP_VERSION|latest/);
+    assert.doesNotMatch(text, /\$\{SWARMLOOP_(REGISTRY|VERSION)|SWARMLOOP_REGISTRY|latest/);
   }
+  assert.match(compose, /^ {6}SWARMLOOP_VERSION: 1\.2\.3$/m);
   assert.match(env, /Set these two first/);
   for (const name of ['agent-claude', 'agent-codex', 'agent-cursor', 'egress']) {
     assert.match(compose, new RegExp(`for ref in .*ghcr\\.io/acme/swarmloop-${name}@sha256:`));
