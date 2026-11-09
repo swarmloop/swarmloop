@@ -10,11 +10,12 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { ReadinessId, ReadinessItem } from '../contract/api';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { DiskGuard } from '../pipeline/disk-guard';
+import { resolveImage } from '../sandbox/image-resolver';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { ReadinessService } from './readiness.service';
 
 const GB = 1024 ** 3;
-const MANIFEST_REF = 'ghcr.io/swarmloop/swarmloop-agent-cursor@sha256:aaa';
+const MANIFEST_REF = 'registry.example/agent@sha256:aaa';
 
 describe('ReadinessService', () => {
   const original = global.fetch;
@@ -118,8 +119,8 @@ describe('ReadinessService', () => {
     docker.mockRejectedValue(new Error('No such image'));
     const item = await itemOf(service, 'images');
     expect(item).toMatchObject({ status: 'fail', action: expect.stringContaining('sandbox-images') });
-    expect(item.line).toContain('swarmloop-agent-cursor');
-    expect(item.line).toContain('swarmloop-egress');
+    expect(item.line).toContain(resolveImage('agent-cursor').ref);
+    expect(item.line).toContain(resolveImage('egress').ref);
   });
 
   describe('with a release manifest', () => {
@@ -136,7 +137,7 @@ describe('ReadinessService', () => {
         path,
         JSON.stringify({
           version: '1.0.0',
-          images: { 'agent-cursor': MANIFEST_REF, egress: 'ghcr.io/swarmloop/swarmloop-egress@sha256:bbb' },
+          images: { 'agent-cursor': MANIFEST_REF, egress: 'registry.example/egress@sha256:bbb' },
         }),
       );
       process.env.SWARMLOOP_RELEASE_MANIFEST = path;
