@@ -17,8 +17,10 @@ cp "$env_file" "$work/stack/.env"
 cd "$work/stack"
 export SWARMLOOP_HOME="$work/home" CHECKOUTS_ROOT="$work/checkouts"
 trap 'docker compose logs; docker compose down -v' EXIT
+# Under QEMU a service can be up before it answers: retry the first request to each.
+retry=(--retry 20 --retry-all-errors --retry-delay 3)
 docker compose up -d --wait
-curl -fsS http://127.0.0.1:3920/health
+curl -fsS "${retry[@]}" http://127.0.0.1:3920/health
 # Every item must be ok except the credentials, which the fixture does not set.
 assert_ready='
   const items = JSON.parse(require("fs").readFileSync(0, "utf8")).items;
@@ -29,11 +31,11 @@ assert_ready='
   }
 '
 curl -fsS http://127.0.0.1:3920/readiness | node -e "$assert_ready"
-curl -fsS http://127.0.0.1:3921/ > /dev/null
+curl -fsS "${retry[@]}" http://127.0.0.1:3921/ > /dev/null
 curl -fsS http://127.0.0.1:3921/swarmloop-api/health
 curl -fsS http://127.0.0.1:3921/swarmloop-api/readiness | node -e "$assert_ready"
 SWARMLOOP_SOCKET_URL=http://live.example:4000 docker compose up -d --wait
-curl -fsS http://127.0.0.1:3921/ | grep -F 'http://live.example:4000'
+curl -fsS "${retry[@]}" http://127.0.0.1:3921/ | grep -F 'http://live.example:4000'
 
 [ "$#" -ge 5 ] || exit 0
 # Upgrade: the previous published release starts on a new home with one run waiting, then the PR build takes over.

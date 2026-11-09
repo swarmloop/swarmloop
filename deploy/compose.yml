@@ -59,6 +59,18 @@ services:
 
   dashboard:
     image: ${SWARMLOOP_REGISTRY:-ghcr.io/swarmloop}/swarmloop-dashboard:${SWARMLOOP_VERSION}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3921/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 20s
     ports:
       - '127.0.0.1:3921:3921'
     environment:
