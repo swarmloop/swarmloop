@@ -25,6 +25,18 @@ export interface RunImages {
   egress: { ref: string; id?: string };
 }
 
+/** The document kind that holds the images a run started with. */
+export const IMAGES = 'images';
+
+/** What the run started with, or null before its first preparation. */
+export async function storedImages(
+  documents: { latestBody(key: string, kind: string): Promise<string | null> },
+  key: string,
+): Promise<RunImages | null> {
+  const body = await documents.latestBody(key, IMAGES);
+  return body ? (JSON.parse(body) as RunImages) : null;
+}
+
 interface Manifest {
   version: string;
   images: Record<string, string>;

@@ -3,13 +3,15 @@ import userEvent from '@testing-library/user-event';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { usePathname, useRouter } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { listProjects, listRuns, removeRun } from '../lib/endpoints';
+import { getDrain, listProjects, listRuns, removeRun, startDrain } from '../lib/endpoints';
 import { receive } from '../test/fake-socket';
 import { runSummary } from '../test/fixtures';
 import { DashboardShell } from './dashboard-shell';
 
 vi.mock('next/navigation', () => ({ usePathname: vi.fn(), useRouter: vi.fn() }));
 vi.mock('../lib/endpoints', () => ({
+  getDrain: vi.fn(),
+  startDrain: vi.fn(),
   listRuns: vi.fn(),
   removeRun: vi.fn(),
   listProjects: vi.fn(),
@@ -48,6 +50,29 @@ describe('Shell', () => {
     act(() => receive('connect'));
 
     expect(await screen.findByText('live')).toBeInTheDocument();
+  });
+
+  it('drains from the Drain button and shows when the instance is idle', async () => {
+    const user = userEvent.setup();
+    vi.mocked(startDrain).mockResolvedValue({ draining: true, idle: false, running: 1 });
+    vi.mocked(getDrain).mockResolvedValue({ draining: true, idle: true, running: 0 });
+    renderShell();
+
+    await user.click(screen.getByRole('button', { name: 'Drain' }));
+
+    expect(await screen.findByRole('button', { name: 'Draining: 1 running' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Idle: safe to upgrade' }, { timeout: 4000 })).toBeDisabled();
+  });
+
+  it('says why the drain failed and lets it be tried again', async () => {
+    const user = userEvent.setup();
+    vi.mocked(startDrain).mockRejectedValue(new Error('api is down'));
+    renderShell();
+
+    await user.click(screen.getByRole('button', { name: 'Drain' }));
+
+    expect(await screen.findByTitle('api is down')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Drain' })).toBeEnabled();
   });
 
   it('opens the new run dialog from the New run button', async () => {

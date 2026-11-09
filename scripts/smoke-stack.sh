@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Starts a compose file in an empty directory and checks the stack answers.
-# Usage: smoke-stack.sh <compose.yml> <env.example>
+# Usage: smoke-stack.sh <compose.yml> <env.example> [<previous-compose.yml> <previous-registry> <previous-version>]
+# With a previous release, the stack first starts that release, then upgrades to <compose.yml> with a run waiting.
 # The caller exports the variables the compose file needs for its images.
 set -eu
 
@@ -33,3 +34,32 @@ curl -fsS http://127.0.0.1:3921/swarmloop-api/health
 curl -fsS http://127.0.0.1:3921/swarmloop-api/readiness | node -e "$assert_ready"
 SWARMLOOP_SOCKET_URL=http://live.example:4000 docker compose up -d --wait
 curl -fsS http://127.0.0.1:3921/ | grep -F 'http://live.example:4000'
+
+[ "$#" -ge 5 ] || exit 0
+# Upgrade: the previous published release starts on a new home with one run waiting, then the PR build takes over.
+previous_compose="$(realpath "$3")"
+docker compose down -v
+export SWARMLOOP_HOME="$work/upgrade-home"
+mkdir -p "$SWARMLOOP_HOME"
+cp "$previous_compose" compose.yml
+SWARMLOOP_REGISTRY="$4" SWARMLOOP_VERSION="$5" docker compose up -d --wait
+# A run waiting for a person, stored the way the server does: the fixture has no credentials, so no step could reach it.
+docker compose exec -T server node -e "
+  const db = require('better-sqlite3')('/app/data/swarmloop.sqlite');
+  const at = new Date().toISOString();
+  db.prepare('INSERT INTO runs (key, status, current_step, runtime, requirements_via, issue_tracker, code_host, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run('UPGRADE-1', 'waiting', 'requirements', 'cursor', 'agent', 'jira', '', at, at);
+"
+waiting='
+  const run = JSON.parse(require("fs").readFileSync(0, "utf8")).runs.find((item) => item.key === "UPGRADE-1");
+  process.exit(run && run.status === "waiting" ? 0 : 1);
+'
+curl -fsS http://127.0.0.1:3920/runs | node -e "$waiting"
+# The previous release has no drain command, and a waiting run holds no step.
+cp "$compose_file" compose.yml
+docker compose up -d --wait
+ls "$SWARMLOOP_HOME"/data/backups/swarmloop-*.sqlite
+curl -fsS http://127.0.0.1:3920/runs | node -e "$waiting"
+# The run is known and the resume is not refused. Whether its step then succeeds depends on credentials the fixture lacks.
+code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:3920/runs/UPGRADE-1/resume)"
+[ "$code" != 404 ] && [ "$code" != 409 ]

@@ -6,6 +6,7 @@ import { RunStop } from '../agent/run-stop';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { StepStopped } from '../steps/shared/step-stopped';
+import { DrainService } from './drain.service';
 import { RunDriver } from './run-driver';
 import { RunLifecycle } from './run-lifecycle';
 
@@ -116,7 +117,7 @@ function lifecycleWith(run: Partial<RunEntity>, stopRun: jest.Mock) {
   const runStop = new RunStop();
   const lifecycle = new RunLifecycle(
     runs as never,
-    { latestBody: async () => null } as never,
+    { latestBody: async () => null, putDocument: async () => undefined } as never,
     {} as never,
     { env: { STOP_GRACE_S: 10 } } as unknown as AppConfig,
     {} as never,
@@ -273,6 +274,48 @@ describe('RunDriver with a Stop', () => {
       expect(execute).toHaveBeenCalledTimes(1);
     },
   );
+});
+
+describe('RunDriver while draining', () => {
+  function driverWith(drain: DrainService, execute: jest.Mock) {
+    return new RunDriver(
+      { findRun: async () => ({ id: 1, status: 'waiting', currentStep: 'implement', spentUsd: 0 }) } as never,
+      { latestBody: async () => null, putDocument: async () => undefined } as never,
+      { get: () => ({ execute }) } as never,
+      { env: { MAX_LAUNCHES: 3, MAX_RETURNS: 3, MAX_RUN_USD: 50 } } as unknown as AppConfig,
+      { listStats: async () => [] } as never,
+      new RunStop(),
+      new FakeClock(),
+      { flush: async () => undefined } as never,
+      undefined,
+      undefined,
+      drain,
+    );
+  }
+
+  it('starts no step once the drain has begun', async () => {
+    const drain = new DrainService();
+    drain.start();
+    const execute = jest.fn();
+
+    const result = await driverWith(drain, execute).drive('implement', 'KEY-1', {});
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result).toEqual({ exitCode: 1, message: 'KEY-1 drained' });
+  });
+
+  it('lets the running step finish and starts no next one', async () => {
+    const drain = new DrainService();
+    const execute = jest.fn(async () => {
+      drain.start();
+      return { exitCode: 0, message: 'done', resume: true };
+    });
+
+    const result = await driverWith(drain, execute).drive('implement', 'KEY-1', {});
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ exitCode: 0, message: 'KEY-1 drained' });
+  });
 });
 
 describe('AgentLauncher with a Stop', () => {

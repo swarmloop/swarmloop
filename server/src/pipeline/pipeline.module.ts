@@ -1,3 +1,4 @@
+import { DrainService } from './drain.service';
 import { Module } from '@nestjs/common';
 import { HistoryModule } from '../history/history.module';
 import { ProvidersModule } from '../integrations/providers.module';
@@ -61,6 +62,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     StepRegistry,
     PipelineService,
     CommandService,
+    DrainService,
     Reconciler,
     RunRebase,
     { provide: RunRebaseEnvironment, useExisting: EnvironmentService },
@@ -69,6 +71,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
   exports: [
     PipelineService,
     CommandService,
+    DrainService,
     Reconciler,
     Housekeeping,
     WorkspaceGuard,

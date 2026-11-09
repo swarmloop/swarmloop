@@ -20,7 +20,7 @@ import { checksFingerprint } from './checks-fingerprint';
 import { countsFor } from '../history/gate-stamp';
 import { git } from '../git/git';
 import { imagePath, projectSlug, resolveProjectImage } from './project-image';
-import { storedImages } from './run-images';
+import { storedImages } from '../sandbox/image-resolver';
 
 export const ENVIRONMENT = 'environment';
 const CHECKS_PASS = 'checks_pass';

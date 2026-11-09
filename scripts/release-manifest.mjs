@@ -33,7 +33,7 @@ function imageRefs({ components, repo }) {
   return refs;
 }
 
-function renderCompose(template, refs) {
+function renderCompose(template, refs, version) {
   const sandboxRefs = COMPONENTS.filter((name) => !/-(server|dashboard)$/.test(name)).map((name) => refs[name]);
   let text = template.replace(
     /image: \$\{SWARMLOOP_REGISTRY[^}]*\}\/(swarmloop-[a-z]+):\$\{SWARMLOOP_VERSION[^}]*\}/g,
@@ -42,6 +42,8 @@ function renderCompose(template, refs) {
     },
   );
   text = replaceOnce(text, / {4}environment:\n {6}REGISTRY: .*\n {6}VERSION: .*\n/, '');
+  // The server records the release that migrated its database, so it gets the version as a literal.
+  text = replaceOnce(text, /(SWARMLOOP_VERSION: )\$\{SWARMLOOP_VERSION\}/, `$1${version}`);
   return replaceOnce(
     text,
     /( *)for name in .*; do\n *ref=.*\n/,
@@ -71,7 +73,7 @@ export function generateArtifacts({ components, version, commit, repo, templates
   }
   return {
     'release-manifest.json': `${JSON.stringify({ version, images, commit, components: refs, cliVersions }, null, 2)}\n`,
-    'compose.yml': renderCompose(templates.compose, refs),
+    'compose.yml': renderCompose(templates.compose, refs, version),
     '.env.example': renderEnv(templates.env),
     'INSTALL.md': templates.install.replaceAll('{{version}}', version).replaceAll('{{commit}}', commit),
   };
