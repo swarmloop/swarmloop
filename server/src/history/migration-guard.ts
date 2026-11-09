@@ -21,16 +21,28 @@ export function serverVersion(): string {
   return manifest.version;
 }
 
-function compareVersions(a: string, b: string): number {
-  const left = a.split('.').map(Number);
-  const right = b.split('.').map(Number);
-  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
-    const difference = (left[i] ?? 0) - (right[i] ?? 0);
+const VERSION = /^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/;
+
+/** True when `stored` is newer than `version`. A release ranks above its own prereleases. A version that is not `MAJOR.MINOR.PATCH[-suffix]` counts as newer, so the guard refuses rather than passes. */
+function isNewer(stored: string, version: string): boolean {
+  const left = VERSION.exec(stored);
+  const right = VERSION.exec(version);
+  if (!left || !right) {
+    return true;
+  }
+  for (let i = 1; i <= 3; i += 1) {
+    const difference = Number(left[i]) - Number(right[i]);
     if (difference !== 0) {
-      return difference;
+      return difference > 0;
     }
   }
-  return 0;
+  if (left[4] === right[4]) {
+    return false;
+  }
+  if (left[4] === undefined || right[4] === undefined) {
+    return left[4] === undefined;
+  }
+  return left[4].localeCompare(right[4], 'en', { numeric: true }) > 0;
 }
 
 function backupTime(file: string): string {
@@ -122,7 +134,7 @@ export async function guardMigration(dataSource: DataSource, version: string, no
   const data = dirname(String(dataSource.options.database));
   const stored = await storedVersion(dataSource);
   const unknown = await unknownMigrations(dataSource);
-  if (stored && unknown.length > 0 && compareVersions(stored, version) > 0) {
+  if (stored && unknown.length > 0 && isNewer(stored, version)) {
     throw refuse(version, stored, unknown, join(data, BACKUPS));
   }
   if ((await tableExists(dataSource, 'runs')) && (await dataSource.showMigrations())) {

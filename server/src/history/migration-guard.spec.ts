@@ -129,4 +129,21 @@ describe('migration guard', () => {
       delete process.env.SWARMLOOP_VERSION;
     }
   });
+
+  it.each([
+    ['1.2.3-rc1', '1.2.2'],
+    ['1.2.3', '1.2.3-rc1'],
+    ['1.2.3-rc2', '1.2.3-rc1'],
+    ['dev', '1.2.3'],
+  ])('refuses a database stored by %s on a server of %s', async (stored, version) => {
+    await start(directory, stored, 1);
+
+    await expect(start(directory, version)).rejects.toThrow(`release ${stored}`);
+  });
+
+  it('starts a server that is newer than the stored prerelease', async () => {
+    await start(directory, '1.2.3-rc1', 1);
+
+    await expect(start(directory, '1.2.3', 1)).resolves.toBeUndefined();
+  });
 });
