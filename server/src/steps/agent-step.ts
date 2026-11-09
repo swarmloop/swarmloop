@@ -25,6 +25,7 @@ import type { StepName } from '../contract/steps';
 import { artifact, firstLine } from './contract/artifact';
 import type { Artifact } from './contract/artifact';
 import { ARTIFACTS, INSTRUCTIONS } from './contract/artifacts';
+import { answerEnding } from './shared/parse-failure-follow-up';
 
 /** The requirements, which no agent step starts without. Every agent step declares it first. */
 export const REQUIREMENTS_INPUT = { artifact: ARTIFACTS.requirements, need: 'run' } as const;
@@ -58,6 +59,8 @@ export interface ModelStepContext {
     resume?: boolean;
     /** The sections the answer must hold. A kill of background work that leaves one out fails the step as ended early. */
     sections?: string[];
+    /** Checks the final answer before returning it, so a malformed answer can be corrected in the same chat. */
+    validate?: (text: string, output: string | undefined) => void;
     project?: ProjectLaunch;
   }) => Promise<AgentRunResult>;
 }
@@ -229,6 +232,8 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       continuePrompt: launch.continuePrompt,
       freshPrompt: launch.freshPrompt === undefined ? undefined : withInstructions(launch.freshPrompt),
       sections: launch.sections,
+      validate: launch.validate,
+      parseFailureEnding: answerEnding(this.name),
       project: launch.project,
     });
     run.prompt = run.prompt ? `${run.prompt}\n\n${prompt}` : prompt;

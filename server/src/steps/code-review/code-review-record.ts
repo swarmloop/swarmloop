@@ -1,5 +1,6 @@
 import { readStreamLine, takeAnswer } from '../../agent/stream';
 import { SwarmloopError } from '../../core/swarmloop-error';
+import { lastSectionValue } from '../shared/markdown-section';
 
 interface ReviewDecision {
   decision: 'ok' | 'return';
@@ -39,19 +40,8 @@ function sources(text: string): string[] {
 }
 
 function lastDecision(text: string): 'ok' | 'return' | null {
-  let found: 'ok' | 'return' | null = null;
-  for (const line of text.split(/\r?\n/)) {
-    const cleaned = line
-      .trim()
-      .replace(/^[`*]+/, '')
-      .replace(/[`*]+$/, '')
-      .trim();
-    const match = /^decision:\s*(ok|return)[`*]*(?:\s*[-–—:.,;]\s*\S.*)?\s*$/.exec(cleaned);
-    if (match?.[1] === 'ok' || match?.[1] === 'return') {
-      found = match[1];
-    }
-  }
-  return found;
+  const value = lastSectionValue(text, 'decision', ['ok', 'return'] as const);
+  return value === 'ok' || value === 'return' ? value : null;
 }
 
 function streamText(raw: string): string {

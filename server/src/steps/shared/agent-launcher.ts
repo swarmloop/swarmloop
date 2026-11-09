@@ -22,6 +22,8 @@ import { assertNotStopped } from './step-stopped';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
 import { section } from './markdown-section';
 import { promptSections } from './prompt-manifest';
+import { combineAgentResults } from './agent-result';
+import { parseFailureFollowUp } from './parse-failure-follow-up';
 
 interface AgentLaunchRequest {
   root: string;
@@ -43,6 +45,9 @@ interface AgentLaunchRequest {
   /** The full prompt for a fresh chat when `prompt` is a follow-up and the CLI no longer has the chat. */
   freshPrompt?: string;
   sections?: string[];
+  /** Validates the completed answer before returning it. A missing or empty named section gets one focused retry. */
+  validate?: (text: string, output: string | undefined) => void;
+  parseFailureEnding?: string | null;
   project?: ProjectLaunch;
 }
 
@@ -180,6 +185,31 @@ export class AgentLauncher {
     });
     request.run.agentCalls += result.calls;
     request.run.spentUsd += result.usd;
-    return result;
+    const followUp =
+      result.exitCode === 0 && !result.backgroundKilled && result.responseText !== undefined && request.validate
+        ? this.parseFailureFollowUp(request, result)
+        : null;
+    if (!followUp) {
+      return result;
+    }
+    const retried = await this.launch({
+      ...request,
+      prompt: followUp,
+      freshPrompt: request.freshPrompt ?? request.prompt,
+      continuePrompt: null,
+      resume: undefined,
+      validate: undefined,
+      parseFailureEnding: null,
+    });
+    return combineAgentResults([result, retried]) ?? retried;
+  }
+
+  private parseFailureFollowUp(request: AgentLaunchRequest, result: AgentRunResult): string | null {
+    try {
+      request.validate?.(result.responseText, result.output);
+      return null;
+    } catch (error) {
+      return parseFailureFollowUp(error, request.parseFailureEnding ?? null);
+    }
   }
 }
