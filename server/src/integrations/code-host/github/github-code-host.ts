@@ -216,6 +216,10 @@ export class GithubCodeHost extends AbstractCodeHost {
     };
   }
 
+  protected userUrl(root: string): string {
+    return `${root}/user`;
+  }
+
   protected findUrl(root: string, query: MergeRequestQuery): string {
     const owner = query.project.split('/')[0] ?? '';
     return `${root}/repos/${repoPath(query.project)}/pulls?state=open&head=${encodeURIComponent(`${owner}:${query.source}`)}&per_page=20`;

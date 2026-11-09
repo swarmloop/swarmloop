@@ -76,6 +76,17 @@ export abstract class AbstractCodeHost implements CodeHost {
     }
   }
 
+  async readCurrentUser(): Promise<{ httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      await this.readJson(this.userUrl(root), headers, calls);
+      return { httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
   abstract readBranchPipeline(
     ref: PipelineRef,
     jobs?: boolean,
@@ -102,6 +113,8 @@ export abstract class AbstractCodeHost implements CodeHost {
   protected abstract credentialKeys(): readonly (keyof CodeHostEnv)[];
 
   protected abstract endpoint(env: CodeHostEnv): { root: string; headers: Record<string, string> };
+
+  protected abstract userUrl(root: string): string;
 
   protected abstract findUrl(root: string, query: MergeRequestQuery): string;
 

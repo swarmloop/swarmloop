@@ -1,6 +1,7 @@
 import localFont from 'next/font/local';
 import InitColorSchemeScript from '@mui/material/InitColorSchemeScript';
 import { socketUrl } from '../lib/runtime-config';
+import { ReadinessProvider } from '../features/readiness';
 import { DashboardShell } from './dashboard-shell';
 import { ThemeRegistry } from './theme-registry';
 
@@ -39,7 +40,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }):
       <body className={`${sans.variable} ${mono.variable}`}>
         <InitColorSchemeScript attribute="data" defaultMode="system" />
         <ThemeRegistry>
-          <DashboardShell>{children}</DashboardShell>
+          <ReadinessProvider>
+            <DashboardShell>{children}</DashboardShell>
+          </ReadinessProvider>
         </ThemeRegistry>
       </body>
     </html>

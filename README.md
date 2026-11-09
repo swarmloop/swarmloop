@@ -35,7 +35,7 @@ Every step runs in a locked container. Every prompt, diff, review, token, and do
 | 🎫 **Jira, Confluence, Drive** | The ticket, its epic, links, subtasks, attachments, and the pages around it. |
 | 🌿 **GitHub and GitLab** | Feature branch, commit once the reviewers pass, merge request, pipeline watch. |
 | 🔍 **Five reviewers** | Requirements, quality, regressions, security, performance. A finding sends the work back. |
-| 🔄 **Rebase** | One button rebases onto the latest base branch, hands conflicts to the agent, and reviews again. |
+| 🔄 **Rebase** | One button rebases onto the latest base branch, hands conflicts to the agent, and reviews again. The same rebase runs by itself when the host reports a merge conflict on the merge request. |
 | 💰 **Limits** | Dollars, tokens, time, silence, and retries are server settings, not the agent's choice. |
 | 🖥 **Live panel, CLI, IDE** | The panel updates as each step runs. The CLI and JetBrains AI Chat start the same runs, with the same steps, rules, and history. |
 | 📊 **Statistics** | Spend, tokens, and CPU and memory charts for every step, plus every external HTTP call. |
@@ -45,7 +45,7 @@ Every step runs in a locked container. Every prompt, diff, review, token, and do
 
 You need Docker and one model key. No Jira, no git token, no CI.
 
-1. Copy the settings:
+1. Get the release files. [`deploy/INSTALL.md`](deploy/INSTALL.md) ships with every release and lists them: download `compose.yml` and `.env.example` into an empty directory, then copy the settings:
 
    ```sh
    cp .env.example .env
@@ -58,23 +58,22 @@ You need Docker and one model key. No Jira, no git token, no CI.
    - `RUNTIME=codex`.
    - Subscription (ChatGPT Plus or Pro, no API bill): on your own machine run `codex login`. On a server without a browser run `codex login --device-auth`. Then put the file in `.env` as one line: `CODEX_AUTH=$(base64 -w0 ~/.codex/auth.json)` (macOS: `base64 -i ~/.codex/auth.json | tr -d '\n'`), pasted as the value, not as a command. The file is a password: never commit it, never share it. It is for your own use on your own server, not one plan shared by a team. Use this login only for swarmloop: a ChatGPT login can be refreshed from one place at a time, so also running `codex` with it on your laptop would log the server out. On a team server, log in once on that server.
    - API key instead: `CODEX_API_KEY` from the [OpenAI platform dashboard](https://platform.openai.com/api-keys) (API keys); it is billed per token. If both are set, `CODEX_AUTH` wins.
-   - Then run `docker/sandbox/build.sh` to build the `swarmloop-agent-codex` image, and restart.
    - The server keeps the login in `data/codex/` (it survives restarts) and refreshes it itself every few days, so parallel reviewers and steps never fight over it. `CODEX_AUTH` in `.env` is only the starting point: it is used again only when you change its value. Nothing to do by hand, unless the log says `Codex login expired`: then run `codex login`, paste the new value into `CODEX_AUTH` and restart the server.
    - A quick check: start a run with `RUNTIME=codex`; the first step answers if the login works.
 
-3. Start it:
+3. Start it. The release images are pulled, nothing is built here ([`deploy/INSTALL.md`](deploy/INSTALL.md) has the steps and the support matrix):
 
    ```sh
-   docker compose up --build
+   docker compose up -d --wait
    ```
 
-4. Open [http://127.0.0.1:3921](http://127.0.0.1:3921), click **New run**, pick a repository, untick **ci**, and describe the change. Leave ticket numbers out.
+4. Open [http://127.0.0.1:3921](http://127.0.0.1:3921). The start page shows what a run needs: Docker, images, disk, paths, ports, and your keys. **New run** stays off while an item says `fail`, and the item says what to do. `docker compose exec server node dist/main.js doctor` prints the same list. Then click **New run**, pick a repository, untick **ci**, and describe the change. Leave ticket numbers out.
 
-The repository list is every git clone in `CHECKOUTS_ROOT`, which `.env.example` sets to the folder that holds swarmloop (`../`). The agent edits its own worktree, not your working copy. Nothing is pushed, and Jira is not called.
+The repository list is every git clone in `CHECKOUTS_ROOT`, the folder you set in `.env`. The agent edits its own worktree, not your working copy. Nothing is pushed, and Jira is not called.
 
 ### 🚢 Commit, merge request, and CI
 
-Add a git token to `.env` and run `docker compose up --build` again. This time leave **ci** ticked. When the reviewers pass, the server pushes a feature branch, opens a merge request, and watches the pipeline. Nobody has to click in between.
+Add a git token to `.env` and run `docker compose up -d` again. This time leave **ci** ticked. When the reviewers pass, the server pushes a feature branch, opens a merge request, and watches the pipeline. Nobody has to click in between.
 
 - GitHub needs `GITHUB_TOKEN`. GitLab needs `GITLAB_TOKEN`, and `GITLAB_BASE_URL` when it is self-hosted. Both may be set. The server picks the host whose hostname equals the checkout `origin`.
 - The same token is also used to fetch the base branch, and a run on an SSH origin stops at prepare without it.
@@ -92,7 +91,7 @@ Add a git token to `.env` and run `docker compose up --build` again. This time l
 | Job | Read |
 | Merge request | Read, Create, Update |
 
-**Code: Download** is the git read. Rebase fetches the remote source branch with this token. Without Download, GitLab refuses the fetch: `This operation requires a fine-grained personal access token with the following project permissions: [Code: Download].` **Code: Push** is the git write the server uses after the commit pause. Your role on each project still has to be at least Developer.
+**Code: Download** is the git read. Rebase fetches the remote source branch with this token. Without Download, GitLab refuses the fetch: `This operation requires a fine-grained personal access token with the following project permissions: [Code: Download].` **Code: Push** is the git write the server uses once the reviewers pass. Your role on each project still has to be at least Developer.
 
 </details>
 
@@ -109,7 +108,7 @@ Add a git token to `.env` and run `docker compose up --build` again. This time l
 | Workflows | Read and write |
 | Metadata | Read |
 
-**Contents: Read and write** is the git read and the git write. Rebase fetches the remote source branch with this token, and that fetch uses the read half. The write half is what the server uses after the commit pause. Your account still has to be able to push to each repository. **Workflows: Read and write** is required when a commit creates or changes a file under `.github/workflows`. Without it GitHub rejects the push: `refusing to allow a Personal Access Token to create or update workflow ... without workflow scope`. GitHub shows the token once.
+**Contents: Read and write** is the git read and the git write. Rebase fetches the remote source branch with this token, and that fetch uses the read half. The write half is what the server uses once the reviewers pass. Your account still has to be able to push to each repository. **Workflows: Read and write** is required when a commit creates or changes a file under `.github/workflows`. Without it GitHub rejects the push: `refusing to allow a Personal Access Token to create or update workflow ... without workflow scope`. GitHub shows the token once.
 
 </details>
 
@@ -166,7 +165,7 @@ Only for prompts that name a ticket. A prompt without one never calls Jira.
 - `JIRA_API_TOKEN` comes from [Atlassian API tokens](https://id.atlassian.com/manage-profile/security/api-tokens): **Create API token**.
 - `JIRA_PROJECTS` is a comma-separated list of project keys, such as `PROJ,OPS`. Only keys of these projects count as tickets in a prompt. Empty means every project that exists on the site.
 
-Run `docker compose up --build` again after saving.
+Run `docker compose up -d` again after saving.
 
 ## ✨ Features
 
@@ -192,11 +191,11 @@ Every model step runs in a fresh container. The server starts it for the step an
 
 ### 🔀 Cursor, Claude, or Codex
 
-- `RUNTIME=cursor`, `RUNTIME=claude`, or `RUNTIME=codex`. Change the line and restart the server: the next step uses that agent and opens a new chat with the full brief. The sandbox images ship in this repo.
+- `RUNTIME=cursor`, `RUNTIME=claude`, or `RUNTIME=codex`. Change the line and restart the server: the next step uses that agent and opens a new chat with the full brief. The release images are pulled by the `sandbox-images` service of `compose.yml`.
 - Each phase can use its own model: `MODEL_RESEARCH`, `MODEL_PLAN`, and `MODEL_IMPLEMENT`.
 - Dollars come from the vendor's published price list, cached for a day.
 - Another agent is the same three pieces: a sandbox image under `docker/sandbox`, its API hosts and key, and the code that reads its output. The pipeline, the history, and the panel stay as they are.
-- `docker/sandbox/build.sh` builds the three agent images and the `swarmloop-egress` proxy image (`docker-compose build` builds them too). Run it again after you update swarmloop. Docker reuses its cache, so to get newer CLIs and certificates run `docker/sandbox/build.sh --fresh`, every few months is enough. Each image keeps its whole CLI under `/opt/swarmloop`, together with a CA certificate bundle (the public root list of Debian's `ca-certificates` package) and, for Codex, `rg`. swarmloop can therefore mount the CLI into another image.
+- For contributors building from a checkout, `docker/sandbox/build.sh` builds the three agent images and the `swarmloop-egress` proxy image (`docker-compose build` builds them too). Run it again after you update swarmloop. Docker reuses its cache, so to get newer CLIs and certificates run `docker/sandbox/build.sh --fresh`, every few months is enough. Each image keeps its whole CLI under `/opt/swarmloop`, together with a CA certificate bundle (the public root list of Debian's `ca-certificates` package) and, for Codex, `rg`. swarmloop can therefore mount the CLI into another image.
 - `scripts/agent-env-probe.sh <image>...` shows whether each CLI starts in a given image, for example `scripts/agent-env-probe.sh node:22-bookworm-slim php:8.3-cli`. Claude and Cursor need a glibc image with `bash`, so Debian or Ubuntu based. Alpine images do not work for them. Codex is one static binary and starts anywhere.
 
 ### 🎫 Jira, Confluence, and Google Drive

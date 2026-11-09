@@ -274,6 +274,20 @@ describe('gitlab host', () => {
       expect(JSON.stringify((error as FetchFailed).httpCalls)).not.toContain(TOKEN);
     }
   });
+
+  it('reads the current user with one GET', async () => {
+    const seen = mockFetch([{ id: 1 }]);
+    await service().readCurrentUser();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.method).toBe('GET');
+    expect(seen[0]?.url).toBe('https://gitlab.example/api/v4/user');
+    expect(seen[0]?.headers['PRIVATE-TOKEN']).toBe(TOKEN);
+  });
+
+  it('names a rejected token when the current user is refused', async () => {
+    mockFetch([{}], 401);
+    await expect(service().readCurrentUser()).rejects.toThrow('was rejected');
+  });
 });
 
 function service(overrides: Partial<CodeHostEnv> = {}): GitlabCodeHost {

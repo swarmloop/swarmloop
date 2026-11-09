@@ -68,6 +68,8 @@ export interface CodeHost {
     jobs?: boolean,
   ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
   diagnoseMissingPipeline?(ref: PipelineRef): Promise<PipelineDiagnosis>;
+  /** A read-only call that proves the token works. */
+  readCurrentUser(): Promise<{ httpCalls: HttpCallDraft[] }>;
   readJobTrace(project: string, jobId: number): Promise<{ trace: string; httpCalls: HttpCallDraft[] }>;
   cancelPipeline(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }>;
 }
