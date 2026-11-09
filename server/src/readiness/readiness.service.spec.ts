@@ -54,7 +54,7 @@ describe('ReadinessService', () => {
     docker = jest.fn(async () => '');
     const sandbox = new SandboxService();
     sandbox.useDocker(docker);
-    const disk = new DiskGuard(config, {} as never, sandbox);
+    const disk = new DiskGuard(config, {} as never, sandbox, {} as never, {} as never);
     disk.useFreeBytes(async () => free);
     fetched = [];
     global.fetch = jest.fn(async (url: string, init?: { method?: string }) => {

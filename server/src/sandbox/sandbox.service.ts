@@ -252,20 +252,41 @@ export class SandboxService {
   }
 
   /**
-   * Removes dangling images and build cache older than 24 hours. Tagged images, volumes and containers stay.
+   * Removes dangling images and build cache older than 24 hours. Tagged images, volumes and containers stay, and so
+   * do the images in `keep`, which runs in flight started with. `image prune` has no exclude list, so with images to
+   * keep the dangling ones are removed one by one.
    * A docker that fails is logged: housekeeping never stops a run.
    */
-  async pruneDocker(): Promise<void> {
-    for (const args of [
-      ['image', 'prune', '-f'],
-      ['builder', 'prune', '-f', '--filter', 'until=24h'],
-    ]) {
+  async pruneDocker(keep: RunImages[] = []): Promise<void> {
+    for (const [name, step] of [
+      ['image', () => (keep.length === 0 ? this.docker(['image', 'prune', '-f'], 300_000) : this.removeDangling(keep))],
+      ['builder', () => this.docker(['builder', 'prune', '-f', '--filter', 'until=24h'], 300_000)],
+    ] as const) {
       try {
-        await this.docker(args, 300_000);
+        await step();
       } catch (error) {
         new Logger(SandboxService.name).warn(
-          `docker ${args[0]} prune failed: ${error instanceof Error ? error.message : String(error)}`,
+          `docker ${name} prune failed: ${error instanceof Error ? error.message : String(error)}`,
         );
+      }
+    }
+  }
+
+  /** Removes the dangling images that no run in `keep` uses. They match by image id or by the digest of the reference. */
+  private async removeDangling(keep: RunImages[]): Promise<void> {
+    const used = keep.flatMap((images) => [images.agent, images.egress]);
+    const ids = used.map((image) => image.id?.replace('sha256:', '')).filter((id): id is string => !!id);
+    const digests = used.map((image) => image.ref.split('@')[1]).filter((digest): digest is string => !!digest);
+    for (const line of await this.listed('image ls --filter dangling=true --format {{.ID}}/{{.Digest}}'.split(' '))) {
+      const [id, digest] = line.split('/');
+      if (!ids.some((kept) => kept.startsWith(id) || id.startsWith(kept)) && !digests.includes(digest)) {
+        try {
+          await this.docker(['image', 'rm', id], 300_000);
+        } catch (error) {
+          new Logger(SandboxService.name).warn(
+            `docker image rm ${id} failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
       }
     }
   }

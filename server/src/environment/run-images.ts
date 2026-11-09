@@ -1,21 +1,12 @@
 import { runActivity } from '../core/step-event-scope';
 import type { RunEntity } from '../history/entities';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
-import { imageOf, resolveImage, type RunImages } from '../sandbox/image-resolver';
+import { IMAGES, imageOf, resolveImage, storedImages, type RunImages } from '../sandbox/image-resolver';
 import type { SandboxService } from '../sandbox/sandbox.service';
-
-/** The document kind that holds the images a run started with. */
-export const IMAGES = 'images';
 
 interface Documents {
   latestBody(key: string, kind: string): Promise<string | null>;
   putDocument(run: RunEntity, kind: string, body: string): Promise<void>;
-}
-
-/** What the run started with, or null before its first preparation. */
-export async function storedImages(documents: Pick<Documents, 'latestBody'>, key: string): Promise<RunImages | null> {
-  const body = await documents.latestBody(key, IMAGES);
-  return body ? (JSON.parse(body) as RunImages) : null;
 }
 
 /**

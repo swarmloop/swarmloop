@@ -23,6 +23,36 @@ This release was built from commit `{{commit}}`. Every image in `compose.yml` is
 
 `release-manifest.json` lists the image digests and CLI versions of this release.
 
+## Upgrade
+
+1. Drain the instance. It stops taking new runs and new steps, lets a running step finish, and prints `idle` when nothing runs:
+
+   ```
+   docker compose exec server node dist/main.js drain
+   ```
+
+   The dashboard has the same **Drain** button. A run that was waiting or stopped at a step boundary keeps its state.
+
+2. Set `SWARMLOOP_VERSION` in `.env` to the new release, then pull and start it:
+
+   ```
+   docker compose pull
+   docker compose up -d --wait
+   ```
+
+3. When the new server finds migrations to run, it first writes `data/backups/swarmloop-<old-version>-<time>.sqlite` and a copy of the session files next to it, and keeps the last 3. If a backup fails, the server does not migrate and does not start; its log says why.
+4. Resume the drained runs. A run keeps the images it started with, so a release never changes a run in flight.
+
+Keep the previous `release-manifest.json` and its images until no run uses them. Nothing removes them while a run that is not done refers to them.
+
+## Rollback
+
+1. Drain the instance: `docker compose exec server node dist/main.js drain`.
+2. Stop the stack: `docker compose down`.
+3. Restore the backup. The older server that refuses to start on a newer database names the file in its log. Copy that file from `data/backups` over `data/swarmloop.sqlite`, and delete `data/swarmloop.sqlite-wal` and `data/swarmloop.sqlite-shm` if they exist. Copy the session files of the same backup from `data/backups/<backup name>.sessions` back into `data/`.
+4. Set `SWARMLOOP_VERSION` in `.env` to the previous release, and start it: `docker compose up -d --wait`.
+5. Reconcile: run `docker compose exec server node dist/main.js doctor`, then resume the drained runs.
+
 ## Support matrix
 
 | Component | Tested | Minimum |

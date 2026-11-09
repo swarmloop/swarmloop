@@ -180,6 +180,19 @@ jobs:
           SWARMLOOP_REGISTRY: local
           SWARMLOOP_VERSION: ci
         run: bash scripts/smoke-stack.sh deploy/compose.yml deploy/.env.example
+      - name: Upgrade from the previous published release with one run waiting
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SWARMLOOP_REGISTRY: local
+          SWARMLOOP_VERSION: ci
+        run: |
+          set -eu
+          if ! gh release download --repo "${{ github.repository }}" --dir previous --pattern compose.yml --pattern release-manifest.json; then
+            echo "no published release to upgrade from"
+            exit 0
+          fi
+          version="$(node -p "require('./previous/release-manifest.json').version")"
+          bash scripts/smoke-stack.sh deploy/compose.yml deploy/.env.example previous/compose.yml ghcr.io/swarmloop "$version"
 
   structure-check:
     runs-on: ubuntu-latest

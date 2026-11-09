@@ -11,7 +11,7 @@ import type { SandboxService } from '../sandbox/sandbox.service';
 import type { AgentProcessRunner } from '../agent/agent-runner';
 import { StepStopped } from '../steps/shared/step-stopped';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
-import { IMAGES } from './run-images';
+import { IMAGES } from '../sandbox/image-resolver';
 
 const DIGEST_A = `sha256:${'a'.repeat(64)}`;
 const DIGEST_B = `sha256:${'b'.repeat(64)}`;

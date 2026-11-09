@@ -3,6 +3,7 @@ import type {
   AddProjectBody,
   AnswersBody,
   CreateRunBody,
+  DrainView,
   FlowView,
   HistoryView,
   ProjectsView,
@@ -24,6 +25,7 @@ const post = (body?: unknown): RequestInit => ({
 });
 
 export const getReadiness = (): Promise<ReadinessView> => api<ReadinessView>('/readiness');
+export const getDrain = (): Promise<DrainView> => api<DrainView>('/drain');
 export const listRuns = (): Promise<RunsView> => api<RunsView>('/runs');
 export const getFlow = (key: string): Promise<FlowView> => api<FlowView>(run(key));
 export const getStep = (key: string, name: string): Promise<StepView> => api<StepView>(step(key, name));
@@ -34,6 +36,7 @@ export const getHistory = (key: string): Promise<HistoryView> => api<HistoryView
 export const listProjects = (): Promise<{ projects: string[] }> => api<{ projects: string[] }>('/checkouts/projects');
 export const getRunLog = (key: string, name: string): Promise<string | null> => runLog(key, name);
 
+export const startDrain = (): Promise<DrainView> => api<DrainView>('/drain', post());
 export const createRun = (body: CreateRunBody): Promise<RunRef> => api<RunRef>('/runs', post(body));
 export const ticketKeys = (body: TicketKeysBody): Promise<TicketKeysView> =>
   api<TicketKeysView>('/runs/ticket-keys', post(body));

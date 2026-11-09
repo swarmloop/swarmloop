@@ -28,6 +28,7 @@ import { writeRunState } from '../history/run-state';
 import type { WorkspaceGuard } from './workspace-guard';
 import { workspaceBlock } from './workspace-guard';
 import type { DiskGuard } from './disk-guard';
+import type { DrainService } from './drain.service';
 
 const HOP_LIMIT = STEPS.length * 3;
 
@@ -43,6 +44,7 @@ export class RunDriver {
     private readonly projects: ProjectAppendService,
     private readonly workspace?: WorkspaceGuard,
     private readonly disk?: DiskGuard,
+    private readonly drain?: DrainService,
   ) {}
 
   async savedStep(
@@ -67,8 +69,9 @@ export class RunDriver {
     let result: PipelineResult = { exitCode: 0, message: `${key} started` };
     let ran = false;
     for (let hop = 0; hop < HOP_LIMIT; hop += 1) {
-      if (this.runStop.halted(key)) {
-        return { exitCode: ran ? 0 : 1, message: `${key} stopped` };
+      const interrupted = this.interruption(key, ran);
+      if (interrupted) {
+        return interrupted;
       }
       const blocked = await this.stopBefore(key, step);
       if (blocked) {
@@ -110,6 +113,12 @@ export class RunDriver {
       stepOptions = { auto: true };
     }
     return result;
+  }
+
+  /** A Stop, or a drain, ends the run before its next step. The run keeps its status. */
+  private interruption(key: string, ran: boolean): PipelineResult | null {
+    const why = this.runStop.halted(key) ? 'stopped' : this.drain?.draining ? 'drained' : null;
+    return why ? { exitCode: ran ? 0 : 1, message: `${key} ${why}` } : null;
   }
 
   async spendStop(key: string, step: StepName): Promise<string | null> {
