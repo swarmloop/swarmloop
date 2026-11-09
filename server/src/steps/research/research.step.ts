@@ -67,6 +67,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       mounts,
       continuePrompt: RESEARCH_CONTINUE,
       sections: ['questions'],
+      validate: (text) => parseResearch(text),
     });
     const parsed = parseResearch(agentResult.responseText);
     const impact = parseImpact(agentResult.responseText);

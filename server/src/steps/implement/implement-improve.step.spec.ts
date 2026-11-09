@@ -30,6 +30,27 @@ const reply = [
 ].join('\n');
 
 describe('implement-improve step', () => {
+  it('retries an empty implementation section in the same chat', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-parse-retry-'));
+    await writeEnv(root);
+    featureTree(root, 'PROJ-69', 'billing-api');
+    const agent = jest
+      .fn()
+      .mockResolvedValueOnce(result('implementation:\n\nsummary:\n- done\n'))
+      .mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-69');
+      const done = await app.get(PipelineService).step('implement-improve', 'PROJ-69');
+
+      expect(done.exitCode).toBe(0);
+      expect(agent).toHaveBeenCalledTimes(2);
+      expect((agent.mock.calls[1]?.[0] as AgentRunInput).prompt).toContain('missing the implementation section');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('stores a second implementation note and waits for code review', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-'));
     await writeEnv(root);
@@ -57,6 +78,7 @@ describe('implement-improve step', () => {
       const run = await app.get(RunRepository).findRun('PROJ-70');
       expect(run?.currentStep).toBe('code-review');
       expect(run?.status).toBe('waiting');
+      expect(agent).toHaveBeenCalledTimes(1);
       expect(git(worktree, ['status', '--porcelain'])).toBe('');
       await app.get(PipelineService).step('implement-improve', 'PROJ-70');
       expect(await documents.find({ where: { kind: 'implementation' } })).toHaveLength(2);
@@ -181,6 +203,7 @@ describe('implement-improve step', () => {
       const run = await runs.findRun('PROJ-77');
       expect(run?.currentStep).toBe('code-review');
       expect(run?.status).toBe('waiting');
+      expect(agent).toHaveBeenCalledTimes(1);
       const returned = await documents.latestBody('PROJ-77', 'return');
       expect(returned).toContain('FAIL api/runs.service.spec.ts expected running');
       expect(returned).not.toContain('The files were not changed. Change the code or the failing test.');

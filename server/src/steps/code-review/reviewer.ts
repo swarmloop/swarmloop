@@ -15,6 +15,7 @@ import { agentFailure, refusedWrite, withRefusal } from '../shared/agent-result'
 import { parseReview } from './code-review-record';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import { REVIEWS } from '../contract/artifacts';
+import { answerEnding } from '../shared/parse-failure-follow-up';
 
 export interface Reviewer {
   name: string;
@@ -158,5 +159,7 @@ async function launchReview(
     mounts: job.mounts,
     auto,
     resume: fresh ? false : undefined,
+    validate: (text, output) => parseReview(text, output ?? ''),
+    parseFailureEnding: answerEnding('code-review'),
   });
 }

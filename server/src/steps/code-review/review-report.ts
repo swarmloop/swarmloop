@@ -20,6 +20,7 @@ import { REPORT_CONTINUE, reportFollowUp } from './code-review.prompts';
 import { decidedOk, reviewModel } from './reviewer';
 import type { Finished, Opinion, ReviewDeps, Usage } from './reviewer';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
+import { answerEnding } from '../shared/parse-failure-follow-up';
 
 const LABELS: Record<string, string> = {
   [REVIEWS.of('requirements')]: 'Requirements',
@@ -86,6 +87,12 @@ export async function writeReport(
       auto,
       resume: false,
       continuePrompt: REPORT_CONTINUE,
+      validate: (text) => {
+        if (!text.trim()) {
+          throw new SwarmloopError('review report is empty');
+        }
+      },
+      parseFailureEnding: answerEnding('code-review/report'),
     });
     const exchange: ExchangeDraft = {
       model,

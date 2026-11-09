@@ -137,6 +137,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       allowHosts,
       project,
       sections: ['implementation'],
+      validate: (text) => parseImplementation(text),
       freshPrompt: continued?.chatId ? withEnvironment(withAddedRepos(full, added), executionRules) : undefined,
     });
     await assertUncommitted(mounts, branch, heads);

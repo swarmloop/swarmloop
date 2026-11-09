@@ -14,7 +14,7 @@ import { appendImpact, withHandoff, withImpact } from '../shared/handoff';
 import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { storedPlan } from '../step';
-import { readPlan, reviewedItems, withPlan } from '../plan/plan-record';
+import { parsePlan, readPlan, reviewedItems, withPlan } from '../plan/plan-record';
 import { PLAN_IMPROVE_FOLLOW_UP } from './plan-improve.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 
@@ -71,7 +71,12 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     );
     const chosen = continued?.chatId ? appendImpact(PLAN_IMPROVE_FOLLOW_UP, impact) : full;
     const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));
-    const agentResult = await ctx.launch({ prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`, mounts, sections: ['plan'] });
+    const agentResult = await ctx.launch({
+      prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`,
+      mounts,
+      sections: ['plan'],
+      validate: (text) => parsePlan(text),
+    });
     const items = reviewedItems(agentResult.responseText, agentResult.output ?? '');
     const next = { ...plan, items: items.length > 0 ? items : plan.items, decision: 'approve' as const };
     const summary = summaryOr(

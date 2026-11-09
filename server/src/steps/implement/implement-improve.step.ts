@@ -14,6 +14,7 @@ import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { returnedNotes, textDocument, withHandoff } from '../shared/handoff';
+import { section } from '../shared/markdown-section';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
@@ -26,6 +27,7 @@ import {
   checkRepeatedBlock,
   checksLine,
   implementFacts,
+  parseImplementation,
   reviewedImplementation,
   withReturnNotes,
 } from './implement-record';
@@ -117,6 +119,11 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       allowHosts,
       project,
       sections: ['implementation'],
+      validate: (text) => {
+        if (section(text, 'implementation') !== null) {
+          parseImplementation(text);
+        }
+      },
       freshPrompt: continued?.chatId ? withEnvironment(withAddedRepos(full, added), executionRules) : undefined,
     });
     const text = agentResult.responseText;

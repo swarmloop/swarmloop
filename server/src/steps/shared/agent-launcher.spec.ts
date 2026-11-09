@@ -14,6 +14,7 @@ import type { RunEntity } from '../../history/entities';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { SandboxService } from '../../sandbox/sandbox.service';
 import { AgentLauncher } from './agent-launcher';
+import { SwarmloopError } from '../../core/swarmloop-error';
 
 const CHAT = JSON.stringify({ session_id: 'chat-9' });
 const THINKING = JSON.stringify({ type: 'thinking', text: 'working' });
@@ -157,5 +158,113 @@ describe('AgentLauncher relaunch', () => {
     });
     expect(tools).toEqual([FIRST_COMMAND, SECOND_COMMAND]);
     expect(live?.occurredAt).toBe(clock.iso());
+  });
+});
+
+describe('AgentLauncher parse retry', () => {
+  it('preserves a killed-background-work result instead of retrying its parse failure', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-background-killed-'));
+    const runner = {
+      run: jest.fn().mockResolvedValue({
+        responseText: 'summary:\n- done\n',
+        chatId: 'chat-1',
+        tokensIn: 0,
+        tokensOut: 0,
+        usd: 0,
+        killReason: null,
+        backgroundKilled: true,
+        exitCode: 0,
+        resumed: false,
+        calls: 1,
+        samples: [],
+        durationMs: 0,
+        startedAt: '',
+        finishedAt: '',
+      }),
+    };
+    const result = await new AgentLauncher(
+      runner as never,
+      { tokenTotal: async () => 0 } as never,
+      new RunStop(),
+    ).launch({
+      root,
+      run: { agentCalls: 0, spentUsd: 0 } as never,
+      key: 'run',
+      step: 'implement',
+      mode: 'agent',
+      model: 'm',
+      timeLimitMs: 1,
+      prompt: 'implement',
+      workspace: root,
+      mounts: [],
+      validate: () => {
+        throw new SwarmloopError('implementation is missing');
+      },
+      parseFailureEnding: 'implementation:\n- item',
+    });
+
+    expect(result.backgroundKilled).toBe(true);
+    expect(runner.run).toHaveBeenCalledTimes(1);
+  });
+
+  it('continues the same chat with the missing section instead of the full prompt', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-parse-retry-'));
+    const prompts: string[] = [];
+    const freshPrompts: (string | undefined)[] = [];
+    const chatIds: (string | null)[] = [];
+    const runner = {
+      run: jest.fn(async (input) => {
+        prompts.push(input.prompt);
+        freshPrompts.push(input.freshPrompt);
+        chatIds.push(input.resumeChatId);
+        if (prompts.length === 1) {
+          mkdirSync(join(root, 'data', 'agent-state', 'run', 'implement'), { recursive: true });
+          writeFileSync(input.sessionFile, JSON.stringify({ runtime: 'cursor', chatId: 'chat-1', usd: 0 }));
+        }
+        return {
+          responseText: prompts.length === 1 ? 'summary:\n- done\n' : 'implementation:\n- fixed\n\nsummary:\n- done\n',
+          chatId: 'chat-1',
+          tokensIn: 0,
+          tokensOut: 0,
+          usd: 0,
+          killReason: null,
+          exitCode: 0,
+          resumed: prompts.length > 1,
+          calls: 1,
+          samples: [],
+          durationMs: 0,
+          startedAt: '',
+          finishedAt: '',
+        };
+      }),
+    };
+    const result = await new AgentLauncher(
+      runner as never,
+      { tokenTotal: async () => 0 } as never,
+      new RunStop(),
+    ).launch({
+      root,
+      run: { runtime: 'cursor', agentCalls: 0, spentUsd: 0 } as never,
+      key: 'run',
+      step: 'implement',
+      mode: 'agent',
+      model: 'm',
+      timeLimitMs: 1,
+      prompt: 'a resumed implementation follow-up',
+      freshPrompt: 'the full implementation prompt',
+      workspace: root,
+      mounts: [],
+      validate: (text) => {
+        if (!text.includes('implementation:')) throw new SwarmloopError('implementation is missing');
+      },
+      parseFailureEnding: 'implementation:\n- item\n\nsummary:\n- why',
+    });
+
+    expect(result.responseText).toContain('implementation:');
+    expect(prompts[1]).toContain('missing the implementation section');
+    expect(prompts[1]).toContain('implementation:\n- item\n\nsummary:\n- why');
+    expect(prompts[1]).not.toContain('the full implementation prompt');
+    expect(freshPrompts[1]).toContain('the full implementation prompt');
+    expect(chatIds[1]).toBe('chat-1');
   });
 });

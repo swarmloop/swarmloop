@@ -31,6 +31,32 @@ import { selectReviewers } from './review-round';
 import { reply, result, boot, seed, writeEnv } from './code-review.step.spec-helpers';
 
 describe('code-review step', () => {
+  it('retries an empty review report with the targeted follow-up', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-report-retry-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-79', 'billing-api'), { recursive: true });
+    let reports = 0;
+    const agent = jest.fn(async (input: AgentRunInput) => {
+      if (input.step.endsWith('report')) {
+        return result(reports++ === 0 ? '' : 'The review holds.\n', input.step);
+      }
+      return result('notes\n\ndecision: ok\n', input.step);
+    });
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-79');
+      const done = await app.get(PipelineService).step('code-review', 'PROJ-79');
+      const calls = agent.mock.calls.map((call) => call[0]);
+
+      expect(done.exitCode).toBe(0);
+      expect(calls.filter((call) => call.step === 'code-review-report')).toHaveLength(2);
+      expect(calls.at(-1)?.prompt).toContain('missing the review report section');
+      expect(calls.at(-1)?.prompt).toContain('## What holds\n\n## What to fix');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('stores five reviews when every decision is ok', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-'));
     await writeEnv(root);

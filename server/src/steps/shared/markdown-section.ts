@@ -34,12 +34,38 @@ export function section(text: string, name: string): string | null {
   return rest.join('\n');
 }
 
+/** The last accepted value written on a named section line, including Markdown-wrapped headings. */
+export function lastSectionValue(text: string, name: string, values: readonly string[]): string | null {
+  let found: string | null = null;
+  const prefix = `${name.toLowerCase()}:`;
+  for (const line of text.split(/\r?\n/)) {
+    const value = heading(line);
+    if (!value.startsWith(prefix)) {
+      continue;
+    }
+    const rest = value.slice(prefix.length).trimStart();
+    for (const candidate of values) {
+      const suffix = rest.slice(candidate.length).replace(/^[`*]+/, '');
+      if (rest.startsWith(candidate) && (suffix === '' || /^[\s\-–—:.,;]/.test(suffix))) {
+        found = candidate;
+      }
+    }
+  }
+  return found;
+}
+
 function heading(line: string): string {
-  return line
-    .trim()
-    .replace(/^[`*]+/, '')
-    .replace(/[`*]+$/, '')
-    .trim();
+  let text = line.trim().replace(/^#{1,6}\s+/, '');
+  let previous = '';
+  while (text !== previous) {
+    previous = text;
+    text = text
+      .trim()
+      .replace(/^[`*]+/, '')
+      .replace(/[`*]+$/, '')
+      .trim();
+  }
+  return text.toLowerCase();
 }
 
 export function bulletList(lines: string[]): string {
