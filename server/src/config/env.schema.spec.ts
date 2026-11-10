@@ -183,3 +183,17 @@ describe('env schema', () => {
     ).rejects.toThrow(/RUNTIME/);
   });
 });
+
+describe('split settings', () => {
+  it('SPLIT defaults to off and SPLIT_MAX_TASKS to 12', () => {
+    const { error, value } = envSchema.validate(complete, { abortEarly: false, convert: true });
+    expect(error).toBeUndefined();
+    expect(value).toMatchObject({ SPLIT: 'off', SPLIT_MAX_TASKS: 12 });
+  });
+
+  it('rejects a SPLIT value other than auto or off', () => {
+    expect(envSchema.validate({ ...complete, SPLIT: 'auto' }, { convert: true }).value.SPLIT).toBe('auto');
+    const bad = envSchema.validate({ ...complete, SPLIT: 'on' }, { convert: true });
+    expect(bad.error?.message).toContain('SPLIT');
+  });
+});

@@ -17,3 +17,30 @@ plan:
 summary:
 - why
 ```
+
+## Split
+
+This section applies only because this run may split into subtasks. The prompt then holds the `Contract` and the `Tasks` the planner wrote, next to the `Plan` the server made from them.
+
+Check the tasks:
+- no dependency cycle, and every dependency names a task in the list;
+- two tasks that can run at the same time do not change the same file unless one depends on the other;
+- a file where tasks each add an entry (a registry or list such as module imports, the migrations index, route or step lists, `.env.example`, a README table) is shared: the tasks that touch it get a dependency between them, so they never change it at the same time;
+- every task has a proof;
+- every task is about one normal run of work, so cut a task that is much more and merge a task that is much less.
+
+The task limit is only a safety limit against a runaway plan. It is not a target.
+
+Return the corrected `contract:` and `tasks:` in the same format, and do not write `plan:`, because the server writes it from `tasks:`. When the split is not worth it, because one run can do the whole change, return one `plan:` instead.
+
+```
+contract:
+- decision
+
+tasks:
+- <id> | <title> | depends: <ids or none> | files: <paths> | proof: <test or check>
+  what the task does, on an indented line
+
+summary:
+- why
+```

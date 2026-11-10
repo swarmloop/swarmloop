@@ -9,6 +9,7 @@ import { ReleaseMeta1794400000000 } from './1794400000000-release-meta';
 import { DropReleaseMeta1794500000000 } from './1794500000000-drop-release-meta';
 import { StepRuntime1794600000000 } from './1794600000000-step-runtime';
 import { RunParent1794600000000 } from './1794600000000-run-parent';
+import { RunSplit1794700000000 } from './1794700000000-run-split';
 
 // To add a migration: run `npm run migration:generate -- src/history/migrations/<name>`, export the generated class
 // from its own file, and append it here. Migrations run in list order at startup.
@@ -24,4 +25,5 @@ export const migrations = [
   DropReleaseMeta1794500000000,
   StepRuntime1794600000000,
   RunParent1794600000000,
+  RunSplit1794700000000,
 ];

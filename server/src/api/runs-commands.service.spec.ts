@@ -9,9 +9,11 @@ import { VisitRepository } from '../history/visit.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { PHASES } from '../contract/steps';
 import { RunCommandsService } from './run-commands.service';
+import { AppConfig } from '../config/env';
 import { RunQueriesService } from './run-queries.service';
 import { httpStatus } from './runs.controller';
 import { boot, save, visit } from '../testing/runs.spec-helpers';
+import type { Subtask } from '../contract/subtask';
 
 describe('runs api', () => {
   it('lists runs newest first and draws a return edge', async () => {
@@ -444,8 +446,75 @@ describe('runs api', () => {
     }
   });
 
+  describe('split', () => {
+    const body = { key: 'proj-6', prompt: 'Ship the field', projects: ['demo'] };
+
+    async function planned(split: 'auto' | 'off', extra: { split?: boolean } = {}) {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-split-'));
+      const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
+      const app = await boot(root, pipeline);
+      app.get(AppConfig).env.SPLIT = split;
+      try {
+        const commands = app.get(RunCommandsService);
+        const plan = await commands.plan({ ...body, ...extra });
+        await commands.start({ ...body, ...extra });
+        return { plan, row: await app.get(RunRepository).findRun(plan.key) };
+      } finally {
+        await app.close();
+      }
+    }
+
+    it('split defaults from SPLIT', async () => {
+      expect((await planned('off')).plan.split).toBe(false);
+      expect((await planned('off')).row?.split).toBe(false);
+      const auto = await planned('auto');
+      expect(auto.plan.split).toBe(true);
+      expect(auto.row?.split).toBe(true);
+    });
+
+    it('the body value wins for a new run', async () => {
+      const on = await planned('off', { split: true });
+      expect(on.row?.split).toBe(true);
+      expect((await planned('auto', { split: false })).plan.split).toBe(false);
+    });
+
+    it('a subtask is always off', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-split-subtask-'));
+      const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
+      const app = await boot(root, pipeline);
+      app.get(AppConfig).env.SPLIT = 'auto';
+      try {
+        const parent = await save(app.get(RunRepository), 'PROJ-301', 'implement', 'waiting');
+        parent.projects = 'demo\n';
+        await app.get(RunRepository).saveRun(parent);
+        await app.get(DocumentRepository).putDocument(parent, 'requirements', '{"prompt":"Ship"}\n');
+        const task: Subtask = {
+          id: 't1',
+          title: 'T',
+          description: '',
+          depends: [],
+          files: [],
+          proof: 'p',
+          status: 'pending',
+        };
+        await app.get(RunCommandsService).startSubtask(parent, task);
+        expect((await app.get(RunRepository).findRun('PROJ-301-t1'))?.split).toBe(false);
+      } finally {
+        await app.close();
+      }
+    });
+  });
+
   describe('subtasks', () => {
-    const task = { id: 't1', title: 'Add the field', description: 'Store it.', files: ['src/a.ts'], proof: 'a test' };
+    const task: Subtask = {
+      id: 't1',
+      title: 'Add the field',
+      description: 'Store it.',
+      depends: [],
+      files: ['src/a.ts'],
+      proof: 'a test',
+      status: 'pending',
+    };
 
     async function parentRun(app: Awaited<ReturnType<typeof boot>>) {
       const parent = await save(app.get(RunRepository), 'PROJ-300', 'implement', 'waiting');

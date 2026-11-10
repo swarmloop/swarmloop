@@ -23,3 +23,25 @@ plan:
 summary:
 - why
 ```
+
+## Split
+
+This section applies only because this run may split into subtasks.
+
+Split by the amount of work, not by a count of tasks. Split only when the whole change is clearly more than one normal run of work, so that one implement pass would not finish it well, and it has parts that can each be built, reviewed and tested on their own. Each task is about one normal run of work. Do not split a change that one run can do, and do not cut a task so small that it is only one step of another. When you do not split, answer with `plan:` as above.
+
+When you split, do not write `plan:`. The server writes it from `tasks:`. End the answer with these three sections and nothing after them:
+
+```
+contract:
+- a decision every subtask follows: names, interfaces, data shapes, files that one task creates and others use
+
+tasks:
+- <id> | <title> | depends: <ids or none> | files: <paths> | proof: <test or check>
+  what the task does, on an indented line
+
+summary:
+- why
+```
+
+An id is a short slug. `depends:` lists the ids of the tasks that must be done first, separated by commas, or `none`. A task has at least one proof. Do not make a cycle and do not name a task that is not in the list. Two tasks that can run at the same time must not change the same file unless one depends on the other. A file where tasks each add an entry (a registry or list such as module imports, the migrations index, route or step lists, `.env.example`, a README table) is shared: give the tasks that touch it a dependency between them.

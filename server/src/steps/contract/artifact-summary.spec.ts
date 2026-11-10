@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { requirementsView } from '../../contract/requirements-view';
 import { ARTIFACTS, summarizePlan, summarizeReview } from './artifacts';
+import type { Subtask } from '../../contract/subtask';
 import type { Artifact } from './artifact';
 
 const GOLDEN_DIR = join(__dirname, '..', '..', 'testing', 'golden');
@@ -40,6 +41,19 @@ describe('Artifact.summarize', () => {
       expect(line).not.toMatch(/^[[{]$/);
     },
   );
+
+  it('subtasks summary', () => {
+    const task: Subtask = {
+      id: 'a',
+      title: 'Add it',
+      description: '',
+      depends: [],
+      files: [],
+      proof: 'p',
+      status: 'pending',
+    };
+    expect(ARTIFACTS.subtasks.summarize([task, task])).toBe('2 tasks: Add it');
+  });
 
   it('gives the title of the requirements of a run with a ticket, not its first bracket', () => {
     const body = bodies.get('requirements') ?? '';

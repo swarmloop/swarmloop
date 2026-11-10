@@ -387,6 +387,100 @@ describe('plan step', () => {
   });
 });
 
+const splitReply = [
+  'contract:',
+  '- the column is called `split`',
+  '',
+  'tasks:',
+  '- column | Add the column | depends: none | files: a.ts | proof: a.spec.ts',
+  '  Adds it.',
+  '- api | Send it | depends: column | files: b.ts | proof: b.spec.ts',
+  '  Sends it.',
+  '',
+  'summary:',
+  '- two parts',
+].join('\n');
+
+describe('plan step with split', () => {
+  async function runSplit(key: string, answer: string, options: { split?: boolean; subtask?: boolean } = {}) {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-split-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
+    const agent = jest.fn().mockResolvedValue(result(answer));
+    const app = await boot(root, agent);
+    try {
+      const runs = app.get(RunRepository);
+      await seed(app, key, '');
+      const seeded = (await runs.findRun(key))!;
+      const parent = options.subtask ? await runs.openWaiting(`${key}-parent`, '/target') : null;
+      await runs.saveRun({
+        ...seeded,
+        split: options.split ?? true,
+        ...(parent ? { parentRunId: parent.id, taskId: 't1' } : {}),
+      });
+      const done = await app.get(PipelineService).step('plan', key);
+      const documents = app.get(DocumentRepository);
+      return {
+        done,
+        run: await runs.findRun(key),
+        subtasks: await documents.latestBody(key, 'subtasks'),
+        contract: await documents.latestBody(key, 'contract'),
+        requirements: await documents.latestBody(key, 'requirements'),
+      };
+    } finally {
+      await app.close();
+    }
+  }
+
+  it('split answer writes plan items, subtasks and contract', async () => {
+    const out = await runSplit('PROJ-80', splitReply);
+    expect(out.done.exitCode).toBe(0);
+    expect(out.run?.currentStep).toBe('plan-improve');
+    expect(JSON.parse(out.requirements ?? '{}').plan.items).toEqual([
+      'Add the column - files: a.ts - proof: a.spec.ts',
+      'Send it - files: b.ts - proof: b.spec.ts',
+    ]);
+    expect(JSON.parse(out.subtasks ?? '[]')).toMatchObject([
+      { id: 'column', depends: [], status: 'pending' },
+      { id: 'api', depends: ['column'], status: 'pending' },
+    ]);
+    expect(out.contract).toContain('the column is called `split`');
+  });
+
+  it('a bad graph is a plan error', async () => {
+    const out = await runSplit('PROJ-81', splitReply.replace('depends: none', 'depends: api'));
+    expect(out.done.exitCode).toBe(1);
+    expect(out.done.message).toContain('tasks have a dependency cycle: column -> api -> column');
+    expect(out.subtasks).toBeFalsy();
+  });
+
+  it('tasks refused for a subtask', async () => {
+    const out = await runSplit('PROJ-82-t1', splitReply, { subtask: true });
+    expect(out.done.exitCode).toBe(1);
+    expect(out.done.message).toContain('tasks are not allowed');
+    expect(out.subtasks).toBeFalsy();
+  });
+
+  it('tasks refused when split is off', async () => {
+    const out = await runSplit('PROJ-83', splitReply, { split: false });
+    expect(out.done.exitCode).toBe(1);
+    expect(out.done.message).toContain('tasks are not allowed');
+  });
+
+  it('a plain plan clears subtasks', async () => {
+    const out = await runSplit('PROJ-84', ['plan:', '- add the field'].join('\n'));
+    expect(out.done.exitCode).toBe(0);
+    expect(JSON.parse(out.subtasks ?? 'null')).toEqual([]);
+    expect(out.contract).toBeFalsy();
+  });
+
+  it('a plain plan writes no subtasks for a run that does not split', async () => {
+    const out = await runSplit('PROJ-85', ['plan:', '- add the field'].join('\n'), { split: false });
+    expect(out.done.exitCode).toBe(0);
+    expect(out.subtasks).toBeFalsy();
+  });
+});
+
 async function planOutcome(answer: AgentRunResult) {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-refusal-'));
   await writeEnv(root);

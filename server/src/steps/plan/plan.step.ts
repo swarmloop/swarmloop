@@ -16,6 +16,7 @@ import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../sh
 import { unanswered } from '../shared/answers';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { planFromAgent, planQuestions, readPlan, withPlan } from './plan-record';
+import { parseTasks, planItemsFromTasks, splitAnswer, splitLimits, splitOutputs, type TaskLimits } from './plan-tasks';
 import { planFollowUp, SUBTASK_DECIDES } from './plan.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 
@@ -35,7 +36,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
   readonly name: StepName = 'plan';
   override readonly capabilities: StepCapabilities = { revisesRequirements: true };
 
-  readonly outputs = [ARTIFACTS.requirements, ARTIFACTS.questions];
+  readonly outputs = [ARTIFACTS.requirements, ARTIFACTS.questions, ARTIFACTS.subtasks, ARTIFACTS.contract];
 
   constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
     super(kernel, sandbox, launcher);
@@ -80,7 +81,8 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       await this.parentContract(ctx.opened.run),
     );
     const continued = await resumableChat(root(this.config), key, 'plan', this.profile(this.config.env).runtime);
-    const full = skillPrompt('plan', input.requirements, names, sections, mounts);
+    const limits = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);
+    const full = skillPrompt('plan', input.requirements, names, sections, mounts, { split: limits.maySplit });
     const chosen = continued?.chatId ? appendImpact(planFollowUp(answers), impact) : full;
     const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));
     let agentResult = await ctx.launch({
@@ -88,7 +90,9 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       mounts,
       sections: ['plan'],
       validate: (text, output) => {
-        if (!planQuestions(text)) {
+        if (splitAnswer(text)) {
+          parseTasks(text, limits);
+        } else if (!planQuestions(text)) {
           planFromAgent(text, output ?? '');
         }
       },
@@ -111,7 +115,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
         outputs: [{ artifact: ARTIFACTS.questions, value: asked }],
       };
     }
-    const plan = planFromAgent(agentResult.responseText, agentResult.output ?? '');
+    const { graph, plan } = answerPlan(agentResult.responseText, agentResult.output ?? '', limits);
     const body = withPlan(requirements, plan);
     const summary = summaryOr(
       agentResult.responseText,
@@ -121,8 +125,17 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     return {
       route: { to: 'next' },
       summary: `${ctx.opened.startedAt} plan done\n${plan.items.join('\n')}`,
-      outputs: [{ artifact: ARTIFACTS.requirements, value: body }],
+      outputs: [{ artifact: ARTIFACTS.requirements, value: body }, ...(limits.maySplit ? splitOutputs(graph) : [])],
       handoff: assumed ? `${summary.trimEnd()}\n${assumed}` : summary,
     };
   }
+}
+
+/** The checklist of an answer, and its task graph when the answer is a split one. */
+function answerPlan(text: string, output: string, limits: TaskLimits) {
+  const graph = splitAnswer(text) ? parseTasks(text, limits) : null;
+  const plan = graph
+    ? { name: '', overview: '', items: planItemsFromTasks(graph.tasks), decision: null }
+    : planFromAgent(text, output);
+  return { graph, plan };
 }
