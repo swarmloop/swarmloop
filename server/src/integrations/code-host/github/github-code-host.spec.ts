@@ -122,6 +122,57 @@ describe('github host', () => {
     expect(JSON.stringify(result.httpCalls)).not.toContain(TOKEN);
   });
 
+  it('re-runs the failed jobs of an actions run', async () => {
+    const seen = mockFetch([{}]);
+    const result = await service().rerunFailedJobs('acme/demo', 9);
+    expect(seen[0]?.method).toBe('POST');
+    expect(seen[0]?.url).toBe('https://api.github.com/repos/acme/demo/actions/runs/9/rerun-failed-jobs');
+    expect(JSON.stringify(result.httpCalls)).not.toContain(TOKEN);
+  });
+
+  it('reads the annotations of the check runs of a run', async () => {
+    const seen = mockFetch([
+      { check_suite_id: 33 },
+      { check_runs: [{ id: 71 }, { id: 72 }] },
+      [{ message: 'The job was not started because your account has reached its spending limit.' }],
+      [],
+    ]);
+    const result = await service().readRunNotes('acme/demo', 9);
+    expect(result.notes).toBe('The job was not started because your account has reached its spending limit.');
+    expect(seen[1]?.url).toBe('https://api.github.com/repos/acme/demo/check-suites/33/check-runs');
+    expect(seen[2]?.url).toBe('https://api.github.com/repos/acme/demo/check-runs/71/annotations');
+  });
+
+  it('falls back to the message of the run when there are no annotations', async () => {
+    mockFetch([{ check_suite_id: 33, message: 'startup failure' }, { check_runs: [] }]);
+    expect((await service().readRunNotes('acme/demo', 9)).notes).toBe('startup failure');
+  });
+
+  it('keeps timed out, cancelled, startup failure and queued jobs under their own status', async () => {
+    mockFetch([
+      { workflow_runs: [{ id: 9, head_sha: 'abc', status: 'completed', conclusion: 'failure' }] },
+      {
+        jobs: [
+          { id: 1, name: 'a', status: 'completed', conclusion: 'timed_out' },
+          { id: 2, name: 'b', status: 'completed', conclusion: 'startup_failure' },
+          { id: 3, name: 'c', status: 'queued', conclusion: null },
+          { id: 4, name: 'd', status: 'completed', conclusion: 'failure' },
+        ],
+      },
+    ]);
+    const pipeline = await service().readBranchPipeline({
+      project: 'acme/demo',
+      ref: 'feature/PROJ-1-ship',
+      sha: 'abc',
+    });
+    expect(pipeline.snapshot?.jobs.map((job) => job.status)).toEqual([
+      'timed_out',
+      'startup_failure',
+      'queued',
+      'failed',
+    ]);
+  });
+
   it('explains why a conflicting pull request cannot start CI', async () => {
     const seen = mockFetch([
       [{ number: 12, head: { ref: 'feature/task', sha: 'abc' } }],
@@ -196,7 +247,7 @@ describe('github host', () => {
     const pipeline = await host.readBranchPipeline({ project: 'acme/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' });
     expect(pipeline.snapshot?.status).toBe('canceled');
     expect(pipeline.snapshot?.jobs).toEqual([
-      { id: 4, name: 'test', stage: '', status: 'failed', allowFailure: false },
+      { id: 4, name: 'test', stage: '', status: 'canceled', allowFailure: false },
     ]);
     const trace = await host.readJobTrace('acme/demo', 4);
     expect(trace.trace).toBe('canceled before the tests');

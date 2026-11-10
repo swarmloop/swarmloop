@@ -72,4 +72,8 @@ export interface CodeHost {
   readCurrentUser(): Promise<{ httpCalls: HttpCallDraft[] }>;
   readJobTrace(project: string, jobId: number): Promise<{ trace: string; httpCalls: HttpCallDraft[] }>;
   cancelPipeline(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }>;
+  /** Re-runs the failed and never-started jobs of a run on the same commit. */
+  rerunFailedJobs(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }>;
+  /** The text the host gives for a run that did not run: check annotations or the pipeline's failure reason. */
+  readRunNotes(project: string, id: number): Promise<{ notes: string; httpCalls: HttpCallDraft[] }>;
 }

@@ -96,6 +96,10 @@ export abstract class AbstractCodeHost implements CodeHost {
 
   abstract cancelPipeline(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }>;
 
+  abstract rerunFailedJobs(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }>;
+
+  abstract readRunNotes(project: string, id: number): Promise<{ notes: string; httpCalls: HttpCallDraft[] }>;
+
   abstract matchesOrigin(origin: string): boolean;
 
   abstract pushUrl(origin: string): string | null;

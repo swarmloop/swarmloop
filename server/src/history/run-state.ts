@@ -29,6 +29,8 @@ export function blockCode(step: string, error: string | null): string {
   if ((error ?? '').includes('does not fit')) return REASON.didNotFit;
   if ((error ?? '').includes('failed again on unchanged files after a relaunch')) return REASON.checkFailed;
   if ((error ?? '').includes(REASON.ciLogUnavailable)) return REASON.ciLogUnavailable;
+  if ((error ?? '').includes(REASON.ciNotRun)) return REASON.ciNotRun;
+  if ((error ?? '').includes(REASON.ciTimeout)) return REASON.ciTimeout;
   return isLoopStep(step) ? REASON.loopLimit : REASON.blocked;
 }
 

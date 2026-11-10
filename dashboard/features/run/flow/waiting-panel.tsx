@@ -8,6 +8,7 @@ import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { resumeRun, sendAnswers } from '../../../lib/endpoints';
+import { ciInfra, resumeLabel } from '../../../lib/ci-infra';
 import { inState } from '../../../lib/run-actions';
 import { answerPresentation } from '../../../lib/answer-field';
 import type { AnswersBody, FlowView } from '@contract/api';
@@ -17,6 +18,7 @@ export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (fl
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const answers = flow.items.map((item) => ({ ...item, answer: drafts[`${item.kind}:${item.id}`] ?? item.answer }));
+  const infra = ciInfra(flow);
   const complete = answers.every((item) => item.answer.trim() !== '');
 
   const save = (): void => {
@@ -44,7 +46,21 @@ export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (fl
   return (
     <Paper sx={{ mt: 3, p: 2.5, border: 1, borderColor: 'divider' }}>
       <Typography>{flow.sentence}</Typography>
-      {flow.reason ? (
+      {infra ? (
+        <>
+          <Typography
+            component="pre"
+            sx={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12, mt: 2 }}
+          >
+            {infra.reason}
+          </Typography>
+          <Box component="ul" sx={{ fontFamily: 'var(--font-mono)', fontSize: 13, pl: 2 }}>
+            {infra.jobs.map((name) => (
+              <li key={name}>{name}</li>
+            ))}
+          </Box>
+        </>
+      ) : flow.reason ? (
         <Typography
           component="pre"
           sx={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12, mt: 2 }}
@@ -94,7 +110,7 @@ export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (fl
             </Button>
           ) : (
             <Button variant="contained" disabled={busy || flow.resume !== 'ready'} onClick={resume}>
-              Resume
+              {resumeLabel(flow.stateReason?.code)}
             </Button>
           )}
         </Box>

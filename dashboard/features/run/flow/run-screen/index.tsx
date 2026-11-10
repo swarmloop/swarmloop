@@ -8,6 +8,7 @@ import { NewRunDialog } from '../../../new-run';
 import { expandReviewPhases, replaySelection } from '../../phases';
 import { PHASES, pipelineStepOf, REVIEW_STEPS } from '@contract/steps';
 import { FlowBoard } from '../flow-board';
+import { resumeLabel } from '../../../../lib/ci-infra';
 import { StepDetail } from '../step-detail';
 import { WaitingPanel } from '../waiting-panel';
 import { RunDialogs } from './run-dialogs';
@@ -90,6 +91,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
               ? resumeRun
               : undefined
           }
+          resumeLabel={resumeLabel(flow.stateReason?.code)}
         />
       ) : null}
       <NewRunDialog

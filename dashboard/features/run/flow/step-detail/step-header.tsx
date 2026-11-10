@@ -46,6 +46,7 @@ export function StepHeader({
   runStatus,
   onReplay,
   onResume,
+  resumeLabel = 'Resume',
   view,
   attempt,
   setAttempt,
@@ -61,6 +62,7 @@ export function StepHeader({
   runStatus?: string;
   onReplay?: () => void;
   onResume?: () => void;
+  resumeLabel?: string;
   view: StepView;
   attempt: number;
   setAttempt: (value: number) => void;
@@ -90,7 +92,7 @@ export function StepHeader({
           ) : null}
           {onResume ? (
             <Button size="small" variant="contained" onClick={onResume}>
-              Resume
+              {resumeLabel}
             </Button>
           ) : null}
         </Box>

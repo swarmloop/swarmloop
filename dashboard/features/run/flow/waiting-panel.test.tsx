@@ -70,6 +70,29 @@ describe('WaitingPanel', () => {
     expect(resumeRun).toHaveBeenCalledWith('run-1');
   });
 
+  it('shows the reason on top, the job names as a list and a Re-run CI action when CI did not run', async () => {
+    const user = userEvent.setup();
+    vi.mocked(resumeRun).mockResolvedValue({});
+    const line = 'CI_NOT_RUN: CI did not run server-test, autofix: spending limit https://ci.example/9';
+    render(
+      <WaitingPanel
+        flow={flowView({
+          status: 'blocked',
+          resume: 'ready',
+          reason: `${line}\njob: server-test\njob: autofix\n`,
+          stateReason: { code: 'CI_NOT_RUN', message: line },
+        })}
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(line)).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual(['server-test', 'autofix']);
+    expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Re-run CI' }));
+    expect(resumeRun).toHaveBeenCalledWith('run-1');
+  });
+
   it('disables Resume while the run is not ready', () => {
     render(<WaitingPanel flow={flowView({ status: 'failed', resume: 'running' })} onChange={vi.fn()} />);
 

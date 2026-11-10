@@ -1,4 +1,13 @@
-import { cancelErrorNote, parsePipelineRefs, renderFail, renderNone, renderPass, type Seen } from './pipeline-report';
+import {
+  cancelErrorNote,
+  ciResult,
+  classify,
+  parsePipelineRefs,
+  renderFail,
+  renderNone,
+  renderPass,
+  type Seen,
+} from './pipeline-report';
 
 function item(overrides: Partial<Seen> = {}): Seen {
   return {
@@ -46,5 +55,44 @@ describe('pipeline report', () => {
       { project: 'app', ref: 'main', sha: 'abc123' },
       { project: 'lib', ref: 'dev', sha: '' },
     ]);
+  });
+
+  describe('classify', () => {
+    const jobs = (...statuses: string[]) =>
+      item({
+        status: 'failed',
+        jobs: statuses.map((status, index) => ({
+          id: index,
+          name: `j${index}`,
+          stage: '',
+          status,
+          allowFailure: false,
+        })),
+      });
+
+    it('takes an empty job list as a failure', () => {
+      expect(classify([item({ status: 'failed' })])).toBe('failed');
+    });
+
+    it('lets a failed job win over jobs that never ran', () => {
+      expect(classify([jobs('queued', 'failed')])).toBe('failed');
+    });
+
+    it('calls jobs that never ran not-run', () => {
+      expect(classify([jobs('queued', 'pending')])).toBe('not-run');
+      expect(classify([jobs('timed_out', 'startup_failure')])).toBe('not-run');
+      expect(classify([jobs('canceled')])).toBe('not-run');
+    });
+
+    it('calls only timed-out jobs a timeout', () => {
+      expect(classify([jobs('timed_out')])).toBe('timeout');
+    });
+  });
+
+  it('labels a finished run with no failed job as not run', () => {
+    const seen = [
+      item({ status: 'failed', jobs: [{ id: 1, name: 'a', stage: '', status: 'queued', allowFailure: false }] }),
+    ];
+    expect(ciResult({ seen, verdict: 'red' })).toBe('did not run: app');
   });
 });
