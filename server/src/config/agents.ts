@@ -30,7 +30,7 @@ export interface AgentEnv {
 }
 
 /** What `agentFor` reads of a run: only a run with a parent is a subtask. */
-type AgentRun = object & { parentRunId?: string | null };
+type AgentRun = object & { parentRunId?: number | null };
 
 /** Everything that launches or prices an agent: the steps of a run, and the work done outside the pipeline. */
 type AgentUse =

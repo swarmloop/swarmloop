@@ -396,16 +396,8 @@ export class RunQueriesService {
   }
 
   private runningVisit(run: RunEntity, name: string, previousAttempt: number, samples?: LiveSample[]): VisitView {
-    return liveVisit(
-      run.key,
-      name,
-      root(this.config),
-      run.activeAttempt,
-      previousAttempt,
-      run.updatedAt,
-      this.clock.now(),
-      samples,
-    );
+    const now = this.clock.now();
+    return liveVisit(run.key, name, root(this.config), run.activeAttempt, previousAttempt, run.updatedAt, now, samples);
   }
 
   private meta(run: RunEntity, name: string): ReturnType<typeof stepMeta> {

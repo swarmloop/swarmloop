@@ -81,7 +81,7 @@ describe('agentFor', () => {
       AGENTS_SUBTASK_IMPLEMENT: 'claude:sub-impl',
       AGENTS_PLAN: 'claude:main-plan',
     });
-    const child = { parentRunId: 'parent-1' };
+    const child = { parentRunId: 1 };
     expect(agentFor(env, child, 'implement')).toEqual({ runtime: 'claude', model: 'sub-impl' });
     expect(agentFor(env, child, 'plan')).toEqual({ runtime: 'claude', model: 'main-plan' });
     expect(agentFor(env, child, 'code-review')).toEqual({ runtime: 'cursor', model: 'grok-4.7-high' });
