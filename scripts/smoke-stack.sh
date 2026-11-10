@@ -10,6 +10,8 @@ git -C "$work/checkouts/fixture" init -q
 git -C "$work/checkouts/fixture" -c user.name=ci -c user.email=ci@example.com commit -q --allow-empty -m fixture
 cp "$repo/compose.yml" "$work/stack/compose.yml"
 cp "$repo/.env.example" "$work/stack/.env"
+# The server refuses to start when a role names a runtime without a key. The fixture never calls a model.
+sed -i 's/^CURSOR_API_KEY=$/CURSOR_API_KEY=fixture-key/' "$work/stack/.env"
 cd "$work/stack"
 export SWARMLOOP_HOME="$work/home" CHECKOUTS_ROOT="$work/checkouts"
 trap 'docker compose logs; docker compose down -v' EXIT
@@ -17,7 +19,7 @@ trap 'docker compose logs; docker compose down -v' EXIT
 retry=(--retry 20 --retry-all-errors --retry-delay 3)
 docker compose up -d --wait --pull never
 curl -fsS "${retry[@]}" http://127.0.0.1:3920/health
-# Every item must be ok except the credentials, which the fixture does not set.
+# Every item must be ok except the credentials, which the fixture does not really have.
 assert_ready='
   const items = JSON.parse(require("fs").readFileSync(0, "utf8")).items;
   const bad = items.filter((item) => !["model-credential", "code-host-token"].includes(item.id) && item.status !== "ok");
