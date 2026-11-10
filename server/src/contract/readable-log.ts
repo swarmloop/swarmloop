@@ -320,10 +320,18 @@ export type AgentWork =
       status: 'ok' | 'failed' | 'unfinished';
       durationMs: number;
       resultLine: string;
+      /** The first line of a failed shell call's output. Not redacted here. */
+      errorLine?: string;
     }
   | { kind: 'message'; text: string };
 
 const TARGET_CHARS = 300;
+
+/** The first line of a failed command's output that says more than its exit code. */
+function errorLineOf(outcome: string): string {
+  const line = outcome.split('\n').find((text) => text.trim() !== '' && !/^\s*(?:exit|exit code) \d+\s*$/i.test(text));
+  return line?.trim().slice(0, TARGET_CHARS) ?? '';
+}
 
 function workOf(block: Block, roots: string[]): AgentWork | null {
   const call = block.call;
@@ -333,6 +341,7 @@ function workOf(block: Block, roots: string[]): AgentWork | null {
   const target = roots.reduce((text, root) => text.split(`${root.replace(/\/$/, '')}/`).join(''), call.detail);
   const first = call.outcome.split('\n').find((line) => line.trim() !== '') ?? '';
   const shell = block.type === 'shell';
+  const errorLine = shell && call.done && call.failed ? errorLineOf(call.outcome) : '';
   return {
     kind: 'tool',
     tool: block.type,
@@ -340,6 +349,7 @@ function workOf(block: Block, roots: string[]): AgentWork | null {
     status: !call.done ? 'unfinished' : call.failed ? 'failed' : 'ok',
     durationMs: Math.round(call.closedAt - call.openedAt),
     resultLine: shell && call.done ? `exit ${call.exit ?? (call.failed ? 1 : 0)}` : first.trim().slice(0, TARGET_CHARS),
+    ...(errorLine === '' ? {} : { errorLine }),
   };
 }
 

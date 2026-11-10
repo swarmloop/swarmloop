@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { AgentRunResult } from './agent-result';
-import { chatMissingAnswer, relaunchPlan, resumableChat } from './agent-session';
+import { chatMissingAnswer, loopHint, relaunchPlan, resumableChat } from './agent-session';
 
 const budget = { halted: false, callsSoFar: 1, maxCalls: 50, attempts: 1, maxLaunches: 3 };
 
@@ -53,5 +53,24 @@ describe('chats whose state was removed', () => {
       chatId: 'c1',
       resumed: true,
     });
+  });
+});
+
+describe('relaunch after a loop kill', () => {
+  const looped = { ...crashed('', true), killReason: 'loop' as const };
+  const base = { attempt: looped, chatId: 'c1', continuePrompt: null, endedEarlyUsed: false, budget };
+
+  it('goes on in the same chat with the hint', () => {
+    const prompt = loopHint('npm test', 'Cannot find module x');
+
+    expect(prompt).toContain('npm test');
+    expect(prompt).toContain('Cannot find module x');
+    expect(prompt).toContain('Try a different approach or explain why it cannot pass');
+    expect(relaunchPlan({ ...base, loopPrompt: prompt })).toEqual({ chatId: 'c1', resumed: true, prompt });
+  });
+
+  it('does not relaunch when the loop ends the step, or when the budget is used', () => {
+    expect(relaunchPlan({ ...base, loopPrompt: null })).toBeNull();
+    expect(relaunchPlan({ ...base, loopPrompt: 'hint', budget: { ...budget, attempts: 3 } })).toBeNull();
   });
 });

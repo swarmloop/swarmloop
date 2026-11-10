@@ -2,9 +2,12 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { AgentTools } from '../../integrations/agent-runtime/agent-runtime';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { AppConfig } from '../../config/env';
+import { redact } from '../../core/redact';
 import { AGENT_RUNNER, readSession } from '../../agent/agent-runner';
-import { chatStateRemoved } from '../../agent/agent-session';
-import type { AgentProcessRunner, AgentRunResult } from '../../agent/agent-runner';
+import { chatStateRemoved, loopHint } from '../../agent/agent-session';
+import { LoopDetector } from '../../agent/loop-detector';
+import type { AgentProcessRunner, AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
 import { RunStop } from '../../agent/run-stop';
 import { AgentWorkFeed } from '../../contract/readable-log';
 import type { AgentWork } from '../../contract/readable-log';
@@ -93,6 +96,32 @@ function recordWork(work: AgentWork): void {
   recordStepEvent({ kind: 'agent.tool', ...tool });
 }
 
+/** Feeds the tool work of a launch to the loop detector and records what it finds. */
+function loopWatch(detector: LoopDetector): NonNullable<AgentRunInput['loop']> & { note(work: AgentWork): void } {
+  let repeated = { command: '', errorLine: '' };
+  return {
+    note(work) {
+      if (work.kind !== 'tool') {
+        return;
+      }
+      const { state, command, errorLine, count } = detector.note(work);
+      if (state === 'watching') {
+        return;
+      }
+      repeated = { command, errorLine };
+      recordStepEvent({
+        kind: 'agent.loop_hint',
+        command,
+        errorLine,
+        count,
+        ...(state === 'end' ? { ended: true } : {}),
+      });
+    },
+    pending: () => detector.pending(),
+    resumePrompt: () => (detector.resolveHint() ? loopHint(repeated.command, repeated.errorLine) : null),
+  };
+}
+
 function withRules(prompt: string): string {
   return `${AGENT_LANGUAGE_RULE}\n${AGENT_FOREGROUND_RULE}\n\n${prompt}`;
 }
@@ -105,6 +134,7 @@ export class AgentLauncher {
     private readonly visits: VisitRepository,
     private readonly runStop: RunStop,
     @Optional() private readonly failover?: LimitFailover,
+    @Optional() private readonly config?: AppConfig,
   ) {}
 
   /**
@@ -165,11 +195,18 @@ export class AgentLauncher {
     const feed = new AgentWorkFeed([request.workspace, ...request.mounts.map((mount) => mount.containerPath)], () =>
       performance.now(),
     );
+    const loop = this.config ? loopWatch(new LoopDetector(this.config.env.LOOP_REPEAT)) : undefined;
+    const work = (item: AgentWork): void => {
+      const safe = item.kind === 'tool' && item.errorLine ? { ...item, errorLine: redact(item.errorLine) } : item;
+      recordWork(safe);
+      loop?.note(safe);
+    };
     const result = await this.agent.run({
-      onOutput: bindToStepScope((chunk) => feed.push(chunk).forEach(recordWork)),
+      loop,
+      onOutput: bindToStepScope((chunk) => feed.push(chunk).forEach(work)),
       onSuspended: bindToStepScope((durationMs) => recordStepEvent({ kind: 'host.suspended', durationMs })),
       // A launch killed mid-tool leaves a block open that would hold back every later launch's events.
-      onLaunchEnd: bindToStepScope(() => feed.finish().forEach(recordWork)),
+      onLaunchEnd: bindToStepScope(() => feed.finish().forEach(work)),
       prompt: withRules(request.prompt),
       freshPrompt: request.freshPrompt === undefined ? undefined : withRules(request.freshPrompt),
       workspace: request.workspace,
@@ -197,7 +234,7 @@ export class AgentLauncher {
       answered: request.sections && hasSections(request.sections),
       project: request.project,
     });
-    feed.finish().forEach(recordWork);
+    feed.finish().forEach(work);
     recordStepEvent({
       kind: 'agent.finished',
       ...launch,

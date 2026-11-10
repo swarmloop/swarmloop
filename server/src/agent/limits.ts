@@ -1,7 +1,7 @@
 import type { StreamPiece } from './stream';
 import { takeAnswer } from './stream';
 
-export type KillReason = 'time' | 'idle' | 'usd' | 'tokens' | 'calls';
+export type KillReason = 'time' | 'idle' | 'usd' | 'tokens' | 'calls' | 'loop';
 
 export interface LimitSnapshot {
   elapsedMs: number;

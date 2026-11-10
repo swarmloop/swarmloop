@@ -42,6 +42,7 @@ export const envSchema = Joi.object({
   STEP_USD_MAX: Joi.number().empty('').optional(),
   STEP_TOKEN_MAX: Joi.number().empty('').optional(),
   IDLE_TIMEOUT_MS: Joi.number().required(),
+  LOOP_REPEAT: Joi.number().integer().min(1).default(4),
   SANDBOX_EGRESS: Joi.string().valid('proxy', 'open').default('proxy'),
   SANDBOX_DOCKER_RUNTIME: Joi.string()
     .pattern(/^[a-z][a-z0-9_.-]{0,63}$/)

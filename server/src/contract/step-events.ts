@@ -81,6 +81,16 @@ export type StepEventBody =
       status: 'ok' | 'failed' | 'unfinished';
       durationMs: number;
       resultLine: string;
+      /** The first line of a failed shell call's output, redacted. */
+      errorLine?: string;
+    }
+  | {
+      kind: 'agent.loop_hint';
+      command: string;
+      errorLine: string;
+      count: number;
+      /** Set on the record that ends the step. */
+      ended?: true;
     }
   | { kind: 'agent.message'; text: string; chars: number }
   | { kind: 'host.suspended'; durationMs: number }

@@ -35,6 +35,7 @@ const bodies: [StepEventBody, 'left' | 'right'][] = [
   [{ kind: 'http.call', method: 'GET', url: 'https://x.test', statusCode: 200, durationMs: 5 }, 'left'],
   [{ kind: 'host.suspended', durationMs: 2_400_000 }, 'left'],
   [{ kind: 'agent.limited', runtime: 'claude', text: 'Claude hit its usage limit.' }, 'left'],
+  [{ kind: 'agent.loop_hint', command: 'npm test', errorLine: 'FAIL', count: 4 }, 'left'],
   [{ kind: 'agent.launched', ...launch }, 'left'],
   [{ kind: 'agent.finished', ...launch, killReason: null, tokensIn: 1, tokensOut: 2, usd: 0 }, 'left'],
   [{ kind: 'artifact.produced', artifactKind: 'plan', documentId: 2, summary: 'plan: 9 items' }, 'left'],
@@ -138,6 +139,16 @@ describe('groupByAttempt', () => {
 
     expect(group?.items[0]?.problem?.cause).toBe(
       `Claude hit its usage limit (resets ${localTime(resetsAt)}). Continued with codex:gpt-6.1-sol.`,
+    );
+  });
+
+  it('shows a loop hint without a problem and the end of a loop as one', () => {
+    const hint = { kind: 'agent.loop_hint', command: 'npm test', errorLine: 'FAIL a.spec', count: 4 } as const;
+    const [group] = groupByAttempt([stepEvent(1, hint), stepEvent(2, { ...hint, count: 8, ended: true })]);
+
+    expect(group?.items[0]?.problem).toBeNull();
+    expect(group?.items[1]?.problem?.cause).toBe(
+      'npm test ×8: the step ended because the agent kept repeating it. Error: FAIL a.spec',
     );
   });
 

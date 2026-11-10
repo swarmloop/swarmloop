@@ -43,7 +43,15 @@ describe('AgentWorkFeed', () => {
     expect(run(stream)).toEqual([
       { kind: 'message', text: 'Reading the file first.' },
       { kind: 'tool', tool: 'read', target: 'src/app.ts', status: 'ok', durationMs: 10, resultLine: 'const app = 1;' },
-      { kind: 'tool', tool: 'shell', target: 'npm test', status: 'failed', durationMs: 10, resultLine: 'exit 2' },
+      {
+        kind: 'tool',
+        tool: 'shell',
+        target: 'npm test',
+        status: 'failed',
+        durationMs: 10,
+        resultLine: 'exit 2',
+        errorLine: 'boom',
+      },
       { kind: 'message', text: 'The tests fail.' },
     ]);
   });

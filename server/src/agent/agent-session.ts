@@ -12,6 +12,11 @@ import type { AgentRunResult } from './agent-result';
 export const AGENT_CONTINUE =
   'You were stopped by the time limit before you finished. Continue this same task from where you stopped. Do not start over and do not redo edits already made. End with the sections the first message asked for.';
 
+/** The message that goes into the same chat when the agent repeats a failing command. */
+export function loopHint(command: string, errorLine: string): string {
+  return `You ran the same command again and again and it failed the same way: \`${command}\`${errorLine ? ` (${errorLine})` : ''}. Try a different approach or explain why it cannot pass. Do not start over and do not redo edits already made. End with the sections the first message asked for.`;
+}
+
 /** Sent when the agent's background work was killed with its answer, or a resumed chat only reported orphaned tasks. */
 export const AGENT_BACKGROUND_KILLED_CONTINUE =
   'Your background work was killed when your last answer ended the process. Run the commands in the foreground and wait for them. End with the sections the first message asked for.';
@@ -131,6 +136,8 @@ export function relaunchPlan(input: {
   attempt: AgentRunResult;
   chatId: string | null;
   continuePrompt: string | null | undefined;
+  /** The hint for the same chat after a loop kill, or null when the loop ends the step. */
+  loopPrompt?: string | null;
   /** The one relaunch after an early end was already used. */
   endedEarlyUsed: boolean;
   budget: LaunchBudget;
@@ -149,6 +156,9 @@ export function relaunchPlan(input: {
   ) {
     const chatId = attempt.chatId ?? input.chatId;
     return { chatId, resumed: chatId !== null, prompt: null };
+  }
+  if (attempt.chatId && attempt.killReason === 'loop' && input.loopPrompt && withinBudget(budget)) {
+    return { chatId: attempt.chatId, resumed: true, prompt: input.loopPrompt };
   }
   if (
     attempt.chatId &&

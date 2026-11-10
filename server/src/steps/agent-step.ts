@@ -278,7 +278,10 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     run.refusal = refusedWrite(result.output) ?? run.refusal;
     const failed = agentFailure(result, this.name, run.profile.mode);
     if (failed) {
-      run.launchError = new SwarmloopError(failed);
+      run.launchError = new SwarmloopError(
+        failed,
+        result.killReason === 'loop' ? { code: ERROR_CODES.AGENT_LOOPING, category: 'model' } : undefined,
+      );
       throw run.launchError;
     }
     if (result.backgroundKilled) {

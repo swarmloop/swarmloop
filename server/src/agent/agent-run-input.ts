@@ -34,6 +34,11 @@ export interface AgentRunInput {
   freshPrompt?: string;
   /** Tells whether an answer holds what the step needs. Without it an answer is never treated as ended early. */
   answered?: (text: string) => boolean;
+  /**
+   * A watch on the agent's repeated commands. A pending `hint` or `end` kills the launch with reason `loop`.
+   * `resumePrompt` takes a pending hint and returns the message for the same chat, or null when the stop is an end.
+   */
+  loop?: { pending(): 'hint' | 'end' | null; resumePrompt(): string | null };
   /** Called with each chunk of the agent's output as it arrives. */
   onOutput?: (chunk: string) => void;
   /** `onSuspended` gets the length of a host suspension that is not counted. `onLaunchEnd` runs when a launch ends, whatever the reason. */
