@@ -11,7 +11,6 @@ import { CommandHandlers } from './command-handlers';
 import { ChatService } from './chat.service';
 import { ShellService } from './shell.service';
 import { CheckoutsController } from './checkouts.controller';
-import { DrainController } from './drain.controller';
 import { HealthController } from './health.controller';
 import { ReadinessController } from './readiness.controller';
 import { RunsController } from './runs.controller';
@@ -29,7 +28,7 @@ import { RunRebaseService } from './run-rebase.service';
     SandboxModule,
     ReadinessModule,
   ],
-  controllers: [HealthController, DrainController, ReadinessController, RunsController, CheckoutsController],
+  controllers: [HealthController, ReadinessController, RunsController, CheckoutsController],
   providers: [
     RunQueriesService,
     RunCommandsService,

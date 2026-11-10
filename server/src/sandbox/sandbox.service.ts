@@ -8,6 +8,7 @@ import { resolveRepoRoot } from '../config/repo-root';
 import { SystemClock } from '../core/clock';
 import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { barrier } from '../core/barrier';
+import { ERROR_CODES } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { SandboxMount } from '../core/sandbox-mount';
 import {
@@ -27,8 +28,7 @@ import {
   stepContainers,
 } from '../sandbox/sandbox-launch';
 import { Egress, egressMode } from './egress';
-import { ImagePreparation } from './image-prepare';
-import type { RunImages } from './image-resolver';
+import { imageMissing } from './image-resolver';
 import { withEgress } from './egress-launch';
 import { projectGitMount } from './project-git';
 
@@ -44,23 +44,10 @@ export class SandboxService {
   private readonly maskFile = join(tmpdir(), 'swarmloop-empty-env');
   private binds: BindMount[] | null = null;
   private egressProxy: Egress | null = null;
-  /** The images each run started with, as its `images` document says. A launch of the run uses these. */
-  private readonly runImages = new Map<string, RunImages>();
-  /** Pulls and checks the release images before a launch. It runs on whatever docker runner is set. */
-  readonly images = new ImagePreparation((args, timeoutMs) => this.docker(args, timeoutMs));
 
   useDocker(docker: DockerRunner): void {
     this.docker = docker;
     this.egressProxy = null;
-  }
-
-  /** The images this process already made ready for the run, so its later launches check nothing again. */
-  imagesOf(runKey: string): RunImages | undefined {
-    return this.runImages.get(runKey);
-  }
-
-  startedWith(runKey: string, images: RunImages): void {
-    this.runImages.set(runKey, images);
   }
 
   /** The egress proxy all sandboxes go out through. SANDBOX_EGRESS=open turns it off. */
@@ -81,16 +68,21 @@ export class SandboxService {
     return this.egressProxy;
   }
 
+  /** Docker answers and the agent image is on the host. Either failure blocks the run instead of costing an attempt. */
   async assertReady(runtime: RuntimeName): Promise<void> {
-    await this.images.dockerUp();
-    const image = agentImage(runtime);
-    if (image.registry) {
-      return;
-    }
     try {
-      await this.docker(['image', 'inspect', image.ref]);
+      await this.docker(['info']);
     } catch {
-      throw new SwarmloopError('sandbox image is missing');
+      throw new SwarmloopError('docker is not running', {
+        code: ERROR_CODES.DOCKER_UNAVAILABLE,
+        category: 'environment',
+      });
+    }
+    const image = agentImage(runtime);
+    try {
+      await this.docker(['image', 'inspect', image]);
+    } catch {
+      throw imageMissing(image);
     }
   }
 
@@ -113,8 +105,7 @@ export class SandboxService {
           metadata.push(...(await projectGitMount(mount, directory)));
         }
       }
-      const images = given.images ?? this.runImages.get(given.runKey);
-      const prepared = { ...given, ...(images ? { images } : {}), mounts: [...given.mounts, ...metadata] };
+      const prepared = { ...given, mounts: [...given.mounts, ...metadata] };
       const acquired = egress ? await withEgress(egress, prepared) : { launch: prepared, release: () => undefined };
       release = acquired.release;
       const { launch } = acquired;
@@ -252,41 +243,20 @@ export class SandboxService {
   }
 
   /**
-   * Removes dangling images and build cache older than 24 hours. Tagged images, volumes and containers stay, and so
-   * do the images in `keep`, which runs in flight started with. `image prune` has no exclude list, so with images to
-   * keep the dangling ones are removed one by one.
+   * Removes dangling images and build cache older than 24 hours. Tagged images, volumes and containers stay.
    * A docker that fails is logged: housekeeping never stops a run.
    */
-  async pruneDocker(keep: RunImages[] = []): Promise<void> {
-    for (const [name, step] of [
-      ['image', () => (keep.length === 0 ? this.docker(['image', 'prune', '-f'], 300_000) : this.removeDangling(keep))],
-      ['builder', () => this.docker(['builder', 'prune', '-f', '--filter', 'until=24h'], 300_000)],
-    ] as const) {
+  async pruneDocker(): Promise<void> {
+    for (const args of [
+      ['image', 'prune', '-f'],
+      ['builder', 'prune', '-f', '--filter', 'until=24h'],
+    ]) {
       try {
-        await step();
+        await this.docker(args, 300_000);
       } catch (error) {
         new Logger(SandboxService.name).warn(
-          `docker ${name} prune failed: ${error instanceof Error ? error.message : String(error)}`,
+          `docker ${args[0]} prune failed: ${error instanceof Error ? error.message : String(error)}`,
         );
-      }
-    }
-  }
-
-  /** Removes the dangling images that no run in `keep` uses. They match by image id or by the digest of the reference. */
-  private async removeDangling(keep: RunImages[]): Promise<void> {
-    const used = keep.flatMap((images) => [images.agent, images.egress]);
-    const ids = used.map((image) => image.id?.replace('sha256:', '')).filter((id): id is string => !!id);
-    const digests = used.map((image) => image.ref.split('@')[1]).filter((digest): digest is string => !!digest);
-    for (const line of await this.listed('image ls --filter dangling=true --format {{.ID}}/{{.Digest}}'.split(' '))) {
-      const [id, digest] = line.split('/');
-      if (!ids.some((kept) => kept.startsWith(id) || id.startsWith(kept)) && !digests.includes(digest)) {
-        try {
-          await this.docker(['image', 'rm', id], 300_000);
-        } catch (error) {
-          new Logger(SandboxService.name).warn(
-            `docker image rm ${id} failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
       }
     }
   }

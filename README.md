@@ -45,11 +45,14 @@ Every step runs in a locked container. Every prompt, diff, review, token, and do
 
 You need Docker and one model key. No Jira, no git token, no CI.
 
-1. Get the release files. [`deploy/INSTALL.md`](deploy/INSTALL.md) ships with every release and lists them: download `compose.yml` and `.env.example` into an empty directory, then copy the settings:
+1. Download `compose.yml` and the settings of the latest release into an empty directory:
 
    ```sh
-   cp .env.example .env
+   curl -fsSLO https://github.com/swarmloop/swarmloop/releases/latest/download/compose.yml
+   curl -fsSL https://github.com/swarmloop/swarmloop/releases/latest/download/env.example -o .env
    ```
+
+   `CHECKOUTS_ROOT` in `.env` is the folder with your git clones (default: the parent of this directory).
 
 2. In `.env`, set `CURSOR_API_KEY` from the [Cursor dashboard](https://cursor.com/dashboard), **API Keys**. That key uses your Cursor plan, so there is no separate API bill. For Claude, set `RUNTIME=claude` and either `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` to use your Claude subscription, or `ANTHROPIC_API_KEY` from [Claude Console](https://platform.claude.com/settings/keys). A subscription token is for your own use on your own server, not one plan shared by a team. Leave every other secret empty.
 
@@ -61,7 +64,7 @@ You need Docker and one model key. No Jira, no git token, no CI.
    - The server keeps the login in `data/codex/` (it survives restarts) and refreshes it itself every few days, so parallel reviewers and steps never fight over it. `CODEX_AUTH` in `.env` is only the starting point: it is used again only when you change its value. Nothing to do by hand, unless the log says `Codex login expired`: then run `codex login`, paste the new value into `CODEX_AUTH` and restart the server.
    - A quick check: start a run with `RUNTIME=codex`; the first step answers if the login works.
 
-3. Start it. The release images are pulled, nothing is built here ([`deploy/INSTALL.md`](deploy/INSTALL.md) has the steps and the support matrix):
+3. Start it. The release images are pulled, nothing is built here:
 
    ```sh
    docker compose up -d --wait
@@ -70,6 +73,8 @@ You need Docker and one model key. No Jira, no git token, no CI.
 4. Open [http://127.0.0.1:3921](http://127.0.0.1:3921). The start page shows what a run needs: Docker, images, disk, paths, ports, and your keys. **New run** stays off while an item says `fail`, and the item says what to do. `docker compose exec server node dist/main.js doctor` prints the same list. Then click **New run**, pick a repository, untick **ci**, and describe the change. Leave ticket numbers out.
 
 The repository list is every git clone in `CHECKOUTS_ROOT`, the folder you set in `.env`. The agent edits its own worktree, not your working copy. Nothing is pushed, and Jira is not called.
+
+**Update:** `docker compose pull && docker compose up -d`. To stay on one release, set `SWARMLOOP_VERSION` in `.env`, for example `0.2.0`. Before it migrates the database, the server copies it to `data/backups/` (the last 3 are kept). An older version refuses a database a newer one migrated and names the backup. To go back: `docker compose down`, copy that backup over `data/swarmloop.sqlite`, delete `data/swarmloop.sqlite-wal` and `-shm`, copy the session files from its `.sessions` folder into `data/`, set the older `SWARMLOOP_VERSION` and `docker compose up -d`.
 
 ### 🚢 Commit, merge request, and CI
 
@@ -191,11 +196,11 @@ Every model step runs in a fresh container. The server starts it for the step an
 
 ### 🔀 Cursor, Claude, or Codex
 
-- `RUNTIME=cursor`, `RUNTIME=claude`, or `RUNTIME=codex`. Change the line and restart the server: the next step uses that agent and opens a new chat with the full brief. The release images are pulled by the `sandbox-images` service of `compose.yml`.
+- `RUNTIME=cursor`, `RUNTIME=claude`, or `RUNTIME=codex`. Change the line and restart the server: the next step uses that agent and opens a new chat with the full brief.
 - Each phase can use its own model: `MODEL_RESEARCH`, `MODEL_PLAN`, and `MODEL_IMPLEMENT`.
 - Dollars come from the vendor's published price list, cached for a day.
 - Another agent is the same three pieces: a sandbox image under `docker/sandbox`, its API hosts and key, and the code that reads its output. The pipeline, the history, and the panel stay as they are.
-- For contributors building from a checkout, `docker/sandbox/build.sh` builds the three agent images and the `swarmloop-egress` proxy image (`docker-compose build` builds them too). Run it again after you update swarmloop. Docker reuses its cache, so to get newer CLIs and certificates run `docker/sandbox/build.sh --fresh`, every few months is enough. Each image keeps its whole CLI under `/opt/swarmloop`, together with a CA certificate bundle (the public root list of Debian's `ca-certificates` package) and, for Codex, `rg`. swarmloop can therefore mount the CLI into another image.
+- For contributors building from a checkout, `docker/sandbox/build.sh` builds the three agent images and the `swarmloop-egress` proxy image (`compose.build.yml` builds them too). Run it again after you update swarmloop. Docker reuses its cache, so to get newer CLIs and certificates run `docker/sandbox/build.sh --fresh`, every few months is enough. Each image keeps its whole CLI under `/opt/swarmloop`, together with a CA certificate bundle (the public root list of Debian's `ca-certificates` package) and, for Codex, `rg`. swarmloop can therefore mount the CLI into another image.
 - `scripts/agent-env-probe.sh <image>...` shows whether each CLI starts in a given image, for example `scripts/agent-env-probe.sh node:22-bookworm-slim php:8.3-cli`. Claude and Cursor need a glibc image with `bash`, so Debian or Ubuntu based. Alpine images do not work for them. Codex is one static binary and starts anywhere.
 
 ### 🎫 Jira, Confluence, and Google Drive
@@ -313,7 +318,7 @@ bin/swarmloop run PROJ-123 --prompt "what this ticket is"
 
 JetBrains IDEs do not have a swarmloop plugin. From 2025.3 on, AI Assistant starts `bin/sloop` as a custom ACP agent and talks to it in AI Chat. The chat then reads and writes the same runs as the CLI. An older version shows only the built-in models in that chat, and **Add Custom Agent** is not in the menu.
 
-The swarmloop API has to be up on `127.0.0.1:3920`. `docker compose up` also copies the built client to `server/dist`, which is what `bin/sloop` runs. The IDE does not need a separate `npm run build`.
+The swarmloop API has to be up on `127.0.0.1:3920`. Started from source (`compose.build.yml`), `docker compose up` also copies the built client to `server/dist`, which is what `bin/sloop` runs. The IDE does not need a separate `npm run build`.
 
 Then, in the IDE:
 

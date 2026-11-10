@@ -18,27 +18,27 @@
       "pattern": "A behavior that checklist removes is not a missing requirement"
     },
     {
-      "file": "deploy/compose.yml",
+      "file": "compose.yml",
       "pattern": "^\\s*build:"
     },
     {
-      "file": "deploy/compose.yml",
+      "file": "compose.yml",
       "pattern": "^\\s*context:"
     },
     {
-      "file": "deploy/compose.yml",
+      "file": "compose.yml",
       "pattern": "^\\s*dockerfile:"
     },
     {
-      "file": "deploy/compose.yml",
+      "file": "compose.yml",
       "pattern": "pull_policy:\\s*build"
     },
     {
-      "file": "deploy/compose.yml",
+      "file": "compose.yml",
       "pattern": "^\\s*sloop:"
     },
     {
-      "file": "deploy/compose.yml",
+      "file": "compose.yml",
       "pattern": "(^|[\\s'\\\"])\\.{1,2}/"
     },
     {

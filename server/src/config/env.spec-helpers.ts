@@ -49,7 +49,6 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     MODEL_PLAN: 'grok-4.7-high',
     MODEL_IMPLEMENT: 'grok-4.7-high',
     SWARMLOOP_ROOT: undefined,
-    SWARMLOOP_RELEASE_MANIFEST: undefined,
     CHECKOUTS_ROOT: undefined,
     SWARMLOOP_API_PORT: 3920,
     SWARMLOOP_API_HOST: '127.0.0.1',

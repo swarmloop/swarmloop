@@ -1,4 +1,3 @@
-import { DrainService } from './drain.service';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { RunStop } from '../agent/run-stop';
@@ -40,22 +39,9 @@ export class PipelineService implements OnModuleInit {
     reconciler: Reconciler,
     workspace: WorkspaceGuard,
     disk: DiskGuard,
-    drain: DrainService,
   ) {
     this.instructions = new RunInstructions(runs, documents, registry);
-    this.driver = new RunDriver(
-      runs,
-      documents,
-      registry,
-      config,
-      visits,
-      runStop,
-      clock,
-      projects,
-      workspace,
-      disk,
-      drain,
-    );
+    this.driver = new RunDriver(runs, documents, registry, config, visits, runStop, clock, projects, workspace, disk);
     this.lifecycle = new RunLifecycle(
       runs,
       documents,

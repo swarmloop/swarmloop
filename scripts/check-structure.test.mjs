@@ -81,13 +81,12 @@ test('forbidInFile reports the old sentence in that file only and not in another
   assert.match(violations[0], new RegExp(`^${file}:1:`));
 });
 
-test('deploy/compose.yml may not build images or mount a source path', () => {
+test('compose.yml pulls its images: no build and no source path (compose.build.yml builds)', () => {
   const composeRules = {
     ...rules,
-    forbidInFile: rules.forbidInFile.filter(({ file }) => file === 'deploy/compose.yml'),
+    forbidInFile: rules.forbidInFile.filter(({ file }) => file === 'compose.yml'),
   };
-  const check = (text) =>
-    findViolations({ root: makeRoot({ 'deploy/compose.yml': text }), rules: composeRules, files: [] });
+  const check = (text) => findViolations({ root: makeRoot({ 'compose.yml': text }), rules: composeRules, files: [] });
 
   assert.equal(check('services:\n  server:\n    build:\n      context: .\n').length > 0, true);
   assert.equal(check('services:\n  server:\n    volumes:\n      - ./server:/app\n').length, 1);

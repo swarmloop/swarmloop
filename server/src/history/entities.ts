@@ -416,16 +416,6 @@ export class CommandEntity {
   updatedAt!: string;
 }
 
-/** The release version that last migrated the database. Always row 1. */
-@Entity('release_meta')
-class ReleaseMetaEntity {
-  @PrimaryColumn({ type: 'integer' })
-  id!: number;
-
-  @Column()
-  version!: string;
-}
-
 export const entities = [
   RunEntity,
   DocumentEntity,
@@ -440,5 +430,4 @@ export const entities = [
   FlowEntity,
   StepEventEntity,
   CommandEntity,
-  ReleaseMetaEntity,
 ];

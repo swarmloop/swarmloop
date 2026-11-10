@@ -49,7 +49,6 @@ export interface SwarmloopEnv {
   MODEL_PLAN: string;
   MODEL_IMPLEMENT: string;
   SWARMLOOP_ROOT: string | undefined;
-  SWARMLOOP_RELEASE_MANIFEST: string | undefined;
   CHECKOUTS_ROOT: string | undefined;
   SWARMLOOP_API_PORT: number;
   SWARMLOOP_API_HOST: string;
@@ -71,7 +70,6 @@ export class AppConfig {
 
 export function readEnv(config: ConfigService): SwarmloopEnv {
   const root = config.get<string>('SWARMLOOP_ROOT');
-  const manifest = config.get<string>('SWARMLOOP_RELEASE_MANIFEST');
   const checkoutsRoot = config.get<string>('CHECKOUTS_ROOT');
   return {
     RUNTIME: config.getOrThrow<RuntimeName>('RUNTIME'),
@@ -120,7 +118,6 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     MODEL_PLAN: config.getOrThrow<string>('MODEL_PLAN'),
     MODEL_IMPLEMENT: config.getOrThrow<string>('MODEL_IMPLEMENT'),
     SWARMLOOP_ROOT: root ? root : undefined,
-    SWARMLOOP_RELEASE_MANIFEST: manifest ? manifest : undefined,
     CHECKOUTS_ROOT: checkoutsRoot ? checkoutsRoot : undefined,
     SWARMLOOP_API_PORT: config.getOrThrow<number>('SWARMLOOP_API_PORT'),
     SWARMLOOP_API_HOST: config.getOrThrow<string>('SWARMLOOP_API_HOST'),

@@ -16,7 +16,6 @@ import { LiveModule } from '../live/live.module';
 import type { VisitDraft } from '../history/visit';
 import { CommandService } from '../pipeline/command.service';
 import { RunStop } from '../agent/run-stop';
-import { DrainService } from '../pipeline/drain.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { writeRunState } from '../history/run-state';
 import { StepRegistry } from '../steps/step.registry';
@@ -87,7 +86,6 @@ export async function boot(
       RunCommandsService,
       CommandService,
       RunStop,
-      DrainService,
       RunRebaseService,
       RunRebase,
       { provide: WorkspaceGuard, useValue: { ensureForRequest: async () => undefined } },

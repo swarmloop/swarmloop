@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync } from 'fs';
 import { createServer, type Server } from 'http';
 import type { AddressInfo } from 'net';
 import { tmpdir } from 'os';
@@ -10,12 +10,11 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { ReadinessId, ReadinessItem } from '../contract/api';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { DiskGuard } from '../pipeline/disk-guard';
-import { resolveImage } from '../sandbox/image-resolver';
+import { imageName } from '../sandbox/image-resolver';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { ReadinessService } from './readiness.service';
 
 const GB = 1024 ** 3;
-const MANIFEST_REF = 'registry.example/agent@sha256:aaa';
 
 describe('ReadinessService', () => {
   const original = global.fetch;
@@ -54,7 +53,7 @@ describe('ReadinessService', () => {
     docker = jest.fn(async () => '');
     const sandbox = new SandboxService();
     sandbox.useDocker(docker);
-    const disk = new DiskGuard(config, {} as never, sandbox, {} as never, {} as never);
+    const disk = new DiskGuard(config, {} as never, sandbox);
     disk.useFreeBytes(async () => free);
     fetched = [];
     global.fetch = jest.fn(async (url: string, init?: { method?: string }) => {
@@ -114,65 +113,13 @@ describe('ReadinessService', () => {
     expect(item.action).toBe('start Docker or mount the Docker socket');
   });
 
-  it('fails when a local image is missing and says the compose stack tags it', async () => {
+  it('fails when an image is missing and says compose pulls it', async () => {
     const service = setup();
     docker.mockRejectedValue(new Error('No such image'));
     const item = await itemOf(service, 'images');
-    expect(item).toMatchObject({ status: 'fail', action: expect.stringContaining('sandbox-images') });
-    expect(item.line).toContain(resolveImage('agent-cursor').ref);
-    expect(item.line).toContain(resolveImage('egress').ref);
-  });
-
-  describe('with a release manifest', () => {
-    afterEach(() => {
-      delete process.env.SWARMLOOP_RELEASE_MANIFEST;
-    });
-
-    /** The resolver reads the manifest path from the process env. */
-    function useManifest(): void {
-      const dir = mkdtempSync(join(tmpdir(), 'manifest-'));
-      dirs.push(dir);
-      const path = join(dir, 'release-manifest.json');
-      writeFileSync(
-        path,
-        JSON.stringify({
-          version: '1.0.0',
-          images: { 'agent-cursor': MANIFEST_REF, egress: 'registry.example/egress@sha256:bbb' },
-        }),
-      );
-      process.env.SWARMLOOP_RELEASE_MANIFEST = path;
-    }
-
-    it('warns about an image that is pullable and never pulls it', async () => {
-      useManifest();
-      const service = setup();
-      docker.mockImplementation(async (args: string[]) => {
-        if (args[0] === 'image') {
-          throw new Error('No such image');
-        }
-        return '{}';
-      });
-      const item = await itemOf(service, 'images');
-      expect(item).toMatchObject({ status: 'warn', action: 'pulled on the first run' });
-      expect(docker.mock.calls.map(([args]) => (args as string[])[0])).not.toContain('pull');
-      expect(docker.mock.calls.map(([args]) => args)).toContainEqual(['manifest', 'inspect', MANIFEST_REF]);
-    });
-
-    it('fails when the registry does not have the image', async () => {
-      useManifest();
-      const service = setup();
-      docker.mockRejectedValue(new Error('manifest unknown'));
-      const item = await itemOf(service, 'images');
-      expect(item.status).toBe('fail');
-      expect(item.line).toContain('manifest unknown');
-    });
-
-    it('fails with the resolver text when the manifest cannot be read', async () => {
-      process.env.SWARMLOOP_RELEASE_MANIFEST = '/nope/release-manifest.json';
-      const item = await itemOf(setup(), 'images');
-      expect(item.status).toBe('fail');
-      expect(item.line).toContain('release manifest /nope/release-manifest.json cannot be read');
-    });
+    expect(item).toMatchObject({ status: 'fail', action: expect.stringContaining('docker compose up -d') });
+    expect(item.line).toContain(imageName('agent-cursor'));
+    expect(item.line).toContain(imageName('egress'));
   });
 
   it('fails below MIN_FREE_GB, warns under one and a half times it, and says the free GB', async () => {

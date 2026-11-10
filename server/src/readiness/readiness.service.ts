@@ -9,7 +9,7 @@ import { root } from '../history/run-paths';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { DiskGuard } from '../pipeline/disk-guard';
-import { resolveImage, type ResolvedImage } from '../sandbox/image-resolver';
+import { imageName } from '../sandbox/image-resolver';
 import { agentImage, sandboxUserId } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 
@@ -70,7 +70,7 @@ export class ReadinessService {
 
   private async docker(): Promise<Outcome> {
     try {
-      await this.sandbox.images.dockerUp();
+      await this.sandbox.run(['info']);
     } catch {
       return { status: 'fail', line: 'docker is not running', action: 'start Docker or mount the Docker socket' };
     }
@@ -86,32 +86,19 @@ export class ReadinessService {
 
   private async images(): Promise<Outcome> {
     const { RUNTIME } = this.config.env;
-    const wanted = [agentImage(RUNTIME), resolveImage('egress')];
+    const wanted = [agentImage(RUNTIME), imageName('egress')];
     return worst(await Promise.all(wanted.map((image) => this.image(image))));
   }
 
-  private async image(image: ResolvedImage): Promise<Outcome> {
-    if (await this.present(image.ref)) {
-      return ok(`${image.ref} is present`);
+  private async image(image: string): Promise<Outcome> {
+    if (await this.present(image)) {
+      return ok(`${image} is present`);
     }
-    if (!image.registry) {
-      return {
-        status: 'fail',
-        line: `${image.ref} is missing`,
-        action: 'run the compose stack so the `sandbox-images` service tags them',
-      };
-    }
-    try {
-      await this.sandbox.run(['manifest', 'inspect', image.ref]);
-    } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      return {
-        status: 'fail',
-        line: `${image.ref} cannot be pulled: ${text}`,
-        action: 'check the registry login and the network, then check again',
-      };
-    }
-    return { status: 'warn', line: `${image.ref} is not pulled yet`, action: 'pulled on the first run' };
+    return {
+      status: 'fail',
+      line: `${image} is missing`,
+      action: 'run `docker compose up -d`, it pulls them',
+    };
   }
 
   private async present(ref: string): Promise<boolean> {

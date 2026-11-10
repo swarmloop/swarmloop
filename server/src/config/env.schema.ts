@@ -59,7 +59,6 @@ export const envSchema = Joi.object({
   MODEL_PLAN: Joi.string().required(),
   MODEL_IMPLEMENT: Joi.string().required(),
   SWARMLOOP_ROOT: Joi.string().allow('').optional(),
-  SWARMLOOP_RELEASE_MANIFEST: Joi.string().allow('').optional(),
   CHECKOUTS_ROOT: Joi.string().allow('').optional(),
   SWARMLOOP_API_PORT: Joi.number().required(),
   SWARMLOOP_API_HOST: Joi.string().required(),

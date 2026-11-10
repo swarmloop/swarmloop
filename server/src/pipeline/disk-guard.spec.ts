@@ -3,7 +3,6 @@ import { existsSync } from 'fs';
 import { AppConfig } from '../config/env';
 import { ERROR_CODES } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { DocumentRepository } from '../history/document.repository';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { DiskGuard } from './disk-guard';
 import { ageRun, freshRun, leaveFiles, makeWorld, seedRun, type World } from './workspace.spec-helpers';
@@ -98,47 +97,6 @@ describe('DiskGuard', () => {
     world.app.get(AppConfig).env.DOCKER_PRUNE = false;
     await guard.pruneDocker();
     expect(docker).not.toHaveBeenCalled();
-  });
-
-  it('keeps the dangling image of a run that is not done and removes the others', async () => {
-    const guard = await setup('PROJ-11');
-    const running = await seedRun(world.app, 'PROJ-12', 'running', 0);
-    const finished = await seedRun(world.app, 'PROJ-13', 'done', 0);
-    const images = (id: string) =>
-      JSON.stringify({ agent: { ref: `agent:${id}`, id: `sha256:${id}0000` }, egress: { ref: 'egress:1' } });
-    const documents = world.app.get(DocumentRepository);
-    await documents.putDocument(running, 'images', images('aaa111'));
-    await documents.putDocument(finished, 'images', images('ccc333'));
-    docker.mockImplementation(async (args: string[]) =>
-      args[1] === 'ls' ? 'aaa111/<none>\nbbb222/<none>\nccc333/<none>\n' : '',
-    );
-
-    await guard.pruneDocker();
-
-    const calls = docker.mock.calls.map((call) => call[0]);
-    expect(calls.filter((args: string[]) => args[1] === 'rm')).toEqual([
-      ['image', 'rm', 'bbb222'],
-      ['image', 'rm', 'ccc333'],
-    ]);
-    expect(calls).not.toContainEqual(['image', 'prune', '-f']);
-    expect(calls).toContainEqual(['builder', 'prune', '-f', '--filter', 'until=24h']);
-  });
-
-  it('goes on with the next dangling image when one cannot be removed', async () => {
-    const guard = await setup('PROJ-14');
-    const running = await seedRun(world.app, 'PROJ-15', 'running', 0);
-    await world.app
-      .get(DocumentRepository)
-      .putDocument(running, 'images', JSON.stringify({ agent: { ref: 'a:1' }, egress: { ref: 'e:1' } }));
-    docker.mockImplementation(async (args: string[]) => {
-      if (args[1] === 'ls') return 'bbb222/<none>\nddd444/<none>\n';
-      if (args[1] === 'rm' && args[2] === 'bbb222') throw new Error('image is in use');
-      return '';
-    });
-
-    await guard.pruneDocker();
-
-    expect(docker.mock.calls.map((call) => call[0])).toContainEqual(['image', 'rm', 'ddd444']);
   });
 
   it('logs a docker that fails and still tries the second prune', async () => {

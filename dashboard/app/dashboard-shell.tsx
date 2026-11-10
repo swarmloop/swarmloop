@@ -3,7 +3,7 @@
 import type { ReactElement } from 'react';
 import type { Route } from 'next';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import AddIcon from '@mui/icons-material/Add';
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
@@ -11,22 +11,13 @@ import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
-import type { DrainView, RunSummary } from '@contract/api';
+import type { RunSummary } from '@contract/api';
 import { NewRunDialog } from '../features/new-run';
 import { useReadiness } from '../features/readiness';
 import { RemoveRunDialog, RunList, useRuns } from '../features/runs';
-import { getDrain, startDrain } from '../lib/endpoints';
 import { Shell, ThemeModeSwitch, useNewRun } from '../features/shell';
 
 const DrawerWidth = 280;
-const DrainPollMs = 2000;
-
-function drainLabel(drain: DrainView | null): string {
-  if (!drain?.draining) {
-    return 'Drain';
-  }
-  return drain.idle ? 'Idle: safe to upgrade' : `Draining: ${drain.running} running`;
-}
 
 export function DashboardShell({ children }: { children: React.ReactNode }): ReactElement {
   const [open, setOpen] = useState(false);
@@ -57,8 +48,6 @@ function DashboardFrame({
   const [pendingRemove, setPendingRemove] = useState<RunSummary | null>(null);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
-  const [drain, setDrain] = useState<DrainView | null>(null);
-  const [drainError, setDrainError] = useState<string | null>(null);
   const matched = pathname.match(/^\/runs\/([^/]+)/)?.[1] ?? '';
   let selected = matched;
   try {
@@ -70,27 +59,6 @@ function DashboardFrame({
     () => runs.filter((run) => run.key.toLowerCase().includes(query.trim().toLowerCase())),
     [runs, query],
   );
-
-  useEffect(() => {
-    if (!drain?.draining || drain.idle) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      getDrain().then(setDrain, (cause: unknown) =>
-        setDrainError(cause instanceof Error ? cause.message : 'drain failed'),
-      );
-    }, DrainPollMs);
-    return () => clearTimeout(timer);
-  }, [drain]);
-
-  async function beginDrain(): Promise<void> {
-    setDrainError(null);
-    try {
-      setDrain(await startDrain());
-    } catch (cause: unknown) {
-      setDrainError(cause instanceof Error ? cause.message : 'drain failed');
-    }
-  }
 
   function closeRemove(): void {
     if (removing) {
@@ -154,16 +122,6 @@ function DashboardFrame({
             </Typography>
           </Box>
           <ThemeModeSwitch />
-          <Box component="span" title={drainError ?? 'Stop taking new runs and steps before an upgrade'} sx={{ mr: 1 }}>
-            <Button
-              variant="outlined"
-              color={drainError ? 'error' : 'primary'}
-              onClick={() => void beginDrain()}
-              disabled={drain?.draining === true}
-            >
-              {drainLabel(drain)}
-            </Button>
-          </Box>
           <Box component="span" title={blocker?.action}>
             <Button variant="contained" startIcon={<AddIcon />} onClick={openNewRun} disabled={blocker !== null}>
               New run

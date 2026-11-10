@@ -2,7 +2,7 @@ import { randomInt } from 'crypto';
 import { chownSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { resolveImage } from './image-resolver';
+import { imageMissing, imageName } from './image-resolver';
 
 /** The internal network every sandbox lives on. It has no route out: the egress proxy is the only way. */
 export const EGRESS_NETWORK = 'swarmloop-sandbox';
@@ -99,16 +99,16 @@ export class Egress {
   constructor(private readonly deps: EgressDeps) {}
 
   /** Checked before every lease, so a proxy that was removed or stopped comes back for the next step. */
-  ensure(image = resolveImage('egress').ref): Promise<void> {
-    this.ready ??= this.setUp(image).finally(() => {
+  ensure(): Promise<void> {
+    this.ready ??= this.setUp().finally(() => {
       this.ready = null;
     });
     return this.ready;
   }
 
   /** A free address with its policy written before the container exists, so the first request already has it. */
-  async lease(policy: EgressPolicy, image?: string): Promise<EgressLease> {
-    await this.ensure(image);
+  async lease(policy: EgressPolicy): Promise<EgressLease> {
+    await this.ensure();
     await this.dropStale();
     const now = this.deps.now();
     const body = `${JSON.stringify({ ...policy, issued: now, expires: now + POLICY_TTL_MS })}\n`;
@@ -171,7 +171,8 @@ export class Egress {
     }
   }
 
-  private async setUp(image: string): Promise<void> {
+  private async setUp(): Promise<void> {
+    const image = imageName('egress');
     mkdirSync(this.deps.policyDir, { recursive: true, mode: 0o700 });
     this.reader = this.readerOf(this.deps.policyDir);
     await this.ensureNetwork();
@@ -179,7 +180,7 @@ export class Egress {
     try {
       imageId = (await this.deps.docker(['image', 'inspect', '--format', '{{.Id}}', image])).trim();
     } catch {
-      throw new SwarmloopError(`image ${image} is missing: run docker/sandbox/build.sh`);
+      throw imageMissing(image);
     }
     if (await this.proxyUp(imageId)) {
       return;

@@ -1,7 +1,6 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import type { DataSource } from 'typeorm';
-import { rawEnv } from '../config/process-env';
 import { SwarmloopError } from '../core/swarmloop-error';
 
 const BACKUPS = 'backups';
@@ -10,40 +9,6 @@ const BACKUP_FILE = /^swarmloop-.+\.sqlite$/;
 const SESSION_FILE = /-session\.json$/;
 /** `2026-01-01T00-00-00-000Z`: the same length for every backup, so the names sort by time. */
 const TIME_LENGTH = 24;
-
-/** The release version of this server: `SWARMLOOP_VERSION` of the release, else the version in its package.json. */
-export function serverVersion(): string {
-  const release = rawEnv().SWARMLOOP_VERSION;
-  if (release) {
-    return release.replace(/^v/, '');
-  }
-  const manifest = JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8')) as { version: string };
-  return manifest.version;
-}
-
-const VERSION = /^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/;
-
-/** True when `stored` is newer than `version`. A release ranks above its own prereleases. A version that is not `MAJOR.MINOR.PATCH[-suffix]` counts as newer, so the guard refuses rather than passes. */
-function isNewer(stored: string, version: string): boolean {
-  const left = VERSION.exec(stored);
-  const right = VERSION.exec(version);
-  if (!left || !right) {
-    return true;
-  }
-  for (let i = 1; i <= 3; i += 1) {
-    const difference = Number(left[i]) - Number(right[i]);
-    if (difference !== 0) {
-      return difference > 0;
-    }
-  }
-  if (left[4] === right[4]) {
-    return false;
-  }
-  if (left[4] === undefined || right[4] === undefined) {
-    return left[4] === undefined;
-  }
-  return left[4].localeCompare(right[4], 'en', { numeric: true }) > 0;
-}
 
 function backupTime(file: string): string {
   return basename(file, '.sqlite').slice(-TIME_LENGTH);
@@ -66,15 +31,6 @@ async function tableExists(dataSource: DataSource, name: string): Promise<boolea
   return rows.length > 0;
 }
 
-/** The release version that last migrated the database, or null when none is recorded. */
-async function storedVersion(dataSource: DataSource): Promise<string | null> {
-  if (!(await tableExists(dataSource, 'release_meta'))) {
-    return null;
-  }
-  const rows = await dataSource.query<{ version: string }[]>(`SELECT version FROM release_meta WHERE id = 1`);
-  return rows[0]?.version ?? null;
-}
-
 async function unknownMigrations(dataSource: DataSource): Promise<string[]> {
   if (!(await tableExists(dataSource, 'migrations'))) {
     return [];
@@ -84,13 +40,13 @@ async function unknownMigrations(dataSource: DataSource): Promise<string[]> {
   return applied.map((row) => row.name).filter((name) => !known.has(name));
 }
 
-function refuse(version: string, stored: string, unknown: string[], backups: string): SwarmloopError {
+function refuse(unknown: string[], backups: string): SwarmloopError {
   const newest = listBackups(backups)[0];
   const restore = newest
-    ? `Restore the backup ${join(backups, newest)}, or start release ${stored} or newer.`
-    : `No backup is in ${backups}. Start release ${stored} or newer.`;
+    ? `To run this version, restore the backup ${join(backups, newest)}; otherwise start the newer version.`
+    : `No backup is in ${backups}: start the newer version.`;
   return new SwarmloopError(
-    `The database was migrated by release ${stored}, and this server (${version}) does not know its migrations ${unknown.join(', ')}. ${restore}`,
+    `The database was migrated by a newer version: this server does not know its migrations ${unknown.join(', ')}. ${restore}`,
   );
 }
 
@@ -106,9 +62,9 @@ function copySessions(data: string, destination: string): void {
   }
 }
 
-async function backUp(dataSource: DataSource, data: string, old: string, now: string): Promise<void> {
+async function backUp(dataSource: DataSource, data: string, now: string): Promise<void> {
   const backups = join(data, BACKUPS);
-  const stem = `swarmloop-${old.replace(/[^\w.-]/g, '_')}-${now.replace(/[:.]/g, '-')}`;
+  const stem = `swarmloop-${now.replace(/[:.]/g, '-')}`;
   try {
     mkdirSync(backups, { recursive: true });
     await (
@@ -127,22 +83,16 @@ async function backUp(dataSource: DataSource, data: string, old: string, now: st
 }
 
 /**
- * Runs before every migration. An older server refuses a database that a newer release migrated, and a database that
- * has data is backed up first. A failed backup throws, so nothing migrates without one.
+ * Runs before every migration. A server refuses a database that a newer version migrated, and a database that has
+ * data is backed up first. A failed backup throws, so nothing migrates without one.
  */
-export async function guardMigration(dataSource: DataSource, version: string, now: string): Promise<void> {
+export async function guardMigration(dataSource: DataSource, now: string): Promise<void> {
   const data = dirname(String(dataSource.options.database));
-  const stored = await storedVersion(dataSource);
   const unknown = await unknownMigrations(dataSource);
-  if (stored && unknown.length > 0 && isNewer(stored, version)) {
-    throw refuse(version, stored, unknown, join(data, BACKUPS));
+  if (unknown.length > 0) {
+    throw refuse(unknown, join(data, BACKUPS));
   }
   if ((await tableExists(dataSource, 'runs')) && (await dataSource.showMigrations())) {
-    await backUp(dataSource, data, stored ?? 'unknown', now);
+    await backUp(dataSource, data, now);
   }
-}
-
-/** Records the release that migrated the database. */
-export async function recordVersion(dataSource: DataSource, version: string): Promise<void> {
-  await dataSource.query(`INSERT OR REPLACE INTO release_meta (id, version) VALUES (1, ?)`, [version]);
 }

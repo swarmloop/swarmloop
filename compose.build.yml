@@ -1,0 +1,54 @@
+# Builds every image from this checkout instead of pulling the release.
+# Put `COMPOSE_FILE=compose.yml:compose.build.yml` in .env, then `docker compose up -d --build`.
+
+services:
+  agent-cursor:
+    image: swarmloop-agent-cursor
+    build:
+      context: ./docker/sandbox
+      dockerfile: Dockerfile.cursor
+
+  agent-claude:
+    image: swarmloop-agent-claude
+    build:
+      context: ./docker/sandbox
+      dockerfile: Dockerfile.claude
+
+  agent-codex:
+    image: swarmloop-agent-codex
+    build:
+      context: ./docker/sandbox
+      dockerfile: Dockerfile.codex
+
+  egress:
+    image: swarmloop-egress
+    build:
+      context: ./docker/egress
+
+  server:
+    image: swarmloop-server
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: docker/server/Dockerfile
+    environment:
+      # No registry: the server runs the local images built above.
+      SWARMLOOP_REGISTRY: ''
+
+  dashboard:
+    image: swarmloop-dashboard
+    build:
+      context: .
+      dockerfile: docker/dashboard/Dockerfile
+
+  # PhpStorm starts bin/sloop on the host. That script needs server/dist, which the image build does not leave on disk.
+  sloop:
+    image: swarmloop-server
+    pull_policy: never
+    command: ['sh', '-c', 'mkdir -p /out && cp -a /app/server/dist/. /out/ && chown -R ${UID:-1000} /out']
+    volumes:
+      - ./server/dist:/out
+    restart: 'no'
+    depends_on:
+      server:
+        condition: service_started

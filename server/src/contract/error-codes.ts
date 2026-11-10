@@ -15,19 +15,9 @@ export const ERROR_CODES = {
   INPUT_MISSING: 'INPUT_MISSING',
   DOCKER_UNAVAILABLE: 'DOCKER_UNAVAILABLE',
   IMAGE_MISSING: 'IMAGE_MISSING',
-  REGISTRY_AUTH: 'REGISTRY_AUTH',
-  ARCH_UNSUPPORTED: 'ARCH_UNSUPPORTED',
-  REGISTRY_UNREACHABLE: 'REGISTRY_UNREACHABLE',
-  DRAINING: 'DRAINING',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
 
-/** The codes of a run whose images cannot be made ready. A person fixes the cause, then resumes. */
-export const IMAGE_ERROR_CODES: readonly ErrorCode[] = [
-  ERROR_CODES.DOCKER_UNAVAILABLE,
-  ERROR_CODES.IMAGE_MISSING,
-  ERROR_CODES.REGISTRY_AUTH,
-  ERROR_CODES.ARCH_UNSUPPORTED,
-  ERROR_CODES.REGISTRY_UNREACHABLE,
-];
+/** The codes of a run whose sandbox cannot start: docker is down or an image is missing. A person fixes the cause, then resumes. */
+export const IMAGE_ERROR_CODES: readonly ErrorCode[] = [ERROR_CODES.DOCKER_UNAVAILABLE, ERROR_CODES.IMAGE_MISSING];

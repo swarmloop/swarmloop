@@ -250,13 +250,6 @@ export interface ReadinessItem {
   action: string;
 }
 
-/** `idle` is true when draining has finished: no run holds a step and no command is queued. */
-export interface DrainView {
-  draining: boolean;
-  idle: boolean;
-  running: number;
-}
-
 export interface ReadinessView {
   items: ReadinessItem[];
 }

@@ -9,10 +9,10 @@ Install dependencies from the repository root:
 (cd dashboard && npm ci)
 ```
 
-Start the application with Docker:
+Start the application with Docker, built from this checkout. Put `COMPOSE_FILE=compose.yml:compose.build.yml` in `.env` once, then:
 
 ```sh
-docker compose up --build
+docker compose up -d --build
 ```
 
 ## Code structure
@@ -28,6 +28,10 @@ docker compose up --build
 CI runs type checks, tests, lint and structure checks, dependency-cycle and unused-code checks, builds, and Docker image builds. CI is the judge: every required job must pass.
 
 Keep pull requests small, tested, and CI green. In the description, explain what changed, why, and how it was tested.
+
+## Releases
+
+A release is a tag on `main`: `git tag v0.2.0 && git push origin v0.2.0`. The release workflow builds the images, starts the stack from them, moves `:latest` to them and creates the GitHub release with `compose.yml` and `env.example` (a copy of `.env.example`: GitHub renames an asset that starts with a dot). A tag with a suffix (`v0.2.0-rc1`) is a prerelease and leaves `:latest` alone. Add the version to `CHANGELOG.md` before tagging.
 
 ## Briefs
 

@@ -1,52 +1,26 @@
-import { mkdtempSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import { SwarmloopError } from '../core/swarmloop-error';
-import { imageOf, resolveImage } from './image-resolver';
+import { ERROR_CODES } from '../contract/error-codes';
+import { imageMissing, imageName } from './image-resolver';
 
-const DIGEST = `sha256:${'a'.repeat(64)}`;
-
-function manifest(body: unknown): string {
-  const path = join(mkdtempSync(join(tmpdir(), 'swarmloop-manifest-')), 'release.json');
-  writeFileSync(path, typeof body === 'string' ? body : JSON.stringify(body));
-  return path;
-}
-
-describe('resolveImage', () => {
-  it('names the local image build.sh tags when there is no manifest', () => {
-    expect(resolveImage('agent-claude', undefined)).toEqual({ ref: 'swarmloop-agent-claude', registry: false });
-    expect(resolveImage('agent-codex', '')).toEqual({ ref: 'swarmloop-agent-codex', registry: false });
-    expect(resolveImage('egress', undefined)).toEqual({ ref: 'swarmloop-egress', registry: false });
+describe('imageName', () => {
+  it('names the local image without a registry', () => {
+    expect(imageName('agent-claude', {})).toBe('swarmloop-agent-claude');
+    expect(imageName('egress', { SWARMLOOP_REGISTRY: '', SWARMLOOP_VERSION: '1.0.0' })).toBe('swarmloop-egress');
   });
 
-  it('takes the reference and the version from the manifest', () => {
-    const path = manifest({ version: '1.4.0', images: { 'agent-cursor': `ghcr.io/acme/agent-cursor@${DIGEST}` } });
-    expect(resolveImage('agent-cursor', path)).toEqual({
-      ref: `ghcr.io/acme/agent-cursor@${DIGEST}`,
-      registry: true,
-      version: '1.4.0',
-    });
-  });
-
-  it('reads the manifest again on every call', () => {
-    const path = manifest({ version: '1', images: { egress: `r/egress@${DIGEST}` } });
-    expect(resolveImage('egress', path).version).toBe('1');
-    writeFileSync(path, JSON.stringify({ version: '2', images: { egress: `r/egress@${DIGEST}` } }));
-    expect(resolveImage('egress', path).version).toBe('2');
-  });
-
-  it('refuses a manifest of the wrong shape, an unreadable one, and a missing component', () => {
-    expect(() => resolveImage('egress', manifest({ images: {} }))).toThrow(SwarmloopError);
-    expect(() => resolveImage('egress', manifest('not json'))).toThrow('cannot be read');
-    expect(() => resolveImage('egress', join(tmpdir(), 'swarmloop-no-such-manifest.json'))).toThrow('cannot be read');
-    expect(() => resolveImage('egress', manifest({ version: '1', images: {} }))).toThrow('has no image for egress');
+  it('names the release image compose pulls, latest unless a version is set', () => {
+    expect(imageName('agent-codex', { SWARMLOOP_REGISTRY: 'ghcr.io/swarmloop' })).toBe(
+      'ghcr.io/swarmloop/swarmloop-agent-codex:latest',
+    );
+    expect(imageName('egress', { SWARMLOOP_REGISTRY: 'ghcr.io/swarmloop', SWARMLOOP_VERSION: '0.2.0' })).toBe(
+      'ghcr.io/swarmloop/swarmloop-egress:0.2.0',
+    );
   });
 });
 
-describe('imageOf', () => {
-  it('counts only a digest-pinned reference as a registry reference', () => {
-    expect(imageOf(`r/x@${DIGEST}`).registry).toBe(true);
-    expect(imageOf('r/x:latest').registry).toBe(false);
-    expect(imageOf('local-name').registry).toBe(false);
+describe('imageMissing', () => {
+  it('says how to get the image and blocks the run with IMAGE_MISSING', () => {
+    const error = imageMissing('swarmloop-egress');
+    expect(error.message).toContain('docker compose up -d');
+    expect(error.code).toBe(ERROR_CODES.IMAGE_MISSING);
   });
 });

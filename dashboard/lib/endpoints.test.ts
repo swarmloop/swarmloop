@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, runLog } from './api';
 import {
   createRun,
-  getDrain,
   getFlow,
   getHistory,
   getRunLog,
@@ -16,7 +15,6 @@ import {
   sendAnswers,
   setRunProjects,
   startReviewer,
-  startDrain,
   stopRun,
 } from './endpoints';
 
@@ -77,13 +75,6 @@ describe('endpoints', () => {
       ['/runs/run-1/steps/code-review-quality', { method: 'POST' }],
       ['/runs/run-1', { method: 'DELETE' }],
     ]);
-  });
-
-  it('posts the drain and reads its status', async () => {
-    await startDrain();
-    await getDrain();
-
-    expect(vi.mocked(api).mock.calls).toEqual([['/drain', { method: 'POST' }], ['/drain']]);
   });
 
   it('reads a run log through runLog', async () => {

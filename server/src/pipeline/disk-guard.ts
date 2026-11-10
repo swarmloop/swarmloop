@@ -1,15 +1,12 @@
 import { existsSync } from 'fs';
 import { lstat, readdir, statfs } from 'fs/promises';
 import { join } from 'path';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { ERROR_CODES } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { RunEntity } from '../history/entities';
-import { DocumentRepository } from '../history/document.repository';
-import { RunRepository } from '../history/run.repository';
 import { root } from '../history/run-paths';
-import { storedImages, type RunImages } from '../sandbox/image-resolver';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { RunRetention } from './run-retention';
 
@@ -31,8 +28,6 @@ export class DiskGuard {
     private readonly config: AppConfig,
     private readonly retention: RunRetention,
     private readonly sandbox: SandboxService,
-    private readonly runs: RunRepository,
-    private readonly documents: DocumentRepository,
   ) {}
 
   /** Replaces the disk reading, for specs. */
@@ -40,33 +35,11 @@ export class DiskGuard {
     this.free = free;
   }
 
-  /** Removes dangling images and old build cache, when `DOCKER_PRUNE` is on. The images of a run that is not done stay. */
+  /** Removes dangling images and old build cache, when `DOCKER_PRUNE` is on. */
   async pruneDocker(): Promise<void> {
-    if (!this.config.env.DOCKER_PRUNE) {
-      return;
+    if (this.config.env.DOCKER_PRUNE) {
+      await this.sandbox.pruneDocker();
     }
-    let keep: RunImages[];
-    try {
-      keep = await this.imagesInUse();
-    } catch (error) {
-      // Without the list, a prune could remove the image of a run in flight.
-      new Logger(DiskGuard.name).warn(
-        `docker prune skipped, the images of the runs are unknown: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return;
-    }
-    await this.sandbox.pruneDocker(keep);
-  }
-
-  private async imagesInUse(): Promise<RunImages[]> {
-    const images: RunImages[] = [];
-    for (const run of await this.runs.listRuns()) {
-      const stored = run.status === 'done' ? null : await storedImages(this.documents, run.key);
-      if (stored) {
-        images.push(stored);
-      }
-    }
-    return images;
   }
 
   /** Throws `DISK_LOW` when the free space stays under `MIN_FREE_GB` after the cleanup. `run` itself is never cleaned. */

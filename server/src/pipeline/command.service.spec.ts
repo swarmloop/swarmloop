@@ -12,7 +12,6 @@ import { RunRepository } from '../history/run.repository';
 import { boot, save } from '../testing/runs.spec-helpers';
 import { CommandService } from './command.service';
 import { RunStop } from '../agent/run-stop';
-import { DrainService } from './drain.service';
 
 async function app(name: string) {
   return boot(await mkdtemp(join(tmpdir(), `swarmloop-command-${name}-`)));
@@ -59,25 +58,6 @@ describe('CommandService', () => {
 
       await expect(refused).rejects.toBeInstanceOf(UnprocessableEntityException);
       await expect(refused).rejects.toMatchObject({ status: 422 });
-    } finally {
-      await testApp.close();
-    }
-  });
-
-  it('refuses new work while draining and still takes a Stop', async () => {
-    const testApp = await app('drain');
-    try {
-      await save(testApp.get(RunRepository), 'proj-1', 'implement', 'waiting');
-      const commands = testApp.get(CommandService);
-      commands.register('resume', jest.fn().mockResolvedValue(started));
-      commands.register('stop', jest.fn().mockResolvedValue(started));
-      testApp.get(DrainService).start();
-
-      const refused = commands.submit('resume', 'proj-1', {});
-
-      await expect(refused).rejects.toBeInstanceOf(ConflictException);
-      await expect(refused).rejects.toMatchObject({ response: { code: 'DRAINING' } });
-      await expect(commands.submit('stop', 'proj-1', {})).resolves.toMatchObject({ value: started });
     } finally {
       await testApp.close();
     }

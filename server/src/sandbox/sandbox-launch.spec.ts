@@ -2,8 +2,9 @@ import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'fs';
 import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { ERROR_CODES } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { resolveImage } from './image-resolver';
+import { imageName } from './image-resolver';
 import { SandboxService, collectEnvMasks, parseDockerStats } from './sandbox.service';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import {
@@ -156,7 +157,7 @@ describe('sandbox launch', () => {
         '/opt/swarmloop/bin/claude',
         '--print',
       ]);
-      expect(text).not.toContain(resolveImage('agent-claude').ref);
+      expect(text).not.toContain(imageName('agent-claude'));
       expect(text).toContain('PATH=/opt/swarmloop/bin:/usr/local/bin:/usr/bin:/bin');
       expect(text).toContain('HOME=/home/sandbox');
       expect(text).toContain('NODE_EXTRA_CA_CERTS=/opt/swarmloop/certs/ca-certificates.crt');
@@ -209,7 +210,7 @@ describe('sandbox launch', () => {
 
     it('keeps the agent image and the small /tmp without a project', () => {
       const args = sandboxArgs(launch(), home);
-      expect(args).toContain(resolveImage('agent-cursor').ref);
+      expect(args).toContain(imageName('agent-cursor'));
       expect(args).toContain('/tmp:rw,nosuid,nodev,size=64m,mode=1777');
       expect(args.join(' ')).not.toContain('/opt/swarmloop');
     });
@@ -230,7 +231,7 @@ describe('sandbox launch', () => {
     expect(args.join('\n')).not.toContain('docker.sock');
     expect(args).not.toContain('-e');
     expect(args).not.toContain('--env');
-    const imageAt = args.indexOf(resolveImage('agent-cursor').ref);
+    const imageAt = args.indexOf(imageName('agent-cursor'));
     expect(args[imageAt + 1]).toBe('agent');
   });
 
@@ -428,14 +429,20 @@ describe('sandbox launch', () => {
     sandbox.useDocker(async () => {
       throw new Error('down');
     });
-    await expect(sandbox.assertReady('cursor')).rejects.toThrow('docker is not running');
+    await expect(sandbox.assertReady('cursor')).rejects.toMatchObject({
+      code: ERROR_CODES.DOCKER_UNAVAILABLE,
+      message: 'docker is not running',
+    });
     sandbox.useDocker(async (args) => {
       if (args[0] === 'info') {
         return 'ok';
       }
       throw new Error('missing');
     });
-    await expect(sandbox.assertReady('claude')).rejects.toThrow('sandbox image is missing');
+    await expect(sandbox.assertReady('claude')).rejects.toMatchObject({
+      code: ERROR_CODES.IMAGE_MISSING,
+      message: expect.stringContaining(`image ${imageName('agent-claude')} is missing`),
+    });
   });
 
   it('reads the sandbox container cpu and memory', async () => {

@@ -20,7 +20,6 @@ import { checksFingerprint } from './checks-fingerprint';
 import { countsFor } from '../history/gate-stamp';
 import { git } from '../git/git';
 import { imagePath, projectSlug, resolveProjectImage } from './project-image';
-import { storedImages } from '../sandbox/image-resolver';
 
 export const ENVIRONMENT = 'environment';
 const CHECKS_PASS = 'checks_pass';
@@ -97,8 +96,7 @@ export class ProjectEnvironments {
     }
     const docker = (args: string[], timeoutMs?: number) => this.sandbox.run(args, timeoutMs);
     const image = await resolveProjectImage(docker, mount.hostPath, record.repo, record.config, record.ref);
-    const agentRef = (await storedImages(this.documents, input.key))?.agent.ref ?? agentImage(runtime).ref;
-    const cliVolume = await this.cliBundle(runtime, agentRef);
+    const cliVolume = await this.cliBundle(runtime, agentImage(runtime));
     const hasCerts = await this.probe(image, cliVolume, runtime);
     const launch: ProjectLaunch = {
       image,
@@ -123,7 +121,7 @@ export class ProjectEnvironments {
     return { launch, record: { ...record, image } };
   }
 
-  /** The CLI volume of the agent image the run started with. */
+  /** The CLI volume of the agent image. */
   private async cliBundle(runtime: RuntimeName, agentRef: string): Promise<string> {
     const finish = startCommandSpan({
       actor: 'server',
@@ -360,7 +358,6 @@ export class ProjectEnvironments {
       args: [command],
     });
     let timedOut = false;
-    const images = await storedImages(this.documents, input.key);
     const child = await this.sandbox
       .spawn({
         runtime: this.deps.env().RUNTIME,
@@ -373,7 +370,6 @@ export class ProjectEnvironments {
         command: [],
         userId,
         project: { ...launch, shell: command },
-        ...(images ? { images } : {}),
       })
       .catch((error: unknown) => {
         finish({ exitCode: null });

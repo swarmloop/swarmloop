@@ -11,8 +11,6 @@ import { assertKey } from '../core/pipeline-result';
 import type { PipelineResult } from '../core/pipeline-result';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { RunStop } from '../agent/run-stop';
-import { ERROR_CODES } from '../contract/error-codes';
-import { DrainService } from './drain.service';
 
 interface CommandContext {
   commandId: string;
@@ -40,9 +38,6 @@ type Outcome = { ok: true; value: unknown } | { ok: false; error: unknown };
 /** A command that is accepted while a writer holds the run is refused. */
 const BUSY_TYPES: readonly CommandType[] = ['start', 'resume', 'rebase', 'answer', 'chat'];
 
-/** A drain lets these through: a Stop and an Answer end work, a Remove and a project change start none. */
-const DRAIN_ALLOWED: readonly CommandType[] = ['stop', 'answer', 'remove', 'projects'];
-
 /**
  * The one door to a run. `accept` checks the transition and stores the command in one short transaction.
  * The executor then runs the commands of a run one at a time, except a Stop: it is the interrupt.
@@ -62,7 +57,6 @@ export class CommandService {
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
     private readonly runStop: RunStop,
-    private readonly drain: DrainService,
   ) {}
 
   register(type: CommandType, handler: CommandHandler): void {
@@ -76,14 +70,6 @@ export class CommandService {
     payload: Record<string, unknown>,
     options: SubmitOptions = {},
   ): Promise<{ command: CommandEntity; run: RunEntity; replayed: boolean }> {
-    if (this.drain.draining && !DRAIN_ALLOWED.includes(type)) {
-      throw new ConflictException({
-        statusCode: 409,
-        message: 'the instance is draining and takes no new work',
-        error: 'Conflict',
-        code: ERROR_CODES.DRAINING,
-      });
-    }
     const current = await this.runs.findRun(key);
     const error = current?.status === 'blocked' ? await this.documents.latestBody(key, 'error') : null;
     const code = current?.status === 'blocked' ? blockCode(current.currentStep, error) : null;
@@ -144,11 +130,6 @@ export class CommandService {
       }
       throw error;
     }
-  }
-
-  /** The commands that are queued or executing. */
-  pending(): number {
-    return this.scheduled.size;
   }
 
   /** Resolves when every command accepted so far has run. */
