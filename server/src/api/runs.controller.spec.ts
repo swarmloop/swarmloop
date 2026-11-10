@@ -46,6 +46,20 @@ describe('RunsController', () => {
     expect(queries.stepEventPage).toHaveBeenCalledWith('proj-1', { step: 'commit', after: '4', limit: '50' });
   });
 
+  it('passes the key, step and attempt of a log to the queries', async () => {
+    const queries = { stepLog: jest.fn().mockResolvedValue('log') };
+    const controller = new RunsController(
+      queries as unknown as RunQueriesService,
+      {} as RunCommandsService,
+      {} as CommandService,
+      {} as ShellService,
+    );
+    expect(await controller.stepLog('proj-1', 'plan', 'a-1')).toBe('log');
+    expect(queries.stepLog).toHaveBeenCalledWith('proj-1', 'plan', 'a-1');
+    await controller.stepLog('proj-1', 'plan');
+    expect(queries.stepLog).toHaveBeenLastCalledWith('proj-1', 'plan', null);
+  });
+
   it('answers the keys a prompt would fetch', async () => {
     const runs = { ticketKeys: jest.fn().mockResolvedValue({ keys: ['PROJ-12'] }) };
     expect(await controllerWith(runs).ticketKeys({ prompt: 'Do PROJ-12' })).toEqual({ keys: ['PROJ-12'] });

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { attemptOutputPath, hasFinalResult, outputFileFor, stepOutput } from './attempt-output';
+import { attemptOutputPath, hasFinalResult, isOutputFileOf, outputFileFor, stepOutput } from './attempt-output';
 
 function rootWith(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-attempt-output-'));
@@ -11,6 +11,14 @@ function rootWith(files: Record<string, string>): string {
 }
 
 describe('attempt output', () => {
+  it('knows the output files of a run, for every output step', () => {
+    expect(isOutputFileOf('K-1-plan-output.txt', 'K-1')).toBe(true);
+    expect(isOutputFileOf('K-1-chat-abc-output.txt', 'K-1')).toBe(true);
+    expect(isOutputFileOf('K-1-code-review-report-output.txt', 'K-1')).toBe(true);
+    expect(isOutputFileOf('K-1-plan-output.txt', 'K-2')).toBe(false);
+    expect(isOutputFileOf('swarmloop.sqlite', 'K-1')).toBe(false);
+  });
+
   it("names the file of an attempt, and keeps today's name for a launch without one", () => {
     expect(outputFileFor('/r', 'K-1', 'implement', 'abc')).toBe(attemptOutputPath('/r', 'K-1', 'implement', 'abc'));
     expect(outputFileFor('/r', 'K-1', 'implement', 'abc')).toBe(join('/r', 'data', 'K-1-implement-abc-output.txt'));
