@@ -443,4 +443,85 @@ describe('runs api', () => {
       await app.close();
     }
   });
+
+  describe('subtasks', () => {
+    const task = { id: 't1', title: 'Add the field', description: 'Store it.', files: ['src/a.ts'], proof: 'a test' };
+
+    async function parentRun(app: Awaited<ReturnType<typeof boot>>) {
+      const parent = await save(app.get(RunRepository), 'PROJ-300', 'implement', 'waiting');
+      parent.projects = 'demo\n';
+      await app.get(RunRepository).saveRun(parent);
+      const documents = app.get(DocumentRepository);
+      await documents.putDocument(
+        parent,
+        'requirements',
+        `${JSON.stringify({ prompt: 'Ship the field\n', tickets: [{ key: 'PROJ-300', summary: 'Ship the field' }] })}\n`,
+      );
+      await documents.putDocument(parent, 'contract', '- decided: use a column\n');
+      return parent;
+    }
+
+    it('makes one run for one task, however often it is started', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-subtask-'));
+      const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
+      const app = await boot(root, pipeline);
+      try {
+        const parent = await parentRun(app);
+        const commands = app.get(RunCommandsService);
+        const first = await commands.startSubtask(parent, task);
+        const second = await commands.startSubtask(parent, task);
+
+        expect(second).toEqual(first);
+        expect(first.key).toBe('PROJ-300-t1');
+        expect(pipeline.startDetached).toHaveBeenCalledTimes(1);
+        expect(
+          (await app.get(FlowRepository).listFlows((await app.get(RunRepository).findRun('PROJ-300-t1'))!.id)).length,
+        ).toBe(1);
+        const row = await app.get(RunRepository).findRun('PROJ-300-t1');
+        expect(row).toMatchObject({ parentRunId: parent.id, taskId: 't1' });
+        expect((await app.get(RunRepository).children(parent)).map((run) => run.key)).toEqual(['PROJ-300-t1']);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('starts from the task, the parent brief and one branch line, without the contract', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-subtask-prompt-'));
+      const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
+      const app = await boot(root, pipeline);
+      try {
+        await app.get(RunCommandsService).startSubtask(await parentRun(app), task);
+
+        const [key, start] = pipeline.startDetached.mock.calls[0] as [string, { prompt: string; projects: string[] }];
+        expect(key).toBe('PROJ-300-t1');
+        expect(start.projects).toEqual(['demo']);
+        expect(start.prompt).toContain('Add the field');
+        expect(start.prompt).toContain('Store it.');
+        expect(start.prompt).toContain('files: src/a.ts');
+        expect(start.prompt).toContain('proof: a test');
+        expect(start.prompt).toContain('Ship the field');
+        expect(start.prompt.match(/^branch: /gm)).toEqual(['branch: ']);
+        expect(start.prompt).toContain('branch: feature/PROJ-300-ship-the-field');
+        expect(start.prompt).not.toContain('use a column');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('lists a subtask with its parent key and the parent page names its parent', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-subtask-list-'));
+      const app = await boot(root, { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) });
+      try {
+        await app.get(RunCommandsService).startSubtask(await parentRun(app), task);
+
+        const queries = app.get(RunQueriesService);
+        const listed = (await queries.list()).runs;
+        expect(listed.find((run) => run.key === 'PROJ-300-t1')).toMatchObject({ parentKey: 'PROJ-300', taskId: 't1' });
+        expect(listed.find((run) => run.key === 'PROJ-300')).not.toHaveProperty('parentKey');
+        expect((await queries.flow('PROJ-300-t1')).parentKey).toBe('PROJ-300');
+      } finally {
+        await app.close();
+      }
+    });
+  });
 });

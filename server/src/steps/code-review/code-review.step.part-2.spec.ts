@@ -336,7 +336,9 @@ describe('code-review step', () => {
         ),
       ).toBe(true);
       expect(calls[0]?.prompt).toContain('Clean worktree');
-      expect(calls[0]?.prompt).toContain('NEXT');
+      // The prompt branch is the base now, so a worktree that sits on it has no commits of its own to show.
+      expect(calls[0]?.prompt).toContain('origin/feature/other');
+      expect(calls[0]?.prompt).not.toContain('NEXT');
       expect(calls[0]?.prompt).not.toContain('local.txt');
       expect(git(worktree, ['rev-parse', 'HEAD'])).toBe(git(clone, ['rev-parse', 'origin/feature/other']));
       expect(git(clone, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('dirty');

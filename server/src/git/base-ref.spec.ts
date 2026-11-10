@@ -1,5 +1,5 @@
 import { SwarmloopError } from '../core/swarmloop-error';
-import { originRef, promptBase } from './base-ref';
+import { baseBranch, originRef, promptBase } from './base-ref';
 
 describe('prompt base ref', () => {
   it('reads one branch line and strips an origin prefix', () => {
@@ -25,5 +25,12 @@ describe('prompt base ref', () => {
     expect(() => promptBase('branch: -feature')).toThrow('branch is invalid');
     expect(() => promptBase('branch: /feature')).toThrow('branch is invalid');
     expect(() => promptBase('branch: feature/foo~1')).toThrow('branch is invalid');
+  });
+
+  it('names the base branch for every consumer, or null for the default', () => {
+    expect(baseBranch('ship it\nbranch: feature/PROJ-1-field')).toBe('feature/PROJ-1-field');
+    expect(baseBranch('ship it')).toBeNull();
+    expect(baseBranch(null)).toBeNull();
+    expect(() => baseBranch('branch: a\nbranch: b')).toThrow('branch is ambiguous');
   });
 });

@@ -54,4 +54,43 @@ describe('RunRepository', () => {
       await db.close();
     }
   });
+
+  it('lists the subtasks of a run in the task order of its subtasks document and finds one by task id', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      const parent = await runs.openWaiting('p-1', '/target');
+      await db.app
+        .get(DocumentRepository)
+        .putDocument(
+          parent,
+          'subtasks',
+          JSON.stringify(['b', 'a'].map((id) => ({ id, title: id, description: '', files: [], proof: '' }))),
+        );
+      await runs.openSubtask('p-1-a', parent.id, 'a');
+      await runs.openSubtask('p-1-b', parent.id, 'b');
+      await runs.openWaiting('other', '/target');
+
+      expect((await runs.children(parent)).map((run) => run.key)).toEqual(['p-1-b', 'p-1-a']);
+      expect((await runs.findSubtask(parent, 'a'))?.key).toBe('p-1-a');
+      expect(await runs.findSubtask(parent, 'c')).toBeNull();
+      expect(await runs.children((await runs.findRun('other'))!)).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('refuses to split a subtask and allows a run without a parent', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      const parent = await runs.openWaiting('p-1', '/target');
+      const child = await runs.openSubtask('p-1-a', parent.id, 'a');
+
+      expect(() => runs.assertSplittable(child)).toThrow('a subtask cannot be split');
+      expect(() => runs.assertSplittable(parent)).not.toThrow();
+    } finally {
+      await db.close();
+    }
+  });
 });

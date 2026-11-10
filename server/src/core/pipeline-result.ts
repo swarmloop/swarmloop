@@ -139,6 +139,8 @@ export function settle(
 
 const JIRA_KEY = /^[A-Z][A-Z0-9]+-\d+$/;
 const RUN_ID = /^[a-z][a-z0-9-]{1,48}$/;
+/** `<parent key>-<task id>`, the key of a subtask of a ticket run. */
+const SUBTASK_KEY = /^[A-Z][A-Z0-9]+-\d+-[a-z0-9][a-z0-9-]{0,40}$/;
 const SESSION_KEY = /^([A-Z][A-Z0-9]+-\d+|[a-z][a-z0-9-]{1,40})--([1-9]\d*)$/;
 
 export interface StepOptions {
@@ -181,7 +183,7 @@ export function diedLog(saved: string): string {
 }
 
 export function assertKey(key: string): void {
-  if (!JIRA_KEY.test(key) && !RUN_ID.test(key) && !SESSION_KEY.test(key)) {
+  if (!JIRA_KEY.test(key) && !RUN_ID.test(key) && !SESSION_KEY.test(key) && !SUBTASK_KEY.test(key)) {
     throw new Error(`${key} is not a run id`);
   }
 }

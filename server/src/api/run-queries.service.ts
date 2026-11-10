@@ -28,6 +28,7 @@ import { reviewDecision } from '../steps/code-review/code-review-record';
 import type { StepEventPage } from '../contract/step-events';
 import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
 import type { LiveSample } from '../contract/live';
+import { parentLink } from './run-view/status';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
@@ -59,6 +60,7 @@ export class RunQueriesService {
   async list(): Promise<RunsView> {
     const runs = await this.runs.listRuns();
     const durations = await this.runs.durationByRun();
+    const keys = new Map(runs.map((run) => [run.id, run.key]));
     return {
       runs: runs.map((run) => ({
         key: run.key,
@@ -70,8 +72,14 @@ export class RunQueriesService {
         stepStartedAt: run.stepStartedAt,
         durationMs: durations.get(run.id) ?? 0,
         usd: run.spentUsd + openSpend(run, this.pipeline, this.live).usd,
+        ...parentLink(run, keys),
       })),
     };
+  }
+
+  private async parentOf(run: RunEntity): Promise<{ parentKey?: string }> {
+    const parent = typeof run.parentRunId === 'number' ? await this.runs.findById(run.parentRunId) : null;
+    return parent ? { parentKey: parent.key } : {};
   }
 
   async flow(key: string): Promise<FlowView> {
@@ -96,6 +104,7 @@ export class RunQueriesService {
       currentStep: run.currentStep,
       updatedAt: run.updatedAt,
       stepStartedAt: run.stepStartedAt,
+      ...(await this.parentOf(run)),
       ...state,
       sentence: withSkip(
         sentence(shown, open, documents, stats, maxReturns),
@@ -387,16 +396,8 @@ export class RunQueriesService {
   }
 
   private runningVisit(run: RunEntity, name: string, previousAttempt: number, samples?: LiveSample[]): VisitView {
-    return liveVisit(
-      run.key,
-      name,
-      root(this.config),
-      run.activeAttempt,
-      previousAttempt,
-      run.updatedAt,
-      this.clock.now(),
-      samples,
-    );
+    const now = this.clock.now();
+    return liveVisit(run.key, name, root(this.config), run.activeAttempt, previousAttempt, run.updatedAt, now, samples);
   }
 
   private meta(run: RunEntity, name: string): ReturnType<typeof stepMeta> {

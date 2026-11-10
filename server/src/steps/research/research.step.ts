@@ -12,7 +12,8 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { renderProjects, storedProjects } from '../prepare/checkout-path';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
-import { withHandoff } from '../shared/handoff';
+import { isSubtask } from '../../contract/subtask';
+import { assumptions, withContract, withHandoff } from '../shared/handoff';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { mountsForStep } from '../../git/repo-names';
 import { parseImpact, parseResearch, renderImpact } from './research-record';
@@ -59,7 +60,10 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     }
     const answers = (await ctx.reread(ARTIFACTS.answers)) ?? '';
     const prior = await ctx.reread(ARTIFACTS.handoff);
-    const sections = withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior);
+    const sections = withContract(
+      withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior),
+      await this.parentContract(ctx.opened.run),
+    );
     const mounts = mountsForStep(root(this.config), ctx.opened.run.key, names, null);
     const full = skillPrompt('research', input.requirements, names, sections, mounts);
     const agentResult = await ctx.launch({
@@ -72,19 +76,27 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     const parsed = parseResearch(agentResult.responseText);
     const impact = parseImpact(agentResult.responseText);
     const repos = renderProjects(names);
-    const paused = parsed.questions !== '';
+    // A subtask asks no one: it decides its questions itself and records them as assumptions.
+    const subtask = isSubtask(ctx.opened.run);
+    const paused = parsed.questions !== '' && !subtask;
+    const assumed = subtask ? assumptions(parsed.questions) : '';
     await ctx.write(ARTIFACTS.repos, ARTIFACTS.repos.parse(repos));
     const detail = [(paused ? parsed.questions : repos).trimEnd(), ...impact.notes].join('\n');
     const word = paused ? 'waiting' : 'done';
-    const summary = summaryOr(
-      agentResult.responseText,
-      plainSummary(agentResult.responseText) || `- chose ${repos.trim().split('\n').join(', ')}`,
-    );
+    const summary = [
+      summaryOr(
+        agentResult.responseText,
+        plainSummary(agentResult.responseText) || `- chose ${repos.trim().split('\n').join(', ')}`,
+      ),
+      assumed,
+    ]
+      .filter(Boolean)
+      .join('\n');
     return {
       route: paused ? { to: 'wait', reason: 'questions are open' } : { to: 'next' },
       summary: `${ctx.opened.startedAt} research ${word}\n${detail}`,
       outputs: [
-        { artifact: ARTIFACTS.questions, value: parsed.questions },
+        { artifact: ARTIFACTS.questions, value: subtask ? '' : parsed.questions },
         { artifact: ARTIFACTS.impact, value: renderImpact(impact.items) },
       ],
       handoff: summary,

@@ -246,6 +246,36 @@ describe('merge-request step', () => {
     }
   });
 
+  it('targets the branch the prompt names instead of the default branch', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-named-'));
+    featureTree(root, 'PROJ-212');
+    const open = jest.fn(async (_draft: MergeRequestDraft) => ({
+      record: {
+        project: 'group/demo',
+        iid: 4,
+        url: 'https://gitlab.example/group/demo/-/merge_requests/4',
+        summary: '',
+      },
+      httpCalls: [call('POST')],
+    }));
+    const app = await boot(
+      root,
+      { find: jest.fn(async () => ({ record: null, httpCalls: [call('GET')] })), open },
+      jest.fn(async () => result('Named.\n')),
+    );
+    try {
+      await seed(app, 'PROJ-212');
+      const runs = app.get(RunRepository);
+      const run = await runs.findRun('PROJ-212');
+      await runs.saveRun({ ...run!, prompt: 'Ship the field\nbranch: feature/PARENT-1-epic\n' });
+      const opened = await app.get(PipelineService).step('merge-request', 'PROJ-212');
+      expect(opened.exitCode).toBe(0);
+      expect(open.mock.calls[0]?.[0]?.target).toBe('feature/PARENT-1-epic');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('stops when the remote default branch is the feature branch', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-self-'));
     const tree = featureTree(root, 'PROJ-210');

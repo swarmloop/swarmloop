@@ -28,3 +28,9 @@ export function latest(documents: DocumentEntity[], kind: string): string | null
   const found = [...documents].reverse().find((document) => document.kind === kind);
   return found?.body ?? null;
 }
+
+/** Set on a subtask only: its parent's key and its task id. */
+export const parentLink = (run: RunEntity, keys: Map<number, string>): { parentKey?: string; taskId?: string } =>
+  typeof run.parentRunId === 'number' && keys.has(run.parentRunId)
+    ? { parentKey: keys.get(run.parentRunId), taskId: run.taskId ?? undefined }
+    : {};

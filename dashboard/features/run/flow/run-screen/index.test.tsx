@@ -41,6 +41,20 @@ beforeEach(() => {
 });
 
 describe('RunScreen', () => {
+  it('links a subtask page to its parent run', async () => {
+    vi.mocked(getFlow).mockResolvedValue(flowView({ parentKey: 'p-1' }));
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    expect(await screen.findByRole('link', { name: 'p-1' })).toHaveAttribute('href', '/runs/p-1');
+  });
+
+  it('shows no parent link on a run without a parent', async () => {
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+    await screen.findByRole('heading', { name: 'Run one' });
+
+    expect(screen.queryByText(/Subtask of/)).not.toBeInTheDocument();
+  });
+
   it('lets the main column shrink so the page never scrolls sideways', async () => {
     const { container } = render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
     await screen.findByRole('heading', { name: 'Run one' });

@@ -5,6 +5,7 @@ import type { SandboxMount } from '../../core/sandbox-mount';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { isDenied } from '../../git/commit-paths';
+import { baseBranch, originRef } from '../../git/base-ref';
 import { gitMissing, gitRaw } from '../../git/git';
 
 export const REVIEW_DIFF_PATH = '/work/brief/diff.md';
@@ -13,11 +14,12 @@ export const REVIEW_DIFF_PATH = '/work/brief/diff.md';
 export async function reviewDiffSection(
   mounts: SandboxMount[],
   denied: string[] = [],
+  prompt: string | null = null,
 ): Promise<{ heading: string; body: string; patch: string }> {
   const listed: string[] = [];
   const patches: string[] = [];
   for (const mount of mounts) {
-    const part = await one(mount, denied);
+    const part = await one(mount, denied, prompt);
     listed.push(part.list);
     patches.push(part.patch);
   }
@@ -61,7 +63,11 @@ function preamble(): string {
   ].join(' ');
 }
 
-async function one(mount: SandboxMount, denied: string[]): Promise<{ list: string; patch: string }> {
+async function one(
+  mount: SandboxMount,
+  denied: string[],
+  prompt: string | null,
+): Promise<{ list: string; patch: string }> {
   const name = repoName(mount);
   if (!(await inside(mount.hostPath))) {
     const text = `## ${name}\n\nNot a git checkout. Read the source files in the working directory.`;
@@ -82,7 +88,7 @@ async function one(mount: SandboxMount, denied: string[]): Promise<{ list: strin
       patch: block(name, status, [dirty?.trimEnd() ?? '', extra].filter((part) => part.length > 0).join('\n\n')),
     };
   }
-  const base = await baseRef(mount.hostPath);
+  const base = await baseRef(mount.hostPath, baseBranch(prompt));
   if (!base) {
     const text = `## ${name}\n\nThe worktree is clean and neither origin/main nor origin/master exists.`;
     return { list: text, patch: text };
@@ -204,7 +210,10 @@ async function inside(cwd: string): Promise<boolean> {
   }
 }
 
-async function baseRef(cwd: string): Promise<string | null> {
+async function baseRef(cwd: string, named: string | null): Promise<string | null> {
+  if (named) {
+    return (await hasRef(cwd, originRef(named))) ? originRef(named) : null;
+  }
   if (await hasRef(cwd, 'origin/main')) {
     return 'origin/main';
   }

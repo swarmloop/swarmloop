@@ -7,6 +7,9 @@ import { FlowRepository } from '../history/flow.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { assertKey, isStep, nextSessionKey, normalizePhases, ticketKey } from '../core/pipeline-result';
+import type { Subtask } from '../contract/subtask';
+import { branchName, summaryForBranch } from '../steps/branch/branch-name';
+import { requirementsBrief } from '../steps/shared/requirements-brief';
 import { PhaseName, pipelineStepOf, reviewerOf } from '../contract/steps';
 import { CHECKOUT_NAME, storedProjects } from '../steps/prepare/checkout-path';
 import { PrepareStep } from '../steps/prepare/prepare.step';
@@ -28,6 +31,17 @@ import {
 import { requireRun, RunQueriesService } from './run-queries.service';
 import { writeRunState } from '../history/run-state';
 
+/** The prompt of a subtask: its task, the parent's requirements as context, and the branch it starts from. */
+function subtaskPrompt(task: Subtask, brief: string, branch: string): string {
+  return [
+    `${task.title}\n\n${task.description}`,
+    `files: ${task.files.join(', ')}`,
+    `proof: ${task.proof}`,
+    `Requirements of the parent run, for context:\n${brief.trimEnd()}`,
+    `branch: ${branch}`,
+  ].join('\n\n');
+}
+
 /** What `plan` decided for a new run. It is the payload of the start command. */
 export interface StartPlan {
   key: string;
@@ -37,6 +51,9 @@ export interface StartPlan {
   phasesGiven: boolean;
   projects: string[];
   created?: boolean;
+  /** Set for a subtask: the run row is made with these two values. */
+  parentRunId?: number;
+  taskId?: string;
 }
 
 @Injectable()
@@ -110,10 +127,33 @@ export class RunCommandsService {
     return this.startPlanned(await this.plan(body));
   }
 
+  /** Starts one task of a parent run as a run of its own. A second call for the same task returns that run. */
+  async startSubtask(parent: RunEntity, task: Subtask): Promise<RunRef> {
+    const existing = await this.runs.findSubtask(parent, task.id);
+    if (existing) {
+      return { key: existing.key, status: existing.status === 'done' ? 'done' : 'started' };
+    }
+    const requirements = await this.documents.latestBody(parent.key, 'requirements');
+    if (!requirements?.trim()) {
+      throw new BadRequestException('requirements is missing');
+    }
+    const branch = branchName(parent.key, summaryForBranch(requirements, parent.key));
+    const plan = await this.plan({
+      key: `${parent.key}-${task.id}`,
+      prompt: subtaskPrompt(task, requirementsBrief(requirements), branch),
+      projects: storedProjects(parent.projects),
+    });
+    return this.startPlanned({ ...plan, parentRunId: parent.id, taskId: task.id });
+  }
+
   /** Starts the planned run. `created` says the command path made the run row just now. */
   async startPlanned(plan: StartPlan): Promise<RunRef> {
     const { key, prompt, path, phases, projects } = plan;
     const existing = plan.created ? null : await this.runs.findRun(key);
+    if (!existing && plan.parentRunId !== undefined) {
+      // The row only links the subtask to its parent; the run still starts as a new one.
+      await this.runs.openSubtask(key, plan.parentRunId, plan.taskId ?? '');
+    }
     if (!existing || (plan.phasesGiven && !this.runs.held(existing))) {
       await this.flows.noteFlow(key, phases, null);
     }

@@ -178,7 +178,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     const retry = fresh ? false : await retrying(this.visits, opened);
     const attemptId = retry ? await interruptedAttempt(this.visits, opened) : null;
     const returned = await returnedNotes(this.documents, opened.run.id);
-    const diff = await reviewDiffSection(mounts, await this.checkouts.listDenyPaths());
+    const diff = await reviewDiffSection(mounts, await this.checkouts.listDenyPaths(), opened.run.prompt);
     const same = sameReviewedDiff(root(this.config), key, diff.patch);
     const repeated = reviewReturn(returned) && same;
     const fingerprint = await worktreesFingerprint(mounts.map((mount) => mount.hostPath));

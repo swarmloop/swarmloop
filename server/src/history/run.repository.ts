@@ -13,6 +13,7 @@ import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { sessionHome } from '../history/session-group';
+import { parseSubtasks, SUBTASKS_KIND } from '../contract/subtask';
 import { REVIEW_STEPS, STEPS } from '../contract/steps';
 import { activeDurationMs, toDurationParts } from './active-duration';
 import { DocumentRepository } from './document.repository';
@@ -55,6 +56,34 @@ export class RunRepository {
     return this.runs.findOne({ where: { key } });
   }
 
+  async findById(id: number): Promise<RunEntity | null> {
+    return this.runs.findOne({ where: { id } });
+  }
+
+  /** The subtasks of a run, in the task order of its `subtasks` document. */
+  async children(run: RunEntity): Promise<RunEntity[]> {
+    const rows = await this.runs.find({ where: { parentRunId: run.id } });
+    const order = parseSubtasks(await this.documentRepository.latestBody(run.key, SUBTASKS_KIND)).map(
+      (task) => task.id,
+    );
+    const place = (row: RunEntity) => {
+      const index = order.indexOf(row.taskId ?? '');
+      return index === -1 ? order.length : index;
+    };
+    return rows.sort((a, b) => place(a) - place(b) || a.id - b.id);
+  }
+
+  async findSubtask(parent: RunEntity, taskId: string): Promise<RunEntity | null> {
+    return this.runs.findOne({ where: { parentRunId: parent.id, taskId } });
+  }
+
+  /** Depth is one: a subtask never splits into subtasks of its own. */
+  assertSplittable(run: RunEntity): void {
+    if (run.parentRunId !== null) {
+      throw new SwarmloopError('a subtask cannot be split');
+    }
+  }
+
   /** A waiting run row that is not stored yet. */
   newWaitingRun(key: string, targetPath: string | null): RunEntity {
     const env = this.config.env;
@@ -77,8 +106,15 @@ export class RunRepository {
       createdAt: now,
       updatedAt: now,
       stepStartedAt: null,
+      parentRunId: null,
+      taskId: null,
     });
     return created;
+  }
+
+  /** The waiting row of a subtask, linked to its parent in the same write that creates it. */
+  async openSubtask(key: string, parentRunId: number, taskId: string): Promise<RunEntity> {
+    return this.saveRun(Object.assign(this.newWaitingRun(key, null), { parentRunId, taskId }));
   }
 
   async openWaiting(key: string, targetPath: string): Promise<RunEntity> {

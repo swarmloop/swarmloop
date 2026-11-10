@@ -70,6 +70,68 @@ describe('plan step', () => {
     }
   });
 
+  it('adds the parent contract to the prompt of a subtask only', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-contract-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-45-t1', 'billing-api'), { recursive: true });
+    mkdirSync(join(root, 'worktrees', 'PROJ-46', 'billing-api'), { recursive: true });
+    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const app = await boot(root, agent);
+    try {
+      const runs = app.get(RunRepository);
+      const parent = await runs.openWaiting('PROJ-45', '/target');
+      await app.get(DocumentRepository).putDocument(parent, 'contract', '- decided: the field is a column\n');
+      await seed(app, 'PROJ-45-t1', '');
+      const child = await runs.findRun('PROJ-45-t1');
+      await runs.saveRun({ ...child!, parentRunId: parent.id, taskId: 't1' });
+      await seed(app, 'PROJ-46', '');
+
+      await app.get(PipelineService).step('plan', 'PROJ-45-t1');
+      await app.get(PipelineService).step('plan', 'PROJ-46');
+
+      expect((agent.mock.calls[0]?.[0] as AgentRunInput).prompt).toContain('the field is a column');
+      expect((agent.mock.calls[1]?.[0] as AgentRunInput).prompt).not.toContain('Contract');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('decides its own questions as assumptions when the run is a subtask, and still waits when it is not', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-subtask-asks-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-47-t1', 'billing-api'), { recursive: true });
+    mkdirSync(join(root, 'worktrees', 'PROJ-48', 'billing-api'), { recursive: true });
+    const agent = jest
+      .fn()
+      .mockResolvedValueOnce(result(['questions:', '- which column type?'].join('\n')))
+      .mockResolvedValueOnce(result(['plan:', '- add the field'].join('\n')))
+      .mockResolvedValueOnce(result(['questions:', '- which column type?'].join('\n')));
+    const app = await boot(root, agent);
+    try {
+      const runs = app.get(RunRepository);
+      const parent = await runs.openWaiting('PROJ-47', '/target');
+      await seed(app, 'PROJ-47-t1', '');
+      await runs.saveRun({ ...(await runs.findRun('PROJ-47-t1'))!, parentRunId: parent.id, taskId: 't1' });
+      await seed(app, 'PROJ-48', '');
+
+      await app.get(PipelineService).step('plan', 'PROJ-47-t1');
+      const child = await runs.findRun('PROJ-47-t1');
+      expect(child?.currentStep).toBe('plan-improve');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-47-t1', 'questions')).toBeFalsy();
+      expect(await app.get(DocumentRepository).latestBody('PROJ-47-t1', 'handoff')).toContain(
+        '- assumed: which column type?',
+      );
+
+      await app.get(PipelineService).step('plan', 'PROJ-48');
+      const other = await runs.findRun('PROJ-48');
+      expect(other?.currentStep).toBe('plan');
+      expect(other?.status).toBe('waiting');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-48', 'questions')).toContain('which column type?');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('continues the plan chat with a short prompt', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-resume-'));
     await writeEnv(root);

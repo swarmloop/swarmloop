@@ -309,6 +309,26 @@ describe('commit step', () => {
     }
   });
 
+  it('checks ahead against the branch the prompt names, not against the default branch', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-named-base-'));
+    const tree = featureTree(root, 'PROJ-133');
+    writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
+    git(tree, ['add', 'src/field.ts']);
+    git(tree, ['commit', '-m', 'parent work']);
+    git(tree, ['push', 'origin', 'HEAD:refs/heads/feature/PARENT-1-epic']);
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-133');
+      const runs = app.get(RunRepository);
+      await runs.saveRun({ ...(await runs.findRun('PROJ-133'))!, prompt: 'task\nbranch: feature/PARENT-1-epic\n' });
+      const done = await app.get(PipelineService).step('commit', 'PROJ-133');
+      expect(done.exitCode).toBe(1);
+      expect(done.message).toContain('nothing to commit');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('still reports nothing to commit on a clean tree without a ci_rerun', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-clean-'));
     const tree = featureTree(root, 'PROJ-132');
