@@ -30,6 +30,7 @@ describe('StatsSection', () => {
     expect(screen.getByLabelText('First-pass rate: 50%')).toBeInTheDocument();
     expect(screen.getByLabelText('Spend: $4.25')).toBeInTheDocument();
     expect(screen.getByLabelText('Returns: 3')).toBeInTheDocument();
+    expect(screen.getByLabelText('Usage limits: 2')).toBeInTheDocument();
     expect(screen.getByText(/runs started Nov 8 – Nov 10/)).toBeInTheDocument();
     expect(vi.mocked(getStats)).toHaveBeenCalledWith(30, expect.any(Number));
   });

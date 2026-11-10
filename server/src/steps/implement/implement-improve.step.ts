@@ -20,7 +20,7 @@ import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
-import { agentWorkplace } from '../shared/agent-environment';
+import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
 import { implementImproveFollowUp } from './implement.prompts';
 import { RequiredCheckRepeated } from '../../environment/project-environments';
@@ -114,9 +114,12 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     });
     const chosen = continued?.chatId ? implementImproveFollowUp(returned) : full;
     const added = await ctx.reread(ARTIFACTS.addedRepos);
+    const { runtime } = this.profile(this.config.env);
+    const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime };
+    const reproject = projectFor(this.environments, place);
     const { prompt, project, allowHosts, executionRules } = await agentWorkplace(
       this.environments,
-      { run: ctx.opened.run, key, step: this.name, mounts },
+      place,
       withAddedRepos(chosen, added),
     );
     const agentResult = await ctx.launch({
@@ -124,6 +127,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       mounts,
       allowHosts,
       project,
+      projectFor: reproject,
       sections: ['implementation'],
       validate: (text) => {
         if (section(text, 'implementation') !== null) {
@@ -137,13 +141,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const wrote = reviewedImplementation(text);
     let checks: string;
     try {
-      checks = checksLine(
-        await ctx.activity(
-          'Server checks',
-          () => this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts }),
-          checksLine,
-        ),
-      );
+      checks = checksLine(await ctx.activity('Server checks', () => this.environments.check(place), checksLine));
     } catch (error) {
       if (error instanceof RequiredCheckRepeated) {
         return checkRepeatedBlock(ctx.opened.startedAt, this.name, error);

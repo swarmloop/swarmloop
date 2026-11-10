@@ -12,6 +12,8 @@ function step(runId: number, name: string, usd: number, finishedAt: string, extr
     step: name,
     runtime: null,
     model: usd > 0 ? 'model-a' : null,
+    status: 'done',
+    killReason: null,
     usd,
     tokensIn: usd > 0 ? 1000 : 0,
     tokensOut: usd > 0 ? 100 : 0,
@@ -87,6 +89,7 @@ describe('buildStats', () => {
       reviewReturns: 2,
       pipelineReturns: 1,
       firstPass: 1,
+      limits: 0,
       agentMs: 5 * 60_000,
       medianDoneMs: 2_100_000,
     });
@@ -150,6 +153,26 @@ describe('buildStats', () => {
       ['claude', 2, 1.5],
       ['codex', 2, 2.5],
       ['cursor', 1, 0],
+    ]);
+  });
+
+  it('counts a switched step under the agent that did the work and the limited launch apart, as a limit', () => {
+    const data = rows();
+    data.steps = [
+      step(1, 'code-review-quality', 0.5, '2026-11-08T12:00:00.000Z', {
+        runtime: 'claude',
+        model: 'claude-opus-5-5',
+        status: 'interrupted',
+        killReason: 'RUNTIME_LIMIT',
+      }),
+      step(1, 'code-review-quality', 1, '2026-11-08T12:01:00.000Z', { runtime: 'codex', model: 'gpt-6.1-sol' }),
+    ];
+    const stats = buildStats(data, durations, NOW, { days: 7, tzOffset: WARSAW });
+    expect(stats.totals.limits).toBe(1);
+    expect(stats.steps).toEqual([{ name: 'code-review-quality', usd: 1.5, tokens: 2200, count: 1 }]);
+    expect(stats.models.map((entry) => [entry.name, entry.usd, entry.count])).toEqual([
+      ['gpt-6.1-sol', 1, 1],
+      ['claude-opus-5-5', 0.5, 0],
     ]);
   });
 

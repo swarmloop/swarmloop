@@ -38,7 +38,9 @@ function readReason(stored: string | null | undefined): StateReason | null {
   if (!stored) return null;
   try {
     const parsed = JSON.parse(stored) as Partial<StateReason>;
-    return typeof parsed.code === 'string' ? { code: parsed.code, message: String(parsed.message ?? '') } : null;
+    return typeof parsed.code === 'string'
+      ? { code: parsed.code, message: String(parsed.message ?? ''), ...(parsed.limit ? { limit: parsed.limit } : {}) }
+      : null;
   } catch {
     return null;
   }
@@ -72,6 +74,7 @@ export function deriveState(run: StateRow, facts: StateFacts = {}): { state: Run
         : { state: 'failed', reason: stored };
     default:
       if (facts.queued) return { state: 'queued', reason: null };
+      if (stored?.code === ERROR_CODES.RUNTIME_LIMIT) return { state: 'waiting', reason: stored };
       if (facts.needsAnswers) return { state: 'waiting', reason: reason('NEEDS_ANSWERS', 'waiting for a person') };
       if (facts.returned) return { state: 'idle', reason: reason(REASON.returned, 'returned to implement') };
       return { state: 'idle', reason: null };

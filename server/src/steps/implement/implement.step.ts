@@ -25,7 +25,7 @@ import { checkedRepoNames, mountsForStep, worktreePath } from '../../git/repo-na
 import { EnvironmentService } from '../../environment/environment.service';
 import { RequiredCheckFailed, RequiredCheckRepeated } from '../../environment/project-environments';
 import { withEnvironment } from '../../environment/environment-note';
-import { agentWorkplace } from '../shared/agent-environment';
+import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { storedPlan } from '../step';
 import { runJournal } from '../shared/rebase-journal';
 import { RebaseStop, completeRebase, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase';
@@ -126,17 +126,17 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       return settled;
     }
     const heads = await featureHeads(mounts, branch);
-    const { prompt, project, allowHosts, executionRules } = await agentWorkplace(
-      this.environments,
-      { run: ctx.opened.run, key, step: this.name, mounts },
-      basePrompt,
-    );
+    const { runtime } = this.profile(env);
+    const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime };
+    const reproject = projectFor(this.environments, place);
+    const { prompt, project, allowHosts, executionRules } = await agentWorkplace(this.environments, place, basePrompt);
     const before = await worktreeSnapshot(mounts);
     let agentResult = await ctx.launch({
       prompt,
       mounts,
       allowHosts,
       project,
+      projectFor: reproject,
       sections: ['implementation'],
       validate: (text) => parseImplementation(text),
       freshPrompt: continued?.chatId ? withEnvironment(withAddedRepos(full, added), executionRules) : undefined,
@@ -165,6 +165,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
         mounts,
         allowHosts,
         project,
+        projectFor: reproject,
       });
       await assertUncommitted(mounts, branch, heads);
       const againOutput = agentResult.output ?? '';
@@ -224,11 +225,14 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       return { blocked: null, checks: null };
     }
     try {
-      const checks = await ctx.activity(
-        'Server checks',
-        () => this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts }),
-        checksLine,
-      );
+      const place = {
+        run: ctx.opened.run,
+        key,
+        step: this.name,
+        mounts,
+        runtime: this.profile(this.config.env).runtime,
+      };
+      const checks = await ctx.activity('Server checks', () => this.environments.check(place), checksLine);
       return { blocked: null, checks: checksLine(checks) };
     } catch (error) {
       if (error instanceof RequiredCheckRepeated) {
@@ -314,9 +318,16 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
         return this.failConflict(ctx, outcome);
       }
       seen.add(id);
+      const place = {
+        run: ctx.opened.run,
+        key,
+        step: this.name,
+        mounts,
+        runtime: this.profile(this.config.env).runtime,
+      };
       const workplace = await agentWorkplace(
         this.environments,
-        { run: ctx.opened.run, key, step: this.name, mounts },
+        place,
         `${rebaseConflictPrompt({
           repo: outcome.repo,
           files: outcome.files,
@@ -327,6 +338,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       );
       await ctx.launch({
         ...workplace,
+        projectFor: projectFor(this.environments, place),
         mounts,
         resume: false,
       });
@@ -348,7 +360,13 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       return null;
     }
     try {
-      await this.environments.check({ run: ctx.opened.run, key, step: this.name, mounts });
+      await this.environments.check({
+        run: ctx.opened.run,
+        key,
+        step: this.name,
+        mounts,
+        runtime: this.profile(this.config.env).runtime,
+      });
     } catch (error) {
       if (error instanceof RequiredCheckFailed) {
         // Git conflicts are resolved. Retry the normal implementation flow with the saved check output.

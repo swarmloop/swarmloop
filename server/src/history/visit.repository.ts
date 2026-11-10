@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import type { EntityManager } from 'typeorm';
+import { ERROR_CODES } from '../contract/error-codes';
 import { releasedColumns } from './run-state';
 import { transaction } from './transaction';
 import { summarizeSamples } from './visit';
@@ -32,6 +33,9 @@ function tablesOf(manager: EntityManager): VisitTables {
     documents: manager.getRepository(DocumentEntity),
   };
 }
+
+/** How a visit that ended on a provider limit is recorded. */
+export const LIMIT_VISIT = { status: 'interrupted', killReason: ERROR_CODES.RUNTIME_LIMIT } as const;
 
 const DUPLICATE_ATTEMPT = 'UNIQUE constraint failed: step_stats.attempt_id';
 
@@ -97,7 +101,10 @@ export class VisitRepository {
     visit: VisitDraft,
     attemptId: string | null,
   ): Promise<StepStatEntity> {
-    const previous = await stepStats.count({ where: { runId: run.id, step: visit.step } });
+    // A launch that ended on a provider limit is no attempt: the visit after it keeps the number.
+    const previous =
+      (await stepStats.count({ where: { runId: run.id, step: visit.step } })) -
+      (await stepStats.count({ where: { runId: run.id, step: visit.step, ...LIMIT_VISIT } }));
     const stats = summarizeSamples(visit.samples);
     const now = visit.finishedAt;
     const stat = await stepStats.save(

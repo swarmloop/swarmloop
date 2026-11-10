@@ -9,7 +9,7 @@ import type { SandboxMount } from '../../core/sandbox-mount';
 import type { PipelineResult } from '../../core/pipeline-result';
 import { visitStatus } from '../../core/pipeline-result';
 import { reportFailure } from '../shared/step-failure';
-import { SwarmloopError } from '../../core/swarmloop-error';
+import { RuntimeLimit, SwarmloopError } from '../../core/swarmloop-error';
 import type { StepContext } from '../base-step';
 import { assertRoute } from '../contract/returns';
 import { routeToEnd } from '../contract/route';
@@ -65,10 +65,9 @@ export async function writeReport(
     ],
     impact,
   );
-  const prompt = continued
-    ? appendImpact(reportFollowUp(brief, implementation), impact)
-    : skillPrompt('code-review/report', requirements, names, sections, mounts);
-  const { runtime, model } = agentFor(env, opened.run, 'code-review-report');
+  const full = skillPrompt('code-review/report', requirements, names, sections, mounts);
+  const prompt = continued ? appendImpact(reportFollowUp(brief, implementation), impact) : full;
+  const asked = agentFor(env, opened.run, 'code-review-report');
   const empty: Usage = { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] };
   try {
     const directory = join(deps.root, 'data');
@@ -81,10 +80,11 @@ export async function writeReport(
       step: 'code-review-report',
       mode: 'ask',
       tools: 'read',
-      runtime,
-      model,
+      ...asked,
       timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
       prompt,
+      failover: true,
+      brief: full,
       workspace: mounts[0]?.containerPath ?? '/work',
       mounts,
       auto,
@@ -97,6 +97,7 @@ export async function writeReport(
       },
       parseFailureEnding: answerEnding('code-review/report'),
     });
+    const { runtime, model } = result.agent ?? asked;
     const exchange: ExchangeDraft = {
       runtime,
       model,
@@ -125,6 +126,9 @@ export async function writeReport(
     }
     return { document: textDocument(ARTIFACTS.reviewReport.kind, `${text}\n`), exchange, usage: spent };
   } catch (error) {
+    if (error instanceof RuntimeLimit) {
+      throw error;
+    }
     const message = reportFailure('code-review', error, env).message;
     return { error: message, exchange: null, usage: empty };
   }
@@ -221,6 +225,7 @@ export function closeReview(
     exitCode,
     line,
     moveTo,
+    ...(route.to === 'wait' ? { code: route.code, limit: route.limit } : {}),
     visit: {
       step: 'code-review',
       runtime: exchanges.find((exchange) => exchange.runtime)?.runtime ?? null,

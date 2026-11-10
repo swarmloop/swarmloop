@@ -8,6 +8,7 @@ import type {
   RuntimeKeys,
   RuntimeName,
 } from './agent-runtime';
+import { classifyLimit, type LimitHit, type LimitInput, type LimitRule } from './runtime-limit';
 
 export abstract class AbstractAgentRuntime implements AgentRuntime {
   abstract readonly name: RuntimeName;
@@ -21,6 +22,12 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
 
   abstract readonly apiHosts: readonly string[];
   abstract readonly credentialNames: readonly string[];
+  /** The samples of this CLI's limit texts. */
+  protected abstract readonly limits: readonly LimitRule[];
+
+  classifyLimit(input: LimitInput): LimitHit | null {
+    return classifyLimit(this.limits, input);
+  }
 
   /** By default the key stays in the container: the vendor's login does not allow a stand-in. */
   egressCredential(credential: { name: string; value: string }, _api: string): EgressCredential {

@@ -1,3 +1,4 @@
+import type { LimitState } from '../contract/run-state';
 import type { RunEntity } from '../history/entities';
 import type { FlowRepository } from '../history/flow.repository';
 import { blockCode, writeRunState } from '../history/run-state';
@@ -61,6 +62,7 @@ export async function closeStep(input: {
   exitCode: number;
   moveTo?: StepName;
   code?: string;
+  limit?: LimitState;
 }): Promise<PipelineResult> {
   const phases = await input.flows.activePhases(input.run.id);
   const settled = settle(input.previousStep, input.previousStatus, input.step, input.outcome, input.moveTo, phases);
@@ -74,11 +76,18 @@ export async function closeStep(input: {
     input.visit.document = null;
     error = docs.find((document) => document.kind === ARTIFACTS.error.kind)?.body ?? null;
   }
-  const code = settled.status === 'blocked' ? (input.code ?? blockCode(settled.currentStep, error)) : null;
+  const code =
+    settled.status === 'blocked'
+      ? (input.code ?? blockCode(settled.currentStep, error))
+      : settled.status === 'waiting' && input.limit
+        ? input.code
+        : null;
   writeRunState(input.run, {
     status: settled.status,
     currentStep: settled.currentStep,
-    reason: code ? { code, message: failureText(input.line) } : undefined,
+    reason: code
+      ? { code, message: failureText(input.line), ...(input.limit ? { limit: input.limit } : {}) }
+      : undefined,
     facts: code ? { blockCode: code } : undefined,
   });
   await barrier('before-finalize');

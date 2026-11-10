@@ -1,3 +1,5 @@
+import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
+import { limitRoute } from '../shared/limit-failover';
 import { agentFor } from '../../config/agents';
 import { Injectable } from '@nestjs/common';
 import type {
@@ -20,7 +22,7 @@ import { ModelPrice } from '../../agent/limits';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import { SwarmloopError } from '../../core/swarmloop-error';
+import { RuntimeLimit, SwarmloopError } from '../../core/swarmloop-error';
 import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import { lateInput } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
@@ -125,13 +127,22 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     return requiredDocument(this.documents, key, ARTIFACTS.implementation.kind);
   }
 
-  charge(
+  async charge(
     key: string,
     env: SwarmloopEnv,
-    prices: Record<string, ModelPrice>,
+    prices: (runtime: RuntimeName) => Promise<Record<string, ModelPrice>>,
     attemptId: string | null,
   ): Promise<Charge | null> {
-    return Promise.resolve(chargeReview(root(this.config), key, env, prices, attemptId));
+    const run = await this.runs.findRun(key);
+    const visits = run ? await this.visits.listStats(run.id) : [];
+    return chargeReview(
+      root(this.config),
+      key,
+      visits,
+      prices,
+      attemptId,
+      (step) => agentFor(env, run, step) ?? agentFor(env, run, 'code-review'),
+    );
   }
 
   protected override failureVisit(): Partial<VisitDraft> {
@@ -227,6 +238,13 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       repeated,
     });
     const { reportContinued, opinions, stored, errors } = tallyRound(kept, recovered, finished, repeated);
+    const limited = finished.find((item) => item.limit)?.limit;
+    if (limited) {
+      // The reviewers that answered keep their answers; the ones the limit stopped run again when the run goes on.
+      const waiting = await closeReview(ctx, limitRoute(limited), `${opened.startedAt} ${limited.message}`, stored, []);
+      await this.stamp(opened.run, stored, fingerprint);
+      return waiting;
+    }
     if (errors.length > 0) {
       const closed = await closeReview(ctx, failed(errors[0]), `${opened.startedAt} ${errors[0]}`, stored, []);
       await this.stamp(opened.run, stored, fingerprint);
@@ -245,19 +263,29 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       await this.stamp(opened.run, stored, fingerprint);
       return waiting;
     }
-    const written = await writeReport(
-      deps,
-      opened,
-      key,
-      env,
-      opinions,
-      mounts,
-      requirements,
-      notes,
-      impact,
-      reportContinued,
-      options.auto,
-    );
+    let written: Awaited<ReturnType<typeof writeReport>>;
+    try {
+      written = await writeReport(
+        deps,
+        opened,
+        key,
+        env,
+        opinions,
+        mounts,
+        requirements,
+        notes,
+        impact,
+        reportContinued,
+        options.auto,
+      );
+    } catch (error) {
+      if (!(error instanceof RuntimeLimit)) {
+        throw error;
+      }
+      const waiting = await closeReview(ctx, limitRoute(error), `${opened.startedAt} ${error.message}`, noted, []);
+      await this.stamp(opened.run, stored, fingerprint);
+      return waiting;
+    }
     const reportExchanges = written.exchange ? [written.exchange] : [];
     if ('error' in written) {
       return closeReview(

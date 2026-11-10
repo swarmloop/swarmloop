@@ -18,6 +18,7 @@ import { EventRepository } from './event.repository';
 import { CheckoutRepository } from './checkout.repository';
 import { StatsRepository } from './stats.repository';
 import { StepEventLog } from './step-event.log';
+import { RuntimeCooldownRepository } from './runtime-cooldown.repository';
 
 /** A commit is copied into the database file. The default waits for 1000 pages, so a finished status stays only in the WAL. */
 export function configureDatabase(db: { pragma: (statement: string) => unknown }): void {
@@ -63,6 +64,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     StepEventLog,
     CommandRepository,
     StatsRepository,
+    RuntimeCooldownRepository,
   ],
   exports: [
     RunRepository,
@@ -74,6 +76,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     StepEventLog,
     CommandRepository,
     StatsRepository,
+    RuntimeCooldownRepository,
     TypeOrmModule,
   ],
 })

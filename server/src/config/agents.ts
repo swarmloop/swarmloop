@@ -17,7 +17,7 @@ const TIERS = ['main', 'subtask'] as const;
 type Tier = (typeof TIERS)[number];
 
 /** The env values that name agents: the short form and the role lists. */
-export interface AgentEnv {
+interface AgentEnv {
   RUNTIME: RuntimeName;
   MODEL_PLAN: string;
   MODEL_IMPLEMENT: string;
@@ -112,6 +112,25 @@ export function agentFor(env: AgentEnv, run: AgentRun | null, step: string): Age
 export function agentFor(env: AgentEnv, run: AgentRun | null, step: string): Agent | null {
   const role = roleFor(step);
   return role ? agentsOf(env, role, tierOf(run))[0] : null;
+}
+
+/** Every agent of a step's role and tier, in fallback order. Empty for a step without an agent. */
+export function agentsFor(env: AgentEnv, run: AgentRun | null, step: string): Agent[] {
+  const role = roleFor(step);
+  return role ? agentsOf(env, role, tierOf(run)) : [];
+}
+
+/**
+ * The first agent of a step's role and tier whose runtime is not cooling down after a provider limit, or null when
+ * every one is. The first agent comes back as soon as its cooldown ends, so no step stays on a fallback.
+ */
+export function availableAgent(
+  env: AgentEnv,
+  run: AgentRun | null,
+  step: string,
+  cooling: ReadonlySet<string>,
+): Agent | null {
+  return agentsFor(env, run, step).find((agent) => !cooling.has(agent.runtime)) ?? null;
 }
 
 function tierOf(run: AgentRun | null): Tier {

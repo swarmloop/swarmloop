@@ -18,9 +18,19 @@ export type RunState = (typeof RUN_STATES)[number];
 /** What a person may ask of a run in its state. The server decides, the dashboard follows. */
 export type RunAction = 'resume' | 'replay' | 'rebase' | 'stop' | 'answer';
 
+/** Which runtime's usage limit a waiting run waits for, and when it goes on by itself. Times are UTC, ISO 8601. */
+export interface LimitState {
+  runtime: string;
+  window?: string;
+  resetsAt?: string;
+  resumesAt: string;
+}
+
 export interface StateReason {
   code: string;
   message: string;
+  /** Set with `RUNTIME_LIMIT`. */
+  limit?: LimitState;
 }
 
 /** The codes of a state reason. */
@@ -68,7 +78,7 @@ export function actionsFor(state: RunState, reasonCode: string | null = null): R
     case 'stopped':
       return ['resume', 'replay', 'rebase'];
     case 'waiting':
-      return ['answer', 'replay', 'rebase'];
+      return reasonCode === ERROR_CODES.RUNTIME_LIMIT ? ['resume', 'replay', 'rebase'] : ['answer', 'replay', 'rebase'];
     case 'running':
       return ['stop', 'replay'];
     case 'stopping':

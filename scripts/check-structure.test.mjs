@@ -129,18 +129,22 @@ test('forbidOutside reports an image name outside the resolver and lets the reso
   assert.match(violations[0], /^server\/src\/sandbox\/foo\.ts:1:/);
 });
 
-test('forbidOutside reports a step that reads RUNTIME or a model env itself, and lets a string in a spec helper be', () => {
+test('forbidOutside reports a step, an environment or an agent file that reads RUNTIME or a model env itself, and lets a string in a spec helper be', () => {
   const files = {
     'server/src/steps/plan/plan.step.ts': 'const model = env.MODEL_PLAN;\n',
     'server/src/steps/shared/launch.ts': 'const runtime = this.config.env.RUNTIME;\n',
     'server/src/steps/plan/plan.spec-helpers.ts': "const lines = ['RUNTIME=cursor', 'MODEL_PLAN=m'];\n",
-    'server/src/agent/agents.ts': 'const model = env.MODEL_PLAN;\n',
+    'server/src/environment/project-environments.ts': 'const runtime = this.config.env.RUNTIME;\n',
+    'server/src/agent/spend.ts': 'const model = env.MODEL_PLAN;\n',
+    'server/src/config/agents.ts': 'const model = env.MODEL_PLAN;\n',
   };
   const root = makeRoot(files);
 
   const violations = findViolations({ root, rules, files: Object.keys(files) });
 
-  assert.equal(violations.length, 2);
+  assert.equal(violations.length, 4);
   assert.match(violations[0], /^server\/src\/steps\/plan\/plan\.step\.ts:1:/);
   assert.match(violations[1], /^server\/src\/steps\/shared\/launch\.ts:1:/);
+  assert.match(violations[2], /^server\/src\/environment\/project-environments\.ts:1:/);
+  assert.match(violations[3], /^server\/src\/agent\/spend\.ts:1:/);
 });

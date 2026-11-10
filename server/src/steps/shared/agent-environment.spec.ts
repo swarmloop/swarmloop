@@ -5,7 +5,7 @@ import { skillPrompt, LOCAL_RUN_RULE } from './skill-prompt';
 import { implementFollowUp, implementImproveFollowUp } from '../implement/implement.prompts';
 import { agentWorkplace } from './agent-environment';
 
-const input = { run: {} as RunEntity, key: 'k', step: 'implement', mounts: [] };
+const input = { run: {} as RunEntity, key: 'k', step: 'implement', mounts: [], runtime: 'claude' as const };
 
 function environments(prepared: PreparedEnvironment | null): Pick<ProjectEnvironments, 'prepare'> {
   return { prepare: () => Promise.resolve(prepared) };

@@ -1,7 +1,7 @@
 import type { OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppConfig } from '../config/env';
-import { agentFor } from '../config/agents';
+import { agentFor, agentsFor } from '../config/agents';
 import { chargeStream } from '../agent/spend';
 import { loadPriceTable } from '../agent/prices';
 import { resolveRepoRoot } from '../config/repo-root';
@@ -19,7 +19,8 @@ import { recordStepEvent, runInStepScope } from '../core/step-event-scope';
 import type { RunEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { writeRunState } from '../history/run-state';
+import { deriveState, writeRunState } from '../history/run-state';
+import { RuntimeCooldownRepository } from '../history/runtime-cooldown.repository';
 import { StepEventLog } from '../history/step-event.log';
 import type { VisitDraft } from '../history/visit';
 import { VisitRepository } from '../history/visit.repository';
@@ -67,6 +68,7 @@ export class Reconciler implements OnModuleDestroy {
     private readonly mergeRequests: MergeRequestLookup,
     private readonly rebases: RunRebase,
     private readonly workspace: WorkspaceGuard,
+    private readonly cooldowns: RuntimeCooldownRepository,
   ) {}
 
   /** The startup pass over the runs. `claimed` says which runs a step of this process holds. */
@@ -113,6 +115,7 @@ export class Reconciler implements OnModuleDestroy {
 
   private async reconcileAll(): Promise<void> {
     await this.reconcileRuns();
+    await this.resumeLimited();
     await this.reconcileCommands();
   }
 
@@ -124,6 +127,23 @@ export class Reconciler implements OnModuleDestroy {
         await this.reconcile(run);
       } catch (error) {
         this.logger.warn(`reconcile of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  /**
+   * A run that waits for a provider limit goes on by itself, once, when an agent of its role is free again: at the
+   * earliest end of the cooldowns of its runtimes, a minute after a reset the provider named.
+   */
+  async resumeLimited(): Promise<void> {
+    for (const run of await this.runs.listRuns()) {
+      if (run.status !== 'waiting' || deriveState(run).reason?.code !== ERROR_CODES.RUNTIME_LIMIT) continue;
+      try {
+        const runtimes = agentsFor(this.config.env, run, run.currentStep).map((agent) => agent.runtime);
+        if (this.clock.now() < (await this.cooldowns.earliest(runtimes)).resumeAt) continue;
+        await this.commands.accept('resume', run.key, {}, { idempotencyKey: `limit-${run.revision}` });
+      } catch (error) {
+        this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   }
@@ -316,16 +336,13 @@ export class Reconciler implements OnModuleDestroy {
     const env = this.config.env;
     const agent = agentFor(env, run, run.currentStep);
     const model = agent?.model ?? null;
-    const prices = await loadPriceTable(
-      resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname),
-      agent?.runtime ?? env.RUNTIME,
-      this.clock.now(),
-    );
+    const pricesOf = (runtime: Parameters<typeof loadPriceTable>[1]) =>
+      loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime, this.clock.now());
     const step = isStep(run.currentStep) ? this.registry.get(run.currentStep) : null;
     const charge = step?.charge
-      ? await step.charge(run.key, env, prices, run.activeAttempt)
+      ? await step.charge(run.key, env, pricesOf, run.activeAttempt)
       : model
-        ? chargeStream(model, saved, prices)
+        ? chargeStream(model, saved, await pricesOf(agent?.runtime ?? env.RUNTIME))
         : null;
     run.spentUsd += charge?.usd ?? 0;
     writeRunState(run, { status: 'failed', ownerPid: null });

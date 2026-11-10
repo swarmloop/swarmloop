@@ -6,6 +6,7 @@ import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/en
 import { launchCount } from '../../agent/agent-launches';
 import { isReviewStep, pipelineStepOf } from '../../contract/steps';
 import { reviewDecision } from '../../steps/code-review/code-review-record';
+import { LIMIT_VISIT } from '../../history/visit.repository';
 import { stepStatus, latest } from './status';
 import type { FlowView } from '../../contract/api';
 import { REVIEW_KINDS } from './run-view.types';
@@ -207,7 +208,8 @@ function storedReviewerStatus(stat: StepStatEntity, documents: DocumentEntity[],
   if (stat.status === 'failed' || stat.status === 'blocked') {
     return 'failed';
   }
-  return stat.status === 'waiting' ? 'waiting' : 'done';
+  // A reviewer that a provider limit stopped waits for the limit to end. It did not fail.
+  return stat.status === 'waiting' || stat.status === LIMIT_VISIT.status ? 'waiting' : 'done';
 }
 
 function reportAttempts(stats: StepStatEntity[], documents: DocumentEntity[], writing: boolean): number {

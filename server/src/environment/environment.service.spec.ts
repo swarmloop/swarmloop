@@ -56,6 +56,7 @@ describe('rebase environment refresh', () => {
         run,
         key: run.key,
         step: 'implement',
+        runtime: 'codex',
         mounts: [{ hostPath: repo, containerPath: '/work' }],
       }),
     ).toBeNull();

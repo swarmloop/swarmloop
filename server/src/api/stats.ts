@@ -1,5 +1,6 @@
 import type { RunOutcome, StatsDay, StatsRun, StatsShare, StatsView } from '../contract/api';
 import type { StatsRows, StatsStepRow } from '../history/stats.repository';
+import { LIMIT_VISIT } from '../history/visit.repository';
 import { runName } from './run-view/flow';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -42,6 +43,11 @@ export function outcomeOf(status: string): RunOutcome {
 /** Steps that ran an agent. The others (branch, commit, pipeline watch) spend nothing. */
 function agentStep(step: StatsStepRow): boolean {
   return step.model !== null || step.tokensIn > 0 || step.usd > 0;
+}
+
+/** A launch that ended on a provider limit. Its spend counts under the agent that hit it; it counts as `limit`, not as a visit. */
+function limited(step: StatsStepRow): boolean {
+  return step.status === LIMIT_VISIT.status && step.killReason === LIMIT_VISIT.killReason;
 }
 
 function share(rows: Map<string, StatsShare>, name: string, usd: number, tokens: number, count = 1): void {
@@ -106,10 +112,10 @@ function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: n
     }
     if (agentStep(step)) {
       totals.agentMs += step.durationMs;
-      share(bySteps, step.step, step.usd, tokens);
+      share(bySteps, step.step, step.usd, tokens, limited(step) ? 0 : 1);
     }
     if (step.model) {
-      share(byModels, step.model, step.usd, tokens);
+      share(byModels, step.model, step.usd, tokens, limited(step) ? 0 : 1);
     }
     const day = days.get(localDay(step.finishedAt, tzOffset));
     if (day) {
@@ -212,6 +218,7 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
       reviewReturns: returns.review,
       pipelineReturns: returns.pipeline,
       firstPass,
+      limits: rows.steps.filter(limited).length,
       agentMs: spend.totals.agentMs,
       medianDoneMs: median(doneDurations),
     },

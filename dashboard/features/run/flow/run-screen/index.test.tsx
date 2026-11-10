@@ -41,6 +41,22 @@ beforeEach(() => {
 });
 
 describe('RunScreen', () => {
+  it('says at the top of the page that the run waits for a provider limit', async () => {
+    const limit = { runtime: 'claude', resetsAt: '2026-11-08T21:50:00.000Z', resumesAt: '2026-11-08T21:51:00.000Z' };
+    vi.mocked(getFlow).mockResolvedValue(
+      flowView({
+        status: 'waiting',
+        state: 'waiting',
+        stateReason: { code: 'RUNTIME_LIMIT', message: 'Claude hit its usage limit.', limit },
+      }),
+    );
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    expect(
+      await screen.findByText(/^Claude hit its usage limit \(resets \d\d:\d\d\)\. The run goes on at \d\d:\d\d\.$/),
+    ).toBeInTheDocument();
+  });
+
   it('links a subtask page to its parent run', async () => {
     vi.mocked(getFlow).mockResolvedValue(flowView({ parentKey: 'p-1' }));
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });

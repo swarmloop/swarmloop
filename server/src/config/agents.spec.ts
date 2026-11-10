@@ -1,6 +1,15 @@
 import { CODE_REVIEWERS, STEPS } from '../contract/steps';
 import { testEnv } from './env.spec-helpers';
-import { agentFor, assertAgents, parseAgentList, ROLE_OF_STEP, roleOf, runtimesInUse } from './agents';
+import {
+  agentFor,
+  agentsFor,
+  assertAgents,
+  availableAgent,
+  parseAgentList,
+  ROLE_OF_STEP,
+  roleOf,
+  runtimesInUse,
+} from './agents';
 
 const KEYS = { CURSOR_API_KEY: 'c', ANTHROPIC_API_KEY: 'a', CODEX_API_KEY: 'x' };
 const NO_AGENT = ['requirements', 'prepare', 'branch', 'commit', 'pipeline', 'done'];
@@ -89,6 +98,44 @@ describe('agentFor', () => {
     expect(roleOf(child, 'implement')).toEqual({ role: 'implement', tier: 'subtask' });
     expect(roleOf({ parentRunId: null }, 'code-review-quality')).toEqual({ role: 'review', tier: 'main' });
     expect(roleOf(null, 'commit')).toBeNull();
+  });
+});
+
+describe('availableAgent', () => {
+  const env = testEnv({
+    AGENTS_REVIEW: 'claude:review-m,codex:gpt-6.1-sol,cursor:grok-4.7-high',
+    AGENTS_SUBTASK_REVIEW: 'cursor:sub-review',
+  });
+
+  it('is the first agent when nothing cools down, so the first agent returns after a cooldown', () => {
+    expect(availableAgent(env, null, 'code-review-quality', new Set())).toEqual({
+      runtime: 'claude',
+      model: 'review-m',
+    });
+  });
+
+  it('skips the cooling runtimes in the order of the role', () => {
+    expect(availableAgent(env, null, 'code-review', new Set(['claude']))).toEqual({
+      runtime: 'codex',
+      model: 'gpt-6.1-sol',
+    });
+    expect(availableAgent(env, null, 'code-review', new Set(['claude', 'codex']))).toEqual({
+      runtime: 'cursor',
+      model: 'grok-4.7-high',
+    });
+  });
+
+  it('is null when every agent of the role cools down, and for a step without an agent', () => {
+    expect(availableAgent(env, null, 'code-review', new Set(['claude', 'codex', 'cursor']))).toBeNull();
+    expect(availableAgent(env, null, 'commit', new Set())).toBeNull();
+    expect(agentsFor(env, null, 'commit')).toEqual([]);
+  });
+
+  it('keeps to the tier of the run', () => {
+    expect(availableAgent(env, { parentRunId: 4 }, 'code-review', new Set(['claude']))).toEqual({
+      runtime: 'cursor',
+      model: 'sub-review',
+    });
   });
 });
 

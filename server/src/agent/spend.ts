@@ -2,8 +2,7 @@ import { stepOutput } from '../core/attempt-output';
 import type { ModelPrice } from './limits';
 import { priceTokens } from './limits';
 import { CODE_REVIEWERS } from '../contract/steps';
-import { agentFor } from '../config/agents';
-import type { AgentEnv } from '../config/agents';
+import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
 import { guessFromStream, usageFromStream } from './stream';
 
 export interface Charge {
@@ -41,18 +40,40 @@ export function chargeStream(model: string, raw: string, table: Record<string, M
   };
 }
 
-export function chargeReview(
+/** What a recorded visit says about the agent that ran: its runtime and model. */
+interface RecordedAgent {
+  step: string;
+  runtime: string | null;
+  model: string | null;
+}
+
+/**
+ * Prices the reviewer outputs of one attempt. Each reviewer is priced by the runtime and model of its last recorded
+ * visit that ran an agent, so a reviewer that took over from a limited agent is priced as the agent that ran.
+ * A reviewer with no visit yet (the round died first) is priced as `fallback` names it. Price tables load once per runtime.
+ */
+export async function chargeReview(
   root: string,
   key: string,
-  env: AgentEnv,
-  table: Record<string, ModelPrice>,
+  visits: readonly RecordedAgent[],
+  tableFor: (runtime: RuntimeName) => Promise<Record<string, ModelPrice>>,
   attemptId: string | null,
-): Charge | null {
+  fallback: (step: string) => { runtime: RuntimeName; model: string },
+): Promise<Charge | null> {
+  const tables = new Map<RuntimeName, Promise<Record<string, ModelPrice>>>();
+  const tableOf = (runtime: RuntimeName): Promise<Record<string, ModelPrice>> => {
+    const loaded = tables.get(runtime) ?? tableFor(runtime);
+    tables.set(runtime, loaded);
+    return loaded;
+  };
   let found = false;
   const total: Charge = { tokensIn: 0, tokensOut: 0, usd: 0, priced: true };
   for (const name of REVIEWERS) {
     const step = `code-review-${name}` as const;
-    const charge = chargeStream(agentFor(env, null, step).model, stepOutput(root, key, step, attemptId), table);
+    const recorded = [...visits].reverse().find((visit) => visit.step === step && visit.runtime && visit.model);
+    const ran = recorded ? { runtime: recorded.runtime as RuntimeName, model: recorded.model ?? '' } : fallback(step);
+    const raw = stepOutput(root, key, step, attemptId);
+    const charge = raw.trim() === '' ? null : chargeStream(ran.model, raw, await tableOf(ran.runtime));
     if (!charge) {
       continue;
     }

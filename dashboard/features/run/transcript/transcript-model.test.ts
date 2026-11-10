@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StepEvent, StepEventBody } from '@contract/step-events';
+import { localTime } from '../../../lib/format';
 import { commandEvents, stepEvent } from '../../../test/step-events';
 import {
   actorOf,
@@ -33,6 +34,7 @@ const bodies: [StepEventBody, 'left' | 'right'][] = [
   [{ kind: 'attempt.interrupted', route: 'wait', summary: 'stopped' }, 'left'],
   [{ kind: 'http.call', method: 'GET', url: 'https://x.test', statusCode: 200, durationMs: 5 }, 'left'],
   [{ kind: 'host.suspended', durationMs: 2_400_000 }, 'left'],
+  [{ kind: 'agent.limited', runtime: 'claude', text: 'Claude hit its usage limit.' }, 'left'],
   [{ kind: 'agent.launched', ...launch }, 'left'],
   [{ kind: 'agent.finished', ...launch, killReason: null, tokensIn: 1, tokensOut: 2, usd: 0 }, 'left'],
   [{ kind: 'artifact.produced', artifactKind: 'plan', documentId: 2, summary: 'plan: 9 items' }, 'left'],
@@ -120,6 +122,23 @@ describe('groupByAttempt', () => {
       null,
       'stopped',
     ]);
+  });
+
+  it('shows a provider limit as a problem with the runtime, the local reset and the agent that took over', () => {
+    const resetsAt = '2026-11-08T21:50:00.000Z';
+    const [group] = groupByAttempt([
+      stepEvent(1, {
+        kind: 'agent.limited',
+        runtime: 'claude',
+        resetsAt,
+        continuedWith: 'codex:gpt-6.1-sol',
+        text: 'Claude hit its usage limit (resets 21:50 UTC). Continued with codex:gpt-6.1-sol.',
+      }),
+    ]);
+
+    expect(group?.items[0]?.problem?.cause).toBe(
+      `Claude hit its usage limit (resets ${localTime(resetsAt)}). Continued with codex:gpt-6.1-sol.`,
+    );
   });
 
   it('names the first problem of the step', () => {

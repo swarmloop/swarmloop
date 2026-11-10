@@ -14,6 +14,14 @@
     {
       "include": "server/src/steps/",
       "pattern": "env\\.(RUNTIME|MODEL_\\w+)"
+    },
+    {
+      "include": "server/src/environment/",
+      "pattern": "env\\.(RUNTIME|MODEL_\\w+)"
+    },
+    {
+      "include": "server/src/agent/",
+      "pattern": "env\\.(RUNTIME|MODEL_\\w+)"
     }
   ],
   "forbidInFile": [

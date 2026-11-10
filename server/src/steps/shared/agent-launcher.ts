@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { AgentTools } from '../../integrations/agent-runtime/agent-runtime';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
@@ -22,6 +22,7 @@ import { section } from './markdown-section';
 import { promptSections } from './prompt-manifest';
 import { combineAgentResults } from './agent-result';
 import { parseFailureFollowUp } from './parse-failure-follow-up';
+import { LimitFailover } from './limit-failover';
 
 interface AgentLaunchRequest {
   root: string;
@@ -49,6 +50,12 @@ interface AgentLaunchRequest {
   validate?: (text: string, output: string | undefined) => void;
   parseFailureEnding?: string | null;
   project?: ProjectLaunch;
+  /** The project launch for another runtime. A launch that moves to another agent mounts that agent's CLI. */
+  projectFor?: (runtime: RuntimeName) => Promise<ProjectLaunch | undefined>;
+  /** The launch may move to the next agent of its role when its runtime hits a provider limit. */
+  failover?: boolean;
+  /** The full prompt for a new chat on another agent, when `prompt` is a follow-up. Defaults to `prompt`. */
+  brief?: string;
 }
 
 /**
@@ -97,9 +104,36 @@ export class AgentLauncher {
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
     private readonly visits: VisitRepository,
     private readonly runStop: RunStop,
+    @Optional() private readonly failover?: LimitFailover,
   ) {}
 
+  /**
+   * Launches the agent. A launch that may fail over starts on an agent whose runtime is not cooling down and moves to
+   * the next agent of its role on a provider limit. The result names the agent when it is not the one asked for.
+   */
   async launch(request: AgentLaunchRequest): Promise<AgentRunResult> {
+    const failover = request.failover ? this.failover : undefined;
+    if (!failover) {
+      return this.launchOn(request);
+    }
+    let current = await this.moved(request, await failover.start(request));
+    for (;;) {
+      const result = await this.launchOn(current);
+      if (!result.limit) {
+        return current.runtime === request.runtime && current.model === request.model
+          ? result
+          : { ...result, agent: { runtime: current.runtime, model: current.model } };
+      }
+      current = await this.moved(current, await failover.limited(current, result));
+    }
+  }
+
+  /** A launch on another runtime mounts the CLI of that runtime into the project image. */
+  private async moved(from: AgentLaunchRequest, to: AgentLaunchRequest): Promise<AgentLaunchRequest> {
+    return from.runtime === to.runtime || !to.projectFor ? to : { ...to, project: await to.projectFor(to.runtime) };
+  }
+
+  private async launchOn(request: AgentLaunchRequest): Promise<AgentRunResult> {
     assertNotStopped(this.runStop, request.key);
     const directory = join(request.root, 'data');
     mkdirSync(directory, { recursive: true });
@@ -177,13 +211,17 @@ export class AgentLauncher {
     request.run.agentCalls += result.calls;
     request.run.spentUsd += result.usd;
     const followUp =
-      result.exitCode === 0 && !result.backgroundKilled && result.responseText !== undefined && request.validate
+      result.exitCode === 0 &&
+      !result.limit &&
+      !result.backgroundKilled &&
+      result.responseText !== undefined &&
+      request.validate
         ? this.parseFailureFollowUp(request, result)
         : null;
     if (!followUp) {
       return result;
     }
-    const retried = await this.launch({
+    const retried = await this.launchOn({
       ...request,
       prompt: followUp,
       freshPrompt: request.freshPrompt ?? request.prompt,

@@ -78,6 +78,7 @@ function Card({
     case 'attempt.interrupted':
     case 'http.call':
     case 'host.suspended':
+    case 'agent.limited':
       return <ActionCard event={event} outcome={item.outcome} />;
     case 'attempt.started':
     case 'command.finished':

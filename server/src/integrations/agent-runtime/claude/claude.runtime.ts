@@ -1,6 +1,7 @@
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
 import type { AgentPrintInput, AgentTools, EgressCredential, HomeFile, RuntimeKeys } from '../agent-runtime';
+import { CLAUDE_LIMITS } from './claude-limit';
 import { DENY_BACKGROUND_HOOK, DENY_BACKGROUND_SCRIPT } from './claude-hook';
 
 export const CLAUDE_KEY_PLACEHOLDER = 'sk-ant-api03-swarmloop-egress-placeholder';
@@ -40,6 +41,7 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
   readonly priceSource = 'https://platform.claude.com/docs/en/about-claude/pricing.md';
   readonly apiHosts = ['api.anthropic.com'];
   readonly credentialNames = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'];
+  protected readonly limits = CLAUDE_LIMITS;
 
   credential(keys: RuntimeKeys): { name: string; value: string } {
     if (keys.oauthToken !== '') {

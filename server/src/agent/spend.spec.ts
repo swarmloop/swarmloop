@@ -2,7 +2,6 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { chargeReview, chargeStream } from './spend';
-import { testEnv } from '../config/env.spec-helpers';
 import { parsePriceMarkdown } from './prices';
 
 const TABLE = parsePriceMarkdown(`
@@ -11,6 +10,8 @@ const TABLE = parsePriceMarkdown(`
 | Grok 4.7 | Cursor | $2 | - | $0.5 | $6 | standard |
 | Claude Opus 5.5 | Anthropic | $4 | $5 | $0.2 | $20 | base |
 `);
+
+const FALLBACK = () => ({ runtime: 'cursor' as const, model: 'grok-4.7' });
 
 describe('spend', () => {
   it('bills cache read at the cache rate and keeps the provider cost when the stream has one', () => {
@@ -54,15 +55,67 @@ describe('spend', () => {
     expect(charged?.usd).toBeCloseTo(0.002, 6);
   });
 
-  it('charges the reviewers of one attempt and ignores the files of an older one', () => {
+  it('charges the reviewers of one attempt and ignores the files of an older one', async () => {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-charge-review-'));
     mkdirSync(join(root, 'data'));
     const stream = (inputTokens: number): string =>
       `${JSON.stringify({ type: 'result', usage: { inputTokens, outputTokens: 1 } })}\n`;
     writeFileSync(join(root, 'data', 'K-1-code-review-quality-zzz-output.txt'), stream(900));
     writeFileSync(join(root, 'data', 'K-1-code-review-quality-aaa-output.txt'), stream(100));
-    const env = testEnv({ MODEL_PLAN: 'grok-4.7', MODEL_IMPLEMENT: 'grok-4.7' });
-    const charge = chargeReview(root, 'K-1', env, TABLE, 'aaa');
+    const visits = [{ step: 'code-review-quality', runtime: 'cursor', model: 'grok-4.7' }];
+    const charge = await chargeReview(root, 'K-1', visits, () => Promise.resolve(TABLE), 'aaa', FALLBACK);
     expect(charge?.tokensIn).toBe(100);
+  });
+
+  it('prices a switched reviewer at the model that ran, by the price table of its runtime', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-charge-switched-'));
+    mkdirSync(join(root, 'data'));
+    const stream = `${JSON.stringify({ type: 'result', usage: { inputTokens: 1_000_000, outputTokens: 0 } })}\n`;
+    writeFileSync(join(root, 'data', 'K-1-code-review-quality-aaa-output.txt'), stream);
+    const tables: Record<string, typeof TABLE> = { cursor: TABLE, claude: TABLE };
+    const asked: string[] = [];
+    const priced = async (visits: { step: string; runtime: string; model: string }[]) =>
+      chargeReview(
+        root,
+        'K-1',
+        visits,
+        (runtime) => {
+          asked.push(runtime);
+          return Promise.resolve(tables[runtime] ?? {});
+        },
+        'aaa',
+        FALLBACK,
+      );
+    const first = await priced([{ step: 'code-review-quality', runtime: 'cursor', model: 'grok-4.7' }]);
+    const switched = await priced([
+      { step: 'code-review-quality', runtime: 'cursor', model: 'grok-4.7' },
+      { step: 'code-review-quality', runtime: 'claude', model: 'claude-opus-5-5' },
+    ]);
+    expect(first?.usd).toBeCloseTo(2, 6);
+    expect(switched?.usd).toBeCloseTo(4, 6);
+    expect(asked).toEqual(['cursor', 'claude']);
+  });
+
+  it('prices a reviewer that has no visit yet as the fallback agent, and loads each price table once', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-charge-died-'));
+    mkdirSync(join(root, 'data'));
+    const stream = `${JSON.stringify({ type: 'result', usage: { inputTokens: 1_000_000, outputTokens: 0 } })}\n`;
+    for (const name of ['quality', 'security']) {
+      writeFileSync(join(root, 'data', `K-1-code-review-${name}-aaa-output.txt`), stream);
+    }
+    const loaded: string[] = [];
+    const charge = await chargeReview(
+      root,
+      'K-1',
+      [],
+      (runtime) => {
+        loaded.push(runtime);
+        return Promise.resolve(TABLE);
+      },
+      'aaa',
+      FALLBACK,
+    );
+    expect(charge?.usd).toBeCloseTo(4, 6);
+    expect(loaded).toEqual(['cursor']);
   });
 });
