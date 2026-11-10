@@ -97,6 +97,7 @@ describe('RunDriver before a step', () => {
           key: 'PROJ-4',
           step: 'implement',
           mode: 'agent',
+          tools: 'write',
           runtime: 'cursor',
           model: 'm',
           timeLimitMs: 1000,

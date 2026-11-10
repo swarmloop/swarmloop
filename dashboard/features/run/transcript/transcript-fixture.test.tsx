@@ -13,7 +13,7 @@ import { issueLinks } from './transcript-model';
 
 vi.mock('../../../lib/endpoints', () => ({ getHistory: vi.fn() }));
 
-const launch = { runtime: 'claude', model: 'opus', chatId: null, resumed: false };
+const launch = { runtime: 'claude', model: 'opus', tools: 'write' as const, chatId: null, resumed: false };
 const requirements = JSON.stringify({
   prompt: '# Run lifecycle l13: one command path\n\nMore text.',
   tickets: [{ key: 'PROJ-30', summary: 'Ship the field', url: 'https://jira.example/browse/PROJ-30' }],
@@ -41,7 +41,7 @@ function fixtureRun(): StepEvent[] {
     stepEvent(1, {
       kind: 'attempt.started',
       stepKind: 'agent',
-      agent: { ...launch, mode: 'agent', timeLimitMs: 1, session: 'fresh' },
+      agent: { ...launch, mode: 'agent', tools: 'write', timeLimitMs: 1, session: 'fresh' },
     }),
     stepEvent(2, {
       kind: 'input.received',
@@ -229,6 +229,14 @@ describe('the step window for a fixture run', () => {
     expect(screen.getByText('implement · claude · opus · subtask · new chat: no stored chat')).toBeInTheDocument();
   });
 
+  it('lists the tools the step had under the agent line', () => {
+    feed([stepEvent(1, { kind: 'agent.launched', ...launch, tools: 'read' })]);
+    expect(screen.getByText('tools: read, search, Bash')).toBeInTheDocument();
+    cleanup();
+    feed([stepEvent(1, { kind: 'agent.launched', ...launch, tools: 'write' })]);
+    expect(screen.getByText('tools: all')).toBeInTheDocument();
+  });
+
   it('lists the tool calls in order, eight first, and the rest on `show all`', async () => {
     const user = userEvent.setup();
     feed(fixtureRun());
@@ -325,7 +333,7 @@ describe('a running agent step with events', () => {
     stepEvent(1, {
       kind: 'attempt.started',
       stepKind: 'agent',
-      agent: { ...launch, mode: 'agent', timeLimitMs: 1, session: 'fresh' },
+      agent: { ...launch, mode: 'agent', tools: 'write', timeLimitMs: 1, session: 'fresh' },
     }),
     stepEvent(2, { kind: 'agent.launched', ...launch }),
   ];

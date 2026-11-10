@@ -137,6 +137,7 @@ function input(root: string, outputFile: string, patch: Partial<AgentRunInput> =
     attemptId: 'attempt-1',
     mounts: [{ hostPath: root, containerPath: '/work/demo' }],
     mode: 'agent',
+    tools: 'write',
     timeLimitMs: 60_000,
     ...patch,
   };

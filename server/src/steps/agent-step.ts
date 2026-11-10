@@ -231,6 +231,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       step: launch.label ? `${this.name}-${launch.label}` : this.name,
       liveStep: this.name,
       mode: run.profile.mode,
+      tools: run.profile.tools,
       runtime: run.profile.runtime,
       model: run.profile.model,
       timeLimitMs: run.profile.timeLimitMs,

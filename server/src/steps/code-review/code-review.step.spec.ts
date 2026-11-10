@@ -23,6 +23,8 @@ import { VisitRepository } from '../../history/visit.repository';
 
 import type { AgentRunInput } from '../../agent/agent-runner';
 
+import { buildAgentArgs } from '../../agent/agent-args';
+
 import { PipelineService } from '../../pipeline/pipeline.service';
 
 import { REPORT_CONTINUE, reviewContinue } from './code-review.prompts';
@@ -82,6 +84,13 @@ describe('code-review step', () => {
         'code-review-requirements',
         'code-review-security',
       ]);
+      for (const call of calls) {
+        expect(call.tools).toBe('read');
+        const args = buildAgentArgs('claude', call);
+        expect(args[args.indexOf('--disallowedTools') + 1].split(',')).toEqual(
+          expect.arrayContaining(['Edit', 'Write']),
+        );
+      }
       const reportCall = calls.find((call) => call.step === 'code-review-report');
       expect(reportCall?.model).toBe('opus-5.5-extra-high');
       expect(reportCall?.mode).toBe('ask');

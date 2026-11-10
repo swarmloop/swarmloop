@@ -12,6 +12,7 @@ describe('CursorRuntime', () => {
         mounts,
         resumeChatId: null,
         mode: 'plan',
+        tools: 'write',
       }),
     ).toEqual([
       '--print',
@@ -34,6 +35,7 @@ describe('CursorRuntime', () => {
         mounts,
         resumeChatId: 'chat-1',
         mode: 'agent',
+        tools: 'write',
         approveMcps: true,
       }),
     ).toEqual([

@@ -14,6 +14,7 @@ describe('buildAgentArgs', () => {
       mounts,
       resumeChatId: null,
       mode: 'ask',
+      tools: 'write',
     });
     expect(args).toContain('--mode');
     expect(args[args.indexOf('--mode') + 1]).toBe('ask');
@@ -28,6 +29,7 @@ describe('buildAgentArgs', () => {
       mounts,
       resumeChatId: null,
       mode: 'agent',
+      tools: 'write',
     });
     expect(args).not.toContain('--mode');
     expect(args).toContain('--force');
@@ -42,6 +44,7 @@ describe('buildAgentArgs', () => {
       mounts,
       resumeChatId: 'chat-1',
       mode: 'agent',
+      tools: 'write',
     });
     expect(args).not.toContain('--mode');
     expect(args).toContain('--resume');
@@ -55,6 +58,7 @@ describe('buildAgentArgs', () => {
       mounts,
       resumeChatId: null,
       mode: 'agent',
+      tools: 'write',
       approveMcps: true,
     });
     expect(args).toContain('--approve-mcps');
@@ -68,6 +72,7 @@ describe('buildAgentArgs', () => {
       mounts,
       resumeChatId: null,
       mode: 'agent',
+      tools: 'write',
       approveMcps: true,
     });
     expect(args).toContain('--approve-mcps');
@@ -81,6 +86,7 @@ describe('buildAgentArgs', () => {
       mounts,
       resumeChatId: null,
       mode: 'ask',
+      tools: 'write',
     });
     expect(args).not.toContain('--mode');
     expect(args).not.toContain('--trust');
@@ -101,6 +107,7 @@ describe('claude launch args', () => {
       mounts: [{ hostPath: '/tmp/demo', containerPath: '/work/demo' }],
       resumeChatId: null,
       mode,
+      tools: 'write',
     });
     expect(args[args.indexOf('--disallowedTools') + 1]).toBe(
       'Monitor,ScheduleWakeup,CronCreate,CronDelete,CronList,RemoteTrigger',

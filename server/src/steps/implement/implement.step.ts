@@ -84,6 +84,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     return {
       ...agentFor(env, null, 'implement'),
       mode: 'agent',
+      tools: 'write',
       timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
       session: 'resume',
     };

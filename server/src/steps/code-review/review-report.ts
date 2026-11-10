@@ -80,6 +80,7 @@ export async function writeReport(
       key,
       step: 'code-review-report',
       mode: 'ask',
+      tools: 'read',
       runtime,
       model,
       timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,

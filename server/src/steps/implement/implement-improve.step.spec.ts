@@ -64,6 +64,7 @@ describe('implement-improve step', () => {
       expect(done.message).toContain('billing-api');
       expect(done.message).toContain('clean');
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
+      expect(input.tools).toBe('write');
       expect(input.mode).toBe('agent');
       expect(input.model).toBe('grok-4.7');
       expect(input.timeLimitMs).toBe(30 * 60 * 1000);

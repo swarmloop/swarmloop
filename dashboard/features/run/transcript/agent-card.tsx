@@ -56,6 +56,9 @@ function WorkLine({ work }: { work: AgentWork }): ReactElement {
   );
 }
 
+/** What the step's agent could use: a `read` step has no way to write. */
+const TOOLS_TEXT: Record<string, string> = { read: 'read, search, Bash', write: 'all' };
+
 /** The role and tier of the step's agent, from the step descriptor. */
 export type AgentRole = { role?: 'plan' | 'implement' | 'review'; tier?: 'main' | 'subtask' };
 
@@ -131,6 +134,7 @@ export function AgentCard({
       detailLabel="context"
     >
       <div>{`${agentLine(role, launched)} · ${chat}`}</div>
+      {TOOLS_TEXT[launched.tools] ? <div>{`tools: ${TOOLS_TEXT[launched.tools]}`}</div> : null}
       <WorkList work={work} runtime={launched.runtime} ended={finished !== null} />
       {agent ? <AgentLogPanel agent={agent} tools={hasTools} /> : null}
     </Bubble>

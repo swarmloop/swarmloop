@@ -108,6 +108,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     return {
       ...agentFor(env, null, 'code-review'),
       mode: 'ask',
+      tools: 'read',
       timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
       session: 'resume',
     };

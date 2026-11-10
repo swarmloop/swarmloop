@@ -1,0 +1,146 @@
+[
+  {
+    "denied": [
+      "Monitor",
+      "ScheduleWakeup",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "RemoteTrigger",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "Task",
+      "WebSearch",
+      "WebFetch",
+      "Workflow",
+      "Skill",
+      "SendMessage",
+      "EnterWorktree",
+      "ExitWorktree"
+    ],
+    "deniedCount": 17,
+    "step": "research",
+    "tools": "read"
+  },
+  {
+    "denied": [
+      "Monitor",
+      "ScheduleWakeup",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "RemoteTrigger",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "Task",
+      "WebSearch",
+      "WebFetch",
+      "Workflow",
+      "Skill",
+      "SendMessage",
+      "EnterWorktree",
+      "ExitWorktree"
+    ],
+    "deniedCount": 17,
+    "step": "plan",
+    "tools": "read"
+  },
+  {
+    "denied": [
+      "Monitor",
+      "ScheduleWakeup",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "RemoteTrigger",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "Task",
+      "WebSearch",
+      "WebFetch",
+      "Workflow",
+      "Skill",
+      "SendMessage",
+      "EnterWorktree",
+      "ExitWorktree"
+    ],
+    "deniedCount": 17,
+    "step": "plan-improve",
+    "tools": "read"
+  },
+  {
+    "denied": ["Monitor", "ScheduleWakeup", "CronCreate", "CronDelete", "CronList", "RemoteTrigger"],
+    "deniedCount": 6,
+    "step": "implement",
+    "tools": "write"
+  },
+  {
+    "denied": ["Monitor", "ScheduleWakeup", "CronCreate", "CronDelete", "CronList", "RemoteTrigger"],
+    "deniedCount": 6,
+    "step": "implement-improve",
+    "tools": "write"
+  },
+  {
+    "denied": [
+      "Monitor",
+      "ScheduleWakeup",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "RemoteTrigger",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "Task",
+      "WebSearch",
+      "WebFetch",
+      "Workflow",
+      "Skill",
+      "SendMessage",
+      "EnterWorktree",
+      "ExitWorktree"
+    ],
+    "deniedCount": 17,
+    "step": "code-review-reviewer",
+    "tools": "read"
+  },
+  {
+    "denied": [
+      "Monitor",
+      "ScheduleWakeup",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "RemoteTrigger",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "Task",
+      "WebSearch",
+      "WebFetch",
+      "Workflow",
+      "Skill",
+      "SendMessage",
+      "EnterWorktree",
+      "ExitWorktree"
+    ],
+    "deniedCount": 17,
+    "step": "code-review-report",
+    "tools": "read"
+  },
+  {
+    "denied": ["Monitor", "ScheduleWakeup", "CronCreate", "CronDelete", "CronList", "RemoteTrigger"],
+    "deniedCount": 6,
+    "step": "rebase-resolution",
+    "tools": "write"
+  },
+  {
+    "denied": ["Monitor", "ScheduleWakeup", "CronCreate", "CronDelete", "CronList", "RemoteTrigger"],
+    "deniedCount": 6,
+    "step": "chat",
+    "tools": "write"
+  }
+]

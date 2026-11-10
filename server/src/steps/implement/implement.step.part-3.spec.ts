@@ -15,6 +15,8 @@ import { DocumentRepository } from '../../history/document.repository';
 
 import type { AgentRunInput } from '../../agent/agent-runner';
 
+import { buildAgentArgs } from '../../agent/agent-args';
+
 import { PipelineService } from '../../pipeline/pipeline.service';
 
 import { EnvironmentService } from '../../environment/environment.service';
@@ -215,6 +217,9 @@ describe('implement step', () => {
       await app.get(PipelineService).step('implement', 'PROJ-145');
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
       expect(input.project).toBeUndefined();
+      expect(input.tools).toBe('write');
+      const args = buildAgentArgs('claude', input);
+      expect(args[args.indexOf('--disallowedTools') + 1]).not.toMatch(/\b(Edit|Write)\b/);
       expect(input.prompt).not.toContain('# Project environment');
       expect(input.prompt).not.toContain('swarmloop-verify');
     } finally {
