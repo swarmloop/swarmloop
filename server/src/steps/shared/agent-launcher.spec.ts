@@ -367,6 +367,7 @@ describe('AgentLauncher runtime of the agent', () => {
       key: 'run',
       step: 'implement',
       mode: 'agent',
+      tools: 'write',
       runtime: 'claude',
       model: 'm-claude',
       timeLimitMs: 1,
