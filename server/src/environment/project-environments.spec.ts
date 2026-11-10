@@ -32,6 +32,8 @@ function setup(
     config?: unknown;
     onCheck?: (repo: string) => void;
     imageId?: () => string;
+    /** The global runtime of the server. An agent's own runtime never comes from it. */
+    RUNTIME?: 'claude' | 'codex';
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-env-root-'));
@@ -93,7 +95,7 @@ function setup(
     }),
   };
   const live = { log: jest.fn() };
-  const env = testEnv({ RUNTIME: 'codex', SWARMLOOP_ROOT: root });
+  const env = testEnv({ RUNTIME: options.RUNTIME ?? 'codex', SWARMLOOP_ROOT: root });
   const service = new ProjectEnvironments({
     env: () => env,
     clock: new FakeClock(),
@@ -106,6 +108,7 @@ function setup(
     key: 'r1',
     step: 'implement',
     mounts: [{ hostPath: repo, containerPath: '/work' }],
+    runtime: 'codex' as const,
   };
   const records = () =>
     stored.filter((item) => item.kind === ENVIRONMENT).map((item) => JSON.parse(item.body) as EnvironmentRecord);
@@ -157,6 +160,16 @@ describe('ProjectEnvironments', () => {
     });
     expect(prepared?.launch.caches.map((cache) => cache.containerPath)).toEqual(['/home/sandbox/.npm']);
     expect(prepared?.record.config.checks).toEqual(['npm test']);
+  });
+
+  it('builds the CLI volume and runs the setup for the runtime of the agent, not the global RUNTIME', async () => {
+    const { service, input, spawned } = setup({ RUNTIME: 'claude' });
+    const prepared = await service.prepare({ ...input, runtime: 'codex' });
+    expect(prepared?.launch.cliVolume).toBe('swarmloop-cli-codex-0123456789ab');
+    expect(spawned.map((launch) => launch.runtime)).toEqual(['codex']);
+    expect((await service.prepare({ ...input, runtime: 'claude' }))?.launch.cliVolume).toBe(
+      'swarmloop-cli-claude-0123456789ab',
+    );
   });
 
   it('uses the image CA bundle when it has one', async () => {

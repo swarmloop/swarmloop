@@ -62,6 +62,7 @@ You need Docker and one model key. No Jira, no git token, no CI.
    - Subscription (ChatGPT Plus or Pro, no API bill): on your own machine run `codex login`. On a server without a browser run `codex login --device-auth`. Then put the file in `.env` as one line: `CODEX_AUTH=$(base64 -w0 ~/.codex/auth.json)` (macOS: `base64 -i ~/.codex/auth.json | tr -d '\n'`), pasted as the value, not as a command. The file is a password: never commit it, never share it. It is for your own use on your own server, not one plan shared by a team. Use this login only for swarmloop: a ChatGPT login can be refreshed from one place at a time, so also running `codex` with it on your laptop would log the server out. On a team server, log in once on that server.
    - API key instead: `CODEX_API_KEY` from the [OpenAI platform dashboard](https://platform.openai.com/api-keys) (API keys); it is billed per token. If both are set, `CODEX_AUTH` wins.
    - The server keeps the login in `data/codex/` (it survives restarts) and refreshes it itself every few days, so parallel reviewers and steps never fight over it. `CODEX_AUTH` in `.env` is only the starting point: it is used again only when you change its value. Nothing to do by hand, unless the log says `Codex login expired`: then run `codex login`, paste the new value into `CODEX_AUTH` and restart the server.
+   - **Subscriptions and automated use.** A subscription (Claude, ChatGPT or Cursor plan) has usage windows, and swarmloop stops using a runtime for the rest of a window when its CLI reports the limit (see `LIMIT_COOLDOWN_MIN`). Whether a plan may drive a CLI unattended is the provider's rule, not swarmloop's: read [Anthropic's consumer and commercial terms](https://www.anthropic.com/legal), [OpenAI's terms of use](https://openai.com/policies/terms-of-use/) and [Cursor's terms of service](https://cursor.com/terms-of-service) before you run a subscription login unattended. The API-key settings (`ANTHROPIC_API_KEY`, `CODEX_API_KEY`) are the metered, automation-friendly path. This note was written without opening those pages, so check the current wording yourself.
    - A quick check: start a run with `RUNTIME=codex`; the first step answers if the login works.
 
 3. Start it. The release images are pulled, nothing is built here:
@@ -279,6 +280,7 @@ When CI does not start and GitHub or GitLab confirms a merge conflict for the pu
 | `MAX_RETURNS` | Review returns to implementation | `10` |
 | `MAX_PIPELINE_RETURNS` | Red pipelines sent back | `6` |
 | `MAX_LAUNCHES` | Relaunches of a step that crashed before it decided | `3` |
+| `LIMIT_COOLDOWN_MIN` | Minutes a runtime stays out of use after a provider usage limit whose text names no reset time | `60` |
 | `STOP_GRACE_S` | Seconds a container gets to stop on Stop before it is killed | `10` |
 | `RECONCILE_MS` | How often the server looks for runs whose owner died | `60000` |
 | `RECOVER_WAIT_MS` | How long a run waits for a container left by a dead server to exit before it is killed | `600000` |

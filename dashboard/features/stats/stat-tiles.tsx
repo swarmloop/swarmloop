@@ -83,6 +83,9 @@ export function StatTiles({ totals }: { totals: StatsTotals }): ReactElement {
           ? `median run ${hours(totals.medianDoneMs)}`
           : `${big(totals.tokensIn + totals.tokensOut)} tokens`}
       </Tile>
+      <Tile label="Usage limits" value={String(totals.limits)}>
+        {totals.limits > 0 ? 'launches that hit a provider limit' : 'no launch hit a provider limit'}
+      </Tile>
     </Box>
   );
 }

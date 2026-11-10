@@ -11,6 +11,7 @@ import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { visitStatus } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
 import type { AttemptFacts } from '../contract/step-events';
+import type { LimitState } from '../contract/run-state';
 import { recordStepEvent, runActivity, runInStepScope } from '../core/step-event-scope';
 import type { RunEntity } from '../history/entities';
 import type { OpenedStep } from '../steps/step-run';
@@ -53,6 +54,8 @@ export interface StepEnd {
   handoff?: string;
   /** Why a blocked run is blocked, when the step knows. Otherwise it comes from the error text. */
   code?: string;
+  /** The usage limit a run waits for, with `code` `RUNTIME_LIMIT`. */
+  limit?: LimitState;
   /** The problems this end sends back. They are recorded as events only. */
   issues?: Issue[];
   /** What the attempt did, for the event that ends it. */
@@ -304,6 +307,7 @@ abstract class StepCore implements Step {
       line: input.line,
       moveTo: input.moveTo,
       code: input.code,
+      limit: input.limit,
       visit,
     });
     await recordEnd(this.documents, this.kernel.stepEvents, {
@@ -382,7 +386,8 @@ export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore
     const ended = await ctx.end({
       ...routeToEnd(result.route, result.exitCode),
       line: result.summary,
-      code: result.route.to === 'block' ? result.route.code : undefined,
+      code: result.route.to === 'block' || result.route.to === 'wait' ? result.route.code : undefined,
+      limit: result.route.to === 'wait' ? result.route.limit : undefined,
       issues: result.route.to === 'return' ? result.route.issues : undefined,
       facts: result.facts,
       visit: { ...result.visit, ...(documents.length > 0 ? { documents } : {}) },

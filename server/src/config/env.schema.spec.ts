@@ -107,6 +107,13 @@ describe('env schema', () => {
     expect(bad.error?.message).toContain('RETAIN_DONE_DAYS');
   });
 
+  it('defaults the provider limit cooldown to 60 minutes and rejects zero', () => {
+    const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
+    expect(value.LIMIT_COOLDOWN_MIN).toBe(60);
+    const bad = envSchema.validate({ ...complete, LIMIT_COOLDOWN_MIN: 0 }, { convert: true });
+    expect(bad.error?.message).toContain('LIMIT_COOLDOWN_MIN');
+  });
+
   it('provides the validated env through AppConfig', async () => {
     const config = await compileWith(complete);
     expect(config.env).toMatchObject({

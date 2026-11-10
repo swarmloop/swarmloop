@@ -172,6 +172,77 @@ describe('readSession', () => {
   });
 });
 
+/** What each runtime's CLI ends a launch with when the provider's limit is reached, with the reset it names. */
+const LIMIT_SAMPLES = [
+  {
+    runtime: 'claude',
+    // The reviewer output of run-mw85iykj: the text is the answer, so no step finds a decision in it.
+    stream: [
+      JSON.stringify({ type: 'system', subtype: 'init', session_id: 'chat-r03' }),
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: "You've hit your 5-hour limit · resets 9:50pm (UTC)" }] },
+      }),
+      JSON.stringify({
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        result: "You've hit your 5-hour limit · resets 9:50pm (UTC)",
+        session_id: 'chat-r03',
+      }),
+    ].join('\n'),
+    limit: { window: '5-hour', resetsAt: '2026-11-08T21:50:00.000Z' },
+  },
+  {
+    runtime: 'codex',
+    stream: `${JSON.stringify({ type: 'turn.failed', error: { message: "You've hit your usage limit. Upgrade to Plus to continue using Codex, or try again at 9:50 PM." } })}\n`,
+    limit: { window: 'usage', resetsAt: '2026-11-08T21:50:00.000Z' },
+  },
+  {
+    runtime: 'cursor',
+    stream: `${JSON.stringify({ type: 'result', is_error: true, result: "You've hit your usage limit" })}\n`,
+    limit: { window: 'usage' },
+  },
+] as const;
+
+describe('AgentProcessRunner provider limit', () => {
+  const NOW = Date.parse('2026-11-08T18:42:00Z');
+
+  beforeEach(() => {
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it.each(LIMIT_SAMPLES)(
+    'returns the $runtime limit with its reset and launches once, because a limit is no attempt',
+    async ({ runtime, stream, limit }) => {
+      const { result, spawn } = await start(
+        `limit-${runtime}`,
+        [{ chunks: [stream], code: 1 }],
+        { resumeChatId: null, runtime },
+        { MAX_LAUNCHES: 3, CODEX_API_KEY: 'codex-key' },
+      );
+      expect(result.limit).toEqual(limit);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('does not take an auth error or a full context for a limit', async () => {
+    for (const text of ['Invalid API key · Please run /login', 'Prompt is too long']) {
+      const { result } = await start(
+        'not-a-limit',
+        [{ chunks: [`${JSON.stringify({ type: 'result', is_error: true, result: text })}\n`], code: 1 }],
+        { resumeChatId: null, runtime: 'claude' },
+        { MAX_LAUNCHES: 1 },
+      );
+      expect(result.limit).toBeUndefined();
+    }
+  });
+});
+
 describe('AgentProcessRunner limit continuation', () => {
   it('relaunches a time kill in the same chat and returns the folded result', async () => {
     const { result, spawn, outputFile } = await start(
@@ -506,7 +577,8 @@ async function start(
   });
   const runner = new AgentProcessRunner(config(root, env), new SystemClock(), sandbox(spawn), stop);
   try {
-    const result = await runner.run(input(root, outputFile, { runtime: env.RUNTIME ?? 'cursor', ...patch }));
+    const { RUNTIME = 'cursor' } = env;
+    const result = await runner.run(input(root, outputFile, { runtime: RUNTIME, ...patch }));
     return { result, spawn, outputFile, root };
   } finally {
     clock?.mockRestore();
@@ -541,7 +613,7 @@ function doneStream(text: string): string {
 }
 
 function writePriceCache(root: string): void {
-  for (const runtime of ['cursor', 'claude']) {
+  for (const runtime of ['cursor', 'claude', 'codex']) {
     writeFileSync(
       join(root, 'data', `price-cache-${runtime}.json`),
       `${JSON.stringify({

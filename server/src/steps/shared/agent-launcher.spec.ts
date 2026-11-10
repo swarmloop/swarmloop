@@ -340,4 +340,51 @@ describe('AgentLauncher runtime of the agent', () => {
     await launch('cursor');
     expect(runner.run.mock.calls[1][0]).toMatchObject({ runtime: 'cursor', resumeChatId: 'chat-1' });
   });
+  it('mounts the CLI of the agent that took over after a limit, and never a second launch on the old one', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-launcher-failover-'));
+    const ran = { chatId: null, tokensIn: 0, tokensOut: 0, usd: 0, calls: 1, exitCode: 0, resumed: false, samples: [] };
+    const runner = {
+      run: jest
+        .fn()
+        .mockResolvedValueOnce({ ...ran, responseText: 'limit', limit: { window: '5-hour' } })
+        .mockResolvedValueOnce({ ...ran, responseText: 'done' }),
+    };
+    const failover = {
+      start: (request: object) => Promise.resolve(request),
+      limited: (request: object) =>
+        Promise.resolve({ ...request, runtime: 'codex', model: 'm-codex', resume: false, prompt: 'the full brief' }),
+    };
+    const projectFor = jest.fn((runtime: string) => Promise.resolve({ cliVolume: `cli-${runtime}` }));
+    const launcher = new AgentLauncher(
+      runner as never,
+      { tokenTotal: async () => 0 } as never,
+      new RunStop(),
+      failover as never,
+    );
+    const result = await launcher.launch({
+      root,
+      run: { agentCalls: 0, spentUsd: 0 } as never,
+      key: 'run',
+      step: 'implement',
+      mode: 'agent',
+      runtime: 'claude',
+      model: 'm-claude',
+      timeLimitMs: 1,
+      prompt: 'follow up',
+      workspace: root,
+      mounts: [],
+      failover: true,
+      project: { cliVolume: 'cli-claude' } as never,
+      projectFor: projectFor as never,
+    });
+
+    expect(runner.run).toHaveBeenCalledTimes(2);
+    expect(runner.run.mock.calls[0][0]).toMatchObject({ runtime: 'claude', project: { cliVolume: 'cli-claude' } });
+    expect(runner.run.mock.calls[1][0]).toMatchObject({
+      runtime: 'codex',
+      prompt: expect.stringContaining('the full brief'),
+      project: { cliVolume: 'cli-codex' },
+    });
+    expect(result.agent).toEqual({ runtime: 'codex', model: 'm-codex' });
+  });
 });

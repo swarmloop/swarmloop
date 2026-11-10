@@ -15,6 +15,22 @@ export class SwarmloopError extends Error {
   }
 }
 
+/** A provider's usage limit that left no agent of the role to take over: the run waits until `resumesAt`. */
+export class RuntimeLimit extends SwarmloopError {
+  constructor(
+    message: string,
+    readonly runtime: string,
+    /** When the run goes on by itself, UTC, ISO 8601. */
+    readonly resumesAt: string,
+    readonly window?: string,
+    /** UTC, ISO 8601. Absent when the provider's text has no time. */
+    readonly resetsAt?: string,
+  ) {
+    super(message, { code: ERROR_CODES.RUNTIME_LIMIT, category: 'provider' });
+    this.name = 'RuntimeLimit';
+  }
+}
+
 export class FetchFailed extends SwarmloopError {
   constructor(
     message: string,

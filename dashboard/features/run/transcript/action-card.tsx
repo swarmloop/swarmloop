@@ -1,12 +1,13 @@
 import type { ReactElement } from 'react';
 import type { StepEvent } from '@contract/step-events';
 import { duration } from '../../../lib/format';
+import { limitSentence } from '../../../lib/runtime-limit';
 import { Bubble } from './bubble';
 import { httpAction } from './http-action';
 
 type Activity = Extract<
   StepEvent,
-  { kind: 'attempt.finished' | 'attempt.interrupted' | 'http.call' | 'host.suspended' }
+  { kind: 'attempt.finished' | 'attempt.interrupted' | 'http.call' | 'host.suspended' | 'agent.limited' }
 >;
 
 export function ActionCard({ event, outcome }: { event: Activity; outcome?: string }): ReactElement {
@@ -23,6 +24,13 @@ export function ActionCard({ event, outcome }: { event: Activity; outcome?: stri
         }
       >
         {httpAction(event.method, event.url)}
+      </Bubble>
+    );
+  }
+  if (event.kind === 'agent.limited') {
+    return (
+      <Bubble side="left" title="Usage limit" type="warning">
+        {limitSentence(event)}
       </Bubble>
     );
   }

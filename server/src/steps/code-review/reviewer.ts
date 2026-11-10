@@ -10,6 +10,7 @@ import type { OpenedStep } from '../../steps/step-run';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { reportFailure } from '../shared/step-failure';
+import { RuntimeLimit } from '../../core/swarmloop-error';
 import { reviewContinue, reviewResume } from './code-review.prompts';
 import type { AgentLauncher } from '../shared/agent-launcher';
 import { agentFailure, refusedWrite, withRefusal } from '../shared/agent-result';
@@ -37,6 +38,8 @@ export interface Finished {
   result: AgentRunResult | null;
   parsed?: Opinion;
   error?: string;
+  /** The reviewer's launch ended on a provider limit and no agent of the role was left. */
+  limit?: RuntimeLimit;
 }
 
 export interface Usage {
@@ -115,27 +118,16 @@ async function one(
     mkdirSync(directory, { recursive: true });
     writeFileSync(join(directory, `${key}-code-review-${job.reviewer.name}-output.txt`), 'starting\n');
     const result = await launchReview(deps, opened, key, env, job, auto, fresh);
+    // A reviewer that took over from a limited agent is recorded and priced as the agent that ran.
+    const agent = result.agent ?? job;
+    const ran = { reviewer: job.reviewer, runtime: agent.runtime, model: agent.model, prompt: job.prompt };
     refused = refusedWrite(result.output);
     const failure = agentFailure(result, 'code-review', 'ask');
     if (failure) {
-      return {
-        reviewer: job.reviewer,
-        runtime: job.runtime,
-        model: job.model,
-        prompt: job.prompt,
-        result,
-        error: failure,
-      };
+      return { ...ran, result, error: failure };
     }
     const parsed = parseReview(result.responseText, result.output ?? '');
-    return {
-      reviewer: job.reviewer,
-      runtime: job.runtime,
-      model: job.model,
-      prompt: job.prompt,
-      result,
-      parsed: { kind: job.reviewer.kind, decision: parsed.decision, body: parsed.body },
-    };
+    return { ...ran, result, parsed: { kind: job.reviewer.kind, decision: parsed.decision, body: parsed.body } };
   } catch (error) {
     const message = withRefusal(reportFailure('code-review', error, env).message, refused);
     return {
@@ -145,6 +137,7 @@ async function one(
       prompt: job.prompt,
       result: null,
       error: message,
+      ...(error instanceof RuntimeLimit ? { limit: error } : {}),
     };
   }
 }
@@ -174,6 +167,8 @@ async function launchReview(
     mounts: job.mounts,
     auto,
     resume: fresh ? false : undefined,
+    failover: true,
+    brief: job.prompt,
     validate: (text, output) => parseReview(text, output ?? ''),
     parseFailureEnding: answerEnding('code-review'),
   });

@@ -331,6 +331,8 @@ export interface StatsTotals {
   pipelineReturns: number;
   /** Done runs that never went back. */
   firstPass: number;
+  /** Launches that ended on a provider usage limit. A limited launch is no attempt of its step. */
+  limits: number;
   /** Time the agents worked, summed over steps. */
   agentMs: number;
   /** Median working time of a done run; null without one. */

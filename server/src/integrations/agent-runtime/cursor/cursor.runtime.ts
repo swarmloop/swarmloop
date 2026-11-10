@@ -1,6 +1,7 @@
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
 import type { AgentPrintInput, RuntimeKeys } from '../agent-runtime';
+import { CURSOR_LIMITS } from './cursor-limit';
 
 export class CursorRuntime extends AbstractAgentRuntime {
   readonly name = 'cursor' as const;
@@ -9,6 +10,7 @@ export class CursorRuntime extends AbstractAgentRuntime {
   readonly priceSource = 'https://cursor.com/docs/models-and-pricing.md';
   readonly apiHosts = ['*.cursor.sh', '*.cursor.com'];
   readonly credentialNames = ['CURSOR_API_KEY'];
+  protected readonly limits = CURSOR_LIMITS;
 
   credential(keys: RuntimeKeys): { name: string; value: string } {
     if (keys.cursorKey === '') {

@@ -61,3 +61,18 @@ describe('reviewer chip in a later round', () => {
     expect(chipOf('process started\nthinking\n').status).toBe('running');
   });
 });
+
+describe('reviewer chip of a limited reviewer', () => {
+  it('shows a reviewer that a provider limit stopped as waiting, not failed', () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-chip-limit-'));
+    mkdirSync(join(root, 'data'));
+    const run = { key: 'K-1', status: 'waiting', currentStep: 'code-review', activeAttempt: null } as RunEntity;
+    const stats = [
+      { id: 1, step: 'code-review-quality', status: 'interrupted', killReason: 'RUNTIME_LIMIT', attempt: 1 },
+    ] as StepStatEntity[];
+    const step = phases(run, stats, [], root)
+      .flatMap((phase) => phase.steps)
+      .find((item) => item.name === 'code-review-quality');
+    expect(step?.status).toBe('waiting');
+  });
+});

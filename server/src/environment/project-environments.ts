@@ -32,11 +32,13 @@ const SETUP_TIMEOUT_MS = 30 * 60_000;
 const TAIL_LINES = 80;
 const TAIL_CHARS = 6000;
 
-interface EnvironmentInput {
+/** What an environment is prepared for: a step's mounts, and the runtime of the agent whose CLI the project image gets. */
+export interface EnvironmentInput {
   run: RunEntity;
   key: string;
   step: string;
   mounts: SandboxMount[];
+  runtime: RuntimeName;
 }
 
 /** What a run keeps about its environment: the config it started with and how the setup went. */
@@ -54,7 +56,7 @@ export interface PreparedEnvironment {
 }
 
 interface EnvironmentDeps {
-  env: () => Pick<SwarmloopEnv, 'RUNTIME' | 'SWARMLOOP_ROOT'>;
+  env: () => Pick<SwarmloopEnv, 'SWARMLOOP_ROOT'>;
   clock: Clock;
   sandbox: Pick<SandboxService, 'run' | 'spawn' | 'kill' | 'stateDaemonPath'>;
   documents: Pick<DocumentRepository, 'latestBody' | 'putDocument'>;
@@ -80,7 +82,7 @@ export class ProjectEnvironments {
 
   /** Null when no repository of the run describes an environment: the agent then works as before. */
   async prepare(input: EnvironmentInput): Promise<PreparedEnvironment | null> {
-    const runtime = this.deps.env().RUNTIME;
+    const { runtime } = input;
     const record = await this.record(input);
     if (!record) {
       return null;
@@ -330,7 +332,7 @@ export class ProjectEnvironments {
 
   /** The setup runs in the project image with the package registries and no model key. Its output goes to the step log. */
   private async runShell(
-    input: { run: RunEntity; key: string; step: string; mounts: SandboxMount[] },
+    input: EnvironmentInput,
     launch: ProjectLaunch,
     command: string,
     mount: SandboxMount,
@@ -360,7 +362,7 @@ export class ProjectEnvironments {
     let timedOut = false;
     const child = await this.sandbox
       .spawn({
-        runtime: this.deps.env().RUNTIME,
+        runtime: input.runtime,
         runKey: input.key,
         step: input.step,
         attemptId: input.run.activeAttempt ?? '',

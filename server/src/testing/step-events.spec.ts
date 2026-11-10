@@ -84,6 +84,7 @@ const ALL_KINDS: Record<StepEventKind, true> = {
   'agent.tool': true,
   'agent.message': true,
   'host.suspended': true,
+  'agent.limited': true,
   'activity.started': true,
   'activity.finished': true,
 };
@@ -316,6 +317,26 @@ describe('step events', () => {
     }).execute('E-1');
     const events = await eventsOf('E-1');
     expect(events.find((event) => event.kind === 'host.suspended')).toMatchObject({ durationMs: 2_400_000 });
+  });
+
+  it('stores the usage limit that moved a launch to another agent', async () => {
+    await seed('E-1');
+    await probe('commit', (ctx) => {
+      recordStepEvent({
+        kind: 'agent.limited',
+        runtime: 'claude',
+        window: '5-hour',
+        resetsAt: '2026-11-08T21:50:00.000Z',
+        continuedWith: 'codex:gpt-6.1-sol',
+        text: 'Claude hit its usage limit (resets 21:50 UTC). Continued with codex:gpt-6.1-sol.',
+      });
+      return Promise.resolve(finished(ctx));
+    }).execute('E-1');
+    const events = await eventsOf('E-1');
+    expect(events.find((event) => event.kind === 'agent.limited')).toMatchObject({
+      runtime: 'claude',
+      continuedWith: 'codex:gpt-6.1-sol',
+    });
   });
 
   it('names the step a pass goes to for next and for jump', async () => {

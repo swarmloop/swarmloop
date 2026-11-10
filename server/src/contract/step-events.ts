@@ -84,6 +84,18 @@ export type StepEventBody =
     }
   | { kind: 'agent.message'; text: string; chars: number }
   | { kind: 'host.suspended'; durationMs: number }
+  | {
+      kind: 'agent.limited';
+      runtime: string;
+      window?: string;
+      /** UTC, ISO 8601. */
+      resetsAt?: string;
+      /** The agent that took over, `runtime:model`. Absent when none was left and the run waits. */
+      continuedWith?: string;
+      /** When a waiting run goes on by itself, UTC, ISO 8601. */
+      resumesAt?: string;
+      text: string;
+    }
   | { kind: 'activity.started'; spanId: string; title: string }
   | {
       kind: 'activity.finished';

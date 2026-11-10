@@ -5,6 +5,7 @@ import type { RunEntity } from '../history/entities';
 import type { SwarmloopEnv } from '../config/env';
 import type { Charge } from '../agent/spend';
 import type { ModelPrice } from '../agent/limits';
+import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
 import { readPlan } from './plan/plan-record';
 import { ARTIFACTS } from './contract/artifacts';
 import type { StepCapabilities, StepDescriptor } from './contract/step-contract';
@@ -20,7 +21,7 @@ export interface Step {
   charge?(
     key: string,
     env: SwarmloopEnv,
-    prices: Record<string, ModelPrice>,
+    prices: (runtime: RuntimeName) => Promise<Record<string, ModelPrice>>,
     attemptId: string | null,
   ): Promise<Charge | null>;
   missingInput(key: string, options: StepOptions): Promise<string | null>;

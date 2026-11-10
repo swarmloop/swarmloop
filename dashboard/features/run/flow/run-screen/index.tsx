@@ -12,6 +12,7 @@ import { PHASES, pipelineStepOf, REVIEW_STEPS } from '@contract/steps';
 import { FlowBoard } from '../flow-board';
 import { resumeLabel } from '../../../../lib/ci-infra';
 import { StepDetail } from '../step-detail';
+import { LimitBanner } from '../limit-banner';
 import { WaitingPanel } from '../waiting-panel';
 import { RunDialogs } from './run-dialogs';
 import { RunHeader } from './run-header';
@@ -62,6 +63,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
           Subtask of <Link href={`/runs/${encodeURIComponent(flow.parentKey)}` as Route}>{flow.parentKey}</Link>
         </Typography>
       ) : null}
+      <LimitBanner flow={flow} />
       <RunHeader
         flow={flow}
         openMs={openMs}

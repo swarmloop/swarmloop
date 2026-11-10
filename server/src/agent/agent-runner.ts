@@ -16,10 +16,10 @@ import {
   modelCredential,
   prepareStateDir,
   writeHomeFiles,
-  type ProjectLaunch,
   sandboxUserId,
 } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
+import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
 import { emptyResult, type AgentRunResult } from './agent-result';
 export type { AgentRunResult } from './agent-result';
 import { callsExceeded, type KillReason } from './limits';
@@ -41,6 +41,7 @@ import {
   dropMissingChat,
 } from './agent-session';
 import { AttemptMeter } from './agent-attempt';
+import { OutputTail } from './output-tail';
 import { LimitGuard } from './limit-guard';
 import { AttemptLog } from './live-output';
 
@@ -49,47 +50,7 @@ export { AGENT_CONTINUE, readSession } from './agent-session';
 
 export const AGENT_RUNNER = Symbol('AGENT_RUNNER');
 
-export interface AgentRunInput {
-  prompt: string;
-  workspace: string;
-  outputFile: string;
-  sessionFile: string;
-  runtime: RuntimeName;
-  model: string;
-  agentCalls: number;
-  spentUsd: number;
-  tokensInRun: number;
-  resumeChatId: string | null;
-  runKey: string;
-  step: string;
-  attemptId: string;
-  liveStep?: string;
-  mounts: SandboxMount[];
-  allowHosts?: string[];
-  mode?: string;
-  tools: AgentTools;
-  timeLimitMs?: number;
-  approveMcps?: boolean;
-  auto?: boolean;
-  /** Dollars already recorded for this chat. Used only when the CLI total is cumulative. */
-  groupUsd?: number;
-  /**
-   * Prompt for another launch after a time or idle kill.
-   * Null leaves that kill as the result. Omitted uses the shared default.
-   */
-  continuePrompt?: string | null;
-  /** The full prompt for a fresh chat, when `prompt` is a follow-up that only a resumed chat can use. */
-  freshPrompt?: string;
-  /** Tells whether an answer holds what the step needs. Without it an answer is never treated as ended early. */
-  answered?: (text: string) => boolean;
-  /** Called with each chunk of the agent's output as it arrives. */
-  onOutput?: (chunk: string) => void;
-  /** `onSuspended` gets the length of a host suspension that is not counted. `onLaunchEnd` runs when a launch ends, whatever the reason. */
-  onSuspended?: (ms: number) => void;
-  onLaunchEnd?: () => void;
-  /** Run in the project image with the CLI mounted into it, instead of the agent image. */
-  project?: ProjectLaunch;
-}
+export type AgentRunInput = BaseAgentRunInput & { tools: AgentTools };
 
 /** What one launch needs before it is spawned. */
 interface Launch {
@@ -142,6 +103,10 @@ export class AgentProcessRunner {
         merged = foldAttempt(merged, attempt);
         calls += attempt.calls;
         groupUsd += attempt.usd;
+        if (attempt.limit) {
+          // A limit is no attempt: relaunching into it only burns launches. The caller picks another agent or waits.
+          return merged;
+        }
         prior = `${carried}${merged.output ?? ''}`;
         const budget = {
           halted: this.runStop.halted(input.runKey),
@@ -257,6 +222,7 @@ export class AgentProcessRunner {
     let killReason: KillReason | null = null;
     let finishedByResult = false;
     let buffer = '';
+    const tail = new OutputTail();
     const guard = new LimitGuard(
       this.logger,
       {
@@ -298,6 +264,7 @@ export class AgentProcessRunner {
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
       for (const line of lines) {
+        tail.stdout(line);
         const piece = meter.ingest(line);
         if (!piece) {
           continue;
@@ -323,6 +290,7 @@ export class AgentProcessRunner {
     const onErr = (chunk: Buffer): void => {
       awake.touch();
       log.note(chunk.toString('utf8'));
+      tail.error(chunk.toString('utf8'));
     };
     let sampling = false;
     const takeSample = (): void => {
@@ -368,6 +336,7 @@ export class AgentProcessRunner {
       usd: sessionUsd(),
     });
     meter.flush(buffer);
+    const limit = tail.limit(runtime, buffer, this.clock.now());
     const ending =
       finishedByResult || !killReason
         ? `process exited ${finishedByResult ? 0 : exitCode}`
@@ -386,6 +355,7 @@ export class AgentProcessRunner {
       decided: meter.decided(),
       backgroundKilled: meter.backgroundKilled(input.answered),
       orphanOnly: meter.orphanOnly(),
+      ...(limit ? { limit } : {}),
       calls: 1,
       samples: log.samples,
       durationMs: finished - started,

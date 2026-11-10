@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { ERROR_CODES } from '../contract/error-codes';
 import { actionsFor, REASON } from '../contract/run-state';
 import type { RunAction, RunState } from '../contract/run-state';
 import { blockCode, deriveState, stateColumns, writeRunState } from './run-state';
@@ -39,6 +40,19 @@ describe('deriveState', () => {
     for (const run of runs) {
       expect({ run, state: deriveState(run).state }).toEqual({ run, state: STATE_OF_STATUS[run.status] });
     }
+  });
+
+  it('shows a run that waits for a provider limit as waiting, with its reason and when it goes on', () => {
+    const limit = { runtime: 'claude', resumesAt: '2026-11-08T21:51:00.000Z' };
+    const stateReason = JSON.stringify({
+      code: ERROR_CODES.RUNTIME_LIMIT,
+      message: 'Claude hit its usage limit.',
+      limit,
+    });
+    expect(deriveState({ status: 'waiting', stateReason })).toEqual({
+      state: 'waiting',
+      reason: { code: ERROR_CODES.RUNTIME_LIMIT, message: 'Claude hit its usage limit.', limit },
+    });
   });
 
   it('keeps waiting after ok idle, and a person needed waiting', () => {
@@ -88,6 +102,7 @@ describe('actionsFor', () => {
     ['queued', null, []],
     ['running', null, ['stop', 'replay']],
     ['waiting', null, ['answer', 'replay', 'rebase']],
+    ['waiting', ERROR_CODES.RUNTIME_LIMIT, ['resume', 'replay', 'rebase']],
     ['stopping', null, ['stop']],
     ['stopped', REASON.stopped, ['resume', 'replay', 'rebase']],
     ['recovering', null, []],

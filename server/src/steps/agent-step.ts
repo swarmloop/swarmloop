@@ -9,9 +9,10 @@ import { visitStatus } from '../core/pipeline-result';
 import type { StepOptions } from '../core/pipeline-result';
 import type { OpenedStep } from '../steps/step-run';
 import type { SandboxMount } from '../core/sandbox-mount';
+import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
 import type { ProjectLaunch } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
-import { SwarmloopError } from '../core/swarmloop-error';
+import { RuntimeLimit, SwarmloopError } from '../core/swarmloop-error';
 import type { StepKernel } from './step-kernel';
 import { BaseStep } from './base-step';
 import type { StepContext } from './base-step';
@@ -21,6 +22,7 @@ import type { AgentProfile, InputSpec, StepDescriptor, StepInput, StepResult } f
 import { ERROR_CODES } from '../contract/error-codes';
 import { agentFailure, combineAgentResults, refusedWrite, withRefusal } from './shared/agent-result';
 import type { AgentLauncher } from './shared/agent-launcher';
+import { limitRoute } from './shared/limit-failover';
 import { recordHandoff } from './shared/handoff';
 import { modelVisit } from './shared/model-visit';
 import type { StepName } from '../contract/steps';
@@ -64,6 +66,8 @@ export interface ModelStepContext {
     /** Checks the final answer before returning it, so a malformed answer can be corrected in the same chat. */
     validate?: (text: string, output: string | undefined) => void;
     project?: ProjectLaunch;
+    /** The project launch for the runtime of another agent, when the launch moves to one after a provider limit. */
+    projectFor?: (runtime: RuntimeName) => Promise<ProjectLaunch | undefined>;
   }) => Promise<AgentRunResult>;
 }
 
@@ -152,6 +156,9 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     try {
       return await this.finish(run, await this.produce(input, ctx, options));
     } catch (error) {
+      if (error instanceof RuntimeLimit) {
+        return this.limited(run, error);
+      }
       const refusal = error === run.launchError ? null : run.refusal;
       const failure = this.failureOf(error);
       return {
@@ -161,6 +168,16 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
         visit: this.modelVisitOf(run, 'failed', 1),
       };
     }
+  }
+
+  /** Every agent of the role is limited: the step waits, and the run goes on by itself when one is free again. */
+  private limited(run: ModelRun, error: RuntimeLimit): StepResult {
+    return {
+      route: limitRoute(error),
+      summary: `${run.opened.startedAt} ${error.message}`,
+      outputs: [],
+      visit: this.modelVisitOf(run, 'waiting', 0),
+    };
   }
 
   /** Before `work` ran, the visit still names the model and mode, with no samples. */
@@ -243,11 +260,18 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       resume: launch.resume,
       continuePrompt: launch.continuePrompt,
       freshPrompt: launch.freshPrompt === undefined ? undefined : withInstructions(launch.freshPrompt),
+      failover: true,
+      brief: launch.freshPrompt === undefined ? prompt : withInstructions(launch.freshPrompt),
       sections: launch.sections,
       validate: launch.validate,
       parseFailureEnding: answerEnding(this.name),
       project: launch.project,
+      projectFor: launch.projectFor,
     });
+    if (result.agent) {
+      // The step goes on with the agent that took over, and its visit records that agent.
+      run.profile = { ...run.profile, ...result.agent };
+    }
     run.prompt = run.prompt ? `${run.prompt}\n\n${prompt}` : prompt;
     run.launched.push(result);
     run.agentResult = combineAgentResults(run.launched);

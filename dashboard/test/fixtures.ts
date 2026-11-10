@@ -140,6 +140,7 @@ export function statsView(overrides: Partial<StatsView> = {}): StatsView {
       reviewReturns: 2,
       pipelineReturns: 1,
       firstPass: 1,
+      limits: 2,
       agentMs: 300_000,
       medianDoneMs: 2_100_000,
     },

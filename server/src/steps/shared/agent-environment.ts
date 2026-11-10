@@ -1,9 +1,8 @@
 import { LOCAL_RUN_RULE } from './skill-prompt';
 import { environmentNote, withEnvironment } from '../../environment/environment-note';
-import type { ProjectEnvironments } from '../../environment/project-environments';
-import type { RunEntity } from '../../history/entities';
+import type { EnvironmentInput, ProjectEnvironments } from '../../environment/project-environments';
+import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import { packageRegistries } from '../../sandbox/sandbox-launch';
-import type { SandboxMount } from '../../core/sandbox-mount';
 import type { ProjectLaunch } from '../../sandbox/sandbox-launch';
 
 interface AgentWorkplace {
@@ -21,7 +20,7 @@ interface AgentWorkplace {
  */
 export async function agentWorkplace(
   environments: Pick<ProjectEnvironments, 'prepare'>,
-  input: { run: RunEntity; key: string; step: string; mounts: SandboxMount[] },
+  input: EnvironmentInput,
   prompt: string,
 ): Promise<AgentWorkplace> {
   const environment = await environments.prepare(input);
@@ -32,4 +31,12 @@ export async function agentWorkplace(
     ...(environment ? { project: environment.launch } : {}),
     allowHosts: environment?.record.config.network === 'setup' ? [] : packageRegistries(),
   };
+}
+
+/** The project launch for the runtime of another agent, for a launch that moves to one after a provider limit. */
+export function projectFor(
+  environments: Pick<ProjectEnvironments, 'prepare'>,
+  input: EnvironmentInput,
+): (runtime: RuntimeName) => Promise<ProjectLaunch | undefined> {
+  return async (runtime) => (await environments.prepare({ ...input, runtime }))?.launch;
 }

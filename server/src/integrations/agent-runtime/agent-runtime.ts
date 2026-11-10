@@ -1,3 +1,4 @@
+import type { LimitHit, LimitInput } from './runtime-limit';
 import type { RuntimeName } from './runtime-name';
 
 export type { RuntimeName };
@@ -56,6 +57,8 @@ export interface AgentRuntime {
   readonly syncsChatMode: boolean;
   readonly priceSource: string;
   credential(keys: RuntimeKeys): { name: string; value: string };
+  /** The provider limit the end of a launch reports, or null when it is no limit: an auth, billing, network or context error is none. */
+  classifyLimit(input: LimitInput): LimitHit | null;
   briefArgs(): string[];
   printArgs(input: AgentPrintInput): string[];
   terminalArgs(input: AgentTerminalInput): string[];

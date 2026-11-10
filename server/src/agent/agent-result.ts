@@ -1,4 +1,6 @@
 import type { SampleDraft } from '../history/visit';
+import type { LimitHit } from '../integrations/agent-runtime/runtime-limit';
+import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
 import type { KillReason } from './limits';
 
 export interface AgentRunResult {
@@ -17,6 +19,10 @@ export interface AgentRunResult {
   backgroundKilled?: boolean;
   /** A resumed launch whose output was only orphan notifications and an empty result. */
   orphanOnly?: boolean;
+  /** Set when the launch ran on another agent than the one asked for, because the first was limited or cooling down. */
+  agent?: { runtime: RuntimeName; model: string };
+  /** The launch ended on the provider's usage limit. Nothing was answered, and the launch is not an attempt. */
+  limit?: LimitHit;
   calls: number;
   samples: SampleDraft[];
   durationMs: number;
