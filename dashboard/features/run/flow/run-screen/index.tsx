@@ -1,6 +1,8 @@
 'use client';
 
 import type { ReactElement } from 'react';
+import type { Route } from 'next';
+import Link from 'next/link';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { useRunFlow } from '../../use-run-flow';
@@ -53,6 +55,11 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
   const choice = replay ? replaySelection(original, latest, replay) : null;
   return (
     <Box sx={{ minWidth: 0 }}>
+      {flow.parentKey ? (
+        <Typography variant="body2" sx={{ mb: 1 }}>
+          Subtask of <Link href={`/runs/${encodeURIComponent(flow.parentKey)}` as Route}>{flow.parentKey}</Link>
+        </Typography>
+      ) : null}
       <RunHeader
         flow={flow}
         openMs={openMs}

@@ -5,6 +5,7 @@ import { StepName } from '../../contract/steps';
 import { OpenedStep } from '../../steps/step-run';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
+import { baseBranch, originRef } from '../../git/base-ref';
 import { authorArgs, originUrl } from '../../git/git';
 import { commitResult } from './commit-result';
 import { gitAt, status, Tree } from './commit-git';
@@ -59,6 +60,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     }
     const summary = summaryForBranch(requirements, key);
     const branch = branchName(key, summary);
+    const named = baseBranch(opened.run.prompt);
     const names = checkedRepoNames(input.repos);
     const trees = this.publisher.trees(key, names);
     await this.assertBranch(trees, branch);
@@ -66,12 +68,12 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     const stored = input.commit;
     const again = await this.resume(opened, stored);
     if (!phases.includes('ci') && !again) {
-      const body = await this.preview(trees, branch);
+      const body = await this.preview(trees, branch, named);
       return commitResult('waiting', `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
     }
     const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, await this.checkouts.listDenyPaths());
     const rerun = planned.length === 0 && (await this.reader.newer(key, ARTIFACTS.ciRerun, ARTIFACTS.commit));
-    if (!rerun && planned.length === 0 && !(await this.somethingToPush(trees, branch))) {
+    if (!rerun && planned.length === 0 && !(await this.somethingToPush(trees, branch, named))) {
       if (await this.publishedHead(trees, branch)) {
         await this.publisher.stampRefs(opened.run, trees);
         return commitResult('ok', `${opened.startedAt} commit done\n${branch}`);
@@ -138,14 +140,14 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     }
   }
 
-  private async preview(trees: Tree[], branch: string): Promise<string> {
+  private async preview(trees: Tree[], branch: string, named: string | null): Promise<string> {
     const planned = await this.plan(trees, await this.checkouts.listDenyPaths());
     if (planned.length > 0) {
       return renderPaths(planned);
     }
     const pending: string[] = [];
     for (const tree of trees) {
-      if (await this.ahead(tree, branch)) {
+      if (await this.ahead(tree, branch, named)) {
         pending.push(tree.repo);
       }
     }
@@ -163,15 +165,16 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     return planned;
   }
 
-  private async ahead(tree: Tree, branch: string): Promise<boolean> {
+  private async ahead(tree: Tree, branch: string, named: string | null): Promise<boolean> {
     const head = await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
     const remote = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch}`);
     if (remote) {
       return remote !== head;
     }
-    const base =
-      (await this.publisher.optionalRev(tree, 'refs/remotes/origin/main')) ??
-      (await this.publisher.optionalRev(tree, 'refs/remotes/origin/master'));
+    const base = named
+      ? await this.publisher.optionalRev(tree, `refs/remotes/${originRef(named)}`)
+      : ((await this.publisher.optionalRev(tree, 'refs/remotes/origin/main')) ??
+        (await this.publisher.optionalRev(tree, 'refs/remotes/origin/master')));
     return base !== head;
   }
 
@@ -193,10 +196,10 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     return false;
   }
 
-  private async somethingToPush(trees: Tree[], branch: string): Promise<boolean> {
+  private async somethingToPush(trees: Tree[], branch: string, named: string | null): Promise<boolean> {
     for (const tree of trees) {
       const cwd = tree.path;
-      if ((await originUrl(cwd, tree.repo, 'origin failed')) && (await this.ahead(tree, branch))) {
+      if ((await originUrl(cwd, tree.repo, 'origin failed')) && (await this.ahead(tree, branch, named))) {
         return true;
       }
     }

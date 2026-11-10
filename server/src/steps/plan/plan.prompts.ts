@@ -1,5 +1,9 @@
 import { LINKED_CONTEXT, TASK_SCOPE } from '../shared/requirements-brief';
 
+/** A subtask has no one to ask: it decides its own questions, states them as assumptions and gives the plan. */
+export const SUBTASK_DECIDES =
+  'No one can answer these questions. Decide each one yourself from the task, the contract and the tree, then give the plan now. Do not ask again.\n\nEnd with these sections:\nplan:\n- item\n\nsummary:\n- why';
+
 export function planFollowUp(answers: string): string {
   const lines = [
     'The requirements in this message are the whole task. Read the working directory when it has source files.',

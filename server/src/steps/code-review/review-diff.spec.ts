@@ -29,6 +29,34 @@ describe('review diff', () => {
     expect(section.patch).toContain('<?php');
   });
 
+  it('diffs a clean worktree against the branch the prompt names, not against the default branch', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-review-diff-named-'));
+    const repo = join(root, 'app');
+    git(root, ['init', '-b', 'main', repo]);
+    writeFileSync(join(repo, 'README'), 'base\n');
+    commit(repo, 'base');
+    git(root, ['init', '--bare', join(root, 'app.git')]);
+    git(repo, ['remote', 'add', 'origin', join(root, 'app.git')]);
+    git(repo, ['push', '-u', 'origin', 'main']);
+    git(repo, ['checkout', '-b', 'feature/parent']);
+    writeFileSync(join(repo, 'Sibling.php'), '<?php // other subtask\n');
+    commit(repo, 'sibling');
+    git(repo, ['push', '-u', 'origin', 'feature/parent']);
+    git(repo, ['checkout', '-b', 'feature/parent-t1']);
+    writeFileSync(join(repo, 'Own.php'), '<?php // this subtask\n');
+    commit(repo, 'own');
+    const mounts = [{ hostPath: repo, containerPath: '/work/app', readonly: true }];
+
+    const named = await reviewDiffSection(mounts, [], 'task\nbranch: feature/parent\n');
+    const fallback = await reviewDiffSection(mounts);
+
+    expect(named.body).toContain('origin/feature/parent');
+    expect(named.body).toContain('Own.php');
+    expect(named.body).not.toContain('Sibling.php');
+    expect(named.patch).not.toContain('other subtask');
+    expect(fallback.body).toContain('Sibling.php');
+  });
+
   it('reviews the replayed commits when the only leftover file is denied', async () => {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-review-diff-denied-'));
     const repo = join(root, 'app');

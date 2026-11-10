@@ -23,6 +23,12 @@ export function promptBase(prompt: string | null | undefined): PromptBase {
   return { kind: 'named', name };
 }
 
+/** The branch a prompt names as the base, or null for the default branch. The one rule for every base and target. */
+export function baseBranch(prompt: string | null | undefined): string | null {
+  const base = promptBase(prompt);
+  return base.kind === 'named' ? base.name : null;
+}
+
 export function originRef(name: string): string {
   return `origin/${name}`;
 }

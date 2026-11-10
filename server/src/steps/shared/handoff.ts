@@ -42,6 +42,23 @@ export function withHandoff(
   return handoff?.trim() ? [...sections, { heading: 'What previous steps did', body: handoff }] : sections;
 }
 
+/** The open questions of a subtask, as the assumptions it records in its summary. */
+export function assumptions(questions: string): string {
+  return questions
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => `- assumed: ${line.replace(/^-\s*/, '')}`)
+    .join('\n');
+}
+
+/** The `Contract` section a subtask's prompt carries: the decisions its parent holds right now. */
+export function withContract(
+  sections: { heading: string; body: string }[],
+  contract: string | null,
+): { heading: string; body: string }[] {
+  return contract?.trim() ? [...sections, { heading: 'Contract', body: contract }] : sections;
+}
+
 /** A resumed session's prompt with the `Impact` section added at its end. */
 export function appendImpact(prompt: string, impact: string | null): string {
   return impact?.trim() ? `${prompt}\n\nImpact:\n${impact.trimEnd()}` : prompt;

@@ -86,6 +86,14 @@ export class RunEntity {
 
   @Column({ name: 'step_started_at', type: 'text', nullable: true })
   stepStartedAt!: string | null;
+
+  /** The run this one is a subtask of. Null for a run that is not a subtask. */
+  @Column({ name: 'parent_run_id', type: 'integer', nullable: true })
+  parentRunId!: number | null;
+
+  /** The task id inside the parent's `subtasks` document. */
+  @Column({ name: 'task_id', type: 'text', nullable: true })
+  taskId!: string | null;
 }
 
 @Entity('documents')

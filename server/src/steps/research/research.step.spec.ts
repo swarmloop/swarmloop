@@ -122,6 +122,59 @@ describe('research step', () => {
     }
   });
 
+  it('goes on past its questions as assumptions when the run is a subtask, and reads the parent contract', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-subtask-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-23-t1', 'billing-api'), { recursive: true });
+    const agent = jest
+      .fn()
+      .mockResolvedValue(result(['summary:', '- looking', 'questions:', '- which field is optional?'].join('\n')));
+    const app = await boot(root, agent);
+    const runs = app.get(RunRepository);
+    const documents = app.get(DocumentRepository);
+    const parent = await runs.openWaiting('PROJ-23', '/target');
+    await documents.putDocument(parent, 'contract', '- decided: the field is a column\n');
+    const child = await runs.begin('PROJ-23-t1', 'prepare');
+    child.status = 'waiting';
+    child.currentStep = 'research';
+    child.parentRunId = parent.id;
+    child.taskId = 't1';
+    await runs.saveRun(child);
+    await documents.putDocument(child, 'requirements', '{"prompt":"ship the field"}\n');
+    try {
+      const done = await app.get(PipelineService).step('research', 'PROJ-23-t1');
+      expect(done.exitCode).toBe(0);
+      expect((agent.mock.calls[0]?.[0] as AgentRunInput).prompt).toContain('the field is a column');
+      const run = await runs.findRun('PROJ-23-t1');
+      expect(run?.currentStep).toBe('plan');
+      expect(run?.status).toBe('waiting');
+      expect(await documents.latestBody('PROJ-23-t1', 'questions')).toBe('');
+      expect(await documents.latestBody('PROJ-23-t1', 'handoff')).toContain('- assumed: which field is optional?');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('gives a run without a parent no contract section', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-nocontract-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-24', 'billing-api'), { recursive: true });
+    const agent = jest.fn().mockResolvedValue(result(['summary:', '- looking', 'questions:', '- none'].join('\n')));
+    const app = await boot(root, agent);
+    const runs = app.get(RunRepository);
+    const seeded = await runs.begin('PROJ-24', 'prepare');
+    seeded.status = 'waiting';
+    seeded.currentStep = 'research';
+    await runs.saveRun(seeded);
+    await app.get(DocumentRepository).putDocument(seeded, 'requirements', '{"prompt":"ship it"}\n');
+    try {
+      await app.get(PipelineService).step('research', 'PROJ-24');
+      expect((agent.mock.calls[0]?.[0] as AgentRunInput).prompt).not.toContain('Contract');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('writes the impact document with and without the section, and notes malformed lines', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-impact-'));
     await writeEnv(root);

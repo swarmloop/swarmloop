@@ -9,6 +9,7 @@ import { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { HttpCallDraft, SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
+import { baseBranch } from '../../git/base-ref';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
@@ -68,7 +69,15 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     }
     const title = summaryForBranch(requirements, key);
     const branch = branchName(key, title);
-    const trees = await this.trees(key, checkedRepoNames(input.repos), branch, ctx.calls, opened.run.codeHost, client);
+    const trees = await this.trees(
+      key,
+      checkedRepoNames(input.repos),
+      branch,
+      baseBranch(opened.run.prompt),
+      ctx.calls,
+      opened.run.codeHost,
+      client,
+    );
     const summary = await this.summary(ctx, phases, trees);
     const skip = ((await ctx.reread(ARTIFACTS.rebaseMergeSkip)) ?? '').trim() === 'skip';
     assertNotStopped(this.runStop, key);
@@ -98,6 +107,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     key: string,
     names: string[],
     branch: string,
+    base: string | null,
     calls: HttpCallDraft[],
     codeHost: string,
     client: CodeHost,
@@ -126,7 +136,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
       if (origin.host.toLowerCase() !== host) {
         throw new SwarmloopError(`${repo} origin is not ${selected.baseKey}`);
       }
-      const target = await this.target(repo, path);
+      const target = base ?? (await this.target(repo, path));
       if (target === branch) {
         throw new SwarmloopError(`${repo} target branch is the feature branch`);
       }

@@ -5,17 +5,18 @@ import { StepKernel } from '../step-kernel';
 import { SwarmloopEnv } from '../../config/env';
 import { root } from '../../history/run-paths';
 import { resumableChat } from '../../agent/agent-session';
+import { isSubtask } from '../../contract/subtask';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
-import { appendImpact, withHandoff, withImpact } from '../shared/handoff';
+import { appendImpact, assumptions, withContract, withHandoff, withImpact } from '../shared/handoff';
 import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { unanswered } from '../shared/answers';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { planFromAgent, planQuestions, readPlan, withPlan } from './plan-record';
-import { planFollowUp } from './plan.prompts';
+import { planFollowUp, SUBTASK_DECIDES } from './plan.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
@@ -74,15 +75,15 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     const prior = await ctx.reread(ARTIFACTS.handoff);
     const impact = await ctx.reread(ARTIFACTS.impact);
-    const sections = withImpact(
-      withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior),
-      impact,
+    const sections = withContract(
+      withImpact(withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior), impact),
+      await this.parentContract(ctx.opened.run),
     );
     const continued = await resumableChat(root(this.config), key, 'plan', this.profile(this.config.env).runtime);
     const full = skillPrompt('plan', input.requirements, names, sections, mounts);
     const chosen = continued?.chatId ? appendImpact(planFollowUp(answers), impact) : full;
     const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));
-    const agentResult = await ctx.launch({
+    let agentResult = await ctx.launch({
       prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`,
       mounts,
       sections: ['plan'],
@@ -93,7 +94,17 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       },
     });
     const asked = planQuestions(agentResult.responseText);
-    if (asked) {
+    // A subtask asks no one: it decides the questions itself and records them as assumptions.
+    const subtask = isSubtask(ctx.opened.run);
+    if (asked && subtask) {
+      agentResult = await ctx.launch({
+        prompt: SUBTASK_DECIDES,
+        mounts,
+        sections: ['plan'],
+        validate: (text, output) => planFromAgent(text, output ?? ''),
+      });
+    }
+    if (asked && !subtask) {
       return {
         route: { to: 'wait', reason: 'questions are open' },
         summary: `${ctx.opened.startedAt} plan waiting\n${asked.trimEnd()}`,
@@ -106,11 +117,12 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       agentResult.responseText,
       plainSummary(agentResult.responseText) || plan.items.map((item) => `- ${item}`).join('\n'),
     );
+    const assumed = asked && subtask ? assumptions(asked) : '';
     return {
       route: { to: 'next' },
       summary: `${ctx.opened.startedAt} plan done\n${plan.items.join('\n')}`,
       outputs: [{ artifact: ARTIFACTS.requirements, value: body }],
-      handoff: summary,
+      handoff: assumed ? `${summary.trimEnd()}\n${assumed}` : summary,
     };
   }
 }

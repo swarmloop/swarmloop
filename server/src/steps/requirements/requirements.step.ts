@@ -15,6 +15,7 @@ import { RequirementsSource } from '../../integrations/requirements-source/requi
 import { ISSUE_TRACKER } from '../../integrations/issue-tracker/tokens';
 import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import type { StepSnapshot } from '../step';
+import { isSubtask } from '../../contract/subtask';
 import { readPrompt, unreadSource } from './requirements-input';
 import {
   emptyWrite,
@@ -49,11 +50,15 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
   async fetch(key: string): Promise<PipelineResult> {
     const prior = await this.runs.findRun(key);
     const prompt = prior?.prompt ?? undefined;
-    const keys = new Set<string>([key]);
-    const existing = parseRecord(await this.reader.reread(key, ARTIFACTS.requirements));
-    for (const ticket of existing?.tickets ?? []) {
-      if (ticket.key) {
-        keys.add(ticket.key);
+    const keys = new Set<string>();
+    // A subtask takes its requirements from its prompt only, whatever the parent used.
+    if (!prior || !isSubtask(prior)) {
+      keys.add(key);
+      const existing = parseRecord(await this.reader.reread(key, ARTIFACTS.requirements));
+      for (const ticket of existing?.tickets ?? []) {
+        if (ticket.key) {
+          keys.add(ticket.key);
+        }
       }
     }
     return this.perform(key, async (ctx) => this.conclude(ctx, await this.produce(ctx, prompt, [...keys])));
@@ -80,7 +85,9 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
 
   protected async work(_input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const { prompt } = ctx.options;
-    return this.produce(ctx, prompt, await runKeys(this.tracker, ctx.opened.run.key, prompt ?? ''));
+    const { run } = ctx.opened;
+    const keys = !isSubtask(run) ? await runKeys(this.tracker, run.key, prompt ?? '') : [];
+    return this.produce(ctx, prompt, keys);
   }
 
   private async produce(ctx: StepContext, prompt: string | undefined, issueKeys: string[]): Promise<StepResult> {

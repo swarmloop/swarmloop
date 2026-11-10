@@ -11,6 +11,9 @@ export interface RunSummary {
   stepStartedAt: string | null;
   durationMs: number;
   usd: number;
+  /** Set on a subtask only: the key of its parent run and its task id. */
+  parentKey?: string;
+  taskId?: string;
 }
 
 export interface RunsView {
@@ -42,6 +45,8 @@ export interface FlowView {
   currentStep: string;
   updatedAt: string;
   stepStartedAt: string | null;
+  /** Set on a subtask only: the key of its parent run. */
+  parentKey?: string;
   resume: 'ready' | 'need-answers' | 'running' | 'blocked' | 'done';
   state: RunState;
   stateReason: StateReason | null;
