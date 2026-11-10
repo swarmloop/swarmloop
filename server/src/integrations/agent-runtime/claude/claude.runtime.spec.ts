@@ -1,4 +1,4 @@
-import { ClaudeRuntime } from './claude.runtime';
+import { ClaudeRuntime, claudeDisallowedTools } from './claude.runtime';
 
 describe('ClaudeRuntime', () => {
   const runtime = new ClaudeRuntime();
@@ -16,6 +16,7 @@ describe('ClaudeRuntime', () => {
         mounts,
         resumeChatId: null,
         mode: 'plan',
+        tools: 'write',
       }),
     ).toEqual([
       '--print',
@@ -38,6 +39,7 @@ describe('ClaudeRuntime', () => {
         mounts,
         resumeChatId: 'chat-1',
         mode: 'agent',
+        tools: 'write',
         approveMcps: true,
       }),
     ).toEqual([
@@ -55,5 +57,35 @@ describe('ClaudeRuntime', () => {
       '--dangerously-skip-permissions',
       'write the server',
     ]);
+  });
+
+  describe('tools', () => {
+    const L00K = ['Monitor', 'ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger'];
+    const READ_ONLY = [
+      'Edit',
+      'Write',
+      'NotebookEdit',
+      'Task',
+      'WebSearch',
+      'WebFetch',
+      'Workflow',
+      'Skill',
+      'SendMessage',
+      'EnterWorktree',
+      'ExitWorktree',
+    ];
+    const denied = (tools: 'read' | 'write') => {
+      const args = runtime.printArgs({ model: 'm', prompt: 'p', mounts, resumeChatId: null, mode: 'ask', tools });
+      return (args[args.indexOf('--disallowedTools') + 1] ?? '').split(',');
+    };
+
+    it('denies the writing tools and the l00k list to a read step', () => {
+      expect(denied('read')).toEqual([...L00K, ...READ_ONLY]);
+      expect(claudeDisallowedTools('read').split(',')).toEqual(denied('read'));
+    });
+
+    it('denies only the l00k list to a write step', () => {
+      expect(denied('write')).toEqual(L00K);
+    });
   });
 });

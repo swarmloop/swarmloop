@@ -25,7 +25,14 @@ describe('step contract', () => {
   it('describes a result with its route, outputs, issues and failure', () => {
     const issue: Issue = { id: '1', source: 'review', title: 'fix', body: 'details' };
     const error: StepFailure = { code: 'x', message: 'boom' };
-    const profile: AgentProfile = { runtime: 'cursor', model: 'm', mode: 'agent', timeLimitMs: 1, session: 'resume' };
+    const profile: AgentProfile = {
+      runtime: 'cursor',
+      model: 'm',
+      mode: 'agent',
+      tools: 'write',
+      timeLimitMs: 1,
+      session: 'resume',
+    };
     const output: ArtifactValue = { artifact: ARTIFACTS.requirements, value: 'text' };
     const result: StepResult = {
       route: { to: 'return', step: 'implement', issues: [issue] },

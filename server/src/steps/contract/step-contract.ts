@@ -5,6 +5,7 @@ import type { ErrorCategory } from '../../core/swarmloop-error';
 import type { PipelineResult } from '../../core/pipeline-result';
 import type { VisitDraft } from '../../history/visit';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
+import type { AgentTools } from '../../integrations/agent-runtime/agent-runtime';
 import type { Artifact } from './artifact';
 
 export type InputNeed = 'start' | 'run' | 'optional';
@@ -81,6 +82,7 @@ export interface AgentProfile {
   runtime: RuntimeName;
   model: string;
   mode: string;
+  tools: AgentTools;
   timeLimitMs: number;
   session: 'resume' | 'fresh';
 }

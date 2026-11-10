@@ -164,6 +164,7 @@ async function launchReview(
     key,
     step: `code-review-${job.reviewer.name}`,
     mode: 'ask',
+    tools: 'read',
     runtime: job.runtime,
     model: job.model,
     timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,

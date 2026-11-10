@@ -75,7 +75,7 @@ describe('StepHeader', () => {
         descriptor: {
           name: 'implement',
           kind: 'agent',
-          agent: { runtime: 'claude', model: 'opus', mode: 'agent', timeLimitMs: 1, session: 'fresh' },
+          agent: { runtime: 'claude', model: 'opus', mode: 'agent', tools: 'write', timeLimitMs: 1, session: 'fresh' },
         },
       }),
     });

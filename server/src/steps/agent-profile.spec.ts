@@ -33,23 +33,31 @@ describe('agent profiles', () => {
       runtime: 'cursor',
       model: MODELS.MODEL_PLAN,
       mode: 'plan',
+      tools: 'read',
       timeLimitMs: env.RESEARCH_TIMEOUT_MS,
       session: 'resume',
     });
     for (const name of ['plan', 'plan-improve']) {
-      expect(profile(name)).toMatchObject({ model: MODELS.MODEL_PLAN, mode: 'plan', timeLimitMs: env.PLAN_TIMEOUT_MS });
+      expect(profile(name)).toMatchObject({
+        model: MODELS.MODEL_PLAN,
+        mode: 'plan',
+        tools: 'read',
+        timeLimitMs: env.PLAN_TIMEOUT_MS,
+      });
     }
     for (const name of ['implement', 'implement-improve']) {
       expect(profile(name)).toMatchObject({
         runtime: 'cursor',
         model: MODELS.MODEL_IMPLEMENT,
         mode: 'agent',
+        tools: 'write',
         timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
       });
     }
     expect(profile('code-review')).toMatchObject({
       model: MODELS.MODEL_PLAN,
       mode: 'ask',
+      tools: 'read',
       timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
     });
     for (const item of described) {

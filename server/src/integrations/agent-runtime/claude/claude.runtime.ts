@@ -1,13 +1,35 @@
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
-import type { AgentPrintInput, EgressCredential, HomeFile, RuntimeKeys } from '../agent-runtime';
+import type { AgentPrintInput, AgentTools, EgressCredential, HomeFile, RuntimeKeys } from '../agent-runtime';
 import { DENY_BACKGROUND_HOOK, DENY_BACKGROUND_SCRIPT } from './claude-hook';
 
 export const CLAUDE_KEY_PLACEHOLDER = 'sk-ant-api03-swarmloop-egress-placeholder';
 export const CLAUDE_OAUTH_PLACEHOLDER = 'sk-ant-oat01-swarmloop-egress-placeholder';
 
 /** Tools that start work or a trigger that cannot outlive a print-mode turn. */
-const CLAUDE_DISALLOWED_TOOLS = 'Monitor,ScheduleWakeup,CronCreate,CronDelete,CronList,RemoteTrigger';
+const CLAUDE_DISALLOWED_TOOLS = ['Monitor', 'ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger'];
+
+/** What a `read` step cannot use. Read, search and `Bash` stay: the read-only mount is the hard guarantee. */
+const CLAUDE_READ_ONLY_DENIED = [
+  'Edit',
+  'Write',
+  'NotebookEdit',
+  'Task',
+  'WebSearch',
+  'WebFetch',
+  'Workflow',
+  'Skill',
+  'SendMessage',
+  'EnterWorktree',
+  'ExitWorktree',
+];
+
+/** The `--disallowedTools` value of a step with these tools. */
+export function claudeDisallowedTools(tools: AgentTools): string {
+  return (tools === 'read' ? [...CLAUDE_DISALLOWED_TOOLS, ...CLAUDE_READ_ONLY_DENIED] : CLAUDE_DISALLOWED_TOOLS).join(
+    ',',
+  );
+}
 
 const HOOK_DIR = '.claude';
 
@@ -75,7 +97,7 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
   }
 
   protected override appendPrintFlags(args: string[], input: AgentPrintInput): void {
-    args.push('--verbose', '--disallowedTools', CLAUDE_DISALLOWED_TOOLS);
+    args.push('--verbose', '--disallowedTools', claudeDisallowedTools(input.tools));
     if (input.mode === 'plan' || input.mode === 'ask') {
       args.push('--permission-mode', 'plan');
       return;

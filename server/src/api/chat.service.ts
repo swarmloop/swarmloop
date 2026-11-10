@@ -74,6 +74,7 @@ export class ChatService {
         key,
         step: 'chat',
         mode: 'agent',
+        tools: 'write',
         runtime,
         model,
         timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,

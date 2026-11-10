@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { AgentTools } from '../../integrations/agent-runtime/agent-runtime';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { AGENT_RUNNER, readSession } from '../../agent/agent-runner';
@@ -28,6 +29,7 @@ interface AgentLaunchRequest {
   key: string;
   step: string;
   mode: string;
+  tools: AgentTools;
   runtime: RuntimeName;
   model: string;
   timeLimitMs: number;
@@ -105,7 +107,13 @@ export class AgentLauncher {
     const stored = await readSession(sessionFile, request.runtime);
     const removed = chatStateRemoved(request.root, request.key, request.step, stored);
     const chatId = request.resume === false || removed ? null : (stored?.chatId ?? null);
-    const launch = { runtime: request.runtime, model: request.model, chatId, resumed: chatId !== null };
+    const launch = {
+      runtime: request.runtime,
+      model: request.model,
+      tools: request.tools,
+      chatId,
+      resumed: chatId !== null,
+    };
     recordStepEvent({
       kind: 'session.changed',
       session: chatId === null ? 'new chat' : 'same chat',
@@ -147,6 +155,7 @@ export class AgentLauncher {
       mounts: request.mounts,
       allowHosts: request.allowHosts,
       mode: request.mode,
+      tools: request.tools,
       timeLimitMs: request.timeLimitMs,
       approveMcps: request.approveMcps,
       auto: request.auto,

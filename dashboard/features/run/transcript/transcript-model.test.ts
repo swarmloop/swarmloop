@@ -11,8 +11,15 @@ import {
   sideOf,
 } from './transcript-model';
 
-const agent = { runtime: 'claude', model: 'opus', mode: 'agent', timeLimitMs: 1000, session: 'fresh' as const };
-const launch = { runtime: 'claude', model: 'opus', chatId: null, resumed: false };
+const agent = {
+  runtime: 'claude',
+  model: 'opus',
+  mode: 'agent',
+  tools: 'write' as const,
+  timeLimitMs: 1000,
+  session: 'fresh' as const,
+};
+const launch = { runtime: 'claude', model: 'opus', tools: 'write' as const, chatId: null, resumed: false };
 
 const bodies: [StepEventBody, 'left' | 'right'][] = [
   [{ kind: 'input.received', name: 'plan', inputKind: 'plan', documentId: 1, summary: 'a plan' }, 'right'],

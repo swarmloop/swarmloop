@@ -6,7 +6,7 @@ import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
 import { AwakeTime, SAMPLE_MS } from '../core/awake-time';
-import type { AgentRuntime } from '../integrations/agent-runtime/agent-runtime';
+import type { AgentRuntime, AgentTools } from '../integrations/agent-runtime/agent-runtime';
 import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
 import { runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import type { SandboxMount } from '../core/sandbox-mount';
@@ -67,6 +67,7 @@ export interface AgentRunInput {
   mounts: SandboxMount[];
   allowHosts?: string[];
   mode?: string;
+  tools: AgentTools;
   timeLimitMs?: number;
   approveMcps?: boolean;
   auto?: boolean;

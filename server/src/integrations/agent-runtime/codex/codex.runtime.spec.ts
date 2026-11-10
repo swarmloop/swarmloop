@@ -30,6 +30,7 @@ describe('CodexRuntime', () => {
         mounts,
         resumeChatId: null,
         mode: 'agent',
+        tools: 'write',
       }),
     ).toEqual([
       'exec',
@@ -47,6 +48,7 @@ describe('CodexRuntime', () => {
         mounts,
         resumeChatId: 'thread-1',
         mode: 'agent',
+        tools: 'write',
       }),
     ).toEqual([
       'exec',
@@ -66,6 +68,7 @@ describe('CodexRuntime', () => {
         mounts,
         resumeChatId: 'thread-1',
         mode: 'plan',
+        tools: 'write',
       }),
     ).toEqual([
       'exec',
@@ -85,6 +88,7 @@ describe('CodexRuntime', () => {
         mounts,
         resumeChatId: null,
         mode: 'plan',
+        tools: 'write',
       }),
     ).toEqual([
       'exec',
@@ -101,6 +105,7 @@ describe('CodexRuntime', () => {
       mounts: [...mounts, { containerPath: '/work/brief' }],
       resumeChatId: null,
       mode: 'agent',
+      tools: 'write',
     });
     withBrief.unshift(...runtime.briefArgs());
     expect(withBrief.slice(0, 2)).toEqual(['--add-dir', '/work/brief']);

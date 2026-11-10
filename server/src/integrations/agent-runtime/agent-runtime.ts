@@ -10,12 +10,16 @@ export interface RuntimeKeys {
   codexApiKey: string;
 }
 
+/** `read` leaves a step the tools that read; `write` leaves it every tool but the ones no print-mode turn can use. */
+export type AgentTools = 'read' | 'write';
+
 export interface AgentPrintInput {
   model: string;
   prompt: string;
   mounts: readonly { containerPath: string }[];
   resumeChatId: string | null;
   mode?: string;
+  tools: AgentTools;
   approveMcps?: boolean;
 }
 

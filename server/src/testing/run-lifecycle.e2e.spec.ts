@@ -46,6 +46,7 @@ class ImplementProbe extends BaseStep<typeof INPUTS> {
       key: KEY,
       step: this.name,
       mode: 'agent',
+      tools: 'write',
       runtime: 'cursor',
       model: 'model-1',
       timeLimitMs: 1000,
