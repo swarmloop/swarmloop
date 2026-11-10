@@ -85,6 +85,7 @@ const ALL_KINDS: Record<StepEventKind, true> = {
   'agent.message': true,
   'host.suspended': true,
   'agent.limited': true,
+  'agent.loop_hint': true,
   'activity.started': true,
   'activity.finished': true,
 };
@@ -307,6 +308,51 @@ describe('step events', () => {
     ]);
     expect(events[launched + 1]).toMatchObject({ chars: 700, text: 'x'.repeat(600) });
     expect(events[launched + 2]).toMatchObject({ tool: 'shell', target: 'ls', status: 'ok', resultLine: 'exit 0' });
+  });
+
+  it('records the repeated command of a looping agent and fails the step', async () => {
+    await seed('E-1');
+    const call = (id: string): string =>
+      [
+        {
+          type: 'assistant',
+          message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command: 'npm test' } }] },
+        },
+        {
+          type: 'user',
+          message: {
+            content: [{ type: 'tool_result', tool_use_id: id, content: 'Exit code 1\nboom', is_error: true }],
+          },
+        },
+      ]
+        .map((record) => JSON.stringify(record))
+        .join('\n');
+    golden.app
+      .get<{ run: jest.Mock }>(AGENT_RUNNER)
+      .run.mockImplementationOnce((input: { onOutput: (chunk: string) => void }) => {
+        input.onOutput(`${Array.from({ length: 8 }, (_, n) => call(`t${n}`)).join('\n')}\n`);
+        return Promise.resolve({ ...result(''), killReason: 'loop', exitCode: 1 });
+      });
+    const step = new ResearchStep(
+      new StepKernel(
+        golden.runs,
+        golden.documents,
+        golden.visits,
+        golden.flows,
+        golden.clock,
+        golden.config,
+        golden.stepEvents,
+      ),
+      golden.sandbox,
+      golden.launcher,
+    );
+    await step.execute('E-1').catch(() => undefined);
+    const events = await eventsOf('E-1');
+    expect(events.filter((event) => event.kind === 'agent.loop_hint')).toMatchObject([
+      { command: 'npm test', errorLine: 'boom', count: 4 },
+      { command: 'npm test', errorLine: 'boom', count: 8, ended: true },
+    ]);
+    expect(events.at(-1)).toMatchObject({ kind: 'attempt.finished', route: 'failed', summary: 'process killed: loop' });
   });
 
   it('stores the length of a host suspension that the step did not count', async () => {

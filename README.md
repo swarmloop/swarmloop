@@ -285,6 +285,7 @@ When CI does not start and GitHub or GitLab confirms a merge conflict for the pu
 | `RECONCILE_MS` | How often the server looks for runs whose owner died | `60000` |
 | `RECOVER_WAIT_MS` | How long a run waits for a container left by a dead server to exit before it is killed | `600000` |
 | `IDLE_TIMEOUT_MS` | Silence before the agent is killed | 15 minutes |
+| `LOOP_REPEAT` | The same failing command this many times in a row gets one hint; that many more end the step | `4` |
 | `SANDBOX_EGRESS` | `proxy`: all traffic goes through the egress proxy. `open`: per-host networks without the proxy, for debugging only. | `proxy` |
 | `SANDBOX_DOCKER_RUNTIME` | Docker runtime of the sandboxes, such as `runsc` for gVisor | Docker's default |
 | `*_TIMEOUT_MS` | Wall time per step | 3 to 30 minutes |

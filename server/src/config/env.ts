@@ -36,6 +36,7 @@ export interface SwarmloopEnv {
   STEP_USD_MAX: number | null;
   STEP_TOKEN_MAX: number | null;
   IDLE_TIMEOUT_MS: number;
+  LOOP_REPEAT: number;
   SANDBOX_EGRESS: 'proxy' | 'open';
   SANDBOX_DOCKER_RUNTIME: string;
   TICK_MS: number;
@@ -116,6 +117,7 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     STEP_USD_MAX: optionalLimit(config.get('STEP_USD_MAX')),
     STEP_TOKEN_MAX: optionalLimit(config.get('STEP_TOKEN_MAX')),
     IDLE_TIMEOUT_MS: config.getOrThrow<number>('IDLE_TIMEOUT_MS'),
+    LOOP_REPEAT: config.getOrThrow<number>('LOOP_REPEAT'),
     SANDBOX_EGRESS: config.get<string>('SANDBOX_EGRESS') === 'open' ? 'open' : 'proxy',
     SANDBOX_DOCKER_RUNTIME: config.get<string>('SANDBOX_DOCKER_RUNTIME') ?? '',
     TICK_MS: config.getOrThrow<number>('TICK_MS'),

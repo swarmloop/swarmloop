@@ -114,6 +114,13 @@ describe('env schema', () => {
     expect(bad.error?.message).toContain('LIMIT_COOLDOWN_MIN');
   });
 
+  it('defaults LOOP_REPEAT to 4 and rejects zero', () => {
+    const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
+    expect(value.LOOP_REPEAT).toBe(4);
+    const bad = envSchema.validate({ ...complete, LOOP_REPEAT: 0 }, { convert: true });
+    expect(bad.error?.message).toContain('LOOP_REPEAT');
+  });
+
   it('provides the validated env through AppConfig', async () => {
     const config = await compileWith(complete);
     expect(config.env).toMatchObject({

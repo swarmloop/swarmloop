@@ -2,6 +2,7 @@ import { withoutTimestamp } from '@contract/event-text';
 import { isReadOnlyGit } from '@contract/git-reads';
 import type { StepEvent } from '@contract/step-events';
 import { limitSentence } from '../../../lib/runtime-limit';
+import { loopSentence } from '../../../lib/loop-sentence';
 
 export type Side = 'left' | 'right';
 export type ActorKind = 'server' | 'agent' | 'person' | 'pipeline' | 'git';
@@ -127,6 +128,7 @@ export function actorOf(item: TranscriptItem): Actor {
       case 'agent.launched':
       case 'agent.finished':
       case 'agent.limited':
+      case 'agent.loop_hint':
       case 'agent.tool':
       case 'agent.message':
         kind = 'agent';
@@ -189,6 +191,9 @@ function problemOf(event: StepEvent, end: CommandEnd | null): Problem | null {
   }
   if (event.kind === 'agent.limited') {
     return { cause: limitSentence(event), action: `agent: ${event.runtime}` };
+  }
+  if (event.kind === 'agent.loop_hint') {
+    return event.ended ? { cause: loopSentence(event), action: 'agent: looping' } : null;
   }
   if (event.kind === 'http.call') {
     const action = `${event.method} ${event.url}`;
@@ -283,6 +288,7 @@ class ItemBuilder {
       case 'http.call':
       case 'host.suspended':
       case 'agent.limited':
+      case 'agent.loop_hint':
         if (!repeatedIssue(this.shown, event)) {
           this.push({ event, side: sideOf(event), end: null, problem: problemOf(event, null) });
         }

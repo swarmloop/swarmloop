@@ -35,6 +35,7 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     STEP_USD_MAX: null,
     STEP_TOKEN_MAX: null,
     IDLE_TIMEOUT_MS: 900_000,
+    LOOP_REPEAT: 4,
     SANDBOX_EGRESS: 'proxy',
     SANDBOX_DOCKER_RUNTIME: '',
     TICK_MS: 15_000,

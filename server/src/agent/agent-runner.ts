@@ -136,6 +136,7 @@ export class AgentProcessRunner {
           attempt,
           chatId,
           continuePrompt: input.continuePrompt,
+          loopPrompt: attempt.killReason === 'loop' ? input.loop?.resumePrompt() : null,
           endedEarlyUsed,
           budget,
         });
@@ -223,6 +224,17 @@ export class AgentProcessRunner {
     let finishedByResult = false;
     let buffer = '';
     const tail = new OutputTail();
+    const stop = (reason: KillReason): void => {
+      killReason = reason;
+      void writeSession(input.sessionFile, runtime.name, {
+        chatId,
+        resumed,
+        completed: false,
+        killReason,
+        usd: sessionUsd(),
+      });
+      process.kill();
+    };
     const guard = new LimitGuard(
       this.logger,
       {
@@ -242,17 +254,7 @@ export class AgentProcessRunner {
         billed: () => meter.billed(),
         finished: () => finishedByResult,
         killReason: () => killReason,
-        kill: (reason) => {
-          killReason = reason;
-          void writeSession(input.sessionFile, runtime.name, {
-            chatId,
-            resumed,
-            completed: false,
-            killReason,
-            usd: sessionUsd(),
-          });
-          process.kill();
-        },
+        kill: stop,
       },
     );
 
@@ -284,6 +286,9 @@ export class AgentProcessRunner {
           finishedByResult = true;
           process.kill(false);
         }
+      }
+      if (killReason === null && !finishedByResult && input.loop?.pending()) {
+        stop('loop');
       }
       guard.check();
     };

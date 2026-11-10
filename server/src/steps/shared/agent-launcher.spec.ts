@@ -164,6 +164,99 @@ describe('AgentLauncher relaunch', () => {
   });
 });
 
+function failedShell(command: string, stdout: string): string {
+  return [
+    toolStarted(command),
+    JSON.stringify({
+      type: 'tool_call',
+      subtype: 'completed',
+      tool_call: { shellToolCall: { result: { success: { exitCode: 1, stdout } } } },
+    }),
+  ].join('\n');
+}
+
+describe('AgentLauncher loop', () => {
+  async function loop() {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-loop-'));
+    mkdirSync(join(root, 'data'), { recursive: true });
+    const price = { inputPerMillion: 1, outputPerMillion: 1, cacheReadPerMillion: 0, cacheWritePerMillion: 0 };
+    writeFileSync(
+      join(root, 'data', 'price-cache-cursor.json'),
+      JSON.stringify({ fetchedAt: new Date().toISOString(), prices: { m: price } }),
+    );
+    const clock = new FakeClock();
+    const children: Child[] = [];
+    const spawn = jest.fn(() => {
+      const child = controlled();
+      children.push(child);
+      return Promise.resolve(child);
+    });
+    const sandbox = {
+      assertReady: jest.fn().mockResolvedValue(undefined),
+      spawn,
+      stats: jest.fn().mockResolvedValue({ cpuPercent: 0, rssBytes: 0 }),
+      kill: jest.fn().mockResolvedValue(undefined),
+    } as unknown as SandboxService;
+    const config = new AppConfig(
+      testEnv({ CURSOR_API_KEY: 'k', MODEL_IMPLEMENT: 'm', SWARMLOOP_ROOT: root, LOOP_REPEAT: 2 }),
+    );
+    const runner = new AgentProcessRunner(config, clock, sandbox, new RunStop());
+    const visits = { tokenTotal: () => Promise.resolve(0) } as unknown as VisitRepository;
+    const launcher = new AgentLauncher(runner, visits, new RunStop(), undefined, config);
+    const run = { id: 1, runtime: 'cursor', agentCalls: 0, spentUsd: 0, activeAttempt: 'attempt-1' } as RunEntity;
+    const events: StepEvent[] = [];
+    const scope = {
+      runId: 1,
+      attemptId: 'attempt-1',
+      step: 'implement' as const,
+      root,
+      clock,
+      sink: (event: StepEvent) => {
+        events.push(event);
+        return Promise.resolve();
+      },
+    };
+    const running = runInStepScope(scope, 0, () =>
+      launcher.launch({
+        root,
+        run,
+        key: 'run1',
+        step: 'implement',
+        mode: 'agent',
+        tools: 'write',
+        runtime: 'cursor',
+        model: 'm',
+        timeLimitMs: 20_000,
+        prompt: 'go',
+        workspace: root,
+        mounts: [{ hostPath: root, containerPath: '/work/demo' }],
+      }),
+    );
+    const hints = (): StepEvent[] => events.filter((event) => event.kind === 'agent.loop_hint');
+    return { children, spawn, running, hints, events };
+  }
+
+  it('hints once into the same chat, then ends the step when the agent keeps repeating the command', async () => {
+    const { children, spawn, running, hints, events } = await loop();
+    await until(() => children.length === 1);
+    const failing = failedShell('npm test 2>&1 | tail -n 5', 'Cannot find module x\nmore');
+    children[0].stdout.write(`${CHAT}\n${failing}\n${failing}\n`);
+
+    await until(() => children.length === 2);
+    expect(hints()).toMatchObject([{ command: 'npm test', errorLine: 'Cannot find module x', count: 2 }]);
+    expect(JSON.stringify(spawn.mock.calls[1])).toContain('chat-9');
+
+    children[1].stdout.write(`${failing}\n${failing}\n`);
+    const result = await running;
+
+    expect(result.killReason).toBe('loop');
+    expect(children).toHaveLength(2);
+    expect(hints().map((event) => event.kind === 'agent.loop_hint' && event.ended)).toEqual([undefined, true]);
+    expect(hints()[1]).toMatchObject({ command: 'npm test', count: 4 });
+    expect(events.some((event) => event.kind === 'agent.finished' && event.killReason === 'loop')).toBe(true);
+  });
+});
+
 describe('AgentLauncher parse retry', () => {
   it('preserves a killed-background-work result instead of retrying its parse failure', async () => {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-background-killed-'));
