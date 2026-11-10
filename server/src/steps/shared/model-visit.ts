@@ -10,6 +10,7 @@ export function modelVisit(input: {
   now: number;
   step: StepName;
   mode: string;
+  runtime: string;
   model: string;
   agent: AgentRunResult | null;
   prompt: string;
@@ -38,6 +39,7 @@ export function modelVisit(input: {
   ];
   return {
     step: input.step,
+    runtime: input.runtime,
     model: input.model,
     mode: input.mode,
     startedAt: wallStart,

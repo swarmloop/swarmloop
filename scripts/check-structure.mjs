@@ -37,9 +37,9 @@ export function findViolations({ root, rules, files }) {
       }
     });
   }
-  for (const { include, allowFiles, allowLine, pattern: outside } of rules.forbidOutside ?? []) {
+  for (const { include, allowFiles = [], allowLine, pattern: outside } of rules.forbidOutside ?? []) {
     const outsidePattern = new RegExp(outside);
-    const allowed = new RegExp(allowLine);
+    const allowed = allowLine ? new RegExp(allowLine) : null;
     for (const rel of files) {
       if (
         !rel.startsWith(include) ||
@@ -51,7 +51,7 @@ export function findViolations({ root, rules, files }) {
       readText(join(root, rel))
         ?.split('\n')
         .forEach((line, index) => {
-          if (outsidePattern.test(line) && !allowed.test(line)) {
+          if (outsidePattern.test(line) && !allowed?.test(line)) {
             violations.push(`${rel}:${index + 1}: ${line.trim()}`);
           }
         });

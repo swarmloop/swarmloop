@@ -9,6 +9,7 @@ import { MarkdownBody } from '../../../../components/ui/markdown-body';
 import type { StepView } from '@contract/api';
 import type { StepEvent } from '@contract/step-events';
 import { LogTranscript } from '../../log-transcript';
+import type { AgentRole } from '../../transcript/agent-card';
 import { AgentLogPanel, Exchanges, type AgentLog } from '../../transcript/agent-log';
 import { TranscriptFeed } from '../../transcript/transcript-feed';
 import type { IssueLinks } from '../../transcript/transcript-model';
@@ -24,6 +25,7 @@ export function StepDocuments({
   visit,
   logs,
   document,
+  role,
 }: {
   runKey: string;
   /** What the step recorded: null while it is read, empty for a visit from before events were kept. */
@@ -36,6 +38,8 @@ export function StepDocuments({
   visit: StepView['visits'][number] | undefined;
   logs: string;
   document: string;
+  /** The role and tier of the step's agent, from its descriptor. */
+  role?: AgentRole | null;
 }): ReactElement {
   const recorded = events !== null && events.length > 0;
   const agentStep = Boolean(visit?.model) || (visit?.exchanges.length ?? 0) > 0;
@@ -75,6 +79,7 @@ export function StepDocuments({
           events={events}
           issues={issues}
           agent={agentStep ? agent : null}
+          role={role}
           live={visit?.status === 'running'}
         />
       ) : null}

@@ -15,6 +15,8 @@ export function sampleSelf(sampledAt: string): SampleDraft {
 }
 
 export interface ExchangeDraft {
+  /** The runtime of the agent. Only the visit records it; the exchange row keeps the model. */
+  runtime?: string;
   model: string;
   startedAt: string;
   finishedAt: string;
@@ -34,6 +36,8 @@ export interface DocumentDraft {
 
 export interface VisitDraft {
   step: string;
+  /** The runtime of the agent that ran this visit. Absent for a visit that ran no agent. */
+  runtime?: string | null;
   model: string | null;
   mode: string | null;
   startedAt: string;

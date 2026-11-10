@@ -1,4 +1,5 @@
 import { readFileSync } from 'fs';
+import { parseAgentList } from '../config/agents';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { RUNTIME_NAMES } from '../integrations/agent-runtime/agent-runtime.registry';
 
@@ -28,7 +29,7 @@ export function readShellConfig(file: string): ShellConfig {
   }
   for (const line of body.split('\n')) {
     const match =
-      /^(?:export\s+)?(RUNTIME|MODEL_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CODEX_AUTH|CODEX_API_KEY|CHECKOUTS_ROOT|SANDBOX_EGRESS|SANDBOX_DOCKER_RUNTIME)=(.*)$/.exec(
+      /^(?:export\s+)?(RUNTIME|MODEL_IMPLEMENT|AGENTS_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CODEX_AUTH|CODEX_API_KEY|CHECKOUTS_ROOT|SANDBOX_EGRESS|SANDBOX_DOCKER_RUNTIME)=(.*)$/.exec(
         line.trim(),
       );
     if (!match) {
@@ -36,13 +37,15 @@ export function readShellConfig(file: string): ShellConfig {
     }
     values.set(match[1], unquote(match[2].trim()));
   }
-  const runtime = values.get('RUNTIME');
+  const listed = values.get('AGENTS_IMPLEMENT') ?? '';
+  const implement = listed === '' ? undefined : parseAgentList('AGENTS_IMPLEMENT', listed)[0];
+  const runtime = implement?.runtime ?? values.get('RUNTIME');
   if (!isRuntimeName(runtime)) {
     throw new Error('RUNTIME is missing');
   }
   return {
     runtime,
-    model: values.get('MODEL_IMPLEMENT') ?? '',
+    model: implement?.model ?? values.get('MODEL_IMPLEMENT') ?? '',
     cursorKey: values.get('CURSOR_API_KEY') ?? '',
     anthropicKey: values.get('ANTHROPIC_API_KEY') ?? '',
     oauthToken: values.get('CLAUDE_CODE_OAUTH_TOKEN') ?? '',

@@ -10,6 +10,10 @@
       "allowFiles": ["server/src/sandbox/image-resolver"],
       "allowLine": "-placeholder|mkdtemp|EGRESS_CONTAINER",
       "pattern": "swarmloop-(agent-|egress)"
+    },
+    {
+      "include": "server/src/steps/",
+      "pattern": "env\\.(RUNTIME|MODEL_\\w+)"
     }
   ],
   "forbidInFile": [

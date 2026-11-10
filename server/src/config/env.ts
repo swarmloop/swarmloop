@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import type { RequirementsVia } from '../integrations/requirements-source/requirements-source.registry';
@@ -45,9 +46,14 @@ export interface SwarmloopEnv {
   MERGE_REQUEST_TIMEOUT_MS: number;
   PIPELINE_TIMEOUT_MS: number;
   PIPELINE_START_TIMEOUT_MS: number;
-  MODEL_RESEARCH: string;
   MODEL_PLAN: string;
   MODEL_IMPLEMENT: string;
+  AGENTS_PLAN: string;
+  AGENTS_IMPLEMENT: string;
+  AGENTS_REVIEW: string;
+  AGENTS_SUBTASK_PLAN: string;
+  AGENTS_SUBTASK_IMPLEMENT: string;
+  AGENTS_SUBTASK_REVIEW: string;
   SWARMLOOP_ROOT: string | undefined;
   CHECKOUTS_ROOT: string | undefined;
   SWARMLOOP_API_PORT: number;
@@ -69,6 +75,9 @@ export class AppConfig {
 }
 
 export function readEnv(config: ConfigService): SwarmloopEnv {
+  if (config.get('MODEL_RESEARCH') !== undefined) {
+    new Logger('Config').warn('MODEL_RESEARCH is set but was never read: research runs on MODEL_PLAN or AGENTS_PLAN');
+  }
   const root = config.get<string>('SWARMLOOP_ROOT');
   const checkoutsRoot = config.get<string>('CHECKOUTS_ROOT');
   return {
@@ -114,9 +123,14 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     MERGE_REQUEST_TIMEOUT_MS: config.getOrThrow<number>('MERGE_REQUEST_TIMEOUT_MS'),
     PIPELINE_TIMEOUT_MS: config.getOrThrow<number>('PIPELINE_TIMEOUT_MS'),
     PIPELINE_START_TIMEOUT_MS: config.getOrThrow<number>('PIPELINE_START_TIMEOUT_MS'),
-    MODEL_RESEARCH: config.getOrThrow<string>('MODEL_RESEARCH'),
     MODEL_PLAN: config.getOrThrow<string>('MODEL_PLAN'),
     MODEL_IMPLEMENT: config.getOrThrow<string>('MODEL_IMPLEMENT'),
+    AGENTS_PLAN: config.get<string>('AGENTS_PLAN') ?? '',
+    AGENTS_IMPLEMENT: config.get<string>('AGENTS_IMPLEMENT') ?? '',
+    AGENTS_REVIEW: config.get<string>('AGENTS_REVIEW') ?? '',
+    AGENTS_SUBTASK_PLAN: config.get<string>('AGENTS_SUBTASK_PLAN') ?? '',
+    AGENTS_SUBTASK_IMPLEMENT: config.get<string>('AGENTS_SUBTASK_IMPLEMENT') ?? '',
+    AGENTS_SUBTASK_REVIEW: config.get<string>('AGENTS_SUBTASK_REVIEW') ?? '',
     SWARMLOOP_ROOT: root ? root : undefined,
     CHECKOUTS_ROOT: checkoutsRoot ? checkoutsRoot : undefined,
     SWARMLOOP_API_PORT: config.getOrThrow<number>('SWARMLOOP_API_PORT'),

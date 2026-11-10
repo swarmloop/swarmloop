@@ -197,7 +197,7 @@ Every model step runs in a fresh container. The server starts it for the step an
 ### 🔀 Cursor, Claude, or Codex
 
 - `RUNTIME=cursor`, `RUNTIME=claude`, or `RUNTIME=codex`. Change the line and restart the server: the next step uses that agent and opens a new chat with the full brief.
-- Each phase can use its own model: `MODEL_RESEARCH`, `MODEL_PLAN`, and `MODEL_IMPLEMENT`.
+- Each role can use its own agent, a `runtime:model` pair: `AGENTS_PLAN`, `AGENTS_IMPLEMENT`, and `AGENTS_REVIEW`. `MODEL_PLAN` and `MODEL_IMPLEMENT` with `RUNTIME` stay as the short form. A step whose agent runs on another runtime than its stored chat opens a new chat with the full brief.
 - Dollars come from the vendor's published price list, cached for a day.
 - Another agent is the same three pieces: a sandbox image under `docker/sandbox`, its API hosts and key, and the code that reads its output. The pipeline, the history, and the panel stay as they are.
 - For contributors building from a checkout, `docker/sandbox/build.sh` builds the three agent images and the `swarmloop-egress` proxy image (`compose.build.yml` builds them too). Run it again after you update swarmloop. Docker reuses its cache, so to get newer CLIs and certificates run `docker/sandbox/build.sh --fresh`, every few months is enough. Each image keeps its whole CLI under `/opt/swarmloop`, together with a CA certificate bundle (the public root list of Debian's `ca-certificates` package) and, for Codex, `rg`. swarmloop can therefore mount the CLI into another image.
@@ -363,10 +363,13 @@ When the API is on another machine, set the URL in `env`:
 
 | Variable | Values |
 | --- | --- |
-| `RUNTIME` | `cursor`, `claude`, or `codex`. Stored on the run. |
-| `MODEL_RESEARCH` | Model for research. `.env.example` uses `grok-4.7-high`. |
-| `MODEL_PLAN` | Model for plan, plan improve, every code reviewer, and the review report. `.env.example` uses `grok-4.7-xhigh`. |
-| `MODEL_IMPLEMENT` | Model for implementation and implement improve. `.env.example` uses `grok-4.7-high`. |
+| `RUNTIME` | `cursor`, `claude`, or `codex`. The runtime of the short form. The run stores the runtime of its first `implement` agent. |
+| `MODEL_PLAN` | Short form: model of the `plan` and `review` roles on `RUNTIME`. `.env.example` uses `grok-4.7-xhigh`. |
+| `MODEL_IMPLEMENT` | Short form: model of the `implement` role on `RUNTIME`. `.env.example` uses `grok-4.7-high`. |
+| `AGENTS_PLAN` | Agents of the `plan` role (research, plan, plan improve, the merge request text), `runtime:model`, comma-separated. The first is used, the rest are the fallback order. Empty: `RUNTIME:MODEL_PLAN`. |
+| `AGENTS_IMPLEMENT` | Agents of the `implement` role (implement, implement improve, rebase conflicts, chat and shell). Empty: `RUNTIME:MODEL_IMPLEMENT`. |
+| `AGENTS_REVIEW` | Agents of the `review` role (every code reviewer and the review report). Empty: `RUNTIME:MODEL_PLAN`. |
+| `AGENTS_SUBTASK_PLAN`, `AGENTS_SUBTASK_IMPLEMENT`, `AGENTS_SUBTASK_REVIEW` | The same for a run with a parent. Empty: the main role. |
 | `ISSUE_TRACKER` | `jira` |
 | `REQUIREMENTS_VIA` | `agent` or `direct`. Both build the requirements record in the server. The model does not rewrite it. |
 | `CHECKOUTS_ROOT` | Folder of git clones listed in **New run**. |

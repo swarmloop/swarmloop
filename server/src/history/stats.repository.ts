@@ -6,7 +6,7 @@ import { LoopEventEntity, RunEntity, StepStatEntity } from './entities';
 export type StatsRunRow = Pick<RunEntity, 'id' | 'key' | 'prompt' | 'status' | 'runtime' | 'createdAt'>;
 export type StatsStepRow = Pick<
   StepStatEntity,
-  'runId' | 'step' | 'model' | 'usd' | 'tokensIn' | 'tokensOut' | 'durationMs' | 'finishedAt'
+  'runId' | 'step' | 'runtime' | 'model' | 'usd' | 'tokensIn' | 'tokensOut' | 'durationMs' | 'finishedAt'
 >;
 export type StatsLoopRow = Pick<LoopEventEntity, 'runId' | 'counter' | 'reason' | 'createdAt'>;
 
@@ -44,6 +44,7 @@ export class StatsRepository {
       select: {
         runId: true,
         step: true,
+        runtime: true,
         model: true,
         usd: true,
         tokensIn: true,

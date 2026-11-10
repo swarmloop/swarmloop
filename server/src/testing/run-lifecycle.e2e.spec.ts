@@ -46,6 +46,7 @@ class ImplementProbe extends BaseStep<typeof INPUTS> {
       key: KEY,
       step: this.name,
       mode: 'agent',
+      runtime: 'cursor',
       model: 'model-1',
       timeLimitMs: 1000,
       prompt: 'Implement it.\n\nRequirements:\nship the field\n\nWhat previous steps did:\n- planned',

@@ -1,3 +1,4 @@
+import { agentFor } from '../../config/agents';
 import { mkdirSync, writeFileSync } from 'fs';
 import { basename, join } from 'path';
 import type { SwarmloopEnv } from '../../config/env';
@@ -17,7 +18,7 @@ import { agentFailure } from '../shared/agent-result';
 import { appendImpact, mergeHandoff, textDocument, withImpact } from '../shared/handoff';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { REPORT_CONTINUE, reportFollowUp } from './code-review.prompts';
-import { decidedOk, reviewModel } from './reviewer';
+import { decidedOk } from './reviewer';
 import type { Finished, Opinion, ReviewDeps, Usage } from './reviewer';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 import { answerEnding } from '../shared/parse-failure-follow-up';
@@ -67,7 +68,7 @@ export async function writeReport(
   const prompt = continued
     ? appendImpact(reportFollowUp(brief, implementation), impact)
     : skillPrompt('code-review/report', requirements, names, sections, mounts);
-  const model = reviewModel(env);
+  const { runtime, model } = agentFor(env, opened.run, 'code-review-report');
   const empty: Usage = { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] };
   try {
     const directory = join(deps.root, 'data');
@@ -79,6 +80,7 @@ export async function writeReport(
       key,
       step: 'code-review-report',
       mode: 'ask',
+      runtime,
       model,
       timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
       prompt,
@@ -95,6 +97,7 @@ export async function writeReport(
       parseFailureEnding: answerEnding('code-review/report'),
     });
     const exchange: ExchangeDraft = {
+      runtime,
       model,
       startedAt: result.startedAt,
       finishedAt: result.finishedAt,
@@ -146,6 +149,7 @@ export async function recordAngle(
   const log = result.output ? (result.output.endsWith('\n') ? result.output : `${result.output}\n`) : '';
   await deps.visits.finishVisit(opened.run, {
     step: `code-review-${item.reviewer.name}`,
+    runtime: item.runtime,
     model: item.model,
     mode: 'ask',
     startedAt: result.startedAt,
@@ -218,6 +222,7 @@ export function closeReview(
     moveTo,
     visit: {
       step: 'code-review',
+      runtime: exchanges.find((exchange) => exchange.runtime)?.runtime ?? null,
       model: exchanges.find((exchange) => exchange.model)?.model ?? null,
       mode: 'ask',
       startedAt: opened.startedAt,
@@ -246,6 +251,7 @@ function exchangeOf(item: Finished): ExchangeDraft {
     throw new SwarmloopError('code-review failed');
   }
   return {
+    runtime: item.runtime,
     model: item.model,
     startedAt: result.startedAt,
     finishedAt: result.finishedAt,

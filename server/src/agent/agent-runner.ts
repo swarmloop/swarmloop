@@ -8,7 +8,7 @@ import { Clock } from '../core/clock';
 import { AwakeTime, SAMPLE_MS } from '../core/awake-time';
 import type { AgentRuntime } from '../integrations/agent-runtime/agent-runtime';
 import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
-import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
+import { runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import type { SandboxMount } from '../core/sandbox-mount';
 import {
   agentStateDir,
@@ -54,6 +54,7 @@ export interface AgentRunInput {
   workspace: string;
   outputFile: string;
   sessionFile: string;
+  runtime: RuntimeName;
   model: string;
   agentCalls: number;
   spentUsd: number;
@@ -116,8 +117,8 @@ export class AgentProcessRunner {
       if (input.auto === true && callsExceeded(input.agentCalls, env.MAX_AGENT_CALLS)) {
         return emptyResult('calls', 1, 0, this.clock.iso());
       }
-      const runtime = runtimeFor(env.RUNTIME);
-      await this.sandbox.assertReady(env.RUNTIME);
+      const runtime = runtimeFor(input.runtime);
+      await this.sandbox.assertReady(input.runtime);
       const carried = await carriedOutput(input);
       let calls = 0;
       let tries = 0;
@@ -154,9 +155,7 @@ export class AgentProcessRunner {
           prompt = AGENT_BACKGROUND_KILLED_CONTINUE;
           continue;
         }
-        const fresh = chatMissingAnswer(attempt)
-          ? await dropMissingChat({ ...input, runtime: env.RUNTIME }, freshPrompt)
-          : null;
+        const fresh = chatMissingAnswer(attempt) ? await dropMissingChat(input, freshPrompt) : null;
         if (fresh !== null) {
           // The stored id points at nothing: one fresh chat with the full prompt, never a second try.
           freshPrompt = undefined;
@@ -191,8 +190,8 @@ export class AgentProcessRunner {
   }
 
   /** The subscription login, refreshed once by the server so parallel containers never race on it. */
-  private async codexLogin(env: { RUNTIME: string; CODEX_AUTH: string; SWARMLOOP_ROOT?: string }): Promise<string> {
-    if (env.RUNTIME !== 'codex' || env.CODEX_AUTH === '') {
+  private async codexLogin(runtime: RuntimeName, env: AppConfig['env']): Promise<string> {
+    if (runtime !== 'codex' || env.CODEX_AUTH === '') {
       return env.CODEX_AUTH;
     }
     const dir = join(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), 'data', 'codex');
@@ -209,27 +208,27 @@ export class AgentProcessRunner {
   ): Promise<AgentRunResult> {
     const env = this.config.env;
     const launch = this.prepare(input, runtime, resumed);
-    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now());
+    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime.name, this.clock.now());
     const started = this.clock.now();
     const awake = new AwakeTime(this.clock, SAMPLE_MS, input.onSuspended);
     const workMounts = readOnlyTree(runtime.name, input.mode)
       ? input.mounts.map((mount) => ({ ...mount, readonly: true }))
       : input.mounts;
     const process = await AgentProcess.spawn(this.sandbox, {
-      runtime: env.RUNTIME,
+      runtime: runtime.name,
       runKey: input.runKey,
       step: input.step,
       attemptId: input.attemptId,
       mounts: [...workMounts, ...launch.briefs],
       statePath: launch.statePath,
-      allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(env.RUNTIME)])],
+      allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(runtime.name)])],
       env: [
         modelCredential(
-          env.RUNTIME,
+          runtime.name,
           env.CURSOR_API_KEY,
           env.ANTHROPIC_API_KEY,
           env.CLAUDE_CODE_OAUTH_TOKEN,
-          await this.codexLogin(env),
+          await this.codexLogin(runtime.name, env),
           env.CODEX_API_KEY,
         ),
       ],
@@ -278,7 +277,7 @@ export class AgentProcessRunner {
         killReason: () => killReason,
         kill: (reason) => {
           killReason = reason;
-          void writeSession(input.sessionFile, env.RUNTIME, {
+          void writeSession(input.sessionFile, runtime.name, {
             chatId,
             resumed,
             completed: false,
@@ -304,7 +303,7 @@ export class AgentProcessRunner {
         }
         if (piece.chatId) {
           chatId = piece.chatId;
-          void writeSession(input.sessionFile, env.RUNTIME, {
+          void writeSession(input.sessionFile, runtime.name, {
             chatId,
             resumed,
             completed: false,
@@ -360,7 +359,7 @@ export class AgentProcessRunner {
     input.onLaunchEnd?.();
     const finished = this.clock.now();
     const priced = meter.billed();
-    await writeSession(input.sessionFile, env.RUNTIME, {
+    await writeSession(input.sessionFile, runtime.name, {
       chatId,
       resumed,
       completed: finishedByResult || (killReason === null && exitCode === 0),

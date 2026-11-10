@@ -10,6 +10,7 @@ function step(runId: number, name: string, usd: number, finishedAt: string, extr
   return {
     runId,
     step: name,
+    runtime: null,
     model: usd > 0 ? 'model-a' : null,
     usd,
     tokensIn: usd > 0 ? 1000 : 0,
@@ -134,6 +135,21 @@ describe('buildStats', () => {
       ['claude', 2, 4],
       ['codex', 1, 0],
       ['cursor', 1, 0.25],
+    ]);
+  });
+
+  it('charges a step to the runtime it recorded, and to the runtime of its run when it recorded none', () => {
+    const data = rows();
+    data.steps = [
+      step(1, 'implement', 2.5, '2026-11-08T11:00:00.000Z', { runtime: 'codex' }),
+      step(1, 'code-review-quality', 0.5, '2026-11-08T12:00:00.000Z'),
+      step(3, 'plan', 1, '2026-11-10T08:30:00.000Z'),
+    ];
+    const stats = buildStats(data, durations, NOW, { days: 7, tzOffset: WARSAW });
+    expect(stats.agents.map((entry) => [entry.name, entry.count, entry.usd])).toEqual([
+      ['claude', 2, 1.5],
+      ['codex', 2, 2.5],
+      ['cursor', 1, 0],
     ]);
   });
 

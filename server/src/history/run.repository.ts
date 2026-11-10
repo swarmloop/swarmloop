@@ -1,3 +1,4 @@
+import { agentFor } from '../config/agents';
 import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -61,7 +62,7 @@ export class RunRepository {
     const created = this.runs.create({
       key,
       ...stateColumns({ currentStep: 'requirements', ownerInstance: null, activeAttempt: null }, { status: 'waiting' }),
-      runtime: env.RUNTIME,
+      runtime: agentFor(env, null, 'implement').runtime,
       requirementsVia: env.REQUIREMENTS_VIA,
       issueTracker: env.ISSUE_TRACKER,
       codeHost: '',
@@ -98,7 +99,7 @@ export class RunRepository {
       if (this.held(existing)) {
         break;
       }
-      const runtime = this.config.env.RUNTIME;
+      const runtime = agentFor(this.config.env, null, 'implement').runtime;
       const now = this.clock.iso();
       const claimed = await this.runs
         .createQueryBuilder()
@@ -154,7 +155,7 @@ export class RunRepository {
     const created = this.runs.create({
       key,
       ...claimedColumns(step, randomUUID()),
-      runtime: env.RUNTIME,
+      runtime: agentFor(env, null, 'implement').runtime,
       requirementsVia: env.REQUIREMENTS_VIA,
       issueTracker: env.ISSUE_TRACKER,
       codeHost: '',

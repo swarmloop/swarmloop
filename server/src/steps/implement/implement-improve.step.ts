@@ -1,3 +1,4 @@
+import { agentFor } from '../../config/agents';
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
@@ -59,8 +60,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
 
   protected profile(env: SwarmloopEnv): AgentProfile {
     return {
-      runtime: env.RUNTIME,
-      model: env.MODEL_IMPLEMENT,
+      ...agentFor(env, null, 'implement-improve'),
       mode: 'agent',
       timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
       session: 'resume',
@@ -102,7 +102,12 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     );
     const branch = branchName(key, summaryForBranch(input.requirements, key));
     const heads = await featureHeads(mounts, branch);
-    const continued = await resumableChat(root(this.config), key, 'implement-improve', ctx.opened.run.runtime);
+    const continued = await resumableChat(
+      root(this.config),
+      key,
+      'implement-improve',
+      this.profile(this.config.env).runtime,
+    );
     const full = skillPrompt('implement-improve', input.requirements, names, sections, mounts, {
       deferExecutionRules: true,
     });

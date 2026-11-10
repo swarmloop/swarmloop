@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import type { Type } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import type { SwarmloopEnv } from '../config/env';
+import { testEnv } from '../config/env.spec-helpers';
 import type { StepName } from '../contract/steps';
 import { BranchStep } from './branch/branch.step';
 import { CommitStep } from './commit/commit.step';
@@ -61,7 +61,7 @@ describe('step registry', () => {
       ],
     }).compile();
     try {
-      const descriptors = app.get(StepRegistry).describe({} as SwarmloopEnv);
+      const descriptors = app.get(StepRegistry).describe(testEnv());
       expect(descriptors.map((descriptor) => descriptor.name)).toEqual(SERVICES.map(([, name]) => name));
     } finally {
       await app.close();
@@ -72,7 +72,7 @@ describe('step registry', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-registry-writers-'));
     const app = await boot(root);
     try {
-      const described = app.get(StepRegistry).describe({} as SwarmloopEnv);
+      const described = app.get(StepRegistry).describe(testEnv());
       expect(described.map((descriptor) => descriptor.name)).toEqual(SERVICES.map(([, name]) => name));
       for (const entry of Object.values(ARTIFACTS)) {
         const listing = described.filter((descriptor) => descriptor.outputs.includes(entry.kind));

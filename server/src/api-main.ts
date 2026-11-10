@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
+import { assertAgents } from './config/agents';
 import { AppConfig } from './config/env';
 import { assertEnvFile } from './config/load-env';
 import { resolveRepoRoot } from './config/repo-root';
@@ -22,6 +23,7 @@ async function bootstrap(): Promise<void> {
     app.enableCors({ origin: PANEL_ORIGINS });
     app.useWebSocketAdapter(new IoAdapter(app));
     const env = app.get(AppConfig).env;
+    assertAgents(env);
     await app.listen(env.SWARMLOOP_API_PORT, env.SWARMLOOP_API_HOST);
     const housekeeping = app.get(Housekeeping);
     await housekeeping.startup();

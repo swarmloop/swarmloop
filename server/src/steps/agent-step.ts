@@ -106,7 +106,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
   }
 
   protected override ready(): Promise<void> {
-    return this.sandbox.assertReady(this.config.env.RUNTIME);
+    return this.sandbox.assertReady(this.profile(this.config.env).runtime);
   }
 
   override describe(env: SwarmloopEnv): StepDescriptor {
@@ -156,12 +156,13 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
 
   /** Before `work` ran, the visit still names the model and mode, with no samples. */
   protected override failureVisit(opened: OpenedStep): Partial<VisitDraft> {
-    const { mode, model } = this.profile(this.config.env);
+    const { mode, runtime, model } = this.profile(this.config.env);
     return modelVisit({
       opened,
       now: this.clock.now(),
       step: this.name,
       mode,
+      runtime,
       model,
       agent: null,
       prompt: '',
@@ -198,6 +199,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       now: this.clock.now(),
       step: this.name,
       mode: run.profile.mode,
+      runtime: run.profile.runtime,
       model: run.profile.model,
       agent: run.agentResult,
       prompt: run.prompt,
@@ -220,6 +222,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       step: launch.label ? `${this.name}-${launch.label}` : this.name,
       liveStep: this.name,
       mode: run.profile.mode,
+      runtime: run.profile.runtime,
       model: run.profile.model,
       timeLimitMs: run.profile.timeLimitMs,
       auto: run.auto,

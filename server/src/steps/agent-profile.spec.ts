@@ -30,7 +30,7 @@ describe('agent profiles', () => {
     const described = app.get(StepRegistry).describe(env);
     const profile = (name: string) => described.find((item) => item.name === name)?.agent;
     expect(profile('research')).toEqual({
-      runtime: env.RUNTIME,
+      runtime: 'cursor',
       model: MODELS.MODEL_PLAN,
       mode: 'plan',
       timeLimitMs: env.RESEARCH_TIMEOUT_MS,
@@ -41,7 +41,7 @@ describe('agent profiles', () => {
     }
     for (const name of ['implement', 'implement-improve']) {
       expect(profile(name)).toMatchObject({
-        runtime: env.RUNTIME,
+        runtime: 'cursor',
         model: MODELS.MODEL_IMPLEMENT,
         mode: 'agent',
         timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,

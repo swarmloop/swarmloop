@@ -1,7 +1,8 @@
 import type { OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppConfig } from '../config/env';
-import { chargeStream, modelForStep } from '../agent/spend';
+import { agentFor } from '../config/agents';
+import { chargeStream } from '../agent/spend';
 import { loadPriceTable } from '../agent/prices';
 import { resolveRepoRoot } from '../config/repo-root';
 import { ERROR_CODES } from '../contract/error-codes';
@@ -313,8 +314,13 @@ export class Reconciler implements OnModuleDestroy {
   private async interrupted(run: RunEntity, saved: string): Promise<void> {
     const now = this.clock.iso();
     const env = this.config.env;
-    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now());
-    const model = modelForStep(run.currentStep, env);
+    const agent = agentFor(env, run, run.currentStep);
+    const model = agent?.model ?? null;
+    const prices = await loadPriceTable(
+      resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname),
+      agent?.runtime ?? env.RUNTIME,
+      this.clock.now(),
+    );
     const step = isStep(run.currentStep) ? this.registry.get(run.currentStep) : null;
     const charge = step?.charge
       ? await step.charge(run.key, env, prices, run.activeAttempt)
@@ -325,6 +331,7 @@ export class Reconciler implements OnModuleDestroy {
     writeRunState(run, { status: 'failed', ownerPid: null });
     const visit: VisitDraft = {
       step: run.currentStep,
+      runtime: agent?.runtime ?? null,
       model,
       mode: null,
       startedAt: run.stepStartedAt ?? run.updatedAt,

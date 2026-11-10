@@ -1,3 +1,4 @@
+import { agentFor } from '../../config/agents';
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, StepCapabilities, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
@@ -41,8 +42,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
 
   protected profile(env: SwarmloopEnv): AgentProfile {
     return {
-      runtime: env.RUNTIME,
-      model: env.MODEL_PLAN,
+      ...agentFor(env, null, 'plan'),
       mode: 'plan',
       timeLimitMs: env.PLAN_TIMEOUT_MS,
       session: 'resume',
@@ -78,7 +78,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior),
       impact,
     );
-    const continued = await resumableChat(root(this.config), key, 'plan', ctx.opened.run.runtime);
+    const continued = await resumableChat(root(this.config), key, 'plan', this.profile(this.config.env).runtime);
     const full = skillPrompt('plan', input.requirements, names, sections, mounts);
     const chosen = continued?.chatId ? appendImpact(planFollowUp(answers), impact) : full;
     const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));

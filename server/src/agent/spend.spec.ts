@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { chargeReview, chargeStream } from './spend';
+import { testEnv } from '../config/env.spec-helpers';
 import { parsePriceMarkdown } from './prices';
 
 const TABLE = parsePriceMarkdown(`
@@ -60,7 +61,7 @@ describe('spend', () => {
       `${JSON.stringify({ type: 'result', usage: { inputTokens, outputTokens: 1 } })}\n`;
     writeFileSync(join(root, 'data', 'K-1-code-review-quality-zzz-output.txt'), stream(900));
     writeFileSync(join(root, 'data', 'K-1-code-review-quality-aaa-output.txt'), stream(100));
-    const env = { MODEL_PLAN: 'grok-4.7', MODEL_IMPLEMENT: 'grok-4.7', MODEL_RESEARCH: 'grok-4.7' };
+    const env = testEnv({ MODEL_PLAN: 'grok-4.7', MODEL_IMPLEMENT: 'grok-4.7' });
     const charge = chargeReview(root, 'K-1', env, TABLE, 'aaa');
     expect(charge?.tokensIn).toBe(100);
   });

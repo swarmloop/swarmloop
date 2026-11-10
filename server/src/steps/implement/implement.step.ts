@@ -1,3 +1,4 @@
+import { agentFor } from '../../config/agents';
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, Issue, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
@@ -81,8 +82,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
 
   protected profile(env: SwarmloopEnv): AgentProfile {
     return {
-      runtime: env.RUNTIME,
-      model: env.MODEL_IMPLEMENT,
+      ...agentFor(env, null, 'implement'),
       mode: 'agent',
       timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
       session: 'resume',
@@ -118,7 +118,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
     const full = skillPrompt('implement', input.requirements, names, sections, mounts, { deferExecutionRules: true });
     const added = await ctx.reread(ARTIFACTS.addedRepos);
-    const continued = await resumableChat(root(this.config), key, 'implement', ctx.opened.run.runtime);
+    const continued = await resumableChat(root(this.config), key, 'implement', this.profile(this.config.env).runtime);
     const basePrompt = withAddedRepos(continued?.chatId ? implementFollowUp(plan, notes) : full, added);
     const settled = await this.settleRebase(input.requirements, ctx, marker, names, branch, storedStderr);
     if (settled) {

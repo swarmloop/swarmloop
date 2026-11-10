@@ -60,11 +60,13 @@ describe('run events api', () => {
       expect(before.descriptor.name).toBe('implement');
       expect(before.descriptor.kind).toBe('agent');
       expect(before.descriptor.agent?.model).toBeTruthy();
+      expect(before.descriptor.agent).toMatchObject({ role: 'implement', tier: 'main' });
       await app.get(StepEventLog).append([event(run.id, 1, 'commit'), event(run.id, 2, 'commit')]);
       expect((await queries.step('proj-8', 'commit')).eventsCursor).toBe(2);
       const reviewer = await queries.step('proj-8', 'code-review-quality');
       expect(reviewer.descriptor.name).toBe('code-review');
       expect(reviewer.descriptor.reviewers?.length).toBeGreaterThan(0);
+      expect(reviewer.descriptor.agent).toMatchObject({ role: 'review', tier: 'main' });
       expect((await queries.step('proj-8', 'done')).descriptor).toEqual({ name: 'done', kind: 'server' });
     } finally {
       await app.close();
