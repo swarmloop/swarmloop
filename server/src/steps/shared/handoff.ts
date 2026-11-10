@@ -9,6 +9,9 @@ export function textDocument(kind: string, body: string): DocumentDraft {
   return { kind, fileName: '', body };
 }
 
+/** The source of a CI problem that is not in the code. It is never sent back to an agent. */
+export const CI_INFRA_SOURCE = 'ci-infra';
+
 /** A problem sent back to a step. The same body from the same source always has the same id. */
 export function issueOf(source: string, title: string, body: string): Issue {
   const digest = createHash('sha1').update(`${source}\n${body}`).digest('hex').slice(0, 10);
@@ -111,7 +114,9 @@ export function composedReturn(documents: { kind: string; body: string }[]): str
   if (stored?.trim()) {
     return stored;
   }
-  const issues = ARTIFACTS.issues.parse(latest(ARTIFACTS.issues.kind) ?? '[]');
+  const issues = ARTIFACTS.issues
+    .parse(latest(ARTIFACTS.issues.kind) ?? '[]')
+    .filter((issue) => issue.source !== CI_INFRA_SOURCE);
   if (issues.length > 0) {
     return returnNotes(issues).body;
   }

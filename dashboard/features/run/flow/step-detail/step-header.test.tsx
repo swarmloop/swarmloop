@@ -51,6 +51,13 @@ describe('StepHeader', () => {
     expect(props.follow.current).toBe(true);
   });
 
+  it('labels the resume button with the label it is given', () => {
+    header({ onResume: vi.fn(), resumeLabel: 'Re-run CI' });
+
+    expect(screen.getByRole('button', { name: 'Re-run CI' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull();
+  });
+
   it('calls onReplay and onResume from their buttons', async () => {
     const user = userEvent.setup();
     const props = header({ onReplay: vi.fn(), onResume: vi.fn() });

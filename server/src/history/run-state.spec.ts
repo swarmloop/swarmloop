@@ -76,6 +76,8 @@ describe('blockCode', () => {
     expect(blockCode('pipeline', null)).toBe(REASON.loopLimit);
     expect(blockCode('prepare', 'x')).toBe(REASON.blocked);
     expect(blockCode('pipeline', 'CI_LOG_UNAVAILABLE: a failed job has no readable log')).toBe(REASON.ciLogUnavailable);
+    expect(blockCode('pipeline', 'CI_NOT_RUN: CI did not run lint')).toBe(REASON.ciNotRun);
+    expect(blockCode('pipeline', 'CI_TIMEOUT: lint timed out')).toBe(REASON.ciTimeout);
   });
 });
 
@@ -95,6 +97,8 @@ describe('actionsFor', () => {
     ['blocked', REASON.didNotFit, ['resume', 'replay']],
     ['blocked', REASON.loopLimit, ['resume', 'replay']],
     ['blocked', REASON.ciLogUnavailable, ['resume', 'replay']],
+    ['blocked', REASON.ciNotRun, ['resume', 'replay']],
+    ['blocked', REASON.ciTimeout, ['resume', 'replay']],
     ['blocked', REASON.blocked, ['replay']],
     ['blocked', null, ['replay']],
   ];

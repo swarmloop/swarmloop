@@ -38,6 +38,8 @@ interface GithubRun {
   status?: string;
   conclusion?: string | null;
   html_url?: string;
+  check_suite_id?: number;
+  message?: string;
 }
 
 export class GithubCodeHost extends AbstractCodeHost {
@@ -113,6 +115,54 @@ export class GithubCodeHost extends AbstractCodeHost {
       const response = await request(this.clock, url, headers, calls, { method: 'POST' });
       this.assertStatus(response, calls, 'github pipeline failed');
       return { httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async rerunFailedJobs(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root: api, headers } = this.credentials();
+      const url = `${api}/repos/${repoPath(project)}/actions/runs/${id}/rerun-failed-jobs`;
+      const response = await request(this.clock, url, headers, calls, { method: 'POST' });
+      this.assertStatus(response, calls, 'github pipeline failed');
+      return { httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async readRunNotes(project: string, id: number): Promise<{ notes: string; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root: api, headers } = this.credentials();
+      const repo = `${api}/repos/${repoPath(project)}`;
+      const failure = 'github pipeline failed';
+      const run = (await this.readJson(`${repo}/actions/runs/${id}`, headers, calls, undefined, failure)) as GithubRun;
+      const suite = (await this.readJson(
+        `${repo}/check-suites/${run.check_suite_id}/check-runs`,
+        headers,
+        calls,
+        undefined,
+        failure,
+      )) as { check_runs?: { id?: number }[] };
+      const notes: string[] = [];
+      for (const checkRun of suite.check_runs ?? []) {
+        const rows = await this.readJson(
+          `${repo}/check-runs/${checkRun.id}/annotations`,
+          headers,
+          calls,
+          undefined,
+          failure,
+        );
+        for (const row of Array.isArray(rows) ? (rows as { message?: string }[]) : []) {
+          if (row.message) {
+            notes.push(row.message);
+          }
+        }
+      }
+      return { notes: (notes.length > 0 ? notes.join(' ') : (run.message ?? '')).trim(), httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }
@@ -362,8 +412,15 @@ function asJob(row: unknown): PipelineJob | null {
   if (!job?.id) {
     return null;
   }
-  if (job.conclusion === 'failure' || job.conclusion === 'timed_out' || job.conclusion === 'cancelled') {
-    return { id: job.id, name: job.name ?? String(job.id), stage: '', status: 'failed', allowFailure: false };
+  const done: Record<string, string> = {
+    failure: 'failed',
+    timed_out: 'timed_out',
+    cancelled: 'canceled',
+    startup_failure: 'startup_failure',
+  };
+  const finished = job.conclusion ? done[job.conclusion] : undefined;
+  if (finished) {
+    return { id: job.id, name: job.name ?? String(job.id), stage: '', status: finished, allowFailure: false };
   }
   if (job.status && job.status !== 'completed') {
     return { id: job.id, name: job.name ?? String(job.id), stage: '', status: job.status, allowFailure: false };

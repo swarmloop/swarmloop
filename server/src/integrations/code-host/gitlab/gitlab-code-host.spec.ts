@@ -169,6 +169,34 @@ describe('gitlab host', () => {
     expect(JSON.stringify(result.httpCalls)).not.toContain(TOKEN);
   });
 
+  it('retries a pipeline', async () => {
+    const seen = mockFetch([{}]);
+    const result = await service().rerunFailedJobs('group/demo', 9);
+    expect(seen[0]?.method).toBe('POST');
+    expect(seen[0]?.url).toBe('https://gitlab.example/api/v4/projects/group%2Fdemo/pipelines/9/retry');
+    expect(JSON.stringify(result.httpCalls)).not.toContain(TOKEN);
+  });
+
+  it('reads the failure reason and yaml errors of a pipeline', async () => {
+    const seen = mockFetch([
+      { id: 9, failure_reason: 'config_error', yaml_errors: 'jobs:test config key may not be empty' },
+    ]);
+    const result = await service().readRunNotes('group/demo', 9);
+    expect(result.notes).toBe('config_error jobs:test config key may not be empty');
+    expect(seen[0]?.url).toBe('https://gitlab.example/api/v4/projects/group%2Fdemo/pipelines/9');
+  });
+
+  it('asks a canceled pipeline for the jobs that never started', async () => {
+    const seen = mockFetch([
+      [{ id: 9, status: 'canceled' }],
+      { id: 9, status: 'canceled' },
+      [{ id: 8, name: 'lint', stage: 'test', status: 'created' }],
+    ]);
+    const result = await service().readBranchPipeline({ project: 'group/demo', ref: 'feature/PROJ-1' });
+    expect(seen[2]?.url).toContain('scope%5B%5D=created');
+    expect(result.snapshot?.jobs.map((job) => job.status)).toEqual(['created']);
+  });
+
   it('lists a canceled job and reads its trace', async () => {
     const seen = mockFetch([
       [{ id: 9, status: 'canceled' }],
@@ -180,7 +208,7 @@ describe('gitlab host', () => {
     const result = await host.readBranchPipeline({ project: 'group/demo', ref: 'feature/PROJ-1' });
     expect(result.snapshot?.status).toBe('canceled');
     expect(result.snapshot?.jobs).toEqual([
-      { id: 7, name: 'unit', stage: 'test', status: 'failed', allowFailure: false },
+      { id: 7, name: 'unit', stage: 'test', status: 'canceled', allowFailure: false },
     ]);
     expect(seen[2]?.url).toContain('failed');
     expect(seen[2]?.url).toContain('canceled');

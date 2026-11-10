@@ -19,6 +19,7 @@ export function StepDetail({
   onReplay,
   runStatus,
   onResume,
+  resumeLabel,
   attempts,
 }: {
   runKey: string;
@@ -29,6 +30,7 @@ export function StepDetail({
   onReplay?: () => void;
   runStatus?: string;
   onResume?: () => void;
+  resumeLabel?: string;
   attempts: number;
 }): React.ReactElement | null {
   const { view, attempt, setAttempt, error, follow } = useStep(runKey, step, live, revision, attempts);
@@ -78,6 +80,7 @@ export function StepDetail({
         runStatus={runStatus}
         onReplay={onReplay}
         onResume={onResume}
+        resumeLabel={resumeLabel}
         view={view}
         attempt={attempt}
         setAttempt={setAttempt}

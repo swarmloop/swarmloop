@@ -5,7 +5,7 @@ import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-ho
 import type { RunRebase } from '../run-rebase';
 import type { StepContext } from '../base-step';
 import { git } from '../../git/git';
-import { checkedRepoNames, worktreePath } from '../../git/repo-names';
+import { checkedRepoNames, hasCi, worktreePath } from '../../git/repo-names';
 import { originProject, type Seen } from './pipeline-report';
 import { ARTIFACTS } from '../contract/artifacts';
 import { writeRunState } from '../../history/run-state';
@@ -109,4 +109,31 @@ async function changedWorktree(
     }
   }
   return null;
+}
+
+/** Repo names that have a workflow file and no run. Null when the repo list is missing. */
+export async function missingRuns(ctx: StepContext, root: string, seen: Seen[]): Promise<string[] | null> {
+  const lines = await ctx.reread(ARTIFACTS.repos);
+  if (!lines || lines.length === 0) {
+    return null;
+  }
+  let names: string[];
+  try {
+    names = checkedRepoNames(lines);
+  } catch {
+    return null;
+  }
+  const missing: string[] = [];
+  for (const name of names) {
+    const dir = worktreePath(root, ctx.opened.run.key, name);
+    if (!hasCi(dir)) {
+      continue;
+    }
+    const project = await originProject(dir);
+    const run = project ? seen.find((item) => item.project === project) : undefined;
+    if (!run || run.status === 'none') {
+      missing.push(name);
+    }
+  }
+  return missing;
 }

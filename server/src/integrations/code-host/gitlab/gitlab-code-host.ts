@@ -31,6 +31,8 @@ interface GitlabPipeline {
   sha?: string;
   status?: string;
   web_url?: string;
+  failure_reason?: string;
+  yaml_errors?: string;
 }
 
 interface GitlabJob {
@@ -159,6 +161,32 @@ export class GitlabCodeHost extends AbstractCodeHost {
       const response = await request(this.clock, url, headers, calls, { method: 'POST' });
       this.assertStatus(response, calls, 'gitlab pipeline failed');
       return { httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async rerunFailedJobs(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root: base, headers } = this.credentials();
+      const url = `${base}/api/v4/projects/${encodeURIComponent(project)}/pipelines/${id}/retry`;
+      const response = await request(this.clock, url, headers, calls, { method: 'POST' });
+      this.assertStatus(response, calls, 'gitlab pipeline failed');
+      return { httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async readRunNotes(project: string, id: number): Promise<{ notes: string; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root: base, headers } = this.credentials();
+      const url = `${base}/api/v4/projects/${encodeURIComponent(project)}/pipelines/${id}`;
+      const detail = (await this.readJson(url, headers, calls, undefined, 'gitlab pipeline failed')) as GitlabPipeline;
+      const notes = [detail.failure_reason, detail.yaml_errors].filter(Boolean).join(' ');
+      return { notes, httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }
@@ -319,7 +347,7 @@ function jobScopes(status: string): string[] | null {
     return ['failed'];
   }
   if (status === 'failed' || status === 'canceled') {
-    return ['failed', 'canceled'];
+    return ['failed', 'canceled', 'created', 'pending', 'waiting_for_resource'];
   }
   if (status === 'skipped' || status === 'manual' || status === '') {
     return null;
@@ -333,7 +361,7 @@ function asJob(row: unknown): PipelineJob | null {
     return null;
   }
   const canceled = job.status === 'canceled' || job.status === 'cancelled';
-  const status = canceled ? 'failed' : (job.status ?? 'failed');
+  const status = canceled ? 'canceled' : (job.status ?? 'failed');
   if (status === 'success' || status === 'skipped' || status === 'manual') {
     return null;
   }

@@ -31,6 +31,8 @@ export const REASON = {
   didNotFit: 'DID_NOT_FIT',
   loopLimit: 'LOOP_LIMIT',
   ciLogUnavailable: 'CI_LOG_UNAVAILABLE',
+  ciNotRun: 'CI_NOT_RUN',
+  ciTimeout: 'CI_TIMEOUT',
   blocked: 'BLOCKED',
   recovering: 'RECOVERING',
 } as const;
@@ -49,6 +51,8 @@ const RESUMABLE_BLOCKS: readonly string[] = [
   REASON.loopLimit,
   REASON.stopped,
   REASON.ciLogUnavailable,
+  REASON.ciNotRun,
+  REASON.ciTimeout,
   ERROR_CODES.DISK_LOW,
   ERROR_CODES.WORKSPACE_LOST,
   ERROR_CODES.BRANCH_IN_USE,

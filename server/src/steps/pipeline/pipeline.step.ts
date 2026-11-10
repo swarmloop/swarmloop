@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { StepKernel } from '../step-kernel';
 import { RunRebase } from '../run-rebase';
 import { RunStop } from '../../agent/run-stop';
-import { missingPipeline } from './missing-pipeline';
+import { missingPipeline, missingRuns } from './missing-pipeline';
 import { backToReview, staleGates } from './stale-gates';
 import { type SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
@@ -15,18 +15,18 @@ import type { StepName } from '../../contract/steps';
 import type { OpenedStep } from '../../steps/step-run';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import { FetchFailed, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
-import { returnNotes } from '../shared/handoff';
+import { CI_INFRA_SOURCE, issueOf, returnNotes } from '../shared/handoff';
 import { assertNotStopped } from '../shared/step-stopped';
-import { checkedRepoNames, hasCi, worktreePath } from '../../git/repo-names';
 import { BaseStep, type StepContext } from '../base-step';
 import {
   cancelErrorNote,
   ciResult,
+  classify,
   ciTitle,
   jobResults,
-  originProject,
   parsePipelineRefs,
   renderFail,
+  renderInfra,
   renderUnreadable,
   renderNone,
   renderPass,
@@ -36,9 +36,10 @@ import {
   verdictOf,
   type Verdict,
   failureIssues,
-  type Failure,
+  type InfraCode,
   type Seen,
 } from './pipeline-report';
+import { finishedRuns, readFailures, readNotes, rerunJobs } from './ci-host';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { ArtifactValue, InputSpec, Issue, Route, StepInput, StepResult } from '../contract/step-contract';
 
@@ -48,6 +49,9 @@ const INPUTS = {
   ciSkip: { artifact: ARTIFACTS.ciSkip, need: 'optional' },
   repos: { artifact: ARTIFACTS.repos, need: 'optional', late: true },
 } as const satisfies InputSpec;
+
+/** The pauses before the two automatic re-runs of a run whose jobs never ran. */
+const RERUN_PAUSES_MS = [60_000, 300_000];
 
 @Injectable()
 export class PipelineStep extends BaseStep<typeof INPUTS> {
@@ -83,33 +87,6 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     return { ...result, facts: { details: jobResults(watched.seen) } };
   }
 
-  /** Repo names that have a workflow file and no run. Null when the repo list is missing. */
-  private async missingRuns(ctx: StepContext, seen: Seen[]): Promise<string[] | null> {
-    const lines = await ctx.reread(ARTIFACTS.repos);
-    if (!lines || lines.length === 0) {
-      return null;
-    }
-    let names: string[];
-    try {
-      names = checkedRepoNames(lines);
-    } catch {
-      return null;
-    }
-    const missing: string[] = [];
-    for (const name of names) {
-      const dir = worktreePath(root(this.config), ctx.opened.run.key, name);
-      if (!hasCi(dir)) {
-        continue;
-      }
-      const project = await originProject(dir);
-      const run = project ? seen.find((item) => item.project === project) : undefined;
-      if (!run || run.status === 'none') {
-        missing.push(name);
-      }
-    }
-    return missing;
-  }
-
   private async watch(
     ctx: StepContext,
     records: PipelineRef[],
@@ -125,7 +102,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       awake.elapsedMs() < env.PIPELINE_TIMEOUT_MS &&
       (verdict === 'wait' || verdict === 'absent' || verdict === 'green')
     ) {
-      const missing = verdict === 'wait' ? null : await awake.run(() => this.missingRuns(ctx, seen));
+      const missing = verdict === 'wait' ? null : await awake.run(() => missingRuns(ctx, root(this.config), seen));
       if (verdict === 'green' && !(missing && missing.length > 0)) {
         break;
       }
@@ -180,6 +157,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     seen: Seen[],
     verdict: Verdict,
     host: CodeHost,
+    reruns = 0,
   ): Promise<StepResult> {
     const { opened, calls } = ctx;
     if (verdict === 'wait') {
@@ -195,7 +173,10 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       verdict = next;
     }
     if (verdict === 'red') {
-      return this.red(ctx, env, seen, host);
+      const cause = classify(seen);
+      return cause === 'failed'
+        ? this.red(ctx, env, seen, host)
+        : this.infra(ctx, env, records, seen, cause === 'timeout' ? 'CI_TIMEOUT' : 'CI_NOT_RUN', host, reruns);
     }
     if (verdict === 'stop') {
       return this.finish('failed', this.report(opened, stopLine(seen)), 'failed');
@@ -203,7 +184,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     if (verdict === 'manual') {
       return this.finish('waiting', this.report(opened, 'pipeline is manual'), 'waiting');
     }
-    const missing = await this.missingRuns(ctx, seen);
+    const missing = await missingRuns(ctx, root(this.config), seen);
     if (missing && missing.length > 0) {
       return missingPipeline({
         ctx,
@@ -233,6 +214,44 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     );
     const body = renderPass(seen, warnings);
     return this.finish('ok', this.report(opened, 'pipeline done', body), 'done', body);
+  }
+
+  /**
+   * A finished run with no failed job: the cause is on the CI side, so nothing goes to an agent.
+   * Its jobs are re-run after each pause of RERUN_PAUSES_MS, then the run is routed again; when the last one ends the same way the run blocks.
+   */
+  private async infra(
+    ctx: StepContext,
+    env: SwarmloopEnv,
+    records: PipelineRef[],
+    seen: Seen[],
+    code: InfraCode,
+    host: CodeHost,
+    reruns: number,
+  ): Promise<StepResult> {
+    const { opened, calls } = ctx;
+    const finished = finishedRuns(seen);
+    const pause = RERUN_PAUSES_MS[reruns];
+    const errors: string[] = [];
+    if (pause !== undefined) {
+      await delay(pause);
+      assertNotStopped(this.runStop, opened.run.key);
+      errors.push(...(await rerunJobs(host, finished, calls)));
+      if (errors.length === 0) {
+        const watched = await this.watch(ctx, records, env, host);
+        return this.route(ctx, env, records, watched.seen, watched.verdict, host, reruns + 1);
+      }
+    }
+    const notes = await readNotes(host, finished, calls);
+    const body = `${renderInfra(code, seen, notes)}${errors.map((error) => `rerun: ${error}\n`).join('')}`;
+    const result = this.finish(
+      'blocked',
+      this.report(opened, code === 'CI_TIMEOUT' ? 'CI timed out' : 'CI did not run', body),
+      'blocked',
+      body,
+    );
+    const issue = issueOf(CI_INFRA_SOURCE, code, body);
+    return { ...result, outputs: [...result.outputs, { artifact: ARTIFACTS.issues, value: [issue] }] };
   }
 
   private async cancelRunning(
@@ -302,7 +321,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     traces = true,
   ): Promise<StepResult> {
     const { opened, calls } = ctx;
-    const failures = traces ? await this.failures(seen, calls, host) : [];
+    // A run swarmloop canceled itself (it comes with a note) has canceled jobs that are its failure; otherwise only failed jobs are.
+    const counted = note ? ['failed', 'canceled', 'timed_out'] : ['failed'];
+    const failures = traces ? await readFailures(seen, calls, host, counted) : [];
     const unreadable = renderUnreadable(failures);
     if (unreadable) {
       return this.finish('blocked', this.report(opened, 'pipeline log unavailable', unreadable), 'blocked', unreadable);
@@ -331,41 +352,6 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     }
     const failed = seen.filter((item) => item.status === 'failed' || item.status === 'canceled');
     return failed.length > 0 && failed.every((item) => item.id !== null && lines.has(`pipeline: ${item.id}`));
-  }
-
-  private async failures(seen: Seen[], calls: HttpCallDraft[], host: CodeHost): Promise<Failure[]> {
-    const wanted = seen.flatMap((item) =>
-      (item.status !== 'failed' && item.status !== 'canceled') || item.id === null
-        ? []
-        : item.jobs
-            .filter((job) => job.status === 'failed' && !job.allowFailure)
-            .map((job) => ({ project: item.project, pipelineId: item.id as number, url: item.url, job })),
-    );
-    const loaded = await Promise.all(
-      wanted.map(async (item) => {
-        try {
-          const trace = await host.readJobTrace(item.project, item.job.id);
-          return { item, trace: trace.trace, calls: trace.httpCalls };
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'pipeline failed';
-          return { item, trace: '', unavailable: message, calls: error instanceof FetchFailed ? error.httpCalls : [] };
-        }
-      }),
-    );
-    const failures: Failure[] = [];
-    for (const row of loaded) {
-      calls.push(...row.calls);
-      failures.push({
-        project: row.item.project,
-        pipelineId: row.item.pipelineId,
-        name: row.item.job.name,
-        stage: row.item.job.stage,
-        url: row.item.url,
-        trace: row.trace,
-        ...(row.unavailable === undefined ? {} : { unavailable: row.unavailable }),
-      });
-    }
-    return failures;
   }
 
   private report(opened: OpenedStep, text: string, body = ''): string {

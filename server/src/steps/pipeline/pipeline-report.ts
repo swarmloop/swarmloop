@@ -173,6 +173,30 @@ export async function staleRepos(refBody: string | null, mounts: SandboxMount[])
   return lines;
 }
 
+const NOT_RUN = ['queued', 'pending', 'waiting', 'created', 'waiting_for_resource', 'canceled', 'startup_failure'];
+
+type CiCause = 'failed' | 'not-run' | 'timeout';
+export type InfraCode = 'CI_NOT_RUN' | 'CI_TIMEOUT';
+
+/** Why a finished run is red: a failed job (or no job to tell), jobs that never ran, or only timed-out jobs. */
+export function classify(seen: Seen[]): CiCause {
+  const statuses = seen.flatMap((item) => item.jobs.map((job) => job.status));
+  if (statuses.length === 0 || statuses.includes('failed')) {
+    return 'failed';
+  }
+  return statuses.some((status) => NOT_RUN.includes(status)) ? 'not-run' : 'timeout';
+}
+
+/** The pipeline log of a run that did not run its jobs: one line with the code, then one `job:` line per job. */
+export function renderInfra(code: InfraCode, seen: Seen[], notes: string): string {
+  const wanted = code === 'CI_TIMEOUT' ? ['timed_out'] : NOT_RUN;
+  const names = seen.flatMap((item) => item.jobs.filter((job) => wanted.includes(job.status)).map((job) => job.name));
+  const url = seen.find((item) => item.url)?.url ?? '';
+  const what = code === 'CI_TIMEOUT' ? `${names.join(', ')} timed out` : `CI did not run ${names.join(', ')}`;
+  const line = [`${code}: ${what}${notes ? `: ${notes}` : ''}`, url].filter(Boolean).join(' ');
+  return `${[line, ...names.map((name) => `job: ${name}`)].join('\n')}\n`;
+}
+
 /** The block text for failed jobs whose log could not be read, or null when every log was read. */
 export function renderUnreadable(failures: Failure[]): string | null {
   const lost = failures.filter((failure) => failure.unavailable !== undefined);
@@ -223,6 +247,9 @@ export function ciTitle(records: PipelineRef[]): string {
 export function ciResult({ seen, verdict }: { seen: Seen[]; verdict: string }): string {
   if (verdict === 'green') {
     return 'passed';
+  }
+  if (verdict === 'red' && classify(seen) !== 'failed') {
+    return `did not run: ${seen.find((item) => item.status === 'failed' || item.status === 'canceled')?.project ?? 'pipeline'}`;
   }
   const failed = seen.find((item) => item.status === 'failed');
   const job = failed?.jobs.find((item) => item.status === 'failed' && !item.allowFailure);
