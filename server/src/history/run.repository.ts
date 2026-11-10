@@ -108,6 +108,7 @@ export class RunRepository {
       stepStartedAt: null,
       parentRunId: null,
       taskId: null,
+      split: false,
     });
     return created;
   }
@@ -115,6 +116,11 @@ export class RunRepository {
   /** The waiting row of a subtask, linked to its parent in the same write that creates it. */
   async openSubtask(key: string, parentRunId: number, taskId: string): Promise<RunEntity> {
     return this.saveRun(Object.assign(this.newWaitingRun(key, null), { parentRunId, taskId }));
+  }
+
+  /** The waiting row of a new run that may split into subtasks. */
+  async openSplit(key: string): Promise<RunEntity> {
+    return this.saveRun(Object.assign(this.newWaitingRun(key, null), { split: true }));
   }
 
   async openWaiting(key: string, targetPath: string): Promise<RunEntity> {

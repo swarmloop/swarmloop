@@ -6,6 +6,7 @@ import type {
   FlowView,
   HistoryView,
   ProjectsView,
+  ProjectListView,
   ReadinessView,
   ReplayBody,
   RunRef,
@@ -35,7 +36,7 @@ export const getStep = (key: string, name: string): Promise<StepView> => api<Ste
 export const getStepEvents = (key: string, name: string | null, after: number): Promise<StepEventPage> =>
   api<StepEventPage>(`${run(key)}/events?${name === null ? '' : `step=${encodeURIComponent(name)}&`}after=${after}`);
 export const getHistory = (key: string): Promise<HistoryView> => api<HistoryView>(`${run(key)}/history`);
-export const listProjects = (): Promise<{ projects: string[] }> => api<{ projects: string[] }>('/checkouts/projects');
+export const listProjects = (): Promise<ProjectListView> => api<ProjectListView>('/checkouts/projects');
 export const getRunLog = (key: string, name: string): Promise<string | null> => runLog(key, name);
 
 export const createRun = (body: CreateRunBody): Promise<RunRef> => api<RunRef>('/runs', post(body));

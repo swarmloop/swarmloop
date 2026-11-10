@@ -94,6 +94,10 @@ export class RunEntity {
   /** The task id inside the parent's `subtasks` document. */
   @Column({ name: 'task_id', type: 'text', nullable: true })
   taskId!: string | null;
+
+  /** The planner may split this run into subtasks. Always false for a subtask. */
+  @Column({ type: 'boolean', default: false })
+  split!: boolean;
 }
 
 @Entity('documents')

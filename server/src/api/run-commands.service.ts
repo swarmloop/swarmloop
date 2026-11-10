@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 import { Clock } from '../core/clock';
+import { AppConfig } from '../config/env';
 import { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
@@ -54,6 +55,8 @@ export interface StartPlan {
   /** Set for a subtask: the run row is made with these two values. */
   parentRunId?: number;
   taskId?: string;
+  /** The planner may split the run into subtasks. Never set for a subtask. */
+  split?: boolean;
 }
 
 @Injectable()
@@ -68,6 +71,7 @@ export class RunCommandsService {
     private readonly prepare: PrepareStep,
     private readonly queries: RunQueriesService,
     private readonly clock: Clock,
+    private readonly config: AppConfig,
     @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
   ) {}
 
@@ -120,7 +124,7 @@ export class RunCommandsService {
     if (!path && projects.length === 0) {
       throw new BadRequestException('projects is missing');
     }
-    return { key, prompt, path, phases, phasesGiven: body.phases !== undefined, projects };
+    return { key, prompt, path, phases, phasesGiven: body.phases !== undefined, projects, split: this.splits(body) };
   }
 
   async start(body: CreateRunBody): Promise<RunRef> {
@@ -143,7 +147,7 @@ export class RunCommandsService {
       prompt: subtaskPrompt(task, requirementsBrief(requirements), branch),
       projects: storedProjects(parent.projects),
     });
-    return this.startPlanned({ ...plan, parentRunId: parent.id, taskId: task.id });
+    return this.startPlanned({ ...plan, split: false, parentRunId: parent.id, taskId: task.id });
   }
 
   /** Starts the planned run. `created` says the command path made the run row just now. */
@@ -153,6 +157,8 @@ export class RunCommandsService {
     if (!existing && plan.parentRunId !== undefined) {
       // The row only links the subtask to its parent; the run still starts as a new one.
       await this.runs.openSubtask(key, plan.parentRunId, plan.taskId ?? '');
+    } else if (!existing && plan.split && !path) {
+      await this.runs.openSplit(key);
     }
     if (!existing || (plan.phasesGiven && !this.runs.held(existing))) {
       await this.flows.noteFlow(key, phases, null);
@@ -278,6 +284,11 @@ export class RunCommandsService {
       family.map((run) => run.key),
     );
     return { key: session, run: await this.runs.findRun(session) };
+  }
+
+  /** A subtask never splits. A new run follows its checkbox, then the `SPLIT` default. */
+  private splits(body: CreateRunBody): boolean {
+    return body.split ?? this.config.env.SPLIT === 'auto';
   }
 
   private phases(input?: string[]): PhaseName[] {

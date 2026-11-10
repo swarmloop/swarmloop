@@ -1,0 +1,118 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\"prompt\":\"ship the field\"}\n",
+      "kind": "requirements"
+    },
+    {
+      "body": "billing-api\n",
+      "kind": "repos"
+    },
+    {
+      "body": "",
+      "kind": "questions"
+    }
+  ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "plan"
+    },
+    {
+      "kind": "input.received",
+      "step": "plan"
+    },
+    {
+      "kind": "session.changed",
+      "step": "plan"
+    },
+    {
+      "kind": "context.manifest",
+      "step": "plan"
+    },
+    {
+      "kind": "agent.launched",
+      "step": "plan"
+    },
+    {
+      "kind": "agent.finished",
+      "step": "plan"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "plan"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "plan"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "plan"
+    },
+    {
+      "kind": "handoff.sent",
+      "step": "plan"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "plan"
+    }
+  ],
+  "flows": [],
+  "loopEvents": [],
+  "reads": {
+    "plan": ["requirements", "questions", "answers", "repos", "handoff", "impact", "added_repos", "instructions:plan"]
+  },
+  "run": {
+    "agentCalls": 1,
+    "attemptsPipeline": 0,
+    "attemptsQa": 0,
+    "attemptsReview": 0,
+    "currentStep": "plan-improve",
+    "runtime": "cursor",
+    "spentUsd": 0.01,
+    "status": "waiting"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "{\n  \"prompt\": \"ship the field\",\n  \"plan\": {\n    \"name\": \"\",\n    \"overview\": \"\",\n    \"items\": [\n      \"Add the column - files: server/src/a.ts - proof: a.spec.ts \\\"reads it\\\"\",\n      \"Send it - files: server/src/b.ts - proof: b.spec.ts \\\"sends it\\\"\"\n    ],\n    \"decision\": null\n  }\n}\n",
+          "kind": "requirements"
+        },
+        {
+          "body": "[{\"id\":\"column\",\"title\":\"Add the column\",\"description\":\"Adds the column.\",\"depends\":[],\"files\":[\"server/src/a.ts\"],\"proof\":\"a.spec.ts \\\"reads it\\\"\",\"status\":\"pending\"},{\"id\":\"api\",\"title\":\"Send it\",\"description\":\"Sends it.\",\"depends\":[\"column\"],\"files\":[\"server/src/b.ts\"],\"proof\":\"b.spec.ts \\\"sends it\\\"\",\"status\":\"pending\"}]\n",
+          "kind": "subtasks"
+        },
+        {
+          "body": "- the column is called `split`",
+          "kind": "contract"
+        },
+        {
+          "body": "## plan\n- two parts\n",
+          "kind": "handoff"
+        }
+      ],
+      "exchanges": [
+        {
+          "chatId": "chat-1",
+          "model": "opus-5.5-extra-high",
+          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Plan\n\nThe requirements record is already in the prompt. The task is the Work tickets together with the Instructions. The Instructions add to the tickets. They do not replace them. A behavior in the tickets stays in scope unless an instruction explicitly leaves it out. Linked tickets are context. They can change how the task is done. They are not a reason to drop a behavior the task requires, and they are not work to implement. Every checklist item must still be this task. Do not add an item that belongs only to another ticket. The working directory is named at the top of this prompt, including whether it has source files. Read only that path, and only when it has source files. Do not search anywhere else.\n\nSplit the task into checklist items a later step can execute. When the requirement leaves a detail open, write one ordinary choice into the checklist. Do not search for it and do not ask.\n\nEach item is the smallest change that does the work. Keep to the structure and patterns already in the tree, and keep it clean, simple, and straightforward: DRY, KISS, SOLID. Favor clear, well-factored code over clever or cramped code: each function, module, and layer has one clear responsibility. Reach for an abstraction when it makes the code clearer and matches how the tree is already organized; do not add a file, helper, or layer that does not earn its place or that the task does not need. When a change leaves a component, file, export, import, comment, or commented-out code with no remaining use, remove that leftover in the same change. Keep the behavior complete and reliable: the cases the requirement names work, and errors are handled the way the tree already handles them. Cover the change with tests in the style the tree already uses.\n\nEach checklist item stays one `- item` line and ends with `files:` (the paths it changes) and `proof:` (the test or check that shows it is done), for example `- add X to Y - files: server/src/a.ts - proof: a.spec.ts \"adds X\"`.\n\nThe prompt may hold an `Impact` section: the capabilities the task touches, one `- <capability> | <file> | <status>` line each. Every `kept` capability that the checklist touches gets an item `- keep: <capability> - files: <paths> - proof: <test>`.\n\nA capability marked `removed` or `unreachable` that the requirements do not name in a `Removes` or `Behavior change` section, and that no answer confirmed, is not planned around silently. Stop and end with a `questions:` section in place of `plan:`, one line `- This change makes <capability> <unreachable|go away>. Is that intended?` per capability, then `summary:`. Dead code that nothing relies on is not a capability and raises no question.\n\nWrite the checklist with the plan tool. That is how a later pass replaces the plan. Do not edit source files. Do not run git. Do not implement the items.\n\nEnd the answer with these two sections and nothing after them. One item per line. The plan items match the plan tool. `summary` says why this checklist.\n\n```\nplan:\n- item\n\nsummary:\n- why\n```\n\n## Split\n\nThis section applies only because this run may split into subtasks.\n\nSplit by the amount of work, not by a count of tasks. Split only when the whole change is clearly more than one normal run of work, so that one implement pass would not finish it well, and it has parts that can each be built, reviewed and tested on their own. Each task is about one normal run of work. Do not split a change that one run can do, and do not cut a task so small that it is only one step of another. When you do not split, answer with `plan:` as above.\n\nWhen you split, do not write `plan:`. The server writes it from `tasks:`. End the answer with these three sections and nothing after them:\n\n```\ncontract:\n- a decision every subtask follows: names, interfaces, data shapes, files that one task creates and others use\n\ntasks:\n- <id> | <title> | depends: <ids or none> | files: <paths> | proof: <test or check>\n  what the task does, on an indented line\n\nsummary:\n- why\n```\n\nAn id is a short slug. `depends:` lists the ids of the tasks that must be done first, separated by commas, or `none`. A task has at least one proof. Do not make a cycle and do not name a task that is not in the list. Two tasks that can run at the same time must not change the same file unless one depends on the other. A file where tasks each add an entry (a registry or list such as module imports, the migrations index, route or step lists, `.env.example`, a README table) is shared: give the tasks that touch it a dependency between them.\n\nRequirements:\n{\"prompt\":\"ship the field\"}\n\n\nThe execution limits of this planning stage apply only to your current tools and actions. Do not copy these stage-local limits into the implementation checklist or turn them into project requirements. Plan the checks the change needs. Implementation uses its own execution environment to decide which commands can run locally. When revising an existing checklist, remove inherited planning-stage execution limits, but preserve explicit restrictions in the original task or later user instructions.",
+          "responseText": "contract:\n- the column is called `split`\n\ntasks:\n- column | Add the column | depends: none | files: server/src/a.ts | proof: a.spec.ts \"reads it\"\n  Adds the column.\n- api | Send it | depends: column | files: server/src/b.ts | proof: b.spec.ts \"sends it\"\n  Sends it.\n\nsummary:\n- two parts"
+        }
+      ],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": "plan",
+      "model": "opus-5.5-extra-high",
+      "resumed": false,
+      "status": "done",
+      "step": "plan",
+      "tokensIn": 10,
+      "tokensOut": 4,
+      "usd": 0.01
+    }
+  ]
+}

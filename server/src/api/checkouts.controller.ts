@@ -1,10 +1,15 @@
 import { BadRequestException, Body, Controller, Get, Post } from '@nestjs/common';
+import { AppConfig } from '../config/env';
+import type { ProjectListView } from '../contract/api';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { SwarmloopError } from '../core/swarmloop-error';
 
 @Controller('checkouts')
 export class CheckoutsController {
-  constructor(private readonly prepare: PrepareStep) {}
+  constructor(
+    private readonly prepare: PrepareStep,
+    private readonly config: AppConfig,
+  ) {}
 
   @Get()
   list(): Promise<{ clones: { name: string }[] }> {
@@ -12,9 +17,9 @@ export class CheckoutsController {
   }
 
   @Get('projects')
-  projects(): { projects: string[] } {
+  projects(): ProjectListView {
     try {
-      return this.prepare.listProjects();
+      return { ...this.prepare.listProjects(), split: this.config.env.SPLIT === 'auto' };
     } catch (error) {
       if (error instanceof SwarmloopError) {
         throw new BadRequestException(error.message);

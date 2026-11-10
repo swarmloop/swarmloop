@@ -3,8 +3,11 @@ export interface Subtask {
   id: string;
   title: string;
   description: string;
+  /** Ids of the tasks that must be done before this one starts. */
+  depends: string[];
   files: string[];
   proof: string;
+  status: 'pending';
 }
 
 /** The kinds a subtask reads from its parent: the task list, and the decisions that bind every subtask. */
@@ -17,7 +20,11 @@ export function parseSubtasks(body: string | null): Subtask[] {
   }
   try {
     const parsed: unknown = JSON.parse(body);
-    return Array.isArray(parsed) ? (parsed as Subtask[]) : [];
+    return Array.isArray(parsed)
+      ? (parsed as Partial<Subtask>[]).map(
+          (task) => ({ ...task, depends: task.depends ?? [], status: 'pending' }) as Subtask,
+        )
+      : [];
   } catch {
     return [];
   }

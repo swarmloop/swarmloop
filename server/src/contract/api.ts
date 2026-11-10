@@ -38,6 +38,12 @@ export interface LaunchView {
   createdAt: string;
 }
 
+/** The tasks that can start together once the layers before them are done. */
+export interface TaskLayer {
+  layer: number;
+  tasks: { id: string; title: string; files: string[]; proof: string }[];
+}
+
 export interface FlowView {
   key: string;
   name: string;
@@ -47,6 +53,8 @@ export interface FlowView {
   stepStartedAt: string | null;
   /** Set on a subtask only: the key of its parent run. */
   parentKey?: string;
+  /** The tasks of a split plan after plan-improve, by dependency layer. Missing when the run does not split. */
+  tasks?: TaskLayer[];
   resume: 'ready' | 'need-answers' | 'running' | 'blocked' | 'done';
   state: RunState;
   stateReason: StateReason | null;
@@ -184,6 +192,8 @@ export interface CreateRunBody extends CommandInput {
   path?: string;
   projects?: string[];
   phases?: string[];
+  /** May the planner split the run into subtasks. The server's `SPLIT` decides when it is missing. */
+  split?: boolean;
 }
 
 export interface StartStepBody extends CommandInput {
@@ -241,6 +251,12 @@ export interface SnapshotsView {
 
 export interface RewindView {
   step: string;
+}
+
+/** The projects a new run can use, and whether a new run may split by default (the server's `SPLIT`). */
+export interface ProjectListView {
+  projects: string[];
+  split?: boolean;
 }
 
 export interface ProjectsView {

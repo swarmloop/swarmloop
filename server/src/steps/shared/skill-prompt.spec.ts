@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { parseSummary, summaryOr } from './skill-prompt';
+import { parseSummary, skillPrompt, summaryOr } from './skill-prompt';
 
 const skill = (name: string): string => readFileSync(join(__dirname, '../../../../skills', name, 'SKILL.md'), 'utf8');
 
@@ -66,5 +66,15 @@ describe('impact skill rules', () => {
     expect(text).toContain('named in `Removes` or `Behavior change`');
     expect(text).toContain('name one broken behavior');
     expect(text).toContain('decision: return');
+  });
+});
+
+describe('split skill text', () => {
+  it.each(['plan', 'plan-improve'])('no split text when the run may not split (%s)', (name) => {
+    const plain = skillPrompt(name, '{}', ['api']);
+    expect(plain).not.toContain('## Split');
+    expect(plain).not.toContain('tasks:');
+    expect(skillPrompt(name, '{}', ['api'], [], [], { split: true })).toContain('## Split');
+    expect(plain).toBe(skillPrompt(name, '{}', ['api'], [], [], { split: false }));
   });
 });

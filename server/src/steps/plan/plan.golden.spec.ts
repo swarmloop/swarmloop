@@ -7,11 +7,12 @@ import { PlanStep } from './plan.step';
 
 const KEY = 'PROJ-40';
 
-async function plan(agent: jest.Mock, questions: string) {
+async function plan(agent: jest.Mock, questions: string, split = false) {
   const golden = await goldenApp('plan-golden', { agent, worktrees: [`${KEY}/billing-api`] });
   const seeded = await golden.runs.begin(KEY, 'plan');
   seeded.status = 'waiting';
   seeded.currentStep = 'plan';
+  seeded.split = split;
   await golden.runs.saveRun(seeded);
   await golden.seedDocuments.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
   await golden.seedDocuments.putDocument(seeded, 'repos', 'billing-api\n');
@@ -32,6 +33,22 @@ async function plan(agent: jest.Mock, questions: string) {
   return { golden, step };
 }
 
+const splitReply = result(
+  [
+    'contract:',
+    '- the column is called `split`',
+    '',
+    'tasks:',
+    '- column | Add the column | depends: none | files: server/src/a.ts | proof: a.spec.ts "reads it"',
+    '  Adds the column.',
+    '- api | Send it | depends: column | files: server/src/b.ts | proof: b.spec.ts "sends it"',
+    '  Sends it.',
+    '',
+    'summary:',
+    '- two parts',
+  ].join('\n'),
+);
+
 describe('plan step golden traces', () => {
   const written = result(['plan:', '- add the field', '- cover the empty case'].join('\n'));
   const scenarios: [string, jest.Mock, string][] = [
@@ -45,6 +62,16 @@ describe('plan step golden traces', () => {
     try {
       await step.execute(KEY);
       expectGolden(`plan.${name}`, await golden.trace(KEY, 'plan'));
+    } finally {
+      await golden.close();
+    }
+  });
+
+  it('split on: split-written', async () => {
+    const { golden, step } = await plan(jest.fn().mockResolvedValue(splitReply), '', true);
+    try {
+      await step.execute(KEY);
+      expectGolden('plan.split-written', await golden.trace(KEY, 'plan'));
     } finally {
       await golden.close();
     }

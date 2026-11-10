@@ -54,7 +54,7 @@ describe('NewRunDialog', () => {
   it('starts with all five phases checked', () => {
     render(<NewRunDialog open onClose={vi.fn()} />);
 
-    const phases = screen.getAllByRole('checkbox');
+    const phases = screen.getAllByRole('checkbox', { name: /^(?!May split)/ });
     expect(phases).toHaveLength(5);
     phases.forEach((phase) => expect(phase).toBeChecked());
   });
@@ -74,7 +74,25 @@ describe('NewRunDialog', () => {
       prompt: 'Ship it',
       phases: ['requirements', 'brainstorm', 'implementation', 'code-review'],
       projects: ['swarmloop'],
+      split: false,
     });
+  });
+
+  it('split checkbox default follows the server value', async () => {
+    vi.mocked(listProjects).mockResolvedValue({ projects: ['swarmloop'], split: true });
+    render(<NewRunDialog open onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'May split into subtasks' })).toBeChecked());
+  });
+
+  it('sends split in the payload', async () => {
+    const user = userEvent.setup();
+    render(<NewRunDialog open onClose={vi.fn()} />);
+    await user.click(screen.getByRole('checkbox', { name: 'May split into subtasks' }));
+    await user.type(screen.getByRole('textbox', { name: /Prompt/ }), 'Ship it');
+    await pickProject(user, 'swarmloop');
+    await user.click(screen.getByRole('button', { name: 'Start' }));
+
+    await waitFor(() => expect(createRun).toHaveBeenCalledWith(expect.objectContaining({ split: true })));
   });
 
   it('hands the prompt and phases to onSubmit instead of posting', async () => {

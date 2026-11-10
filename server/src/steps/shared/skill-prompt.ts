@@ -101,7 +101,7 @@ export function skillPrompt(
   names: string[],
   sections: { heading: string; body: string }[] = [],
   mounts: SandboxMount[] = [],
-  options: { deferExecutionRules?: boolean } = {},
+  options: { deferExecutionRules?: boolean; split?: boolean } = {},
 ): string {
   const file = join(__dirname, '../../../../skills', skill, 'SKILL.md');
   let text = '';
@@ -114,8 +114,19 @@ export function skillPrompt(
     mounts.length > 0
       ? workingDirectoryBlock(names, mounts)
       : ['Worktrees:', ...names.map((name) => `- ${name}`)].join('\n');
+  // The `## Split` section of a skill is for a run that may split. Any other run reads the text before it.
+  const skillText = options.split ? text : (text.split(/^## Split$/m)[0] ?? text);
   const executionRule = options.deferExecutionRules ? '' : LOCAL_RUN_RULE;
-  const parts = [where, '', executionRule, '', text.trimEnd(), '', 'Requirements:', requirementsBrief(requirements)];
+  const parts = [
+    where,
+    '',
+    executionRule,
+    '',
+    skillText.trimEnd(),
+    '',
+    'Requirements:',
+    requirementsBrief(requirements),
+  ];
   for (const section of sections) {
     parts.push('', `${section.heading}:`, section.body.trimEnd());
   }

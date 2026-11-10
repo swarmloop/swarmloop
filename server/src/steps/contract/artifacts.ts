@@ -1,6 +1,7 @@
 import { CODE_REVIEWERS, STEPS, type StepName } from '../../contract/steps';
 import { REBASE_CONFLICT, REBASE_JOURNAL } from '../../git/rebase';
 import type { Issue } from './step-contract';
+import { CONTRACT_KIND, SUBTASKS_KIND, type Subtask } from '../../contract/subtask';
 import { requirementsView } from '../../contract/requirements-view';
 import {
   artifact,
@@ -115,6 +116,17 @@ export const ARTIFACTS = {
   impact: artifact('impact', {
     writers: ['research'],
     readers: ['plan', 'plan-improve', 'code-review'],
+    summarize: firstLine,
+  }),
+  subtasks: artifact(SUBTASKS_KIND, {
+    writers: ['plan', 'plan-improve'],
+    readers: ['plan-improve', 'implement', 'implement-improve'],
+    codec: jsonArrayCodec<Subtask>(),
+    summarize: (tasks) => listSummary(tasks.length, 'tasks', tasks[0]?.title),
+  }),
+  contract: artifact(CONTRACT_KIND, {
+    writers: ['plan', 'plan-improve'],
+    readers: ['plan-improve', 'implement', 'implement-improve'],
     summarize: firstLine,
   }),
   pipelineRef: artifact('pipeline_ref', {

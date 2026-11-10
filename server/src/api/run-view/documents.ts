@@ -1,5 +1,9 @@
 import type { DocumentEntity } from '../../history/entities';
+import type { TaskLayer } from '../../contract/api';
+import { parseSubtasks, type Subtask } from '../../contract/subtask';
+import { readPlan } from '../../steps/plan/plan-record';
 import { composedReturn } from '../../steps/shared/handoff';
+import { latest } from './status';
 
 export function belongsToVisit(
   document: DocumentEntity,
@@ -88,4 +92,27 @@ function fileRow(
   body: string | null | undefined,
 ): { name: string; path: string; body: string | null } {
   return { name, path, body: encoding === 'base64' ? null : (body ?? null) };
+}
+
+/** The tasks plan-improve approved, by layer: a task is one layer below its deepest dependency. Empty for a run that does not split. */
+export function taskLayers(documents: DocumentEntity[]): TaskLayer[] {
+  if (readPlan(latest(documents, 'requirements'))?.decision !== 'approve') {
+    return [];
+  }
+  const tasks = parseSubtasks(latest(documents, 'subtasks'));
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  // The parser refuses a cycle, so the walk ends; `seen` only keeps a damaged document from looping.
+  const depth = (task: Subtask, seen: string[] = []): number => {
+    const known = task.depends.filter((id) => byId.has(id) && !seen.includes(id));
+    return known.length === 0 ? 0 : 1 + Math.max(...known.map((id) => depth(byId.get(id)!, [...seen, task.id])));
+  };
+  const layers = new Map<number, TaskLayer['tasks']>();
+  for (const task of tasks) {
+    const layer = depth(task);
+    layers.set(layer, [
+      ...(layers.get(layer) ?? []),
+      { id: task.id, title: task.title, files: task.files, proof: task.proof },
+    ]);
+  }
+  return [...layers.entries()].sort(([a], [b]) => a - b).map(([layer, group]) => ({ layer, tasks: group }));
 }

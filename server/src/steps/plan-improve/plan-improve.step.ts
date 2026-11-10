@@ -16,6 +16,7 @@ import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../sh
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { storedPlan } from '../step';
 import { parsePlan, readPlan, reviewedItems, withPlan } from '../plan/plan-record';
+import { parseTasks, planItemsFromTasks, splitAnswer, splitLimits, splitOutputs } from '../plan/plan-tasks';
 import { PLAN_IMPROVE_FOLLOW_UP } from './plan-improve.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 
@@ -24,6 +25,8 @@ const INPUTS = {
   repos: lateInput(ARTIFACTS.repos),
   impact: lateInput(ARTIFACTS.impact),
   addedRepos: lateInput(ARTIFACTS.addedRepos),
+  subtasks: lateInput(ARTIFACTS.subtasks),
+  contract: lateInput(ARTIFACTS.contract),
   instructions: instructionsInput('plan-improve'),
 } as const satisfies InputSpec;
 
@@ -31,7 +34,7 @@ const INPUTS = {
 export class PlanImproveStep extends AgentStep<typeof INPUTS> {
   readonly inputs = INPUTS;
   readonly name: StepName = 'plan-improve';
-  readonly outputs = [ARTIFACTS.requirements];
+  readonly outputs = [ARTIFACTS.requirements, ARTIFACTS.subtasks, ARTIFACTS.contract];
 
   constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
     super(kernel, sandbox, launcher);
@@ -67,22 +70,41 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
       this.profile(this.config.env).runtime,
     );
     const impact = await ctx.reread(ARTIFACTS.impact);
+    const limits = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);
+    const maySplit = limits.maySplit;
+    const tasks = maySplit ? ((await ctx.reread(ARTIFACTS.subtasks)) ?? []) : [];
+    const contract = tasks.length > 0 ? ((await ctx.reread(ARTIFACTS.contract)) ?? '') : '';
+    const splitSections =
+      tasks.length > 0
+        ? [
+            { heading: 'Contract', body: contract },
+            { heading: 'Tasks', body: JSON.stringify(tasks, null, 2) },
+          ]
+        : [];
     const full = skillPrompt(
       'plan-improve',
       input.requirements,
       names,
-      withImpact(withHandoff([{ heading: 'Plan', body: JSON.stringify(plan, null, 2) }], prior), impact),
+      withImpact(
+        withHandoff([{ heading: 'Plan', body: JSON.stringify(plan, null, 2) }, ...splitSections], prior),
+        impact,
+      ),
       mounts,
+      { split: maySplit },
     );
-    const chosen = continued?.chatId ? appendImpact(PLAN_IMPROVE_FOLLOW_UP, impact) : full;
+    const chosen = continued?.chatId && !maySplit ? appendImpact(PLAN_IMPROVE_FOLLOW_UP, impact) : full;
     const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));
     const agentResult = await ctx.launch({
       prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`,
       mounts,
       sections: ['plan'],
-      validate: (text) => parsePlan(text),
+      validate: (text) => (splitAnswer(text) ? parseTasks(text, limits) : parsePlan(text)),
     });
-    const items = reviewedItems(agentResult.responseText, agentResult.output ?? '');
+    // A split answer is written back as tasks. A plan answer turns a split back into one plan.
+    const graph = splitAnswer(agentResult.responseText) ? parseTasks(agentResult.responseText, limits) : null;
+    const items = graph
+      ? planItemsFromTasks(graph.tasks)
+      : reviewedItems(agentResult.responseText, agentResult.output ?? '');
     const next = { ...plan, items: items.length > 0 ? items : plan.items, decision: 'approve' as const };
     const summary = summaryOr(
       agentResult.responseText,
@@ -91,7 +113,10 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     return {
       route: { to: 'next' },
       summary: `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`,
-      outputs: [{ artifact: ARTIFACTS.requirements, value: withPlan(requirements, next) }],
+      outputs: [
+        { artifact: ARTIFACTS.requirements, value: withPlan(requirements, next) },
+        ...(tasks.length > 0 || graph ? splitOutputs(graph) : []),
+      ],
       handoff: summary,
     };
   }

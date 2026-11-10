@@ -14,6 +14,7 @@ import { StepDetail } from '../step-detail';
 import { WaitingPanel } from '../waiting-panel';
 import { RunDialogs } from './run-dialogs';
 import { RunHeader } from './run-header';
+import { TaskLayers } from './task-layers';
 
 export function RunScreen({ runKey }: { runKey: string }): ReactElement {
   const {
@@ -70,6 +71,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         onStop={() => setConfirmStop(true)}
       />
       <FlowBoard phases={phases} returns={flow.returns} selected={selected} onSelect={selectStep} />
+      {flow.tasks?.length ? <TaskLayers layers={flow.tasks} /> : null}
       {flow.status === 'waiting' || flow.status === 'blocked' || flow.status === 'failed' ? (
         <WaitingPanel flow={flow} onChange={applyWaiting} />
       ) : null}

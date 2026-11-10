@@ -32,7 +32,7 @@ import { parentLink } from './run-view/status';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
-import { belongsToVisit, documentView, filesOf, withReturnNotes } from './run-view/documents';
+import { belongsToVisit, documentView, filesOf, taskLayers, withReturnNotes } from './run-view/documents';
 import { visitKey } from '../contract/visit-key';
 import { launchView, liveVisit } from './run-view/live';
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
@@ -97,6 +97,7 @@ export class RunQueriesService {
     const state = await runState(this.commands, shown, open, documents);
     const maxReturns = this.config.env.MAX_RETURNS;
     const reportMs = await this.visits.codeReviewReportMs(run.id);
+    const tasks = taskLayers(documents);
     return {
       key: run.key,
       name: runName(run.key, run.prompt),
@@ -105,6 +106,7 @@ export class RunQueriesService {
       updatedAt: run.updatedAt,
       stepStartedAt: run.stepStartedAt,
       ...(await this.parentOf(run)),
+      ...(tasks.length > 0 ? { tasks } : {}),
       ...state,
       sentence: withSkip(
         sentence(shown, open, documents, stats, maxReturns),

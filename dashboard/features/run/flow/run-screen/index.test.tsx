@@ -48,6 +48,27 @@ describe('RunScreen', () => {
     expect(await screen.findByRole('link', { name: 'p-1' })).toHaveAttribute('href', '/runs/p-1');
   });
 
+  it('shows tasks after plan-improve', async () => {
+    const tasks = [
+      { layer: 0, tasks: [{ id: 'a', title: 'Add the column', files: ['a.ts'], proof: 'a.spec.ts' }] },
+      { layer: 1, tasks: [{ id: 'b', title: 'Send it', files: ['b.ts', 'c.ts'], proof: 'b.spec.ts' }] },
+    ];
+    vi.mocked(getFlow).mockResolvedValue(flowView({ tasks }));
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    const region = await screen.findByRole('region', { name: 'Tasks' });
+    expect(region).toHaveTextContent('Layer 1');
+    expect(region).toHaveTextContent('Add the column');
+    expect(region).toHaveTextContent('files: b.ts, c.ts · proof: b.spec.ts');
+  });
+
+  it('no block without subtasks', async () => {
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+    await screen.findByRole('heading', { name: 'Run one' });
+
+    expect(screen.queryByRole('region', { name: 'Tasks' })).not.toBeInTheDocument();
+  });
+
   it('shows no parent link on a run without a parent', async () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
     await screen.findByRole('heading', { name: 'Run one' });

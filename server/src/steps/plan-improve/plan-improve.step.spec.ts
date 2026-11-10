@@ -187,6 +187,98 @@ async function boot(root: string, agent: jest.Mock) {
     .compile();
 }
 
+const storedTasks = [
+  { id: 'column', title: 'Add the column', description: 'Adds it.', depends: [], files: ['a.ts'], proof: 'a.spec.ts' },
+  { id: 'api', title: 'Send it', description: 'Sends it.', depends: ['column'], files: ['b.ts'], proof: 'b.spec.ts' },
+].map((task) => ({ ...task, status: 'pending' }));
+
+const correctedReply = [
+  'contract:',
+  '- the column is called `split_on`',
+  '',
+  'tasks:',
+  '- column | Add the column | depends: none | files: a.ts | proof: a.spec.ts',
+  '  Adds it.',
+  '- api | Send it, and read it | depends: column | files: b.ts | proof: b.spec.ts',
+  '  Sends it.',
+  '',
+  'summary:',
+  '- fixed the contract',
+].join('\n');
+
+describe('plan-improve step with split', () => {
+  async function improveSplit(key: string, answer: string, options: { split?: boolean; tasks?: boolean } = {}) {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-split-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
+    const agent = jest.fn().mockResolvedValue(result(answer));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, key);
+      const runs = app.get(RunRepository);
+      const run = (await runs.findRun(key))!;
+      await runs.saveRun({ ...run, split: options.split ?? true });
+      if (options.tasks ?? true) {
+        const documents = app.get(DocumentRepository);
+        await documents.putDocument(run, 'subtasks', `${JSON.stringify(storedTasks)}\n`);
+        await documents.putDocument(run, 'contract', '- the column is called `split`\n');
+      }
+      const done = await app.get(PipelineService).step('plan-improve', key);
+      const documents = app.get(DocumentRepository);
+      return {
+        done,
+        agent,
+        run: await runs.findRun(key),
+        subtasks: await documents.latestBody(key, 'subtasks'),
+        contract: await documents.latestBody(key, 'contract'),
+        requirements: await documents.latestBody(key, 'requirements'),
+      };
+    } finally {
+      await app.close();
+    }
+  }
+
+  it('writes corrected subtasks and contract', async () => {
+    const out = await improveSplit('PROJ-90', correctedReply);
+    expect(out.done.exitCode).toBe(0);
+    const prompt = (out.agent.mock.calls[0]?.[0] as AgentRunInput).prompt;
+    expect(prompt).toContain('Tasks:');
+    expect(prompt).toContain('the column is called `split`');
+    expect(out.run?.currentStep).toBe('branch');
+    expect(out.contract).toContain('split_on');
+    expect(JSON.parse(out.subtasks ?? '[]')[1].title).toBe('Send it, and read it');
+    expect(JSON.parse(out.requirements ?? '{}').plan).toMatchObject({
+      decision: 'approve',
+      items: [
+        'Add the column - files: a.ts - proof: a.spec.ts',
+        'Send it, and read it - files: b.ts - proof: b.spec.ts',
+      ],
+    });
+  });
+
+  it('a split turned back into one plan writes an empty subtasks', async () => {
+    const out = await improveSplit('PROJ-91', ['plan:', '- add the field', '', 'summary:', '- one run'].join('\n'));
+    expect(out.done.exitCode).toBe(0);
+    expect(JSON.parse(out.subtasks ?? 'null')).toEqual([]);
+    expect(JSON.parse(out.requirements ?? '{}').plan.items).toEqual(['add the field']);
+  });
+
+  it('an invalid graph is a plan error and never reaches implement', async () => {
+    const out = await improveSplit('PROJ-92', correctedReply.replace('depends: none', 'depends: nope'));
+    expect(out.done.exitCode).toBe(1);
+    expect(out.done.message).toContain('task column depends on unknown task nope');
+    expect(out.run?.currentStep).toBe('plan-improve');
+    expect(JSON.parse(out.subtasks ?? '[]')).toEqual(storedTasks);
+  });
+
+  it('a run that does not split is unchanged', async () => {
+    const out = await improveSplit('PROJ-93', reply, { split: false, tasks: false });
+    expect(out.done.exitCode).toBe(0);
+    expect(out.subtasks).toBeFalsy();
+    expect((out.agent.mock.calls[0]?.[0] as AgentRunInput).prompt).not.toContain('## Split');
+  });
+});
+
 async function seed(app: Awaited<ReturnType<typeof boot>>, key: string): Promise<void> {
   const runs = app.get(RunRepository);
   const documents = app.get(DocumentRepository);

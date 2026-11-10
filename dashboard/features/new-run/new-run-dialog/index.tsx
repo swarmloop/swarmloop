@@ -2,10 +2,12 @@
 
 import { type ReactElement, useEffect, useRef, useState } from 'react';
 import Button from '@mui/material/Button';
+import Checkbox from '@mui/material/Checkbox';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { createRun, listProjects, setRunProjects, ticketKeys } from '../../../lib/endpoints';
@@ -48,6 +50,7 @@ export function NewRunDialog({
   const [picked, setPicked] = useState<PhaseName[]>(selected ?? DEFAULT_PHASES);
   const [available, setAvailable] = useState<string[]>(lockedProjects ?? []);
   const [pickedProjects, setPickedProjects] = useState<string[]>(lockedProjects ?? []);
+  const [split, setSplit] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -68,6 +71,7 @@ export function NewRunDialog({
         .then((body) => {
           setAvailable(body.projects);
           setPickedProjects([]);
+          setSplit(body.split ?? false);
         })
         .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'projects failed'));
       return;
@@ -166,8 +170,8 @@ export function NewRunDialog({
             onClose();
           }
         })
-      : createRun({ prompt: text, phases: chosen, projects: pickedProjects } satisfies CreateRunBody).then((body) =>
-          done(body.key),
+      : createRun({ prompt: text, phases: chosen, projects: pickedProjects, split } satisfies CreateRunBody).then(
+          (body) => done(body.key),
         );
     request
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'run failed'))
@@ -195,6 +199,12 @@ export function NewRunDialog({
           </Typography>
         ) : null}
         <PhasePicker picked={picked} frozen={frozen} setPicked={setPicked} />
+        {onSubmit ? null : (
+          <FormControlLabel
+            control={<Checkbox checked={split} onChange={(event) => setSplit(event.target.checked)} />}
+            label="May split into subtasks"
+          />
+        )}
         <ProjectPicker
           frozenProjects={frozenProjects}
           projectOptions={projectOptions}

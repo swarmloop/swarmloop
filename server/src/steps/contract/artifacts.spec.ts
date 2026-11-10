@@ -87,4 +87,11 @@ describe('artifact catalog', () => {
       }
     },
   );
+
+  it('subtasks and contract are registered', () => {
+    expect(ARTIFACTS.subtasks.kind).toBe('subtasks');
+    expect(ARTIFACTS.subtasks.writers).toEqual(['plan', 'plan-improve']);
+    expect(ARTIFACTS.contract.kind).toBe('contract');
+    expect(ARTIFACTS.contract.readers).toContain('implement');
+  });
 });
