@@ -56,6 +56,16 @@ function WorkLine({ work }: { work: AgentWork }): ReactElement {
   );
 }
 
+/** The role and tier of the step's agent, from the step descriptor. */
+export type AgentRole = { role?: 'plan' | 'implement' | 'review'; tier?: 'main' | 'subtask' };
+
+/** `role · runtime · model`, plus `subtask` for a run with a parent. */
+function agentLine(role: AgentRole | null, launched: { runtime: string; model: string }): string {
+  return [role?.role, launched.runtime, launched.model, role?.tier === 'subtask' ? 'subtask' : null]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 function WorkList({
   work,
   runtime,
@@ -87,7 +97,15 @@ function WorkList({
 }
 
 /** One launch of an agent: who ran and in what chat, the work it did, the raw log and the exchanges, and what it cost. */
-export function AgentCard({ bubble, agent }: { bubble: AgentBubble; agent: AgentLog | null }): ReactElement {
+export function AgentCard({
+  bubble,
+  agent,
+  role = null,
+}: {
+  bubble: AgentBubble;
+  agent: AgentLog | null;
+  role?: AgentRole | null;
+}): ReactElement {
   const { launched, finished, session, context, work } = bubble;
   const chat =
     launched.resumed || session?.session === 'same chat'
@@ -112,7 +130,7 @@ export function AgentCard({ bubble, agent }: { bubble: AgentBubble; agent: Agent
       detail={context ? <div>{contextText(context)}</div> : undefined}
       detailLabel="context"
     >
-      <div>{`${launched.model} · ${launched.runtime} · ${chat}`}</div>
+      <div>{`${agentLine(role, launched)} · ${chat}`}</div>
       <WorkList work={work} runtime={launched.runtime} ended={finished !== null} />
       {agent ? <AgentLogPanel agent={agent} tools={hasTools} /> : null}
     </Bubble>

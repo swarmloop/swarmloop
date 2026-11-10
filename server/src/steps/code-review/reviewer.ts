@@ -7,6 +7,7 @@ import type { SampleDraft } from '../../history/visit';
 import type { AgentRunResult } from '../../agent/agent-runner';
 import { resumableChat } from '../../agent/agent-session';
 import type { OpenedStep } from '../../steps/step-run';
+import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { reportFailure } from '../shared/step-failure';
 import { reviewContinue, reviewResume } from './code-review.prompts';
@@ -30,6 +31,7 @@ export interface Opinion {
 
 export interface Finished {
   reviewer: Reviewer;
+  runtime: RuntimeName;
   model: string;
   prompt: string;
   result: AgentRunResult | null;
@@ -51,11 +53,6 @@ export interface ReviewDeps {
   launcher: AgentLauncher;
 }
 
-/** The model every reviewer and the report run on. */
-export function reviewModel(env: SwarmloopEnv): string {
-  return env.MODEL_PLAN;
-}
-
 export const REVIEWERS: Reviewer[] = [...CODE_REVIEWERS.map((name) => ({ name, kind: REVIEWS.of(name) }))];
 
 export async function runJob(
@@ -65,6 +62,7 @@ export async function runJob(
   env: SwarmloopEnv,
   job: {
     reviewer: Reviewer;
+    runtime: RuntimeName;
     model: string;
     prompt: string;
     mounts: SandboxMount[];
@@ -78,7 +76,7 @@ export async function runJob(
   retry: boolean,
 ): Promise<Finished> {
   const step = `code-review-${job.reviewer.name}`;
-  const session = await resumableChat(deps.root, key, step, opened.run.runtime);
+  const session = await resumableChat(deps.root, key, step, job.runtime);
   const chosen =
     fresh || !session?.chatId
       ? job.prompt
@@ -91,7 +89,7 @@ export async function runJob(
     opened,
     key,
     env,
-    { reviewer: job.reviewer, model: job.model, prompt, mounts: job.mounts },
+    { reviewer: job.reviewer, runtime: job.runtime, model: job.model, prompt, mounts: job.mounts },
     auto,
     fresh,
   );
@@ -107,7 +105,7 @@ async function one(
   opened: OpenedStep,
   key: string,
   env: SwarmloopEnv,
-  job: { reviewer: Reviewer; model: string; prompt: string; mounts: SandboxMount[] },
+  job: { reviewer: Reviewer; runtime: RuntimeName; model: string; prompt: string; mounts: SandboxMount[] },
   auto?: boolean,
   fresh = false,
 ): Promise<Finished> {
@@ -120,11 +118,19 @@ async function one(
     refused = refusedWrite(result.output);
     const failure = agentFailure(result, 'code-review', 'ask');
     if (failure) {
-      return { reviewer: job.reviewer, model: job.model, prompt: job.prompt, result, error: failure };
+      return {
+        reviewer: job.reviewer,
+        runtime: job.runtime,
+        model: job.model,
+        prompt: job.prompt,
+        result,
+        error: failure,
+      };
     }
     const parsed = parseReview(result.responseText, result.output ?? '');
     return {
       reviewer: job.reviewer,
+      runtime: job.runtime,
       model: job.model,
       prompt: job.prompt,
       result,
@@ -132,7 +138,14 @@ async function one(
     };
   } catch (error) {
     const message = withRefusal(reportFailure('code-review', error, env).message, refused);
-    return { reviewer: job.reviewer, model: job.model, prompt: job.prompt, result: null, error: message };
+    return {
+      reviewer: job.reviewer,
+      runtime: job.runtime,
+      model: job.model,
+      prompt: job.prompt,
+      result: null,
+      error: message,
+    };
   }
 }
 
@@ -141,7 +154,7 @@ async function launchReview(
   opened: OpenedStep,
   key: string,
   env: SwarmloopEnv,
-  job: { reviewer: Reviewer; model: string; prompt: string; mounts: SandboxMount[] },
+  job: { reviewer: Reviewer; runtime: RuntimeName; model: string; prompt: string; mounts: SandboxMount[] },
   auto?: boolean,
   fresh = false,
 ): Promise<AgentRunResult> {
@@ -151,6 +164,7 @@ async function launchReview(
     key,
     step: `code-review-${job.reviewer.name}`,
     mode: 'ask',
+    runtime: job.runtime,
     model: job.model,
     timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
     prompt: job.prompt,

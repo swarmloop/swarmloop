@@ -1,3 +1,4 @@
+import { agentFor } from '../../config/agents';
 import { Injectable } from '@nestjs/common';
 import type {
   AgentProfile,
@@ -29,7 +30,7 @@ import type { RunEntity } from '../../history/entities';
 import { CheckoutService } from '../shared/checkout.service';
 import { requiredDocument } from '../step';
 import { reviewDiffSection, writeReviewDiff } from './review-diff';
-import { REVIEWERS, reviewModel } from './reviewer';
+import { REVIEWERS } from './reviewer';
 import {
   approvedPlan,
   detachForeign,
@@ -95,14 +96,17 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
 
   /** The angles one round runs, each with the model and mode of its launch. */
   reviewers(env: SwarmloopEnv): { name: string; model: string; mode: string }[] {
-    return CODE_REVIEWERS.map((name) => ({ name, model: reviewModel(env), mode: 'ask' }));
+    return CODE_REVIEWERS.map((name) => ({
+      name,
+      model: agentFor(env, null, `code-review-${name}`).model,
+      mode: 'ask',
+    }));
   }
 
   /** The launch that writes the report. The reviewers have their own, listed by `reviewers`. */
   private profile(env: SwarmloopEnv): AgentProfile {
     return {
-      runtime: env.RUNTIME,
-      model: reviewModel(env),
+      ...agentFor(env, null, 'code-review'),
       mode: 'ask',
       timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
       session: 'resume',
@@ -139,7 +143,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     if (ctx.options.path) {
       ctx.opened.run.targetPath = realpathSync(ctx.options.path);
     }
-    await this.sandbox.assertReady(env.RUNTIME);
+    await this.sandbox.assertReady(agentFor(env, ctx.opened.run, 'code-review').runtime);
     throw new VisitLeftOpen(await this.review(input.implementation, ctx, env));
   }
 

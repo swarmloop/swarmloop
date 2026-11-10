@@ -99,7 +99,16 @@ export interface VisitView {
 export interface StepDescriptor {
   name: string;
   kind: 'server' | 'agent';
-  agent?: { runtime: string; model: string; mode: string; timeLimitMs: number; session: 'resume' | 'fresh' };
+  agent?: {
+    runtime: string;
+    model: string;
+    mode: string;
+    timeLimitMs: number;
+    session: 'resume' | 'fresh';
+    /** The role the step's agent plays, and `subtask` for a run with a parent. */
+    role?: 'plan' | 'implement' | 'review';
+    tier?: 'main' | 'subtask';
+  };
   reviewers?: { name: string; model: string; mode: string }[];
 }
 

@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'fs';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { testEnv } from '../config/env.spec-helpers';
 import type { StepName } from '../contract/steps';
 import { GOLDEN_DIR } from '../testing/step-trace.spec-helpers';
 import { boot } from './prepare/prepare.step.spec-helpers';
@@ -57,7 +58,7 @@ describe('step descriptors', () => {
   it.each(MIGRATED)('%s declares the kinds its golden traces read, and a start guard no golden reads', (step) => {
     const described = app
       .get(StepRegistry)
-      .describe({} as never)
+      .describe(testEnv())
       .find((item) => item.name === (step as StepName));
     const declared = new Set(described?.inputs.map((input) => input.kind));
     const golden = goldenReads(step);
@@ -70,7 +71,7 @@ describe('step descriptors', () => {
   });
 
   it('lists the outputs of a step it migrated', () => {
-    const described = app.get(StepRegistry).describe({} as never);
+    const described = app.get(StepRegistry).describe(testEnv());
     const kinds = (step: string) => described.find((item) => item.name === step)?.outputs;
     expect(kinds('commit')).toEqual(['commit', 'pipeline_ref', 'ci_skip']);
     expect(kinds('pipeline')).toEqual(['pipeline_log', 'return', 'issues', 'pipeline_rebases']);

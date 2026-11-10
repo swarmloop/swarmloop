@@ -4,6 +4,7 @@ import type { StepName } from '../../contract/steps';
 import type { ErrorCategory } from '../../core/swarmloop-error';
 import type { PipelineResult } from '../../core/pipeline-result';
 import type { VisitDraft } from '../../history/visit';
+import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import type { Artifact } from './artifact';
 
 export type InputNeed = 'start' | 'run' | 'optional';
@@ -77,7 +78,7 @@ export interface StepCapabilities {
 }
 
 export interface AgentProfile {
-  runtime: string;
+  runtime: RuntimeName;
   model: string;
   mode: string;
   timeLimitMs: number;

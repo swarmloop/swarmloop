@@ -37,4 +37,19 @@ describe('VisitRepository', () => {
       await db.close();
     }
   });
+
+  it('records the runtime of the agent next to its model, and null for a visit that names none', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const run = await db.app.get(RunRepository).begin('run-1', 'code-review');
+      await visits.finishVisit(run, { ...repositoryVisit(), runtime: 'codex', model: 'gpt-6.1-sol' });
+      await visits.finishVisit(run, repositoryVisit());
+      const stats = await visits.listStats(run.id);
+      expect(stats.map((stat) => stat.runtime)).toEqual(['codex', null]);
+      expect(stats[0].model).toBe('gpt-6.1-sol');
+    } finally {
+      await db.close();
+    }
+  });
 });

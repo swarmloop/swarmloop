@@ -30,6 +30,27 @@ describe('AgentProcessRunner brief directory', () => {
   });
 });
 
+describe('AgentProcessRunner agent runtime', () => {
+  it('launches the runtime of the input with its own credential and egress hosts, not the one of RUNTIME', async () => {
+    const { spawn } = await start(
+      'other-runtime',
+      [{ chunks: [chatStream('chat-9')] }],
+      { resumeChatId: null, runtime: 'claude' },
+      { RUNTIME: 'cursor', CURSOR_API_KEY: 'cursor-key', ANTHROPIC_API_KEY: 'anthropic-key' },
+    );
+    const launch = spawn.mock.calls[0]?.[0] as {
+      runtime: string;
+      command: string[];
+      env: { name: string; value: string }[];
+      allowHosts: string[];
+    };
+    expect(launch.runtime).toBe('claude');
+    expect(launch.command[0]).toBe('claude');
+    expect(launch.env).toEqual([{ name: 'ANTHROPIC_API_KEY', value: 'anthropic-key' }]);
+    expect(launch.allowHosts).toContain('api.anthropic.com');
+  });
+});
+
 describe('AgentProcessRunner resume output', () => {
   it('returns only the new stream and keeps the previous transcript in the output file', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-agent-resume-'));
@@ -105,6 +126,7 @@ function input(root: string, outputFile: string, patch: Partial<AgentRunInput> =
     workspace: root,
     outputFile,
     sessionFile: join(root, 'data', 'run1-plan-session.json'),
+    runtime: 'cursor',
     model: 'm',
     agentCalls: 0,
     spentUsd: 0,
@@ -127,7 +149,6 @@ function config(root: string, patch: Partial<SwarmloopEnv> = {}): AppConfig {
       ANTHROPIC_API_KEY: 'test-key',
       MAX_AGENT_CALLS: 20,
       MAX_RUN_USD: 25,
-      MODEL_RESEARCH: 'm',
       MODEL_PLAN: 'm',
       MODEL_IMPLEMENT: 'm',
       SWARMLOOP_ROOT: root,
@@ -484,7 +505,7 @@ async function start(
   });
   const runner = new AgentProcessRunner(config(root, env), new SystemClock(), sandbox(spawn), stop);
   try {
-    const result = await runner.run(input(root, outputFile, patch));
+    const result = await runner.run(input(root, outputFile, { runtime: env.RUNTIME ?? 'cursor', ...patch }));
     return { result, spawn, outputFile, root };
   } finally {
     clock?.mockRestore();

@@ -1,3 +1,4 @@
+import { credentialFor, runtimesInUse } from '../config/agents';
 import { access, stat } from 'fs/promises';
 import { constants } from 'fs';
 import { join } from 'path';
@@ -6,7 +7,7 @@ import { AppConfig } from '../config/env';
 import type { ReadinessId, ReadinessItem, ReadinessView } from '../contract/api';
 import { FetchFailed } from '../core/swarmloop-error';
 import { root } from '../history/run-paths';
-import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
+import { runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { DiskGuard } from '../pipeline/disk-guard';
 import { imageName } from '../sandbox/image-resolver';
@@ -85,8 +86,7 @@ export class ReadinessService {
   }
 
   private async images(): Promise<Outcome> {
-    const { RUNTIME } = this.config.env;
-    const wanted = [agentImage(RUNTIME), imageName('egress')];
+    const wanted = [...runtimesInUse(this.config.env).map(agentImage), imageName('egress')];
     return worst(await Promise.all(wanted.map((image) => this.image(image))));
   }
 
@@ -194,23 +194,20 @@ export class ReadinessService {
     };
   }
 
+  /** The credential of every runtime a role names, one outcome each. */
   private modelCredential(): Outcome {
-    const env = this.config.env;
-    const runtime = runtimeFor(env.RUNTIME);
+    return worst(runtimesInUse(this.config.env).map((runtime) => this.runtimeCredential(runtime)));
+  }
+
+  private runtimeCredential(runtime: RuntimeName): Outcome {
     try {
-      const { name } = runtime.credential({
-        cursorKey: env.CURSOR_API_KEY,
-        anthropicKey: env.ANTHROPIC_API_KEY,
-        oauthToken: env.CLAUDE_CODE_OAUTH_TOKEN,
-        codexAuth: env.CODEX_AUTH,
-        codexApiKey: env.CODEX_API_KEY,
-      });
-      return ok(`${name} is set for ${env.RUNTIME}`);
+      const { name } = credentialFor(this.config.env, runtime);
+      return ok(`${name} is set for ${runtime}`);
     } catch (error) {
       return {
         status: 'fail',
         line: error instanceof Error ? error.message : String(error),
-        action: `set ${runtime.credentialNames.join(' or ')} in .env`,
+        action: `set ${runtimeFor(runtime).credentialNames.join(' or ')} in .env`,
       };
     }
   }

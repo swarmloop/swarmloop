@@ -8,7 +8,7 @@ import type { RunEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { root } from '../history/run-paths';
 import { RunRepository } from '../history/run.repository';
-import { modelForStep } from '../agent/spend';
+import { agentFor } from '../config/agents';
 import { CHAT_LOCK, chatLockBody } from '../pipeline/chat-lock';
 import { settleShell, shellHolding } from '../pipeline/shell-lock';
 import { ServiceContextService } from '../integrations/service-context';
@@ -49,7 +49,7 @@ export class ChatService {
       throw new BadRequestException('prompt is missing');
     }
     const env = this.config.env;
-    const model = modelForStep('implement', env);
+    const { runtime, model } = agentFor(env, found, 'chat');
     if (!model) {
       throw new BadRequestException('MODEL_IMPLEMENT is missing');
     }
@@ -67,13 +67,14 @@ export class ChatService {
       }
       locked = true;
       run = await this.take(run);
-      await this.sandbox.assertReady(env.RUNTIME);
+      await this.sandbox.assertReady(runtime);
       const result = await this.launcher.launch({
         root: root(this.config),
         run,
         key,
         step: 'chat',
         mode: 'agent',
+        runtime,
         model,
         timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
         prompt: await this.prompt(key, body.skill, prompt, mounts[0].hostPath, servers),

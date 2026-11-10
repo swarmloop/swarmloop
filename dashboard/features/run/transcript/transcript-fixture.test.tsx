@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { StepEvent } from '@contract/step-events';
@@ -7,6 +7,7 @@ import { getHistory } from '../../../lib/endpoints';
 import { historyView, visitView } from '../../../test/fixtures';
 import { QueryWrapper } from '../../../test/query-wrapper';
 import { commandEvents, stepEvent } from '../../../test/step-events';
+import type { AgentRole } from './agent-card';
 import { TranscriptFeed } from './transcript-feed';
 import { issueLinks } from './transcript-model';
 
@@ -141,8 +142,8 @@ function fixtureRun(): StepEvent[] {
   ];
 }
 
-function feed(events: StepEvent[]) {
-  return render(<TranscriptFeed runKey="run-1" events={events} issues={issueLinks(events)} />, {
+function feed(events: StepEvent[], role: AgentRole | null = null) {
+  return render(<TranscriptFeed runKey="run-1" events={events} issues={issueLinks(events)} role={role} />, {
     wrapper: QueryWrapper,
   });
 }
@@ -214,10 +215,18 @@ describe('the step window for a fixture run', () => {
     const user = userEvent.setup();
     feed(fixtureRun());
 
-    expect(screen.getByText('opus · claude · new chat: no stored chat')).toBeInTheDocument();
+    expect(screen.getByText('claude · opus · new chat: no stored chat')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Show context' }));
     expect(screen.getByText('Context: prompt 2.3k chars, requirements 0.4k, workspace: swarmloop')).toBeInTheDocument();
     expect(screen.getByText(/3k in · 900 out · \$0\.40/)).toBeInTheDocument();
+  });
+
+  it('names the role, runtime and model of the agent, and the subtask tier', () => {
+    feed(fixtureRun(), { role: 'review', tier: 'main' });
+    expect(screen.getByText('review · claude · opus · new chat: no stored chat')).toBeInTheDocument();
+    cleanup();
+    feed(fixtureRun(), { role: 'implement', tier: 'subtask' });
+    expect(screen.getByText('implement · claude · opus · subtask · new chat: no stored chat')).toBeInTheDocument();
   });
 
   it('lists the tool calls in order, eight first, and the rest on `show all`', async () => {

@@ -10,6 +10,7 @@ import type { AgentWork } from '../../contract/readable-log';
 import { outputFileFor } from '../../core/attempt-output';
 import { bindToStepScope, recordStepEvent } from '../../core/step-event-scope';
 import type { SandboxMount } from '../../core/sandbox-mount';
+import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import type { RunEntity } from '../../history/entities';
 import { sessionFileName } from '../../history/session-group';
 import { VisitRepository } from '../../history/visit.repository';
@@ -27,6 +28,7 @@ interface AgentLaunchRequest {
   key: string;
   step: string;
   mode: string;
+  runtime: RuntimeName;
   model: string;
   timeLimitMs: number;
   prompt: string;
@@ -100,10 +102,10 @@ export class AgentLauncher {
     const directory = join(request.root, 'data');
     mkdirSync(directory, { recursive: true });
     const sessionFile = join(directory, sessionFileName(request.key, request.step));
-    const stored = await readSession(sessionFile, request.run.runtime);
+    const stored = await readSession(sessionFile, request.runtime);
     const removed = chatStateRemoved(request.root, request.key, request.step, stored);
     const chatId = request.resume === false || removed ? null : (stored?.chatId ?? null);
-    const launch = { runtime: request.run.runtime, model: request.model, chatId, resumed: chatId !== null };
+    const launch = { runtime: request.runtime, model: request.model, chatId, resumed: chatId !== null };
     recordStepEvent({
       kind: 'session.changed',
       session: chatId === null ? 'new chat' : 'same chat',
@@ -131,6 +133,7 @@ export class AgentLauncher {
       workspace: request.workspace,
       outputFile: outputFileFor(request.root, request.key, request.step, request.run.activeAttempt),
       sessionFile,
+      runtime: request.runtime,
       model: request.model,
       agentCalls: request.run.agentCalls,
       spentUsd: request.run.spentUsd,

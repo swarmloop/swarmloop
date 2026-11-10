@@ -1,3 +1,4 @@
+import { roleOf } from '../config/agents';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { SwarmloopEnv } from '../config/env';
 import type { FlowItem, FlowView, StepView } from '../contract/api';
@@ -49,7 +50,12 @@ export async function stepMeta(
   const found = registry.describe(env).find((entry) => entry.name === step);
   return {
     descriptor: found
-      ? { name: found.name, kind: found.kind, agent: found.agent, reviewers: found.reviewers }
+      ? {
+          name: found.name,
+          kind: found.kind,
+          agent: found.agent && { ...found.agent, ...roleOf(run, name) },
+          reviewers: found.reviewers,
+        }
       : { name: step, kind: 'server' },
     eventsCursor: await log.lastSeq(run.id),
   };

@@ -193,7 +193,6 @@ export async function writeEnv(root: string, implementTimeout = 1800000): Promis
       'MERGE_REQUEST_TIMEOUT_MS=600000',
       'PIPELINE_TIMEOUT_MS=1800000',
       'PIPELINE_START_TIMEOUT_MS=180000',
-      'MODEL_RESEARCH=grok-4.7',
       'MODEL_PLAN=opus-5.5-extra-high',
       'MODEL_IMPLEMENT=grok-4.7',
       'SWARMLOOP_API_PORT=3920',

@@ -80,10 +80,14 @@ function emptyDays(from: string, to: string): Map<string, StatsDay> {
   return days;
 }
 
-/** Spend and tokens: in all, by run, by step and by model, and dollars on the day each step finished. */
-function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: number) {
+/**
+ * Spend and tokens: in all, by run, by step, by model and by agent, and dollars on the day each step finished.
+ * A step that recorded no runtime ran on the runtime of its run.
+ */
+function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: number, runtimes: Map<number, string>) {
   const totals = { usd: 0, tokensIn: 0, tokensOut: 0, agentMs: 0 };
   const byRun = new Map<number, { usd: number; tokens: number }>();
+  const byAgent = new Map<number, Map<string, { usd: number; tokens: number }>>();
   const bySteps = new Map<string, StatsShare>();
   const byModels = new Map<string, StatsShare>();
   for (const step of steps) {
@@ -93,6 +97,13 @@ function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: n
     totals.tokensOut += step.tokensOut;
     const run = byRun.get(step.runId) ?? { usd: 0, tokens: 0 };
     byRun.set(step.runId, { usd: run.usd + step.usd, tokens: run.tokens + tokens });
+    const runtime = step.runtime ?? runtimes.get(step.runId);
+    if (runtime !== undefined) {
+      const agents = byAgent.get(step.runId) ?? new Map<string, { usd: number; tokens: number }>();
+      const agent = agents.get(runtime) ?? { usd: 0, tokens: 0 };
+      agents.set(runtime, { usd: agent.usd + step.usd, tokens: agent.tokens + tokens });
+      byAgent.set(step.runId, agents);
+    }
     if (agentStep(step)) {
       totals.agentMs += step.durationMs;
       share(bySteps, step.step, step.usd, tokens);
@@ -105,7 +116,7 @@ function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: n
       day.usd += step.usd;
     }
   }
-  return { totals, byRun, steps: sortedShares(bySteps), models: sortedShares(byModels) };
+  return { totals, byRun, byAgent, steps: sortedShares(bySteps), models: sortedShares(byModels) };
 }
 
 /** Returns: by run, by reviewer (CI as `pipeline`), and on the day each happened. */
@@ -147,7 +158,7 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
   const firstDay = rows.firstRunAt === null ? to : [localDay(rows.firstRunAt, range.tzOffset), to].sort()[0];
   const from = range.days > 0 ? [shiftDay(to, 1 - range.days), firstDay].sort()[1] : firstDay;
   const days = emptyDays(from, to);
-  const spend = spendOf(rows.steps, days, range.tzOffset);
+  const spend = spendOf(rows.steps, days, range.tzOffset, new Map(rows.runs.map((run) => [run.id, run.runtime])));
   const returns = returnsOf(rows.loops, days, range.tzOffset);
 
   const agents = new Map<string, StatsShare>();
@@ -168,7 +179,10 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
     if (outcome === 'done' && durationMs > 0) {
       doneDurations.push(durationMs);
     }
-    share(agents, run.runtime, spent.usd, spent.tokens);
+    const used = new Map([[run.runtime, { usd: 0, tokens: 0 }], ...(spend.byAgent.get(run.id) ?? [])]);
+    for (const [runtime, agent] of used) {
+      share(agents, runtime, agent.usd, agent.tokens);
+    }
     const day = days.get(localDay(run.createdAt, range.tzOffset));
     if (day) {
       day[outcome] += 1;

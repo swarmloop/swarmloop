@@ -11,7 +11,7 @@ import type { StepEvent } from '@contract/step-events';
 import { clock } from '../../../lib/format';
 import { ActionCard } from './action-card';
 import { ActivityCard, ReadsCard } from './activity-card';
-import { AgentCard, KillCard } from './agent-card';
+import { AgentCard, KillCard, type AgentRole } from './agent-card';
 import type { AgentLog } from './agent-log';
 import { ArtifactCard } from './artifact-card';
 import { AttemptDivider } from './attempt-divider';
@@ -42,12 +42,14 @@ function Card({
   issues,
   attempt,
   agent,
+  role,
 }: {
   runKey: string;
   item: TranscriptItem;
   issues: IssueLinks;
   attempt: number;
   agent: AgentLog | null;
+  role: AgentRole | null;
 }): ReactElement | null {
   const { event } = item;
   if (item.reads) {
@@ -67,7 +69,7 @@ function Card({
     case 'activity.started':
       return item.activity ? <ActivityCard event={event} activity={item.activity} /> : null;
     case 'agent.launched':
-      return item.bubble ? <AgentCard bubble={item.bubble} agent={agent} /> : null;
+      return item.bubble ? <AgentCard bubble={item.bubble} agent={agent} role={role} /> : null;
     case 'agent.finished':
       return <KillCard event={event} />;
     case 'artifact.produced':
@@ -117,6 +119,7 @@ export function TranscriptFeed({
   events,
   issues = new Map(),
   agent = null,
+  role = null,
   live = false,
 }: {
   runKey: string;
@@ -124,6 +127,8 @@ export function TranscriptFeed({
   events: StepEvent[] | null;
   /** The log and the exchanges of the visit shown. They go into the card of its last agent launch. */
   agent?: AgentLog | null;
+  /** The role and tier of the step's agent, which its card names. */
+  role?: AgentRole | null;
   /** The issues of the whole run, so a card can link to the window the issue came from. */
   issues?: IssueLinks;
   /** Whether the step is still running, so the feed is still being added to. */
@@ -246,6 +251,7 @@ export function TranscriptFeed({
                     issues={issues}
                     attempt={group.number}
                     agent={item.event.eventId === lastLaunch ? agent : null}
+                    role={role}
                   />
                 </BubbleProvider>
               ))}

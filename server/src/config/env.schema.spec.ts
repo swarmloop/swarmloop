@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -54,7 +55,6 @@ const complete = {
   MERGE_REQUEST_TIMEOUT_MS: 600_000,
   PIPELINE_TIMEOUT_MS: 1_800_000,
   PIPELINE_START_TIMEOUT_MS: 180_000,
-  MODEL_RESEARCH: 'grok-4.7-high',
   MODEL_PLAN: 'grok-4.7-high',
   MODEL_IMPLEMENT: 'grok-4.7-high',
   SWARMLOOP_API_PORT: 3920,
@@ -130,6 +130,36 @@ describe('env schema', () => {
     expect(error).toBeUndefined();
     expect(value.CODEX_AUTH).toBe('');
     expect(value.CODEX_API_KEY).toBe('');
+  });
+
+  it('reads the agent roles and leaves them empty by default', async () => {
+    const plain = await compileWith(complete);
+    expect(plain.env).toMatchObject({
+      AGENTS_PLAN: '',
+      AGENTS_IMPLEMENT: '',
+      AGENTS_REVIEW: '',
+      AGENTS_SUBTASK_REVIEW: '',
+    });
+    const listed = await compileWith({
+      ...complete,
+      AGENTS_PLAN: 'claude:opus, codex:gpt',
+      AGENTS_SUBTASK_IMPLEMENT: 'cursor:grok-4.7-high',
+    });
+    expect(listed.env.AGENTS_PLAN).toBe('claude:opus, codex:gpt');
+    expect(listed.env.AGENTS_SUBTASK_IMPLEMENT).toBe('cursor:grok-4.7-high');
+  });
+
+  it('still loads an old file with MODEL_RESEARCH and warns that it was never read', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      await compileWith(complete);
+      expect(warn).not.toHaveBeenCalled();
+      const config = await compileWith({ ...complete, MODEL_RESEARCH: 'grok-4.7-high' });
+      expect(config.env.MODEL_PLAN).toBe('grok-4.7-high');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('MODEL_RESEARCH is set but was never read'));
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('keeps JIRA_PROJECTS optional and empty by default', async () => {

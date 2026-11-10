@@ -135,6 +135,9 @@ export class StepStatEntity {
   attempt!: number;
 
   @Column({ type: 'text', nullable: true })
+  runtime!: string | null;
+
+  @Column({ type: 'text', nullable: true })
   model!: string | null;
 
   @Column({ type: 'text', nullable: true })

@@ -104,6 +104,7 @@ export function StepDetail({
         visit={visit}
         logs={logs}
         document={document}
+        role={view.descriptor.agent}
       />
     </Paper>
   );

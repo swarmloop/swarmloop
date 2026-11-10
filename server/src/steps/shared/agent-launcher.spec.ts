@@ -11,6 +11,7 @@ import type { StepEvent } from '../../contract/step-events';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { runInStepScope } from '../../core/step-event-scope';
 import type { RunEntity } from '../../history/entities';
+import { sessionFileName } from '../../history/session-group';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { SandboxService } from '../../sandbox/sandbox.service';
 import { AgentLauncher } from './agent-launcher';
@@ -114,6 +115,7 @@ describe('AgentLauncher relaunch', () => {
         key: 'run1',
         step: 'implement',
         mode: 'agent',
+        runtime: 'cursor',
         model: 'm',
         timeLimitMs: 20_000,
         prompt: 'go',
@@ -192,6 +194,7 @@ describe('AgentLauncher parse retry', () => {
       key: 'run',
       step: 'implement',
       mode: 'agent',
+      runtime: 'cursor',
       model: 'm',
       timeLimitMs: 1,
       prompt: 'implement',
@@ -248,6 +251,7 @@ describe('AgentLauncher parse retry', () => {
       key: 'run',
       step: 'implement',
       mode: 'agent',
+      runtime: 'cursor',
       model: 'm',
       timeLimitMs: 1,
       prompt: 'a resumed implementation follow-up',
@@ -266,5 +270,70 @@ describe('AgentLauncher parse retry', () => {
     expect(prompts[1]).not.toContain('the full implementation prompt');
     expect(freshPrompts[1]).toContain('the full implementation prompt');
     expect(chatIds[1]).toBe('chat-1');
+  });
+});
+
+describe('AgentLauncher runtime of the agent', () => {
+  it('starts a new chat with the full brief when the stored chat belongs to another runtime than the step agent', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-agent-runtime-'));
+    mkdirSync(join(root, 'data', 'agent-state', 'run', 'review'), { recursive: true });
+    const file = join(root, 'data', sessionFileName('run', 'review'));
+    writeFileSync(file, JSON.stringify({ runtime: 'cursor', chatId: 'chat-1', usd: 0 }));
+    const runner = {
+      run: jest.fn().mockResolvedValue({
+        responseText: 'ok',
+        chatId: 'chat-2',
+        tokensIn: 0,
+        tokensOut: 0,
+        usd: 0,
+        killReason: null,
+        exitCode: 0,
+        resumed: false,
+        calls: 1,
+        samples: [],
+        durationMs: 0,
+        startedAt: '',
+        finishedAt: '',
+      }),
+    };
+    const events: StepEvent[] = [];
+    const scope = {
+      runId: 1,
+      attemptId: 'attempt-1',
+      step: 'implement' as const,
+      root,
+      clock: new FakeClock(),
+      sink: (event: StepEvent) => {
+        events.push(event);
+        return Promise.resolve();
+      },
+    };
+    const launcher = new AgentLauncher(runner as never, { tokenTotal: async () => 0 } as never, new RunStop());
+    const launch = (runtime: 'cursor' | 'claude') =>
+      runInStepScope(scope, 0, () =>
+        launcher.launch({
+          root,
+          run: { runtime: 'cursor', agentCalls: 0, spentUsd: 0 } as never,
+          key: 'run',
+          step: 'review',
+          mode: 'ask',
+          runtime,
+          model: 'm',
+          timeLimitMs: 1,
+          prompt: 'follow up',
+          freshPrompt: 'the full brief',
+          workspace: root,
+          mounts: [],
+        }),
+      );
+
+    await launch('claude');
+    expect(runner.run.mock.calls[0][0]).toMatchObject({ runtime: 'claude', resumeChatId: null });
+    expect(events).toContainEqual(
+      expect.objectContaining({ kind: 'session.changed', runtime: 'claude', reason: 'runtime changed' }),
+    );
+
+    await launch('cursor');
+    expect(runner.run.mock.calls[1][0]).toMatchObject({ runtime: 'cursor', resumeChatId: 'chat-1' });
   });
 });

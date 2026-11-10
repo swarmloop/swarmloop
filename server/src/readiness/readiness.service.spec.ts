@@ -161,6 +161,26 @@ describe('ReadinessService', () => {
     expect((await itemOf(setup({ CURSOR_API_KEY: '' }), 'model-credential')).status).toBe('fail');
   });
 
+  it('checks the credential of every runtime a role names, one line each', async () => {
+    expect(await itemOf(setup(), 'model-credential')).toMatchObject({
+      status: 'ok',
+      line: 'CURSOR_API_KEY is set for cursor',
+    });
+    const missing = await itemOf(setup({ AGENTS_REVIEW: 'claude:m' }), 'model-credential');
+    expect(missing).toMatchObject({
+      status: 'fail',
+      line: expect.stringContaining(
+        'CURSOR_API_KEY is set for cursor; ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is missing',
+      ),
+      action: expect.stringContaining('ANTHROPIC_API_KEY'),
+    });
+    const set = await itemOf(setup({ AGENTS_SUBTASK_REVIEW: 'claude:m', ANTHROPIC_API_KEY: 'k' }), 'model-credential');
+    expect(set).toMatchObject({
+      status: 'ok',
+      line: 'CURSOR_API_KEY is set for cursor; ANTHROPIC_API_KEY is set for claude',
+    });
+  });
+
   describe('code host token', () => {
     function answering(status: number): void {
       global.fetch = jest.fn(async (url: string, init?: { method?: string }) => {

@@ -12,7 +12,8 @@ import { EventRepository } from '../history/event.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { StepEventLog } from '../history/step-event.log';
 import { root } from '../history/run-paths';
-import { Charge, chargeStream, modelForStep } from '../agent/spend';
+import { agentFor } from '../config/agents';
+import { Charge, chargeStream } from '../agent/spend';
 import { loadPriceTable } from '../agent/prices';
 import { LiveHub } from '../live/live.hub';
 import { logStillOpen } from '../agent/live-output';
@@ -272,13 +273,14 @@ export class RunQueriesService {
     const attempt = parentRunning ? run.activeAttempt : (ownedStats.at(-1)?.attemptId ?? null);
     const raw = stepOutput(root(this.config), key, name, attempt);
     const env = this.config.env;
-    const model = modelForStep(name, env);
+    const agent = agentFor(env, run, name);
+    const model = agent?.model ?? null;
     let charge: Charge | null = null;
-    if (model && raw.trim() && raw !== 'waiting for output') {
+    if (agent && raw.trim() && raw !== 'waiting for output') {
       charge = chargeStream(
-        model,
+        agent.model,
         raw,
-        await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), env.RUNTIME, this.clock.now()),
+        await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), agent.runtime, this.clock.now()),
       );
     }
     const open = parentRunning && logStillOpen(raw);

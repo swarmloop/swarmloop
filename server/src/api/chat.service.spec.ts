@@ -152,7 +152,6 @@ function config(root: string): AppConfig {
       CODE_REVIEW_TIMEOUT_MS: 1000,
       MERGE_REQUEST_TIMEOUT_MS: 1000,
       PIPELINE_TIMEOUT_MS: 1000,
-      MODEL_RESEARCH: 'research-model',
       MODEL_PLAN: 'plan-model',
       MODEL_IMPLEMENT: 'implement-model',
     }),
