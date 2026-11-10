@@ -2,6 +2,7 @@
 
 import type { ReactElement } from 'react';
 import type { Route } from 'next';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import AddIcon from '@mui/icons-material/Add';
@@ -100,11 +101,26 @@ function DashboardFrame({
         }}
       >
         <Toolbar>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flexGrow: 1 }}>
-            <Box component="img" src="/logo.svg" alt="" width={36} height={36} sx={{ display: 'block' }} />
-            <Typography variant="h5" sx={{ fontFamily: 'var(--font-sans)' }}>
-              swarmloop
-            </Typography>
+          <Box sx={{ flexGrow: 1 }}>
+            <Box
+              component={Link}
+              href="/"
+              aria-label="swarmloop, overview"
+              sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 1.25,
+                color: 'inherit',
+                textDecoration: 'none',
+                borderRadius: 1,
+                '&:focus-visible': { outline: 2, outlineColor: 'primary.main', outlineOffset: 2 },
+              }}
+            >
+              <Box component="img" src="/logo.svg" alt="" width={36} height={36} sx={{ display: 'block' }} />
+              <Typography variant="h5" sx={{ fontFamily: 'var(--font-sans)' }}>
+                swarmloop
+              </Typography>
+            </Box>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mr: 2 }}>
             <Box

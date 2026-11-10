@@ -253,3 +253,72 @@ export interface ReadinessItem {
 export interface ReadinessView {
   items: ReadinessItem[];
 }
+
+/** How a run ended up, for the statistics: done, still going (running, waiting, stopped), or failed (failed, blocked). */
+export type RunOutcome = 'done' | 'active' | 'failed';
+
+/** One local day of the statistics range. Runs count by the day they started; spend and returns by the day they happened. */
+export interface StatsDay {
+  day: string;
+  done: number;
+  active: number;
+  failed: number;
+  usd: number;
+  returns: number;
+}
+
+/** Spend and tokens of one step, model or agent. `count` is visits for steps and models, runs for agents. */
+export interface StatsShare {
+  name: string;
+  usd: number;
+  tokens: number;
+  count: number;
+}
+
+export interface StatsRun {
+  key: string;
+  name: string;
+  status: string;
+  outcome: RunOutcome;
+  usd: number;
+  returns: number;
+  durationMs: number;
+  createdAt: string;
+}
+
+export interface StatsTotals {
+  runs: number;
+  done: number;
+  active: number;
+  failed: number;
+  usd: number;
+  tokensIn: number;
+  tokensOut: number;
+  /** Times a reviewer sent the work back to implementation. */
+  reviewReturns: number;
+  /** Times the CI pipeline sent the work back. */
+  pipelineReturns: number;
+  /** Done runs that never went back. */
+  firstPass: number;
+  /** Time the agents worked, summed over steps. */
+  agentMs: number;
+  /** Median working time of a done run; null without one. */
+  medianDoneMs: number | null;
+}
+
+/** The runs started from `from` to `to` (local days, inclusive) and everything they did. */
+export interface StatsView {
+  from: string;
+  to: string;
+  totals: StatsTotals;
+  days: StatsDay[];
+  steps: StatsShare[];
+  models: StatsShare[];
+  agents: StatsShare[];
+  /** Who sent work back: one reviewer per entry, and `pipeline` for CI. */
+  reasons: { name: string; returns: number }[];
+  /** How many runs went back 0, 1, 2, 3 and 4 or more times. */
+  returnsPerRun: { returns: string; runs: number }[];
+  /** Every run of the range, newest first. */
+  runs: StatsRun[];
+}

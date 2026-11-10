@@ -14,6 +14,7 @@ import { CheckoutsController } from './checkouts.controller';
 import { HealthController } from './health.controller';
 import { ReadinessController } from './readiness.controller';
 import { RunsController } from './runs.controller';
+import { StatsController } from './stats.controller';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
 import { RunRebaseService } from './run-rebase.service';
@@ -28,7 +29,7 @@ import { RunRebaseService } from './run-rebase.service';
     SandboxModule,
     ReadinessModule,
   ],
-  controllers: [HealthController, ReadinessController, RunsController, CheckoutsController],
+  controllers: [HealthController, ReadinessController, RunsController, CheckoutsController, StatsController],
   providers: [
     RunQueriesService,
     RunCommandsService,

@@ -5,6 +5,7 @@ import {
   getFlow,
   getHistory,
   getRunLog,
+  getStats,
   getStep,
   listProjects,
   listRuns,
@@ -31,6 +32,7 @@ describe('endpoints', () => {
     await getStep('run-1', 'code review');
     await getHistory('run-1');
     await listProjects();
+    await getStats(7, -60);
 
     expect(vi.mocked(api).mock.calls).toEqual([
       ['/runs'],
@@ -38,6 +40,7 @@ describe('endpoints', () => {
       ['/runs/run-1/steps/code%20review'],
       ['/runs/run-1/history'],
       ['/checkouts/projects'],
+      ['/stats?days=7&tz=-60'],
     ]);
   });
 

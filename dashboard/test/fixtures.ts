@@ -1,4 +1,4 @@
-import type { FlowView, HistoryView, RunSummary, StepView } from '@contract/api';
+import type { FlowView, HistoryView, RunSummary, StatsView, StepView } from '@contract/api';
 import { actionsFor } from '@contract/run-state';
 import type { RunState } from '@contract/run-state';
 import { visitKey } from '@contract/visit-key';
@@ -112,6 +112,91 @@ export function historyView(overrides: Partial<HistoryView> = {}): HistoryView {
     calls: [],
     samples: [],
     stats: [],
+    ...overrides,
+  };
+}
+
+export function statsView(overrides: Partial<StatsView> = {}): StatsView {
+  const day = (date: string, values: Partial<StatsView['days'][number]> = {}) => ({
+    day: date,
+    done: 0,
+    active: 0,
+    failed: 0,
+    usd: 0,
+    returns: 0,
+    ...values,
+  });
+  return {
+    from: '2026-11-08',
+    to: '2026-11-10',
+    totals: {
+      runs: 4,
+      done: 2,
+      active: 1,
+      failed: 1,
+      usd: 4.25,
+      tokensIn: 4500,
+      tokensOut: 400,
+      reviewReturns: 2,
+      pipelineReturns: 1,
+      firstPass: 1,
+      agentMs: 300_000,
+      medianDoneMs: 2_100_000,
+    },
+    days: [
+      day('2026-11-08', { done: 1, usd: 3, returns: 2 }),
+      day('2026-11-09'),
+      day('2026-11-10', { done: 1, active: 1, failed: 1, usd: 1.25, returns: 1 }),
+    ],
+    steps: [
+      { name: 'implement', usd: 2.75, tokens: 2700, count: 3 },
+      { name: 'plan', usd: 1, tokens: 1100, count: 1 },
+    ],
+    models: [{ name: 'model-a', usd: 3.75, tokens: 3300, count: 3 }],
+    agents: [{ name: 'claude', usd: 4, tokens: 3300, count: 2 }],
+    reasons: [
+      { name: 'quality', returns: 2 },
+      { name: 'pipeline', returns: 1 },
+    ],
+    returnsPerRun: [
+      { returns: '0', runs: 2 },
+      { returns: '1', runs: 1 },
+      { returns: '2', runs: 1 },
+      { returns: '3', runs: 0 },
+      { returns: '4+', runs: 0 },
+    ],
+    runs: [
+      {
+        key: 'run-d',
+        name: 'One pass',
+        status: 'done',
+        outcome: 'done',
+        usd: 0.25,
+        returns: 0,
+        durationMs: 600_000,
+        createdAt: '2026-11-10T09:00:00.000Z',
+      },
+      {
+        key: 'run-c',
+        name: 'Fix the bug',
+        status: 'waiting',
+        outcome: 'active',
+        usd: 1,
+        returns: 1,
+        durationMs: 0,
+        createdAt: '2026-11-10T08:00:00.000Z',
+      },
+      {
+        key: 'run-a',
+        name: 'Add a stats page',
+        status: 'done',
+        outcome: 'done',
+        usd: 3,
+        returns: 2,
+        durationMs: 3_600_000,
+        createdAt: '2026-11-08T10:00:00.000Z',
+      },
+    ],
     ...overrides,
   };
 }

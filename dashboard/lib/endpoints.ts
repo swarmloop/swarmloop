@@ -10,6 +10,7 @@ import type {
   ReplayBody,
   RunRef,
   RunsView,
+  StatsView,
   StepView,
   TicketKeysBody,
   TicketKeysView,
@@ -25,6 +26,9 @@ const post = (body?: unknown): RequestInit => ({
 
 export const getReadiness = (): Promise<ReadinessView> => api<ReadinessView>('/readiness');
 export const listRuns = (): Promise<RunsView> => api<RunsView>('/runs');
+/** The statistics of the runs started in the last `days` local days (0: all of them). `tz` is `getTimezoneOffset()`. */
+export const getStats = (days: number, tz: number): Promise<StatsView> =>
+  api<StatsView>(`/stats?days=${days}&tz=${tz}`);
 export const getFlow = (key: string): Promise<FlowView> => api<FlowView>(run(key));
 export const getStep = (key: string, name: string): Promise<StepView> => api<StepView>(step(key, name));
 /** The events of one step, or of every step of the run when `name` is null. */

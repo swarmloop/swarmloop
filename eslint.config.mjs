@@ -378,7 +378,7 @@ export default tseslint.config(
     settings: {
       'import/resolver': { node: { extensions: ['.js', '.ts', '.tsx'] } },
       'boundaries/elements': [
-        ...['shell', 'runs', 'run', 'new-run'].map((feature) => ({
+        ...['shell', 'runs', 'run', 'new-run', 'stats'].map((feature) => ({
           type: feature,
           pattern: `dashboard/features/${feature}/**`,
           mode: 'folder',
@@ -396,8 +396,8 @@ export default tseslint.config(
           default: 'disallow',
           rules: [
             {
-              from: ['shell', 'runs', 'run', 'new-run'],
-              allow: ['shell', 'runs', 'run', 'new-run', 'dashboard-lib', 'dashboard-ui', 'contract'],
+              from: ['shell', 'runs', 'run', 'new-run', 'stats'],
+              allow: ['shell', 'runs', 'run', 'new-run', 'stats', 'dashboard-lib', 'dashboard-ui', 'contract'],
             },
           ],
         },
@@ -412,7 +412,7 @@ export default tseslint.config(
         {
           patterns: [
             {
-              regex: '^(\\.\\.?/)+(?:features/)?(shell|runs|run|new-run)/',
+              regex: '^(\\.\\.?/)+(?:features/)?(shell|runs|run|new-run|stats)/',
               message: 'Import another feature through its index.ts.',
             },
             {

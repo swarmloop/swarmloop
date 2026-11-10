@@ -113,7 +113,7 @@ export class ReadinessService {
   private async diskSpace(): Promise<Outcome> {
     const minimum = this.config.env.MIN_FREE_GB;
     const free = (await this.disk.smallestFree()) / GB;
-    const line = `${free.toFixed(1)} GB free, MIN_FREE_GB=${minimum}`;
+    const line = `${free.toFixed(1)} GB free, a step needs ${minimum} GB (MIN_FREE_GB)`;
     if (free < minimum) {
       return { status: 'fail', line, action: 'free some disk space or lower MIN_FREE_GB' };
     }

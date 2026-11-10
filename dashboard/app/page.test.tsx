@@ -1,19 +1,26 @@
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { useRouter } from 'next/navigation';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReadinessProvider } from '../features/readiness';
 import { Shell } from '../features/shell';
-import { getReadiness } from '../lib/endpoints';
+import { getReadiness, getStats } from '../lib/endpoints';
+import { statsView } from '../test/fixtures';
 import { QueryWrapper } from '../test/query-wrapper';
 import HomePage from './page';
 
-vi.mock('../lib/endpoints', () => ({ getReadiness: vi.fn() }));
+vi.mock('../lib/endpoints', () => ({ getReadiness: vi.fn(), getStats: vi.fn() }));
 vi.mock('../lib/live', async () => (await import('../test/fake-socket')).fakeLive());
+vi.mock('next/navigation', () => ({ useRouter: vi.fn() }));
 
-function renderPage(onNewRun = vi.fn()): void {
+beforeEach(() => {
+  vi.mocked(useRouter).mockReturnValue({ push: vi.fn() } as unknown as ReturnType<typeof useRouter>);
+  vi.mocked(getStats).mockResolvedValue(statsView());
+});
+
+function renderPage(): void {
   render(
     <ReadinessProvider>
-      <Shell onNewRun={onNewRun}>
+      <Shell onNewRun={vi.fn()}>
         <HomePage />
       </Shell>
     </ReadinessProvider>,
@@ -22,30 +29,26 @@ function renderPage(onNewRun = vi.fn()): void {
 }
 
 describe('HomePage', () => {
-  it('disables New run and shows the action while an item fails', async () => {
+  it('spells out the action of a failing check', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [{ id: 'docker', status: 'fail', line: 'docker is not running', action: 'start Docker' }],
     });
     renderPage();
-    expect(await screen.findByText('start Docker')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'New run' })).toBeDisabled();
+    expect(await screen.findByText(/docker is not running/)).toHaveTextContent('start Docker');
+    expect(screen.getByText('A run cannot start yet')).toBeInTheDocument();
   });
 
-  it('keeps New run enabled when only warn items exist', async () => {
-    const onNewRun = vi.fn();
-    vi.mocked(getReadiness).mockResolvedValue({
-      items: [{ id: 'images', status: 'warn', line: 'not pulled yet', action: 'pulled on the first run' }],
-    });
-    renderPage(onNewRun);
-    await screen.findByText(/not pulled yet/);
-    await userEvent.setup().click(screen.getByRole('button', { name: 'New run' }));
-    expect(onNewRun).toHaveBeenCalled();
-  });
-
-  it('keeps New run enabled when the report cannot be read', async () => {
+  it('says why the checks are missing when the report cannot be read', async () => {
     vi.mocked(getReadiness).mockRejectedValue(new Error('boom'));
     renderPage();
-    await screen.findByText(/boom/);
-    expect(screen.getByRole('button', { name: 'New run' })).toBeEnabled();
+    expect(await screen.findByText(/boom/)).toBeInTheDocument();
+  });
+
+  it('shows the statistics under the checks', async () => {
+    vi.mocked(getReadiness).mockResolvedValue({ items: [] });
+    renderPage();
+    expect(screen.getByRole('heading', { name: 'Overview' })).toBeInTheDocument();
+    expect(screen.getByText(/No runs yet/)).toBeInTheDocument();
+    expect(await screen.findByLabelText('Runs: 4')).toBeInTheDocument();
   });
 });

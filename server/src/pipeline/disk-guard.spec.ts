@@ -4,7 +4,7 @@ import { AppConfig } from '../config/env';
 import { ERROR_CODES } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { DiskGuard } from './disk-guard';
+import { DiskGuard, dfAvailableBytes } from './disk-guard';
 import { ageRun, freshRun, leaveFiles, makeWorld, seedRun, type World } from './workspace.spec-helpers';
 
 const GB = 1024 ** 3;
@@ -106,5 +106,20 @@ describe('DiskGuard', () => {
     await expect(guard.pruneDocker()).resolves.toBeUndefined();
 
     expect(docker).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('dfAvailableBytes', () => {
+  it('reads the available column of df -Pk, whatever the filesystem name holds', () => {
+    const output = [
+      'Filesystem     1024-blocks      Used Available Capacity Mounted on',
+      '/proc/self/fd/3 482797652 462119252  20678400      96% /mnt/swarm loop',
+    ].join('\n');
+    expect(dfAvailableBytes(output)).toBe(20678400 * 1024);
+    expect(dfAvailableBytes('grpcfuse with spaces 100 40 60 40% /app/data')).toBe(60 * 1024);
+  });
+
+  it('returns null for output it does not know', () => {
+    expect(dfAvailableBytes('df: /nope: No such file or directory')).toBeNull();
   });
 });

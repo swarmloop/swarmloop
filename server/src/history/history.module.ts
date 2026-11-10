@@ -16,6 +16,7 @@ import { VisitRepository } from './visit.repository';
 import { FlowRepository } from './flow.repository';
 import { EventRepository } from './event.repository';
 import { CheckoutRepository } from './checkout.repository';
+import { StatsRepository } from './stats.repository';
 import { StepEventLog } from './step-event.log';
 
 /** A commit is copied into the database file. The default waits for 1000 pages, so a finished status stays only in the WAL. */
@@ -61,6 +62,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     CheckoutRepository,
     StepEventLog,
     CommandRepository,
+    StatsRepository,
   ],
   exports: [
     RunRepository,
@@ -71,6 +73,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     CheckoutRepository,
     StepEventLog,
     CommandRepository,
+    StatsRepository,
     TypeOrmModule,
   ],
 })

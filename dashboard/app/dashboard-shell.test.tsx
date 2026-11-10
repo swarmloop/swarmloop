@@ -50,6 +50,12 @@ describe('Shell', () => {
     expect(await screen.findByText('live')).toBeInTheDocument();
   });
 
+  it('links the logo and the name to the overview', async () => {
+    renderShell();
+
+    expect(await screen.findByRole('link', { name: 'swarmloop, overview' })).toHaveAttribute('href', '/');
+  });
+
   it('opens the new run dialog from the New run button', async () => {
     const user = userEvent.setup();
     renderShell();
