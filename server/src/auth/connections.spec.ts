@@ -158,7 +158,14 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     await makeApp();
     await signIn('alice');
     await signIn('bob');
-    const draft = { project: 'acme/site', source: 'feature', target: 'main', title: 'Title', summary: 'Body' };
+    const draft = {
+      project: 'acme/site',
+      source: 'feature',
+      target: 'main',
+      title: 'Title',
+      summary: 'Body',
+      draft: true,
+    };
     for (const [startedBy, token] of [
       ['alice', 'Bearer ghu_alice_1'],
       ['bob', 'Bearer ghu_bob_1'],
