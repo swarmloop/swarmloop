@@ -17,6 +17,7 @@ import { unanswered } from '../shared/answers';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { planFromAgent, planQuestions, readPlan, withPlan } from './plan-record';
 import { parseTasks, planItemsFromTasks, splitAnswer, splitLimits, splitOutputs, type TaskLimits } from './plan-tasks';
+import { withNamedFileLines } from './named-file-lines';
 import { planFollowUp, SUBTASK_DECIDES } from './plan.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 
@@ -77,9 +78,13 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     const prior = await ctx.reread(ARTIFACTS.handoff);
     const impact = await ctx.reread(ARTIFACTS.impact);
-    const sections = withContract(
-      withImpact(withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior), impact),
-      await this.parentContract(ctx.opened.run),
+    const sections = withNamedFileLines(
+      withContract(
+        withImpact(withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior), impact),
+        await this.parentContract(ctx.opened.run),
+      ),
+      [requirements, answers, prior, impact].join('\n'),
+      mounts,
     );
     const continued = await resumableChat(root(this.config), key, 'plan', this.profile(this.config.env).runtime);
     const limits = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);

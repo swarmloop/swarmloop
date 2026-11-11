@@ -190,6 +190,28 @@ describe('plan step', () => {
     }
   });
 
+  it('tells the first prompt the line count of a file the task names, and nothing when it names none', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-lines-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-49', 'billing-api'), { recursive: true });
+    writeFileSync(join(root, 'worktrees', 'PROJ-49', 'billing-api', 'core.ts'), 'a\nb\nc\n');
+    mkdirSync(join(root, 'worktrees', 'PROJ-50', 'billing-api'), { recursive: true });
+    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-49', '');
+      await putImpact(app, 'PROJ-49', '- core.ts: the field is read here\n');
+      await seed(app, 'PROJ-50', '');
+      await app.get(PipelineService).step('plan', 'PROJ-49');
+      await app.get(PipelineService).step('plan', 'PROJ-50');
+      expect((agent.mock.calls[0]?.[0] as AgentRunInput).prompt).toContain('core.ts: 3 lines');
+      expect((agent.mock.calls[1]?.[0] as AgentRunInput).prompt).not.toContain(' lines\n');
+      expect((agent.mock.calls[1]?.[0] as AgentRunInput).prompt).not.toContain('Named files');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('does not start the agent while questions are open', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-questions-'));
     await writeEnv(root);
