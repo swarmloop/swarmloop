@@ -37,3 +37,20 @@ export function snapshotOf(runs: PipelineRun[], checks: PipelineCheck[], awaitin
     awaiting,
   };
 }
+
+/** The newest row of each workflow: the one with the highest number. The rows keep their order. */
+export function newestPerWorkflow<T>(
+  rows: T[],
+  workflowOf: (row: T) => string | number,
+  numberOf: (row: T) => number,
+): T[] {
+  const newest = new Map<string | number, T>();
+  for (const row of rows) {
+    const key = workflowOf(row);
+    const held = newest.get(key);
+    if (held === undefined || numberOf(row) > numberOf(held)) {
+      newest.set(key, row);
+    }
+  }
+  return rows.filter((row) => newest.get(workflowOf(row)) === row);
+}

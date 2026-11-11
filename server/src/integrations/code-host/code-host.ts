@@ -99,6 +99,10 @@ export interface PipelineRun {
   status: string;
   url: string;
   jobs: PipelineJob[];
+  /** How many jobs the host lists for the run, when it was read. */
+  total?: number;
+  /** The host has accepted the run but not started it. */
+  queued?: boolean;
 }
 
 /** Every check on the head commit. `id`, `status`, `url` and `jobs` are the aggregate of `runs` and the app `checks`. */

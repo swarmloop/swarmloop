@@ -50,8 +50,9 @@ export class RunRebase {
   /** A reconciler resume of an unfinished journal is not a new command: it does not raise the generation. */
   async rebase(key: string, resume = false): Promise<'resume' | 'start'> {
     const run = await this.requireRun(key);
-    if (run.status !== 'failed' && run.status !== 'done' && run.status !== 'waiting' && !rebaseOffered(run)) {
-      throw new ConflictException(`${key} is ${run.status}`);
+    const { state, reason } = deriveState(run);
+    if (!actionsFor(state, reason?.code ?? null).includes('rebase')) {
+      throw new ConflictException(`${key} is ${state}`);
     }
     const status = run.status;
     if (!resume) {
@@ -174,10 +175,4 @@ export class RunRebase {
     if (!run) throw new NotFoundException(`${key} is missing`);
     return run;
   }
-}
-
-/** A run the dashboard offers Rebase to, such as a stopped one, is rebased too: one rule with `actionsFor`. */
-function rebaseOffered(run: RunEntity): boolean {
-  const { state, reason } = deriveState(run);
-  return actionsFor(state, reason?.code ?? null).includes('rebase');
 }
