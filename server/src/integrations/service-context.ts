@@ -66,7 +66,7 @@ export class ServiceContextService {
     if (!run?.codeHost) {
       return null;
     }
-    const host = this.registry.byName(run.codeHost);
+    const host = (await this.registry.forRun(run.startedBy, run.codeHost)).byName(run.codeHost);
     const body = await this.documents.latestBody(key, 'pipeline_ref');
     const lines: string[] = [];
     for (const ref of body ? pipelineRefs(body) : []) {

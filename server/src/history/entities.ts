@@ -1,3 +1,4 @@
+import { ConnectionEntity, HostAppEntity } from './connection-entities';
 import { Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('runs')
@@ -547,4 +548,6 @@ export const entities = [
   CommandEntity,
   RuntimeCooldownEntity,
   SessionEntity,
+  HostAppEntity,
+  ConnectionEntity,
 ];

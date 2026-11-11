@@ -144,7 +144,11 @@ describe('a return is one issue in two windows', () => {
       await pipeline.execute(KEY);
 
       const read = async (): Promise<StepEvent[]> =>
-        ((await (await fetch(`${app.url}/runs/${KEY}/events?limit=500`)).json()) as { events: StepEvent[] }).events;
+        (
+          (await (await fetch(`${app.url}/runs/${KEY}/events?limit=500`, { headers: app.auth })).json()) as {
+            events: StepEvent[];
+          }
+        ).events;
       const events = await read();
       const of = <K extends StepEvent['kind']>(kind: K) =>
         events.filter((event): event is Extract<StepEvent, { kind: K }> => event.kind === kind);
@@ -178,7 +182,9 @@ describe('a return is one issue in two windows', () => {
 
       expect(await read()).toEqual(events);
       for (const step of ['implement', 'pipeline']) {
-        const page = (await (await fetch(`${app.url}/runs/${KEY}/events?step=${step}&limit=500`)).json()) as {
+        const page = (await (
+          await fetch(`${app.url}/runs/${KEY}/events?step=${step}&limit=500`, { headers: app.auth })
+        ).json()) as {
           events: StepEvent[];
         };
         expect(page.events).toEqual(events.filter((event) => event.step === step));

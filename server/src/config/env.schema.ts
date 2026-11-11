@@ -89,6 +89,7 @@ export const envSchema = Joi.object({
       return value;
     }),
   SWARMLOOP_TOKEN: Joi.string().allow('').default(''),
+  SWARMLOOP_SECRET: Joi.string().allow('').default(''),
 }).messages({
   'any.required': '{{#label}} is missing',
   'any.only': '{{#label}} has unknown value {{#value}}',

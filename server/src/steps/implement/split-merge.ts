@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { settled, type Subtask } from '../../contract/subtask';
 import type { RunEntity } from '../../history/entities';
 import { FetchFailed, MergeConflict } from '../../core/swarmloop-error';
+import type { CodeHost } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { SubtaskOps, type SubtaskMergeRequest } from '../shared/subtask-ops';
 
@@ -22,6 +23,11 @@ export class SplitMerge {
     private readonly subtasks: SubtaskOps,
     private readonly hosts: CodeHostRegistry,
   ) {}
+
+  /** The host the person who started the run talks to. */
+  private async hostOf(parent: RunEntity): Promise<CodeHost> {
+    return (await this.hosts.forRun(parent.startedBy, parent.codeHost)).byName(parent.codeHost);
+  }
 
   async run(parent: RunEntity, tasks: Subtask[]): Promise<MergeOutcome> {
     let current = tasks;
@@ -51,7 +57,7 @@ export class SplitMerge {
     const merged = { ...task.merged };
     try {
       for (const request of requests.filter((item) => !(item.repo in merged))) {
-        const seen = await this.hosts.byName(parent.codeHost).readMergeRequest(request.project, request.iid);
+        const seen = await (await this.hostOf(parent)).readMergeRequest(request.project, request.iid);
         merged[request.repo] = seen.state === 'merged' ? (seen.sha ?? '') : await this.mergeOne(parent, request);
       }
     } catch (error) {
@@ -66,14 +72,14 @@ export class SplitMerge {
     }
     const branch = await this.subtasks.branchOf(child);
     for (const request of requests) {
-      await this.hosts.byName(parent.codeHost).deleteBranch(request.project, branch);
+      await (await this.hostOf(parent)).deleteBranch(request.project, branch);
     }
     await this.subtasks.fastForward(parent);
     return { done: { ...task, status: 'merged', merged, note: undefined }, refusal: null };
   }
 
   private async mergeOne(parent: RunEntity, request: SubtaskMergeRequest): Promise<string> {
-    return (await this.hosts.byName(parent.codeHost).mergeMergeRequest(request.project, request.iid)).sha;
+    return (await (await this.hostOf(parent)).mergeMergeRequest(request.project, request.iid)).sha;
   }
 
   /** An open task whose merge request conflicts after a merge is sent a Rebase. A green one finds out when its own merge is refused. */
@@ -81,7 +87,7 @@ export class SplitMerge {
     for (const task of tasks.filter((item) => !settled(item) && item.status !== 'green')) {
       const child = await this.subtasks.find(parent, task.id);
       for (const request of child ? await this.subtasks.mergeRequests(child) : []) {
-        if ((await this.hosts.byName(parent.codeHost).readMergeRequest(request.project, request.iid)).conflicts) {
+        if ((await (await this.hostOf(parent)).readMergeRequest(request.project, request.iid)).conflicts) {
           await this.subtasks.rebase(child as RunEntity);
           break;
         }

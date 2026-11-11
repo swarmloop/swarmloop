@@ -33,4 +33,8 @@ describe('bindRefusal', () => {
     expect(bindRefusal(env('0.0.0.0', 'https://panel.example', github))).toBeNull();
     expect(bindRefusal(env('0.0.0.0', 'https://panel.example', { GITHUB_OAUTH_CLIENT_ID: 'id' }))).not.toBeNull();
   });
+
+  it('lets any host start when Connect has stored an app', () => {
+    expect(bindRefusal(env('0.0.0.0', 'https://panel.example'), true)).toBeNull();
+  });
 });

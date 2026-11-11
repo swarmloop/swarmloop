@@ -19,6 +19,7 @@ import { writeRunState } from '../history/run-state';
 import { MergeRequestDrafts } from './merge-request/merge-request-draft';
 import { runJournal } from './shared/rebase-journal';
 import type { RebaseJournal } from '../git/rebase';
+import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 
 /** The steps that read a review or a CI result. */
 const AFTER_REVIEW: readonly string[] = ['commit', 'merge-request', 'pipeline'];
@@ -42,6 +43,7 @@ export class RunRebase {
     private readonly clock: Clock,
     private readonly environments: RunRebaseEnvironment,
     private readonly drafts: MergeRequestDrafts,
+    private readonly registry: CodeHostRegistry,
   ) {}
 
   /** A reconciler resume of an unfinished journal is not a new command: it does not raise the generation. */
@@ -137,7 +139,7 @@ export class RunRebase {
       prompt: run.prompt,
       denied: await this.checkouts.listDenyPaths(),
       message: commitMessage(run.key, summary),
-      hosts: { ...this.config.env, clock: this.clock },
+      hosts: { ...this.config.env, ...(await this.registry.tokensFor(run.startedBy, run.codeHost)), clock: this.clock },
       journal,
       onBase: (repo, sha) => {
         bases.set(repo, sha);

@@ -12,7 +12,7 @@ import { gitAt, status, Tree } from './commit-git';
 import { checkedRepoNames } from '../../git/repo-names';
 import { RunStop } from '../../agent/run-stop';
 import { assertNotStopped } from '../shared/step-stopped';
-import { RebasedPublisher } from '../shared/rebased-publisher';
+import { RebasedPublisher, type PublishedBy } from '../shared/rebased-publisher';
 import { BaseStep, StepContext } from '../base-step';
 import {
   allowedPaths,
@@ -87,8 +87,8 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
       `Commit ${planned.length} files`,
       () =>
         rerun
-          ? this.republish(trees, branch, opened.run.codeHost, heads)
-          : this.publish(trees, planned, branch, message, opened.run.codeHost),
+          ? this.republish(trees, branch, opened.run, heads)
+          : this.publish(trees, planned, branch, message, opened.run),
       () => message.split('\n')[0],
     );
     const listed = planned.length > 0 ? renderPaths(planned).trimEnd() : '';
@@ -211,17 +211,17 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     planned: PlannedPath[],
     branch: string,
     message: string,
-    codeHost: string,
+    run: PublishedBy,
   ): Promise<boolean> {
     const denied = await this.checkouts.listDenyPaths();
     const pushed = await Promise.all(
-      trees.map((tree) => this.publishTree(tree, planned, branch, message, denied, codeHost)),
+      trees.map((tree) => this.publishTree(tree, planned, branch, message, denied, run)),
     );
     return pushed.some(Boolean);
   }
 
   /** Start CI again on a clean tree: push an unpublished HEAD, else push an empty commit. Fills `heads` with `<repo> <head>` per pushed repo. */
-  private async republish(trees: Tree[], branch: string, codeHost: string, heads: string[]): Promise<boolean> {
+  private async republish(trees: Tree[], branch: string, run: PublishedBy, heads: string[]): Promise<boolean> {
     for (const tree of trees) {
       const cwd = tree.path;
       const origin = await originUrl(cwd, tree.repo, 'origin failed');
@@ -236,7 +236,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
           'commit failed',
         );
       }
-      await this.publisher.pushRef(tree, branch, published, codeHost, origin);
+      await this.publisher.pushRef(tree, branch, published, run, origin);
       heads.push(`${tree.repo} ${await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed')}`);
     }
     return heads.length > 0;
@@ -248,7 +248,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     branch: string,
     message: string,
     denied: string[],
-    codeHost: string,
+    run: PublishedBy,
   ): Promise<boolean> {
     const cwd = tree.path;
     const wanted = new Set(planned.filter((item) => item.repo === tree.repo).map((item) => item.path));
@@ -271,6 +271,6 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
       return false;
     }
     const published = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch}`);
-    return this.publisher.pushRef(tree, branch, published, codeHost, origin);
+    return this.publisher.pushRef(tree, branch, published, run, origin);
   }
 }

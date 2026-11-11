@@ -484,7 +484,7 @@ describe('a new run', () => {
     try {
       const response = await fetch(`${app.url}/runs`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { ...app.auth, 'content-type': 'application/json' },
         body: JSON.stringify({ key: 'PROJ-301', prompt: 'Ship it', projects: ['demo'] }),
       });
       expect(response.status).toBe(202);

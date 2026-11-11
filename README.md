@@ -79,7 +79,9 @@ The repository list is every git clone in `CHECKOUTS_ROOT`, the folder you set i
 
 ### 🚢 Commit, merge request, and CI
 
-Add a git token to `.env` and run `docker compose up -d` again. This time leave **ci** ticked. When the reviewers pass, the server pushes a feature branch, opens a merge request, and watches the pipeline. Nobody has to click in between.
+Start: `docker compose up -d`, open the dashboard, then **Connect GitHub** (a GitHub App made from a manifest) or **Connect GitLab**. Every run then uses the access of the person who started it, and a run whose token was revoked waits with `GIT_AUTH` until that person reconnects. The browser always needs a session; the CLI, ACP and scripts keep using the machine token (`SWARMLOOP_TOKEN` bearer). Secrets are stored encrypted with `SWARMLOOP_SECRET` (or a key made in `data/secret`).
+
+For a headless setup, or for runs started by the CLI or a script, add a git token to `.env` instead and run `docker compose up -d` again. This time leave **ci** ticked. When the reviewers pass, the server pushes a feature branch, opens a merge request, and watches the pipeline. Nobody has to click in between.
 
 - GitHub needs `GITHUB_TOKEN`. GitLab needs `GITLAB_TOKEN`, and `GITLAB_BASE_URL` when it is self-hosted. Both may be set. The server picks the host whose hostname equals the checkout `origin`.
 - The same token is also used to fetch the base branch, and a run on an SSH origin stops at prepare without it.

@@ -37,11 +37,12 @@ import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
 import { Reconciler } from './reconciler';
 import { PipelineService } from './pipeline.service';
+import { AuthModule } from '../auth/auth.module';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
 import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 
 @Module({
-  imports: [HistoryModule, ProvidersModule, SandboxModule],
+  imports: [HistoryModule, ProvidersModule, SandboxModule, AuthModule],
   providers: [
     RequirementsStep,
     PrepareStep,

@@ -62,7 +62,12 @@ function isDraft(merge: GitlabMergeRequest): boolean {
 export class GitlabCodeHost extends AbstractCodeHost {
   readonly name = 'gitlab' as const;
 
-  constructor(env: CodeHostEnv, clock: Clock) {
+  /** `bearer` is true for the OAuth token of a connected person: GitLab takes it as a Bearer header, not as `PRIVATE-TOKEN`. */
+  constructor(
+    env: CodeHostEnv,
+    clock: Clock,
+    private readonly bearer = false,
+  ) {
     super(env, clock, 'gitlab merge request failed', 'GITLAB_TOKEN was rejected');
   }
 
@@ -273,7 +278,10 @@ export class GitlabCodeHost extends AbstractCodeHost {
   protected endpoint(env: CodeHostEnv): { root: string; headers: Record<string, string> } {
     return {
       root: env.GITLAB_BASE_URL.replace(/\/$/, ''),
-      headers: { 'PRIVATE-TOKEN': env.GITLAB_TOKEN, Accept: 'application/json' },
+      headers: {
+        ...(this.bearer ? { Authorization: `Bearer ${env.GITLAB_TOKEN}` } : { 'PRIVATE-TOKEN': env.GITLAB_TOKEN }),
+        Accept: 'application/json',
+      },
     };
   }
 

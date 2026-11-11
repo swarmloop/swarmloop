@@ -12,6 +12,10 @@ import { ARTIFACTS } from '../contract/artifacts';
 import { StepKernel } from '../step-kernel';
 import { stampGate, worktreesFingerprint } from './gate';
 import type { RunEntity } from '../../history/entities';
+import type { RebaseHosts } from '../../git/rebase/types';
+
+/** The fields of a run a push needs: the host, and whose token it uses. */
+export type PublishedBy = Pick<RunEntity, 'codeHost' | 'startedBy'>;
 
 /** Pushes a branch to its origin and records the refs pushed. Commit and implement both publish through it. */
 @Injectable()
@@ -20,6 +24,12 @@ export class RebasedPublisher {
     private readonly kernel: StepKernel,
     private readonly registry: CodeHostRegistry,
   ) {}
+
+  /** What the server's git processes of a run read: the env, with the tokens of the person who started it. */
+  async hostsFor(run: PublishedBy): Promise<RebaseHosts> {
+    const { env } = this.kernel.config;
+    return { ...env, ...(await this.registry.tokensFor(run.startedBy, run.codeHost)), clock: this.kernel.clock };
+  }
 
   trees(key: string, names: string[]): Tree[] {
     return names.map((repo) => {
@@ -59,7 +69,7 @@ export class RebasedPublisher {
         continue;
       }
       const captured = leases.find((lease) => lease.repo === tree.repo)?.tip ?? null;
-      await this.pushRef(tree, branch, captured, run.codeHost, origin);
+      await this.pushRef(tree, branch, captured, run, origin);
     }
     await this.rememberRefs(trees, branch, (body) =>
       this.kernel.documents.putDocument(run, ARTIFACTS.pipelineRef.kind, ARTIFACTS.pipelineRef.format(body)),
@@ -77,10 +87,11 @@ export class RebasedPublisher {
     tree: Tree,
     branch: string,
     published: string | null,
-    codeHost: string,
+    run: PublishedBy,
     origin: string,
   ): Promise<boolean> {
-    const pushed = await this.pushChecked(tree, branch, published, codeHost, origin);
+    const registry = await this.registry.forRun(run.startedBy, run.codeHost);
+    const pushed = await this.pushChecked(tree, branch, published, run.codeHost, origin, registry);
     await barrier('after-push');
     return pushed;
   }
@@ -95,13 +106,14 @@ export class RebasedPublisher {
     published: string | null,
     codeHost: string,
     origin: string,
+    registry: CodeHostRegistry,
   ): Promise<boolean> {
     try {
-      return await this.push(tree, branch, published, codeHost, origin);
+      return await this.push(tree, branch, published, codeHost, origin, registry);
     } catch (error) {
       let remote: string | null;
       try {
-        remote = await this.remoteTip(tree, branch, codeHost, origin);
+        remote = await this.remoteTip(tree, branch, codeHost, origin, registry);
       } catch {
         throw error;
       }
@@ -113,20 +125,26 @@ export class RebasedPublisher {
       if (remote !== published) {
         throw error;
       }
-      return this.push(tree, branch, published, codeHost, origin);
+      return this.push(tree, branch, published, codeHost, origin, registry);
     }
   }
 
   /** The tip of the branch on the remote, read from the remote itself. Null when the branch is not there. */
-  private async remoteTip(tree: Tree, branch: string, codeHost: string, origin: string): Promise<string | null> {
-    const known = this.registry.has(codeHost);
-    const url = known ? this.registry.byName(codeHost).pushUrl(origin) : null;
+  private async remoteTip(
+    tree: Tree,
+    branch: string,
+    codeHost: string,
+    origin: string,
+    registry: CodeHostRegistry,
+  ): Promise<string | null> {
+    const known = registry.has(codeHost);
+    const url = known ? registry.byName(codeHost).pushUrl(origin) : null;
     const listed = await gitAt(
       tree,
       ['ls-remote', url ?? 'origin', `refs/heads/${branch}`],
       'push failed',
       { GIT_TERMINAL_PROMPT: '0' },
-      known ? this.registry.credentials(codeHost).token : undefined,
+      known ? registry.credentials(codeHost).token : undefined,
     );
     return listed.split(/\s/)[0] || null;
   }
@@ -137,17 +155,18 @@ export class RebasedPublisher {
     published: string | null,
     codeHost: string,
     origin: string,
+    registry: CodeHostRegistry,
   ): Promise<boolean> {
     const lease = published ? [`--force-with-lease=refs/heads/${branch}:${published}`] : [];
-    if (!this.registry.has(codeHost)) {
+    if (!registry.has(codeHost)) {
       if (origin.startsWith('git@') || origin.startsWith('ssh://')) {
         throw new SwarmloopError('code host is missing');
       }
       await gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed');
       return true;
     }
-    const host = this.registry.credentials(codeHost);
-    const url = this.registry.byName(codeHost).pushUrl(origin);
+    const host = registry.credentials(codeHost);
+    const url = registry.byName(codeHost).pushUrl(origin);
     if (url) {
       await gitAt(
         tree,

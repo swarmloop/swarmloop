@@ -6,24 +6,42 @@ import type { SwarmloopEnv } from '../config/env';
 
 export type ProviderName = 'github' | 'gitlab';
 
+/** The tokens a login granted, for a provider that keeps them. */
+export interface Grant {
+  accessToken: string;
+  refreshToken: string;
+  /** Seconds the access token lives, or undefined when it does not expire. */
+  expiresIn?: number;
+}
+
 interface Identity {
   user: string;
   /** The orgs (GitHub) or groups (GitLab) the person belongs to. */
   groups: string[];
+  /** Set when the provider connects the person: one authorization signs in and connects. */
+  grant?: Grant;
+}
+
+/** The client id and secret of the app a login goes through. */
+export interface AppCredentials {
+  clientId: string;
+  clientSecret: string;
 }
 
 export interface OAuthProvider {
   readonly name: ProviderName;
   /** Both the client id and the secret are set. */
   configured(): boolean;
+  /** True when the login also keeps the person's tokens: a GitHub App, or GitLab. */
+  connects(): boolean;
   authorizeUrl(redirectUri: string, state: string, verifier: string): string;
-  /** Trades the code for a token, reads the login and memberships, and drops the token. */
+  /** Trades the code for a token, reads the login and memberships, and drops the token unless the provider connects. An empty verifier means the code was not asked for with PKCE. */
   identify(code: string, redirectUri: string, verifier: string): Promise<Identity>;
   /** The owner of the configured `GITHUB_TOKEN` / `GITLAB_TOKEN`, or null when none is set. */
   tokenOwner(): Promise<string | null>;
 }
 
-type Env = Pick<
+type OAuthEnv = Pick<
   SwarmloopEnv,
   | 'GITHUB_BASE_URL'
   | 'GITHUB_TOKEN'
@@ -35,7 +53,7 @@ type Env = Pick<
   | 'GITLAB_OAUTH_CLIENT_SECRET'
 >;
 
-interface Endpoints {
+export interface Endpoints {
   authorize: string;
   token: string;
   api: string;
@@ -55,26 +73,29 @@ class HttpOAuthProvider implements OAuthProvider {
   constructor(
     readonly name: ProviderName,
     private readonly clock: Clock,
-    private readonly clientId: string,
-    private readonly secret: string,
+    private readonly app: () => AppCredentials | null,
     private readonly serverToken: string,
     private readonly endpoints: Endpoints,
+    private readonly keepsTokens: () => boolean,
   ) {}
 
   configured(): boolean {
-    return this.clientId !== '' && this.secret !== '';
+    return this.app() !== null;
+  }
+
+  connects(): boolean {
+    return this.keepsTokens();
   }
 
   authorizeUrl(redirectUri: string, state: string, verifier: string): string {
     const url = new URL(this.endpoints.authorize);
     url.search = new URLSearchParams({
-      client_id: this.clientId,
+      client_id: this.credentials().clientId,
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: this.endpoints.scope,
       state,
-      code_challenge: challengeOf(verifier),
-      code_challenge_method: 'S256',
+      ...(verifier ? { code_challenge: challengeOf(verifier), code_challenge_method: 'S256' } : {}),
     }).toString();
     return url.toString();
   }
@@ -86,15 +107,15 @@ class HttpOAuthProvider implements OAuthProvider {
       {
         method: 'POST',
         body: JSON.stringify({
-          client_id: this.clientId,
-          client_secret: this.secret,
+          client_id: this.credentials().clientId,
+          client_secret: this.credentials().clientSecret,
           code,
           redirect_uri: redirectUri,
-          code_verifier: verifier,
+          ...(verifier ? { code_verifier: verifier } : {}),
           grant_type: 'authorization_code',
         }),
       },
-    )) as { access_token?: string };
+    )) as { access_token?: string; refresh_token?: string; expires_in?: number };
     if (!granted.access_token) {
       throw new SwarmloopError(`${this.name} did not accept the login code`);
     }
@@ -103,6 +124,15 @@ class HttpOAuthProvider implements OAuthProvider {
     return {
       user: await this.userOf(headers),
       groups: names(await this.send(`${this.endpoints.api}${groups.path}`, headers), groups.field),
+      ...(this.keepsTokens()
+        ? {
+            grant: {
+              accessToken: granted.access_token,
+              refreshToken: granted.refresh_token ?? '',
+              expiresIn: granted.expires_in,
+            },
+          }
+        : {}),
     };
   }
 
@@ -111,6 +141,14 @@ class HttpOAuthProvider implements OAuthProvider {
       return null;
     }
     return this.userOf(this.endpoints.userHeaders(this.serverToken));
+  }
+
+  private credentials(): AppCredentials {
+    const app = this.app();
+    if (!app) {
+      throw new SwarmloopError(`${this.name} login is not configured`);
+    }
+    return app;
   }
 
   private async userOf(headers: Record<string, string>): Promise<string> {
@@ -133,7 +171,7 @@ const text = (value: unknown): string => (typeof value === 'string' ? value : ''
 const names = (rows: unknown, field: string): string[] =>
   (Array.isArray(rows) ? rows : []).map((row) => text((row as Record<string, unknown>)[field]));
 
-function github(env: Env): Endpoints {
+export function githubEndpoints(env: Pick<OAuthEnv, 'GITHUB_BASE_URL'>): Endpoints {
   const base = new URL(env.GITHUB_BASE_URL || 'https://github.com');
   const hosted = base.hostname === 'github.com' || base.hostname === 'www.github.com';
   return {
@@ -151,37 +189,43 @@ function github(env: Env): Endpoints {
   };
 }
 
-function gitlab(env: Env): Endpoints {
+export function gitlabEndpoints(env: Pick<OAuthEnv, 'GITLAB_BASE_URL'>): Endpoints {
   const base = new URL(env.GITLAB_BASE_URL || 'https://gitlab.com');
   const root = base.toString().replace(/\/$/, '');
   return {
     authorize: `${root}/oauth/authorize`,
     token: `${root}/oauth/token`,
     api: `${root}/api/v4`,
-    scope: 'read_user read_api',
+    scope: 'read_user api write_repository',
     userHeaders: (token) => ({ Authorization: `Bearer ${token}` }),
     user: { path: '/user', field: 'username' },
     groups: { path: '/groups?min_access_level=10&per_page=100', field: 'full_path' },
   };
 }
 
-export function oauthProviders(env: Env, clock: Clock): OAuthProvider[] {
+/** Where a provider finds its app: the one Connect stored, else the OAuth app of the environment. */
+export interface AppSource {
+  credentials(host: ProviderName): AppCredentials | null;
+  connects(host: ProviderName): boolean;
+}
+
+export function oauthProviders(env: OAuthEnv, clock: Clock, apps: AppSource): OAuthProvider[] {
   return [
     new HttpOAuthProvider(
       'github',
       clock,
-      env.GITHUB_OAUTH_CLIENT_ID,
-      env.GITHUB_OAUTH_CLIENT_SECRET,
+      () => apps.credentials('github'),
       env.GITHUB_TOKEN,
-      github(env),
+      githubEndpoints(env),
+      () => apps.connects('github'),
     ),
     new HttpOAuthProvider(
       'gitlab',
       clock,
-      env.GITLAB_OAUTH_CLIENT_ID,
-      env.GITLAB_OAUTH_CLIENT_SECRET,
+      () => apps.credentials('gitlab'),
       env.GITLAB_TOKEN,
-      gitlab(env),
+      gitlabEndpoints(env),
+      () => apps.connects('gitlab'),
     ),
   ];
 }

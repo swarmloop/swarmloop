@@ -16,6 +16,7 @@ import { RunIndexes1794800000000 } from './1794800000000-run-indexes';
 import { EmptyLogBodies1794900000000 } from './1794900000000-empty-log-bodies';
 import { ChecksStep1795000000000 } from './1795000000000-checks-step';
 import { PreparedMs1795100000000 } from './1795100000000-prepared-ms';
+import { Connections1795200000000 } from './1795200000000-connections';
 
 // To add a migration: run `npm run migration:generate -- src/history/migrations/<name>`, export the generated class
 // from its own file, and append it here. Migrations run in list order at startup.
@@ -38,4 +39,5 @@ export const migrations = [
   EmptyLogBodies1794900000000,
   ChecksStep1795000000000,
   PreparedMs1795100000000,
+  Connections1795200000000,
 ];

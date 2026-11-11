@@ -168,10 +168,12 @@ describe('login and the auth guard', () => {
 describe('without a login provider', () => {
   it('lets every request through, as before', async () => {
     const app = await createTestApp({
-      env: { GITHUB_OAUTH_CLIENT_ID: '', GITHUB_OAUTH_CLIENT_SECRET: '', SWARMLOOP_ALLOW: '' },
+      env: { GITHUB_OAUTH_CLIENT_ID: '', GITHUB_OAUTH_CLIENT_SECRET: '', SWARMLOOP_ALLOW: '', SWARMLOOP_TOKEN: TOKEN },
     });
     try {
-      expect((await fetch(`${app.url}/runs`)).status).toBe(200);
+      // The no-login mode is gone: a browser needs a session even before a login exists, the machine token still opens the API.
+      expect((await fetch(`${app.url}/runs`)).status).toBe(401);
+      expect((await fetch(`${app.url}/runs`, { headers: { authorization: `Bearer ${TOKEN}` } })).status).toBe(200);
       expect(await (await fetch(`${app.url}/auth/providers`)).json()).toEqual({ providers: [] });
     } finally {
       await app.close();

@@ -90,8 +90,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     if (records.length === 0 && skipped) {
       return finish('ok', this.report(opened, skipped), 'skipped', skipped);
     }
-    this.registry.requiredCredentials(opened.run.codeHost);
-    const host = this.registry.byName(opened.run.codeHost);
+    const host = await this.registry.hostFor(opened.run);
     if (records.length === 0) {
       throw new SwarmloopError('pipeline ref is missing');
     }

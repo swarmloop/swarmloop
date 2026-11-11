@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../../auth/auth.module';
 import { AppConfig } from '../../config/env';
 import { Clock } from '../../core/clock';
 import { CodeHostRegistry } from './code-host.registry';
@@ -6,6 +7,7 @@ import { GithubCodeHost } from './github/github-code-host';
 import { GitlabCodeHost } from './gitlab/gitlab-code-host';
 
 @Module({
+  imports: [AuthModule],
   providers: [
     {
       provide: GithubCodeHost,

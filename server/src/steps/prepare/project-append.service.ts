@@ -33,7 +33,10 @@ export class ProjectAppendService {
       throw new SwarmloopError('checkout name is invalid');
     }
     const known = this.prepare.listProjects().projects;
-    if (!known.includes(trimmed) && !(await this.remote.offers(trimmed))) {
+    if (
+      !known.includes(trimmed) &&
+      !(await this.remote.offers(trimmed, (await this.runs.findRun(key))?.startedBy ?? null))
+    ) {
       throw new SwarmloopError(`${trimmed} is not a checkout`);
     }
     const run = await this.runs.findRun(key);

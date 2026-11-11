@@ -66,7 +66,13 @@ export class PrepareStep extends BaseStep<typeof INPUTS> {
       await ctx.activity(
         `Prepare worktree ${checkout.name}`,
         async () => {
-          const located = await this.worktrees.prepareCheckout(key, checkout, opened.run.prompt);
+          const located = await this.worktrees.prepareCheckout(
+            key,
+            checkout,
+            opened.run.prompt,
+            opened.run.startedBy,
+            opened.run.codeHost,
+          );
           hosts.push(await this.worktrees.classified(located));
         },
         () => 'ready',

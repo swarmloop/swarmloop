@@ -101,7 +101,12 @@ describe('env schema', () => {
   it('keeps a bare env valid and names a bad SWARMLOOP_ALLOW entry', () => {
     const bare = envSchema.validate(complete, { abortEarly: false, convert: true });
     expect(bare.error).toBeUndefined();
-    expect(bare.value).toMatchObject({ SWARMLOOP_ALLOW: '', SWARMLOOP_TOKEN: '', GITHUB_OAUTH_CLIENT_ID: '' });
+    expect(bare.value).toMatchObject({
+      SWARMLOOP_ALLOW: '',
+      SWARMLOOP_TOKEN: '',
+      SWARMLOOP_SECRET: '',
+      GITHUB_OAUTH_CLIENT_ID: '',
+    });
     const good = envSchema.validate({ ...complete, SWARMLOOP_ALLOW: 'github:Ann, gitlab-group:team/dev' });
     expect(good.error).toBeUndefined();
     const bad = envSchema.validate({ ...complete, SWARMLOOP_ALLOW: 'github:ann,twitter:bob' }, { convert: true });

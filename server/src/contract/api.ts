@@ -345,6 +345,23 @@ export interface RemoteListView {
   allowedNames: string[];
 }
 
+/** One host on the Connections page. It never holds a token or a secret. */
+export interface ConnectionView {
+  host: 'github' | 'gitlab';
+  /** The GitHub App or the OAuth application, by name and client id. Null when none is set up. */
+  app: { name: string; clientId: string } | null;
+  /** The login of the person, or null when they are not connected on this host. */
+  account: string | null;
+  /** `owner/name` of the repositories the installation covers. */
+  repositories: string[];
+  selection: 'all' | 'selected' | null;
+  health: { status: 'ok' | 'broken'; expiresAt: string | null; refreshedAt: string | null } | null;
+}
+
+export interface ConnectionsView {
+  connections: ConnectionView[];
+}
+
 export interface CreateRepositoryBody {
   host: RemoteRepository['host'];
   owner: string;

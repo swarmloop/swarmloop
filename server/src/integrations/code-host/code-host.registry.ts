@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { ConnectionsService } from '../../auth/connections.service';
 import { remoteProject } from './remote-project';
-import { SwarmloopError } from '../../core/swarmloop-error';
+import { GitAuthError, SwarmloopError } from '../../core/swarmloop-error';
 import { CodeHost, SelectedHost } from './code-host';
 import type { CodeHostEnv } from './abstract-code-host';
 import type { Clock } from '../../core/clock';
@@ -18,8 +19,52 @@ export class CodeHostRegistry {
   constructor(
     private readonly github: GithubCodeHost,
     private readonly gitlab: GitlabCodeHost,
+    @Optional() private readonly connections?: ConnectionsService,
   ) {
     this.hosts = [github, gitlab];
+  }
+
+  /**
+   * The registry of one run: each host calls with the token of the person who started it. A person without a
+   * connection on a host, the machine token, the CLI and nobody keep the token of the environment. A token that cannot
+   * be used any more is a `GitAuthError`: the run waits for the person to reconnect.
+   */
+  async forRun(startedBy: string | null | undefined, codeHost?: string): Promise<CodeHostRegistry> {
+    const connections = this.connections;
+    if (!connections || !startedBy || startedBy === 'machine') {
+      return this;
+    }
+    // With the host known, only that host's connection counts. Without it a broken connection falls back to the env token.
+    const tokenOf = (name: CodeHostName) =>
+      codeHost
+        ? codeHost === name
+          ? connections.tokenFor(name, startedBy)
+          : Promise.resolve(null)
+        : connections.tokenFor(name, startedBy).catch((error: unknown) => {
+            if (error instanceof GitAuthError) return null;
+            throw error;
+          });
+    const [github, gitlab] = await Promise.all([tokenOf('github'), tokenOf('gitlab')]);
+    return new CodeHostRegistry(
+      github === null ? this.github : this.github.withToken(github),
+      gitlab === null ? this.gitlab : this.gitlab.withToken(gitlab),
+    );
+  }
+
+  /** The host of a run, with the token of its person. A host with no token or url is a refusal. */
+  async hostFor(run: { codeHost: string; startedBy: string | null }): Promise<CodeHost> {
+    const scoped = await this.forRun(run.startedBy, run.codeHost);
+    scoped.requiredCredentials(run.codeHost);
+    return scoped.byName(run.codeHost);
+  }
+
+  /** The tokens a git process of the server reads, those of the person of a run. */
+  async tokensFor(
+    startedBy: string | null | undefined,
+    codeHost?: string,
+  ): Promise<Pick<CodeHostEnv, 'GITHUB_TOKEN' | 'GITLAB_TOKEN'>> {
+    const run = await this.forRun(startedBy, codeHost);
+    return { GITHUB_TOKEN: run.github.selected().token, GITLAB_TOKEN: run.gitlab.selected().token };
   }
 
   static create(hosts: CodeHostEnv, clock: Clock): CodeHostRegistry {

@@ -19,7 +19,8 @@ export class LoginStates {
 
   constructor(private readonly clock: Clock) {}
 
-  start(provider: ProviderName): { state: string; verifier: string } {
+  /** `pkce` false is for a code GitHub sends after an install, which no challenge was asked for: the verifier is empty. */
+  start(provider: ProviderName, pkce = true): { state: string; verifier: string } {
     const now = this.clock.now();
     // Entries are in start order and share one TTL, so the sweep ends at the first live one.
     for (const [state, entry] of this.open) {
@@ -32,7 +33,7 @@ export class LoginStates {
       this.open.delete(this.open.keys().next().value as string);
     }
     const state = randomBytes(16).toString('hex');
-    const verifier = randomBytes(32).toString('base64url');
+    const verifier = pkce ? randomBytes(32).toString('base64url') : '';
     this.open.set(state, { provider, verifier, expires: now + TTL_MS });
     return { state, verifier };
   }

@@ -80,7 +80,9 @@ export function actionsFor(state: RunState, reasonCode: string | null = null): R
     case 'stopped':
       return ['resume', 'replay', 'rebase'];
     case 'waiting':
-      if (reasonCode === ERROR_CODES.RUNTIME_LIMIT) return ['resume', 'replay', 'rebase'];
+      if (reasonCode === ERROR_CODES.RUNTIME_LIMIT || reasonCode === ERROR_CODES.GIT_AUTH) {
+        return ['resume', 'replay', 'rebase'];
+      }
       return reasonCode && SUBTASK_WAIT_CODES.includes(reasonCode as ErrorCode)
         ? ['stop', 'resume', 'replay', 'rebase']
         : ['answer', 'replay', 'rebase'];

@@ -13,6 +13,7 @@ import { FlowBoard } from '../flow-board';
 import { resumeLabel } from '../../../../lib/ci-infra';
 import { skipTask } from '../../../../lib/endpoints';
 import { StepDetail } from '../step-detail';
+import { GitAuthBanner } from '../git-auth-banner';
 import { LimitBanner } from '../limit-banner';
 import { WaitingPanel } from '../waiting-panel';
 import { RunDialogs } from './run-dialogs';
@@ -65,6 +66,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         </Typography>
       ) : null}
       <LimitBanner flow={flow} />
+      <GitAuthBanner flow={flow} />
       <RunHeader
         flow={flow}
         openMs={openMs}

@@ -117,9 +117,14 @@ export class RunRepository {
     return created;
   }
 
-  /** The waiting row of a subtask, linked to its parent in the same write that creates it. */
-  async openSubtask(key: string, parentRunId: number, taskId: string): Promise<RunEntity> {
-    return this.saveRun(Object.assign(this.newWaitingRun(key, null), { parentRunId, taskId }));
+  /** The waiting row of a subtask, linked to its parent in the same write that creates it. It belongs to the person of its parent. */
+  async openSubtask(
+    key: string,
+    parentRunId: number,
+    taskId: string,
+    startedBy: string | null = null,
+  ): Promise<RunEntity> {
+    return this.saveRun(Object.assign(this.newWaitingRun(key, null, startedBy), { parentRunId, taskId }));
   }
 
   /** The run row of a split run. The command door may have made it already: then it is marked split. */

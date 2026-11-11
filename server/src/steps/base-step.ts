@@ -18,7 +18,7 @@ import type { OpenedStep } from '../steps/step-run';
 import { closeStep, openStep, preparedMs } from '../steps/step-run';
 import type { HttpCallDraft } from '../core/swarmloop-error';
 import { reportFailure } from './shared/step-failure';
-import { FetchFailed, SwarmloopError } from '../core/swarmloop-error';
+import { FetchFailed, GitAuthError, SwarmloopError } from '../core/swarmloop-error';
 import { IMAGE_ERROR_CODES } from '../contract/error-codes';
 import { StepStopped } from './shared/step-stopped';
 import { recordHandoff } from './shared/handoff';
@@ -220,6 +220,14 @@ abstract class StepCore implements Step {
       }
       if (error instanceof StepStopped) {
         return ctx.end({ outcome: 'blocked', exitCode: 1, line: `${opened.startedAt} ${error.message}` });
+      }
+      if (error instanceof GitAuthError) {
+        return ctx.end({
+          outcome: 'waiting',
+          exitCode: 0,
+          line: `${opened.startedAt} ${error.message}`,
+          code: error.code,
+        });
       }
       if (error instanceof SwarmloopError && IMAGE_ERROR_CODES.includes(error.code)) {
         return ctx.end({
