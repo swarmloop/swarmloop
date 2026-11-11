@@ -25,8 +25,9 @@ export class SubtaskClose {
   private async closeAll(parent: RunEntity): Promise<void> {
     for (const child of await this.runs.children(parent)) {
       try {
+        const host = (await this.hosts.forRun(parent.startedBy, parent.codeHost)).byName(parent.codeHost);
         for (const request of await this.subtasks.mergeRequests(child)) {
-          await this.hosts.byName(parent.codeHost).closeMergeRequest(request.project, request.iid);
+          await host.closeMergeRequest(request.project, request.iid);
         }
       } catch (error) {
         this.logger.warn(

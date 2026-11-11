@@ -17,7 +17,7 @@ const bundle: IssueBundle = {
 describe('service context', () => {
   const tracker = { fetch: jest.fn(), ticketKeys: jest.fn() };
   const host = { findMergeRequest: jest.fn() };
-  const hosts = { byName: jest.fn(() => host) };
+  const hosts = { byName: jest.fn(() => host), forRun: () => Promise.resolve(hosts) };
   const config = { env: { SWARMLOOP_ROOT: '/tmp/swarmloop' } };
   const runs = { findRun: jest.fn(async () => ({ codeHost: 'gitlab' })) };
   const documents = { latestBody: jest.fn() };

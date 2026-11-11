@@ -5,7 +5,7 @@ import { checkedRepoNames } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { originUrl } from '../../git/git';
 import { BranchCheckout } from '../shared/branch-checkout';
-import { RebasedPublisher } from '../shared/rebased-publisher';
+import { RebasedPublisher, type PublishedBy } from '../shared/rebased-publisher';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
@@ -48,7 +48,7 @@ export class BranchStep extends BaseStep<typeof INPUTS> {
     if (await this.splits(ctx)) {
       await ctx.activity(
         `Push ${name}`,
-        () => this.push(key, repos, name, ctx.opened.run.codeHost),
+        () => this.push(key, repos, name, ctx.opened.run),
         () => 'to origin',
       );
     }
@@ -66,11 +66,11 @@ export class BranchStep extends BaseStep<typeof INPUTS> {
   }
 
   /** The subtasks of a split run start from the feature branch, so it reaches origin before they do. */
-  private async push(key: string, repos: string[], branch: string, codeHost: string): Promise<void> {
+  private async push(key: string, repos: string[], branch: string, run: PublishedBy): Promise<void> {
     for (const tree of this.publisher.trees(key, repos)) {
       const origin = await originUrl(tree.path, tree.repo, 'origin failed');
       if (origin) {
-        await this.publisher.pushRef(tree, branch, null, codeHost, origin);
+        await this.publisher.pushRef(tree, branch, null, run, origin);
       }
     }
   }

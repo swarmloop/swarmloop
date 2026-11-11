@@ -92,7 +92,7 @@ export async function boot(
       CommandService,
       SubtaskPort,
       { provide: AgentLauncher, useValue: {} },
-      { provide: CodeHostRegistry, useValue: {} },
+      { provide: CodeHostRegistry, useValue: { tokensFor: () => Promise.resolve({}) } },
       RunStop,
       RunRebaseService,
       RunRebase,

@@ -2,12 +2,13 @@ import { credentialFor, runtimesInUse } from '../config/agents';
 import { access, stat } from 'fs/promises';
 import { constants } from 'fs';
 import { join } from 'path';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import type { ReadinessId, ReadinessItem, ReadinessView } from '../contract/api';
 import { FetchFailed } from '../core/swarmloop-error';
 import { root } from '../history/run-paths';
 import { runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
+import { ConnectionsService } from '../auth/connections.service';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { DiskGuard } from '../pipeline/disk-guard';
 import { imageName } from '../sandbox/image-resolver';
@@ -43,6 +44,7 @@ export class ReadinessService {
     private readonly sandbox: SandboxService,
     private readonly disk: DiskGuard,
     private readonly hosts: CodeHostRegistry,
+    @Optional() private readonly connections?: ConnectionsService,
   ) {}
 
   async report(): Promise<ReadinessView> {
@@ -214,11 +216,14 @@ export class ReadinessService {
 
   private async codeHostToken(): Promise<Outcome> {
     const named = this.hosts.names.filter((name) => this.hosts.credentials(name).token.trim() !== '');
+    if (named.length === 0 && (await this.connections?.anyConnected())) {
+      return ok('a person is connected to a code host');
+    }
     if (named.length === 0) {
       return {
         status: 'warn',
         line: 'no code host token is set',
-        action: 'set GITHUB_TOKEN or GITLAB_TOKEN to publish',
+        action: 'Connect GitHub or GitLab to publish, or set GITHUB_TOKEN or GITLAB_TOKEN',
       };
     }
     return worst(await Promise.all(named.map((name) => this.hostToken(name))));

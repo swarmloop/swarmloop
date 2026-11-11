@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
+import { isLoopback } from './bind-check';
 import { machineToken, tokenMatches } from './machine-token';
 import type { OAuthProvider } from './oauth-provider';
 import { SessionService, sessionIdOf } from './session.service';
@@ -12,16 +13,18 @@ export interface Credentials {
   authorization?: string;
 }
 
-/** Who is acting: a session or the machine token. With no OAuth provider configured everyone is let in, as before. */
+/** Who is acting: a session or the machine token. Nothing else is let in. */
 @Injectable()
 export class AuthService {
   private readonly token: string;
+  private readonly publicUrl: string;
 
   constructor(
     config: AppConfig,
     private readonly sessions: SessionService,
     @Inject(OAUTH_PROVIDERS) private readonly providers: OAuthProvider[],
   ) {
+    this.publicUrl = config.env.SWARMLOOP_PUBLIC_URL;
     this.token = machineToken(resolveRepoRoot(config.env.SWARMLOOP_ROOT, __dirname), config.env.SWARMLOOP_TOKEN);
   }
 
@@ -40,6 +43,25 @@ export class AuthService {
 
   async check(credentials: Credentials): Promise<{ allowed: boolean; actor: string | null }> {
     const actor = await this.actorOf(credentials);
-    return { allowed: actor !== null || this.configured().length === 0, actor };
+    return { allowed: actor !== null, actor };
+  }
+
+  /**
+   * The first-run routes answer while no login exists, and only to this machine: a request whose host and the public
+   * URL are loopback, or one that holds the machine token. Once a login exists nobody can replace the app.
+   */
+  async firstRunOpen(request: Credentials & { host?: string; 'x-forwarded-host'?: string }): Promise<boolean> {
+    if (this.configured().length > 0) {
+      return false;
+    }
+    if ((await this.actorOf(request)) === 'machine') {
+      return true;
+    }
+    return this.onThisMachine(request);
+  }
+
+  /** True when the request's host and the public URL are both loopback. */
+  onThisMachine(request: { host?: string; 'x-forwarded-host'?: string }): boolean {
+    return isLoopback(request['x-forwarded-host'] ?? request.host ?? '') && isLoopback(new URL(this.publicUrl).host);
   }
 }

@@ -19,14 +19,14 @@ export class CheckoutService {
   ) {}
 
   async ensureDetached(
-    run: { key: string; codeHost: string },
+    run: { key: string; codeHost: string; startedBy?: string | null },
     names: string[],
     prompt: string | null,
     replace: boolean,
   ): Promise<void> {
     const hosts: (CodeHostName | null)[] = [];
     for (const name of names) {
-      const located = await this.prepareCheckout(run.key, { name, path: '' }, prompt);
+      const located = await this.prepareCheckout(run.key, { name, path: '' }, prompt, run.startedBy, run.codeHost);
       hosts.push(await this.classified(located));
     }
     assignCodeHost(run, hosts, replace);
@@ -36,6 +36,8 @@ export class CheckoutService {
     key: string,
     checkout: { name: string; path: string },
     prompt: string | null,
+    startedBy?: string | null,
+    codeHost?: string,
   ): Promise<{ name: string; path: string }> {
     if (!CHECKOUT_NAME.test(checkout.name)) {
       throw new SwarmloopError('checkout name is invalid');
@@ -48,7 +50,8 @@ export class CheckoutService {
     };
     this.assertCheckout(located);
     await this.assertGit(located);
-    const ref = await storedBase(located.path, located.name, prompt, { ...env, clock: this.kernel.clock }, 'prepare');
+    const hosts = { ...env, ...(await this.registry.tokensFor(startedBy, codeHost)), clock: this.kernel.clock };
+    const ref = await storedBase(located.path, located.name, prompt, hosts, 'prepare');
     const worktree = join(root(this.kernel.config), 'worktrees', key, located.name);
     if (!existsSync(worktree)) {
       mkdirSync(join(root(this.kernel.config), 'worktrees', key), { recursive: true });

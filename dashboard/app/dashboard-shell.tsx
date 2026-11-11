@@ -141,6 +141,9 @@ function DashboardFrame({
               {connected ? 'live' : 'offline'}
             </Typography>
           </Box>
+          <Button component={Link} href="/connections" color="inherit" sx={{ mr: 1 }}>
+            Connections
+          </Button>
           <Account />
           <ThemeModeSwitch />
           <Box component="span" title={blocker?.action}>

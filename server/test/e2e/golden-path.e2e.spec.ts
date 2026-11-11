@@ -10,7 +10,7 @@ describe('HTTP API golden path', () => {
     try {
       const createdResponse = await fetch(`${testApp.url}/runs`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { ...testApp.auth, 'content-type': 'application/json' },
         body: JSON.stringify({ key: 'TEST-1', prompt: 'Ship the field', projects: ['demo'] }),
       });
       const created: RunRef = await createdResponse.json();
@@ -39,11 +39,13 @@ describe('HTTP API golden path', () => {
         'pipeline',
       ]);
 
-      const runs: RunsView = await (await fetch(`${testApp.url}/runs`)).json();
+      const runs: RunsView = await (await fetch(`${testApp.url}/runs`, { headers: testApp.auth })).json();
       expect(runs.runs[0]).toMatchObject({ key: 'TEST-1', status: 'done', currentStep: 'done' });
-      const flow: FlowView = await (await fetch(`${testApp.url}/runs/TEST-1`)).json();
+      const flow: FlowView = await (await fetch(`${testApp.url}/runs/TEST-1`, { headers: testApp.auth })).json();
       expect(flow).toMatchObject({ key: 'TEST-1', status: 'done', currentStep: 'done', resume: 'done' });
-      const implement: StepView = await (await fetch(`${testApp.url}/runs/TEST-1/steps/implement`)).json();
+      const implement: StepView = await (
+        await fetch(`${testApp.url}/runs/TEST-1/steps/implement`, { headers: testApp.auth })
+      ).json();
       expect(implement.step).toBe('implement');
       expect(implement.visits).toHaveLength(1);
       expect(implement.visits[0].status).toBe('done');

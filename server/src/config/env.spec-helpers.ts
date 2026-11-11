@@ -71,6 +71,7 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     GITLAB_OAUTH_CLIENT_SECRET: '',
     SWARMLOOP_ALLOW: '',
     SWARMLOOP_TOKEN: '',
+    SWARMLOOP_SECRET: '',
     ...overrides,
   };
 }

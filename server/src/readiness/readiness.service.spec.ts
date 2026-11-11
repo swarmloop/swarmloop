@@ -199,7 +199,10 @@ describe('ReadinessService', () => {
 
     it('warns when no token is set, without calling a host', async () => {
       const item = await itemOf(setup(), 'code-host-token');
-      expect(item).toMatchObject({ status: 'warn', action: 'set GITHUB_TOKEN or GITLAB_TOKEN to publish' });
+      expect(item).toMatchObject({
+        status: 'warn',
+        action: 'Connect GitHub or GitLab to publish, or set GITHUB_TOKEN or GITLAB_TOKEN',
+      });
       expect(remote()).toEqual([]);
     });
 

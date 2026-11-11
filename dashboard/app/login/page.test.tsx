@@ -39,7 +39,9 @@ describe('LoginPage', () => {
 
     render(<LoginPage />);
 
-    expect(await screen.findByText('No login is configured on this server.')).toBeInTheDocument();
+    // The no-login mode is gone: with no login yet the page is the first-run screen.
+    expect(await screen.findByRole('button', { name: 'Create GitHub App' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Connect GitLab' })).toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 });

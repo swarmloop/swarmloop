@@ -1,6 +1,7 @@
 import { existsSync } from 'fs';
 import { join, sep } from 'path';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConnectionsService } from '../../auth/connections.service';
 import { AppConfig } from '../../config/env';
 import { assertRepoAllowed, isProjectName, repoAllowed, resolveCheckoutPath } from '../../config/checkout-path';
 import type {
@@ -31,22 +32,25 @@ interface HostSnapshot {
 @Injectable()
 export class RemoteRepositories {
   private readonly logger = new Logger(RemoteRepositories.name);
-  private readonly cache = new Map<CodeHostName, HostSnapshot>();
+  /** By person and host: each person sees the repositories their own token reaches. */
+  private readonly cache = new Map<string, HostSnapshot>();
 
   constructor(
     private readonly config: AppConfig,
     private readonly clock: Clock,
     private readonly hosts: CodeHostRegistry,
     private readonly checkouts: CheckoutRepository,
+    @Optional() private readonly connections?: ConnectionsService,
   ) {}
 
-  async list(): Promise<RemoteListView> {
+  async list(actor: string | null = null): Promise<RemoteListView> {
     const allowedNames = this.config.env.SWARMLOOP_REPOS;
-    const names = this.configured();
+    const hosts = await this.hosts.forRun(actor);
+    const names = this.configured(hosts);
     if (names.length === 0) {
       return { repositories: [], owners: [], reason: this.missingToken(), allowedNames };
     }
-    const snapshots = await Promise.all(names.map((name) => this.snapshot(name)));
+    const snapshots = await Promise.all(names.map((name) => this.snapshot(hosts, name, actor)));
     const repositories: RemoteEntry[] = [];
     for (const repository of snapshots.flatMap((snapshot) => snapshot.repositories)) {
       // A name the checkouts root would not list as a project cannot be cloned into it.
@@ -58,8 +62,8 @@ export class RemoteRepositories {
   }
 
   /** True when the name is a repository of a connected host. */
-  async offers(name: string): Promise<boolean> {
-    return (await this.list()).repositories.some((repository) => repository.name === name);
+  async offers(name: string, actor: string | null = null): Promise<boolean> {
+    return (await this.list(actor)).repositories.some((repository) => repository.name === name);
   }
 
   /** True when a folder of that name is under the checkouts root. A name that cannot be a project or a missing root is left for prepare to report. */
@@ -80,7 +84,11 @@ export class RemoteRepositories {
   /** Clones a repository of a connected host into `<checkouts root>/<name>`. One that is already cloned from it is left alone. */
   async clone(name: string, actor: string | null): Promise<void> {
     assertRepoAllowed(this.config.env.SWARMLOOP_REPOS, name);
-    const matches = (await this.list()).repositories.filter((repository) => repository.name === name);
+    const listed = await this.list(actor);
+    if (listed.reason) {
+      throw new SwarmloopError(`${listed.reason}: Connect GitHub or GitLab, or set a token in .env`);
+    }
+    const matches = listed.repositories.filter((repository) => repository.name === name);
     if (matches.some((repository) => repository.cloned)) {
       return;
     }
@@ -95,7 +103,7 @@ export class RemoteRepositories {
     if (repository.blocked) {
       throw new SwarmloopError(repository.blocked);
     }
-    await this.cloneInto(repository, actor);
+    await this.cloneInto(await this.hosts.forRun(actor, repository.host), repository, actor);
   }
 
   async create(body: CreateRepositoryBody, actor: string | null): Promise<RemoteEntry> {
@@ -107,27 +115,31 @@ export class RemoteRepositories {
     if (!this.hosts.has(body.host)) {
       throw new SwarmloopError('code host is missing');
     }
-    this.hosts.requiredCredentials(body.host);
+    const hosts = await this.hosts.forRun(actor, body.host);
+    hosts.requiredCredentials(body.host);
     if (this.hasFolder(name)) {
       throw new SwarmloopError(`${name} already exists as a folder`);
     }
-    const { owners } = await this.snapshot(body.host);
+    const { owners } = await this.snapshot(hosts, body.host, actor);
     const owner = owners.find((item) => item.login === body.owner);
     if (!owner) {
       throw new SwarmloopError(`${body.owner} cannot create repositories`);
     }
-    const { repository } = await this.hosts
+    const { repository } = await hosts
       .byName(body.host)
       .createRepository({ owner, name, isPublic: body.public === true });
-    this.cache.delete(body.host);
+    this.cache.delete(`${actor ?? ''}:${body.host}`);
+    if (repository.host === 'github' && actor) {
+      await this.connections?.addRepository(actor, `${repository.owner}/${repository.name}`);
+    }
     this.logger.log(`${actor ?? 'nobody'} created ${repository.owner}/${repository.name} on ${repository.host}`);
-    await this.cloneInto(repository, actor);
+    await this.cloneInto(hosts, repository, actor);
     await this.checkouts.saveCheckout(repository.name, '');
     return { ...repository, cloned: true };
   }
 
-  private async cloneInto(repository: RemoteRepository, actor: string | null): Promise<void> {
-    const host = this.hosts.byName(repository.host);
+  private async cloneInto(hosts: CodeHostRegistry, repository: RemoteRepository, actor: string | null): Promise<void> {
+    const host = hosts.byName(repository.host);
     const project = `${repository.owner}/${repository.name}`;
     try {
       await git(['clone', host.cloneUrl(project), this.folder(repository.name)], host.cloneEnv());
@@ -147,8 +159,8 @@ export class RemoteRepositories {
     return path;
   }
 
-  private configured(): CodeHostName[] {
-    return this.hosts.names.filter((name) => this.hosts.credentials(name).token.trim() !== '');
+  private configured(hosts: CodeHostRegistry): CodeHostName[] {
+    return hosts.names.filter((name) => hosts.credentials(name).token.trim() !== '');
   }
 
   private missingToken(): string {
@@ -156,12 +168,13 @@ export class RemoteRepositories {
   }
 
   /** The repositories and owners of one host, kept for a minute. */
-  private async snapshot(name: CodeHostName): Promise<HostSnapshot> {
-    const cached = this.cache.get(name);
+  private async snapshot(hosts: CodeHostRegistry, name: CodeHostName, actor: string | null): Promise<HostSnapshot> {
+    const slot = `${actor ?? ''}:${name}`;
+    const cached = this.cache.get(slot);
     if (cached && this.clock.now() - cached.at < CACHE_MS) {
       return cached;
     }
-    const host = this.hosts.byName(name);
+    const host = hosts.byName(name);
     const repositories: RemoteRepository[] = [];
     for (let page = 1; page <= MAX_PAGES; page += 1) {
       const read = await host.listRepositories(page);
@@ -172,7 +185,7 @@ export class RemoteRepositories {
     }
     const { owners } = await host.listOwners();
     const fresh = { at: this.clock.now(), repositories, owners };
-    this.cache.set(name, fresh);
+    this.cache.set(slot, fresh);
     return fresh;
   }
 

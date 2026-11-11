@@ -44,8 +44,8 @@ export class CheckoutsController {
   }
 
   @Get('remote')
-  listRemote(): Promise<RemoteListView> {
-    return this.badRequest(() => this.remote.list());
+  listRemote(@Actor() actor: string | null): Promise<RemoteListView> {
+    return this.badRequest(() => this.remote.list(actor));
   }
 
   @Post('repositories')

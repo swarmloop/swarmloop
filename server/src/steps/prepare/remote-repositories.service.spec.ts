@@ -75,6 +75,7 @@ function harness(options: {
   const gitlab = fakeHost('gitlab', remotes, options.gitlab ?? []);
   const token = options.token ?? TOKEN;
   const hosts = {
+    forRun: () => Promise.resolve(hosts),
     names: ['github', 'gitlab'],
     has: (name: string) => name === 'github' || name === 'gitlab',
     byName: (name: string) => (name === 'github' ? github.host : gitlab.host),
@@ -84,7 +85,7 @@ function harness(options: {
         throw new Error(`${name.toUpperCase()}_TOKEN is missing`);
       }
     },
-  } as unknown as CodeHostRegistry;
+  } as unknown as CodeHostRegistry & { forRun(): Promise<CodeHostRegistry> };
   const clock = new FakeClock();
   const saveCheckout = jest.fn(async () => undefined);
   const service = new RemoteRepositories(

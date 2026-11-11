@@ -72,6 +72,7 @@ export interface SwarmloopEnv {
   GITLAB_OAUTH_CLIENT_SECRET: string;
   SWARMLOOP_ALLOW: string;
   SWARMLOOP_TOKEN: string;
+  SWARMLOOP_SECRET: string;
 }
 
 /** An empty limit means there is no cap. Zero is a real cap. */
@@ -175,5 +176,6 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     GITLAB_OAUTH_CLIENT_SECRET: optionalText(config, 'GITLAB_OAUTH_CLIENT_SECRET'),
     SWARMLOOP_ALLOW: optionalText(config, 'SWARMLOOP_ALLOW'),
     SWARMLOOP_TOKEN: optionalText(config, 'SWARMLOOP_TOKEN'),
+    SWARMLOOP_SECRET: optionalText(config, 'SWARMLOOP_SECRET'),
   };
 }

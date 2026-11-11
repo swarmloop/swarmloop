@@ -48,9 +48,10 @@ export interface StartPlan {
   phasesGiven: boolean;
   projects: string[];
   created?: boolean;
-  /** Set for a subtask: the run row is made with these two values. */
+  /** Set for a subtask: the run row is made with these values, the person of its parent included. */
   parentRunId?: number;
   taskId?: string;
+  startedBy?: string | null;
   /** The planner may split the run into subtasks. Never set for a subtask. */
   split?: boolean;
 }
@@ -142,18 +143,23 @@ export class RunCommandsService {
     return subtaskPrompt(task, requirementsBrief(requirements), branch);
   }
 
+  private async subtaskPlan(parent: RunEntity, task: Subtask): Promise<StartPlan> {
+    return this.plan({
+      key: `${parent.key}-${task.id}`,
+      prompt: await this.subtaskPromptOf(parent, task),
+      projects: storedProjects(parent.projects),
+    });
+  }
+
   /** Starts one task of a parent run as a run of its own. A second call for the same task returns that run. */
   async startSubtask(parent: RunEntity, task: Subtask): Promise<RunRef> {
     const existing = await this.runs.findSubtask(parent, task.id);
     if (existing) {
       return { key: existing.key, status: existing.status === 'done' ? 'done' : 'started' };
     }
-    const plan = await this.plan({
-      key: `${parent.key}-${task.id}`,
-      prompt: await this.subtaskPromptOf(parent, task),
-      projects: storedProjects(parent.projects),
-    });
-    return this.startPlanned({ ...plan, split: false, parentRunId: parent.id, taskId: task.id });
+    const plan = await this.subtaskPlan(parent, task);
+    const link = { parentRunId: parent.id, taskId: task.id, startedBy: parent.startedBy };
+    return this.startPlanned({ ...plan, split: false, ...link });
   }
 
   /** The waiting run of a task. It is listed under the parent, but has no worktree until `launchSubtask`. */
@@ -162,12 +168,8 @@ export class RunCommandsService {
     if (existing) {
       return existing;
     }
-    const plan = await this.plan({
-      key: `${parent.key}-${task.id}`,
-      prompt: await this.subtaskPromptOf(parent, task),
-      projects: storedProjects(parent.projects),
-    });
-    const run = await this.runs.openSubtask(plan.key, parent.id, task.id);
+    const plan = await this.subtaskPlan(parent, task);
+    const run = await this.runs.openSubtask(plan.key, parent.id, task.id, parent.startedBy);
     await this.flows.noteFlow(plan.key, plan.phases, null);
     return run;
   }
@@ -195,7 +197,7 @@ export class RunCommandsService {
     const existing = plan.created ? null : await this.runs.findRun(key);
     if (!existing && plan.parentRunId !== undefined) {
       // The row only links the subtask to its parent; the run still starts as a new one.
-      await this.runs.openSubtask(key, plan.parentRunId, plan.taskId ?? '');
+      await this.runs.openSubtask(key, plan.parentRunId, plan.taskId ?? '', plan.startedBy ?? null);
     } else if (!existing && plan.split && !path) {
       await this.runs.openSplit(key);
     }

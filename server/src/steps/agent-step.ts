@@ -12,7 +12,7 @@ import type { SandboxMount } from '../core/sandbox-mount';
 import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
 import type { ManifestHosts, ProjectLaunch } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
-import { RuntimeLimit, SwarmloopError } from '../core/swarmloop-error';
+import { GitAuthError, RuntimeLimit, SwarmloopError } from '../core/swarmloop-error';
 import type { StepKernel } from './step-kernel';
 import { BaseStep } from './base-step';
 import type { StepContext } from './base-step';
@@ -165,6 +165,14 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     } catch (error) {
       if (error instanceof RuntimeLimit) {
         return this.limited(run, error);
+      }
+      if (error instanceof GitAuthError) {
+        return {
+          route: { to: 'wait', reason: error.message, code: error.code },
+          summary: `${run.opened.startedAt} ${error.message}`,
+          outputs: [],
+          visit: this.modelVisitOf(run, 'waiting', 0),
+        };
       }
       const refusal = error === run.launchError ? null : run.refusal;
       const failure = this.failureOf(error);

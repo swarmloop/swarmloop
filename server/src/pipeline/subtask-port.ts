@@ -1,6 +1,7 @@
+import { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { agentFor } from '../config/agents';
 import { AppConfig } from '../config/env';
 import { resumableChat } from '../agent/agent-session';
@@ -58,6 +59,7 @@ export class SubtaskPort extends SubtaskOps {
     private readonly visits: VisitRepository,
     private readonly config: AppConfig,
     private readonly clock: Clock,
+    @Optional() private readonly publisher?: RebasedPublisher,
   ) {
     super();
   }
@@ -200,9 +202,10 @@ export class SubtaskPort extends SubtaskOps {
   override async fastForward(parent: RunEntity): Promise<void> {
     const branch = await this.branchOf(parent);
     const names = repoNames((await this.documents.latestBody(parent.key, ARTIFACTS.repos.kind)) ?? '');
+    const hosts = (await this.publisher?.hostsFor(parent)) ?? { ...this.config.env, clock: this.clock };
     for (const repo of names) {
       const path = worktreePath(root(this.config), parent.key, repo);
-      if (existsSync(path) && (await fetchBranch(path, repo, branch, { ...this.config.env, clock: this.clock }))) {
+      if (existsSync(path) && (await fetchBranch(path, repo, branch, hosts))) {
         await git(['-C', path, 'merge', '--ff-only', originRef(branch)]);
       }
     }

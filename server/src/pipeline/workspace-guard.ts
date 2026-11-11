@@ -1,10 +1,11 @@
+import type { RebaseHosts } from '../git/rebase/types';
+import { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from 'fs';
 import { join, relative, sep } from 'path';
 import { ConflictException, Injectable } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { ERROR_CODES, type ErrorCode } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { Clock } from '../core/clock';
 import { git, GIT_LIMITS, gitDetail, gitSync } from '../git/git';
 import { ignoredDirectories } from '../git/ignored-entries';
 import { fetchBranch, parseJournal, REBASE_JOURNAL, unfinished } from '../git/rebase';
@@ -67,7 +68,7 @@ export class WorkspaceGuard {
     private readonly documents: DocumentRepository,
     private readonly events: EventRepository,
     private readonly config: AppConfig,
-    private readonly clock: Clock,
+    private readonly publisher: RebasedPublisher,
   ) {}
 
   async ensure(run: RunEntity): Promise<void> {
@@ -80,8 +81,9 @@ export class WorkspaceGuard {
     if (!body?.trim()) {
       return;
     }
+    const hosts = await this.publisher.hostsFor(run);
     for (const name of validNames(body)) {
-      await this.ensureRepo(run, name, removed);
+      await this.ensureRepo(run, name, removed, hosts);
     }
     if (removed) {
       await this.runs.clearWorkspaceRemoved(run.key);
@@ -98,7 +100,7 @@ export class WorkspaceGuard {
     }
   }
 
-  private async ensureRepo(run: RunEntity, name: string, removed: boolean): Promise<void> {
+  private async ensureRepo(run: RunEntity, name: string, removed: boolean, hosts: RebaseHosts): Promise<void> {
     const worktree = join(root(this.config), 'worktrees', run.key, name);
     const present = existsSync(worktree);
     if (present && registrationPresent(worktree)) {
@@ -125,7 +127,7 @@ export class WorkspaceGuard {
     const refs = parsePipelineRefs((await this.documents.latestBody(run.key, ARTIFACTS.pipelineRef.kind)) ?? '');
     const project = await originProject(checkout.path);
     const sha = refs.find((ref) => ref.project === project)?.sha || null;
-    const base = await this.baseOf(checkout, branch, sha);
+    const base = await this.baseOf(checkout, branch, sha, hosts);
     if (!base) {
       if (removed) {
         throw new SwarmloopError(
@@ -151,8 +153,13 @@ export class WorkspaceGuard {
   }
 
   /** The first source that exists: the local branch, `origin/<branch>` after a fetch, the published SHA. */
-  private async baseOf(checkout: Checkout, branch: string, sha: string | null): Promise<Base | null> {
-    const remote = await this.fetched(checkout, branch);
+  private async baseOf(
+    checkout: Checkout,
+    branch: string,
+    sha: string | null,
+    hosts: RebaseHosts,
+  ): Promise<Base | null> {
+    const remote = await this.fetched(checkout, branch, hosts);
     if (await has(checkout.path, `refs/heads/${branch}`)) {
       await this.assertFree(checkout, branch);
       await this.assertNotDiverged(checkout, branch, remote, sha);
@@ -168,9 +175,9 @@ export class WorkspaceGuard {
   }
 
   /** True when origin has the branch. A fetch that fails counts as a branch that is gone. */
-  private async fetched(checkout: Checkout, branch: string): Promise<boolean> {
+  private async fetched(checkout: Checkout, branch: string, hosts: RebaseHosts): Promise<boolean> {
     try {
-      return await fetchBranch(checkout.path, checkout.name, branch, { ...this.config.env, clock: this.clock });
+      return await fetchBranch(checkout.path, checkout.name, branch, hosts);
     } catch {
       return false;
     }

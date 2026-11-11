@@ -11,6 +11,7 @@ import { secureHttp } from './api/request-guard';
 import { Housekeeping } from './pipeline/housekeeping';
 import { Reconciler } from './pipeline/reconciler';
 import { bindRefusal } from './auth/bind-check';
+import { HostAppsService } from './auth/host-apps.service';
 import { allowedOrigins } from './live/origins';
 
 async function bootstrap(): Promise<void> {
@@ -26,7 +27,8 @@ async function bootstrap(): Promise<void> {
       bodyParser: false,
     });
     const env = app.get(AppConfig).env;
-    const refusal = bindRefusal(env);
+    const apps = app.get(HostAppsService);
+    const refusal = bindRefusal(env, apps.find('github') !== null || apps.find('gitlab') !== null);
     if (refusal) {
       await app.close();
       fail(refusal);

@@ -41,6 +41,8 @@ import { PipelineModule } from '../pipeline/pipeline.module';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { Reconciler } from '../pipeline/reconciler';
 
+const MACHINE_TOKEN = 'test-machine-token';
+
 type FakeSandbox = Record<string, (...args: never[]) => Promise<unknown>>;
 
 interface TestAppOptions {
@@ -106,6 +108,8 @@ export interface TestApp {
   runner: ScriptedFakeAgentRunner;
   pipeline: PipelineService;
   url: string;
+  /** The machine token as a bearer: the API takes no request without a session or this. */
+  auth: { authorization: string };
   close(): Promise<void>;
   /** A restart: this app stops and a new one starts on the same root and database. The new app owns the root. */
   restart(): Promise<TestApp>;
@@ -208,6 +212,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     runner,
     pipeline: app.get(PipelineService),
     url: `http://127.0.0.1:${address.port}`,
+    auth: { authorization: `Bearer ${options.env?.SWARMLOOP_TOKEN ?? MACHINE_TOKEN}` },
     close: async () => {
       try {
         await app.close();
@@ -256,6 +261,7 @@ function testEnv(root: string, overrides: Record<string, string> = {}): string {
     'SWARMLOOP_API_PORT=0',
     'SWARMLOOP_API_HOST=127.0.0.1',
     `SWARMLOOP_ROOT=${root}`,
+    `SWARMLOOP_TOKEN=${MACHINE_TOKEN}`,
     ...Object.entries(overrides).map(([name, value]) => `${name}=${value}`),
     '',
   ].join('\n');

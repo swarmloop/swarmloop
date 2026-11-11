@@ -31,6 +31,14 @@ export class RuntimeLimit extends SwarmloopError {
   }
 }
 
+/** A person's token cannot be used any more: the run waits until they reconnect. */
+export class GitAuthError extends SwarmloopError {
+  constructor(message: string) {
+    super(message, { code: ERROR_CODES.GIT_AUTH, category: 'user' });
+    this.name = 'GitAuthError';
+  }
+}
+
 export class FetchFailed extends SwarmloopError {
   constructor(
     message: string,

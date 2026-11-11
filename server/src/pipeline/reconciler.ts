@@ -1,5 +1,6 @@
 import type { OnModuleDestroy } from '@nestjs/common';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConnectionsService } from '../auth/connections.service';
 import { AppConfig } from '../config/env';
 import { agentFor, agentsFor } from '../config/agents';
 import { chargeStream } from '../agent/spend';
@@ -71,6 +72,7 @@ export class Reconciler implements OnModuleDestroy {
     private readonly workspace: WorkspaceGuard,
     private readonly cooldowns: RuntimeCooldownRepository,
     private readonly subtasks: SubtaskPort,
+    @Optional() private readonly connections?: ConnectionsService,
   ) {}
 
   /** The startup pass over the runs. `claimed` says which runs a step of this process holds. */
@@ -118,6 +120,7 @@ export class Reconciler implements OnModuleDestroy {
   private async reconcileAll(): Promise<void> {
     await this.reconcileRuns();
     await this.resumeLimited();
+    await this.resumeGitAuth();
     await this.resumeSubtaskParents();
     await this.reconcileCommands();
   }
@@ -145,6 +148,19 @@ export class Reconciler implements OnModuleDestroy {
         const runtimes = agentsFor(this.config.env, run, run.currentStep).map((agent) => agent.runtime);
         if (this.clock.now() < (await this.cooldowns.earliest(runtimes)).resumeAt) continue;
         await this.commands.accept('resume', run.key, {}, { idempotencyKey: `limit-${run.revision}` });
+      } catch (error) {
+        this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  /** A run that waits for a person to reconnect goes on by itself, once, when their connection is ok again. */
+  async resumeGitAuth(): Promise<void> {
+    for (const run of await this.runs.listRuns()) {
+      if (run.status !== 'waiting' || deriveState(run).reason?.code !== ERROR_CODES.GIT_AUTH) continue;
+      try {
+        if (!run.startedBy || !(await this.connections?.isHealthy(run.startedBy))) continue;
+        await this.commands.accept('resume', run.key, {}, { idempotencyKey: `git-auth-${run.revision}` });
       } catch (error) {
         this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -300,7 +316,7 @@ export class Reconciler implements OnModuleDestroy {
     try {
       if (await this.documents.latestBody(run.key, 'merge_request')) return;
       const refs = await this.documents.latestBody(run.key, 'pipeline_ref');
-      const body = refs ? await this.mergeRequests.existing(run.codeHost, refs) : null;
+      const body = refs ? await this.mergeRequests.existing(run, refs) : null;
       if (body) await this.documents.putDocument(run, 'merge_request', body);
     } catch (error) {
       this.logger.warn(`merge request of ${run.key} was not confirmed: ${String(error)}`);

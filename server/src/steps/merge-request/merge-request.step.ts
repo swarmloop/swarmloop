@@ -60,8 +60,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     if (skipped) {
       return this.finish(`${opened.startedAt} ${skipped}`, undefined, '');
     }
-    this.registry.requiredCredentials(opened.run.codeHost);
-    const client = this.registry.byName(opened.run.codeHost);
+    const client = await this.registry.hostFor(opened.run);
     const phases = await this.flows.activePhases(opened.run.id);
     const { requirements } = input;
     if (!requirements?.trim()) {

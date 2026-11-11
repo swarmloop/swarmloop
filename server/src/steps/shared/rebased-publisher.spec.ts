@@ -14,7 +14,8 @@ async function setup() {
   git(tree, ['add', 'src/field.ts']);
   git(tree, ['commit', '-m', 'field']);
   const origin = git(tree, ['remote', 'get-url', 'origin']);
-  const publisher = new RebasedPublisher({} as never, { has: () => false } as never);
+  const registry = { has: () => false, forRun: () => Promise.resolve(registry) };
+  const publisher = new RebasedPublisher({} as never, registry as never);
   const internals = publisher as unknown as { push: (...args: unknown[]) => Promise<boolean> };
   const real = internals.push.bind(publisher);
   const push = jest.spyOn(internals, 'push');
@@ -29,7 +30,7 @@ describe('RebasedPublisher unknown push result', () => {
       await real(...args);
       throw new Error('connection reset');
     });
-    await expect(publisher.pushRef(tree, branch, null, '', origin)).resolves.toBe(true);
+    await expect(publisher.pushRef(tree, branch, null, { codeHost: '', startedBy: null }, origin)).resolves.toBe(true);
     expect(push).toHaveBeenCalledTimes(1);
     expect(remoteTip()).toBe(git(tree.path, ['rev-parse', 'HEAD']));
     expect(git(tree.path, ['rev-parse', `refs/remotes/origin/${branch}`])).toBe(remoteTip());
@@ -38,7 +39,7 @@ describe('RebasedPublisher unknown push result', () => {
   it('pushes again with the lease when the remote still has the tip the lease expects', async () => {
     const { tree, origin, publisher, push, remoteTip } = await setup();
     push.mockImplementationOnce(() => Promise.reject(new Error('connection reset')));
-    await expect(publisher.pushRef(tree, branch, null, '', origin)).resolves.toBe(true);
+    await expect(publisher.pushRef(tree, branch, null, { codeHost: '', startedBy: null }, origin)).resolves.toBe(true);
     expect(push).toHaveBeenCalledTimes(2);
     expect(remoteTip()).toBe(git(tree.path, ['rev-parse', 'HEAD']));
   });
@@ -47,7 +48,9 @@ describe('RebasedPublisher unknown push result', () => {
     const { tree, origin, publisher, push } = await setup();
     git(tree.path, ['push', origin, `main:refs/heads/${branch}`]);
     push.mockImplementationOnce(() => Promise.reject(new Error('connection reset')));
-    await expect(publisher.pushRef(tree, branch, null, '', origin)).rejects.toThrow('connection reset');
+    await expect(publisher.pushRef(tree, branch, null, { codeHost: '', startedBy: null }, origin)).rejects.toThrow(
+      'connection reset',
+    );
     expect(push).toHaveBeenCalledTimes(1);
   });
 });

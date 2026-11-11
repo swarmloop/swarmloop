@@ -18,6 +18,8 @@ import { LiveHub } from '../live/live.hub';
 
 import { RunQueriesService } from './run-queries.service';
 
+import { RunCommandsService } from './run-commands.service';
+
 import { boot, visit } from '../testing/runs.spec-helpers';
 
 describe('runs api', () => {
@@ -105,6 +107,39 @@ describe('runs api', () => {
       expect(a?.run).toMatchObject({ key: 'proj-split-a', currentStep: 'ci', usd: 2.5 });
       expect(b?.run).toBeUndefined();
       expect(flow.metrics.usd).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('opens the subtask of a run for the person who started the parent', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-subtask-owner-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const parent = await runs.begin('proj-owner', 'implement');
+      parent.startedBy = 'alice';
+      parent.projects = 'demo';
+      await runs.saveRun(parent);
+      await documents.putDocument(
+        parent,
+        'requirements',
+        JSON.stringify({ prompt: 'x', plan: { items: ['x'], decision: 'approve' } }),
+      );
+      const task = {
+        id: 'a',
+        title: 'A',
+        description: '',
+        depends: [],
+        files: [],
+        proof: '',
+        status: 'pending' as const,
+      };
+
+      const child = await app.get(RunCommandsService).openSubtask(parent, task);
+
+      expect(child.startedBy).toBe('alice');
     } finally {
       await app.close();
     }

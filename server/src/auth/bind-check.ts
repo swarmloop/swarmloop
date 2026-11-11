@@ -3,6 +3,15 @@ import type { SwarmloopEnv } from '../config/env';
 const LOOPBACK = ['127.0.0.1', 'localhost', '::1', '[::1]'];
 const ANY = ['0.0.0.0', '::'];
 
+/** True for a host name, or a `Host` header with a port, that is this machine. */
+export function isLoopback(host: string): boolean {
+  try {
+    return LOOPBACK.includes(new URL(`http://${host}`).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 type BindEnv = Pick<
   SwarmloopEnv,
   | 'SWARMLOOP_API_HOST'
@@ -18,8 +27,9 @@ type BindEnv = Pick<
  * on 0.0.0.0 inside the container and publishes the port on 127.0.0.1, so `0.0.0.0` passes while the public URL is
  * on loopback.
  */
-export function bindRefusal(env: BindEnv): string | null {
+export function bindRefusal(env: BindEnv, storedApp = false): string | null {
   const hasProvider =
+    storedApp ||
     (env.GITHUB_OAUTH_CLIENT_ID && env.GITHUB_OAUTH_CLIENT_SECRET) ||
     (env.GITLAB_OAUTH_CLIENT_ID && env.GITLAB_OAUTH_CLIENT_SECRET);
   const host = env.SWARMLOOP_API_HOST.toLowerCase();
@@ -27,5 +37,5 @@ export function bindRefusal(env: BindEnv): string | null {
   if (hasProvider || LOOPBACK.includes(host) || (ANY.includes(host) && LOOPBACK.includes(publicHost))) {
     return null;
   }
-  return `SWARMLOOP_API_HOST=${env.SWARMLOOP_API_HOST} is not loopback and no login is configured: set GITHUB_OAUTH_CLIENT_ID and GITHUB_OAUTH_CLIENT_SECRET or GITLAB_OAUTH_CLIENT_ID and GITLAB_OAUTH_CLIENT_SECRET, or listen on 127.0.0.1`;
+  return `SWARMLOOP_API_HOST=${env.SWARMLOOP_API_HOST} is not loopback and no login is configured: set GITHUB_OAUTH_CLIENT_ID and GITHUB_OAUTH_CLIENT_SECRET or GITLAB_OAUTH_CLIENT_ID and GITLAB_OAUTH_CLIENT_SECRET, connect GitHub or GitLab from the dashboard on this machine first, or listen on 127.0.0.1`;
 }

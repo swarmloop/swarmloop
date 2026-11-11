@@ -78,7 +78,9 @@ export function deriveState(run: StateRow, facts: StateFacts = {}): { state: Run
       if (facts.queued) return { state: 'queued', reason: null };
       if (
         stored &&
-        (stored.code === ERROR_CODES.RUNTIME_LIMIT || SUBTASK_WAIT_CODES.includes(stored.code as ErrorCode))
+        (stored.code === ERROR_CODES.RUNTIME_LIMIT ||
+          stored.code === ERROR_CODES.GIT_AUTH ||
+          SUBTASK_WAIT_CODES.includes(stored.code as ErrorCode))
       )
         return { state: 'waiting', reason: stored };
       if (facts.needsAnswers) return { state: 'waiting', reason: reason('NEEDS_ANSWERS', 'waiting for a person') };

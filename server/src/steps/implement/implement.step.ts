@@ -289,7 +289,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       prompt: ctx.opened.run.prompt,
       denied: await this.checkouts.listDenyPaths(),
       message: commitMessage(key, summaryForBranch(requirements, key)),
-      hosts: { ...this.config.env, clock: this.clock },
+      hosts: await this.publisher.hostsFor(ctx.opened.run),
       journal: runJournal(this.documents, ctx.opened.run),
       onBase: (repo: string, sha: string) => {
         bases.set(repo, sha);
