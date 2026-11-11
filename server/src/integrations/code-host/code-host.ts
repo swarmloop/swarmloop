@@ -30,6 +30,33 @@ export interface MergeRequestView {
   draft: boolean;
 }
 
+/** How a merge request stands now, with who ended it and when. `by` is null when the host does not say. */
+export type MergeRequestState =
+  | { state: 'open' }
+  | { state: 'merged'; sha: string | null; by: string | null; at: string }
+  | { state: 'closed'; by: string | null; at: string };
+
+/** What a host says about its repositories: its urls and payloads, and who the token is in a Basic header. */
+export interface RepositoryApi {
+  /** The user name of the token in a Basic header, the same one `pushUrl` uses. */
+  gitUser: string;
+  /** The permission a token needs to list, create and clone, named in a refusal. */
+  needs: string;
+  listUrl(root: string, page: number, perPage: number): string;
+  /** The repository of one row, or null when the token cannot push to it. */
+  repositoryOf(row: unknown): RemoteRepository | null;
+  readOwners(root: string, read: (url: string) => Promise<unknown>): Promise<RepositoryOwner[]>;
+  createRequest(root: string, draft: CreateRepositoryDraft): { url: string; payload: string };
+}
+
+/** What a host says about the state of one request. */
+export interface RequestStateApi {
+  /** The state from the request's own payload; `now` stands in for a time the host leaves out. */
+  stateOf(body: unknown, now: string): MergeRequestState;
+  /** The page that names who closed a request, for a host whose request payload does not. */
+  closerUrl?(requestUrl: string): string;
+}
+
 export interface PipelineRef {
   project: string;
   ref: string;
@@ -122,6 +149,8 @@ export interface CodeHost {
   setDraft(project: string, iid: number, draft: boolean): Promise<{ httpCalls: HttpCallDraft[] }>;
   updateMergeRequest(project: string, iid: number, summary: string): Promise<{ httpCalls: HttpCallDraft[] }>;
   readMergeRequest(project: string, iid: number): Promise<MergeRequestView & { httpCalls: HttpCallDraft[] }>;
+  /** Whether the request is open, merged (by anyone, on the host or elsewhere) or closed without a merge. */
+  mergeRequestState(project: string, iid: number): Promise<MergeRequestState & { httpCalls: HttpCallDraft[] }>;
   /** Squash-merges the request into the target branch it already has. A refusal for a conflict is a `MergeConflict`; any other refusal is a `FetchFailed` with the host's message. */
   mergeMergeRequest(project: string, iid: number): Promise<{ sha: string; httpCalls: HttpCallDraft[] }>;
   /** Closes an open request. One that is already merged or closed stays as it is. */

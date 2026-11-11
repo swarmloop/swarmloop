@@ -155,6 +155,27 @@ export function withSkip(said: string, step: string, skip: string | null): strin
   return `${note} ${said}`;
 }
 
+function doneSentence(run: RunEntity): string {
+  const { state } = deriveState(run);
+  if (state === 'merged') return 'This run is merged: its merge request is in the target branch.';
+  if (state === 'closed')
+    return 'This run is closed: its merge request was closed without a merge. Replay starts it again.';
+  return 'This run is done: its merge request is ready to merge.';
+}
+
+function blockedSentence(run: RunEntity, documents: DocumentEntity[], maxReturns: number): string {
+  if (blockCode(run.currentStep, latest(documents, 'error')) === REASON.checkFailed) {
+    return 'A required check failed again on unchanged files. Resume returns to implementation with the stored notes.';
+  }
+  return didNotFit(documents)
+    ? run.currentStep === 'code-review'
+      ? 'This step cannot start with the remaining agent-call budget. Resume retries from stored reviews.'
+      : 'This step cannot start with the remaining agent-call budget. Resume runs it anyway.'
+    : isLoopStep(run.currentStep)
+      ? `Automatic retries stopped after ${maxReturns} attempts. Resume starts another.`
+      : 'This run is blocked. Another return is not available.';
+}
+
 export function sentence(
   run: RunEntity,
   open: FlowItem[],
@@ -163,16 +184,7 @@ export function sentence(
   maxReturns: number,
 ): string {
   if (run.status === 'blocked') {
-    if (blockCode(run.currentStep, latest(documents, 'error')) === REASON.checkFailed) {
-      return 'A required check failed again on unchanged files. Resume returns to implementation with the stored notes.';
-    }
-    return didNotFit(documents)
-      ? run.currentStep === 'code-review'
-        ? 'This step cannot start with the remaining agent-call budget. Resume retries from stored reviews.'
-        : 'This step cannot start with the remaining agent-call budget. Resume runs it anyway.'
-      : isLoopStep(run.currentStep)
-        ? `Automatic retries stopped after ${maxReturns} attempts. Resume starts another.`
-        : 'This run is blocked. Another return is not available.';
+    return blockedSentence(run, documents, maxReturns);
   }
   if (run.status === 'waiting' && isLoopStep(run.currentStep)) {
     const visits = countedVisits(stats, run.currentStep, loopMark(latest(documents, 'loop_mark')));
@@ -184,7 +196,7 @@ export function sentence(
     return 'This step failed. Resume retries it.';
   }
   if (run.status === 'done') {
-    return 'This run is done.';
+    return doneSentence(run);
   }
   if (run.status === 'running') {
     return 'This step is running. The output is below.';

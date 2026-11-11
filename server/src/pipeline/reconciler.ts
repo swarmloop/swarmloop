@@ -32,6 +32,7 @@ import { RunRebase } from '../steps/run-rebase';
 import { StepRegistry } from '../steps/step.registry';
 import { CHAT_LOCK, chatResume, readChatLock } from './chat-lock';
 import { CommandService } from './command.service';
+import { MergeWatch } from './merge-watch';
 import { SubtaskPort } from './subtask-port';
 import { WorkspaceGuard, workspaceBlock } from './workspace-guard';
 import { settleShell } from './shell-lock';
@@ -54,6 +55,8 @@ export class Reconciler implements OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
   private tick: Promise<void> | null = null;
   private awake: AwakeTime | null = null;
+  /** When the merge watch last ran. Null before its first pass. */
+  private watchedAt: number | null = null;
   /** Host suspensions seen by the timer, so a wait that began before one does not count it. */
   private readonly slept: { at: number; ms: number }[] = [];
 
@@ -72,6 +75,7 @@ export class Reconciler implements OnModuleDestroy {
     private readonly workspace: WorkspaceGuard,
     private readonly cooldowns: RuntimeCooldownRepository,
     private readonly subtasks: SubtaskPort,
+    private readonly mergeWatch: MergeWatch,
     @Optional() private readonly connections?: ConnectionsService,
   ) {}
 
@@ -122,6 +126,7 @@ export class Reconciler implements OnModuleDestroy {
     await this.resumeLimited();
     await this.resumeGitAuth();
     await this.resumeSubtaskParents();
+    await this.watchMerges();
     await this.reconcileCommands();
   }
 
@@ -180,6 +185,14 @@ export class Reconciler implements OnModuleDestroy {
         this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+  }
+
+  /** The done runs are looked at through the code host every `MERGE_WATCH_MIN` minutes, not on every tick. */
+  async watchMerges(): Promise<void> {
+    const now = this.clock.now();
+    if (this.watchedAt !== null && now - this.watchedAt < this.config.env.MERGE_WATCH_MIN * 60_000) return;
+    this.watchedAt = now;
+    await this.mergeWatch.run();
   }
 
   /** The commands a process left `accepted` or `executing`. */

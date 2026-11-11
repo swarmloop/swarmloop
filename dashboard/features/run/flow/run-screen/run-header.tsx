@@ -15,6 +15,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { duration, memory, money, tokens } from '../../../../lib/format';
 import { latestPhaseLabels } from '../../phases';
+import { RunStateLabel } from '../../run-state-label';
 import type { FlowView } from '@contract/api';
 import { statusColor } from '../../../../theme/theme';
 
@@ -124,6 +125,11 @@ export function RunHeader({
           </Tooltip>
         ))}
       </Box>
+      {flow.status === 'done' ? (
+        <Box sx={{ mt: 0.75 }}>
+          <RunStateLabel status={flow.status} merge={flow.merge} />
+        </Box>
+      ) : null}
       {launches.length > 0 ? (
         <Box sx={{ mt: 0.75, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
           {latestPhaseLabels(launches).map((label) => (

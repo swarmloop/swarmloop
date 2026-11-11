@@ -35,6 +35,22 @@ describe('RunHeader', () => {
     expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
   });
 
+  it('shows Ready to merge, Merged with who and when, or Closed on a done run', () => {
+    const { unmount } = render(<RunHeader {...headerProps()} />);
+    expect(screen.getByText('Ready to merge')).toBeInTheDocument();
+    unmount();
+    const merge = {
+      merged: { 'acme/demo': { sha: 'abcdef123', by: 'ada', at: '2026-05-01T10:00:00.000Z', url: null } },
+    };
+    const merged = render(<RunHeader {...headerProps()} flow={flowView({ status: 'done', merge })} />);
+    expect(screen.getByText('Merged')).toBeInTheDocument();
+    expect(screen.getByText(/by ada/)).toBeInTheDocument();
+    merged.unmount();
+    const closed = { closed: { repo: 'acme/demo', by: null, at: '2026-05-02T08:00:00.000Z' } };
+    render(<RunHeader {...headerProps()} flow={flowView({ status: 'done', merge: closed })} />);
+    expect(screen.getByText('Closed')).toBeInTheDocument();
+  });
+
   it('says when the workspace was removed and stays quiet otherwise', () => {
     header('done', { flow: flowView({ status: 'done', workspace: 'removed' }) });
 

@@ -13,6 +13,8 @@ export const RUN_STATES = [
   'blocked',
   'failed',
   'done',
+  'merged',
+  'closed',
 ] as const;
 export type RunState = (typeof RUN_STATES)[number];
 
@@ -26,6 +28,19 @@ export interface LimitState {
   resetsAt?: string;
   resumesAt: string;
 }
+
+/** Where one repository's merge request was merged, by whom and when. */
+export interface MergedFact {
+  sha: string | null;
+  by: string | null;
+  at: string;
+  /** The page of the merge commit on the host, when it can be told from the request's url. */
+  url: string | null;
+}
+
+/** How a done run's merge requests ended: all merged (by repository), or one closed without a merge. */
+export type MergeOutcome =
+  { merged: Record<string, MergedFact> } | { closed: { repo: string; by: string | null; at: string } };
 
 export interface StateReason {
   code: string;
@@ -46,6 +61,8 @@ export const REASON = {
   ciTimeout: 'CI_TIMEOUT',
   blocked: 'BLOCKED',
   recovering: 'RECOVERING',
+  mergeWatchUnavailable: 'MERGE_WATCH_UNAVAILABLE',
+  mergeWatchStopped: 'MERGE_WATCH_STOPPED',
 } as const;
 
 /** What a stopped step says. It also tells a stopped block from the others when only the error text is known. */
@@ -94,6 +111,10 @@ export function actionsFor(state: RunState, reasonCode: string | null = null): R
       return reasonCode && RESUMABLE_BLOCKS.includes(reasonCode) ? ['resume', 'replay'] : ['replay'];
     case 'done':
       return ['replay', 'rebase'];
+    case 'merged':
+      return [];
+    case 'closed':
+      return ['replay'];
     case 'queued':
     case 'recovering':
       return [];

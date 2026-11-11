@@ -35,6 +35,7 @@ export const envSchema = Joi.object({
   LIMIT_COOLDOWN_MIN: Joi.number().integer().min(1).default(60),
   STOP_GRACE_S: Joi.number().integer().min(1).default(10),
   RECONCILE_MS: Joi.number().integer().min(1).default(60_000),
+  MERGE_WATCH_MIN: Joi.number().integer().min(1).default(5),
   RECOVER_WAIT_MS: Joi.number().integer().min(1).default(600_000),
   RETAIN_DONE_DAYS: Joi.number().integer().min(0).default(3),
   MIN_FREE_GB: Joi.number().min(0).default(10),

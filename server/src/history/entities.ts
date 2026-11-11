@@ -80,6 +80,14 @@ export class RunEntity {
   @Column({ name: 'state_reason', type: 'text', nullable: true })
   stateReason!: string | null;
 
+  /** JSON `MergeOutcome` of a done run whose merge requests ended. Null while it waits for a merge. */
+  @Column({ name: 'merge_outcome', type: 'text', nullable: true })
+  mergeOutcome!: string | null;
+
+  /** When the merge watch first saw the run done. The 30-day wait and the time to merge count from it. */
+  @Column({ name: 'done_at', type: 'text', nullable: true })
+  doneAt!: string | null;
+
   @Column({ type: 'text', nullable: true })
   prompt!: string | null;
 

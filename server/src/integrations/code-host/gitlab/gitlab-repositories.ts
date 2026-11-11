@@ -1,6 +1,5 @@
 import type { RemoteRepository, RepositoryOwner } from '../../../contract/api';
-import type { RepositoryApi } from '../abstract-code-host';
-import type { CreateRepositoryDraft } from '../code-host';
+import type { CreateRepositoryDraft, RepositoryApi } from '../code-host';
 
 /** Developer: the lowest role that can push. */
 const DEVELOPER = 30;

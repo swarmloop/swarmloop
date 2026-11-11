@@ -1,5 +1,5 @@
 import type { CommandInput } from './command';
-import type { RunAction, RunState, StateReason } from './run-state';
+import type { MergeOutcome, RunAction, RunState, StateReason } from './run-state';
 import type { SubtaskStatus } from './subtask';
 
 export interface RunSummary {
@@ -12,6 +12,8 @@ export interface RunSummary {
   stepStartedAt: string | null;
   durationMs: number;
   usd: number;
+  /** Set on a done run whose merge requests were merged or closed. */
+  merge?: MergeOutcome;
   /** Set on a subtask only: the key of its parent run and its task id. */
   parentKey?: string;
   taskId?: string;
@@ -76,6 +78,8 @@ export interface FlowView {
   resume: 'ready' | 'need-answers' | 'running' | 'blocked' | 'done';
   state: RunState;
   stateReason: StateReason | null;
+  /** Set on a done run whose merge requests were merged or closed. */
+  merge?: MergeOutcome;
   /** What the server allows now. The buttons follow it. */
   actions: RunAction[];
   revision: number;
@@ -406,6 +410,11 @@ export interface StatsDay {
   failed: number;
   usd: number;
   returns: number;
+  /** Done runs of the day that were merged, and that were closed without a merge. Both are also in `done`. */
+  merged: number;
+  closed: number;
+  /** Median time from done to merge of the day's merged runs; null without one. */
+  medianToMergeMs: number | null;
 }
 
 /** Spend and tokens of one step, model or agent. `count` is visits for steps and models, runs for agents. */
@@ -447,6 +456,11 @@ export interface StatsTotals {
   agentMs: number;
   /** Median working time of a done run; null without one. */
   medianDoneMs: number | null;
+  /** Done runs whose merge requests were merged, and whose were closed without a merge. Both are also in `done`. */
+  merged: number;
+  closed: number;
+  /** Median time from done to merge of the merged runs; null without one. */
+  medianToMergeMs: number | null;
 }
 
 /** The runs started from `from` to `to` (local days, inclusive) and everything they did. */

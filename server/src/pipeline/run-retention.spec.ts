@@ -81,6 +81,31 @@ describe('RunRetention', () => {
     },
   );
 
+  it('removes the worktree of a merged run right away, keeps a closed one, and keeps all when the threshold is 0', async () => {
+    world = await makeWorld('PROJ-10');
+    await age(world, 0);
+    const table = world.app.get<Repository<RunEntity>>(getRepositoryToken(RunEntity));
+    await table.update({ key: 'PROJ-10' }, { state: 'closed' });
+    expect(await world.app.get(RunRetention).apply(3)).toEqual([]);
+    await table.update({ key: 'PROJ-10' }, { state: 'merged' });
+    expect(await world.app.get(RunRetention).apply(0)).toEqual([]);
+
+    expect(await world.app.get(RunRetention).apply(3)).toEqual(['PROJ-10']);
+
+    expect(existsSync(world.worktree)).toBe(false);
+    expect((await freshRun(world)).workspace).toBe('removed');
+  });
+
+  it("ages a done run by when the merge watch first saw it, not by the watch's later writes", async () => {
+    world = await makeWorld('PROJ-11');
+    await age(world, 10);
+    const table = world.app.get<Repository<RunEntity>>(getRepositoryToken(RunEntity));
+    const old = new Date(Date.now() - 10 * 86_400_000).toISOString();
+    await table.update({ key: 'PROJ-11' }, { doneAt: old, updatedAt: new Date().toISOString() });
+
+    expect(await world.app.get(RunRetention).apply(3)).toEqual(['PROJ-11']);
+  });
+
   it('cleans the oldest done run first and never the run it is told to skip', async () => {
     world = await makeWorld('PROJ-4');
     await age(world, 5);

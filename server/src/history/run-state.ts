@@ -3,7 +3,7 @@ import { SERVER_INSTANCE } from '../core/server-instance';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
 import type { ErrorCode } from '../contract/error-codes';
 import { isStopNote, REASON } from '../contract/run-state';
-import type { RunState, StateReason } from '../contract/run-state';
+import type { MergeOutcome, RunState, StateReason } from '../contract/run-state';
 import type { RunEntity } from './entities';
 
 /** What the run row alone cannot say. */
@@ -22,7 +22,7 @@ export interface StateFacts {
   blockCode?: string;
 }
 
-type StateRow = Pick<RunEntity, 'status'> & { stateReason?: string | null };
+type StateRow = Pick<RunEntity, 'status'> & { stateReason?: string | null; mergeOutcome?: string | null };
 
 /** Why a run is blocked, from the step and the error text of its last visit. */
 export function blockCode(step: string, error: string | null): string {
@@ -47,45 +47,71 @@ function readReason(stored: string | null | undefined): StateReason | null {
   }
 }
 
+/** The outcome of a done run's merge requests, null while they wait or when the stored text is not one. */
+export function readOutcome(stored: string | null | undefined): MergeOutcome | null {
+  if (!stored) return null;
+  try {
+    const parsed = JSON.parse(stored) as Partial<MergeOutcome>;
+    return 'merged' in parsed || 'closed' in parsed ? (parsed as MergeOutcome) : null;
+  } catch {
+    return null;
+  }
+}
+
+function reasonOf(code: string, message: string): StateReason {
+  return { code, message };
+}
+
+function blockedState(stored: StateReason | null, facts: StateFacts): { state: RunState; reason: StateReason } {
+  // A code the stop path or a step wrote stays: the error text of the last visit cannot say it.
+  const kept =
+    stored?.code === REASON.stopped ||
+    stored?.code === ERROR_CODES.RESOURCE_UNKNOWN ||
+    stored?.code === ERROR_CODES.INPUT_MISSING ||
+    stored?.code === ERROR_CODES.SUBTASK_BLOCKED;
+  const code = kept ? stored.code : (facts.blockCode ?? stored?.code ?? REASON.blocked);
+  return {
+    state: code === REASON.stopped ? 'stopped' : 'blocked',
+    reason: reasonOf(code, stored?.message ?? 'blocked'),
+  };
+}
+
+function unfinishedState(
+  stored: StateReason | null,
+  facts: StateFacts,
+): { state: RunState; reason: StateReason | null } {
+  if (facts.queued) return { state: 'queued', reason: null };
+  if (
+    stored &&
+    (stored.code === ERROR_CODES.RUNTIME_LIMIT ||
+      stored.code === ERROR_CODES.GIT_AUTH ||
+      SUBTASK_WAIT_CODES.includes(stored.code as ErrorCode))
+  )
+    return { state: 'waiting', reason: stored };
+  if (facts.needsAnswers) return { state: 'waiting', reason: reasonOf('NEEDS_ANSWERS', 'waiting for a person') };
+  if (facts.returned) return { state: 'idle', reason: reasonOf(REASON.returned, 'returned to implement') };
+  return { state: 'idle', reason: null };
+}
+
 /** Today's facts to the honest state. The only place that maps `status` and the facts to a state. */
 export function deriveState(run: StateRow, facts: StateFacts = {}): { state: RunState; reason: StateReason | null } {
   const stored = readReason(run.stateReason);
-  const reason = (code: string, message: string): StateReason => ({ code, message });
   switch (run.status) {
     case 'running':
       if (facts.recovering) return { state: 'recovering', reason: stored };
       return { state: facts.stopping ? 'stopping' : 'running', reason: null };
-    case 'done':
-      return { state: 'done', reason: null };
-    case 'blocked': {
-      // A code the stop path or a step wrote stays: the error text of the last visit cannot say it.
-      const kept =
-        stored?.code === REASON.stopped ||
-        stored?.code === ERROR_CODES.RESOURCE_UNKNOWN ||
-        stored?.code === ERROR_CODES.INPUT_MISSING ||
-        stored?.code === ERROR_CODES.SUBTASK_BLOCKED;
-      const code = kept ? stored.code : (facts.blockCode ?? stored?.code ?? REASON.blocked);
-      return {
-        state: code === REASON.stopped ? 'stopped' : 'blocked',
-        reason: reason(code, stored?.message ?? 'blocked'),
-      };
+    case 'done': {
+      const outcome = readOutcome(run.mergeOutcome);
+      return { state: outcome ? ('merged' in outcome ? 'merged' : 'closed') : 'done', reason: stored };
     }
+    case 'blocked':
+      return blockedState(stored, facts);
     case 'failed':
       return stored?.code === REASON.stopped
         ? { state: 'stopped', reason: stored }
         : { state: 'failed', reason: stored };
     default:
-      if (facts.queued) return { state: 'queued', reason: null };
-      if (
-        stored &&
-        (stored.code === ERROR_CODES.RUNTIME_LIMIT ||
-          stored.code === ERROR_CODES.GIT_AUTH ||
-          SUBTASK_WAIT_CODES.includes(stored.code as ErrorCode))
-      )
-        return { state: 'waiting', reason: stored };
-      if (facts.needsAnswers) return { state: 'waiting', reason: reason('NEEDS_ANSWERS', 'waiting for a person') };
-      if (facts.returned) return { state: 'idle', reason: reason(REASON.returned, 'returned to implement') };
-      return { state: 'idle', reason: null };
+      return unfinishedState(stored, facts);
   }
 }
 
@@ -97,21 +123,36 @@ export interface RunStateChange {
   activeAttempt?: string | null;
   reason?: StateReason | null;
   facts?: StateFacts;
+  /** How the merge requests of a done run ended. Kept while the run stays done, cleared when it leaves `done`. */
+  merge?: MergeOutcome;
+  /** When the merge watch first saw the run done. Kept like `merge`. */
+  doneAt?: string;
 }
 
 type StateColumns = Pick<
   RunEntity,
-  'status' | 'currentStep' | 'ownerPid' | 'ownerInstance' | 'activeAttempt' | 'state' | 'stateReason'
+  | 'status'
+  | 'currentStep'
+  | 'ownerPid'
+  | 'ownerInstance'
+  | 'activeAttempt'
+  | 'state'
+  | 'stateReason'
+  | 'mergeOutcome'
+  | 'doneAt'
 >;
 
 /** The columns of a run row that `change` sets. Used for an insert and for a conditional update. */
 export function stateColumns(
-  current: Pick<StateColumns, 'currentStep' | 'ownerInstance' | 'activeAttempt'>,
+  current: Pick<StateColumns, 'currentStep' | 'ownerInstance' | 'activeAttempt'> &
+    Partial<Pick<StateColumns, 'mergeOutcome' | 'doneAt'>>,
   change: RunStateChange,
 ): StateColumns {
   const status = change.status;
+  const done = status === 'done';
+  const mergeOutcome = done ? (change.merge ? JSON.stringify(change.merge) : (current.mergeOutcome ?? null)) : null;
   const derived = deriveState(
-    { status, stateReason: change.reason ? JSON.stringify(change.reason) : null },
+    { status, stateReason: change.reason ? JSON.stringify(change.reason) : null, mergeOutcome },
     change.facts,
   );
   const reason = change.reason ?? derived.reason;
@@ -123,11 +164,16 @@ export function stateColumns(
     activeAttempt: change.activeAttempt === undefined ? current.activeAttempt : change.activeAttempt,
     state: derived.state,
     stateReason: reason ? JSON.stringify(reason) : null,
+    mergeOutcome,
+    doneAt: done ? (change.doneAt ?? current.doneAt ?? null) : null,
   };
 }
 
 /** Moves a run to a state in memory. Persist it with `saveRun`, `claim` or `finalize`. */
-export function writeRunState(run: StateColumns, change: RunStateChange): void {
+export function writeRunState(
+  run: Omit<StateColumns, 'mergeOutcome' | 'doneAt'> & Partial<Pick<StateColumns, 'mergeOutcome' | 'doneAt'>>,
+  change: RunStateChange,
+): void {
   Object.assign(run, stateColumns(run, change));
 }
 

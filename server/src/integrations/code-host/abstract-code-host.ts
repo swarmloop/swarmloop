@@ -1,34 +1,24 @@
 import type { RemoteRepository, RepositoryOwner } from '../../contract/api';
 import type { SwarmloopEnv } from '../../config/env';
 import type { Clock } from '../../core/clock';
-import type { HttpCallDraft } from '../../core/swarmloop-error';
-import { FetchFailed, MergeConflict, SwarmloopError } from '../../core/swarmloop-error';
+import { FetchFailed, MergeConflict, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { request } from '../http';
-import { remoteProject } from '../../integrations/code-host/remote-project';
+import { requestState } from './request-state';
+import { remoteProject } from './remote-project';
 import type {
   CodeHost,
   CreateRepositoryDraft,
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
+  MergeRequestState,
   MergeRequestView,
   PipelineRef,
+  RepositoryApi,
+  RequestStateApi,
   PipelineSnapshot,
   SelectedHost,
 } from './code-host';
-
-/** What a host says about its repositories: its urls and payloads, and who the token is in a Basic header. */
-export interface RepositoryApi {
-  /** The user name of the token in a Basic header, the same one `pushUrl` uses. */
-  gitUser: string;
-  /** The permission a token needs to list, create and clone, named in a refusal. */
-  needs: string;
-  listUrl(root: string, page: number, perPage: number): string;
-  /** The repository of one row, or null when the token cannot push to it. */
-  repositoryOf(row: unknown): RemoteRepository | null;
-  readOwners(root: string, read: (url: string) => Promise<unknown>): Promise<RepositoryOwner[]>;
-  createRequest(root: string, draft: CreateRepositoryDraft): { url: string; payload: string };
-}
 
 /** Rows per page of a repository list. A shorter page is the last one. */
 const PAGE_SIZE = 100;
@@ -124,6 +114,18 @@ export abstract class AbstractCodeHost implements CodeHost {
       const { root, headers } = this.credentials();
       const body = await this.readJson(this.mergeRequestUrl(root, project, iid), headers, calls);
       return { ...this.view(body), httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async mergeRequestState(project: string, iid: number): Promise<MergeRequestState & { httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const url = this.mergeRequestUrl(root, project, iid);
+      const state = await requestState(this.states, url, this.clock.iso(), (at) => this.readJson(at, headers, calls));
+      return { ...state, httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }
@@ -289,12 +291,7 @@ export abstract class AbstractCodeHost implements CodeHost {
 
   protected abstract openRequest(root: string, draft: MergeRequestDraft): { url: string; payload: string };
 
-  protected abstract updateRequest(
-    root: string,
-    project: string,
-    iid: number,
-    summary: string,
-  ): { url: string; method: string; payload: string };
+  protected abstract updateRequest(root: string, project: string, iid: number, summary: string): Required<HostCall>;
 
   protected abstract mergeRequestUrl(root: string, project: string, iid: number): string;
 
@@ -306,6 +303,8 @@ export abstract class AbstractCodeHost implements CodeHost {
   protected abstract deleteCall(root: string, project: string, branch: string): HostCall;
 
   protected abstract view(body: unknown): MergeRequestView;
+
+  protected abstract readonly states: RequestStateApi;
 
   protected abstract mergedSha(body: unknown): string | null;
 

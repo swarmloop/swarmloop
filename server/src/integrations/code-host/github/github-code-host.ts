@@ -6,7 +6,7 @@ import { remoteProject } from '../remote-project';
 import { AbstractCodeHost, type CodeHostEnv, type HostCall } from '../abstract-code-host';
 import { snapshotOf } from '../check-status';
 import { githubRepositories } from './github-repositories';
-import { apiRoot, graphqlUrl, pullView, type GithubPull } from './github-pull';
+import { apiRoot, githubStates, graphqlUrl, pullView, type GithubPull } from './github-pull';
 import { asJob, awaitedChecks, checkStatus, listJobs, readChecks, runsOf, type GithubRun } from './github-checks';
 import type {
   MergeRequestDraft,
@@ -358,6 +358,8 @@ export class GithubCodeHost extends AbstractCodeHost {
   protected view(body: unknown): MergeRequestView {
     return pullView(body);
   }
+
+  protected readonly states = githubStates;
 
   protected mergedSha(body: unknown): string | null {
     return (body as { sha?: string } | null)?.sha ?? null;
