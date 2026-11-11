@@ -125,6 +125,41 @@ describe('branch step', () => {
     }
   });
 
+  it('pushes the feature branch of a split run, and only of a split run', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-branch-push-'));
+    const demo = repoWithMain(root, 'demo');
+    addDetached(demo, join(root, 'worktrees', 'PROJ-34', 'demo'));
+    addDetached(demo, join(root, 'worktrees', 'PROJ-35', 'demo'));
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-34', 'demo\n', 'Ship the field');
+      await seed(app, 'PROJ-35', 'demo\n', 'Ship the field');
+      const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
+      const run = await app.get(RunRepository).findRun('PROJ-34');
+      run!.split = true;
+      await app.get(RunRepository).saveRun(run!);
+      await documents.save(
+        documents.create({
+          runId: run?.id,
+          stepStatId: 0,
+          kind: 'subtasks',
+          attempt: 1,
+          body: `${JSON.stringify([{ id: 't1', title: 'T', description: '', depends: [], files: [], proof: '', status: 'waiting' }])}\n`,
+          path: '',
+          createdAt: new Date().toISOString(),
+        }),
+      );
+      expect((await app.get(PipelineService).step('branch', 'PROJ-34')).exitCode).toBe(0);
+      expect((await app.get(PipelineService).step('branch', 'PROJ-35')).exitCode).toBe(0);
+      const remote = join(root, 'demo.git');
+      expect(git(remote, ['branch', '--list', 'feature/PROJ-34-ship-the-field'])).toContain('feature/PROJ-34');
+      expect(git(remote, ['rev-parse', 'feature/PROJ-34-ship-the-field'])).toBe(git(demo, ['rev-parse', 'main']));
+      expect(git(remote, ['branch', '--list', 'feature/PROJ-35-ship-the-field'])).toBe('');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('stops when a named repo has no worktree', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-branch-missing-'));
     const app = await boot(root);

@@ -1,5 +1,6 @@
 import type { CommandInput } from './command';
 import type { RunAction, RunState, StateReason } from './run-state';
+import type { SubtaskStatus } from './subtask';
 
 export interface RunSummary {
   key: string;
@@ -41,7 +42,7 @@ export interface LaunchView {
 /** The tasks that can start together once the layers before them are done. */
 export interface TaskLayer {
   layer: number;
-  tasks: { id: string; title: string; files: string[]; proof: string }[];
+  tasks: { id: string; title: string; files: string[]; proof: string; status: SubtaskStatus; note?: string }[];
 }
 
 export interface FlowView {
@@ -57,6 +58,8 @@ export interface FlowView {
   startedBy?: string;
   /** The tasks of a split plan after plan-improve, by dependency layer. Missing when the run does not split. */
   tasks?: TaskLayer[];
+  /** `4/7 merged · 2 running · 1 waiting`, once the run is at implement or past it. Missing when the run does not split. */
+  taskLine?: string;
   resume: 'ready' | 'need-answers' | 'running' | 'blocked' | 'done';
   state: RunState;
   stateReason: StateReason | null;
@@ -263,6 +266,10 @@ export interface LockShellBody extends CommandInput {
 
 export interface RewindBody extends CommandInput {
   id?: number;
+}
+
+export interface SkipTaskBody extends CommandInput {
+  taskId?: string;
 }
 
 export interface RemovedRunView {

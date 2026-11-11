@@ -155,3 +155,23 @@ describe('writeRunState', () => {
     expect(stateColumns(base, { status: 'waiting', currentStep: 'implement' }).currentStep).toBe('implement');
   });
 });
+
+describe('deriveState of a split run between passes', () => {
+  const reason = (code: string) => JSON.stringify({ code, message: '1/2 merged · 1 running' });
+
+  it.each([ERROR_CODES.SUBTASKS_RUNNING, ERROR_CODES.SUBTASK_WAITING])('a waiting run with %s is waiting', (code) => {
+    expect(deriveState({ status: 'waiting', stateReason: reason(code) })).toMatchObject({
+      state: 'waiting',
+      reason: { code },
+    });
+  });
+
+  it('keeps SUBTASK_BLOCKED for a blocked run', () => {
+    expect(
+      deriveState(
+        { status: 'blocked', stateReason: reason(ERROR_CODES.SUBTASK_BLOCKED) },
+        { blockCode: REASON.blocked },
+      ),
+    ).toMatchObject({ state: 'blocked', reason: { code: ERROR_CODES.SUBTASK_BLOCKED } });
+  });
+});

@@ -13,6 +13,9 @@ import { CodeReviewStep } from '../steps/code-review/code-review.step';
 import { ChecksStep } from '../steps/checks/checks.step';
 import { ImplementImproveStep } from '../steps/implement/implement-improve.step';
 import { ImplementStep } from '../steps/implement/implement.step';
+import { SplitImplementStep } from '../steps/implement/split-implement.step';
+import { SubtaskOps } from '../steps/shared/subtask-ops';
+import { SubtaskPort } from './subtask-port';
 import { PlanImproveStep } from '../steps/plan-improve/plan-improve.step';
 import { PipelineStep } from '../steps/pipeline/pipeline.step';
 import { PlanStep } from '../steps/plan/plan.step';
@@ -56,6 +59,9 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     PlanStep,
     PlanImproveStep,
     ImplementStep,
+    SplitImplementStep,
+    SubtaskPort,
+    { provide: SubtaskOps, useExisting: SubtaskPort },
     ImplementImproveStep,
     ChecksStep,
     CodeReviewStep,
@@ -74,6 +80,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     PipelineService,
     CommandService,
     Reconciler,
+    SubtaskPort,
     Housekeeping,
     WorkspaceGuard,
     DiskGuard,

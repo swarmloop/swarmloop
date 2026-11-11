@@ -6,6 +6,7 @@ import { SwarmloopEnv } from '../../config/env';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
 import { resumableChat } from '../../agent/agent-session';
+import { settled, withStatuses } from '../../contract/subtask';
 import { StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -32,6 +33,9 @@ import { staleRepos, unchangedSincePipeline } from '../pipeline/pipeline-report'
 import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
 import { parseImplementation, withReturnNotes } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { StepSnapshot } from '../step';
+import type { PipelineResult } from '../../core/pipeline-result';
+import { SplitImplementStep } from './split-implement.step';
 
 const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
@@ -55,6 +59,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.unfixedIssue,
     ARTIFACTS.rebaseConflict,
     ARTIFACTS.rebaseMergeSkip,
+    ARTIFACTS.subtasks,
   ];
 
   constructor(
@@ -64,8 +69,26 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     private readonly checkouts: CheckoutRepository,
     launcher: AgentLauncher,
     private readonly environments: EnvironmentService,
+    private readonly split: SplitImplementStep,
   ) {
     super(kernel, sandbox, launcher);
+  }
+
+  /**
+   * The implement of a run the planner split is the server's passes over its subtasks, not an agent. Once every task
+   * is settled, a return from a later step or a rebase conflict is fixed by the agent on the merged feature branch.
+   */
+  override async execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
+    const run = await this.runs.findRun(key);
+    const tasks = run?.split ? await this.reader.reread(key, ARTIFACTS.subtasks) : null;
+    if (!run || !tasks?.length) {
+      return super.execute(key, options, snapshot);
+    }
+    const marker = ((await this.reader.reread(key, ARTIFACTS.rebaseConflict)) ?? '').trim();
+    const fixing =
+      withStatuses(tasks).every(settled) &&
+      (marker.startsWith('pending') || !!(await returnedNotes(this.documents, run.id)));
+    return fixing ? super.execute(key, options, snapshot) : this.split.execute(key, options, snapshot);
   }
 
   override missingInput(key: string): Promise<string | null> {

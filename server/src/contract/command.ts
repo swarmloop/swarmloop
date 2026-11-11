@@ -12,6 +12,7 @@ export const COMMAND_TYPES = [
   'shell',
   'rewind',
   'remove',
+  'skip',
   'projects',
 ] as const;
 export type CommandType = (typeof COMMAND_TYPES)[number];

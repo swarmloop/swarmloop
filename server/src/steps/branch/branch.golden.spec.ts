@@ -18,6 +18,7 @@ import { VisitRepository } from '../../history/visit.repository';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
 import { BranchCheckout } from '../shared/branch-checkout';
+import { RebasedPublisher } from '../shared/rebased-publisher';
 import { BranchStep } from './branch.step';
 
 const KEY = 'PROJ-30';
@@ -50,7 +51,7 @@ describe('branch step golden traces', () => {
       app.get(AppConfig),
       app.get(StepEventLog),
     );
-    const step = new BranchStep(kernel, new BranchCheckout(kernel));
+    const step = new BranchStep(kernel, new BranchCheckout(kernel), app.get(RebasedPublisher));
     const result = await step.execute(KEY);
     const git = Object.fromEntries(
       Object.entries(trees).map(([repo, tree]) => [

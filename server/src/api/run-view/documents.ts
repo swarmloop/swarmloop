@@ -1,6 +1,7 @@
 import type { DocumentEntity } from '../../history/entities';
-import type { TaskLayer } from '../../contract/api';
-import { parseSubtasks, type Subtask } from '../../contract/subtask';
+import type { FlowView, TaskLayer } from '../../contract/api';
+import { parseSubtasks, statusLine, type Subtask } from '../../contract/subtask';
+import { STEPS, type StepName } from '../../contract/steps';
 import { readPlan } from '../../steps/plan/plan-record';
 import { composedReturn } from '../../steps/shared/handoff';
 import { latest } from './status';
@@ -121,8 +122,22 @@ export function taskLayers(documents: DocumentEntity[]): TaskLayer[] {
     const layer = depth(task);
     layers.set(layer, [
       ...(layers.get(layer) ?? []),
-      { id: task.id, title: task.title, files: task.files, proof: task.proof },
+      { id: task.id, title: task.title, files: task.files, proof: task.proof, status: task.status, note: task.note },
     ]);
   }
   return [...layers.entries()].sort(([a], [b]) => a - b).map(([layer, group]) => ({ layer, tasks: group }));
+}
+
+/** The one-line status of a split run's tasks, once the run is at implement or past it. */
+export function taskLine(documents: DocumentEntity[], currentStep: string): string | null {
+  const tasks = parseSubtasks(latest(documents, 'subtasks'));
+  const reached = STEPS.indexOf(currentStep as StepName) >= STEPS.indexOf('implement');
+  return tasks.length > 0 && reached && taskLayers(documents).length > 0 ? statusLine(tasks) : null;
+}
+
+/** The `tasks` and `taskLine` of a flow view. Empty for a run that does not split. */
+export function taskView(documents: DocumentEntity[], currentStep: string): Pick<FlowView, 'tasks' | 'taskLine'> {
+  const tasks = taskLayers(documents);
+  const line = taskLine(documents, currentStep);
+  return { ...(tasks.length > 0 ? { tasks } : {}), ...(line ? { taskLine: line } : {}) };
 }

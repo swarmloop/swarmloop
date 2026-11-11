@@ -121,8 +121,8 @@ export const ARTIFACTS = {
     summarize: firstLine,
   }),
   subtasks: artifact(SUBTASKS_KIND, {
-    writers: ['plan', 'plan-improve'],
-    readers: ['plan-improve', 'implement', 'implement-improve'],
+    writers: ['plan', 'plan-improve', 'implement'],
+    readers: ['plan-improve', 'branch', 'implement', 'implement-improve'],
     codec: jsonArrayCodec<Subtask>(),
     summarize: (tasks) => listSummary(tasks.length, 'tasks', tasks[0]?.title),
   }),

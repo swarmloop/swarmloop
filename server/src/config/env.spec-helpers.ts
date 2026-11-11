@@ -58,6 +58,7 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     AGENTS_SUBTASK_REVIEW: '',
     SPLIT: 'off',
     SPLIT_MAX_TASKS: 12,
+    SUBTASKS_PARALLEL: 3,
     SWARMLOOP_ROOT: undefined,
     CHECKOUTS_ROOT: undefined,
     SWARMLOOP_API_PORT: 3920,

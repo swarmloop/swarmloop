@@ -1,4 +1,5 @@
-import { ERROR_CODES, IMAGE_ERROR_CODES } from './error-codes';
+import type { ErrorCode } from './error-codes';
+import { ERROR_CODES, IMAGE_ERROR_CODES, SUBTASK_WAIT_CODES } from './error-codes';
 
 /** The honest state of a run, next to the older `status`. */
 export const RUN_STATES = [
@@ -67,6 +68,7 @@ const RESUMABLE_BLOCKS: readonly string[] = [
   ERROR_CODES.WORKSPACE_LOST,
   ERROR_CODES.BRANCH_IN_USE,
   ERROR_CODES.BRANCH_DIVERGED,
+  ERROR_CODES.SUBTASK_BLOCKED,
   ...IMAGE_ERROR_CODES,
 ];
 
@@ -78,7 +80,10 @@ export function actionsFor(state: RunState, reasonCode: string | null = null): R
     case 'stopped':
       return ['resume', 'replay', 'rebase'];
     case 'waiting':
-      return reasonCode === ERROR_CODES.RUNTIME_LIMIT ? ['resume', 'replay', 'rebase'] : ['answer', 'replay', 'rebase'];
+      if (reasonCode === ERROR_CODES.RUNTIME_LIMIT) return ['resume', 'replay', 'rebase'];
+      return reasonCode && SUBTASK_WAIT_CODES.includes(reasonCode as ErrorCode)
+        ? ['stop', 'resume', 'replay', 'rebase']
+        : ['answer', 'replay', 'rebase'];
     case 'running':
       return ['stop', 'replay'];
     case 'stopping':

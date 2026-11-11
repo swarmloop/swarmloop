@@ -2,6 +2,7 @@ import { Injectable, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common
 import { AddProjectBody, StartStepBody } from '../contract/api';
 import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
+import { SubtaskPort } from '../pipeline/subtask-port';
 import { ChatService } from './chat.service';
 import { RunCommandsService, StartPlan } from './run-commands.service';
 import { RunRebaseService } from './run-rebase.service';
@@ -31,9 +32,14 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     private readonly rebases: RunRebaseService,
     private readonly chat: ChatService,
     private readonly shell: ShellService,
+    private readonly subtasks: SubtaskPort,
   ) {}
 
   onModuleInit(): void {
+    this.subtasks.register({
+      open: (parent, task) => this.runs.openSubtask(parent, task),
+      launch: (parent, task) => this.runs.launchSubtask(parent, task),
+    });
     const on = this.executor.register.bind(this.executor);
     on('start', (_key, payload) => this.runs.startPlanned(payload as unknown as StartPlan));
     on('resume', (key, payload) => this.runs.resume(key, payload.prompt as string | undefined));
@@ -48,6 +54,7 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     });
     on('stop', (key) => this.runs.stop(key));
     on('remove', (key) => this.runs.remove(key));
+    on('skip', (key, payload) => this.runs.skipTask(key, (payload.taskId as string | undefined) ?? ''));
     on('projects', (key, payload) => this.runs.addProject(key, (payload as AddProjectBody).name ?? ''));
     on('rebase', (key) => this.rebases.rebase(key));
     on('chat', (key, payload) => this.chat.speak(key, payload));
@@ -60,7 +67,8 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
   }
 
   /** The commands a server that stopped left behind: the reconciler settles them. */
-  onApplicationBootstrap(): Promise<void> {
-    return this.reconciler.reconcileCommands();
+  async onApplicationBootstrap(): Promise<void> {
+    await this.reconciler.reconcileCommands();
+    await this.reconciler.resumeSubtaskParents();
   }
 }

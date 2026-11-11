@@ -15,6 +15,7 @@ import type { RunRepository } from '../history/run.repository';
 import { LiveModule } from '../live/live.module';
 import type { VisitDraft } from '../history/visit';
 import { CommandService } from '../pipeline/command.service';
+import { SubtaskPort } from '../pipeline/subtask-port';
 import { RunStop } from '../agent/run-stop';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { writeRunState } from '../history/run-state';
@@ -84,6 +85,7 @@ export async function boot(
       RunQueriesService,
       RunCommandsService,
       CommandService,
+      SubtaskPort,
       RunStop,
       RunRebaseService,
       RunRebase,

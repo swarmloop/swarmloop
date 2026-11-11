@@ -92,6 +92,21 @@ describe('RunsController', () => {
     expect(response.status).toHaveBeenCalledWith(200);
   });
 
+  it('sends Skip task through the command door with the task id', async () => {
+    const commands = answering({ key: 'proj-9', status: 'started' });
+    const result = await controllerWith({}, commands).skipTask('proj-9', { taskId: 'column', expectedRevision: 4 });
+    expect(result).toEqual({ key: 'proj-9', status: 'started', commandId: 'c-1', revision: 4, state: 'idle' });
+    expect(commands.submit).toHaveBeenCalledWith(
+      'skip',
+      'proj-9',
+      { taskId: 'column' },
+      {
+        idempotencyKey: undefined,
+        expectedRevision: 4,
+      },
+    );
+  });
+
   it('sets 200 when a rebase finds the run done', async () => {
     const commands = answering({ key: 'proj-2', status: 'done' });
     const response = { status: jest.fn() };

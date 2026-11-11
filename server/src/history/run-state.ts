@@ -1,6 +1,7 @@
 import { isLoopStep } from '../core/pipeline-result';
 import { SERVER_INSTANCE } from '../core/server-instance';
-import { ERROR_CODES } from '../contract/error-codes';
+import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
+import type { ErrorCode } from '../contract/error-codes';
 import { isStopNote, REASON } from '../contract/run-state';
 import type { RunState, StateReason } from '../contract/run-state';
 import type { RunEntity } from './entities';
@@ -61,7 +62,8 @@ export function deriveState(run: StateRow, facts: StateFacts = {}): { state: Run
       const kept =
         stored?.code === REASON.stopped ||
         stored?.code === ERROR_CODES.RESOURCE_UNKNOWN ||
-        stored?.code === ERROR_CODES.INPUT_MISSING;
+        stored?.code === ERROR_CODES.INPUT_MISSING ||
+        stored?.code === ERROR_CODES.SUBTASK_BLOCKED;
       const code = kept ? stored.code : (facts.blockCode ?? stored?.code ?? REASON.blocked);
       return {
         state: code === REASON.stopped ? 'stopped' : 'blocked',
@@ -74,7 +76,11 @@ export function deriveState(run: StateRow, facts: StateFacts = {}): { state: Run
         : { state: 'failed', reason: stored };
     default:
       if (facts.queued) return { state: 'queued', reason: null };
-      if (stored?.code === ERROR_CODES.RUNTIME_LIMIT) return { state: 'waiting', reason: stored };
+      if (
+        stored &&
+        (stored.code === ERROR_CODES.RUNTIME_LIMIT || SUBTASK_WAIT_CODES.includes(stored.code as ErrorCode))
+      )
+        return { state: 'waiting', reason: stored };
       if (facts.needsAnswers) return { state: 'waiting', reason: reason('NEEDS_ANSWERS', 'waiting for a person') };
       if (facts.returned) return { state: 'idle', reason: reason(REASON.returned, 'returned to implement') };
       return { state: 'idle', reason: null };

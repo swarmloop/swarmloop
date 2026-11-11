@@ -235,4 +235,14 @@ describe('split settings', () => {
     const bad = envSchema.validate({ ...complete, SPLIT: 'on' }, { convert: true });
     expect(bad.error?.message).toContain('SPLIT');
   });
+
+  it('SUBTASKS_PARALLEL defaults to 3 and takes a whole number from 1', () => {
+    expect(envSchema.validate(complete, { convert: true }).value.SUBTASKS_PARALLEL).toBe(3);
+    expect(envSchema.validate({ ...complete, SUBTASKS_PARALLEL: '5' }, { convert: true }).value.SUBTASKS_PARALLEL).toBe(
+      5,
+    );
+    expect(envSchema.validate({ ...complete, SUBTASKS_PARALLEL: '0' }, { convert: true }).error?.message).toContain(
+      'SUBTASKS_PARALLEL',
+    );
+  });
 });

@@ -9,10 +9,15 @@ import { FlowRepository } from '../history/flow.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { assertKey, isStep, nextSessionKey, normalizePhases, ticketKey } from '../core/pipeline-result';
-import type { Subtask } from '../contract/subtask';
+import { parseSubtasks, SUBTASKS_KIND, type Subtask } from '../contract/subtask';
+import { ARTIFACTS } from '../steps/contract/artifacts';
+import { SubtaskPort } from '../pipeline/subtask-port';
+import { deriveState } from '../history/run-state';
 import { branchName, summaryForBranch } from '../steps/branch/branch-name';
 import { requirementsBrief } from '../steps/shared/requirements-brief';
-import { PhaseName, pipelineStepOf, reviewerOf } from '../contract/steps';
+import { PhaseName, pipelineStepOf, reviewerOf, STEPS } from '../contract/steps';
+import { REASON, STOP_NOTE } from '../contract/run-state';
+import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
 import { CHECKOUT_NAME, storedProjects } from '../config/checkout-path';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
@@ -30,19 +35,9 @@ import {
   RunRef,
   StartStepBody,
 } from '../contract/api';
+import { subtaskPrompt } from './subtask-prompt';
 import { requireRun, RunQueriesService } from './run-queries.service';
 import { writeRunState } from '../history/run-state';
-
-/** The prompt of a subtask: its task, the parent's requirements as context, and the branch it starts from. */
-function subtaskPrompt(task: Subtask, brief: string, branch: string): string {
-  return [
-    `${task.title}\n\n${task.description}`,
-    `files: ${task.files.join(', ')}`,
-    `proof: ${task.proof}`,
-    `Requirements of the parent run, for context:\n${brief.trimEnd()}`,
-    `branch: ${branch}`,
-  ].join('\n\n');
-}
 
 /** What `plan` decided for a new run. It is the payload of the start command. */
 export interface StartPlan {
@@ -74,6 +69,7 @@ export class RunCommandsService {
     private readonly clock: Clock,
     private readonly config: AppConfig,
     @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
+    private readonly subtasks: SubtaskPort,
   ) {}
 
   async addProject(key: string, name: string): Promise<ProjectsView> {
@@ -135,23 +131,61 @@ export class RunCommandsService {
     return this.startPlanned(await this.plan(body));
   }
 
+  /** The prompt of a subtask: its task, the parent brief, and the feature branch it starts from. */
+  private async subtaskPromptOf(parent: RunEntity, task: Subtask): Promise<string> {
+    const requirements = await this.documents.latestBody(parent.key, 'requirements');
+    if (!requirements?.trim()) {
+      throw new BadRequestException('requirements is missing');
+    }
+    const branch = branchName(parent.key, summaryForBranch(requirements, parent.key));
+    return subtaskPrompt(task, requirementsBrief(requirements), branch);
+  }
+
   /** Starts one task of a parent run as a run of its own. A second call for the same task returns that run. */
   async startSubtask(parent: RunEntity, task: Subtask): Promise<RunRef> {
     const existing = await this.runs.findSubtask(parent, task.id);
     if (existing) {
       return { key: existing.key, status: existing.status === 'done' ? 'done' : 'started' };
     }
-    const requirements = await this.documents.latestBody(parent.key, 'requirements');
-    if (!requirements?.trim()) {
-      throw new BadRequestException('requirements is missing');
-    }
-    const branch = branchName(parent.key, summaryForBranch(requirements, parent.key));
     const plan = await this.plan({
       key: `${parent.key}-${task.id}`,
-      prompt: subtaskPrompt(task, requirementsBrief(requirements), branch),
+      prompt: await this.subtaskPromptOf(parent, task),
       projects: storedProjects(parent.projects),
     });
     return this.startPlanned({ ...plan, split: false, parentRunId: parent.id, taskId: task.id });
+  }
+
+  /** The waiting run of a task. It is listed under the parent, but has no worktree until `launchSubtask`. */
+  async openSubtask(parent: RunEntity, task: Subtask): Promise<RunEntity> {
+    const existing = await this.runs.findSubtask(parent, task.id);
+    if (existing) {
+      return existing;
+    }
+    const plan = await this.plan({
+      key: `${parent.key}-${task.id}`,
+      prompt: await this.subtaskPromptOf(parent, task),
+      projects: storedProjects(parent.projects),
+    });
+    const run = await this.runs.openSubtask(plan.key, parent.id, task.id);
+    await this.flows.noteFlow(plan.key, plan.phases, null);
+    return run;
+  }
+
+  /** Starts the run that `openSubtask` made. A run that has started stays as it is. */
+  async launchSubtask(parent: RunEntity, task: Subtask): Promise<void> {
+    const run = await this.runs.findSubtask(parent, task.id);
+    if (!run || run.status !== 'waiting' || run.currentStep !== 'requirements' || this.runs.held(run)) {
+      return;
+    }
+    const prompt = await this.subtaskPromptOf(parent, task);
+    const result = await this.pipeline.startDetached(run.key, {
+      prompt,
+      projects: storedProjects(parent.projects),
+      phases: this.phases(),
+    });
+    if (!result.message.includes('already running')) {
+      this.demandStart(result);
+    }
   }
 
   /** Starts the planned run. `created` says the command path made the run row just now. */
@@ -229,7 +263,10 @@ export class RunCommandsService {
     if (!text) {
       throw new BadRequestException('prompt is missing');
     }
-    await requireRun(this.runs, key);
+    const run = await requireRun(this.runs, key);
+    if (STEPS.indexOf(name) <= STEPS.indexOf('plan-improve')) {
+      await this.dropSubtasks(run);
+    }
     await this.runs.bumpGeneration(key);
     if (phases !== undefined) {
       await this.flows.noteFlow(key, this.phases(phases), name);
@@ -238,12 +275,65 @@ export class RunCommandsService {
   }
 
   async stop(key: string): Promise<RunRef> {
-    await requireRun(this.runs, key);
+    const run = await requireRun(this.runs, key);
     const result = await this.pipeline.stop(key);
     if (result.exitCode !== 0) {
       throw new ConflictException(result.message);
     }
+    if (run.split) {
+      await this.holdParent(key);
+      await this.subtasks.stopAll(run);
+    }
     return { key, status: 'stopped' };
+  }
+
+  /** A parent that waits between passes, or that a blocked subtask holds, is stopped for good: no pass starts a subtask until Resume. */
+  private async holdParent(key: string): Promise<void> {
+    const fresh = await this.runs.findRun(key);
+    const code = fresh ? deriveState(fresh).reason?.code : undefined;
+    const between = fresh?.status === 'waiting' && SUBTASK_WAIT_CODES.some((wait) => wait === code);
+    if (fresh && (between || (fresh.status === 'blocked' && code === ERROR_CODES.SUBTASK_BLOCKED))) {
+      await this.runs.release(fresh, {
+        status: 'blocked',
+        reason: { code: REASON.stopped, message: STOP_NOTE },
+        stepStartedAt: null,
+      });
+    }
+  }
+
+  /** Stops the parent and removes the runs and worktrees of its subtasks. A parent without subtasks is as it was. */
+  private async dropSubtasks(parent: RunEntity): Promise<void> {
+    if (!parent.split) {
+      return;
+    }
+    await this.pipeline.stop(parent.key);
+    await this.holdParent(parent.key);
+    await this.subtasks.removeAll(parent);
+  }
+
+  /** Marks a task skipped: its dependents treat it as merged. A running subtask of the task is stopped. */
+  async skipTask(key: string, taskId: string): Promise<RunRef> {
+    const parent = await requireRun(this.runs, key);
+    if (this.runs.held(parent)) {
+      throw new ConflictException(`${key} is already running`);
+    }
+    const tasks = parseSubtasks(await this.documents.latestBody(key, SUBTASKS_KIND));
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) {
+      throw new BadRequestException(`${taskId} is not a task of ${key}`);
+    }
+    const child = await this.runs.findSubtask(parent, taskId);
+    if (child) await this.subtasks.stop(child);
+    await this.documents.putDocument(
+      parent,
+      SUBTASKS_KIND,
+      ARTIFACTS.subtasks.format(
+        tasks.map((item) => (item === task ? { ...task, status: 'skipped', note: undefined } : item)),
+      ),
+    );
+    const fresh = (await this.runs.findRun(key)) ?? parent;
+    if (this.subtasks.passDue(fresh)) await this.subtasks.resumeParent(fresh, `skip-${taskId}-${fresh.revision}`);
+    return { key, status: 'started' };
   }
 
   async remove(key: string): Promise<RemovedRunView> {
@@ -256,6 +346,10 @@ export class RunCommandsService {
     const stopped = await this.pipeline.stop(key);
     if (stopped.exitCode !== 0) {
       throw new ConflictException(stopped.message);
+    }
+    if (run.split) {
+      await this.holdParent(key);
+      await this.subtasks.removeAll(run);
     }
     await this.prepare.removeWorktrees(key);
     await this.runs.remove(run);

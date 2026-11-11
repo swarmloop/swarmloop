@@ -29,9 +29,12 @@ import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { BaseStep, type StepContext } from '../steps/base-step';
+import { ImplementStep } from '../steps/implement/implement.step';
 import { StepRegistry } from '../steps/step.registry';
 import type { StepCapabilities, StepResult } from '../steps/contract/step-contract';
-import type { Step } from '../steps/step';
+import type { Step, StepSnapshot } from '../steps/step';
+import type { StepOptions } from '../core/pipeline-result';
+import { RunRepository } from '../history/run.repository';
 import { StepKernel } from '../steps/step-kernel';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { PipelineService } from '../pipeline/pipeline.service';
@@ -46,6 +49,8 @@ interface TestAppOptions {
   sandbox?: FakeSandbox;
   /** Lines of the `.env` that replace the defaults of `testEnv`. */
   env?: Record<string, string>;
+  /** A split run takes the real implement step, with its passes, in place of the scripted one. */
+  realImplement?: boolean;
   /** The app removes the root when it closes. Defaults to true for a root it made. */
   ownsRoot?: boolean;
 }
@@ -158,6 +163,22 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   for (const name of STEPS) {
     if (name === 'done') continue;
     steps.set(name, new ScriptedStep(name, module.get(StepKernel), module.get(AGENT_RUNNER), codeHost));
+  }
+
+  if (options.realImplement) {
+    // Only a split run takes the real step, so the runs of its subtasks go through the scripted one.
+    const real = module.get(ImplementStep);
+    const scripted = steps.get('implement') as Step;
+    const runs = module.get(RunRepository);
+    steps.set(
+      'implement',
+      Object.create(scripted, {
+        execute: {
+          value: async (key: string, stepOptions: StepOptions, snapshot?: StepSnapshot) =>
+            ((await runs.findRun(key))?.split ? real : scripted).execute(key, stepOptions, snapshot),
+        },
+      }) as Step,
+    );
   }
 
   const app = module.createNestApplication();

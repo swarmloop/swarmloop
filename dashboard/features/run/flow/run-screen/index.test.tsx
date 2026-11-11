@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getFlow, getStep, getStepEvents, listProjects } from '../../../../lib/endpoints';
+import { getFlow, getStep, getStepEvents, listProjects, skipTask } from '../../../../lib/endpoints';
 import { LiveBridgeProvider } from '../../../shell';
 import { QueryWrapper } from '../../../../test/query-wrapper';
 import { flowView, stepView } from '../../../../test/fixtures';
@@ -20,6 +20,7 @@ vi.mock('../../../../lib/endpoints', () => ({
   resumeRun: vi.fn(),
   stopRun: vi.fn(),
   rebaseRun: vi.fn(),
+  skipTask: vi.fn(),
   startReviewer: vi.fn(),
   replayStep: vi.fn(),
 }));
@@ -66,8 +67,14 @@ describe('RunScreen', () => {
 
   it('shows tasks after plan-improve', async () => {
     const tasks = [
-      { layer: 0, tasks: [{ id: 'a', title: 'Add the column', files: ['a.ts'], proof: 'a.spec.ts' }] },
-      { layer: 1, tasks: [{ id: 'b', title: 'Send it', files: ['b.ts', 'c.ts'], proof: 'b.spec.ts' }] },
+      {
+        layer: 0,
+        tasks: [{ id: 'a', title: 'Add the column', files: ['a.ts'], proof: 'a.spec.ts', status: 'merged' as const }],
+      },
+      {
+        layer: 1,
+        tasks: [{ id: 'b', title: 'Send it', files: ['b.ts', 'c.ts'], proof: 'b.spec.ts', status: 'blocked' as const }],
+      },
     ];
     vi.mocked(getFlow).mockResolvedValue(flowView({ tasks }));
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
@@ -76,6 +83,31 @@ describe('RunScreen', () => {
     expect(region).toHaveTextContent('Layer 1');
     expect(region).toHaveTextContent('Add the column');
     expect(region).toHaveTextContent('files: b.ts, c.ts · proof: b.spec.ts');
+  });
+
+  it('shows the status line and each task status, and skips a blocked task', async () => {
+    const tasks = [
+      { layer: 0, tasks: [{ id: 'a', title: 'Add the column', files: [], proof: 'a', status: 'merged' as const }] },
+      {
+        layer: 1,
+        tasks: [
+          { id: 'b', title: 'Send it', files: [], proof: 'b', status: 'blocked' as const },
+          { id: 'c', title: 'Show it', files: [], proof: 'c', status: 'waiting' as const, note: 'waiting for b' },
+        ],
+      },
+    ];
+    vi.mocked(getFlow).mockResolvedValue(flowView({ tasks, taskLine: '1/3 merged · 1 blocked · 1 waiting' }));
+    vi.mocked(skipTask).mockResolvedValue({});
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    const region = await screen.findByRole('region', { name: 'Tasks' });
+    expect(region).toHaveTextContent('1/3 merged · 1 blocked · 1 waiting');
+    expect(region).toHaveTextContent('Add the column · merged');
+    expect(region).toHaveTextContent('Show it · waiting · waiting for b');
+    expect(within(region).getAllByRole('button', { name: 'Skip task' })).toHaveLength(1);
+
+    await userEvent.click(within(region).getByRole('button', { name: 'Skip task' }));
+    expect(skipTask).toHaveBeenCalledWith('run-1', 'b');
   });
 
   it('no block without subtasks', async () => {

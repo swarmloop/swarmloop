@@ -79,7 +79,7 @@ export async function closeStep(input: {
   const code =
     settled.status === 'blocked'
       ? (input.code ?? blockCode(settled.currentStep, error))
-      : settled.status === 'waiting' && input.limit
+      : settled.status === 'waiting'
         ? input.code
         : null;
   writeRunState(input.run, {

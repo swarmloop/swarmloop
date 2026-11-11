@@ -31,6 +31,7 @@ import { RunRebase } from '../steps/run-rebase';
 import { StepRegistry } from '../steps/step.registry';
 import { CHAT_LOCK, chatResume, readChatLock } from './chat-lock';
 import { CommandService } from './command.service';
+import { SubtaskPort } from './subtask-port';
 import { WorkspaceGuard, workspaceBlock } from './workspace-guard';
 import { settleShell } from './shell-lock';
 
@@ -69,6 +70,7 @@ export class Reconciler implements OnModuleDestroy {
     private readonly rebases: RunRebase,
     private readonly workspace: WorkspaceGuard,
     private readonly cooldowns: RuntimeCooldownRepository,
+    private readonly subtasks: SubtaskPort,
   ) {}
 
   /** The startup pass over the runs. `claimed` says which runs a step of this process holds. */
@@ -116,6 +118,7 @@ export class Reconciler implements OnModuleDestroy {
   private async reconcileAll(): Promise<void> {
     await this.reconcileRuns();
     await this.resumeLimited();
+    await this.resumeSubtaskParents();
     await this.reconcileCommands();
   }
 
@@ -142,6 +145,21 @@ export class Reconciler implements OnModuleDestroy {
         const runtimes = agentsFor(this.config.env, run, run.currentStep).map((agent) => agent.runtime);
         if (this.clock.now() < (await this.cooldowns.earliest(runtimes)).resumeAt) continue;
         await this.commands.accept('resume', run.key, {}, { idempotencyKey: `limit-${run.revision}` });
+      } catch (error) {
+        this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  /**
+   * A split run waits between its passes: the timer starts the next one, and so does a restart. The key holds the
+   * revision, so a parent that no pass touched is resumed once, not on every tick.
+   */
+  async resumeSubtaskParents(): Promise<void> {
+    for (const run of await this.runs.listRuns()) {
+      if (run.status !== 'waiting' || !this.subtasks.passDue(run)) continue;
+      try {
+        await this.subtasks.resumeParent(run, `subtasks-${run.revision}`);
       } catch (error) {
         this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
       }

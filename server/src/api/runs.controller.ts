@@ -26,6 +26,7 @@ import {
   ReplayBody,
   ResumeBody,
   RewindBody,
+  SkipTaskBody,
   RewindView,
   RunRef,
   RunsView,
@@ -243,6 +244,17 @@ export class RunsController {
     });
     response.status(httpStatus(result));
     return result;
+  }
+
+  @Post('runs/:key/skip-task')
+  skipTask(
+    @Param('key') key: string,
+    @Body() body: SkipTaskBody,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<RunRef & CommandReceipt> {
+    return this.dispatch('skip', key, { taskId: body.taskId }, idempotencyKey, {
+      expectedRevision: body.expectedRevision,
+    });
   }
 
   @Delete('runs/:key')
