@@ -141,9 +141,7 @@ export class RunQueriesService {
   }
 
   async stepLog(key: string, step: string, attempt: string | null): Promise<string> {
-    const run = await requireRun(this.runs, key);
-    const stats = () => this.visits.listStats(run.id);
-    return readStepLog(run, stats, root(this.config), this.config.env, step, attempt || null);
+    return readStepLog(this.runs, this.visits, this.config, key, step, attempt || null);
   }
 
   async step(key: string, name: string): Promise<StepView> {
