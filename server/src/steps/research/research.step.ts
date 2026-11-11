@@ -77,10 +77,13 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     const parsed = parseResearch(agentResult.responseText);
     const impact = parseImpact(agentResult.responseText);
     const repos = renderProjects(names);
-    // A subtask asks no one: it decides its questions itself and records them as assumptions.
-    const subtask = isSubtask(ctx.opened.run);
-    const paused = parsed.questions !== '' && !subtask;
-    const assumed = subtask ? assumptions(parsed.questions) : '';
+    // A subtask waits once, and only while its parent's planner can answer. Otherwise it decides its questions
+    // itself and records them as assumptions: no subtask waits for a person.
+    const { run } = ctx.opened;
+    const parent = isSubtask(run) ? await this.runs.findById(run.parentRunId as number) : null;
+    const subtask = isSubtask(run);
+    const paused = parsed.questions !== '' && (!subtask || (parent?.split === true && !answers.trim()));
+    const assumed = subtask && !paused ? assumptions(parsed.questions) : '';
     await ctx.write(ARTIFACTS.repos, ARTIFACTS.repos.parse(repos));
     const detail = [(paused ? parsed.questions : repos).trimEnd(), ...impact.notes].join('\n');
     const word = paused ? 'waiting' : 'done';
@@ -97,7 +100,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       route: paused ? { to: 'wait', reason: 'questions are open' } : { to: 'next' },
       summary: `${ctx.opened.startedAt} research ${word}\n${detail}`,
       outputs: [
-        { artifact: ARTIFACTS.questions, value: subtask ? '' : parsed.questions },
+        { artifact: ARTIFACTS.questions, value: subtask && !paused ? '' : parsed.questions },
         { artifact: ARTIFACTS.impact, value: renderImpact(impact.items) },
       ],
       handoff: summary,

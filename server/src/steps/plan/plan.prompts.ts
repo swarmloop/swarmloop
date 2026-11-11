@@ -1,3 +1,4 @@
+import type { Subtask } from '../../contract/subtask';
 import { LINKED_CONTEXT, TASK_SCOPE } from '../shared/requirements-brief';
 
 /** A subtask has no one to ask: it decides its own questions, states them as assumptions and gives the plan. */
@@ -17,3 +18,23 @@ export function planFollowUp(answers: string): string {
   lines.push('', 'End with these sections:', 'plan:', '- item', '', 'summary:', '- why');
   return lines.join('\n');
 }
+
+/** What the parent's planner is asked in its own chat when a subtask has questions. */
+export function subtaskAsks(task: Subtask, questions: string, contract: string): string {
+  return [
+    `Subtask ${task.id} asks:`,
+    questions.trim(),
+    '',
+    `The task: ${task.title}`,
+    task.description,
+    '',
+    'The contract now:',
+    contract.trim() || '(empty)',
+    '',
+    'Answer each question as a decision the subtask follows. Do not change the task list. Reply with the decisions only.',
+  ].join('\n');
+}
+
+/** The answer a subtask gets when its parent's planner gave none. */
+export const DECIDE_YOURSELF =
+  'No one can answer these questions. Decide each one yourself from the task, the contract and the tree, and record it as an assumption.';
