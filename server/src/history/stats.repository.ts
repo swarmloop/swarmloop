@@ -3,7 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, MoreThanOrEqual, Repository } from 'typeorm';
 import { LoopEventEntity, RunEntity, StepStatEntity } from './entities';
 
-export type StatsRunRow = Pick<RunEntity, 'id' | 'key' | 'prompt' | 'status' | 'runtime' | 'createdAt'>;
+export type StatsRunRow = Pick<RunEntity, 'id' | 'key' | 'prompt' | 'status' | 'runtime' | 'createdAt'> &
+  Partial<Pick<RunEntity, 'state' | 'mergeOutcome' | 'doneAt'>>;
 export type StatsStepRow = Pick<
   StepStatEntity,
   | 'runId'
@@ -40,7 +41,17 @@ export class StatsRepository {
   /** The runs created at `since` or later (every run when null), with their steps and their returns. */
   async rows(since: string | null): Promise<StatsRows> {
     const runs = await this.runs.find({
-      select: { id: true, key: true, prompt: true, status: true, runtime: true, createdAt: true },
+      select: {
+        id: true,
+        key: true,
+        prompt: true,
+        status: true,
+        runtime: true,
+        createdAt: true,
+        state: true,
+        mergeOutcome: true,
+        doneAt: true,
+      },
       where: since === null ? {} : { createdAt: MoreThanOrEqual(since) },
       order: { id: 'ASC' },
     });

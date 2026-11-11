@@ -61,6 +61,32 @@ describe('StatsSection', () => {
     expect(within(money).getAllByText('model-a').length).toBeGreaterThan(0);
   });
 
+  it('shows the share of finished runs that were merged, the closed count apart, and both charts', async () => {
+    renderSection();
+    expect(await screen.findByLabelText('Merged: 33%')).toBeInTheDocument();
+    expect(screen.getByLabelText('Closed: 1')).toBeInTheDocument();
+    const share = screen.getByRole('region', { name: 'Merge share per day' });
+    expect(share).toHaveTextContent('33%');
+    expect(share).toHaveTextContent('1 closed without a merge');
+    const time = screen.getByRole('region', { name: 'Time to merge per day' });
+    expect(time).toHaveTextContent('2.0 h');
+    fireEvent.pointerEnter(screen.getByTestId('Time to merge per day-2026-11-08'));
+    expect(within(time).getByRole('tooltip')).toHaveTextContent('2.0 hmedian to merge');
+    fireEvent.pointerEnter(screen.getByTestId('Merge share per day-2026-11-10'));
+    expect(within(share).getByRole('tooltip')).toHaveTextContent('1closed');
+  });
+
+  it('says so when no run was merged', async () => {
+    const stats = statsView();
+    vi.mocked(getStats).mockResolvedValue({
+      ...stats,
+      totals: { ...stats.totals, merged: 0, closed: 0, medianToMergeMs: null },
+    });
+    renderSection();
+    expect(await screen.findByLabelText('Merged: 0%')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Time to merge per day' })).toHaveTextContent('no run has been merged');
+  });
+
   it('says who sent work back, with CI by name', async () => {
     renderSection();
     const returns = await screen.findByRole('region', { name: 'Why work came back' });

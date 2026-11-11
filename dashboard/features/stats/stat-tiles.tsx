@@ -69,6 +69,14 @@ export function StatTiles({ totals }: { totals: StatsTotals }): ReactElement {
       <Tile label="Success rate" value={percent(totals.done, finished)}>
         {finished > 0 ? `${totals.done} of ${finished} finished runs` : 'no run has finished'}
       </Tile>
+      <Tile label="Merged" value={percent(totals.merged, finished)}>
+        {finished > 0
+          ? `${totals.merged} of ${finished} finished runs reached the default branch`
+          : 'no run has finished'}
+      </Tile>
+      <Tile label="Closed" value={String(totals.closed)}>
+        {totals.closed > 0 ? 'merge requests closed without a merge' : 'none closed without a merge'}
+      </Tile>
       <Tile label="First-pass rate" value={percent(totals.firstPass, totals.done)}>
         {totals.done > 0 ? `${totals.firstPass} done runs never went back` : 'no run is done'}
       </Tile>

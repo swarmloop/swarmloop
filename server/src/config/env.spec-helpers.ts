@@ -27,6 +27,7 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     LIMIT_COOLDOWN_MIN: 60,
     STOP_GRACE_S: 10,
     RECONCILE_MS: 60_000,
+    MERGE_WATCH_MIN: 5,
     RECOVER_WAIT_MS: 600_000,
     RETAIN_DONE_DAYS: 3,
     MIN_FREE_GB: 10,

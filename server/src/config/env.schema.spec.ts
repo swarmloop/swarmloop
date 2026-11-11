@@ -43,6 +43,7 @@ const complete = {
   MAX_LAUNCHES: 3,
   STOP_GRACE_S: 10,
   RECONCILE_MS: 60_000,
+  MERGE_WATCH_MIN: 5,
   RECOVER_WAIT_MS: 600_000,
   MAX_RUN_USD: 50,
   IDLE_TIMEOUT_MS: 900_000,
@@ -115,7 +116,7 @@ describe('env schema', () => {
 
   it('defaults the retention, disk and docker settings and rejects a negative retention', () => {
     const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
-    expect(value).toMatchObject({ RETAIN_DONE_DAYS: 3, MIN_FREE_GB: 10, DOCKER_PRUNE: true });
+    expect(value).toMatchObject({ RETAIN_DONE_DAYS: 3, MIN_FREE_GB: 10, DOCKER_PRUNE: true, MERGE_WATCH_MIN: 5 });
     const off = envSchema.validate({ ...complete, DOCKER_PRUNE: 'false' }, { convert: true });
     expect(off.value.DOCKER_PRUNE).toBe(false);
     const bad = envSchema.validate({ ...complete, RETAIN_DONE_DAYS: -1 }, { convert: true });

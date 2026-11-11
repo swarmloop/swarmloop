@@ -33,6 +33,49 @@ describe('RunList', () => {
     expect(props.onQuery).toHaveBeenCalledWith('r');
   });
 
+  it('labels a done run Ready to merge, Merged with who, when and the commit, or Closed', () => {
+    const done = { ...runSummary(), status: 'done', currentStep: 'done' };
+    const merged = {
+      ...done,
+      key: 'run-2',
+      name: 'Merged run',
+      merge: {
+        merged: {
+          'acme/demo': {
+            sha: 'abcdef123456',
+            by: 'ada',
+            at: '2026-05-01T10:00:00.000Z',
+            url: 'https://github.com/acme/demo/commit/abcdef123456',
+          },
+        },
+      },
+    };
+    const closed = {
+      ...done,
+      key: 'run-3',
+      name: 'Closed run',
+      merge: { closed: { repo: 'acme/demo', by: 'grace', at: '2026-05-02T08:00:00.000Z' } },
+    };
+    const open = { ...done, key: 'run-4', name: 'Open run' };
+    list({ runs: [merged, closed, open], visible: [merged, closed, open] });
+
+    expect(screen.getByText('Ready to merge')).toBeInTheDocument();
+    expect(screen.getByText('Merged')).toBeInTheDocument();
+    expect(screen.getByText(/by ada/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'abcdef1' })).toHaveAttribute(
+      'href',
+      'https://github.com/acme/demo/commit/abcdef123456',
+    );
+    expect(screen.getByText('Closed')).toBeInTheDocument();
+    expect(screen.getByText(/by grace/)).toBeInTheDocument();
+  });
+
+  it('shows no merge label on a run that is not done', () => {
+    list();
+
+    expect(screen.queryByText('Ready to merge')).not.toBeInTheDocument();
+  });
+
   it('says No runs yet. when there are no runs', () => {
     list({ runs: [], visible: [] });
 

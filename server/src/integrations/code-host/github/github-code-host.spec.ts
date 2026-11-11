@@ -624,6 +624,43 @@ describe('github host', () => {
       });
     });
 
+    it('reads who merged a pull request and when, and who closed one that was not merged', async () => {
+      mockFetch([
+        {
+          state: 'closed',
+          merged: true,
+          merge_commit_sha: 'abc123',
+          merged_by: { login: 'ada' },
+          merged_at: '2026-05-01T10:00:00Z',
+        },
+      ]);
+      expect(await service().mergeRequestState('acme/demo', 12)).toMatchObject({
+        state: 'merged',
+        sha: 'abc123',
+        by: 'ada',
+        at: '2026-05-01T10:00:00Z',
+      });
+      mockFetch([{ state: 'open', merged: false }]);
+      expect(await service().mergeRequestState('acme/demo', 12)).toMatchObject({ state: 'open' });
+      const seen = mockFetch([
+        { state: 'closed', merged: false, closed_at: '2026-05-02T08:00:00Z' },
+        { closed_by: { login: 'grace' } },
+      ]);
+      expect(await service().mergeRequestState('acme/demo', 12)).toMatchObject({
+        state: 'closed',
+        by: 'grace',
+        at: '2026-05-02T08:00:00Z',
+      });
+      expect(seen[1]?.url).toBe('https://api.github.com/repos/acme/demo/issues/12');
+    });
+
+    it('leaves the closer unknown when the issue cannot be read, and fails when the pull cannot', async () => {
+      mockFetch([{ state: 'closed', merged: false, closed_at: '2026-05-02T08:00:00Z' }, {}], [200, 500]);
+      expect(await service().mergeRequestState('acme/demo', 12)).toMatchObject({ state: 'closed', by: null });
+      mockFetch([{ message: 'boom' }], 500);
+      await expect(service().mergeRequestState('acme/demo', 12)).rejects.toThrow();
+    });
+
     it('closes an open pull request and leaves a merged one alone', async () => {
       const seen = mockFetch([{ state: 'open' }, {}]);
       await service().closeMergeRequest('acme/demo', 12);

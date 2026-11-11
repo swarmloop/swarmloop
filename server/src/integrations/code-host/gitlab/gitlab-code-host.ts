@@ -14,6 +14,7 @@ import {
   type GitlabStatus,
 } from './gitlab-checks';
 import { gitlabRepositories } from './gitlab-repositories';
+import { gitlabStates, type GitlabMergeRequest } from './gitlab-merge-request';
 import { AbstractCodeHost, type CodeHostEnv, type HostCall } from '../abstract-code-host';
 import type {
   MergeRequestDraft,
@@ -27,21 +28,6 @@ import type {
   PipelineDiagnosis,
   SelectedHost,
 } from '../code-host';
-
-interface GitlabMergeRequest {
-  iid?: number;
-  web_url?: string;
-  description?: string | null;
-  source_branch?: string;
-  sha?: string;
-  merge_commit_sha?: string | null;
-  squash_commit_sha?: string | null;
-  state?: string;
-  has_conflicts?: boolean;
-  detailed_merge_status?: string;
-  title?: string;
-  draft?: boolean;
-}
 
 interface GitlabPipeline {
   id?: number;
@@ -357,6 +343,8 @@ export class GitlabCodeHost extends AbstractCodeHost {
       draft: isDraft(merge),
     };
   }
+
+  protected readonly states = gitlabStates;
 
   protected mergedSha(body: unknown): string | null {
     const merge = (body ?? {}) as GitlabMergeRequest;

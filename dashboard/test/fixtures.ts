@@ -128,6 +128,9 @@ export function statsView(overrides: Partial<StatsView> = {}): StatsView {
     failed: 0,
     usd: 0,
     returns: 0,
+    merged: 0,
+    closed: 0,
+    medianToMergeMs: null,
     ...values,
   });
   return {
@@ -147,11 +150,14 @@ export function statsView(overrides: Partial<StatsView> = {}): StatsView {
       limits: 2,
       agentMs: 300_000,
       medianDoneMs: 2_100_000,
+      merged: 1,
+      closed: 1,
+      medianToMergeMs: 7_200_000,
     },
     days: [
-      day('2026-11-08', { done: 1, usd: 3, returns: 2 }),
+      day('2026-11-08', { done: 1, usd: 3, returns: 2, merged: 1, medianToMergeMs: 7_200_000 }),
       day('2026-11-09'),
-      day('2026-11-10', { done: 1, active: 1, failed: 1, usd: 1.25, returns: 1 }),
+      day('2026-11-10', { done: 1, active: 1, failed: 1, usd: 1.25, returns: 1, closed: 1 }),
     ],
     steps: [
       { name: 'implement', usd: 2.75, tokens: 2700, count: 3 },

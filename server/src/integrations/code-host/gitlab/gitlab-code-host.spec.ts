@@ -424,6 +424,33 @@ describe('gitlab host', () => {
       });
     });
 
+    it('reads who merged a merge request and when, and who closed one that was not merged', async () => {
+      mockFetch([
+        {
+          state: 'merged',
+          merge_commit_sha: 'abc123',
+          merged_by: { username: 'ada' },
+          merged_at: '2026-05-01T10:00:00Z',
+        },
+      ]);
+      expect(await service().mergeRequestState('group/demo', 12)).toMatchObject({
+        state: 'merged',
+        sha: 'abc123',
+        by: 'ada',
+        at: '2026-05-01T10:00:00Z',
+      });
+      mockFetch([{ state: 'opened' }]);
+      expect(await service().mergeRequestState('group/demo', 12)).toMatchObject({ state: 'open' });
+      mockFetch([{ state: 'closed', closed_by: { username: 'grace' }, closed_at: '2026-05-02T08:00:00Z' }]);
+      expect(await service().mergeRequestState('group/demo', 12)).toMatchObject({
+        state: 'closed',
+        by: 'grace',
+        at: '2026-05-02T08:00:00Z',
+      });
+      mockFetch([{ message: 'boom' }], 500);
+      await expect(service().mergeRequestState('group/demo', 12)).rejects.toThrow();
+    });
+
     it('closes an open merge request and leaves a merged one alone', async () => {
       const seen = mockFetch([{ state: 'opened' }, {}]);
       await service().closeMergeRequest('group/demo', 12);

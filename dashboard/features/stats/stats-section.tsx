@@ -10,6 +10,7 @@ import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 import { getStats } from '../../lib/endpoints';
+import { MergeShare, TimeToMerge } from './merge-charts';
 import { MoneyBreakdown, Returns } from './money-and-returns';
 import { RunsPerDay } from './runs-per-day';
 import { SpendPerDay } from './spend-per-day';
@@ -85,6 +86,10 @@ export function StatsSection({ version }: { version: string }): ReactElement {
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '7fr 5fr' }, gap: 2 }}>
             <RunsPerDay days={stats.days} total={stats.totals} selected={day} onSelect={setDay} />
             <SpendPerDay days={stats.days} total={stats.totals.usd} />
+          </Box>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 2 }}>
+            <MergeShare days={stats.days} totals={stats.totals} />
+            <TimeToMerge days={stats.days} totals={stats.totals} />
           </Box>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 2 }}>
             <MoneyBreakdown stats={stats} />

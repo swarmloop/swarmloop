@@ -9,6 +9,7 @@ import type { StepEventLog } from '../history/step-event.log';
 import type { StepRegistry } from '../steps/step.registry';
 import type { RunRepository } from '../history/run.repository';
 import { resumeState, stateView } from './run-view/flow';
+import { mergeView } from './run-view/status';
 
 export async function requireRun(runs: RunRepository, key: string): Promise<RunEntity> {
   const run = await runs.findRun(key);
@@ -72,11 +73,18 @@ export async function runState(
   run: RunEntity,
   open: FlowItem[],
   documents: DocumentEntity[],
-): Promise<Pick<FlowView, 'resume' | 'state' | 'stateReason' | 'actions' | 'revision'>> {
+): Promise<Pick<FlowView, 'resume' | 'state' | 'stateReason' | 'merge' | 'actions' | 'revision'>> {
   const pending = await commands.pending(run.id);
   const { state, reason, actions } = stateView(run, open, documents, {
     stopping: pending.some((command) => command.type === 'stop'),
     queued: pending.some((command) => command.state === 'accepted' && command.type !== 'stop'),
   });
-  return { resume: resumeState(run, open, documents), state, stateReason: reason, actions, revision: run.revision };
+  return {
+    resume: resumeState(run, open, documents),
+    state,
+    stateReason: reason,
+    ...mergeView(run),
+    actions,
+    revision: run.revision,
+  };
 }

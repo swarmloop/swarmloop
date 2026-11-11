@@ -28,7 +28,7 @@ export class RunRetention {
     private readonly clock: Clock,
   ) {}
 
-  /** Cleans every done run that finished more than `days` ago, oldest first. 0 keeps everything. */
+  /** Cleans every done run that finished more than `days` ago and every merged run, oldest first. 0 keeps everything. */
   async apply(days: number, except?: string): Promise<string[]> {
     const cleaned: string[] = [];
     for (const run of await this.candidates(days, except)) {
@@ -49,7 +49,10 @@ export class RunRetention {
     return null;
   }
 
-  /** The one gate: only a run that is done (a row from before `state` existed counts by its status), not held and not cleaned yet, and old enough, is ever touched. */
+  /**
+   * The one gate: only a run that is done (a row from before `state` existed counts by its status) and old enough, or
+   * merged at any age, and not held and not cleaned yet, is ever touched. A closed run can be replayed, so it stays.
+   */
   private async candidates(days: number, except?: string): Promise<RunEntity[]> {
     if (days <= 0) {
       return [];
@@ -58,13 +61,13 @@ export class RunRetention {
     return (await this.runs.listRuns())
       .filter(
         (run) =>
-          (run.state === 'done' || (run.state === null && run.status === 'done')) &&
           run.key !== except &&
           run.workspace !== 'removed' &&
           !this.runs.held(run) &&
-          Date.parse(run.updatedAt) <= limit,
+          (run.state === 'merged' ||
+            ((run.state === 'done' || (run.state === null && run.status === 'done')) && finishedAt(run) <= limit)),
       )
-      .sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt));
+      .sort((a, b) => finishedAt(a) - finishedAt(b));
   }
 
   /** A failure is logged and the run stays as it was marked, so one run does not stop the others. */
@@ -110,6 +113,11 @@ export class RunRetention {
       await removeTreeAsync(worktree);
     }
   }
+}
+
+/** When a run finished. The merge watch's own writes move `updatedAt`, so a done run it has seen keeps its `doneAt`. */
+function finishedAt(run: RunEntity): number {
+  return Date.parse(run.doneAt ?? run.updatedAt);
 }
 
 async function exists(path: string): Promise<boolean> {

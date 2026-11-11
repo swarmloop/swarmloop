@@ -92,6 +92,9 @@ describe('buildStats', () => {
       limits: 0,
       agentMs: 5 * 60_000,
       medianDoneMs: 2_100_000,
+      merged: 0,
+      closed: 0,
+      medianToMergeMs: null,
     });
   });
 
@@ -174,6 +177,39 @@ describe('buildStats', () => {
       ['gpt-6.1-sol', 1, 1],
       ['claude-opus-5-5', 0.5, 0],
     ]);
+  });
+
+  it('counts merged and closed runs apart, still in the done bar, with the median time to merge', () => {
+    const data = rows();
+    const merge = (at: string) => JSON.stringify({ merged: { 'acme/demo': { sha: 'abc', by: 'ada', at } } });
+    Object.assign(data.runs[0], {
+      state: 'merged',
+      doneAt: '2026-11-08T12:00:00.000Z',
+      mergeOutcome: merge('2026-11-08T14:00:00.000Z'),
+    });
+    Object.assign(data.runs[3], {
+      state: 'merged',
+      doneAt: '2026-11-10T10:00:00.000Z',
+      mergeOutcome: merge('2026-11-10T10:30:00.000Z'),
+    });
+    data.runs.push({
+      id: 5,
+      key: 'run-e',
+      prompt: null,
+      status: 'done',
+      runtime: 'claude',
+      createdAt: '2026-11-08T15:00:00.000Z',
+      state: 'closed',
+      doneAt: '2026-11-08T16:00:00.000Z',
+      mergeOutcome: JSON.stringify({ closed: { repo: 'acme/demo', by: 'grace', at: '2026-11-09T08:00:00.000Z' } }),
+    });
+    const stats = buildStats(data, durations, NOW, { days: 7, tzOffset: WARSAW });
+
+    expect(stats.totals).toMatchObject({ done: 3, merged: 2, closed: 1, medianToMergeMs: 4_500_000 });
+    const byDay = Object.fromEntries(stats.days.map((day) => [day.day, day]));
+    expect(byDay['2026-11-08']).toMatchObject({ done: 2, merged: 1, closed: 1, medianToMergeMs: 7_200_000 });
+    expect(byDay['2026-11-10']).toMatchObject({ merged: 1, closed: 0, medianToMergeMs: 1_800_000 });
+    expect(byDay['2026-11-09'].medianToMergeMs).toBeNull();
   });
 
   it('lists every run, newest first, with its name, spend and returns', () => {

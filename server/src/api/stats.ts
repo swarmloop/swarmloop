@@ -1,6 +1,7 @@
 import type { RunOutcome, StatsDay, StatsRun, StatsShare, StatsView } from '../contract/api';
-import type { StatsRows, StatsStepRow } from '../history/stats.repository';
+import type { StatsRows, StatsRunRow, StatsStepRow } from '../history/stats.repository';
 import { LIMIT_VISIT } from '../history/visit.repository';
+import { readOutcome } from '../history/run-state';
 import { runName } from './run-view/flow';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -81,9 +82,30 @@ function median(values: number[]): number | null {
 function emptyDays(from: string, to: string): Map<string, StatsDay> {
   const days = new Map<string, StatsDay>();
   for (let day = from; day <= to; day = shiftDay(day, 1)) {
-    days.set(day, { day, done: 0, active: 0, failed: 0, usd: 0, returns: 0 });
+    days.set(day, {
+      day,
+      done: 0,
+      active: 0,
+      failed: 0,
+      usd: 0,
+      returns: 0,
+      merged: 0,
+      closed: 0,
+      medianToMergeMs: null,
+    });
   }
   return days;
+}
+
+/** Time from a run's done to the last of its merges. Null for a run that was not merged, or whose done time is unknown. */
+function toMergeMs(run: StatsRunRow): number | null {
+  const outcome = readOutcome(run.mergeOutcome);
+  const doneAt = Date.parse(run.doneAt ?? '');
+  if (!outcome || !('merged' in outcome) || !Number.isFinite(doneAt)) {
+    return null;
+  }
+  const at = Math.max(...Object.values(outcome.merged).map((fact) => Date.parse(fact.at)));
+  return Number.isFinite(at) ? Math.max(0, at - doneAt) : null;
 }
 
 /**
@@ -171,6 +193,9 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
   const buckets = RETURN_BUCKETS.map(() => 0);
   const counts = { done: 0, active: 0, failed: 0 };
   const doneDurations: number[] = [];
+  const toMerge: number[] = [];
+  const toMergeByDay = new Map<string, number[]>();
+  const ended = { merged: 0, closed: 0 };
   let firstPass = 0;
   const runs: StatsRun[] = rows.runs.map((run) => {
     const outcome = outcomeOf(run.status);
@@ -192,6 +217,19 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
     const day = days.get(localDay(run.createdAt, range.tzOffset));
     if (day) {
       day[outcome] += 1;
+    }
+    if (outcome === 'done' && (run.state === 'merged' || run.state === 'closed')) {
+      ended[run.state] += 1;
+      if (day) {
+        day[run.state] += 1;
+      }
+      const ms = toMergeMs(run);
+      if (ms !== null) {
+        toMerge.push(ms);
+        if (day) {
+          toMergeByDay.set(day.day, [...(toMergeByDay.get(day.day) ?? []), ms]);
+        }
+      }
     }
     const name = runName(run.key, run.prompt);
     return {
@@ -221,8 +259,14 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
       limits: rows.steps.filter(limited).length,
       agentMs: spend.totals.agentMs,
       medianDoneMs: median(doneDurations),
+      ...ended,
+      medianToMergeMs: median(toMerge),
     },
-    days: [...days.values()].map((day) => ({ ...day, usd: round(day.usd) })),
+    days: [...days.values()].map((day) => ({
+      ...day,
+      usd: round(day.usd),
+      medianToMergeMs: median(toMergeByDay.get(day.day) ?? []),
+    })),
     steps: spend.steps,
     models: spend.models,
     agents: [...agents.values()]

@@ -1,4 +1,4 @@
-import type { MergeRequestView } from '../code-host';
+import type { MergeRequestState, MergeRequestView, RequestStateApi } from '../code-host';
 
 export interface GithubPull {
   number?: number;
@@ -8,6 +8,9 @@ export interface GithubPull {
   state?: string;
   merged?: boolean;
   merge_commit_sha?: string | null;
+  merged_at?: string | null;
+  merged_by?: { login?: string } | null;
+  closed_at?: string | null;
   mergeable?: boolean | null;
   mergeable_state?: string;
   draft?: boolean;
@@ -39,3 +42,22 @@ export function apiRoot(baseUrl: string): string {
   }
   return `${url.origin}/api/v3`;
 }
+
+/** A pull request with who merged it and when. `closed_by` is not on a pull: the caller reads it from the issue. */
+function pullState(body: unknown, now: string): MergeRequestState {
+  const pull = (body ?? {}) as GithubPull;
+  if (pull.merged === true) {
+    return {
+      state: 'merged',
+      sha: pull.merge_commit_sha ?? null,
+      by: pull.merged_by?.login ?? null,
+      at: pull.merged_at ?? now,
+    };
+  }
+  return pull.state === 'closed' ? { state: 'closed', by: null, at: pull.closed_at ?? now } : { state: 'open' };
+}
+
+export const githubStates: RequestStateApi = {
+  stateOf: pullState,
+  closerUrl: (requestUrl) => requestUrl.replace(/\/pulls\/(\d+)$/, '/issues/$1'),
+};

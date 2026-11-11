@@ -19,6 +19,7 @@ import { openRunMs } from '../../lib/elapsed';
 import { duration, money, when } from '../../lib/format';
 import type { RunSummary } from '@contract/api';
 import { statusColor } from '../../theme/theme';
+import { RunStateLabel } from '../run';
 
 export function RunList({
   query,
@@ -215,6 +216,7 @@ function RunRow({
               <DeleteOutline sx={{ fontSize: 16 }} />
             </IconButton>
           </Box>
+          <RunStateLabel status={run.status} merge={run.merge} />
         </Box>
       </ListItemButton>
     </ListItem>

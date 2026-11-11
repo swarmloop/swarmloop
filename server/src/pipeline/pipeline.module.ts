@@ -35,6 +35,7 @@ import { Housekeeping } from './housekeeping';
 import { RunRetention } from './run-retention';
 import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
+import { MergeWatch } from './merge-watch';
 import { Reconciler } from './reconciler';
 import { PipelineService } from './pipeline.service';
 import { AuthModule } from '../auth/auth.module';
@@ -77,6 +78,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     StepRegistry,
     PipelineService,
     CommandService,
+    MergeWatch,
     Reconciler,
     RunRebase,
     MergeRequestDrafts,

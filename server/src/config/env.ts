@@ -28,6 +28,7 @@ export interface SwarmloopEnv {
   LIMIT_COOLDOWN_MIN: number;
   STOP_GRACE_S: number;
   RECONCILE_MS: number;
+  MERGE_WATCH_MIN: number;
   RECOVER_WAIT_MS: number;
   RETAIN_DONE_DAYS: number;
   MIN_FREE_GB: number;
@@ -132,6 +133,7 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     LIMIT_COOLDOWN_MIN: config.getOrThrow<number>('LIMIT_COOLDOWN_MIN'),
     STOP_GRACE_S: config.getOrThrow<number>('STOP_GRACE_S'),
     RECONCILE_MS: config.getOrThrow<number>('RECONCILE_MS'),
+    MERGE_WATCH_MIN: config.getOrThrow<number>('MERGE_WATCH_MIN'),
     RECOVER_WAIT_MS: config.getOrThrow<number>('RECOVER_WAIT_MS'),
     RETAIN_DONE_DAYS: config.getOrThrow<number>('RETAIN_DONE_DAYS'),
     MIN_FREE_GB: config.getOrThrow<number>('MIN_FREE_GB'),

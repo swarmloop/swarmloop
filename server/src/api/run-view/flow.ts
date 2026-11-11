@@ -155,6 +155,14 @@ export function withSkip(said: string, step: string, skip: string | null): strin
   return `${note} ${said}`;
 }
 
+function doneSentence(run: RunEntity): string {
+  const { state } = deriveState(run);
+  if (state === 'merged') return 'This run is merged: its merge request is in the target branch.';
+  if (state === 'closed')
+    return 'This run is closed: its merge request was closed without a merge. Replay starts it again.';
+  return 'This run is done: its merge request is ready to merge.';
+}
+
 export function sentence(
   run: RunEntity,
   open: FlowItem[],
@@ -184,7 +192,7 @@ export function sentence(
     return 'This step failed. Resume retries it.';
   }
   if (run.status === 'done') {
-    return 'This run is done.';
+    return doneSentence(run);
   }
   if (run.status === 'running') {
     return 'This step is running. The output is below.';

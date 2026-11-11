@@ -108,6 +108,8 @@ describe('actionsFor', () => {
     ['recovering', null, []],
     ['failed', null, ['resume', 'replay', 'rebase']],
     ['done', null, ['replay', 'rebase']],
+    ['merged', null, []],
+    ['closed', null, ['replay']],
     ['blocked', REASON.checkFailed, ['resume', 'replay']],
     ['blocked', REASON.didNotFit, ['resume', 'replay']],
     ['blocked', REASON.loopLimit, ['resume', 'replay']],
@@ -120,6 +122,41 @@ describe('actionsFor', () => {
 
   it.each(table)('allows for %s with reason %s: %j', (state, code, actions) => {
     expect(actionsFor(state, code)).toEqual(actions);
+  });
+});
+
+describe('deriveState of a done run', () => {
+  const merged = JSON.stringify({ merged: { 'acme/demo': { sha: 'abc', by: 'ada', at: '2026-05-01T10:00:00Z' } } });
+  const closed = JSON.stringify({ closed: { repo: 'acme/demo', by: 'grace', at: '2026-05-02T08:00:00Z' } });
+  const note = JSON.stringify({ code: REASON.mergeWatchUnavailable, message: 'cannot read' });
+
+  it('is done while the merge request waits, merged or closed once the outcome is stored', () => {
+    expect(deriveState({ status: 'done' }).state).toBe('done');
+    expect(deriveState({ status: 'done', mergeOutcome: merged }).state).toBe('merged');
+    expect(deriveState({ status: 'done', mergeOutcome: closed }).state).toBe('closed');
+  });
+
+  it('shows the stored note of a done run', () => {
+    expect(deriveState({ status: 'done', stateReason: note }).reason?.code).toBe(REASON.mergeWatchUnavailable);
+  });
+
+  it('writes the outcome with the state, keeps it while done, and clears it when the run leaves done', () => {
+    const outcome = { closed: { repo: 'acme/demo', by: null, at: '2026-05-02T08:00:00Z' } };
+    const row = { currentStep: 'done', ownerInstance: null, activeAttempt: null, mergeOutcome: null, doneAt: null };
+    const settled = stateColumns(row, { status: 'done', merge: outcome, doneAt: '2026-05-01T00:00:00Z' });
+    expect(settled).toMatchObject({ state: 'closed', doneAt: '2026-05-01T00:00:00Z' });
+    expect(JSON.parse(settled.mergeOutcome!)).toEqual(outcome);
+
+    expect(stateColumns({ ...row, ...settled }, { status: 'done' })).toMatchObject({
+      state: 'closed',
+      mergeOutcome: settled.mergeOutcome,
+      doneAt: settled.doneAt,
+    });
+    expect(stateColumns({ ...row, ...settled }, { status: 'running' })).toMatchObject({
+      state: 'running',
+      mergeOutcome: null,
+      doneAt: null,
+    });
   });
 });
 

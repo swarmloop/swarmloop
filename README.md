@@ -289,6 +289,7 @@ When CI does not start and GitHub or GitLab confirms a merge conflict for the pu
 | `LIMIT_COOLDOWN_MIN` | Minutes a runtime stays out of use after a provider usage limit whose text names no reset time | `60` |
 | `STOP_GRACE_S` | Seconds a container gets to stop on Stop before it is killed | `10` |
 | `RECONCILE_MS` | How often the server looks for runs whose owner died | `60000` |
+| `MERGE_WATCH_MIN` | Minutes between looks at done runs for a merged or closed merge request | `5` |
 | `RECOVER_WAIT_MS` | How long a run waits for a container left by a dead server to exit before it is killed | `600000` |
 | `IDLE_TIMEOUT_MS` | Silence before the agent is killed | 15 minutes |
 | `LOOP_REPEAT` | The same failing command this many times in a row gets one hint; that many more end the step | `4` |

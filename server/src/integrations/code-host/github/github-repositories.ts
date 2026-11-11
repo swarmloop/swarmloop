@@ -1,6 +1,5 @@
 import type { RemoteRepository, RepositoryOwner } from '../../../contract/api';
-import type { RepositoryApi } from '../abstract-code-host';
-import type { CreateRepositoryDraft } from '../code-host';
+import type { CreateRepositoryDraft, RepositoryApi } from '../code-host';
 
 interface GithubRepo {
   name?: string;
