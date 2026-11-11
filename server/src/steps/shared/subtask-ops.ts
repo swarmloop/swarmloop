@@ -1,5 +1,6 @@
 import type { RunEntity } from '../../history/entities';
 import type { Subtask } from '../../contract/subtask';
+import type { OpenedStep } from '../step-run';
 
 /** One merge request of a subtask: the repository it is for, and where the host has it. */
 export interface SubtaskMergeRequest {
@@ -33,4 +34,12 @@ export abstract class SubtaskOps {
   abstract fastForward(parent: RunEntity): Promise<void>;
   /** Sends a subtask run the Rebase command, when it has a merge request and is in a state that takes it. */
   abstract rebase(run: RunEntity): Promise<void>;
+  /** True when the run waits in research for answers to its questions. */
+  abstract asking(run: RunEntity): Promise<boolean>;
+  /**
+   * Asks the planner of the parent, in the parent's own chat, the open questions of a subtask run, and sends the run
+   * the answer through the Answer command. Returns the answer. When the planner gives none, the run is told to decide
+   * itself and the result is null.
+   */
+  abstract answer(opened: OpenedStep, child: RunEntity, task: Subtask, contract: string): Promise<string | null>;
 }

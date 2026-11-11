@@ -16,6 +16,7 @@ import { LiveModule } from '../live/live.module';
 import type { VisitDraft } from '../history/visit';
 import { CommandService } from '../pipeline/command.service';
 import { SubtaskPort } from '../pipeline/subtask-port';
+import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { RunStop } from '../agent/run-stop';
 import { PipelineService } from '../pipeline/pipeline.service';
@@ -89,6 +90,7 @@ export async function boot(
       SubtaskClose,
       CommandService,
       SubtaskPort,
+      { provide: AgentLauncher, useValue: {} },
       { provide: CodeHostRegistry, useValue: {} },
       RunStop,
       RunRebaseService,

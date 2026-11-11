@@ -4,6 +4,7 @@ import { deriveState } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
 import { readyTasks, settled, statusLine, unmetDepends, withStatuses, type Subtask } from '../../contract/subtask';
 import type { StepName } from '../../contract/steps';
+import { withDecision } from '../shared/handoff';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { SplitMerge } from './split-merge';
 import { BaseStep, StepContext } from '../base-step';
@@ -20,13 +21,14 @@ export const NO_CI_NOTE = 'no CI on the feature branch';
 /**
  * Implement of a split run: a server step, no agent. A pass does what is due and ends with the parent waiting, so
  * it never holds the run. It starts again when a subtask changes status or on the reconciler timer. A pass is
- * idempotent and the only place that decides what happens next.
+ * idempotent and the only place that decides what happens next. It answers one question of a subtask first: the
+ * answer is a decision in the `contract`.
  */
 @Injectable()
 export class SplitImplementStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'implement';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.subtasks, ARTIFACTS.implementation];
+  readonly outputs = [ARTIFACTS.subtasks, ARTIFACTS.implementation, ARTIFACTS.contract];
 
   constructor(
     kernel: StepKernel,
@@ -39,11 +41,15 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const { run, startedAt } = ctx.opened;
     const before = JSON.stringify(withStatuses(input.subtasks));
+    const contract = await this.answer(ctx, withStatuses(input.subtasks));
     const followed = await this.refresh(run, withStatuses(input.subtasks));
     const { tasks: merged, refusal } = await this.merges.run(run, followed);
     const blocked = merged.find((task) => task.status === 'blocked');
     const tasks = await this.explain(run, blocked || refusal ? merged : await this.start(run, merged));
-    const outputs = JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }];
+    const outputs: StepResult['outputs'] = [
+      ...(JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }]),
+      ...(contract === null ? [] : [{ artifact: ARTIFACTS.contract, value: contract }]),
+    ];
     const line = statusLine(tasks);
     if (blocked || refusal) {
       const text = `${startedAt} ${blocked ? `subtask ${blocked.id} is ${blocked.status}` : refusal}: ${line}`;
@@ -56,6 +62,22 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     const code = waiting ? ERROR_CODES.SUBTASK_WAITING : ERROR_CODES.SUBTASKS_RUNNING;
     const text = `${startedAt} ${waiting ? `${line} · waiting for ${waiting}` : line}`;
     return { route: { to: 'wait', reason: text, code }, summary: text, outputs };
+  }
+
+  /**
+   * Asks the planner the questions of the first subtask that waits in research, one subtask per pass: the next
+   * one is asked by the pass its answered run starts. Returns the contract with the decision, or null when none.
+   */
+  private async answer(ctx: StepContext, tasks: Subtask[]): Promise<string | null> {
+    const { run } = ctx.opened;
+    for (const task of tasks.filter((item) => !settled(item))) {
+      const child = await this.subtasks.find(run, task.id);
+      if (!child || !(await this.subtasks.asking(child))) continue;
+      const contract = (await ctx.reread(ARTIFACTS.contract)) ?? '';
+      const answer = await this.subtasks.answer(ctx.opened, child, task, contract);
+      return answer === null ? null : withDecision(contract, task.id, answer);
+    }
+    return null;
   }
 
   /** Every task has a run, and its status follows that run. A settled task keeps the status it has. */

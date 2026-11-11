@@ -62,6 +62,14 @@ export function withContract(
   return contract?.trim() ? [...sections, { heading: 'Contract', body: contract }] : sections;
 }
 
+/** The contract with a decision added under `decisions:`. The heading is created when the contract has none. */
+export function withDecision(contract: string, taskId: string, answer: string): string {
+  const [first = '', ...rest] = answer.trim().split('\n');
+  const entry = [`- subtask ${taskId}: ${first}`, ...rest.map((line) => `  ${line}`)].join('\n');
+  const body = contract.trimEnd();
+  return `${body}${/^decisions:\s*$/m.test(body) ? '\n' : `${body ? '\n\n' : ''}decisions:\n`}${entry}\n`;
+}
+
 /** A resumed session's prompt with the `Impact` section added at its end. */
 export function appendImpact(prompt: string, impact: string | null): string {
   return impact?.trim() ? `${prompt}\n\nImpact:\n${impact.trimEnd()}` : prompt;

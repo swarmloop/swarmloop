@@ -1,8 +1,13 @@
 import 'reflect-metadata';
-import { mkdirSync, existsSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
+import { AGENT_RUNNER, type AgentRunInput, type AgentRunResult } from '../../agent/agent-runner';
+import { agentFor } from '../../config/agents';
+import { AppConfig } from '../../config/env';
+import { VisitRepository } from '../../history/visit.repository';
+import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { RunCommandsService } from '../../api/run-commands.service';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { parseSubtasks, type Subtask } from '../../contract/subtask';
@@ -635,5 +640,140 @@ describe('split merge', () => {
     await app.app.get(CommandService).submit('replay', KEY, { step: 'plan', prompt: 'again' });
 
     expect(built.host.closed).toEqual([1, 2]);
+  });
+});
+
+describe('subtask questions', () => {
+  let app: TestApp;
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await app.close();
+  });
+
+  /** A parent with a plan chat and subtasks that have run once; the planner's replies are scripted. */
+  async function questionWorld(replies: (prompt: string) => { text: string; exitCode?: number }) {
+    const built = await world();
+    app = built.app;
+    const documents = app.app.get(DocumentRepository);
+    const parent = await seedParent(app, [task('a'), task('b')]);
+    await documents.putDocument(parent, 'contract', '- names are camelCase\n');
+    await documents.putDocument(parent, 'repos', 'demo\n');
+    const runtime = agentFor(app.app.get(AppConfig).env, null, 'plan').runtime;
+    mkdirSync(join(app.root, 'data'), { recursive: true });
+    mkdirSync(agentStateDir(app.root, KEY, 'plan'), { recursive: true });
+    writeFileSync(join(app.root, 'data', `${KEY}-plan-session.json`), JSON.stringify({ chatId: 'chat-1', runtime }));
+    mkdirSync(join(app.root, 'worktrees', KEY, 'demo'), { recursive: true });
+    const prompts: string[] = [];
+    jest
+      .spyOn(app.app.get<{ run: (input: AgentRunInput) => Promise<AgentRunResult> }>(AGENT_RUNNER), 'run')
+      .mockImplementation((input) => {
+        prompts.push(input.prompt);
+        const { text, exitCode = 0 } = replies(input.prompt);
+        return Promise.resolve({
+          responseText: text,
+          chatId: 'chat-1',
+          tokensIn: 10,
+          tokensOut: 5,
+          usd: 0.5,
+          killReason: null,
+          exitCode,
+          resumed: true,
+          calls: 1,
+          samples: [],
+          durationMs: 1,
+          startedAt: new Date(0).toISOString(),
+          finishedAt: new Date(1).toISOString(),
+        });
+      });
+    await pass(app);
+    return { parent, prompts, documents };
+  }
+
+  /** The subtask run waits in research for its questions. */
+  async function ask(id: string, questions: string, step = 'research'): Promise<void> {
+    const run = await child(app, id);
+    writeRunState(run, { status: 'waiting', currentStep: step });
+    await app.app.get(RunRepository).saveRun(run);
+    await app.app.get(DocumentRepository).putDocument(run, 'questions', questions);
+  }
+
+  it('answers a question from the plan chat of the parent, as a plan visit, and records it under decisions', async () => {
+    const { prompts, documents, parent } = await questionWorld(() => ({ text: 'Use a column.' }));
+    await ask('a', '- which field?\n');
+    const before = await tasksOf(app);
+
+    await pass(app);
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain('Subtask a asks:\n- which field?');
+    expect(prompts[0]).toContain('names are camelCase');
+    expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBe('question: which field?\nanswer: Use a column.\n');
+    expect(await documents.latestBody(KEY, 'contract')).toBe(
+      '- names are camelCase\n\ndecisions:\n- subtask a: Use a column.\n',
+    );
+    expect(await tasksOf(app)).toEqual(before);
+    const visits = await app.app.get(VisitRepository).listStats(parent.id);
+    expect(visits.filter((visit) => visit.step === 'plan').map((visit) => visit.status)).toEqual(['done']);
+    expect((await app.app.get(RunRepository).findRun(KEY))?.spentUsd).toBe(0.5);
+  });
+
+  it('tells the subtask to decide itself, and leaves the contract alone, when the planner fails', async () => {
+    const { documents, parent } = await questionWorld(() => ({ text: '', exitCode: 1 }));
+    await ask('a', '- which field?\n');
+
+    await pass(app);
+
+    expect(await documents.latestBody(`${KEY}-a`, 'answers')).toContain('Decide each one yourself');
+    expect(await documents.latestBody(KEY, 'contract')).toBe('- names are camelCase\n');
+    const visits = await app.app.get(VisitRepository).listStats(parent.id);
+    expect(visits.filter((visit) => visit.step === 'plan').map((visit) => visit.status)).toEqual(['failed']);
+  });
+
+  it('asks two questions that wait at once one after the other, in task order', async () => {
+    const { prompts, documents } = await questionWorld((prompt) => ({
+      text: prompt.includes('Subtask a') ? 'A.' : 'B.',
+    }));
+    await ask('b', '- second?\n');
+    await ask('a', '- first?\n');
+
+    await pass(app);
+    expect(prompts).toHaveLength(1);
+    expect(await documents.latestBody(`${KEY}-b`, 'answers')).toBeNull();
+
+    await pass(app);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain('Subtask b asks:');
+    expect(await documents.latestBody(KEY, 'contract')).toContain('- subtask a: A.\n- subtask b: B.');
+  });
+
+  it('sends the planner reply again, and does not ask the planner again, when the delivery was refused', async () => {
+    const { prompts, documents, parent } = await questionWorld(() => ({ text: 'Use a column.' }));
+    await ask('a', '- which field?\n');
+    const commands = app.app.get(CommandService);
+    const submit = commands.submit.bind(commands);
+    jest.spyOn(commands, 'submit').mockRejectedValueOnce(new Error('refused')).mockImplementation(submit);
+
+    await pass(app);
+    expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBeNull();
+    expect(await documents.latestBody(KEY, 'contract')).toBe('- names are camelCase\n');
+
+    await pass(app);
+    expect(prompts).toHaveLength(1);
+    expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBe('question: which field?\nanswer: Use a column.\n');
+    expect(await documents.latestBody(KEY, 'contract')).toContain('- subtask a: Use a column.');
+    const visits = await app.app.get(VisitRepository).listStats(parent.id);
+    expect(visits.filter((visit) => visit.step === 'plan')).toHaveLength(1);
+  });
+
+  it('does not touch a subtask that is already past plan', async () => {
+    const { prompts, documents } = await questionWorld(() => ({ text: 'late' }));
+    await ask('a', '- which field?\n', 'plan');
+
+    await pass(app);
+
+    expect(prompts).toHaveLength(0);
+    expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBeNull();
+    expect(await documents.latestBody(KEY, 'contract')).toBe('- names are camelCase\n');
   });
 });

@@ -127,7 +127,7 @@ export const ARTIFACTS = {
     summarize: (tasks) => listSummary(tasks.length, 'tasks', tasks[0]?.title),
   }),
   contract: artifact(CONTRACT_KIND, {
-    writers: ['plan', 'plan-improve'],
+    writers: ['plan', 'plan-improve', 'implement'],
     readers: ['plan-improve', 'implement', 'implement-improve'],
     summarize: firstLine,
   }),

@@ -155,6 +155,63 @@ describe('research step', () => {
     }
   });
 
+  describe('a subtask whose parent is split', () => {
+    async function splitSubtask(answers?: string) {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-split-'));
+      await writeEnv(root);
+      mkdirSync(join(root, 'worktrees', 'PROJ-25-t1', 'billing-api'), { recursive: true });
+      const agent = jest
+        .fn()
+        .mockResolvedValue(result(['summary:', '- looking', 'questions:', '- which field is optional?'].join('\n')));
+      const app = await boot(root, agent);
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const parent = await runs.openWaiting('PROJ-25', '/target');
+      parent.split = true;
+      await runs.saveRun(parent);
+      const child = await runs.begin('PROJ-25-t1', 'prepare');
+      child.status = 'waiting';
+      child.currentStep = 'research';
+      child.parentRunId = parent.id;
+      child.taskId = 't1';
+      await runs.saveRun(child);
+      await documents.putDocument(child, 'requirements', '{"prompt":"ship the field"}\n');
+      if (answers) await documents.putDocument(child, 'answers', answers);
+      // The parent decides after the subtask was created, and before its research runs.
+      await documents.putDocument(
+        parent,
+        'contract',
+        '- the field is a column\n\ndecisions:\n- subtask t0: use utf8\n',
+      );
+      return { app, agent, runs, documents };
+    }
+
+    it('waits for its questions, and reads a decision the parent took after it was created', async () => {
+      const { app, agent, runs, documents } = await splitSubtask();
+      try {
+        const done = await app.get(PipelineService).step('research', 'PROJ-25-t1');
+        expect(done.message).toContain('which field is optional?');
+        expect((agent.mock.calls[0]?.[0] as AgentRunInput).prompt).toContain('subtask t0: use utf8');
+        expect((await runs.findRun('PROJ-25-t1'))?.currentStep).toBe('research');
+        expect(await documents.latestBody('PROJ-25-t1', 'questions')).toContain('which field is optional?');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('records its questions as assumptions and goes on when it already has answers', async () => {
+      const { app, runs, documents } = await splitSubtask('question: which field is optional?\nanswer: none\n');
+      try {
+        await app.get(PipelineService).step('research', 'PROJ-25-t1');
+        expect((await runs.findRun('PROJ-25-t1'))?.currentStep).toBe('plan');
+        expect(await documents.latestBody('PROJ-25-t1', 'questions')).toBe('');
+        expect(await documents.latestBody('PROJ-25-t1', 'handoff')).toContain('- assumed: which field is optional?');
+      } finally {
+        await app.close();
+      }
+    });
+  });
+
   it('gives a run without a parent no contract section', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-nocontract-'));
     await writeEnv(root);

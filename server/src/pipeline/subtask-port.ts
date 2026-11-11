@@ -1,11 +1,16 @@
 import { existsSync } from 'fs';
+import { join } from 'path';
 import { Injectable, Logger } from '@nestjs/common';
+import { agentFor } from '../config/agents';
 import { AppConfig } from '../config/env';
+import { resumableChat } from '../agent/agent-session';
+import { visitStatus } from '../core/pipeline-result';
+import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
 import { fetchBranch } from '../git/rebase';
 import { originRef } from '../git/base-ref';
 import { git } from '../git/git';
-import { repoNames, worktreePath } from '../git/repo-names';
+import { mountsForStep, repoNames, worktreePath } from '../git/repo-names';
 import { root } from '../history/run-paths';
 import { parseMergeRequests } from '../steps/merge-request/merge-request-record';
 import { branchName, summaryForBranch } from '../steps/branch/branch-name';
@@ -17,6 +22,16 @@ import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
 import { isSubtask, parseSubtasks, settled, SUBTASKS_KIND, type Subtask } from '../contract/subtask';
 import { SubtaskOps, type SubtaskMergeRequest } from '../steps/shared/subtask-ops';
 import { DocumentRepository } from '../history/document.repository';
+import { VisitRepository } from '../history/visit.repository';
+import type { AgentRunResult } from '../agent/agent-runner';
+import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { agentFailure } from '../steps/shared/agent-result';
+import { unanswered } from '../steps/shared/answers';
+import { items } from '../steps/shared/markdown-section';
+import { modelVisit } from '../steps/shared/model-visit';
+import { StepStopped } from '../steps/shared/step-stopped';
+import { DECIDE_YOURSELF, subtaskAsks } from '../steps/plan/plan.prompts';
+import type { OpenedStep } from '../steps/step-run';
 import { CommandService } from './command.service';
 
 /** What the api layer does for the subtasks of a parent. It registers itself at init, so `pipeline` never imports `api`. */
@@ -31,12 +46,16 @@ interface SubtaskStarter {
 @Injectable()
 export class SubtaskPort extends SubtaskOps {
   private readonly logger = new Logger(SubtaskPort.name);
+  /** The planner's reply per subtask run whose delivery was refused, so a retry sends it again and does not ask again. */
+  private readonly undelivered = new Map<string, string | null>();
   private starter: SubtaskStarter | null = null;
 
   constructor(
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
     private readonly commands: CommandService,
+    private readonly launcher: AgentLauncher,
+    private readonly visits: VisitRepository,
     private readonly config: AppConfig,
     private readonly clock: Clock,
   ) {
@@ -64,6 +83,94 @@ export class SubtaskPort extends SubtaskOps {
     if (run.status !== 'waiting' || JSON.stringify(deriveState(run).reason) === JSON.stringify(reason)) return;
     writeRunState(run, { status: 'waiting', reason });
     await this.runs.saveRun(run);
+  }
+
+  override async asking(run: RunEntity): Promise<boolean> {
+    if (run.status !== 'waiting' || run.currentStep !== 'research') return false;
+    const questions = (await this.documents.latestBody(run.key, ARTIFACTS.questions.kind)) ?? '';
+    const answers = (await this.documents.latestBody(run.key, ARTIFACTS.answers.kind)) ?? '';
+    return unanswered(questions, answers).length > 0;
+  }
+
+  override async answer(opened: OpenedStep, child: RunEntity, task: Subtask, contract: string): Promise<string | null> {
+    const questions = (await this.documents.latestBody(child.key, ARTIFACTS.questions.kind)) ?? '';
+    const answer = this.undelivered.has(child.key)
+      ? (this.undelivered.get(child.key) ?? null)
+      : await this.plannerAnswer(opened, task, questions, contract);
+    const text = answer ?? DECIDE_YOURSELF;
+    const answers = items(questions).map((id) => ({ kind: 'question', id, body: text }));
+    try {
+      await this.commands.submit(
+        'answer',
+        child.key,
+        { answers },
+        { idempotencyKey: `subtask-answer-${child.key}-${child.revision}` },
+      );
+    } catch (error) {
+      this.undelivered.set(child.key, answer);
+      this.logger.warn(`${child.key} was not answered: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+    this.undelivered.delete(child.key);
+    return answer;
+  }
+
+  /**
+   * A follow-up visit of the plan step in the chat of the parent, recorded like any visit of that step. The pass
+   * already holds the parent, so nothing else uses the chat meanwhile. Null when the planner gave no usable answer.
+   */
+  private async plannerAnswer(
+    opened: OpenedStep,
+    task: Subtask,
+    questions: string,
+    contract: string,
+  ): Promise<string | null> {
+    const parent = opened.run;
+    const env = this.config.env;
+    const { runtime, model } = agentFor(env, null, 'plan');
+    const dir = root(this.config);
+    if (!(await resumableChat(dir, parent.key, 'plan', runtime))?.chatId) return null;
+    const prompt = subtaskAsks(task, questions, contract);
+    let result: AgentRunResult | null = null;
+    let failure: string | null = null;
+    try {
+      const names = repoNames((await this.documents.latestBody(parent.key, ARTIFACTS.repos.kind)) ?? '');
+      result = await this.launcher.launch({
+        root: dir,
+        run: parent,
+        key: parent.key,
+        step: 'plan',
+        mode: 'plan',
+        tools: 'plan',
+        runtime,
+        model,
+        timeLimitMs: env.PLAN_TIMEOUT_MS,
+        prompt,
+        workspace: join(dir, 'worktrees', parent.key),
+        mounts: mountsForStep(dir, parent.key, names, parent.targetPath),
+      });
+      failure = agentFailure(result, 'plan', 'plan');
+    } catch (error) {
+      if (error instanceof StepStopped) throw error;
+      failure = error instanceof SwarmloopError ? error.message : 'plan failed';
+    }
+    const answer = failure ? '' : (result?.responseText ?? '').trim();
+    await this.visits.finishVisit(
+      parent,
+      modelVisit({
+        opened,
+        now: this.clock.now(),
+        step: 'plan',
+        mode: 'plan',
+        runtime,
+        model,
+        agent: result,
+        prompt,
+        status: visitStatus(answer ? 'ok' : 'failed'),
+        exitCode: answer ? 0 : 1,
+      }),
+    );
+    return answer || null;
   }
 
   override async withoutCi(run: RunEntity): Promise<boolean> {
