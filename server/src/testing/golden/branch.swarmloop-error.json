@@ -15,10 +15,6 @@
       "step": "branch"
     },
     {
-      "kind": "activity.started",
-      "step": "branch"
-    },
-    {
       "kind": "input.received",
       "step": "branch"
     },
@@ -28,10 +24,6 @@
     },
     {
       "kind": "input.received",
-      "step": "branch"
-    },
-    {
-      "kind": "activity.finished",
       "step": "branch"
     },
     {

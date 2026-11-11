@@ -11,19 +11,11 @@
       "step": "pipeline"
     },
     {
-      "kind": "activity.started",
-      "step": "pipeline"
-    },
-    {
       "kind": "input.received",
       "step": "pipeline"
     },
     {
       "kind": "input.received",
-      "step": "pipeline"
-    },
-    {
-      "kind": "activity.finished",
       "step": "pipeline"
     },
     {

@@ -11,14 +11,6 @@
       "step": "requirements"
     },
     {
-      "kind": "activity.started",
-      "step": "requirements"
-    },
-    {
-      "kind": "activity.finished",
-      "step": "requirements"
-    },
-    {
       "kind": "artifact.produced",
       "step": "requirements"
     },

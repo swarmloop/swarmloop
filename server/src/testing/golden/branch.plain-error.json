@@ -15,14 +15,6 @@
       "step": "branch"
     },
     {
-      "kind": "activity.started",
-      "step": "branch"
-    },
-    {
-      "kind": "activity.finished",
-      "step": "branch"
-    },
-    {
       "kind": "artifact.produced",
       "step": "branch"
     },

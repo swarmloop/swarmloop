@@ -15,15 +15,7 @@
       "step": "research"
     },
     {
-      "kind": "activity.started",
-      "step": "research"
-    },
-    {
       "kind": "input.received",
-      "step": "research"
-    },
-    {
-      "kind": "activity.finished",
       "step": "research"
     },
     {

@@ -15,10 +15,6 @@
       "step": "commit"
     },
     {
-      "kind": "activity.started",
-      "step": "commit"
-    },
-    {
       "kind": "input.received",
       "step": "commit"
     },
@@ -28,10 +24,6 @@
     },
     {
       "kind": "input.received",
-      "step": "commit"
-    },
-    {
-      "kind": "activity.finished",
       "step": "commit"
     },
     {

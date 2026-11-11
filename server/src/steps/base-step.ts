@@ -354,20 +354,17 @@ export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore
     return this.perform(
       key,
       async (ctx) => {
-        const input = await ctx.activity('Preparing', async () => {
-          await this.ready(ctx);
-          const read = await this.reader.read(key, this.inputs);
-          await recordInputs(
-            this.documents,
-            this.kernel.stepEvents,
-            ctx.opened.run.id,
-            this.name,
-            this.inputs,
-            read,
-            () => ctx.reread(ARTIFACTS.issues),
-          );
-          return read;
-        });
+        await this.ready(ctx);
+        const input = await this.reader.read(key, this.inputs);
+        await recordInputs(
+          this.documents,
+          this.kernel.stepEvents,
+          ctx.opened.run.id,
+          this.name,
+          this.inputs,
+          input,
+          () => ctx.reread(ARTIFACTS.issues),
+        );
         return this.conclude(ctx, await this.work(input, ctx));
       },
       snapshot,

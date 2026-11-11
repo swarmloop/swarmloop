@@ -238,7 +238,7 @@ describe('base step', () => {
     }
   });
   describe('preparation', () => {
-    it('records the commands of the preparation under Preparing, and the wait between two visits', async () => {
+    it('records the commands a step runs before its work, and the wait between two visits', async () => {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-base-preparing-'));
       const clock = new FakeClock();
       const app = await boot(root, clock);
@@ -259,10 +259,8 @@ describe('base step', () => {
         expect(stats[1].preparedMs).toBe(338_000);
 
         const events = (await app.get(StepEventLog).page(run?.id ?? 0, { limit: 500 })).events;
-        const preparing = events.find((event) => event.kind === 'activity.started' && event.title === 'Preparing');
-        const command = events.find((event) => event.kind === 'command.started' && event.args.includes('--version'));
-        expect(preparing).toBeDefined();
-        expect(command?.parentSpanId).toBe(preparing && 'spanId' in preparing ? preparing.spanId : null);
+        const commands = events.filter((event) => event.kind === 'command.started' && event.args.includes('--version'));
+        expect(commands).toHaveLength(2);
       } finally {
         await app.close();
       }

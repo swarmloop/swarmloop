@@ -15,10 +15,6 @@
       "step": "merge-request"
     },
     {
-      "kind": "activity.started",
-      "step": "merge-request"
-    },
-    {
       "kind": "input.received",
       "step": "merge-request"
     },
@@ -28,10 +24,6 @@
     },
     {
       "kind": "input.received",
-      "step": "merge-request"
-    },
-    {
-      "kind": "activity.finished",
       "step": "merge-request"
     },
     {

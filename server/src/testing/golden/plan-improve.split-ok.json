@@ -23,15 +23,7 @@
       "step": "plan-improve"
     },
     {
-      "kind": "activity.started",
-      "step": "plan-improve"
-    },
-    {
       "kind": "input.received",
-      "step": "plan-improve"
-    },
-    {
-      "kind": "activity.finished",
       "step": "plan-improve"
     },
     {
