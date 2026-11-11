@@ -171,7 +171,6 @@ export const ARTIFACTS = {
   }),
   pending: artifact('pending', { writers: ['requirements'], readers: [], summarize: firstLine }),
   error: artifact('error', { writers: [], readers: [], external: true, summarize: firstLine }),
-  log: artifact('log', { writers: [], readers: [], external: true, summarize: firstLine }),
 } as const satisfies Record<string, Artifact<unknown>>;
 
 /** `instructions:<step>`, written when a person gives a step new instructions. */

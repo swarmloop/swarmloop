@@ -3,7 +3,6 @@ import type { DocumentDraft, VisitDraft } from '../../history/visit';
 import type { OpenedStep } from '../../steps/step-run';
 import type { StepName } from '../../contract/steps';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
-import { ARTIFACTS } from '../contract/artifacts';
 
 export function modelVisit(input: {
   opened: OpenedStep;
@@ -24,19 +23,7 @@ export function modelVisit(input: {
   const agent = input.agent;
   const wallStart = input.opened.run.stepStartedAt ?? input.opened.startedAt ?? now;
   const startedMs = Date.parse(wallStart);
-  const documents = [
-    ...(input.document ? [input.document] : []),
-    ...(input.documents ?? []),
-    ...(agent?.output
-      ? [
-          {
-            kind: ARTIFACTS.log.kind,
-            fileName: '',
-            body: agent.output.endsWith('\n') ? agent.output : `${agent.output}\n`,
-          },
-        ]
-      : []),
-  ];
+  const documents = [...(input.document ? [input.document] : []), ...(input.documents ?? [])];
   return {
     step: input.step,
     runtime: input.runtime,

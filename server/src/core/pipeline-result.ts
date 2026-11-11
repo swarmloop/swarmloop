@@ -177,11 +177,6 @@ export function continuesSameStep(
   return status === 'waiting' && (lastVisit === 'waiting' || lastVisit === 'failed' || lastVisit === 'running');
 }
 
-export function diedLog(saved: string): string {
-  const body = saved.trim();
-  return body === '' ? 'process died\n' : `${body}\nprocess died\n`;
-}
-
 export function assertKey(key: string): void {
   if (!JIRA_KEY.test(key) && !RUN_ID.test(key) && !SESSION_KEY.test(key) && !SUBTASK_KEY.test(key)) {
     throw new Error(`${key} is not a run id`);

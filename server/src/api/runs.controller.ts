@@ -84,8 +84,14 @@ export class RunsController {
 
   @Get('runs/:key/steps/:step/log')
   @Header('Content-Type', 'text/plain; charset=utf-8')
-  stepLog(@Param('key') key: string, @Param('step') step: string, @Query('attempt') attempt?: string): Promise<string> {
-    return this.queries.stepLog(key, step, attempt || null);
+  stepLog(
+    @Param('key') key: string,
+    @Param('step') step: string,
+    @Query('attempt') attempt?: string,
+    @Query('tail') tail?: string,
+    @Query('from') from?: string,
+  ): Promise<string> {
+    return this.queries.stepLog(key, step, attempt || null, { tail, from });
   }
 
   @Get('runs/:key/steps/:step')

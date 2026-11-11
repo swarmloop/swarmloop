@@ -1,11 +1,11 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentProps, type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LiveBridgeProvider, useLiveActions } from '../../../shell';
 import { receive, resetFakeSocket } from '../../../../test/fake-socket';
 import { QueryWrapper } from '../../../../test/query-wrapper';
-import { getStep, getStepEvents } from '../../../../lib/endpoints';
+import { getRunLog, getStep, getStepEvents } from '../../../../lib/endpoints';
 import { stepView, visitView } from '../../../../test/fixtures';
 import { commandEvents, stepEvent } from '../../../../test/step-events';
 import { StepDetail } from './index';
@@ -192,18 +192,56 @@ describe('StepDetail', () => {
 
   it('keeps the log of a step with no events, marked legacy', async () => {
     vi.mocked(getStep).mockResolvedValue(
-      stepView({
-        visits: [
-          visitView({
-            documents: [{ kind: 'log', attempt: 1, body: 'old log line', createdAt: '2026-01-01T00:00:00.000Z' }],
-          }),
-        ],
-      }),
+      stepView({ visits: [visitView({ attemptId: 'att-1', logBytes: 12, logLines: 1 })] }),
     );
+    vi.mocked(getRunLog).mockResolvedValue('old log line\n');
 
     detail();
 
     expect(await screen.findByText('legacy: details not recorded')).toBeInTheDocument();
     expect(screen.getByText('old log line')).toBeInTheDocument();
+  });
+
+  describe('the log of a stored visit', () => {
+    beforeEach(() => {
+      vi.mocked(getStep).mockResolvedValue(
+        stepView({
+          visits: [
+            visitView({ id: 1, attempt: 1, attemptId: 'att-1', logBytes: 30, logLines: 3 }),
+            visitView({ id: 2, attempt: 2, attemptId: 'att-2', logBytes: 90_000, logLines: 5000 }),
+          ],
+        }),
+      );
+      vi.mocked(getRunLog).mockImplementation(async (_key, _step, attemptId, paging) =>
+        attemptId === 'att-1' ? 'first visit line\n' : paging?.from ? 'earlier line\n' : 'latest visit line\n',
+      );
+    });
+
+    it('fetches the last 2000 lines of the latest visit, and no other visit', async () => {
+      detail();
+
+      expect(await screen.findByText('latest visit line')).toBeInTheDocument();
+      expect(getRunLog).toHaveBeenCalledTimes(1);
+      expect(getRunLog).toHaveBeenCalledWith('run-1', 'implement', 'att-2', { tail: 2000 });
+    });
+
+    it('loads the 2000 lines before the first loaded one when the log is scrolled to the top', async () => {
+      detail();
+      fireEvent.scroll(await screen.findByText('latest visit line'));
+
+      expect(await screen.findByText('earlier line')).toBeInTheDocument();
+      expect(getRunLog).toHaveBeenLastCalledWith('run-1', 'implement', 'att-2', { from: 1001, tail: 2000 });
+    });
+
+    it('fetches the log of another visit only when that visit is opened', async () => {
+      detail();
+      await screen.findByText('latest visit line');
+      expect(getRunLog).not.toHaveBeenCalledWith('run-1', 'implement', 'att-1', expect.anything());
+
+      await userEvent.click(screen.getByRole('button', { name: '1' }));
+
+      expect(await screen.findByText('first visit line')).toBeInTheDocument();
+      expect(getRunLog).toHaveBeenLastCalledWith('run-1', 'implement', 'att-1', { tail: 2000 });
+    });
   });
 });

@@ -1,6 +1,7 @@
 import { Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('runs')
+@Index('IDX_runs_parent_run_id', ['parentRunId'])
 export class RunEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -105,6 +106,8 @@ export class RunEntity {
 }
 
 @Entity('documents')
+@Index('IDX_documents_step_stat_id', ['stepStatId'])
+@Index('IDX_documents_run_id', ['runId'])
 export class DocumentEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -136,6 +139,7 @@ export class DocumentEntity {
 }
 
 @Entity('step_stats')
+@Index('IDX_step_stats_run_id', ['runId'])
 @Index('IDX_step_stats_attempt_id', ['attemptId'], { unique: true, where: '"attempt_id" IS NOT NULL' })
 export class StepStatEntity {
   @PrimaryGeneratedColumn()
@@ -209,6 +213,7 @@ export class StepStatEntity {
 }
 
 @Entity('resource_samples')
+@Index('IDX_resource_samples_step_stat_id', ['stepStatId'])
 export class ResourceSampleEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -227,6 +232,7 @@ export class ResourceSampleEntity {
 }
 
 @Entity('agent_exchanges')
+@Index('IDX_agent_exchanges_step_stat_id', ['stepStatId'])
 export class AgentExchangeEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -263,6 +269,7 @@ export class AgentExchangeEntity {
 }
 
 @Entity('loop_events')
+@Index('IDX_loop_events_run_id', ['runId'])
 export class LoopEventEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -305,6 +312,7 @@ export class DenyPathEntity {
 }
 
 @Entity('pastes')
+@Index('IDX_pastes_run_key', ['runKey'])
 export class PasteEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -320,6 +328,7 @@ export class PasteEntity {
 }
 
 @Entity('http_calls')
+@Index('IDX_http_calls_run_id', ['runId'])
 export class HttpCallEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -353,6 +362,7 @@ export class HttpCallEntity {
 }
 
 @Entity('flows')
+@Index('IDX_flows_run_id', ['runId'])
 export class FlowEntity {
   @PrimaryGeneratedColumn()
   id!: number;

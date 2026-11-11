@@ -11,7 +11,6 @@ import type { RunEntity } from '../../history/entities';
 import { RuntimeCooldownRepository } from '../../history/runtime-cooldown.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
-import { ARTIFACTS } from '../contract/artifacts';
 import type { Route } from '../contract/step-contract';
 
 /** What a launch that may move to another agent tells the failover. */
@@ -122,7 +121,6 @@ export class LimitFailover {
   }
 
   private visit(request: FailoverTarget, result: AgentRunResult): VisitDraft {
-    const log = result.output ? (result.output.endsWith('\n') ? result.output : `${result.output}\n`) : '';
     return {
       step: this.use(request),
       runtime: request.runtime,
@@ -141,7 +139,7 @@ export class LimitFailover {
       exchange: null,
       httpCalls: [],
       document: null,
-      documents: log ? [{ kind: ARTIFACTS.log.kind, fileName: '', body: log }] : [],
+      documents: [],
       resumed: result.resumed,
     };
   }

@@ -105,6 +105,10 @@ export interface VisitView {
   memPeak: number;
   killReason: string | null;
   decision: string | null;
+  /** The attempt whose log this visit wrote, for `GET /runs/:key/steps/:step/log?attempt=`. Null when it has none. */
+  attemptId: string | null;
+  logBytes: number;
+  logLines: number;
   documents: { kind: string; attempt: number; body: string; createdAt: string }[];
   exchanges: { model: string; durationMs: number; request: string; response: string }[];
   samples: { at: string; cpu: number; memory: number }[];
@@ -146,6 +150,10 @@ export interface HistoryView {
   calls: { method: string; url: string; statusCode: number | null; durationMs: number; error: string | null }[];
   samples: { stepStatId: number; at: string; cpu: number; memory: number }[];
   stats: {
+    /** What `VisitView` says of a visit's log. A stored visit's attempt is where to read it. */
+    attemptId: string | null;
+    logBytes: number;
+    logLines: number;
     id: number;
     step: string;
     attempt: number;

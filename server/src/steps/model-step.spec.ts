@@ -204,7 +204,8 @@ describe('combineAgentResults', () => {
       status: 'done',
       exitCode: 0,
     });
-    const log = visit.documents?.find((document) => document.kind === 'log')?.body ?? '';
+    const log = folded?.output ?? '';
+    expect(visit.documents?.map((document) => document.kind) ?? []).not.toContain('log');
     expect(log).toBe(`${resumed}`);
     expect(log.match(/process killed: time/g)).toHaveLength(1);
     expect(log.match(/"inputTokens":10/g)).toHaveLength(1);

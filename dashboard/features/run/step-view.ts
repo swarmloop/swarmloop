@@ -37,6 +37,9 @@ export function fileView(step: string, body: string): StepView {
         memPeak: 0,
         killReason: null,
         decision: null,
+        attemptId: null,
+        logBytes: 0,
+        logLines: 0,
         documents: [
           { kind: 'log', attempt: 1, body: body || 'waiting for output\n', createdAt: new Date().toISOString() },
         ],

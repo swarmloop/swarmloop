@@ -15,10 +15,11 @@ import Typography from '@mui/material/Typography';
 import { AttemptSelector } from './attempt-selector';
 import { SeriesChart } from './series';
 import { MarkdownBody } from '../../components/ui/markdown-body';
-import { getHistory } from '../../lib/endpoints';
+import { getHistory, getRunLog } from '../../lib/endpoints';
 import { count, duration, memory, money } from '../../lib/format';
 import { documentsByKind, tokensByModel } from './history';
 import { latestPhaseLabels } from './phases';
+import { LOG_CHUNK } from './use-visit-log';
 import { LogTranscript } from './log-transcript';
 import type { HistoryView } from '@contract/api';
 import { visitKey } from '@contract/visit-key';
@@ -94,6 +95,11 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
             </AccordionDetails>
           </Accordion>
         ))}
+        {view.stats
+          .filter((stat) => stat.attemptId && stat.logLines > 0)
+          .map((stat) => (
+            <LogAccordion key={stat.attemptId} runKey={runKey} stat={stat} />
+          ))}
       </Section>
       <Section title="Files">
         {view.files.length === 0 ? <Empty /> : null}
@@ -210,6 +216,32 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
         <Typography>{title}</Typography>
       </AccordionSummary>
       <AccordionDetails>{children}</AccordionDetails>
+    </Accordion>
+  );
+}
+
+/** The log of one visit, read from the server when the person opens it: its last lines. */
+function LogAccordion({ runKey, stat }: { runKey: string; stat: HistoryView['stats'][number] }): ReactElement {
+  const [raw, setRaw] = useState<string | null>(null);
+  const open = (expanded: boolean): void => {
+    if (expanded && raw === null && stat.attemptId) {
+      getRunLog(runKey, stat.step, stat.attemptId, { tail: LOG_CHUNK })
+        .then((text) => setRaw(text ?? ''))
+        .catch(() => setRaw(''));
+    }
+  };
+  return (
+    <Accordion
+      disableGutters
+      elevation={0}
+      onChange={(_, expanded) => open(expanded)}
+      slotProps={{ transition: { unmountOnExit: true } }}
+      sx={{ bgcolor: 'transparent', borderTop: 1, borderColor: 'divider' }}
+    >
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        log · {stat.step} · attempt {stat.attempt}
+      </AccordionSummary>
+      <AccordionDetails>{raw === null ? 'Loading log.' : <LogTranscript raw={raw} />}</AccordionDetails>
     </Accordion>
   );
 }

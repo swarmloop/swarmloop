@@ -20,6 +20,16 @@ export function belongsToVisit(
   return latestVisit && document.stepStatId === 0 && document.kind !== 'error' && document.kind !== 'log';
 }
 
+/** A visit stored before attempts has no file, so the `log` document it kept is its only log. */
+export function legacyLogs(
+  documents: DocumentEntity[],
+  stat: { id: number; attemptId: string | null },
+): DocumentEntity[] {
+  return stat.attemptId
+    ? []
+    : documents.filter((document) => document.stepStatId === stat.id && document.kind === 'log');
+}
+
 export function withReturnNotes<T extends { attempt: number; documents: ReturnType<typeof documentView>[] }>(
   name: string,
   visits: T[],

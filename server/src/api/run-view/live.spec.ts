@@ -49,5 +49,6 @@ describe('running visit log', () => {
     utimesSync(second, new Date(2000), new Date(2000));
     const live = liveVisit('K-1', 'implement', root, 'aaa', 1, '2026-11-07T10:00:00.000Z', Date.now());
     expect(live.documents[0]?.body).toBe('attempt two\n');
+    expect(live).toMatchObject({ attemptId: 'aaa', logBytes: 12, logLines: 1 });
   });
 });

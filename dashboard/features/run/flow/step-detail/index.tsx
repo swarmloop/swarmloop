@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import { useStep } from '../../use-step';
 import { firstProblemId, issueLinks } from '../../transcript/transcript-model';
 import { useStepEvents } from '../../transcript/use-step-events';
 import { shownStatus, stepText, visitChecks } from '../../step-view';
+import { useVisitLog } from '../../use-visit-log';
 import { StepDocuments } from './step-documents';
 import { StepHeader } from './step-header';
 
@@ -36,6 +38,7 @@ export function StepDetail({
   const { view, attempt, setAttempt, error, follow } = useStep(runKey, step, live, revision, attempts);
   const [check, setCheck] = useState<string | null>(null);
   const running = view?.visits[attempt]?.status === 'running';
+  const stored = useVisitLog(runKey, step, view?.visits[attempt]);
   const { events, error: eventsError } = useStepEvents(runKey, step, view?.eventsCursor ?? null, running);
   // The source of a returned issue is another step, so its events are read only when this step took a handoff.
   const received = events?.some((event) => event.kind === 'handoff.received') ?? false;
@@ -72,7 +75,9 @@ export function StepDetail({
     recorded && visit
       ? { ...visit, documents: visit.documents.filter((item) => item.kind !== 'error' && item.kind !== 'return') }
       : visit;
-  const { logs, document } = stepText(step, shownVisit, selected, checks);
+  const text = stepText(step, shownVisit, selected, checks);
+  const logs = selected ? '' : text.logs || (stored.text ?? '');
+  const { document } = text;
   return (
     <Paper sx={{ mt: 3, p: 2.5, border: 1, borderColor: 'divider', minWidth: 0 }}>
       <StepHeader
@@ -97,18 +102,26 @@ export function StepDetail({
           {eventsError}
         </Typography>
       ) : null}
-      <StepDocuments
-        runKey={runKey}
-        events={eventsError ? [] : events}
-        issues={issues}
-        shownChecks={shownChecks}
-        check={check}
-        setCheck={setCheck}
-        visit={visit}
-        logs={logs}
-        document={document}
-        role={view.descriptor.agent}
-      />
+      <Box
+        onScrollCapture={(event) => {
+          if (event.target instanceof HTMLElement && event.target.scrollTop === 0) {
+            stored.loadEarlier();
+          }
+        }}
+      >
+        <StepDocuments
+          runKey={runKey}
+          events={eventsError ? [] : events}
+          issues={issues}
+          shownChecks={shownChecks}
+          check={check}
+          setCheck={setCheck}
+          visit={visit}
+          logs={logs}
+          document={document}
+          role={view.descriptor.agent}
+        />
+      </Box>
     </Paper>
   );
 }

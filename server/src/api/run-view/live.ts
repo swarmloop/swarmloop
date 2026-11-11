@@ -2,6 +2,7 @@ import { stepOutput } from '../../core/attempt-output';
 import type { LaunchView, VisitView } from '../../contract/api';
 import type { LiveSample } from '../../contract/live';
 import { liveVisitKey } from '../../contract/visit-key';
+import { textSize } from '../run-queries-log';
 
 export function liveVisit(
   key: string,
@@ -13,7 +14,7 @@ export function liveVisit(
   now: number,
   samples: LiveSample[] = [],
 ): VisitView {
-  const body = stepOutput(root, key, step, attemptId);
+  const body = stepOutput(root, key, step, attemptId) || 'waiting for output\n';
   const started = Date.parse(startedAt);
   return {
     id: -1,
@@ -32,11 +33,13 @@ export function liveVisit(
     memPeak: 0,
     killReason: null,
     decision: null,
+    attemptId,
+    ...textSize(body),
     documents: [
       {
         kind: 'log',
         attempt: previousAttempt + 1,
-        body: body || 'waiting for output\n',
+        body,
         createdAt: new Date(now).toISOString(),
       },
     ],
