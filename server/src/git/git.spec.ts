@@ -2,7 +2,7 @@ import { mkdirSync, realpathSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { git, gitRaw, withSafeDirectory } from './git';
+import { git, gitDetail, gitRaw, withSafeDirectory } from './git';
 
 describe('git errors', () => {
   it('preserves the exit code when a reference is missing', async () => {
@@ -23,6 +23,23 @@ describe('git errors', () => {
       code: 1,
       stdout: expect.stringContaining('+<?php'),
     });
+  });
+});
+
+describe('git time limit', () => {
+  it('fails a call that outlives its limit with the command and the limit named', async () => {
+    // `hash-object --stdin` waits for input that never comes.
+    await expect(git(['hash-object', '--stdin'], undefined, { timeoutMs: 300 })).rejects.toThrow(
+      'git hash-object timed out after 0.3 s',
+    );
+  });
+});
+
+describe('gitDetail of a timeout', () => {
+  it('names the timeout even when git printed progress lines first', () => {
+    const error = { stderr: 'remote: Counting objects\n', message: 'git fetch timed out after 180 s' };
+
+    expect(gitDetail(error)).toBe('git fetch timed out after 180 s');
   });
 });
 

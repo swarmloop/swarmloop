@@ -22,6 +22,9 @@ import type { commandSummary } from '../../check-commands';
 import { shownStatus } from '../../step-view';
 import type { StepDescriptor, StepView } from '@contract/api';
 
+/** A wait between two steps is shown from this long on. */
+const PREPARED_SHOWN_MS = 30_000;
+
 const stepMetricIcon: Partial<Record<StepMetricKind, typeof Schedule>> = {
   duration: Schedule,
   spend: Paid,
@@ -59,6 +62,8 @@ export function StepHeader({
   shownAttempt,
   problemId: problem,
   commands,
+  preparing = false,
+  slowestPrepared = null,
 }: {
   step: string;
   runStatus?: string;
@@ -78,6 +83,10 @@ export function StepHeader({
   problemId: string | null;
   /** The checks step: how many commands passed, and which one took longest. */
   commands?: ReturnType<typeof commandSummary>;
+  /** This step is the one the run works on, and it has not recorded a visit yet. */
+  preparing?: boolean;
+  /** The slowest server command between the previous visit's end and this visit's first event. */
+  slowestPrepared?: { command: string; ms: number } | null;
 }): ReactElement {
   return (
     <>
@@ -148,6 +157,12 @@ export function StepHeader({
             color: 'text.secondary',
           }}
         >
+          {visit.preparedMs && visit.preparedMs > PREPARED_SHOWN_MS ? (
+            <Box component="span">
+              prepared in {duration(visit.preparedMs)}
+              {slowestPrepared ? ` · slowest: ${slowestPrepared.command} ${duration(slowestPrepared.ms)}` : ''}
+            </Box>
+          ) : null}
           {stepMetrics({
             status: label,
             attempt: shownAttempt,
@@ -181,7 +196,7 @@ export function StepHeader({
         </Box>
       ) : (
         <Typography color="text.secondary" sx={{ mt: 1 }}>
-          This step has not run.
+          {preparing ? 'preparing' : 'This step has not run.'}
         </Typography>
       )}
     </>

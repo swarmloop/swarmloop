@@ -76,3 +76,41 @@ describe('reviewer chip of a limited reviewer', () => {
     expect(step?.status).toBe('waiting');
   });
 });
+
+describe('chips of a code-review that is preparing', () => {
+  function reviewChips(run: Partial<RunEntity>, logs: Record<string, string> = {}): Record<string, string> {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-chip-preparing-'));
+    mkdirSync(join(root, 'data'));
+    for (const [name, body] of Object.entries(logs)) {
+      writeFileSync(join(root, 'data', `K-1-${name}-aaa-output.txt`), body);
+    }
+    const flow = phases(
+      { key: 'K-1', status: 'running', currentStep: 'code-review', activeAttempt: 'aaa', ...run } as RunEntity,
+      [],
+      [],
+      root,
+    );
+    const steps = flow.find((phase) => phase.phase === 'code-review')?.steps ?? [];
+    return Object.fromEntries(steps.map((step) => [step.name, step.status]));
+  }
+
+  it('shows every reviewer and the report as preparing, never idle, right after checks end', () => {
+    const chips = reviewChips({});
+
+    expect(Object.keys(chips).length).toBeGreaterThan(2);
+    expect(Object.values(chips).filter((status) => status === 'idle')).toEqual([]);
+    expect(chips['code-review-quality']).toBe('preparing');
+    expect(chips['code-review']).toBe('preparing');
+  });
+
+  it('shows no card as preparing once a reviewer has started', () => {
+    const chips = reviewChips({}, { 'code-review-quality': 'starting\n' });
+
+    expect(Object.values(chips)).not.toContain('preparing');
+    expect(chips['code-review-requirements']).toBe('idle');
+  });
+
+  it('keeps a card idle when the run is not in code-review', () => {
+    expect(reviewChips({ currentStep: 'implement' })['code-review-quality']).toBe('idle');
+  });
+});

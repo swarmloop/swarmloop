@@ -71,6 +71,38 @@
       "step": "implement"
     },
     {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
       "kind": "session.changed",
       "step": "implement"
     },

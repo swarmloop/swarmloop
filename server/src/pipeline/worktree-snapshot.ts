@@ -25,6 +25,7 @@ interface SnapshotBody {
 }
 
 export { captureTree } from '../git/worktree-tree';
+import { GIT_LIMITS } from '../git/git';
 import { captureTree, git, ownsRepo } from '../git/worktree-tree';
 
 /** Local branch goes back to the snapshot commit, then the dirty tree is laid on top. Ignored files stay. */
@@ -33,17 +34,17 @@ export async function restoreTree(repo: string, head: string, tree: string): Pro
     throw new Error('snapshot is not the repository root');
   }
   if (head) {
-    await git(repo, ['reset', '--hard', head]);
+    await git(repo, ['reset', '--hard', head], undefined, GIT_LIMITS.worktree);
   }
   let committed = '';
   if (head) {
     committed = (await git(repo, ['rev-parse', `${head}^{tree}`])).trim();
   }
   if (tree && tree !== committed) {
-    await git(repo, ['read-tree', tree]);
-    await git(repo, ['checkout-index', '-a', '-f']);
+    await git(repo, ['read-tree', tree], undefined, GIT_LIMITS.worktree);
+    await git(repo, ['checkout-index', '-a', '-f'], undefined, GIT_LIMITS.worktree);
   }
-  await git(repo, ['clean', '-fd']);
+  await git(repo, ['clean', '-fd'], undefined, GIT_LIMITS.worktree);
 }
 
 export function renderSnapshot(body: SnapshotBody): string {

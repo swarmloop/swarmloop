@@ -213,6 +213,10 @@ export class StepStatEntity {
 
   @Column({ type: 'integer', default: 0 })
   resumed!: number;
+
+  /** What the run waited for between the end of the visit before and this visit's first event. Null for the first visit. */
+  @Column({ name: 'prepared_ms', type: 'integer', nullable: true })
+  preparedMs!: number | null;
 }
 
 @Entity('resource_samples')

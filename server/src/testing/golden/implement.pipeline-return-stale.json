@@ -79,19 +79,19 @@
       "step": "implement"
     },
     {
-      "kind": "session.changed",
+      "kind": "command.started",
       "step": "implement"
     },
     {
-      "kind": "context.manifest",
+      "kind": "command.finished",
       "step": "implement"
     },
     {
-      "kind": "agent.launched",
+      "kind": "command.started",
       "step": "implement"
     },
     {
-      "kind": "agent.finished",
+      "kind": "command.finished",
       "step": "implement"
     },
     {
@@ -124,6 +124,166 @@
     },
     {
       "kind": "agent.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "session.changed",
+      "step": "implement"
+    },
+    {
+      "kind": "context.manifest",
+      "step": "implement"
+    },
+    {
+      "kind": "agent.launched",
+      "step": "implement"
+    },
+    {
+      "kind": "agent.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
       "step": "implement"
     },
     {

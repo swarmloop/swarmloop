@@ -5,7 +5,7 @@ import { AppConfig } from '../config/env';
 import { ERROR_CODES, type ErrorCode } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
-import { git, gitDetail, gitSync } from '../git/git';
+import { git, GIT_LIMITS, gitDetail, gitSync } from '../git/git';
 import { ignoredDirectories } from '../git/ignored-entries';
 import { fetchBranch, parseJournal, REBASE_JOURNAL, unfinished } from '../git/rebase';
 import { repoNames } from '../git/repo-names';
@@ -179,7 +179,9 @@ export class WorkspaceGuard {
   /** The branch may not be checked out in a person's checkout or worktree. Swarmloop's own worktrees do not count. */
   private async assertFree(checkout: Checkout, branch: string): Promise<void> {
     const own = join(root(this.config), 'worktrees') + sep;
-    const listed = await git(['-C', checkout.path, 'worktree', 'list', '--porcelain']);
+    const listed = await git(['-C', checkout.path, 'worktree', 'list', '--porcelain'], undefined, {
+      timeoutMs: GIT_LIMITS.worktree,
+    });
     for (const block of listed.split('\n\n')) {
       const lines = block.split('\n');
       const path = lines.find((line) => line.startsWith('worktree '))?.slice('worktree '.length);
@@ -202,8 +204,12 @@ export class WorkspaceGuard {
     if (!remote) {
       return;
     }
-    const local = await git(['-C', checkout.path, 'rev-parse', `refs/heads/${branch}`]);
-    const origin = await git(['-C', checkout.path, 'rev-parse', `refs/remotes/origin/${branch}`]);
+    const local = await git(['-C', checkout.path, 'rev-parse', `refs/heads/${branch}`], undefined, {
+      timeoutMs: GIT_LIMITS.query,
+    });
+    const origin = await git(['-C', checkout.path, 'rev-parse', `refs/remotes/origin/${branch}`], undefined, {
+      timeoutMs: GIT_LIMITS.query,
+    });
     const moved = sha === null || (local !== sha && origin !== sha);
     if (
       moved &&
@@ -222,7 +228,11 @@ export class WorkspaceGuard {
     if (!sha || !(await has(checkout.path, `${sha}^{commit}`))) {
       return 0;
     }
-    return Number(await git(['-C', checkout.path, 'rev-list', '--count', `${sha}..refs/heads/${branch}`]));
+    return Number(
+      await git(['-C', checkout.path, 'rev-list', '--count', `${sha}..refs/heads/${branch}`], undefined, {
+        timeoutMs: GIT_LIMITS.query,
+      }),
+    );
   }
 
   /** A worktree that is recreated does not carry a rebase on: the run is blocked as for a changed fingerprint. */
@@ -245,7 +255,9 @@ export class WorkspaceGuard {
   }
 
   private async listsPath(checkout: Checkout, worktree: string): Promise<boolean> {
-    const listed = await git(['-C', checkout.path, 'worktree', 'list', '--porcelain']);
+    const listed = await git(['-C', checkout.path, 'worktree', 'list', '--porcelain'], undefined, {
+      timeoutMs: GIT_LIMITS.worktree,
+    });
     return listed.split('\n').includes(`worktree ${worktree}`);
   }
 
@@ -274,7 +286,7 @@ export class WorkspaceGuard {
       }
     }
     try {
-      await git(['-C', worktree, 'status', '--porcelain']);
+      await git(['-C', worktree, 'status', '--porcelain'], undefined, { timeoutMs: GIT_LIMITS.status });
     } catch (error) {
       throw new SwarmloopError(`${checkout.name} worktree failed: ${gitDetail(error)}`);
     }
@@ -322,7 +334,7 @@ function registrationPresent(worktree: string): boolean {
 
 async function has(cwd: string, ref: string): Promise<boolean> {
   try {
-    await git(['-C', cwd, 'cat-file', '-e', ref]);
+    await git(['-C', cwd, 'cat-file', '-e', ref], undefined, { timeoutMs: GIT_LIMITS.query });
     return true;
   } catch {
     return false;
@@ -331,7 +343,7 @@ async function has(cwd: string, ref: string): Promise<boolean> {
 
 async function isAncestor(cwd: string, older: string, newer: string): Promise<boolean> {
   try {
-    await git(['-C', cwd, 'merge-base', '--is-ancestor', older, newer]);
+    await git(['-C', cwd, 'merge-base', '--is-ancestor', older, newer], undefined, { timeoutMs: GIT_LIMITS.query });
     return true;
   } catch {
     return false;

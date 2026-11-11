@@ -6,6 +6,7 @@ import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import { useStep } from '../../use-step';
 import { firstProblemId, issueLinks } from '../../transcript/transcript-model';
+import { slowestBeforeAttempt } from '../../transcript/prepared-wait';
 import { useStepEvents } from '../../transcript/use-step-events';
 import { commandSummary, visitCommands } from '../../check-commands';
 import { shownStatus, stepText, visitChecks } from '../../step-view';
@@ -43,7 +44,8 @@ export function StepDetail({
   const { events, error: eventsError } = useStepEvents(runKey, step, view?.eventsCursor ?? null, running);
   // The source of a returned issue is another step, so its events are read only when this step took a handoff.
   const received = events?.some((event) => event.kind === 'handoff.received') ?? false;
-  const run = useStepEvents(runKey, null, received ? (view?.eventsCursor ?? null) : null, running);
+  const waited = (view?.visits[attempt]?.preparedMs ?? 0) > 30_000;
+  const run = useStepEvents(runKey, null, received || waited ? (view?.eventsCursor ?? null) : null, running);
   const issues = useMemo(() => issueLinks(run.events ?? []), [run.events]);
 
   useEffect(() => {
@@ -99,6 +101,12 @@ export function StepDetail({
         shownAttempt={shownAttempt}
         problemId={events ? firstProblemId(events) : null}
         commands={commands ? commandSummary(commands, now) : undefined}
+        preparing={live && !visit}
+        slowestPrepared={
+          waited && visit?.attemptId && run.events
+            ? slowestBeforeAttempt(run.events, visit.attemptId, visit.preparedMs ?? 0)
+            : null
+        }
       />
       {eventsError ? (
         <Typography color="error" sx={{ mt: 2 }}>

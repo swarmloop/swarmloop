@@ -59,6 +59,8 @@ export interface VisitDraft {
   document: DocumentDraft | null;
   documents?: DocumentDraft[];
   resumed: boolean;
+  /** Set when the visit closes: the gap from the end of the visit before to this visit's first event. */
+  preparedMs?: number | null;
 }
 
 export function summarizeSamples(samples: SampleDraft[]): {

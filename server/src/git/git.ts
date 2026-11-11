@@ -5,12 +5,26 @@ import { rawEnv } from '../config/process-env';
 import { startCommandSpan } from '../core/step-event-scope';
 import { SwarmloopError } from '../core/swarmloop-error';
 
-export function git(args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
-  return gitText(args, env).then((stdout) => stdout.trim());
+/** What a git call may take. Calls made between steps pass one of these; a call that passes nothing keeps `DEFAULT`. */
+export const GIT_LIMITS = {
+  default: 600_000,
+  fetch: 180_000,
+  worktree: 300_000,
+  snapshot: 120_000,
+  status: 60_000,
+  query: 30_000,
+} as const;
+
+interface GitOptions {
+  timeoutMs?: number;
 }
 
-export function gitRaw(args: string[], env?: NodeJS.ProcessEnv, input?: string): Promise<string> {
-  return gitText(args, env, input);
+export function git(args: string[], env?: NodeJS.ProcessEnv, options?: GitOptions): Promise<string> {
+  return gitText(args, env, undefined, options).then((stdout) => stdout.trim());
+}
+
+export function gitRaw(args: string[], env?: NodeJS.ProcessEnv, input?: string, options?: GitOptions): Promise<string> {
+  return gitText(args, env, input, options);
 }
 
 const GIT_OUTPUT_CAP = 64_000_000;
@@ -24,7 +38,8 @@ export function gitSync(args: string[], input?: string): string {
   });
 }
 
-function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Promise<string> {
+function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string, options: GitOptions = {}): Promise<string> {
+  const timeout = options.timeoutMs ?? GIT_LIMITS.default;
   const command = withSafeDirectory(args, checkoutRoots());
   const env = extra ? { ...rawEnv(), ...extra } : undefined;
   const directory = directoryArg(args);
@@ -41,19 +56,23 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Pro
       command,
       {
         encoding: 'utf8',
-        timeout: 600_000,
+        timeout,
         maxBuffer: GIT_OUTPUT_CAP,
         env,
         ...(input === undefined ? {} : { stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'] }),
       },
       (error: unknown, stdout, stderr) => {
-        finish({ ...commandOutcome(error), output: `${stdout}${stderr}` });
+        const outcome = commandOutcome(error);
+        finish({ ...outcome, output: `${stdout}${stderr}` });
         if (error) {
           const message =
             typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'
               ? error.message
               : 'Git command failed';
           const failure = error instanceof Error ? error : new Error(message);
+          if (outcome.timedOut) {
+            failure.message = `${commandName(args)} timed out after ${timeout / 1000} s`;
+          }
           if (typeof error === 'object' && error !== null && 'code' in error) {
             (failure as { code?: unknown }).code = error.code;
           }
@@ -74,6 +93,15 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string): Pro
       child.stdin.end(input);
     }
   });
+}
+
+/** `git fetch`, `git worktree add`: the command a failure names, without the directory and the arguments. */
+function commandName(args: string[]): string {
+  const at = args.indexOf('-C');
+  const words = (at >= 0 ? [...args.slice(0, at), ...args.slice(at + 2)] : args).filter(
+    (word) => !word.startsWith('-'),
+  );
+  return ['git', ...words.slice(0, words[0] === 'worktree' ? 2 : 1)].join(' ');
 }
 
 /** How a git process ended. The timeout is the only thing that kills it on purpose, so another signal is a cancel. */
@@ -159,6 +187,10 @@ export function gitDetail(error: unknown): string {
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith('Command failed:'));
+  const timedOut = lines.find((line) => line.includes(' timed out after '));
+  if (timedOut) {
+    return timedOut.slice(0, 400);
+  }
   const remote = lines.find((line) => line.includes('remote rejected') || line.startsWith('remote: GitLab'));
   const fatal = lines.find(
     (line) => (line.startsWith('fatal:') || line.startsWith('error:')) && !line.includes('failed to push some refs'),
@@ -187,7 +219,9 @@ export async function authorArgs(cwd: string): Promise<string[]> {
 
 export async function originUrl(cwd: string, repo: string, failure: string): Promise<string | null> {
   try {
-    const url = (await git(['-C', cwd, 'remote', 'get-url', 'origin'])).trim();
+    const url = (
+      await git(['-C', cwd, 'remote', 'get-url', 'origin'], undefined, { timeoutMs: GIT_LIMITS.query })
+    ).trim();
     return url || null;
   } catch (error) {
     if (gitDetail(error).includes('No such remote')) {

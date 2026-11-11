@@ -161,15 +161,10 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     throw new VisitLeftOpen(await this.review(input.implementation, ctx, env));
   }
 
-  private async review(notes: string | null, ctx: StepContext, env: SwarmloopEnv): Promise<PipelineResult> {
+  /** Everything before the first reviewer or report launches: the worktrees, the diff, and which reviewers run. */
+  private async prepare(notes: string | null, ctx: StepContext) {
     const { opened, options } = ctx;
     const { key } = opened.run;
-    const deps = {
-      documents: this.documents,
-      visits: this.visits,
-      root: root(this.config),
-      launcher: this.launcher,
-    };
     const checkout = options.path ?? (notes?.trim() ? null : opened.run.targetPath);
     let thirdParty = Boolean(checkout);
     if (!thirdParty && !notes?.trim()) {
@@ -207,6 +202,49 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       repeated,
       counts: (kind) => gateCounts(this.documents, opened.run, kind, fingerprint),
     });
+    return {
+      requirements,
+      thirdParty,
+      mounts,
+      only,
+      fresh,
+      retry,
+      repeated,
+      returned,
+      diff,
+      fingerprint,
+      kept,
+      pending,
+      recovered,
+      stale,
+    };
+  }
+
+  private async review(notes: string | null, ctx: StepContext, env: SwarmloopEnv): Promise<PipelineResult> {
+    const { opened, options } = ctx;
+    const { key } = opened.run;
+    const deps = {
+      documents: this.documents,
+      visits: this.visits,
+      root: root(this.config),
+      launcher: this.launcher,
+    };
+    const {
+      requirements,
+      thirdParty,
+      mounts,
+      only,
+      fresh,
+      retry,
+      repeated,
+      returned,
+      diff,
+      fingerprint,
+      kept,
+      pending,
+      recovered,
+      stale,
+    } = await ctx.activity('Preparing', () => this.prepare(notes, ctx));
     const calls = pending.length + (reportDue(only, kept, pending) ? 1 : 0);
     if (options.auto && calls > 0 && opened.run.agentCalls + calls > env.MAX_AGENT_CALLS) {
       return closeReview(

@@ -15,7 +15,7 @@ import type { LimitState } from '../contract/run-state';
 import { recordStepEvent, runActivity, runInStepScope } from '../core/step-event-scope';
 import type { RunEntity } from '../history/entities';
 import type { OpenedStep } from '../steps/step-run';
-import { closeStep, openStep } from '../steps/step-run';
+import { closeStep, openStep, preparedMs } from '../steps/step-run';
 import type { HttpCallDraft } from '../core/swarmloop-error';
 import { reportFailure } from './shared/step-failure';
 import { FetchFailed, SwarmloopError } from '../core/swarmloop-error';
@@ -285,6 +285,7 @@ abstract class StepCore implements Step {
       httpCalls: calls,
       document: null,
       resumed: false,
+      preparedMs: await preparedMs(this.visits, opened.run.id, opened.startedAt),
       ...input.visit,
     };
     if (input.handoff !== undefined) {
