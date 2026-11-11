@@ -2,7 +2,10 @@ import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import type { RunQueriesService } from '../api/run-queries.service';
 import { allowHandshake, LiveGateway } from './live.gateway';
+import type { AuthService } from '../auth/auth.service';
 import { LiveHub } from '../live/live.hub';
+
+const auth = {} as AuthService;
 
 describe('LiveGateway', () => {
   it('logs a live update that fails', async () => {
@@ -11,7 +14,7 @@ describe('LiveGateway', () => {
     try {
       const hub = new LiveHub();
       const runs = { list: jest.fn().mockRejectedValue(new Error('boom')), flow: jest.fn() };
-      const gateway = new LiveGateway(hub, runs as unknown as RunQueriesService);
+      const gateway = new LiveGateway(hub, runs as unknown as RunQueriesService, auth);
       gateway.onModuleInit();
       hub.changed('run-1');
       await jest.advanceTimersByTimeAsync(60);
@@ -28,7 +31,7 @@ describe('LiveGateway', () => {
     try {
       const hub = new LiveHub();
       const runs = { list: jest.fn(), flow: jest.fn() };
-      const gateway = new LiveGateway(hub, runs as unknown as RunQueriesService);
+      const gateway = new LiveGateway(hub, runs as unknown as RunQueriesService, auth);
       gateway.onModuleInit();
       hub.changed('run-1');
       gateway.onModuleDestroy();
@@ -42,7 +45,7 @@ describe('LiveGateway', () => {
   describe('events', () => {
     function setup() {
       const hub = new LiveHub();
-      const gateway = new LiveGateway(hub, { list: jest.fn(), flow: jest.fn() } as unknown as RunQueriesService);
+      const gateway = new LiveGateway(hub, { list: jest.fn(), flow: jest.fn() } as unknown as RunQueriesService, auth);
       const sent: Array<{ room: string; entry: unknown }> = [];
       gateway.server = {
         to: (room: string) => ({ emit: (_name: string, entry: unknown) => sent.push({ room, entry }) }),
@@ -96,11 +99,40 @@ describe('LiveGateway', () => {
       return allowed;
     };
 
+    it('refuses a foreign Origin and accepts a panel Origin or none', () => {
+      const decideOrigin = (origin: string | undefined) => {
+        let allowed: boolean | undefined;
+        allowHandshake({ headers: { host: '127.0.0.1:3920', origin } }, (_error, ok) => (allowed = ok));
+        return allowed;
+      };
+      expect(decideOrigin('https://evil.example')).toBe(false);
+      expect(decideOrigin('http://localhost:3921')).toBe(true);
+      expect(decideOrigin(undefined)).toBe(true);
+    });
+
     it('refuses a foreign Host and accepts the own hosts', () => {
       expect(decide('evil.example:3920')).toBe(false);
       expect(decide(undefined)).toBe(false);
       expect(decide('127.0.0.1:3920')).toBe(true);
       expect(decide('localhost:3920')).toBe(true);
+    });
+  });
+
+  describe('login', () => {
+    function connect(check: AuthService['check'], headers: Record<string, string>) {
+      const gateway = new LiveGateway(new LiveHub(), {} as RunQueriesService, { check } as unknown as AuthService);
+      let middleware!: (socket: unknown, next: (error?: Error) => void) => void;
+      gateway.afterInit({ use: (fn: typeof middleware) => (middleware = fn) } as never);
+      return new Promise<Error | undefined>((resolve) => middleware({ handshake: { headers } }, resolve));
+    }
+
+    it('refuses a socket without a session or token and takes one with', async () => {
+      const check = jest.fn(async ({ cookie }: { cookie?: string }) => ({
+        allowed: cookie === 'swarmloop_session=abc',
+        actor: null,
+      }));
+      expect((await connect(check, {}))?.message).toBe('log in first');
+      expect(await connect(check, { cookie: 'swarmloop_session=abc' })).toBeUndefined();
     });
   });
 });

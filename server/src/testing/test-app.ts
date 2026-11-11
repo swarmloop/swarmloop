@@ -7,6 +7,7 @@ import type { Server } from 'http';
 import { join } from 'path';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { CommandHandlers } from '../api/command-handlers';
 import { ChatService } from '../api/chat.service';
 import { HealthController } from '../api/health.controller';
@@ -121,6 +122,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     imports: [
       SwarmloopConfigModule.forRoot(join(root, '.env')),
       HistoryModule,
+      AuthModule,
       PipelineModule,
       LiveModule,
       ProvidersModule,

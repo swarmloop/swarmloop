@@ -17,7 +17,7 @@ interface AcceptInput {
   idempotencyKey?: string;
   expectedRevision?: number;
   /** Creates the run in the same transaction when it does not exist. */
-  create?: { targetPath: string | null };
+  create?: { targetPath: string | null; startedBy?: string | null };
   /** The pure policy. It throws to refuse the command. */
   admit: (run: RunEntity | null) => void;
 }
@@ -64,7 +64,7 @@ export class CommandRepository {
       }
       const created = !run;
       if (!run) {
-        run = await runTable.save(this.runs.newWaitingRun(input.key, input.create?.targetPath ?? null));
+        run = await runTable.save(waitingRun(this.runs, input.key, input.create));
       }
       const now = this.clock.iso();
       if (input.type === 'stop' || input.type === 'remove') {
@@ -158,6 +158,10 @@ export function conflict(
     state: state ?? deriveState(run).state,
     revision: run.revision,
   });
+}
+
+function waitingRun(runs: RunRepository, key: string, create: AcceptInput['create']): RunEntity {
+  return runs.newWaitingRun(key, create?.targetPath ?? null, create?.startedBy ?? null);
 }
 
 function samePayload(stored: string, incoming: Record<string, unknown>): boolean {

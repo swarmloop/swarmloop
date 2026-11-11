@@ -28,7 +28,7 @@ export type CommandHandler = (
 export interface SubmitOptions {
   idempotencyKey?: string;
   expectedRevision?: number;
-  create?: { targetPath: string | null };
+  create?: { targetPath: string | null; startedBy?: string | null };
   /** Runs this command in this process instead of the registered handler. The CLI uses it. */
   run?: CommandHandler;
 }

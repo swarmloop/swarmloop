@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { usePathname, useRouter } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { listProjects, listRuns, removeRun } from '../lib/endpoints';
+import { getSession, listProjects, listRuns, removeRun } from '../lib/endpoints';
 import { receive } from '../test/fake-socket';
 import { runSummary } from '../test/fixtures';
 import { DashboardShell } from './dashboard-shell';
@@ -15,6 +15,8 @@ vi.mock('../lib/endpoints', () => ({
   listProjects: vi.fn(),
   createRun: vi.fn(),
   setRunProjects: vi.fn(),
+  getSession: vi.fn(),
+  logout: vi.fn(),
 }));
 vi.mock('../lib/live', async () => (await import('../test/fake-socket')).fakeLive());
 
@@ -32,6 +34,7 @@ function renderShell(): void {
 }
 
 beforeEach(() => {
+  vi.mocked(getSession).mockResolvedValue({ user: null });
   vi.mocked(usePathname).mockReturnValue('/');
   vi.mocked(useRouter).mockReturnValue({ push } as unknown as ReturnType<typeof useRouter>);
   vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
@@ -48,6 +51,23 @@ describe('Shell', () => {
     act(() => receive('connect'));
 
     expect(await screen.findByText('live')).toBeInTheDocument();
+  });
+
+  it('shows the user and Logout only when there is a session', async () => {
+    vi.mocked(getSession).mockResolvedValue({ user: 'octocat' });
+    renderShell();
+
+    expect(await screen.findByText('octocat')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Logout' })).toBeInTheDocument();
+  });
+
+  it('draws no shell on the login page', async () => {
+    vi.mocked(usePathname).mockReturnValue('/login');
+    renderShell();
+
+    expect(screen.getByText('page content')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New run' })).not.toBeInTheDocument();
+    expect(listRuns).not.toHaveBeenCalled();
   });
 
   it('links the logo and the name to the overview', async () => {

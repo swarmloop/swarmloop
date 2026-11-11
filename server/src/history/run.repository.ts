@@ -85,7 +85,7 @@ export class RunRepository {
   }
 
   /** A waiting run row that is not stored yet. */
-  newWaitingRun(key: string, targetPath: string | null): RunEntity {
+  newWaitingRun(key: string, targetPath: string | null, startedBy: string | null = null): RunEntity {
     const env = this.config.env;
     const now = this.clock.iso();
     const created = this.runs.create({
@@ -109,6 +109,7 @@ export class RunRepository {
       parentRunId: null,
       taskId: null,
       split: false,
+      startedBy,
     });
     return created;
   }

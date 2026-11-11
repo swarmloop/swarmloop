@@ -12,6 +12,10 @@ cp "$repo/compose.yml" "$work/stack/compose.yml"
 cp "$repo/.env.example" "$work/stack/.env"
 # The server refuses to start when a role names a runtime without a key. The fixture never calls a model.
 sed -i 's/^CURSOR_API_KEY=$/CURSOR_API_KEY=fixture-key/' "$work/stack/.env"
+# Machine clients send this token as a bearer header. /health needs none.
+token=smoke-machine-token
+sed -i "s/^SWARMLOOP_TOKEN=\$/SWARMLOOP_TOKEN=$token/" "$work/stack/.env"
+auth=(-H "Authorization: Bearer $token")
 cd "$work/stack"
 export SWARMLOOP_HOME="$work/home" CHECKOUTS_ROOT="$work/checkouts"
 trap 'docker compose logs; docker compose down -v' EXIT
@@ -28,17 +32,17 @@ assert_ready='
     process.exit(1);
   }
 '
-curl -fsS http://127.0.0.1:3920/readiness | node -e "$assert_ready"
+curl -fsS "${auth[@]}" http://127.0.0.1:3920/readiness | node -e "$assert_ready"
 curl -fsS "${retry[@]}" http://127.0.0.1:3921/ > /dev/null
 curl -fsS http://127.0.0.1:3921/swarmloop-api/health
-curl -fsS http://127.0.0.1:3921/swarmloop-api/readiness | node -e "$assert_ready"
+curl -fsS "${auth[@]}" http://127.0.0.1:3921/swarmloop-api/readiness | node -e "$assert_ready"
 SWARMLOOP_SOCKET_URL=http://live.example:4000 docker compose up -d --wait --pull never
 curl -fsS "${retry[@]}" http://127.0.0.1:3921/ | grep -F 'http://live.example:4000'
 # Files a leaked data folder would expose, written by the server's own user so the folder keeps its owner.
 docker compose exec -T server sh -c 'mkdir -p /app/data/codex && echo "{}" > /app/data/codex/auth.json && echo "{}" > /app/data/x-session.json'
 # The dashboard serves no data folder, and the log route refuses what is not a step log of a known run.
 assert_404() {
-  status="$(curl --path-as-is -s -o /dev/null -w '%{http_code}' "$1")"
+  status="$(curl --path-as-is "${auth[@]}" -s -o /dev/null -w '%{http_code}' "$1")"
   if [ "$status" != 404 ]; then
     echo "expected 404 from $1, got $status" >&2
     exit 1

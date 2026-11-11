@@ -5,8 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { flowView } from '../../../../test/fixtures';
 import { RunHeader } from './run-header';
 
-function header(status: string, overrides: Partial<ComponentProps<typeof RunHeader>> = {}) {
-  const props = {
+function headerProps(status = 'done', overrides: Partial<ComponentProps<typeof RunHeader>> = {}) {
+  return {
     flow: flowView({ status }),
     openMs: 0,
     rebasing: false,
@@ -16,6 +16,10 @@ function header(status: string, overrides: Partial<ComponentProps<typeof RunHead
     onStop: vi.fn(),
     ...overrides,
   };
+}
+
+function header(status: string, overrides: Partial<ComponentProps<typeof RunHeader>> = {}) {
+  const props = headerProps(status, overrides);
   render(<RunHeader {...props} />);
   return props;
 }
@@ -35,6 +39,16 @@ describe('RunHeader', () => {
     header('done', { flow: flowView({ status: 'done', workspace: 'removed' }) });
 
     expect(screen.getByText('workspace removed')).toBeInTheDocument();
+  });
+
+  it('shows who started the run only when it is known', () => {
+    const { unmount } = render(
+      <RunHeader {...headerProps()} flow={flowView({ status: 'done', startedBy: 'octocat' })} />,
+    );
+    expect(screen.getByText('Started by octocat')).toBeInTheDocument();
+    unmount();
+    header('done');
+    expect(screen.queryByText(/Started by/)).not.toBeInTheDocument();
   });
 
   it('does not mention the workspace of a run that still has it', () => {

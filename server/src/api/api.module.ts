@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { HistoryModule } from '../history/history.module';
 import { LiveGateway } from './live.gateway';
@@ -23,6 +24,7 @@ import { RunRebaseService } from './run-rebase.service';
   imports: [
     SwarmloopConfigModule.forRoot(),
     HistoryModule,
+    AuthModule,
     PipelineModule,
     LiveModule,
     ProvidersModule,

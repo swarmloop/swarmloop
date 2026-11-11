@@ -23,6 +23,23 @@ describe('middleware', () => {
     expect(rewriteTarget('http://localhost:3921/swarmloop-api/runs/a/b')).toBe('http://other.example:9000/runs/a/b');
   });
 
+  it('proxies the OAuth routes to the API, query included', () => {
+    vi.stubEnv('SWARMLOOP_API_URL', 'http://server:3920');
+
+    expect(rewriteTarget('http://localhost:3921/auth/github/callback?code=c&state=s')).toBe(
+      'http://server:3920/auth/github/callback?code=c&state=s',
+    );
+  });
+
+  it.each(['/auth//evil.example/x', '/auth/\\evil', '/auth/x//y'])('refuses %s instead of proxying it', (path) => {
+    vi.stubEnv('SWARMLOOP_API_URL', 'http://server:3920');
+
+    const response = middleware(new NextRequest(`http://localhost:3921${path}`));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('x-middleware-rewrite')).toBeNull();
+  });
+
   it.each(['//evil.example/x', '/\\evil.example/x'])('refuses %s instead of proxying to another host', (path) => {
     vi.stubEnv('SWARMLOOP_API_URL', 'http://server:3920');
 

@@ -107,6 +107,7 @@ export class RunQueriesService {
       updatedAt: run.updatedAt,
       stepStartedAt: run.stepStartedAt,
       ...(await this.parentOf(run)),
+      ...(run.startedBy ? { startedBy: run.startedBy } : {}),
       ...(tasks.length > 0 ? { tasks } : {}),
       ...state,
       sentence: withSkip(
