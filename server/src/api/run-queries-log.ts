@@ -189,10 +189,11 @@ export async function readCheckLog(
   const index = /^\d+$/.test(command) ? Number(command) : -1;
   const rows = await commands.list(run.id);
   const attemptId = attempt || rows.at(-1)?.attemptId || '';
-  if (!rows.some((row) => row.attemptId === attemptId && row.commandIndex === index)) {
+  const stored = rows.find((row) => row.attemptId === attemptId && row.commandIndex === index);
+  if (!stored) {
     throw new NotFoundException(`${command} is not a check command of ${attemptId || 'this run'}`);
   }
-  const text = readCheckOutput(root(config), run.key, 'checks', attemptId, index);
+  const text = readCheckOutput(root(config), run.key, 'checks', stored.attemptId, stored.commandIndex);
   if (text === null) {
     throw new NotFoundException(`check command ${command} has no log yet`);
   }
