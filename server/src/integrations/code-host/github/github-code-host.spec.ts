@@ -23,6 +23,7 @@ describe('github host', () => {
       iid: 12,
       url: 'https://github.com/acme/demo/pull/12',
       summary: 'Already open.',
+      draft: false,
     });
     expect(seen).toHaveLength(1);
     expect(seen[0]?.method).toBe('GET');
@@ -57,6 +58,7 @@ describe('github host', () => {
       target: 'main',
       title: 'Ship the field',
       summary: 'Ships the field.',
+      draft: true,
     });
     expect(result.record.iid).toBe(12);
     expect(seen[0]?.method).toBe('POST');
@@ -65,7 +67,25 @@ describe('github host', () => {
       head: 'feature/PROJ-1-ship',
       base: 'main',
       body: 'Ships the field.',
+      draft: true,
     });
+  });
+
+  it('marks a pull request ready through the GraphQL api next to the enterprise rest root', async () => {
+    const seen = mockFetch([{ number: 12, node_id: 'PR_12', draft: true }, { data: {} }]);
+    await service({ GITHUB_BASE_URL: 'https://github.example' }).setDraft('acme/demo', 12, false);
+    expect(seen.map((call) => call.url)).toEqual([
+      'https://github.example/api/v3/repos/acme/demo/pulls/12',
+      'https://github.example/api/graphql',
+    ]);
+    const sent = JSON.parse(seen[1]?.body ?? '{}') as { query: string; variables: { id: string } };
+    expect(sent.query).toContain('markPullRequestReadyForReview');
+    expect(sent.variables.id).toBe('PR_12');
+  });
+
+  it('fails when GraphQL answers with errors in a 200', async () => {
+    mockFetch([{ number: 12, node_id: 'PR_12', draft: false }, { errors: [{ message: 'Resource not accessible' }] }]);
+    await expect(service().setDraft('acme/demo', 12, true)).rejects.toThrow('Resource not accessible');
   });
 
   it('updates the open pull request when create conflicts', async () => {
@@ -76,6 +96,7 @@ describe('github host', () => {
       target: 'main',
       title: 'Ship the field',
       summary: 'Updated.',
+      draft: true,
     });
     expect(result.record.summary).toBe('Updated.');
     expect(seen.map((call) => call.method)).toEqual(['POST', 'GET', 'PATCH']);

@@ -49,7 +49,8 @@ describe('merge-request step golden traces', () => {
     jest.spyOn(app.get(CodeHostRegistry), 'byName').mockReturnValue(host as never);
     host.findMergeRequest.mockResolvedValue({ record: null, httpCalls: [call('GET')] });
     host.openMergeRequest.mockResolvedValue({
-      record: { project: 'group/demo', iid: 12, url: MR_URL, summary: '' },
+      record: { project: 'group/demo', iid: 12, url: MR_URL, summary: '', draft: true },
+      draftsUnavailable: false,
       httpCalls: [call('POST')],
     });
     host.updateMergeRequest.mockResolvedValue({ httpCalls: [call('PUT')] });
@@ -107,6 +108,7 @@ describe('merge-request step golden traces', () => {
         iid: 9,
         url: 'https://gitlab.example/group/demo/-/merge_requests/9',
         summary: 'Already open.',
+        draft: true,
       },
       httpCalls: [call('GET')],
     });

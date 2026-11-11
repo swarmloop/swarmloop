@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { RunStop } from '../agent/run-stop';
+import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -19,6 +20,7 @@ import { RunDriver } from './run-driver';
 import { RunInstructions } from './run-instructions';
 import { Reconciler } from './reconciler';
 import { RunLifecycle } from './run-lifecycle';
+import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 
 @Injectable()
 export class PipelineService implements OnModuleInit {
@@ -41,6 +43,7 @@ export class PipelineService implements OnModuleInit {
     workspace: WorkspaceGuard,
     disk: DiskGuard,
     subtasks: SubtaskPort,
+    private readonly drafts: MergeRequestDrafts,
   ) {
     this.instructions = new RunInstructions(runs, documents, registry);
     this.driver = new RunDriver(
@@ -112,9 +115,21 @@ export class PipelineService implements OnModuleInit {
     if (stopped) return stopped;
     const fresh = (await this.runs.findRun(key)) ?? run;
     const full = await this.instructions.storeInstructions(fresh, name, text);
+    const failed = await this.backToDraft(fresh);
+    if (failed) return failed;
     await this.runs.release(fresh, { status: 'waiting', currentStep: name });
     this.runStop.clear(key);
     return this.startDetached(key, this.registryPromptOptions(name, full));
+  }
+
+  /** Work resumes: the merge requests of the run are drafts again before it starts. */
+  private async backToDraft(run: RunEntity): Promise<PipelineResult | null> {
+    try {
+      await this.drafts.backToDraft(run);
+      return null;
+    } catch (error) {
+      return { exitCode: 1, message: error instanceof SwarmloopError ? error.message : 'merge request failed' };
+    }
   }
 
   startDetached(key: string, options: StepOptions = {}, only?: StepName): Promise<PipelineResult> {

@@ -38,6 +38,7 @@ import { CommandService } from './command.service';
 import { Reconciler } from './reconciler';
 import { PipelineService } from './pipeline.service';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
+import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 
 @Module({
   imports: [HistoryModule, ProvidersModule, SandboxModule],
@@ -77,6 +78,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     CommandService,
     Reconciler,
     RunRebase,
+    MergeRequestDrafts,
     { provide: RunRebaseEnvironment, useExisting: EnvironmentService },
     EnvironmentService,
   ],

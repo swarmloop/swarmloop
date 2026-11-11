@@ -21,6 +21,8 @@ import { REBASE_CONFLICT } from '../git/rebase';
 import { RunRebaseService } from './run-rebase.service';
 import { CommandService } from '../pipeline/command.service';
 import { writeRunState } from '../history/run-state';
+import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
+import { FetchFailed } from '../core/swarmloop-error';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 
 import { EnvironmentService } from '../environment/environment.service';
@@ -112,6 +114,48 @@ describe('runs api', () => {
       expect(git(tree, ['rev-parse', `refs/remotes/origin/${branch}`])).toBe(tip);
       expect(git(tree, ['rev-parse', 'HEAD'])).not.toBe(tip);
       expect(git(tree, ['branch', '--show-current'])).toBe(branch);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('turns the merge requests of a done run back into drafts before it rebases, and stops when that fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-draft-'));
+    const { tree, clone } = featureWorktree(root, 'proj-52');
+    writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
+    git(tree, ['add', 'src/field.ts']);
+    git(tree, ['commit', '-m', 'field']);
+    git(clone, ['switch', 'main']);
+    writeFileSync(join(clone, 'src', 'base.ts'), 'export const base = 1;\n');
+    git(clone, ['add', 'src/base.ts']);
+    git(clone, ['commit', '-m', 'base']);
+    git(clone, ['push', 'origin', 'main']);
+    git(tree, ['push', '-u', 'origin', 'feature/proj-52-ship-the-field']);
+    const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-52 started' }) };
+    const app = await boot(root, pipeline);
+    try {
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await remember(runs, documents, 'proj-52', 'done', 'done');
+      await documents.putDocument(run, 'implementation', '- changed the field\n');
+      const url = 'https://gitlab.example/group/demo/-/merge_requests/7';
+      await documents.putDocument(
+        run,
+        'merge_request',
+        renderMergeRequest([{ project: 'group/demo', iid: 7, url, draft: false, summary: 'Ships it.' }]),
+      );
+      const setDraft = jest.fn().mockRejectedValueOnce(new FetchFailed('gitlab merge request failed', []));
+      Object.assign(app.get(CodeHostRegistry), { byName: () => ({ setDraft }) });
+      await expect(app.get(RunRebaseService).rebase('proj-52')).rejects.toThrow('gitlab merge request failed');
+      expect(pipeline.startDetached).not.toHaveBeenCalled();
+      expect((await runs.findRun('proj-52'))?.status).toBe('done');
+      expect(await documents.latestBody('proj-52', 'merge_request')).toContain('draft: false');
+      setDraft.mockResolvedValue({ httpCalls: [] });
+      await app.get(RunRebaseService).rebase('proj-52');
+      expect(setDraft).toHaveBeenLastCalledWith('group/demo', 7, true);
+      const body = (await documents.latestBody('proj-52', 'merge_request')) ?? '';
+      expect(body).toContain('draft: true');
+      expect(body).toContain('Ships it.');
     } finally {
       await app.close();
     }
@@ -486,7 +530,7 @@ describe('runs api', () => {
       const child = await runs.openSubtask('proj-60-a', parent.id, 'a');
       writeRunState(child, { status: subtaskStatus, currentStep: 'implement', ownerPid: process.pid });
       await runs.saveRun(child);
-      const records = [{ project: 'demo', iid: 1, url: 'https://code.example/1', summary: '' }];
+      const records = [{ project: 'demo', iid: 1, url: 'https://code.example/1', draft: false, summary: '' }];
       await documents.putDocument(child, 'repos', 'demo\n');
       await documents.putDocument(child, 'merge_request', renderMergeRequest(records));
       const rebased: string[] = [];

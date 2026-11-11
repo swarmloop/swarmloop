@@ -31,6 +31,7 @@ import { RunQueriesService } from '../api/run-queries.service';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
+import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 
 const agent = { runtime: 'claude', model: 'opus', mode: 'agent', timeLimitMs: 1000, session: 'fresh' as const };
 const descriptors = [
@@ -95,6 +96,7 @@ export async function boot(
       RunStop,
       RunRebaseService,
       RunRebase,
+      MergeRequestDrafts,
       { provide: WorkspaceGuard, useValue: { ensureForRequest: async () => undefined } },
       { provide: RunRebaseEnvironment, useExisting: EnvironmentService },
       { provide: EnvironmentService, useValue: { refreshAfterRebase: jest.fn().mockResolvedValue(undefined) } },

@@ -7,6 +7,7 @@ import TableCell from '@mui/material/TableCell';
 import TableRow from '@mui/material/TableRow';
 import { MarkdownBody } from '../../../components/ui/markdown-body';
 import { getHistory } from '../../../lib/endpoints';
+import { MergeRequestDetail } from './merge-request-detail';
 import { RequirementsDetail } from './requirements-detail';
 
 const HISTORY_STALE_MS = 60_000;
@@ -52,10 +53,13 @@ function jsonTable(body: string): ReactElement | null {
   );
 }
 
-/** The document a card points at: the requirements as a structured view, JSON as a table, anything else as markdown. */
+/** The document a card points at: the requirements and the merge requests as structured views, JSON as a table, anything else as markdown. */
 export function DocumentBody({ kind, body }: { kind: string; body: string }): ReactElement {
   if (kind === 'requirements') {
     return <RequirementsDetail body={body} />;
+  }
+  if (kind === 'merge_request') {
+    return <MergeRequestDetail body={body} />;
   }
   return jsonTable(body) ?? <MarkdownBody text={body} />;
 }

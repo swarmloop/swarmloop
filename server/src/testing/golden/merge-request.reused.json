@@ -184,7 +184,7 @@
     {
       "documents": [
         {
-          "body": "project: group/demo\niid: 9\nurl: https://gitlab.example/group/demo/-/merge_requests/9\n\nShips the field.\n",
+          "body": "project: group/demo\niid: 9\nurl: https://gitlab.example/group/demo/-/merge_requests/9\ndraft: true\n\nShips the field.\n",
           "kind": "merge_request"
         },
         {

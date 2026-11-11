@@ -1,5 +1,5 @@
 import { SwarmloopError } from '../../../core/swarmloop-error';
-import type { CheckAnnotation, PipelineCheck } from '../code-host';
+import type { CheckAnnotation, PipelineCheck, PipelineJob } from '../code-host';
 
 export interface GithubRun {
   id?: number;
@@ -169,4 +169,32 @@ export async function readChecks(read: Read, repo: string, sha: string, runs: Gi
     checks.push(failed ? await annotated(read, repo, check, row.output?.summary ?? '') : check);
   }
   return [...checks, ...statuses.map(commitStatus)];
+}
+
+export function listJobs(status: string, jobs: boolean): boolean {
+  if (status === 'running') {
+    return jobs;
+  }
+  return status === 'success' || status === 'failed' || status === 'canceled';
+}
+
+export function asJob(row: unknown): PipelineJob | null {
+  const job = row as { id?: number; name?: string; conclusion?: string | null; status?: string } | null;
+  if (!job?.id) {
+    return null;
+  }
+  const done: Record<string, string> = {
+    failure: 'failed',
+    timed_out: 'timed_out',
+    cancelled: 'canceled',
+    startup_failure: 'startup_failure',
+  };
+  const finished = job.conclusion ? done[job.conclusion] : undefined;
+  if (finished) {
+    return { id: job.id, name: job.name ?? String(job.id), stage: '', status: finished, allowFailure: false };
+  }
+  if (job.status && job.status !== 'completed') {
+    return { id: job.id, name: job.name ?? String(job.id), stage: '', status: job.status, allowFailure: false };
+  }
+  return null;
 }

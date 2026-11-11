@@ -6,8 +6,8 @@ import { remoteProject } from '../remote-project';
 import { AbstractCodeHost, type CodeHostEnv, type HostCall } from '../abstract-code-host';
 import { snapshotOf } from '../check-status';
 import { githubRepositories } from './github-repositories';
-import { pullView, type GithubPull } from './github-pull';
-import { awaitedChecks, checkStatus, readChecks, runsOf, type GithubRun } from './github-checks';
+import { apiRoot, graphqlUrl, pullView, type GithubPull } from './github-pull';
+import { asJob, awaitedChecks, checkStatus, listJobs, readChecks, runsOf, type GithubRun } from './github-checks';
 import type {
   MergeRequestDraft,
   MergeRequestQuery,
@@ -100,6 +100,35 @@ export class GithubCodeHost extends AbstractCodeHost {
         this.readJson(url, headers, calls, undefined, 'github pipeline failed');
       const checks = await readChecks(read, `${api}/repos/${project}`, ref.sha || runs[0]?.head_sha || ref.ref, runs);
       return { snapshot: snapshotOf(rows, checks, awaitedChecks(runs, checks)), httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  /** The REST API cannot change the draft state of a pull request, so this is a GraphQL mutation on its node id. */
+  async setDraft(project: string, iid: number, draft: boolean): Promise<{ httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const pull = (await this.readJson(this.mergeRequestUrl(root, project, iid), headers, calls)) as GithubPull;
+      if ((pull.draft === true) === draft) {
+        return { httpCalls: calls };
+      }
+      if (!pull.node_id) {
+        throw new FetchFailed('github pull request failed', calls);
+      }
+      const mutation = draft ? 'convertPullRequestToDraft' : 'markPullRequestReadyForReview';
+      const query = `mutation($id: ID!) { ${mutation}(input: { pullRequestId: $id }) { pullRequest { id } } }`;
+      const answer = (await this.readJson(
+        graphqlUrl(root),
+        { ...headers, 'Content-Type': 'application/json' },
+        calls,
+        JSON.stringify({ query, variables: { id: pull.node_id } }),
+      )) as { errors?: { message?: string }[] } | null;
+      if (answer?.errors?.length) {
+        throw new FetchFailed(answer.errors[0]?.message || 'github pull request failed', calls);
+      }
+      return { httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }
@@ -283,6 +312,7 @@ export class GithubCodeHost extends AbstractCodeHost {
         head: draft.source,
         base: draft.target,
         body: draft.summary,
+        draft: draft.draft,
       }),
     };
   }
@@ -351,7 +381,7 @@ export class GithubCodeHost extends AbstractCodeHost {
     if (!pull.number || !pull.html_url) {
       throw new SwarmloopError('github pull request failed');
     }
-    return { project, iid: pull.number, url: pull.html_url, summary: text };
+    return { project, iid: pull.number, url: pull.html_url, summary: text, draft: pull.draft === true };
   }
 
   protected conflict(error: unknown, calls: HttpCallDraft[]): boolean {
@@ -389,47 +419,10 @@ export class GithubCodeHost extends AbstractCodeHost {
   }
 }
 
-function listJobs(status: string, jobs: boolean): boolean {
-  if (status === 'running') {
-    return jobs;
-  }
-  return status === 'success' || status === 'failed' || status === 'canceled';
-}
-
 function repoPath(project: string): string {
   return project
     .split('/')
     .filter(Boolean)
     .map((part) => encodeURIComponent(part))
     .join('/');
-}
-
-function apiRoot(baseUrl: string): string {
-  const url = new URL(baseUrl);
-  const host = url.hostname.toLowerCase();
-  if (host === 'github.com' || host === 'www.github.com') {
-    return 'https://api.github.com';
-  }
-  return `${url.origin}/api/v3`;
-}
-
-function asJob(row: unknown): PipelineJob | null {
-  const job = row as { id?: number; name?: string; conclusion?: string | null; status?: string } | null;
-  if (!job?.id) {
-    return null;
-  }
-  const done: Record<string, string> = {
-    failure: 'failed',
-    timed_out: 'timed_out',
-    cancelled: 'canceled',
-    startup_failure: 'startup_failure',
-  };
-  const finished = job.conclusion ? done[job.conclusion] : undefined;
-  if (finished) {
-    return { id: job.id, name: job.name ?? String(job.id), stage: '', status: finished, allowFailure: false };
-  }
-  if (job.status && job.status !== 'completed') {
-    return { id: job.id, name: job.name ?? String(job.id), stage: '', status: job.status, allowFailure: false };
-  }
-  return null;
 }

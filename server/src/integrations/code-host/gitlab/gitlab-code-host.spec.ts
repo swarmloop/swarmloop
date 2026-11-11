@@ -35,6 +35,7 @@ describe('gitlab host', () => {
       iid: 12,
       url: 'https://gitlab.example/group/demo/-/merge_requests/12',
       summary: 'Already open.',
+      draft: false,
     });
     expect(seen).toHaveLength(1);
     expect(seen[0]?.method).toBe('GET');
@@ -58,6 +59,7 @@ describe('gitlab host', () => {
       target: 'main',
       title: 'Ship the field',
       summary: 'Ships the field.',
+      draft: true,
     });
     expect(result.record.iid).toBe(12);
     expect(seen[0]?.method).toBe('POST');
@@ -69,7 +71,7 @@ describe('gitlab host', () => {
     expect(body).toEqual({
       source_branch: 'feature/PROJ-1-ship',
       target_branch: 'main',
-      title: 'Ship the field',
+      title: 'Draft: Ship the field',
       description: 'Ships the field.',
     });
     expect(seen[0]?.headers['PRIVATE-TOKEN']).toBe(TOKEN);
@@ -102,6 +104,7 @@ describe('gitlab host', () => {
       target: 'main',
       title: 'Ship the field',
       summary: 'Ships the field.',
+      draft: true,
     });
     expect(result.record.iid).toBe(12);
     expect(result.record.summary).toBe('Ships the field.');
