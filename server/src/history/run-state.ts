@@ -58,10 +58,44 @@ export function readOutcome(stored: string | null | undefined): MergeOutcome | n
   }
 }
 
+function reasonOf(code: string, message: string): StateReason {
+  return { code, message };
+}
+
+function blockedState(stored: StateReason | null, facts: StateFacts): { state: RunState; reason: StateReason } {
+  // A code the stop path or a step wrote stays: the error text of the last visit cannot say it.
+  const kept =
+    stored?.code === REASON.stopped ||
+    stored?.code === ERROR_CODES.RESOURCE_UNKNOWN ||
+    stored?.code === ERROR_CODES.INPUT_MISSING ||
+    stored?.code === ERROR_CODES.SUBTASK_BLOCKED;
+  const code = kept ? stored.code : (facts.blockCode ?? stored?.code ?? REASON.blocked);
+  return {
+    state: code === REASON.stopped ? 'stopped' : 'blocked',
+    reason: reasonOf(code, stored?.message ?? 'blocked'),
+  };
+}
+
+function unfinishedState(
+  stored: StateReason | null,
+  facts: StateFacts,
+): { state: RunState; reason: StateReason | null } {
+  if (facts.queued) return { state: 'queued', reason: null };
+  if (
+    stored &&
+    (stored.code === ERROR_CODES.RUNTIME_LIMIT ||
+      stored.code === ERROR_CODES.GIT_AUTH ||
+      SUBTASK_WAIT_CODES.includes(stored.code as ErrorCode))
+  )
+    return { state: 'waiting', reason: stored };
+  if (facts.needsAnswers) return { state: 'waiting', reason: reasonOf('NEEDS_ANSWERS', 'waiting for a person') };
+  if (facts.returned) return { state: 'idle', reason: reasonOf(REASON.returned, 'returned to implement') };
+  return { state: 'idle', reason: null };
+}
+
 /** Today's facts to the honest state. The only place that maps `status` and the facts to a state. */
 export function deriveState(run: StateRow, facts: StateFacts = {}): { state: RunState; reason: StateReason | null } {
   const stored = readReason(run.stateReason);
-  const reason = (code: string, message: string): StateReason => ({ code, message });
   switch (run.status) {
     case 'running':
       if (facts.recovering) return { state: 'recovering', reason: stored };
@@ -70,35 +104,14 @@ export function deriveState(run: StateRow, facts: StateFacts = {}): { state: Run
       const outcome = readOutcome(run.mergeOutcome);
       return { state: outcome ? ('merged' in outcome ? 'merged' : 'closed') : 'done', reason: stored };
     }
-    case 'blocked': {
-      // A code the stop path or a step wrote stays: the error text of the last visit cannot say it.
-      const kept =
-        stored?.code === REASON.stopped ||
-        stored?.code === ERROR_CODES.RESOURCE_UNKNOWN ||
-        stored?.code === ERROR_CODES.INPUT_MISSING ||
-        stored?.code === ERROR_CODES.SUBTASK_BLOCKED;
-      const code = kept ? stored.code : (facts.blockCode ?? stored?.code ?? REASON.blocked);
-      return {
-        state: code === REASON.stopped ? 'stopped' : 'blocked',
-        reason: reason(code, stored?.message ?? 'blocked'),
-      };
-    }
+    case 'blocked':
+      return blockedState(stored, facts);
     case 'failed':
       return stored?.code === REASON.stopped
         ? { state: 'stopped', reason: stored }
         : { state: 'failed', reason: stored };
     default:
-      if (facts.queued) return { state: 'queued', reason: null };
-      if (
-        stored &&
-        (stored.code === ERROR_CODES.RUNTIME_LIMIT ||
-          stored.code === ERROR_CODES.GIT_AUTH ||
-          SUBTASK_WAIT_CODES.includes(stored.code as ErrorCode))
-      )
-        return { state: 'waiting', reason: stored };
-      if (facts.needsAnswers) return { state: 'waiting', reason: reason('NEEDS_ANSWERS', 'waiting for a person') };
-      if (facts.returned) return { state: 'idle', reason: reason(REASON.returned, 'returned to implement') };
-      return { state: 'idle', reason: null };
+      return unfinishedState(stored, facts);
   }
 }
 

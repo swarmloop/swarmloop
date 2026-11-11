@@ -1,11 +1,10 @@
 import type { RemoteRepository, RepositoryOwner } from '../../contract/api';
 import type { SwarmloopEnv } from '../../config/env';
 import type { Clock } from '../../core/clock';
-import type { HttpCallDraft } from '../../core/swarmloop-error';
-import { FetchFailed, MergeConflict, SwarmloopError } from '../../core/swarmloop-error';
+import { FetchFailed, MergeConflict, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { request } from '../http';
 import { requestState } from './request-state';
-import { remoteProject } from '../../integrations/code-host/remote-project';
+import { remoteProject } from './remote-project';
 import type {
   CodeHost,
   CreateRepositoryDraft,
@@ -124,8 +123,8 @@ export abstract class AbstractCodeHost implements CodeHost {
     const calls: HttpCallDraft[] = [];
     try {
       const { root, headers } = this.credentials();
-      const read = (url: string): Promise<unknown> => this.readJson(url, headers, calls);
-      const state = await requestState(this.states, this.mergeRequestUrl(root, project, iid), this.clock.iso(), read);
+      const url = this.mergeRequestUrl(root, project, iid);
+      const state = await requestState(this.states, url, this.clock.iso(), (at) => this.readJson(at, headers, calls));
       return { ...state, httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
@@ -292,12 +291,7 @@ export abstract class AbstractCodeHost implements CodeHost {
 
   protected abstract openRequest(root: string, draft: MergeRequestDraft): { url: string; payload: string };
 
-  protected abstract updateRequest(
-    root: string,
-    project: string,
-    iid: number,
-    summary: string,
-  ): { url: string; method: string; payload: string };
+  protected abstract updateRequest(root: string, project: string, iid: number, summary: string): Required<HostCall>;
 
   protected abstract mergeRequestUrl(root: string, project: string, iid: number): string;
 
