@@ -19,6 +19,9 @@ import { ARTIFACTS } from '../steps/contract/artifacts';
 import { REBASE_CONFLICT } from '../git/rebase';
 
 import { RunRebaseService } from './run-rebase.service';
+import { CommandService } from '../pipeline/command.service';
+import { writeRunState } from '../history/run-state';
+import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 
 import { EnvironmentService } from '../environment/environment.service';
 
@@ -454,5 +457,69 @@ describe('runs api', () => {
     } finally {
       await app.close();
     }
+  });
+
+  describe('a split parent', () => {
+    async function splitParent(subtaskStatus: 'running' | 'done') {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-split-'));
+      const { tree, clone } = featureWorktree(root, 'proj-60');
+      writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
+      git(tree, ['add', 'src/field.ts']);
+      git(tree, ['commit', '-m', 'field']);
+      git(clone, ['switch', 'main']);
+      writeFileSync(join(clone, 'src', 'base.ts'), 'export const base = 1;\n');
+      git(clone, ['add', 'src/base.ts']);
+      git(clone, ['commit', '-m', 'base']);
+      git(clone, ['push', 'origin', 'main']);
+      const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-60 started' }) };
+      const app = await boot(root, pipeline);
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const parent = await remember(runs, documents, 'proj-60', 'implement', 'waiting');
+      parent.split = true;
+      await runs.saveRun(parent);
+      await documents.putDocument(
+        parent,
+        'subtasks',
+        `${JSON.stringify([{ id: 'a', title: 'A', status: 'running' }])}\n`,
+      );
+      const child = await runs.openSubtask('proj-60-a', parent.id, 'a');
+      writeRunState(child, { status: subtaskStatus, currentStep: 'implement', ownerPid: process.pid });
+      await runs.saveRun(child);
+      const records = [{ project: 'demo', iid: 1, url: 'https://code.example/1', summary: '' }];
+      await documents.putDocument(child, 'repos', 'demo\n');
+      await documents.putDocument(child, 'merge_request', renderMergeRequest(records));
+      const rebased: string[] = [];
+      const commands = app.get(CommandService);
+      jest.spyOn(commands, 'accept').mockImplementation((type, key) => {
+        if (type === 'rebase') rebased.push(key);
+        return Promise.resolve({}) as ReturnType<CommandService['accept']>;
+      });
+      return { app, runs, rebased };
+    }
+
+    it('refuses a rebase while a subtask runs, and leaves the generation as it was', async () => {
+      const { app, runs, rebased } = await splitParent('running');
+      try {
+        const before = (await runs.findRun('proj-60'))?.generation;
+        await expect(app.get(RunRebaseService).rebase('proj-60')).rejects.toThrow('SUBTASKS_RUNNING');
+        expect((await runs.findRun('proj-60'))?.generation).toBe(before);
+        expect(rebased).toEqual([]);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('rebases the feature branch when no subtask runs, and sends every open subtask a Rebase', async () => {
+      const { app, runs, rebased } = await splitParent('done');
+      try {
+        const before = (await runs.findRun('proj-60'))?.generation ?? 0;
+        await app.get(RunRebaseService).rebase('proj-60');
+        expect((await runs.findRun('proj-60'))?.generation).toBe(before + 1);
+        expect(rebased).toEqual(['proj-60-a']);
+      } finally {
+        await app.close();
+      }
+    });
   });
 });

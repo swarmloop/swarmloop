@@ -13,11 +13,12 @@ import {
   type GitlabJob,
   type GitlabStatus,
 } from './gitlab-checks';
-import { AbstractCodeHost, type CodeHostEnv } from '../abstract-code-host';
+import { AbstractCodeHost, type CodeHostEnv, type HostCall } from '../abstract-code-host';
 import type {
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
+  MergeRequestView,
   PipelineCheck,
   PipelineRef,
   PipelineRun,
@@ -32,6 +33,8 @@ interface GitlabMergeRequest {
   description?: string | null;
   source_branch?: string;
   sha?: string;
+  merge_commit_sha?: string | null;
+  squash_commit_sha?: string | null;
   state?: string;
   has_conflicts?: boolean;
   detailed_merge_status?: string;
@@ -270,6 +273,52 @@ export class GitlabCodeHost extends AbstractCodeHost {
       method: 'PUT',
       payload: JSON.stringify({ description: summary }),
     };
+  }
+
+  protected mergeRequestUrl(root: string, project: string, iid: number): string {
+    return `${root}/api/v4/projects/${encodeURIComponent(project)}/merge_requests/${iid}`;
+  }
+
+  protected mergeCall(root: string, project: string, iid: number): HostCall {
+    return {
+      url: `${this.mergeRequestUrl(root, project, iid)}/merge`,
+      method: 'PUT',
+      payload: JSON.stringify({ squash: true }),
+    };
+  }
+
+  protected closeCall(root: string, project: string, iid: number): HostCall {
+    return {
+      url: this.mergeRequestUrl(root, project, iid),
+      method: 'PUT',
+      payload: JSON.stringify({ state_event: 'close' }),
+    };
+  }
+
+  protected deleteCall(root: string, project: string, branch: string): HostCall {
+    return {
+      url: `${root}/api/v4/projects/${encodeURIComponent(project)}/repository/branches/${encodeURIComponent(branch)}`,
+      method: 'DELETE',
+    };
+  }
+
+  protected view(body: unknown): MergeRequestView {
+    const merge = (body ?? {}) as GitlabMergeRequest;
+    const merged = merge.state === 'merged';
+    return {
+      state: merged ? 'merged' : merge.state === 'closed' ? 'closed' : 'open',
+      sha: merged ? this.mergedSha(merge) : null,
+      conflicts: merge.has_conflicts === true || merge.detailed_merge_status === 'conflict',
+    };
+  }
+
+  protected mergedSha(body: unknown): string | null {
+    const merge = (body ?? {}) as GitlabMergeRequest;
+    return merge.merge_commit_sha ?? merge.squash_commit_sha ?? merge.sha ?? null;
+  }
+
+  protected mergeConflicts(status: number, message: string): boolean {
+    return (status === 405 || status === 406) && /conflict|cannot be merged/i.test(message);
   }
 
   protected match(body: unknown, source: string): GitlabMergeRequest | null {

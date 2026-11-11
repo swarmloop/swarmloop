@@ -3,13 +3,15 @@ import type { HttpCallDraft } from '../../../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
 import { request, withRetries } from '../../http';
 import { remoteProject } from '../remote-project';
-import { AbstractCodeHost, type CodeHostEnv } from '../abstract-code-host';
+import { AbstractCodeHost, type CodeHostEnv, type HostCall } from '../abstract-code-host';
 import { snapshotOf } from '../check-status';
+import { pullView, type GithubPull } from './github-pull';
 import { awaitedChecks, checkStatus, readChecks, runsOf, type GithubRun } from './github-checks';
 import type {
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
+  MergeRequestView,
   PipelineJob,
   PipelineRef,
   PipelineRun,
@@ -23,16 +25,6 @@ class LogLagging extends Error {
   constructor(readonly response: Awaited<ReturnType<typeof request>>) {
     super(`HTTP ${response.status} for ${response.url}`);
   }
-}
-
-interface GithubPull {
-  number?: number;
-  html_url?: string;
-  body?: string | null;
-  head?: { ref?: string; sha?: string };
-  state?: string;
-  mergeable?: boolean | null;
-  mergeable_state?: string;
 }
 
 export class GithubCodeHost extends AbstractCodeHost {
@@ -299,6 +291,43 @@ export class GithubCodeHost extends AbstractCodeHost {
       method: 'PATCH',
       payload: JSON.stringify({ body: summary }),
     };
+  }
+
+  protected mergeRequestUrl(root: string, project: string, iid: number): string {
+    return `${root}/repos/${repoPath(project)}/pulls/${iid}`;
+  }
+
+  protected mergeCall(root: string, project: string, iid: number): HostCall {
+    return {
+      url: `${this.mergeRequestUrl(root, project, iid)}/merge`,
+      method: 'PUT',
+      payload: JSON.stringify({ merge_method: 'squash' }),
+    };
+  }
+
+  protected closeCall(root: string, project: string, iid: number): HostCall {
+    return {
+      url: this.mergeRequestUrl(root, project, iid),
+      method: 'PATCH',
+      payload: JSON.stringify({ state: 'closed' }),
+    };
+  }
+
+  protected deleteCall(root: string, project: string, branch: string): HostCall {
+    const ref = branch.split('/').map(encodeURIComponent).join('/');
+    return { url: `${root}/repos/${repoPath(project)}/git/refs/heads/${ref}`, method: 'DELETE' };
+  }
+
+  protected view(body: unknown): MergeRequestView {
+    return pullView(body);
+  }
+
+  protected mergedSha(body: unknown): string | null {
+    return (body as { sha?: string } | null)?.sha ?? null;
+  }
+
+  protected mergeConflicts(status: number, message: string): boolean {
+    return (status === 405 || status === 409) && /not mergeable|conflict/i.test(message);
   }
 
   protected match(body: unknown, source: string): GithubPull | null {

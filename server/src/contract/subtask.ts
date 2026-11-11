@@ -10,6 +10,8 @@ export interface Subtask {
   status: SubtaskStatus;
   /** What the pass says about the task, such as the tasks it waits for. */
   note?: string;
+  /** The merge commit per repository, for the merge requests of this task that the server has merged. Kept while the task is partly merged. */
+  merged?: Record<string, string>;
 }
 
 /** `pending` is what the plan writes; every reader sees it as `waiting`. `green`: the subtask is done, its merge request into the feature branch has green CI. */
