@@ -122,8 +122,7 @@ describe('TranscriptFeed', () => {
     expect(within(notes).getByText('src/b.ts:8 · warning · second')).toBeInTheDocument();
   });
 
-  it('keeps the order when a filter is chosen', async () => {
-    const user = userEvent.setup();
+  it('keeps the order when a filter is chosen', () => {
     feed([
       input,
       ...commandEvents(2, 's', { executable: 'make', exitCode: 1 }),
@@ -131,19 +130,42 @@ describe('TranscriptFeed', () => {
       artifact,
     ]);
 
-    await user.click(screen.getByRole('button', { name: /^inputs/ }));
-    expect(screen.getByText(/the plan/)).toBeInTheDocument();
-    expect(screen.getByText(/From pipeline \/ review: 1 issues/)).toBeInTheDocument();
-    expect(screen.queryByText(/make/)).not.toBeInTheDocument();
-    const inputs = screen.getByTestId('transcript-feed').textContent ?? '';
-    expect(inputs.indexOf('the plan')).toBeLessThan(inputs.indexOf('From pipeline / review'));
+    expect(screen.queryByRole('button', { name: /^(all|inputs|actions|problems)\b/ })).not.toBeInTheDocument();
+    const text = screen.getByTestId('transcript-feed').textContent ?? '';
+    expect(text.indexOf('the plan')).toBeLessThan(text.indexOf('make'));
+    expect(text.indexOf('make')).toBeLessThan(text.indexOf('From pipeline / review'));
+  });
 
-    await user.click(screen.getByRole('button', { name: /^problems/ }));
-    expect(within(screen.getByTestId('transcript-feed')).getAllByRole('article', { name: /^Error/ })).toHaveLength(1);
-    expect(screen.queryByText(/the plan/)).not.toBeInTheDocument();
+  it('shows a chip for the problems that scrolls to the first one', async () => {
+    const user = userEvent.setup();
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    feed([
+      ...commandEvents(1, 's', { executable: 'make', exitCode: 1 }),
+      ...commandEvents(4, 's', { executable: 'lint', exitCode: 2 }),
+    ]);
 
-    await user.click(screen.getByRole('button', { name: /^all/ }));
-    expect(screen.getByText(/the plan/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '2 problems' }));
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll.mock.contexts[0]).toBe(document.getElementById('problem-event-1'));
+  });
+
+  it('folds seven consecutive actions into one expandable row', async () => {
+    const user = userEvent.setup();
+    const run = (count: number) =>
+      Array.from({ length: count }, (_, index) =>
+        commandEvents(index * 3 + 1, `s${index}`, { executable: `tool${index}` }),
+      ).flat();
+    const view = feed(run(7));
+
+    expect(screen.queryByText(/tool0/)).not.toBeVisible();
+    await user.click(screen.getByRole('button', { name: '7 actions' }));
+    expect(screen.getByText(/tool6/)).toBeVisible();
+
+    view.unmount();
+    feed(run(5));
+    expect(screen.queryByRole('button', { name: /actions$/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/tool4/)).toBeInTheDocument();
   });
 
   it('follows new events while the reader is at the bottom', () => {

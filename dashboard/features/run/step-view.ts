@@ -252,15 +252,6 @@ export function stepText(
     step === 'code-review' ? visit?.documents.find((item) => item.kind === 'review_report')?.body : undefined;
   const report = reportAgrees(storedReport, visit?.decision) ? storedReport : undefined;
   const angleNotes = checks.map((item) => item.body).filter(Boolean);
-  const document =
-    selected?.body ??
-    (report ||
-      (angleNotes.length > 0 ? angleNotes.join('\n\n') : '') ||
-      visit?.documents
-        .filter((item) => item.kind !== 'log' && item.kind !== 'review_report')
-        .map((item) => item.body)
-        .filter(Boolean)
-        .join('\n\n') ||
-      '');
+  const document = selected?.body ?? (report || (angleNotes.length > 0 ? angleNotes.join('\n\n') : '') || '');
   return { logs, document };
 }

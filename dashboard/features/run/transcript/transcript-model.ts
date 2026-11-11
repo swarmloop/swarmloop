@@ -1,6 +1,7 @@
 import { withoutTimestamp } from '@contract/event-text';
 import { isReadOnlyGit } from '@contract/git-reads';
 import type { StepEvent } from '@contract/step-events';
+import { withoutLogs } from './old-log-events';
 import { limitSentence } from '../../../lib/runtime-limit';
 import { loopSentence } from '../../../lib/loop-sentence';
 
@@ -10,7 +11,6 @@ export interface Actor {
   kind: ActorKind;
   name: string;
 }
-export type TranscriptFilter = 'all' | 'inputs' | 'actions' | 'problems';
 
 type AgentStart = Extract<StepEvent, { kind: 'attempt.started' }>['agent'];
 type CommandEnd = Extract<StepEvent, { kind: 'command.finished' }>;
@@ -406,8 +406,8 @@ function whyOf(own: StepEvent[], number: number): string {
 }
 
 /** The attempts of a step in the order they started, each with its events in `seq` order. */
-export function groupByAttempt(events: StepEvent[]): AttemptGroup[] {
-  const ordered = [...events].sort((a, b) => a.seq - b.seq);
+export function groupByAttempt(recorded: StepEvent[]): AttemptGroup[] {
+  const ordered = withoutLogs(recorded).sort((a, b) => a.seq - b.seq);
   const ids = [...new Set(ordered.map((event) => event.attemptId))];
   const groups: AttemptGroup[] = [];
   for (const attemptId of ids) {
@@ -429,20 +429,6 @@ export function groupByAttempt(events: StepEvent[]): AttemptGroup[] {
     });
   }
   return groups;
-}
-
-/** A view of the same list: it drops cards and keeps the order of the rest. */
-export function filterEvents(items: TranscriptItem[], filter: TranscriptFilter): TranscriptItem[] {
-  switch (filter) {
-    case 'inputs':
-      return items.filter((item) => item.side === 'right');
-    case 'actions':
-      return items.filter((item) => item.side === 'left');
-    case 'problems':
-      return items.filter((item) => item.problem !== null);
-    case 'all':
-      return items;
-  }
 }
 
 /** The `eventId` of the first problem of the step, or null when it had none. */

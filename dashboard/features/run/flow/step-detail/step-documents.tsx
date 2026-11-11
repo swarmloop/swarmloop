@@ -11,10 +11,22 @@ import type { StepEvent } from '@contract/step-events';
 import { LogTranscript } from '../../log-transcript';
 import type { AgentRole } from '../../transcript/agent-card';
 import { AgentLogPanel, Exchanges, type AgentLog } from '../../transcript/agent-log';
+import { DocumentBody } from '../../transcript/document-detail';
 import { TranscriptFeed } from '../../transcript/transcript-feed';
 import type { IssueLinks } from '../../transcript/transcript-model';
 import { CheckCommands } from './check-commands';
 import { StepChart } from './step-chart';
+
+/** The documents of a visit from before events were kept, once each. The log and the review documents have their own place. */
+function legacyDocuments(visit: StepView['visits'][number] | undefined): StepView['visits'][number]['documents'] {
+  const latest = new Map<string, StepView['visits'][number]['documents'][number]>();
+  for (const item of visit?.documents ?? []) {
+    if (item.kind !== 'log' && !item.kind.startsWith('review_') && item.body) {
+      latest.set(item.kind, item);
+    }
+  }
+  return [...latest.values()];
+}
 
 export function StepDocuments({
   runKey,
@@ -88,6 +100,7 @@ export function StepDocuments({
           agent={agentStep ? agent : null}
           role={role}
           live={visit?.status === 'running'}
+          now={now}
         />
       ) : null}
       {recorded && agentStep && !launched ? <AgentLogPanel agent={agent} tools={false} open /> : null}
@@ -102,6 +115,16 @@ export function StepDocuments({
         </Box>
       ) : null}
       {document ? <MarkdownBody text={document} /> : null}
+      {events?.length === 0
+        ? legacyDocuments(visit).map((item) => (
+            <Box key={item.kind} sx={{ mt: 2, minWidth: 0 }}>
+              <Typography variant="caption" color="text.secondary">
+                {item.kind}
+              </Typography>
+              <DocumentBody kind={item.kind} body={item.body} />
+            </Box>
+          ))
+        : null}
       {events?.length === 0 ? <Exchanges exchanges={visit?.exchanges ?? []} /> : null}
     </>
   );

@@ -8,9 +8,8 @@ import { redact } from '../../core/redact';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { StepEventLog } from '../../history/step-event.log';
 import type { DocumentDraft } from '../../history/visit';
-import type { Artifact } from '../contract/artifact';
 import { firstLine } from '../contract/artifact';
-import { ARTIFACTS, REVIEWS, summarizePlan, summarizeReview } from '../contract/artifacts';
+import { ARTIFACTS, LOG_KIND, REVIEWS, artifactOf, summarizePlan, summarizeReview } from '../contract/artifacts';
 import type { InputSpec, Issue } from '../contract/step-contract';
 import { recordStepEvent } from '../../core/step-event-scope';
 
@@ -28,9 +27,7 @@ function documentSummary(kind: string, body: string, step: StepName): string {
       return plan;
     }
   }
-  const entry: Artifact<unknown> | undefined = Object.values<Artifact<unknown>>(ARTIFACTS).find(
-    (item) => item.kind === kind,
-  );
+  const entry = artifactOf(kind);
   try {
     return entry ? entry.summarize(entry.parse(body)) : firstLine(body);
   } catch {
@@ -142,7 +139,8 @@ export async function recordEnd(documents: DocumentRepository, log: StepEventLog
     end.stored.map((document) => document.kind),
   );
   const handoffKind = ARTIFACTS.handoff.kind;
-  const artifacts = end.stored.filter((document) => document.kind !== handoffKind);
+  // The handoff has its own event, and the agent log is not an artifact a person reads.
+  const artifacts = end.stored.filter((document) => document.kind !== handoffKind && document.kind !== LOG_KIND);
   const artifactKinds = artifacts.map((document) => document.kind);
   const summaries = artifacts.map((document) => documentSummary(document.kind, document.body, end.step));
   artifacts.forEach((document, index) => {

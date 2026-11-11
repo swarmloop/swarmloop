@@ -46,7 +46,7 @@ class ReceiverStep extends BaseStep<typeof RECEIVER_INPUTS> {
 /** A server step whose body is the script of the spec. */
 class ProbeStep extends BaseStep<typeof INPUTS> {
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.implementation, ARTIFACTS.issues];
+  readonly outputs = [ARTIFACTS.implementation, ARTIFACTS.issues, ARTIFACTS.log];
 
   constructor(
     readonly name: StepName,
@@ -382,6 +382,27 @@ describe('step events', () => {
     expect(events.find((event) => event.kind === 'agent.limited')).toMatchObject({
       runtime: 'claude',
       continuedWith: 'codex:gpt-6.1-sol',
+    });
+  });
+
+  it('records no artifact and no handoff summary for an external document', async () => {
+    await seed('E-1');
+    await probe('commit', (ctx) =>
+      Promise.resolve({
+        ...finished(ctx),
+        outputs: [
+          { artifact: ARTIFACTS.implementation, value: 'a note' },
+          { artifact: ARTIFACTS.log, value: '{"type":"system","subtype":"init"}' },
+        ],
+      }),
+    ).execute('E-1');
+    const events = await eventsOf('E-1');
+    expect(events.filter((event) => event.kind === 'artifact.produced')).toMatchObject([
+      { artifactKind: 'implementation' },
+    ]);
+    expect(events.find((event) => event.kind === 'handoff.sent')).toMatchObject({
+      artifactKinds: ['implementation'],
+      summaries: ['a note'],
     });
   });
 
