@@ -4,7 +4,25 @@
     "pattern": "--prefix (nest|next)\\b|swarmloop-(nest|next)\\b",
     "exclude": ["docs/refactor/"]
   },
+  "uniqueTimestamps": [
+    {
+      "directory": "server/src/history/migrations/",
+      "known": [
+        "1794600000000-run-parent.ts",
+        "1794600000000-step-runtime.ts",
+        "1794700000000-run-split.ts",
+        "1794700000000-runtime-cooldown.ts",
+        "1794800000000-run-indexes.ts",
+        "1794800000000-sessions.ts"
+      ]
+    }
+  ],
   "forbidOutside": [
+    {
+      "include": "server/src/",
+      "allowFiles": ["server/src/core/free-bytes.ts"],
+      "pattern": "bsize"
+    },
     {
       "include": "server/src/",
       "allowFiles": ["server/src/sandbox/image-resolver"],

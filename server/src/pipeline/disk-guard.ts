@@ -1,11 +1,10 @@
-import { execFile } from 'child_process';
 import { existsSync } from 'fs';
-import { lstat, readdir, statfs } from 'fs/promises';
+import { lstat, readdir } from 'fs/promises';
 import { join } from 'path';
-import { promisify } from 'util';
 import { Injectable } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { ERROR_CODES } from '../contract/error-codes';
+import { freeBytes } from '../core/free-bytes';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { RunEntity } from '../history/entities';
 import { root } from '../history/run-paths';
@@ -15,34 +14,6 @@ import { RunRetention } from './run-retention';
 const GB = 1024 ** 3;
 
 type FreeBytes = (path: string) => Promise<number>;
-
-const execFileAsync = promisify(execFile);
-/** `df -P` columns: filesystem, 1024-blocks, used, available, capacity. The name may hold spaces, the numbers never do. */
-const DF_LINE = /(\d+)\s+(\d+)\s+(\d+)\s+\d+%/;
-
-/** The free kilobytes in the last line of `df -Pk`, or null when it cannot be read. */
-export function dfAvailableBytes(output: string): number | null {
-  const match = DF_LINE.exec(output.trim().split('\n').at(-1) ?? '');
-  return match ? Number(match[3]) * 1024 : null;
-}
-
-/**
- * Free bytes as `df` counts them. Node's statfs multiplies the free blocks by the optimal transfer size, not by the
- * block size: on Docker Desktop's shared folders that is 1 MiB against 4 KiB blocks, 256 times too much.
- */
-async function freeBytes(path: string): Promise<number> {
-  try {
-    const { stdout } = await execFileAsync('df', ['-Pk', path]);
-    const bytes = dfAvailableBytes(stdout);
-    if (bytes !== null) {
-      return bytes;
-    }
-  } catch {
-    // No df: fall back to statfs, right wherever the transfer size equals the block size.
-  }
-  const stats = await statfs(path);
-  return Number(stats.bavail) * Number(stats.bsize);
-}
 
 /** Keeps a step from starting on a disk that it may fill: old runs go first, then Docker's leftovers, then the run blocks. */
 @Injectable()
