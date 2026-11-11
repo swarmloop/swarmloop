@@ -1,6 +1,6 @@
 import { execFile } from 'child_process';
 import { randomBytes } from 'crypto';
-import { copyFileSync, existsSync, realpathSync, rmSync } from 'fs';
+import { copyFileSync, existsSync, realpathSync, rmSync, statSync, utimesSync } from 'fs';
 import { tmpdir } from 'os';
 import { isAbsolute, join, resolve } from 'path';
 import { rawEnv } from '../config/process-env';
@@ -92,7 +92,11 @@ export async function captureTree(repo: string): Promise<{ head: string; tree: s
   }
 }
 
-/** Starts the temporary index as a copy of the worktree's own, so `add -A` hashes only what changed. No index file means an empty one. */
+/**
+ * Starts the temporary index as a copy of the worktree's own, so `add -A` hashes only what changed. No index file means
+ * an empty one. The copy keeps the index's own modification time: git re-reads every entry changed in or after the
+ * second the index was written ("racy git"), and a fresh time on the copy would hide an edit of the same size.
+ */
 async function seedIndex(
   repo: string,
   index: string,
@@ -102,5 +106,7 @@ async function seedIndex(
   const path = isAbsolute(own) ? own : resolve(repo, own);
   if (existsSync(path)) {
     copyFileSync(path, index);
+    const { atime, mtime } = statSync(path);
+    utimesSync(index, atime, mtime);
   }
 }
