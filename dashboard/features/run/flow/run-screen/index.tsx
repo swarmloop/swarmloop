@@ -79,6 +79,8 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         <TaskLayers
           layers={flow.tasks}
           line={flow.taskLine}
+          mergeQueue={flow.mergeQueue}
+          decisions={flow.decisions}
           onSkip={(taskId) =>
             void skipTask(flow.key, taskId).catch((reason: unknown) =>
               setError(reason instanceof Error ? reason.message : 'Skip task failed.'),

@@ -17,7 +17,14 @@ import { git, gitDetail } from '../../git/git';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { RebasedPublisher } from '../shared/rebased-publisher';
-import { pipelineAnswers, returnedNotes, textDocument, withHandoff } from '../shared/handoff';
+import {
+  pipelineAnswers,
+  returnedNotes,
+  textDocument,
+  withContract,
+  withHandoff,
+  withSubtasks,
+} from '../shared/handoff';
 import { parseSummary, skillPrompt } from '../shared/skill-prompt';
 import { bulletList, items, section } from '../shared/markdown-section';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
@@ -125,10 +132,13 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       };
     }
     const notes = await returnedNotes(this.documents, ctx.opened.run.id);
-    const sections = withHandoff(
-      withReturnNotes([{ heading: 'Plan', body: plan }], notes),
-      await ctx.reread(ARTIFACTS.handoff),
-    );
+    const merged = ctx.opened.run.split
+      ? withSubtasks(withContract([], await ctx.reread(ARTIFACTS.contract)), await ctx.reread(ARTIFACTS.subtasks))
+      : [];
+    const sections = [
+      ...withHandoff(withReturnNotes([{ heading: 'Plan', body: plan }], notes), await ctx.reread(ARTIFACTS.handoff)),
+      ...merged,
+    ];
     const branch = branchName(key, summaryForBranch(input.requirements, key));
     const markerBody = ((await ctx.reread(ARTIFACTS.rebaseConflict)) ?? '').trim();
     const marker = markerBody.split('\n')[0]?.trim() ?? '';
@@ -136,7 +146,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const full = skillPrompt('implement', input.requirements, names, sections, mounts, { deferExecutionRules: true });
     const added = await ctx.reread(ARTIFACTS.addedRepos);
     const continued = await resumableChat(root(this.config), key, 'implement', this.profile(this.config.env).runtime);
-    const basePrompt = withAddedRepos(continued?.chatId ? implementFollowUp(plan, notes) : full, added);
+    const basePrompt = withAddedRepos(continued?.chatId ? implementFollowUp(plan, notes, merged) : full, added);
     const settled = await this.settleRebase(input.requirements, ctx, marker, names, branch, storedStderr);
     if (settled) {
       return settled;

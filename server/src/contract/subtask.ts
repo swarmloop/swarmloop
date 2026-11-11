@@ -80,3 +80,12 @@ export function statusLine(tasks: Subtask[]): string {
   }
   return parts.join(' · ');
 }
+
+/** `Split: 7 tasks · 5 merged · 2 running`. The running count is left out when no task runs. */
+export function splitLine(tasks: Subtask[]): string {
+  const running = tasks.filter((task) => task.status === 'running').length;
+  const merged = tasks.filter((task) => task.status === 'merged').length;
+  return ['Split: ' + tasks.length + ' tasks', `${merged} merged`, ...(running > 0 ? [`${running} running`] : [])].join(
+    ' · ',
+  );
+}

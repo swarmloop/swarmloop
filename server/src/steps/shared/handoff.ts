@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { DocumentDraft } from '../../history/visit';
 import { CODE_REVIEWERS } from '../../contract/steps';
+import type { Subtask } from '../../contract/subtask';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 import type { Issue } from '../contract/step-contract';
 
@@ -60,6 +61,25 @@ export function withContract(
   contract: string | null,
 ): { heading: string; body: string }[] {
   return contract?.trim() ? [...sections, { heading: 'Contract', body: contract }] : sections;
+}
+
+/** The `Subtasks` section: per task its title, what it changed and its files. Left out when the run has no tasks. */
+export function withSubtasks(
+  sections: { heading: string; body: string }[],
+  tasks: Subtask[] | null,
+  lead?: string,
+): { heading: string; body: string }[] {
+  if (!tasks?.length) {
+    return sections;
+  }
+  const entries = tasks.map((task) =>
+    [
+      `- ${task.title}`,
+      `  changed: ${[task.description, task.note].filter((part) => part?.trim()).join(' ')}`,
+      `  files: ${task.files.join(', ')}`,
+    ].join('\n'),
+  );
+  return [...sections, { heading: 'Subtasks', body: [lead, ...entries].filter(Boolean).join('\n') }];
 }
 
 /** The contract with a decision added under `decisions:`. The heading is created when the contract has none. */

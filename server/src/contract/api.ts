@@ -42,7 +42,16 @@ export interface LaunchView {
 /** The tasks that can start together once the layers before them are done. */
 export interface TaskLayer {
   layer: number;
-  tasks: { id: string; title: string; files: string[]; proof: string; status: SubtaskStatus; note?: string }[];
+  tasks: {
+    id: string;
+    title: string;
+    files: string[];
+    proof: string;
+    status: SubtaskStatus;
+    note?: string;
+    /** The subtask's own run, once it has started. */
+    run?: { key: string; currentStep: string; usd: number; durationMs: number };
+  }[];
 }
 
 export interface FlowView {
@@ -58,8 +67,12 @@ export interface FlowView {
   startedBy?: string;
   /** The tasks of a split plan after plan-improve, by dependency layer. Missing when the run does not split. */
   tasks?: TaskLayer[];
-  /** `4/7 merged · 2 running · 1 waiting`, once the run is at implement or past it. Missing when the run does not split. */
+  /** `Split: 7 tasks · 5 merged · 2 running`, once the run is at implement or past it. Missing when the run does not split. */
   taskLine?: string;
+  /** The tasks that are done with green CI and wait for their merge, in plan order. */
+  mergeQueue?: { id: string; title: string }[];
+  /** The `decisions:` the planner gave in the contract. Missing when there are none. */
+  decisions?: string;
   resume: 'ready' | 'need-answers' | 'running' | 'blocked' | 'done';
   state: RunState;
   stateReason: StateReason | null;

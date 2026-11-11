@@ -22,7 +22,11 @@ export function rebaseConflictPrompt(input: {
   ].join('\n');
 }
 
-export function implementFollowUp(plan: string, notes: string | null): string {
+export function implementFollowUp(
+  plan: string,
+  notes: string | null,
+  context: { heading: string; body: string }[] = [],
+): string {
   const lines = [
     'Implement this approved checklist in the mounted worktree. Read a file before editing it.',
     'Do only that checklist. Context from earlier may change how an item is done. Do not start work that belongs to another ticket.',
@@ -41,6 +45,9 @@ export function implementFollowUp(plan: string, notes: string | null): string {
         ? 'A pipeline return is a test that failed on this commit. Change the code or that test. Do not leave the files as they are. Do not add a mechanism it did not name.'
         : 'The return is one list. Fix what it names, and do not undo what it says holds. Do not add a mechanism it did not name. In the summary, say that behavior now holds.',
     );
+  }
+  for (const { heading, body } of context) {
+    lines.push('', `${heading}:`, body.trim());
   }
   lines.push('', 'End with these sections:', 'implementation:', '- item', '', 'summary:', '- why');
   return lines.join('\n');
