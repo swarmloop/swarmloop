@@ -131,6 +131,7 @@ export class VisitRepository {
         memPeak: stats.memPeak,
         resumed: visit.resumed ? 1 : 0,
         preparedMs: visit.preparedMs ?? null,
+        shellEdits: visit.shellEdits ?? 0,
         attemptId,
       }),
     );

@@ -226,6 +226,10 @@ export class StepStatEntity {
   /** What the run waited for between the end of the visit before and this visit's first event. Null for the first visit. */
   @Column({ name: 'prepared_ms', type: 'integer', nullable: true })
   preparedMs!: number | null;
+
+  /** Bash tool calls of the visit that changed files through a script or `sed -i`. */
+  @Column({ name: 'shell_edits', type: 'integer', default: 0 })
+  shellEdits!: number;
 }
 
 @Entity('resource_samples')

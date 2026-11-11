@@ -432,6 +432,8 @@ export interface StatsRun {
   outcome: RunOutcome;
   usd: number;
   returns: number;
+  /** Bash tool calls of the run that changed files through a script or `sed -i`. */
+  shellEdits: number;
   durationMs: number;
   createdAt: string;
 }

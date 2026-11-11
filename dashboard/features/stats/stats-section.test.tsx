@@ -110,6 +110,16 @@ describe('StatsSection', () => {
     expect(push).toHaveBeenCalledWith('/runs/run-a');
   });
 
+  it('shows the edits each run made through the shell, sortable', async () => {
+    renderSection();
+    const user = userEvent.setup();
+    const table = await screen.findByRole('region', { name: 'Runs' });
+    await user.click(within(table).getByRole('button', { name: 'Edits through the shell' }));
+    const first = within(table).getAllByRole<HTMLTableRowElement>('row')[1];
+    expect(first.cells[0].textContent).toBe('Add a stats page');
+    expect(first.cells[4].textContent).toBe('7');
+  });
+
   it('shows only the runs of a day picked on the chart, until it is cleared', async () => {
     renderSection();
     const user = userEvent.setup();

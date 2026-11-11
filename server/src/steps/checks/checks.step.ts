@@ -60,18 +60,23 @@ export class ChecksStep extends BaseStep<typeof INPUTS> {
         return { ...checkRepeatedBlock(opened.startedAt, this.name, error), visit: { samples } };
       }
       if (error instanceof RequiredCheckFailed) {
-        return this.returned(opened, error.message, samples);
+        return this.returned(opened, error, samples);
       }
       throw error;
     }
   }
 
   /** The failed commands go back to implement as one issue; the `return` notes are stored with the failures. */
-  private async returned(opened: StepContext['opened'], body: string, samples: SampleDraft[]): Promise<StepResult> {
+  private async returned(
+    opened: StepContext['opened'],
+    error: RequiredCheckFailed,
+    samples: SampleDraft[],
+  ): Promise<StepResult> {
     const { run } = opened;
     run.attemptsChecks += 1;
     await this.events.recordLoop(run, 'checks', run.attemptsChecks, 'required checks failed');
-    const issues = [issueOf('checks', 'required checks failed', body)];
+    const body = error.message;
+    const issues = [issueOf('checks', 'required checks failed', body, error.failed)];
     return {
       route: { to: 'return', step: 'implement', issues },
       summary: `${opened.startedAt} checks waiting\n${body}`,

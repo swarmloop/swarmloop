@@ -11,13 +11,8 @@ import type { CheckCommandEntity, RunEntity } from '../history/entities';
 import type { SampleDraft } from '../history/visit';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import { commitFiles, makeRepo, runGit, writeFiles } from '../git/git-repo.spec-helpers';
-import {
-  ENVIRONMENT,
-  type EnvironmentRecord,
-  ProjectEnvironments,
-  RequiredCheckFailed,
-  RequiredCheckRepeated,
-} from './project-environments';
+import type { EnvironmentRecord } from './environment-types';
+import { ENVIRONMENT, ProjectEnvironments, RequiredCheckFailed, RequiredCheckRepeated } from './project-environments';
 
 const manifest = {
   version: 1,
@@ -508,6 +503,57 @@ describe('ProjectEnvironments checks', () => {
     expect(returned[0].body.match(/required check failed \(exit 1\)/g)).toHaveLength(3);
     expect(rows.filter((row) => row.status === 'failed').map((row) => row.command)).toEqual([...failing]);
     expect(rows.filter((row) => row.status === 'passed')).toHaveLength(9);
+  });
+
+  it('carries the failed commands as data on RequiredCheckFailed', async () => {
+    const { service, input } = setup({
+      config: { ...manifest, checks: ['npm test', 'npm run lint'] },
+      checkExit: (command) => (command === 'npm run lint' ? 1 : 0),
+    });
+    const error = (await service.check(input).catch((caught: unknown) => caught)) as RequiredCheckFailed;
+    expect(error.failed).toEqual([
+      {
+        repo: basename(input.mounts[0].hostPath),
+        command: 'npm run lint',
+        tail: expect.stringContaining('$ npm run lint') as string,
+      },
+    ]);
+  });
+
+  describe('rerun', () => {
+    const commands = ['npm test', 'npm run lint', 'npm run types'];
+    const config = { ...manifest, checks: commands };
+
+    it('runs only the named commands the project still lists, and records nothing', async () => {
+      const { service, input, spawned, stored, rows } = setup({ config });
+      const repo = basename(input.mounts[0].hostPath);
+      await service.prepare(input);
+      const known = { rows: rows.length, stored: stored.length, spawned: spawned.length };
+      const red = await service.rerun(input, [
+        { repo, command: 'npm run lint', tail: '' },
+        { repo, command: 'npm run removed', tail: '' },
+        { repo: 'other-repo', command: 'npm test', tail: '' },
+      ]);
+      expect(red).toEqual([]);
+      expect(spawned.slice(known.spawned).map((launch) => launch.project?.shell)).toEqual(['npm run lint']);
+      expect(spawned.at(-1)?.allowHosts).toEqual([]);
+      expect({ rows: rows.length, stored: stored.length }).toEqual({ rows: known.rows, stored: known.stored });
+    });
+
+    it('returns the commands that are still red with their new tail', async () => {
+      const { service, input } = setup({
+        config,
+        checkExit: (command) => (command === 'npm run types' ? 1 : 0),
+      });
+      const repo = basename(input.mounts[0].hostPath);
+      const red = await service.rerun(
+        input,
+        commands.map((command) => ({ repo, command, tail: 'old' })),
+      );
+      expect(red).toEqual([
+        { repo, command: 'npm run types', tail: expect.stringContaining('$ npm run types') as string },
+      ]);
+    });
   });
 
   it('never has more check containers alive than CHECKS_PARALLEL', async () => {

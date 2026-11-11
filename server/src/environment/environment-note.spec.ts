@@ -1,5 +1,5 @@
 import { environmentNote, withEnvironment } from './environment-note';
-import type { EnvironmentRecord } from './project-environments';
+import type { EnvironmentRecord } from './environment-types';
 
 const record: EnvironmentRecord = {
   repo: 'shop',

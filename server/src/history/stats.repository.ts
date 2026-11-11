@@ -18,6 +18,7 @@ export type StatsStepRow = Pick<
   | 'tokensOut'
   | 'durationMs'
   | 'finishedAt'
+  | 'shellEdits'
 >;
 export type StatsLoopRow = Pick<LoopEventEntity, 'runId' | 'counter' | 'reason' | 'createdAt'>;
 
@@ -74,6 +75,7 @@ export class StatsRepository {
         tokensOut: true,
         durationMs: true,
         finishedAt: true,
+        shellEdits: true,
       },
       where: scope,
     });

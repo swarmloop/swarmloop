@@ -19,6 +19,7 @@ function step(runId: number, name: string, usd: number, finishedAt: string, extr
     tokensOut: usd > 0 ? 100 : 0,
     durationMs: 60_000,
     finishedAt,
+    shellEdits: 0,
     ...extra,
   };
 }
@@ -126,6 +127,22 @@ describe('buildStats', () => {
       { returns: '3', runs: 0 },
       { returns: '4+', runs: 0 },
     ]);
+  });
+
+  it('sums the edits through the shell of every step of a run', () => {
+    const data = rows();
+    data.steps = [
+      step(1, 'implement', 2.5, '2026-11-08T11:00:00.000Z', { shellEdits: 4 }),
+      step(1, 'implement', 0.5, '2026-11-08T12:00:00.000Z', { shellEdits: 3 }),
+      step(3, 'plan', 1, '2026-11-10T08:30:00.000Z'),
+    ];
+    const stats = buildStats(data, durations, NOW, { days: 7, tzOffset: WARSAW });
+    expect(Object.fromEntries(stats.runs.map((run) => [run.key, run.shellEdits]))).toEqual({
+      'run-a': 7,
+      'run-b': 0,
+      'run-c': 0,
+      'run-d': 0,
+    });
   });
 
   it('ranks where the money went and leaves out steps that spent nothing', () => {

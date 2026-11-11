@@ -18,6 +18,7 @@ import { ChecksStep1795000000000 } from './1795000000000-checks-step';
 import { PreparedMs1795100000000 } from './1795100000000-prepared-ms';
 import { Connections1795200000000 } from './1795200000000-connections';
 import { MergeOutcome1795200000000 } from './1795200000000-merge-outcome';
+import { ShellEdits1795200000000 } from './1795200000000-shell-edits';
 
 // To add a migration: run `npm run migration:generate -- src/history/migrations/<name>`, export the generated class
 // from its own file, and append it here. Migrations run in list order at startup.
@@ -42,4 +43,5 @@ export const migrations = [
   PreparedMs1795100000000,
   Connections1795200000000,
   MergeOutcome1795200000000,
+  ShellEdits1795200000000,
 ];
