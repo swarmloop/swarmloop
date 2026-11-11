@@ -4,6 +4,8 @@ import type { CodeHostEnv } from '../abstract-code-host';
 import { GithubCodeHost } from './github-code-host';
 
 const TOKEN = 'super-secret-token';
+/** The check runs and commit statuses of a commit that has none. */
+const QUIET = [{ check_runs: [] }, { statuses: [] }];
 
 describe('github host', () => {
   const original = global.fetch;
@@ -97,19 +99,25 @@ describe('github host', () => {
           { id: 5, name: 'lint', conclusion: 'success' },
         ],
       },
+      ...QUIET,
       'assertion failed',
     ]);
     const host = service();
     const pipeline = await host.readBranchPipeline({ project: 'acme/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' });
+    const jobs = [{ id: 4, name: 'test', stage: '', status: 'failed', allowFailure: false }];
+    const url = 'https://github.com/acme/demo/actions/runs/9';
     expect(pipeline.snapshot).toEqual({
       id: 9,
       status: 'failed',
-      url: 'https://github.com/acme/demo/actions/runs/9',
-      jobs: [{ id: 4, name: 'test', stage: '', status: 'failed', allowFailure: false }],
+      url,
+      jobs,
+      runs: [{ id: 9, status: 'failed', url, jobs }],
+      checks: [],
+      awaiting: [],
     });
     const trace = await host.readJobTrace('acme/demo', 4);
     expect(trace.trace).toBe('assertion failed');
-    expect(seen[2]?.url).toBe('https://api.github.com/repos/acme/demo/actions/jobs/4/logs');
+    expect(seen[4]?.url).toBe('https://api.github.com/repos/acme/demo/actions/jobs/4/logs');
   });
 
   it('cancels an actions run', async () => {
@@ -159,6 +167,7 @@ describe('github host', () => {
           { id: 4, name: 'd', status: 'completed', conclusion: 'failure' },
         ],
       },
+      ...QUIET,
     ]);
     const pipeline = await service().readBranchPipeline({
       project: 'acme/demo',
@@ -241,6 +250,7 @@ describe('github host', () => {
           { id: 5, name: 'lint', conclusion: 'success' },
         ],
       },
+      ...QUIET,
       'canceled before the tests',
     ]);
     const host = service();
@@ -251,13 +261,14 @@ describe('github host', () => {
     ]);
     const trace = await host.readJobTrace('acme/demo', 4);
     expect(trace.trace).toBe('canceled before the tests');
-    expect(seen[2]?.url).toBe('https://api.github.com/repos/acme/demo/actions/jobs/4/logs');
+    expect(seen[4]?.url).toBe('https://api.github.com/repos/acme/demo/actions/jobs/4/logs');
   });
 
   it('keeps the name of an in-progress job', async () => {
     mockFetch([
       { workflow_runs: [{ id: 9, status: 'in_progress', html_url: 'https://github.com/acme/demo/actions/runs/9' }] },
       { jobs: [{ id: 4, name: 'test', status: 'in_progress', conclusion: null }] },
+      ...QUIET,
     ]);
     const pipeline = await service().readBranchPipeline({ project: 'acme/demo', ref: 'feature/PROJ-1-ship' });
     expect(pipeline.snapshot?.status).toBe('running');
@@ -273,8 +284,7 @@ describe('github host', () => {
     const pipeline = await service().readBranchPipeline({ project: 'acme/demo', ref: 'feature/PROJ-1-ship' }, false);
     expect(pipeline.snapshot?.status).toBe('running');
     expect(pipeline.snapshot?.jobs).toEqual([]);
-    expect(seen).toHaveLength(1);
-    expect(seen[0]?.url).not.toContain('/jobs');
+    expect(seen.some((call) => call.url.includes('/jobs'))).toBe(false);
   });
 
   it('still lists failed jobs when the running list is skipped', async () => {
@@ -291,6 +301,7 @@ describe('github host', () => {
         ],
       },
       { jobs: [{ id: 4, name: 'test', conclusion: 'failure' }] },
+      ...QUIET,
     ]);
     const pipeline = await service().readBranchPipeline(
       { project: 'acme/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' },
@@ -300,6 +311,180 @@ describe('github host', () => {
       { id: 4, name: 'test', stage: '', status: 'failed', allowFailure: false },
     ]);
     expect(seen[1]?.url).toContain('/actions/runs/9/jobs');
+  });
+
+  describe('every check of the commit', () => {
+    const ref = { project: 'acme/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' };
+    const run = (id: number, name: string, conclusion: string, extra: object = {}) => ({
+      id,
+      name,
+      head_sha: 'abc',
+      status: 'completed',
+      conclusion,
+      html_url: `https://github.com/acme/demo/actions/runs/${id}`,
+      check_suite_id: id * 10,
+      ...extra,
+    });
+    const checkRun = (id: number, name: string, conclusion: string, extra: object = {}) => ({
+      id,
+      name,
+      status: 'completed',
+      conclusion,
+      app: { name: 'CodeQL' },
+      html_url: `https://github.com/acme/demo/runs/${id}`,
+      ...extra,
+    });
+    const scanning = (extra: object = {}) => checkRun(71, 'Code scanning results', 'failure', extra);
+
+    it('does not take the first run as the result when a second workflow fails later', async () => {
+      mockFetch([
+        { workflow_runs: [run(10, 'CodeQL', 'success', { event: 'dynamic' }), run(9, 'ci', 'failure')] },
+        { jobs: [] },
+        { jobs: [{ id: 4, name: 'lint', conclusion: 'failure' }] },
+        { check_runs: [] },
+        { statuses: [] },
+      ]);
+      const { snapshot } = await service().readBranchPipeline(ref);
+      expect(snapshot?.status).toBe('failed');
+      expect(snapshot?.id).toBe(9);
+      expect(snapshot?.runs.map((item) => item.id)).toEqual([10, 9]);
+      expect(snapshot?.jobs).toEqual([{ id: 4, name: 'ci / lint', stage: '', status: 'failed', allowFailure: false }]);
+    });
+
+    it('reads a failed code scanning check with every annotation and its summary', async () => {
+      const seen = mockFetch([
+        { workflow_runs: [run(9, 'ci', 'success')] },
+        { jobs: [] },
+        {
+          check_runs: [
+            checkRun(5, 'lint', 'success', { check_suite: { id: 90 }, app: { name: 'GitHub Actions' } }),
+            scanning({ output: { summary: '2 new alerts' } }),
+          ],
+        },
+        { statuses: [] },
+        [
+          { path: 'src/a.ts', start_line: 3, annotation_level: 'failure', title: 'Path injection', message: 'first' },
+          { path: 'src/b.ts', start_line: 8, annotation_level: 'warning', title: 'Taint', message: 'second' },
+        ],
+      ]);
+      const { snapshot } = await service().readBranchPipeline(ref);
+      expect(snapshot?.status).toBe('failed');
+      expect(snapshot?.id).toBe(71);
+      expect(snapshot?.checks.map((check) => [check.name, check.workflow])).toEqual([
+        ['ci / lint', true],
+        ['Code scanning results', false],
+      ]);
+      const failed = snapshot?.checks[1];
+      expect(failed?.summary).toBe('2 new alerts');
+      expect(failed?.annotations.map((note) => `${note.path}:${note.line} ${note.message}`)).toEqual([
+        'src/a.ts:3 first',
+        'src/b.ts:8 second',
+      ]);
+      expect(seen[2]?.url).toContain('/commits/abc/check-runs?filter=latest&per_page=100');
+      expect(seen[4]?.url).toContain('/check-runs/71/annotations');
+    });
+
+    it('returns red for a failed commit status of another app', async () => {
+      mockFetch([
+        { workflow_runs: [run(9, 'ci', 'success')] },
+        { jobs: [] },
+        { check_runs: [] },
+        {
+          statuses: [
+            { id: 5, state: 'failure', context: 'deploy/preview', description: 'build broke', target_url: 'https://x' },
+          ],
+        },
+      ]);
+      const { snapshot } = await service().readBranchPipeline(ref);
+      expect(snapshot?.status).toBe('failed');
+      expect(snapshot?.checks).toMatchObject([{ name: 'deploy/preview', status: 'failed', summary: 'build broke' }]);
+    });
+
+    it('stays running while a commit status is pending', async () => {
+      mockFetch([
+        { workflow_runs: [run(9, 'ci', 'success')] },
+        { jobs: [] },
+        { check_runs: [] },
+        { statuses: [{ id: 5, state: 'pending', context: 'deploy/preview' }] },
+      ]);
+      expect((await service().readBranchPipeline(ref)).snapshot?.status).toBe('running');
+    });
+
+    it('is green when every check is success, neutral or skipped', async () => {
+      mockFetch([
+        { workflow_runs: [run(9, 'ci', 'success'), run(8, 'docs', 'skipped')] },
+        { jobs: [] },
+        { jobs: [] },
+        {
+          check_runs: [checkRun(71, 'Code scanning results', 'neutral'), checkRun(72, 'extra', 'skipped')],
+        },
+        { statuses: [{ id: 5, state: 'success', context: 'deploy/preview' }] },
+      ]);
+      const { snapshot } = await service().readBranchPipeline(ref);
+      expect(snapshot?.status).toBe('success');
+      expect(snapshot?.awaiting).toEqual([]);
+    });
+
+    it('follows every page of check runs', async () => {
+      const page = Array.from({ length: 100 }, (_, index) => checkRun(100 + index, `c${index}`, 'success'));
+      const seen = mockFetch([
+        { workflow_runs: [run(9, 'ci', 'success')] },
+        { jobs: [] },
+        { check_runs: page },
+        { check_runs: [checkRun(300, 'last', 'success')] },
+        { statuses: [] },
+      ]);
+      const { snapshot } = await service().readBranchPipeline(ref);
+      expect(snapshot?.checks).toHaveLength(101);
+      expect(seen[3]?.url).toContain('page=2');
+    });
+
+    it('waits for the code scanning check that CodeQL default setup starts after its run', async () => {
+      mockFetch([
+        { workflow_runs: [run(10, 'CodeQL', 'success', { event: 'dynamic', pull_requests: [{ number: 1 }] })] },
+        { jobs: [] },
+        { check_runs: [] },
+        { statuses: [] },
+      ]);
+      const { snapshot } = await service().readBranchPipeline(ref);
+      expect(snapshot?.status).toBe('success');
+      expect(snapshot?.awaiting).toEqual(['Code scanning results']);
+    });
+
+    it('awaits nothing once the code scanning check exists or the CodeQL run failed', async () => {
+      mockFetch([
+        { workflow_runs: [run(10, 'CodeQL', 'success', { event: 'dynamic' })] },
+        { jobs: [] },
+        { check_runs: [checkRun(71, 'Code scanning results', 'success')] },
+        { statuses: [] },
+      ]);
+      expect((await service().readBranchPipeline(ref)).snapshot?.awaiting).toEqual([]);
+      mockFetch([
+        { workflow_runs: [run(10, 'CodeQL', 'failure', { event: 'dynamic' })] },
+        { jobs: [] },
+        { check_runs: [] },
+        { statuses: [] },
+      ]);
+      expect((await service().readBranchPipeline(ref)).snapshot?.awaiting).toEqual([]);
+    });
+
+    it('does not wait for code scanning after a dynamic run that is not CodeQL or has no pull request', async () => {
+      const quiet = [{ jobs: [] }, { check_runs: [] }, { statuses: [] }];
+      mockFetch([
+        { workflow_runs: [run(10, 'Copilot', 'success', { event: 'dynamic', pull_requests: [{}] })] },
+        ...quiet,
+      ]);
+      expect((await service().readBranchPipeline(ref)).snapshot?.awaiting).toEqual([]);
+      mockFetch([{ workflow_runs: [run(10, 'CodeQL', 'success', { event: 'dynamic', pull_requests: [] })] }, ...quiet]);
+      expect((await service().readBranchPipeline(ref)).snapshot?.awaiting).toEqual([]);
+    });
+
+    it('reports a commit that has an app check and no workflow run', async () => {
+      mockFetch([{ workflow_runs: [] }, { check_runs: [scanning()] }, { statuses: [] }, []]);
+      const { snapshot } = await service().readBranchPipeline(ref);
+      expect(snapshot?.runs).toEqual([]);
+      expect(snapshot?.status).toBe('failed');
+    });
   });
 
   it('names a rejected token', async () => {

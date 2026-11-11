@@ -3,13 +3,24 @@ import type { HttpCallDraft } from '../../../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
 import { request } from '../../http';
 import { remoteProject } from '../remote-project';
+import { snapshotOf } from '../check-status';
+import {
+  asJob,
+  jobCheck,
+  jobScopes,
+  pipelineStatus,
+  statusCheck,
+  type GitlabJob,
+  type GitlabStatus,
+} from './gitlab-checks';
 import { AbstractCodeHost, type CodeHostEnv } from '../abstract-code-host';
 import type {
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
-  PipelineJob,
+  PipelineCheck,
   PipelineRef,
+  PipelineRun,
   PipelineSnapshot,
   PipelineDiagnosis,
   SelectedHost,
@@ -33,15 +44,6 @@ interface GitlabPipeline {
   web_url?: string;
   failure_reason?: string;
   yaml_errors?: string;
-}
-
-interface GitlabJob {
-  id?: number;
-  name?: string;
-  stage?: string;
-  status?: string;
-  allow_failure?: boolean;
-  retried?: boolean;
 }
 
 export class GitlabCodeHost extends AbstractCodeHost {
@@ -90,31 +92,53 @@ export class GitlabCodeHost extends AbstractCodeHost {
     try {
       const { root: base, headers } = this.credentials();
       const project = encodeURIComponent(ref.project);
-      const list = await this.readJson(
-        `${base}/api/v4/projects/${project}/pipelines?ref=${encodeURIComponent(ref.ref)}&per_page=100&order_by=id&sort=desc`,
+      const newest = await this.readJson(
+        `${base}/api/v4/projects/${project}/pipelines?ref=${encodeURIComponent(ref.ref)}${ref.sha ? `&sha=${encodeURIComponent(ref.sha)}` : ''}&per_page=100&order_by=id&sort=desc`,
         headers,
         calls,
         undefined,
         'gitlab pipeline failed',
       );
-      const id = newestPipeline(list, ref.sha ?? '');
-      if (!id) {
-        return { snapshot: null, httpCalls: calls };
+      const pipelines = pipelinesOf(newest, ref.sha ?? '');
+      const sha = ref.sha || pipelines[0]?.sha;
+      const runs: PipelineRun[] = [];
+      const checks: PipelineCheck[] = [];
+      const jobIds = new Set<number>();
+      for (const { id } of pipelines) {
+        const detail = (await this.readJson(
+          `${base}/api/v4/projects/${project}/pipelines/${id}`,
+          headers,
+          calls,
+          undefined,
+          'gitlab pipeline failed',
+        )) as GitlabPipeline;
+        const rows = (await this.allPages(
+          `${base}/api/v4/projects/${project}/pipelines/${id}/jobs?include_retried=false`,
+          headers,
+          calls,
+        )) as GitlabJob[];
+        const scopes = jobScopes(detail.status ?? '');
+        const listed = scopes && (jobs || scopes.includes('failed')) ? rows.flatMap((row) => asJob(row) ?? []) : [];
+        rows.forEach((row) => jobIds.add(row.id ?? 0));
+        checks.push(...rows.filter((row) => row.retried !== true).map(jobCheck));
+        runs.push({
+          id: id as number,
+          status: pipelineStatus(detail.status),
+          url: detail.web_url ?? '',
+          jobs: listed.filter(
+            (job, at) => scopes?.includes(job.status) && listed.findIndex((j) => j.id === job.id) === at,
+          ),
+        });
       }
-      const detail = (await this.readJson(
-        `${base}/api/v4/projects/${project}/pipelines/${id}`,
-        headers,
-        calls,
-        undefined,
-        'gitlab pipeline failed',
-      )) as GitlabPipeline;
-      const status = detail.status ?? '';
-      const scopes = jobScopes(status);
-      const listed =
-        scopes && (jobs || scopes.includes('failed'))
-          ? await this.failedJobs(base, headers, project, id, scopes, calls)
-          : [];
-      return { snapshot: { id, status, url: detail.web_url ?? '', jobs: listed }, httpCalls: calls };
+      if (sha) {
+        const statuses = (await this.allPages(
+          `${base}/api/v4/projects/${project}/repository/commits/${encodeURIComponent(sha)}/statuses`,
+          headers,
+          calls,
+        )) as GitlabStatus[];
+        checks.push(...statuses.filter((row) => !jobIds.has(row.id ?? 0)).map(statusCheck));
+      }
+      return { snapshot: snapshotOf(runs, checks, []), httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }
@@ -288,88 +312,34 @@ export class GitlabCodeHost extends AbstractCodeHost {
     }
   }
 
-  private async failedJobs(
-    base: string,
-    headers: Record<string, string>,
-    project: string,
-    pipelineId: number,
-    scopes: string[],
-    calls: HttpCallDraft[],
-  ): Promise<PipelineJob[]> {
-    const jobs: PipelineJob[] = [];
-    const seen = new Set<number>();
+  /** Every row of a list, following the pages GitLab announces. */
+  private async allPages(url: string, headers: Record<string, string>, calls: HttpCallDraft[]): Promise<unknown[]> {
+    const rows: unknown[] = [];
     for (let page = 1; page <= 10; page += 1) {
-      const params = new URLSearchParams();
-      params.set('per_page', '100');
-      params.set('page', String(page));
-      params.set('include_retried', 'false');
-      for (const scope of scopes) {
-        params.append('scope[]', scope);
-      }
-      const url = `${base}/api/v4/projects/${project}/pipelines/${pipelineId}/jobs?${params.toString()}`;
-      const response = await request(this.clock, url, headers, calls);
+      const joiner = url.includes('?') ? '&' : '?';
+      const response = await request(this.clock, `${url}${joiner}per_page=100&page=${page}`, headers, calls);
       this.assertStatus(response, calls, 'gitlab pipeline failed');
       const body = this.parseJson(response.body, calls);
       if (!Array.isArray(body)) {
         throw new FetchFailed('gitlab pipeline failed', calls);
       }
-      for (const row of body) {
-        const job = asJob(row);
-        if (job && !seen.has(job.id)) {
-          seen.add(job.id);
-          jobs.push(job);
-        }
-      }
+      rows.push(...(body as unknown[]));
       if (!response.headers.get('x-next-page')) {
-        return jobs;
+        return rows;
       }
     }
     throw new FetchFailed('gitlab pipeline failed', calls);
   }
 }
 
-function newestPipeline(body: unknown, sha = ''): number | null {
+/** The pipelines of one commit, newest first: those of `sha`, or of the newest pipeline's commit when there is no sha. */
+function pipelinesOf(body: unknown, sha: string): GitlabPipeline[] {
   if (!Array.isArray(body)) {
     throw new SwarmloopError('gitlab pipeline failed');
   }
-  const ids = body
-    .map((item) => item as GitlabPipeline | null)
-    .filter((item) => item?.id && (!sha || item.sha === sha))
-    .map((item) => item?.id ?? 0);
-  if (ids.length === 0) {
-    return null;
-  }
-  return Math.max(...ids);
-}
-
-function jobScopes(status: string): string[] | null {
-  if (status === 'success') {
-    return ['failed'];
-  }
-  if (status === 'failed' || status === 'canceled') {
-    return ['failed', 'canceled', 'created', 'pending', 'waiting_for_resource'];
-  }
-  if (status === 'skipped' || status === 'manual' || status === '') {
-    return null;
-  }
-  return ['running', 'pending'];
-}
-
-function asJob(row: unknown): PipelineJob | null {
-  const job = row as GitlabJob | null;
-  if (!job?.id || job.retried === true) {
-    return null;
-  }
-  const canceled = job.status === 'canceled' || job.status === 'cancelled';
-  const status = canceled ? 'canceled' : (job.status ?? 'failed');
-  if (status === 'success' || status === 'skipped' || status === 'manual') {
-    return null;
-  }
-  return {
-    id: job.id,
-    name: job.name ?? String(job.id),
-    stage: job.stage ?? '',
-    status,
-    allowFailure: canceled ? false : job.allow_failure === true,
-  };
+  const rows = (body as (GitlabPipeline | null)[])
+    .filter((item): item is GitlabPipeline => Boolean(item?.id))
+    .sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
+  const head = sha || rows[0]?.sha;
+  return rows.filter((item) => !head || item.sha === head);
 }

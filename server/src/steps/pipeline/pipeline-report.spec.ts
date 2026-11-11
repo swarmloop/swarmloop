@@ -1,24 +1,30 @@
 import {
   cancelErrorNote,
   ciResult,
+  checkFacts,
+  checkTrace,
   classify,
   parsePipelineRefs,
   renderFail,
   renderNone,
   renderPass,
+  verdictOf,
   type Seen,
 } from './pipeline-report';
 
 function item(overrides: Partial<Seen> = {}): Seen {
-  return {
+  const seen = {
     project: 'app',
     id: 5,
     sha: 'abc123',
     url: 'https://ci.example/5',
     status: 'success',
     jobs: [],
+    checks: [],
+    awaiting: [],
     ...overrides,
   };
+  return { runs: [{ id: 5, status: seen.status, url: seen.url, jobs: seen.jobs }], ...seen };
 }
 
 describe('pipeline report', () => {
@@ -45,7 +51,12 @@ describe('pipeline report', () => {
   });
 
   it('renders a cancel note with a placeholder job when none is named', () => {
-    expect(cancelErrorNote([item({ status: 'running' })], ['app: pipeline id is missing'])).toBe(
+    expect(
+      cancelErrorNote(
+        [{ project: 'app', id: 5, status: 'running', url: 'https://ci.example/5', jobs: [] }],
+        ['app: pipeline id is missing'],
+      ),
+    ).toBe(
       'result: fail\nproject: app\npipeline: 5\nurl: https://ci.example/5\njob: running\ncancel: app: pipeline id is missing',
     );
   });
@@ -94,5 +105,51 @@ describe('pipeline report', () => {
       item({ status: 'failed', jobs: [{ id: 1, name: 'a', stage: '', status: 'queued', allowFailure: false }] }),
     ];
     expect(ciResult({ seen, verdict: 'red' })).toBe('did not run: app');
+  });
+
+  describe('checks without a workflow', () => {
+    const check = {
+      id: 31,
+      name: 'Code scanning results',
+      app: 'CodeQL',
+      status: 'failed' as const,
+      durationMs: 0,
+      url: '',
+      summary: '2 alerts',
+      annotations: [
+        { path: 'a.ts', line: 3, level: 'failure', title: 'Injection', message: 'first' },
+        { path: 'b.ts', line: 9, level: 'warning', title: '', message: 'second' },
+      ],
+      workflow: false,
+    };
+
+    it('reads a failed app check as a defect even when a job never started', () => {
+      const queued = { id: 1, name: 'a', stage: '', status: 'queued', allowFailure: false };
+      expect(classify([item({ status: 'failed', jobs: [queued], checks: [check] })])).toBe('failed');
+    });
+
+    it('writes the summary and one line per annotation', () => {
+      expect(checkTrace(check)).toBe('2 alerts\na.ts:3 failure Injection: first\nb.ts:9 warning second');
+    });
+
+    it('renders an app check whole, with its name and app', () => {
+      const lines = Array.from({ length: 300 }, (_, index) => `x.ts:${index} failure t: m`).join('\n');
+      const failure = {
+        project: 'app',
+        pipelineId: 31,
+        name: 'CodeQL / Code scanning results',
+        stage: '',
+        url: '',
+        trace: lines,
+        check: true as const,
+      };
+      expect(renderFail([failure], [item({ status: 'failed' })])).toContain(`\n\n${lines}\n`);
+    });
+
+    it('waits while a check is expected and keeps its checks out of the facts when none were listed', () => {
+      expect(verdictOf([item({ awaiting: ['Code scanning results'] })])).toBe('wait');
+      expect(checkFacts([item()])).toEqual({});
+      expect(checkFacts([item({ checks: [check] })]).checks?.[0]).toMatchObject({ name: 'Code scanning results' });
+    });
   });
 });

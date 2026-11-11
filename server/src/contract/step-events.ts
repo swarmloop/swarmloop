@@ -58,10 +58,24 @@ interface SessionChange {
   reason: 'runtime changed' | 'no stored chat' | 'fresh by step policy' | 'replay' | 'chat state removed' | null;
 }
 
+/** One check of a commit that the pipeline step watched. */
+export interface AttemptCheck {
+  name: string;
+  /** The app or workflow that made it. */
+  app: string;
+  status: 'success' | 'failed' | 'canceled' | 'running' | 'manual' | 'skipped';
+  durationMs: number;
+  url: string;
+  summary: string;
+  annotations: { path: string; line: number; level: string; title: string; message: string }[];
+}
+
 /** What an attempt did, beyond its result line. */
 export interface AttemptFacts {
   /** The checks result, a reviewer's decision, the merge request URL or the job results, one per line. */
   details?: string[];
+  /** Every check of the commit, from the pipeline step. */
+  checks?: AttemptCheck[];
 }
 
 /** The part of an event that depends on its kind. */

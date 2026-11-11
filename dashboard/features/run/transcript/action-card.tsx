@@ -4,6 +4,7 @@ import { duration } from '../../../lib/format';
 import { limitSentence } from '../../../lib/runtime-limit';
 import { loopSentence } from '../../../lib/loop-sentence';
 import { Bubble } from './bubble';
+import { CheckList } from './check-list';
 import { httpAction } from './http-action';
 
 type Activity = Extract<
@@ -59,6 +60,7 @@ export function ActionCard({ event, outcome }: { event: Activity; outcome?: stri
       type={event.kind === 'attempt.interrupted' ? 'warning' : event.route === 'ok' ? 'success' : 'activity'}
     >
       {outcome ?? `${event.route}: ${event.summary}`}
+      {event.kind === 'attempt.finished' && event.facts?.checks ? <CheckList checks={event.facts.checks} /> : null}
     </Bubble>
   );
 }

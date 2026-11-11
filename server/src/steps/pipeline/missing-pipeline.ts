@@ -31,7 +31,7 @@ export async function missingPipeline(input: {
   const conflicts: PipelineRef[] = [];
   let closed = false;
   for (const ref of records.filter((ref) =>
-    seen.some((item) => item.project === ref.project && item.status === 'none'),
+    seen.some((item) => item.project === ref.project && item.runs.length === 0),
   )) {
     notes.push(`project: ${ref.project}`, `ref: ${ref.ref}`, `sha: ${ref.sha ?? 'unknown'}`);
     const diagnosis = await host.diagnoseMissingPipeline?.(ref);
@@ -131,7 +131,7 @@ export async function missingRuns(ctx: StepContext, root: string, seen: Seen[]):
     }
     const project = await originProject(dir);
     const run = project ? seen.find((item) => item.project === project) : undefined;
-    if (!run || run.status === 'none') {
+    if (!run || run.runs.length === 0) {
       missing.push(name);
     }
   }
