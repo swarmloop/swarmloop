@@ -14,7 +14,7 @@ const TEN_MB_LOG = LINE.repeat(Math.ceil((10 * 1024 * 1024) / LINE.length));
 const MIB = 1024 * 1024;
 
 async function withBigRun(
-  test: (queries: RunQueriesService, app: Awaited<ReturnType<typeof boot>>) => Promise<void>,
+  test: (queries: RunQueriesService, app: Awaited<ReturnType<typeof boot>>, root: string) => Promise<void>,
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-answer-size-'));
   const app = await boot(root);
@@ -25,7 +25,7 @@ async function withBigRun(
     await app.get(VisitRepository).saveStat(stat);
     await mkdir(join(root, 'data'), { recursive: true });
     await writeFile(join(root, 'data', 'proj-big-implement-att-1-output.txt'), TEN_MB_LOG);
-    await test(app.get(RunQueriesService), app);
+    await test(app.get(RunQueriesService), app, root);
   } finally {
     await app.close();
     await rm(root, { recursive: true, force: true });
@@ -104,4 +104,21 @@ describe('a run with a 10 MB log', () => {
       expect(history.documents.map((item) => item.kind)).toEqual(['log']);
     });
   });
+
+  it.each(['code-review-quality', 'code-review-security'])(
+    'resolves the attempt file of the stored %s visit and serves it through the log route',
+    async (step) => {
+      await withBigRun(async (queries, app, root) => {
+        const run = await save(app.get(RunRepository), 'proj-angle', 'implement', 'waiting');
+        await app.get(VisitRepository).finishVisit(run, { ...repositoryVisit(), step });
+        await writeFile(join(root, 'data', `proj-angle-${step}-att-9-output.txt`), 'one\ntwo\nthree\n');
+        const visit = (await queries.step('proj-angle', step)).visits[0];
+        expect(visit).toMatchObject({ attemptId: 'att-9', logBytes: 14, logLines: 3 });
+        expect(await queries.stepLog('proj-angle', step, 'att-9')).toBe('one\ntwo\nthree\n');
+        const history = await queries.readHistory('proj-angle');
+        expect(history.stats[0]).toMatchObject({ attemptId: 'att-9', logLines: 3 });
+        await expect(queries.stepLog('proj-angle', step, 'att-8')).rejects.toThrow('not an attempt');
+      });
+    },
+  );
 });

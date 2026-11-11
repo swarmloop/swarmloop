@@ -42,18 +42,28 @@ export function stepOutputPath(root: string, key: string, step: string, attemptI
   if (own && existsSync(own)) {
     return own;
   }
-  const directory = join(root, 'data');
-  const files = existsSync(directory)
-    ? readdirSync(directory)
-        .filter((name) => isAttemptFile(name, key, step))
-        .map((name) => ({ path: join(directory, name), mtimeMs: modifiedAt(join(directory, name)) }))
-        .sort((a, b) => b.mtimeMs - a.mtimeMs)
-    : [];
+  const files = attemptFiles(root, key, step);
   if (files.length > 0) {
-    return attemptId ? null : files[0].path;
+    return attemptId ? null : join(root, 'data', files[0].name);
   }
   const old = outputFileFor(root, key, step, null);
   return existsSync(old) ? old : null;
+}
+
+function attemptFiles(root: string, key: string, step: string): { name: string; mtimeMs: number }[] {
+  const directory = join(root, 'data');
+  return existsSync(directory)
+    ? readdirSync(directory)
+        .filter((name) => isAttemptFile(name, key, step))
+        .map((name) => ({ name, mtimeMs: modifiedAt(join(directory, name)) }))
+        .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    : [];
+}
+
+/** The attempt ids that have an output file for this step, newest first. */
+export function attemptIdsOf(root: string, key: string, step: string): string[] {
+  const prefix = `${key}-${step}-`;
+  return attemptFiles(root, key, step).map((file) => file.name.slice(prefix.length, -'-output.txt'.length));
 }
 
 /** What one attempt of a step wrote. Never the output of two attempts joined. */

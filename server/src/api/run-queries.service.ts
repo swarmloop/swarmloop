@@ -227,6 +227,7 @@ export class RunQueriesService {
     const loops = await this.events.listLoops(run.id);
     const calls = await this.events.listHttpCalls(run.id);
     const launches = await this.flows.listFlows(run.id);
+    const reviewRunning = this.reviewRunning(run);
     return {
       launches: launches.map(launchView),
       documents: documents.filter((document) => document.kind !== 'log' || legacy.includes(document)).map(documentView),
@@ -258,7 +259,10 @@ export class RunQueriesService {
         memory: sample.rssBytes,
       })),
       stats: stats.map((stat) => ({
-        ...visitLogSize(this.config, run, stat.step, stat, documents),
+        ...visitLogSize(this.config, run, stat.step, stat, documents, {
+          latest: stats.filter((item) => item.step === stat.step).at(-1) === stat,
+          reviewRunning,
+        }),
         id: stat.id,
         step: stat.step,
         attempt: stat.attempt,
@@ -283,8 +287,7 @@ export class RunQueriesService {
     const stats = (await this.visits.listStats(run.id)).filter((stat) => stat.step === 'code-review');
     const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
     const kind = `review_${name.slice('code-review-'.length)}`;
-    const parentRunning =
-      (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
+    const parentRunning = this.reviewRunning(run);
     const ownedStats = stats.filter((stat) =>
       documents.some((document) => document.stepStatId === stat.id && document.kind === kind),
     );
@@ -356,6 +359,7 @@ export class RunQueriesService {
     const kinds = [kind, 'error'];
     const exchanges = await this.visits.listExchanges(stats.map((stat) => stat.id));
     const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
+    const parentRunning = this.reviewRunning(run);
     const visits = stats.map((stat, index) => {
       const owned = documents.filter((document) => document.stepStatId === stat.id && document.kind === kind);
       const verdict = reviewDecision(owned.map((item) => item.body).join('\n'));
@@ -376,7 +380,10 @@ export class RunQueriesService {
         memPeak: stat.memPeak,
         killReason: stat.killReason,
         decision: verdict ? `decision: ${verdict}` : decisionLine(owned.map((item) => item.body).join('\n')),
-        ...visitLogSize(this.config, run, name, stat, documents),
+        ...visitLogSize(this.config, run, name, stat, documents, {
+          latest: index === stats.length - 1,
+          reviewRunning: parentRunning,
+        }),
         documents: [
           ...documents.filter((document) => belongsToVisit(document, stat.id, kinds, index === stats.length - 1)),
           ...legacyLogs(documents, stat),
@@ -385,12 +392,15 @@ export class RunQueriesService {
         samples: samplesOf(samples, stat.id),
       };
     });
-    const parentRunning =
-      (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
     if (parentRunning && logStillOpen(stepOutput(root(this.config), run.key, name, run.activeAttempt))) {
       visits.push(this.runningVisit(run, name, stats.at(-1)?.attempt ?? 0, this.live?.samplesOf(run.key, name)));
     }
     return { step: name, ...(await this.meta(run, name)), visits, checks: [] };
+  }
+
+  /** True while the code-review step runs, so its reviewers write the run's active attempt. */
+  private reviewRunning(run: RunEntity): boolean {
+    return (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
   }
 
   private runningVisit(run: RunEntity, name: string, previousAttempt: number, samples?: LiveSample[]): VisitView {
