@@ -1,37 +1,43 @@
 'use client';
 
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import Accordion from '@mui/material/Accordion';
+import AccordionDetails from '@mui/material/AccordionDetails';
+import AccordionSummary from '@mui/material/AccordionSummary';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Chip from '@mui/material/Chip';
 import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
-import ToggleButton from '@mui/material/ToggleButton';
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import type { StepEvent } from '@contract/step-events';
-import { clock } from '../../../lib/format';
 import { ActionCard } from './action-card';
 import { ActivityCard, ReadsCard } from './activity-card';
 import { AgentCard, KillCard, type AgentRole } from './agent-card';
 import type { AgentLog } from './agent-log';
 import { ArtifactCard } from './artifact-card';
+import { foldActions } from './action-rows';
 import { AttemptDivider } from './attempt-divider';
 import { BubbleLayoutProvider, BubbleProvider, useBubbleLayout } from './bubble';
 import { CommandCard } from './command-card';
 import { HandoffCard } from './handoff-card';
 import { InputCard } from './input-card';
 import { IssueCard } from './issue-card';
+import { problemId } from './problem-card';
 import { RADIUS, SIZE, SPACE, useBubbleWidth, useMotionMs } from './tokens';
-import {
-  actorOf,
-  filterEvents,
-  groupByActor,
-  groupByAttempt,
-  type IssueLinks,
-  type TranscriptFilter,
-  type TranscriptItem,
-} from './transcript-model';
+import { actorOf, groupByActor, groupByAttempt, type IssueLinks, type TranscriptItem } from './transcript-model';
 
-const FILTERS: TranscriptFilter[] = ['all', 'inputs', 'actions', 'problems'];
+/** A running step that has been silent for longer than this is said to have no output. */
+const SILENT_MS = 2 * 60_000;
+
+/** `live`, `no output for <n> min`, or nothing when the step is not running. A `now` of 0 means the time is not known. */
+function statusLine(live: boolean, now: number, lastTime: string | undefined): string | null {
+  if (!live) {
+    return null;
+  }
+  const silent = lastTime && now > 0 ? now - Date.parse(lastTime) : 0;
+  return silent > SILENT_MS ? `no output for ${Math.floor(silent / 60_000)} min` : 'live';
+}
 
 /** How far from the bottom the reader still counts as being at the bottom. */
 const BOTTOM_SLACK = 48;
@@ -123,6 +129,7 @@ export function TranscriptFeed({
   agent = null,
   role = null,
   live = false,
+  now = 0,
 }: {
   runKey: string;
   /** What the step recorded. Null while it is read: the feed shows placeholders. */
@@ -135,8 +142,9 @@ export function TranscriptFeed({
   issues?: IssueLinks;
   /** Whether the step is still running, so the feed is still being added to. */
   live?: boolean;
+  /** The time now in ms, to tell how long a running step has been silent. */
+  now?: number;
 }): ReactElement {
-  const [filter, setFilter] = useState<TranscriptFilter>('all');
   const [unseen, setUnseen] = useState(false);
   const width = useBubbleWidth();
   const ms = useMotionMs();
@@ -150,11 +158,11 @@ export function TranscriptFeed({
   const groups = useMemo(
     () =>
       attempts
-        .map((group) => ({ ...group, items: groupByActor(filterEvents(group.items, filter)) }))
-        .filter((group) => group.items.length > 0),
-    [attempts, filter],
+        .map((group) => ({ ...group, rows: foldActions(groupByActor(group.items)) }))
+        .filter((group) => group.rows.length > 0),
+    [attempts],
   );
-  const counts = useMemo(() => FILTERS.map((name) => filterEvents(all, name).length), [all]);
+  const problems = all.filter((item) => item.problem);
   const lastLaunch = useMemo(() => all.filter((item) => item.bubble).at(-1)?.event.eventId, [all]);
   const lastTime = events?.at(-1)?.occurredAt;
 
@@ -210,21 +218,21 @@ export function TranscriptFeed({
               bgcolor: 'background.default',
             }}
           >
-            <ToggleButtonGroup
-              size="small"
-              exclusive
-              value={filter}
-              aria-label="Filter the transcript"
-              onChange={(_, value: TranscriptFilter | null) => setFilter(value ?? 'all')}
-            >
-              {FILTERS.map((name, index) => (
-                <ToggleButton key={name} value={name}>
-                  {`${name} ${counts[index]}`}
-                </ToggleButton>
-              ))}
-            </ToggleButtonGroup>
+            {problems.length > 0 ? (
+              <Chip
+                size="small"
+                color="error"
+                variant="outlined"
+                label={`${problems.length} ${problems.length === 1 ? 'problem' : 'problems'}`}
+                onClick={() =>
+                  document.getElementById(problemId(problems[0].event.eventId))?.scrollIntoView({ block: 'center' })
+                }
+              />
+            ) : (
+              <span />
+            )}
             <Typography variant="caption" color="text.secondary">
-              {live ? 'live' : `not updating${lastTime ? ` since ${clock(lastTime).slice(0, 5)}` : ''}`}
+              {statusLine(live, now, lastTime)}
             </Typography>
           </Box>
           {events === null ? <SkeletonBubbles /> : null}
@@ -233,32 +241,48 @@ export function TranscriptFeed({
               Nothing to show yet
             </Typography>
           ) : null}
-          {groups.map((group) => (
-            <Box key={group.attemptId} sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-              <AttemptDivider group={group} />
-              {group.items.map((item) => (
-                <BubbleProvider
-                  key={item.event.eventId}
-                  value={{
-                    actor: actorOf(item),
-                    time: item.event.occurredAt,
-                    grouped: item.grouped ?? false,
-                    problem: item.problem,
-                    eventId: item.event.eventId,
-                  }}
-                >
-                  <Card
-                    runKey={runKey}
-                    item={item}
-                    issues={issues}
-                    attempt={group.number}
-                    agent={item.event.eventId === lastLaunch ? agent : null}
-                    role={role}
-                  />
-                </BubbleProvider>
-              ))}
-            </Box>
-          ))}
+          {groups.map((group) => {
+            const cardOf = (item: TranscriptItem): ReactElement => (
+              <BubbleProvider
+                key={item.event.eventId}
+                value={{
+                  actor: actorOf(item),
+                  time: item.event.occurredAt,
+                  grouped: item.grouped ?? false,
+                  problem: item.problem,
+                  eventId: item.event.eventId,
+                }}
+              >
+                <Card
+                  runKey={runKey}
+                  item={item}
+                  issues={issues}
+                  attempt={group.number}
+                  agent={item.event.eventId === lastLaunch ? agent : null}
+                  role={role}
+                />
+              </BubbleProvider>
+            );
+            return (
+              <Box key={group.attemptId} sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                <AttemptDivider group={group} />
+                {group.rows.map((row) =>
+                  'run' in row ? (
+                    <Accordion key={row.run.key} disableGutters elevation={0} sx={{ bgcolor: 'transparent' }}>
+                      <AccordionSummary
+                        expandIcon={<ExpandMoreIcon />}
+                      >{`${row.run.items.length} actions`}</AccordionSummary>
+                      <AccordionDetails sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        {row.run.items.map(cardOf)}
+                      </AccordionDetails>
+                    </Accordion>
+                  ) : (
+                    cardOf(row.item)
+                  ),
+                )}
+              </Box>
+            );
+          })}
         </Box>
         {unseen ? (
           <Button

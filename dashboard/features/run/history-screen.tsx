@@ -14,13 +14,13 @@ import Chip from '@mui/material/Chip';
 import Typography from '@mui/material/Typography';
 import { AttemptSelector } from './attempt-selector';
 import { SeriesChart } from './series';
-import { MarkdownBody } from '../../components/ui/markdown-body';
 import { getHistory, getRunLog } from '../../lib/endpoints';
 import { count, duration, memory, money } from '../../lib/format';
 import { documentsByKind, tokensByModel } from './history';
 import { latestPhaseLabels } from './phases';
 import { LOG_CHUNK } from './use-visit-log';
 import { LogTranscript } from './log-transcript';
+import { DocumentBody } from './transcript/document-detail';
 import type { HistoryView } from '@contract/api';
 import { visitKey } from '@contract/visit-key';
 
@@ -89,7 +89,11 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
                   <Typography variant="caption" color="text.secondary">
                     attempt {document.attempt}
                   </Typography>
-                  {kind === 'log' ? <LogTranscript raw={document.body} /> : <MarkdownBody text={document.body} />}
+                  {kind === 'log' ? (
+                    <LogTranscript raw={document.body} />
+                  ) : (
+                    <DocumentBody kind={kind} body={document.body} />
+                  )}
                 </Box>
               ))}
             </AccordionDetails>

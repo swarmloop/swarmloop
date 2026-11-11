@@ -133,7 +133,7 @@ describe('stepText', () => {
       logs: '',
       document: 'picked',
     });
-    assert.deepEqual(stepText('code-review', stored, undefined, []), { logs: 'L1\nL2', document: 'plan' });
+    assert.deepEqual(stepText('code-review', stored, undefined, []), { logs: 'L1\nL2', document: '' });
     assert.deepEqual(stepText('code-review', { ...stored, decision: 'decision: ok' }, undefined, [{ body: 'angle' }]), {
       logs: 'L1\nL2',
       document: 'report\ndecision: ok',
@@ -145,7 +145,7 @@ describe('stepText', () => {
         document: 'one\n\ntwo',
       },
     );
-    assert.deepEqual(stepText('implement', stored, undefined, []), { logs: 'L1\nL2', document: 'plan' });
+    assert.deepEqual(stepText('implement', stored, undefined, []), { logs: 'L1\nL2', document: '' });
   });
 });
 

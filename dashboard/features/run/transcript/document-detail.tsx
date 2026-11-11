@@ -11,7 +11,16 @@ import { RequirementsDetail } from './requirements-detail';
 
 const HISTORY_STALE_MS = 60_000;
 
+/** A value as text a person reads: nested lists and objects as `key: value` parts, never as JSON. */
 function cell(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.map(cell).join(', ');
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value)
+      .map(([key, item]) => `${key}: ${cell(item)}`)
+      .join('; ');
+  }
   return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
@@ -44,7 +53,7 @@ function jsonTable(body: string): ReactElement | null {
 }
 
 /** The document a card points at: the requirements as a structured view, JSON as a table, anything else as markdown. */
-function DocumentBody({ kind, body }: { kind: string; body: string }): ReactElement {
+export function DocumentBody({ kind, body }: { kind: string; body: string }): ReactElement {
   if (kind === 'requirements') {
     return <RequirementsDetail body={body} />;
   }

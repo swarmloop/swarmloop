@@ -9,6 +9,7 @@ const dashboardTestFiles = [
   'dashboard/vitest.*.ts',
   'dashboard/test/fake-socket.ts',
   'dashboard/test/viewport.ts',
+  'dashboard/test/raw-json.ts',
 ];
 const maxLines = (max) => ['error', { max, skipBlankLines: true, skipComments: true }];
 const typedRules = {

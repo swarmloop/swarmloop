@@ -50,6 +50,9 @@ export function summarizeReview(body: string): string {
   return [decision ? `decision: ${decision}` : '', first].filter(Boolean).join(' · ');
 }
 
+/** The kind of the agent log, which old runs stored as a document. */
+export const LOG_KIND = 'log';
+
 /** Every kind a step reads or writes. */
 export const ARTIFACTS = {
   requirements: artifact('requirements', {
@@ -173,7 +176,13 @@ export const ARTIFACTS = {
   }),
   pending: artifact('pending', { writers: ['requirements'], readers: [], summarize: firstLine }),
   error: artifact('error', { writers: [], readers: [], external: true, summarize: firstLine }),
+  log: artifact(LOG_KIND, { writers: [], readers: [], external: true, summarize: firstLine }),
 } as const satisfies Record<string, Artifact<unknown>>;
+
+/** The contract entry of a kind, when it has one. */
+export function artifactOf(kind: string): Artifact<unknown> | undefined {
+  return Object.values<Artifact<unknown>>(ARTIFACTS).find((item) => item.kind === kind);
+}
 
 /** `instructions:<step>`, written when a person gives a step new instructions. */
 export const INSTRUCTIONS: ArtifactFamily = artifactFamily('instructions:', AGENT_STEPS);

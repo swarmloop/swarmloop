@@ -28,8 +28,8 @@ const input = (seq: number, name: string) =>
   stepEvent(seq, { kind: 'input.received', name, inputKind: name, documentId: 'absent', summary: 'absent' });
 const artifact = stepEvent(9, { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4, summary: 'a diff' });
 
-function feed(events: Parameters<typeof TranscriptFeed>[0]['events'], live?: boolean) {
-  return render(<TranscriptFeed runKey="run-1" events={events} live={live} />, { wrapper: QueryWrapper });
+function feed(events: Parameters<typeof TranscriptFeed>[0]['events'], live?: boolean, now?: number) {
+  return render(<TranscriptFeed runKey="run-1" events={events} live={live} now={now} />, { wrapper: QueryWrapper });
 }
 
 const widthOf = (element: HTMLElement) => getComputedStyle(element).width;
@@ -124,10 +124,8 @@ describe('TranscriptFeed chrome', () => {
     expect(skeletons.map(widthOf)).toEqual(skeletons.map(() => BUBBLE_WIDTH.wide));
   });
 
-  it('shows one muted line when no bubble is left', async () => {
-    const user = userEvent.setup();
-    feed([artifact]);
-    await user.click(screen.getByRole('button', { name: /^problems/ }));
+  it('shows one muted line when no bubble is left', () => {
+    feed([]);
 
     expect(screen.getByText('Nothing to show yet')).toBeInTheDocument();
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
@@ -136,18 +134,21 @@ describe('TranscriptFeed chrome', () => {
   it('counts the cards of each filter', () => {
     feed([input(1, 'plan'), artifact, ...commandEvents(10, 's', { executable: 'make', exitCode: 1 })]);
 
-    expect(screen.getByRole('button', { name: 'all 3' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'inputs 1' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'actions 2' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'problems 1' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^(all|inputs|actions|problems) \d/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '1 problem' })).toBeInTheDocument();
   });
 
   it('says whether the feed is live or since when it is not updating', () => {
-    const view = feed([artifact], true);
+    const last = Date.parse('2026-01-01T00:00:00.000Z');
+    const view = feed([artifact], true, last + 60_000);
     expect(screen.getByText('live')).toBeInTheDocument();
 
     view.unmount();
-    feed([artifact], false);
-    expect(screen.getByText(/^not updating since \d\d:\d\d$/)).toBeInTheDocument();
+    const silent = feed([artifact], true, last + 3 * 60_000);
+    expect(screen.getByText('no output for 3 min')).toBeInTheDocument();
+
+    silent.unmount();
+    feed([artifact], false, last + 3 * 60_000);
+    expect(screen.queryByText(/live|no output|not updating/)).not.toBeInTheDocument();
   });
 });

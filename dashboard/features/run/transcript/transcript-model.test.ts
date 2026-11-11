@@ -1,16 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { StepEvent, StepEventBody } from '@contract/step-events';
 import { localTime } from '../../../lib/format';
+import { foldActions } from './action-rows';
 import { commandEvents, stepEvent } from '../../../test/step-events';
-import {
-  actorOf,
-  filterEvents,
-  firstProblemId,
-  groupByActor,
-  groupByAttempt,
-  issueLinks,
-  sideOf,
-} from './transcript-model';
+import { actorOf, firstProblemId, groupByActor, groupByAttempt, issueLinks, sideOf } from './transcript-model';
 
 const agent = {
   runtime: 'claude',
@@ -160,22 +153,57 @@ describe('groupByAttempt', () => {
   });
 });
 
-describe('filterEvents', () => {
-  const [group] = groupByAttempt([
-    stepEvent(1, { kind: 'input.received', name: 'plan', inputKind: 'plan', documentId: 1, summary: '' }),
-    ...commandEvents(2, 'a', { executable: 'make', exitCode: 1 }),
-    stepEvent(4, { kind: 'handoff.received', handoffId: 3, issueIds: ['i'] }),
-    stepEvent(5, { kind: 'artifact.produced', artifactKind: 'diff', documentId: 4, summary: 'a diff' }),
-  ]);
-  const items = group?.items ?? [];
-  const seqs = (filter: Parameters<typeof filterEvents>[1]) =>
-    filterEvents(items, filter).map((item) => item.event.seq);
+describe('foldActions', () => {
+  const rowsOf = (count: number, failAt = -1) =>
+    foldActions(
+      groupByAttempt(
+        Array.from({ length: count }, (_, index) =>
+          commandEvents(index * 3 + 1, `a${index}`, { executable: 'make', exitCode: index === failAt ? 1 : 0 }),
+        ).flat(),
+      ).flatMap((group) => group.items),
+    );
 
-  it('keeps the order of the list in every view', () => {
-    expect(seqs('all')).toEqual([1, 2, 4, 5]);
-    expect(seqs('inputs')).toEqual([1, 4]);
-    expect(seqs('actions')).toEqual([2, 5]);
-    expect(seqs('problems')).toEqual([2]);
+  it('folds more than five consecutive actions into one row and keeps five as they are', () => {
+    expect(rowsOf(5)).toHaveLength(5);
+    const rows = rowsOf(7);
+    expect(rows).toHaveLength(1);
+    expect('run' in rows[0] ? rows[0].run.items : []).toHaveLength(7);
+  });
+
+  it('never folds a problem and lets it break the run', () => {
+    const rows = rowsOf(14, 6);
+    expect(rows.map((row) => ('run' in row ? row.run.items.length : 'problem'))).toEqual([6, 'problem', 7]);
+  });
+});
+
+describe('old log events', () => {
+  const sent = (summaries?: string[]) =>
+    stepEvent(2, {
+      kind: 'handoff.sent',
+      handoffId: 1,
+      targetStep: 'implement',
+      artifactKinds: ['requirements', 'log'],
+      issueIds: [],
+      ...(summaries ? { summaries } : {}),
+    });
+  const logged = stepEvent(1, {
+    kind: 'artifact.produced',
+    artifactKind: 'log',
+    documentId: 2,
+    summary: '{"type":"system"}',
+  });
+
+  it('drops the log artifact and its summary from a handoff', () => {
+    const [group] = groupByAttempt([logged, sent(['the plan', '{"type":"system","subtype":"init"}'])]);
+    expect(group?.items).toHaveLength(1);
+    expect(group?.items[0]?.event).toMatchObject({ artifactKinds: ['requirements'], summaries: ['the plan'] });
+  });
+
+  it('leaves a handoff without summaries as it is, except for the log kind', () => {
+    const [group] = groupByAttempt([sent()]);
+    const event = group?.items[0]?.event;
+    expect(event).toMatchObject({ artifactKinds: ['requirements'] });
+    expect(event).not.toHaveProperty('summaries');
   });
 });
 
