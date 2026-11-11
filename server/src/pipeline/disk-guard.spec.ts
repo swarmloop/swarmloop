@@ -2,9 +2,10 @@ import 'reflect-metadata';
 import { existsSync } from 'fs';
 import { AppConfig } from '../config/env';
 import { ERROR_CODES } from '../contract/error-codes';
+import { dfAvailableBytes } from '../core/free-bytes';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { DiskGuard, dfAvailableBytes } from './disk-guard';
+import { DiskGuard } from './disk-guard';
 import { ageRun, freshRun, leaveFiles, makeWorld, seedRun, type World } from './workspace.spec-helpers';
 
 const GB = 1024 ** 3;

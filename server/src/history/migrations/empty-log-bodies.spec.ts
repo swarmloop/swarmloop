@@ -97,6 +97,39 @@ describe('compactAfterLogMigration', () => {
     });
   });
 
+  it.each(['VACUUM', 'PRAGMA wal_checkpoint(TRUNCATE)'])(
+    'resolves and warns when %s fails, e.g. on a full disk',
+    async (failing) => {
+      await withApp(async (app) => {
+        const dataSource = app.get<GuardedDataSource>(DataSource);
+        dataSource.migrated = [migrated];
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+        const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+        jest.spyOn(dataSource, 'query').mockImplementation(async (sql: string) => {
+          if (sql === failing) {
+            throw new Error('database or disk is full');
+          }
+          return [];
+        });
+        await expect(compactAfterLogMigration(dataSource)).resolves.toBeUndefined();
+        expect(warn).toHaveBeenCalledWith('Database not compacted: database or disk is full');
+        expect(log).not.toHaveBeenCalled();
+      });
+    },
+  );
+
+  it('accepts an async reader of the free bytes', async () => {
+    await withApp(async (app) => {
+      const dataSource = app.get<GuardedDataSource>(DataSource);
+      dataSource.migrated = [migrated];
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const query = jest.spyOn(dataSource, 'query');
+      await compactAfterLogMigration(dataSource, async () => 0);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Database not compacted'));
+      expect(query).not.toHaveBeenCalled();
+    });
+  });
+
   it('does nothing when that migration did not run in this start', async () => {
     await withApp(async (app) => {
       const dataSource = app.get<GuardedDataSource>(DataSource);
