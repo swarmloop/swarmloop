@@ -78,3 +78,7 @@ export function approvedChecklist(items: string[]): string {
     ...items.map((item) => `- ${item}`),
   ].join('\n');
 }
+
+/** What the requirements reviewer is asked about the subtasks of a split run. */
+export const SUBTASK_PROOF_CHECK =
+  "This run was split into the subtasks below. Check every task's proof and the requirements as a whole.";

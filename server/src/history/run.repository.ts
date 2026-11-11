@@ -295,8 +295,10 @@ export class RunRepository {
     );
   }
 
-  async durationByRun(): Promise<Map<number, number>> {
+  /** The active time of every run, or only of the runs with these ids. */
+  async durationByRun(runIds?: number[]): Promise<Map<number, number>> {
     const stats = await this.stepStats.find({
+      ...(runIds ? { where: { runId: In(runIds) } } : {}),
       select: {
         id: true,
         runId: true,

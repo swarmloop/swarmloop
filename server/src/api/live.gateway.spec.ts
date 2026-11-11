@@ -26,6 +26,50 @@ describe('LiveGateway', () => {
     }
   });
 
+  describe('a change to a subtask', () => {
+    async function publish(watchedRooms: string[]) {
+      jest.useFakeTimers();
+      try {
+        const hub = new LiveHub();
+        const flows: Record<string, { key: string; parentKey?: string }> = {
+          'run-1-a': { key: 'run-1-a', parentKey: 'run-1' },
+          'run-1': { key: 'run-1' },
+        };
+        const runs = {
+          list: jest.fn().mockResolvedValue({ runs: [] }),
+          flow: jest.fn(async (key: string) => flows[key]),
+        };
+        const gateway = new LiveGateway(hub, runs as unknown as RunQueriesService, auth);
+        const sent: Array<{ room: string; entry: unknown }> = [];
+        gateway.server = {
+          emit: jest.fn(),
+          sockets: { adapter: { rooms: new Map(watchedRooms.map((name) => [name, new Set(['socket'])])) } },
+          to: (room: string) => ({ emit: (_name: string, entry: unknown) => sent.push({ room, entry }) }),
+        } as unknown as LiveGateway['server'];
+        gateway.onModuleInit();
+        hub.changed('run-1-a');
+        await jest.advanceTimersByTimeAsync(60);
+        gateway.onModuleDestroy();
+        return { sent, flows };
+      } finally {
+        jest.useRealTimers();
+      }
+    }
+
+    it('also publishes the flow of its parent run when someone watches the parent', async () => {
+      const { sent, flows } = await publish(['run:run-1']);
+      expect(sent).toEqual([
+        { room: 'run:run-1-a', entry: flows['run-1-a'] },
+        { room: 'run:run-1', entry: flows['run-1'] },
+      ]);
+    });
+
+    it('builds no parent flow when nobody watches the parent', async () => {
+      const { sent, flows } = await publish([]);
+      expect(sent).toEqual([{ room: 'run:run-1-a', entry: flows['run-1-a'] }]);
+    });
+  });
+
   it('drops a pending update when it is destroyed', async () => {
     jest.useFakeTimers();
     try {

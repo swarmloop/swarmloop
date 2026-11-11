@@ -1,17 +1,24 @@
 import type { ReactElement } from 'react';
+import type { Route } from 'next';
+import Link from 'next/link';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import type { TaskLayer } from '@contract/api';
+import { duration, money } from '../../../../lib/format';
 
 /** The tasks of a split plan, one block per dependency layer, with the status of each and a line for all. */
 export function TaskLayers({
   layers,
   line,
+  mergeQueue,
+  decisions,
   onSkip,
 }: {
   layers: TaskLayer[];
   line?: string;
+  mergeQueue?: { id: string; title: string }[];
+  decisions?: string;
   onSkip: (taskId: string) => void;
 }): ReactElement {
   return (
@@ -34,6 +41,12 @@ export function TaskLayers({
                   </Button>
                 ) : null}
               </Typography>
+              {task.run ? (
+                <Typography variant="caption" color="text.secondary">
+                  {task.run.currentStep} · {money(task.run.usd)} · {duration(task.run.durationMs)} ·{' '}
+                  <Link href={`/runs/${task.run.key}` as Route}>Open run</Link>
+                </Typography>
+              ) : null}
               <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
                 files: {task.files.join(', ')} · proof: {task.proof}
               </Typography>
@@ -41,6 +54,28 @@ export function TaskLayers({
           ))}
         </Box>
       ))}
+      {mergeQueue?.length ? (
+        <Box component="section" aria-label="Merge queue">
+          <Typography variant="caption" color="text.secondary">
+            Merge queue
+          </Typography>
+          {mergeQueue.map((task) => (
+            <Typography key={task.title} variant="body2" sx={{ pl: 1 }}>
+              {task.title}
+            </Typography>
+          ))}
+        </Box>
+      ) : null}
+      {decisions ? (
+        <Box component="section" aria-label="Decisions">
+          <Typography variant="caption" color="text.secondary">
+            decisions:
+          </Typography>
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+            {decisions}
+          </Typography>
+        </Box>
+      ) : null}
     </Box>
   );
 }

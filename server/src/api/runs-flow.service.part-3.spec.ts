@@ -6,6 +6,8 @@ import { tmpdir } from 'os';
 
 import { join } from 'path';
 
+import { DocumentRepository } from '../history/document.repository';
+
 import { RunRepository } from '../history/run.repository';
 
 import { VisitRepository } from '../history/visit.repository';
@@ -59,6 +61,50 @@ describe('runs api', () => {
       const waiting = await runs.findRun('proj-wait');
       expect(waiting?.status).toBe('waiting');
       expect(waiting?.stepStartedAt).toBeNull();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('shows the tasks of a split run with their own runs, and the parent only with its own cost', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-split-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const parent = await runs.begin('proj-split', 'implement');
+      parent.spentUsd = 1;
+      await runs.saveRun(parent);
+      await documents.putDocument(
+        parent,
+        'requirements',
+        JSON.stringify({ prompt: 'x', plan: { items: ['x'], decision: 'approve' } }),
+      );
+      const task = (id: string, status: string) => ({
+        id,
+        title: id.toUpperCase(),
+        description: '',
+        depends: [],
+        files: [],
+        proof: '',
+        status,
+      });
+      await documents.putDocument(parent, 'subtasks', JSON.stringify([task('a', 'green'), task('b', 'merged')]));
+      await documents.putDocument(parent, 'contract', 'decisions:\n- subtask a: store UTC\n');
+      const child = await runs.openSubtask('proj-split-a', parent.id, 'a');
+      child.spentUsd = 2.5;
+      child.currentStep = 'ci';
+      await runs.saveRun(child);
+
+      const flow = await app.get(RunQueriesService).flow('proj-split');
+
+      expect(flow.taskLine).toBe('Split: 2 tasks · 1 merged');
+      expect(flow.mergeQueue).toEqual([{ id: 'a', title: 'A' }]);
+      expect(flow.decisions).toBe('- subtask a: store UTC');
+      const [a, b] = flow.tasks?.[0]?.tasks ?? [];
+      expect(a?.run).toMatchObject({ key: 'proj-split-a', currentStep: 'ci', usd: 2.5 });
+      expect(b?.run).toBeUndefined();
+      expect(flow.metrics.usd).toBe(1);
     } finally {
       await app.close();
     }

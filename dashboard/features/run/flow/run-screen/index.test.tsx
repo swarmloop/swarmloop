@@ -110,6 +110,41 @@ describe('RunScreen', () => {
     expect(skipTask).toHaveBeenCalledWith('run-1', 'b');
   });
 
+  it('shows the split panel and only its own cost for the parent', async () => {
+    const base = flowView();
+    vi.mocked(getFlow).mockResolvedValue(
+      flowView({
+        metrics: { ...base.metrics, usd: 0.5 },
+        taskLine: 'Split: 1 tasks · 0 merged · 1 running',
+        mergeQueue: [{ id: 'a', title: 'Add the column' }],
+        decisions: '- subtask a: use UTC',
+        tasks: [
+          {
+            layer: 0,
+            tasks: [
+              {
+                id: 'a',
+                title: 'Add the column',
+                files: [],
+                proof: 'a',
+                status: 'running',
+                run: { key: 'run-1-a', currentStep: 'implement', usd: 7, durationMs: 1000 },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    const region = await screen.findByRole('region', { name: 'Tasks' });
+    expect(region).toHaveTextContent('Split: 1 tasks · 0 merged · 1 running');
+    expect(region).toHaveTextContent('implement · $7.00 · 1s');
+    expect(within(region).getByRole('region', { name: 'Merge queue' })).toBeInTheDocument();
+    expect(within(region).getByRole('region', { name: 'Decisions' })).toBeInTheDocument();
+    expect(screen.getByText('$0.50')).toBeInTheDocument();
+  });
+
   it('no block without subtasks', async () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
     await screen.findByRole('heading', { name: 'Run one' });

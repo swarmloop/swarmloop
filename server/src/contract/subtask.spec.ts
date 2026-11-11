@@ -1,4 +1,4 @@
-import { parseSubtasks, readyTasks, statusLine, type Subtask } from './subtask';
+import { parseSubtasks, readyTasks, splitLine, statusLine, type Subtask } from './subtask';
 
 describe('parseSubtasks', () => {
   it('parseSubtasks reads depends and status', () => {
@@ -52,5 +52,16 @@ describe('statusLine', () => {
       task('w', 'waiting'),
     ];
     expect(statusLine(tasks)).toBe('4/7 merged · 2 running · 1 waiting');
+  });
+});
+
+describe('splitLine', () => {
+  it('counts every task, the merged ones and the running ones', () => {
+    const tasks = [task('a', 'merged'), task('b', 'merged'), task('c', 'running'), task('d', 'waiting')];
+    expect(splitLine(tasks)).toBe('Split: 4 tasks · 2 merged · 1 running');
+  });
+
+  it('leaves the running count out when no task runs', () => {
+    expect(splitLine([task('a', 'merged'), task('b', 'green')])).toBe('Split: 2 tasks · 1 merged');
   });
 });

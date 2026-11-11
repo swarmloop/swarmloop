@@ -139,6 +139,12 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
       this.server.emit('runs', list);
       if (flow) {
         this.server.to(room(key)).emit('flow', flow);
+        // A subtask's step, cost and time show on its parent's page.
+        const watched = flow.parentKey && this.server.sockets.adapter.rooms.has(room(flow.parentKey));
+        const parent = flow.parentKey && watched ? await this.flowOf(flow.parentKey) : null;
+        if (parent) {
+          this.server.to(room(parent.key)).emit('flow', parent);
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'live update failed';

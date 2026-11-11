@@ -12,8 +12,18 @@ import type { SandboxMount } from '../../core/sandbox-mount';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
 import type { StepContext } from '../base-step';
 import { withReturnNotes } from '../implement/implement-record';
-import { issueOf, returnNotes, textDocument, withHandoff, withImpact } from '../shared/handoff';
+import {
+  issueOf,
+  returnNotes,
+  textDocument,
+  withContract,
+  withHandoff,
+  withImpact,
+  withSubtasks,
+} from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
+import type { Subtask } from '../../contract/subtask';
+import { SUBTASK_PROOF_CHECK } from './code-review.prompts';
 import { parseReview } from './code-review-record';
 import { fixNotes } from './review-input';
 import { closeReview, recordAngle } from './review-report';
@@ -55,6 +65,8 @@ interface RoundInput {
   diff: { heading: string; body: string };
   plan: string;
   impact: string | null;
+  contract: string | null;
+  subtasks: Subtask[] | null;
   auto: boolean | undefined;
   fresh: boolean;
   retry: boolean;
@@ -278,9 +290,16 @@ function reviewJob(reviewer: Reviewer, input: RoundInput) {
   const names = input.mounts.map((mount) => basename(mount.hostPath));
   const notesSection = input.notes?.trim() ? [{ heading: 'Implementation', body: input.notes }] : [];
   const planSection = input.plan.trim() ? [{ heading: 'Plan', body: input.plan }] : [];
-  const sections = withImpact(
-    withHandoff(withReturnNotes([input.diff, ...notesSection, ...planSection], input.returned), input.handoff),
-    input.impact,
+  const sections = withSubtasks(
+    withContract(
+      withImpact(
+        withHandoff(withReturnNotes([input.diff, ...notesSection, ...planSection], input.returned), input.handoff),
+        input.impact,
+      ),
+      input.contract,
+    ),
+    input.subtasks,
+    reviewer.name === 'requirements' ? SUBTASK_PROOF_CHECK : undefined,
   );
   return {
     reviewer,

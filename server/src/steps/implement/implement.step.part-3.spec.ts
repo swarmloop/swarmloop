@@ -126,6 +126,83 @@ describe('implement step', () => {
     }
   });
 
+  it.each([
+    ['a fresh prompt', false],
+    ['a resumed prompt', true],
+  ])(
+    'gives the agent the contract and the subtask summaries on a return of a split run: %s',
+    async (_name, resumed) => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-split-return-'));
+      await writeEnv(root);
+      const worktree = featureTree(root, 'PROJ-150', 'billing-api');
+      if (resumed) {
+        mkdirSync(join(root, 'data', 'agent-state', 'PROJ-150', 'implement'), { recursive: true });
+        writeFileSync(
+          join(root, 'data', 'PROJ-150-implement-session.json'),
+          JSON.stringify({ runtime: 'cursor', chatId: 'impl-chat', completed: true, usd: 0 }),
+        );
+      }
+      const agent = jest.fn(async (_input: AgentRunInput) => {
+        writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
+        return result(reply);
+      });
+      const app = await boot(root, agent);
+      try {
+        await seed(app, 'PROJ-150', 'approve');
+        const runs = app.get(RunRepository);
+        const documents = app.get(DocumentRepository);
+        const run = (await runs.findRun('PROJ-150'))!;
+        run.split = true;
+        await runs.saveRun(run);
+        await documents.putDocument(run, 'contract', 'decisions:\n- subtask a: store UTC\n');
+        await documents.putDocument(
+          run,
+          'subtasks',
+          JSON.stringify([
+            {
+              id: 'a',
+              title: 'Add the column',
+              description: 'Adds it.',
+              files: ['a.ts'],
+              proof: 'a',
+              status: 'merged',
+            },
+          ]),
+        );
+        await documents.putDocument(run, 'return', '## requirements\nthe column is missing\n');
+        await app.get(PipelineService).step('implement', 'PROJ-150');
+        const prompt = agent.mock.calls[0]?.[0].prompt ?? '';
+        expect(agent.mock.calls[0]?.[0].resumeChatId).toBe(resumed ? 'impl-chat' : null);
+        expect(prompt).toContain('decisions:\n- subtask a: store UTC');
+        expect(prompt).toContain('- Add the column\n  changed: Adds it.\n  files: a.ts');
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
+  it('adds no contract or subtask summary to the prompt of a run that does not split', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-single-return-'));
+    await writeEnv(root);
+    const worktree = featureTree(root, 'PROJ-151', 'billing-api');
+    const agent = jest.fn(async (_input: AgentRunInput) => {
+      writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
+      return result(reply);
+    });
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-151', 'approve');
+      const run = (await app.get(RunRepository).findRun('PROJ-151'))!;
+      await app.get(DocumentRepository).putDocument(run, 'return', '## requirements\nthe column is missing\n');
+      await app.get(PipelineService).step('implement', 'PROJ-151');
+      const prompt = agent.mock.calls[0]?.[0].prompt ?? '';
+      expect(prompt).not.toContain('Contract:');
+      expect(prompt).not.toContain('Subtasks:');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('keeps project execution rules on a resumed pipeline retry without preparing twice', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-retry-policy-'));
     await writeEnv(root);

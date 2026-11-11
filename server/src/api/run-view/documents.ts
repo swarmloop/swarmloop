@@ -1,6 +1,6 @@
 import type { DocumentEntity } from '../../history/entities';
 import type { FlowView, TaskLayer } from '../../contract/api';
-import { parseSubtasks, statusLine, type Subtask } from '../../contract/subtask';
+import { parseSubtasks, splitLine, type Subtask } from '../../contract/subtask';
 import { STEPS, type StepName } from '../../contract/steps';
 import { readPlan } from '../../steps/plan/plan-record';
 import { composedReturn } from '../../steps/shared/handoff';
@@ -106,7 +106,7 @@ function fileRow(
 }
 
 /** The tasks plan-improve approved, by layer: a task is one layer below its deepest dependency. Empty for a run that does not split. */
-export function taskLayers(documents: DocumentEntity[]): TaskLayer[] {
+export function taskLayers(documents: DocumentEntity[], children: TaskRuns = new Map()): TaskLayer[] {
   if (readPlan(latest(documents, 'requirements'))?.decision !== 'approve') {
     return [];
   }
@@ -122,7 +122,15 @@ export function taskLayers(documents: DocumentEntity[]): TaskLayer[] {
     const layer = depth(task);
     layers.set(layer, [
       ...(layers.get(layer) ?? []),
-      { id: task.id, title: task.title, files: task.files, proof: task.proof, status: task.status, note: task.note },
+      {
+        id: task.id,
+        title: task.title,
+        files: task.files,
+        proof: task.proof,
+        status: task.status,
+        note: task.note,
+        ...(children.has(task.id) ? { run: children.get(task.id) } : {}),
+      },
     ]);
   }
   return [...layers.entries()].sort(([a], [b]) => a - b).map(([layer, group]) => ({ layer, tasks: group }));
@@ -132,12 +140,40 @@ export function taskLayers(documents: DocumentEntity[]): TaskLayer[] {
 export function taskLine(documents: DocumentEntity[], currentStep: string): string | null {
   const tasks = parseSubtasks(latest(documents, 'subtasks'));
   const reached = STEPS.indexOf(currentStep as StepName) >= STEPS.indexOf('implement');
-  return tasks.length > 0 && reached && taskLayers(documents).length > 0 ? statusLine(tasks) : null;
+  return tasks.length > 0 && reached && taskLayers(documents).length > 0 ? splitLine(tasks) : null;
 }
 
-/** The `tasks` and `taskLine` of a flow view. Empty for a run that does not split. */
-export function taskView(documents: DocumentEntity[], currentStep: string): Pick<FlowView, 'tasks' | 'taskLine'> {
-  const tasks = taskLayers(documents);
+/** The `decisions:` block of the contract: its entries, without the heading. */
+export function decisionsOf(contract: string | null): string | null {
+  const lines = (contract ?? '').split('\n');
+  const start = lines.findIndex((line) => /^decisions:\s*$/.test(line));
+  if (start < 0) {
+    return null;
+  }
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => /^[\w ]+:\s*$/.test(line));
+  return (end < 0 ? rest : rest.slice(0, end)).join('\n').trim() || null;
+}
+
+/** The own run of each task, by task id. */
+export type TaskRuns = Map<string, NonNullable<TaskLayer['tasks'][number]['run']>>;
+
+/** The `tasks`, `taskLine`, `mergeQueue` and `decisions` of a flow view. Empty for a run that does not split. */
+export function taskView(
+  documents: DocumentEntity[],
+  currentStep: string,
+  children: TaskRuns = new Map(),
+): Pick<FlowView, 'tasks' | 'taskLine' | 'mergeQueue' | 'decisions'> {
+  const tasks = taskLayers(documents, children);
   const line = taskLine(documents, currentStep);
-  return { ...(tasks.length > 0 ? { tasks } : {}), ...(line ? { taskLine: line } : {}) };
+  const queue = parseSubtasks(latest(documents, 'subtasks'))
+    .filter((task) => task.status === 'green')
+    .map(({ id, title }) => ({ id, title }));
+  const decisions = decisionsOf(latest(documents, 'contract'));
+  return {
+    ...(tasks.length > 0 ? { tasks } : {}),
+    ...(line ? { taskLine: line } : {}),
+    ...(tasks.length > 0 && queue.length > 0 ? { mergeQueue: queue } : {}),
+    ...(tasks.length > 0 && decisions ? { decisions } : {}),
+  };
 }

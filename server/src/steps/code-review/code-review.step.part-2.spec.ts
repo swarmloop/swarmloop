@@ -234,6 +234,69 @@ describe('code-review step', () => {
     }
   });
 
+  it('gives the reviewers of a split run the contract and the subtasks, and asks only the requirements reviewer for the proof', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-split-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-91', 'billing-api'), { recursive: true });
+    const agent = jest.fn(async (input: AgentRunInput) => result(`notes\n\ndecision: ok\n`, input.step));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-91');
+      const run = await app.get(RunRepository).findRun('PROJ-91');
+      run!.split = true;
+      await app.get(RunRepository).saveRun(run!);
+      const documents = app.get(DocumentRepository);
+      await documents.putDocument(run!, 'contract', 'decisions:\n- subtask a: store UTC\n');
+      await documents.putDocument(
+        run!,
+        'subtasks',
+        JSON.stringify([
+          {
+            id: 'a',
+            title: 'Add the column',
+            description: 'Adds it.',
+            files: ['a.ts'],
+            proof: 'a.spec.ts',
+            status: 'merged',
+          },
+        ]),
+      );
+      const done = await app.get(PipelineService).step('code-review', 'PROJ-91');
+      expect(done.exitCode).toBe(0);
+      const reviewers = agent.mock.calls
+        .map((call) => call[0])
+        .filter((call) => call.step.startsWith('code-review-') && call.step !== 'code-review-report');
+      expect(reviewers).toHaveLength(5);
+      for (const call of reviewers) {
+        expect(call.prompt).toContain('Contract:\ndecisions:\n- subtask a: store UTC');
+        expect(call.prompt).toContain('Subtasks:');
+        expect(call.prompt).toContain('- Add the column\n  changed: Adds it.\n  files: a.ts');
+      }
+      const proofCheck = reviewers.filter((call) => call.prompt.includes("Check every task's proof"));
+      expect(proofCheck.map((call) => call.step)).toEqual(['code-review-requirements']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('adds no contract or subtasks section to the reviewers of a run that does not split', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-single-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-92', 'billing-api'), { recursive: true });
+    const agent = jest.fn(async (input: AgentRunInput) => result(`notes\n\ndecision: ok\n`, input.step));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-92');
+      await app.get(PipelineService).step('code-review', 'PROJ-92');
+      for (const call of agent.mock.calls.map((item) => item[0])) {
+        expect(call.prompt).not.toContain('Subtasks:');
+        expect(call.prompt).not.toContain('Contract:');
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
   it('resumes the review chat with the full assignment', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-session-'));
     await writeEnv(root);

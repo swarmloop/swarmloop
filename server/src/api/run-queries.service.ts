@@ -34,6 +34,7 @@ import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
 import { belongsToVisit, documentView, filesOf, legacyLogs, taskView, withReturnNotes } from './run-view/documents';
+import { taskRuns } from './run-view/task-runs';
 import { visitKey } from '../contract/visit-key';
 import { launchView, liveVisit } from './run-view/live';
 import { commandViewsOf, exchangesOf, reviewChecks, samplesOf } from './run-view/visit-parts';
@@ -110,7 +111,7 @@ export class RunQueriesService {
       stepStartedAt: run.stepStartedAt,
       ...(await this.parentOf(run)),
       ...(run.startedBy ? { startedBy: run.startedBy } : {}),
-      ...taskView(documents, run.currentStep),
+      ...taskView(documents, run.currentStep, await taskRuns(this.runs, run, documents, this.pipeline, this.live)),
       ...state,
       sentence: withSkip(
         sentence(shown, open, documents, stats, maxReturns),
