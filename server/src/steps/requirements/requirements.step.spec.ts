@@ -26,6 +26,10 @@ import type { IssueTracker } from '../../integrations/issue-tracker/issue-tracke
 
 import { ISSUE_TRACKER } from '../../integrations/issue-tracker/tokens';
 
+import { RemoteRepositories } from '../prepare/remote-repositories.service';
+
+import { StepEventLog } from '../../history/step-event.log';
+
 import { requirementsBrief } from '../shared/requirements-brief';
 
 import { TOKEN, requirementsBody, boot, writeEnv, emptyAgent, listen } from './requirements.step.spec-helpers';
@@ -386,6 +390,34 @@ describe('requirements step', () => {
       const run = await app.get(RunRepository).findRun('widget');
       expect(run?.status).toBe('blocked');
       expect(JSON.parse(run?.stateReason ?? '{}')).toMatchObject({ code: 'INPUT_MISSING' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('clones a repository that is not a folder yet as an activity, and leaves a folder that exists alone', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-clone-'));
+    const checkouts = join(root, 'checkouts');
+    mkdirSync(join(checkouts, 'local'), { recursive: true });
+    await writeEnv(root, '', 'direct', { CHECKOUTS_ROOT: checkouts, SWARMLOOP_REPOS: '' });
+    const app = await boot(root, '', 'direct', jest.fn(), jest.fn(), false);
+    try {
+      const clone = jest
+        .spyOn(app.get(RemoteRepositories), 'clone')
+        .mockImplementation(async (name) => void mkdirSync(join(checkouts, name)));
+      const runs = app.get(RunRepository);
+      const created = await runs.openWaiting('widget', '');
+      created.projects = 'fresh\nlocal\n';
+      created.startedBy = 'ana';
+      await runs.saveRun(created);
+      const result = await app.get(PipelineService).step('requirements', 'widget', { prompt: 'Do it' });
+      expect(result.exitCode).toBe(0);
+      expect(clone.mock.calls).toEqual([['fresh', 'ana']]);
+      const run = await app.get(RunRepository).findRun('widget');
+      const page = await app.get(StepEventLog).page(run?.id ?? 0, { limit: 500 });
+      expect(page.events.filter((event) => event.kind === 'activity.finished')).toMatchObject([
+        { title: 'Clone fresh', result: 'cloned', failed: false },
+      ]);
     } finally {
       await app.close();
     }

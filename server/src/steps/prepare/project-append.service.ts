@@ -10,6 +10,7 @@ import { CheckoutService } from '../shared/checkout.service';
 import { appendProjectNames } from './append-projects';
 import { CHECKOUT_NAME, renderProjects, storedProjects } from '../../config/checkout-path';
 import { PrepareStep } from './prepare.step';
+import { RemoteRepositories } from './remote-repositories.service';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const PENDING = ARTIFACTS.pendingRepos.kind;
@@ -23,6 +24,7 @@ export class ProjectAppendService {
     private readonly prepare: PrepareStep,
     private readonly worktrees: CheckoutService,
     private readonly branches: BranchCheckout,
+    private readonly remote: RemoteRepositories,
   ) {}
 
   async add(key: string, name: string): Promise<{ projects: string[]; applied: boolean }> {
@@ -31,7 +33,7 @@ export class ProjectAppendService {
       throw new SwarmloopError('checkout name is invalid');
     }
     const known = this.prepare.listProjects().projects;
-    if (!known.includes(trimmed)) {
+    if (!known.includes(trimmed) && !(await this.remote.offers(trimmed))) {
       throw new SwarmloopError(`${trimmed} is not a checkout`);
     }
     const run = await this.runs.findRun(key);
@@ -41,6 +43,9 @@ export class ProjectAppendService {
     const current = storedProjects(run.projects);
     if (current.includes(trimmed)) {
       return { projects: current, applied: true };
+    }
+    if (!known.includes(trimmed)) {
+      await this.remote.clone(trimmed, run.startedBy);
     }
     if (run.status === 'running') {
       const pending = storedProjects((await this.documents.latestBody(key, PENDING)) ?? '');

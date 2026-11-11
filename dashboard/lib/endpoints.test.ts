@@ -11,6 +11,8 @@ import {
   getStats,
   getStep,
   listProjects,
+  listRemote,
+  createRepository,
   listRuns,
   rebaseRun,
   removeRun,
@@ -44,6 +46,19 @@ describe('endpoints', () => {
       ['/runs/run-1/history'],
       ['/checkouts/projects'],
       ['/stats?days=7&tz=-60'],
+    ]);
+  });
+
+  it('reads the remote repositories and posts a new repository to the swarmloop API', async () => {
+    await listRemote();
+    await createRepository({ host: 'github', owner: 'acme', name: 'demo', public: false });
+
+    expect(vi.mocked(api).mock.calls).toEqual([
+      ['/checkouts/remote'],
+      [
+        '/checkouts/repositories',
+        { method: 'POST', body: JSON.stringify({ host: 'github', owner: 'acme', name: 'demo', public: false }) },
+      ],
     ]);
   });
 

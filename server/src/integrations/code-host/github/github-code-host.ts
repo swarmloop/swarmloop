@@ -5,6 +5,7 @@ import { request, withRetries } from '../../http';
 import { remoteProject } from '../remote-project';
 import { AbstractCodeHost, type CodeHostEnv, type HostCall } from '../abstract-code-host';
 import { snapshotOf } from '../check-status';
+import { githubRepositories } from './github-repositories';
 import { pullView, type GithubPull } from './github-pull';
 import { awaitedChecks, checkStatus, readChecks, runsOf, type GithubRun } from './github-checks';
 import type {
@@ -53,6 +54,10 @@ export class GithubCodeHost extends AbstractCodeHost {
     } catch {
       return null;
     }
+  }
+
+  cloneUrl(project: string): string {
+    return `${this.env.GITHUB_BASE_URL.replace(/\/$/, '')}/${project}.git`;
   }
 
   selected(): SelectedHost {
@@ -258,6 +263,8 @@ export class GithubCodeHost extends AbstractCodeHost {
       },
     };
   }
+
+  protected readonly repositories = githubRepositories;
 
   protected userUrl(root: string): string {
     return `${root}/user`;

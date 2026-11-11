@@ -2,12 +2,15 @@ import { api, runLog, type LogPaging } from './api';
 import type {
   AddProjectBody,
   AnswersBody,
+  CreateRepositoryBody,
   CreateRunBody,
   FlowView,
   HistoryView,
   ProjectsView,
   ProjectListView,
   ReadinessView,
+  RemoteEntry,
+  RemoteListView,
   ReplayBody,
   SkipTaskBody,
   RunRef,
@@ -42,10 +45,14 @@ export const getStepEvents = (key: string, name: string | null, after: number): 
   api<StepEventPage>(`${run(key)}/events?${name === null ? '' : `step=${encodeURIComponent(name)}&`}after=${after}`);
 export const getHistory = (key: string): Promise<HistoryView> => api<HistoryView>(`${run(key)}/history`);
 export const listProjects = (): Promise<ProjectListView> => api<ProjectListView>('/checkouts/projects');
+/** The repositories of the connected code hosts that the server's tokens can push to. */
+export const listRemote = (): Promise<RemoteListView> => api<RemoteListView>('/checkouts/remote');
 export const getRunLog = (key: string, name: string, attempt?: string, paging?: LogPaging): Promise<string | null> =>
   runLog(key, name, attempt, paging);
 
 export const createRun = (body: CreateRunBody): Promise<RunRef> => api<RunRef>('/runs', post(body));
+export const createRepository = (body: CreateRepositoryBody): Promise<RemoteEntry> =>
+  api<RemoteEntry>('/checkouts/repositories', post(body));
 export const ticketKeys = (body: TicketKeysBody): Promise<TicketKeysView> =>
   api<TicketKeysView>('/runs/ticket-keys', post(body));
 export const setRunProjects = (key: string, name: string): Promise<ProjectsView> =>

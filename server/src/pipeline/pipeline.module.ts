@@ -22,6 +22,7 @@ import { PipelineStep } from '../steps/pipeline/pipeline.step';
 import { PlanStep } from '../steps/plan/plan.step';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
+import { RemoteRepositories } from '../steps/prepare/remote-repositories.service';
 import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { ResearchStep } from '../steps/research/research.step';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
@@ -44,6 +45,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     RequirementsStep,
     PrepareStep,
     ProjectAppendService,
+    RemoteRepositories,
     ResearchStep,
     BranchStep,
     CommitStep,
@@ -89,6 +91,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     RunRebase,
     PrepareStep,
     ProjectAppendService,
+    RemoteRepositories,
     CommitStep,
     RebasedPublisher,
     HistoryModule,

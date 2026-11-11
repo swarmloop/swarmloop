@@ -294,6 +294,50 @@ export interface ProjectListView {
   split?: boolean;
 }
 
+/** A repository of a code host that the server's token can push to. */
+export interface RemoteRepository {
+  /** Which host it lives on. The dashboard only passes it back. */
+  host: 'github' | 'gitlab';
+  /** The full namespace path of the owner, a GitLab subgroup included. */
+  owner: string;
+  name: string;
+  visibility: 'public' | 'private';
+  defaultBranch: string;
+}
+
+export interface RemoteEntry extends RemoteRepository {
+  /** True when the folder under the checkouts root is a clone of this repository. */
+  cloned: boolean;
+  /** Why the repository cannot be picked: its folder name belongs to another remote. */
+  blocked?: string;
+}
+
+/** An account or an organization or group a repository can be created in. */
+export interface RepositoryOwner {
+  host: RemoteRepository['host'];
+  login: string;
+  kind: 'user' | 'organization' | 'group';
+  /** The host's own id of the namespace, when creating needs it. */
+  id?: number;
+}
+
+export interface RemoteListView {
+  repositories: RemoteEntry[];
+  owners: RepositoryOwner[];
+  /** Why the list is empty because of the setup: no token. */
+  reason: string | null;
+  /** `SWARMLOOP_REPOS`. Empty when every name is allowed. */
+  allowedNames: string[];
+}
+
+export interface CreateRepositoryBody {
+  host: RemoteRepository['host'];
+  owner: string;
+  name: string;
+  /** Private when absent. */
+  public?: boolean;
+}
+
 export interface ProjectsView {
   projects: string[];
   applied: boolean;

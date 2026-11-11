@@ -1,3 +1,4 @@
+import type { RemoteRepository, RepositoryOwner } from '../../contract/api';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
 
 export interface MergeRequestQuery {
@@ -87,6 +88,12 @@ export interface PipelineDiagnosis {
   httpCalls: HttpCallDraft[];
 }
 
+export interface CreateRepositoryDraft {
+  owner: RepositoryOwner;
+  name: string;
+  isPublic: boolean;
+}
+
 export interface SelectedHost {
   name: 'github' | 'gitlab';
   baseUrl: string;
@@ -117,6 +124,18 @@ export interface CodeHost {
     jobs?: boolean,
   ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
   diagnoseMissingPipeline?(ref: PipelineRef): Promise<PipelineDiagnosis>;
+  /** One page of the repositories the token can push to. `more` is true when a next page may exist. */
+  listRepositories(
+    page: number,
+  ): Promise<{ repositories: RemoteRepository[]; more: boolean; httpCalls: HttpCallDraft[] }>;
+  /** The accounts, organizations and groups the token may create a repository in. */
+  listOwners(): Promise<{ owners: RepositoryOwner[]; httpCalls: HttpCallDraft[] }>;
+  /** Creates a repository with an initial commit, so it has a default branch. A refusal is a `FetchFailed` with the host's message and the permission needed. */
+  createRepository(draft: CreateRepositoryDraft): Promise<{ repository: RemoteRepository; httpCalls: HttpCallDraft[] }>;
+  /** The HTTPS url to clone a project from. It holds no token. */
+  cloneUrl(project: string): string;
+  /** The env that lets one git command authenticate with the token, so the token stays out of argv and out of `.git/config`. */
+  cloneEnv(): NodeJS.ProcessEnv;
   /** A read-only call that proves the token works. */
   readCurrentUser(): Promise<{ httpCalls: HttpCallDraft[] }>;
   readJobTrace(project: string, jobId: number): Promise<{ trace: string; httpCalls: HttpCallDraft[] }>;
