@@ -309,6 +309,69 @@ describe('github host', () => {
     expect(seen.some((call) => call.url.includes('/jobs'))).toBe(false);
   });
 
+  it('judges a workflow by its newest run, so an old queued run of the commit is ignored', async () => {
+    const seen = mockFetch([
+      {
+        workflow_runs: [
+          { id: 11, workflow_id: 7, run_number: 2, head_sha: 'abc', status: 'completed', conclusion: 'success' },
+          { id: 10, workflow_id: 7, run_number: 1, head_sha: 'abc', status: 'queued' },
+        ],
+      },
+      { jobs: [] },
+      ...QUIET,
+    ]);
+    const pipeline = await service().readBranchPipeline({
+      project: 'acme/demo',
+      ref: 'feature/PROJ-1-ship',
+      sha: 'abc',
+    });
+    expect(pipeline.snapshot?.status).toBe('success');
+    expect(pipeline.snapshot?.runs.map((run) => run.id)).toEqual([11]);
+    expect(seen.some((call) => call.url.includes('/runs/10/'))).toBe(false);
+  });
+
+  it('keeps the newest run of each workflow of the commit', async () => {
+    mockFetch([
+      {
+        workflow_runs: [
+          { id: 21, workflow_id: 1, run_number: 5, head_sha: 'abc', status: 'completed', conclusion: 'success' },
+          { id: 22, workflow_id: 2, run_number: 1, head_sha: 'abc', status: 'in_progress' },
+          { id: 20, workflow_id: 1, run_number: 4, head_sha: 'abc', status: 'completed', conclusion: 'failure' },
+        ],
+      },
+      { jobs: [] },
+      { jobs: [] },
+      ...QUIET,
+    ]);
+    const pipeline = await service().readBranchPipeline({
+      project: 'acme/demo',
+      ref: 'feature/PROJ-1-ship',
+      sha: 'abc',
+    });
+    expect(pipeline.snapshot?.runs.map((run) => [run.id, run.status])).toEqual([
+      [21, 'success'],
+      [22, 'running'],
+    ]);
+  });
+
+  it('counts the jobs of a queued run, so a run without any can be told from one that runs', async () => {
+    mockFetch([{ workflow_runs: [{ id: 9, run_number: 1, status: 'queued' }] }, { jobs: [] }, ...QUIET]);
+    const pipeline = await service().readBranchPipeline({ project: 'acme/demo', ref: 'feature/PROJ-1-ship' }, false);
+    expect(pipeline.snapshot?.runs).toMatchObject([{ id: 9, status: 'running', total: 0, queued: true }]);
+  });
+
+  it('counts the jobs of a run that goes', async () => {
+    const jobs = Array.from({ length: 12 }, (_, at) => ({
+      id: at + 1,
+      name: `job-${at + 1}`,
+      status: at < 2 ? 'in_progress' : 'completed',
+      conclusion: at < 2 ? null : 'success',
+    }));
+    mockFetch([{ workflow_runs: [{ id: 9, run_number: 1, status: 'in_progress' }] }, { jobs }, ...QUIET]);
+    const pipeline = await service().readBranchPipeline({ project: 'acme/demo', ref: 'feature/PROJ-1-ship' });
+    expect(pipeline.snapshot?.runs).toMatchObject([{ id: 9, total: 12, queued: false }]);
+  });
+
   it('still lists failed jobs when the running list is skipped', async () => {
     const seen = mockFetch([
       {

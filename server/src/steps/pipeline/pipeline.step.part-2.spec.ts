@@ -310,7 +310,8 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-314');
       expect(result.exitCode).toBe(0);
       expect(read).toHaveBeenCalledTimes(4);
-      expect(read.mock.calls.every((entry) => entry[1] === false)).toBe(true);
+      // The first read is light; the polls read the jobs, so the transcript can say how many of them run.
+      expect(read.mock.calls.map((entry) => entry[1])).toEqual([false, true, true, true]);
       expect((await app.get(RunRepository).findRun('PROJ-314'))?.currentStep).toBe('done');
     } finally {
       jest.restoreAllMocks();

@@ -3,7 +3,7 @@ import type { HttpCallDraft } from '../../../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
 import { request } from '../../http';
 import { remoteProject } from '../remote-project';
-import { snapshotOf } from '../check-status';
+import { newestPerWorkflow, snapshotOf } from '../check-status';
 import {
   asJob,
   jobCheck,
@@ -34,9 +34,13 @@ interface GitlabPipeline {
   sha?: string;
   status?: string;
   web_url?: string;
+  source?: string;
   failure_reason?: string;
   yaml_errors?: string;
 }
+
+/** The detail statuses of a pipeline that has not started. */
+const QUEUED = ['pending', 'created', 'waiting_for_resource'];
 
 /** GitLab's own draft marker: a title that starts with it. */
 const DRAFT_PREFIX = 'Draft: ';
@@ -133,6 +137,9 @@ export class GitlabCodeHost extends AbstractCodeHost {
           id: id as number,
           status: pipelineStatus(detail.status),
           url: detail.web_url ?? '',
+          ...(pipelineStatus(detail.status) === 'running'
+            ? { total: rows.length, queued: QUEUED.includes(detail.status ?? '') }
+            : {}),
           jobs: listed.filter(
             (job, at) => scopes?.includes(job.status) && listed.findIndex((j) => j.id === job.id) === at,
           ),
@@ -424,5 +431,10 @@ function pipelinesOf(body: unknown, sha: string): GitlabPipeline[] {
     .filter((item): item is GitlabPipeline => Boolean(item?.id))
     .sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
   const head = sha || rows[0]?.sha;
-  return rows.filter((item) => !head || item.sha === head);
+  // A merge-request pipeline and a branch pipeline of one commit are different workflows.
+  return newestPerWorkflow(
+    rows.filter((item) => !head || item.sha === head),
+    (item) => item.source ?? '',
+    (item) => item.id ?? 0,
+  );
 }

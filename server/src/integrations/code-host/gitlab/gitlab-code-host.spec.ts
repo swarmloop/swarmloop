@@ -160,8 +160,8 @@ describe('gitlab host', () => {
   it('reads every pipeline of the commit and the statuses of external apps', async () => {
     const seen = mockFetch([
       [
-        { id: 8, sha: 'abc', status: 'failed' },
-        { id: 9, sha: 'abc', status: 'success' },
+        { id: 8, sha: 'abc', status: 'failed', source: 'merge_request_event' },
+        { id: 9, sha: 'abc', status: 'success', source: 'push' },
         { id: 4, sha: 'old', status: 'failed' },
       ],
       { id: 9, status: 'success', web_url: 'https://gitlab.example/group/demo/-/pipelines/9' },
@@ -191,6 +191,28 @@ describe('gitlab host', () => {
     ]);
     expect(result.snapshot?.checks[2]).toMatchObject({ status: 'failed', summary: 'quality gate' });
     expect(seen[5]?.url).toContain('/repository/commits/abc/statuses');
+  });
+
+  it('judges a source by its newest pipeline, so an old stuck pipeline of the commit is ignored', async () => {
+    const seen = mockFetch([
+      [
+        { id: 6, sha: 'abc', status: 'success', source: 'push' },
+        { id: 5, sha: 'abc', status: 'pending', source: 'push' },
+      ],
+      { id: 6, status: 'success' },
+      [{ id: 1, name: 'build', stage: 'build', status: 'success' }],
+      [],
+    ]);
+    const result = await service().readBranchPipeline({ project: 'group/demo', ref: 'feature/PROJ-1', sha: 'abc' });
+    expect(result.snapshot?.status).toBe('success');
+    expect(result.snapshot?.runs.map((run) => run.id)).toEqual([6]);
+    expect(seen.some((call) => call.url.includes('/pipelines/5'))).toBe(false);
+  });
+
+  it('counts the jobs of a pipeline that has not started', async () => {
+    mockFetch([[{ id: 5, sha: 'abc', status: 'pending', source: 'push' }], { id: 5, status: 'pending' }, [], []]);
+    const result = await service().readBranchPipeline({ project: 'group/demo', ref: 'feature/PROJ-1', sha: 'abc' });
+    expect(result.snapshot?.runs).toMatchObject([{ id: 5, status: 'running', total: 0, queued: true }]);
   });
 
   it('is green when a failure is allowed and a manual job is not required', async () => {

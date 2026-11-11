@@ -1,9 +1,12 @@
 import { SwarmloopError } from '../../../core/swarmloop-error';
+import { newestPerWorkflow } from '../check-status';
 import type { CheckAnnotation, PipelineCheck, PipelineJob } from '../code-host';
 
 export interface GithubRun {
   id?: number;
   name?: string;
+  workflow_id?: number;
+  run_number?: number;
   event?: string;
   pull_requests?: unknown[];
   head_sha?: string;
@@ -60,7 +63,7 @@ export function checkStatus(row: GithubRun): PipelineCheck['status'] {
   return row.conclusion === 'action_required' ? 'manual' : 'failed';
 }
 
-/** The runs of one commit: those of `sha`, or of the newest run's commit when there is no sha. */
+/** The runs of one commit, the newest of each workflow: those of `sha`, or of the newest run's commit when there is no sha. */
 export function runsOf(body: unknown, sha: string): GithubRun[] {
   const rows = (body as { workflow_runs?: unknown } | null)?.workflow_runs;
   if (!Array.isArray(rows)) {
@@ -68,7 +71,12 @@ export function runsOf(body: unknown, sha: string): GithubRun[] {
   }
   const runs = (rows as (GithubRun | null)[]).filter((run): run is GithubRun => Boolean(run?.id));
   const head = sha || runs[0]?.head_sha;
-  return runs.filter((run) => !head || run.head_sha === head);
+  const ofHead = runs.filter((run) => !head || run.head_sha === head);
+  return newestPerWorkflow(
+    ofHead,
+    (run) => run.workflow_id ?? run.name ?? '',
+    (run) => run.run_number ?? run.id ?? 0,
+  );
 }
 
 /** CodeQL default setup starts its `Code scanning results` check on a pull request after its own run has ended. */

@@ -212,6 +212,11 @@ export function classify(seen: Seen[]): CiCause {
 
 /** The pipeline log of a run that did not run its jobs: one line with the code, then one `job:` line per job. */
 export function renderInfra(code: InfraCode, seen: Seen[], notes: string): string {
+  const unstarted = unstartedRuns(seen);
+  if (unstarted.length > 0) {
+    const lines = unstarted.map((run) => `${code}: CI host did not start run ${run.id} ${run.url}`.trim());
+    return `${lines.join('\n')}\n`;
+  }
   const wanted = code === 'CI_TIMEOUT' ? ['timed_out'] : NOT_RUN;
   const names = seen.flatMap((item) =>
     item.runs.flatMap((run) => run.jobs.filter((job) => wanted.includes(job.status)).map((job) => job.name)),
@@ -309,7 +314,31 @@ export function externalWork(seen: Seen[]): string[] {
   return runRows(seen, isRunning).map((run) => `${run.project} pipeline ${run.id} ${run.url}`.trim());
 }
 
-export type Verdict = 'green' | 'red' | 'wait' | 'manual' | 'stop' | 'absent';
+/** The runs the host accepted but has not started: queued, and without a job. */
+export function unstartedRuns(seen: Seen[]): RunRow[] {
+  return runRows(seen, isRunning).filter((run) => run.queued === true && run.total === 0);
+}
+
+const RUNNING_JOB = ['in_progress', 'running'];
+
+/** What the wait is for right now, in words; null when nothing is awaited. */
+export function waitingFor(seen: Seen[]): string | null {
+  const running = runRows(seen, isRunning);
+  const first = running[0];
+  if (first) {
+    const total = running.reduce((sum, run) => sum + (run.total ?? 0), 0);
+    const active = running.reduce(
+      (sum, run) => sum + run.jobs.filter((job) => RUNNING_JOB.includes(job.status)).length,
+      0,
+    );
+    return `waiting for ci run ${first.id}: ${active} of ${total} jobs running`;
+  }
+  const names = seen.flatMap((item) => [...appChecks(item, ['running']).map((check) => check.name), ...item.awaiting]);
+  return names.length > 0 ? `waiting for check ${names.join(', ')}` : null;
+}
+
+/** `unstarted` is the end of a wait on a run the CI host never started; only the wait itself decides it. */
+export type Verdict = 'green' | 'red' | 'wait' | 'manual' | 'stop' | 'absent' | 'unstarted';
 
 export function verdictOf(seen: Seen[]): Verdict {
   const statuses = seen.map((item) => item.status);

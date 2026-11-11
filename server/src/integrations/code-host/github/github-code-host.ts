@@ -89,12 +89,18 @@ export class GithubCodeHost extends AbstractCodeHost {
       const rows: PipelineRun[] = [];
       for (const run of runs) {
         const status = checkStatus(run);
-        const listed = listJobs(status, jobs)
+        const { listed, total } = listJobs(status, jobs || run.status === 'queued')
           ? await this.failedJobs(api, headers, project, run.id as number, calls)
-          : [];
+          : { listed: [], total: undefined };
         const named =
           runs.length > 1 ? listed.map((job) => ({ ...job, name: `${run.name ?? 'workflow'} / ${job.name}` })) : listed;
-        rows.push({ id: run.id as number, status, url: run.html_url ?? '', jobs: named });
+        rows.push({
+          id: run.id as number,
+          status,
+          url: run.html_url ?? '',
+          jobs: named,
+          ...(status === 'running' ? { total, queued: run.status === 'queued' } : {}),
+        });
       }
       const read = (url: string): Promise<unknown> =>
         this.readJson(url, headers, calls, undefined, 'github pipeline failed');
@@ -396,7 +402,7 @@ export class GithubCodeHost extends AbstractCodeHost {
     project: string,
     runId: number,
     calls: HttpCallDraft[],
-  ): Promise<PipelineJob[]> {
+  ): Promise<{ listed: PipelineJob[]; total: number }> {
     const response = await request(
       this.clock,
       `${api}/repos/${project}/actions/runs/${runId}/jobs?per_page=100`,
@@ -414,10 +420,10 @@ export class GithubCodeHost extends AbstractCodeHost {
     if (!Array.isArray(jobs)) {
       throw new FetchFailed('github pipeline failed', calls);
     }
-    return jobs.flatMap((row) => {
-      const job = asJob(row);
-      return job ? [job] : [];
-    });
+    return {
+      listed: jobs.flatMap((row) => asJob(row) ?? []),
+      total: jobs.length,
+    };
   }
 }
 

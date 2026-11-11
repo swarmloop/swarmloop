@@ -35,6 +35,8 @@ import {
   externalWork,
   pendingNote,
   runRows,
+  unstartedRuns,
+  waitingFor,
   checkFacts,
   verdictOf,
   type Verdict,
@@ -46,6 +48,7 @@ import { finishedRuns, readFailures, readNotes, rerunJobs } from './ci-host';
 import { ARTIFACTS } from '../contract/artifacts';
 import { mergeRequestDetails, parseMergeRequests } from '../merge-request/merge-request-record';
 import { finish } from './pipeline-result';
+import { stuckAtStart } from './stuck-start';
 import { hasDraft, markReady } from './pipeline-draft';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
@@ -112,6 +115,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     assertNotStopped(this.runStop, ctx.opened.run.key);
     let seen = await awake.run(() => this.load(records, calls, host, false));
     let verdict = verdictOf(seen);
+    let said: string | null = null;
+    const unstartedSince = new Map<number, number>();
+    stuckAtStart(unstartedSince, seen, awake.elapsedMs(), env.PIPELINE_START_TIMEOUT_MS);
     while (
       awake.elapsedMs() < env.PIPELINE_TIMEOUT_MS &&
       (verdict === 'wait' || verdict === 'absent' || verdict === 'green')
@@ -130,8 +136,16 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       }
       await delay(pause);
       assertNotStopped(this.runStop, ctx.opened.run.key, externalWork(seen));
-      seen = await awake.run(() => this.load(records, calls, host, false));
+      seen = await awake.run(() => this.load(records, calls, host));
       verdict = verdictOf(seen);
+      const waiting = verdict === 'wait' ? waitingFor(seen) : null;
+      if (waiting && waiting !== said) {
+        await ctx.activity(waiting, () => Promise.resolve());
+      }
+      said = waiting ?? said;
+      if (stuckAtStart(unstartedSince, seen, awake.elapsedMs(), env.PIPELINE_START_TIMEOUT_MS)) {
+        return { seen, verdict: 'unstarted' };
+      }
     }
     return { seen, verdict };
   }
@@ -177,6 +191,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     reruns = 0,
   ): Promise<StepResult> {
     const { opened, calls } = ctx;
+    if (verdict === 'unstarted') {
+      return this.infra(ctx, env, records, seen, 'CI_NOT_RUN', host, reruns);
+    }
     if (verdict === 'wait' && runRows(seen, isRunning).length === 0) {
       return this.stalled(ctx, env, records, seen, host, reruns);
     }
@@ -278,7 +295,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   ): Promise<StepResult> {
     const { opened, calls } = ctx;
     const finished = finishedRuns(seen);
-    const pause = RERUN_PAUSES_MS[reruns];
+    const pause = unstartedRuns(seen).length > 0 ? undefined : RERUN_PAUSES_MS[reruns];
     const errors: string[] = [];
     if (pause !== undefined) {
       await delay(pause);
