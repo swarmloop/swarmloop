@@ -50,7 +50,7 @@ export class GithubAppService {
         callback_urls: [`${base}/auth/github/callback`],
         request_oauth_on_install: true,
         public: false,
-        hook_attributes: { url: base, active: false },
+        // No webhook: swarmloop polls GitHub, and GitHub refuses a hook URL it cannot reach (a loopback address).
         default_events: [],
         default_permissions: PERMISSIONS,
       },

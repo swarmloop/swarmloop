@@ -90,7 +90,7 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
         metadata: 'read',
       },
     });
-    expect(manifest.hook_attributes).toMatchObject({ active: false });
+    expect(manifest.hook_attributes).toBeUndefined();
     const remote = await fetch(`${app.url}/auth/github/manifest`, { headers: { 'x-forwarded-host': 'panel.example' } });
     expect(remote.status).toBe(403);
     expect(
