@@ -17,9 +17,15 @@ export const ERROR_CODES = {
   INPUT_MISSING: 'INPUT_MISSING',
   DOCKER_UNAVAILABLE: 'DOCKER_UNAVAILABLE',
   IMAGE_MISSING: 'IMAGE_MISSING',
+  SUBTASKS_RUNNING: 'SUBTASKS_RUNNING',
+  SUBTASK_WAITING: 'SUBTASK_WAITING',
+  SUBTASK_BLOCKED: 'SUBTASK_BLOCKED',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
+
+/** The reasons a split run waits between its passes. */
+export const SUBTASK_WAIT_CODES: readonly ErrorCode[] = [ERROR_CODES.SUBTASKS_RUNNING, ERROR_CODES.SUBTASK_WAITING];
 
 /** The codes of a run whose sandbox cannot start: docker is down or an image is missing. A person fixes the cause, then resumes. */
 export const IMAGE_ERROR_CODES: readonly ErrorCode[] = [ERROR_CODES.DOCKER_UNAVAILABLE, ERROR_CODES.IMAGE_MISSING];

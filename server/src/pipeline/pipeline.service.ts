@@ -14,6 +14,7 @@ import { StepName } from '../contract/steps';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { WorkspaceGuard } from './workspace-guard';
 import { DiskGuard } from './disk-guard';
+import { SubtaskPort } from './subtask-port';
 import { RunDriver } from './run-driver';
 import { RunInstructions } from './run-instructions';
 import { Reconciler } from './reconciler';
@@ -39,9 +40,22 @@ export class PipelineService implements OnModuleInit {
     reconciler: Reconciler,
     workspace: WorkspaceGuard,
     disk: DiskGuard,
+    subtasks: SubtaskPort,
   ) {
     this.instructions = new RunInstructions(runs, documents, registry);
-    this.driver = new RunDriver(runs, documents, registry, config, visits, runStop, clock, projects, workspace, disk);
+    this.driver = new RunDriver(
+      runs,
+      documents,
+      registry,
+      config,
+      visits,
+      runStop,
+      clock,
+      projects,
+      workspace,
+      disk,
+      subtasks,
+    );
     this.lifecycle = new RunLifecycle(
       runs,
       documents,

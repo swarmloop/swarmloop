@@ -11,6 +11,7 @@ import { expandReviewPhases, replaySelection } from '../../phases';
 import { PHASES, pipelineStepOf, REVIEW_STEPS } from '@contract/steps';
 import { FlowBoard } from '../flow-board';
 import { resumeLabel } from '../../../../lib/ci-infra';
+import { skipTask } from '../../../../lib/endpoints';
 import { StepDetail } from '../step-detail';
 import { LimitBanner } from '../limit-banner';
 import { WaitingPanel } from '../waiting-panel';
@@ -74,7 +75,17 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         onStop={() => setConfirmStop(true)}
       />
       <FlowBoard phases={phases} returns={flow.returns} selected={selected} onSelect={selectStep} />
-      {flow.tasks?.length ? <TaskLayers layers={flow.tasks} /> : null}
+      {flow.tasks?.length ? (
+        <TaskLayers
+          layers={flow.tasks}
+          line={flow.taskLine}
+          onSkip={(taskId) =>
+            void skipTask(flow.key, taskId).catch((reason: unknown) =>
+              setError(reason instanceof Error ? reason.message : 'Skip task failed.'),
+            )
+          }
+        />
+      ) : null}
       {flow.status === 'waiting' || flow.status === 'blocked' || flow.status === 'failed' ? (
         <WaitingPanel flow={flow} onChange={applyWaiting} />
       ) : null}

@@ -9,6 +9,7 @@ import type {
   ProjectListView,
   ReadinessView,
   ReplayBody,
+  SkipTaskBody,
   RunRef,
   RunsView,
   StatsView,
@@ -53,6 +54,8 @@ export const sendAnswers = (key: string, body: AnswersBody): Promise<FlowView> =
   api<FlowView>(`${run(key)}/answers`, post(body));
 export const resumeRun = (key: string): Promise<unknown> => api(`${run(key)}/resume`, post());
 export const stopRun = (key: string): Promise<unknown> => api(`${run(key)}/stop`, post());
+export const skipTask = (key: string, taskId: string): Promise<unknown> =>
+  api(`${run(key)}/skip-task`, post({ taskId } satisfies SkipTaskBody));
 export const rebaseRun = (key: string): Promise<unknown> => api(`${run(key)}/rebase`, post());
 export const startReviewer = (key: string, name: string): Promise<unknown> => api(step(key, name), post());
 export const replayStep = (key: string, name: string, body: ReplayBody): Promise<unknown> =>

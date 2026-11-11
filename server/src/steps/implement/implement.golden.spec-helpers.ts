@@ -21,6 +21,7 @@ import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-t
 import { RebasedPublisher } from '../shared/rebased-publisher';
 import { ImplementImproveStep } from './implement-improve.step';
 import { ImplementStep } from './implement.step';
+import { SplitImplementStep } from './split-implement.step';
 import { boot, featureTree, seed, writeEnv } from './implement.step.spec-helpers';
 
 export type GoldenApp = Awaited<ReturnType<typeof boot>>;
@@ -78,6 +79,7 @@ export async function goldenRun(input: GoldenCase): Promise<PipelineResult> {
             app.get(CheckoutRepository),
             app.get(AgentLauncher),
             app.get(EnvironmentService),
+            app.get(SplitImplementStep),
           )
         : new ImplementImproveStep(...common, app.get(AgentLauncher), app.get(EnvironmentService));
     const result = await step.execute(input.key, input.options ?? {});

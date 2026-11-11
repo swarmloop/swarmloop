@@ -29,6 +29,7 @@ import { writeRunState } from '../history/run-state';
 import type { WorkspaceGuard } from './workspace-guard';
 import { workspaceBlock } from './workspace-guard';
 import type { DiskGuard } from './disk-guard';
+import type { SubtaskPort } from './subtask-port';
 
 const HOP_LIMIT = STEPS.length * 3;
 
@@ -44,6 +45,7 @@ export class RunDriver {
     private readonly projects: ProjectAppendService,
     private readonly workspace?: WorkspaceGuard,
     private readonly disk?: DiskGuard,
+    private readonly subtasks?: SubtaskPort,
   ) {}
 
   async savedStep(
@@ -61,7 +63,16 @@ export class RunDriver {
     return { step };
   }
 
+  /** Drives the run, then tells its parent, if it has one, that this subtask changed. */
   async drive(name: StepName, key: string, options: StepOptions): Promise<PipelineResult> {
+    try {
+      return await this.driveSteps(name, key, options);
+    } finally {
+      await this.subtasks?.notifyParent(key);
+    }
+  }
+
+  private async driveSteps(name: StepName, key: string, options: StepOptions): Promise<PipelineResult> {
     let step = name;
     let stepOptions = options;
     let manual = options.auto !== true;

@@ -59,6 +59,7 @@ export interface SwarmloopEnv {
   AGENTS_SUBTASK_REVIEW: string;
   SPLIT: 'auto' | 'off';
   SPLIT_MAX_TASKS: number;
+  SUBTASKS_PARALLEL: number;
   SWARMLOOP_ROOT: string | undefined;
   CHECKOUTS_ROOT: string | undefined;
   SWARMLOOP_API_PORT: number;
@@ -161,6 +162,7 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     AGENTS_SUBTASK_REVIEW: config.get<string>('AGENTS_SUBTASK_REVIEW') ?? '',
     SPLIT: config.get<'auto' | 'off'>('SPLIT') ?? 'off',
     SPLIT_MAX_TASKS: config.get<number>('SPLIT_MAX_TASKS') ?? 12,
+    SUBTASKS_PARALLEL: config.get<number>('SUBTASKS_PARALLEL') ?? 3,
     SWARMLOOP_ROOT: root ? root : undefined,
     CHECKOUTS_ROOT: checkoutsRoot ? checkoutsRoot : undefined,
     SWARMLOOP_API_PORT: config.getOrThrow<number>('SWARMLOOP_API_PORT'),

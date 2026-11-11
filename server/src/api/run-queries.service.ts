@@ -33,7 +33,7 @@ import { parentLink } from './run-view/status';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
-import { belongsToVisit, documentView, filesOf, legacyLogs, taskLayers, withReturnNotes } from './run-view/documents';
+import { belongsToVisit, documentView, filesOf, legacyLogs, taskView, withReturnNotes } from './run-view/documents';
 import { visitKey } from '../contract/visit-key';
 import { launchView, liveVisit } from './run-view/live';
 import { commandViewsOf, exchangesOf, reviewChecks, samplesOf } from './run-view/visit-parts';
@@ -101,7 +101,6 @@ export class RunQueriesService {
     const state = await runState(this.commands, shown, open, documents);
     const maxReturns = this.config.env.MAX_RETURNS;
     const reportMs = await this.visits.codeReviewReportMs(run.id);
-    const tasks = taskLayers(documents);
     return {
       key: run.key,
       name: runName(run.key, run.prompt),
@@ -111,7 +110,7 @@ export class RunQueriesService {
       stepStartedAt: run.stepStartedAt,
       ...(await this.parentOf(run)),
       ...(run.startedBy ? { startedBy: run.startedBy } : {}),
-      ...(tasks.length > 0 ? { tasks } : {}),
+      ...taskView(documents, run.currentStep),
       ...state,
       sentence: withSkip(
         sentence(shown, open, documents, stats, maxReturns),
