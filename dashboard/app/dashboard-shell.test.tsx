@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { usePathname, useRouter } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getSession, listProjects, listRuns, removeRun } from '../lib/endpoints';
+import { getSession, listProjects, listRemote, listRuns, removeRun } from '../lib/endpoints';
 import { receive } from '../test/fake-socket';
 import { runSummary } from '../test/fixtures';
 import { DashboardShell } from './dashboard-shell';
@@ -13,6 +13,7 @@ vi.mock('../lib/endpoints', () => ({
   listRuns: vi.fn(),
   removeRun: vi.fn(),
   listProjects: vi.fn(),
+  listRemote: vi.fn(),
   createRun: vi.fn(),
   setRunProjects: vi.fn(),
   getSession: vi.fn(),
@@ -40,6 +41,7 @@ beforeEach(() => {
   vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
   vi.mocked(removeRun).mockResolvedValue({ key: 'run-1' });
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
+  vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
 });
 
 describe('Shell', () => {

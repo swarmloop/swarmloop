@@ -13,6 +13,7 @@ import {
   type GitlabJob,
   type GitlabStatus,
 } from './gitlab-checks';
+import { gitlabRepositories } from './gitlab-repositories';
 import { AbstractCodeHost, type CodeHostEnv, type HostCall } from '../abstract-code-host';
 import type {
   MergeRequestDraft,
@@ -75,6 +76,10 @@ export class GitlabCodeHost extends AbstractCodeHost {
     } catch {
       return null;
     }
+  }
+
+  cloneUrl(project: string): string {
+    return `${this.env.GITLAB_BASE_URL.replace(/\/$/, '')}/${project}.git`;
   }
 
   selected(): SelectedHost {
@@ -241,6 +246,8 @@ export class GitlabCodeHost extends AbstractCodeHost {
       headers: { 'PRIVATE-TOKEN': env.GITLAB_TOKEN, Accept: 'application/json' },
     };
   }
+
+  protected readonly repositories = gitlabRepositories;
 
   protected userUrl(root: string): string {
     return `${root}/api/v4/user`;

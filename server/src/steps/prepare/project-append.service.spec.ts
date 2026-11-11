@@ -2,6 +2,7 @@ import type { RunEntity } from '../../history/entities';
 import type { BranchCheckout } from '../shared/branch-checkout';
 import type { CheckoutService } from '../shared/checkout.service';
 import type { PrepareStep } from './prepare.step';
+import type { RemoteRepositories } from './remote-repositories.service';
 import { ProjectAppendService } from './project-append.service';
 
 describe('ProjectAppendService', () => {
@@ -29,6 +30,7 @@ describe('ProjectAppendService', () => {
     const prepare = { listProjects: () => ({ projects: ['billing-api', 'worker', 'handbook'] }) };
     const worktrees = { ensureDetached: jest.fn(async () => undefined) };
     const branch = { ensure: jest.fn(async () => undefined) };
+    const remote = { offers: jest.fn(async (name: string) => name === 'fresh'), clone: jest.fn(async () => undefined) };
     const service = new ProjectAppendService(
       runs as never,
       documents as never,
@@ -36,8 +38,9 @@ describe('ProjectAppendService', () => {
       prepare as unknown as PrepareStep,
       worktrees as unknown as CheckoutService,
       branch as unknown as BranchCheckout,
+      remote as unknown as RemoteRepositories,
     );
-    return { run, docs, stats, worktrees, branch, service };
+    return { run, docs, stats, worktrees, branch, remote, service };
   }
 
   it('prepares only the new worktree and leaves the feature branch for later', async () => {
@@ -50,6 +53,25 @@ describe('ProjectAppendService', () => {
     const note = docs.filter((item) => item.kind === 'added_repos').at(-1)?.body ?? '';
     expect(note).toContain('/work/handbook');
     expect(note).toContain("Write this task's contract changes there");
+  });
+
+  it('clones a repository of a connected host before it prepares the worktree', async () => {
+    const { run, remote, worktrees, service } = harness('waiting');
+    run.startedBy = 'ana';
+    const order: string[] = [];
+    remote.clone.mockImplementation(async () => void order.push('clone'));
+    worktrees.ensureDetached.mockImplementation(async () => void order.push('worktree'));
+    const result = await service.add('PROJ-20', 'fresh');
+    expect(result.projects).toEqual(['billing-api', 'fresh']);
+    expect(remote.clone).toHaveBeenCalledWith('fresh', 'ana');
+    expect(order).toEqual(['clone', 'worktree']);
+  });
+
+  it('does not clone a local checkout, and still refuses a name no host offers', async () => {
+    const { remote, service } = harness('waiting');
+    await service.add('PROJ-20', 'handbook');
+    expect(remote.clone).not.toHaveBeenCalled();
+    await expect(service.add('PROJ-20', 'nowhere')).rejects.toThrow('nowhere is not a checkout');
   });
 
   it('keeps every added repository in the note', async () => {

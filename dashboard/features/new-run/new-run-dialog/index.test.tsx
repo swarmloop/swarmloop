@@ -1,11 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRun, listProjects, ticketKeys } from '../../../lib/endpoints';
+import { createRepository, createRun, listProjects, listRemote, ticketKeys } from '../../../lib/endpoints';
 import { NewRunDialog } from './index';
 
 vi.mock('../../../lib/endpoints', () => ({
   listProjects: vi.fn(),
+  listRemote: vi.fn(),
+  createRepository: vi.fn(),
   createRun: vi.fn(),
   setRunProjects: vi.fn(),
   ticketKeys: vi.fn(),
@@ -20,6 +22,7 @@ async function pickProject(user: UserEvent, name: string): Promise<void> {
 
 beforeEach(() => {
   vi.mocked(listProjects).mockResolvedValue({ projects: ['swarmloop', 'docs'] });
+  vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
   vi.mocked(createRun).mockResolvedValue({ key: 'run-9', status: 'running' });
   vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
 });
@@ -120,5 +123,51 @@ describe('NewRunDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Start' }));
 
     expect(await screen.findByText('run refused')).toBeInTheDocument();
+  });
+  it('keeps local folders working when the remote list fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listRemote).mockRejectedValue(new Error('GitHub is down'));
+    render(<NewRunDialog open onClose={vi.fn()} />);
+
+    await pickProject(user, 'swarmloop');
+
+    expect(screen.getByRole('button', { name: 'New repository' })).toBeDisabled();
+    expect(screen.queryByText('GitHub is down')).not.toBeInTheDocument();
+  });
+
+  it('creates two repositories in a row without closing the dialog and picks both', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    vi.mocked(listRemote).mockResolvedValue({
+      repositories: [],
+      owners: [{ host: 'github', login: 'acme', kind: 'organization' }],
+      reason: null,
+      allowedNames: [],
+    });
+    vi.mocked(createRepository).mockImplementation(async (body) => ({
+      host: body.host,
+      owner: body.owner,
+      name: body.name,
+      visibility: 'private',
+      defaultBranch: 'main',
+      cloned: true,
+    }));
+    render(<NewRunDialog open onClose={onClose} />);
+
+    for (const name of ['first', 'second']) {
+      await waitFor(() => expect(screen.getByRole('button', { name: 'New repository' })).toBeEnabled());
+      await user.click(screen.getByRole('button', { name: 'New repository' }));
+      await user.type(await screen.findByRole('textbox', { name: 'Name' }), name);
+      await user.click(screen.getByRole('button', { name: 'Create' }));
+      await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Name' })).not.toBeInTheDocument());
+    }
+
+    expect(createRepository).toHaveBeenCalledTimes(2);
+    expect(onClose).not.toHaveBeenCalled();
+    await user.type(screen.getByRole('textbox', { name: /Prompt/ }), 'Ship it');
+    await user.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() =>
+      expect(createRun).toHaveBeenCalledWith(expect.objectContaining({ projects: ['first', 'second'] })),
+    );
   });
 });

@@ -1,3 +1,4 @@
+import type { RemoteRepository, RepositoryOwner } from '../../contract/api';
 import type { SwarmloopEnv } from '../../config/env';
 import type { Clock } from '../../core/clock';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
@@ -6,6 +7,7 @@ import { request } from '../http';
 import { remoteProject } from '../../integrations/code-host/remote-project';
 import type {
   CodeHost,
+  CreateRepositoryDraft,
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
@@ -14,6 +16,22 @@ import type {
   PipelineSnapshot,
   SelectedHost,
 } from './code-host';
+
+/** What a host says about its repositories: its urls and payloads, and who the token is in a Basic header. */
+export interface RepositoryApi {
+  /** The user name of the token in a Basic header, the same one `pushUrl` uses. */
+  gitUser: string;
+  /** The permission a token needs to list, create and clone, named in a refusal. */
+  needs: string;
+  listUrl(root: string, page: number, perPage: number): string;
+  /** The repository of one row, or null when the token cannot push to it. */
+  repositoryOf(row: unknown): RemoteRepository | null;
+  readOwners(root: string, read: (url: string) => Promise<unknown>): Promise<RepositoryOwner[]>;
+  createRequest(root: string, draft: CreateRepositoryDraft): { url: string; payload: string };
+}
+
+/** Rows per page of a repository list. A shorter page is the last one. */
+const PAGE_SIZE = 100;
 
 /** The env keys a code host reads. */
 export type CodeHostEnv = Pick<SwarmloopEnv, 'GITHUB_BASE_URL' | 'GITHUB_TOKEN' | 'GITLAB_BASE_URL' | 'GITLAB_TOKEN'>;
@@ -152,6 +170,64 @@ export abstract class AbstractCodeHost implements CodeHost {
     }
   }
 
+  async listRepositories(
+    page: number,
+  ): Promise<{ repositories: RemoteRepository[]; more: boolean; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const rows = await this.hostJson(this.repositories.listUrl(root, page, PAGE_SIZE), headers, calls);
+      if (!Array.isArray(rows)) {
+        throw new FetchFailed('repository list failed', calls);
+      }
+      const repositories = (rows as unknown[]).flatMap((row) => this.repositories.repositoryOf(row) ?? []);
+      return { repositories, more: rows.length >= PAGE_SIZE, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async listOwners(): Promise<{ owners: RepositoryOwner[]; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const owners = await this.repositories.readOwners(root, (url) => this.hostJson(url, headers, calls));
+      return { owners, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async createRepository(
+    draft: CreateRepositoryDraft,
+  ): Promise<{ repository: RemoteRepository; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const { url, payload } = this.repositories.createRequest(root, draft);
+      const body = await this.hostJson(url, { ...headers, 'Content-Type': 'application/json' }, calls, payload);
+      const repository = this.repositories.repositoryOf(body);
+      if (!repository) {
+        throw new FetchFailed('repository create failed', calls);
+      }
+      return { repository, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  cloneEnv(): NodeJS.ProcessEnv {
+    const basic = Buffer.from(`${this.repositories.gitUser}:${this.selected().token}`).toString('base64');
+    return {
+      GIT_TERMINAL_PROMPT: '0',
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'http.extraheader',
+      GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
+    };
+  }
+
+  abstract cloneUrl(project: string): string;
+
   abstract readBranchPipeline(
     ref: PipelineRef,
     jobs?: boolean,
@@ -184,6 +260,8 @@ export abstract class AbstractCodeHost implements CodeHost {
   protected abstract endpoint(env: CodeHostEnv): { root: string; headers: Record<string, string> };
 
   protected abstract userUrl(root: string): string;
+
+  protected abstract readonly repositories: RepositoryApi;
 
   protected abstract findUrl(root: string, query: MergeRequestQuery): string;
 
@@ -232,6 +310,22 @@ export abstract class AbstractCodeHost implements CodeHost {
     } catch {
       throw new FetchFailed(failure, calls);
     }
+  }
+
+  /** A JSON read or POST whose refusal carries the host's message, and the permission needed when the token is rejected. */
+  private async hostJson(
+    url: string,
+    headers: Record<string, string>,
+    calls: HttpCallDraft[],
+    body?: string,
+  ): Promise<unknown> {
+    const response = await request(this.clock, url, headers, calls, body === undefined ? {} : { method: 'POST', body });
+    if (response.status < 200 || response.status >= 300) {
+      const message = providerMessage(response.body) || `repository request failed: HTTP ${response.status}`;
+      const rejected = response.status === 401 || response.status === 403;
+      throw new FetchFailed(rejected ? `${message} (needs ${this.repositories.needs})` : message, calls);
+    }
+    return this.parse(response.body, calls);
   }
 
   /** The refusal of a merge, with the host's own message. */

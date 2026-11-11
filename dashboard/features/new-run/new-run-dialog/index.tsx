@@ -10,11 +10,11 @@ import DialogTitle from '@mui/material/DialogTitle';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { createRun, listProjects, setRunProjects, ticketKeys } from '../../../lib/endpoints';
+import { createRun, listProjects, listRemote, setRunProjects, ticketKeys } from '../../../lib/endpoints';
 import { mergeNames } from '../../../lib/names';
 import type { PhaseName } from '@contract/steps';
 import { PHASES } from '@contract/steps';
-import type { CreateRunBody } from '@contract/api';
+import type { CreateRunBody, RemoteEntry, RemoteListView } from '@contract/api';
 import { PhasePicker } from './phase-picker';
 import { ProjectPicker } from './project-picker';
 
@@ -50,6 +50,7 @@ export function NewRunDialog({
   const [picked, setPicked] = useState<PhaseName[]>(selected ?? DEFAULT_PHASES);
   const [available, setAvailable] = useState<string[]>(lockedProjects ?? []);
   const [pickedProjects, setPickedProjects] = useState<string[]>(lockedProjects ?? []);
+  const [remote, setRemote] = useState<RemoteListView | null>(null);
   const [split, setSplit] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +67,10 @@ export function NewRunDialog({
     if (!open) {
       return;
     }
+    // A failed remote load leaves local folders working and shows no remote entries.
+    listRemote()
+      .then(setRemote)
+      .catch(() => setRemote(null));
     if (!frozenProjects) {
       listProjects()
         .then((body) => {
@@ -148,6 +153,11 @@ export function NewRunDialog({
       .finally(() => setBusy(false));
   };
 
+  const created = (entry: RemoteEntry): void => {
+    setAvailable((current) => mergeNames(current, [entry.name]));
+    changeProjects(mergeNames(frozenProjects ? kept.current : pickedProjects, [entry.name]));
+  };
+
   const submit = (): void => {
     const text = prompt.trim();
     if (!text || needProjects || busy) {
@@ -210,6 +220,8 @@ export function NewRunDialog({
           projectOptions={projectOptions}
           pickedProjects={pickedProjects}
           onChange={changeProjects}
+          remote={remote}
+          onCreated={created}
         />
         {note ? <Typography variant="body2">{note}</Typography> : null}
         {error ? (

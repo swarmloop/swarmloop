@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getFlow, getStep, getStepEvents, listProjects, skipTask } from '../../../../lib/endpoints';
+import { getFlow, getStep, getStepEvents, listProjects, listRemote, skipTask } from '../../../../lib/endpoints';
 import { LiveBridgeProvider } from '../../../shell';
 import { QueryWrapper } from '../../../../test/query-wrapper';
 import { flowView, stepView } from '../../../../test/fixtures';
@@ -14,6 +14,7 @@ vi.mock('../../../../lib/endpoints', () => ({
   getStepEvents: vi.fn(),
   getRunLog: vi.fn(),
   listProjects: vi.fn(),
+  listRemote: vi.fn(),
   createRun: vi.fn(),
   setRunProjects: vi.fn(),
   sendAnswers: vi.fn(),
@@ -39,6 +40,7 @@ beforeEach(() => {
   vi.mocked(getFlow).mockResolvedValue(flowView({ status: 'done' }));
   vi.mocked(getStep).mockResolvedValue(stepView());
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
+  vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
 });
 
 describe('RunScreen', () => {

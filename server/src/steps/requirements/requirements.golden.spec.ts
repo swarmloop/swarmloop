@@ -7,6 +7,7 @@ import { REQUIREMENTS_SOURCE } from '../../integrations/requirements-source/requ
 import type { RequirementsSource } from '../../integrations/requirements-source/requirements-source';
 import { expectGolden } from '../../testing/step-trace.spec-helpers';
 import { goldenApp } from '../shared/model-golden.spec-helpers';
+import { RemoteRepositories } from '../prepare/remote-repositories.service';
 import { RequirementsStep } from './requirements.step';
 
 const KEY = 'PROJ-1';
@@ -49,6 +50,7 @@ async function requirements(fetch: Fetch) {
     ),
     tracker,
     golden.app.get<RequirementsSource>(REQUIREMENTS_SOURCE),
+    golden.app.get(RemoteRepositories),
   );
   return { golden, step };
 }

@@ -25,6 +25,7 @@ import {
   stopReason,
 } from './requirements-visit';
 import { assertRepoAllowed, storedProjects } from '../../config/checkout-path';
+import { RemoteRepositories } from '../prepare/remote-repositories.service';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, Route, StepInput, StepResult } from '../contract/step-contract';
 
@@ -44,6 +45,7 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
     kernel: StepKernel,
     @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
     @Inject(REQUIREMENTS_SOURCE) private readonly source: RequirementsSource,
+    private readonly remote: RemoteRepositories,
   ) {
     super(kernel);
   }
@@ -112,6 +114,15 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
       }
       for (const name of storedProjects(opened.run.projects)) {
         assertRepoAllowed(this.config.env.SWARMLOOP_REPOS, name);
+      }
+      for (const name of storedProjects(opened.run.projects)) {
+        if (!this.remote.hasFolder(name)) {
+          await ctx.activity(
+            `Clone ${name}`,
+            () => this.remote.clone(name, opened.run.startedBy),
+            () => 'cloned',
+          );
+        }
       }
       const fetched = await this.collect(
         ctx,

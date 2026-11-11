@@ -61,8 +61,13 @@ export function renderProjects(names: string[]): string {
   return `${[...new Set(names)].sort().join('\n')}\n`;
 }
 
+/** A name the checkouts root lists as a project: run folders and hidden folders are not. */
+export function isProjectName(name: string): boolean {
+  return !name.startsWith('.') && !name.startsWith('run-') && CHECKOUT_NAME.test(name);
+}
+
 function isGitProject(root: string, name: string): boolean {
-  if (name.startsWith('.') || name.startsWith('run-') || !CHECKOUT_NAME.test(name)) {
+  if (!isProjectName(name)) {
     return false;
   }
   const path = join(root, name);
