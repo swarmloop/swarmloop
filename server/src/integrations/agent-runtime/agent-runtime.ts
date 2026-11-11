@@ -11,8 +11,8 @@ export interface RuntimeKeys {
   codexApiKey: string;
 }
 
-/** `read` leaves a step the tools that read; `write` leaves it every tool but the ones no print-mode turn can use. */
-export type AgentTools = 'read' | 'write';
+/** `read` leaves a step the tools that read; `plan` leaves those plus skills; `write` leaves it every tool but the ones no print-mode turn can use. */
+export type AgentTools = 'read' | 'plan' | 'write';
 
 export interface AgentPrintInput {
   model: string;

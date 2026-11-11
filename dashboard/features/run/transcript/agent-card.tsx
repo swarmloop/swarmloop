@@ -56,8 +56,12 @@ function WorkLine({ work }: { work: AgentWork }): ReactElement {
   );
 }
 
-/** What the step's agent could use: a `read` step has no way to write. */
-const TOOLS_TEXT: Record<string, string> = { read: 'read, search, Bash', write: 'all' };
+/** What the step's agent could use: a `read` or `plan` step has no way to write. */
+const TOOLS_TEXT: Record<string, string> = {
+  read: 'read, search, Bash',
+  plan: 'read, search, Bash, skills',
+  write: 'all',
+};
 
 /** The role and tier of the step's agent, from the step descriptor. */
 export type AgentRole = { role?: 'plan' | 'implement' | 'review'; tier?: 'main' | 'subtask' };

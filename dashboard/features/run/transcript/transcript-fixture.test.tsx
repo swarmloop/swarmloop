@@ -233,6 +233,9 @@ describe('the step window for a fixture run', () => {
     feed([stepEvent(1, { kind: 'agent.launched', ...launch, tools: 'read' })]);
     expect(screen.getByText('tools: read, search, Bash')).toBeInTheDocument();
     cleanup();
+    feed([stepEvent(1, { kind: 'agent.launched', ...launch, tools: 'plan' })]);
+    expect(screen.getByText('tools: read, search, Bash, skills')).toBeInTheDocument();
+
     feed([stepEvent(1, { kind: 'agent.launched', ...launch, tools: 'write' })]);
     expect(screen.getByText('tools: all')).toBeInTheDocument();
   });

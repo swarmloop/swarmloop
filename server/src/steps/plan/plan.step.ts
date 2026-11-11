@@ -46,7 +46,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     return {
       ...agentFor(env, null, 'plan'),
       mode: 'plan',
-      tools: 'read',
+      tools: 'plan',
       timeLimitMs: env.PLAN_TIMEOUT_MS,
       session: 'resume',
     };

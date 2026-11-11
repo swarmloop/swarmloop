@@ -10,7 +10,7 @@ export const CLAUDE_OAUTH_PLACEHOLDER = 'sk-ant-oat01-swarmloop-egress-placehold
 /** Tools that start work or a trigger that cannot outlive a print-mode turn. */
 const CLAUDE_DISALLOWED_TOOLS = ['Monitor', 'ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger'];
 
-/** What a `read` step cannot use. Read, search and `Bash` stay: the read-only mount is the hard guarantee. */
+/** What a `read` step cannot use; a `plan` step can also use `Skill`. Read, search and `Bash` stay: the read-only mount is the hard guarantee. */
 const CLAUDE_READ_ONLY_DENIED = [
   'Edit',
   'Write',
@@ -27,9 +27,12 @@ const CLAUDE_READ_ONLY_DENIED = [
 
 /** The `--disallowedTools` value of a step with these tools. */
 export function claudeDisallowedTools(tools: AgentTools): string {
-  return (tools === 'read' ? [...CLAUDE_DISALLOWED_TOOLS, ...CLAUDE_READ_ONLY_DENIED] : CLAUDE_DISALLOWED_TOOLS).join(
-    ',',
-  );
+  const denied = {
+    read: CLAUDE_READ_ONLY_DENIED,
+    plan: CLAUDE_READ_ONLY_DENIED.filter((tool) => tool !== 'Skill'),
+    write: [],
+  }[tools];
+  return [...CLAUDE_DISALLOWED_TOOLS, ...denied].join(',');
 }
 
 const HOOK_DIR = '.claude';

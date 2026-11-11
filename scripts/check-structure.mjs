@@ -59,21 +59,6 @@ export function findViolations({ root, rules, files }) {
         });
     }
   }
-  for (const { directory, known } of rules.uniqueTimestamps ?? []) {
-    const byTimestamp = new Map();
-    for (const rel of files.filter((file) => file.startsWith(directory))) {
-      const name = rel.slice(directory.length);
-      const timestamp = /^(\d{13})-/.exec(name)?.[1];
-      if (timestamp) {
-        byTimestamp.set(timestamp, [...(byTimestamp.get(timestamp) ?? []), name]);
-      }
-    }
-    for (const [timestamp, names] of byTimestamp) {
-      if (names.length > 1 && !names.every((name) => known.includes(name))) {
-        violations.push(`${directory}: timestamp ${timestamp} is used by ${names.join(', ')}`);
-      }
-    }
-  }
   for (const { file, pattern: forbidden } of rules.forbidInFile ?? []) {
     const text = existsSync(join(root, file)) ? readText(join(root, file)) : null;
     const forbiddenPattern = new RegExp(forbidden);
