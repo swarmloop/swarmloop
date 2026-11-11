@@ -15,6 +15,11 @@ import { Reconciler } from '../../pipeline/reconciler';
 import { createTestApp, type TestApp } from '../../testing/test-app';
 import { save } from '../../testing/runs.spec-helpers';
 import { NO_CI_NOTE } from './split-implement.step';
+import { FetchFailed, MergeConflict } from '../../core/swarmloop-error';
+import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import type { CodeHost } from '../../integrations/code-host/code-host';
+import { renderMergeRequest } from '../merge-request/merge-request-record';
+import { featureWorktree, git } from '../../testing/runs.spec-helpers';
 
 const KEY = 'PROJ-300';
 
@@ -374,5 +379,261 @@ describe('split implement', () => {
     await settle(app);
 
     expect((await parentState(app)).state).toBe('stopped');
+  });
+});
+
+const FEATURE = 'feature/PROJ-300-ship-the-field';
+
+/** A code host whose merge adds one commit to the feature branch of a real origin. */
+class FakeHost {
+  readonly merges: number[] = [];
+  readonly closed: number[] = [];
+  readonly deleted: string[] = [];
+  readonly targets = new Map<number, string>();
+  readonly merged = new Map<number, string>();
+  readonly conflicts = new Set<number>();
+  crashOn: number | null = null;
+  refusal: string | null = null;
+
+  constructor(private readonly clone: string) {}
+
+  readMergeRequest(_project: string, iid: number) {
+    const sha = this.merged.get(iid) ?? null;
+    return Promise.resolve({ state: sha ? 'merged' : 'open', sha, conflicts: this.conflicts.has(iid), httpCalls: [] });
+  }
+
+  mergeMergeRequest(_project: string, iid: number) {
+    if (this.targets.get(iid) !== FEATURE) return Promise.reject(new Error(`!${iid} does not target ${FEATURE}`));
+    if (iid === this.crashOn) return Promise.reject(new Error('crash'));
+    if (this.refusal) return Promise.reject(new FetchFailed(this.refusal));
+    if (this.conflicts.has(iid)) return Promise.reject(new MergeConflict('Pull Request is not mergeable'));
+    git(this.clone, ['fetch', 'origin']);
+    const tip = git(this.clone, ['rev-parse', `origin/${FEATURE}`]);
+    const tree = git(this.clone, ['rev-parse', `${tip}^{tree}`]);
+    const sha = git(this.clone, ['commit-tree', tree, '-p', tip, '-m', `squash !${iid}`]);
+    git(this.clone, ['push', 'origin', `${sha}:refs/heads/${FEATURE}`]);
+    this.merged.set(iid, sha);
+    this.merges.push(iid);
+    return Promise.resolve({ sha, httpCalls: [] });
+  }
+
+  closeMergeRequest(_project: string, iid: number) {
+    this.closed.push(iid);
+    return Promise.resolve({ httpCalls: [] });
+  }
+
+  deleteBranch(_project: string, branch: string) {
+    this.deleted.push(branch);
+    return Promise.resolve({ httpCalls: [] });
+  }
+}
+
+/** The origin and the parent worktree on the feature branch, and a host that merges into that origin. */
+async function mergeWorld() {
+  const built = await world();
+  const { tree, clone } = featureWorktree(built.app.root, KEY);
+  git(tree, ['push', 'origin', FEATURE]);
+  const host = new FakeHost(clone);
+  const registry = built.app.app.get(CodeHostRegistry);
+  jest.spyOn(registry, 'byName').mockReturnValue(host as unknown as CodeHost);
+  const rebased: string[] = [];
+  const commands = built.app.app.get(CommandService);
+  const accept = commands.accept.bind(commands);
+  jest.spyOn(commands, 'accept').mockImplementation((type, key, payload, options) => {
+    if (type !== 'rebase') return accept(type, key, payload, options);
+    rebased.push(key);
+    return Promise.resolve({}) as ReturnType<typeof accept>;
+  });
+  return { ...built, tree, host, rebased };
+}
+
+/** The merge requests a subtask run opened, one per repository, as `repo: iid`. */
+async function opened(app: TestApp, host: FakeHost, id: string, requests: Record<string, number>) {
+  const run = await child(app, id);
+  const documents = app.app.get(DocumentRepository);
+  await documents.putDocument(run, 'requirements', requirements);
+  await documents.putDocument(run, 'repos', `${Object.keys(requests).join('\n')}\n`);
+  const records = Object.entries(requests).map(([repo, iid]) => ({
+    project: repo,
+    iid,
+    url: `https://code.example/${repo}/${iid}`,
+    summary: '',
+  }));
+  await documents.putDocument(run, 'merge_request', renderMergeRequest(records));
+  records.forEach((record) => host.targets.set(record.iid, FEATURE));
+}
+
+async function seedMergeParent(app: TestApp, tasks: Subtask[]) {
+  const parent = await seedParent(app, tasks);
+  parent.codeHost = 'github';
+  await app.app.get(RunRepository).saveRun(parent);
+  await app.app.get(DocumentRepository).putDocument(parent, 'repos', 'demo\n');
+  await pass(app);
+  return parent;
+}
+
+describe('a new run', () => {
+  it('splits through the command door when SPLIT is left at its default', async () => {
+    const app = await createTestApp({ env: { SPLIT: 'auto' } });
+    try {
+      const response = await fetch(`${app.url}/runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key: 'PROJ-301', prompt: 'Ship it', projects: ['demo'] }),
+      });
+      expect(response.status).toBe(202);
+      expect((await app.app.get(RunRepository).findRun('PROJ-301'))?.split).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('split merge', () => {
+  let app: TestApp;
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await app.close();
+  });
+
+  it('merges the green tasks one at a time in task order, into the feature branch only, and moves the parent worktree', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a'), task('b'), task('c', ['a'])]);
+    await opened(app, built.host, 'b', { demo: 2 });
+    await opened(app, built.host, 'a', { demo: 1 });
+    await finish(app, 'a');
+    await finish(app, 'b');
+
+    await pass(app);
+
+    expect(built.host.merges).toEqual([1, 2]);
+    expect(built.host.merges.map((iid) => built.host.targets.get(iid))).toEqual([FEATURE, FEATURE]);
+    expect(await statuses(app)).toEqual({ a: 'merged', b: 'merged', c: 'running' });
+    expect(built.launched).toContain(`${KEY}-c`);
+    const tasks = await tasksOf(app);
+    expect(tasks[0]?.merged).toEqual({ demo: built.host.merged.get(1) });
+    expect(git(built.tree, ['rev-parse', 'HEAD'])).toBe(built.host.merged.get(2));
+  });
+
+  it('deletes the branch of a merged subtask', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await finish(app, 'a');
+
+    await pass(app);
+
+    expect(built.host.deleted).toEqual(['feature/PROJ-300-a-ship-the-field']);
+  });
+
+  it('sends a Rebase to a subtask whose merge conflicts, and merges it when it comes back green', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await finish(app, 'a');
+    built.host.conflicts.add(1);
+
+    await pass(app);
+
+    expect(built.rebased).toEqual([`${KEY}-a`]);
+    expect(built.host.merges).toEqual([]);
+    expect(await statuses(app)).toEqual({ a: 'running' });
+
+    built.host.conflicts.delete(1);
+    await pass(app);
+
+    expect(built.host.merges).toEqual([1]);
+    expect(await statuses(app)).toEqual({ a: 'merged' });
+  });
+
+  it('sends a Rebase to an open subtask whose merge request conflicts after a merge', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a'), task('b')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await opened(app, built.host, 'b', { demo: 2 });
+    await finish(app, 'a');
+    const second = await child(app, 'b');
+    writeRunState(second, { status: 'waiting', currentStep: 'code-review' });
+    await app.app.get(RunRepository).saveRun(second);
+    built.host.conflicts.add(2);
+
+    await pass(app);
+
+    expect(built.host.merges).toEqual([1]);
+    expect(built.rebased).toEqual([`${KEY}-b`]);
+  });
+
+  it('merges a task over two repositories one after the other, and only the one left after a crash between them', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a')]);
+    await opened(app, built.host, 'a', { demo: 1, lib: 2 });
+    await finish(app, 'a');
+    built.host.crashOn = 2;
+
+    await pass(app);
+
+    expect(built.host.merges).toEqual([1]);
+
+    built.host.crashOn = null;
+    await pass(app);
+
+    expect(built.host.merges).toEqual([1, 2]);
+    expect(await statuses(app)).toEqual({ a: 'merged' });
+    expect((await tasksOf(app))[0]?.merged).toEqual({
+      demo: built.host.merged.get(1),
+      lib: built.host.merged.get(2),
+    });
+  });
+
+  it('does not merge twice when the host reports the request merged before it was recorded', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await finish(app, 'a');
+    built.host.merged.set(1, 'abc123');
+
+    await pass(app);
+
+    expect(built.host.merges).toEqual([]);
+    expect(await statuses(app)).toEqual({ a: 'merged' });
+    expect((await tasksOf(app))[0]?.merged).toEqual({ demo: 'abc123' });
+  });
+
+  it('blocks the parent with the message of a host that refuses a merge for another reason than a conflict', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await finish(app, 'a');
+    built.host.refusal = 'At least 1 approving review is required';
+
+    await pass(app);
+
+    const state = await parentState(app);
+    expect(state.state).toBe('blocked');
+    expect(state.reason).toMatchObject({ code: ERROR_CODES.SUBTASK_BLOCKED });
+    expect(state.reason?.message).toContain('At least 1 approving review is required');
+    expect(built.rebased).toEqual([]);
+    expect(await statuses(app)).toEqual({ a: 'green' });
+  });
+
+  it('closes the merge requests of the subtasks on a Replay at plan', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a'), task('b')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await opened(app, built.host, 'b', { demo: 2 });
+    jest.spyOn(app.pipeline, 'replay').mockResolvedValue({ exitCode: 0, message: 'started' });
+
+    await app.app.get(CommandService).submit('replay', KEY, { step: 'plan', prompt: 'again' });
+
+    expect(built.host.closed).toEqual([1, 2]);
   });
 });

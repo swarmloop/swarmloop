@@ -1,7 +1,7 @@
 import type { SwarmloopEnv } from '../../config/env';
 import type { Clock } from '../../core/clock';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
-import { FetchFailed, SwarmloopError } from '../../core/swarmloop-error';
+import { FetchFailed, MergeConflict, SwarmloopError } from '../../core/swarmloop-error';
 import { request } from '../http';
 import { remoteProject } from '../../integrations/code-host/remote-project';
 import type {
@@ -9,6 +9,7 @@ import type {
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
+  MergeRequestView,
   PipelineRef,
   PipelineSnapshot,
   SelectedHost,
@@ -16,6 +17,13 @@ import type {
 
 /** The env keys a code host reads. */
 export type CodeHostEnv = Pick<SwarmloopEnv, 'GITHUB_BASE_URL' | 'GITHUB_TOKEN' | 'GITLAB_BASE_URL' | 'GITLAB_TOKEN'>;
+
+/** One call of a host's API. */
+export interface HostCall {
+  url: string;
+  method: string;
+  payload?: string;
+}
 
 export abstract class AbstractCodeHost implements CodeHost {
   abstract readonly name: SelectedHost['name'];
@@ -70,6 +78,63 @@ export abstract class AbstractCodeHost implements CodeHost {
         body: payload,
       });
       this.assertStatus(response, calls, this.failure);
+      return { httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async readMergeRequest(project: string, iid: number): Promise<MergeRequestView & { httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const body = await this.readJson(this.mergeRequestUrl(root, project, iid), headers, calls);
+      return { ...this.view(body), httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async mergeMergeRequest(project: string, iid: number): Promise<{ sha: string; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const response = await this.send(this.mergeCall(root, project, iid), headers, calls);
+      if (response.status < 200 || response.status >= 300) {
+        throw this.refusal(response, calls);
+      }
+      const sha = this.mergedSha(this.parse(response.body, calls));
+      if (!sha) {
+        throw new FetchFailed(this.failure, calls);
+      }
+      return { sha, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async closeMergeRequest(project: string, iid: number): Promise<{ httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const current = this.view(await this.readJson(this.mergeRequestUrl(root, project, iid), headers, calls));
+      if (current.state === 'open') {
+        this.assertStatus(await this.send(this.closeCall(root, project, iid), headers, calls), calls, this.failure);
+      }
+      return { httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async deleteBranch(project: string, branch: string): Promise<{ httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const response = await this.send(this.deleteCall(root, project, branch), headers, calls);
+      if (response.status !== 404 && response.status !== 422) {
+        this.assertStatus(response, calls, this.failure);
+      }
       return { httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
@@ -131,6 +196,22 @@ export abstract class AbstractCodeHost implements CodeHost {
     summary: string,
   ): { url: string; method: string; payload: string };
 
+  protected abstract mergeRequestUrl(root: string, project: string, iid: number): string;
+
+  /** The squash merge of a request, into the target branch the request already has. */
+  protected abstract mergeCall(root: string, project: string, iid: number): HostCall;
+
+  protected abstract closeCall(root: string, project: string, iid: number): HostCall;
+
+  protected abstract deleteCall(root: string, project: string, branch: string): HostCall;
+
+  protected abstract view(body: unknown): MergeRequestView;
+
+  protected abstract mergedSha(body: unknown): string | null;
+
+  /** True when a refused merge says the branch conflicts with its target. */
+  protected abstract mergeConflicts(status: number, message: string): boolean;
+
   protected abstract match(body: unknown, source: string): unknown;
 
   protected abstract record(project: string, row: unknown, summary?: string): MergeRequestRecord;
@@ -151,6 +232,29 @@ export abstract class AbstractCodeHost implements CodeHost {
     } catch {
       throw new FetchFailed(failure, calls);
     }
+  }
+
+  /** The refusal of a merge, with the host's own message. */
+  protected refusal(response: { status: number; body: Buffer }, calls: HttpCallDraft[]): FetchFailed {
+    const message = providerMessage(response.body) || `${this.failure}: HTTP ${response.status}`;
+    return this.mergeConflicts(response.status, message)
+      ? new MergeConflict(message, calls)
+      : new FetchFailed(message, calls);
+  }
+
+  protected parse(body: Buffer, calls: HttpCallDraft[]): unknown {
+    try {
+      return JSON.parse(body.toString('utf8')) as unknown;
+    } catch {
+      throw new FetchFailed(this.failure, calls);
+    }
+  }
+
+  private send(call: HostCall, headers: Record<string, string>, calls: HttpCallDraft[]): ReturnType<typeof request> {
+    return request(this.clock, call.url, { ...headers, 'Content-Type': 'application/json' }, calls, {
+      method: call.method,
+      body: call.payload,
+    });
   }
 
   protected remoteOnBase(origin: string, baseUrl: string): { host: string; project: string } | null {
@@ -219,6 +323,17 @@ export abstract class AbstractCodeHost implements CodeHost {
       throw error;
     }
     throw new FetchFailed(message, calls);
+  }
+}
+
+/** The `message` or `error` text of a host's JSON answer. */
+function providerMessage(body: Buffer): string {
+  try {
+    const parsed = JSON.parse(body.toString('utf8')) as { message?: unknown; error?: unknown } | null;
+    const text = parsed?.message ?? parsed?.error;
+    return typeof text === 'string' ? text.trim() : '';
+  } catch {
+    return '';
   }
 }
 

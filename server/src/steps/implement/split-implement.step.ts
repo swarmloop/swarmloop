@@ -5,6 +5,7 @@ import type { RunEntity } from '../../history/entities';
 import { readyTasks, settled, statusLine, unmetDepends, withStatuses, type Subtask } from '../../contract/subtask';
 import type { StepName } from '../../contract/steps';
 import { SubtaskOps } from '../shared/subtask-ops';
+import { SplitMerge } from './split-merge';
 import { BaseStep, StepContext } from '../base-step';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
@@ -30,6 +31,7 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
   constructor(
     kernel: StepKernel,
     private readonly subtasks: SubtaskOps,
+    private readonly merges: SplitMerge,
   ) {
     super(kernel);
   }
@@ -38,16 +40,17 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     const { run, startedAt } = ctx.opened;
     const before = JSON.stringify(withStatuses(input.subtasks));
     const followed = await this.refresh(run, withStatuses(input.subtasks));
-    const blocked = followed.find((task) => task.status === 'blocked');
-    const tasks = await this.explain(run, blocked ? followed : await this.start(run, followed));
+    const { tasks: merged, refusal } = await this.merges.run(run, followed);
+    const blocked = merged.find((task) => task.status === 'blocked');
+    const tasks = await this.explain(run, blocked || refusal ? merged : await this.start(run, merged));
     const outputs = JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }];
     const line = statusLine(tasks);
-    if (blocked) {
-      const text = `${startedAt} subtask ${blocked.id} is ${blocked.status}: ${line}`;
+    if (blocked || refusal) {
+      const text = `${startedAt} ${blocked ? `subtask ${blocked.id} is ${blocked.status}` : refusal}: ${line}`;
       return { route: { to: 'block', reason: text, code: ERROR_CODES.SUBTASK_BLOCKED }, summary: text, outputs };
     }
     if (tasks.every(settled)) {
-      return this.finish(run, tasks, ctx);
+      return this.finish(run, tasks, ctx, outputs);
     }
     const waiting = tasks.some((task) => task.status === 'running') ? null : this.missing(tasks);
     const code = waiting ? ERROR_CODES.SUBTASK_WAITING : ERROR_CODES.SUBTASKS_RUNNING;
@@ -114,7 +117,12 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
   }
 
   /** Every task is merged or skipped: the checks run on the feature branch, and implement-improve is skipped. */
-  private async finish(run: RunEntity, tasks: Subtask[], ctx: StepContext): Promise<StepResult> {
+  private async finish(
+    run: RunEntity,
+    tasks: Subtask[],
+    ctx: StepContext,
+    outputs: StepResult['outputs'],
+  ): Promise<StepResult> {
     const next = (await this.flows.activePhases(run.id)).includes('checks') ? 'checks' : 'code-review';
     await this.flows.noteFlow(
       run.key,
@@ -125,7 +133,7 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     return {
       route: { to: 'jump', step: next },
       summary: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}`,
-      outputs: [{ artifact: ARTIFACTS.implementation, value: body }],
+      outputs: [...outputs, { artifact: ARTIFACTS.implementation, value: body }],
       handoff: `- ${statusLine(tasks)}\n`,
     };
   }

@@ -1,10 +1,21 @@
+import { existsSync } from 'fs';
 import { Injectable, Logger } from '@nestjs/common';
+import { AppConfig } from '../config/env';
+import { Clock } from '../core/clock';
+import { fetchBranch } from '../git/rebase';
+import { originRef } from '../git/base-ref';
+import { git } from '../git/git';
+import { repoNames, worktreePath } from '../git/repo-names';
+import { root } from '../history/run-paths';
+import { parseMergeRequests } from '../steps/merge-request/merge-request-record';
+import { branchName, summaryForBranch } from '../steps/branch/branch-name';
+import { ARTIFACTS } from '../steps/contract/artifacts';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { deriveState, writeRunState } from '../history/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
-import { isSubtask, type Subtask } from '../contract/subtask';
-import { SubtaskOps } from '../steps/shared/subtask-ops';
+import { isSubtask, parseSubtasks, settled, SUBTASKS_KIND, type Subtask } from '../contract/subtask';
+import { SubtaskOps, type SubtaskMergeRequest } from '../steps/shared/subtask-ops';
 import { DocumentRepository } from '../history/document.repository';
 import { CommandService } from './command.service';
 
@@ -26,6 +37,8 @@ export class SubtaskPort extends SubtaskOps {
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
     private readonly commands: CommandService,
+    private readonly config: AppConfig,
+    private readonly clock: Clock,
   ) {
     super();
   }
@@ -59,6 +72,58 @@ export class SubtaskPort extends SubtaskOps {
 
   override async resume(run: RunEntity): Promise<void> {
     await this.commands.accept('resume', run.key, {}, { idempotencyKey: `subtasks-resume-${run.revision}` });
+  }
+
+  override async mergeRequests(run: RunEntity): Promise<SubtaskMergeRequest[]> {
+    const body = await this.documents.latestBody(run.key, ARTIFACTS.mergeRequest.kind);
+    if (!body?.trim()) return [];
+    const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
+    return parseMergeRequests(body).map((record, index) => ({
+      repo: names[index] ?? record.project,
+      project: record.project,
+      iid: record.iid,
+    }));
+  }
+
+  override async branchOf(run: RunEntity): Promise<string> {
+    const requirements = (await this.documents.latestBody(run.key, ARTIFACTS.requirements.kind)) ?? '';
+    return branchName(run.key, summaryForBranch(requirements, run.key));
+  }
+
+  override async fastForward(parent: RunEntity): Promise<void> {
+    const branch = await this.branchOf(parent);
+    const names = repoNames((await this.documents.latestBody(parent.key, ARTIFACTS.repos.kind)) ?? '');
+    for (const repo of names) {
+      const path = worktreePath(root(this.config), parent.key, repo);
+      if (existsSync(path) && (await fetchBranch(path, repo, branch, { ...this.config.env, clock: this.clock }))) {
+        await git(['-C', path, 'merge', '--ff-only', originRef(branch)]);
+      }
+    }
+  }
+
+  override async rebase(run: RunEntity): Promise<void> {
+    if (!['failed', 'done', 'waiting'].includes(run.status) || (await this.mergeRequests(run)).length === 0) return;
+    try {
+      await this.commands.accept(
+        'rebase',
+        run.key,
+        {},
+        { idempotencyKey: `subtask-rebase-${run.revision}-${run.generation}` },
+      );
+    } catch (error) {
+      this.logger.warn(`${run.key} was not rebased: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** Sends a Rebase to every subtask of the parent that is not merged or skipped. */
+  async rebaseOpen(parent: RunEntity): Promise<void> {
+    const open = parseSubtasks(await this.documents.latestBody(parent.key, SUBTASKS_KIND)).filter(
+      (task) => !settled(task),
+    );
+    for (const task of open) {
+      const child = await this.runs.findSubtask(parent, task.id);
+      if (child) await this.rebase(child);
+    }
   }
 
   async stop(run: RunEntity): Promise<void> {

@@ -12,7 +12,8 @@ import { assertKey, isStep, nextSessionKey, normalizePhases, ticketKey } from '.
 import { parseSubtasks, SUBTASKS_KIND, type Subtask } from '../contract/subtask';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { SubtaskPort } from '../pipeline/subtask-port';
-import { deriveState } from '../history/run-state';
+import { SubtaskClose } from './subtask-close';
+import { deriveState, writeRunState } from '../history/run-state';
 import { branchName, summaryForBranch } from '../steps/branch/branch-name';
 import { requirementsBrief } from '../steps/shared/requirements-brief';
 import { PhaseName, pipelineStepOf, reviewerOf, STEPS } from '../contract/steps';
@@ -37,7 +38,6 @@ import {
 } from '../contract/api';
 import { subtaskPrompt } from './subtask-prompt';
 import { requireRun, RunQueriesService } from './run-queries.service';
-import { writeRunState } from '../history/run-state';
 
 /** What `plan` decided for a new run. It is the payload of the start command. */
 export interface StartPlan {
@@ -70,6 +70,7 @@ export class RunCommandsService {
     private readonly config: AppConfig,
     @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
     private readonly subtasks: SubtaskPort,
+    private readonly closing: SubtaskClose,
   ) {}
 
   async addProject(key: string, name: string): Promise<ProjectsView> {
@@ -303,12 +304,10 @@ export class RunCommandsService {
 
   /** Stops the parent and removes the runs and worktrees of its subtasks. A parent without subtasks is as it was. */
   private async dropSubtasks(parent: RunEntity): Promise<void> {
-    if (!parent.split) {
-      return;
-    }
+    if (!parent.split) return;
     await this.pipeline.stop(parent.key);
     await this.holdParent(parent.key);
-    await this.subtasks.removeAll(parent);
+    await this.closing.removeAll(parent);
   }
 
   /** Marks a task skipped: its dependents treat it as merged. A running subtask of the task is stopped. */
@@ -349,7 +348,7 @@ export class RunCommandsService {
     }
     if (run.split) {
       await this.holdParent(key);
-      await this.subtasks.removeAll(run);
+      await this.closing.removeAll(run);
     }
     await this.prepare.removeWorktrees(key);
     await this.runs.remove(run);

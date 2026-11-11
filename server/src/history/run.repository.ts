@@ -122,9 +122,11 @@ export class RunRepository {
     return this.saveRun(Object.assign(this.newWaitingRun(key, null), { parentRunId, taskId }));
   }
 
-  /** The waiting row of a new run that may split into subtasks. */
+  /** The run row of a split run. The command door may have made it already: then it is marked split. */
   async openSplit(key: string): Promise<RunEntity> {
-    return this.saveRun(Object.assign(this.newWaitingRun(key, null), { split: true }));
+    const run = (await this.findRun(key)) ?? this.newWaitingRun(key, null);
+    run.split = true;
+    return this.saveRun(run);
   }
 
   async openWaiting(key: string, targetPath: string): Promise<RunEntity> {

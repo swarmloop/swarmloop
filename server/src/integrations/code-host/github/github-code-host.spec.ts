@@ -1,6 +1,7 @@
 import { testEnv } from '../../../config/env.spec-helpers';
 import { FakeClock } from '../../../core/fake-clock.spec-helpers';
 import type { CodeHostEnv } from '../abstract-code-host';
+import { FetchFailed, MergeConflict } from '../../../core/swarmloop-error';
 import { GithubCodeHost } from './github-code-host';
 
 const TOKEN = 'super-secret-token';
@@ -556,6 +557,70 @@ describe('github host', () => {
   it('names a rejected token when the current user is refused', async () => {
     mockFetch([{}], 401);
     await expect(service().readCurrentUser()).rejects.toThrow('was rejected');
+  });
+
+  describe('merging', () => {
+    it('squash-merges a pull request and returns the merge commit', async () => {
+      const seen = mockFetch([{ sha: 'abc123', merged: true }]);
+      const result = await service().mergeMergeRequest('acme/demo', 12);
+      expect(result.sha).toBe('abc123');
+      expect(seen[0]?.method).toBe('PUT');
+      expect(seen[0]?.url).toBe('https://api.github.com/repos/acme/demo/pulls/12/merge');
+      expect(JSON.parse(seen[0]?.body ?? '')).toEqual({ merge_method: 'squash' });
+    });
+
+    it('refuses a conflicting pull request with a MergeConflict', async () => {
+      mockFetch([{ message: 'Pull Request is not mergeable' }], 405);
+      await expect(service().mergeMergeRequest('acme/demo', 12)).rejects.toBeInstanceOf(MergeConflict);
+    });
+
+    it('keeps the message of any other refusal and does not call it a conflict', async () => {
+      mockFetch([{ message: 'At least 1 approving review is required by reviewers with write access.' }], 405);
+      const error: unknown = await service()
+        .mergeMergeRequest('acme/demo', 12)
+        .catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(FetchFailed);
+      expect(error).not.toBeInstanceOf(MergeConflict);
+      expect((error as Error).message).toBe('At least 1 approving review is required by reviewers with write access.');
+      mockFetch([{ message: 'Resource not accessible by personal access token' }], 403);
+      await expect(service().mergeMergeRequest('acme/demo', 12)).rejects.toThrow(
+        'Resource not accessible by personal access token',
+      );
+    });
+
+    it('reads whether a pull request is merged, with its commit, and whether it conflicts', async () => {
+      mockFetch([{ state: 'closed', merged: true, merge_commit_sha: 'abc123', mergeable: null }]);
+      expect(await service().readMergeRequest('acme/demo', 12)).toMatchObject({
+        state: 'merged',
+        sha: 'abc123',
+        conflicts: false,
+      });
+      mockFetch([{ state: 'open', merged: false, mergeable: false, mergeable_state: 'dirty' }]);
+      expect(await service().readMergeRequest('acme/demo', 12)).toMatchObject({
+        state: 'open',
+        sha: null,
+        conflicts: true,
+      });
+    });
+
+    it('closes an open pull request and leaves a merged one alone', async () => {
+      const seen = mockFetch([{ state: 'open' }, {}]);
+      await service().closeMergeRequest('acme/demo', 12);
+      expect(seen.map((call) => call.method)).toEqual(['GET', 'PATCH']);
+      expect(JSON.parse(seen[1]?.body ?? '')).toEqual({ state: 'closed' });
+      const merged = mockFetch([{ state: 'closed', merged: true }]);
+      await service().closeMergeRequest('acme/demo', 12);
+      expect(merged).toHaveLength(1);
+    });
+
+    it('deletes a branch, and takes a branch that is already gone as deleted', async () => {
+      const seen = mockFetch([null], 204);
+      await service().deleteBranch('acme/demo', 'feature/PROJ-1-ship');
+      expect(seen[0]?.method).toBe('DELETE');
+      expect(seen[0]?.url).toBe('https://api.github.com/repos/acme/demo/git/refs/heads/feature/PROJ-1-ship');
+      mockFetch([{ message: 'Reference does not exist' }], 422);
+      await expect(service().deleteBranch('acme/demo', 'feature/PROJ-1-ship')).resolves.toBeDefined();
+    });
   });
 });
 

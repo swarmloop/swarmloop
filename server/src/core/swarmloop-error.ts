@@ -41,6 +41,14 @@ export class FetchFailed extends SwarmloopError {
   }
 }
 
+/** The code host refused a merge because the branch conflicts with its target. */
+export class MergeConflict extends FetchFailed {
+  constructor(message: string, httpCalls: HttpCallDraft[] = []) {
+    super(message, httpCalls);
+    this.name = 'MergeConflict';
+  }
+}
+
 export class IssueNotFound extends FetchFailed {
   constructor(message: string, httpCalls: HttpCallDraft[] = []) {
     super(message, httpCalls);

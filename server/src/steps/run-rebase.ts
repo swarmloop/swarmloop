@@ -14,6 +14,7 @@ import { repoNames } from '../git/repo-names';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { mountsForStep } from '../git/repo-names';
 import { ARTIFACTS } from './contract/artifacts';
+import { ERROR_CODES } from '../contract/error-codes';
 import { writeRunState } from '../history/run-state';
 import { runJournal } from './shared/rebase-journal';
 import type { RebaseJournal } from '../git/rebase';
@@ -49,6 +50,7 @@ export class RunRebase {
     }
     const status = run.status;
     if (!resume) {
+      await this.assertSubtasksIdle(run);
       await this.runs.bumpGeneration(key);
     }
     const journal = runJournal(this.documents, await this.requireRun(key));
@@ -85,6 +87,15 @@ export class RunRebase {
     }
     // Every review and CI result of the old generation is stale: a step that reads them goes back through code-review.
     return AFTER_REVIEW.includes(run.currentStep) ? this.startAtReview(key) : 'resume';
+  }
+
+  /** The feature branch moves under a subtask that works on it: a Rebase waits until none runs. */
+  private async assertSubtasksIdle(run: RunEntity): Promise<void> {
+    if (!run.split) return;
+    const working = (await this.runs.children(run)).some(
+      (child) => child.status === 'running' || this.runs.held(child),
+    );
+    if (working) throw new ConflictException(ERROR_CODES.SUBTASKS_RUNNING);
   }
 
   private async startAtReview(key: string): Promise<'start'> {

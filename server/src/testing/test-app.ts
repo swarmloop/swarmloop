@@ -12,6 +12,7 @@ import { CommandHandlers } from '../api/command-handlers';
 import { ChatService } from '../api/chat.service';
 import { HealthController } from '../api/health.controller';
 import { LiveGateway } from '../api/live.gateway';
+import { SubtaskClose } from '../api/subtask-close';
 import { RunCommandsService } from '../api/run-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
 import { RunRebaseService } from '../api/run-rebase.service';
@@ -137,6 +138,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     providers: [
       RunQueriesService,
       RunCommandsService,
+      SubtaskClose,
       RunRebaseService,
       ChatService,
       ShellService,
@@ -250,6 +252,7 @@ function testEnv(root: string, overrides: Record<string, string> = {}): string {
     'PIPELINE_START_TIMEOUT_MS=180000',
     'MODEL_PLAN=opus-5.5-extra-high',
     'MODEL_IMPLEMENT=grok-4.7',
+    'SPLIT=off',
     'SWARMLOOP_API_PORT=0',
     'SWARMLOOP_API_HOST=127.0.0.1',
     `SWARMLOOP_ROOT=${root}`,

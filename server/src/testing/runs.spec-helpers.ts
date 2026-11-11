@@ -16,6 +16,7 @@ import { LiveModule } from '../live/live.module';
 import type { VisitDraft } from '../history/visit';
 import { CommandService } from '../pipeline/command.service';
 import { SubtaskPort } from '../pipeline/subtask-port';
+import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { RunStop } from '../agent/run-stop';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { writeRunState } from '../history/run-state';
@@ -23,6 +24,7 @@ import { StepRegistry } from '../steps/step.registry';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { ISSUE_TRACKER } from '../integrations/issue-tracker/tokens';
+import { SubtaskClose } from '../api/subtask-close';
 import { RunCommandsService } from '../api/run-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
 import { RunRebaseService } from '../api/run-rebase.service';
@@ -84,8 +86,10 @@ export async function boot(
     providers: [
       RunQueriesService,
       RunCommandsService,
+      SubtaskClose,
       CommandService,
       SubtaskPort,
+      { provide: CodeHostRegistry, useValue: {} },
       RunStop,
       RunRebaseService,
       RunRebase,

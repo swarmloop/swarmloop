@@ -1,7 +1,7 @@
 import { testEnv } from '../../../config/env.spec-helpers';
 import { FakeClock } from '../../../core/fake-clock.spec-helpers';
 import type { CodeHostEnv } from '../abstract-code-host';
-import { FetchFailed } from '../../../core/swarmloop-error';
+import { FetchFailed, MergeConflict } from '../../../core/swarmloop-error';
 import { GitlabCodeHost } from './gitlab-code-host';
 
 const TOKEN = 'super-secret-token';
@@ -377,6 +377,70 @@ describe('gitlab host', () => {
   it('names a rejected token when the current user is refused', async () => {
     mockFetch([{}], 401);
     await expect(service().readCurrentUser()).rejects.toThrow('was rejected');
+  });
+
+  describe('merging', () => {
+    it('squash-merges a merge request and returns the squash commit', async () => {
+      const seen = mockFetch([{ state: 'merged', squash_commit_sha: 'abc123', merge_commit_sha: null }]);
+      const result = await service().mergeMergeRequest('group/demo', 12);
+      expect(result.sha).toBe('abc123');
+      expect(seen[0]?.method).toBe('PUT');
+      expect(seen[0]?.url).toBe('https://gitlab.example/api/v4/projects/group%2Fdemo/merge_requests/12/merge');
+      expect(JSON.parse(seen[0]?.body ?? '')).toEqual({ squash: true });
+    });
+
+    it('refuses a conflicting merge request with a MergeConflict', async () => {
+      mockFetch([{ message: 'Branch cannot be merged' }], 406);
+      await expect(service().mergeMergeRequest('group/demo', 12)).rejects.toBeInstanceOf(MergeConflict);
+    });
+
+    it('keeps the message of any other refusal and does not call it a conflict', async () => {
+      mockFetch([{ message: '405 Method Not Allowed' }], 405);
+      const error: unknown = await service()
+        .mergeMergeRequest('group/demo', 12)
+        .catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(FetchFailed);
+      expect(error).not.toBeInstanceOf(MergeConflict);
+      expect((error as Error).message).toBe('405 Method Not Allowed');
+      mockFetch([{ message: '403 Forbidden' }], 403);
+      await expect(service().mergeMergeRequest('group/demo', 12)).rejects.toThrow('403 Forbidden');
+    });
+
+    it('reads whether a merge request is merged, with its commit, and whether it conflicts', async () => {
+      mockFetch([{ state: 'merged', merge_commit_sha: 'abc123' }]);
+      expect(await service().readMergeRequest('group/demo', 12)).toMatchObject({
+        state: 'merged',
+        sha: 'abc123',
+        conflicts: false,
+      });
+      mockFetch([{ state: 'opened', has_conflicts: true }]);
+      expect(await service().readMergeRequest('group/demo', 12)).toMatchObject({
+        state: 'open',
+        sha: null,
+        conflicts: true,
+      });
+    });
+
+    it('closes an open merge request and leaves a merged one alone', async () => {
+      const seen = mockFetch([{ state: 'opened' }, {}]);
+      await service().closeMergeRequest('group/demo', 12);
+      expect(seen.map((call) => call.method)).toEqual(['GET', 'PUT']);
+      expect(JSON.parse(seen[1]?.body ?? '')).toEqual({ state_event: 'close' });
+      const merged = mockFetch([{ state: 'merged' }]);
+      await service().closeMergeRequest('group/demo', 12);
+      expect(merged).toHaveLength(1);
+    });
+
+    it('deletes a branch, and takes a branch that is already gone as deleted', async () => {
+      const seen = mockFetch([null], 204);
+      await service().deleteBranch('group/demo', 'feature/PROJ-1-ship');
+      expect(seen[0]?.method).toBe('DELETE');
+      expect(seen[0]?.url).toBe(
+        'https://gitlab.example/api/v4/projects/group%2Fdemo/repository/branches/feature%2FPROJ-1-ship',
+      );
+      mockFetch([{ message: '404 Branch Not Found' }], 404);
+      await expect(service().deleteBranch('group/demo', 'feature/PROJ-1-ship')).resolves.toBeDefined();
+    });
   });
 });
 

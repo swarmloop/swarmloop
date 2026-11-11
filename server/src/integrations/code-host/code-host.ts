@@ -18,6 +18,13 @@ export interface MergeRequestRecord {
   summary: string;
 }
 
+/** A merge request as the host reports it now. `sha` is the merge or squash commit of a merged one. */
+export interface MergeRequestView {
+  state: 'open' | 'merged' | 'closed';
+  sha: string | null;
+  conflicts: boolean;
+}
+
 export interface PipelineRef {
   project: string;
   ref: string;
@@ -98,6 +105,13 @@ export interface CodeHost {
   ): Promise<{ record: MergeRequestRecord | null; httpCalls: HttpCallDraft[] }>;
   openMergeRequest(draft: MergeRequestDraft): Promise<{ record: MergeRequestRecord; httpCalls: HttpCallDraft[] }>;
   updateMergeRequest(project: string, iid: number, summary: string): Promise<{ httpCalls: HttpCallDraft[] }>;
+  readMergeRequest(project: string, iid: number): Promise<MergeRequestView & { httpCalls: HttpCallDraft[] }>;
+  /** Squash-merges the request into the target branch it already has. A refusal for a conflict is a `MergeConflict`; any other refusal is a `FetchFailed` with the host's message. */
+  mergeMergeRequest(project: string, iid: number): Promise<{ sha: string; httpCalls: HttpCallDraft[] }>;
+  /** Closes an open request. One that is already merged or closed stays as it is. */
+  closeMergeRequest(project: string, iid: number): Promise<{ httpCalls: HttpCallDraft[] }>;
+  /** Deletes a branch on origin. A branch that is already gone is not an error. */
+  deleteBranch(project: string, branch: string): Promise<{ httpCalls: HttpCallDraft[] }>;
   readBranchPipeline(
     ref: PipelineRef,
     jobs?: boolean,
