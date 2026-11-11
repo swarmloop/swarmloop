@@ -6,6 +6,8 @@ import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
 import { goldenRun, type GoldenApp } from './implement.golden.spec-helpers';
 import { reply, result } from './implement.step.spec-helpers';
+import { ARTIFACTS } from '../contract/artifacts';
+import { issueOf } from '../shared/handoff';
 
 const agent = () => jest.fn().mockResolvedValue(result(reply));
 
@@ -85,6 +87,33 @@ describe('implement step golden traces', () => {
       });
       expect(done.message).toContain('pipeline failure left unfixed');
     });
+  });
+
+  it('a checks return whose command is red after the turn gets one follow-up', async () => {
+    const failed = { repo: 'billing-api', command: 'npm run lint', tail: '$ npm run lint\nerror: no-unused-vars' };
+    const done = await goldenRun({
+      step: 'implement',
+      key: 'PROJ-306',
+      scenario: 'checks-return',
+      agent: agent(),
+      prepare: async ({ app }) => {
+        const run = (await app.get(RunRepository).findRun('PROJ-306'))!;
+        const documents = app.get(DocumentRepository);
+        const issue = issueOf(
+          'checks',
+          'required checks failed',
+          `billing-api: required check failed:\n${failed.tail}`,
+          [failed],
+        );
+        await documents.putDocument(run, 'return', `## checks\n${issue.body}\n`);
+        await documents.putDocument(run, ARTIFACTS.issues.kind, ARTIFACTS.issues.format([issue]));
+        jest
+          .spyOn(app.get(EnvironmentService), 'rerun')
+          .mockResolvedValueOnce([{ ...failed, tail: '$ npm run lint\nerror: no-undef' }])
+          .mockResolvedValueOnce([]);
+      },
+    });
+    expect(done.exitCode).toBe(0);
   });
 
   it('blocks in auto when MAX_AGENT_CALLS is reached', async () => {

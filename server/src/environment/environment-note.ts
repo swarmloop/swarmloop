@@ -1,4 +1,4 @@
-import type { EnvironmentRecord } from './project-environments';
+import type { EnvironmentRecord } from './environment-types';
 
 export function environmentNote(record: EnvironmentRecord, step?: string): string {
   const { config } = record;

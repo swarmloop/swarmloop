@@ -50,7 +50,9 @@ describe('checks step', () => {
     try {
       jest.spyOn(app.get(EnvironmentService), 'check').mockImplementation(async (input) => {
         await app.get(DocumentRepository).putDocument(input.run, 'return', `## checks\n${failure}\n`);
-        throw new RequiredCheckFailed(failure);
+        throw new RequiredCheckFailed(failure, [
+          { repo: 'billing-api', command: 'npm run lint', tail: '$ npm run lint\nerror: no-unused-vars' },
+        ]);
       });
       const done = await app.get(PipelineService).step('checks', 'PROJ-201');
       expect(done.exitCode).toBe(0);
@@ -63,6 +65,9 @@ describe('checks step', () => {
       expect(issues).toHaveLength(1);
       expect(issues[0].body).toContain('$ npm run lint');
       expect(issues[0].body).toContain('$ npm run typecheck');
+      expect(issues[0].failed).toEqual([
+        { repo: 'billing-api', command: 'npm run lint', tail: '$ npm run lint\nerror: no-unused-vars' },
+      ]);
     } finally {
       await app.close();
     }

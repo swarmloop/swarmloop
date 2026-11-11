@@ -1,6 +1,7 @@
 import { LOCAL_RUN_RULE } from './skill-prompt';
 import { environmentNote, withEnvironment } from '../../environment/environment-note';
-import type { EnvironmentInput, ProjectEnvironments } from '../../environment/project-environments';
+import type { EnvironmentInput } from '../../environment/environment-types';
+import type { ProjectEnvironments } from '../../environment/project-environments';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import { packageRegistries } from '../../sandbox/sandbox-launch';
 import type { ManifestHosts, ProjectLaunch } from '../../sandbox/sandbox-launch';

@@ -10,7 +10,6 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import type { CheckCommandRepository } from '../history/check-command.repository';
 import type { DocumentRepository } from '../history/document.repository';
 import type { CheckCommandEntity, RunEntity } from '../history/entities';
-import type { SampleDraft } from '../history/visit';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime';
 import type { LiveHub } from '../live/live.hub';
 import { CliBundles } from '../sandbox/cli-bundle';
@@ -18,63 +17,35 @@ import type { SandboxMount } from '../core/sandbox-mount';
 import type { ProjectLaunch } from '../sandbox/sandbox-launch';
 import { agentImage, prepareStateDir, sandboxUserId } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
-import { type EnvironmentConfig, originHosts, readEnvironmentConfig } from './environment-config';
+import { originHosts, readEnvironmentConfig } from './environment-config';
 import { checksFingerprint } from './checks-fingerprint';
 import { countsFor } from '../history/gate-stamp';
 import { git } from '../git/git';
 import { imagePath, projectSlug, resolveProjectImage } from './project-image';
+import type {
+  CheckedRepo,
+  CheckFailure,
+  EnvironmentInput,
+  EnvironmentRecord,
+  FailedCommand,
+  PreparedEnvironment,
+} from './environment-types';
 
 export const ENVIRONMENT = 'environment';
 const CHECKS_PASS = 'checks_pass';
 const CHECKS_FAIL = 'checks_fail';
 /** A completed check rejected the code; implementation can repair it using the saved feedback. */
-export class RequiredCheckFailed extends SwarmloopError {}
+export class RequiredCheckFailed extends SwarmloopError {
+  constructor(
+    message: string,
+    /** The failed commands as data. Empty when only the project files changed. */
+    readonly failed: FailedCommand[] = [],
+  ) {
+    super(message);
+  }
+}
 /** The same check failed again on files no pass has changed: another launch would repeat it. */
 export class RequiredCheckRepeated extends RequiredCheckFailed {}
-
-/** One repository of a checks run: its commands as rows, in order, and what each one answered. */
-interface CheckedRepo {
-  mount: SandboxMount;
-  prepared: PreparedEnvironment;
-  /** Before the first command: the files the commands start from. */
-  fingerprint: string;
-  rows: CheckCommandEntity[];
-  results: ({ exitCode: number; tail: string } | undefined)[];
-}
-
-/** One reason the checks did not pass. `repeated` is the reason text when this command failed before on the same files, else empty. */
-interface CheckFailure {
-  repo: string;
-  body: string;
-  repeated: string;
-}
-
-/** What an environment is prepared for: a step's mounts, and the runtime of the agent whose CLI the project image gets. */
-export interface EnvironmentInput {
-  run: RunEntity;
-  key: string;
-  step: string;
-  mounts: SandboxMount[];
-  runtime: RuntimeName;
-  /** Where the samples of the containers started for this input go: the visit of the step that asked. */
-  samples?: SampleDraft[];
-}
-
-/** What a run keeps about its environment: the config it started with and how the setup went. */
-export interface EnvironmentRecord {
-  repo: string;
-  ref?: string;
-  config: EnvironmentConfig;
-  image?: string;
-  setup?: { command: string; image: string; exitCode: number; tail: string };
-}
-
-export interface PreparedEnvironment {
-  launch: ProjectLaunch;
-  record: EnvironmentRecord;
-  /** The hosts of the checkout's remotes, for the ceiling of the manifest hosts. Absent when the manifest names none. */
-  origins?: string[];
-}
 
 interface EnvironmentDeps {
   env: () => Pick<SwarmloopEnv, 'SWARMLOOP_ROOT' | 'CHECKS_PARALLEL'>;
@@ -228,9 +199,33 @@ export class ProjectEnvironments {
       const body = failures.map((failure) => failure.body).join('\n\n');
       await this.documents.putDocument(input.run, 'return', `## checks\n${body}\n`);
       const repeated = failures.find((failure) => failure.repeated);
-      throw repeated ? new RequiredCheckRepeated(repeated.repeated) : new RequiredCheckFailed(body);
+      const failed = failures.flatMap((failure) => (failure.failed ? [failure.failed] : []));
+      throw repeated ? new RequiredCheckRepeated(repeated.repeated) : new RequiredCheckFailed(body, failed);
     }
     return { passed, total };
+  }
+
+  /**
+   * Runs the named failed commands again, one after the other, in the environment `check` uses. A command the project
+   * no longer lists is dropped. Records nothing: the full checks step stays the only gate. Returns the ones still red.
+   */
+  async rerun(input: EnvironmentInput, failed: FailedCommand[]): Promise<FailedCommand[]> {
+    const red: FailedCommand[] = [];
+    for (const mount of failed.length > 0 ? input.mounts : []) {
+      const prepared = await this.prepare({ ...input, mounts: [mount] });
+      if (!prepared) {
+        continue;
+      }
+      const repo = prepared.record.repo;
+      const listed = prepared.record.config.checks ?? [];
+      for (const { command } of failed.filter((item) => item.repo === repo && listed.includes(item.command))) {
+        const result = await runShell(this.shellDeps(), input, prepared.launch, command, mount, 'checks');
+        if (result.exitCode !== 0) {
+          red.push({ repo, command, tail: withCommand(command, result.tail) });
+        }
+      }
+    }
+    return red;
   }
 
   /** Runs the commands of every repository in a pool of CHECKS_PARALLEL. Waits for all of them, then throws the first error. */
@@ -316,6 +311,7 @@ export class ProjectEnvironments {
       repeated: repeated.has(item.command)
         ? `${name}: ${item.command} failed again on unchanged files after a relaunch`
         : '',
+      failed: { repo: name, command: item.command, tail: item.tail },
     }));
     if ((await this.fingerprint(input, repo.prepared)) !== repo.fingerprint) {
       failures.push({
@@ -381,7 +377,7 @@ export class ProjectEnvironments {
   }
 
   /** The config is read once per run and kept, so a change the agent commits does not move the run to another image. */
-  private async record(input: {
+  protected async record(input: {
     run: RunEntity;
     key: string;
     mounts: SandboxMount[];

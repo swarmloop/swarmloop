@@ -115,6 +115,7 @@ function toMergeMs(run: StatsRunRow): number | null {
 function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: number, runtimes: Map<number, string>) {
   const totals = { usd: 0, tokensIn: 0, tokensOut: 0, agentMs: 0 };
   const byRun = new Map<number, { usd: number; tokens: number }>();
+  const shellEdits = new Map<number, number>();
   const byAgent = new Map<number, Map<string, { usd: number; tokens: number }>>();
   const bySteps = new Map<string, StatsShare>();
   const byModels = new Map<string, StatsShare>();
@@ -123,6 +124,7 @@ function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: n
     totals.usd += step.usd;
     totals.tokensIn += step.tokensIn;
     totals.tokensOut += step.tokensOut;
+    shellEdits.set(step.runId, (shellEdits.get(step.runId) ?? 0) + step.shellEdits);
     const run = byRun.get(step.runId) ?? { usd: 0, tokens: 0 };
     byRun.set(step.runId, { usd: run.usd + step.usd, tokens: run.tokens + tokens });
     const runtime = step.runtime ?? runtimes.get(step.runId);
@@ -144,7 +146,7 @@ function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: n
       day.usd += step.usd;
     }
   }
-  return { totals, byRun, byAgent, steps: sortedShares(bySteps), models: sortedShares(byModels) };
+  return { totals, byRun, shellEdits, byAgent, steps: sortedShares(bySteps), models: sortedShares(byModels) };
 }
 
 /** Returns: by run, by reviewer (CI as `pipeline`), and on the day each happened. */
@@ -239,6 +241,7 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
       outcome,
       usd: round(spent.usd),
       returns: backs,
+      shellEdits: spend.shellEdits.get(run.id) ?? 0,
       durationMs,
       createdAt: run.createdAt,
     };

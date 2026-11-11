@@ -11,6 +11,7 @@ import { CheckCommandRepository } from '../history/check-command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { LiveHub } from '../live/live.hub';
 import { SandboxService } from '../sandbox/sandbox.service';
+import type { EnvironmentInput, FailedCommand } from './environment-types';
 import { ProjectEnvironments } from './project-environments';
 
 @Injectable()
@@ -24,6 +25,16 @@ export class EnvironmentService extends ProjectEnvironments {
     @Optional() live?: LiveHub,
   ) {
     super({ env: () => config.env, clock, sandbox, documents: repository, commands, live });
+  }
+
+  /** The check commands the run's repositories list, from the environment the run stored. */
+  async checkCommands(input: Pick<EnvironmentInput, 'run' | 'key' | 'mounts'>): Promise<Omit<FailedCommand, 'tail'>[]> {
+    const found: Omit<FailedCommand, 'tail'>[] = [];
+    for (const mount of input.mounts) {
+      const record = await this.record({ ...input, mounts: [mount] });
+      found.push(...(record?.config.checks ?? []).map((command) => ({ repo: record!.repo, command })));
+    }
+    return found;
   }
 
   /** An explicit rebase adopts the new trusted base environment, never the agent's edited manifest. */

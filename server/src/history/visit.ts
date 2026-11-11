@@ -61,6 +61,8 @@ export interface VisitDraft {
   resumed: boolean;
   /** Set when the visit closes: the gap from the end of the visit before to this visit's first event. */
   preparedMs?: number | null;
+  /** Bash tool calls of the visit that changed files through a script or `sed -i`. */
+  shellEdits?: number;
 }
 
 export function summarizeSamples(samples: SampleDraft[]): {

@@ -12,7 +12,7 @@ import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
-import { isPipelineReturn, withAddedRepos } from '../follow-up';
+import { isChecksReturn, isPipelineReturn, withAddedRepos } from '../follow-up';
 import { git, gitDetail } from '../../git/git';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
@@ -37,12 +37,16 @@ import { runJournal } from '../shared/rebase-journal';
 import { RebaseStop, completeRebase, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { staleRepos, unchangedSincePipeline } from '../pipeline/pipeline-report';
-import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
+import { rerunFailed } from './failed-commands';
+import { checksStillRed, implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
 import { parseImplementation, withReturnNotes } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { StepSnapshot } from '../step';
 import type { PipelineResult } from '../../core/pipeline-result';
 import { SplitImplementStep } from './split-implement.step';
+
+/** The follow-ups a checks return gets in one visit while its failed commands are still red. */
+const MAX_CHECK_FOLLOW_UPS = 2;
 
 const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
@@ -224,6 +228,26 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
           pipelineIssues,
         );
       }
+    }
+    const sameWorkplace = { mounts, allowHosts, manifestHosts, project, projectFor: reproject };
+    let red =
+      isChecksReturn(notes) || pipelineReturn
+        ? await rerunFailed(this.environments, await ctx.reread(ARTIFACTS.issues), place)
+        : [];
+    for (let sent = 0; red.length > 0 && sent < MAX_CHECK_FOLLOW_UPS; sent++) {
+      agentResult = await ctx.launch({
+        ...sameWorkplace,
+        prompt: withEnvironment(checksStillRed(red), executionRules),
+        sections: ['implementation'],
+        validate: (answer) => parseImplementation(answer),
+      });
+      await assertUncommitted(mounts, branch, heads);
+      const againOutput = agentResult.output ?? '';
+      if (answerHasPlan(agentResult.responseText, againOutput)) {
+        planText = agentResult.responseText;
+        planOutput = againOutput;
+      }
+      red = await this.environments.rerun(place, red);
     }
     const text = agentResult.responseText;
     const body = parseImplementation(text);

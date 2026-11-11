@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { implementFollowUp, implementImproveFollowUp } from '../implement/implement.prompts';
 import { parseSummary, skillPrompt, summaryOr } from './skill-prompt';
 
 const skill = (name: string): string => readFileSync(join(__dirname, '../../../../skills', name, 'SKILL.md'), 'utf8');
@@ -77,4 +78,37 @@ describe('split skill text', () => {
     expect(skillPrompt(name, '{}', ['api'], [], [], { split: true })).toContain('## Split');
     expect(plain).toBe(skillPrompt(name, '{}', ['api'], [], [], { split: false }));
   });
+});
+
+describe('implement skill rules', () => {
+  const rules = [
+    'Run the tests closest to the change: the spec files of the changed code and the ones that import it.',
+    "Do not run the project's full check commands.",
+    "Change files with the runtime's own edit and write tools, and read them with its read tool.",
+    'Use the shell to run commands, not to rewrite files.',
+    'Rerun each failed command in the sandbox after the change, and end only when it passes.',
+    '`summary` says which command still fails and why.',
+  ];
+
+  it.each([
+    ['implement skill', skill('implement')],
+    ['implement-improve skill', skill('implement-improve')],
+    ['implement follow-up', implementFollowUp('- item', null)],
+    ['implement-improve follow-up', implementImproveFollowUp(null)],
+  ])('%s holds the near-tests, edit-tool and rerun rules', (_name, text) => {
+    for (const rule of rules) {
+      expect(text).toContain(rule);
+    }
+  });
+
+  it('keeps implement-improve from ending on a red command', () => {
+    expect(skill('implement-improve')).toContain('When there is no gap and no command came back red, leave the files.');
+  });
+
+  it.each(['research', 'plan', 'plan-improve', 'implement', 'implement-improve', 'requirements', 'jira'])(
+    '%s names no runtime tool',
+    (name) => {
+      expect(skill(name)).not.toMatch(/\b(Glob|Grep)\b/);
+    },
+  );
 });

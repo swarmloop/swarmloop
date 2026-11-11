@@ -7,6 +7,7 @@ import type { PipelineResult } from '../../core/pipeline-result';
 import type { VisitDraft } from '../../history/visit';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import type { AgentTools } from '../../integrations/agent-runtime/agent-runtime';
+import type { FailedCommand } from '../../environment/environment-types';
 import type { Artifact } from './artifact';
 
 export type InputNeed = 'start' | 'run' | 'optional';
@@ -32,6 +33,8 @@ export interface Issue {
   source: string;
   title: string;
   body: string;
+  /** The failed commands as data, when the issue came from a project check. */
+  failed?: FailedCommand[];
 }
 
 export interface StepFailure {

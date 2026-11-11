@@ -4,6 +4,7 @@ import type { DocumentDraft } from '../../history/visit';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import type { Subtask } from '../../contract/subtask';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
+import type { FailedCommand } from '../../environment/environment-types';
 import type { Issue } from '../contract/step-contract';
 
 export function textDocument(kind: string, body: string): DocumentDraft {
@@ -14,9 +15,9 @@ export function textDocument(kind: string, body: string): DocumentDraft {
 export const CI_INFRA_SOURCE = 'ci-infra';
 
 /** A problem sent back to a step. The same body from the same source always has the same id. */
-export function issueOf(source: string, title: string, body: string): Issue {
+export function issueOf(source: string, title: string, body: string, failed: FailedCommand[] = []): Issue {
   const digest = createHash('sha1').update(`${source}\n${body}`).digest('hex').slice(0, 10);
-  return { id: `${source}-${digest}`, source, title, body };
+  return { id: `${source}-${digest}`, source, title, body, ...(failed.length > 0 ? { failed } : {}) };
 }
 
 export function returnNotes(parts: Pick<Issue, 'source' | 'body'>[]): DocumentDraft {

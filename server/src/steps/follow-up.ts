@@ -5,6 +5,10 @@ export function withAddedRepos(prompt: string, note: string | null): string {
   return `${prompt.trimEnd()}\n\n${note.trim()}\n`;
 }
 
+export function isChecksReturn(notes: string | null | undefined): boolean {
+  return notes?.startsWith('## checks') ?? false;
+}
+
 export function isPipelineReturn(notes: string | null | undefined): boolean {
   if (!notes) {
     return false;

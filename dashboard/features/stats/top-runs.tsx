@@ -21,11 +21,12 @@ import { longDayLabel, usd } from './stats-format';
 const LABEL = Object.fromEntries(OUTCOMES.map(({ outcome, label }) => [outcome, label]));
 const SHOWN = 10;
 
-type Column = 'usd' | 'returns' | 'durationMs' | 'createdAt';
+type Column = 'usd' | 'returns' | 'shellEdits' | 'durationMs' | 'createdAt';
 
 const COLUMNS: { column: Column; label: string }[] = [
   { column: 'usd', label: 'Spend' },
   { column: 'returns', label: 'Returns' },
+  { column: 'shellEdits', label: 'Edits through the shell' },
   { column: 'durationMs', label: 'Time' },
   { column: 'createdAt', label: 'Started' },
 ];
@@ -166,6 +167,9 @@ export function TopRuns({
                   </TableCell>
                   <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
                     {run.returns}
+                  </TableCell>
+                  <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {run.shellEdits}
                   </TableCell>
                   <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                     {run.durationMs > 0 ? duration(run.durationMs) : '—'}

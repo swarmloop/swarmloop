@@ -1,4 +1,5 @@
 import type { AgentRunResult } from '../../agent/agent-runner';
+import { countShellEdits } from '../../agent/shell-edits';
 import type { DocumentDraft, SampleDraft, VisitDraft } from '../../history/visit';
 import type { OpenedStep } from '../../steps/step-run';
 import type { StepName } from '../../contract/steps';
@@ -58,5 +59,6 @@ export function modelVisit(input: {
     document: null,
     documents: documents.length > 0 ? documents : undefined,
     resumed: agent?.resumed ?? false,
+    shellEdits: countShellEdits(agent?.output),
   };
 }

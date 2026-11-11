@@ -2,7 +2,7 @@ import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { commitFiles, makeRepo } from '../git/git-repo.spec-helpers';
 import { checksFingerprint } from './checks-fingerprint';
-import type { EnvironmentRecord, PreparedEnvironment } from './project-environments';
+import type { EnvironmentRecord, PreparedEnvironment } from './environment-types';
 
 const record: EnvironmentRecord = {
   repo: 'app',

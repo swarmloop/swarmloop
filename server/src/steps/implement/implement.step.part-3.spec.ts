@@ -22,6 +22,9 @@ import { EnvironmentService } from '../../environment/environment.service';
 
 import { ARTIFACTS } from '../contract/artifacts';
 import { issueOf } from '../shared/handoff';
+import { DataSource } from 'typeorm';
+import { StepStatEntity } from '../../history/entities';
+import type { FailedCommand } from '../../environment/environment-types';
 import { reply, result, boot, seed, writeEnv, featureTree, git } from './implement.step.spec-helpers';
 
 describe('implement step', () => {
@@ -489,6 +492,153 @@ describe('implement step', () => {
       };
       expect(record.plan?.items).toEqual(['fix the failing test']);
       expect(record.plan?.decision).toBe('approve');
+    } finally {
+      await app.close();
+    }
+  });
+
+  describe('a return that carries failed commands', () => {
+    const red = (tail: string): FailedCommand => ({ repo: 'billing-api', command: 'npm run lint', tail });
+
+    async function visit(key: string, issues: ReturnType<typeof issueOf>[], reruns: FailedCommand[][]) {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-reruns-'));
+      await writeEnv(root);
+      const worktree = featureTree(root, key, 'billing-api');
+      const agent = jest.fn(async (_input: AgentRunInput) => {
+        writeFileSync(join(worktree, `edit-${agent.mock.calls.length}.ts`), 'export const edit = 1;\n');
+        return result(reply);
+      });
+      const app = await boot(root, agent);
+      await seed(app, key, 'approve');
+      const run = (await app.get(RunRepository).findRun(key))!;
+      const documents = app.get(DocumentRepository);
+      run.attemptsChecks = 2;
+      await app.get(RunRepository).saveRun(run);
+      await documents.putDocument(run, 'return', `## ${issues[0]?.source}\n${issues[0]?.body}\n`);
+      await documents.putDocument(run, ARTIFACTS.issues.kind, ARTIFACTS.issues.format(issues));
+      const rerun = jest.spyOn(app.get(EnvironmentService), 'rerun');
+      for (const next of reruns) {
+        rerun.mockResolvedValueOnce(next);
+      }
+      const done = await app.get(PipelineService).step('implement', key);
+      const prompts = agent.mock.calls.map((call) => call[0].prompt);
+      const after = await app.get(RunRepository).findRun(key);
+      return { app, done, rerun, prompts, next: after?.currentStep, attempts: after?.attemptsChecks };
+    }
+
+    const checksIssue = (failed: FailedCommand[]) =>
+      issueOf('checks', 'required checks failed', 'billing-api: required check failed', failed);
+
+    it('sends a follow-up with the new tail while the command stays red, then ends the visit when it passes', async () => {
+      const { app, done, rerun, prompts, next, attempts } = await visit(
+        'PROJ-400',
+        [checksIssue([red('old tail')])],
+        [[red('new tail')], []],
+      );
+      try {
+        expect(done.exitCode).toBe(0);
+        expect(prompts).toHaveLength(2);
+        expect(prompts[1]).toContain('billing-api: npm run lint\nnew tail');
+        expect(rerun).toHaveBeenCalledTimes(2);
+        expect(rerun.mock.calls[0]?.[1]).toEqual([red('old tail')]);
+        expect(next).toBe('implement-improve');
+        expect(attempts).toBe(2);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('ends the visit after two follow-ups when the command is still red', async () => {
+      const { app, done, rerun, prompts, next } = await visit(
+        'PROJ-401',
+        [checksIssue([red('t0')])],
+        [[red('t1')], [red('t2')], [red('t3')]],
+      );
+      try {
+        expect(done.exitCode).toBe(0);
+        expect(prompts).toHaveLength(3);
+        expect(prompts[2]).toContain('t2');
+        expect(rerun).toHaveBeenCalledTimes(3);
+        expect(next).toBe('implement-improve');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('sends no follow-up when the first rerun is green', async () => {
+      const { app, prompts, rerun } = await visit('PROJ-402', [checksIssue([red('t0')])], [[]]);
+      try {
+        expect(prompts).toHaveLength(1);
+        expect(rerun).toHaveBeenCalledTimes(1);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('reruns nothing for a return without failed commands', async () => {
+      const { app, prompts, rerun } = await visit('PROJ-403', [checksIssue([])], []);
+      try {
+        expect(prompts).toHaveLength(1);
+        expect(rerun.mock.calls.flatMap((call) => call[1])).toEqual([]);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('takes the failed command of a pipeline issue from its trace when the project runs it as a check', async () => {
+      const trace = 'FAIL\n$ npm run lint\nerror: no-undef';
+      const pipeline = issueOf('pipeline', 'billing-api lint failed', trace);
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-pipeline-check-'));
+      await writeEnv(root);
+      const worktree = featureTree(root, 'PROJ-404', 'billing-api');
+      const agent = jest.fn(async () => {
+        writeFileSync(join(worktree, 'edit.ts'), 'export const edit = 1;\n');
+        return result(reply);
+      });
+      const app = await boot(root, agent);
+      try {
+        await seed(app, 'PROJ-404', 'approve');
+        const run = (await app.get(RunRepository).findRun('PROJ-404'))!;
+        const documents = app.get(DocumentRepository);
+        await documents.putDocument(run, 'return', `## pipeline\nresult: fail\njob: lint\n\n${trace}\n`);
+        await documents.putDocument(run, ARTIFACTS.issues.kind, ARTIFACTS.issues.format([pipeline]));
+        const environments = app.get(EnvironmentService);
+        jest.spyOn(environments, 'checkCommands').mockResolvedValue([
+          { repo: 'billing-api', command: 'npm test' },
+          { repo: 'billing-api', command: 'npm run lint' },
+        ]);
+        const rerun = jest.spyOn(environments, 'rerun').mockResolvedValue([]);
+        await app.get(PipelineService).step('implement', 'PROJ-404');
+        expect(rerun.mock.calls[0]?.[1]).toEqual([red(trace)]);
+      } finally {
+        await app.close();
+      }
+    });
+  });
+
+  it('counts the shell edits of a turn in the stats of its visit', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-shell-edits-'));
+    await writeEnv(root);
+    const worktree = featureTree(root, 'PROJ-405', 'billing-api');
+    const bash = (command: string): string =>
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', name: 'Bash', input: { command } }] },
+      });
+    const agent = jest.fn(async () => {
+      writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
+      const stream = [bash("python3 - <<'EOF'\nprint(1)\nEOF"), bash("sed -i 's/a/b/' field.ts"), bash('npm test')];
+      return { ...result(reply), output: stream.join('\n') };
+    });
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-405', 'approve');
+      await app.get(PipelineService).step('implement', 'PROJ-405');
+      const stats = await app
+        .get(DataSource)
+        .getRepository(StepStatEntity)
+        .find({ where: { step: 'implement' } });
+      expect(stats.map((stat) => stat.shellEdits)).toEqual([2]);
     } finally {
       await app.close();
     }
