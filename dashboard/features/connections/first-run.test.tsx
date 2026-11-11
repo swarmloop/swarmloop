@@ -31,6 +31,22 @@ describe('FirstRun', () => {
     expect(form.querySelector('input[name="manifest"]')).toHaveValue('{"name":"swarmloop-panel"}');
   });
 
+  it('posts again on a second click, as after coming back from GitHub', async () => {
+    vi.mocked(getManifest)
+      .mockResolvedValueOnce({ action: 'https://github.com/settings/apps/new?state=one', manifest: {} })
+      .mockResolvedValueOnce({ action: 'https://github.com/settings/apps/new?state=two', manifest: {} });
+    render(<FirstRun />);
+    await userEvent.click(screen.getByRole('button', { name: 'Create GitHub App' }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole('button', { name: 'Create GitHub App' }));
+
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
+    expect(document.querySelector('form[method="post"]')).toHaveAttribute(
+      'action',
+      'https://github.com/settings/apps/new?state=two',
+    );
+  });
+
   it('offers Connect GitLab, which stores the application it is given', async () => {
     vi.mocked(saveGitlabApplication).mockRejectedValue(new Error('a login exists'));
     render(<FirstRun />);

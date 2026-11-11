@@ -69,7 +69,8 @@ export function FirstRun(): ReactElement {
         </Typography>
       </Box>
       {error ? <Alert severity="error">{error}</Alert> : null}
-      {form ? <ManifestPost form={form} /> : null}
+      {/* A new key per manifest: a second click (after coming back from GitHub) posts again. */}
+      {form ? <ManifestPost key={form.action} form={form} /> : null}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, justifyContent: 'center', width: '100%', maxWidth: 900 }}>
         <Paper
           variant="outlined"
@@ -85,7 +86,8 @@ export function FirstRun(): ReactElement {
             Creates a GitHub App for you, from a manifest. You then install it on the repositories you choose.
           </Typography>
           <TextField
-            label="Organization (empty: your account)"
+            label="Organization that will own the app (optional)"
+            helperText="Leave empty for your own account. To use the app on other accounts and organizations too, make it public on GitHub (Advanced, Make public) and install it there."
             size="small"
             value={org}
             onChange={(event) => setOrg(event.target.value)}
