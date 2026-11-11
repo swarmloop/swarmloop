@@ -12,7 +12,14 @@ import { reportFailure } from '../shared/step-failure';
 import { git, gitDetail } from '../../git/git';
 import { BaseStep, StepContext } from '../base-step';
 import { CheckoutService } from '../shared/checkout.service';
-import { CHECKOUT_NAME, listGitProjects, resolveCheckoutPath, storedProjects } from './checkout-path';
+import {
+  assertRepoAllowed,
+  CHECKOUT_NAME,
+  listGitProjects,
+  repoAllowed,
+  resolveCheckoutPath,
+  storedProjects,
+} from '../../config/checkout-path';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, StepFailure, StepInput, StepResult } from '../contract/step-contract';
 
@@ -50,8 +57,7 @@ export class PrepareStep extends BaseStep<typeof INPUTS> {
     const { opened } = ctx;
     const { key } = opened.run;
     const selected = storedProjects(opened.run.projects).map((name) => ({ name, path: '' }));
-    const checkouts: { name: string; path: string }[] =
-      selected.length > 0 ? selected : await this.checkouts.listCheckouts();
+    const checkouts: { name: string; path: string }[] = selected.length > 0 ? selected : await this.allowedRows();
     if (checkouts.length === 0) {
       throw new SwarmloopError('projects is missing');
     }
@@ -79,12 +85,19 @@ export class PrepareStep extends BaseStep<typeof INPUTS> {
   }
 
   async listClones(): Promise<{ name: string }[]> {
-    const rows = await this.checkouts.listCheckouts();
+    const rows = await this.allowedRows();
     return rows.map((row) => ({ name: row.name }));
   }
 
+  private async allowedRows(): Promise<{ name: string; path: string }[]> {
+    const rows = await this.checkouts.listCheckouts();
+    return rows.filter((row) => repoAllowed(this.config.env.SWARMLOOP_REPOS, row.name));
+  }
+
   listProjects(): { projects: string[] } {
-    return { projects: listGitProjects(root(this.config), this.config.env.CHECKOUTS_ROOT) };
+    return {
+      projects: listGitProjects(root(this.config), this.config.env.CHECKOUTS_ROOT, this.config.env.SWARMLOOP_REPOS),
+    };
   }
 
   async addClone(name: string): Promise<{ name: string }> {
@@ -92,6 +105,7 @@ export class PrepareStep extends BaseStep<typeof INPUTS> {
     if (!CHECKOUT_NAME.test(trimmed)) {
       throw new SwarmloopError('checkout name is invalid');
     }
+    assertRepoAllowed(this.config.env.SWARMLOOP_REPOS, trimmed);
     const path = resolveCheckoutPath(root(this.config), this.config.env.CHECKOUTS_ROOT, trimmed, '');
     const located = { name: trimmed, path };
     this.worktrees.assertCheckout(located);

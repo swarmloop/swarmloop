@@ -3,6 +3,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, 
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { Injectable, Logger } from '@nestjs/common';
+import { splitList } from '../config/env';
 import { rawEnv } from '../config/process-env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { SystemClock } from '../core/clock';
@@ -27,6 +28,7 @@ import {
   hostName,
   stepContainers,
 } from '../sandbox/sandbox-launch';
+import { workRootsAt } from './allowed-path';
 import { Egress, egressMode } from './egress';
 import { imageMissing } from './image-resolver';
 import { withEgress } from './egress-launch';
@@ -86,7 +88,9 @@ export class SandboxService {
     }
   }
 
-  async spawn(given: Omit<SandboxLaunch, 'maskFile' | 'envMasks'> & { envMasks?: EnvMask[] }): Promise<SandboxChild> {
+  async spawn(
+    given: Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots'> & { envMasks?: EnvMask[] },
+  ): Promise<SandboxChild> {
     const egress = this.egress();
     const metadata: SandboxMount[] = [];
     let release = () => undefined as void;
@@ -120,7 +124,7 @@ export class SandboxService {
   }
 
   private async spawnLaunch(
-    launch: Omit<SandboxLaunch, 'maskFile' | 'envMasks'> & { envMasks?: EnvMask[] },
+    launch: Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots'> & { envMasks?: EnvMask[] },
   ): Promise<SandboxChild> {
     const mounts = await this.withDaemonPaths(launch.mounts);
     if (launch.statePath) {
@@ -129,7 +133,13 @@ export class SandboxService {
     const stateDaemonPath = await this.stateDaemonPath(launch.statePath, launch.stateDaemonPath);
     const envMasks = launch.envMasks ?? collectEnvMasks(mounts);
     const maskFile = await this.maskFor(launch.statePath, envMasks.length > 0);
-    const full: SandboxLaunch = { ...launch, mounts, stateDaemonPath, envMasks, maskFile };
+    const env = rawEnv();
+    const workRoots = workRootsAt(
+      resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname),
+      env.CHECKOUTS_ROOT,
+      splitList(env.SWARMLOOP_REPOS),
+    );
+    const full: SandboxLaunch = { ...launch, mounts, workRoots, stateDaemonPath, envMasks, maskFile };
     const args = sandboxArgs(full);
     const network = full.egress ? null : sandboxNetworkName(full.allowHosts);
     if (network) {

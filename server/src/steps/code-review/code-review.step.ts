@@ -15,6 +15,7 @@ import { realpathSync } from 'fs';
 import { SwarmloopEnv } from '../../config/env';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { EventRepository } from '../../history/event.repository';
+import { assertInsideWork, workRoots } from '../../sandbox/allowed-path';
 import { root } from '../../history/run-paths';
 import { DocumentDraft, VisitDraft } from '../../history/visit';
 import { Charge, chargeReview } from '../../agent/spend';
@@ -153,6 +154,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const env = this.config.env;
     if (ctx.options.path) {
+      assertInsideWork(ctx.options.path, workRoots(this.config));
       ctx.opened.run.targetPath = realpathSync(ctx.options.path);
     }
     await this.sandbox.assertReady(agentFor(env, ctx.opened.run, 'code-review').runtime);
@@ -178,6 +180,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       thirdParty = true;
     }
     if (checkout) {
+      assertInsideWork(checkout, workRoots(this.config));
       opened.run.targetPath = realpathSync(checkout);
     }
     const requirements = ((await ctx.reread(ARTIFACTS.requirements)) ?? '').trim() || opened.run.prompt || '';

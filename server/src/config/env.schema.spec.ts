@@ -131,6 +131,14 @@ describe('env schema', () => {
     });
   });
 
+  it('defaults the public URL and reads SWARMLOOP_REPOS as a trimmed list', async () => {
+    const config = await compileWith(complete);
+    expect(config.env.SWARMLOOP_PUBLIC_URL).toBe('http://127.0.0.1:3921');
+    expect(config.env.SWARMLOOP_REPOS).toEqual([]);
+    const narrowed = await compileWith({ ...complete, SWARMLOOP_REPOS: ' api, web ,,' });
+    expect(narrowed.env.SWARMLOOP_REPOS).toEqual(['api', 'web']);
+  });
+
   it('reads an empty token limit as no cap', async () => {
     const config = await compileWith({ ...complete, MAX_RUN_TOKENS: '' });
     expect(config.env.MAX_RUN_TOKENS).toBeNull();

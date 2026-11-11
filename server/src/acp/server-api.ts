@@ -100,7 +100,7 @@ export class HttpServerApi implements ServerApi {
     try {
       response = await this.fetchImpl(`${this.base}${path}`, {
         method,
-        headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+        headers: method === 'GET' ? undefined : { 'content-type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch {

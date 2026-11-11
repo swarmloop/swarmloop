@@ -1,7 +1,7 @@
 import type { RunEntity } from '../history/entities';
 import type { DocumentRepository } from '../history/document.repository';
 import type { RunRepository } from '../history/run.repository';
-import { renderProjects, storedProjects } from '../steps/prepare/checkout-path';
+import { renderProjects, storedProjects } from '../config/checkout-path';
 import type { StepRegistry } from '../steps/step.registry';
 import { joinPrompt, withInstructions } from '../steps/plan/plan-record';
 import type { StepName } from '../contract/steps';

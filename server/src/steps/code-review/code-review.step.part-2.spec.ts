@@ -118,7 +118,8 @@ describe('code-review step', () => {
 
   it('reviews a checkout path without returning to implement', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-path-'));
-    const checkout = await mkdtemp(join(tmpdir(), 'swarmloop-checkout-'));
+    const checkout = join(root, 'worktrees', 'checkout');
+    mkdirSync(checkout, { recursive: true });
     await writeEnv(root);
     const agent = jest.fn(async (input: AgentRunInput) => result(reply(input.step, 'return')));
     const app = await boot(root, agent);
@@ -140,9 +141,26 @@ describe('code-review step', () => {
     }
   });
 
+  it('refuses a checkout path outside the repositories and starts no reviewer', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-outside-'));
+    const outside = await mkdtemp(join(tmpdir(), 'swarmloop-checkout-outside-'));
+    await writeEnv(root);
+    const agent = jest.fn(async (input: AgentRunInput) => result(reply(input.step, 'return')));
+    const app = await boot(root, agent);
+    try {
+      const refused = await app.get(PipelineService).step('code-review', 'PROJ-87', { path: outside });
+      expect(refused.exitCode).toBe(1);
+      expect(refused.message).toContain('path is outside the repositories');
+      expect(agent).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('resumes a checkout review from the stored path', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-resume-'));
-    const checkout = await mkdtemp(join(tmpdir(), 'swarmloop-checkout-resume-'));
+    const checkout = join(root, 'worktrees', 'checkout');
+    mkdirSync(checkout, { recursive: true });
     await writeEnv(root);
     let quality = 'notes\n';
     const agent = jest.fn(async (input: AgentRunInput) =>

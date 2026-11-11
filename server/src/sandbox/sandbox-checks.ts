@@ -1,9 +1,12 @@
 import { isAbsolute, resolve, sep } from 'path';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { SandboxMount } from '../core/sandbox-mount';
+import { assertInsideWork } from './allowed-path';
 import type { EnvMask, ProjectLaunch } from './sandbox-types';
 
 const WORKTREE = /^\/work(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?(?:\/\.git)?$/;
+const WORK_MOUNT = /^\/work(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$/;
+const BRIEF_MOUNT = '/work/brief';
 const GIT_METADATA = /^\/swarmloop-git\/git-[A-Za-z0-9]+$/;
 const AGENT_COMMANDS = new Set(['agent', 'claude', 'codex']);
 
@@ -25,7 +28,7 @@ export function assertProject(project: ProjectLaunch, command: string[], home: s
   }
 }
 
-export function assertMount(mount: SandboxMount, home: string): void {
+export function assertMount(mount: SandboxMount, home: string, workRoots: string[]): void {
   if (!WORKTREE.test(mount.containerPath) && !GIT_METADATA.test(mount.containerPath)) {
     throw new SwarmloopError('sandbox mount is not allowed');
   }
@@ -33,6 +36,13 @@ export function assertMount(mount: SandboxMount, home: string): void {
     throw new SwarmloopError('sandbox git metadata must be read-only');
   }
   assertDaemonPath(mount.hostPath, home);
+  if (!mount.volume && WORK_MOUNT.test(mount.containerPath) && mount.containerPath !== BRIEF_MOUNT) {
+    try {
+      assertInsideWork(mount.hostPath, workRoots);
+    } catch {
+      throw new SwarmloopError('sandbox mount is not allowed');
+    }
+  }
   if (mount.daemonPath !== undefined) {
     assertDaemonPath(mount.daemonPath, home);
   }

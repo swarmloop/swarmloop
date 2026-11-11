@@ -1,11 +1,13 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { assertAgents } from './config/agents';
 import { AppConfig } from './config/env';
 import { assertEnvFile } from './config/load-env';
 import { resolveRepoRoot } from './config/repo-root';
+import { secureHttp } from './api/request-guard';
 import { Housekeeping } from './pipeline/housekeeping';
 import { Reconciler } from './pipeline/reconciler';
 import { PANEL_ORIGINS } from './live/origins';
@@ -18,11 +20,15 @@ async function bootstrap(): Promise<void> {
   }
   const { ApiModule } = await import('./api/api.module');
   try {
-    const app = await NestFactory.create(ApiModule, { logger: ['error', 'warn', 'log'] });
+    const app = await NestFactory.create<NestExpressApplication>(ApiModule, {
+      logger: ['error', 'warn', 'log'],
+      bodyParser: false,
+    });
+    const env = app.get(AppConfig).env;
+    secureHttp(app, env.SWARMLOOP_PUBLIC_URL);
     app.enableShutdownHooks();
     app.enableCors({ origin: PANEL_ORIGINS });
     app.useWebSocketAdapter(new IoAdapter(app));
-    const env = app.get(AppConfig).env;
     assertAgents(env);
     await app.listen(env.SWARMLOOP_API_PORT, env.SWARMLOOP_API_HOST);
     const housekeeping = app.get(Housekeeping);

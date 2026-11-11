@@ -7,7 +7,7 @@ import { isOutputFileOf } from '../core/attempt-output';
 import type { RunEntity } from '../history/entities';
 import { removeTreeAsync, root } from '../history/run-paths';
 import { RunRepository } from '../history/run.repository';
-import { resolveCheckoutPath } from '../steps/prepare/checkout-path';
+import { resolveCheckoutPath } from '../config/checkout-path';
 import { CheckoutService } from '../steps/shared/checkout.service';
 
 const DAY_MS = 86_400_000;

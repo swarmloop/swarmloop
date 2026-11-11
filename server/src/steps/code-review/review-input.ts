@@ -9,7 +9,7 @@ import { ERROR_CODES } from '../../contract/error-codes';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { deriveState } from '../../history/run-state';
 import { readPlan } from '../plan/plan-record';
-import { storedProjects } from '../prepare/checkout-path';
+import { storedProjects } from '../../config/checkout-path';
 import type { CheckoutService } from '../shared/checkout.service';
 import { handoffSection } from '../shared/handoff';
 import { mountsForStep, repoNames } from '../../git/repo-names';

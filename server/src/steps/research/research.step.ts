@@ -9,7 +9,7 @@ import { root } from '../../history/run-paths';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { renderProjects, storedProjects } from '../prepare/checkout-path';
+import { renderProjects, storedProjects } from '../../config/checkout-path';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { isSubtask } from '../../contract/subtask';

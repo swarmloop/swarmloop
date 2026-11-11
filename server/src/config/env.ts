@@ -62,6 +62,8 @@ export interface SwarmloopEnv {
   CHECKOUTS_ROOT: string | undefined;
   SWARMLOOP_API_PORT: number;
   SWARMLOOP_API_HOST: string;
+  SWARMLOOP_PUBLIC_URL: string;
+  SWARMLOOP_REPOS: string[];
 }
 
 /** An empty limit means there is no cap. Zero is a real cap. */
@@ -71,6 +73,13 @@ export function optionalLimit(value: unknown): number | null {
   }
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function splitList(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
 }
 
 /** The validated env, read once at startup and injected wherever services need config. */
@@ -143,5 +152,7 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     CHECKOUTS_ROOT: checkoutsRoot ? checkoutsRoot : undefined,
     SWARMLOOP_API_PORT: config.getOrThrow<number>('SWARMLOOP_API_PORT'),
     SWARMLOOP_API_HOST: config.getOrThrow<string>('SWARMLOOP_API_HOST'),
+    SWARMLOOP_PUBLIC_URL: config.getOrThrow<string>('SWARMLOOP_PUBLIC_URL'),
+    SWARMLOOP_REPOS: splitList(config.get<string>('SWARMLOOP_REPOS')),
   };
 }

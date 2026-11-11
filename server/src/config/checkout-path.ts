@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, statSync } from 'fs';
 import { isAbsolute, join, resolve } from 'path';
-import { SwarmloopError } from '../../core/swarmloop-error';
+import { ERROR_CODES } from '../contract/error-codes';
+import { SwarmloopError } from '../core/swarmloop-error';
 
 export const CHECKOUT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
@@ -25,13 +26,24 @@ function checkoutsRootPath(repoRoot: string, checkoutsRoot: string | undefined):
   return isAbsolute(configured) ? configured : resolve(repoRoot, configured);
 }
 
-export function listGitProjects(repoRoot: string, checkoutsRoot: string | undefined): string[] {
+/** An empty list means every repository under the checkouts root. */
+export function repoAllowed(repos: string[], name: string): boolean {
+  return repos.length === 0 || repos.includes(name);
+}
+
+export function assertRepoAllowed(repos: string[], name: string): void {
+  if (!repoAllowed(repos, name)) {
+    throw new SwarmloopError(`${name} is not in SWARMLOOP_REPOS`, { code: ERROR_CODES.INPUT_MISSING });
+  }
+}
+
+export function listGitProjects(repoRoot: string, checkoutsRoot: string | undefined, repos: string[]): string[] {
   const root = checkoutsRootPath(repoRoot, checkoutsRoot);
   if (!existsSync(root) || !statSync(root).isDirectory()) {
     throw new SwarmloopError('CHECKOUTS_ROOT is missing');
   }
   return readdirSync(root)
-    .filter((name) => isGitProject(root, name))
+    .filter((name) => repoAllowed(repos, name) && isGitProject(root, name))
     .sort();
 }
 

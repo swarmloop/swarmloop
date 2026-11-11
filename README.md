@@ -52,7 +52,7 @@ You need Docker and one model key. No Jira, no git token, no CI.
    curl -fsSL https://github.com/swarmloop/swarmloop/releases/latest/download/env.example -o .env
    ```
 
-   `CHECKOUTS_ROOT` in `.env` is the folder with your git clones (default: the parent of this directory).
+   Set `CHECKOUTS_ROOT` in `.env` to a folder that holds only the repositories swarmloop works on. It is mounted into the server, so keep other projects out of it. `SWARMLOOP_REPOS` (comma-separated folder names) narrows it further.
 
 2. In `.env`, set `CURSOR_API_KEY` from the [Cursor dashboard](https://cursor.com/dashboard), **API Keys**. That key uses your Cursor plan, so there is no separate API bill. For Claude, set `RUNTIME=claude` and either `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` to use your Claude subscription, or `ANTHROPIC_API_KEY` from [Claude Console](https://platform.claude.com/settings/keys). A subscription token is for your own use on your own server, not one plan shared by a team. Leave every other secret empty.
 
@@ -73,7 +73,7 @@ You need Docker and one model key. No Jira, no git token, no CI.
 
 4. Open [http://127.0.0.1:3921](http://127.0.0.1:3921). The start page shows what a run needs: Docker, images, disk, paths, ports, and your keys. **New run** stays off while an item says `fail`, and the item says what to do. `docker compose exec server node dist/main.js doctor` prints the same list. Then click **New run**, pick a repository, untick **ci**, and describe the change. Leave ticket numbers out.
 
-The repository list is every git clone in `CHECKOUTS_ROOT`, the folder you set in `.env`. The agent edits its own worktree, not your working copy. Nothing is pushed, and Jira is not called.
+The repository list is every git clone in `CHECKOUTS_ROOT`, the folder you set in `.env`, or only the ones named in `SWARMLOOP_REPOS`. The server only resolves, fetches and works in those; a run that names another repository is refused. `POST /runs/shell` and a run `path` must lie inside one of them or inside `worktrees/`. The agent edits its own worktree, not your working copy. Nothing is pushed, and Jira is not called.
 
 **Update:** `docker compose pull && docker compose up -d`. To stay on one release, set `SWARMLOOP_VERSION` in `.env`, for example `0.2.0`. Before it migrates the database, the server copies it to `data/backups/` (the last 3 are kept). An older version refuses a database a newer one migrated and names the backup. To go back: `docker compose down`, copy that backup over `data/swarmloop.sqlite`, delete `data/swarmloop.sqlite-wal` and `-shm`, copy the session files from its `.sessions` folder into `data/`, set the older `SWARMLOOP_VERSION` and `docker compose up -d`.
 
@@ -377,7 +377,9 @@ When the API is on another machine, set the URL in `env`:
 | `AGENTS_SUBTASK_PLAN`, `AGENTS_SUBTASK_IMPLEMENT`, `AGENTS_SUBTASK_REVIEW` | The same for a run with a parent. Empty: the main role. |
 | `ISSUE_TRACKER` | `jira` |
 | `REQUIREMENTS_VIA` | `agent` or `direct`. Both build the requirements record in the server. The model does not rewrite it. |
-| `CHECKOUTS_ROOT` | Folder of git clones listed in **New run**. |
+| `CHECKOUTS_ROOT` | Folder of git clones listed in **New run**. It must hold only the repositories swarmloop works on. |
+| `SWARMLOOP_REPOS` | Repository folder names under `CHECKOUTS_ROOT`, comma-separated. Empty: every repository there. |
+| `SWARMLOOP_PUBLIC_URL` | The address of the dashboard. The API and the dashboard answer only to `127.0.0.1`, `localhost`, this host and the compose names (anything else gets 421). Default `http://127.0.0.1:3921`. |
 | `TICK_MS` | How often a running pipeline is polled. `.env.example` uses `15000`. |
 | `SWARMLOOP_API_HOST`, `SWARMLOOP_API_PORT` | Where the API listens. `.env.example` uses `127.0.0.1:3920`. |
 

@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import type { RunQueriesService } from '../api/run-queries.service';
-import { LiveGateway } from './live.gateway';
+import { allowHandshake, LiveGateway } from './live.gateway';
 import { LiveHub } from '../live/live.hub';
 
 describe('LiveGateway', () => {
@@ -86,6 +86,21 @@ describe('LiveGateway', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+  });
+
+  describe('handshake host', () => {
+    const decide = (host: string | undefined) => {
+      let allowed: boolean | undefined;
+      allowHandshake({ headers: { host } }, (_error, ok) => (allowed = ok));
+      return allowed;
+    };
+
+    it('refuses a foreign Host and accepts the own hosts', () => {
+      expect(decide('evil.example:3920')).toBe(false);
+      expect(decide(undefined)).toBe(false);
+      expect(decide('127.0.0.1:3920')).toBe(true);
+      expect(decide('localhost:3920')).toBe(true);
     });
   });
 });

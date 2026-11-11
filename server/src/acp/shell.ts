@@ -21,6 +21,7 @@ import {
   sandboxNetworkName,
   sandboxUserId,
 } from '../sandbox/sandbox-launch';
+import { workRootsAt } from '../sandbox/allowed-path';
 import { collectEnvMasks } from '../sandbox/sandbox.service';
 import type { ShellFeature, ShellMatch } from '../contract/api';
 import type { ServerApi } from './server-api';
@@ -186,6 +187,7 @@ async function attach(
     attemptId: '',
     step: 'shell',
     mounts,
+    workRoots: workRootsAt(root, config.checkoutsRoot, config.repos),
     envMasks: collectEnvMasks(mounts),
     allowHosts: modelApiHosts(runtime.name),
     command: [

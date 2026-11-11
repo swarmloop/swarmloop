@@ -1,7 +1,7 @@
-import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'fs';
+import { mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'fs';
 import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { imageName } from './image-resolver';
@@ -31,6 +31,7 @@ function launch(patch: Partial<SandboxLaunch> = {}): SandboxLaunch {
     step: 'research',
     attemptId: 'attempt-1',
     mounts: [{ hostPath: '/tmp/worktrees/PROJ-1/demo', containerPath: '/work/demo' }],
+    workRoots: ['/tmp/worktrees'],
     envMasks: [{ hostFile: '/tmp/worktrees/PROJ-1/demo/.env', containerFile: '/work/demo/.env' }],
     allowHosts: [],
     command: ['agent', '--print', 'hello'],
@@ -301,6 +302,7 @@ describe('sandbox launch', () => {
     const bind = sandboxArgs(
       launch({
         mounts: [{ hostPath: '/data/checkout', daemonPath: '/builds/group/project', containerPath: '/work' }],
+        workRoots: ['/data/checkout'],
         envMasks: [],
       }),
       home,
@@ -332,6 +334,47 @@ describe('sandbox launch', () => {
         home,
       ),
     ).toThrow('sandbox mount is not allowed');
+  });
+
+  describe('work mounts', () => {
+    it('refuses a /work mount from outside the allowed roots, and lets the brief and worktrees through', () => {
+      const outside = launch({ mounts: [{ hostPath: '/srv/other-repo', containerPath: '/work' }], envMasks: [] });
+      expect(() => sandboxArgs(outside, home)).toThrow('sandbox mount is not allowed');
+      const named = launch({ mounts: [{ hostPath: '/srv/other-repo', containerPath: '/work/other' }], envMasks: [] });
+      expect(() => sandboxArgs(named, home)).toThrow('sandbox mount is not allowed');
+      const brief = launch({
+        mounts: [
+          { hostPath: '/tmp/worktrees/PROJ-1/demo', containerPath: '/work/demo' },
+          { hostPath: '/data/briefs/PROJ-1', containerPath: '/work/brief', readonly: true },
+        ],
+        envMasks: [],
+      });
+      expect(() => sandboxArgs(brief, home)).not.toThrow();
+    });
+
+    it('refuses a symlink that leaves the allowed roots', () => {
+      const base = realpathSync(mkdtempSync(join(tmpdir(), 'swarmloop-link-')));
+      mkdirSync(join(base, 'repo'));
+      mkdirSync(join(base, 'secret'));
+      symlinkSync(join(base, 'secret'), join(base, 'repo', 'escape'));
+      const mount = (hostPath: string) =>
+        launch({ workRoots: [join(base, 'repo')], mounts: [{ hostPath, containerPath: '/work' }], envMasks: [] });
+      expect(() => sandboxArgs(mount(join(base, 'repo')), home)).not.toThrow();
+      expect(() => sandboxArgs(mount(join(base, 'repo', 'escape')), home)).toThrow('sandbox mount is not allowed');
+    });
+
+    it('has two sandboxArgs callers and both pass workRoots', () => {
+      const files = readdirSync(join(__dirname, '..'), { recursive: true, encoding: 'utf8' })
+        .filter((file) => file.endsWith('.ts') && !file.endsWith('.spec.ts'))
+        .map((file) => join(__dirname, '..', file));
+      const callers = files.filter(
+        (file) => /\bsandboxArgs\(/.test(readFileSync(file, 'utf8')) && !file.endsWith('sandbox-launch.ts'),
+      );
+      expect(callers.map((file) => basename(file)).sort()).toEqual(['sandbox.service.ts', 'shell.ts']);
+      for (const file of callers) {
+        expect(readFileSync(file, 'utf8')).toContain('workRoots');
+      }
+    });
   });
 
   it('gives the release downloads of native packages to the setup only', () => {

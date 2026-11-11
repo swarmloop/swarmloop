@@ -31,4 +31,25 @@ describe('middleware', () => {
     expect(response.status).toBe(400);
     expect(response.headers.get('x-middleware-rewrite')).toBeNull();
   });
+
+  it.each(['http://evil.example:3921/', 'http://evil.example:3921/swarmloop-api/runs'])(
+    'answers a foreign Host with 421 for %s',
+    (url) => {
+      const response = middleware(new NextRequest(url));
+
+      expect(response.status).toBe(421);
+      expect(response.headers.get('x-middleware-rewrite')).toBeNull();
+    },
+  );
+
+  it.each(['127.0.0.1:3921', 'localhost:3921', 'dashboard:3921', 'panel.example:8080'])(
+    'answers the own host %s',
+    (host) => {
+      vi.stubEnv('SWARMLOOP_PUBLIC_URL', 'http://panel.example:8080');
+
+      const response = middleware(new NextRequest('http://127.0.0.1:3921/', { headers: { host } }));
+
+      expect(response.status).toBe(200);
+    },
+  );
 });

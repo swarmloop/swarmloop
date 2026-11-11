@@ -24,7 +24,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     cache: 'no-store',
     headers: {
       Accept: 'application/json',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init?.method && init.method !== 'GET' ? { 'Content-Type': 'application/json' } : {}),
       ...init?.headers,
     },
   });

@@ -13,7 +13,7 @@ import { EventRepository } from '../history/event.repository';
 import type { RunEntity } from '../history/entities';
 import { root } from '../history/run-paths';
 import { RunRepository } from '../history/run.repository';
-import { resolveCheckoutPath } from '../steps/prepare/checkout-path';
+import { assertRepoAllowed, resolveCheckoutPath } from '../config/checkout-path';
 import { originProject, parsePipelineRefs } from '../steps/pipeline/pipeline-report';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { BranchCheckout } from '../steps/shared/branch-checkout';
@@ -105,6 +105,7 @@ export class WorkspaceGuard {
     }
     let checkout: Checkout;
     try {
+      assertRepoAllowed(this.config.env.SWARMLOOP_REPOS, name);
       checkout = { name, path: resolveCheckoutPath(root(this.config), this.config.env.CHECKOUTS_ROOT, name, '') };
       this.checkouts.assertCheckout(checkout);
     } catch (error) {
