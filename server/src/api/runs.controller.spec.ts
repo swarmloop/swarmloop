@@ -55,9 +55,9 @@ describe('RunsController', () => {
       {} as ShellService,
     );
     expect(await controller.stepLog('proj-1', 'plan', 'a-1')).toBe('log');
-    expect(queries.stepLog).toHaveBeenCalledWith('proj-1', 'plan', 'a-1');
+    expect(queries.stepLog).toHaveBeenCalledWith('proj-1', 'plan', 'a-1', { tail: undefined, from: undefined });
     await controller.stepLog('proj-1', 'plan');
-    expect(queries.stepLog).toHaveBeenLastCalledWith('proj-1', 'plan', null);
+    expect(queries.stepLog).toHaveBeenLastCalledWith('proj-1', 'plan', null, { tail: undefined, from: undefined });
   });
 
   it('answers the keys a prompt would fetch', async () => {

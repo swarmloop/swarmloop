@@ -38,6 +38,11 @@ export function eventPaging(query: { step?: string; after?: string; limit?: stri
   return { step: query.step, after: count(query.after, 'after'), limit: count(query.limit, 'limit') };
 }
 
+/** The `tail` and `from` of the log route: the last lines, or the lines from a 1-based line. */
+export function logPaging(query: { tail?: string; from?: string }): { tail?: number; from?: number } {
+  return { tail: count(query.tail, 'tail'), from: count(query.from, 'from') };
+}
+
 /** What a step is, and how far the events of the run go. A reviewer is a part of `code-review`; `done` has no entry. */
 export async function stepMeta(
   registry: StepRegistry,

@@ -99,6 +99,6 @@ describe('endpoints', () => {
     vi.mocked(runLog).mockResolvedValue('notes');
 
     await expect(getRunLog('run-1', 'code-review-quality')).resolves.toBe('notes');
-    expect(runLog).toHaveBeenCalledWith('run-1', 'code-review-quality');
+    expect(runLog).toHaveBeenCalledWith('run-1', 'code-review-quality', undefined, undefined);
   });
 });

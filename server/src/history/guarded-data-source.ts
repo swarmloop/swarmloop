@@ -13,8 +13,12 @@ export class GuardedDataSource extends DataSource {
     super(options);
   }
 
+  /** The migrations the last `runMigrations` applied. */
+  migrated: Migration[] = [];
+
   override async runMigrations(options?: Parameters<DataSource['runMigrations']>[0]): Promise<Migration[]> {
     await guardMigration(this, this.clock.iso());
-    return super.runMigrations(options);
+    this.migrated = await super.runMigrations(options);
+    return this.migrated;
   }
 }

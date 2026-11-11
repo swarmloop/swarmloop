@@ -164,3 +164,20 @@ test('forbidOutside reports a step, an environment or an agent file that reads R
   assert.match(violations[2], /^server\/src\/environment\/project-environments\.ts:1:/);
   assert.match(violations[3], /^server\/src\/agent\/spend\.ts:1:/);
 });
+
+test('forbidOutside reports code that writes a log document and lets a spec and the live view be', () => {
+  const files = {
+    'server/src/steps/shared/model-visit.ts': "documents: [{ kind: 'log', fileName: '', body }],\n",
+    'server/src/steps/shared/limit-failover.ts': "documents: [{ kind: ARTIFACTS.log.kind, fileName: '', body }],\n",
+    'server/src/api/run-view/live.ts': "documents: [{ kind: 'log', attempt: 1, body }],\n",
+    'server/src/api/runs-flow.service.spec.ts': "documents: [{ kind: 'log', fileName: '', body }],\n",
+    'server/src/api/run-queries-log.ts': "document.kind === 'log'\n",
+  };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.equal(violations.length, 2);
+  assert.match(violations[0], /^server\/src\/steps\/shared\/model-visit\.ts:1:/);
+  assert.match(violations[1], /^server\/src\/steps\/shared\/limit-failover\.ts:1:/);
+});

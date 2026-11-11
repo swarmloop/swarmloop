@@ -12,6 +12,12 @@
       "pattern": "swarmloop-(agent-|egress)"
     },
     {
+      "include": "server/src/",
+      "exclude": "\\.spec\\.ts$",
+      "allowFiles": ["server/src/api/run-view/live.ts"],
+      "pattern": "kind: 'log'|ARTIFACTS\\.log\\b"
+    },
+    {
       "include": "server/src/steps/",
       "pattern": "env\\.(RUNTIME|MODEL_\\w+)"
     },

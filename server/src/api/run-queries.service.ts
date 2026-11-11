@@ -32,11 +32,12 @@ import { parentLink } from './run-view/status';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
-import { belongsToVisit, documentView, filesOf, taskLayers, withReturnNotes } from './run-view/documents';
+import { belongsToVisit, documentView, filesOf, legacyLogs, taskLayers, withReturnNotes } from './run-view/documents';
 import { visitKey } from '../contract/visit-key';
 import { launchView, liveVisit } from './run-view/live';
+import { exchangesOf, samplesOf } from './run-view/visit-parts';
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
-import { readStepLog } from './run-queries-log';
+import { readStepLog, visitLogSize } from './run-queries-log';
 import { openSpend } from './run-queries-spend';
 export { requireRun } from './run-queries-run';
 
@@ -141,8 +142,13 @@ export class RunQueriesService {
     return this.stepEventLog.page(run.id, eventPaging(query));
   }
 
-  async stepLog(key: string, step: string, attempt: string | null): Promise<string> {
-    return readStepLog(this.runs, this.visits, this.config, key, step, attempt || null);
+  async stepLog(
+    key: string,
+    step: string,
+    attempt: string | null,
+    query: { tail?: string; from?: string } = {},
+  ): Promise<string> {
+    return readStepLog(this.runs, this.visits, this.documents, this.config, key, step, attempt || null, query);
   }
 
   async step(key: string, name: string): Promise<StepView> {
@@ -157,7 +163,7 @@ export class RunQueriesService {
     const stats = (await this.visits.listStats(run.id)).filter((stat) => stat.step === name);
     const exchanges = await this.visits.listExchanges(stats.map((stat) => stat.id));
     const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
-    const kinds = [...(STEP_KINDS[name] ?? []), 'error', 'log'];
+    const kinds = [...(STEP_KINDS[name] ?? []), 'error'];
     const visits = stats.map((stat, index) => {
       const owned = documents.filter((document) => document.stepStatId === stat.id);
       const verdict =
@@ -185,20 +191,13 @@ export class RunQueriesService {
         memPeak: stat.memPeak,
         killReason: stat.killReason,
         decision: verdict ? `decision: ${verdict}` : decisionLine(owned.map((document) => document.body).join('\n')),
-        documents: documents
-          .filter((document) => belongsToVisit(document, stat.id, kinds, index === stats.length - 1))
-          .map(documentView),
-        exchanges: exchanges
-          .filter((exchange) => exchange.stepStatId === stat.id)
-          .map((exchange) => ({
-            model: exchange.model,
-            durationMs: exchange.durationMs,
-            request: exchange.requestText,
-            response: exchange.responseText,
-          })),
-        samples: samples
-          .filter((sample) => sample.stepStatId === stat.id)
-          .map((sample) => ({ at: sample.sampledAt, cpu: sample.cpuPercent, memory: sample.rssBytes })),
+        ...visitLogSize(this.config, run, name, stat, documents),
+        documents: [
+          ...documents.filter((document) => belongsToVisit(document, stat.id, kinds, index === stats.length - 1)),
+          ...legacyLogs(documents, stat),
+        ].map(documentView),
+        exchanges: exchangesOf(exchanges, stat.id),
+        samples: samplesOf(samples, stat.id),
       };
     });
     if (run.status === 'running' && run.currentStep === name) {
@@ -222,14 +221,16 @@ export class RunQueriesService {
     const run = await requireRun(this.runs, key);
     const documents = await this.documents.listDocuments(run.id);
     const stats = await this.visits.listStats(run.id);
+    const legacy = stats.flatMap((stat) => legacyLogs(documents, stat));
     const exchanges = await this.visits.listExchanges(stats.map((stat) => stat.id));
     const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
     const loops = await this.events.listLoops(run.id);
     const calls = await this.events.listHttpCalls(run.id);
     const launches = await this.flows.listFlows(run.id);
+    const reviewRunning = this.reviewRunning(run);
     return {
       launches: launches.map(launchView),
-      documents: documents.map(documentView),
+      documents: documents.filter((document) => document.kind !== 'log' || legacy.includes(document)).map(documentView),
       files: filesOf(documents),
       exchanges: exchanges.map((exchange) => ({
         stepStatId: exchange.stepStatId,
@@ -258,6 +259,10 @@ export class RunQueriesService {
         memory: sample.rssBytes,
       })),
       stats: stats.map((stat) => ({
+        ...visitLogSize(this.config, run, stat.step, stat, documents, {
+          latest: stats.filter((item) => item.step === stat.step).at(-1) === stat,
+          reviewRunning,
+        }),
         id: stat.id,
         step: stat.step,
         attempt: stat.attempt,
@@ -282,8 +287,7 @@ export class RunQueriesService {
     const stats = (await this.visits.listStats(run.id)).filter((stat) => stat.step === 'code-review');
     const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
     const kind = `review_${name.slice('code-review-'.length)}`;
-    const parentRunning =
-      (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
+    const parentRunning = this.reviewRunning(run);
     const ownedStats = stats.filter((stat) =>
       documents.some((document) => document.stepStatId === stat.id && document.kind === kind),
     );
@@ -324,14 +328,10 @@ export class RunQueriesService {
         memPeak: stat.memPeak,
         killReason: stat.killReason,
         decision: verdict ? `decision: ${verdict}` : decisionLine(ownedText),
-        documents: [
-          ...owned.map(documentView),
-          ...(log ? [{ kind: 'log', attempt: index + 1, body: log, createdAt: stat.finishedAt }] : []),
-        ],
+        ...visitLogSize(this.config, run, name, stat, documents),
+        documents: [...owned, ...legacyLogs(documents, stat)].map(documentView),
         exchanges: [],
-        samples: samples
-          .filter((sample) => sample.stepStatId === stat.id)
-          .map((sample) => ({ at: sample.sampledAt, cpu: sample.cpuPercent, memory: sample.rssBytes })),
+        samples: samplesOf(samples, stat.id),
       };
     });
     const placeholder = raw.trim() === '' || raw.trim() === 'waiting for output' || raw.trim() === 'starting';
@@ -356,9 +356,10 @@ export class RunQueriesService {
     stats: StepStatEntity[],
   ): Promise<StepView> {
     const kind = `review_${name.slice('code-review-'.length)}`;
-    const kinds = [kind, 'log', 'error'];
+    const kinds = [kind, 'error'];
     const exchanges = await this.visits.listExchanges(stats.map((stat) => stat.id));
     const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
+    const parentRunning = this.reviewRunning(run);
     const visits = stats.map((stat, index) => {
       const owned = documents.filter((document) => document.stepStatId === stat.id && document.kind === kind);
       const verdict = reviewDecision(owned.map((item) => item.body).join('\n'));
@@ -379,28 +380,27 @@ export class RunQueriesService {
         memPeak: stat.memPeak,
         killReason: stat.killReason,
         decision: verdict ? `decision: ${verdict}` : decisionLine(owned.map((item) => item.body).join('\n')),
-        documents: documents
-          .filter((document) => belongsToVisit(document, stat.id, kinds, index === stats.length - 1))
-          .map(documentView),
-        exchanges: exchanges
-          .filter((exchange) => exchange.stepStatId === stat.id)
-          .map((exchange) => ({
-            model: exchange.model,
-            durationMs: exchange.durationMs,
-            request: exchange.requestText,
-            response: exchange.responseText,
-          })),
-        samples: samples
-          .filter((sample) => sample.stepStatId === stat.id)
-          .map((sample) => ({ at: sample.sampledAt, cpu: sample.cpuPercent, memory: sample.rssBytes })),
+        ...visitLogSize(this.config, run, name, stat, documents, {
+          latest: index === stats.length - 1,
+          reviewRunning: parentRunning,
+        }),
+        documents: [
+          ...documents.filter((document) => belongsToVisit(document, stat.id, kinds, index === stats.length - 1)),
+          ...legacyLogs(documents, stat),
+        ].map(documentView),
+        exchanges: exchangesOf(exchanges, stat.id),
+        samples: samplesOf(samples, stat.id),
       };
     });
-    const parentRunning =
-      (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
     if (parentRunning && logStillOpen(stepOutput(root(this.config), run.key, name, run.activeAttempt))) {
       visits.push(this.runningVisit(run, name, stats.at(-1)?.attempt ?? 0, this.live?.samplesOf(run.key, name)));
     }
     return { step: name, ...(await this.meta(run, name)), visits, checks: [] };
+  }
+
+  /** True while the code-review step runs, so its reviewers write the run's active attempt. */
+  private reviewRunning(run: RunEntity): boolean {
+    return (run.status === 'running' || this.pipeline.claimed(run.key)) && run.currentStep === 'code-review';
   }
 
   private runningVisit(run: RunEntity, name: string, previousAttempt: number, samples?: LiveSample[]): VisitView {

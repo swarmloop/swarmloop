@@ -43,8 +43,29 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function runLog(runKey: string, name: string, attempt?: string): Promise<string | null> {
-  const query = attempt ? `?attempt=${encodeURIComponent(attempt)}` : '';
+/** `tail` is the last lines; `from` is a 1-based first line; both give up to `tail` lines from `from`. */
+export interface LogPaging {
+  tail?: number;
+  from?: number;
+}
+
+export async function runLog(
+  runKey: string,
+  name: string,
+  attempt?: string,
+  paging: LogPaging = {},
+): Promise<string | null> {
+  const params = new URLSearchParams();
+  if (attempt) {
+    params.set('attempt', attempt);
+  }
+  if (paging.tail !== undefined) {
+    params.set('tail', String(paging.tail));
+  }
+  if (paging.from !== undefined) {
+    params.set('from', String(paging.from));
+  }
+  const query = params.toString() ? `?${params}` : '';
   const path = `/runs/${encodeURIComponent(runKey)}/steps/${encodeURIComponent(name)}/log${query}`;
   const response = await fetch(apiUrl(path), { cache: 'no-store', credentials: 'include' });
   signedOut(response);

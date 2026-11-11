@@ -151,7 +151,6 @@ export async function recordAngle(
       : item.parsed;
   const status = item.error ? 'failed' : parsed?.decision === 'return' ? 'waiting' : parsed ? 'done' : 'failed';
   const exchange = exchangeOf(item);
-  const log = result.output ? (result.output.endsWith('\n') ? result.output : `${result.output}\n`) : '';
   await deps.visits.finishVisit(opened.run, {
     step: `code-review-${item.reviewer.name}`,
     runtime: item.runtime,
@@ -173,7 +172,6 @@ export async function recordAngle(
     documents: [
       ...(parsed ? [textDocument(item.reviewer.kind, parsed.body)] : []),
       ...(item.error ? [{ kind: ARTIFACTS.error.kind, fileName: '', body: `${item.error}\n` }] : []),
-      ...(log ? [{ kind: ARTIFACTS.log.kind, fileName: '', body: log }] : []),
     ],
     resumed: result.resumed,
   });

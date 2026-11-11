@@ -37,13 +37,15 @@ export function findViolations({ root, rules, files }) {
       }
     });
   }
-  for (const { include, allowFiles = [], allowLine, pattern: outside } of rules.forbidOutside ?? []) {
+  for (const { include, exclude, allowFiles = [], allowLine, pattern: outside } of rules.forbidOutside ?? []) {
     const outsidePattern = new RegExp(outside);
+    const excluded = exclude ? new RegExp(exclude) : null;
     const allowed = allowLine ? new RegExp(allowLine) : null;
     for (const rel of files) {
       if (
         !rel.startsWith(include) ||
         allowFiles.some((prefix) => rel.startsWith(prefix)) ||
+        excluded?.test(rel) ||
         !existsSync(join(root, rel))
       ) {
         continue;

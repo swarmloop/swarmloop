@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -87,6 +87,60 @@ describe('step log api', () => {
       for (const [key, step, attempt] of refused) {
         await expect(queries.stepLog(key, step, attempt)).rejects.toBeInstanceOf(NotFoundException);
       }
+    });
+  });
+
+  describe('paging', () => {
+    const numbered = Array.from({ length: 10 }, (_, index) => `line ${index + 1}\n`).join('');
+
+    async function seeded(test: (queries: RunQueriesService) => Promise<void>): Promise<void> {
+      await withApp(async (queries, app, root) => {
+        const run = await save(app.get(RunRepository), 'proj-5', 'implement', 'waiting');
+        await attempt(app.get(VisitRepository), run, 'att-1', 'implement');
+        await log(root, 'proj-5-implement-att-1-output.txt', numbered);
+        await test(queries);
+      });
+    }
+
+    it('answers the last lines for tail, the lines from a 1-based line for from, and both together', async () => {
+      await seeded(async (queries) => {
+        const read = (paging: { tail?: string; from?: string }) =>
+          queries.stepLog('proj-5', 'implement', 'att-1', paging);
+        expect(await read({ tail: '2' })).toBe('line 9\nline 10\n');
+        expect(await read({ tail: '50' })).toBe(numbered);
+        expect(await read({ from: '9' })).toBe('line 9\nline 10\n');
+        expect(await read({ from: '3', tail: '2' })).toBe('line 3\nline 4\n');
+        expect(await read({})).toBe(numbered);
+      });
+    });
+
+    it('redacts the file before it cuts, and refuses a value that is not a count', async () => {
+      await withApp(async (queries, app, root) => {
+        const run = await save(app.get(RunRepository), 'proj-6', 'implement', 'waiting');
+        await attempt(app.get(VisitRepository), run, 'att-1', 'implement');
+        await log(root, 'proj-6-implement-att-1-output.txt', 'a\nBearer\nabc123\nb\n');
+        expect(await queries.stepLog('proj-6', 'implement', 'att-1', { tail: '2' })).toBe('Bearer ***\nb\n');
+        await expect(queries.stepLog('proj-6', 'implement', 'att-1', { tail: '-1' })).rejects.toBeInstanceOf(
+          BadRequestException,
+        );
+        await expect(queries.stepLog('proj-6', 'implement', 'att-1', { from: 'x' })).rejects.toBeInstanceOf(
+          BadRequestException,
+        );
+      });
+    });
+  });
+
+  it('serves the stored log document of an attempt that has no file', async () => {
+    await withApp(async (queries, app) => {
+      const run = await save(app.get(RunRepository), 'proj-7', 'implement', 'waiting');
+      const stat = await app.get(VisitRepository).finishVisit(run, {
+        ...repositoryVisit(),
+        step: 'implement',
+        documents: [{ kind: 'log', fileName: '', body: 'old one\nold two\n' }],
+      });
+      stat.attemptId = 'att-1';
+      await app.get(VisitRepository).saveStat(stat);
+      expect(await queries.stepLog('proj-7', 'implement', 'att-1', { tail: '1' })).toBe('old two\n');
     });
   });
 });

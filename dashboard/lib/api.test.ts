@@ -96,6 +96,20 @@ describe('runLog', () => {
     expect(assign).toHaveBeenCalledWith('/login');
   });
 
+  it('adds tail and from to the query', async () => {
+    const fetchMock = answer(200, '');
+    await runLog('proj-1', 'implement', 'att-1', { from: 11, tail: 2000 });
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      '/swarmloop-api/runs/proj-1/steps/implement/log?attempt=att-1&tail=2000&from=11',
+    );
+  });
+
+  it('sends a tail of 0', async () => {
+    const fetchMock = answer(200, '');
+    await runLog('proj-1', 'implement', undefined, { tail: 0 });
+    expect(fetchMock.mock.calls[0][0]).toBe('/swarmloop-api/runs/proj-1/steps/implement/log?tail=0');
+  });
+
   it('answers null when the API refuses', async () => {
     answer(404);
     await expect(runLog('proj-1', 'plan')).resolves.toBeNull();

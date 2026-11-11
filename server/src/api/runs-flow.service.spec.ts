@@ -174,10 +174,7 @@ describe('runs api', () => {
         tokensIn: 12,
         tokensOut: 3,
         samples: [{ sampledAt: now, cpuPercent: 40, rssBytes: 2048 }],
-        documents: [
-          { kind: 'review_quality', fileName: '', body: 'cleared\ndecision: ok\n' },
-          { kind: 'log', fileName: '', body: 'cleared\ndecision: ok\n' },
-        ],
+        documents: [{ kind: 'review_quality', fileName: '', body: 'cleared\ndecision: ok\n' }],
         exchange: {
           model: 'grok-4.7-high',
           startedAt: now,

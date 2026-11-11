@@ -1,4 +1,4 @@
-import { api, runLog } from './api';
+import { api, runLog, type LogPaging } from './api';
 import type {
   AddProjectBody,
   AnswersBody,
@@ -41,7 +41,8 @@ export const getStepEvents = (key: string, name: string | null, after: number): 
   api<StepEventPage>(`${run(key)}/events?${name === null ? '' : `step=${encodeURIComponent(name)}&`}after=${after}`);
 export const getHistory = (key: string): Promise<HistoryView> => api<HistoryView>(`${run(key)}/history`);
 export const listProjects = (): Promise<ProjectListView> => api<ProjectListView>('/checkouts/projects');
-export const getRunLog = (key: string, name: string): Promise<string | null> => runLog(key, name);
+export const getRunLog = (key: string, name: string, attempt?: string, paging?: LogPaging): Promise<string | null> =>
+  runLog(key, name, attempt, paging);
 
 export const createRun = (body: CreateRunBody): Promise<RunRef> => api<RunRef>('/runs', post(body));
 export const ticketKeys = (body: TicketKeysBody): Promise<TicketKeysView> =>

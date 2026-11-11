@@ -13,7 +13,7 @@ import { barrier } from '../core/barrier';
 import { Clock } from '../core/clock';
 import { AwakeTime } from '../core/awake-time';
 import { delay } from '../core/delay';
-import { diedLog, isStep } from '../core/pipeline-result';
+import { isStep } from '../core/pipeline-result';
 import { SERVER_INSTANCE } from '../core/server-instance';
 import { recordStepEvent, runInStepScope } from '../core/step-event-scope';
 import type { RunEntity } from '../history/entities';
@@ -364,10 +364,7 @@ export class Reconciler implements OnModuleDestroy {
       exchange: null,
       httpCalls: [],
       document: null,
-      documents: [
-        { kind: 'log', fileName: '', body: diedLog(saved) },
-        { kind: 'error', fileName: '', body: 'process died\n' },
-      ],
+      documents: [{ kind: 'error', fileName: '', body: 'process died\n' }],
       resumed: false,
     };
     await barrier('before-finalize');

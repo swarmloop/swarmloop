@@ -422,11 +422,7 @@ describe('code-review step', () => {
       const stats = await visits.listStats(run?.id ?? 0);
       expect(stats.filter((item) => item.step === 'code-review-security')).toHaveLength(1);
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
-      const logs = await documents.find({ where: { kind: 'log' } });
-      const body = logs.map((item) => item.body).join('\n');
-      expect(body).toContain('security-attempt-1');
-      expect(body).toContain('security-attempt-2');
-      expect(body).toContain('security-finished');
+      expect(await documents.find({ where: { kind: 'log' } })).toEqual([]);
     } finally {
       await app.close();
     }

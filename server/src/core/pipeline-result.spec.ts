@@ -3,7 +3,6 @@ import {
   continues,
   continuesSameStep,
   countedVisits,
-  diedLog,
   failedLaunches,
   loopMark,
   nextStep,
@@ -29,13 +28,6 @@ describe('continuesSameStep', () => {
     expect(continuesSameStep('waiting', 'plan', 'plan', null)).toBe(false);
     expect(continuesSameStep('waiting', 'plan', 'plan', 'done')).toBe(false);
     expect(continuesSameStep('waiting', 'implement', 'plan', 'waiting')).toBe(false);
-  });
-});
-
-describe('diedLog', () => {
-  it('keeps the saved output and notes that the process died', () => {
-    expect(diedLog('')).toBe('process died\n');
-    expect(diedLog('thinking\n')).toBe('thinking\nprocess died\n');
   });
 });
 

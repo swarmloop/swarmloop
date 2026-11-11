@@ -6,6 +6,7 @@ import type { DataSourceOptions } from 'typeorm';
 import type { BetterSqlite3ConnectionOptions } from 'typeorm/driver/better-sqlite3/BetterSqlite3ConnectionOptions';
 import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
+import { compactAfterLogMigration } from './compact-database';
 import { GuardedDataSource } from './guarded-data-source';
 import { CommandRepository } from './command.repository';
 import { entities } from './entities';
@@ -50,7 +51,11 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     TypeOrmModule.forRootAsync({
       inject: [AppConfig],
       useFactory: (config: AppConfig) => historyDatabaseOptions(resolveRepoRoot(config.env.SWARMLOOP_ROOT, __dirname)),
-      dataSourceFactory: async (options) => new GuardedDataSource(options as DataSourceOptions).initialize(),
+      dataSourceFactory: async (options) => {
+        const dataSource = await new GuardedDataSource(options as DataSourceOptions).initialize();
+        await compactAfterLogMigration(dataSource);
+        return dataSource;
+      },
     }),
     TypeOrmModule.forFeature(entities),
   ],
