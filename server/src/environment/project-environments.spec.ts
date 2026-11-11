@@ -10,7 +10,7 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { CheckCommandEntity, RunEntity } from '../history/entities';
 import type { SampleDraft } from '../history/visit';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
-import { commitFiles, makeRepo, runGit } from '../git/git-repo.spec-helpers';
+import { commitFiles, makeRepo, runGit, writeFiles } from '../git/git-repo.spec-helpers';
 import {
   ENVIRONMENT,
   type EnvironmentRecord,
@@ -237,6 +237,35 @@ describe('ProjectEnvironments', () => {
     expect(spawned[0]?.allowHosts).toEqual(expect.arrayContaining(['registry.npmjs.org', 'github.com', 'nodejs.org']));
     expect(records().at(-1)?.setup).toMatchObject({ command: 'npm ci', exitCode: 0 });
     expect(records().at(-1)?.setup?.tail).toContain('added 12 packages');
+  });
+
+  it('adds the manifest hosts to the setup and gives the checks none', async () => {
+    const config = { ...manifest, hosts: { setup: ['pub.dev', 'storage.googleapis.com'], agent: ['pub.dev'] } };
+    const { service, input, spawned } = setup({ config });
+    await service.check(input);
+    expect(spawned[0]?.allowHosts).toEqual(
+      expect.arrayContaining(['registry.npmjs.org', 'github.com', 'pub.dev', 'storage.googleapis.com']),
+    );
+    expect(spawned[0]?.manifestHosts?.hosts).toEqual(['pub.dev', 'storage.googleapis.com']);
+    expect(spawned[1]?.allowHosts).toEqual([]);
+    expect(spawned[1]?.manifestHosts).toBeUndefined();
+  });
+
+  it('stops at prepare on a manifest host above the ceiling', async () => {
+    const config = { ...manifest, hosts: { setup: ['gitlab.com'] } };
+    const { service, input, spawned } = setup({ config });
+    await expect(service.prepare(input)).rejects.toThrow('.swarmloop.json: hosts.setup: gitlab.com is a code host');
+    expect(spawned).toHaveLength(0);
+  });
+
+  it('gives no launch a host that only the worktree manifest names', async () => {
+    const { service, input, spawned } = setup();
+    writeFiles(input.mounts[0]?.hostPath ?? '', {
+      '.swarmloop.json': JSON.stringify({ ...manifest, hosts: { setup: ['pub.dev'] } }),
+    });
+    await service.prepare(input);
+    expect(spawned[0]?.allowHosts).not.toContain('pub.dev');
+    expect(spawned[0]?.manifestHosts).toBeUndefined();
   });
 
   it('stops on a failed setup and retries it on the next attempt', async () => {

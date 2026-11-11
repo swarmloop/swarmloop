@@ -292,6 +292,7 @@ When CI does not start and GitHub or GitLab confirms a merge conflict for the pu
 | `LOOP_REPEAT` | The same failing command this many times in a row gets one hint; that many more end the step | `4` |
 | `SANDBOX_EGRESS` | `proxy`: all traffic goes through the egress proxy. `open`: per-host networks without the proxy, for debugging only. | `proxy` |
 | `SANDBOX_DOCKER_RUNTIME` | Docker runtime of the sandboxes, such as `runsc` for gVisor | Docker's default |
+| `PROJECT_HOSTS_ALLOW` | Comma-separated host names a project's `hosts` (`.swarmloop.json` or `customizations.swarmloop`) may name. A host outside it is refused. Code hosts, model API hosts, local addresses and IPs are always refused. | Empty: every host under that ceiling |
 | `*_TIMEOUT_MS` | Wall time per step | 3 to 30 minutes |
 
 ### 📊 Statistics for every step

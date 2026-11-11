@@ -50,6 +50,7 @@ export const envSchema = Joi.object({
     .pattern(/^[a-z][a-z0-9_.-]{0,63}$/)
     .allow('')
     .default(''),
+  PROJECT_HOSTS_ALLOW: Joi.string().allow('').default(''),
   TICK_MS: Joi.number().required(),
   REQUIREMENTS_TIMEOUT_MS: Joi.number().required(),
   RESEARCH_TIMEOUT_MS: Joi.number().required(),

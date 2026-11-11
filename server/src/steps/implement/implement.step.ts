@@ -121,12 +121,17 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const { runtime } = this.profile(env);
     const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime, samples: ctx.samples };
     const reproject = projectFor(this.environments, place);
-    const { prompt, project, allowHosts, executionRules } = await agentWorkplace(this.environments, place, basePrompt);
+    const { prompt, project, allowHosts, manifestHosts, executionRules } = await agentWorkplace(
+      this.environments,
+      place,
+      basePrompt,
+    );
     const before = await worktreeSnapshot(mounts);
     let agentResult = await ctx.launch({
       prompt,
       mounts,
       allowHosts,
+      manifestHosts,
       project,
       projectFor: reproject,
       sections: ['implementation'],
@@ -156,6 +161,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
         ),
         mounts,
         allowHosts,
+        manifestHosts,
         project,
         projectFor: reproject,
       });

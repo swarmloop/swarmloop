@@ -1,6 +1,6 @@
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
-import type { ProjectLaunch } from '../sandbox/sandbox-launch';
+import type { ManifestHosts, ProjectLaunch } from '../sandbox/sandbox-launch';
 
 export interface AgentRunInput {
   prompt: string;
@@ -19,6 +19,7 @@ export interface AgentRunInput {
   liveStep?: string;
   mounts: SandboxMount[];
   allowHosts?: string[];
+  manifestHosts?: ManifestHosts;
   mode?: string;
   timeLimitMs?: number;
   approveMcps?: boolean;

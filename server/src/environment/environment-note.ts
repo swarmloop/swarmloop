@@ -2,6 +2,7 @@ import type { EnvironmentRecord } from './project-environments';
 
 export function environmentNote(record: EnvironmentRecord, step?: string): string {
   const { config } = record;
+  const extra = config.network === 'setup' ? [] : (config.hosts?.agent ?? []);
   const improving = step === 'implement-improve';
   const lines = [
     `# Project environment`,
@@ -11,7 +12,7 @@ export function environmentNote(record: EnvironmentRecord, step?: string): strin
     `This container runs in ${record.image ?? config.image ?? 'the project image'} from ${config.source} of ${record.repo}, with the project's own toolchain.`,
     config.network === 'setup'
       ? 'You may run any command in the working directory: build, lint, type check, and tests. The dependencies were installed by the setup; package registries are not reachable, so you cannot add or update a dependency. When the task needs a new one, say so in the summary. There is no Docker, no database or other service, and no other network.'
-      : 'You may run any command in the working directory: build, lint, type check, tests, and the package manager. Package registries are reachable, so you can add or update a dependency; the lockfile it writes is committed with your work. There is no Docker, no database or other service, and no other network.',
+      : `You may run any command in the working directory: build, lint, type check, tests, and the package manager. Package registries are reachable${extra.length > 0 ? `, and so are these hosts: ${extra.join(', ')}` : ''}, so you can add or update a dependency; the lockfile it writes is committed with your work. There is no Docker, no database or other service, and no other network.`,
   ];
   if (config.checks.length > 0) {
     lines.push(

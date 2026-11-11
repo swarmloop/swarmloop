@@ -1,5 +1,5 @@
 import { SwarmloopError } from '../core/swarmloop-error';
-import { makeRepo, writeFiles } from '../git/git-repo.spec-helpers';
+import { makeRepo, runGit, writeFiles } from '../git/git-repo.spec-helpers';
 import {
   fromDevcontainer,
   fromSwarmloop,
@@ -130,6 +130,90 @@ describe('stripJsonComments', () => {
 
   it('drops a trailing comma that a comment follows', () => {
     expect(JSON.parse(stripJsonComments('{ "a": [1, 2,], "b": 1, // last\n}'))).toEqual({ a: [1, 2], b: 1 });
+  });
+});
+
+describe('manifest hosts', () => {
+  const swarmloop = (hosts: unknown, extra: object = {}) => JSON.stringify({ version: 1, image: 'a', hosts, ...extra });
+
+  it('reads hosts in both formats', () => {
+    const hosts = { setup: ['pub.dev', 'storage.googleapis.com'], agent: ['pub.dev'] };
+    expect(fromSwarmloop(swarmloop(hosts)).hosts).toEqual(hosts);
+    expect(
+      fromDevcontainer(JSON.stringify({ image: 'a', customizations: { swarmloop: { hosts } } }), 'x.json').hosts,
+    ).toEqual(hosts);
+  });
+
+  it('parses a manifest without hosts to the config it had before', () => {
+    expect(fromSwarmloop(JSON.stringify({ version: 1, image: 'a' }))).toEqual({
+      source: '.swarmloop.json',
+      image: 'a',
+      cache: [],
+      checks: [],
+    });
+    expect(fromSwarmloop(swarmloop({}))).not.toHaveProperty('hosts');
+    expect(fromSwarmloop(swarmloop({ agent: [] }))).not.toHaveProperty('hosts');
+  });
+
+  it('refuses hosts for the agent when only the setup reaches the registries', () => {
+    const message = '.swarmloop.json: hosts.agent: is not allowed with "network": "setup"';
+    expect(() => fromSwarmloop(swarmloop({ agent: ['pub.dev'] }, { network: 'setup' }))).toThrow(message);
+    expect(() =>
+      fromDevcontainer(
+        JSON.stringify({
+          image: 'a',
+          customizations: { swarmloop: { network: 'setup', hosts: { agent: ['pub.dev'] } } },
+        }),
+        'x.json',
+      ),
+    ).toThrow('x.json: hosts.agent: is not allowed');
+    expect(fromSwarmloop(swarmloop({ setup: ['pub.dev'] }, { network: 'setup' })).hosts).toEqual({
+      setup: ['pub.dev'],
+    });
+  });
+
+  it('refuses a malformed hosts value', () => {
+    expect(() => fromSwarmloop(swarmloop({ setup: 'pub.dev' }))).toThrow(
+      '.swarmloop.json: "hosts.setup" must be an array',
+    );
+    expect(() =>
+      fromDevcontainer(JSON.stringify({ image: 'a', customizations: { swarmloop: { hosts: [] } } }), 'x.json'),
+    ).toThrow('x.json: hosts:');
+  });
+
+  const read = async (hosts: unknown) => readEnvironmentConfig(makeRepo({ '.swarmloop.json': swarmloop(hosts) }));
+
+  it('accepts a host name', async () => {
+    expect((await read({ setup: ['pub.dev'] }))?.hosts).toEqual({ setup: ['pub.dev'] });
+  });
+
+  it.each([
+    ['https://pub.dev', 'is not a host name'],
+    ['pub.dev:443', 'is not a host name'],
+    ['pub.dev/x', 'is not a host name'],
+    ['*.pub.dev', 'is not a host name'],
+    ['Pub.dev', 'is not a host name'],
+    ['', 'is not a host name'],
+    ['10.0.0.1', 'is a local address'],
+    ['localhost', 'is a local address'],
+    ['github.com', 'is a code host'],
+    ['api.anthropic.com', 'is a model API host'],
+  ])('refuses the entry %p with its reason', async (host, reason) => {
+    await expect(read({ agent: [host] })).rejects.toThrow(`.swarmloop.json: hosts.agent: ${host} ${reason}`);
+  });
+
+  it('refuses the host of the checkout origin, naming each entry', async () => {
+    const repo = makeRepo({ '.swarmloop.json': swarmloop({ setup: ['git.corp.example'], agent: ['nodejs.org'] }) });
+    runGit(repo, ['remote', 'add', 'origin', 'git@git.corp.example:team/app.git']);
+    await expect(readEnvironmentConfig(repo)).rejects.toThrow(
+      '.swarmloop.json: hosts.setup: git.corp.example is a code host; .swarmloop.json: hosts.agent: nodejs.org is setup-only',
+    );
+  });
+
+  it('reads hosts from the committed revision only', async () => {
+    const repo = makeRepo({ '.swarmloop.json': swarmloop({ setup: ['pub.dev'] }) });
+    writeFiles(repo, { '.swarmloop.json': swarmloop({ setup: ['pub.dev', 'evil.example'] }) });
+    expect((await readEnvironmentConfig(repo))?.hosts).toEqual({ setup: ['pub.dev'] });
   });
 });
 

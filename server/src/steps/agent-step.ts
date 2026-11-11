@@ -10,7 +10,7 @@ import type { StepOptions } from '../core/pipeline-result';
 import type { OpenedStep } from '../steps/step-run';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
-import type { ProjectLaunch } from '../sandbox/sandbox-launch';
+import type { ManifestHosts, ProjectLaunch } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { RuntimeLimit, SwarmloopError } from '../core/swarmloop-error';
 import type { StepKernel } from './step-kernel';
@@ -58,6 +58,7 @@ export interface ModelStepContext {
     prompt: string;
     mounts: SandboxMount[];
     allowHosts?: string[];
+    manifestHosts?: ManifestHosts;
     label?: string;
     continuePrompt?: string;
     /** The full prompt, for the fresh chat that starts when the CLI no longer has the stored one. */
@@ -264,6 +265,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       workspace: run.workspace,
       mounts: launch.mounts,
       allowHosts: launch.allowHosts,
+      manifestHosts: launch.manifestHosts,
       resume: launch.resume,
       continuePrompt: launch.continuePrompt,
       freshPrompt: launch.freshPrompt === undefined ? undefined : withInstructions(launch.freshPrompt),
