@@ -25,11 +25,22 @@ class RunsStub {
 
 function send(
   port: number,
-  options: { method: string; path: string; host?: string; type?: string; body?: string },
+  options: {
+    method: string;
+    path: string;
+    host?: string;
+    type?: string;
+    body?: string;
+    origin?: string;
+    /** Sends `X-Swarmloop: 1`. On by default. */
+    marker?: boolean;
+  },
 ): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const headers: Record<string, string> = { host: options.host ?? `127.0.0.1:${port}` };
     if (options.type) headers['content-type'] = options.type;
+    if (options.marker !== false) headers['x-swarmloop'] = '1';
+    if (options.origin) headers.origin = options.origin;
     const req = request({ port, host: '127.0.0.1', method: options.method, path: options.path, headers }, (res) => {
       let body = '';
       res.on('data', (chunk) => (body += chunk));
@@ -113,6 +124,27 @@ describe('http guard', () => {
     });
     expect([plain.status, charset.status]).toEqual([201, 201]);
     expect(created).toEqual([{ a: 1 }, { a: 2 }]);
+  });
+
+  it('refuses a JSON post without X-Swarmloop and creates nothing', async () => {
+    const response = await send(port, {
+      method: 'POST',
+      path: '/runs',
+      type: 'application/json',
+      body: '{"a":1}',
+      marker: false,
+    });
+    expect(response.status).toBe(403);
+    expect(created).toEqual([]);
+  });
+
+  it('refuses a cross-origin post and takes the panel and public origins', async () => {
+    const post = (origin: string) =>
+      send(port, { method: 'POST', path: '/runs', type: 'application/json', body: '{"a":1}', origin });
+    expect((await post('https://evil.example')).status).toBe(403);
+    expect((await post('http://127.0.0.1:3921')).status).toBe(201);
+    expect((await post('http://panel.example:8080')).status).toBe(201);
+    expect(created).toHaveLength(2);
   });
 
   it('answers a read without a content type', async () => {

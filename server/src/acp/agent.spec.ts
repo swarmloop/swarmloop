@@ -523,10 +523,20 @@ describe('sloop', () => {
       status: 400,
       json: async () => ({ message: 'prompt is missing' }),
     } as Response);
-    const api = new HttpServerApi('http://127.0.0.1:3920', fetchImpl);
+    const api = new HttpServerApi('http://127.0.0.1:3920', 'machine-secret', fetchImpl);
     await expect(api.create({ prompt: '' })).rejects.toThrow('prompt is missing');
     fetchImpl.mockRejectedValueOnce(new Error('connect failed'));
     await expect(api.list()).rejects.toThrow('nest is not running');
+  });
+
+  it('sends the machine token on every call and X-Swarmloop on a mutating one', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    const api = new HttpServerApi('http://127.0.0.1:3920', 'machine-secret', fetchImpl);
+    await api.list();
+    await api.stop('PROJ-1');
+    const [read, write] = fetchImpl.mock.calls.map(([, init]) => (init as RequestInit).headers);
+    expect(read).toEqual({ authorization: 'Bearer machine-secret' });
+    expect(write).toMatchObject({ authorization: 'Bearer machine-secret', 'x-swarmloop': '1' });
   });
 });
 

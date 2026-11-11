@@ -1,26 +1,38 @@
 import { Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { OnGatewayConnection, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import {
+  OnGatewayConnection,
+  OnGatewayInit,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
+} from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { FlowView } from '../contract/api';
 import { ClientToServerEvents, LiveEvents, ServerToClientEvents } from '../contract/live';
 import { RunQueriesService } from '../api/run-queries.service';
 import { LiveHub } from '../live/live.hub';
 import { rawEnv } from '../config/process-env';
-import { PANEL_ORIGINS } from '../live/origins';
+import { allowedOrigins, originAllowed } from '../live/origins';
+import { AuthService } from '../auth/auth.service';
 import { isAllowedHost } from './allowed-hosts';
 
 const PUBLIC_URL = () => rawEnv().SWARMLOOP_PUBLIC_URL ?? 'http://127.0.0.1:3921';
 
-/** socket.io handshakes bypass Express middleware, so the Host rule is applied here. */
+/** socket.io handshakes bypass Express middleware, so the Host and Origin rules are applied here. */
 export function allowHandshake(
-  request: { headers: { host?: string } },
+  request: { headers: { host?: string; origin?: string } },
   done: (error: string | null, ok: boolean) => void,
 ): void {
-  done(null, isAllowedHost(request.headers.host, PUBLIC_URL()));
+  const { host, origin } = request.headers;
+  done(null, isAllowedHost(host, PUBLIC_URL()) && (origin === undefined || originAllowed(origin, PUBLIC_URL())));
 }
 
-@WebSocketGateway({ cors: { origin: PANEL_ORIGINS }, transports: ['websocket'], allowRequest: allowHandshake })
-export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConnection {
+@WebSocketGateway({
+  cors: { origin: allowedOrigins(PUBLIC_URL()), credentials: true },
+  transports: ['websocket'],
+  allowRequest: allowHandshake,
+})
+export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConnection, OnGatewayInit {
   @WebSocketServer()
   server!: Server<ClientToServerEvents, ServerToClientEvents>;
 
@@ -32,7 +44,19 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
   constructor(
     private readonly hub: LiveHub,
     private readonly runs: RunQueriesService,
+    private readonly auth: AuthService,
   ) {}
+
+  /** A socket needs the session cookie or the machine token, like a request. */
+  afterInit(server: Server): void {
+    server.use((socket, next) => {
+      const { cookie, authorization } = socket.handshake.headers;
+      this.auth.check({ cookie, authorization }).then(
+        ({ allowed }) => next(allowed ? undefined : new Error('log in first')),
+        () => next(new Error('log in first')),
+      );
+    });
+  }
 
   onModuleInit(): void {
     this.stop.push(this.hub.onChanged((key) => this.queue(key)));

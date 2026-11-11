@@ -38,6 +38,7 @@ import {
   TicketKeysBody,
   TicketKeysView,
 } from '../contract/api';
+import { Actor } from '../auth/actor.decorator';
 import type { CommandInput, CommandReceipt, CommandType } from '../contract/command';
 import type { StepEventPage } from '../contract/step-events';
 import { CommandService } from '../pipeline/command.service';
@@ -160,10 +161,11 @@ export class RunsController {
   async create(
     @Body() body: CreateRunBody,
     @Res({ passthrough: true }) response: { status(code: number): void },
+    @Actor() actor: string | null,
   ): Promise<RunRef & CommandReceipt> {
     const plan = await this.runs.plan(body);
     const result = await this.dispatch<RunRef>('start', plan.key, { ...plan }, undefined, {
-      create: { targetPath: null },
+      create: { targetPath: null, startedBy: actor },
       expectedRevision: body.expectedRevision,
     });
     response.status(httpStatus(result));

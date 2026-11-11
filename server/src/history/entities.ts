@@ -98,6 +98,10 @@ export class RunEntity {
   /** The planner may split this run into subtasks. Always false for a subtask. */
   @Column({ type: 'boolean', default: false })
   split!: boolean;
+
+  /** Who started the run: a login name, or `machine` for the token. Null for a run the CLI started and for old rows. */
+  @Column({ name: 'started_by', type: 'text', nullable: true })
+  startedBy!: string | null;
 }
 
 @Entity('documents')
@@ -449,6 +453,23 @@ export class RuntimeCooldownEntity {
   resetKnown!: number;
 }
 
+/** A login session. The cookie holds `id`; the row says who it is and when it ends. */
+@Entity('sessions')
+export class SessionEntity {
+  @PrimaryColumn({ type: 'text' })
+  id!: string;
+
+  @Column({ type: 'text' })
+  user!: string;
+
+  @Column({ type: 'text' })
+  provider!: string;
+
+  /** ISO 8601 UTC. */
+  @Column({ name: 'expires_at', type: 'text' })
+  expiresAt!: string;
+}
+
 export const entities = [
   RunEntity,
   DocumentEntity,
@@ -464,4 +485,5 @@ export const entities = [
   StepEventEntity,
   CommandEntity,
   RuntimeCooldownEntity,
+  SessionEntity,
 ];

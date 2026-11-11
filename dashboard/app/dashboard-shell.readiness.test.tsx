@@ -3,7 +3,7 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { usePathname, useRouter } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReadinessProvider } from '../features/readiness';
-import { getReadiness, listProjects, listRuns } from '../lib/endpoints';
+import { getReadiness, getSession, listProjects, listRuns } from '../lib/endpoints';
 import { QueryWrapper } from '../test/query-wrapper';
 import { DashboardShell } from './dashboard-shell';
 
@@ -15,6 +15,8 @@ vi.mock('../lib/endpoints', () => ({
   removeRun: vi.fn(),
   createRun: vi.fn(),
   setRunProjects: vi.fn(),
+  getSession: vi.fn(),
+  logout: vi.fn(),
 }));
 vi.mock('../lib/live', async () => (await import('../test/fake-socket')).fakeLive());
 
@@ -34,6 +36,7 @@ function renderShell(): void {
 }
 
 beforeEach(() => {
+  vi.mocked(getSession).mockResolvedValue({ user: null });
   vi.mocked(usePathname).mockReturnValue('/');
   vi.mocked(useRouter).mockReturnValue({ push: vi.fn() } as unknown as ReturnType<typeof useRouter>);
   vi.mocked(listRuns).mockResolvedValue({ runs: [] });

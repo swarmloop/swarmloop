@@ -70,12 +70,16 @@ describe('RunsController', () => {
     const runs = { plan: jest.fn().mockResolvedValue({ key: 'proj-1', phases: [], phasesGiven: false, projects: [] }) };
     const commands = answering({ key: 'proj-1', status: 'started' });
     const response = { status: jest.fn() };
-    const result = await controllerWith(runs, commands).create({ key: 'proj-1', prompt: 'Ship it' }, response);
+    const result = await controllerWith(runs, commands).create(
+      { key: 'proj-1', prompt: 'Ship it' },
+      response,
+      'octocat',
+    );
     expect(result).toEqual({ key: 'proj-1', status: 'started', commandId: 'c-1', revision: 4, state: 'idle' });
     expect(commands.submit).toHaveBeenCalledWith('start', 'proj-1', expect.any(Object), {
       idempotencyKey: undefined,
       expectedRevision: undefined,
-      create: { targetPath: null },
+      create: { targetPath: null, startedBy: 'octocat' },
     });
     expect(response.status).toHaveBeenCalledWith(202);
   });

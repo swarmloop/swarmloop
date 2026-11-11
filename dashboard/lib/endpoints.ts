@@ -25,6 +25,10 @@ const post = (body?: unknown): RequestInit => ({
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });
 
+export const getProviders = (): Promise<{ providers: string[] }> => api('/auth/providers');
+/** The logged-in user, or `null` when nobody is (also when no login is configured). */
+export const getSession = (): Promise<{ user: string | null }> => api('/auth/me');
+export const logout = (): Promise<unknown> => api('/auth/logout', post());
 export const getReadiness = (): Promise<ReadinessView> => api<ReadinessView>('/readiness');
 export const listRuns = (): Promise<RunsView> => api<RunsView>('/runs');
 /** The statistics of the runs started in the last `days` local days (0: all of them). `tz` is `getTimezoneOffset()`. */

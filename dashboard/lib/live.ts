@@ -11,6 +11,7 @@ export function liveSocket(): Socket<ServerToClientEvents, ClientToServerEvents>
   if (!socket) {
     socket = io(socketUrl(), {
       transports: ['websocket'],
+      withCredentials: true,
     });
   }
   return socket;

@@ -63,6 +63,12 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     SWARMLOOP_API_HOST: '127.0.0.1',
     SWARMLOOP_PUBLIC_URL: 'http://127.0.0.1:3921',
     SWARMLOOP_REPOS: [],
+    GITHUB_OAUTH_CLIENT_ID: '',
+    GITHUB_OAUTH_CLIENT_SECRET: '',
+    GITLAB_OAUTH_CLIENT_ID: '',
+    GITLAB_OAUTH_CLIENT_SECRET: '',
+    SWARMLOOP_ALLOW: '',
+    SWARMLOOP_TOKEN: '',
     ...overrides,
   };
 }

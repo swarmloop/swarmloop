@@ -33,6 +33,32 @@ describe('api', () => {
     await expect(api('/runs')).rejects.toMatchObject({ status: 500, message: 'HTTP 500' });
   });
 
+  it('sends the session cookie, and X-Swarmloop on a write only', async () => {
+    respond(200, {});
+
+    await api('/runs');
+    await api('/runs', { method: 'POST' });
+
+    const [read, write] = vi.mocked(globalThis.fetch).mock.calls.map(([, init]) => init);
+    expect(read).toMatchObject({ credentials: 'include' });
+    expect((read?.headers as Record<string, string>)['X-Swarmloop']).toBeUndefined();
+    expect(write).toMatchObject({ credentials: 'include', headers: { 'X-Swarmloop': '1' } });
+  });
+
+  it('sends the browser to the login page on a 401, but not when it is there already', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { assign, pathname: '/runs/a' });
+    respond(401, { message: 'log in first' });
+
+    await expect(api('/runs')).rejects.toMatchObject({ status: 401 });
+    expect(assign).toHaveBeenCalledWith('/login');
+
+    assign.mockClear();
+    vi.stubGlobal('location', { assign, pathname: '/login' });
+    await expect(api('/auth/providers')).rejects.toMatchObject({ status: 401 });
+    expect(assign).not.toHaveBeenCalled();
+  });
+
   it('returns the body of a successful response', async () => {
     respond(200, { runs: [] });
 
@@ -57,6 +83,17 @@ describe('runLog', () => {
     const fetchMock = answer(200, '');
     await runLog('../x', 'a/b', 'id&1');
     expect(fetchMock.mock.calls[0][0]).toBe('/swarmloop-api/runs/..%2Fx/steps/a%2Fb/log?attempt=id%261');
+  });
+
+  it('sends the session cookie and goes to the login page on a 401', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { assign, pathname: '/runs/a' });
+    const fetchMock = answer(401);
+
+    await expect(runLog('proj-1', 'plan')).resolves.toBeNull();
+
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ credentials: 'include' });
+    expect(assign).toHaveBeenCalledWith('/login');
   });
 
   it('answers null when the API refuses', async () => {

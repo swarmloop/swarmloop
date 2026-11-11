@@ -98,6 +98,16 @@ describe('env schema', () => {
     expect(missing.error?.message).toContain('missing');
   });
 
+  it('keeps a bare env valid and names a bad SWARMLOOP_ALLOW entry', () => {
+    const bare = envSchema.validate(complete, { abortEarly: false, convert: true });
+    expect(bare.error).toBeUndefined();
+    expect(bare.value).toMatchObject({ SWARMLOOP_ALLOW: '', SWARMLOOP_TOKEN: '', GITHUB_OAUTH_CLIENT_ID: '' });
+    const good = envSchema.validate({ ...complete, SWARMLOOP_ALLOW: 'github:Ann, gitlab-group:team/dev' });
+    expect(good.error).toBeUndefined();
+    const bad = envSchema.validate({ ...complete, SWARMLOOP_ALLOW: 'github:ann,twitter:bob' }, { convert: true });
+    expect(bad.error?.message).toContain('twitter:bob');
+  });
+
   it('defaults the retention, disk and docker settings and rejects a negative retention', () => {
     const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
     expect(value).toMatchObject({ RETAIN_DONE_DAYS: 3, MIN_FREE_GB: 10, DOCKER_PRUNE: true });

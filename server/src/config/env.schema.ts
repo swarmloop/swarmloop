@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { parseAllow } from '../auth/allow-list';
 import { RUNTIME_NAMES } from '../integrations/agent-runtime/agent-runtime.registry';
 import { IssueTrackerRegistry } from '../integrations/issue-tracker/issue-tracker.registry';
 import { names } from '../integrations/requirements-source/requirements-source.registry';
@@ -73,6 +74,18 @@ export const envSchema = Joi.object({
   SWARMLOOP_API_HOST: Joi.string().required(),
   SWARMLOOP_PUBLIC_URL: Joi.string().uri().default('http://127.0.0.1:3921'),
   SWARMLOOP_REPOS: Joi.string().allow('').default(''),
+  GITHUB_OAUTH_CLIENT_ID: Joi.string().allow('').default(''),
+  GITHUB_OAUTH_CLIENT_SECRET: Joi.string().allow('').default(''),
+  GITLAB_OAUTH_CLIENT_ID: Joi.string().allow('').default(''),
+  GITLAB_OAUTH_CLIENT_SECRET: Joi.string().allow('').default(''),
+  SWARMLOOP_ALLOW: Joi.string()
+    .allow('')
+    .default('')
+    .custom((value: string) => {
+      parseAllow(value);
+      return value;
+    }),
+  SWARMLOOP_TOKEN: Joi.string().allow('').default(''),
 }).messages({
   'any.required': '{{#label}} is missing',
   'any.only': '{{#label}} has unknown value {{#value}}',

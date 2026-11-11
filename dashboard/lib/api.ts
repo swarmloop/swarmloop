@@ -18,16 +18,25 @@ export class ApiError extends Error {
   }
 }
 
+/** A 401 means the session is gone: the browser goes to the login page, unless it is there already. */
+function signedOut(response: Response): void {
+  if (response.status === 401 && typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    window.location.assign('/login');
+  }
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(apiUrl(path), {
     ...init,
     cache: 'no-store',
+    credentials: 'include',
     headers: {
       Accept: 'application/json',
-      ...(init?.method && init.method !== 'GET' ? { 'Content-Type': 'application/json' } : {}),
+      ...(init?.method && init.method !== 'GET' ? { 'Content-Type': 'application/json', 'X-Swarmloop': '1' } : {}),
       ...init?.headers,
     },
   });
+  signedOut(response);
   if (!response.ok) {
     throw new ApiError(response.status, await errorMessage(response));
   }
@@ -37,7 +46,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export async function runLog(runKey: string, name: string, attempt?: string): Promise<string | null> {
   const query = attempt ? `?attempt=${encodeURIComponent(attempt)}` : '';
   const path = `/runs/${encodeURIComponent(runKey)}/steps/${encodeURIComponent(name)}/log${query}`;
-  const response = await fetch(apiUrl(path), { cache: 'no-store' });
+  const response = await fetch(apiUrl(path), { cache: 'no-store', credentials: 'include' });
+  signedOut(response);
   if (!response.ok) {
     return null;
   }

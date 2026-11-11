@@ -10,7 +10,8 @@ import { resolveRepoRoot } from './config/repo-root';
 import { secureHttp } from './api/request-guard';
 import { Housekeeping } from './pipeline/housekeeping';
 import { Reconciler } from './pipeline/reconciler';
-import { PANEL_ORIGINS } from './live/origins';
+import { bindRefusal } from './auth/bind-check';
+import { allowedOrigins } from './live/origins';
 
 async function bootstrap(): Promise<void> {
   const envError = assertEnvFile(join(resolveRepoRoot(undefined, __dirname), '.env'));
@@ -25,9 +26,15 @@ async function bootstrap(): Promise<void> {
       bodyParser: false,
     });
     const env = app.get(AppConfig).env;
+    const refusal = bindRefusal(env);
+    if (refusal) {
+      await app.close();
+      fail(refusal);
+      return;
+    }
     secureHttp(app, env.SWARMLOOP_PUBLIC_URL);
     app.enableShutdownHooks();
-    app.enableCors({ origin: PANEL_ORIGINS });
+    app.enableCors({ origin: allowedOrigins(env.SWARMLOOP_PUBLIC_URL), credentials: true });
     app.useWebSocketAdapter(new IoAdapter(app));
     assertAgents(env);
     await app.listen(env.SWARMLOOP_API_PORT, env.SWARMLOOP_API_HOST);

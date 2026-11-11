@@ -39,7 +39,7 @@ Every step runs in a locked container. Every prompt, diff, review, token, and do
 | 💰 **Limits** | Dollars, tokens, time, silence, and retries are server settings, not the agent's choice. |
 | 🖥 **Live panel, CLI, IDE** | The panel updates as each step runs. The CLI and JetBrains AI Chat start the same runs, with the same steps, rules, and history. |
 | 📊 **Statistics** | Spend, tokens, and CPU and memory charts for every step, plus every external HTTP call. |
-| 👥 **Team server** | One machine, one flow, shared rules in `skills/`, one bill. |
+| 👥 **Team server** | One machine, one flow, shared rules in `skills/`, one bill. Login with GitHub or GitLab. |
 
 ## 🚀 Quick start
 
@@ -362,7 +362,7 @@ When the API is on another machine, set the URL in `env`:
 "env": { "SWARMLOOP_API_URL": "http://your-server:3920" }
 ```
 
-`sloop` calls `http://127.0.0.1:3920` when that variable is empty. Any other ACP client starts the same command. The Cursor desktop app runs its own agent and does not load this file.
+`sloop` calls `http://127.0.0.1:3920` when that variable is empty. It sends `SWARMLOOP_TOKEN` from its environment, or reads `data/token` in the repository folder, as the machine token. Any other ACP client starts the same command. The Cursor desktop app runs its own agent and does not load this file.
 
 ## 🔧 Settings
 
@@ -381,7 +381,10 @@ When the API is on another machine, set the URL in `env`:
 | `SWARMLOOP_REPOS` | Repository folder names under `CHECKOUTS_ROOT`, comma-separated. Empty: every repository there. |
 | `SWARMLOOP_PUBLIC_URL` | The address of the dashboard. The API and the dashboard answer only to `127.0.0.1`, `localhost`, this host and the compose names (anything else gets 421). Default `http://127.0.0.1:3921`. |
 | `TICK_MS` | How often a running pipeline is polled. `.env.example` uses `15000`. |
-| `SWARMLOOP_API_HOST`, `SWARMLOOP_API_PORT` | Where the API listens. `.env.example` uses `127.0.0.1:3920`. |
+| `SWARMLOOP_API_HOST`, `SWARMLOOP_API_PORT` | Where the API listens. `.env.example` uses `127.0.0.1:3920`. Without a login provider the server refuses to start on another address. |
+| `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, `GITLAB_OAUTH_CLIENT_ID`, `GITLAB_OAUTH_CLIENT_SECRET` | Login with GitHub or GitLab. See [Login](#login). |
+| `SWARMLOOP_ALLOW` | Who may log in: `github:<user>`, `github-org:<org>`, `gitlab:<user>`, `gitlab-group:<group>`. Empty: the owner of `GITHUB_TOKEN` or `GITLAB_TOKEN`. |
+| `SWARMLOOP_TOKEN` | Bearer token for the CLI, ACP and scripts. Empty: made in `data/token`. |
 
 Spend, tokens, retries, and timeouts are in [Limits](#-limits-on-money-tokens-and-time). A missing key stops bootstrap and names the variable. Copy `.env.example` and change what you want.
 
@@ -391,7 +394,19 @@ Put it on one machine. Everyone who can open the panel sees the same runs, the s
 
 The flow is the same for every ticket. The rules live in `skills/` in this repo, so a change to a review or a plan rule reaches the whole team at the next server rebuild. Spend, tokens, and how many times a review may send work back are server settings, not a choice the agent makes.
 
-There is no login. The network is the access control. The compose file publishes the panel and the API on `127.0.0.1`. On a shared machine that is the team. To reach them from other machines, publish the ports on an internal address. Do not put this on the public internet.
+### Login
+
+The panel has a login with GitHub and with GitLab. Nothing acts without a session or the machine token.
+
+1. Create an OAuth App on GitHub, or an application on your GitLab with the scopes `read_user` and `read_api`. Its callback is `SWARMLOOP_PUBLIC_URL` plus `/auth/github/callback` or `/auth/gitlab/callback`. A self-hosted GitLab is the one at `GITLAB_BASE_URL`.
+2. Put the id and secret in `.env`: `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`, `GITLAB_OAUTH_CLIENT_ID` and `GITLAB_OAUTH_CLIENT_SECRET`. The login page shows a button for each provider that has both.
+3. Say who may log in with `SWARMLOOP_ALLOW`, comma-separated: `github:<user>`, `github-org:<org>`, `gitlab:<user>`, `gitlab-group:<group>`. Empty means only the owner of `GITHUB_TOKEN` or `GITLAB_TOKEN`. Membership is checked once, at login, with the person's own token, which is not kept. A refused login names the account and the reason.
+
+A session lasts 14 days, or until Logout. Every run records who started it, and the run page shows it. The CLI, ACP, smoke and scripts send `SWARMLOOP_TOKEN` as `Authorization: Bearer <token>`. When it is empty the server makes one in `data/token`, and `docker compose exec server node dist/main.js doctor` prints it.
+
+Without a provider the server answers only on loopback and the panel works for one person on this machine, as before. A server that listens on another address without a provider refuses to start and says which variables to set. The compose file publishes the ports on `127.0.0.1`: to reach them from other machines, set a provider and `SWARMLOOP_PUBLIC_URL`, then publish the ports on an address your team can reach. Do not put this on the public internet.
+
+The server mounts the Docker socket, so whoever controls the server controls the host. Only let in people you would give that. A personal subscription (Claude, ChatGPT or Cursor plan) is for personal use: do not share one plan across a team.
 
 ## 📜 License
 

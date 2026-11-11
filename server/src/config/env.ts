@@ -64,6 +64,12 @@ export interface SwarmloopEnv {
   SWARMLOOP_API_HOST: string;
   SWARMLOOP_PUBLIC_URL: string;
   SWARMLOOP_REPOS: string[];
+  GITHUB_OAUTH_CLIENT_ID: string;
+  GITHUB_OAUTH_CLIENT_SECRET: string;
+  GITLAB_OAUTH_CLIENT_ID: string;
+  GITLAB_OAUTH_CLIENT_SECRET: string;
+  SWARMLOOP_ALLOW: string;
+  SWARMLOOP_TOKEN: string;
 }
 
 /** An empty limit means there is no cap. Zero is a real cap. */
@@ -73,6 +79,11 @@ export function optionalLimit(value: unknown): number | null {
   }
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** A setting that may be absent: an empty string then. */
+function optionalText(config: ConfigService, name: string): string {
+  return config.get<string>(name) ?? '';
 }
 
 export function splitList(value: string | undefined): string[] {
@@ -154,5 +165,11 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     SWARMLOOP_API_HOST: config.getOrThrow<string>('SWARMLOOP_API_HOST'),
     SWARMLOOP_PUBLIC_URL: config.getOrThrow<string>('SWARMLOOP_PUBLIC_URL'),
     SWARMLOOP_REPOS: splitList(config.get<string>('SWARMLOOP_REPOS')),
+    GITHUB_OAUTH_CLIENT_ID: optionalText(config, 'GITHUB_OAUTH_CLIENT_ID'),
+    GITHUB_OAUTH_CLIENT_SECRET: optionalText(config, 'GITHUB_OAUTH_CLIENT_SECRET'),
+    GITLAB_OAUTH_CLIENT_ID: optionalText(config, 'GITLAB_OAUTH_CLIENT_ID'),
+    GITLAB_OAUTH_CLIENT_SECRET: optionalText(config, 'GITLAB_OAUTH_CLIENT_SECRET'),
+    SWARMLOOP_ALLOW: optionalText(config, 'SWARMLOOP_ALLOW'),
+    SWARMLOOP_TOKEN: optionalText(config, 'SWARMLOOP_TOKEN'),
   };
 }

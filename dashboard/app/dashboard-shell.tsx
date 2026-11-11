@@ -16,12 +16,16 @@ import type { RunSummary } from '@contract/api';
 import { NewRunDialog } from '../features/new-run';
 import { useReadiness } from '../features/readiness';
 import { RemoveRunDialog, RunList, useRuns } from '../features/runs';
-import { Shell, ThemeModeSwitch, useNewRun } from '../features/shell';
+import { Account, Shell, ThemeModeSwitch, useNewRun } from '../features/shell';
 
 const DrawerWidth = 280;
 
 export function DashboardShell({ children }: { children: React.ReactNode }): ReactElement {
   const [open, setOpen] = useState(false);
+  // The login page has no runs to list and no socket to open: nobody is logged in yet.
+  if (usePathname() === '/login') {
+    return <>{children}</>;
+  }
   return (
     <Shell onNewRun={() => setOpen(true)}>
       <DashboardFrame open={open} setOpen={setOpen}>
@@ -137,6 +141,7 @@ function DashboardFrame({
               {connected ? 'live' : 'offline'}
             </Typography>
           </Box>
+          <Account />
           <ThemeModeSwitch />
           <Box component="span" title={blocker?.action}>
             <Button variant="contained" startIcon={<AddIcon />} onClick={openNewRun} disabled={blocker !== null}>

@@ -14,6 +14,6 @@ describe('liveSocket', () => {
 
     liveSocket();
 
-    expect(io).toHaveBeenCalledWith('http://live.example:7', { transports: ['websocket'] });
+    expect(io).toHaveBeenCalledWith('http://live.example:7', { transports: ['websocket'], withCredentials: true });
   });
 });

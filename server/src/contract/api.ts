@@ -53,6 +53,8 @@ export interface FlowView {
   stepStartedAt: string | null;
   /** Set on a subtask only: the key of its parent run. */
   parentKey?: string;
+  /** Who started the run. Missing for a run the CLI started and for runs from before logins. */
+  startedBy?: string;
   /** The tasks of a split plan after plan-improve, by dependency layer. Missing when the run does not split. */
   tasks?: TaskLayer[];
   resume: 'ready' | 'need-answers' | 'running' | 'blocked' | 'done';

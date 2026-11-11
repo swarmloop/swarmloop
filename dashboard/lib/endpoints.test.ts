@@ -4,6 +4,9 @@ import {
   createRun,
   getFlow,
   getHistory,
+  getProviders,
+  getSession,
+  logout,
   getRunLog,
   getStats,
   getStep,
@@ -77,6 +80,18 @@ describe('endpoints', () => {
       ['/runs/run-1/rebase', { method: 'POST' }],
       ['/runs/run-1/steps/code-review-quality', { method: 'POST' }],
       ['/runs/run-1', { method: 'DELETE' }],
+    ]);
+  });
+
+  it('reads the login providers and the session, and logs out with a POST', async () => {
+    await getProviders();
+    await getSession();
+    await logout();
+
+    expect(vi.mocked(api).mock.calls).toEqual([
+      ['/auth/providers'],
+      ['/auth/me'],
+      ['/auth/logout', { method: 'POST' }],
     ]);
   });
 

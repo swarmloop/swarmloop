@@ -36,6 +36,7 @@ export interface ServerApi {
 export class HttpServerApi implements ServerApi {
   constructor(
     private readonly base: string,
+    private readonly token: string,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
@@ -100,7 +101,10 @@ export class HttpServerApi implements ServerApi {
     try {
       response = await this.fetchImpl(`${this.base}${path}`, {
         method,
-        headers: method === 'GET' ? undefined : { 'content-type': 'application/json' },
+        headers: {
+          authorization: `Bearer ${this.token}`,
+          ...(method === 'GET' ? {} : { 'content-type': 'application/json', 'x-swarmloop': '1' }),
+        },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch {

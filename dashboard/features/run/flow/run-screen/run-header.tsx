@@ -62,6 +62,11 @@ export function RunHeader({
             <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: 13 }} color="text.secondary">
               {flow.key}
             </Typography>
+            {flow.startedBy ? (
+              <Typography variant="body2" color="text.secondary">
+                Started by {flow.startedBy}
+              </Typography>
+            ) : null}
             {flow.projects.map((project) => (
               <Chip
                 key={project}
