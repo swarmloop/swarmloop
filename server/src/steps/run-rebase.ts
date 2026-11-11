@@ -15,11 +15,12 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import { mountsForStep } from '../git/repo-names';
 import { ARTIFACTS } from './contract/artifacts';
 import { ERROR_CODES } from '../contract/error-codes';
-import { writeRunState } from '../history/run-state';
+import { deriveState, writeRunState } from '../history/run-state';
 import { MergeRequestDrafts } from './merge-request/merge-request-draft';
 import { runJournal } from './shared/rebase-journal';
 import type { RebaseJournal } from '../git/rebase';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
+import { actionsFor } from '../contract/run-state';
 
 /** The steps that read a review or a CI result. */
 const AFTER_REVIEW: readonly string[] = ['commit', 'merge-request', 'pipeline'];
@@ -49,7 +50,7 @@ export class RunRebase {
   /** A reconciler resume of an unfinished journal is not a new command: it does not raise the generation. */
   async rebase(key: string, resume = false): Promise<'resume' | 'start'> {
     const run = await this.requireRun(key);
-    if (run.status !== 'failed' && run.status !== 'done' && run.status !== 'waiting') {
+    if (run.status !== 'failed' && run.status !== 'done' && run.status !== 'waiting' && !rebaseOffered(run)) {
       throw new ConflictException(`${key} is ${run.status}`);
     }
     const status = run.status;
@@ -173,4 +174,10 @@ export class RunRebase {
     if (!run) throw new NotFoundException(`${key} is missing`);
     return run;
   }
+}
+
+/** A run the dashboard offers Rebase to, such as a stopped one, is rebased too: one rule with `actionsFor`. */
+function rebaseOffered(run: RunEntity): boolean {
+  const { state, reason } = deriveState(run);
+  return actionsFor(state, reason?.code ?? null).includes('rebase');
 }
