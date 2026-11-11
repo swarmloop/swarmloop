@@ -48,6 +48,26 @@
     {
       "include": "dashboard/",
       "pattern": "brainstorm"
+    },
+    {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$|/fixtures?/|package-lock\\.json$|tsconfig[^/]*\\.json$|vitest\\.config\\.ts$|/golden/",
+      "pattern": "node_modules|\\.venv|['\"`/](vendor|target)['\"`/]"
+    },
+    {
+      "include": "dashboard/",
+      "exclude": "\\.spec(-helpers)?\\.ts$|/fixtures?/|package-lock\\.json$|tsconfig[^/]*\\.json$|vitest\\.config\\.ts$|/golden/",
+      "pattern": "node_modules|\\.venv|['\"`/](vendor|target)['\"`/]"
+    },
+    {
+      "include": "skills/",
+      "exclude": "\\.spec(-helpers)?\\.ts$|/fixtures?/|package-lock\\.json$|tsconfig[^/]*\\.json$|vitest\\.config\\.ts$|/golden/",
+      "pattern": "node_modules|\\.venv|['\"`/](vendor|target)['\"`/]"
+    },
+    {
+      "include": "docker/",
+      "exclude": "\\.spec(-helpers)?\\.ts$|/fixtures?/|package-lock\\.json$|tsconfig[^/]*\\.json$|vitest\\.config\\.ts$|/golden/",
+      "pattern": "node_modules|\\.venv|['\"`/](vendor|target)['\"`/]"
     }
   ],
   "forbidInFile": [

@@ -34,7 +34,7 @@ const layerImports = {
   history: ['core', 'config', 'live'],
   git: ['core', 'config', 'integrations'],
   integrations: ['core', 'config', 'history'],
-  sandbox: ['core', 'config', 'integrations'],
+  sandbox: ['core', 'config', 'git', 'integrations'],
   agent: ['core', 'config', 'history', 'integrations', 'sandbox', 'live'],
   environment: ['core', 'config', 'git', 'history', 'integrations', 'sandbox', 'live'],
   steps: ['core', 'config', 'git', 'history', 'integrations', 'sandbox', 'agent', 'environment', 'live'],

@@ -23,7 +23,7 @@ import {
   sandboxUserId,
 } from '../sandbox/sandbox-launch';
 import { workRootsAt } from '../sandbox/allowed-path';
-import { collectEnvMasks } from '../sandbox/sandbox.service';
+import { collectEnvMasks } from '../sandbox/env-masks';
 import type { ShellFeature, ShellMatch } from '../contract/api';
 import type { ServerApi } from './server-api';
 import { HttpServerApi } from './server-api';

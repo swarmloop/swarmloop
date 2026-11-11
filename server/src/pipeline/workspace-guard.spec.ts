@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
 import type { SwarmloopError } from '../core/swarmloop-error';
@@ -115,6 +115,29 @@ describe('WorkspaceGuard', () => {
     expect(git(world.worktree, ['status', '--porcelain'])).toContain('scratch.txt');
     expect(git(world.clone, ['worktree', 'list', '--porcelain'])).toContain(world.worktree);
     expect(existsSync(join(world.swarm, 'worktrees', 'PROJ-6', '.demo.moved'))).toBe(false);
+  });
+
+  it.each([
+    ['a Python .venv', '.venv', '.venv'],
+    ['a JavaScript node_modules', 'node_modules', 'node_modules'],
+    ['a nested ignored directory', 'apps/.venv', '.venv'],
+  ])('does not restore %s that git ignores, and restores .env', async (_label, folder, rule) => {
+    world = await makeWorld('PROJ-9');
+    writeFileSync(join(world.worktree, '.gitignore'), `${rule}/\n.env\n`);
+    mkdirSync(join(world.worktree, folder), { recursive: true });
+    writeFileSync(join(world.worktree, folder, 'lib.txt'), 'dependency\n');
+    writeFileSync(join(world.worktree, '.env'), 'TOKEN=1\n');
+    git(world.clone, ['worktree', 'unlock', world.worktree]);
+    git(world.clone, ['worktree', 'prune', '--expire', 'now']);
+    renameSync(world.worktree, `${world.worktree}-hold`);
+    git(world.clone, ['worktree', 'prune', '--expire', 'now']);
+    renameSync(`${world.worktree}-hold`, world.worktree);
+
+    await ensure(world);
+
+    expect(existsSync(join(world.worktree, folder))).toBe(false);
+    expect(readFileSync(join(world.worktree, '.env'), 'utf8')).toBe('TOKEN=1\n');
+    expect(readFileSync(join(world.worktree, '.gitignore'), 'utf8')).toContain(rule);
   });
 
   it('keeps a locked registration through a host-style prune with the worktree path missing', async () => {

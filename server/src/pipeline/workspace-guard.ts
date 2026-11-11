@@ -1,11 +1,12 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from 'fs';
-import { join, sep } from 'path';
+import { join, relative, sep } from 'path';
 import { ConflictException, Injectable } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { ERROR_CODES, type ErrorCode } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
-import { git, gitDetail } from '../git/git';
+import { git, gitDetail, gitSync } from '../git/git';
+import { ignoredDirectories } from '../git/ignored-entries';
 import { fetchBranch, parseJournal, REBASE_JOURNAL, unfinished } from '../git/rebase';
 import { repoNames } from '../git/repo-names';
 import { DocumentRepository } from '../history/document.repository';
@@ -260,9 +261,16 @@ export class WorkspaceGuard {
     rmSync(aside, { recursive: true, force: true });
     renameSync(worktree, aside);
     await this.add(run, checkout, worktree, branch, base);
+    // The `.git` file in `aside` points to a registration that is gone, so git reads the fresh worktree's git dir.
+    const gitDir = gitSync(['-C', worktree, 'rev-parse', '--absolute-git-dir']).trim();
+    const ignored = ignoredDirectories(aside, gitDir);
     for (const entry of readdirSync(aside)) {
-      if (entry !== '.git' && entry !== 'node_modules') {
-        cpSync(join(aside, entry), join(worktree, entry), { recursive: true, force: true });
+      if (entry !== '.git') {
+        cpSync(join(aside, entry), join(worktree, entry), {
+          recursive: true,
+          force: true,
+          filter: (src) => !ignored.has(relative(aside, src)),
+        });
       }
     }
     try {

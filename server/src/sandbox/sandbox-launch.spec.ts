@@ -4,8 +4,10 @@ import { tmpdir } from 'os';
 import { basename, join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { makeRepo, runGit, writeFiles } from '../git/git-repo.spec-helpers';
 import { imageName } from './image-resolver';
-import { SandboxService, collectEnvMasks, parseDockerStats } from './sandbox.service';
+import { collectEnvMasks } from './env-masks';
+import { SandboxService, parseDockerStats } from './sandbox.service';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import {
   agentStateDir,
@@ -541,6 +543,39 @@ describe('sandbox launch', () => {
     writeFileSync(join(root, 'apps', '.env.local'), 'TOKEN=secret\n');
     const masks = collectEnvMasks([{ hostPath: root, containerPath: '/work/demo' }]);
     expect(masks.map((mask) => mask.containerFile).sort()).toEqual(['/work/demo/.env', '/work/demo/apps/.env.local']);
+  });
+
+  describe('in a git checkout', () => {
+    const masked = (root: string) =>
+      collectEnvMasks([{ hostPath: root, containerPath: '/w' }])
+        .map((mask) => mask.containerFile)
+        .sort();
+
+    it('leaves a tracked env file and masks an untracked one whatever its suffix', () => {
+      const root = makeRepo({ '.env.sample': 'TOKEN=\n' });
+      writeFiles(root, { '.env.local': 's\n', '.env.example': 's\n', '.env': 's\n' });
+      expect(masked(root)).toEqual(['/w/.env', '/w/.env.example', '/w/.env.local']);
+    });
+
+    it.each(['node_modules', '.venv'])('does not walk an ignored %s', (folder) => {
+      const root = makeRepo({ '.gitignore': `${folder}/\n` });
+      writeFiles(root, { [`${folder}/pkg/.env`]: 's\n', '.env': 's\n' });
+      expect(masked(root)).toEqual(['/w/.env']);
+    });
+
+    it('walks a node_modules that is not ignored like any folder', () => {
+      const root = makeRepo();
+      writeFiles(root, { 'node_modules/pkg/.env': 's\n' });
+      expect(masked(root)).toEqual(['/w/node_modules/pkg/.env']);
+    });
+
+    it('treats a worktree, whose .git is a file, as a checkout', () => {
+      const root = makeRepo({ '.env.sample': 'x\n' });
+      const tree = join(mkdtempSync(join(tmpdir(), 'swarmloop-env-tree-')), 'wt');
+      runGit(root, ['worktree', 'add', '-q', '-b', 'side', tree]);
+      writeFiles(tree, { '.env.local': 's\n' });
+      expect(masked(tree)).toEqual(['/w/.env.local']);
+    });
   });
 
   it('does not scan Git metadata or treat file mounts as directories', () => {
