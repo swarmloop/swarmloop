@@ -32,11 +32,26 @@ describe('LiveHub', () => {
     const hub = new LiveHub();
     const spent: string[] = [];
     hub.onSpend((key) => spent.push(key));
-    hub.log({ key: 'run-1', step: 'code-review-quality', body: 'q\n', samples: [{ at: 't', cpu: 10, memory: 50 }] });
-    hub.log({ key: 'run-1', step: 'code-review-security', body: 's\n', samples: [{ at: 't', cpu: 40, memory: 5 }] });
+    hub.log({
+      key: 'run-1',
+      step: 'code-review-quality',
+      body: 'q\n',
+      samples: [{ at: 't', cpu: 10, memory: 50, source: 'agent' }],
+    });
+    hub.log({
+      key: 'run-1',
+      step: 'code-review-security',
+      body: 's\n',
+      samples: [{ at: 't', cpu: 40, memory: 5, source: 'agent' }],
+    });
     expect(hub.peaksOf('run-1')).toEqual({ cpuPeak: 40, memPeak: 50 });
     expect(spent).toEqual(['run-1', 'run-1']);
-    hub.log({ key: 'run-1', step: 'code-review-security', body: 's\n', samples: [{ at: 't', cpu: 1, memory: 1 }] });
+    hub.log({
+      key: 'run-1',
+      step: 'code-review-security',
+      body: 's\n',
+      samples: [{ at: 't', cpu: 1, memory: 1, source: 'agent' }],
+    });
     expect(hub.peaksOf('run-1')).toEqual({ cpuPeak: 10, memPeak: 50 });
     expect(spent).toEqual(['run-1', 'run-1']);
     hub.dropSpend('run-1', 'code-review-quality');

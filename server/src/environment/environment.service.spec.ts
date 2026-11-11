@@ -4,6 +4,7 @@ import { testEnv } from '../config/env.spec-helpers';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { makeRepo, runGit, commitFiles } from '../git/git-repo.spec-helpers';
 import type { RunEntity } from '../history/entities';
+import type { CheckCommandRepository } from '../history/check-command.repository';
 import type { DocumentRepository } from '../history/document.repository';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { EnvironmentService } from './environment.service';
@@ -28,6 +29,7 @@ describe('rebase environment refresh', () => {
       new FakeClock(),
       {} as SandboxService,
       documents as unknown as DocumentRepository,
+      {} as CheckCommandRepository,
     );
     const run = { key: 'run', prompt: '' } as RunEntity;
     const bases = new Map([[basename(repo), base]]);

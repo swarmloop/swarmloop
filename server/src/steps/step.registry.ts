@@ -3,6 +3,7 @@ import { SwarmloopEnv } from '../config/env';
 import { StepName } from '../contract/steps';
 import { BranchStep } from './branch/branch.step';
 import { CommitStep } from './commit/commit.step';
+import { ChecksStep } from './checks/checks.step';
 import { CodeReviewStep } from './code-review/code-review.step';
 import { ImplementImproveStep } from './implement/implement-improve.step';
 import { ImplementStep } from './implement/implement.step';
@@ -30,6 +31,7 @@ export class StepRegistry {
     planImprove: PlanImproveStep,
     implement: ImplementStep,
     implementImprove: ImplementImproveStep,
+    checks: ChecksStep,
     codeReview: CodeReviewStep,
     commit: CommitStep,
     mergeRequest: MergeRequestStep,
@@ -44,6 +46,7 @@ export class StepRegistry {
       planImprove,
       implement,
       implementImprove,
+      checks,
       codeReview,
       commit,
       mergeRequest,

@@ -6,13 +6,14 @@ import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import { statusColor } from '../../../../theme/theme';
 import { MarkdownBody } from '../../../../components/ui/markdown-body';
-import type { StepView } from '@contract/api';
+import type { CheckCommandView, StepView } from '@contract/api';
 import type { StepEvent } from '@contract/step-events';
 import { LogTranscript } from '../../log-transcript';
 import type { AgentRole } from '../../transcript/agent-card';
 import { AgentLogPanel, Exchanges, type AgentLog } from '../../transcript/agent-log';
 import { TranscriptFeed } from '../../transcript/transcript-feed';
 import type { IssueLinks } from '../../transcript/transcript-model';
+import { CheckCommands } from './check-commands';
 import { StepChart } from './step-chart';
 
 export function StepDocuments({
@@ -26,6 +27,8 @@ export function StepDocuments({
   logs,
   document,
   role,
+  commands,
+  now = 0,
 }: {
   runKey: string;
   /** What the step recorded: null while it is read, empty for a visit from before events were kept. */
@@ -40,6 +43,9 @@ export function StepDocuments({
   document: string;
   /** The role and tier of the step's agent, from its descriptor. */
   role?: AgentRole | null;
+  /** The check commands of the visit, for the checks step. */
+  commands?: CheckCommandView[];
+  now?: number;
 }): ReactElement {
   const recorded = events !== null && events.length > 0;
   const agentStep = Boolean(visit?.model) || (visit?.exchanges.length ?? 0) > 0;
@@ -72,6 +78,7 @@ export function StepDocuments({
           })}
         </Box>
       ) : null}
+      {commands ? <CheckCommands runKey={runKey} commands={commands} now={now} /> : null}
       <StepChart visit={visit} />
       {events === null || recorded ? (
         <TranscriptFeed

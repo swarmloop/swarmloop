@@ -32,6 +32,7 @@ describe('HTTP API golden path', () => {
         'branch',
         'implement',
         'implement-improve',
+        'checks',
         'code-review',
         'commit',
         'merge-request',

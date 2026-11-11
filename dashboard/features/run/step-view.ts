@@ -72,6 +72,17 @@ export function withFileUsage(view: StepView): StepView {
   return { ...view, visits };
 }
 
+/** The samples of the containers the running visit has started so far. */
+export function withSamples(view: StepView, samples: StepView['visits'][number]['samples']): StepView {
+  const visit = view.visits.at(-1);
+  if (!visit || visit.status !== 'running') {
+    return view;
+  }
+  const visits = view.visits.slice();
+  visits[visits.length - 1] = { ...visit, samples, ...usage(samples) };
+  return { ...view, visits };
+}
+
 export function withLog(
   view: StepView,
   body: string,

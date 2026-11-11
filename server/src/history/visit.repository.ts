@@ -140,6 +140,7 @@ export class VisitRepository {
           sampledAt: sample.sampledAt,
           cpuPercent: sample.cpuPercent,
           rssBytes: sample.rssBytes,
+          source: sample.source,
         }),
       );
     }

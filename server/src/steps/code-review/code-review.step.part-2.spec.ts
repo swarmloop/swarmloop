@@ -340,7 +340,7 @@ describe('code-review step', () => {
       seeded.projects = 'app\n';
       seeded.prompt = 'https://example/browse/PROJ-88\nbranch: feature/other\n';
       await runs.saveRun(seeded);
-      await flows.noteFlow('PROJ-88', ['requirements', 'code-review'], null);
+      await flows.noteFlow('PROJ-88', ['planning', 'code-review'], null);
       await documents.putDocument(seeded, 'requirements', '{}\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-88');
       expect(done.exitCode).toBe(0);

@@ -32,25 +32,27 @@ describe('continuesSameStep', () => {
 });
 
 describe('phases', () => {
-  it('keeps every phase when none are named and always keeps requirements', () => {
+  it('keeps every phase when none are named and always keeps planning', () => {
     expect(normalizePhases()).toEqual([...PHASES]);
     expect(() => normalizePhases(['qa'])).toThrow('qa is not a phase');
-    expect(normalizePhases(['ci', 'merge-request'])).toEqual(['requirements', 'ci']);
+    expect(normalizePhases(['ci', 'merge-request'])).toEqual(['planning', 'ci']);
     expect(() => normalizePhases(['nope'])).toThrow('nope is not a phase');
   });
 
   it('skips steps whose phase is off and lands on done after the last selected phase', () => {
-    const selected = ['requirements', 'code-review'] as const;
+    const selected = ['planning', 'code-review'] as const;
     expect(nextStep('requirements')).toBe('prepare');
-    expect(nextStep('requirements', selected)).toBe('code-review');
-    expect(nextStep('prepare', selected)).toBe('code-review');
+    expect(nextStep('plan-improve', selected)).toBe('code-review');
+    expect(nextStep('prepare', selected)).toBe('research');
     expect(nextStep('plan-improve')).toBe('branch');
-    expect(nextStep('implement-improve')).toBe('code-review');
-    expect(nextStep('implement-improve', ['requirements', 'implementation'])).toBe('done');
+    expect(nextStep('implement-improve')).toBe('checks');
+    expect(nextStep('implement-improve', ['planning', 'implementation', 'code-review'])).toBe('code-review');
+    expect(nextStep('implement-improve', ['planning', 'implementation'])).toBe('done');
+    expect(nextStep('implement-improve', ['planning', 'implementation', 'checks'])).toBe('checks');
     expect(nextStep('branch')).toBe('implement');
-    expect(nextStep('plan-improve', normalizePhases(['requirements', 'brainstorm']))).toBe('done');
+    expect(nextStep('plan-improve', normalizePhases(['planning']))).toBe('done');
     expect(nextStep('code-review', selected)).toBe('done');
-    expect(settle('requirements', 'running', 'requirements', 'ok', undefined, selected)).toEqual({
+    expect(settle('plan-improve', 'running', 'plan-improve', 'ok', undefined, selected)).toEqual({
       currentStep: 'code-review',
       status: 'waiting',
     });
@@ -72,7 +74,7 @@ describe('continues', () => {
     expect(nextStep('commit')).toBe('merge-request');
     expect(nextStep('merge-request')).toBe('pipeline');
     expect(nextStep('pipeline')).toBe('done');
-    expect(nextStep('pipeline', ['requirements', 'ci'])).toBe('done');
+    expect(nextStep('pipeline', ['planning', 'ci'])).toBe('done');
     expect(continues('merge-request', null)).toBeNull();
   });
 

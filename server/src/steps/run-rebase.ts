@@ -135,7 +135,7 @@ export class RunRebase {
   private async startAtImplement(run: RunEntity): Promise<'start'> {
     const phases = await this.flows.activePhases(run.id);
     if (!phases.includes('implementation')) {
-      await this.flows.noteFlow(run.key, ['implementation', 'code-review', 'ci'], 'implement');
+      await this.flows.noteFlow(run.key, ['implementation', 'checks', 'code-review', 'ci'], 'implement');
     }
     const fresh = await this.requireRun(run.key);
     writeRunState(fresh, { status: 'waiting', currentStep: 'implement' });

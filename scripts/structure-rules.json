@@ -28,6 +28,21 @@
     {
       "include": "server/src/agent/",
       "pattern": "env\\.(RUNTIME|MODEL_\\w+)"
+    },
+    {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": ["server/src/steps/checks/checks.step.ts", "server/src/environment/"],
+      "pattern": "\\benvironments\\.check\\b"
+    },
+    {
+      "include": "server/src/",
+      "allowFiles": ["server/src/history/migrations/"],
+      "pattern": "brainstorm"
+    },
+    {
+      "include": "dashboard/",
+      "pattern": "brainstorm"
     }
   ],
   "forbidInFile": [

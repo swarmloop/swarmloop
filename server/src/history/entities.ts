@@ -36,6 +36,9 @@ export class RunEntity {
   @Column({ name: 'attempts_pipeline', type: 'integer', default: 0 })
   attemptsPipeline!: number;
 
+  @Column({ name: 'attempts_checks', type: 'integer', default: 0 })
+  attemptsChecks!: number;
+
   @Column({ name: 'agent_calls', type: 'integer', default: 0 })
   agentCalls!: number;
 
@@ -229,6 +232,10 @@ export class ResourceSampleEntity {
 
   @Column({ name: 'rss_bytes', type: 'integer' })
   rssBytes!: number;
+
+  /** `agent`, `setup`, or the index of a check command. Null on a row from before sources: it was an agent. */
+  @Column({ type: 'varchar', nullable: true })
+  source!: string | null;
 }
 
 @Entity('agent_exchanges')
@@ -411,6 +418,45 @@ export class StepEventEntity {
   recordedAt!: string;
 }
 
+/** One command of a checks visit. The row exists from the start of the visit, so the window can show it waiting. */
+@Entity('check_commands')
+@Index('IDX_check_commands_run_id', ['runId'])
+export class CheckCommandEntity {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Column({ name: 'run_id', type: 'integer' })
+  runId!: number;
+
+  /** The attempt of the checks visit, as on `step_stats`. */
+  @Column({ name: 'attempt_id' })
+  attemptId!: string;
+
+  @Column()
+  repo!: string;
+
+  @Column({ type: 'text' })
+  command!: string;
+
+  @Column({ name: 'command_index', type: 'integer' })
+  commandIndex!: number;
+
+  @Column()
+  status!: string;
+
+  @Column({ type: 'integer', default: 0 })
+  skipped!: number;
+
+  @Column({ name: 'started_at', type: 'varchar', nullable: true })
+  startedAt!: string | null;
+
+  @Column({ name: 'ended_at', type: 'varchar', nullable: true })
+  endedAt!: string | null;
+
+  @Column({ name: 'exit_code', type: 'integer', nullable: true })
+  exitCode!: number | null;
+}
+
 @Entity('commands')
 @Index('IDX_commands_run_idempotency', ['runId', 'idempotencyKey'], { unique: true })
 export class CommandEntity {
@@ -493,6 +539,7 @@ export const entities = [
   DenyPathEntity,
   FlowEntity,
   StepEventEntity,
+  CheckCommandEntity,
   CommandEntity,
   RuntimeCooldownEntity,
   SessionEntity,

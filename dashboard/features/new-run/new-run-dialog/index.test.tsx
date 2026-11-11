@@ -11,7 +11,7 @@ vi.mock('../../../lib/endpoints', () => ({
   ticketKeys: vi.fn(),
 }));
 
-const allPhases = ['requirements', 'brainstorm', 'implementation', 'code-review', 'ci'];
+const allPhases = ['planning', 'implementation', 'checks', 'code-review', 'ci'];
 
 async function pickProject(user: UserEvent, name: string): Promise<void> {
   await user.click(screen.getByRole('combobox', { name: 'Projects' }));
@@ -72,7 +72,7 @@ describe('NewRunDialog', () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('run-9'));
     expect(createRun).toHaveBeenCalledWith({
       prompt: 'Ship it',
-      phases: ['requirements', 'brainstorm', 'implementation', 'code-review'],
+      phases: ['planning', 'implementation', 'checks', 'code-review'],
       projects: ['swarmloop'],
       split: false,
     });

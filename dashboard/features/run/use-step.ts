@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getRunLog, getStep } from '../../lib/endpoints';
 import { useLiveBridge } from '../shell';
 import { liveLogStep } from './phases';
-import { fileView, withFileUsage, withLog } from './step-view';
+import { fileView, withFileUsage, withLog, withSamples } from './step-view';
 import type { LiveLog, LiveUsage } from '@contract/live';
 import type { StepView } from '@contract/api';
 
@@ -96,7 +96,13 @@ export function useStep(
   useEffect(() => {
     const fresh = logs.filter((entry) => !seenLogs.current.has(entry));
     fresh.forEach((entry) => seenLogs.current.add(entry));
-    const entry = fresh.filter((item) => item.key === runKey && liveLogStep(item.step, step)).at(-1);
+    const own = fresh.filter((item) => item.key === runKey && liveLogStep(item.step, step));
+    // The output of a check command belongs to its row; only its samples belong to the step.
+    const sampled = own.filter((item) => item.command !== undefined).at(-1);
+    if (sampled) {
+      setView((current) => (current ? withSamples(current, sampled.samples ?? []) : current));
+    }
+    const entry = own.filter((item) => item.command === undefined).at(-1);
     if (!entry) {
       return;
     }

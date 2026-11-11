@@ -11,7 +11,7 @@ interface LiveSnapshot {
   connected: boolean;
   /** The flow of the watched run. */
   flow: FlowView | null;
-  /** The latest log per step of the watched run; the newest entry is last. */
+  /** The latest log per step, and per command for the checks step, of the watched run; the newest entry is last. */
   logs: LiveLog[];
   /** The last events message of the watched run. */
   events: LiveEvents | null;
@@ -70,7 +70,12 @@ function createStore(): LiveStore {
       };
       const onLog = (entry: LiveLog): void => {
         if (entry.key === watched) {
-          update({ logs: [...snapshot.logs.filter((item) => item.step !== entry.step), entry] });
+          update({
+            logs: [
+              ...snapshot.logs.filter((item) => item.step !== entry.step || item.command !== entry.command),
+              entry,
+            ],
+          });
         }
       };
       const onEvents = (entry: LiveEvents): void => {

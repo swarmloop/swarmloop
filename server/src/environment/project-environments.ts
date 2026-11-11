@@ -1,19 +1,22 @@
-import { mkdirSync, writeFileSync } from 'fs';
-import { basename, dirname, join } from 'path';
+import { basename, join } from 'path';
 import type { SwarmloopEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import type { Clock } from '../core/clock';
+import { checkOutputPath } from '../core/check-output';
+import { runProbe } from './image-probe';
+import { runShell, type ShellDeps } from './run-shell';
 import { startCommandSpan } from '../core/step-event-scope';
 import { SwarmloopError } from '../core/swarmloop-error';
+import type { CheckCommandRepository } from '../history/check-command.repository';
 import type { DocumentRepository } from '../history/document.repository';
-import type { RunEntity } from '../history/entities';
+import type { CheckCommandEntity, RunEntity } from '../history/entities';
+import type { SampleDraft } from '../history/visit';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime';
-import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import type { LiveHub } from '../live/live.hub';
-import { CLI_BIN, CliBundles } from '../sandbox/cli-bundle';
+import { CliBundles } from '../sandbox/cli-bundle';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { ProjectLaunch } from '../sandbox/sandbox-launch';
-import { agentImage, agentStateDir, prepareStateDir, sandboxUserId, setupHosts } from '../sandbox/sandbox-launch';
+import { agentImage, prepareStateDir, sandboxUserId } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { type EnvironmentConfig, readEnvironmentConfig } from './environment-config';
 import { checksFingerprint } from './checks-fingerprint';
@@ -28,9 +31,23 @@ const CHECKS_FAIL = 'checks_fail';
 export class RequiredCheckFailed extends SwarmloopError {}
 /** The same check failed again on files no pass has changed: another launch would repeat it. */
 export class RequiredCheckRepeated extends RequiredCheckFailed {}
-const SETUP_TIMEOUT_MS = 30 * 60_000;
-const TAIL_LINES = 80;
-const TAIL_CHARS = 6000;
+
+/** One repository of a checks run: its commands as rows, in order, and what each one answered. */
+interface CheckedRepo {
+  mount: SandboxMount;
+  prepared: PreparedEnvironment;
+  /** Before the first command: the files the commands start from. */
+  fingerprint: string;
+  rows: CheckCommandEntity[];
+  results: ({ exitCode: number; tail: string } | undefined)[];
+}
+
+/** One reason the checks did not pass. `repeated` is the reason text when this command failed before on the same files, else empty. */
+interface CheckFailure {
+  repo: string;
+  body: string;
+  repeated: string;
+}
 
 /** What an environment is prepared for: a step's mounts, and the runtime of the agent whose CLI the project image gets. */
 export interface EnvironmentInput {
@@ -39,6 +56,8 @@ export interface EnvironmentInput {
   step: string;
   mounts: SandboxMount[];
   runtime: RuntimeName;
+  /** Where the samples of the containers started for this input go: the visit of the step that asked. */
+  samples?: SampleDraft[];
 }
 
 /** What a run keeps about its environment: the config it started with and how the setup went. */
@@ -56,10 +75,11 @@ export interface PreparedEnvironment {
 }
 
 interface EnvironmentDeps {
-  env: () => Pick<SwarmloopEnv, 'SWARMLOOP_ROOT'>;
+  env: () => Pick<SwarmloopEnv, 'SWARMLOOP_ROOT' | 'CHECKS_PARALLEL'>;
   clock: Clock;
-  sandbox: Pick<SandboxService, 'run' | 'spawn' | 'kill' | 'stateDaemonPath'>;
+  sandbox: Pick<SandboxService, 'run' | 'spawn' | 'kill' | 'stateDaemonPath' | 'stats'>;
   documents: Pick<DocumentRepository, 'latestBody' | 'putDocument'>;
+  commands: Pick<CheckCommandRepository, 'add' | 'save'>;
   live?: Pick<LiveHub, 'log'>;
 }
 
@@ -70,12 +90,14 @@ export class ProjectEnvironments {
   private readonly clock: Clock;
   private readonly sandbox: EnvironmentDeps['sandbox'];
   private readonly documents: EnvironmentDeps['documents'];
+  private readonly commands: EnvironmentDeps['commands'];
   private readonly live?: EnvironmentDeps['live'];
 
   constructor(private readonly deps: EnvironmentDeps) {
     this.clock = deps.clock;
     this.sandbox = deps.sandbox;
     this.documents = deps.documents;
+    this.commands = deps.commands;
     this.live = deps.live;
     this.bundles = new CliBundles((args, timeoutMs) => this.sandbox.run(args, timeoutMs));
   }
@@ -110,7 +132,7 @@ export class ProjectEnvironments {
     const command = record.config.setup;
     const done = record.setup?.exitCode === 0 && record.setup.command === command && record.setup.image === image;
     if (command && !done) {
-      const result = await this.runShell(input, launch, command, mount, 'setup');
+      const result = await runShell(this.shellDeps(), input, launch, command, mount, 'setup');
       record.setup = { command, image, ...result };
       await this.documents.putDocument(input.run, ENVIRONMENT, JSON.stringify(record));
       await this.documents.putDocument(input.run, `${ENVIRONMENT}:${record.repo}`, JSON.stringify(record));
@@ -142,71 +164,190 @@ export class ProjectEnvironments {
     }
   }
 
-  /** Server-owned completion gate. Each repository uses its own frozen commands and image. */
+  /**
+   * Server-owned completion gate. Each repository uses its own frozen commands and image. Every command runs, up to
+   * CHECKS_PARALLEL at once, and a failure of one does not stop the others: the error names all of them.
+   */
   async check(input: EnvironmentInput): Promise<{ passed: number; total: number }> {
+    const attemptId = input.run.activeAttempt ?? '';
+    const repos: CheckedRepo[] = [];
     let passed = 0;
     let total = 0;
     for (const mount of input.mounts) {
       const prepared = await this.prepare({ ...input, mounts: [mount] });
-      if (!prepared || prepared.record.config.checks.length === 0) {
+      const commands = prepared?.record.config.checks ?? [];
+      if (!prepared || commands.length === 0) {
         continue;
       }
       const fingerprint = await this.fingerprint(input, prepared);
-      total += prepared.record.config.checks.length;
-      if (await this.skipIfPassed(input, prepared, fingerprint)) {
-        passed += prepared.record.config.checks.length;
-        continue;
-      }
-      for (const command of prepared.record.config.checks) {
-        const result = await this.runShell(input, prepared.launch, command, mount, 'checks');
-        await this.documents.putDocument(
-          input.run,
-          'checks',
-          JSON.stringify({
+      const skipped = await this.skipIfPassed(input, prepared, fingerprint);
+      const rows: CheckCommandEntity[] = [];
+      for (const command of commands) {
+        rows.push(
+          await this.commands.add({
+            runId: input.run.id,
+            attemptId,
             repo: prepared.record.repo,
             command,
-            ...result,
+            commandIndex: total + rows.length,
+            ...(skipped ? { status: 'skipped', skipped: 1, exitCode: 0 } : {}),
           }),
         );
-        if (result.exitCode !== 0) {
-          const body = `${prepared.record.repo}: required check failed (exit ${result.exitCode}):\n${result.tail}`;
-          await this.documents.putDocument(input.run, 'return', `## checks\n${body}\n`);
-          throw await this.failure(input, prepared.record.repo, command, fingerprint, body);
-        }
-        passed += 1;
       }
-      if ((await this.fingerprint(input, prepared)) !== fingerprint) {
-        const body = `${prepared.record.repo}: required checks changed project files. Review those changes and rerun the checks before completing implementation.`;
-        await this.documents.putDocument(input.run, 'return', `## checks\n${body}\n`);
-        throw new RequiredCheckFailed(body);
+      total += commands.length;
+      if (skipped) {
+        passed += commands.length;
+      } else {
+        repos.push({ mount, prepared, fingerprint, rows, results: [] });
       }
-      await this.documents.putDocument(
-        input.run,
-        `${CHECKS_PASS}:${prepared.record.repo}`,
-        JSON.stringify({ generation: input.run.generation, fingerprint, step: input.step, at: this.clock.iso() }),
-      );
+    }
+    await this.runAll(input, attemptId, repos);
+    const failures: CheckFailure[] = [];
+    for (const repo of repos) {
+      const own = await this.failuresOf(input, repo);
+      failures.push(...own);
+      if (own.length === 0) {
+        passed += repo.rows.length;
+        await this.documents.putDocument(
+          input.run,
+          `${CHECKS_PASS}:${repo.prepared.record.repo}`,
+          JSON.stringify({
+            generation: input.run.generation,
+            fingerprint: repo.fingerprint,
+            step: input.step,
+            at: this.clock.iso(),
+          }),
+        );
+      }
+    }
+    if (failures.length > 0) {
+      const body = failures.map((failure) => failure.body).join('\n\n');
+      await this.documents.putDocument(input.run, 'return', `## checks\n${body}\n`);
+      const repeated = failures.find((failure) => failure.repeated);
+      throw repeated ? new RequiredCheckRepeated(repeated.repeated) : new RequiredCheckFailed(body);
     }
     return { passed, total };
   }
 
-  /** Records the failure; it is a repeat when the last one was the same command on the same files. */
-  private async failure(
+  /** Runs the commands of every repository in a pool of CHECKS_PARALLEL. Waits for all of them, then throws the first error. */
+  private async runAll(input: EnvironmentInput, attemptId: string, repos: CheckedRepo[]): Promise<void> {
+    const jobs = repos.flatMap((repo) => repo.rows.map((row) => ({ repo, row })));
+    const errors: unknown[] = [];
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      for (let job = jobs[next++]; job; job = jobs[next++]) {
+        try {
+          job.repo.results[job.repo.rows.indexOf(job.row)] = await this.runCommand(input, attemptId, job.repo, job.row);
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(this.deps.env().CHECKS_PARALLEL, jobs.length) }, worker));
+    if (errors.length > 0) {
+      throw errors[0];
+    }
+  }
+
+  private async runCommand(
+    input: EnvironmentInput,
+    attemptId: string,
+    repo: CheckedRepo,
+    row: CheckCommandEntity,
+  ): Promise<{ exitCode: number; tail: string }> {
+    await this.mark(row, { status: 'running', startedAt: this.clock.iso() });
+    let result: { exitCode: number; tail: string };
+    try {
+      const root = resolveRepoRoot(this.deps.env().SWARMLOOP_ROOT, __dirname);
+      result = await runShell(this.shellDeps(), input, repo.prepared.launch, row.command, repo.mount, 'checks', {
+        index: row.commandIndex,
+        file: checkOutputPath(root, input.key, input.step, attemptId, row.commandIndex),
+      });
+    } catch (error) {
+      await this.mark(row, { status: 'failed', endedAt: this.clock.iso() });
+      throw error;
+    }
+    await this.mark(row, {
+      status: result.exitCode === 0 ? 'passed' : 'failed',
+      exitCode: result.exitCode,
+      endedAt: this.clock.iso(),
+    });
+    await this.documents.putDocument(
+      input.run,
+      'checks',
+      JSON.stringify({ repo: repo.prepared.record.repo, command: row.command, ...result }),
+    );
+    return result;
+  }
+
+  private shellDeps(): ShellDeps {
+    return {
+      root: resolveRepoRoot(this.deps.env().SWARMLOOP_ROOT, __dirname),
+      clock: this.clock,
+      sandbox: this.sandbox,
+      live: this.live,
+    };
+  }
+
+  private async mark(row: CheckCommandEntity, patch: Partial<CheckCommandEntity>): Promise<void> {
+    await this.commands.save(Object.assign(row, patch));
+  }
+
+  /** What went wrong in one repository: each failed command, and the files the commands changed. */
+  private async failuresOf(input: EnvironmentInput, repo: CheckedRepo): Promise<CheckFailure[]> {
+    const name = repo.prepared.record.repo;
+    const failed = repo.rows.flatMap((row, at) => {
+      const result = repo.results[at];
+      return result && result.exitCode !== 0 ? [{ command: row.command, ...result }] : [];
+    });
+    const repeated = await this.recordFailures(
+      input,
+      name,
+      failed.map((item) => item.command),
+      repo.fingerprint,
+    );
+    const failures: CheckFailure[] = failed.map((item) => ({
+      repo: name,
+      body: `${name}: required check failed (exit ${item.exitCode}):\n${withCommand(item.command, item.tail)}`,
+      repeated: repeated.has(item.command)
+        ? `${name}: ${item.command} failed again on unchanged files after a relaunch`
+        : '',
+    }));
+    if ((await this.fingerprint(input, repo.prepared)) !== repo.fingerprint) {
+      failures.push({
+        repo: name,
+        body: `${name}: required checks changed project files. Review those changes and rerun the checks before completing implementation.`,
+        repeated: '',
+      });
+    }
+    return failures;
+  }
+
+  /** Records the failed commands of a repository. Returns the ones that failed before on the same files. */
+  private async recordFailures(
     input: EnvironmentInput,
     repo: string,
-    command: string,
+    commands: string[],
     fingerprint: string,
-    body: string,
-  ): Promise<RequiredCheckFailed> {
+  ): Promise<Set<string>> {
+    if (commands.length === 0) {
+      return new Set();
+    }
     const stored = await this.documents.latestBody(input.key, `${CHECKS_FAIL}:${repo}`);
-    const last = stored ? (JSON.parse(stored) as { command: string; fingerprint: string }) : null;
+    const last = stored ? (JSON.parse(stored) as { command?: string; commands?: string[]; fingerprint: string }) : null;
+    const before = last?.fingerprint === fingerprint ? (last.commands ?? [last.command]) : [];
     await this.documents.putDocument(
       input.run,
       `${CHECKS_FAIL}:${repo}`,
-      JSON.stringify({ command, fingerprint, step: input.step, at: this.clock.iso() }),
+      JSON.stringify({
+        command: commands[0],
+        ...(commands.length > 1 ? { commands } : {}),
+        fingerprint,
+        step: input.step,
+        at: this.clock.iso(),
+      }),
     );
-    return last?.command === command && last.fingerprint === fingerprint
-      ? new RequiredCheckRepeated(`${repo}: ${command} failed again on unchanged files after a relaunch`)
-      : new RequiredCheckFailed(body);
+    return new Set(commands.filter((command) => before.includes(command)));
   }
 
   private fingerprint(input: EnvironmentInput, prepared: PreparedEnvironment): Promise<string> {
@@ -269,53 +410,13 @@ export class ProjectEnvironments {
     const key = `${image}\0${cliVolume}`;
     let found = this.probed.get(key);
     if (!found) {
-      found = this.runProbe(image, cliVolume, runtime).catch((error: unknown) => {
+      found = runProbe(this.sandbox, image, cliVolume, runtime).catch((error: unknown) => {
         this.probed.delete(key);
         throw error;
       });
       this.probed.set(key, found);
     }
     return found;
-  }
-
-  private async runProbe(image: string, cliVolume: string, runtime: RuntimeName): Promise<boolean> {
-    const userId = sandboxUserId();
-    const cli = `${CLI_BIN}/${runtimeFor(runtime).command}`;
-    const script = `if [ -f /etc/ssl/certs/ca-certificates.crt ]; then echo certs=yes; else echo certs=no; fi; ${cli} --version`;
-    let out: string;
-    try {
-      out = await this.sandbox.run(
-        [
-          'run',
-          '--rm',
-          '--network',
-          'none',
-          '--user',
-          `${userId}:${userId}`,
-          '--read-only',
-          '--tmpfs',
-          '/tmp:rw,exec,nosuid,nodev,size=64m,mode=1777',
-          '--tmpfs',
-          `/home/sandbox:rw,nosuid,nodev,size=64m,uid=${userId},gid=${userId},mode=700`,
-          '--env',
-          'HOME=/home/sandbox',
-          '--mount',
-          `type=volume,src=${cliVolume},dst=/opt/swarmloop,readonly=true`,
-          '--entrypoint',
-          'sh',
-          image,
-          '-c',
-          script,
-        ],
-        60_000,
-      );
-    } catch (error) {
-      const detail = (error instanceof Error ? error.message : String(error)).split('\n').slice(-3).join(' ').trim();
-      throw new SwarmloopError(
-        `${image}: the ${runtime} CLI does not start there (${detail}). Use a Debian or Ubuntu based image with bash; scripts/agent-env-probe.sh ${image} shows the reason.`,
-      );
-    }
-    return out.includes('certs=yes');
   }
 
   private async caches(repo: string, paths: string[]): Promise<ProjectLaunch['caches']> {
@@ -329,94 +430,9 @@ export class ProjectEnvironments {
     }
     return caches;
   }
+}
 
-  /** The setup runs in the project image with the package registries and no model key. Its output goes to the step log. */
-  private async runShell(
-    input: EnvironmentInput,
-    launch: ProjectLaunch,
-    command: string,
-    mount: SandboxMount,
-    phase: 'setup' | 'checks',
-  ): Promise<{ exitCode: number; tail: string }> {
-    const root = resolveRepoRoot(this.deps.env().SWARMLOOP_ROOT, __dirname);
-    const userId = sandboxUserId();
-    const statePath = agentStateDir(root, input.key, `${phase}-${basename(mount.hostPath)}`);
-    const lines: string[] = [`$ ${command}`];
-    let shown = 0;
-    const show = (force = false) => {
-      const now = this.clock.now();
-      if (force || now - shown >= 1000) {
-        shown = now;
-        this.live?.log({ key: input.key, step: input.step, body: `${lines.slice(-200).join('\n')}\n` });
-      }
-    };
-    show(true);
-    const outputFile = join(root, 'data', `${input.key}-${phase}-output.txt`);
-    const finish = startCommandSpan({
-      actor: 'server',
-      repo: basename(mount.hostPath),
-      cwd: mount.hostPath,
-      executable: 'sh',
-      args: [command],
-    });
-    let timedOut = false;
-    const child = await this.sandbox
-      .spawn({
-        runtime: input.runtime,
-        runKey: input.key,
-        step: input.step,
-        attemptId: input.run.activeAttempt ?? '',
-        mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
-        statePath,
-        allowHosts: phase === 'setup' ? setupHosts() : [],
-        command: [],
-        userId,
-        project: { ...launch, shell: command },
-      })
-      .catch((error: unknown) => {
-        finish({ exitCode: null });
-        throw error;
-      });
-    let partial = '';
-    const take = (chunk: Buffer) => {
-      const text = partial + chunk.toString('utf8');
-      const parts = text.split(/\r?\n/);
-      partial = parts.pop() ?? '';
-      lines.push(...parts);
-      if (lines.length > 2000) {
-        lines.splice(1, lines.length - 2000);
-      }
-      show();
-    };
-    child.stdout?.on('data', take);
-    child.stderr?.on('data', take);
-    const exitCode = await new Promise<number>((resolve) => {
-      const timer = setTimeout(() => {
-        timedOut = true;
-        lines.push(`${phase} timed out after ${SETUP_TIMEOUT_MS / 60_000} min`);
-        void this.sandbox.kill(child.containerName).then(
-          () => resolve(124),
-          () => resolve(124),
-        );
-      }, SETUP_TIMEOUT_MS);
-      child.once('error', (error: Error) => {
-        clearTimeout(timer);
-        lines.push(`docker could not start: ${error.message}`);
-        resolve(1);
-      });
-      child.once('close', (code: number | null) => {
-        clearTimeout(timer);
-        resolve(timedOut ? 124 : (code ?? 1));
-      });
-    });
-    if (partial) {
-      lines.push(partial);
-    }
-    lines.push(`exit ${exitCode}`);
-    show(true);
-    finish({ exitCode, timedOut, output: lines.join('\n') });
-    mkdirSync(dirname(outputFile), { recursive: true });
-    writeFileSync(outputFile, `${lines.join('\n')}\n`);
-    return { exitCode, tail: lines.slice(-TAIL_LINES).join('\n').slice(-TAIL_CHARS) };
-  }
+/** The tail of an output names its command, also when the output was long enough to push the command line out of it. */
+function withCommand(command: string, tail: string): string {
+  return tail.startsWith(`$ ${command}`) ? tail : `$ ${command}\n${tail}`;
 }

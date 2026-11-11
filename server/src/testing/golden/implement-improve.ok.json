@@ -107,30 +107,6 @@
       "step": "implement-improve"
     },
     {
-      "kind": "activity.started",
-      "step": "implement-improve"
-    },
-    {
-      "kind": "activity.finished",
-      "step": "implement-improve"
-    },
-    {
-      "kind": "command.started",
-      "step": "implement-improve"
-    },
-    {
-      "kind": "command.finished",
-      "step": "implement-improve"
-    },
-    {
-      "kind": "command.started",
-      "step": "implement-improve"
-    },
-    {
-      "kind": "command.finished",
-      "step": "implement-improve"
-    },
-    {
       "kind": "command.started",
       "step": "implement-improve"
     },
@@ -183,7 +159,7 @@
     "attemptsPipeline": 0,
     "attemptsQa": 0,
     "attemptsReview": 0,
-    "currentStep": "code-review",
+    "currentStep": "checks",
     "runtime": "cursor",
     "spentUsd": 0.01,
     "status": "waiting"

@@ -1,4 +1,4 @@
-import { PHASE_STEPS, pipelineStepOf, REVIEW_STEPS, STEPS } from './steps';
+import { PHASES, PHASE_STEPS, pipelineStepOf, REVIEW_STEPS, STEPS } from './steps';
 
 describe('pipelineStepOf', () => {
   it('maps every reviewer step to the code-review phase step', () => {
@@ -30,5 +30,14 @@ describe('PHASE_STEPS', () => {
     for (const step of STEPS) {
       expect(placed).toContain(step);
     }
+  });
+});
+
+describe('PHASES', () => {
+  it('are exactly planning, implementation, checks, code-review and ci, with checks as its own step', () => {
+    const names = ['planning', 'implementation', 'checks', 'code-review', 'ci'];
+    expect([...PHASES]).toEqual(names);
+    expect(Object.keys(PHASE_STEPS)).toEqual(names);
+    expect(PHASE_STEPS.checks).toEqual(['checks']);
   });
 });

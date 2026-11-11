@@ -1,14 +1,7 @@
 import type { FlowView } from '@contract/api';
 import { PHASE_STEPS, PHASES, pipelineStepOf, REVIEW_STEPS, STEPS } from '@contract/steps';
 import type { PhaseName } from '@contract/steps';
-
-const PHASE_LABEL: Record<PhaseName, string> = {
-  requirements: 'requirements',
-  brainstorm: 'planning',
-  implementation: 'implementation',
-  'code-review': 'code review',
-  ci: 'ci',
-};
+import { phaseLabel } from '../../lib/phase-label';
 
 export function expandReviewPhases<T extends { steps: { name: string }[] }>(phases: T[]): T[] {
   return phases.map((phase) => {
@@ -96,11 +89,7 @@ export function phaseOf(step: string): PhaseName {
       return phase;
     }
   }
-  return 'requirements';
-}
-
-function phaseLabel(id: string): string {
-  return (PHASE_LABEL as Record<string, string>)[id] ?? id;
+  return 'planning';
 }
 
 /** Labels for the last launch only, in PHASES order. `merge-request` is `ci`. */
@@ -139,7 +128,7 @@ export function replaySelection(
     const index = PHASES.indexOf(phase);
     if (index <= clickedAt) {
       locked.push(phase);
-      if (phase === 'requirements' || index === clickedAt || origin.has(phase)) {
+      if (phase === 'planning' || index === clickedAt || origin.has(phase)) {
         selected.add(phase);
       }
     } else if (current.has(phase)) {

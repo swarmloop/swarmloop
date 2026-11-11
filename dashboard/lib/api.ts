@@ -47,6 +47,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export interface LogPaging {
   tail?: number;
   from?: number;
+  /** The index of a check command: the log is that command's output, not the step's. */
+  command?: number;
 }
 
 export async function runLog(
@@ -64,6 +66,9 @@ export async function runLog(
   }
   if (paging.from !== undefined) {
     params.set('from', String(paging.from));
+  }
+  if (paging.command !== undefined) {
+    params.set('command', String(paging.command));
   }
   const query = params.toString() ? `?${params}` : '';
   const path = `/runs/${encodeURIComponent(runKey)}/steps/${encodeURIComponent(name)}/log${query}`;

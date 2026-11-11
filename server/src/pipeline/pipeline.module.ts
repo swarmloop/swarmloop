@@ -10,6 +10,7 @@ import { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
 import { CodeReviewStep } from '../steps/code-review/code-review.step';
+import { ChecksStep } from '../steps/checks/checks.step';
 import { ImplementImproveStep } from '../steps/implement/implement-improve.step';
 import { ImplementStep } from '../steps/implement/implement.step';
 import { PlanImproveStep } from '../steps/plan-improve/plan-improve.step';
@@ -56,6 +57,7 @@ import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
     PlanImproveStep,
     ImplementStep,
     ImplementImproveStep,
+    ChecksStep,
     CodeReviewStep,
     AgentLauncher,
     LimitFailover,

@@ -2,7 +2,6 @@ import 'reflect-metadata';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { EnvironmentService } from '../../environment/environment.service';
 import { runGit } from '../../git/git-repo.spec-helpers';
-import { FlowRepository } from '../../history/flow.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
 import { goldenRun, type GoldenApp } from './implement.golden.spec-helpers';
@@ -23,11 +22,12 @@ describe('implement step golden traces', () => {
       scenario: 'swarmloop-error',
       agent: agent(),
       prepare: async ({ app }) => {
-        jest.spyOn(app.get(FlowRepository), 'activePhases').mockResolvedValue(['code-review']);
-        jest.spyOn(app.get(EnvironmentService), 'check').mockRejectedValue(new SwarmloopError('required check failed'));
+        jest
+          .spyOn(app.get(EnvironmentService), 'prepare')
+          .mockRejectedValue(new SwarmloopError('environment setup failed'));
       },
     });
-    expect(done.message).toContain('required check failed');
+    expect(done.message).toContain('environment setup failed');
   });
 
   it('a plain Error from a stubbed dependency', async () => {
@@ -37,8 +37,7 @@ describe('implement step golden traces', () => {
       scenario: 'plain-error',
       agent: agent(),
       prepare: async ({ app }) => {
-        jest.spyOn(app.get(FlowRepository), 'activePhases').mockResolvedValue(['code-review']);
-        jest.spyOn(app.get(EnvironmentService), 'check').mockRejectedValue(new Error('boom'));
+        jest.spyOn(app.get(EnvironmentService), 'prepare').mockRejectedValue(new Error('boom'));
       },
     });
     expect(done.message).toContain('implement failed');

@@ -108,7 +108,7 @@ describe('implement step', () => {
       expect(done.message).not.toContain('pathspec');
       expect(agent).toHaveBeenCalledTimes(1);
       expect(git(tree, ['ls-files', '-u'])).not.toContain('src/overlap.ts');
-      expect((await runs.findRun('PROJ-118'))?.currentStep).toBe('code-review');
+      expect((await runs.findRun('PROJ-118'))?.currentStep).toBe('checks');
     } finally {
       await app.close();
     }
@@ -147,7 +147,7 @@ describe('implement step', () => {
       expect(notes.map((item) => item.body)).toEqual(['- changed the field parser\n']);
       expect((await documents.latestBody('PROJ-65', REBASE_CONFLICT))?.trim()).toBe('review');
       expect((await documents.latestBody('PROJ-65', 'rebase_merge_skip'))?.trim()).toBe('skip');
-      expect((await runs.findRun('PROJ-65'))?.currentStep).toBe('code-review');
+      expect((await runs.findRun('PROJ-65'))?.currentStep).toBe('checks');
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/PROJ-65-ship-the-field');
       expect(git(tree, ['show', 'HEAD:src/field.ts'])).toContain('field = 3');
     } finally {
@@ -191,7 +191,7 @@ describe('implement step', () => {
       expect(notes.map((item) => item.body)).toEqual(['- changed the field parser\n']);
       expect((await documents.latestBody('PROJ-168', REBASE_CONFLICT))?.trim()).toBe('review');
       expect((await documents.latestBody('PROJ-168', 'rebase_merge_skip'))?.trim()).toBe('skip');
-      expect((await runs.findRun('PROJ-168'))?.currentStep).toBe('code-review');
+      expect((await runs.findRun('PROJ-168'))?.currentStep).toBe('checks');
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/PROJ-168-ship-the-field');
       expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toBe(marked);
       expect(git(tree, ['show', 'HEAD:src/field.ts'])).toBe(marked.trim());
@@ -350,7 +350,7 @@ describe('implement step', () => {
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(1);
       git(other, ['merge-base', '--is-ancestor', base, 'HEAD']);
-      expect((await runs.findRun('PROJ-67'))?.currentStep).toBe('code-review');
+      expect((await runs.findRun('PROJ-67'))?.currentStep).toBe('checks');
       expect(git(other, ['branch', '--show-current'])).toBe('feature/PROJ-67-ship-the-field');
     } finally {
       await app.close();

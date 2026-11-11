@@ -102,7 +102,7 @@ describe('runs api', () => {
       expect(fresh?.currentStep).toBe('code-review');
       expect((await documents.latestBody('proj-51', ARTIFACTS.rebaseMergeSkip.kind))?.trim()).toBe('skip');
       const rows = await flows.listFlows(fresh?.id ?? 0);
-      expect(JSON.parse(rows.at(-1)?.phases ?? '[]')).toEqual(['requirements', 'code-review', 'ci']);
+      expect(JSON.parse(rows.at(-1)?.phases ?? '[]')).toEqual(['planning', 'code-review', 'ci']);
       expect(rows.at(-1)?.fromStep).toBe('code-review');
       git(tree, ['merge-base', '--is-ancestor', release, 'HEAD']);
       expect(git(tree, ['log', '--oneline'])).toContain('field');

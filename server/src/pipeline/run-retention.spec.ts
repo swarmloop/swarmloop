@@ -2,8 +2,9 @@ import 'reflect-metadata';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 import { RunEntity } from '../history/entities';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { checkOutputPath } from '../core/check-output';
 import { RunRetention } from './run-retention';
 import { ageRun, clean, freshRun, leaveFiles, makeWorld, seedRun, type World } from './workspace.spec-helpers';
 import { git } from '../steps/prepare/prepare.step.spec-helpers';
@@ -34,6 +35,21 @@ describe('RunRetention', () => {
     expect(git(world.clone, ['rev-parse', '--verify', world.branch])).toBe(world.sha);
     expect(git(world.clone, ['worktree', 'list', '--porcelain'])).not.toContain(world.worktree);
     expect((await freshRun(world)).workspace).toBe('removed');
+  });
+
+  it('removes the output files of the check commands with the run, and not the files of another run', async () => {
+    world = await makeWorld('PROJ-1');
+    const mine = checkOutputPath(world.swarm, 'PROJ-1', 'checks', 'attempt1', 3);
+    const other = checkOutputPath(world.swarm, 'PROJ-1-sub', 'checks', 'attempt1', 3);
+    mkdirSync(join(world.swarm, 'data'), { recursive: true });
+    writeFileSync(mine, 'out\n');
+    writeFileSync(other, 'out\n');
+    await age(world, 10);
+
+    await world.app.get(RunRetention).apply(3);
+
+    expect(existsSync(mine)).toBe(false);
+    expect(existsSync(other)).toBe(true);
   });
 
   it('leaves a done run younger than the threshold, and everything when the threshold is 0', async () => {

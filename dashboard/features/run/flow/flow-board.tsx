@@ -3,6 +3,7 @@
 import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import { phaseLabel } from '../../../lib/phase-label';
 import { stepLabel, withReport } from '../phases';
 import type { FlowView } from '@contract/api';
 import { statusColor } from '../../../theme/theme';
@@ -29,7 +30,7 @@ export function FlowBoard({
               color="text.secondary"
               sx={{ display: 'block', letterSpacing: '0.06em', lineHeight: 1.3, mb: 1.25, whiteSpace: 'nowrap' }}
             >
-              {phase.phase}
+              {phaseLabel(phase.phase)}
             </Typography>
             <Box sx={{ display: 'grid', gap: 0.75 }}>
               {withReport(phase.steps).map((step) => {
@@ -114,15 +115,16 @@ export function FlowBoard({
       {returns.length > 0 ? (
         <Box sx={{ position: 'relative', mt: 1, height: returns.length * 36 }}>
           {returns.map((edge, index) => {
-            const from = Math.max(phaseIndex(phases, edge.from), 2);
-            const span = from - 2 + 1;
+            const target = phaseIndex(phases, 'implement');
+            const from = Math.max(phaseIndex(phases, edge.from), target);
+            const span = from - target + 1;
             return (
               <Box
                 key={`${edge.counter}:${index}`}
                 sx={{
                   position: 'absolute',
                   top: index * 36,
-                  left: `${(2 / columns) * 100}%`,
+                  left: `${(target / columns) * 100}%`,
                   width: `${(span / columns) * 100}%`,
                   height: 12,
                   borderLeft: '1px solid',
@@ -161,5 +163,5 @@ function phaseIndex(phases: FlowView['phases'], step: string): number {
   const index = phases.findIndex((phase) =>
     phase.steps.some((item) => item.name === step || (step === 'code-review' && item.name.startsWith('code-review-'))),
   );
-  return index < 0 ? 2 : index;
+  return Math.max(index, 0);
 }

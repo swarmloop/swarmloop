@@ -39,4 +39,28 @@ describe('FlowBoard', () => {
     expect(within(current).getByText('2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'implement-improve' })).not.toHaveAttribute('aria-current');
   });
+
+  it('draws the return edge from checks to implement next to the review and pipeline edges', () => {
+    const board: FlowView['phases'] = [
+      { phase: 'planning', steps: [{ name: 'plan', status: 'done', current: false, attempts: 1 }] },
+      { phase: 'implementation', steps: [{ name: 'implement', status: 'waiting', current: true, attempts: 2 }] },
+      { phase: 'checks', steps: [{ name: 'checks', status: 'waiting', current: false, attempts: 1 }] },
+      { phase: 'code-review', steps: [{ name: 'code-review', status: 'idle', current: false, attempts: 0 }] },
+    ];
+    render(
+      <FlowBoard
+        phases={board}
+        returns={[
+          { counter: 'review', count: 1, from: 'code-review', to: 'implement' },
+          { counter: 'checks', count: 2, from: 'checks', to: 'implement' },
+        ]}
+        selected={null}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('checks → implement · checks × 2')).toBeInTheDocument();
+    expect(screen.getByText('code-review → implement · review × 1')).toBeInTheDocument();
+    expect(screen.getByText('code review')).toBeInTheDocument();
+  });
 });

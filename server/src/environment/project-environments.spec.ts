@@ -4,8 +4,11 @@ import { tmpdir } from 'os';
 import { basename, join } from 'path';
 import { PassThrough } from 'stream';
 import { testEnv } from '../config/env.spec-helpers';
+import { resolveRepoRoot } from '../config/repo-root';
+import { readCheckOutput } from '../core/check-output';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
-import type { RunEntity } from '../history/entities';
+import type { CheckCommandEntity, RunEntity } from '../history/entities';
+import type { SampleDraft } from '../history/visit';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import { commitFiles, makeRepo, runGit } from '../git/git-repo.spec-helpers';
 import {
@@ -29,6 +32,12 @@ function setup(
     probe?: string | Error;
     setupCode?: number;
     checkCode?: number;
+    /** The exit code of one check command, by its text. */
+    checkExit?: (command: string) => number;
+    /** How many turns of the event loop a check container stays alive. */
+    checkTurns?: number;
+    /** The lines a check writes. */
+    checkLines?: number;
     config?: unknown;
     onCheck?: (repo: string) => void;
     imageId?: () => string;
@@ -49,6 +58,7 @@ function setup(
     ),
   };
   const spawned: SandboxLaunch[] = [];
+  const alive = { now: 0, max: 0 };
   const run = jest.fn((args: string[]) => {
     const [first, second] = args;
     if (first === 'image' && second === 'inspect' && args.includes('{{.Id}}')) {
@@ -70,8 +80,26 @@ function setup(
     }
     return Promise.resolve('');
   });
+  const rows: CheckCommandEntity[] = [];
+  const commands = {
+    add: jest.fn((draft: Partial<CheckCommandEntity>) => {
+      const row = {
+        id: rows.length + 1,
+        status: 'waiting',
+        skipped: 0,
+        startedAt: null,
+        endedAt: null,
+        exitCode: null,
+        ...draft,
+      } as CheckCommandEntity;
+      rows.push(row);
+      return Promise.resolve(row);
+    }),
+    save: jest.fn((row: CheckCommandEntity) => Promise.resolve(row)),
+  };
   const sandbox = {
     run,
+    stats: jest.fn().mockResolvedValue({ cpuPercent: 5, rssBytes: 1024 }),
     stateDaemonPath: jest.fn((path: string) => Promise.resolve(path)),
     kill: jest.fn().mockResolvedValue(undefined),
     spawn: jest.fn((launch: SandboxLaunch) => {
@@ -81,15 +109,35 @@ function setup(
         stderr: new PassThrough(),
         containerName: 'swarmloop-r1-implement',
       });
+      const isCheck = launch.allowHosts.length === 0;
+      if (isCheck) {
+        alive.now += 1;
+        alive.max = Math.max(alive.max, alive.now);
+      }
       setImmediate(() => {
-        if (launch.allowHosts.length === 0) {
+        if (isCheck) {
           options.onCheck?.(repo);
         }
         child.stdout.write('added 12 packages\n');
         child.stderr.write('npm warn old\n');
-        setImmediate(() =>
-          child.emit('close', launch.allowHosts.length ? (options.setupCode ?? 0) : (options.checkCode ?? 0)),
-        );
+        if (isCheck && options.checkLines) {
+          child.stdout.write(`${Array.from({ length: options.checkLines }, (_, line) => `line ${line}`).join('\n')}\n`);
+        }
+        const code = isCheck
+          ? (options.checkExit?.(launch.project?.shell ?? '') ?? options.checkCode ?? 0)
+          : (options.setupCode ?? 0);
+        // A check container stays alive for a few turns of the event loop, so containers overlap when they may.
+        const close = (turns: number): void => {
+          if (turns > 0) {
+            setImmediate(() => close(turns - 1));
+            return;
+          }
+          if (isCheck) {
+            alive.now -= 1;
+          }
+          child.emit('close', code);
+        };
+        close(isCheck ? (options.checkTurns ?? 0) : 0);
       });
       return Promise.resolve(child);
     }),
@@ -101,6 +149,7 @@ function setup(
     clock: new FakeClock(),
     sandbox: sandbox as unknown as ConstructorParameters<typeof ProjectEnvironments>[0]['sandbox'],
     documents,
+    commands,
     live,
   });
   const input = {
@@ -112,7 +161,7 @@ function setup(
   };
   const records = () =>
     stored.filter((item) => item.kind === ENVIRONMENT).map((item) => JSON.parse(item.body) as EnvironmentRecord);
-  return { service, sandbox, input, spawned, records, run, stored, live };
+  return { service, sandbox, input, spawned, records, run, stored, live, rows, alive, root };
 }
 
 describe('ProjectEnvironments', () => {
@@ -216,7 +265,7 @@ describe('ProjectEnvironments', () => {
       config: { ...manifest, checks: ['php test.php', 'python3 test.py'] },
     });
     await expect(service.check(input)).rejects.toThrow(RequiredCheckFailed);
-    expect(spawned.map((launch) => launch.project?.shell)).toEqual(['npm ci', 'php test.php']);
+    expect(spawned.map((launch) => launch.project?.shell)).toEqual(['npm ci', 'php test.php', 'python3 test.py']);
     expect(stored.find((document) => document.kind === 'return')?.body).toContain('php test.php');
   });
 
@@ -406,5 +455,70 @@ describe('ProjectEnvironments', () => {
       await service.check(input);
       expect(failures(stored)).toEqual([]);
     });
+  });
+});
+
+describe('ProjectEnvironments checks', () => {
+  const twelve = Array.from({ length: 12 }, (_, index) => `npm run check-${index}`);
+  const failing = new Set([twelve[3], twelve[7], twelve[11]]);
+
+  it('runs every command and returns once with all failed commands named', async () => {
+    const { service, input, spawned, stored, rows } = setup({
+      config: { ...manifest, checks: twelve },
+      checkExit: (command) => (failing.has(command) ? 1 : 0),
+    });
+    const error = await service.check(input).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(RequiredCheckFailed);
+    expect(error).not.toBeInstanceOf(RequiredCheckRepeated);
+    expect(spawned.filter((launch) => launch.allowHosts.length === 0)).toHaveLength(12);
+    const returned = stored.filter((document) => document.kind === 'return');
+    expect(returned).toHaveLength(1);
+    for (const command of failing) {
+      expect(returned[0].body).toContain(`$ ${command}`);
+    }
+    expect(returned[0].body.match(/required check failed \(exit 1\)/g)).toHaveLength(3);
+    expect(rows.filter((row) => row.status === 'failed').map((row) => row.command)).toEqual([...failing]);
+    expect(rows.filter((row) => row.status === 'passed')).toHaveLength(9);
+  });
+
+  it('never has more check containers alive than CHECKS_PARALLEL', async () => {
+    const { service, input, alive } = setup({ config: { ...manifest, checks: twelve }, checkTurns: 5 });
+    await service.check(input);
+    expect(alive.max).toBe(3);
+  });
+
+  it('numbers the commands of every repository and keeps their rows', async () => {
+    const { service, input, rows } = setup({ config: { ...manifest, checks: ['npm test', 'npm run lint'] } });
+    await service.check({ ...input, run: { id: 4, activeAttempt: 'a1' } as RunEntity });
+    expect(
+      rows.map((row) => [row.runId, row.attemptId, row.commandIndex, row.command, row.status, row.exitCode]),
+    ).toEqual([
+      [4, 'a1', 0, 'npm test', 'passed', 0],
+      [4, 'a1', 1, 'npm run lint', 'passed', 0],
+    ]);
+  });
+
+  it('marks the commands of a repository skipped when they passed on the same files', async () => {
+    const { service, input, rows, spawned } = setup();
+    await service.check(input);
+    const before = spawned.length;
+    await service.check(input);
+    expect(spawned).toHaveLength(before);
+    expect(rows.at(-1)).toMatchObject({ status: 'skipped', skipped: 1 });
+  });
+
+  it('writes the full output of a long command to its own file', async () => {
+    const { service, input, root } = setup({ checkLines: 50_000 });
+    await service.check({ ...input, run: { id: 1, activeAttempt: 'attempt-1' } as RunEntity });
+    const text = readCheckOutput(resolveRepoRoot(root, __dirname), 'r1', 'implement', 'attempt-1', 0);
+    expect(text?.split('\n').filter((line) => line.startsWith('line '))).toHaveLength(50_000);
+  });
+
+  it('samples the setup container and every check container with their source', async () => {
+    const { service, input } = setup({ config: { ...manifest, checks: ['npm test', 'npm run lint'] } });
+    const samples: SampleDraft[] = [];
+    await service.check({ ...input, samples });
+    expect(samples.map((sample) => sample.source).sort()).toEqual(['0', '1', 'setup']);
+    expect(samples[0]).toMatchObject({ cpuPercent: 5, rssBytes: 1024 });
   });
 });

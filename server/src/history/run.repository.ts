@@ -22,6 +22,7 @@ import { removeTree, root } from './run-paths';
 import {
   RunEntity,
   StepStatEntity,
+  CheckCommandEntity,
   ResourceSampleEntity,
   AgentExchangeEntity,
   HttpCallEntity,
@@ -47,6 +48,7 @@ export class RunRepository {
     @InjectRepository(FlowEntity) private readonly flows: Repository<FlowEntity>,
     @InjectRepository(PasteEntity) private readonly pastes: Repository<PasteEntity>,
     @InjectRepository(CommandEntity) private readonly commands: Repository<CommandEntity>,
+    @InjectRepository(CheckCommandEntity) private readonly checkCommands: Repository<CheckCommandEntity>,
     private readonly documentRepository: DocumentRepository,
     private readonly visitRepository: VisitRepository,
     @Optional() private readonly live?: LiveHub,
@@ -98,6 +100,7 @@ export class RunRepository {
       attemptsReview: 0,
       attemptsQa: 0,
       attemptsPipeline: 0,
+      attemptsChecks: 0,
       agentCalls: 0,
       spentUsd: 0,
       targetPath,
@@ -205,6 +208,7 @@ export class RunRepository {
       attemptsReview: 0,
       attemptsQa: 0,
       attemptsPipeline: 0,
+      attemptsChecks: 0,
       agentCalls: 0,
       spentUsd: 0,
       targetPath: null,
@@ -276,6 +280,7 @@ export class RunRepository {
     await this.flows.delete({ runId: run.id });
     await this.pastes.delete({ runKey: run.key });
     await this.commands.delete({ runId: run.id });
+    await this.checkCommands.delete({ runId: run.id });
     await this.runs.delete({ id: run.id });
     this.live?.clearSpend(run.key);
     this.live?.changed(run.key);

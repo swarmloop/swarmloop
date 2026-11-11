@@ -9,6 +9,7 @@ import { resolveRepoRoot } from '../config/repo-root';
 import { compactAfterLogMigration } from './compact-database';
 import { GuardedDataSource } from './guarded-data-source';
 import { CommandRepository } from './command.repository';
+import { CheckCommandRepository } from './check-command.repository';
 import { entities } from './entities';
 import { migrations } from './migrations';
 import { RunRepository } from './run.repository';
@@ -68,6 +69,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     CheckoutRepository,
     StepEventLog,
     CommandRepository,
+    CheckCommandRepository,
     StatsRepository,
     RuntimeCooldownRepository,
   ],
@@ -80,6 +82,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     CheckoutRepository,
     StepEventLog,
     CommandRepository,
+    CheckCommandRepository,
     StatsRepository,
     RuntimeCooldownRepository,
     TypeOrmModule,

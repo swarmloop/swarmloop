@@ -117,6 +117,13 @@ describe('env schema', () => {
     expect(bad.error?.message).toContain('RETAIN_DONE_DAYS');
   });
 
+  it('defaults the parallel check commands to 3 and rejects zero', () => {
+    const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
+    expect(value.CHECKS_PARALLEL).toBe(3);
+    const bad = envSchema.validate({ ...complete, CHECKS_PARALLEL: 0 }, { convert: true });
+    expect(bad.error?.message).toContain('CHECKS_PARALLEL');
+  });
+
   it('defaults the provider limit cooldown to 60 minutes and rejects zero', () => {
     const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
     expect(value.LIMIT_COOLDOWN_MIN).toBe(60);

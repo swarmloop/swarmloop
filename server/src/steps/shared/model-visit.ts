@@ -1,5 +1,5 @@
 import type { AgentRunResult } from '../../agent/agent-runner';
-import type { DocumentDraft, VisitDraft } from '../../history/visit';
+import type { DocumentDraft, SampleDraft, VisitDraft } from '../../history/visit';
 import type { OpenedStep } from '../../steps/step-run';
 import type { StepName } from '../../contract/steps';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
@@ -12,6 +12,8 @@ export function modelVisit(input: {
   runtime: string;
   model: string;
   agent: AgentRunResult | null;
+  /** Samples of the step's other containers; the agent's come with `agent`. */
+  samples?: SampleDraft[];
   prompt: string;
   status: string;
   exitCode: number;
@@ -38,7 +40,7 @@ export function modelVisit(input: {
     tokensIn: agent?.tokensIn ?? 0,
     tokensOut: agent?.tokensOut ?? 0,
     usd: agent?.usd ?? 0,
-    samples: agent?.samples ?? [],
+    samples: [...(input.samples ?? []), ...(agent?.samples ?? [])],
     exchange: agent
       ? {
           model: input.model,

@@ -80,6 +80,7 @@ export class AttemptLog {
         at: sample.sampledAt,
         cpu: sample.cpuPercent,
         memory: sample.rssBytes,
+        source: sample.source,
       })),
       usage: this.usage(),
     });

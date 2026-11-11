@@ -206,9 +206,9 @@ describe('withLog', () => {
       step: 'code-review-quality',
       checks: [],
       ...recorded,
-      visits: [visit({ status: 'done', samples: [{ at: 't', cpu: 1, memory: 2 }] })],
+      visits: [visit({ status: 'done', samples: [{ at: 't', cpu: 1, memory: 2, source: 'agent' }] })],
     };
-    assert.equal(withLog(sampled, doneLog, [{ at: 'n', cpu: 9, memory: 9 }]), sampled);
+    assert.equal(withLog(sampled, doneLog, [{ at: 'n', cpu: 9, memory: 9, source: 'agent' }]), sampled);
     const quiet = {
       step: 'code-review-quality',
       checks: [],
@@ -220,7 +220,7 @@ describe('withLog', () => {
 
   it('stores samples on a finished chip that had none', () => {
     const current = visit({ status: 'failed', samples: [], tokensIn: 5 });
-    const samples = [{ at: 't', cpu: 4, memory: 50 }];
+    const samples = [{ at: 't', cpu: 4, memory: 50, source: 'agent' }];
     const next = withLog({ step: 'code-review-quality', checks: [], ...recorded, visits: [current] }, doneLog, samples);
     assert.equal(next.visits[0]?.status, 'failed');
     assert.equal(next.visits[0]?.tokensIn, 5);
@@ -242,7 +242,7 @@ describe('withLog', () => {
     });
     const before = Date.now();
     const next = withLog({ step: 'implement', checks: [], ...recorded, visits: [current] }, 'still going', [
-      { at: 't', cpu: 2, memory: 10 },
+      { at: 't', cpu: 2, memory: 10, source: 'agent' },
     ]);
     const after = Date.now();
     const opened = next.visits[1];

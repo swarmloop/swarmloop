@@ -7,6 +7,7 @@ import Typography from '@mui/material/Typography';
 import { useStep } from '../../use-step';
 import { firstProblemId, issueLinks } from '../../transcript/transcript-model';
 import { useStepEvents } from '../../transcript/use-step-events';
+import { commandSummary, visitCommands } from '../../check-commands';
 import { shownStatus, stepText, visitChecks } from '../../step-view';
 import { useVisitLog } from '../../use-visit-log';
 import { StepDocuments } from './step-documents';
@@ -78,6 +79,7 @@ export function StepDetail({
   const text = stepText(step, shownVisit, selected, checks);
   const logs = selected ? '' : text.logs || (stored.text ?? '');
   const { document } = text;
+  const commands = view.commands ? visitCommands(view.commands, visit) : undefined;
   return (
     <Paper sx={{ mt: 3, p: 2.5, border: 1, borderColor: 'divider', minWidth: 0 }}>
       <StepHeader
@@ -96,6 +98,7 @@ export function StepDetail({
         shownDuration={shownDuration}
         shownAttempt={shownAttempt}
         problemId={events ? firstProblemId(events) : null}
+        commands={commands ? commandSummary(commands, now) : undefined}
       />
       {eventsError ? (
         <Typography color="error" sx={{ mt: 2 }}>
@@ -120,6 +123,8 @@ export function StepDetail({
           logs={logs}
           document={document}
           role={view.descriptor.agent}
+          commands={commands}
+          now={now}
         />
       </Box>
     </Paper>

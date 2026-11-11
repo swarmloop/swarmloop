@@ -21,7 +21,7 @@ function phaseOf(step: StepName): PhaseName | null {
   return null;
 }
 
-/** Keep canonical order and always include requirements. Omit the list to run every phase. */
+/** Keep canonical order and always include planning. Omit the list to run every phase. */
 export function normalizePhases(input?: readonly string[]): PhaseName[] {
   if (!input || input.length === 0) {
     return [...PHASES];
@@ -38,7 +38,7 @@ export function normalizePhases(input?: readonly string[]): PhaseName[] {
     }
     wanted.add(name as PhaseName);
   }
-  wanted.add('requirements');
+  wanted.add('planning');
   return PHASES.filter((phase) => wanted.has(phase));
 }
 
@@ -53,7 +53,7 @@ export function continues(finished: StepName, run: { status: string; currentStep
   return run.currentStep;
 }
 
-const LOOP_STEPS: readonly StepName[] = ['code-review', 'pipeline'];
+const LOOP_STEPS: readonly StepName[] = ['checks', 'code-review', 'pipeline'];
 
 export function isLoopStep(step: string): boolean {
   return LOOP_STEPS.includes(step as StepName);

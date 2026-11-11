@@ -7,6 +7,7 @@ import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { CommandRepository } from '../history/command.repository';
+import { CheckCommandRepository } from '../history/check-command.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { EventRepository } from '../history/event.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
@@ -35,9 +36,9 @@ import { latest, metrics, openItems, phases, reason, returns, runName, sentence,
 import { belongsToVisit, documentView, filesOf, legacyLogs, taskLayers, withReturnNotes } from './run-view/documents';
 import { visitKey } from '../contract/visit-key';
 import { launchView, liveVisit } from './run-view/live';
-import { exchangesOf, samplesOf } from './run-view/visit-parts';
+import { commandViewsOf, exchangesOf, reviewChecks, samplesOf } from './run-view/visit-parts';
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
-import { readStepLog, visitLogSize } from './run-queries-log';
+import { readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
 import { openSpend } from './run-queries-spend';
 export { requireRun } from './run-queries-run';
 
@@ -56,6 +57,7 @@ export class RunQueriesService {
     private readonly registry: StepRegistry,
     private readonly config: AppConfig,
     private readonly clock: Clock,
+    private readonly checkCommands: CheckCommandRepository,
     @Optional() private readonly live?: LiveHub,
   ) {}
 
@@ -146,9 +148,12 @@ export class RunQueriesService {
     key: string,
     step: string,
     attempt: string | null,
-    query: { tail?: string; from?: string } = {},
+    query: { tail?: string; from?: string; command?: string } = {},
   ): Promise<string> {
-    return readStepLog(this.runs, this.visits, this.documents, this.config, key, step, attempt || null, query);
+    const at = attempt || null;
+    return query.command === undefined
+      ? readStepLog(this.runs, this.visits, this.documents, this.config, key, step, at, query)
+      : readCheckLog(this.runs, this.checkCommands, this.config, key, at, query.command, query);
   }
 
   async step(key: string, name: string): Promise<StepView> {
@@ -207,13 +212,8 @@ export class RunQueriesService {
       step: name,
       ...(await this.meta(run, name)),
       visits: withReturnNotes(name, visits, documents, this.clock.now()),
-      checks:
-        name === 'code-review'
-          ? REVIEW_KINDS.map((kind) => {
-              const body = latest(documents, kind);
-              return { name: kind.replace('review_', ''), decision: decisionLine(body ?? ''), body: body ?? '' };
-            }).filter((check) => check.body !== '')
-          : [],
+      ...(name === 'checks' ? { commands: commandViewsOf(await this.checkCommands.list(run.id)) } : {}),
+      checks: name === 'code-review' ? reviewChecks(documents) : [],
     };
   }
 
@@ -257,6 +257,7 @@ export class RunQueriesService {
         at: sample.sampledAt,
         cpu: sample.cpuPercent,
         memory: sample.rssBytes,
+        source: sample.source ?? 'agent',
       })),
       stats: stats.map((stat) => ({
         ...visitLogSize(this.config, run, stat.step, stat, documents, {

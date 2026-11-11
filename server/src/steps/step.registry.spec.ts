@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { testEnv } from '../config/env.spec-helpers';
 import type { StepName } from '../contract/steps';
 import { BranchStep } from './branch/branch.step';
+import { ChecksStep } from './checks/checks.step';
 import { CommitStep } from './commit/commit.step';
 import { CodeReviewStep } from './code-review/code-review.step';
 import { ImplementImproveStep } from './implement/implement-improve.step';
@@ -31,6 +32,7 @@ const SERVICES: [Type<unknown>, Exclude<StepName, 'done'>][] = [
   [PlanImproveStep, 'plan-improve'],
   [ImplementStep, 'implement'],
   [ImplementImproveStep, 'implement-improve'],
+  [ChecksStep, 'checks'],
   [CodeReviewStep, 'code-review'],
   [CommitStep, 'commit'],
   [MergeRequestStep, 'merge-request'],

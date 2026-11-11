@@ -10,15 +10,15 @@ describe('FlowRepository', () => {
     const db = await repositoryDatabase();
     try {
       const flows = db.app.get(FlowRepository);
-      await flows.noteFlow('run-1', ['brainstorm'], null);
+      await flows.noteFlow('run-1', ['planning'], null);
       const run = await db.app.get(RunRepository).findRun('run-1');
       expect(run).toEqual(expect.objectContaining({ status: 'waiting', ownerPid: null, stepStartedAt: null }));
-      expect(await flows.activePhases(run!.id)).toEqual(['requirements', 'brainstorm']);
+      expect(await flows.activePhases(run!.id)).toEqual(['planning']);
       expect(await flows.listFlows(run!.id)).toEqual([
-        expect.objectContaining({ fromStep: null, phases: '["requirements","brainstorm"]' }),
+        expect.objectContaining({ fromStep: null, phases: '["planning"]' }),
       ]);
       await flows.noteFlow('run-1', ['implementation'], 'implement');
-      expect(await flows.activePhases(run!.id)).toEqual(['requirements', 'implementation']);
+      expect(await flows.activePhases(run!.id)).toEqual(['planning', 'implementation']);
       expect((await flows.listFlows(run!.id)).map((row) => row.fromStep)).toEqual([null, 'implement']);
       await db.app.get(DataSource).getRepository(FlowEntity).save({
         runId: run!.id,

@@ -3,7 +3,7 @@ import type { SwarmloopEnv } from '../config/env';
 import { root } from '../history/run-paths';
 import type { RunEntity } from '../history/entities';
 import { CONTRACT_KIND } from '../contract/subtask';
-import type { VisitDraft } from '../history/visit';
+import type { SampleDraft, VisitDraft } from '../history/visit';
 import type { AgentRunResult } from '../agent/agent-runner';
 import { visitStatus } from '../core/pipeline-result';
 import type { StepOptions } from '../core/pipeline-result';
@@ -49,6 +49,8 @@ export function instructionsInput(step: StepName): { artifact: Artifact; need: '
 export interface ModelStepContext {
   opened: OpenedStep;
   workspace: string;
+  /** Where the samples of other containers of the step go: the visit shows them next to the agent's. */
+  samples: SampleDraft[];
   reread: StepContext['reread'];
   write: StepContext['write'];
   activity: StepContext['activity'];
@@ -81,6 +83,8 @@ interface ModelRun {
   prompt: string;
   agentResult: AgentRunResult | null;
   launched: AgentRunResult[];
+  /** Samples of containers the step started besides the agent's, such as a project setup. */
+  samples: SampleDraft[];
   /** The last refused write in any launch. Plan and ask keep going past it, so a parse error can name it. */
   refusal: string | null;
   /** The error launch threw for a kill or a bad exit. Its message already names the cause, so no refusal is added. */
@@ -142,12 +146,14 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       prompt: '',
       agentResult: null,
       launched: [],
+      samples: [],
       refusal: null,
       launchError: null,
     };
     const ctx: ModelStepContext = {
       opened,
       workspace: run.workspace,
+      samples: run.samples,
       reread: (artifact) => stepCtx.reread(artifact),
       write: (artifact, value) => stepCtx.write(artifact, value),
       activity: (title, fn, result) => stepCtx.activity(title, fn, result),
@@ -228,6 +234,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       runtime: run.profile.runtime,
       model: run.profile.model,
       agent: run.agentResult,
+      samples: run.samples,
       prompt: run.prompt,
       status,
       exitCode,
