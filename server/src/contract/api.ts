@@ -127,7 +127,7 @@ export interface StepDescriptor {
     runtime: string;
     model: string;
     mode: string;
-    tools: 'read' | 'write';
+    tools: 'read' | 'plan' | 'write';
     timeLimitMs: number;
     session: 'resume' | 'fresh';
     /** The role the step's agent plays, and `subtask` for a run with a parent. */

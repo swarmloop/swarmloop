@@ -33,7 +33,7 @@ describe('agent profiles', () => {
       runtime: 'cursor',
       model: MODELS.MODEL_PLAN,
       mode: 'plan',
-      tools: 'read',
+      tools: 'plan',
       timeLimitMs: env.RESEARCH_TIMEOUT_MS,
       session: 'resume',
     });
@@ -41,7 +41,7 @@ describe('agent profiles', () => {
       expect(profile(name)).toMatchObject({
         model: MODELS.MODEL_PLAN,
         mode: 'plan',
-        tools: 'read',
+        tools: 'plan',
         timeLimitMs: env.PLAN_TIMEOUT_MS,
       });
     }
@@ -63,6 +63,12 @@ describe('agent profiles', () => {
     for (const item of described) {
       expect(item.agent !== undefined).toBe(item.kind === 'agent');
     }
+  });
+
+  it('gives only research, plan and plan-improve the plan tools', () => {
+    const described = app.get(StepRegistry).describe(env);
+    const names = described.filter((item) => item.agent?.tools === 'plan').map((item) => item.name);
+    expect(names.sort()).toEqual(['plan', 'plan-improve', 'research']);
   });
 
   it('lists one reviewer per angle of the code review, with its model and mode', () => {

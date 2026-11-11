@@ -14,14 +14,13 @@
       "WebSearch",
       "WebFetch",
       "Workflow",
-      "Skill",
       "SendMessage",
       "EnterWorktree",
       "ExitWorktree"
     ],
-    "deniedCount": 17,
+    "deniedCount": 16,
     "step": "research",
-    "tools": "read"
+    "tools": "plan"
   },
   {
     "denied": [
@@ -38,14 +37,13 @@
       "WebSearch",
       "WebFetch",
       "Workflow",
-      "Skill",
       "SendMessage",
       "EnterWorktree",
       "ExitWorktree"
     ],
-    "deniedCount": 17,
+    "deniedCount": 16,
     "step": "plan",
-    "tools": "read"
+    "tools": "plan"
   },
   {
     "denied": [
@@ -62,14 +60,13 @@
       "WebSearch",
       "WebFetch",
       "Workflow",
-      "Skill",
       "SendMessage",
       "EnterWorktree",
       "ExitWorktree"
     ],
-    "deniedCount": 17,
+    "deniedCount": 16,
     "step": "plan-improve",
-    "tools": "read"
+    "tools": "plan"
   },
   {
     "denied": ["Monitor", "ScheduleWakeup", "CronCreate", "CronDelete", "CronList", "RemoteTrigger"],

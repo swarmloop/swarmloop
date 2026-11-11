@@ -43,7 +43,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     return {
       ...agentFor(env, null, 'research'),
       mode: 'plan',
-      tools: 'read',
+      tools: 'plan',
       timeLimitMs: env.RESEARCH_TIMEOUT_MS,
       session: 'resume',
     };

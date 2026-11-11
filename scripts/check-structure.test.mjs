@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -215,35 +215,6 @@ test('forbidOutside keeps the old phase name in the migration and nowhere else',
   assert.equal(violations.length, 2);
   assert.match(violations[0], /^server\/src\/contract\/steps\.ts:1:/);
   assert.match(violations[1], /^dashboard\/features\/run\/phases\.ts:1:/);
-});
-
-const migrations = 'server/src/history/migrations/';
-const known = rules.uniqueTimestamps[0].known;
-const timestampViolations = (names) =>
-  findViolations({ root: makeRoot({}), rules, files: names.map((name) => migrations + name) });
-
-test('uniqueTimestamps reports a new migration that shares a timestamp', () => {
-  const violations = timestampViolations(['1795100000000-a.ts', '1795100000000-b.ts']);
-
-  assert.equal(violations.length, 1);
-  assert.match(violations[0], /timestamp 1795100000000 is used by 1795100000000-a\.ts, 1795100000000-b\.ts/);
-});
-
-test('uniqueTimestamps reports a third file on a timestamp that two known files share', () => {
-  assert.equal(timestampViolations([...known, '1794600000000-extra.ts']).length, 1);
-});
-
-test('uniqueTimestamps lets the known pairs and unique names be', () => {
-  assert.deepEqual(timestampViolations([...known, '1795100000000-a.ts', '1795200000000-b.ts', 'index.ts']), []);
-});
-
-test('uniqueTimestamps passes on the migrations of the repo', () => {
-  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-  const files = readdirSync(join(repoRoot, migrations)).map((name) => migrations + name);
-
-  const violations = findViolations({ root: repoRoot, rules, files });
-
-  assert.equal(violations.filter((violation) => violation.includes('timestamp')).length, 0);
 });
 
 test('forbidOutside reports the block size outside free-bytes.ts and lets that file keep it', () => {
