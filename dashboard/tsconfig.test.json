@@ -6,7 +6,8 @@
     "vitest.config.ts",
     "vitest.setup.ts",
     "test/fake-socket.ts",
-    "test/viewport.ts"
+    "test/viewport.ts",
+    "test/raw-json.ts"
   ],
   "exclude": ["node_modules"]
 }
