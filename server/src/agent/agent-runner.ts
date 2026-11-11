@@ -44,6 +44,7 @@ import { AttemptMeter } from './agent-attempt';
 import { OutputTail } from './output-tail';
 import { LimitGuard } from './limit-guard';
 import { AttemptLog } from './live-output';
+import { containerSampler } from '../sandbox/container-sampler';
 
 export { buildAgentArgs, reviewBriefMount, spillPrompt, terminalArgs } from './agent-args';
 export { AGENT_CONTINUE, readSession } from './agent-session';
@@ -297,22 +298,10 @@ export class AgentProcessRunner {
       log.note(chunk.toString('utf8'));
       tail.error(chunk.toString('utf8'));
     };
-    let sampling = false;
-    const takeSample = (): void => {
-      if (sampling) {
-        return;
-      }
-      sampling = true;
-      void this.sandbox
-        .stats(process.containerName)
-        .then((sample) => {
-          log.addSample({ sampledAt: this.clock.iso(), ...sample });
-          log.publish();
-        })
-        .finally(() => {
-          sampling = false;
-        });
-    };
+    const takeSample = containerSampler(this.sandbox, this.clock, process.containerName, 'agent', (sample) => {
+      log.addSample(sample);
+      log.publish();
+    });
     const exitCode = await process.wait(
       {
         data: onData,

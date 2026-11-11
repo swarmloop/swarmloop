@@ -14,7 +14,6 @@ import type { Repository } from 'typeorm';
 
 import { DocumentEntity } from '../../history/entities';
 
-import { FlowRepository } from '../../history/flow.repository';
 import { RunRepository } from '../../history/run.repository';
 
 import { DocumentRepository } from '../../history/document.repository';
@@ -29,7 +28,7 @@ import { EnvironmentService } from '../../environment/environment.service';
 
 import { SwarmloopError } from '../../core/swarmloop-error';
 
-import { RequiredCheckFailed, RequiredCheckRepeated } from '../../environment/project-environments';
+import { RequiredCheckFailed } from '../../environment/project-environments';
 
 import { RebasedPublisher } from '../shared/rebased-publisher';
 
@@ -65,8 +64,6 @@ describe('implement step', () => {
       const app = await boot(root, agent);
       try {
         await seed(app, key, 'approve');
-        // Without implement-improve next, implement keeps the server gate.
-        if (mode !== 'fixed') jest.spyOn(app.get(FlowRepository), 'activePhases').mockResolvedValue(['code-review']);
         const documents = app.get(DocumentRepository);
         const runs = app.get(RunRepository);
         const run = (await runs.findRun(key))!;
@@ -75,7 +72,7 @@ describe('implement step', () => {
         const failure =
           'billing-api: required check failed (exit 1):\n$ npm run typecheck\nCannot find module ../shared/repo-names';
         let checks = 0;
-        jest.spyOn(app.get(EnvironmentService), 'check').mockImplementation(async () => {
+        const check = jest.spyOn(app.get(EnvironmentService), 'check').mockImplementation(async () => {
           checks += 1;
           if (mode === 'infrastructure') throw new SwarmloopError('sandbox unavailable');
           if (checks > 1 && mode === 'fixed') return { passed: 0, total: 0 };
@@ -83,26 +80,32 @@ describe('implement step', () => {
           throw new RequiredCheckFailed(failure);
         });
         const publish = jest.spyOn(app.get(RebasedPublisher), 'publishRebased');
+        // implement resolves the conflict and hands the rebased code to the checks step.
         const first = await app.get(PipelineService).step('implement', key);
-        expect(first.exitCode).toBe(1);
+        expect(first.exitCode).toBe(0);
+        expect(check).not.toHaveBeenCalled();
         expect(agent).toHaveBeenCalledTimes(1);
-        expect((await documents.latestBody(key, REBASE_CONFLICT))?.trim()).toBe(
-          mode === 'infrastructure' ? 'pending' : 'review',
-        );
+        expect(publish).toHaveBeenCalledTimes(1);
+        expect((await documents.latestBody(key, REBASE_CONFLICT))?.trim()).toBe('review');
+        expect((await runs.findRun(key))?.currentStep).toBe('checks');
         const head = git(tree, ['rev-parse', 'HEAD']);
-        const second = await app.get(PipelineService).step('implement', key);
-        expect(publish).not.toHaveBeenCalled();
+        const second = await app.get(PipelineService).step('checks', key);
         expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
         if (mode === 'infrastructure') {
-          expect(agent).toHaveBeenCalledTimes(1);
+          expect(second.exitCode).toBe(1);
           expect(second.message).toContain('sandbox unavailable');
+          expect(agent).toHaveBeenCalledTimes(1);
           return;
         }
+        expect((await runs.findRun(key))?.currentStep).toBe('implement');
+        const third = await app.get(PipelineService).step('implement', key);
+        expect(third.exitCode).toBe(0);
         expect(agent).toHaveBeenCalledTimes(2);
         expect(agent.mock.calls[1][0].prompt).toContain(failure);
-        expect(second.exitCode).toBe(mode === 'fixed' ? 0 : 1);
         expect((await documents.latestBody(key, REBASE_CONFLICT))?.trim()).toBe('review');
-        expect((await runs.findRun(key))?.currentStep).toBe(mode === 'fixed' ? 'implement-improve' : 'implement');
+        expect((await runs.findRun(key))?.currentStep).toBe('checks');
+        await app.get(PipelineService).step('checks', key);
+        expect((await runs.findRun(key))?.currentStep).toBe(mode === 'fixed' ? 'code-review' : 'implement');
       } finally {
         await app.close();
       }
@@ -228,26 +231,6 @@ describe('implement step', () => {
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
       expect(input.resumeChatId).toBe('plan-chat');
       expect(input.prompt).toContain('use theme.alpha');
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('blocks the run when its own check gate repeats a failure', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-repeat-'));
-    await writeEnv(root);
-    featureTree(root, 'PROJ-96', 'billing-api');
-    const agent = jest.fn().mockResolvedValue(result(reply));
-    const app = await boot(root, agent);
-    try {
-      await seed(app, 'PROJ-96', 'approve');
-      jest.spyOn(app.get(FlowRepository), 'activePhases').mockResolvedValue(['code-review']);
-      const reason = 'billing-api: npm test failed again on unchanged files after a relaunch';
-      jest.spyOn(app.get(EnvironmentService), 'check').mockRejectedValue(new RequiredCheckRepeated(reason));
-      await app.get(PipelineService).step('implement', 'PROJ-96');
-      const run = await app.get(RunRepository).findRun('PROJ-96');
-      expect(run?.status).toBe('blocked');
-      expect(run?.currentStep).toBe('implement');
     } finally {
       await app.close();
     }

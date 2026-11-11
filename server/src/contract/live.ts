@@ -10,12 +10,15 @@ export interface LiveSample {
   at: string;
   cpu: number;
   memory: number;
+  source: string;
 }
 
 export interface LiveLog {
   key: string;
   step: string;
   body: string;
+  /** The index of the check command the body belongs to. Only the checks step sets it. */
+  command?: number;
   samples?: LiveSample[];
   usage?: LiveUsage;
 }

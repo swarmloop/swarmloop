@@ -56,8 +56,8 @@ export function NewRunDialog({
   const [busy, setBusy] = useState(false);
   const [keys, setKeys] = useState<string[]>([]);
   const kept = useRef<string[]>(lockedProjects ?? []);
-  const frozen: PhaseName[] = locked ?? ['requirements'];
-  const chosen = PHASES.filter((phase) => phase === 'requirements' || picked.includes(phase));
+  const frozen: PhaseName[] = locked ?? ['planning'];
+  const chosen = PHASES.filter((phase) => phase === 'planning' || picked.includes(phase));
   const frozenProjects = lockedProjects !== undefined;
   const needProjects = !frozenProjects && pickedProjects.length === 0;
   const projectOptions = frozenProjects ? mergeNames(available, pickedProjects) : available;

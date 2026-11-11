@@ -7,6 +7,7 @@ export const STEPS = [
   'branch',
   'implement',
   'implement-improve',
+  'checks',
   'code-review',
   'commit',
   'merge-request',
@@ -20,14 +21,14 @@ export const CODE_REVIEWERS = ['requirements', 'quality', 'regressions', 'securi
 
 export const REVIEW_STEPS: readonly string[] = CODE_REVIEWERS.map((name) => `code-review-${name}`);
 
-export const PHASES = ['requirements', 'brainstorm', 'implementation', 'code-review', 'ci'] as const;
+export const PHASES = ['planning', 'implementation', 'checks', 'code-review', 'ci'] as const;
 
 export type PhaseName = (typeof PHASES)[number];
 
 export const PHASE_STEPS: Record<PhaseName, readonly string[]> = {
-  requirements: ['requirements'],
-  brainstorm: ['prepare', 'research', 'plan', 'plan-improve'],
+  planning: ['requirements', 'prepare', 'research', 'plan', 'plan-improve'],
   implementation: ['branch', 'implement', 'implement-improve'],
+  checks: ['checks'],
   'code-review': ['code-review'],
   ci: ['commit', 'merge-request', 'pipeline', 'done'],
 };

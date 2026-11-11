@@ -4,6 +4,8 @@ export interface SampleDraft {
   sampledAt: string;
   cpuPercent: number;
   rssBytes: number;
+  /** What was sampled: `agent`, `setup`, the index of a check command, or `server` for the server process. */
+  source: string;
 }
 
 export function sampleSelf(sampledAt: string): SampleDraft {
@@ -11,6 +13,7 @@ export function sampleSelf(sampledAt: string): SampleDraft {
     sampledAt,
     cpuPercent: 0,
     rssBytes: process.memoryUsage().rss,
+    source: 'server',
   };
 }
 

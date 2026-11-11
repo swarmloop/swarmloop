@@ -3,8 +3,10 @@ import { NotFoundException } from '@nestjs/common';
 import type { AppConfig } from '../config/env';
 import { pipelineStepOf } from '../contract/steps';
 import { attemptIdsOf, OUTPUT_STEPS, stepOutput, stepOutputPath } from '../core/attempt-output';
+import { readCheckOutput } from '../core/check-output';
 import { redact } from '../core/redact';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../history/entities';
+import type { CheckCommandRepository } from '../history/check-command.repository';
 import type { RunRepository } from '../history/run.repository';
 import type { DocumentRepository } from '../history/document.repository';
 import type { VisitRepository } from '../history/visit.repository';
@@ -166,6 +168,34 @@ export async function readStepLog(
     : await storedLog(documents, run, stats, attempt);
   if (text === null) {
     throw new NotFoundException(`${step} has no log`);
+  }
+  return sliceLog(redact(text, config.env), logPaging(query));
+}
+
+/**
+ * The full output of one check command, redacted. The attempt (the newest one when none is given) and the index must
+ * name a stored command row before a path is built.
+ */
+export async function readCheckLog(
+  runs: RunRepository,
+  commands: CheckCommandRepository,
+  config: AppConfig,
+  key: string,
+  attempt: string | null,
+  command: string,
+  query: { tail?: string; from?: string } = {},
+): Promise<string> {
+  const run = await requireRun(runs, key);
+  const index = /^\d+$/.test(command) ? Number(command) : -1;
+  const rows = await commands.list(run.id);
+  const attemptId = attempt || rows.at(-1)?.attemptId || '';
+  const stored = rows.find((row) => row.attemptId === attemptId && row.commandIndex === index);
+  if (!stored) {
+    throw new NotFoundException(`${command} is not a check command of ${attemptId || 'this run'}`);
+  }
+  const text = readCheckOutput(root(config), run.key, 'checks', stored.attemptId, stored.commandIndex);
+  if (text === null) {
+    throw new NotFoundException(`check command ${command} has no log yet`);
   }
   return sliceLog(redact(text, config.env), logPaging(query));
 }

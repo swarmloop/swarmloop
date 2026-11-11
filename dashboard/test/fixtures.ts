@@ -49,6 +49,7 @@ export function flowView(overrides: Partial<FlowView> = {}): FlowView {
       attemptsReview: 0,
       attemptsQa: 0,
       attemptsPipeline: 0,
+      attemptsChecks: 0,
       cpuPeak: 0,
       memPeak: 0,
     },

@@ -6,6 +6,7 @@ import { tmpdir } from 'os';
 
 import { join } from 'path';
 
+import { CheckCommandRepository } from '../history/check-command.repository';
 import { RunRepository } from '../history/run.repository';
 
 import { DocumentRepository } from '../history/document.repository';
@@ -173,7 +174,7 @@ describe('runs api', () => {
         mode: 'ask',
         tokensIn: 12,
         tokensOut: 3,
-        samples: [{ sampledAt: now, cpuPercent: 40, rssBytes: 2048 }],
+        samples: [{ sampledAt: now, cpuPercent: 40, rssBytes: 2048, source: 'agent' }],
         documents: [{ kind: 'review_quality', fileName: '', body: 'cleared\ndecision: ok\n' }],
         exchange: {
           model: 'grok-4.7-high',
@@ -193,11 +194,11 @@ describe('runs api', () => {
         [1, 'waiting', 'decision: return'],
         [2, 'done', 'decision: ok'],
       ]);
-      expect(detail.visits[1]?.samples).toEqual([{ at: now, cpu: 40, memory: 2048 }]);
+      expect(detail.visits[1]?.samples).toEqual([{ at: now, cpu: 40, memory: 2048, source: 'agent' }]);
       expect(detail.visits[1]?.exchanges).toEqual([
         { model: 'grok-4.7-high', durationMs: 10, request: 'review', response: 'cleared\ndecision: ok\n' },
       ]);
-      const chips = (await runs.flow('proj-28')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
+      const chips = (await runs.flow('proj-28')).phases.find((phase) => phase.phase === 'code-review')?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review-quality')?.status).toBe('done');
     } finally {
       await app.close();
@@ -214,7 +215,7 @@ describe('runs api', () => {
       const now = new Date().toISOString();
       await visits.finishVisit(run, {
         ...visit('code-review', 'waiting'),
-        samples: [{ sampledAt: now, cpuPercent: 40, rssBytes: 2048 }],
+        samples: [{ sampledAt: now, cpuPercent: 40, rssBytes: 2048, source: 'agent' }],
         documents: [{ kind: 'review_requirements', fileName: '', body: 'old\ndecision: return\n' }],
       });
       await mkdir(join(root, 'data'), { recursive: true });
@@ -226,8 +227,8 @@ describe('runs api', () => {
       const detail = await runs.step('proj-30', 'code-review-requirements');
       expect(detail.visits.at(-1)?.status).toBe('done');
       expect(detail.visits.at(-1)?.decision).toBe('decision: ok');
-      expect(detail.visits.at(-1)?.samples).toEqual([{ at: now, cpu: 40, memory: 2048 }]);
-      const chips = (await runs.flow('proj-30')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
+      expect(detail.visits.at(-1)?.samples).toEqual([{ at: now, cpu: 40, memory: 2048, source: 'agent' }]);
+      const chips = (await runs.flow('proj-30')).phases.find((phase) => phase.phase === 'code-review')?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review-requirements')?.status).toBe('done');
     } finally {
       await app.close();
@@ -269,7 +270,7 @@ describe('runs api', () => {
       await save(app.get(RunRepository), 'proj-20', 'code-review', 'running');
       const runs = app.get(RunQueriesService);
       const flow = await runs.flow('proj-20');
-      const chips = flow.phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
+      const chips = flow.phases.find((phase) => phase.phase === 'code-review')?.steps ?? [];
       expect(chips.map((step) => step.name)).toEqual([
         'code-review-requirements',
         'code-review-quality',
@@ -307,7 +308,7 @@ describe('runs api', () => {
       );
       await save(app.get(RunRepository), 'proj-32', 'code-review', 'running');
       const runs = app.get(RunQueriesService);
-      const chips = (await runs.flow('proj-32')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
+      const chips = (await runs.flow('proj-32')).phases.find((phase) => phase.phase === 'code-review')?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review-requirements')?.status).toBe('idle');
       expect(chips.find((step) => step.name === 'code-review-requirements')?.attempts).toBe(0);
       expect(chips.find((step) => step.name === 'code-review')?.status).toBe('idle');
@@ -341,7 +342,7 @@ describe('runs api', () => {
       const runs = app.get(RunQueriesService);
       const chip = async (key: string) =>
         (await runs.flow(key)).phases
-          .find((phase) => phase.phase === 'code review')
+          .find((phase) => phase.phase === 'code-review')
           ?.steps.find((step) => step.name === 'code-review');
       expect((await chip('proj-33'))?.status).toBe('idle');
       expect((await chip('proj-34'))?.status).toBe('idle');
@@ -367,11 +368,11 @@ describe('runs api', () => {
         key: 'proj-31',
         step: 'code-review-quality',
         body: 'notes\ndecision: ok\n',
-        samples: [{ at: now, cpu: 40, memory: 2048 }],
+        samples: [{ at: now, cpu: 40, memory: 2048, source: 'agent' }],
       });
       const quality = await app.get(RunQueriesService).step('proj-31', 'code-review-quality');
       expect(quality.visits.at(-1)?.status).toBe('done');
-      expect(quality.visits.at(-1)?.samples).toEqual([{ at: now, cpu: 40, memory: 2048 }]);
+      expect(quality.visits.at(-1)?.samples).toEqual([{ at: now, cpu: 40, memory: 2048, source: 'agent' }]);
     } finally {
       await app.close();
     }
@@ -392,7 +393,7 @@ describe('runs api', () => {
       );
       await save(app.get(RunRepository), 'proj-22', 'code-review', 'failed');
       const chips =
-        (await app.get(RunQueriesService).flow('proj-22')).phases.find((phase) => phase.phase === 'code review')
+        (await app.get(RunQueriesService).flow('proj-22')).phases.find((phase) => phase.phase === 'code-review')
           ?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review-requirements')?.status).toBe('idle');
       expect(chips.find((step) => step.name === 'code-review-quality')?.status).toBe('done');
@@ -417,7 +418,7 @@ describe('runs api', () => {
       });
       await visits.finishVisit(run, { ...visit('code-review', 'waiting'), documents: [] });
       const chips =
-        (await app.get(RunQueriesService).flow('proj-25')).phases.find((phase) => phase.phase === 'code review')
+        (await app.get(RunQueriesService).flow('proj-25')).phases.find((phase) => phase.phase === 'code-review')
           ?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review-quality')?.attempts).toBe(1);
       const quality = await app.get(RunQueriesService).step('proj-25', 'code-review-quality');
@@ -461,10 +462,76 @@ describe('runs api', () => {
         [2, 'done', 'decision: ok'],
       ]);
       const chips =
-        (await app.get(RunQueriesService).flow('proj-27')).phases.find((phase) => phase.phase === 'code review')
+        (await app.get(RunQueriesService).flow('proj-27')).phases.find((phase) => phase.phase === 'code-review')
           ?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review')?.status).toBe('done');
       expect(chips.find((step) => step.name === 'code-review-quality')?.status).toBe('done');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('shows the checks step with its commands, one chart line per source and the return edge', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-checks-'));
+    const app = await boot(root);
+    try {
+      const runRepository = app.get(RunRepository);
+      const run = await save(runRepository, 'proj-chk', 'implement', 'waiting');
+      run.attemptsChecks = 1;
+      await runRepository.saveRun(run);
+      const now = new Date().toISOString();
+      const stat = await app.get(VisitRepository).finishVisit(run, {
+        ...visit('checks', 'waiting'),
+        samples: [
+          { sampledAt: now, cpuPercent: 10, rssBytes: 100, source: '0' },
+          { sampledAt: now, cpuPercent: 20, rssBytes: 200, source: '1' },
+        ],
+      });
+      stat.attemptId = 'att-1';
+      await app.get(VisitRepository).saveStat(stat);
+      const commands = app.get(CheckCommandRepository);
+      const first = await commands.add({
+        runId: run.id,
+        attemptId: 'att-1',
+        repo: 'api',
+        command: 'npm test',
+        commandIndex: 0,
+      });
+      await commands.save({ ...first, status: 'passed', exitCode: 0 });
+      await commands.add({ runId: run.id, attemptId: 'att-1', repo: 'api', command: 'npm run lint', commandIndex: 1 });
+      const runs = app.get(RunQueriesService);
+      const detail = await runs.step('proj-chk', 'checks');
+      expect(detail.commands?.map((item) => [item.index, item.command, item.status, item.exitCode])).toEqual([
+        [0, 'npm test', 'passed', 0],
+        [1, 'npm run lint', 'waiting', null],
+      ]);
+      expect(detail.visits[0]?.samples.map((sample) => sample.source)).toEqual(['0', '1']);
+      const flow = await runs.flow('proj-chk');
+      expect(flow.returns).toEqual([{ counter: 'checks', count: 1, from: 'checks', to: 'implement' }]);
+      expect(flow.metrics.attemptsChecks).toBe(1);
+      expect(flow.phases.map((phase) => phase.phase)).toEqual([
+        'planning',
+        'implementation',
+        'checks',
+        'code-review',
+        'ci',
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('still shows the checks document a run stored under its implement visit before the checks step', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-old-checks-'));
+    const app = await boot(root);
+    try {
+      const run = await save(app.get(RunRepository), 'proj-old', 'code-review', 'waiting');
+      await app.get(VisitRepository).finishVisit(run, {
+        ...visit('implement', 'done'),
+        documents: [{ kind: 'checks', fileName: '', body: '{"repo":"api","command":"npm test","exitCode":0}' }],
+      });
+      const detail = await app.get(RunQueriesService).step('proj-old', 'implement');
+      expect(detail.visits[0]?.documents.map((item) => item.kind)).toContain('checks');
     } finally {
       await app.close();
     }

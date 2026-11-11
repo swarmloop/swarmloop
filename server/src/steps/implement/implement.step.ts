@@ -6,7 +6,7 @@ import { SwarmloopEnv } from '../../config/env';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
 import { resumableChat } from '../../agent/agent-session';
-import { StepOptions, nextStep } from '../../core/pipeline-result';
+import { StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -20,10 +20,8 @@ import { pipelineAnswers, returnedNotes, textDocument, withHandoff } from '../sh
 import { parseSummary, skillPrompt } from '../shared/skill-prompt';
 import { bulletList, items, section } from '../shared/markdown-section';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
-import type { SandboxMount } from '../../core/sandbox-mount';
 import { checkedRepoNames, mountsForStep, worktreePath } from '../../git/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
-import { RequiredCheckFailed, RequiredCheckRepeated } from '../../environment/project-environments';
 import { withEnvironment } from '../../environment/environment-note';
 import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { storedPlan } from '../step';
@@ -32,13 +30,7 @@ import { RebaseStop, completeRebase, parkedConflict, rebaseFeatureRepos, unmerge
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { staleRepos, unchangedSincePipeline } from '../pipeline/pipeline-report';
 import { implementFollowUp, rebaseConflictPrompt } from './implement.prompts';
-import {
-  checkRepeatedBlock,
-  checksLine,
-  implementFacts,
-  parseImplementation,
-  withReturnNotes,
-} from './implement-record';
+import { parseImplementation, withReturnNotes } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
@@ -127,7 +119,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     }
     const heads = await featureHeads(mounts, branch);
     const { runtime } = this.profile(env);
-    const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime };
+    const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime, samples: ctx.samples };
     const reproject = projectFor(this.environments, place);
     const { prompt, project, allowHosts, executionRules } = await agentWorkplace(this.environments, place, basePrompt);
     const before = await worktreeSnapshot(mounts);
@@ -195,11 +187,6 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     }
     const text = agentResult.responseText;
     const body = parseImplementation(text);
-    const { blocked, checks } = await this.gate(ctx, key, mounts);
-    if (blocked) {
-      return blocked;
-    }
-    await assertUncommitted(mounts, branch, heads);
     const corrected = correctedPlan(input.requirements, planText, planOutput);
     const reasons = corrected ? `${parseSummary(text).trimEnd()}\n${corrected.handoff}` : parseSummary(text);
     const cause = items(section(text, 'cause') ?? '');
@@ -210,36 +197,8 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       summary: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
       outputs: [{ artifact: ARTIFACTS.implementation, value: body }],
       handoff: summary,
-      facts: implementFacts(checks),
       visit: corrected ? { documents: [textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] } : undefined,
     };
-  }
-
-  /** implement-improve follows in the same pass and runs the one server gate over both passes' changes. */
-  private async gate(
-    ctx: ModelStepContext,
-    key: string,
-    mounts: SandboxMount[],
-  ): Promise<{ blocked: StepResult | null; checks: string | null }> {
-    if (nextStep(this.name, await this.flows.activePhases(ctx.opened.run.id)) === 'implement-improve') {
-      return { blocked: null, checks: null };
-    }
-    try {
-      const place = {
-        run: ctx.opened.run,
-        key,
-        step: this.name,
-        mounts,
-        runtime: this.profile(this.config.env).runtime,
-      };
-      const checks = await ctx.activity('Server checks', () => this.environments.check(place), checksLine);
-      return { blocked: null, checks: checksLine(checks) };
-    } catch (error) {
-      if (error instanceof RequiredCheckRepeated) {
-        return { blocked: checkRepeatedBlock(ctx.opened.startedAt, this.name, error), checks: null };
-      }
-      throw error;
-    }
   }
 
   /** A pipeline failure that the retry left unchanged on disk: stop with the corrected checklist, if one came back. */
@@ -324,6 +283,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
         step: this.name,
         mounts,
         runtime: this.profile(this.config.env).runtime,
+        samples: ctx.samples,
       };
       const workplace = await agentWorkplace(
         this.environments,
@@ -359,23 +319,10 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       await ctx.write(ARTIFACTS.rebaseConflict, 'review\n');
       return null;
     }
-    try {
-      await this.environments.check({
-        run: ctx.opened.run,
-        key,
-        step: this.name,
-        mounts,
-        runtime: this.profile(this.config.env).runtime,
-      });
-    } catch (error) {
-      if (error instanceof RequiredCheckFailed) {
-        // Git conflicts are resolved. Retry the normal implementation flow with the saved check output.
-        await ctx.write(ARTIFACTS.rebaseConflict, 'review\n');
-      }
-      throw error;
-    }
     await this.publisher.publishRebased(key, branch, outcome.leases);
-    await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review');
+    // The rebased code is checked again before it is reviewed, when the run has the checks phase.
+    const next = (await this.flows.activePhases(ctx.opened.run.id)).includes('checks') ? 'checks' : 'code-review';
+    await this.flows.noteFlow(key, next === 'checks' ? ['checks', 'code-review', 'ci'] : ['code-review', 'ci'], next);
     const existing = (await ctx.reread(ARTIFACTS.implementation)) ?? '';
     if (!existing.trim()) {
       throw new SwarmloopError('implementation is missing');
@@ -383,7 +330,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const body = existing.endsWith('\n') ? existing : `${existing}\n`;
     const status = await worktreeStatus(mounts);
     return {
-      route: { to: 'jump', step: 'code-review' },
+      route: { to: 'jump', step: next },
       summary: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
       outputs: [{ artifact: ARTIFACTS.implementation, value: body }],
       handoff: '- resolved the rebase\n',

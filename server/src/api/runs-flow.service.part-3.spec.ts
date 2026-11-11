@@ -34,13 +34,13 @@ describe('runs api', () => {
       await visits.finishVisit(run, {
         ...visit('prepare', 'done'),
         durationMs: 5_000,
-        samples: [{ sampledAt: new Date().toISOString(), cpuPercent: 12, rssBytes: 1024 }],
+        samples: [{ sampledAt: new Date().toISOString(), cpuPercent: 12, rssBytes: 1024, source: 'agent' }],
       });
       hub.log({
         key: 'proj-clock',
         step: 'research',
         body: 'live\n',
-        samples: [{ at: new Date().toISOString(), cpu: 80, memory: 4096 }],
+        samples: [{ at: new Date().toISOString(), cpu: 80, memory: 4096, source: 'agent' }],
       });
       const flow = await app.get(RunQueriesService).flow('proj-clock');
       expect(flow.stepStartedAt).toBe(started);
@@ -55,7 +55,7 @@ describe('runs api', () => {
       const later = await app.get(RunQueriesService).flow('proj-clock');
       expect(later.metrics.closedStarts).toEqual([started]);
       expect(later.metrics.durationMs).toBe(5_004);
-      await flows.noteFlow('proj-wait', ['requirements'], null);
+      await flows.noteFlow('proj-wait', ['planning'], null);
       const waiting = await runs.findRun('proj-wait');
       expect(waiting?.status).toBe('waiting');
       expect(waiting?.stepStartedAt).toBeNull();

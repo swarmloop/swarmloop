@@ -58,6 +58,7 @@
   "loopEvents": [],
   "reads": {
     "branch": [],
+    "checks": [],
     "code-review": [],
     "commit": [],
     "implement": [],

@@ -119,10 +119,10 @@ void describe('latestPhaseLabels', () => {
   void it('uses the last launch in phase order and keeps unknown ids after the five', () => {
     assert.deepEqual(
       latestPhaseLabels([
-        { phases: ['requirements', 'code-review'] },
-        { phases: ['ci', 'merge-request', 'requirements', 'custom', 'brainstorm', 'custom'] },
+        { phases: ['planning', 'code-review'] },
+        { phases: ['ci', 'merge-request', 'planning', 'custom', 'implementation', 'custom'] },
       ]),
-      ['requirements', 'planning', 'ci', 'custom'],
+      ['planning', 'implementation', 'ci', 'custom'],
     );
   });
 });
@@ -130,24 +130,20 @@ void describe('latestPhaseLabels', () => {
 void describe('replaySelection', () => {
   void it('locks the clicked phase and earlier phases the original flow included', () => {
     const choice = replaySelection([...PHASES], [...PHASES], 'code-review');
-    assert.deepEqual(choice.locked, ['requirements', 'brainstorm', 'implementation', 'code-review']);
+    assert.deepEqual(choice.locked, ['planning', 'implementation', 'checks', 'code-review']);
     assert.deepEqual(choice.selected, [...PHASES]);
   });
 
   void it('leaves later phases editable and does not insert phases the original skipped', () => {
-    const original = ['requirements', 'code-review'];
+    const original = ['planning', 'code-review'];
     const choice = replaySelection(original, original, 'code-review');
-    assert.deepEqual(choice.locked, ['requirements', 'brainstorm', 'implementation', 'code-review']);
-    assert.deepEqual(choice.selected, ['requirements', 'code-review']);
+    assert.deepEqual(choice.locked, ['planning', 'implementation', 'checks', 'code-review']);
+    assert.deepEqual(choice.selected, ['planning', 'code-review']);
   });
 
   void it('keeps phases after the click changeable', () => {
-    const choice = replaySelection(
-      [...PHASES],
-      ['requirements', 'brainstorm', 'implementation', 'code-review'],
-      'code-review',
-    );
-    assert.deepEqual(choice.selected, ['requirements', 'brainstorm', 'implementation', 'code-review']);
+    const choice = replaySelection([...PHASES], ['planning', 'implementation', 'checks', 'code-review'], 'code-review');
+    assert.deepEqual(choice.selected, ['planning', 'implementation', 'checks', 'code-review']);
     assert.equal(choice.locked.includes('ci'), false);
   });
 });
@@ -171,5 +167,22 @@ void describe('withReport', () => {
     ]);
     const both = [...reviewers, { name: 'code-review', status: 'idle', current: false, attempts: 3 }];
     assert.equal(withReport(both), both);
+  });
+});
+
+void describe('the phase names', () => {
+  void it('are exactly planning, implementation, checks, code-review and ci, each with a label and its steps', () => {
+    assert.deepEqual([...PHASES], ['planning', 'implementation', 'checks', 'code-review', 'ci']);
+    assert.deepEqual(latestPhaseLabels([{ phases: [...PHASES] }]), [
+      'planning',
+      'implementation',
+      'checks',
+      'code review',
+      'ci',
+    ]);
+    assert.equal(phaseOf('checks'), 'checks');
+    assert.equal(phaseOf('requirements'), 'planning');
+    assert.equal(phaseOf('plan-improve'), 'planning');
+    assert.equal(phaseOf('implement-improve'), 'implementation');
   });
 });

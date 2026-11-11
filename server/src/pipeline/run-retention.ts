@@ -4,6 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { isOutputFileOf } from '../core/attempt-output';
+import { isCheckOutputOf } from '../core/check-output';
 import type { RunEntity } from '../history/entities';
 import { removeTreeAsync, root } from '../history/run-paths';
 import { RunRepository } from '../history/run.repository';
@@ -88,7 +89,7 @@ export class RunRetention {
     await removeTreeAsync(join(base, 'data', 'agent-state', run.key));
     const data = join(base, 'data');
     for (const name of await entries(data)) {
-      if (isOutputFileOf(name, run.key)) {
+      if (isOutputFileOf(name, run.key) || isCheckOutputOf(name, run.key)) {
         await removeTreeAsync(join(data, name));
       }
     }

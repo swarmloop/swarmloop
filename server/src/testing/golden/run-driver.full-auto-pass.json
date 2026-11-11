@@ -67,6 +67,14 @@
     },
     {
       "kind": "attempt.started",
+      "step": "checks"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "checks"
+    },
+    {
+      "kind": "attempt.started",
       "step": "code-review"
     },
     {
@@ -102,6 +110,7 @@
   "loopEvents": [],
   "reads": {
     "branch": ["requirements"],
+    "checks": ["requirements"],
     "code-review": ["requirements"],
     "commit": ["requirements"],
     "implement": ["requirements"],
@@ -245,6 +254,21 @@
       "resumed": false,
       "status": "done",
       "step": "implement-improve",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    },
+    {
+      "documents": [],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "done",
+      "step": "checks",
       "tokensIn": 0,
       "tokensOut": 0,
       "usd": 0

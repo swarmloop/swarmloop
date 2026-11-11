@@ -38,7 +38,7 @@ describe('runs api', () => {
       );
       await writeFile(join(root, 'data', 'proj-26-code-review-performance-launches.txt'), '1\n1\n');
       const chips =
-        (await app.get(RunQueriesService).flow('proj-26')).phases.find((phase) => phase.phase === 'code review')
+        (await app.get(RunQueriesService).flow('proj-26')).phases.find((phase) => phase.phase === 'code-review')
           ?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review-performance')?.attempts).toBe(2);
       const performance = await app.get(RunQueriesService).step('proj-26', 'code-review-performance');
@@ -168,7 +168,7 @@ describe('runs api', () => {
       await writeFile(file('security'), 'starting\n');
       const runs = app.get(RunQueriesService);
       const chips = async () =>
-        (await runs.flow('proj-round')).phases.find((phase) => phase.phase === 'code review')?.steps ?? [];
+        (await runs.flow('proj-round')).phases.find((phase) => phase.phase === 'code-review')?.steps ?? [];
       const running = await chips();
       const at = (steps: { name: string; status: string; attempts: number }[], name: string) =>
         steps.find((step) => step.name === name);
@@ -275,7 +275,7 @@ describe('runs api', () => {
       );
       await save(app.get(RunRepository), 'proj-23', 'code-review', 'failed');
       const chips =
-        (await app.get(RunQueriesService).flow('proj-23')).phases.find((phase) => phase.phase === 'code review')
+        (await app.get(RunQueriesService).flow('proj-23')).phases.find((phase) => phase.phase === 'code-review')
           ?.steps ?? [];
       expect(chips.find((step) => step.name === 'code-review-quality')?.status).toBe('waiting');
     } finally {

@@ -13,7 +13,7 @@ describe('closeStep', () => {
     const result = await closeStep({
       runs: { saveRun, notify } as never,
       visits: { finalize, finishVisit } as never,
-      flows: { activePhases: jest.fn().mockResolvedValue(['requirements']) } as never,
+      flows: { activePhases: jest.fn().mockResolvedValue(['planning']) } as never,
       root: '/tmp',
       clock: {} as never,
       run,

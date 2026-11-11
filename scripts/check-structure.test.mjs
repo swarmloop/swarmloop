@@ -181,3 +181,38 @@ test('forbidOutside reports code that writes a log document and lets a spec and 
   assert.match(violations[0], /^server\/src\/steps\/shared\/model-visit\.ts:1:/);
   assert.match(violations[1], /^server\/src\/steps\/shared\/limit-failover\.ts:1:/);
 });
+
+test('forbidOutside lets only the checks step call the server checks, and a spec keep a mock of it', () => {
+  const files = {
+    'server/src/steps/checks/checks.step.ts': 'await this.environments.check(place);\n',
+    'server/src/steps/implement/implement.step.ts': 'await this.environments.check(place);\n',
+    'server/src/steps/implement/implement-improve.step.ts': 'this.environments.check(place)\n',
+    'server/src/steps/implement/implement.step.spec.ts':
+      "jest.spyOn(environments, 'check');\nenvironments.check(place);\n",
+    'server/src/environment/project-environments.ts': 'environments.check(input);\n',
+  };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.equal(violations.length, 2);
+  assert.match(violations[0], /^server\/src\/steps\/implement\/implement\.step\.ts:1:/);
+  assert.match(violations[1], /^server\/src\/steps\/implement\/implement-improve\.step\.ts:1:/);
+});
+
+test('forbidOutside keeps the old phase name in the migration and nowhere else', () => {
+  const old = ['brain', 'storm'].join('');
+  const files = {
+    'server/src/history/migrations/1795000000000-checks-step.ts': `name === '${old}'\n`,
+    'server/src/history/migrations/checks-step.spec.ts': `['${old}']\n`,
+    'server/src/contract/steps.ts': `${old}: ['prepare'],\n`,
+    'dashboard/features/run/phases.ts': `${old}: 'planning',\n`,
+  };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.equal(violations.length, 2);
+  assert.match(violations[0], /^server\/src\/contract\/steps\.ts:1:/);
+  assert.match(violations[1], /^dashboard\/features\/run\/phases\.ts:1:/);
+});

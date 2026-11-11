@@ -353,6 +353,7 @@ describe('a running agent step with events', () => {
         })}
         logs={logs}
         document=""
+        now={0}
       />
     );
   }

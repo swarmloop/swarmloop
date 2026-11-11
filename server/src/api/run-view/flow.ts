@@ -33,6 +33,7 @@ export function metrics(
     attemptsReview: run.attemptsReview,
     attemptsQa: run.attemptsQa,
     attemptsPipeline: run.attemptsPipeline,
+    attemptsChecks: run.attemptsChecks,
     cpuPeak: Math.max(
       stats.reduce((peak, stat) => Math.max(peak, stat.cpuPeak), 0),
       peaks.cpuPeak,
@@ -70,11 +71,15 @@ export function phases(
         attempts: chipAttempts(name, run, stats, documents, root, log, round),
       };
     });
-    if (phase.phase !== 'code review') {
+    if (phase.phase !== 'code-review') {
       return { phase: phase.phase, steps };
     }
     return { phase: phase.phase, steps: [...steps, reportChip(run, stats, documents, root)] };
   });
+}
+
+function hasReturned(run: RunEntity): boolean {
+  return run.attemptsReview > 0 || run.attemptsPipeline > 0 || run.attemptsChecks > 0;
 }
 
 export function returns(run: RunEntity): FlowView['returns'] {
@@ -84,6 +89,9 @@ export function returns(run: RunEntity): FlowView['returns'] {
   }
   if (run.attemptsPipeline > 0) {
     edges.push({ counter: 'pipeline', count: run.attemptsPipeline, from: 'pipeline', to: 'implement' });
+  }
+  if (run.attemptsChecks > 0) {
+    edges.push({ counter: 'checks', count: run.attemptsChecks, from: 'checks', to: 'implement' });
   }
   return edges;
 }
@@ -115,10 +123,7 @@ export function stateView(
   const { state, reason } = deriveState(run, {
     ...facts,
     needsAnswers: open.length > 0,
-    returned:
-      run.status === 'waiting' &&
-      run.currentStep === 'implement' &&
-      (run.attemptsReview > 0 || run.attemptsPipeline > 0),
+    returned: run.status === 'waiting' && run.currentStep === 'implement' && hasReturned(run),
     blockCode: run.status === 'blocked' ? blockCode(run.currentStep, latest(documents, 'error')) : undefined,
   });
   return { state, reason, actions: actionsFor(state, reason?.code ?? null) };
@@ -200,7 +205,7 @@ export function sentence(
     return 'The next continuation prepares the worktrees.';
   }
   if (run.currentStep === 'implement' && run.status === 'waiting') {
-    const returned = run.attemptsReview > 0 || run.attemptsPipeline > 0;
+    const returned = hasReturned(run);
     return returned
       ? 'The next continuation returns to implementation.'
       : 'The next continuation implements the approved plan.';

@@ -7,6 +7,7 @@ import type { RunEntity } from '../history/entities';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { readEnvironmentConfig } from './environment-config';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { CheckCommandRepository } from '../history/check-command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { LiveHub } from '../live/live.hub';
 import { SandboxService } from '../sandbox/sandbox.service';
@@ -19,9 +20,10 @@ export class EnvironmentService extends ProjectEnvironments {
     clock: Clock,
     sandbox: SandboxService,
     private readonly repository: DocumentRepository,
+    commands: CheckCommandRepository,
     @Optional() live?: LiveHub,
   ) {
-    super({ env: () => config.env, clock, sandbox, documents: repository, live });
+    super({ env: () => config.env, clock, sandbox, documents: repository, commands, live });
   }
 
   /** An explicit rebase adopts the new trusted base environment, never the agent's edited manifest. */

@@ -3,6 +3,8 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { checkOutputPath } from '../core/check-output';
+import { CheckCommandRepository } from '../history/check-command.repository';
 import type { RunEntity } from '../history/entities';
 import { repositoryVisit } from '../history/repository.spec-helpers';
 import { RunRepository } from '../history/run.repository';
@@ -141,6 +143,57 @@ describe('step log api', () => {
       stat.attemptId = 'att-1';
       await app.get(VisitRepository).saveStat(stat);
       expect(await queries.stepLog('proj-7', 'implement', 'att-1', { tail: '1' })).toBe('old two\n');
+    });
+  });
+
+  describe('the log of a check command', () => {
+    async function checksRun(app: Awaited<ReturnType<typeof boot>>, root: string, key: string, body: string) {
+      const run = await save(app.get(RunRepository), key, 'checks', 'waiting');
+      await app.get(CheckCommandRepository).add({
+        runId: run.id,
+        attemptId: 'att-1',
+        repo: 'billing-api',
+        command: 'npm test',
+        commandIndex: 0,
+      });
+      await writeFile(checkOutputPath(root, key, 'checks', 'att-1', 0), body);
+    }
+
+    it('reads the full output of a command with fifty thousand lines through the step log route', async () => {
+      await withApp(async (queries, app, root) => {
+        const body = `${Array.from({ length: 50_000 }, (_, line) => `line ${line}`).join('\n')}\n`;
+        await checksRun(app, root, 'proj-8', body);
+        expect(await queries.stepLog('proj-8', 'checks', 'att-1', { command: '0' })).toBe(body);
+        expect(await queries.stepLog('proj-8', 'checks', null, { command: '0', tail: '2' })).toBe(
+          'line 49998\nline 49999\n',
+        );
+      });
+    });
+
+    it('refuses a command that is not in the history of the run', async () => {
+      await withApp(async (queries, app, root) => {
+        await checksRun(app, root, 'proj-9', 'one\n');
+        for (const command of ['1', '-1', '../0', 'x']) {
+          await expect(queries.stepLog('proj-9', 'checks', 'att-1', { command })).rejects.toBeInstanceOf(
+            NotFoundException,
+          );
+        }
+        await expect(queries.stepLog('proj-9', 'checks', 'att-2', { command: '0' })).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+      });
+    });
+
+    it('answers 404 for a command that has not written yet', async () => {
+      await withApp(async (queries, app) => {
+        const run = await save(app.get(RunRepository), 'proj-10', 'checks', 'running');
+        await app
+          .get(CheckCommandRepository)
+          .add({ runId: run.id, attemptId: 'att-1', repo: 'billing-api', command: 'npm test', commandIndex: 0 });
+        await expect(queries.stepLog('proj-10', 'checks', 'att-1', { command: '0' })).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+      });
     });
   });
 });

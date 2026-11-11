@@ -45,18 +45,18 @@ describe('RunDialogs', () => {
 
   it('starts the replay with the pending prompt and phases on Stop and start', async () => {
     const user = userEvent.setup();
-    const props = dialogs({ replay: 'implement', pending: { prompt: 'Try again', phases: ['requirements'] } });
+    const props = dialogs({ replay: 'implement', pending: { prompt: 'Try again', phases: ['planning'] } });
 
     await user.click(screen.getByRole('button', { name: 'Stop and start' }));
 
-    expect(props.startReplay).toHaveBeenCalledWith('implement', 'Try again', ['requirements']);
+    expect(props.startReplay).toHaveBeenCalledWith('implement', 'Try again', ['planning']);
   });
 
   it('sends a failed replay to setError', async () => {
     const user = userEvent.setup();
     const props = dialogs({
       replay: 'implement',
-      pending: { prompt: 'Try again', phases: ['requirements'] },
+      pending: { prompt: 'Try again', phases: ['planning'] },
       startReplay: vi.fn().mockRejectedValue(new Error('replay refused')),
     });
 

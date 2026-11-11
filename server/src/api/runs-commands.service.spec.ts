@@ -164,15 +164,15 @@ describe('runs api', () => {
       await runs.start({
         key: 'proj-12',
         prompt: 'Review the checkout',
-        phases: ['requirements', 'code-review'],
+        phases: ['planning', 'code-review'],
         projects: ['demo'],
       });
-      await runs.replay('proj-12', 'code-review', 'Skip the pipeline', ['requirements', 'code-review', 'ci']);
+      await runs.replay('proj-12', 'code-review', 'Skip the pipeline', ['planning', 'code-review', 'ci']);
       const run = await runRepository.findRun('proj-12');
       const rows = await flows.listFlows(run?.id ?? 0);
       expect(rows.map((row) => ({ phases: JSON.parse(row.phases) as string[], fromStep: row.fromStep }))).toEqual([
-        { phases: ['requirements', 'code-review'], fromStep: null },
-        { phases: ['requirements', 'code-review', 'ci'], fromStep: 'code-review' },
+        { phases: ['planning', 'code-review'], fromStep: null },
+        { phases: ['planning', 'code-review', 'ci'], fromStep: 'code-review' },
       ]);
       await expect(runs.start({ key: 'proj-13', prompt: 'Nope', phases: ['nope'] })).rejects.toBeInstanceOf(
         BadRequestException,
@@ -342,7 +342,7 @@ describe('runs api', () => {
       const prompt = 'https://example.atlassian.net/browse/PROJ-12\nbranch: feature/PROJ-12-add-export';
       const started = await app.get(RunCommandsService).start({
         prompt,
-        phases: ['requirements', 'code-review'],
+        phases: ['planning', 'code-review'],
         projects: ['billing-api'],
       });
       expect(httpStatus(started)).toBe(202);
@@ -350,7 +350,7 @@ describe('runs api', () => {
       expect(pipeline.startDetached).toHaveBeenCalledWith('PROJ-12--4', {
         prompt,
         projects: ['billing-api'],
-        phases: ['requirements', 'code-review'],
+        phases: ['planning', 'code-review'],
       });
       expect((await runs.findRun('PROJ-12'))?.prompt).toBe('old brief\n');
       expect((await runs.findRun('PROJ-12--3'))?.status).toBe('running');
@@ -368,7 +368,7 @@ describe('runs api', () => {
       const prompt = 'https://example.atlassian.net/browse/PROJ-12\nbranch: feature/PROJ-12-add-export';
       const started = await app.get(RunCommandsService).start({
         prompt,
-        phases: ['requirements', 'code-review'],
+        phases: ['planning', 'code-review'],
         projects: ['billing-api'],
       });
       expect(httpStatus(started)).toBe(202);
@@ -376,7 +376,7 @@ describe('runs api', () => {
       expect(pipeline.startDetached).toHaveBeenCalledWith('PROJ-12--2', {
         prompt,
         projects: ['billing-api'],
-        phases: ['requirements', 'code-review'],
+        phases: ['planning', 'code-review'],
       });
       expect((await app.get(RunRepository).findRun('PROJ-12'))?.status).toBe('done');
     } finally {

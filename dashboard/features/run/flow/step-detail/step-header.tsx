@@ -18,6 +18,7 @@ import { stepLabel } from '../../phases';
 import { problemId } from '../../transcript/problem-card';
 import type { StepMetricKind } from '../../step-metrics';
 import { stepMetrics } from '../../step-metrics';
+import type { commandSummary } from '../../check-commands';
 import { shownStatus } from '../../step-view';
 import type { StepDescriptor, StepView } from '@contract/api';
 
@@ -57,6 +58,7 @@ export function StepHeader({
   shownDuration,
   shownAttempt,
   problemId: problem,
+  commands,
 }: {
   step: string;
   runStatus?: string;
@@ -74,6 +76,8 @@ export function StepHeader({
   shownAttempt: number;
   /** The `eventId` of the first problem the step recorded. */
   problemId: string | null;
+  /** The checks step: how many commands passed, and which one took longest. */
+  commands?: ReturnType<typeof commandSummary>;
 }): ReactElement {
   return (
     <>
@@ -119,6 +123,12 @@ export function StepHeader({
       <Typography sx={{ mt: 0.5, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'text.secondary' }}>
         {describe(view.descriptor)}
       </Typography>
+      {commands ? (
+        <Typography sx={{ mt: 0.5, fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+          {commands.passed}/{commands.total} passed
+          {commands.slowest ? ` · slowest: ${commands.slowest.command} ${duration(commands.slowest.ms)}` : ''}
+        </Typography>
+      ) : null}
       {problem ? (
         <Link href={`#${problemId(problem)}`} underline="always" sx={{ fontSize: 13 }}>
           Error: go to the problem

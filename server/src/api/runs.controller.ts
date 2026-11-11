@@ -90,8 +90,9 @@ export class RunsController {
     @Query('attempt') attempt?: string,
     @Query('tail') tail?: string,
     @Query('from') from?: string,
+    @Query('command') command?: string,
   ): Promise<string> {
-    return this.queries.stepLog(key, step, attempt || null, { tail, from });
+    return this.queries.stepLog(key, step, attempt || null, { tail, from, command });
   }
 
   @Get('runs/:key/steps/:step')

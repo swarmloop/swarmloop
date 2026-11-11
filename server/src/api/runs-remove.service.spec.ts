@@ -29,7 +29,7 @@ describe('runs api', () => {
       const now = new Date().toISOString();
       await visits.finishVisit(run, {
         ...visit('plan', 'done'),
-        samples: [{ sampledAt: now, cpuPercent: 1, rssBytes: 2 }],
+        samples: [{ sampledAt: now, cpuPercent: 1, rssBytes: 2, source: 'agent' }],
         exchange: {
           model: 'grok',
           startedAt: now,
@@ -46,7 +46,7 @@ describe('runs api', () => {
         ],
       });
       await documents.putDocument(run, 'requirements', 'body\n');
-      await flows.noteFlow('PROJ-20', ['requirements'], null);
+      await flows.noteFlow('PROJ-20', ['planning'], null);
       await events.recordLoop(run, 'review', 1, 'again');
       await checkouts.savePaste('PROJ-20', 'http://paste', 'pasted');
       await checkouts.saveCheckout('demo', join(root, 'demo'));

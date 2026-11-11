@@ -67,27 +67,11 @@
     },
     {
       "kind": "attempt.started",
-      "step": "code-review"
+      "step": "checks"
     },
     {
       "kind": "attempt.finished",
-      "step": "code-review"
-    },
-    {
-      "kind": "attempt.started",
-      "step": "implement"
-    },
-    {
-      "kind": "attempt.finished",
-      "step": "implement"
-    },
-    {
-      "kind": "attempt.started",
-      "step": "implement-improve"
-    },
-    {
-      "kind": "attempt.finished",
-      "step": "implement-improve"
+      "step": "checks"
     },
     {
       "kind": "attempt.started",
@@ -112,6 +96,46 @@
     {
       "kind": "attempt.finished",
       "step": "implement-improve"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "checks"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "checks"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "implement"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "attempt.started",
+      "step": "checks"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "checks"
     },
     {
       "kind": "attempt.started",
@@ -142,6 +166,7 @@
   "loopEvents": [],
   "reads": {
     "branch": ["requirements"],
+    "checks": ["requirements"],
     "code-review": ["requirements"],
     "commit": [],
     "implement": ["requirements"],
@@ -163,7 +188,7 @@
     "attemptsPipeline": 0,
     "attemptsQa": 0,
     "attemptsReview": 0,
-    "currentStep": "code-review",
+    "currentStep": "checks",
     "runtime": "cursor",
     "spentUsd": 0,
     "status": "waiting"
@@ -298,6 +323,21 @@
       "mode": null,
       "model": null,
       "resumed": false,
+      "status": "done",
+      "step": "checks",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    },
+    {
+      "documents": [],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
       "status": "waiting",
       "step": "code-review",
       "tokensIn": 0,
@@ -343,6 +383,21 @@
       "mode": null,
       "model": null,
       "resumed": false,
+      "status": "done",
+      "step": "checks",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    },
+    {
+      "documents": [],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
       "status": "waiting",
       "step": "code-review",
       "tokensIn": 0,
@@ -375,6 +430,21 @@
       "resumed": false,
       "status": "done",
       "step": "implement-improve",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    },
+    {
+      "documents": [],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "done",
+      "step": "checks",
       "tokensIn": 0,
       "tokensOut": 0,
       "usd": 0

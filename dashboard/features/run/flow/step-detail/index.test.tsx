@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentProps, type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -242,6 +242,164 @@ describe('StepDetail', () => {
 
       expect(await screen.findByText('first visit line')).toBeInTheDocument();
       expect(getRunLog).toHaveBeenLastCalledWith('run-1', 'implement', 'att-1', { tail: 2000 });
+    });
+  });
+
+  describe('the resource chart of a step window', () => {
+    it('shows the chart of the containers the visit started', async () => {
+      vi.mocked(getStep).mockResolvedValue(
+        stepView({
+          visits: [
+            visitView({ samples: [{ at: '2026-01-01T00:00:00.000Z', cpu: 12, memory: 1024, source: 'agent' }] }),
+          ],
+        }),
+      );
+      detail();
+
+      expect(await screen.findByRole('img', { name: 'CPU and memory' })).toBeInTheDocument();
+    });
+
+    it('says so when the step started no container', async () => {
+      vi.mocked(getStep).mockResolvedValue(
+        stepView({
+          step: 'branch',
+          visits: [visitView({ samples: [] })],
+          descriptor: { name: 'branch', kind: 'server' },
+        }),
+      );
+      detail({ step: 'branch' });
+
+      expect(await screen.findByText('This step started no container.')).toBeInTheDocument();
+      expect(screen.queryByRole('img', { name: 'CPU and memory' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('the checks window', () => {
+    const commands = [
+      {
+        attempt: 'att-1',
+        index: 0,
+        repo: 'api',
+        command: 'npm test',
+        status: 'passed',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        endedAt: '2026-01-01T00:00:05.000Z',
+        exitCode: 0,
+      },
+      {
+        attempt: 'att-1',
+        index: 1,
+        repo: 'api',
+        command: 'npm run lint',
+        status: 'failed',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        endedAt: '2026-01-01T00:02:03.000Z',
+        exitCode: 2,
+      },
+      {
+        attempt: 'att-1',
+        index: 2,
+        repo: 'web',
+        command: 'npm run build',
+        status: 'running',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        endedAt: null,
+        exitCode: null,
+      },
+      {
+        attempt: 'att-1',
+        index: 3,
+        repo: 'web',
+        command: 'npm run e2e',
+        status: 'waiting',
+        startedAt: null,
+        endedAt: null,
+        exitCode: null,
+      },
+      {
+        attempt: 'att-1',
+        index: 4,
+        repo: 'web',
+        command: 'npm run docs',
+        status: 'skipped',
+        startedAt: null,
+        endedAt: null,
+        exitCode: 0,
+      },
+      {
+        attempt: 'att-0',
+        index: 0,
+        repo: 'api',
+        command: 'npm test',
+        status: 'failed',
+        startedAt: null,
+        endedAt: null,
+        exitCode: 1,
+      },
+    ] as const;
+
+    beforeEach(() => {
+      vi.mocked(getStep).mockResolvedValue(
+        stepView({
+          step: 'checks',
+          visits: [visitView({ attemptId: 'att-1', status: 'running' })],
+          descriptor: { name: 'checks', kind: 'server' },
+          commands: commands.map((command) => ({ ...command })),
+        }),
+      );
+    });
+
+    it('lists the commands of the visit with their status, duration and exit code', async () => {
+      detail({ step: 'checks' });
+
+      const table = await screen.findByRole('table', { name: 'Check commands' });
+      const rows = within(table).getAllByRole('row').slice(1);
+      expect(rows).toHaveLength(5);
+      expect(rows.map((row) => within(row).getAllByRole('cell')[2]?.textContent)).toEqual([
+        'passed',
+        'failed',
+        'running',
+        'waiting',
+        'skipped',
+      ]);
+      expect(within(rows[1]).getAllByRole('cell')[3]).toHaveTextContent('2m 3s');
+      expect(within(rows[1]).getAllByRole('cell')[4]).toHaveTextContent('2');
+    });
+
+    it('shows passed/total and the slowest command in the header', async () => {
+      detail({ step: 'checks' });
+
+      expect(await screen.findByText(/^2\/5 passed · slowest: npm run lint 2m 3s$/)).toBeInTheDocument();
+    });
+
+    it('opens the full output of a finished command from its stored file', async () => {
+      vi.mocked(getRunLog).mockResolvedValue('$ npm run lint\nerror: no-unused-vars\nexit 2\n');
+      const user = userEvent.setup();
+      detail({ step: 'checks' });
+
+      await user.click(await screen.findByRole('button', { name: 'Show output of npm run lint' }));
+
+      expect(await screen.findByLabelText('Output of npm run lint')).toHaveTextContent('error: no-unused-vars');
+      expect(getRunLog).toHaveBeenCalledWith('run-1', 'checks', 'att-1', { command: 1 });
+    });
+
+    it('streams the output of a running command as it arrives', async () => {
+      const user = userEvent.setup();
+      detail({ step: 'checks' });
+      await user.click(await screen.findByRole('button', { name: 'Show output of npm run build' }));
+
+      act(() =>
+        receive('log', {
+          key: 'run-1',
+          step: 'checks',
+          command: 2,
+          body: '$ npm run build\ncompiling 12 files\n',
+          samples: [],
+        }),
+      );
+
+      expect(await screen.findByLabelText('Output of npm run build')).toHaveTextContent('compiling 12 files');
+      expect(getRunLog).not.toHaveBeenCalled();
     });
   });
 });

@@ -6,32 +6,32 @@ import { PhasePicker } from './phase-picker';
 
 function picker(picked: PhaseName[]) {
   const setPicked = vi.fn();
-  render(<PhasePicker picked={picked} frozen={['requirements']} setPicked={setPicked} />);
+  render(<PhasePicker picked={picked} frozen={['planning']} setPicked={setPicked} />);
   return setPicked;
 }
 
 describe('PhasePicker', () => {
   it('shows each phase under its label', () => {
-    picker(['requirements']);
+    picker(['planning']);
 
-    for (const label of ['requirements', 'planning', 'implementation', 'code review', 'ci']) {
+    for (const label of ['planning', 'implementation', 'checks', 'code review', 'ci']) {
       expect(screen.getByRole('checkbox', { name: label })).toBeInTheDocument();
     }
   });
 
   it('keeps requirements checked and disabled', () => {
-    picker(['requirements']);
+    picker(['planning']);
 
-    const requirements = screen.getByRole('checkbox', { name: 'requirements' });
-    expect(requirements).toBeChecked();
-    expect(requirements).toBeDisabled();
+    const planning = screen.getByRole('checkbox', { name: 'planning' });
+    expect(planning).toBeChecked();
+    expect(planning).toBeDisabled();
   });
 
   it('calls setPicked when another phase is toggled', async () => {
     const user = userEvent.setup();
-    const setPicked = picker(['requirements']);
+    const setPicked = picker(['planning']);
 
-    await user.click(screen.getByRole('checkbox', { name: 'planning' }));
+    await user.click(screen.getByRole('checkbox', { name: 'checks' }));
 
     expect(setPicked).toHaveBeenCalledWith(expect.any(Function));
   });

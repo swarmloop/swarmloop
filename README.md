@@ -153,7 +153,7 @@ How it runs:
 - The image must be Debian or Ubuntu based and have `bash`, because the Claude and Cursor CLIs need glibc. `scripts/agent-env-probe.sh <image>` tells you whether it works. If it does not, the step stops and says so.
 - `setup` runs before implementation, in the project image, with the package registries and no model key. Successful setup is reused. A failure stops the step with its exit code and last lines; Resume retries setup.
 - `implement` and `implement-improve` run in the image, with the agent CLI mounted read-only from its own image. Everything else of the sandbox stays: no root, no capabilities, read-only system, no Docker, the network only through the egress proxy, for the model and the package registries, no secret but the model key. The agent may run any command in its worktree: tests, lint, type checks, and the package manager, so it can add or upgrade a dependency. The lockfile it writes is committed with the code.
-- The agent runs `checks` while working. Before `implement`, `implement-improve`, or rebase resolution can finish, the server independently runs every declared check in each repository's project image, without network or model credentials. The first failure stops the step and records feedback for Resume. Checks must be executable shell commands, without placeholders. Without declared checks there is no local completion gate; CI remains the final judge.
+- The agent runs `checks` while working. After `implement-improve`, the `checks` step runs every declared check in each repository's project image, without network or model credentials. It has no agent. Up to `CHECKS_PARALLEL` commands of a run run at once, and all of them run: a failure does not stop the others. When any command failed, one return lists every failed command with its repository, exit code and the last lines of its output, and the run goes back to `implement`, as it does after a review. The full output of every command is kept under `data/`, and its CPU and memory are sampled like the agent's. A run without the checks phase goes on without them. Checks must be executable shell commands, without placeholders. Without declared checks there is no local completion gate; CI remains the final judge.
 - Planning and read-only review limits belong to those stages; they are not implementation requirements. Implementation and Resume receive the current environment's execution rules. Without a project environment, the agent keeps the local test restriction. Explicit task restrictions are preserved, and conflicts with required checks must be reported.
 - Project containers receive a temporary, read-only copy of Git metadata, so tools can read tracked files and diffs even in linked worktrees. The original Git state, credentials and host configuration are not mounted.
 - The reviewers and CI come after it, as before. CI stays the final judge.
@@ -225,16 +225,17 @@ A prompt without a ticket number never calls Jira. Jira is the tracker that ship
 
 ```mermaid
 flowchart LR
-  R["📝 Requirements"] --> P["🧭 Planning<br/>prepare · research<br/>plan · plan-improve"]
-  P --> I["🔨 Implementation<br/>branch · implement<br/>implement-improve"]
-  I --> C{"🔍 Code review<br/>5 reviewers + report"}
+  P["🧭 Planning<br/>requirements · prepare · research<br/>plan · plan-improve"] --> I["🔨 Implementation<br/>branch · implement<br/>implement-improve"]
+  I --> K{"✔ Checks<br/>every command of .swarmloop.json"}
+  K -- pass --> C{"🔍 Code review<br/>5 reviewers + report"}
+  K -. return .-> I
   C -- ok --> D["🚢 CI<br/>commit · merge-request<br/>pipeline"]
   C -. return .-> I
   D -. red .-> I
   D -- green --> E(("✅ done"))
 ```
 
-The panel shows the same five phases. **New run** lets you switch phases off. Requirements always runs.
+The panel shows the same five phases: planning, implementation, checks, code review and CI. **New run** lets you switch phases off. Planning, which holds requirements, always runs.
 
 A person is asked where it matters:
 
@@ -281,6 +282,7 @@ When CI does not start and GitHub or GitLab confirms a merge conflict for the pu
 | `MAX_AGENT_CALLS` | Model processes per run | `100` |
 | `MAX_RETURNS` | Review returns to implementation | `10` |
 | `MAX_PIPELINE_RETURNS` | Red pipelines sent back | `6` |
+| `CHECKS_PARALLEL` | Check commands of one run that run at once | `3` |
 | `MAX_LAUNCHES` | Relaunches of a step that crashed before it decided | `3` |
 | `LIMIT_COOLDOWN_MIN` | Minutes a runtime stays out of use after a provider usage limit whose text names no reset time | `60` |
 | `STOP_GRACE_S` | Seconds a container gets to stop on Stop before it is killed | `10` |

@@ -46,6 +46,7 @@ export const ROLE_OF_STEP = {
   branch: null,
   implement: 'implement',
   'implement-improve': 'implement',
+  checks: null,
   'code-review': 'review',
   commit: null,
   'merge-request': 'plan',

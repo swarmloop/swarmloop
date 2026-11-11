@@ -6,14 +6,7 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import FormGroup from '@mui/material/FormGroup';
 import type { PhaseName } from '@contract/steps';
 import { PHASES } from '@contract/steps';
-
-const PHASE_LABEL: Record<PhaseName, string> = {
-  requirements: 'requirements',
-  brainstorm: 'planning',
-  implementation: 'implementation',
-  'code-review': 'code review',
-  ci: 'ci',
-};
+import { phaseLabel } from '../../../lib/phase-label';
 
 export function PhasePicker({
   picked,
@@ -30,11 +23,11 @@ export function PhasePicker({
         <FormControlLabel
           key={phase}
           sx={{ mr: 0 }}
-          label={PHASE_LABEL[phase]}
+          label={phaseLabel(phase)}
           control={
             <Checkbox
               size="small"
-              checked={phase === 'requirements' || picked.includes(phase)}
+              checked={phase === 'planning' || picked.includes(phase)}
               disabled={frozen.includes(phase)}
               onChange={(event) => {
                 setPicked((current) =>

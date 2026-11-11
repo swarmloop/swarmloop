@@ -73,6 +73,7 @@ export interface FlowView {
     attemptsReview: number;
     attemptsQa: number;
     attemptsPipeline: number;
+    attemptsChecks: number;
     cpuPeak: number;
     memPeak: number;
   };
@@ -111,7 +112,8 @@ export interface VisitView {
   logLines: number;
   documents: { kind: string; attempt: number; body: string; createdAt: string }[];
   exchanges: { model: string; durationMs: number; request: string; response: string }[];
-  samples: { at: string; cpu: number; memory: number }[];
+  /** `source` is `agent`, `setup`, or the index of the check command whose container was sampled. */
+  samples: { at: string; cpu: number; memory: number; source: string }[];
 }
 
 /** What a step is: its kind, and the agent profile or the reviewers when it runs models. */
@@ -132,9 +134,24 @@ export interface StepDescriptor {
   reviewers?: { name: string; model: string; mode: string }[];
 }
 
+/** One command of a checks visit. Its full output is at `GET /runs/:key/steps/checks/log?attempt=&command=<index>`. */
+export interface CheckCommandView {
+  /** The attempt id of the checks visit, as `VisitView.attemptId`. */
+  attempt: string;
+  index: number;
+  repo: string;
+  command: string;
+  status: 'waiting' | 'running' | 'passed' | 'failed' | 'skipped';
+  startedAt: string | null;
+  endedAt: string | null;
+  exitCode: number | null;
+}
+
 export interface StepView {
   step: string;
   visits: VisitView[];
+  /** The commands of every checks visit. Only the `checks` step has them. */
+  commands?: CheckCommandView[];
   checks: { name: string; decision: string | null; body: string }[];
   descriptor: StepDescriptor;
   /** The last event `seq` of the run: it changes when there are new events to read. 0 means none. */
@@ -148,7 +165,7 @@ export interface HistoryView {
   exchanges: { stepStatId: number; model: string; durationMs: number; request: string; response: string }[];
   loops: { counter: string; attempt: number; reason: string; createdAt: string }[];
   calls: { method: string; url: string; statusCode: number | null; durationMs: number; error: string | null }[];
-  samples: { stepStatId: number; at: string; cpu: number; memory: number }[];
+  samples: { stepStatId: number; at: string; cpu: number; memory: number; source: string }[];
   stats: {
     /** What `VisitView` says of a visit's log. A stored visit's attempt is where to read it. */
     attemptId: string | null;

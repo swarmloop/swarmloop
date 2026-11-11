@@ -61,7 +61,7 @@ export function repositoryVisit(): VisitDraft {
     tokensIn: 2,
     tokensOut: 3,
     usd: 0,
-    samples: [{ sampledAt: '2026-01-01T00:00:00.000Z', cpuPercent: 10, rssBytes: 100 }],
+    samples: [{ sampledAt: '2026-01-01T00:00:00.000Z', cpuPercent: 10, rssBytes: 100, source: 'agent' }],
     exchange: {
       model: 'test-model',
       startedAt: '2026-01-01T00:00:00.000Z',

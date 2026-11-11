@@ -249,7 +249,7 @@ describe('sloop', () => {
       ),
     ).toBe(true);
     expect(text(notes)).toContain('research is waiting');
-    expect(text(notes)).not.toContain('- brainstorm');
+    expect(text(notes)).not.toContain('- planning');
     expect(
       notes.some((item) => (item.params as { update?: { sessionUpdate?: string } })?.update?.sessionUpdate === 'plan'),
     ).toBe(true);
@@ -556,7 +556,7 @@ function text(notes: { params?: unknown }[]): string {
 }
 
 function flipping(): ServerApi['flow'] {
-  return flippingStep('research', 'brainstorm');
+  return flippingStep('research', 'planning');
 }
 
 function flippingStep(step: string, phase = 'implementation'): ServerApi['flow'] {
@@ -598,6 +598,7 @@ function flowView(view: FlowFixture): FlowView {
       attemptsReview: 0,
       attemptsQa: 0,
       attemptsPipeline: 0,
+      attemptsChecks: 0,
       cpuPeak: 0,
       memPeak: 0,
     },

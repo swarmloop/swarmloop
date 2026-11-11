@@ -23,15 +23,7 @@ import { EnvironmentService } from '../../environment/environment.service';
 import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
 import { implementImproveFollowUp } from './implement.prompts';
-import { RequiredCheckRepeated } from '../../environment/project-environments';
-import {
-  checkRepeatedBlock,
-  checksLine,
-  implementFacts,
-  parseImplementation,
-  reviewedImplementation,
-  withReturnNotes,
-} from './implement-record';
+import { parseImplementation, reviewedImplementation, withReturnNotes } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
@@ -115,7 +107,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const chosen = continued?.chatId ? implementImproveFollowUp(returned) : full;
     const added = await ctx.reread(ARTIFACTS.addedRepos);
     const { runtime } = this.profile(this.config.env);
-    const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime };
+    const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime, samples: ctx.samples };
     const reproject = projectFor(this.environments, place);
     const { prompt, project, allowHosts, executionRules } = await agentWorkplace(
       this.environments,
@@ -139,16 +131,6 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const text = agentResult.responseText;
     await assertUncommitted(mounts, branch, heads);
     const wrote = reviewedImplementation(text);
-    let checks: string;
-    try {
-      checks = checksLine(await ctx.activity('Server checks', () => this.environments.check(place), checksLine));
-    } catch (error) {
-      if (error instanceof RequiredCheckRepeated) {
-        return checkRepeatedBlock(ctx.opened.startedAt, this.name, error);
-      }
-      throw error;
-    }
-    await assertUncommitted(mounts, branch, heads);
     const body = wrote.trim() ? wrote : notes;
     const corrected = correctedPlan(input.requirements, text, agentResult.output ?? '');
     const summary = summaryOr(text, plainSummary(text) || '- checked the first pass\n');
@@ -160,7 +142,6 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       summary: line,
       outputs: [{ artifact: ARTIFACTS.implementation, value: body }],
       handoff: handoffBody,
-      facts: implementFacts(checks),
       visit: corrected ? { documents: [textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] } : undefined,
     };
   }
