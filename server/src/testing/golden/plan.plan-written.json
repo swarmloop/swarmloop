@@ -19,7 +19,15 @@
       "step": "plan"
     },
     {
+      "kind": "activity.started",
+      "step": "plan"
+    },
+    {
       "kind": "input.received",
+      "step": "plan"
+    },
+    {
+      "kind": "activity.finished",
       "step": "plan"
     },
     {

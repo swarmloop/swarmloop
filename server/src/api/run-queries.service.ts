@@ -168,7 +168,7 @@ export class RunQueriesService {
     const exchanges = await this.visits.listExchanges(stats.map((stat) => stat.id));
     const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
     const kinds = [...(STEP_KINDS[name] ?? []), 'error'];
-    const visits = stats.map((stat, index) => {
+    const visits: VisitView[] = stats.map((stat, index) => {
       const owned = documents.filter((document) => document.stepStatId === stat.id);
       const verdict =
         name === 'code-review'
@@ -186,6 +186,7 @@ export class RunQueriesService {
         model: stat.model,
         mode: stat.mode,
         durationMs: stat.durationMs,
+        preparedMs: stat.preparedMs,
         tokensIn: stat.tokensIn,
         tokensOut: stat.tokensOut,
         usd: stat.usd,

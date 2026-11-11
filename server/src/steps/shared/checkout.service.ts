@@ -4,7 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { root } from '../../history/run-paths';
 import { assignCodeHost, CodeHostRegistry, type CodeHostName } from '../../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { git, gitDetail } from '../../git/git';
+import { git, GIT_LIMITS, gitDetail } from '../../git/git';
 import { storedBase } from '../../git/rebase';
 import { git as quietGit } from '../../git/worktree-tree';
 import { assertRepoAllowed, CHECKOUT_NAME, resolveCheckoutPath } from '../../config/checkout-path';
@@ -76,7 +76,9 @@ export class CheckoutService {
 
   private async originOf(checkout: { name: string; path: string }): Promise<string | null> {
     try {
-      const url = (await git(['-C', checkout.path, 'remote', 'get-url', 'origin'])).trim();
+      const url = (
+        await git(['-C', checkout.path, 'remote', 'get-url', 'origin'], undefined, { timeoutMs: GIT_LIMITS.query })
+      ).trim();
       return url || null;
     } catch (error) {
       if (gitDetail(error).includes('No such remote')) {
@@ -88,7 +90,9 @@ export class CheckoutService {
 
   async assertGit(checkout: { name: string; path: string }): Promise<void> {
     try {
-      const inside = await git(['-C', checkout.path, 'rev-parse', '--is-inside-work-tree']);
+      const inside = await git(['-C', checkout.path, 'rev-parse', '--is-inside-work-tree'], undefined, {
+        timeoutMs: GIT_LIMITS.query,
+      });
       if (inside !== 'true') {
         throw new SwarmloopError(`${checkout.name} is not a git checkout`);
       }
@@ -118,7 +122,7 @@ export class CheckoutService {
         ? ['-b', branch.name, worktree, ref]
         : [worktree, branch.name];
     try {
-      await git(['-C', checkout.path, 'worktree', 'add', ...args]);
+      await git(['-C', checkout.path, 'worktree', 'add', ...args], undefined, { timeoutMs: GIT_LIMITS.worktree });
       await this.lockWorktree(key, checkout, worktree);
     } catch (error) {
       throw new SwarmloopError(`${checkout.name} worktree failed: ${gitDetail(error)}`);
@@ -136,26 +140,28 @@ export class CheckoutService {
   /** Drops the registration of a worktree whose directory is gone, so the path can be added again. */
   async forgetWorktree(checkout: { name: string; path: string }, worktree: string): Promise<void> {
     try {
-      await git(['-C', checkout.path, 'worktree', 'unlock', worktree]);
+      await git(['-C', checkout.path, 'worktree', 'unlock', worktree], undefined, { timeoutMs: GIT_LIMITS.worktree });
     } catch (error) {
       if (!gitDetail(error).includes('not locked')) {
         throw new SwarmloopError(`${checkout.name} worktree failed: ${gitDetail(error)}`);
       }
     }
-    await git(['-C', checkout.path, 'worktree', 'prune']);
+    await git(['-C', checkout.path, 'worktree', 'prune'], undefined, { timeoutMs: GIT_LIMITS.worktree });
   }
 
   /** The one place that removes a worktree: unlock first, then remove. Ignored files such as installed dependencies go with it. */
   async removeWorktree(checkout: { name: string; path: string }, worktree: string): Promise<void> {
     try {
-      await git(['-C', checkout.path, 'worktree', 'unlock', worktree]);
+      await git(['-C', checkout.path, 'worktree', 'unlock', worktree], undefined, { timeoutMs: GIT_LIMITS.worktree });
     } catch (error) {
       if (!gitDetail(error).includes('not locked')) {
         throw new SwarmloopError(`${checkout.name} worktree failed: ${gitDetail(error)}`);
       }
     }
     try {
-      await git(['-C', checkout.path, 'worktree', 'remove', '--force', worktree]);
+      await git(['-C', checkout.path, 'worktree', 'remove', '--force', worktree], undefined, {
+        timeoutMs: GIT_LIMITS.worktree,
+      });
     } catch (error) {
       throw new SwarmloopError(`${checkout.name} worktree failed: ${gitDetail(error)}`);
     }
@@ -163,7 +169,9 @@ export class CheckoutService {
 
   async registered(checkout: { name: string; path: string }, worktree: string): Promise<boolean> {
     try {
-      const listed = await git(['-C', checkout.path, 'worktree', 'list', '--porcelain']);
+      const listed = await git(['-C', checkout.path, 'worktree', 'list', '--porcelain'], undefined, {
+        timeoutMs: GIT_LIMITS.worktree,
+      });
       return listsWorktree(listed, worktree);
     } catch (error) {
       throw new SwarmloopError(`${checkout.name} is not a git checkout: ${gitDetail(error)}`);
@@ -171,17 +179,17 @@ export class CheckoutService {
   }
 
   private async align(checkout: { name: string; path: string }, worktree: string, ref: string): Promise<void> {
-    const head = await git(['-C', worktree, 'rev-parse', 'HEAD']);
-    const target = await git(['-C', checkout.path, 'rev-parse', ref]);
+    const head = await git(['-C', worktree, 'rev-parse', 'HEAD'], undefined, { timeoutMs: GIT_LIMITS.query });
+    const target = await git(['-C', checkout.path, 'rev-parse', ref], undefined, { timeoutMs: GIT_LIMITS.query });
     if (head === target) {
       return;
     }
-    const dirty = await git(['-C', worktree, 'status', '--porcelain']);
+    const dirty = await git(['-C', worktree, 'status', '--porcelain'], undefined, { timeoutMs: GIT_LIMITS.status });
     if (dirty) {
       throw new SwarmloopError(`${checkout.name} worktree is dirty`);
     }
     try {
-      await git(['-C', worktree, 'checkout', '--detach', ref]);
+      await git(['-C', worktree, 'checkout', '--detach', ref], undefined, { timeoutMs: GIT_LIMITS.worktree });
     } catch (error) {
       throw new SwarmloopError(`${checkout.name} worktree is not ${ref}: ${gitDetail(error)}`);
     }

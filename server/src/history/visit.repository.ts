@@ -130,6 +130,7 @@ export class VisitRepository {
         memAvg: stats.memAvg,
         memPeak: stats.memPeak,
         resumed: visit.resumed ? 1 : 0,
+        preparedMs: visit.preparedMs ?? null,
         attemptId,
       }),
     );

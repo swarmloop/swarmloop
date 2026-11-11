@@ -45,6 +45,12 @@ export async function openStep(runs: RunRepository, clock: Clock, key: string, s
   };
 }
 
+/** The wait before a visit's first event: from the end of the visit before it. Null for the first visit of a run. */
+export async function preparedMs(visits: VisitRepository, runId: number, startedAt: string): Promise<number | null> {
+  const previous = (await visits.listStats(runId)).at(-1);
+  return previous ? Math.max(0, Date.parse(startedAt) - Date.parse(previous.finishedAt)) : null;
+}
+
 export async function closeStep(input: {
   runs: RunRepository;
   visits: VisitRepository;

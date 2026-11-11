@@ -23,7 +23,7 @@
       "step": "merge-request"
     },
     {
-      "kind": "input.received",
+      "kind": "activity.started",
       "step": "merge-request"
     },
     {
@@ -32,6 +32,46 @@
     },
     {
       "kind": "input.received",
+      "step": "merge-request"
+    },
+    {
+      "kind": "input.received",
+      "step": "merge-request"
+    },
+    {
+      "kind": "activity.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
       "step": "merge-request"
     },
     {

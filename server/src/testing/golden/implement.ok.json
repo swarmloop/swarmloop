@@ -19,7 +19,47 @@
       "step": "implement"
     },
     {
+      "kind": "activity.started",
+      "step": "implement"
+    },
+    {
       "kind": "input.received",
+      "step": "implement"
+    },
+    {
+      "kind": "activity.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
       "step": "implement"
     },
     {

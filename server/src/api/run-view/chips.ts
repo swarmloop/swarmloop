@@ -24,6 +24,7 @@ export function chipStatus(
   documents: DocumentEntity[],
   log: { body: string; current: boolean } | null,
   round: { attempts: number; status: string } | null,
+  preparing = false,
 ): string {
   if (!isReviewStep(name)) {
     return stepStatus(pipelineStepOf(name), run, stat);
@@ -55,7 +56,16 @@ export function chipStatus(
   if (text.trim() !== '' && text.trim() !== 'waiting for output' && text.trim() !== 'starting') {
     return 'failed';
   }
-  return 'idle';
+  return preparing ? 'preparing' : 'idle';
+}
+
+/** True while code-review is open and none of its reviewers or its report has started writing a log: the step is still preparing. */
+export function reviewPreparing(root: string, run: RunEntity): boolean {
+  if (run.currentStep !== 'code-review' || run.status !== 'running') {
+    return false;
+  }
+  const names = [...REVIEW_KINDS.map((kind) => `code-review-${kind.slice('review_'.length)}`), 'code-review-report'];
+  return names.every((name) => activeLog(root, run, name).body.trim() === '');
 }
 
 /** The report is written after the five angles, so it stays idle while one angle is running. */
@@ -64,6 +74,7 @@ export function reportChip(
   stats: StepStatEntity[],
   documents: DocumentEntity[],
   root: string,
+  preparing = false,
 ): FlowView['phases'][number]['steps'][number] {
   const log = activeLog(root, run, 'code-review-report');
   const stored = (latest(documents, 'review_report') ?? '').trim();
@@ -75,10 +86,11 @@ export function reportChip(
   const writing = run.currentStep === 'code-review' && run.status === 'running' && log.current;
   const visit = stats.filter((item) => item.step === 'code-review').at(-1);
   const loopStatus = stepStatus('code-review', run, visit);
+  const waiting = preparing ? 'preparing' : 'idle';
   const shown = writing
     ? 'running'
     : body === 'starting'
-      ? 'idle'
+      ? waiting
       : verdict === 'ok'
         ? 'done'
         : verdict === 'return'
@@ -87,12 +99,12 @@ export function reportChip(
             ? 'done'
             : opened
               ? 'failed'
-              : 'idle';
+              : waiting;
   const status = run.currentStep !== 'code-review' && loopStatus === 'failed' ? loopStatus : shown;
   return {
     name: 'code-review',
     status,
-    current: status === 'running',
+    current: status === 'running' || status === 'preparing',
     attempts: reportAttempts(stats, documents, writing),
   };
 }

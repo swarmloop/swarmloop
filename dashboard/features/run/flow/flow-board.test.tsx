@@ -21,6 +21,20 @@ describe('FlowBoard', () => {
     expect(screen.getByText('implementation')).toBeInTheDocument();
   });
 
+  it('shows a card that is preparing in the working style with the word preparing', () => {
+    const board: FlowView['phases'] = [
+      {
+        phase: 'code-review',
+        steps: [{ name: 'code-review-quality', status: 'preparing', current: true, attempts: 0 }],
+      },
+    ];
+    render(<FlowBoard phases={board} returns={[]} selected={null} onSelect={vi.fn()} />);
+
+    const card = screen.getByRole('button', { name: /quality/ });
+    expect(within(card).getByText('preparing')).toBeInTheDocument();
+    expect(card).toHaveAttribute('aria-current', 'step');
+  });
+
   it('reports the clicked step by name', async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();

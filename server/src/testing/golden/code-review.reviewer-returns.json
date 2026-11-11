@@ -27,7 +27,19 @@
       "step": "code-review"
     },
     {
+      "kind": "activity.started",
+      "step": "code-review"
+    },
+    {
       "kind": "input.received",
+      "step": "code-review"
+    },
+    {
+      "kind": "activity.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "activity.started",
       "step": "code-review"
     },
     {
@@ -36,6 +48,10 @@
     },
     {
       "kind": "command.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "activity.finished",
       "step": "code-review"
     },
     {

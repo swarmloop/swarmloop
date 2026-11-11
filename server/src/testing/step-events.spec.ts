@@ -164,7 +164,9 @@ describe('step events', () => {
     const events = await eventsOf('E-1');
     expect(events.map((event) => event.kind)).toEqual([
       'attempt.started',
+      'activity.started',
       'input.received',
+      'activity.finished',
       'command.started',
       'command.finished',
       'http.call',
@@ -172,15 +174,16 @@ describe('step events', () => {
       'handoff.sent',
       'attempt.finished',
     ]);
-    expect(events.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(events.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(events[0]).toMatchObject({ stepKind: 'server', agent: null });
-    expect(events[1]).toMatchObject({ name: 'requirements', documentId: 1, summary: 'ship the field' });
-    expect(events[2]).toMatchObject({ executable: 'git', repo: 'demo', cwd: 'worktrees/E-1/demo' });
-    expect(events[3]).toMatchObject({ exitCode: 0, timedOut: false, cancelled: false });
-    expect(events[4]).toMatchObject({ method: 'GET', url: 'https://code.example/api', statusCode: 200 });
-    expect(events[5]).toMatchObject({ artifactKind: 'implementation' });
-    expect(events[6]).toMatchObject({ targetStep: 'merge-request', artifactKinds: ['implementation'], issueIds: [] });
-    expect(events[7]).toMatchObject({ route: 'ok', summary: expect.stringContaining('done') });
+    expect(events[1]).toMatchObject({ title: 'Preparing', parentSpanId: null });
+    expect(events[2]).toMatchObject({ name: 'requirements', documentId: 1, summary: 'ship the field' });
+    expect(events[4]).toMatchObject({ executable: 'git', repo: 'demo', cwd: 'worktrees/E-1/demo' });
+    expect(events[5]).toMatchObject({ exitCode: 0, timedOut: false, cancelled: false });
+    expect(events[6]).toMatchObject({ method: 'GET', url: 'https://code.example/api', statusCode: 200 });
+    expect(events[7]).toMatchObject({ artifactKind: 'implementation' });
+    expect(events[8]).toMatchObject({ targetStep: 'merge-request', artifactKinds: ['implementation'], issueIds: [] });
+    expect(events[9]).toMatchObject({ route: 'ok', summary: expect.stringContaining('done') });
   });
 
   it('writes an agent step with the launch of its agent', async () => {
@@ -204,7 +207,9 @@ describe('step events', () => {
     expect(kinds[0]).toBe('attempt.started');
     const before = kinds.slice(1, kinds.indexOf('agent.launched'));
     expect(before.slice(-2)).toEqual(['session.changed', 'context.manifest']);
-    expect(before.slice(0, -2).every((kind) => kind === 'input.received')).toBe(true);
+    expect(
+      before.slice(0, -2).every((kind) => ['input.received', 'activity.started', 'activity.finished'].includes(kind)),
+    ).toBe(true);
     expect(kinds.slice(kinds.indexOf('agent.launched'), kinds.indexOf('agent.launched') + 2)).toEqual([
       'agent.launched',
       'agent.finished',
@@ -235,7 +240,7 @@ describe('step events', () => {
     });
     await step.execute('E-1');
     const events = await eventsOf('E-1');
-    const [first, second] = events.filter((event) => event.kind === 'activity.started');
+    const [first, second] = events.filter((event) => event.kind === 'activity.started' && event.title !== 'Preparing');
     const commands = events.filter((event) => event.kind === 'command.started');
     expect(first).toMatchObject({ title: 'Check out feature/x', parentSpanId: null });
     expect(commands.map((event) => event.parentSpanId)).toEqual([
@@ -243,7 +248,7 @@ describe('step events', () => {
       (first as { spanId: string }).spanId,
       (second as { spanId: string }).spanId,
     ]);
-    expect(events.filter((event) => event.kind === 'activity.finished')).toMatchObject([
+    expect(events.filter((event) => event.kind === 'activity.finished' && event.title !== 'Preparing')).toMatchObject([
       { title: 'Check out feature/x', result: 'on feature/x at abc1234', failed: false },
       { title: 'Break', result: 'failed: nope', failed: true },
     ]);
@@ -534,8 +539,8 @@ describe('step events', () => {
       });
     await Promise.all([step('E-1').execute('E-1'), step('E-2').execute('E-2')]);
     const [first, second] = [await eventsOf('E-1'), await eventsOf('E-2')];
-    expect(first.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7]);
-    expect(second.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(first.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(second.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(new Set(first.map((event) => event.attemptId)).size).toBe(1);
     expect(new Set(second.map((event) => event.attemptId)).size).toBe(1);
     expect(first[0].attemptId).not.toBe(second[0].attemptId);

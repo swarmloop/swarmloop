@@ -3,7 +3,7 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { originRef, promptBase } from '../base-ref';
 import type { RebaseHosts } from './types';
-import { git, gitDetail, originUrl, redact } from '../git';
+import { git, GIT_LIMITS, gitDetail, originUrl, redact } from '../git';
 import { cloneSource } from './clone-index';
 import { resolveGitPath } from './hidden-worktree';
 
@@ -92,10 +92,14 @@ async function fetchLocked(
   for (let attempt = 0; attempt < FETCH_LOCK_ATTEMPTS; attempt += 1) {
     try {
       if (url) {
-        await git(['-C', cwd, 'fetch', url, refspec], { GIT_TERMINAL_PROMPT: '0' });
+        await git(['-C', cwd, 'fetch', url, refspec], { GIT_TERMINAL_PROMPT: '0' }, { timeoutMs: GIT_LIMITS.fetch });
         await clearFetchedToken(cwd, name, secret);
       } else {
-        await git(['-C', cwd, 'fetch', 'origin', refspec], { GIT_TERMINAL_PROMPT: '0' });
+        await git(
+          ['-C', cwd, 'fetch', 'origin', refspec],
+          { GIT_TERMINAL_PROMPT: '0' },
+          { timeoutMs: GIT_LIMITS.fetch },
+        );
       }
       return true;
     } catch (error) {

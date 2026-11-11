@@ -19,6 +19,10 @@ import { ARTIFACTS } from './contract/artifacts';
 import type { InputSpec, Route, StepInput, StepResult } from './contract/step-contract';
 import { BaseStep, StepContext } from './base-step';
 import { StepKernel } from './step-kernel';
+import { git } from '../git/git';
+import { Clock } from '../core/clock';
+import { FakeClock } from '../core/fake-clock.spec-helpers';
+import { StepEventLog } from '../history/step-event.log';
 
 const STUB_INPUTS = {
   repos: { artifact: ARTIFACTS.repos, need: 'start', late: true },
@@ -73,6 +77,13 @@ class TemplateStub extends BaseStep<typeof INPUTS> {
       ],
       handoff: '- stubbed\n',
     };
+  }
+}
+
+/** Does a git call before its inputs are read, as a step does when it prepares. */
+class PreparingStub extends TemplateStub {
+  protected override async ready(): Promise<void> {
+    await git(['--version']);
   }
 }
 
@@ -226,6 +237,38 @@ describe('base step', () => {
       await app.close();
     }
   });
+  describe('preparation', () => {
+    it('records the commands of the preparation under Preparing, and the wait between two visits', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-base-preparing-'));
+      const clock = new FakeClock();
+      const app = await boot(root, clock);
+      try {
+        const runs = app.get(RunRepository);
+        const seeded = await runs.begin('BASE-30', 'branch');
+        seeded.status = 'waiting';
+        await runs.saveRun(seeded);
+        await app.get(DocumentRepository).putDocument(seeded, 'repos', 'demo\n');
+        const step = new PreparingStub(app.get(StepKernel));
+        await step.execute('BASE-30');
+        clock.advance(338_000);
+        await step.execute('BASE-30');
+
+        const run = await runs.findRun('BASE-30');
+        const stats = await app.get(VisitRepository).listStats(run?.id ?? 0);
+        expect(stats.map((stat) => stat.preparedMs)).toEqual([null, expect.any(Number)]);
+        expect(stats[1].preparedMs).toBe(338_000);
+
+        const events = (await app.get(StepEventLog).page(run?.id ?? 0, { limit: 500 })).events;
+        const preparing = events.find((event) => event.kind === 'activity.started' && event.title === 'Preparing');
+        const command = events.find((event) => event.kind === 'command.started' && event.args.includes('--version'));
+        expect(preparing).toBeDefined();
+        expect(command?.parentSpanId).toBe(preparing && 'spanId' in preparing ? preparing.spanId : null);
+      } finally {
+        await app.close();
+      }
+    });
+  });
+
   describe('declared inputs', () => {
     async function run(key: string, route: Route, seed = true) {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-base-template-'));
@@ -325,7 +368,7 @@ describe('base step', () => {
   });
 });
 
-async function boot(root: string): Promise<TestingModule> {
+async function boot(root: string, clock?: Clock): Promise<TestingModule> {
   await writeFile(
     join(root, '.env'),
     [
@@ -363,10 +406,14 @@ async function boot(root: string): Promise<TestingModule> {
       '',
     ].join('\n'),
   );
-  return Test.createTestingModule({
+  const builder = Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
     providers: [StepKernel, StubStep],
-  })
+  });
+  if (clock) {
+    builder.overrideProvider(Clock).useValue(clock);
+  }
+  return builder
     .overrideProvider(PASTE_READER)
     .useValue({ read: jest.fn() })
     .overrideProvider(AGENT_RUNNER)

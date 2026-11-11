@@ -38,6 +38,33 @@ describe('StepHeader', () => {
     expect(screen.getByText('This step has not run.')).toBeInTheDocument();
   });
 
+  it('shows how long the run waited before a visit, with the slowest command, over 30 seconds', () => {
+    const view = stepView({ visits: [visitView({ preparedMs: 338_000 })] });
+    header({
+      view,
+      visit: view.visits[0],
+      attempt: 0,
+      attempts: 1,
+      slowestPrepared: { command: 'git add -A', ms: 330_000 },
+    });
+
+    expect(screen.getByText(/prepared in 5m 38s · slowest: git add -A 5m 30s/)).toBeInTheDocument();
+  });
+
+  it('shows no wait for a visit that waited 30 seconds or less', () => {
+    const view = stepView({ visits: [visitView({ preparedMs: 10_000 })] });
+    header({ view, visit: view.visits[0], attempt: 0, attempts: 1 });
+
+    expect(screen.queryByText(/prepared in/)).toBeNull();
+  });
+
+  it('says the step is preparing, not that it has not run, while the run works on it', () => {
+    header({ view: stepView({ visits: [] }), visit: undefined, attempt: 0, attempts: 0, preparing: true });
+
+    expect(screen.queryByText('This step has not run.')).toBeNull();
+    expect(screen.getByText('preparing')).toBeInTheDocument();
+  });
+
   it('selects an attempt and sets follow to whether it is the latest', async () => {
     const user = userEvent.setup();
     const props = header();

@@ -19,7 +19,15 @@
       "step": "implement-improve"
     },
     {
+      "kind": "activity.started",
+      "step": "implement-improve"
+    },
+    {
       "kind": "input.received",
+      "step": "implement-improve"
+    },
+    {
+      "kind": "activity.finished",
       "step": "implement-improve"
     },
     {

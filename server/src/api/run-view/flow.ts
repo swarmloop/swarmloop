@@ -11,7 +11,7 @@ import { isReviewStep, pipelineStepOf } from '../../contract/steps';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered } from '../../steps/shared/answers';
 import { items } from '../../steps/shared/markdown-section';
-import { activeLog, chipStatus, chipAttempts, reportChip, reviewerRound } from './chips';
+import { activeLog, chipStatus, chipAttempts, reportChip, reviewPreparing, reviewerRound } from './chips';
 import { latest } from './status';
 export { latest } from './status';
 import { PHASES } from './run-view.types';
@@ -56,6 +56,7 @@ export function phases(
     latestStats.set(stat.step, stat);
   }
   const parentRunning = run.status === 'running' && run.currentStep === 'code-review';
+  const preparing = reviewPreparing(root, run);
   return PHASES.map((phase) => {
     const steps = phase.steps.map((name) => {
       const parent = pipelineStepOf(name);
@@ -63,18 +64,18 @@ export function phases(
       const stat = own ?? latestStats.get(parent);
       const round = own ? reviewerRound(name, run, own, documents, root) : null;
       const log = round ? null : isReviewStep(name) && (!own || parentRunning) ? activeLog(root, run, name) : null;
-      const status = chipStatus(name, run, stat, documents, log, round);
+      const status = chipStatus(name, run, stat, documents, log, round, preparing);
       return {
         name,
         status,
-        current: isReviewStep(name) ? status === 'running' : parent === run.currentStep,
+        current: isReviewStep(name) ? status === 'running' || status === 'preparing' : parent === run.currentStep,
         attempts: chipAttempts(name, run, stats, documents, root, log, round),
       };
     });
     if (phase.phase !== 'code-review') {
       return { phase: phase.phase, steps };
     }
-    return { phase: phase.phase, steps: [...steps, reportChip(run, stats, documents, root)] };
+    return { phase: phase.phase, steps: [...steps, reportChip(run, stats, documents, root, preparing)] };
   });
 }
 

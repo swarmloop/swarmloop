@@ -100,6 +100,8 @@ export interface VisitView {
   model: string | null;
   mode: string | null;
   durationMs: number;
+  /** What the run waited for between the end of the visit before and this visit's first event. */
+  preparedMs?: number | null;
   tokensIn: number;
   tokensOut: number;
   usd: number;

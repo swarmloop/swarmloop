@@ -81,6 +81,7 @@ export const theme = createTheme({
 export function statusColor(status: string): string {
   switch (status) {
     case 'running':
+    case 'preparing':
       return 'info.main';
     case 'waiting':
       return 'warning.main';

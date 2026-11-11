@@ -15,7 +15,7 @@ import type { LimitState } from '../contract/run-state';
 import { recordStepEvent, runActivity, runInStepScope } from '../core/step-event-scope';
 import type { RunEntity } from '../history/entities';
 import type { OpenedStep } from '../steps/step-run';
-import { closeStep, openStep } from '../steps/step-run';
+import { closeStep, openStep, preparedMs } from '../steps/step-run';
 import type { HttpCallDraft } from '../core/swarmloop-error';
 import { reportFailure } from './shared/step-failure';
 import { FetchFailed, SwarmloopError } from '../core/swarmloop-error';
@@ -285,6 +285,7 @@ abstract class StepCore implements Step {
       httpCalls: calls,
       document: null,
       resumed: false,
+      preparedMs: await preparedMs(this.visits, opened.run.id, opened.startedAt),
       ...input.visit,
     };
     if (input.handoff !== undefined) {
@@ -353,17 +354,20 @@ export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore
     return this.perform(
       key,
       async (ctx) => {
-        await this.ready(ctx);
-        const input = await this.reader.read(key, this.inputs);
-        await recordInputs(
-          this.documents,
-          this.kernel.stepEvents,
-          ctx.opened.run.id,
-          this.name,
-          this.inputs,
-          input,
-          () => ctx.reread(ARTIFACTS.issues),
-        );
+        const input = await ctx.activity('Preparing', async () => {
+          await this.ready(ctx);
+          const read = await this.reader.read(key, this.inputs);
+          await recordInputs(
+            this.documents,
+            this.kernel.stepEvents,
+            ctx.opened.run.id,
+            this.name,
+            this.inputs,
+            read,
+            () => ctx.reread(ARTIFACTS.issues),
+          );
+          return read;
+        });
         return this.conclude(ctx, await this.work(input, ctx));
       },
       snapshot,

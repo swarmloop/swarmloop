@@ -76,7 +76,10 @@ export function FlowBoard({
                         borderRadius: '50%',
                         bgcolor: statusColor(step.status),
                         flexShrink: 0,
-                        animation: step.status === 'running' ? 'swarmloop-pulse 1.6s ease-in-out infinite' : 'none',
+                        animation:
+                          step.status === 'running' || step.status === 'preparing'
+                            ? 'swarmloop-pulse 1.6s ease-in-out infinite'
+                            : 'none',
                       }}
                     />
                     <Box
@@ -85,6 +88,11 @@ export function FlowBoard({
                     >
                       {stepLabel(step.name)}
                     </Box>
+                    {step.status === 'preparing' ? (
+                      <Box component="span" sx={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'info.main' }}>
+                        preparing
+                      </Box>
+                    ) : null}
                     {step.attempts > 0 ? (
                       <Box
                         component="span"
