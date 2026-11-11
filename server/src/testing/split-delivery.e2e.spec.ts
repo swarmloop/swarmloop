@@ -104,7 +104,7 @@ async function finish(app: TestApp, id: string, iid: number): Promise<void> {
   const documents = app.app.get(DocumentRepository);
   await documents.putDocument(run, 'requirements', requirements);
   await documents.putDocument(run, 'repos', 'demo\n');
-  const record = { project: 'demo', iid, url: `https://code.example/demo/${iid}`, summary: '' };
+  const record = { project: 'demo', iid, url: `https://code.example/demo/${iid}`, draft: false, summary: '' };
   await documents.putDocument(run, 'merge_request', renderMergeRequest([record]));
   writeRunState(run, { status: 'done', currentStep: 'done' });
   await app.app.get(RunRepository).saveRun(run);

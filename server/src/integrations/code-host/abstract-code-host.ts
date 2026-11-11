@@ -70,18 +70,32 @@ export abstract class AbstractCodeHost implements CodeHost {
 
   async openMergeRequest(
     draft: MergeRequestDraft,
-  ): Promise<{ record: MergeRequestRecord; httpCalls: HttpCallDraft[] }> {
+  ): Promise<{ record: MergeRequestRecord; draftsUnavailable: boolean; httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];
     try {
       const { root, headers } = this.credentials();
-      const { url, payload } = this.openRequest(root, draft);
-      const body = await this.readJson(url, { ...headers, 'Content-Type': 'application/json' }, calls, payload);
-      return { record: this.record(draft.project, body, draft.summary), httpCalls: calls };
-    } catch (error) {
-      const reused = await this.reuse(draft, error, calls);
-      if (reused) {
-        return reused;
+      const create = (asked: MergeRequestDraft): Promise<unknown> => {
+        const { url, payload } = this.openRequest(root, asked);
+        return this.readJson(url, { ...headers, 'Content-Type': 'application/json' }, calls, payload);
+      };
+      let body: unknown;
+      let refused = false;
+      try {
+        body = await create(draft);
+      } catch (error) {
+        const reused = await this.reuse(draft, error, calls);
+        if (reused) {
+          return { ...reused, draftsUnavailable: false };
+        }
+        if (!draft.draft || !(error instanceof FetchFailed)) {
+          throw error;
+        }
+        refused = true;
+        body = await create({ ...draft, draft: false });
       }
+      const record = this.record(draft.project, body, draft.summary);
+      return { record, draftsUnavailable: draft.draft && (refused || !record.draft), httpCalls: calls };
+    } catch (error) {
       this.rethrow(error, calls);
     }
   }
@@ -101,6 +115,8 @@ export abstract class AbstractCodeHost implements CodeHost {
       this.rethrow(error, calls);
     }
   }
+
+  abstract setDraft(project: string, iid: number, draft: boolean): Promise<{ httpCalls: HttpCallDraft[] }>;
 
   async readMergeRequest(project: string, iid: number): Promise<MergeRequestView & { httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];

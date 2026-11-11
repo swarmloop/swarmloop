@@ -10,6 +10,8 @@ export interface MergeRequestDraft extends MergeRequestQuery {
   target: string;
   title: string;
   summary: string;
+  /** Open the request as a draft. A host that refuses drafts gets a normal request. */
+  draft: boolean;
 }
 
 export interface MergeRequestRecord {
@@ -17,6 +19,7 @@ export interface MergeRequestRecord {
   iid: number;
   url: string;
   summary: string;
+  draft: boolean;
 }
 
 /** A merge request as the host reports it now. `sha` is the merge or squash commit of a merged one. */
@@ -24,6 +27,7 @@ export interface MergeRequestView {
   state: 'open' | 'merged' | 'closed';
   sha: string | null;
   conflicts: boolean;
+  draft: boolean;
 }
 
 export interface PipelineRef {
@@ -110,7 +114,12 @@ export interface CodeHost {
   findMergeRequest(
     query: MergeRequestQuery,
   ): Promise<{ record: MergeRequestRecord | null; httpCalls: HttpCallDraft[] }>;
-  openMergeRequest(draft: MergeRequestDraft): Promise<{ record: MergeRequestRecord; httpCalls: HttpCallDraft[] }>;
+  /** `draftsUnavailable` is true when the host refused a draft and the request was opened as a normal one. */
+  openMergeRequest(
+    draft: MergeRequestDraft,
+  ): Promise<{ record: MergeRequestRecord; draftsUnavailable: boolean; httpCalls: HttpCallDraft[] }>;
+  /** Turns a request into a draft or marks it ready for review. A request already in that state stays as it is. */
+  setDraft(project: string, iid: number, draft: boolean): Promise<{ httpCalls: HttpCallDraft[] }>;
   updateMergeRequest(project: string, iid: number, summary: string): Promise<{ httpCalls: HttpCallDraft[] }>;
   readMergeRequest(project: string, iid: number): Promise<MergeRequestView & { httpCalls: HttpCallDraft[] }>;
   /** Squash-merges the request into the target branch it already has. A refusal for a conflict is a `MergeConflict`; any other refusal is a `FetchFailed` with the host's message. */

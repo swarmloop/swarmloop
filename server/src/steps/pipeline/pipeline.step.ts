@@ -15,7 +15,7 @@ import type { StepName } from '../../contract/steps';
 import type { OpenedStep } from '../../steps/step-run';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import { FetchFailed, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
-import { CI_INFRA_SOURCE, issueOf, returnNotes } from '../shared/handoff';
+import { CI_INFRA_SOURCE, issueOf } from '../shared/handoff';
 import { assertNotStopped } from '../shared/step-stopped';
 import { BaseStep, type StepContext } from '../base-step';
 import {
@@ -44,13 +44,17 @@ import {
 } from './pipeline-report';
 import { finishedRuns, readFailures, readNotes, rerunJobs } from './ci-host';
 import { ARTIFACTS } from '../contract/artifacts';
-import type { ArtifactValue, InputSpec, Issue, Route, StepInput, StepResult } from '../contract/step-contract';
+import { mergeRequestDetails, parseMergeRequests } from '../merge-request/merge-request-record';
+import { finish } from './pipeline-result';
+import { hasDraft, markReady } from './pipeline-draft';
+import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
 /** `repos` is read only when a green or absent pipeline asks whether CI started, so it is loaded there. */
 const INPUTS = {
   pipelineRef: { artifact: ARTIFACTS.pipelineRef, need: 'start' },
   ciSkip: { artifact: ARTIFACTS.ciSkip, need: 'optional' },
   repos: { artifact: ARTIFACTS.repos, need: 'optional', late: true },
+  mergeRequest: { artifact: ARTIFACTS.mergeRequest, need: 'optional', late: true },
 } as const satisfies InputSpec;
 
 /** The pauses before the two automatic re-runs of a run whose jobs never ran. */
@@ -60,7 +64,13 @@ const RERUN_PAUSES_MS = [60_000, 300_000];
 export class PipelineStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'pipeline';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.pipelineLog, ARTIFACTS.return, ARTIFACTS.issues, ARTIFACTS.pipelineRebases];
+  readonly outputs = [
+    ARTIFACTS.pipelineLog,
+    ARTIFACTS.return,
+    ARTIFACTS.issues,
+    ARTIFACTS.pipelineRebases,
+    ARTIFACTS.mergeRequest,
+  ];
 
   constructor(
     kernel: StepKernel,
@@ -78,7 +88,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     const records = parsePipelineRefs(input.pipelineRef ?? '');
     const skipped = input.ciSkip?.trim() ?? '';
     if (records.length === 0 && skipped) {
-      return this.finish('ok', this.report(opened, skipped), 'skipped', skipped);
+      return finish('ok', this.report(opened, skipped), 'skipped', skipped);
     }
     this.registry.requiredCredentials(opened.run.codeHost);
     const host = this.registry.byName(opened.run.codeHost);
@@ -87,7 +97,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     }
     const watched = await ctx.activity(ciTitle(records), () => this.watch(ctx, records, env, host), ciResult);
     const result = await this.route(ctx, env, records, watched.seen, watched.verdict, host);
-    return { ...result, facts: { details: jobResults(watched.seen), ...checkFacts(watched.seen) } };
+    const requests = await ctx.reread(ARTIFACTS.mergeRequest);
+    const links = requests ? mergeRequestDetails(parseMergeRequests(requests)) : [];
+    return { ...result, facts: { details: [...jobResults(watched.seen), ...links], ...checkFacts(watched.seen) } };
   }
 
   private async watch(
@@ -188,10 +200,10 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         : this.infra(ctx, env, records, seen, cause === 'timeout' ? 'CI_TIMEOUT' : 'CI_NOT_RUN', host, reruns);
     }
     if (verdict === 'stop') {
-      return this.finish('failed', this.report(opened, stopLine(seen)), 'failed');
+      return finish('failed', this.report(opened, stopLine(seen)), 'failed');
     }
     if (verdict === 'manual') {
-      return this.finish('waiting', this.report(opened, 'pipeline is manual'), 'waiting');
+      return finish('waiting', this.report(opened, 'pipeline is manual'), 'waiting');
     }
     const missing = await missingRuns(ctx, root(this.config), seen);
     if (missing && missing.length > 0) {
@@ -213,8 +225,17 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       return backToReview(ctx, this.flows);
     }
     if (verdict === 'absent') {
+      if (await hasDraft(ctx)) {
+        await ctx.activity(
+          'Mark merge request ready',
+          () => markReady(ctx, this.registry),
+          () => 'CI did not start for the draft',
+        );
+        const watched = await this.watch(ctx, records, env, host);
+        return this.route(ctx, env, records, watched.seen, watched.verdict, host, reruns);
+      }
       const body = renderNone(seen);
-      return this.finish('ok', this.report(opened, 'nothing started', body), 'done', body);
+      return finish('ok', this.report(opened, 'nothing started', body), 'done', body);
     }
     const warnings = seen.flatMap((item) =>
       item.jobs
@@ -222,7 +243,8 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         .map((job) => `${item.project} ${job.name}`),
     );
     const body = renderPass(seen, warnings);
-    return this.finish('ok', this.report(opened, 'pipeline done', body), 'done', body);
+    await markReady(ctx, this.registry);
+    return finish('ok', this.report(opened, 'pipeline done', body), 'done', body);
   }
 
   /** The wait ended with no run left to cancel: a check that never showed up is dropped, one that never ended is red. */
@@ -270,7 +292,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     }
     const notes = await readNotes(host, finished, calls);
     const body = `${renderInfra(code, seen, notes)}${errors.map((error) => `rerun: ${error}\n`).join('')}`;
-    const result = this.finish(
+    const result = finish(
       'blocked',
       this.report(opened, code === 'CI_TIMEOUT' ? 'CI timed out' : 'CI did not run', body),
       'blocked',
@@ -347,22 +369,22 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     const failures = traces ? await readFailures(seen, calls, host, counted) : [];
     const unreadable = renderUnreadable(failures);
     if (unreadable) {
-      return this.finish('blocked', this.report(opened, 'pipeline log unavailable', unreadable), 'blocked', unreadable);
+      return finish('blocked', this.report(opened, 'pipeline log unavailable', unreadable), 'blocked', unreadable);
     }
     const body = traces ? renderFail(failures, seen, note) : `${note.trim()}\n`;
     if (ctx.options.auto && (await this.sameFailure(ctx, seen))) {
       const report = this.report(opened, 'pipeline already failed for this commit', body);
-      return this.finish('failed', report, 'failed', body);
+      return finish('failed', report, 'failed', body);
     }
     if (opened.run.attemptsPipeline >= env.MAX_PIPELINE_RETURNS) {
       const report = this.report(opened, 'pipeline return limit reached', body);
-      return this.finish('blocked', report, 'blocked', body);
+      return finish('blocked', report, 'blocked', body);
     }
     opened.run.attemptsPipeline += 1;
     const reason = failures.map((failure) => `${failure.project} ${failure.name}`).join(',') || 'pipeline failed';
     await this.events.recordLoop(opened.run, 'pipeline', opened.run.attemptsPipeline, reason);
     const issues = failureIssues(failures, body);
-    return this.finish('waiting', this.report(opened, 'pipeline failed', body), 'waiting', body, issues);
+    return finish('waiting', this.report(opened, 'pipeline failed', body), 'waiting', body, issues);
   }
 
   private async sameFailure(ctx: StepContext, seen: Seen[]): Promise<boolean> {
@@ -378,49 +400,5 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   private report(opened: OpenedStep, text: string, body = ''): string {
     const head = `${opened.startedAt} ${text}`;
     return body ? `${head}\n${body.trimEnd()}` : head;
-  }
-
-  private finish(
-    outcome: 'ok' | 'failed' | 'blocked' | 'waiting',
-    line: string,
-    visitStatus: string,
-    body?: string,
-    issues?: Issue[],
-  ): StepResult {
-    const outputs: ArtifactValue[] = [];
-    if (body) {
-      outputs.push({ artifact: ARTIFACTS.pipelineLog, value: body });
-    }
-    if (issues && body) {
-      outputs.push(
-        { artifact: ARTIFACTS.return, value: returnNotes([{ source: 'pipeline', body }]).body },
-        { artifact: ARTIFACTS.issues, value: issues },
-      );
-    }
-    let handoff: string | undefined;
-    if (outcome === 'ok' || issues) {
-      const head = issues
-        ? 'Pipeline failed and returned to implement.'
-        : body?.includes('CI skipped')
-          ? body.trim()
-          : body?.includes('result: none')
-            ? 'Nothing started.'
-            : 'Pipeline passed.';
-      handoff = `- ${head}\n`;
-    }
-    return { route: routeOf(outcome, line, issues), summary: line, outputs, handoff, visit: { status: visitStatus } };
-  }
-}
-
-function routeOf(outcome: 'ok' | 'failed' | 'blocked' | 'waiting', line: string, issues?: Issue[]): Route {
-  switch (outcome) {
-    case 'ok':
-      return { to: 'next' };
-    case 'failed':
-      return { to: 'fail', error: { code: 'pipeline', message: line } };
-    case 'blocked':
-      return { to: 'block', reason: line };
-    case 'waiting':
-      return issues ? { to: 'return', step: 'implement', issues } : { to: 'wait', reason: line };
   }
 }

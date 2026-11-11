@@ -462,6 +462,7 @@ async function opened(app: TestApp, host: FakeHost, id: string, requests: Record
     project: repo,
     iid,
     url: `https://code.example/${repo}/${iid}`,
+    draft: false,
     summary: '',
   }));
   await documents.putDocument(run, 'merge_request', renderMergeRequest(records));

@@ -16,6 +16,7 @@ import { mountsForStep } from '../git/repo-names';
 import { ARTIFACTS } from './contract/artifacts';
 import { ERROR_CODES } from '../contract/error-codes';
 import { writeRunState } from '../history/run-state';
+import { MergeRequestDrafts } from './merge-request/merge-request-draft';
 import { runJournal } from './shared/rebase-journal';
 import type { RebaseJournal } from '../git/rebase';
 
@@ -40,6 +41,7 @@ export class RunRebase {
     private readonly config: AppConfig,
     private readonly clock: Clock,
     private readonly environments: RunRebaseEnvironment,
+    private readonly drafts: MergeRequestDrafts,
   ) {}
 
   /** A reconciler resume of an unfinished journal is not a new command: it does not raise the generation. */
@@ -51,6 +53,7 @@ export class RunRebase {
     const status = run.status;
     if (!resume) {
       await this.assertSubtasksIdle(run);
+      await this.turnBackToDraft(run);
       await this.runs.bumpGeneration(key);
     }
     const journal = runJournal(this.documents, await this.requireRun(key));
@@ -87,6 +90,14 @@ export class RunRebase {
     }
     // Every review and CI result of the old generation is stale: a step that reads them goes back through code-review.
     return AFTER_REVIEW.includes(run.currentStep) ? this.startAtReview(key) : 'resume';
+  }
+
+  private async turnBackToDraft(run: RunEntity): Promise<void> {
+    try {
+      await this.drafts.backToDraft(run);
+    } catch (error) {
+      throw new ConflictException(error instanceof SwarmloopError ? error.message : 'merge request failed');
+    }
   }
 
   /** The feature branch moves under a subtask that works on it: a Rebase waits until none runs. */

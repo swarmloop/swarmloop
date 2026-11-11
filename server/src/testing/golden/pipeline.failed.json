@@ -60,7 +60,7 @@
     }
   ],
   "reads": {
-    "pipeline": ["pipeline_ref", "ci_skip", "handoff"]
+    "pipeline": ["pipeline_ref", "ci_skip", "merge_request", "handoff"]
   },
   "result": {
     "exitCode": 0,

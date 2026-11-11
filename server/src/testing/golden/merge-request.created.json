@@ -154,6 +154,7 @@
     "open": [
       [
         {
+          "draft": true,
           "project": "group/demo",
           "source": "feature/PROJ-200-ship-the-field",
           "summary": "Ships the field.",
@@ -194,7 +195,7 @@
     {
       "documents": [
         {
-          "body": "project: group/demo\niid: 12\nurl: https://gitlab.example/group/demo/-/merge_requests/12\n\nShips the field.\n",
+          "body": "project: group/demo\niid: 12\nurl: https://gitlab.example/group/demo/-/merge_requests/12\ndraft: true\n\nShips the field.\n",
           "kind": "merge_request"
         },
         {

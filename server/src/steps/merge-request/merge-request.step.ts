@@ -13,7 +13,7 @@ import { baseBranch } from '../../git/base-ref';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
-import { remoteProject, renderMergeRequest } from './merge-request-record';
+import { mergeRequestDetails, remoteProject, renderMergeRequest } from './merge-request-record';
 import { ARTIFACTS } from '../contract/artifacts';
 import { worktreesFingerprint } from '../shared/gate';
 import type { AttemptFacts } from '../../contract/step-events';
@@ -81,7 +81,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     const summary = await this.summary(ctx, phases, trees);
     const skip = ((await ctx.reread(ARTIFACTS.rebaseMergeSkip)) ?? '').trim() === 'skip';
     assertNotStopped(this.runStop, key);
-    const records = await ctx.activity(
+    const { records, unavailable } = await ctx.activity(
       'Open merge request',
       () =>
         this.ensure(
@@ -91,16 +91,22 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
           skip,
           client,
         ),
-      (done) =>
+      ({ records: done }) =>
         done.map((record, index) => `!${record.iid} ${trees[index].existing ? 'reused' : 'created'}`).join(', '),
     );
     if (skip) {
       await ctx.write(ARTIFACTS.rebaseMergeSkip, 'clear\n');
     }
     const urls = records.map((record) => record.url).join('\n');
-    return this.finish(`${opened.startedAt} merge-request done\n${urls}`, renderMergeRequest(records), undefined, {
-      details: records.map((record) => record.url),
-    });
+    const note = unavailable ? '\ndrafts not available here' : '';
+    return this.finish(
+      `${opened.startedAt} merge-request done\n${urls}${note}`,
+      renderMergeRequest(records),
+      undefined,
+      {
+        details: mergeRequestDetails(records),
+      },
+    );
   }
 
   private async trees(
@@ -170,15 +176,15 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     calls: HttpCallDraft[],
     skip: boolean,
     client: CodeHost,
-  ): Promise<MergeRequestRecord[]> {
+  ): Promise<{ records: MergeRequestRecord[]; unavailable: boolean }> {
     const opened = await Promise.all(
       trees.map(async (tree) => {
         if (tree.existing && skip) {
-          return { record: tree.existing, calls: [] };
+          return { record: tree.existing, calls: [], unavailable: false };
         }
         if (tree.existing) {
           const updated = await client.updateMergeRequest(tree.project, tree.existing.iid, tree.summary);
-          return { record: { ...tree.existing, summary: tree.summary }, calls: updated.httpCalls };
+          return { record: { ...tree.existing, summary: tree.summary }, calls: updated.httpCalls, unavailable: false };
         }
         const created = await client.openMergeRequest({
           project: tree.project,
@@ -186,14 +192,19 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
           target: tree.target,
           title,
           summary: tree.summary,
+          draft: true,
         });
-        return { record: { ...created.record, summary: tree.summary }, calls: created.httpCalls };
+        return {
+          record: { ...created.record, summary: tree.summary },
+          calls: created.httpCalls,
+          unavailable: created.draftsUnavailable,
+        };
       }),
     );
     for (const item of opened) {
       calls.push(...item.calls);
     }
-    return opened.map((item) => item.record);
+    return { records: opened.map((item) => item.record), unavailable: opened.some((item) => item.unavailable) };
   }
 
   private async target(repo: string, path: string): Promise<string> {

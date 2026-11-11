@@ -13,6 +13,9 @@ import { SandboxService } from '../sandbox/sandbox.service';
 import { CodeReviewStep } from '../steps/code-review/code-review.step';
 import { PipelineStep } from '../steps/pipeline/pipeline.step';
 import { withPlan } from '../steps/plan/plan-record';
+import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
+import { FetchFailed } from '../core/swarmloop-error';
+import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { PipelineModule } from './pipeline.module';
 import { PipelineService } from './pipeline.service';
 
@@ -89,6 +92,68 @@ describe('pipeline service', () => {
       const body = await documents.latestBody('PROJ-62', 'requirements');
       expect((JSON.parse(body ?? '{}') as { plan: { decision: string } }).plan.decision).toBe('revise');
       await settle(pipeline, 'PROJ-62');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('turns the merge requests of a done run back into drafts before a Replay starts its work', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-replay-draft-'));
+    const app = await boot(root);
+    try {
+      const pipeline = app.get(PipelineService);
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const seeded = await runs.begin('PROJ-65', 'prepare');
+      seeded.status = 'done';
+      seeded.currentStep = 'done';
+      await runs.saveRun(seeded);
+      await documents.putDocument(
+        seeded,
+        'requirements',
+        withPlan('{"prompt":"ship the field"}\n', { name: '', overview: '', items: ['add the field'], decision: null }),
+      );
+      const url = 'https://gitlab.example/group/demo/-/merge_requests/3';
+      await documents.putDocument(
+        seeded,
+        'merge_request',
+        renderMergeRequest([{ project: 'group/demo', iid: 3, url, draft: false, summary: 'Ships it.' }]),
+      );
+      const setDraft = jest.fn().mockResolvedValue({ httpCalls: [] });
+      jest.spyOn(app.get(CodeHostRegistry), 'byName').mockReturnValue({ setDraft } as never);
+      await pipeline.replay('PROJ-65', 'prepare', 'Narrow the scope');
+      expect(setDraft).toHaveBeenCalledWith('group/demo', 3, true);
+      const body = (await documents.latestBody('PROJ-65', 'merge_request')) ?? '';
+      expect(body).toContain('draft: true');
+      expect(body).toContain('Ships it.');
+      await settle(pipeline, 'PROJ-65');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('does not start a Replay when its merge request cannot be turned back into a draft', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-replay-draft-fail-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const seeded = await runs.begin('PROJ-66', 'prepare');
+      seeded.status = 'done';
+      seeded.currentStep = 'done';
+      await runs.saveRun(seeded);
+      await documents.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
+      const url = 'https://gitlab.example/group/demo/-/merge_requests/3';
+      await documents.putDocument(
+        seeded,
+        'merge_request',
+        renderMergeRequest([{ project: 'group/demo', iid: 3, url, draft: false, summary: '' }]),
+      );
+      const setDraft = jest.fn().mockRejectedValue(new FetchFailed('gitlab merge request failed', []));
+      jest.spyOn(app.get(CodeHostRegistry), 'byName').mockReturnValue({ setDraft } as never);
+      const result = await app.get(PipelineService).replay('PROJ-66', 'prepare', 'Narrow the scope');
+      expect(result).toEqual({ exitCode: 1, message: 'gitlab merge request failed' });
+      expect((await runs.findRun('PROJ-66'))?.status).toBe('done');
     } finally {
       await app.close();
     }

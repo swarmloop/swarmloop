@@ -39,6 +39,8 @@ interface GitlabMergeRequest {
   state?: string;
   has_conflicts?: boolean;
   detailed_merge_status?: string;
+  title?: string;
+  draft?: boolean;
 }
 
 interface GitlabPipeline {
@@ -48,6 +50,13 @@ interface GitlabPipeline {
   web_url?: string;
   failure_reason?: string;
   yaml_errors?: string;
+}
+
+/** GitLab's own draft marker: a title that starts with it. */
+const DRAFT_PREFIX = 'Draft: ';
+
+function isDraft(merge: GitlabMergeRequest): boolean {
+  return merge.draft === true || (merge.title ?? '').startsWith(DRAFT_PREFIX);
 }
 
 export class GitlabCodeHost extends AbstractCodeHost {
@@ -185,6 +194,27 @@ export class GitlabCodeHost extends AbstractCodeHost {
     }
   }
 
+  async setDraft(project: string, iid: number, draft: boolean): Promise<{ httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const url = this.mergeRequestUrl(root, project, iid);
+      const merge = (await this.readJson(url, headers, calls)) as GitlabMergeRequest;
+      if (isDraft(merge) === draft) {
+        return { httpCalls: calls };
+      }
+      const bare = (merge.title ?? '').replace(/^\s*(?:\[draft\]|\(draft\)|draft:)\s*/i, '');
+      const response = await request(this.clock, url, { ...headers, 'Content-Type': 'application/json' }, calls, {
+        method: 'PUT',
+        body: JSON.stringify({ title: draft ? `${DRAFT_PREFIX}${bare}` : bare }),
+      });
+      this.assertStatus(response, calls, 'gitlab merge request failed');
+      return { httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
   async cancelPipeline(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];
     try {
@@ -263,7 +293,7 @@ export class GitlabCodeHost extends AbstractCodeHost {
       payload: JSON.stringify({
         source_branch: draft.source,
         target_branch: draft.target,
-        title: draft.title.slice(0, 255),
+        title: (draft.draft ? `${DRAFT_PREFIX}${draft.title}` : draft.title).slice(0, 255),
         description: draft.summary,
       }),
     };
@@ -316,6 +346,7 @@ export class GitlabCodeHost extends AbstractCodeHost {
       state: merged ? 'merged' : merge.state === 'closed' ? 'closed' : 'open',
       sha: merged ? this.mergedSha(merge) : null,
       conflicts: merge.has_conflicts === true || merge.detailed_merge_status === 'conflict',
+      draft: isDraft(merge),
     };
   }
 
@@ -342,7 +373,7 @@ export class GitlabCodeHost extends AbstractCodeHost {
     if (!merge.iid || !merge.web_url) {
       throw new SwarmloopError('gitlab merge request failed');
     }
-    return { project, iid: merge.iid, url: merge.web_url, summary: text };
+    return { project, iid: merge.iid, url: merge.web_url, summary: text, draft: isDraft(merge) };
   }
 
   protected conflict(error: unknown, calls: HttpCallDraft[]): boolean {

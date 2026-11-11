@@ -42,7 +42,7 @@
   "flows": [],
   "loopEvents": [],
   "reads": {
-    "pipeline": ["pipeline_ref", "ci_skip", "repos", "handoff"]
+    "pipeline": ["pipeline_ref", "ci_skip", "repos", "merge_request", "handoff"]
   },
   "result": {
     "exitCode": 0,

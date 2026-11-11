@@ -38,6 +38,7 @@ describe('merge-request step', () => {
         iid: 12,
         url: 'https://gitlab.example/group/demo/-/merge_requests/12',
         summary: '',
+        draft: true,
       },
       httpCalls: [call('POST')],
     }));
@@ -56,17 +57,49 @@ describe('merge-request step', () => {
         target: 'main',
         title: 'Ship the field',
         summary: 'Ships the field.',
+        draft: true,
       });
       expect(agent).not.toHaveBeenCalled();
       const body = await app.get(DocumentRepository).latestBody('PROJ-200', 'merge_request');
       expect(body).toContain('project: group/demo');
       expect(body).toContain('iid: 12');
+      expect(body).toContain('draft: true');
       expect(body).toContain('https://gitlab.example/group/demo/-/merge_requests/12');
       expect(body).toContain('Ships the field.');
       const run = await app.get(RunRepository).findRun('PROJ-200');
       expect(run?.currentStep).toBe('pipeline');
       expect(run?.status).toBe('waiting');
       expect(readFileSync(join(root, 'data', 'swarmloop.sqlite')).toString('utf8')).not.toContain(TOKEN);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('notes on the run that drafts are not available when the host opened a normal merge request', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-open-'));
+    featureTree(root, 'PROJ-200');
+    const find = jest.fn(async () => ({ record: null, httpCalls: [call('GET')] }));
+    const open = jest.fn(async (_draft: MergeRequestDraft) => ({
+      record: {
+        project: 'group/demo',
+        iid: 12,
+        url: 'https://gitlab.example/group/demo/-/merge_requests/12',
+        summary: '',
+        draft: false,
+      },
+      draftsUnavailable: true,
+      httpCalls: [call('POST')],
+    }));
+    const agent = jest.fn(async (_input: { mounts: { readonly?: boolean }[]; prompt: string }) =>
+      result('Ships the field.\n'),
+    );
+    const app = await boot(root, { find, open }, agent);
+    try {
+      await seed(app, 'PROJ-200');
+      const opened = await app.get(PipelineService).step('merge-request', 'PROJ-200');
+      expect(opened.exitCode).toBe(0);
+      expect(opened.message).toContain('drafts not available here');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-200', 'merge_request')).toContain('draft: false');
     } finally {
       await app.close();
     }
@@ -81,6 +114,7 @@ describe('merge-request step', () => {
         iid: 9,
         url: 'https://gitlab.example/group/demo/-/merge_requests/9',
         summary: 'Already open.',
+        draft: true,
       },
       httpCalls: [call('GET')],
     }));
@@ -113,6 +147,7 @@ describe('merge-request step', () => {
         iid: 9,
         url: 'https://gitlab.example/group/demo/-/merge_requests/9',
         summary: 'Already open.',
+        draft: true,
       },
       httpCalls: [call('GET')],
     }));
@@ -160,6 +195,7 @@ describe('merge-request step', () => {
             iid: 4,
             url: 'https://gitlab.example/group/web/-/merge_requests/4',
             summary: 'Web is open.',
+            draft: true,
           },
           httpCalls: [call('GET')],
         };
@@ -172,6 +208,7 @@ describe('merge-request step', () => {
         iid: 12,
         url: 'https://gitlab.example/group/demo/-/merge_requests/12',
         summary: '',
+        draft: true,
       },
       httpCalls: [call('POST')],
     }));
@@ -228,6 +265,7 @@ describe('merge-request step', () => {
         iid: 3,
         url: 'https://gitlab.example/group/demo/-/merge_requests/3',
         summary: '',
+        draft: true,
       },
       httpCalls: [call('POST')],
     }));
@@ -255,6 +293,7 @@ describe('merge-request step', () => {
         iid: 4,
         url: 'https://gitlab.example/group/demo/-/merge_requests/4',
         summary: '',
+        draft: true,
       },
       httpCalls: [call('POST')],
     }));

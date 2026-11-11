@@ -163,7 +163,11 @@ export const ARTIFACTS = {
     summarize: firstLine,
   }),
   commit: artifact('commit', { writers: ['commit'], readers: ['commit'], summarize: firstLine }),
-  mergeRequest: artifact('merge_request', { writers: ['merge-request'], readers: [], summarize: firstLine }),
+  mergeRequest: artifact('merge_request', {
+    writers: ['merge-request', 'pipeline'],
+    readers: ['pipeline'],
+    summarize: firstLine,
+  }),
   reviewReport: artifact('review_report', {
     writers: ['code-review'],
     readers: ['merge-request'],

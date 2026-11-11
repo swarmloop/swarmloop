@@ -1,4 +1,4 @@
-import { parseMergeRequests, remoteProject, renderMergeRequest } from './merge-request-record';
+import { mergeRequestDetails, parseMergeRequests, remoteProject, renderMergeRequest } from './merge-request-record';
 
 describe('merge request record', () => {
   it('reads a project path from an ssh or https origin', () => {
@@ -31,24 +31,35 @@ describe('merge request record', () => {
         project: 'group/demo',
         iid: 12,
         url: 'https://gitlab.example/group/demo/-/merge_requests/12',
+        draft: true,
         summary: 'Demo field.\n',
       },
       {
         project: 'group/web',
         iid: 4,
         url: 'https://gitlab.example/group/web/-/merge_requests/4',
+        draft: false,
         summary: 'Web field.\n',
       },
     ]);
     expect(body).toContain(
-      'project: group/demo\niid: 12\nurl: https://gitlab.example/group/demo/-/merge_requests/12\n\nDemo field.',
+      'project: group/demo\niid: 12\nurl: https://gitlab.example/group/demo/-/merge_requests/12\ndraft: true\n\nDemo field.',
     );
     expect(body).toContain(
-      'project: group/web\niid: 4\nurl: https://gitlab.example/group/web/-/merge_requests/4\n\nWeb field.',
+      'project: group/web\niid: 4\nurl: https://gitlab.example/group/web/-/merge_requests/4\ndraft: false\n\nWeb field.',
     );
     expect(parseMergeRequests(body)).toEqual([
-      { project: 'group/demo', iid: 12, url: 'https://gitlab.example/group/demo/-/merge_requests/12' },
-      { project: 'group/web', iid: 4, url: 'https://gitlab.example/group/web/-/merge_requests/4' },
+      { project: 'group/demo', iid: 12, url: 'https://gitlab.example/group/demo/-/merge_requests/12', draft: true },
+      { project: 'group/web', iid: 4, url: 'https://gitlab.example/group/web/-/merge_requests/4', draft: false },
+    ]);
+  });
+
+  it('shows each link with its draft or ready state, and reads a record without the line as ready', () => {
+    const records = parseMergeRequests('project: a/b\niid: 1\nurl: https://x/1\n\nProse.\n');
+    expect(records).toEqual([{ project: 'a/b', iid: 1, url: 'https://x/1', draft: false }]);
+    expect(mergeRequestDetails([...records, { ...records[0], url: 'https://x/2', draft: true }])).toEqual([
+      'https://x/1 (ready)',
+      'https://x/2 (draft)',
     ]);
   });
 });
