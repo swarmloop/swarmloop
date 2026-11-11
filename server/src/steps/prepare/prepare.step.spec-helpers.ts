@@ -32,6 +32,7 @@ export async function boot(
   root: string,
   checkoutsRoot?: string,
   bases: { gitlab?: string; github?: string; gitlabToken?: string; githubToken?: string } = {},
+  repos = '',
 ): Promise<TestingModule> {
   await writeFile(
     join(root, '.env'),
@@ -68,6 +69,7 @@ export async function boot(
       'SWARMLOOP_API_HOST=127.0.0.1',
       `SWARMLOOP_ROOT=${root}`,
       checkoutsRoot === undefined ? '' : `CHECKOUTS_ROOT=${checkoutsRoot}`,
+      `SWARMLOOP_REPOS=${repos}`,
       '',
     ].join('\n'),
   );

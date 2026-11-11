@@ -92,6 +92,43 @@ describe('prepare step', () => {
     }
   });
 
+  it('refuses a repository outside SWARMLOOP_REPOS and prepares a listed one', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'swarmloop-prepare-repos-'));
+    const swarm = join(parent, 'swarm');
+    mkdirSync(swarm);
+    repoWithMain(parent, 'app');
+    repoWithMain(parent, 'other');
+    const app = await boot(swarm, '..', {}, 'app');
+    try {
+      await seedRequirements(app, 'PROJ-10');
+      const runs = app.get(RunRepository);
+      const run = await runs.findRun('PROJ-10');
+      if (!run) {
+        throw new Error('run is missing');
+      }
+      run.projects = 'other\n';
+      await runs.saveRun(run);
+      const refused = await app.get(PipelineService).step('prepare', 'PROJ-10');
+      expect(refused.exitCode).toBe(1);
+      expect(refused.message).toContain('other is not in SWARMLOOP_REPOS');
+      expect(existsSync(join(swarm, 'worktrees', 'PROJ-10', 'other'))).toBe(false);
+      await seedRequirements(app, 'PROJ-11');
+      const listed = await runs.findRun('PROJ-11');
+      if (!listed) {
+        throw new Error('run is missing');
+      }
+      listed.projects = 'app\n';
+      await runs.saveRun(listed);
+      const ok = await app.get(PipelineService).step('prepare', 'PROJ-11');
+      expect(ok.exitCode).toBe(0);
+      expect(existsSync(join(swarm, 'worktrees', 'PROJ-11', 'app'))).toBe(true);
+      expect(app.get(PrepareStep).listProjects().projects).toEqual(['app']);
+      await expect(app.get(PrepareStep).addClone('other')).rejects.toThrow('other is not in SWARMLOOP_REPOS');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('registers a clone by folder name and refuses a missing one', async () => {
     const parent = await mkdtemp(join(tmpdir(), 'swarmloop-prepare-add-'));
     const swarm = join(parent, 'swarm');

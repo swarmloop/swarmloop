@@ -71,6 +71,8 @@ export const envSchema = Joi.object({
   CHECKOUTS_ROOT: Joi.string().allow('').optional(),
   SWARMLOOP_API_PORT: Joi.number().required(),
   SWARMLOOP_API_HOST: Joi.string().required(),
+  SWARMLOOP_PUBLIC_URL: Joi.string().uri().default('http://127.0.0.1:3921'),
+  SWARMLOOP_REPOS: Joi.string().allow('').default(''),
 }).messages({
   'any.required': '{{#label}} is missing',
   'any.only': '{{#label}} has unknown value {{#value}}',

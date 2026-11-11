@@ -2,8 +2,8 @@ import { mkdirSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
-import { SwarmloopError } from '../../core/swarmloop-error';
-import { listGitProjects, resolveCheckoutPath, storedProjects } from './checkout-path';
+import { SwarmloopError } from '../core/swarmloop-error';
+import { assertRepoAllowed, listGitProjects, resolveCheckoutPath, storedProjects } from './checkout-path';
 
 describe('resolveCheckoutPath', () => {
   const repoRoot = '/work/swarmloop';
@@ -36,7 +36,23 @@ describe('listGitProjects', () => {
     mkdirSync(join(root, 'plain'), { recursive: true });
     mkdirSync(join(root, '.hidden', '.git'), { recursive: true });
     mkdirSync(join(root, 'run-abc123', '.git'), { recursive: true });
-    expect(listGitProjects(root, root)).toEqual(['api', 'demo']);
+    expect(listGitProjects(root, root, [])).toEqual(['api', 'demo']);
     expect(storedProjects('demo\napi\n')).toEqual(['demo', 'api']);
+  });
+
+  it('lists only the repositories it is given', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-projects-'));
+    mkdirSync(join(root, 'demo', '.git'), { recursive: true });
+    mkdirSync(join(root, 'api', '.git'), { recursive: true });
+    expect(listGitProjects(root, root, ['demo'])).toEqual(['demo']);
+  });
+});
+
+describe('assertRepoAllowed', () => {
+  it('refuses a repository outside the list with INPUT_MISSING and allows any when the list is empty', () => {
+    expect(() => assertRepoAllowed(['api'], 'demo')).toThrow('demo is not in SWARMLOOP_REPOS');
+    expect(() => assertRepoAllowed(['api'], 'demo')).toThrow(expect.objectContaining({ code: 'INPUT_MISSING' }));
+    expect(() => assertRepoAllowed(['api'], 'api')).not.toThrow();
+    expect(() => assertRepoAllowed([], 'demo')).not.toThrow();
   });
 });

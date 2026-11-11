@@ -371,6 +371,26 @@ describe('requirements step', () => {
     }
   });
 
+  it('blocks with INPUT_MISSING when a run names a repository outside SWARMLOOP_REPOS', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-repos-'));
+    await writeEnv(root, '', 'direct', { SWARMLOOP_REPOS: 'api' });
+    const app = await boot(root, '', 'direct', jest.fn(), jest.fn(), false);
+    try {
+      const runs = app.get(RunRepository);
+      const created = await runs.openWaiting('widget', '');
+      created.projects = 'billing\n';
+      await runs.saveRun(created);
+      const result = await app.get(PipelineService).step('requirements', 'widget', { prompt: 'Do it' });
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('billing is not in SWARMLOOP_REPOS');
+      const run = await app.get(RunRepository).findRun('widget');
+      expect(run?.status).toBe('blocked');
+      expect(JSON.parse(run?.stateReason ?? '{}')).toMatchObject({ code: 'INPUT_MISSING' });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('does not fail requirements for words that only look like keys', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plain-'));
     await writeEnv(root, '', 'direct', { JIRA_BASE_URL: '', JIRA_EMAIL: '', JIRA_API_TOKEN: '' });
@@ -426,7 +446,8 @@ describe('requirements step', () => {
 
   it('accepts a local checkout for code review without an implementation record', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-vendor-'));
-    const checkout = await mkdtemp(join(tmpdir(), 'swarmloop-checkout-'));
+    const checkout = join(root, 'worktrees', 'checkout');
+    mkdirSync(checkout, { recursive: true });
     const now = new Date().toISOString();
     const agent = jest.fn().mockResolvedValue({
       responseText: 'decision: ok\n',

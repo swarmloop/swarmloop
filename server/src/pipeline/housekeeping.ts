@@ -6,7 +6,7 @@ import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { git } from '../git/git';
 import { root } from '../history/run-paths';
-import { listGitProjects, resolveCheckoutPath } from '../steps/prepare/checkout-path';
+import { listGitProjects, resolveCheckoutPath } from '../config/checkout-path';
 import { CheckoutService } from '../steps/shared/checkout.service';
 import { DiskGuard } from './disk-guard';
 import { RunRetention } from './run-retention';
@@ -66,7 +66,7 @@ export class Housekeeping implements OnModuleDestroy {
   private async tidyRegistrations(): Promise<void> {
     const base = root(this.config);
     const own = join(base, 'worktrees');
-    for (const name of listGitProjects(base, this.config.env.CHECKOUTS_ROOT)) {
+    for (const name of listGitProjects(base, this.config.env.CHECKOUTS_ROOT, this.config.env.SWARMLOOP_REPOS)) {
       const checkout = { name, path: resolveCheckoutPath(base, this.config.env.CHECKOUTS_ROOT, name, '') };
       const listed = await git(['-C', checkout.path, 'worktree', 'list', '--porcelain']);
       for (const block of listed.split('\n\n')) {

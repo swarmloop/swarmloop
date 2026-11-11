@@ -7,7 +7,7 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail } from '../../git/git';
 import { storedBase } from '../../git/rebase';
 import { git as quietGit } from '../../git/worktree-tree';
-import { CHECKOUT_NAME, resolveCheckoutPath } from '../prepare/checkout-path';
+import { assertRepoAllowed, CHECKOUT_NAME, resolveCheckoutPath } from '../../config/checkout-path';
 import { StepKernel } from '../step-kernel';
 
 /** Puts the run's worktrees in place: one detached worktree per project, at the stored base. */
@@ -41,6 +41,7 @@ export class CheckoutService {
       throw new SwarmloopError('checkout name is invalid');
     }
     const env = this.kernel.config.env;
+    assertRepoAllowed(env.SWARMLOOP_REPOS, checkout.name);
     const located = {
       name: checkout.name,
       path: resolveCheckoutPath(root(this.kernel.config), env.CHECKOUTS_ROOT, checkout.name, checkout.path),

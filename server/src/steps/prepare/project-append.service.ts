@@ -8,7 +8,7 @@ import { repoNames } from '../../git/repo-names';
 import { BranchCheckout } from '../shared/branch-checkout';
 import { CheckoutService } from '../shared/checkout.service';
 import { appendProjectNames } from './append-projects';
-import { CHECKOUT_NAME, renderProjects, storedProjects } from './checkout-path';
+import { CHECKOUT_NAME, renderProjects, storedProjects } from '../../config/checkout-path';
 import { PrepareStep } from './prepare.step';
 import { ARTIFACTS } from '../contract/artifacts';
 

@@ -22,6 +22,7 @@ import {
 import type { StepName } from '../contract/steps';
 import { STEPS } from '../contract/steps';
 import { root } from '../history/run-paths';
+import { assertInsideWork, workRoots } from '../sandbox/allowed-path';
 import { flagError } from './flag-error';
 import { snapshotRun } from './worktree-snapshot';
 import { writeRunState } from '../history/run-state';
@@ -193,6 +194,7 @@ export class RunDriver {
     const previousStatus = prior?.status ?? 'waiting';
     const run = await this.runs.begin(key, name);
     if (options.path) {
+      assertInsideWork(options.path, workRoots(this.config));
       run.targetPath = realpathSync(options.path);
     }
     const settled = settle(previousStep, previousStatus, name, 'blocked');

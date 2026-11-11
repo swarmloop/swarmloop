@@ -1,4 +1,5 @@
 const DEFAULT_API_URL = 'http://127.0.0.1:3920';
+const DEFAULT_PUBLIC_URL = 'http://127.0.0.1:3921';
 
 declare global {
   interface Window {
@@ -10,6 +11,10 @@ declare global {
 /** Read on every call: the dashboard image takes its API URL from the env at container start. */
 export function apiBaseUrl(): string {
   return process.env.SWARMLOOP_API_URL ?? DEFAULT_API_URL;
+}
+
+export function publicUrl(): string {
+  return process.env.SWARMLOOP_PUBLIC_URL ?? DEFAULT_PUBLIC_URL;
 }
 
 export function socketUrl(): string {

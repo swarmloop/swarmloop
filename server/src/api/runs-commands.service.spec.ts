@@ -301,16 +301,26 @@ describe('runs api', () => {
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-7 started' }) };
     const app = await boot(root, pipeline);
     try {
-      const started = await app
-        .get(RunCommandsService)
-        .start({ key: 'proj-7', prompt: 'Look here', path: '/tmp/checkout' });
+      const path = join(root, 'worktrees', 'checkout');
+      const started = await app.get(RunCommandsService).start({ key: 'proj-7', prompt: 'Look here', path });
       expect(httpStatus(started)).toBe(202);
-      expect(pipeline.startDetached).toHaveBeenCalledWith(
-        'proj-7',
-        { path: '/tmp/checkout', phases: [...PHASES] },
-        'code-review',
-      );
+      expect(pipeline.startDetached).toHaveBeenCalledWith('proj-7', { path, phases: [...PHASES] }, 'code-review');
       expect((await app.get(RunRepository).findRun('proj-7'))?.prompt).toBe('Look here');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses a path outside the repositories before it creates anything', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-outside-'));
+    const pipeline = { startDetached: jest.fn() };
+    const app = await boot(root, pipeline);
+    try {
+      await expect(
+        app.get(RunCommandsService).start({ key: 'proj-8', prompt: 'Look here', path: tmpdir() }),
+      ).rejects.toThrow('path is outside the repositories');
+      expect(pipeline.startDetached).not.toHaveBeenCalled();
+      expect(await app.get(RunRepository).findRun('proj-8')).toBeNull();
     } finally {
       await app.close();
     }

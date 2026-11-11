@@ -5,9 +5,21 @@ import { FlowView } from '../contract/api';
 import { ClientToServerEvents, LiveEvents, ServerToClientEvents } from '../contract/live';
 import { RunQueriesService } from '../api/run-queries.service';
 import { LiveHub } from '../live/live.hub';
+import { rawEnv } from '../config/process-env';
 import { PANEL_ORIGINS } from '../live/origins';
+import { isAllowedHost } from './allowed-hosts';
 
-@WebSocketGateway({ cors: { origin: PANEL_ORIGINS }, transports: ['websocket'] })
+const PUBLIC_URL = () => rawEnv().SWARMLOOP_PUBLIC_URL ?? 'http://127.0.0.1:3921';
+
+/** socket.io handshakes bypass Express middleware, so the Host rule is applied here. */
+export function allowHandshake(
+  request: { headers: { host?: string } },
+  done: (error: string | null, ok: boolean) => void,
+): void {
+  done(null, isAllowedHost(request.headers.host, PUBLIC_URL()));
+}
+
+@WebSocketGateway({ cors: { origin: PANEL_ORIGINS }, transports: ['websocket'], allowRequest: allowHandshake })
 export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConnection {
   @WebSocketServer()
   server!: Server<ClientToServerEvents, ServerToClientEvents>;

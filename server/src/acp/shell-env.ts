@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { parseAgentList } from '../config/agents';
+import { splitList } from '../config/env';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { RUNTIME_NAMES } from '../integrations/agent-runtime/agent-runtime.registry';
 
@@ -12,6 +13,8 @@ export interface ShellConfig {
   codexAuth: string;
   codexApiKey: string;
   checkoutsRoot: string | undefined;
+  /** Repository folder names the server is limited to. Empty means every repository. */
+  repos: string[];
   /** `open` turns the egress proxy off, as on the server. */
   egress: string | undefined;
   /** A Docker runtime such as `runsc`, as on the server. */
@@ -29,7 +32,7 @@ export function readShellConfig(file: string): ShellConfig {
   }
   for (const line of body.split('\n')) {
     const match =
-      /^(?:export\s+)?(RUNTIME|MODEL_IMPLEMENT|AGENTS_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CODEX_AUTH|CODEX_API_KEY|CHECKOUTS_ROOT|SANDBOX_EGRESS|SANDBOX_DOCKER_RUNTIME)=(.*)$/.exec(
+      /^(?:export\s+)?(RUNTIME|MODEL_IMPLEMENT|AGENTS_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CODEX_AUTH|CODEX_API_KEY|CHECKOUTS_ROOT|SWARMLOOP_REPOS|SANDBOX_EGRESS|SANDBOX_DOCKER_RUNTIME)=(.*)$/.exec(
         line.trim(),
       );
     if (!match) {
@@ -52,6 +55,7 @@ export function readShellConfig(file: string): ShellConfig {
     codexAuth: values.get('CODEX_AUTH') ?? '',
     codexApiKey: values.get('CODEX_API_KEY') ?? '',
     checkoutsRoot: values.get('CHECKOUTS_ROOT'),
+    repos: splitList(values.get('SWARMLOOP_REPOS')),
     egress: values.get('SANDBOX_EGRESS'),
     engine: values.get('SANDBOX_DOCKER_RUNTIME') ?? '',
   };

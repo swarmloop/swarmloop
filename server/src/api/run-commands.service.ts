@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 import { Clock } from '../core/clock';
 import { AppConfig } from '../config/env';
+import { assertWorkPath } from './work-path';
 import { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
@@ -12,7 +13,7 @@ import type { Subtask } from '../contract/subtask';
 import { branchName, summaryForBranch } from '../steps/branch/branch-name';
 import { requirementsBrief } from '../steps/shared/requirements-brief';
 import { PhaseName, pipelineStepOf, reviewerOf } from '../contract/steps';
-import { CHECKOUT_NAME, storedProjects } from '../steps/prepare/checkout-path';
+import { CHECKOUT_NAME, storedProjects } from '../config/checkout-path';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -111,6 +112,9 @@ export class RunCommandsService {
       throw new BadRequestException(error instanceof Error ? error.message : 'run id is invalid');
     }
     const path = body.path?.trim() || undefined;
+    if (path) {
+      assertWorkPath(path, this.config);
+    }
     const opened = await this.openSession(key);
     key = opened.key;
     const existing = opened.run;

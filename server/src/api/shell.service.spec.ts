@@ -1,4 +1,7 @@
-import { ConflictException } from '@nestjs/common';
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { AppConfig } from '../config/env';
 import type { RunEntity } from '../history/entities';
@@ -11,7 +14,17 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { ShellService } from './shell.service';
 
-const config = { env: { SWARMLOOP_ROOT: '/tmp/swarmloop' } } as unknown as AppConfig;
+const base = realpathSync(mkdtempSync(join(tmpdir(), 'swarmloop-shell-')));
+const checkouts = join(base, 'checkouts');
+const demo = join(checkouts, 'demo');
+const other = join(checkouts, 'other');
+mkdirSync(join(demo, '.git'), { recursive: true });
+mkdirSync(join(other, '.git'), { recursive: true });
+mkdirSync(join(base, 'private'));
+symlinkSync(join(base, 'private'), join(demo, 'escape'));
+const config = {
+  env: { SWARMLOOP_ROOT: join(base, 'swarmloop'), CHECKOUTS_ROOT: checkouts, SWARMLOOP_REPOS: [] },
+} as unknown as AppConfig;
 
 describe('shell open', () => {
   it('creates one waiting feature and does not start the pipeline', async () => {
@@ -50,11 +63,11 @@ describe('shell open', () => {
       new FakeClock(),
       { ensureForRequest: async () => undefined } as unknown as WorkspaceGuard,
     );
-    const created = await service.open('/tmp/demo');
+    const created = await service.open(demo);
     expect(created).toMatchObject({ created: true, status: 'waiting', currentStep: 'requirements' });
-    expect(notes[0]).toBe('open /tmp/demo');
+    expect(notes[0]).toBe(`open ${demo}`);
     expect(notes[1]).toMatch(/^flow /);
-    const again = await service.open('/tmp/demo');
+    const again = await service.open(demo);
     expect(again).toMatchObject({ created: false, key: (created as { key: string }).key });
     expect(notes.filter((note) => note.startsWith('open'))).toHaveLength(1);
   });
@@ -63,8 +76,8 @@ describe('shell open', () => {
     const notes: string[] = [];
     const runRepository = {
       listRuns: async () => [
-        { key: 'PROJ-1', targetPath: '/tmp/demo', status: 'waiting', currentStep: 'requirements' },
-        { key: 'PROJ-2', targetPath: '/tmp', status: 'waiting', currentStep: 'plan' },
+        { key: 'PROJ-1', targetPath: demo, status: 'waiting', currentStep: 'requirements' },
+        { key: 'PROJ-2', targetPath: checkouts, status: 'waiting', currentStep: 'plan' },
       ],
       openWaiting: async () => {
         notes.push('open');
@@ -81,7 +94,7 @@ describe('shell open', () => {
       new FakeClock(),
       { ensureForRequest: async () => undefined } as unknown as WorkspaceGuard,
     );
-    const result = await service.open('/tmp/demo');
+    const result = await service.open(demo);
     expect(result).toEqual({
       matches: [
         { key: 'PROJ-1', status: 'waiting', currentStep: 'requirements' },
@@ -139,7 +152,7 @@ describe('shell lock', () => {
   });
 
   it('finds the run of a path without writing, and names a new key when none matches', async () => {
-    const runs: RunEntity[] = [{ id: 1, key: 'proj-1', targetPath: '/tmp/demo' } as RunEntity];
+    const runs: RunEntity[] = [{ id: 1, key: 'proj-1', targetPath: demo } as RunEntity];
     const service = new ShellService(
       { listRuns: async () => runs } as unknown as RunRepository,
       {} as DocumentRepository,
@@ -151,7 +164,33 @@ describe('shell lock', () => {
       { ensureForRequest: async () => undefined } as unknown as WorkspaceGuard,
     );
 
-    expect(await service.locate('/tmp/demo')).toEqual({ key: 'proj-1', cwd: '/tmp/demo', created: false });
-    expect(await service.locate('/tmp/other')).toMatchObject({ cwd: '/tmp/other', created: true });
+    expect(await service.locate(demo)).toEqual({ key: 'proj-1', cwd: demo, created: false });
+    expect(await service.locate(other)).toMatchObject({ cwd: other, created: true });
+  });
+
+  it('refuses a path outside the repositories and through a symlink, and writes nothing', async () => {
+    const notes: string[] = [];
+    const service = new ShellService(
+      {
+        listRuns: async () => [],
+        openWaiting: async () => {
+          notes.push('open');
+          return {} as RunEntity;
+        },
+      } as unknown as RunRepository,
+      {} as DocumentRepository,
+      {} as VisitRepository,
+      { noteFlow: async () => notes.push('flow') } as unknown as FlowRepository,
+      config,
+      {} as SandboxService,
+      new FakeClock(),
+      { ensureForRequest: async () => undefined } as unknown as WorkspaceGuard,
+    );
+
+    for (const path of [base, '/etc', join(base, 'private'), join(demo, 'escape')]) {
+      await expect(service.locate(path)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.open(path)).rejects.toBeInstanceOf(BadRequestException);
+    }
+    expect(notes).toEqual([]);
   });
 });

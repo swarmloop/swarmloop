@@ -39,6 +39,8 @@ services:
     environment:
       SWARMLOOP_ROOT: /app
       CHECKOUTS_ROOT: /checkouts
+      SWARMLOOP_REPOS: ${SWARMLOOP_REPOS:-}
+      SWARMLOOP_PUBLIC_URL: ${SWARMLOOP_PUBLIC_URL:-http://127.0.0.1:3921}
       SWARMLOOP_API_HOST: 0.0.0.0
       SWARMLOOP_API_PORT: 3920
       SWARMLOOP_UID: ${UID:-1000}
@@ -48,7 +50,7 @@ services:
     volumes:
       - ${SWARMLOOP_HOME:-.}/data:/app/data
       - ${SWARMLOOP_HOME:-.}/worktrees:/app/worktrees
-      - ${CHECKOUTS_ROOT:-..}:/checkouts
+      - ${CHECKOUTS_ROOT:?set CHECKOUTS_ROOT to a folder with only the repos swarmloop works on}:/checkouts
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       agent-cursor:
@@ -91,6 +93,7 @@ services:
       - '127.0.0.1:3921:3921'
     environment:
       SWARMLOOP_API_URL: http://server:3920
+      SWARMLOOP_PUBLIC_URL: ${SWARMLOOP_PUBLIC_URL:-http://127.0.0.1:3921}
       SWARMLOOP_SOCKET_URL: ${SWARMLOOP_SOCKET_URL:-http://127.0.0.1:3920}
     depends_on:
       server:

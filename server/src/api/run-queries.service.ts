@@ -23,7 +23,7 @@ import { StepRegistry } from '../steps/step.registry';
 import { isStep } from '../core/pipeline-result';
 import { isReviewStep } from '../contract/steps';
 import { parsePaths } from '../git/commit-paths';
-import { renderProjects, storedProjects } from '../steps/prepare/checkout-path';
+import { renderProjects, storedProjects } from '../config/checkout-path';
 import { reviewDecision } from '../steps/code-review/code-review-record';
 import type { StepEventPage } from '../contract/step-events';
 import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';

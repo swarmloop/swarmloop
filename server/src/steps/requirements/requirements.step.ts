@@ -24,6 +24,7 @@ import {
   requirementsVisit,
   stopReason,
 } from './requirements-visit';
+import { assertRepoAllowed, storedProjects } from '../../config/checkout-path';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, Route, StepInput, StepResult } from '../contract/step-contract';
 
@@ -108,6 +109,9 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
       const unread = effectivePrompt ? unreadSource(effectivePrompt) : null;
       if (unread) {
         throw new SwarmloopError(unread);
+      }
+      for (const name of storedProjects(opened.run.projects)) {
+        assertRepoAllowed(this.config.env.SWARMLOOP_REPOS, name);
       }
       const fetched = await this.collect(
         ctx,

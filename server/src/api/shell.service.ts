@@ -9,6 +9,7 @@ import { root } from '../history/run-paths';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { AppConfig } from '../config/env';
+import { assertWorkPath } from './work-path';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { assertKey } from '../core/pipeline-result';
 import { PHASES } from '../contract/steps';
@@ -79,6 +80,7 @@ export class ShellService {
     if (!cwd) {
       throw new BadRequestException('path is missing');
     }
+    assertWorkPath(cwd, this.config);
     const matches = matchFeatures(await this.runs.listRuns(), cwd, root(this.config));
     if (matches.length > 1) {
       return { matches: toMatches(matches) };
@@ -95,6 +97,7 @@ export class ShellService {
     if (!cwd) {
       throw new BadRequestException('path is missing');
     }
+    assertWorkPath(cwd, this.config);
     const matches = matchFeatures(await this.runs.listRuns(), cwd, root(this.config));
     if (matches.length > 1) {
       return { matches: toMatches(matches) };

@@ -13,6 +13,8 @@ export interface SandboxLaunch {
   /** The attempt that starts the container. Empty for a container that no attempt owns, such as the shell. */
   attemptId: string;
   mounts: SandboxMount[];
+  /** The folders a `/work` mount may come from: the repositories the server is given and `worktrees/`. */
+  workRoots: string[];
   envMasks: EnvMask[];
   allowHosts: string[];
   command: string[];
