@@ -34,8 +34,10 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function runLog(runKey: string, name: string): Promise<string | null> {
-  const response = await fetch(`/run-logs/${runKey}-${name}-output.txt`, { cache: 'no-store' });
+export async function runLog(runKey: string, name: string, attempt?: string): Promise<string | null> {
+  const query = attempt ? `?attempt=${encodeURIComponent(attempt)}` : '';
+  const path = `/runs/${encodeURIComponent(runKey)}/steps/${encodeURIComponent(name)}/log${query}`;
+  const response = await fetch(apiUrl(path), { cache: 'no-store' });
   if (!response.ok) {
     return null;
   }

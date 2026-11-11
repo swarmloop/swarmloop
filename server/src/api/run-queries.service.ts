@@ -36,6 +36,7 @@ import { belongsToVisit, documentView, filesOf, taskLayers, withReturnNotes } fr
 import { visitKey } from '../contract/visit-key';
 import { launchView, liveVisit } from './run-view/live';
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
+import { readStepLog } from './run-queries-log';
 import { openSpend } from './run-queries-spend';
 export { requireRun } from './run-queries-run';
 
@@ -137,6 +138,10 @@ export class RunQueriesService {
   async stepEventPage(key: string, query: { step?: string; after?: string; limit?: string }): Promise<StepEventPage> {
     const run = await requireRun(this.runs, key);
     return this.stepEventLog.page(run.id, eventPaging(query));
+  }
+
+  async stepLog(key: string, step: string, attempt: string | null): Promise<string> {
+    return readStepLog(this.runs, this.visits, this.config, key, step, attempt || null);
   }
 
   async step(key: string, name: string): Promise<StepView> {

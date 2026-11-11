@@ -34,3 +34,21 @@ curl -fsS http://127.0.0.1:3921/swarmloop-api/health
 curl -fsS http://127.0.0.1:3921/swarmloop-api/readiness | node -e "$assert_ready"
 SWARMLOOP_SOCKET_URL=http://live.example:4000 docker compose up -d --wait --pull never
 curl -fsS "${retry[@]}" http://127.0.0.1:3921/ | grep -F 'http://live.example:4000'
+# Files a leaked data folder would expose, written by the server's own user so the folder keeps its owner.
+docker compose exec -T server sh -c 'mkdir -p /app/data/codex && echo "{}" > /app/data/codex/auth.json && echo "{}" > /app/data/x-session.json'
+# The dashboard serves no data folder, and the log route refuses what is not a step log of a known run.
+assert_404() {
+  status="$(curl --path-as-is -s -o /dev/null -w '%{http_code}' "$1")"
+  if [ "$status" != 404 ]; then
+    echo "expected 404 from $1, got $status" >&2
+    exit 1
+  fi
+}
+for path in /run-logs/swarmloop.sqlite /run-logs/codex/auth.json /run-logs/x-session.json /run-logs/../.env; do
+  assert_404 "http://127.0.0.1:3921$path"
+done
+for base in http://127.0.0.1:3921/swarmloop-api http://127.0.0.1:3920; do
+  for path in /runs/nope/steps/plan/log '/runs/..%2f..%2fetc/steps/plan/log' '/runs/nope/steps/..%2f..%2fetc/log' '/runs/nope/steps/%2fetc%2fpasswd/log'; do
+    assert_404 "$base$path"
+  done
+done

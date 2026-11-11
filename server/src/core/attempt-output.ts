@@ -28,11 +28,12 @@ function isAttemptFile(name: string, key: string, step: string): boolean {
   );
 }
 
+/** Every step that writes an output file. */
+export const OUTPUT_STEPS: readonly string[] = [...STEPS, ...REVIEW_STEPS, 'code-review-report', 'chat'];
+
 /** True for any output file of this run: one per attempt, or the single file of a run from before attempts. */
 export function isOutputFileOf(name: string, key: string): boolean {
-  return [...STEPS, ...REVIEW_STEPS, 'code-review-report', 'chat'].some(
-    (step) => name === `${key}-${step}-output.txt` || isAttemptFile(name, key, step),
-  );
+  return OUTPUT_STEPS.some((step) => name === `${key}-${step}-output.txt` || isAttemptFile(name, key, step));
 }
 
 /** The file of one attempt, else (without an id) the newest attempt file, else the single file of a run from before attempts. */

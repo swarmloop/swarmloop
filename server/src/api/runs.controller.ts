@@ -1,4 +1,16 @@
-import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, Post, Query, Res } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  Headers,
+  Param,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import {
   AddProjectBody,
   AnswersBody,
@@ -67,6 +79,12 @@ export class RunsController {
     @Query('limit') limit?: string,
   ): Promise<StepEventPage> {
     return this.queries.stepEventPage(key, { step, after, limit });
+  }
+
+  @Get('runs/:key/steps/:step/log')
+  @Header('Content-Type', 'text/plain; charset=utf-8')
+  stepLog(@Param('key') key: string, @Param('step') step: string, @Query('attempt') attempt?: string): Promise<string> {
+    return this.queries.stepLog(key, step, attempt || null);
   }
 
   @Get('runs/:key/steps/:step')

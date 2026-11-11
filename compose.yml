@@ -92,8 +92,6 @@ services:
     environment:
       SWARMLOOP_API_URL: http://server:3920
       SWARMLOOP_SOCKET_URL: ${SWARMLOOP_SOCKET_URL:-http://127.0.0.1:3920}
-    volumes:
-      - ${SWARMLOOP_HOME:-.}/data:/app/dashboard/public/run-logs:ro
     depends_on:
       server:
         condition: service_healthy

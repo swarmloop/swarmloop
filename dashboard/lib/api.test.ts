@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError } from './api';
+import { api, ApiError, runLog } from './api';
 
 function respond(status: number, body: unknown): void {
   const response = { ok: status < 400, status, json: () => Promise.resolve(body) };
@@ -37,5 +37,30 @@ describe('api', () => {
     respond(200, { runs: [] });
 
     await expect(api('/runs')).resolves.toEqual({ runs: [] });
+  });
+});
+
+function answer(status: number, body = ''): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn().mockResolvedValue(new Response(body, { status }));
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+describe('runLog', () => {
+  it('reads the log through the API', async () => {
+    const fetchMock = answer(200, 'raw log');
+    await expect(runLog('proj-1', 'implement')).resolves.toBe('raw log');
+    expect(fetchMock.mock.calls[0][0]).toBe('/swarmloop-api/runs/proj-1/steps/implement/log');
+  });
+
+  it('adds the attempt and encodes every part', async () => {
+    const fetchMock = answer(200, '');
+    await runLog('../x', 'a/b', 'id&1');
+    expect(fetchMock.mock.calls[0][0]).toBe('/swarmloop-api/runs/..%2Fx/steps/a%2Fb/log?attempt=id%261');
+  });
+
+  it('answers null when the API refuses', async () => {
+    answer(404);
+    await expect(runLog('proj-1', 'plan')).resolves.toBeNull();
   });
 });

@@ -64,6 +64,14 @@
     {
       "file": ".github/workflows/release.yml",
       "pattern": "^\\s*schedule\\s*:"
+    },
+    {
+      "file": "compose.yml",
+      "pattern": "data[^\\n]*:/app/dashboard"
+    },
+    {
+      "file": "compose.build.yml",
+      "pattern": "data[^\\n]*:/app/dashboard"
     }
   ]
 }

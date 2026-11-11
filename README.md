@@ -193,6 +193,8 @@ Every model step runs in a fresh container. The server starts it for the step an
 
 `data/swarmloop.sqlite` is the record of every run. It keeps the prompt, each document a step wrote, each model request and response, each loop back to implementation, and each call to Jira or the git host. An identical document is stored once.
 
+The `data/` folder holds secrets: the Codex login, the session files and the history database. Never share it and never serve it. The dashboard mounts no host folder and reads step logs only through the API (`/runs/:key/steps/:step/log`).
+
 **All history** on a run opens all of it: documents, prompts and responses, tokens by model, CPU and memory, loops, and HTTP calls. A step that crashed can resume the same agent chat. Anyone who can open the panel can open any run and see how the task was done.
 
 ### 🔀 Cursor, Claude, or Codex

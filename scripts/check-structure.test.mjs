@@ -98,6 +98,22 @@ test('compose.yml pulls its images: no build and no source path (compose.build.y
   );
 });
 
+test('no compose file mounts data/ into the dashboard', () => {
+  const composeRules = {
+    ...rules,
+    forbidInFile: rules.forbidInFile.filter(({ file }) => file.startsWith('compose')),
+  };
+  const check = (text) => findViolations({ root: makeRoot({ 'compose.yml': text }), rules: composeRules, files: [] });
+
+  assert.equal(
+    check(
+      'services:\n  dashboard:\n    image: x\n    volumes:\n      - ${HOME}/data:/app/dashboard/public/run-logs:ro\n',
+    ).length,
+    1,
+  );
+  assert.deepEqual(check('services:\n  dashboard:\n    image: x\n'), []);
+});
+
 test('release.yml reacts to tags only', () => {
   const workflowRules = {
     ...rules,
