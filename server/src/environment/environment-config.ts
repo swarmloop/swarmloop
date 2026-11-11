@@ -1,7 +1,8 @@
 import { posix } from 'path';
 import Joi from 'joi';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { git, gitDetail } from '../git/git';
+import { git, gitDetail, originUrl } from '../git/git';
+import { hostRefusal, remoteHost } from '../sandbox/sandbox-launch';
 
 const SWARMLOOP_FILE = '.swarmloop.json';
 const SWARMLOOP_DIR = '.swarmloop';
@@ -20,6 +21,13 @@ export interface EnvironmentConfig {
   checks: string[];
   /** `registries`: the agent may install packages itself. `setup`: only setup reaches the registries. */
   network?: AgentNetwork;
+  /** Hosts the project needs besides the built-in registries: for its setup, and for the agent. */
+  hosts?: ProjectHosts;
+}
+
+export interface ProjectHosts {
+  setup?: string[];
+  agent?: string[];
 }
 
 export type AgentNetwork = 'registries' | 'setup';
@@ -42,6 +50,12 @@ const dockerfilePath = Joi.string().custom((value: string, helpers) =>
 /** Keys of the first format. Unknown keys are allowed, so without this they would be dropped without a word. */
 const RENAMED: Record<string, string> = { install: 'setup', verify: 'checks' };
 
+/** Entries are checked against the ceiling by `checkHosts`, which gives each one its reason, so the schema only types them. */
+const hostsSchema = Joi.object({
+  setup: Joi.array().items(Joi.string().allow('')),
+  agent: Joi.array().items(Joi.string().allow('')),
+}).unknown(true);
+
 const swarmloopSchema = Joi.object({
   version: Joi.number().valid(1).required(),
   image: Joi.string().min(1),
@@ -50,6 +64,7 @@ const swarmloopSchema = Joi.object({
   checks: Joi.array().items(Joi.string().min(1)),
   cache: Joi.array().items(cachePath),
   network: Joi.string().valid(...NETWORKS),
+  hosts: hostsSchema,
 })
   .xor('image', 'dockerfile')
   .unknown(true);
@@ -58,15 +73,45 @@ const swarmloopSchema = Joi.object({
 export async function readEnvironmentConfig(repoPath: string, ref = 'HEAD'): Promise<EnvironmentConfig | null> {
   const own = await committedFile(repoPath, SWARMLOOP_FILE, ref);
   if (own !== null) {
-    return fromSwarmloop(own);
+    return withCeiling(repoPath, fromSwarmloop(own));
   }
   for (const file of DEVCONTAINER_FILES) {
     const text = await committedFile(repoPath, file, ref);
     if (text !== null) {
-      return fromDevcontainer(text, file);
+      return withCeiling(repoPath, fromDevcontainer(text, file));
     }
   }
   return null;
+}
+
+/** The hosts of the checkout's remotes, or none. Empty when there is no origin. */
+export async function originHosts(repoPath: string): Promise<string[]> {
+  const url = await originUrl(repoPath, repoPath, 'origin failed');
+  return url ? [remoteHost(url)] : [];
+}
+
+/**
+ * The ceiling needs the origin host, so it is read only when the manifest names hosts: any other manifest costs no git
+ * call. A refused host stops the run, one error for the entries of a manifest.
+ */
+async function withCeiling(repoPath: string, config: EnvironmentConfig): Promise<EnvironmentConfig> {
+  if (config.hosts) {
+    checkHosts(config, await originHosts(repoPath));
+  }
+  return config;
+}
+
+/** Every host of the manifest must pass the ceiling of `sandbox-launch.ts`. Throws one error naming each refused entry. */
+function checkHosts(config: EnvironmentConfig, origins: readonly string[]): void {
+  const refused = (['setup', 'agent'] as const).flatMap((kind) =>
+    (config.hosts?.[kind] ?? []).flatMap((host) => {
+      const reason = hostRefusal(host, kind, origins);
+      return reason ? [`${config.source}: hosts.${kind}: ${host} ${reason}`] : [];
+    }),
+  );
+  if (refused.length > 0) {
+    throw new SwarmloopError(refused.join('; '));
+  }
 }
 
 async function committedFile(repoPath: string, path: string, ref: string): Promise<string | null> {
@@ -106,7 +151,11 @@ export function fromSwarmloop(text: string): EnvironmentConfig {
     checks?: string[];
     cache?: string[];
     network?: AgentNetwork;
+    hosts?: ProjectHosts;
   };
+  const hosts = projectHosts(value.hosts, value.network, (message) => {
+    throw new SwarmloopError(`${SWARMLOOP_FILE}: ${message}`);
+  });
   const checks = value.checks ?? [];
   return {
     source: SWARMLOOP_FILE,
@@ -116,6 +165,7 @@ export function fromSwarmloop(text: string): EnvironmentConfig {
     cache: value.cache ?? [],
     checks,
     ...(value.network ? { network: value.network } : {}),
+    ...(hosts ? { hosts } : {}),
   };
 }
 
@@ -152,6 +202,12 @@ export function fromDevcontainer(text: string, file: string): EnvironmentConfig 
     fail('give "image" or "build.dockerfile"');
   }
   const own = ((raw.customizations as Record<string, unknown> | undefined)?.swarmloop ?? {}) as Record<string, unknown>;
+  const network = NETWORKS.find((item) => item === own.network);
+  const checkedHosts = own.hosts === undefined ? undefined : hostsSchema.validate(own.hosts);
+  if (checkedHosts?.error) {
+    fail(`hosts: ${checkedHosts.error.details.map((detail) => detail.message).join('; ')}`);
+  }
+  const hosts = projectHosts(checkedHosts?.value as ProjectHosts | undefined, network, fail);
   const setup = [raw.onCreateCommand, raw.updateContentCommand, raw.postCreateCommand]
     .map(lifecycleCommand)
     .filter((command) => command !== '')
@@ -164,7 +220,25 @@ export function fromDevcontainer(text: string, file: string): EnvironmentConfig 
     cache: strings(own.cache).filter(isCachePath),
     checks: strings(own.checks),
     ...(NETWORKS.includes(own.network as AgentNetwork) ? { network: own.network as AgentNetwork } : {}),
+    ...(hosts ? { hosts } : {}),
   };
+}
+
+/** The `hosts` key of a manifest, or undefined when it names none. The agent's hosts need the agent to have the registries. */
+function projectHosts(
+  hosts: ProjectHosts | undefined,
+  network: AgentNetwork | undefined,
+  fail: (message: string) => never,
+): ProjectHosts | undefined {
+  const setup = hosts?.setup ?? [];
+  const agent = hosts?.agent ?? [];
+  if (agent.length > 0 && network === 'setup') {
+    fail('hosts.agent: is not allowed with "network": "setup"');
+  }
+  if (setup.length === 0 && agent.length === 0) {
+    return undefined;
+  }
+  return { ...(setup.length > 0 ? { setup } : {}), ...(agent.length > 0 ? { agent } : {}) };
 }
 
 function inside(path: string, fail: (message: string) => never): string {

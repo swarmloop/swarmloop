@@ -30,6 +30,15 @@ describe('checksFingerprint', () => {
     expect(await fingerprint()).toBe(await fingerprint());
   });
 
+  it('changes with the hosts of the manifest and keeps its value without them', async () => {
+    const config = (hosts?: object) => ({ ...record.config, ...(hosts ? { hosts } : {}) });
+    const plain = await fingerprint();
+    const withHosts = await fingerprint(prepared({ config: config({ setup: ['pub.dev'] }) }));
+    expect(withHosts).not.toBe(plain);
+    expect(await fingerprint(prepared({ config: config({ setup: ['pub.dev', 'x.example'] }) }))).not.toBe(withHosts);
+    expect(await fingerprint(prepared({ config: config() }))).toBe(plain);
+  });
+
   it('changes with a tracked edit, an untracked file, another repository or a moved HEAD', async () => {
     const seen = new Set([await fingerprint()]);
     writeFileSync(join(repo, 'a.txt'), 'edited\n');

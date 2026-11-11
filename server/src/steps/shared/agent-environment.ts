@@ -3,7 +3,7 @@ import { environmentNote, withEnvironment } from '../../environment/environment-
 import type { EnvironmentInput, ProjectEnvironments } from '../../environment/project-environments';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import { packageRegistries } from '../../sandbox/sandbox-launch';
-import type { ProjectLaunch } from '../../sandbox/sandbox-launch';
+import type { ManifestHosts, ProjectLaunch } from '../../sandbox/sandbox-launch';
 
 interface AgentWorkplace {
   prompt: string;
@@ -12,6 +12,8 @@ interface AgentWorkplace {
   project?: ProjectLaunch;
   /** Hosts besides the model API. A project that keeps the registries to its setup gives the agent none. */
   allowHosts: string[];
+  /** The part of `allowHosts` that the project manifest added. Absent without `hosts.agent`. */
+  manifestHosts?: ManifestHosts;
 }
 
 /**
@@ -25,11 +27,13 @@ export async function agentWorkplace(
 ): Promise<AgentWorkplace> {
   const environment = await environments.prepare(input);
   const executionRules = environment ? environmentNote(environment.record, input.step) : LOCAL_RUN_RULE;
+  const extra = environment?.record.config.network === 'setup' ? [] : (environment?.record.config.hosts?.agent ?? []);
   return {
     prompt: withEnvironment(prompt, executionRules),
     executionRules,
     ...(environment ? { project: environment.launch } : {}),
-    allowHosts: environment?.record.config.network === 'setup' ? [] : packageRegistries(),
+    allowHosts: environment?.record.config.network === 'setup' ? [] : packageRegistries(extra),
+    ...(environment && extra.length > 0 ? { manifestHosts: { hosts: extra, origins: environment.origins ?? [] } } : {}),
   };
 }
 

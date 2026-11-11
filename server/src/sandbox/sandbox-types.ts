@@ -6,6 +6,12 @@ export interface EnvMask {
   containerFile: string;
 }
 
+/** The hosts a project manifest added to `allowHosts`, and the hosts of the checkout's remotes. The guard checks them again. */
+export interface ManifestHosts {
+  hosts: string[];
+  origins: string[];
+}
+
 export interface SandboxLaunch {
   runtime: RuntimeName;
   runKey: string;
@@ -17,6 +23,8 @@ export interface SandboxLaunch {
   workRoots: string[];
   envMasks: EnvMask[];
   allowHosts: string[];
+  /** The part of `allowHosts` that comes from the project manifest. */
+  manifestHosts?: ManifestHosts;
   command: string[];
   userId: number;
   maskFile: string;

@@ -109,7 +109,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const { runtime } = this.profile(this.config.env);
     const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime, samples: ctx.samples };
     const reproject = projectFor(this.environments, place);
-    const { prompt, project, allowHosts, executionRules } = await agentWorkplace(
+    const { prompt, project, allowHosts, manifestHosts, executionRules } = await agentWorkplace(
       this.environments,
       place,
       withAddedRepos(chosen, added),
@@ -118,6 +118,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       prompt,
       mounts,
       allowHosts,
+      manifestHosts,
       project,
       projectFor: reproject,
       sections: ['implementation'],

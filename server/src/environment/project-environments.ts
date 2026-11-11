@@ -18,7 +18,7 @@ import type { SandboxMount } from '../core/sandbox-mount';
 import type { ProjectLaunch } from '../sandbox/sandbox-launch';
 import { agentImage, prepareStateDir, sandboxUserId } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
-import { type EnvironmentConfig, readEnvironmentConfig } from './environment-config';
+import { type EnvironmentConfig, originHosts, readEnvironmentConfig } from './environment-config';
 import { checksFingerprint } from './checks-fingerprint';
 import { countsFor } from '../history/gate-stamp';
 import { git } from '../git/git';
@@ -72,6 +72,8 @@ export interface EnvironmentRecord {
 export interface PreparedEnvironment {
   launch: ProjectLaunch;
   record: EnvironmentRecord;
+  /** The hosts of the checkout's remotes, for the ceiling of the manifest hosts. Absent when the manifest names none. */
+  origins?: string[];
 }
 
 interface EnvironmentDeps {
@@ -129,10 +131,12 @@ export class ProjectEnvironments {
       certFile: !hasCerts,
       caches: await this.caches(record.repo, record.config.cache),
     };
+    const origins = record.config.hosts ? await originHosts(mount.hostPath) : [];
     const command = record.config.setup;
     const done = record.setup?.exitCode === 0 && record.setup.command === command && record.setup.image === image;
     if (command && !done) {
-      const result = await runShell(this.shellDeps(), input, launch, command, mount, 'setup');
+      const manifest = { hosts: record.config.hosts?.setup ?? [], origins };
+      const result = await runShell(this.shellDeps(), input, launch, command, mount, 'setup', undefined, manifest);
       record.setup = { command, image, ...result };
       await this.documents.putDocument(input.run, ENVIRONMENT, JSON.stringify(record));
       await this.documents.putDocument(input.run, `${ENVIRONMENT}:${record.repo}`, JSON.stringify(record));
@@ -142,7 +146,7 @@ export class ProjectEnvironments {
         `${record.repo} environment setup failed (exit ${record.setup.exitCode}):\n${record.setup.tail}`,
       );
     }
-    return { launch, record: { ...record, image } };
+    return { launch, record: { ...record, image }, origins };
   }
 
   /** The CLI volume of the agent image. */

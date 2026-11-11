@@ -190,6 +190,7 @@ export class AgentProcessRunner {
       mounts: [...workMounts, ...launch.briefs],
       statePath: launch.statePath,
       allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(runtime.name)])],
+      manifestHosts: input.manifestHosts,
       env: [
         modelCredential(
           runtime.name,

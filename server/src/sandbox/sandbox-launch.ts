@@ -1,4 +1,5 @@
 import { chmodSync, chownSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from 'fs';
+import { isIP } from 'net';
 import { homedir } from 'os';
 import { dirname, join, resolve, sep } from 'path';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
@@ -12,7 +13,7 @@ import { CLI_ROOT, egressProxyArgs, projectImageArgs } from './sandbox-args';
 import type { SandboxLaunch } from './sandbox-types';
 
 import type { SandboxMount } from '../core/sandbox-mount';
-export type { EnvMask, ProjectLaunch, SandboxLaunch } from './sandbox-types';
+export type { EnvMask, ManifestHosts, ProjectLaunch, SandboxLaunch } from './sandbox-types';
 export { CLI_ROOT } from './sandbox-args';
 const PROJECT_TMP = '/tmp:rw,exec,nosuid,nodev,size=1g,mode=1777';
 /** Test runners and JVM builds start many threads, and every thread counts. Still a ceiling against a fork bomb. */
@@ -82,13 +83,54 @@ const SETUP_DOWNLOADS = new Set([
   'nodejs.org',
 ]);
 
-/** Hosts of the one-time environment setup: the registries and the release downloads of native packages. */
-export function setupHosts(): string[] {
-  return [...REGISTRIES, ...SETUP_DOWNLOADS];
+/** Hosts of the one-time environment setup: the registries, the release downloads of native packages, and the manifest's own. */
+export function setupHosts(extra: readonly string[] = []): string[] {
+  return [...new Set([...REGISTRIES, ...SETUP_DOWNLOADS, ...extra])];
 }
 
-export function packageRegistries(): string[] {
-  return [...REGISTRIES];
+export function packageRegistries(extra: readonly string[] = []): string[] {
+  return [...new Set([...REGISTRIES, ...extra])];
+}
+
+/** The host of a URL, or of a git remote in ssh form (`git@host:path`). Empty when there is none. */
+export function remoteHost(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return /^[^@/\s]+@([^:/\s]+):/.exec(url)?.[1]?.toLowerCase() ?? '';
+  }
+}
+
+const HOST_NAME = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/;
+
+/**
+ * The ceiling of the hosts a project manifest may name, for the setup or for the agent. Null when the host is allowed,
+ * else the reason. The manifest reader and `sandboxArgs` both ask it, so a host the reader refuses never launches.
+ * `origins` are the hosts of the checkout's remotes.
+ */
+export function hostRefusal(host: string, kind: 'setup' | 'agent', origins: readonly string[]): string | null {
+  const env = rawEnv();
+  if (isIP(host) !== 0 || isLocalHost(host)) {
+    return 'is a local address';
+  }
+  if (!HOST_NAME.test(host)) {
+    return 'is not a host name';
+  }
+  if ([...MODEL_HOSTS].some((rule) => matchesHost(rule, host))) {
+    return 'is a model API host';
+  }
+  const trusted = [env.GITHUB_BASE_URL, env.GITLAB_BASE_URL, env.JIRA_BASE_URL].map((url) => remoteHost(url ?? ''));
+  if (['github.com', 'gitlab.com', ...trusted, ...origins].includes(host)) {
+    return 'is a code host';
+  }
+  if (kind === 'agent' && SETUP_DOWNLOADS.has(host)) {
+    return 'is setup-only';
+  }
+  const allowed = (env.PROJECT_HOSTS_ALLOW ?? '')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item !== '');
+  return allowed.length > 0 && !allowed.includes(host) ? 'is not in PROJECT_HOSTS_ALLOW' : null;
 }
 
 export function modelApiHosts(runtime: RuntimeName): string[] {
@@ -272,9 +314,16 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
   if (launch.mounts.length === 0) {
     throw new SwarmloopError('sandbox mount is missing');
   }
+  const manifest = launch.manifestHosts;
+  for (const host of manifest?.hosts ?? []) {
+    const reason = hostRefusal(host, launch.project?.shell !== undefined ? 'setup' : 'agent', manifest?.origins ?? []);
+    if (reason) {
+      throw new SwarmloopError(`${host} ${reason}`);
+    }
+  }
   for (const host of launch.allowHosts) {
     const name = hostName(host);
-    const known = REGISTRIES.has(name) || SETUP_DOWNLOADS.has(name);
+    const known = REGISTRIES.has(name) || SETUP_DOWNLOADS.has(name) || (manifest?.hosts ?? []).includes(name);
     if (!isLocalHost(name) && !known && ![...MODEL_HOSTS].some((rule) => matchesHost(rule, name))) {
       throw new SwarmloopError(`${name} is a production host`);
     }

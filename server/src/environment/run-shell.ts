@@ -10,7 +10,7 @@ import type { SampleDraft } from '../history/visit';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime';
 import type { LiveHub } from '../live/live.hub';
 import { containerSampler } from '../sandbox/container-sampler';
-import type { ProjectLaunch } from '../sandbox/sandbox-launch';
+import type { ManifestHosts, ProjectLaunch } from '../sandbox/sandbox-launch';
 import { agentStateDir, sandboxUserId, setupHosts } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 
@@ -49,6 +49,8 @@ export async function runShell(
   mount: SandboxMount,
   phase: 'setup' | 'checks',
   check?: { index: number; file: string },
+  /** The manifest hosts of the setup. Checks get none. */
+  manifest?: ManifestHosts,
 ): Promise<{ exitCode: number; tail: string }> {
   const { root, clock, sandbox, live } = deps;
   const userId = sandboxUserId();
@@ -100,7 +102,8 @@ export async function runShell(
       attemptId: input.run.activeAttempt ?? '',
       mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
       statePath,
-      allowHosts: phase === 'setup' ? setupHosts() : [],
+      allowHosts: phase === 'setup' ? setupHosts(manifest?.hosts) : [],
+      ...(phase === 'setup' && manifest?.hosts.length ? { manifestHosts: manifest } : {}),
       command: [],
       userId,
       project: { ...launch, shell: command },

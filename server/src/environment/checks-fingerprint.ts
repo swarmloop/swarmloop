@@ -5,7 +5,7 @@ import { worktreeSnapshot } from '../git/worktree-git';
 /** What the fingerprint reads of a prepared environment. */
 interface FingerprintEnvironment {
   launch: { image: string };
-  record: { config: { checks: string[] }; setup?: { command: string } };
+  record: { config: { checks: string[]; hosts?: unknown }; setup?: { command: string } };
 }
 
 /**
@@ -24,7 +24,11 @@ export async function checksFingerprint(
       [
         await worktreeSnapshot(input.mounts),
         imageId,
-        JSON.stringify([record.config.checks, record.setup?.command]),
+        JSON.stringify([
+          record.config.checks,
+          record.setup?.command,
+          ...(record.config.hosts ? [record.config.hosts] : []),
+        ]),
       ].join('\0'),
     )
     .digest('hex');

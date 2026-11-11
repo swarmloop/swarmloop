@@ -18,7 +18,7 @@ import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name'
 import type { RunEntity } from '../../history/entities';
 import { sessionFileName } from '../../history/session-group';
 import { VisitRepository } from '../../history/visit.repository';
-import type { ProjectLaunch } from '../../sandbox/sandbox-launch';
+import type { ManifestHosts, ProjectLaunch } from '../../sandbox/sandbox-launch';
 import { assertNotStopped } from './step-stopped';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
 import { section } from './markdown-section';
@@ -42,6 +42,7 @@ interface AgentLaunchRequest {
   mounts: SandboxMount[];
   liveStep?: string;
   allowHosts?: string[];
+  manifestHosts?: ManifestHosts;
   approveMcps?: boolean;
   auto?: boolean;
   resume?: boolean;
@@ -225,6 +226,7 @@ export class AgentLauncher {
       liveStep: request.liveStep,
       mounts: request.mounts,
       allowHosts: request.allowHosts,
+      manifestHosts: request.manifestHosts,
       mode: request.mode,
       tools: request.tools,
       timeLimitMs: request.timeLimitMs,

@@ -67,4 +67,15 @@ describe('withEnvironment', () => {
     expect(text).toContain('Preserve explicit restrictions from the original task');
     expect(text).toContain('A sandbox test ban copied from those stages into a checklist');
   });
+
+  it('names the hosts of the manifest besides the registries, and only for an agent that has registries', () => {
+    const withHosts = (config: object): EnvironmentRecord => ({
+      ...record,
+      config: { ...record.config, hosts: { agent: ['pub.dev', 'storage.googleapis.com'] }, ...config },
+    });
+    expect(environmentNote(withHosts({}))).toContain(
+      'Package registries are reachable, and so are these hosts: pub.dev, storage.googleapis.com, so you can add or update a dependency;',
+    );
+    expect(environmentNote(withHosts({ hosts: { setup: ['pub.dev'] } }))).toBe(environmentNote(record));
+  });
 });

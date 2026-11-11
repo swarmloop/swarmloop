@@ -27,6 +27,33 @@ function prepared(network?: 'registries' | 'setup'): PreparedEnvironment {
   };
 }
 
+describe('agentWorkplace hosts', () => {
+  const withHosts = (network?: 'registries' | 'setup'): PreparedEnvironment => {
+    const project = prepared(network);
+    project.record.config.hosts = { agent: ['pub.dev'] };
+    project.origins = ['git.corp.example'];
+    return project;
+  };
+
+  it('adds the manifest hosts to the registries and reports them as their own field', async () => {
+    const place = await agentWorkplace(environments(withHosts()), input, 'p');
+    expect(place.allowHosts).toEqual([...packageRegistries(), 'pub.dev']);
+    expect(place.manifestHosts).toEqual({ hosts: ['pub.dev'], origins: ['git.corp.example'] });
+  });
+
+  it('gives the agent no host when only the setup reaches the registries', async () => {
+    const place = await agentWorkplace(environments(prepared('setup')), input, 'p');
+    expect(place.allowHosts).toEqual([]);
+    expect(place.manifestHosts).toBeUndefined();
+  });
+
+  it('keeps exactly the registries without hosts', async () => {
+    const place = await agentWorkplace(environments(prepared()), input, 'p');
+    expect(place.allowHosts).toEqual(packageRegistries());
+    expect(place).not.toHaveProperty('manifestHosts');
+  });
+});
+
 describe('agentWorkplace', () => {
   it.each(['implement', 'implement-improve'])(
     'uses current environment permissions for fresh and resumed %s',
