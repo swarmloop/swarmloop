@@ -145,7 +145,7 @@ export class CheckoutService {
     await git(['-C', checkout.path, 'worktree', 'prune']);
   }
 
-  /** The one place that removes a worktree: unlock first, then remove. Ignored files such as node_modules go with it. */
+  /** The one place that removes a worktree: unlock first, then remove. Ignored files such as installed dependencies go with it. */
   async removeWorktree(checkout: { name: string; path: string }, worktree: string): Promise<void> {
     try {
       await git(['-C', checkout.path, 'worktree', 'unlock', worktree]);

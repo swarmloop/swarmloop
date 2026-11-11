@@ -1,5 +1,5 @@
 import { spawn, ChildProcess, execFile } from 'child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync } from 'fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { Injectable, Logger } from '@nestjs/common';
@@ -33,6 +33,7 @@ import { Egress, egressMode } from './egress';
 import { imageMissing } from './image-resolver';
 import { withEgress } from './egress-launch';
 import { projectGitMount } from './project-git';
+import { collectEnvMasks } from './env-masks';
 
 export type DockerRunner = (args: string[], timeoutMs?: number) => Promise<string>;
 
@@ -358,37 +359,6 @@ export class SandboxService {
       }
       args.push(name);
       await this.docker(args);
-    }
-  }
-}
-
-export function collectEnvMasks(mounts: { hostPath: string; containerPath: string }[]): EnvMask[] {
-  const masks: EnvMask[] = [];
-  for (const mount of mounts) {
-    if (mount.containerPath.endsWith('/.git') || mount.containerPath.startsWith('/swarmloop-git/')) {
-      continue;
-    }
-    walkEnv(mount.hostPath, mount.containerPath, masks);
-  }
-  return masks;
-}
-
-function walkEnv(host: string, container: string, masks: EnvMask[]): void {
-  if (!existsSync(host) || !statSync(host).isDirectory()) {
-    return;
-  }
-  for (const entry of readdirSync(host, { withFileTypes: true })) {
-    if (entry.name === '.git' || entry.name === 'node_modules') {
-      continue;
-    }
-    const hostPath = join(host, entry.name);
-    const containerFile = `${container}/${entry.name}`;
-    if (entry.isDirectory()) {
-      walkEnv(hostPath, containerFile, masks);
-      continue;
-    }
-    if (entry.name === '.env' || (entry.name.startsWith('.env.') && entry.name !== '.env.example')) {
-      masks.push({ hostFile: hostPath, containerFile });
     }
   }
 }

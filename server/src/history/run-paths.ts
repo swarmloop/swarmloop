@@ -16,7 +16,7 @@ export function removeTree(path: string): void {
   rmSync(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
 
-/** The same removal without holding up the event loop, for trees as large as a worktree with its node_modules. */
+/** The same removal without holding up the event loop, for trees as large as a worktree with its installed dependencies. */
 export function removeTreeAsync(path: string): Promise<void> {
   return rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }

@@ -9,6 +9,7 @@ import { findViolations } from './check-structure.mjs';
 // Built from parts so that this file does not match its own rules.
 const oldPrefix = ['--prefix', 'nest'].join(' ');
 const oldImage = ['swarmloop', 'nest'].join('-');
+const folder = ['node', 'modules'].join('_');
 const oldNested = ['swarmloop', 'nested'].join('-');
 
 const rules = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'structure-rules.json'), 'utf8'));
@@ -220,6 +221,20 @@ test('forbidOutside keeps the old phase name in the migration and nowhere else',
 test('forbidOutside reports the block size outside free-bytes.ts and lets that file keep it', () => {
   const line = `const bytes = stats.bavail * stats.${['b', 'size'].join('')};\n`;
   const files = { 'server/src/x.ts': line, 'server/src/core/free-bytes.ts': line };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], /^server\/src\/x\.ts:1:/);
+});
+
+test('forbidOutside reports an ecosystem folder in product code and lets a spec and event.target be', () => {
+  const files = {
+    'server/src/x.ts': `const skip = '${folder}';\n`,
+    'server/src/x.spec.ts': `const skip = '${folder}';\n`,
+    'dashboard/src/y.tsx': 'const node = event.target;\n',
+  };
   const root = makeRoot(files);
 
   const violations = findViolations({ root, rules, files: Object.keys(files) });
