@@ -16,7 +16,7 @@ import * as delays from '../../core/delay';
 import { FetchFailed } from '../../core/swarmloop-error';
 import { ARTIFACTS } from '../contract/artifacts';
 
-import { shot, job, call, boot, fakeWait, seed } from './pipeline.step.spec-helpers';
+import { appCheck, shot, job, call, boot, fakeWait, seed } from './pipeline.step.spec-helpers';
 
 const LIMIT = 'The job was not started because your account has reached its spending limit.';
 
@@ -235,6 +235,55 @@ describe('pipeline step on a run that did not run', () => {
       const returned = await app.get(DocumentRepository).latestBody('PROJ-404', 'return');
       expect(returned).toContain('job: unit');
       expect(returned).toContain('log 7');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('re-runs only the workflow runs that did not run, never an app check', async () => {
+    fakeWait();
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-infra-runs-'));
+    const url = 'https://gitlab.example/group/demo/-/pipelines/9';
+    const snapshot = {
+      ...shot('failed', NEVER_STARTED, [appCheck({ status: 'success' })]),
+      runs: [
+        { id: 9, status: 'failed', url, jobs: NEVER_STARTED },
+        { id: 10, status: 'success', url, jobs: [] },
+        { id: 11, status: 'failed', url, jobs: [job(5, 'docs', false, 'queued')] },
+      ],
+    };
+    const read = jest.fn(() => Promise.resolve({ snapshot, httpCalls: [call('GET')] }));
+    const rerunFailedJobs = rerun();
+    const app = await boot(root, read, jest.fn(), undefined, undefined, undefined, {
+      rerunFailedJobs,
+      readRunNotes: notes(),
+    });
+    try {
+      await seed(app, 'PROJ-405');
+      await app.get(PipelineService).step('pipeline', 'PROJ-405');
+      expect(rerunFailedJobs.mock.calls.slice(0, 2)).toEqual([
+        ['group/demo', 9],
+        ['group/demo', 11],
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('returns a failed app check to implement even when a job of the run never started', async () => {
+    fakeWait();
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-infra-scan-'));
+    const read = jest.fn(() =>
+      Promise.resolve({ snapshot: shot('failed', NEVER_STARTED, [appCheck()]), httpCalls: [call('GET')] }),
+    );
+    const rerunFailedJobs = rerun();
+    const app = await boot(root, read, jest.fn(), undefined, undefined, undefined, { rerunFailedJobs });
+    try {
+      await seed(app, 'PROJ-406');
+      await app.get(PipelineService).step('pipeline', 'PROJ-406');
+      expect(rerunFailedJobs).not.toHaveBeenCalled();
+      expect((await app.get(RunRepository).findRun('PROJ-406'))?.currentStep).toBe('implement');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-406', 'pipeline_log')).not.toContain('CI_NOT_RUN');
     } finally {
       await app.close();
     }

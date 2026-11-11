@@ -33,6 +33,9 @@ import {
   stopLine,
   isRunning,
   externalWork,
+  pendingNote,
+  runRows,
+  checkFacts,
   verdictOf,
   type Verdict,
   failureIssues,
@@ -84,7 +87,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     }
     const watched = await ctx.activity(ciTitle(records), () => this.watch(ctx, records, env, host), ciResult);
     const result = await this.route(ctx, env, records, watched.seen, watched.verdict, host);
-    return { ...result, facts: { details: jobResults(watched.seen) } };
+    return { ...result, facts: { details: jobResults(watched.seen), ...checkFacts(watched.seen) } };
   }
 
   private async watch(
@@ -140,6 +143,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
             url: result.snapshot?.url ?? '',
             status: result.snapshot?.status ?? 'none',
             jobs: result.snapshot?.jobs ?? [],
+            runs: result.snapshot?.runs ?? [],
+            checks: result.snapshot?.checks ?? [],
+            awaiting: result.snapshot?.awaiting ?? [],
           },
         };
       }),
@@ -160,6 +166,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     reruns = 0,
   ): Promise<StepResult> {
     const { opened, calls } = ctx;
+    if (verdict === 'wait' && runRows(seen, isRunning).length === 0) {
+      return this.stalled(ctx, env, records, seen, host, reruns);
+    }
     if (verdict === 'wait') {
       const settled = await this.cancelRunning(records, seen, calls, env, host);
       if (!settled.traces) {
@@ -216,6 +225,23 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     return this.finish('ok', this.report(opened, 'pipeline done', body), 'done', body);
   }
 
+  /** The wait ended with no run left to cancel: a check that never showed up is dropped, one that never ended is red. */
+  private async stalled(
+    ctx: StepContext,
+    env: SwarmloopEnv,
+    records: PipelineRef[],
+    seen: Seen[],
+    host: CodeHost,
+    reruns: number,
+  ): Promise<StepResult> {
+    const note = pendingNote(seen, Math.round(env.PIPELINE_TIMEOUT_MS / 60000));
+    if (note) {
+      return this.red(ctx, env, seen, host, note, true);
+    }
+    const settled = seen.map((item) => ({ ...item, awaiting: [] }));
+    return this.route(ctx, env, records, settled, verdictOf(settled), host, reruns);
+  }
+
   /**
    * A finished run with no failed job: the cause is on the CI side, so nothing goes to an agent.
    * Its jobs are re-run after each pause of RERUN_PAUSES_MS, then the run is routed again; when the last one ends the same way the run blocks.
@@ -262,13 +288,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     host: CodeHost,
   ): Promise<{ seen: Seen[]; note: string; traces: boolean }> {
     const minutes = Math.round(env.PIPELINE_TIMEOUT_MS / 60000);
-    const running = seen.filter((item) => isRunning(item));
+    const running = runRows(seen, isRunning);
     const errors: string[] = [];
     for (const item of running) {
-      if (item.id === null) {
-        errors.push(`${item.project}: pipeline id is missing`);
-        continue;
-      }
       try {
         const result = await host.cancelPipeline(item.project, item.id);
         calls.push(...result.httpCalls);
@@ -285,8 +307,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       try {
         const named = await this.load(records, calls, host);
         rows = running.map((item) => {
-          const next = named.find((row) => row.project === item.project);
-          return next && next.id === item.id && isRunning(next) ? next : item;
+          return runRows(named, isRunning).find((row) => row.project === item.project && row.id === item.id) ?? item;
         });
       } catch (error) {
         if (error instanceof FetchFailed) {
@@ -297,7 +318,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     }
     const awake = this.awakeTime(env);
     let current = seen;
-    while (awake.elapsedMs() < env.PIPELINE_START_TIMEOUT_MS && current.some((item) => isRunning(item))) {
+    while (awake.elapsedMs() < env.PIPELINE_START_TIMEOUT_MS && runRows(current, isRunning).length > 0) {
       const pause = Math.min(env.TICK_MS, env.PIPELINE_START_TIMEOUT_MS - awake.elapsedMs());
       if (pause <= 0) {
         break;

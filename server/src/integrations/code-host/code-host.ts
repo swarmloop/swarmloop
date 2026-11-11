@@ -32,11 +32,46 @@ export interface PipelineJob {
   allowFailure: boolean;
 }
 
+export interface CheckAnnotation {
+  path: string;
+  line: number;
+  level: string;
+  title: string;
+  message: string;
+}
+
+/** One check of a commit: a workflow job, a check run of an app, or a commit status. */
+export interface PipelineCheck {
+  id: number;
+  name: string;
+  app: string;
+  status: 'success' | 'failed' | 'canceled' | 'running' | 'manual' | 'skipped';
+  durationMs: number;
+  url: string;
+  summary: string;
+  annotations: CheckAnnotation[];
+  /** True for a job of a workflow run or pipeline. */
+  workflow: boolean;
+}
+
+/** One GitHub workflow run, or one GitLab pipeline. */
+export interface PipelineRun {
+  id: number;
+  status: string;
+  url: string;
+  jobs: PipelineJob[];
+}
+
+/** Every check on the head commit. `id`, `status`, `url` and `jobs` are the aggregate of `runs` and the app `checks`. */
 export interface PipelineSnapshot {
   id: number;
   status: string;
   url: string;
   jobs: PipelineJob[];
+  runs: PipelineRun[];
+  checks: PipelineCheck[];
+  /** Checks that the host is known to start later. */
+  awaiting: string[];
 }
 
 export interface PipelineDiagnosis {

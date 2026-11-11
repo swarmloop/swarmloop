@@ -1,6 +1,7 @@
+import type { AttemptCheck } from '../../contract/step-events';
 import { issueOf } from '../shared/handoff';
 import type { Issue } from '../contract/step-contract';
-import type { PipelineJob, PipelineRef } from '../../integrations/code-host/code-host';
+import type { PipelineCheck, PipelineJob, PipelineRef, PipelineRun } from '../../integrations/code-host/code-host';
 import { readableJobTrace } from './job-trace';
 import { basename } from 'path';
 import { git } from '../../git/git';
@@ -15,6 +16,14 @@ export interface Seen {
   url: string;
   status: string;
   jobs: PipelineJob[];
+  runs: PipelineRun[];
+  checks: PipelineCheck[];
+  awaiting: string[];
+}
+
+/** A workflow run or pipeline that the host can act on. */
+export interface RunRow extends PipelineRun {
+  project: string;
 }
 
 export interface Failure {
@@ -26,6 +35,8 @@ export interface Failure {
   trace: string;
   /** Why the log of this job could not be read; then `trace` is empty. */
   unavailable?: string;
+  /** The text of a check that no workflow ran: it is not a job log, so it is kept whole. */
+  check?: true;
 }
 
 /** One issue per failed job, or one for the whole log when the jobs are not separable. */
@@ -88,18 +99,15 @@ export function renderFail(failures: Failure[], seen: Seen[], intro = ''): strin
     if (failure.url) {
       lines.push(`url: ${failure.url}`);
     }
-    return `${lines.join('\n')}\n\n${readableJobTrace(failure.trace)}`;
+    return `${lines.join('\n')}\n\n${failure.check ? failure.trace : readableJobTrace(failure.trace)}`;
   });
   return `${head}result: fail\n${blocks.join('\n\n')}\n`;
 }
 
-export function cancelErrorNote(running: Seen[], errors: string[]): string {
+export function cancelErrorNote(running: RunRow[], errors: string[]): string {
   const lines = ['result: fail'];
   for (const item of running) {
-    lines.push(`project: ${item.project}`);
-    if (item.id !== null) {
-      lines.push(`pipeline: ${item.id}`);
-    }
+    lines.push(`project: ${item.project}`, `pipeline: ${item.id}`);
     if (item.url) {
       lines.push(`url: ${item.url}`);
     }
@@ -178,10 +186,25 @@ const NOT_RUN = ['queued', 'pending', 'waiting', 'created', 'waiting_for_resourc
 type CiCause = 'failed' | 'not-run' | 'timeout';
 export type InfraCode = 'CI_NOT_RUN' | 'CI_TIMEOUT';
 
+/** The checks of a commit that no workflow ran (code scanning, an external app) and whose status is in `counted`. */
+export function appChecks(item: Seen, counted: string[]): PipelineCheck[] {
+  return item.checks.filter((check) => !check.workflow && counted.includes(check.status));
+}
+
+/** The note of a wait that ended while app checks were still pending, or null when none were. */
+export function pendingNote(seen: Seen[], minutes: number): string | null {
+  const names = seen.flatMap((item) => appChecks(item, ['running']).map((check) => check.name));
+  return names.length > 0 ? `${names.join(', ')} did not finish within ${minutes} minutes` : null;
+}
+
 /** Why a finished run is red: a failed job (or no job to tell), jobs that never ran, or only timed-out jobs. */
 export function classify(seen: Seen[]): CiCause {
-  const statuses = seen.flatMap((item) => item.jobs.map((job) => job.status));
-  if (statuses.length === 0 || statuses.includes('failed')) {
+  const statuses = seen.flatMap((item) => item.runs.flatMap((run) => run.jobs.map((job) => job.status)));
+  if (
+    statuses.length === 0 ||
+    statuses.includes('failed') ||
+    seen.some((item) => appChecks(item, ['failed']).length > 0)
+  ) {
     return 'failed';
   }
   return statuses.some((status) => NOT_RUN.includes(status)) ? 'not-run' : 'timeout';
@@ -190,7 +213,9 @@ export function classify(seen: Seen[]): CiCause {
 /** The pipeline log of a run that did not run its jobs: one line with the code, then one `job:` line per job. */
 export function renderInfra(code: InfraCode, seen: Seen[], notes: string): string {
   const wanted = code === 'CI_TIMEOUT' ? ['timed_out'] : NOT_RUN;
-  const names = seen.flatMap((item) => item.jobs.filter((job) => wanted.includes(job.status)).map((job) => job.name));
+  const names = seen.flatMap((item) =>
+    item.runs.flatMap((run) => run.jobs.filter((job) => wanted.includes(job.status)).map((job) => job.name)),
+  );
   const url = seen.find((item) => item.url)?.url ?? '';
   const what = code === 'CI_TIMEOUT' ? `${names.join(', ')} timed out` : `CI did not run ${names.join(', ')}`;
   const line = [`${code}: ${what}${notes ? `: ${notes}` : ''}`, url].filter(Boolean).join(' ');
@@ -253,7 +278,8 @@ export function ciResult({ seen, verdict }: { seen: Seen[]; verdict: string }): 
   }
   const failed = seen.find((item) => item.status === 'failed');
   const job = failed?.jobs.find((item) => item.status === 'failed' && !item.allowFailure);
-  return `failed: ${job?.name ?? failed?.project ?? 'pipeline'}`;
+  const check = seen.flatMap((item) => appChecks(item, ['failed']))[0];
+  return `failed: ${job?.name ?? check?.name ?? failed?.project ?? 'pipeline'}`;
 }
 
 /** One line for each project: its pipeline status. */
@@ -267,13 +293,20 @@ export function stopLine(seen: Seen[]): string {
   return `${project} pipeline was skipped`;
 }
 
-export function isRunning(item: Seen): boolean {
-  return !['none', 'success', 'failed', 'canceled', 'skipped', 'manual'].includes(item.status);
+export function isRunning(status: string): boolean {
+  return !['none', 'success', 'failed', 'canceled', 'skipped', 'manual'].includes(status);
+}
+
+/** The runs of every project whose status passes `test`. */
+export function runRows(seen: Seen[], test: (status: string) => boolean): RunRow[] {
+  return seen.flatMap((item) =>
+    item.runs.filter((run) => test(run.status)).map((run) => ({ ...run, project: item.project })),
+  );
 }
 
 /** The pipelines that keep running after a Stop, with their link. */
 export function externalWork(seen: Seen[]): string[] {
-  return seen.filter(isRunning).map((item) => `${item.project} pipeline ${item.id ?? '?'} ${item.url}`.trim());
+  return runRows(seen, isRunning).map((run) => `${run.project} pipeline ${run.id} ${run.url}`.trim());
 }
 
 export type Verdict = 'green' | 'red' | 'wait' | 'manual' | 'stop' | 'absent';
@@ -293,8 +326,32 @@ export function verdictOf(seen: Seen[]): Verdict {
   if (active.length === 0) {
     return 'absent';
   }
-  if (active.some((status) => status !== 'success')) {
+  if (active.some((status) => status !== 'success') || seen.some((item) => item.awaiting.length > 0)) {
     return 'wait';
   }
   return 'green';
+}
+
+/** The text of a check without a workflow: its summary, then one line per annotation. */
+export function checkTrace(check: PipelineCheck): string {
+  const lines = check.annotations.map(
+    (note) => `${note.path}:${note.line} ${note.level} ${note.title ? `${note.title}: ` : ''}${note.message}`,
+  );
+  return [check.summary, ...lines].filter(Boolean).join('\n');
+}
+
+/** The checks of every project as step facts, or nothing when no host listed any. */
+export function checkFacts(seen: Seen[]): { checks?: AttemptCheck[] } {
+  const checks = seen.flatMap((item) =>
+    item.checks.map(({ name, app, status, durationMs, url, annotations, summary }) => ({
+      name,
+      app,
+      status,
+      durationMs,
+      url,
+      annotations,
+      summary,
+    })),
+  );
+  return checks.length > 0 ? { checks } : {};
 }

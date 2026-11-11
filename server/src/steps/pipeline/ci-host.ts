@@ -1,10 +1,10 @@
 import type { CodeHost } from '../../integrations/code-host/code-host';
 import { FetchFailed, type HttpCallDraft } from '../../core/swarmloop-error';
-import type { Failure, Seen } from './pipeline-report';
+import { checkTrace, appChecks, runRows, type Failure, type RunRow, type Seen } from './pipeline-report';
 
 /** The runs of a red pipeline that the host can still act on. */
-export function finishedRuns(seen: Seen[]): Seen[] {
-  return seen.filter((item) => (item.status === 'failed' || item.status === 'canceled') && item.id !== null);
+export function finishedRuns(seen: Seen[]): RunRow[] {
+  return runRows(seen, (status) => status === 'failed' || status === 'canceled');
 }
 
 function noteCalls(error: unknown, calls: HttpCallDraft[]): void {
@@ -14,11 +14,11 @@ function noteCalls(error: unknown, calls: HttpCallDraft[]): void {
 }
 
 /** Asks the host to re-run the failed and never-started jobs of each run. Returns one error text per run it refused. */
-export async function rerunJobs(host: CodeHost, runs: Seen[], calls: HttpCallDraft[]): Promise<string[]> {
+export async function rerunJobs(host: CodeHost, runs: RunRow[], calls: HttpCallDraft[]): Promise<string[]> {
   const errors: string[] = [];
   for (const item of runs) {
     try {
-      calls.push(...(await host.rerunFailedJobs(item.project, item.id as number)).httpCalls);
+      calls.push(...(await host.rerunFailedJobs(item.project, item.id)).httpCalls);
     } catch (error) {
       noteCalls(error, calls);
       errors.push(`${item.project}: ${error instanceof Error ? error.message : 're-run failed'}`);
@@ -28,11 +28,11 @@ export async function rerunJobs(host: CodeHost, runs: Seen[], calls: HttpCallDra
 }
 
 /** What the host says about runs that did not run, as one text. A read that fails adds nothing. */
-export async function readNotes(host: CodeHost, runs: Seen[], calls: HttpCallDraft[]): Promise<string> {
+export async function readNotes(host: CodeHost, runs: RunRow[], calls: HttpCallDraft[]): Promise<string> {
   const notes: string[] = [];
   for (const item of runs) {
     try {
-      const read = await host.readRunNotes(item.project, item.id as number);
+      const read = await host.readRunNotes(item.project, item.id);
       calls.push(...read.httpCalls);
       notes.push(read.notes);
     } catch (error) {
@@ -52,7 +52,7 @@ export async function readFailures(
   const wanted = finishedRuns(seen).flatMap((item) =>
     item.jobs
       .filter((job) => counted.includes(job.status) && !job.allowFailure)
-      .map((job) => ({ project: item.project, pipelineId: item.id as number, url: item.url, job })),
+      .map((job) => ({ project: item.project, pipelineId: item.id, url: item.url, job })),
   );
   const loaded = await Promise.all(
     wanted.map(async (item) => {
@@ -78,5 +78,16 @@ export async function readFailures(
       ...(row.unavailable === undefined ? {} : { unavailable: row.unavailable }),
     });
   }
-  return failures;
+  const checks = seen.flatMap((item) =>
+    appChecks(item, counted).map((check): Failure => ({
+      project: item.project,
+      pipelineId: check.id,
+      name: [check.app, check.name].filter(Boolean).join(' / '),
+      stage: '',
+      url: check.url,
+      trace: checkTrace(check),
+      check: true,
+    })),
+  );
+  return [...failures, ...checks];
 }

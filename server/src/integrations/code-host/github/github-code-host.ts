@@ -4,12 +4,15 @@ import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
 import { request, withRetries } from '../../http';
 import { remoteProject } from '../remote-project';
 import { AbstractCodeHost, type CodeHostEnv } from '../abstract-code-host';
+import { snapshotOf } from '../check-status';
+import { awaitedChecks, checkStatus, readChecks, runsOf, type GithubRun } from './github-checks';
 import type {
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
   PipelineJob,
   PipelineRef,
+  PipelineRun,
   PipelineSnapshot,
   PipelineDiagnosis,
   SelectedHost,
@@ -30,16 +33,6 @@ interface GithubPull {
   state?: string;
   mergeable?: boolean | null;
   mergeable_state?: string;
-}
-
-interface GithubRun {
-  id?: number;
-  head_sha?: string;
-  status?: string;
-  conclusion?: string | null;
-  html_url?: string;
-  check_suite_id?: number;
-  message?: string;
 }
 
 export class GithubCodeHost extends AbstractCodeHost {
@@ -95,13 +88,21 @@ export class GithubCodeHost extends AbstractCodeHost {
         undefined,
         'github pipeline failed',
       );
-      const run = newestRun(body, ref.sha ?? '');
-      if (!run?.id) {
-        return { snapshot: null, httpCalls: calls };
+      const runs = runsOf(body, ref.sha ?? '');
+      const rows: PipelineRun[] = [];
+      for (const run of runs) {
+        const status = checkStatus(run);
+        const listed = listJobs(status, jobs)
+          ? await this.failedJobs(api, headers, project, run.id as number, calls)
+          : [];
+        const named =
+          runs.length > 1 ? listed.map((job) => ({ ...job, name: `${run.name ?? 'workflow'} / ${job.name}` })) : listed;
+        rows.push({ id: run.id as number, status, url: run.html_url ?? '', jobs: named });
       }
-      const status = runStatus(run);
-      const listed = listJobs(status, jobs) ? await this.failedJobs(api, headers, project, run.id, calls) : [];
-      return { snapshot: { id: run.id, status, url: run.html_url ?? '', jobs: listed }, httpCalls: calls };
+      const read = (url: string): Promise<unknown> =>
+        this.readJson(url, headers, calls, undefined, 'github pipeline failed');
+      const checks = await readChecks(read, `${api}/repos/${project}`, ref.sha || runs[0]?.head_sha || ref.ref, runs);
+      return { snapshot: snapshotOf(rows, checks, awaitedChecks(runs, checks)), httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }
@@ -374,37 +375,6 @@ function apiRoot(baseUrl: string): string {
     return 'https://api.github.com';
   }
   return `${url.origin}/api/v3`;
-}
-
-function runStatus(run: GithubRun): string {
-  if (run.status !== 'completed') {
-    return 'running';
-  }
-  if (run.conclusion === 'success' || run.conclusion === 'neutral') {
-    return 'success';
-  }
-  if (run.conclusion === 'cancelled') {
-    return 'canceled';
-  }
-  if (run.conclusion === 'skipped') {
-    return 'skipped';
-  }
-  if (run.conclusion === 'action_required') {
-    return 'manual';
-  }
-  return 'failed';
-}
-
-function newestRun(body: unknown, sha: string): GithubRun | null {
-  const runs = (body as { workflow_runs?: unknown } | null)?.workflow_runs;
-  if (!Array.isArray(runs)) {
-    throw new SwarmloopError('github pipeline failed');
-  }
-  const match = (runs as unknown[]).find((item) => {
-    const run = item as GithubRun | null;
-    return run?.id && (!sha || run.head_sha === sha);
-  });
-  return (match as GithubRun | undefined) ?? null;
 }
 
 function asJob(row: unknown): PipelineJob | null {

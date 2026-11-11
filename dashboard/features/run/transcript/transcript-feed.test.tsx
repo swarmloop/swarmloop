@@ -73,6 +73,55 @@ describe('TranscriptFeed', () => {
     expect(text.lastIndexOf('Moved to return')).toBeLessThan(text.indexOf('a diff'));
   });
 
+  it('lists every check of the pipeline attempt and opens the annotations of a failed one', async () => {
+    const user = userEvent.setup();
+    const check = { durationMs: 65000, url: '', summary: '', annotations: [] };
+    feed([
+      stepEvent(
+        2,
+        {
+          kind: 'attempt.finished',
+          route: 'return',
+          summary: 'pipeline failed',
+          facts: {
+            details: ['group/demo: success'],
+            checks: [
+              { ...check, name: 'ci / lint', app: 'GitHub Actions', status: 'success', url: 'https://ci.example/lint' },
+              {
+                ...check,
+                name: 'Code scanning results',
+                app: 'CodeQL',
+                status: 'failed',
+                summary: '2 new alerts',
+                annotations: [
+                  { path: 'src/a.ts', line: 3, level: 'failure', title: 'Path injection', message: 'first' },
+                  { path: 'src/b.ts', line: 8, level: 'warning', title: '', message: 'second' },
+                ],
+              },
+            ],
+          },
+        },
+        { step: 'pipeline' },
+      ),
+    ]);
+
+    const list = screen.getByRole('list', { name: 'Checks' });
+    expect(within(list).getByText(/ci \/ lint · GitHub Actions · success · 1m/)).toBeInTheDocument();
+    expect(within(list).getByRole('link', { name: 'Open ci / lint' })).toHaveAttribute(
+      'href',
+      'https://ci.example/lint',
+    );
+    expect(within(list).getByText(/Code scanning results · CodeQL · failed/)).toBeInTheDocument();
+    expect(screen.queryByText(/src\/a.ts:3/)).not.toBeInTheDocument();
+    expect(within(list).queryByRole('button', { name: /ci \/ lint/ })).not.toBeInTheDocument();
+
+    await user.click(within(list).getByRole('button', { name: 'Show annotations of Code scanning results' }));
+    const notes = screen.getByRole('list', { name: 'Annotations of Code scanning results' });
+    expect(within(notes).getByText('2 new alerts')).toBeInTheDocument();
+    expect(within(notes).getByText('src/a.ts:3 · failure · Path injection: first')).toBeInTheDocument();
+    expect(within(notes).getByText('src/b.ts:8 · warning · second')).toBeInTheDocument();
+  });
+
   it('keeps the order when a filter is chosen', async () => {
     const user = userEvent.setup();
     feed([

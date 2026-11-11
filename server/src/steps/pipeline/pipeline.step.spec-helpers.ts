@@ -27,7 +27,7 @@ import { DocumentRepository } from '../../history/document.repository';
 
 import { PipelineModule } from '../../pipeline/pipeline.module';
 
-import type { PipelineJob, PipelineSnapshot } from '../../integrations/code-host/code-host';
+import type { PipelineCheck, PipelineJob, PipelineSnapshot } from '../../integrations/code-host/code-host';
 
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 
@@ -45,8 +45,39 @@ export const one = `project: group/demo\nref: feature/PROJ-300-ship\n`;
 
 export const two = `${one}\nproject: group/web\nref: feature/PROJ-300-ship\n`;
 
-export function shot(status: string, jobs: PipelineJob[]): PipelineSnapshot {
-  return { id: 9, status, url: 'https://gitlab.example/group/demo/-/pipelines/9', jobs };
+export function shot(
+  status: string,
+  jobs: PipelineJob[],
+  checks: PipelineCheck[] = [],
+  awaiting: string[] = [],
+): PipelineSnapshot {
+  const url = 'https://gitlab.example/group/demo/-/pipelines/9';
+  return { id: 9, status, url, jobs, runs: [{ id: 9, status, url, jobs }], checks, awaiting };
+}
+
+/** A check that no workflow ran, such as code scanning or a commit status of another app. */
+export function appCheck(overrides: Partial<PipelineCheck> = {}): PipelineCheck {
+  return {
+    id: 31,
+    name: 'Code scanning results',
+    app: 'CodeQL',
+    status: 'failed',
+    durationMs: 0,
+    url: 'https://github.example/group/demo/pull/1/checks',
+    summary: '',
+    annotations: [],
+    workflow: false,
+    ...overrides,
+  };
+}
+
+/** The snapshot of a commit whose workflow run is `runStatus` and whose other checks are `checks`. */
+export function withChecks(runStatus: string, checks: PipelineCheck[], awaiting: string[] = []): PipelineSnapshot {
+  const base = shot(runStatus, []);
+  const red = checks.find((check) => !check.workflow && check.status === 'failed');
+  const statuses = [runStatus, ...checks.map((check) => check.status)];
+  const status = ['failed', 'running'].find((wanted) => statuses.includes(wanted)) ?? 'success';
+  return { ...base, status: runStatus === 'failed' ? 'failed' : status, id: red ? red.id : base.id, checks, awaiting };
 }
 
 export function job(id: number, name: string, allowFailure: boolean, status = 'failed'): PipelineJob {
