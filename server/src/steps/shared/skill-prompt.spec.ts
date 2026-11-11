@@ -101,6 +101,20 @@ describe('implement skill rules', () => {
     }
   });
 
+  it.each(['implement', 'implement-improve'])('%s skill holds the structure and quick-check rules', (name) => {
+    const text = skill(name);
+    expect(text).toContain('A new responsibility goes in its own file, named for it.');
+    expect(text).toContain('is split by responsibility, never squeezed');
+    expect(text).toContain('search the tree for one that does the same and use it');
+    expect(text).toContain("also run the project's quick checks that apply to the change");
+  });
+
+  it('returns the quality review on squeezed code and on duplicated logic', () => {
+    const text = skill('code-review/quality');
+    expect(text).toContain('code was squeezed to pass a rule');
+    expect(text).toContain('new logic duplicates existing code');
+  });
+
   it('keeps implement-improve from ending on a red command', () => {
     expect(skill('implement-improve')).toContain('When there is no gap and no command came back red, leave the files.');
   });

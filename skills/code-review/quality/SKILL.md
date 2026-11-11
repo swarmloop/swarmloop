@@ -15,4 +15,4 @@ summary:
 decision: ok
 ```
 
-End with `decision: ok` when the requested behavior is clear, the change left no unused component, file, export, import, comment, or commented-out code, and the last return of this angle is fixed. End with `decision: return` only when that behavior is still broken or that leftover remains.
+End with `decision: ok` when the requested behavior is clear, the change left no unused component, file, export, import, comment, or commented-out code, and the last return of this angle is fixed. End with `decision: return` only when that behavior is still broken, that leftover remains, code was squeezed to pass a rule (joined lines, shortened names, branches moved into tables to pass a count), or new logic duplicates existing code. For the last two, name the file in the diff, and for a duplicate also the path of the existing code.
