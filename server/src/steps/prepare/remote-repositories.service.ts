@@ -1,5 +1,5 @@
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, sep } from 'path';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppConfig } from '../../config/env';
 import { assertRepoAllowed, isProjectName, repoAllowed, resolveCheckoutPath } from '../../config/checkout-path';
@@ -62,8 +62,11 @@ export class RemoteRepositories {
     return (await this.list()).repositories.some((repository) => repository.name === name);
   }
 
-  /** True when a folder of that name is under the checkouts root. A missing root is left for prepare to report. */
+  /** True when a folder of that name is under the checkouts root. A name that cannot be a project or a missing root is left for prepare to report. */
   hasFolder(name: string): boolean {
+    if (!isProjectName(name)) {
+      return true;
+    }
     try {
       return existsSync(this.folder(name));
     } catch (error) {
@@ -134,8 +137,14 @@ export class RemoteRepositories {
     this.logger.log(`${actor ?? 'nobody'} cloned ${project} from ${repository.host}`);
   }
 
+  /** The folder of a project, which is always inside the checkouts root. */
   private folder(name: string): string {
-    return resolveCheckoutPath(root(this.config), this.config.env.CHECKOUTS_ROOT, name, '');
+    const base = resolveCheckoutPath(root(this.config), this.config.env.CHECKOUTS_ROOT, '', '');
+    const path = resolveCheckoutPath(root(this.config), this.config.env.CHECKOUTS_ROOT, name, '');
+    if (!path.startsWith(`${base}${sep}`)) {
+      throw new SwarmloopError(`${name} is not inside the checkouts root`);
+    }
+    return path;
   }
 
   private configured(): CodeHostName[] {

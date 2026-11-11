@@ -182,6 +182,12 @@ describe('RemoteRepositories', () => {
     expect(github.create).not.toHaveBeenCalled();
   });
 
+  it('never builds a path from a name that cannot be a project', () => {
+    const { service } = harness({});
+    expect(service.hasFolder('../outside')).toBe(true);
+    expect(service.hasFolder('a/b')).toBe(true);
+  });
+
   it('serves the list from the cache for a minute', async () => {
     const { service, clock, github } = harness({ github: [repo('github', 'acme', 'demo')] });
     await service.list();
