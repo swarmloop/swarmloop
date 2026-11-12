@@ -1,6 +1,7 @@
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { isLoopStep } from '../../core/pipeline-result';
 import { readOutcome } from '../../history/run-state';
+import type { RunSummary } from '../../contract/api';
 import type { MergeOutcome } from '../../contract/run-state';
 import { STEPS } from '../../contract/steps';
 import type { StepName } from '../../contract/steps';
@@ -51,3 +52,36 @@ export const listExtras = (
   ...parentLink(run, keys),
   ...mergeView(run),
 });
+
+/** The subtask runs of each parent, by parent id. */
+export function childrenByParent(runs: RunEntity[]): Map<number, RunEntity[]> {
+  const byParent = new Map<number, RunEntity[]>();
+  for (const run of runs) {
+    if (typeof run.parentRunId === 'number') {
+      byParent.set(run.parentRunId, [...(byParent.get(run.parentRunId) ?? []), run]);
+    }
+  }
+  return byParent;
+}
+
+/** The epic totals of a run with subtask runs: all their cost, and the wall clock from its start to its end. Empty without subtasks. */
+export function epicTotal(
+  run: RunEntity,
+  children: RunEntity[],
+  usdOf: (run: RunEntity) => number,
+  now: number,
+): Pick<RunSummary, 'epic'> {
+  if (children.length === 0) {
+    return {};
+  }
+  const all = [run, ...children];
+  const end = all.some((item) => item.status === 'running')
+    ? now
+    : Math.max(...all.map((item) => Date.parse(item.updatedAt)));
+  return {
+    epic: {
+      usd: all.reduce((sum, item) => sum + usdOf(item), 0),
+      durationMs: Math.max(0, end - Date.parse(run.createdAt)),
+    },
+  };
+}

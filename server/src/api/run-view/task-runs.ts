@@ -8,7 +8,7 @@ import { taskLayers, type TaskRuns } from './documents';
 /** The own run of each task of a split run, with its step, spend and time. */
 export async function taskRuns(
   runs: RunRepository,
-  run: RunEntity,
+  rows: RunEntity[],
   documents: DocumentEntity[],
   pipeline: PipelineService,
   live?: LiveHub,
@@ -18,7 +18,6 @@ export async function taskRuns(
   if (tasks.length === 0) {
     return children;
   }
-  const rows = await runs.children(run);
   const durations = await runs.durationByRun(rows.map((row) => row.id));
   for (const child of rows) {
     if (child.taskId && tasks.some((task) => task.id === child.taskId)) {

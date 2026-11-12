@@ -71,30 +71,60 @@ describe('RunScreen', () => {
     const tasks = [
       {
         layer: 0,
-        tasks: [{ id: 'a', title: 'Add the column', files: ['a.ts'], proof: 'a.spec.ts', status: 'merged' as const }],
+        tasks: [
+          {
+            id: 'a',
+            title: 'Add the column',
+            files: ['a.ts'],
+            proof: 'a.spec.ts',
+            depends: [],
+            status: 'merged' as const,
+          },
+        ],
       },
       {
         layer: 1,
-        tasks: [{ id: 'b', title: 'Send it', files: ['b.ts', 'c.ts'], proof: 'b.spec.ts', status: 'blocked' as const }],
+        tasks: [
+          {
+            id: 'b',
+            title: 'Send it',
+            files: ['b.ts', 'c.ts'],
+            proof: 'b.spec.ts',
+            depends: [],
+            status: 'blocked' as const,
+          },
+        ],
       },
     ];
     vi.mocked(getFlow).mockResolvedValue(flowView({ tasks }));
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
-    expect(region).toHaveTextContent('Layer 1');
+    expect(region).toHaveTextContent('Stage 1');
     expect(region).toHaveTextContent('Add the column');
-    expect(region).toHaveTextContent('files: b.ts, c.ts · proof: b.spec.ts');
+    expect(region).not.toHaveTextContent('b.spec.ts');
+    expect(region).toHaveTextContent('2 files · proof');
   });
 
   it('shows the status line and each task status, and skips a blocked task', async () => {
     const tasks = [
-      { layer: 0, tasks: [{ id: 'a', title: 'Add the column', files: [], proof: 'a', status: 'merged' as const }] },
+      {
+        layer: 0,
+        tasks: [{ id: 'a', title: 'Add the column', files: [], proof: 'a', depends: [], status: 'merged' as const }],
+      },
       {
         layer: 1,
         tasks: [
-          { id: 'b', title: 'Send it', files: [], proof: 'b', status: 'blocked' as const },
-          { id: 'c', title: 'Show it', files: [], proof: 'c', status: 'waiting' as const, note: 'waiting for b' },
+          { id: 'b', title: 'Send it', files: [], proof: 'b', depends: [], status: 'blocked' as const },
+          {
+            id: 'c',
+            title: 'Show it',
+            files: [],
+            proof: 'c',
+            depends: [],
+            status: 'waiting' as const,
+            note: 'waiting for b',
+          },
         ],
       },
     ];
@@ -103,9 +133,10 @@ describe('RunScreen', () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
-    expect(region).toHaveTextContent('1/3 merged · 1 blocked · 1 waiting');
-    expect(region).toHaveTextContent('Add the column · merged');
-    expect(region).toHaveTextContent('Show it · waiting · waiting for b');
+    expect(region).toHaveTextContent('3 tasks · 1 merged');
+    expect(region).toHaveTextContent('merged');
+    expect(region).toHaveTextContent('Show it');
+    expect(region).toHaveTextContent('waiting for b');
     expect(within(region).getAllByRole('button', { name: 'Skip task' })).toHaveLength(1);
 
     await userEvent.click(within(region).getByRole('button', { name: 'Skip task' }));
@@ -129,6 +160,7 @@ describe('RunScreen', () => {
                 title: 'Add the column',
                 files: [],
                 proof: 'a',
+                depends: [],
                 status: 'running',
                 run: { key: 'run-1-a', currentStep: 'implement', usd: 7, durationMs: 1000 },
               },
@@ -140,8 +172,8 @@ describe('RunScreen', () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
-    expect(region).toHaveTextContent('Split: 1 tasks · 0 merged · 1 running');
-    expect(region).toHaveTextContent('implement · $7.00 · 1s');
+    expect(region).toHaveTextContent('1 tasks · 0 merged · 1s · $7.00');
+    expect(region).toHaveTextContent('running · implement');
     expect(within(region).getByRole('region', { name: 'Merge queue' })).toBeInTheDocument();
     expect(within(region).getByRole('region', { name: 'Decisions' })).toBeInTheDocument();
     expect(screen.getByText('$0.50')).toBeInTheDocument();

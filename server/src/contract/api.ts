@@ -19,6 +19,8 @@ export interface RunSummary {
   /** Set on a subtask only: the key of its parent run and its task id. */
   parentKey?: string;
   taskId?: string;
+  /** Set on a run with subtask runs only: its own cost plus its subtasks', and the wall clock from its start to its end. */
+  epic?: { usd: number; durationMs: number };
 }
 
 export interface RunsView {
@@ -51,6 +53,7 @@ export interface TaskLayer {
     title: string;
     files: string[];
     proof: string;
+    depends: string[];
     status: SubtaskStatus;
     note?: string;
     /** The subtask's own run, once it has started. */
@@ -71,6 +74,8 @@ export interface FlowView {
   startedBy?: string;
   /** The tasks of a split plan after plan-improve, by dependency layer. Missing when the run does not split. */
   tasks?: TaskLayer[];
+  /** Set on a run with subtask runs only: its own cost plus its subtasks', and the wall clock from its start to its end. */
+  epic?: { usd: number; durationMs: number };
   /** `Split: 7 tasks · 5 merged · 2 running`, once the run is at implement or past it. Missing when the run does not split. */
   taskLine?: string;
   /** The tasks that are done with green CI and wait for their merge, in plan order. */

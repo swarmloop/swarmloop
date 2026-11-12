@@ -180,9 +180,9 @@ function RunRow({
               />
             </Tooltip>
           </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'nowrap', minWidth: 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: run.epic ? 'wrap' : 'nowrap', minWidth: 0 }}>
             <Typography sx={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 12, flexShrink: 0 }}>
-              {money(run.usd)}
+              {run.epic ? `${money(run.epic.usd)} total · ${money(run.usd)} this run` : money(run.usd)}
             </Typography>
             <Tooltip title="Total time the steps have run. Reviewers that run together count as the slowest one, then the report and the remaining time in that step. Time waiting on a person, and time sitting idle after a failure, is not included.">
               <Box
@@ -198,7 +198,9 @@ function RunRow({
                 }}
               >
                 <Schedule sx={{ fontSize: 14 }} />
-                {duration(run.durationMs + openRunMs(run, now))}
+                {run.epic
+                  ? `${duration(run.epic.durationMs)} total · ${duration(run.durationMs + openRunMs(run, now))} this run`
+                  : duration(run.durationMs + openRunMs(run, now))}
               </Box>
             </Tooltip>
             <Typography noWrap color="text.secondary" sx={{ fontSize: 12, minWidth: 0, ml: 'auto' }}>
