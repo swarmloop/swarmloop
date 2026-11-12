@@ -12,9 +12,11 @@ The prompt may hold an `Impact` section: the capabilities the task touches, one 
 
 A capability marked `removed` or `unreachable` that the requirements do not name in a `Removes` or `Behavior change` section, and that no answer confirmed, is not planned around silently. Stop and end with a `questions:` section in place of `plan:`, one line `- This change makes <capability> <unreachable|go away>. Is that intended?` per capability, then `summary:`. Dead code that nothing relies on is not a capability and raises no question.
 
-Write the checklist with the plan tool. That is how a later pass replaces the plan. Do not edit source files. Do not run git. Do not implement the items.
+[plan tool] Write the checklist with the plan tool. That is how a later pass replaces the plan. Do not edit source files. Do not run git. Do not implement the items.
+[no plan tool] Write the checklist in the `plan:` section of your answer. That is what the server reads, and a later pass replaces the plan with its own `plan:` section. Do not edit source files. Do not run git. Do not implement the items.
 
-End the answer with these two sections and nothing after them. One item per line. The plan items match the plan tool. `summary` says why this checklist.
+[plan tool] End the answer with these two sections and nothing after them. One item per line. The plan items match the plan tool. `summary` says why this checklist.
+[no plan tool] End the answer with these two sections and nothing after them. One item per line. `summary` says why this checklist.
 
 ```
 plan:

@@ -4,6 +4,10 @@ describe('CursorRuntime', () => {
   const runtime = new CursorRuntime();
   const mounts = [{ containerPath: '/work/demo' }];
 
+  it('says whether its plan mode has a plan tool', () => {
+    expect(runtime.planModeHasPlanTool).toBe(true);
+  });
+
   it('prints plan mode and agent mode with resume and mcp approval', () => {
     expect(
       runtime.printArgs({

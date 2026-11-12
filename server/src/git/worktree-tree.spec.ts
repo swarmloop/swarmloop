@@ -20,6 +20,8 @@ function bigRepo(files: number): string {
   git(repo, ['init', '-q']);
   git(repo, ['config', 'user.email', 'dev@example.com']);
   git(repo, ['config', 'user.name', 'Dev']);
+  // A detached `gc --auto` after the commit would still write into .git while the test removes it.
+  git(repo, ['config', 'gc.auto', '0']);
   for (let directory = 0; directory < files / 100; directory += 1) {
     mkdirSync(join(repo, `d${directory}`));
     for (let file = 0; file < 100; file += 1) {

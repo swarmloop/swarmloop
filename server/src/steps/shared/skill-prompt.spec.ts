@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { implementFollowUp, implementImproveFollowUp } from '../implement/implement.prompts';
-import { parseSummary, skillPrompt, summaryOr } from './skill-prompt';
+import { parseSummary, skillPrompt, skillText, summaryOr } from './skill-prompt';
 
 const skill = (name: string): string => readFileSync(join(__dirname, '../../../../skills', name, 'SKILL.md'), 'utf8');
 
@@ -125,4 +125,37 @@ describe('implement skill rules', () => {
       expect(skill(name)).not.toMatch(/\b(Glob|Grep)\b/);
     },
   );
+});
+
+describe('skillText', () => {
+  const raw = ['common', '[plan tool] with', '[no plan tool] without', 'end'].join('\n');
+
+  it('keeps the lines of the runtime with a plan tool', () => {
+    expect(skillText(raw, true)).toBe(['common', 'with', 'end'].join('\n'));
+  });
+
+  it('keeps the lines of the runtime without one', () => {
+    expect(skillText(raw, false)).toBe(['common', 'without', 'end'].join('\n'));
+  });
+
+  it('leaves a text without markers as it is', () => {
+    expect(skillText('a\n\nb\n', false)).toBe('a\n\nb\n');
+  });
+});
+
+describe('the plan skills for a runtime without a plan tool', () => {
+  const names = ['api'];
+
+  it.each(['plan', 'plan-improve'])('the %s prompt names no plan tool', (name) => {
+    expect(skillPrompt(name, '{}', names, [], [], { split: true, planTool: false })).not.toContain('plan tool');
+  });
+
+  it.each([
+    ['plan', 'Write the checklist with the plan tool. That is how a later pass replaces the plan.'],
+    ['plan-improve', 'Use the plan tool or a `plan` section. Either one replaces the checklist.'],
+  ])('the %s prompt with a plan tool keeps its sentence and no marker', (name, sentence) => {
+    const prompt = skillPrompt(name, '{}', names, [], [], { split: true });
+    expect(prompt).toContain(sentence);
+    expect(prompt).not.toMatch(/\[(no )?plan tool\]/);
+  });
 });

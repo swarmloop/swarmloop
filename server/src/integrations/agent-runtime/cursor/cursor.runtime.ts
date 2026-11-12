@@ -7,6 +7,7 @@ export class CursorRuntime extends AbstractAgentRuntime {
   readonly name = 'cursor' as const;
   readonly command = 'agent' as const;
   readonly syncsChatMode = true;
+  readonly planModeHasPlanTool = true;
   readonly priceSource = 'https://cursor.com/docs/models-and-pricing.md';
   readonly apiHosts = ['*.cursor.sh', '*.cursor.com'];
   readonly credentialNames = ['CURSOR_API_KEY'];

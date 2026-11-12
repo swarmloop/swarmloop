@@ -55,6 +55,8 @@ export interface AgentRuntime {
   readonly apiHosts: readonly string[];
   readonly credentialNames: readonly string[];
   readonly syncsChatMode: boolean;
+  /** True when the plan mode of this CLI has a tool that takes the checklist. */
+  readonly planModeHasPlanTool: boolean;
   readonly priceSource: string;
   credential(keys: RuntimeKeys): { name: string; value: string };
   /** The provider limit the end of a launch reports, or null when it is no limit: an auth, billing, network or context error is none. */

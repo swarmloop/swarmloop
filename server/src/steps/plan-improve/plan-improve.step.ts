@@ -1,4 +1,5 @@
 import { agentFor } from '../../config/agents';
+import { runtimeFor } from '../../integrations/agent-runtime/agent-runtime.registry';
 import type { RunEntity } from '../../history/entities';
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
@@ -92,7 +93,10 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
         impact,
       ),
       mounts,
-      { split: maySplit },
+      {
+        split: maySplit,
+        planTool: runtimeFor(this.profile(this.config.env, ctx.opened.run).runtime).planModeHasPlanTool,
+      },
     );
     const chosen = continued?.chatId && !maySplit ? appendImpact(PLAN_IMPROVE_FOLLOW_UP, impact) : full;
     const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));

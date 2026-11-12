@@ -1,4 +1,4 @@
-import { bulletSection } from './markdown-section';
+import { bulletSection, section } from './markdown-section';
 
 describe('Markdown sections', () => {
   it('parses the recorded hash-heading implementation answer', () => {
@@ -26,5 +26,29 @@ describe('Markdown sections', () => {
     expect(bulletSection(text, 'cause')).toBe('- parser\n');
     expect(bulletSection(text, 'files')).toBe('- a.ts\n');
     expect(bulletSection(text, 'proof')).toBe('- npm test\n');
+  });
+
+  it.each(['contract', 'plan', 'implementation'])('reads %s whole when a body line ends with a colon', (name) => {
+    const text = [
+      `${name}:`,
+      '- first',
+      '  indented line that ends with:',
+      'A sentence that ends with:',
+      '- last',
+      '',
+      'summary:',
+      '- why',
+    ].join('\n');
+
+    expect(section(text, name)).toBe(
+      ['- first', '  indented line that ends with:', 'A sentence that ends with:', '- last', ''].join('\n'),
+    );
+  });
+
+  it('does not start or end a section at an indented label', () => {
+    const text = ['tasks:', '- a', '  summary:', '  more', '', 'summary:', '- why'].join('\n');
+
+    expect(section(text, 'tasks')).toBe(['- a', '  summary:', '  more', ''].join('\n'));
+    expect(section(['plan:', '- x', '  summary:'].join('\n'), 'summary')).toBeNull();
   });
 });

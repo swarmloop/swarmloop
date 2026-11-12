@@ -9,6 +9,7 @@ export class CodexRuntime extends AbstractAgentRuntime {
   readonly name = 'codex' as const;
   readonly command = 'codex' as const;
   readonly syncsChatMode = false;
+  readonly planModeHasPlanTool = false;
   readonly priceSource = 'https://platform.openai.com/docs/pricing';
   readonly apiHosts = ['api.openai.com', 'auth.openai.com', '*.chatgpt.com'];
   readonly credentialNames = ['CODEX_AUTH', 'CODEX_API_KEY'];

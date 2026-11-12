@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -49,6 +49,27 @@ describe('plan-improve step', () => {
       await app.get(PipelineService).step('plan-improve', 'PROJ-50');
       expect(await documents.find({ where: { kind: 'requirements' } })).toHaveLength(stored.length);
       expect((await app.get(RunRepository).findRun('PROJ-50'))?.currentStep).toBe('branch');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('asks a runtime without a plan tool for a plan section, and names no plan tool', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-'));
+    await writeEnv(root);
+    writeFileSync(
+      join(root, '.env'),
+      readFileSync(join(root, '.env'), 'utf8').replace('RUNTIME=cursor', 'RUNTIME=claude'),
+    );
+    mkdirSync(join(root, 'worktrees', 'PROJ-58', 'billing-api'), { recursive: true });
+    const agent = jest.fn().mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-58');
+      await app.get(PipelineService).step('plan-improve', 'PROJ-58');
+      const prompt = (agent.mock.calls[0]?.[0] as AgentRunInput).prompt;
+      expect(prompt).toContain('Write a `plan` section. It replaces the checklist.');
+      expect(prompt).not.toContain('plan tool');
     } finally {
       await app.close();
     }

@@ -95,18 +95,40 @@ function sourceState(hostPath: string): string {
   }
 }
 
+/** Keeps a `[plan tool] ` line only for a runtime with a plan tool and a `[no plan tool] ` line only for one without. */
+export function skillText(raw: string, planTool: boolean): string {
+  const kept: string[] = [];
+  for (const line of raw.split('\n')) {
+    if (line.startsWith(PLAN_TOOL_MARK)) {
+      if (planTool) {
+        kept.push(line.slice(PLAN_TOOL_MARK.length));
+      }
+    } else if (line.startsWith(NO_PLAN_TOOL_MARK)) {
+      if (!planTool) {
+        kept.push(line.slice(NO_PLAN_TOOL_MARK.length));
+      }
+    } else {
+      kept.push(line);
+    }
+  }
+  return kept.join('\n');
+}
+
+const PLAN_TOOL_MARK = '[plan tool] ';
+const NO_PLAN_TOOL_MARK = '[no plan tool] ';
+
 export function skillPrompt(
   skill: string,
   requirements: string,
   names: string[],
   sections: { heading: string; body: string }[] = [],
   mounts: SandboxMount[] = [],
-  options: { deferExecutionRules?: boolean; split?: boolean } = {},
+  options: { deferExecutionRules?: boolean; split?: boolean; planTool?: boolean } = {},
 ): string {
   const file = join(__dirname, '../../../../skills', skill, 'SKILL.md');
   let text = '';
   try {
-    text = readFileSync(file, 'utf8');
+    text = skillText(readFileSync(file, 'utf8'), options.planTool ?? true);
   } catch {
     throw new SwarmloopError(`${skill} skill is missing`);
   }
@@ -115,18 +137,9 @@ export function skillPrompt(
       ? workingDirectoryBlock(names, mounts)
       : ['Worktrees:', ...names.map((name) => `- ${name}`)].join('\n');
   // The `## Split` section of a skill is for a run that may split. Any other run reads the text before it.
-  const skillText = options.split ? text : (text.split(/^## Split$/m)[0] ?? text);
+  const body = options.split ? text : (text.split(/^## Split$/m)[0] ?? text);
   const executionRule = options.deferExecutionRules ? '' : LOCAL_RUN_RULE;
-  const parts = [
-    where,
-    '',
-    executionRule,
-    '',
-    skillText.trimEnd(),
-    '',
-    'Requirements:',
-    requirementsBrief(requirements),
-  ];
+  const parts = [where, '', executionRule, '', body.trimEnd(), '', 'Requirements:', requirementsBrief(requirements)];
   for (const section of sections) {
     parts.push('', `${section.heading}:`, section.body.trimEnd());
   }

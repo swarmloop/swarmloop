@@ -16,7 +16,7 @@ export function section(text: string, name: string): string | null {
   const lines = text.split(/\r?\n/);
   let start = -1;
   for (let index = 0; index < lines.length; index += 1) {
-    if (heading(lines[index] ?? '') === `${name}:`) {
+    if (isLabelLine(lines[index] ?? '') && heading(lines[index] ?? '') === `${name}:`) {
       start = index;
     }
   }
@@ -25,13 +25,35 @@ export function section(text: string, name: string): string | null {
   }
   const rest: string[] = [];
   for (let index = start + 1; index < lines.length; index += 1) {
-    const line = heading(lines[index] ?? '');
-    if (line.endsWith(':') && !line.startsWith('-')) {
+    if (isSectionLabel(lines[index] ?? '')) {
       break;
     }
     rest.push(lines[index] ?? '');
   }
   return rest.join('\n');
+}
+
+const SECTION_LABELS = [
+  'contract',
+  'tasks',
+  'plan',
+  'questions',
+  'summary',
+  'impact',
+  'implementation',
+  'cause',
+  'files',
+  'proof',
+];
+
+/** A section ends only at a label of an answer: at column 0, alone on its line, plain or as a heading or bold. */
+function isSectionLabel(line: string): boolean {
+  const text = heading(line);
+  return isLabelLine(line) && text.endsWith(':') && SECTION_LABELS.includes(text.slice(0, -1));
+}
+
+function isLabelLine(line: string): boolean {
+  return !/^\s/.test(line);
 }
 
 /** The last accepted value written on a named section line, including Markdown-wrapped headings. */
