@@ -3,6 +3,7 @@ import { IsNull, Not } from 'typeorm';
 import type { MergeOutcome, MergedFact } from '../contract/run-state';
 import { REASON } from '../contract/run-state';
 import { Clock } from '../core/clock';
+import { HostUnavailable } from '../core/swarmloop-error';
 import type { RunEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { EventRepository } from '../history/event.repository';
@@ -40,11 +41,12 @@ export class MergeWatch {
     private readonly clock: Clock,
   ) {}
 
-  /** One pass over the runs that are not working and whose merge requests have not ended. */
+  /** One pass over the runs that are not working and whose merge requests have not ended. A host that does not answer ends the pass: the next one tries again. */
   async run(): Promise<void> {
     for (const run of await this.runs.listRuns({ status: Not('running'), mergeOutcome: IsNull() })) {
       try {
-        await (run.status === 'done' ? this.watch(run) : this.watchUnfinished(run));
+        const hostDown = await (run.status === 'done' ? this.watch(run) : this.watchUnfinished(run));
+        if (hostDown) return;
       } catch (error) {
         this.logger.warn(`merge watch of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -52,17 +54,17 @@ export class MergeWatch {
   }
 
   /** `doneAt` is stored the first time the run is seen: a done run is rarely written again, so its `updatedAt` is close to it. */
-  private async watch(run: RunEntity): Promise<void> {
+  private async watch(run: RunEntity): Promise<boolean> {
     const doneAt = run.doneAt ?? run.updatedAt;
     if (this.clock.now() - Date.parse(doneAt) > WAIT_DAYS * DAY_MS) {
       await this.note(run, doneAt, {
         code: REASON.mergeWatchStopped,
         message: `The merge request was not merged or closed in ${WAIT_DAYS} days: swarmloop stopped watching it.`,
       });
-      return;
+      return false;
     }
     const body = await this.documents.latestBody(run.key, 'merge_request');
-    if (!body) return;
+    if (!body) return false;
     let merge: MergeOutcome | null;
     try {
       merge = await this.read(run, parseMergeRequests(body));
@@ -71,32 +73,34 @@ export class MergeWatch {
         code: REASON.mergeWatchUnavailable,
         message: `The code host cannot be read, so the merge request is not watched: ${error instanceof Error ? error.message : String(error)}`,
       });
-      return;
+      return error instanceof HostUnavailable;
     }
     if (merge) {
       await this.runs.release(run, { status: 'done', doneAt, merge });
     } else if (run.doneAt !== doneAt || run.stateReason) {
       await this.runs.release(run, { status: 'done', doneAt });
     }
+    return false;
   }
 
   /**
    * A run that is not done is left as it is, and changes only when every request has ended: the outcome is written
    * with the run's state and the history line. A host that cannot be read, or a run not touched for 30 days, writes nothing.
+   * True when the host did not answer.
    */
-  private async watchUnfinished(run: RunEntity): Promise<void> {
-    if (this.clock.now() - Date.parse(run.updatedAt) > WAIT_DAYS * DAY_MS) return;
+  private async watchUnfinished(run: RunEntity): Promise<boolean> {
+    if (this.clock.now() - Date.parse(run.updatedAt) > WAIT_DAYS * DAY_MS) return false;
     const body = await this.documents.latestBody(run.key, 'merge_request');
-    if (!body) return;
+    if (!body) return false;
     let merge: MergeOutcome | null;
     try {
       merge = await this.read(run, parseMergeRequests(body), false);
-    } catch {
-      return;
+    } catch (error) {
+      return error instanceof HostUnavailable;
     }
-    if (!merge) return;
+    if (!merge) return false;
     const released = await this.runs.release(run, { status: 'done', doneAt: this.clock.iso(), merge });
-    if (released.status !== 'done') return;
+    if (released.status !== 'done') return false;
     const ended = 'merged' in merge ? 'merged' : 'closed';
     const host = run.codeHost === 'github' ? 'GitHub' : 'GitLab';
     await this.events.recordLoop(
@@ -105,6 +109,7 @@ export class MergeWatch {
       0,
       `The merge request was ${ended} on ${host} while the run was ${run.state}; the run is done.`,
     );
+    return false;
   }
 
   /** Null while a request is open. A request closed unmerged settles the run at once, unless `settleAtOnce` is off. */

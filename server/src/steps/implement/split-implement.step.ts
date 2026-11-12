@@ -7,6 +7,7 @@ import type { StepName } from '../../contract/steps';
 import { withDecision } from '../shared/handoff';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { SplitMerge } from './split-merge';
+import { earliestRetry } from './subtask-retry';
 import { BaseStep, StepContext } from '../base-step';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
@@ -60,13 +61,16 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     if (parent.status !== 'waiting' || !SUBTASK_WAIT_CODES.some((wait) => wait === code)) return false;
     const tasks = withStatuses((await this.reader.reread(parent.key, ARTIFACTS.subtasks)) ?? []);
     if (tasks.every(settled)) return false;
+    const children: RunEntity[] = [];
     for (const task of tasks.filter((item) => !settled(item))) {
       const child = await this.subtasks.find(parent, task.id);
       if (!child) return false;
+      children.push(child);
       const { state } = deriveState(child);
       const changed = state === 'stopped' || this.statusOf(task, child, state) !== task.status;
       if (changed || task.status === 'green' || (await this.subtasks.asking(child))) return false;
     }
+    if (earliestRetry(children) !== (deriveState(parent).reason?.retryAt ?? null)) return false;
     return readyTasks(tasks, this.config.env.SUBTASKS_PARALLEL).length === 0;
   }
 
@@ -90,10 +94,28 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     if (tasks.every(settled)) {
       return this.finish(run, tasks, ctx, outputs);
     }
+    const retryAt = earliestRetry(await this.openChildren(run, tasks));
+    if (retryAt) {
+      const text = `${line}; next try at ${retryAt}`;
+      return {
+        route: { to: 'wait', reason: text, code: ERROR_CODES.SUBTASK_WAITING, retryAt },
+        summary: `${startedAt} ${text}`,
+        outputs,
+      };
+    }
     const waiting = tasks.some((task) => task.status === 'running') ? null : this.missing(tasks);
     const code = waiting ? ERROR_CODES.SUBTASK_WAITING : ERROR_CODES.SUBTASKS_RUNNING;
     const text = waiting ? `${line} · waiting for ${waiting}` : line;
     return { route: { to: 'wait', reason: text, code }, summary: `${startedAt} ${text}`, outputs };
+  }
+
+  private async openChildren(parent: RunEntity, tasks: Subtask[]): Promise<RunEntity[]> {
+    const children: RunEntity[] = [];
+    for (const task of tasks.filter((item) => !settled(item))) {
+      const child = await this.subtasks.find(parent, task.id);
+      if (child) children.push(child);
+    }
+    return children;
   }
 
   /**

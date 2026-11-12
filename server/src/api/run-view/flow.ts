@@ -2,6 +2,7 @@ import { activeDurationMs, toDurationParts } from '../../history/active-duration
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { continuesSameStep, countedVisits, isLoopStep, loopMark } from '../../core/pipeline-result';
 import { blockCode, deriveState } from '../../history/run-state';
+import { ERROR_CODES } from '../../contract/error-codes';
 import { actionsFor, REASON } from '../../contract/run-state';
 import type { StateFacts } from '../../history/run-state';
 import type { RunAction, RunState, StateReason } from '../../contract/run-state';
@@ -163,6 +164,31 @@ function doneSentence(run: RunEntity): string {
   return 'This run is done: its merge request is ready to merge.';
 }
 
+const OUTAGE_NAMES: Record<string, string> = {
+  [ERROR_CODES.HOST_UNAVAILABLE]: 'A host did not answer.',
+  [ERROR_CODES.DOCKER_UNAVAILABLE]: 'Docker did not answer.',
+};
+
+/** What happens next for the codes that carry their own next step, or null for any other. */
+function codeSentence(run: RunEntity, maxReturns: number): string | null {
+  const { state, reason } = deriveState(run);
+  if (state === 'waiting' && reason && reason.code in OUTAGE_NAMES) {
+    const when = reason.retryAt ? ` at ${reason.retryAt}` : '';
+    return `${OUTAGE_NAMES[reason.code]} The step is tried again by itself${when}. Resume tries now.`;
+  }
+  if (state !== 'blocked' || !reason) return null;
+  if (reason.code === REASON.loopLimit) {
+    return `Automatic retries stopped after ${maxReturns} attempts. Resume starts another.`;
+  }
+  if (reason.code === ERROR_CODES.SPEND_LIMIT) {
+    return 'The run spent as much as MAX_RUN_USD allows. Raise MAX_RUN_USD, then Resume.';
+  }
+  if (reason.code === ERROR_CODES.PIPELINE_UNFIXED) {
+    return 'The failed pipeline job failed twice on the same commit and the agent changed nothing. Check the CI settings, the secrets, or a failure outside the change, then Resume.';
+  }
+  return null;
+}
+
 function blockedSentence(run: RunEntity, documents: DocumentEntity[], maxReturns: number): string {
   if (blockCode(run.currentStep, latest(documents, 'error')) === REASON.checkFailed) {
     return 'A required check failed again on unchanged files. Resume returns to implementation with the stored notes.';
@@ -183,6 +209,10 @@ export function sentence(
   stats: StepStatEntity[],
   maxReturns: number,
 ): string {
+  const coded = codeSentence(run, maxReturns);
+  if (coded) {
+    return coded;
+  }
   if (run.status === 'blocked') {
     return blockedSentence(run, documents, maxReturns);
   }

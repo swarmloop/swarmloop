@@ -14,12 +14,11 @@ import { recordStepEvent } from '../../core/step-event-scope';
 import type { StepName } from '../../contract/steps';
 import type { OpenedStep } from '../../steps/step-run';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
-import { FetchFailed, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
+import { SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { CI_INFRA_SOURCE, issueOf } from '../shared/handoff';
 import { assertNotStopped } from '../shared/step-stopped';
 import { BaseStep, type StepContext } from '../base-step';
 import {
-  cancelErrorNote,
   ciResult,
   classify,
   ciTitle,
@@ -47,6 +46,7 @@ import {
 import { finishedRuns, readFailures, readNotes, rerunJobs } from './ci-host';
 import { ARTIFACTS } from '../contract/artifacts';
 import { mergeRequestDetails, parseMergeRequests } from '../merge-request/merge-request-record';
+import { cancelRunning } from './cancel-running';
 import { pipelineReturn } from './ci-only';
 import { finish } from './pipeline-result';
 import { stuckAtStart } from './stuck-start';
@@ -202,7 +202,14 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       return this.stalled(ctx, env, records, seen, host, reruns);
     }
     if (verdict === 'wait') {
-      const settled = await this.cancelRunning(records, seen, calls, env, host);
+      const settled = await cancelRunning({
+        seen,
+        calls,
+        env,
+        host,
+        load: (jobs) => this.load(records, calls, host, jobs),
+        awakeTime: () => this.awakeTime(env),
+      });
       if (!settled.traces) {
         return this.red(ctx, env, settled.seen, host, settled.note, false);
       }
@@ -320,59 +327,6 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     );
     const issue = issueOf(CI_INFRA_SOURCE, code, body);
     return { ...result, outputs: [...result.outputs, { artifact: ARTIFACTS.issues, value: [issue] }] };
-  }
-
-  private async cancelRunning(
-    records: PipelineRef[],
-    seen: Seen[],
-    calls: HttpCallDraft[],
-    env: SwarmloopEnv,
-    host: CodeHost,
-  ): Promise<{ seen: Seen[]; note: string; traces: boolean }> {
-    const minutes = Math.round(env.PIPELINE_TIMEOUT_MS / 60000);
-    const running = runRows(seen, isRunning);
-    const errors: string[] = [];
-    for (const item of running) {
-      try {
-        const result = await host.cancelPipeline(item.project, item.id);
-        calls.push(...result.httpCalls);
-      } catch (error) {
-        if (error instanceof FetchFailed) {
-          calls.push(...error.httpCalls);
-        }
-        const message = error instanceof Error ? error.message : 'cancel failed';
-        errors.push(`${item.project}: ${message}`);
-      }
-    }
-    if (errors.length > 0) {
-      let rows = running;
-      try {
-        const named = await this.load(records, calls, host);
-        rows = running.map((item) => {
-          return runRows(named, isRunning).find((row) => row.project === item.project && row.id === item.id) ?? item;
-        });
-      } catch (error) {
-        if (error instanceof FetchFailed) {
-          calls.push(...error.httpCalls);
-        }
-      }
-      return { seen, note: cancelErrorNote(rows, errors), traces: false };
-    }
-    const awake = this.awakeTime(env);
-    let current = seen;
-    while (awake.elapsedMs() < env.PIPELINE_START_TIMEOUT_MS && runRows(current, isRunning).length > 0) {
-      const pause = Math.min(env.TICK_MS, env.PIPELINE_START_TIMEOUT_MS - awake.elapsedMs());
-      if (pause <= 0) {
-        break;
-      }
-      await delay(pause);
-      current = await awake.run(() => this.load(records, calls, host, false));
-    }
-    return {
-      seen: current,
-      note: `It was still running after ${minutes} minutes and swarmloop canceled it`,
-      traces: true,
-    };
   }
 
   private async red(

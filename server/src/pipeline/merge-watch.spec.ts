@@ -6,6 +6,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 import { REASON } from '../contract/run-state';
+import { HostUnavailable } from '../core/swarmloop-error';
 import { DocumentRepository } from '../history/document.repository';
 import { EventRepository } from '../history/event.repository';
 import { RunEntity } from '../history/entities';
@@ -161,6 +162,17 @@ describe('MergeWatch', () => {
     answers.set('acme/demo#1', merged('ada'));
     await app.get(MergeWatch).run();
     expect((await find('PROJ-5')).state).toBe('merged');
+  });
+
+  it('ends the pass at the first host that does not answer, so the tick is not held by the outage', async () => {
+    await doneRun('PROJ-6', ['acme/demo']);
+    await doneRun('PROJ-7', ['acme/other']);
+    answers.set('acme/demo#1', new HostUnavailable('api.github.com', 'HTTP 503', '2026-11-12T10:05:00.000Z'));
+    answers.set('acme/other#1', new HostUnavailable('api.github.com', 'HTTP 503', '2026-11-12T10:05:00.000Z'));
+
+    await app.get(MergeWatch).run();
+
+    expect(reads).toBe(1);
   });
 
   it('leaves a run without a code host done with the note', async () => {

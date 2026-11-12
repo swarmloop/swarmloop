@@ -2,47 +2,31 @@ import type { OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConnectionsService } from '../auth/connections.service';
 import { AppConfig } from '../config/env';
-import { agentFor, agentsFor } from '../config/agents';
-import { chargeStream } from '../agent/spend';
-import { loadPriceTable } from '../agent/prices';
-import { resolveRepoRoot } from '../config/repo-root';
+import { agentsFor } from '../config/agents';
 import { ERROR_CODES } from '../contract/error-codes';
-import { REASON } from '../contract/run-state';
-import type { StepName } from '../contract/steps';
-import { hasFinalResult, stepOutput } from '../core/attempt-output';
-import { barrier } from '../core/barrier';
+import { RunStop } from '../agent/run-stop';
 import { Clock } from '../core/clock';
+import { failedLaunches, loopMark } from '../core/pipeline-result';
 import { AwakeTime } from '../core/awake-time';
-import { delay } from '../core/delay';
-import { isStep } from '../core/pipeline-result';
 import { SERVER_INSTANCE } from '../core/server-instance';
-import { recordStepEvent, runInStepScope } from '../core/step-event-scope';
 import type { RunEntity } from '../history/entities';
+import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { deriveState, writeRunState } from '../history/run-state';
-import { RuntimeCooldownRepository } from '../history/runtime-cooldown.repository';
-import { StepEventLog } from '../history/step-event.log';
-import type { VisitDraft } from '../history/visit';
 import { VisitRepository } from '../history/visit.repository';
+import { RuntimeCooldownRepository } from '../history/runtime-cooldown.repository';
+import { DiskGuard } from './disk-guard';
+import { dockerWait } from '../steps/step-error-end';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { fingerprintOf, parseJournal, unfinished, REBASE_JOURNAL } from '../git/rebase';
-import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
-import { RunRebase } from '../steps/run-rebase';
-import { StepRegistry } from '../steps/step.registry';
 import { CHAT_LOCK, chatResume, readChatLock } from './chat-lock';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
+import { RunSettler } from './run-settler';
 import { SubtaskPort } from './subtask-port';
-import { WorkspaceGuard, workspaceBlock } from './workspace-guard';
 import { settleShell } from './shell-lock';
 
-/** Waits between the read-only probes of a docker that does not answer. */
-const PROBE_BACKOFF_MS = [1_000, 2_000];
-
-export function silentMessage(key: string): string {
-  return `${key} is blocked: docker did not answer`;
-}
+export { silentMessage } from './run-settler';
 
 /**
  * One idempotent look at the runs and commands that a process left behind. It runs at startup and every
@@ -63,19 +47,18 @@ export class Reconciler implements OnModuleDestroy {
   constructor(
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
-    private readonly visits: VisitRepository,
     private readonly sandbox: SandboxService,
-    private readonly registry: StepRegistry,
     private readonly config: AppConfig,
     private readonly clock: Clock,
     private readonly commands: CommandService,
-    private readonly events: StepEventLog,
-    private readonly mergeRequests: MergeRequestLookup,
-    private readonly rebases: RunRebase,
-    private readonly workspace: WorkspaceGuard,
+    private readonly settler: RunSettler,
     private readonly cooldowns: RuntimeCooldownRepository,
     private readonly subtasks: SubtaskPort,
     private readonly mergeWatch: MergeWatch,
+    private readonly disk: DiskGuard,
+    private readonly commandLog: CommandRepository,
+    private readonly visits: VisitRepository,
+    private readonly runStop: RunStop,
     @Optional() private readonly connections?: ConnectionsService,
   ) {}
 
@@ -124,6 +107,9 @@ export class Reconciler implements OnModuleDestroy {
   private async reconcileAll(): Promise<void> {
     await this.reconcileRuns();
     await this.resumeLimited();
+    await this.resumeHostUnavailable();
+    await this.resumeDocker();
+    await this.resumeDiskLow();
     await this.resumeGitAuth();
     await this.resumeSubtaskParents();
     await this.watchMerges();
@@ -157,6 +143,80 @@ export class Reconciler implements OnModuleDestroy {
         this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+  }
+
+  /** A run that waits for a host goes on by itself, once, when the next try its reason names has come. */
+  async resumeHostUnavailable(): Promise<void> {
+    for (const run of await this.withReason('waiting', ERROR_CODES.HOST_UNAVAILABLE)) {
+      const retryAt = Date.parse(deriveState(run).reason?.retryAt ?? '');
+      if (Number.isFinite(retryAt) && this.clock.now() < retryAt) continue;
+      await this.resumeOnce(run, `host-${run.revision}`, () => Promise.resolve(true));
+    }
+  }
+
+  /**
+   * A run that waits for docker is probed on every tick and starts nothing while docker is silent. A run with its
+   * attempt goes back to settling once docker answers; a run with none gets a resume.
+   */
+  async resumeDocker(): Promise<void> {
+    for (const seen of await this.withReason('waiting', ERROR_CODES.DOCKER_UNAVAILABLE)) {
+      try {
+        if (seen.activeAttempt === null) {
+          const answers = await this.sandbox.dockerAnswers();
+          if (!answers) await this.refreshDockerWait(seen.key);
+          else await this.resumeOnce(seen, `docker-${seen.revision}`, () => Promise.resolve(true));
+          continue;
+        }
+        const running = await this.sandbox.attemptRunning(seen.activeAttempt);
+        if (running === null) await this.refreshDockerWait(seen.key);
+        else await this.settleAnswered(seen.key);
+      } catch (error) {
+        this.logger.warn(
+          `docker wait of ${seen.key} failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+
+  /** A run blocked for lack of disk goes on by itself, once, when the free space is above `MIN_FREE_GB`. Nothing is cleaned. */
+  async resumeDiskLow(): Promise<void> {
+    for (const run of await this.withReason('blocked', ERROR_CODES.DISK_LOW)) {
+      await this.resumeOnce(run, `disk-${run.revision}`, () => this.disk.hasFreeSpace());
+    }
+  }
+
+  private async withReason(status: string, code: string): Promise<RunEntity[]> {
+    return (await this.runs.listRuns()).filter(
+      (run) => run.status === status && deriveState(run).reason?.code === code,
+    );
+  }
+
+  /** Accepts one resume under `key` when `ready` says so. A stopped run is `blocked` with `STOPPED`, so it never gets here. */
+  private async resumeOnce(run: RunEntity, key: string, ready: () => Promise<boolean>): Promise<void> {
+    try {
+      if (!(await ready())) return;
+      await this.commands.accept('resume', run.key, {}, { idempotencyKey: key });
+    } catch (error) {
+      this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** Docker is still silent: the next try moves forward. The run is read again, and only a run that still waits is written. */
+  private async refreshDockerWait(key: string): Promise<void> {
+    const run = await this.runs.findRun(key);
+    if (run?.status !== 'waiting' || deriveState(run).reason?.code !== ERROR_CODES.DOCKER_UNAVAILABLE) return;
+    const { code, message, retryAt } = dockerWait(this.clock, this.config.env);
+    writeRunState(run, { status: 'waiting', ownerPid: null, reason: { code, message, retryAt } });
+    await this.runs.saveRun(run);
+  }
+
+  /** Docker answered: the run goes back to settling, as if its process had just died. */
+  private async settleAnswered(key: string): Promise<void> {
+    const run = await this.runs.findRun(key);
+    if (run?.status !== 'waiting' || deriveState(run).reason?.code !== ERROR_CODES.DOCKER_UNAVAILABLE) return;
+    writeRunState(run, { status: 'running', ownerPid: null });
+    await this.runs.saveRun(run);
+    await this.reconcile(run);
   }
 
   /** A run that waits for a person to reconnect goes on by itself, once, when their connection is ok again. */
@@ -217,66 +277,23 @@ export class Reconciler implements OnModuleDestroy {
       await this.documents.putDocument(run, CHAT_LOCK, 'clear\n');
       return;
     }
-    if (await this.settleRebase(run)) return;
-    await this.settleAttempt(run);
+    if (await this.settler.settleRebase(run)) return;
+    const stopping = (await this.commandLog.pending(run.id)).some((command) => command.type === 'stop');
+    await this.settler.settleAttempt(run, this.slept);
+    if (!stopping) await this.relaunchInterrupted(run.key);
   }
 
   /**
-   * A journal below `completed` is read before the run continues or blocks. Files that no longer match the last
-   * checkpoint block it with `REBASE_CONFLICT`; otherwise the rebase resumes through `RunRebase`, without a new
-   * generation. A repo in `conflict` waits for a person, so it is neither.
+   * A step cut by a restart has its `process died` visit stored and its run `failed`. It is relaunched through the
+   * resume a person would press, under the same `MAX_LAUNCHES` rule as the driver. A stopped run is not relaunched.
    */
-  private async settleRebase(run: RunEntity): Promise<boolean> {
-    const journal = parseJournal(await this.documents.latestBody(run.key, REBASE_JOURNAL));
-    if (!unfinished(journal)) return false;
-    const open = Object.entries(journal).filter(([, entry]) => entry.checkpoint !== 'completed');
-    if (open.some(([, entry]) => entry.generation !== run.generation)) return false;
-    if (open.some(([, entry]) => entry.checkpoint === 'conflict')) return false;
-    if (await this.workspaceBlocked(run)) return true;
-    for (const [repo, entry] of open) {
-      if ((await fingerprintOf(entry.path)) === entry.fingerprint) continue;
-      await this.runs.release(run, {
-        status: 'blocked',
-        reason: {
-          code: ERROR_CODES.REBASE_CONFLICT,
-          message: `${repo} rebase blocked: the files changed since the journal was written`,
-        },
-        stepStartedAt: null,
-      });
-      return true;
-    }
-    await this.runs.release(run, { status: 'failed', stepStartedAt: null });
-    try {
-      await this.rebases.rebase(run.key, true);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'rebase failed';
-      await this.runs.release((await this.runs.findRun(run.key)) ?? run, {
-        status: 'blocked',
-        reason: { code: ERROR_CODES.REBASE_CONFLICT, message },
-        stepStartedAt: null,
-      });
-    }
-    return true;
-  }
-
-  /**
-   * The worktrees are back before the rebase relaunches. A run that cannot get them is blocked with the code of the
-   * cause, never retried: only a person can fix a lost workspace, a branch in use or a diverged branch.
-   */
-  private async workspaceBlocked(run: RunEntity): Promise<boolean> {
-    try {
-      await this.workspace.ensure(run);
-      return false;
-    } catch (error) {
-      const block = workspaceBlock(error);
-      if (!block) throw error;
-      await this.runs.release(run, {
-        status: 'blocked',
-        reason: { code: block.code, message: block.message },
-        stepStartedAt: null,
-      });
-      return true;
-    }
+  private async relaunchInterrupted(key: string): Promise<void> {
+    const run = await this.runs.findRun(key);
+    if (run?.status !== 'failed' || run.currentStep === 'done' || this.runStop.halted(key)) return;
+    const mark = loopMark(await this.documents.latestBody(key, 'loop_mark'));
+    if (failedLaunches(await this.visits.listStats(run.id), run.currentStep, mark) >= this.config.env.MAX_LAUNCHES)
+      return;
+    await this.resumeOnce(run, `relaunch-${run.revision}`, () => Promise.resolve(true));
   }
 
   /** The owner is this process and its step is in flight, or a chat of this process holds the run. */
@@ -284,156 +301,4 @@ export class Reconciler implements OnModuleDestroy {
     const chat = chatPid !== undefined && chatPid === run.ownerPid && run.ownerPid === process.pid;
     return chat || (run.ownerInstance === SERVER_INSTANCE && this.claimed(run.key));
   }
-
-  private async settleAttempt(run: RunEntity): Promise<void> {
-    const output = stepOutput(this.root, run.key, run.currentStep, run.activeAttempt);
-    if (hasFinalResult(output)) {
-      await this.interrupted(run, output);
-      return;
-    }
-    const attemptId = run.activeAttempt;
-    const container = attemptId === null ? false : await this.probe(attemptId);
-    if (container === null) {
-      await this.blocked(run);
-      return;
-    }
-    if (container) {
-      const since = recoveringSince(run);
-      if (since === null) {
-        writeRunState(run, {
-          status: 'running',
-          ownerPid: null,
-          reason: { code: REASON.recovering, message: this.clock.iso() },
-          facts: { recovering: true },
-        });
-        await this.runs.saveRun(run);
-        return;
-      }
-      const asleep = this.slept.filter((gap) => gap.at > since).reduce((sum, gap) => sum + gap.ms, 0);
-      if (this.clock.now() - since - asleep < this.config.env.RECOVER_WAIT_MS) return;
-      if (!(await this.sandbox.killAttempt(attemptId!))) {
-        await this.blocked(run);
-        return;
-      }
-    }
-    if (run.currentStep === 'merge-request') await this.confirmMergeRequest(run);
-    await this.recordInterrupted(run);
-    await this.interrupted(run, output);
-  }
-
-  /**
-   * A merge request that the code host already has for the branch of the run is stored, so the relaunch finds it and
-   * never opens a second. Read-only: a lookup that fails leaves the run as it is.
-   */
-  private async confirmMergeRequest(run: RunEntity): Promise<void> {
-    if (!run.codeHost) return;
-    try {
-      if (await this.documents.latestBody(run.key, 'merge_request')) return;
-      const refs = await this.documents.latestBody(run.key, 'pipeline_ref');
-      const body = refs ? await this.mergeRequests.existing(run, refs) : null;
-      if (body) await this.documents.putDocument(run, 'merge_request', body);
-    } catch (error) {
-      this.logger.warn(`merge request of ${run.key} was not confirmed: ${String(error)}`);
-    }
-  }
-
-  /** Whether the attempt's container runs. Null when docker stays silent through every probe. */
-  private async probe(attemptId: string): Promise<boolean | null> {
-    for (const wait of [...PROBE_BACKOFF_MS, null]) {
-      const running = await this.sandbox.attemptRunning(attemptId);
-      if (running !== null || wait === null) return running;
-      await delay(wait);
-    }
-    return null;
-  }
-
-  /** Docker did not answer: the run is blocked and nothing new writes to it, until a Resume. */
-  private async blocked(run: RunEntity): Promise<void> {
-    await this.runs.release(run, {
-      status: 'blocked',
-      reason: { code: ERROR_CODES.RESOURCE_UNKNOWN, message: silentMessage(run.key) },
-      stepStartedAt: null,
-    });
-  }
-
-  /** The attempt ended without a visit: it gets one, through `finalize`, once. */
-  private async recordInterrupted(run: RunEntity): Promise<void> {
-    if (run.activeAttempt === null || !isStep(run.currentStep) || run.currentStep === 'done') return;
-    const last = await this.events.lastOfAttempt(run.id, run.activeAttempt);
-    if (last === null || last.kind === 'attempt.finished' || last.kind === 'attempt.interrupted') return;
-    const scope = {
-      runId: run.id,
-      attemptId: run.activeAttempt,
-      step: run.currentStep as StepName,
-      root: this.root,
-      clock: this.clock,
-      sink: (event: Parameters<StepEventLog['append']>[0][number]) =>
-        this.events.append([event]).catch((error: unknown) => {
-          this.logger.warn(`event of ${run.key} was not stored: ${String(error)}`);
-        }),
-    };
-    await runInStepScope(scope, await this.events.lastSeq(run.id), () => {
-      recordStepEvent({ kind: 'attempt.interrupted', route: 'process died', summary: 'process died' });
-      return Promise.resolve();
-    });
-  }
-
-  /** The visit of an attempt whose process died, priced from what its output file holds. */
-  private async interrupted(run: RunEntity, saved: string): Promise<void> {
-    const now = this.clock.iso();
-    const env = this.config.env;
-    const agent = agentFor(env, run, run.currentStep);
-    const model = agent?.model ?? null;
-    const pricesOf = (runtime: Parameters<typeof loadPriceTable>[1]) =>
-      loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime, this.clock.now());
-    const step = isStep(run.currentStep) ? this.registry.get(run.currentStep) : null;
-    const charge = step?.charge
-      ? await step.charge(run.key, env, pricesOf, run.activeAttempt)
-      : model
-        ? chargeStream(model, saved, await pricesOf(agent?.runtime ?? env.RUNTIME))
-        : null;
-    run.spentUsd += charge?.usd ?? 0;
-    writeRunState(run, { status: 'failed', ownerPid: null });
-    const visit: VisitDraft = {
-      step: run.currentStep,
-      runtime: agent?.runtime ?? null,
-      model,
-      mode: null,
-      startedAt: run.stepStartedAt ?? run.updatedAt,
-      finishedAt: now,
-      durationMs: elapsed(run.stepStartedAt, this.clock.now()),
-      status: 'failed',
-      exitCode: 1,
-      killReason: 'process died',
-      tokensIn: charge?.tokensIn ?? 0,
-      tokensOut: charge?.tokensOut ?? 0,
-      usd: charge?.usd ?? 0,
-      samples: [],
-      exchange: null,
-      httpCalls: [],
-      document: null,
-      documents: [{ kind: 'error', fileName: '', body: 'process died\n' }],
-      resumed: false,
-    };
-    await barrier('before-finalize');
-    await this.visits.finalize(run.activeAttempt, run, visit);
-    await barrier('after-finalize');
-  }
-
-  private get root(): string {
-    return resolveRepoRoot(this.config.env.SWARMLOOP_ROOT, __dirname);
-  }
-}
-
-/** When the run started to wait for the container of a dead owner. Null when it does not wait. */
-function recoveringSince(run: RunEntity): number | null {
-  if (run.state !== 'recovering' || !run.stateReason) return null;
-  const since = Date.parse((JSON.parse(run.stateReason) as { message?: string }).message ?? '');
-  return Number.isFinite(since) ? since : null;
-}
-
-function elapsed(startedAt: string | null, now: number): number {
-  if (!startedAt) return 0;
-  const started = Date.parse(startedAt);
-  return Number.isFinite(started) ? Math.max(0, now - started) : 0;
 }

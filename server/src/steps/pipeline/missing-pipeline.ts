@@ -9,6 +9,7 @@ import { checkedRepoNames, hasCi, worktreePath } from '../../git/repo-names';
 import { originProject, type Seen } from './pipeline-report';
 import { ARTIFACTS } from '../contract/artifacts';
 import { writeRunState } from '../../history/run-state';
+import { HostUnavailable } from '../../core/swarmloop-error';
 import { ERROR_CODES } from '../../contract/error-codes';
 
 /** Only the trigger is automatic. Rebase itself is the action used by the API button. */
@@ -76,6 +77,16 @@ export async function missingPipeline(input: {
         const next = await rebase.rebase(run.key);
         return { ...ended, resume: next === 'resume' };
       } catch (error) {
+        if (error instanceof HostUnavailable) {
+          const fresh = (await runs.findRun(run.key))!;
+          writeRunState(fresh, {
+            status: 'waiting',
+            reason: { code: ERROR_CODES.HOST_UNAVAILABLE, message: error.message, retryAt: error.retryAt },
+          });
+          fresh.stepStartedAt = null;
+          await runs.saveRun(fresh);
+          return { ...ended, message: error.message };
+        }
         const detail = `automatic rebase failed: ${error instanceof Error ? error.message : 'unknown error'}`;
         const fresh = (await runs.findRun(run.key))!;
         writeRunState(fresh, { status: 'blocked', reason: { code: ERROR_CODES.REBASE_CONFLICT, message: detail } });

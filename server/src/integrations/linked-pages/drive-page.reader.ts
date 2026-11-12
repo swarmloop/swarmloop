@@ -1,6 +1,6 @@
 import type { IssuePage } from '../issue-tracker/issue-bundle';
 import { request } from '../http';
-import { FetchFailed } from '../../core/swarmloop-error';
+import { FetchFailed, HostUnavailable } from '../../core/swarmloop-error';
 import { driveTarget, loadDrive } from './drive';
 import type { PageReadContext, PageReader } from './page-reader';
 
@@ -24,7 +24,7 @@ export class DrivePageReader implements PageReader {
         encoding: loaded.encoding,
       };
     } catch (error) {
-      if (error instanceof FetchFailed) {
+      if (error instanceof FetchFailed || error instanceof HostUnavailable) {
         throw error;
       }
       const message = error instanceof Error ? error.message : `drive is not readable: ${url}`;

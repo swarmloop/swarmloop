@@ -5,6 +5,7 @@ import { root } from '../../history/run-paths';
 import { barrier } from '../../core/barrier';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail, gitMissing, originUrl } from '../../git/git';
+import { withGitHostRetries } from '../../git/host-retry';
 import { worktreePath } from '../../git/repo-names';
 import { gitAt, Tree } from '../commit/commit-git';
 import { remoteProject } from '../merge-request/merge-request-record';
@@ -139,12 +140,15 @@ export class RebasedPublisher {
   ): Promise<string | null> {
     const known = registry.has(codeHost);
     const url = known ? registry.byName(codeHost).pushUrl(origin) : null;
-    const listed = await gitAt(
-      tree,
-      ['ls-remote', url ?? 'origin', `refs/heads/${branch}`],
-      'push failed',
-      { GIT_TERMINAL_PROMPT: '0' },
-      known ? registry.credentials(codeHost).token : undefined,
+    const secret = known ? registry.credentials(codeHost).token : undefined;
+    const listed = await this.reachingHost(url ?? origin, secret, () =>
+      gitAt(
+        tree,
+        ['ls-remote', url ?? 'origin', `refs/heads/${branch}`],
+        'push failed',
+        { GIT_TERMINAL_PROMPT: '0' },
+        secret,
+      ),
     );
     return listed.split(/\s/)[0] || null;
   }
@@ -162,18 +166,22 @@ export class RebasedPublisher {
       if (origin.startsWith('git@') || origin.startsWith('ssh://')) {
         throw new SwarmloopError('code host is missing');
       }
-      await gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed');
+      await this.reachingHost(origin, undefined, () =>
+        gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed'),
+      );
       return true;
     }
     const host = registry.credentials(codeHost);
     const url = registry.byName(codeHost).pushUrl(origin);
     if (url) {
-      await gitAt(
-        tree,
-        ['-c', `remote.origin.pushurl=${url}`, 'push', ...lease, 'origin', `HEAD:refs/heads/${branch}`],
-        'push failed',
-        { GIT_TERMINAL_PROMPT: '0' },
-        host.token,
+      await this.reachingHost(url, host.token, () =>
+        gitAt(
+          tree,
+          ['-c', `remote.origin.pushurl=${url}`, 'push', ...lease, 'origin', `HEAD:refs/heads/${branch}`],
+          'push failed',
+          { GIT_TERMINAL_PROMPT: '0' },
+          host.token,
+        ),
       );
       await gitAt(tree, ['update-ref', `refs/remotes/origin/${branch}`, 'HEAD'], 'push failed');
       return true;
@@ -187,8 +195,15 @@ export class RebasedPublisher {
       }
       throw new SwarmloopError(`${tree.repo} origin is not ${host.baseKey}`);
     }
-    await gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed');
+    await this.reachingHost(origin, host.token, () =>
+      gitAt(tree, ['push', ...lease, '-u', 'origin', branch], 'push failed'),
+    );
     return true;
+  }
+
+  /** A git command that reaches the host: a passing outage is retried, then the step waits. */
+  private reachingHost<T>(remote: string, secret: string | undefined, run: () => Promise<T>): Promise<T> {
+    return withGitHostRetries(remote, this.kernel.clock, run, secret);
   }
 
   /** True when this push recorded a host project. A filesystem origin does not. */

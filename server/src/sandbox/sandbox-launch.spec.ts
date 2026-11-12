@@ -7,7 +7,8 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import { makeRepo, runGit, writeFiles } from '../git/git-repo.spec-helpers';
 import { imageName } from './image-resolver';
 import { collectEnvMasks } from './env-masks';
-import { SandboxService, parseDockerStats } from './sandbox.service';
+import { SandboxService } from './sandbox.service';
+import { parseDockerStats } from './docker-stats';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import {
   agentStateDir,
@@ -611,6 +612,22 @@ describe('sandbox launch', () => {
       code: ERROR_CODES.IMAGE_MISSING,
       message: expect.stringContaining(`image ${imageName('agent-claude')} is missing`),
     });
+  });
+
+  it('tells whether docker answers, running only info', async () => {
+    const sandbox = new SandboxService();
+    const calls: string[][] = [];
+    sandbox.useDocker(async (args) => {
+      calls.push(args);
+      return 'ok';
+    });
+    await expect(sandbox.dockerAnswers()).resolves.toBe(true);
+    sandbox.useDocker(async (args) => {
+      calls.push(args);
+      throw new Error('down');
+    });
+    await expect(sandbox.dockerAnswers()).resolves.toBe(false);
+    expect(calls).toEqual([['info'], ['info']]);
   });
 
   it('reads the sandbox container cpu and memory', async () => {

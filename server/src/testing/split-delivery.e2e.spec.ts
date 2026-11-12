@@ -9,16 +9,14 @@ import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { deriveState, writeRunState } from '../history/run-state';
-import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
-import type { CodeHost } from '../integrations/code-host/code-host';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { RunQueriesService } from '../api/run-queries.service';
-import { featureWorktree, git, save } from './runs.spec-helpers';
-import { createTestApp, type TestApp } from './test-app';
+import { save } from './runs.spec-helpers';
+import { createFlowHarness } from './flow-harness';
+import type { TestApp } from './test-app';
 
 const KEY = 'PROJ-400';
-const FEATURE = `feature/${KEY}-ship-the-field`;
 
 const task = (id: string, depends: string[] = []): Subtask => ({
   id,
@@ -36,49 +34,9 @@ const requirements = `${JSON.stringify({
   plan: { name: 'plan', overview: '', items: ['do it'], decision: 'approve' },
 })}\n`;
 
-/** A code host whose merge adds one commit to the feature branch of a real origin. */
-class FakeHost {
-  readonly merged = new Map<number, string>();
-
-  constructor(private readonly clone: string) {}
-
-  readMergeRequest(_project: string, iid: number) {
-    const sha = this.merged.get(iid) ?? null;
-    return Promise.resolve({ state: sha ? 'merged' : 'open', sha, conflicts: false, httpCalls: [] });
-  }
-
-  mergeMergeRequest(_project: string, iid: number) {
-    git(this.clone, ['fetch', 'origin']);
-    const tip = git(this.clone, ['rev-parse', `origin/${FEATURE}`]);
-    const tree = git(this.clone, ['rev-parse', `${tip}^{tree}`]);
-    const sha = git(this.clone, ['commit-tree', tree, '-p', tip, '-m', `squash !${iid}`]);
-    git(this.clone, ['push', 'origin', `${sha}:refs/heads/${FEATURE}`]);
-    this.merged.set(iid, sha);
-    return Promise.resolve({ sha, httpCalls: [] });
-  }
-
-  closeMergeRequest() {
-    return Promise.resolve({ httpCalls: [] });
-  }
-
-  deleteBranch() {
-    return Promise.resolve({ httpCalls: [] });
-  }
-}
-
 async function world() {
-  const app = await createTestApp({ realImplement: true, sandbox: { stopRun: () => Promise.resolve('gone') } });
-  const launched: string[] = [];
-  const original = app.pipeline.startDetached.bind(app.pipeline);
-  jest.spyOn(app.pipeline, 'startDetached').mockImplementation((key, ...rest) => {
-    if (key === KEY) return original(key, ...rest);
-    launched.push(key);
-    return Promise.resolve({ exitCode: 0, message: `${key} started` });
-  });
-  const { tree, clone } = featureWorktree(app.root, KEY);
-  git(tree, ['push', 'origin', FEATURE]);
-  const host = new FakeHost(clone);
-  jest.spyOn(app.app.get(CodeHostRegistry), 'byName').mockReturnValue(host as unknown as CodeHost);
+  const flow = await createFlowHarness(KEY);
+  const app = flow.app;
   const runs = app.app.get(RunRepository);
   const documents = app.app.get(DocumentRepository);
   const parent = await save(runs, KEY, 'implement', 'waiting');
@@ -89,7 +47,7 @@ async function world() {
   await documents.putDocument(parent, 'repos', 'demo\n');
   await documents.putDocument(parent, 'contract', 'decisions:\n- subtask a: store UTC\n');
   await documents.putDocument(parent, 'subtasks', `${JSON.stringify([task('a'), task('b'), task('c', ['a'])])}\n`);
-  return { app, tree, host, launched };
+  return { app, tree: flow.tree, host: flow.host, launched: flow.launched };
 }
 
 const tasksOf = async (app: TestApp) =>

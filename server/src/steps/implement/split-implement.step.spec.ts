@@ -10,7 +10,7 @@ import { VisitRepository } from '../../history/visit.repository';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { RunCommandsService } from '../../api/run-commands.service';
 import { ERROR_CODES } from '../../contract/error-codes';
-import { parseSubtasks, type Subtask } from '../../contract/subtask';
+import { type Subtask } from '../../contract/subtask';
 import { DocumentEntity } from '../../history/entities';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
@@ -19,7 +19,6 @@ import { CommandService } from '../../pipeline/command.service';
 import { Reconciler } from '../../pipeline/reconciler';
 import { SubtaskPort } from '../../pipeline/subtask-port';
 import { createTestApp, type TestApp } from '../../testing/test-app';
-import { save } from '../../testing/runs.spec-helpers';
 import { NO_CI_NOTE } from './split-implement.step';
 import { FetchFailed, MergeConflict } from '../../core/swarmloop-error';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
@@ -27,99 +26,22 @@ import type { CodeHost } from '../../integrations/code-host/code-host';
 import { renderMergeRequest } from '../merge-request/merge-request-record';
 import { featureWorktree, git } from '../../testing/runs.spec-helpers';
 
-const KEY = 'PROJ-300';
-
-const task = (id: string, depends: string[] = []): Subtask => ({
-  id,
-  title: `Task ${id}`,
-  description: `Do ${id}.`,
-  depends,
-  files: [`src/${id}.ts`],
-  proof: `${id}.spec.ts`,
-  status: 'waiting',
-});
-
-const requirements = `${JSON.stringify({
-  prompt: 'Ship the field\n',
-  tickets: [{ key: KEY, summary: 'Ship the field' }],
-  plan: { name: 'plan', overview: '', items: ['do it'], decision: 'approve' },
-})}\n`;
-
-/** An app with the real implement step. Starting a subtask run is recorded, not run. */
-async function world(env: Record<string, string> = {}) {
-  const app = await createTestApp({
-    realImplement: true,
-    env,
-    sandbox: { stopRun: () => Promise.resolve('gone') },
-  });
-  return { app, ...instrument(app) };
-}
-
-function instrument(app: TestApp) {
-  const launched: string[] = [];
-  const original = app.pipeline.startDetached.bind(app.pipeline);
-  jest.spyOn(app.pipeline, 'startDetached').mockImplementation((key, ...rest) => {
-    if (key === KEY) return original(key, ...rest);
-    launched.push(key);
-    return Promise.resolve({ exitCode: 0, message: `${key} started` });
-  });
-  return { launched };
-}
-
-async function seedParent(app: TestApp, tasks: Subtask[]) {
-  const runs = app.app.get(RunRepository);
-  const parent = await save(runs, KEY, 'implement', 'waiting');
-  parent.split = true;
-  parent.projects = 'demo\n';
-  await runs.saveRun(parent);
-  const documents = app.app.get(DocumentRepository);
-  await documents.putDocument(parent, 'requirements', requirements);
-  await documents.putDocument(parent, 'subtasks', `${JSON.stringify(tasks)}\n`);
-  return parent;
-}
-
-async function pass(app: TestApp) {
-  return app.pipeline.step('implement', KEY);
-}
-
-/** Waits for the commands accepted so far and for the pass they started. */
-async function settle(app: TestApp): Promise<void> {
-  await app.app.get(CommandService).idle();
-  await app.pipeline.whenIdle(KEY);
-}
-
-async function tasksOf(app: TestApp): Promise<Subtask[]> {
-  return parseSubtasks(await app.app.get(DocumentRepository).latestBody(KEY, 'subtasks'));
-}
-
-const statuses = async (app: TestApp) => Object.fromEntries((await tasksOf(app)).map((item) => [item.id, item.status]));
-
-async function setStatus(app: TestApp, id: string, status: Subtask['status']): Promise<void> {
-  const parent = (await app.app.get(RunRepository).findRun(KEY))!;
-  const tasks = (await tasksOf(app)).map((item) => (item.id === id ? { ...item, status } : item));
-  await app.app.get(DocumentRepository).putDocument(parent, 'subtasks', `${JSON.stringify(tasks)}\n`);
-}
-
-async function child(app: TestApp, id: string) {
-  return (await app.app.get(RunRepository).findRun(`${KEY}-${id}`))!;
-}
-
-/** The subtask run works: its owner is alive. */
-async function work(app: TestApp, id: string): Promise<void> {
-  const run = await child(app, id);
-  writeRunState(run, { status: 'running', currentStep: 'research', ownerPid: process.pid });
-  await app.app.get(RunRepository).saveRun(run);
-}
-
-async function finish(app: TestApp, id: string): Promise<void> {
-  const run = await child(app, id);
-  writeRunState(run, { status: 'done', currentStep: 'done' });
-  await app.app.get(RunRepository).saveRun(run);
-}
-
-async function parentState(app: TestApp) {
-  return deriveState((await app.app.get(RunRepository).findRun(KEY))!);
-}
+import {
+  KEY,
+  child,
+  requirements,
+  finish,
+  parentState,
+  pass,
+  seedParent,
+  setStatus,
+  settle,
+  statuses,
+  task,
+  tasksOf,
+  work,
+  world,
+} from './split-implement.spec-helpers';
 
 describe('split implement', () => {
   let app: TestApp;

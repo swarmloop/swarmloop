@@ -229,8 +229,8 @@ describe('implement step', () => {
         record: { repo: 'billing-api', config: { source: '.swarmloop.json', cache: [], checks: ['npm test'] } },
       });
       const done = await app.get(PipelineService).step('implement', 'PROJ-148');
-      expect(done.exitCode).toBe(1);
-      expect(done.message).toContain('pipeline failure left unfixed');
+      expect(done.exitCode).toBe(0);
+      expect(done.message).toContain('pipeline failure left unchanged, CI rerun: ');
       expect(prepare).toHaveBeenCalledTimes(1);
       expect(agent).toHaveBeenCalledTimes(2);
       for (const call of agent.mock.calls) {
@@ -267,17 +267,15 @@ describe('implement step', () => {
       const run = await runs.findRun('PROJ-142');
       await documents.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nFAIL nest npm test\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-142');
-      expect(done.exitCode).toBe(1);
-      expect(done.message).toContain('pipeline failure left unfixed');
+      expect(done.exitCode).toBe(0);
+      expect(done.message).toContain('pipeline failure left unchanged, CI rerun: ');
       expect(agent).toHaveBeenCalledTimes(2);
       const calls = agent.mock.calls.map((call) => call[0]);
       expect(calls[1]?.prompt).toContain('The pipeline failure still stands and the files are unchanged.');
       expect(calls[1]?.prompt).toContain('FAIL nest npm test');
       expect(calls[1]?.prompt).toContain('Do not run tests on this machine.');
       expect(calls[1]?.resumeChatId).toBe('impl-chat');
-      const after = await runs.findRun('PROJ-142');
-      expect(after?.currentStep).toBe('implement');
-      expect(after?.status).toBe('failed');
+      expect((await runs.findRun('PROJ-142'))?.currentStep).toBe('commit');
     } finally {
       await app.close();
     }
@@ -321,7 +319,12 @@ describe('implement step', () => {
   });
 
   describe('pipeline return on an unchanged worktree', () => {
-    async function unchanged(key: string, refSha: (head: string) => string | null, earlierVisit = false) {
+    async function unchanged(
+      key: string,
+      refSha: (head: string) => string | null,
+      earlierVisit = false,
+      answer = reply,
+    ) {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-stale-'));
       await writeEnv(root);
       const worktree = featureTree(root, key, 'billing-api');
@@ -330,7 +333,7 @@ describe('implement step', () => {
       if (earlierVisit) {
         writeFileSync(join(worktree, 'fixed-earlier.ts'), 'export const fixed = true;\n');
       }
-      const agent = jest.fn(async (_input: AgentRunInput) => result(reply));
+      const agent = jest.fn(async (_input: AgentRunInput) => result(answer));
       const app = await boot(root, agent);
       await seed(app, key, 'approve');
       const runs = app.get(RunRepository);
@@ -360,11 +363,15 @@ describe('implement step', () => {
     });
 
     it('still fails when the pipeline ran on the current head', async () => {
-      const { app, documents, done } = await unchanged('PROJ-161', (head) => head);
+      const { app, runs, documents, issue, done } = await unchanged('PROJ-161', (head) => head);
       try {
-        expect(done.exitCode).toBe(1);
-        expect(done.message).toContain('pipeline failure left unfixed');
-        expect(await documents.latestBody('PROJ-161', 'ci_rerun')).toBeNull();
+        expect(done.exitCode).toBe(0);
+        expect(done.message).toContain('pipeline failure left unchanged, CI rerun: ');
+        expect(await documents.latestBody('PROJ-161', 'ci_rerun')).toBe('billing-api\n');
+        expect(await documents.latestBody('PROJ-161', 'unfixed_issue')).toBe(issue.id);
+        const after = await runs.findRun('PROJ-161');
+        expect(after?.currentStep).toBe('commit');
+        expect(after?.status).not.toBe('failed');
       } finally {
         await app.close();
       }
@@ -384,23 +391,43 @@ describe('implement step', () => {
     it('blocks the second unchanged answer to the same pipeline issue without a relaunch', async () => {
       const { app, agent, issue, done } = await unchanged('PROJ-164', (head) => head);
       try {
-        expect(done.exitCode).toBe(1);
-        expect(done.message).toContain('pipeline failure left unfixed');
+        expect(done.exitCode).toBe(0);
         expect(agent).toHaveBeenCalledTimes(2);
         const second = await app.get(PipelineService).step('implement', 'PROJ-164');
-        expect(second.message).toContain(`pipeline failure left unfixed twice: ${issue.title}`);
+        expect(second.message).toContain(
+          `${issue.title} failed twice on the same commit and the agent changed nothing: - changed the parser so empty fields stay`,
+        );
         expect(agent).toHaveBeenCalledTimes(3);
-        expect((await app.get(RunRepository).findRun('PROJ-164'))?.status).toBe('blocked');
+        const after = await app.get(RunRepository).findRun('PROJ-164');
+        expect(second.exitCode).toBe(1);
+        expect(JSON.parse(after?.stateReason ?? '{}')).toMatchObject({ code: 'PIPELINE_UNFIXED' });
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('jumps with a fallback explanation when the follow-up answer has no summary section', async () => {
+      const { app, done } = await unchanged(
+        'PROJ-165',
+        (head) => head,
+        false,
+        'implementation:\n- nothing to change\n',
+      );
+      try {
+        expect(done.exitCode).toBe(0);
+        expect(done.message).toContain('CI rerun: the agent gave no explanation');
+        const second = await app.get(PipelineService).step('implement', 'PROJ-165');
+        expect(second.message).toContain('the agent changed nothing: the agent gave no explanation');
       } finally {
         await app.close();
       }
     });
 
     it('still fails when the pipeline reference has no sha', async () => {
-      const { app, done } = await unchanged('PROJ-162', () => null);
+      const { app, documents, done } = await unchanged('PROJ-162', () => null);
       try {
-        expect(done.exitCode).toBe(1);
-        expect(done.message).toContain('pipeline failure left unfixed');
+        expect(done.exitCode).toBe(0);
+        expect(await documents.latestBody('PROJ-162', 'ci_rerun')).toBe('billing-api\n');
       } finally {
         await app.close();
       }
@@ -482,11 +509,9 @@ describe('implement step', () => {
       const run = await runs.findRun('PROJ-144');
       await documents.putDocument(run!, 'return', '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
       const done = await app.get(PipelineService).step('implement', 'PROJ-144');
-      expect(done.exitCode).toBe(1);
-      expect(done.message).toContain('pipeline failure left unfixed');
-      const after = await runs.findRun('PROJ-144');
-      expect(after?.currentStep).toBe('implement');
-      expect(after?.status).toBe('failed');
+      expect(done.exitCode).toBe(0);
+      expect(done.message).toContain('pipeline failure left unchanged, CI rerun: ');
+      expect((await runs.findRun('PROJ-144'))?.currentStep).toBe('commit');
       const record = JSON.parse((await documents.latestBody('PROJ-144', 'requirements')) ?? '{}') as {
         plan?: { items?: string[]; decision?: string };
       };

@@ -62,6 +62,11 @@ export class DiskGuard {
     }
   }
 
+  /** Whether the free space is at least `MIN_FREE_GB`. Read-only: it never cleans, prunes or throws. */
+  async hasFreeSpace(): Promise<boolean> {
+    return !(await this.lowerThan(this.config.env.MIN_FREE_GB * GB));
+  }
+
   private async lowerThan(minimum: number): Promise<boolean> {
     return (await this.smallestFree()) < minimum;
   }

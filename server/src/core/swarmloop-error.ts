@@ -39,6 +39,23 @@ export class GitAuthError extends SwarmloopError {
   }
 }
 
+/** A host, git or another provider kept failing after the retries: the step waits and tries again at `retryAt`. */
+export class HostUnavailable extends SwarmloopError {
+  constructor(
+    readonly host: string,
+    readonly detail: string,
+    /** When the next automatic try happens, UTC, ISO 8601. */
+    readonly retryAt: string,
+    readonly httpCalls: HttpCallDraft[] = [],
+  ) {
+    super(`${host} did not answer: ${detail}; next try at ${retryAt}`, {
+      code: ERROR_CODES.HOST_UNAVAILABLE,
+      category: 'provider',
+    });
+    this.name = 'HostUnavailable';
+  }
+}
+
 export class FetchFailed extends SwarmloopError {
   constructor(
     message: string,

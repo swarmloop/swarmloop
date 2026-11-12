@@ -2,7 +2,7 @@ import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/en
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { phases, reason } from './flow';
+import { phases, reason, sentence } from './flow';
 
 describe('failure reason', () => {
   it('shows the current pipeline error instead of an older failing test', () => {
@@ -112,5 +112,45 @@ describe('chips of a code-review that is preparing', () => {
 
   it('keeps a card idle when the run is not in code-review', () => {
     expect(reviewChips({ currentStep: 'implement' })['code-review-quality']).toBe('idle');
+  });
+});
+
+describe('sentence of a stop with its own next step', () => {
+  const retryAt = '2026-11-12T14:05:00.000Z';
+  const run = (status: string, step: string, code: string, extra: object = {}): RunEntity =>
+    ({ status, currentStep: step, stateReason: JSON.stringify({ code, message: 'm', ...extra }) }) as RunEntity;
+  const say = (entity: RunEntity): string => sentence(entity, [], [], [], 3);
+
+  it.each([
+    ['HOST_UNAVAILABLE', 'A host did not answer.'],
+    ['DOCKER_UNAVAILABLE', 'Docker did not answer.'],
+  ])('says %s is tried again by itself at the stored time, also on a loop step', (code, start) => {
+    expect(say(run('waiting', 'pipeline', code, { retryAt }))).toBe(
+      `${start} The step is tried again by itself at ${retryAt}. Resume tries now.`,
+    );
+  });
+
+  it('says what a loop limit block does on any step', () => {
+    expect(say(run('blocked', 'plan', 'LOOP_LIMIT'))).toBe(
+      'Automatic retries stopped after 3 attempts. Resume starts another.',
+    );
+  });
+
+  it('tells to raise MAX_RUN_USD after the spend limit', () => {
+    expect(say(run('blocked', 'implement', 'SPEND_LIMIT'))).toBe(
+      'The run spent as much as MAX_RUN_USD allows. Raise MAX_RUN_USD, then Resume.',
+    );
+  });
+
+  it('says who to look at when a pipeline failure stays unfixed', () => {
+    expect(say(run('blocked', 'pipeline', 'PIPELINE_UNFIXED'))).toContain(
+      'failed twice on the same commit and the agent changed nothing',
+    );
+  });
+
+  it('keeps the sentence of a docker block stored before this change', () => {
+    expect(say(run('blocked', 'prepare', 'DOCKER_UNAVAILABLE'))).toBe(
+      'This run is blocked. Another return is not available.',
+    );
   });
 });

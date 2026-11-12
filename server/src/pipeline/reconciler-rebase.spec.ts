@@ -10,7 +10,7 @@ import { RunRepository } from '../history/run.repository';
 import { RunRebase } from '../steps/run-rebase';
 import { createTestApp } from '../testing/test-app';
 import type { TestApp } from '../testing/test-app';
-import { SwarmloopError } from '../core/swarmloop-error';
+import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { Reconciler } from './reconciler';
 import { WorkspaceGuard } from './workspace-guard';
 
@@ -73,6 +73,24 @@ describe('reconciler and the rebase journal', () => {
       code: ERROR_CODES.REBASE_CONFLICT,
       message: 'demo rebase blocked: the files changed since the journal was written',
     });
+  });
+
+  it('leaves the run as it was and tries again on the next tick when the host does not answer', async () => {
+    app = await createTestApp();
+    const run = await journaled(app, 'applied');
+    const outage = new HostUnavailable('api.github.com', 'HTTP 503', '2026-11-12T15:00:00.000Z');
+    const rebase = jest
+      .spyOn(app.app.get(RunRebase), 'rebase')
+      .mockRejectedValueOnce(outage)
+      .mockResolvedValue('resume');
+
+    await app.app.get(Reconciler).reconcile(run);
+    const waiting = await app.app.get(RunRepository).findRun(KEY);
+    expect(waiting).toMatchObject({ status: run.status, stateReason: run.stateReason });
+    expect(waiting?.stateReason ?? '').not.toContain(ERROR_CODES.REBASE_CONFLICT);
+
+    await app.app.get(Reconciler).reconcile(waiting!);
+    expect(rebase).toHaveBeenCalledTimes(2);
   });
 
   it('leaves a repo in conflict to a person', async () => {

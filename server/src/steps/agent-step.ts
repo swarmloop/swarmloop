@@ -20,6 +20,8 @@ import { outputDrafts } from './contract/output-writer';
 import { routeToEnd } from './contract/route';
 import type { AgentProfile, InputSpec, StepDescriptor, StepInput, StepResult } from './contract/step-contract';
 import { ERROR_CODES } from '../contract/error-codes';
+import type { ErrorCode } from '../contract/error-codes';
+import { waitingEnd } from './step-error-end';
 import { agentFailure, combineAgentResults, refusedWrite, withRefusal } from './shared/agent-result';
 import type { AgentLauncher } from './shared/agent-launcher';
 import { limitRoute } from './shared/limit-failover';
@@ -172,6 +174,15 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
         return {
           route: { to: 'wait', reason: error.message, code: error.code },
           summary: `${run.opened.startedAt} ${error.message}`,
+          outputs: [],
+          visit: this.modelVisitOf(run, 'waiting', 0),
+        };
+      }
+      const waiting = waitingEnd(error, this.clock, this.config.env);
+      if (waiting) {
+        return {
+          route: { to: 'wait', reason: waiting.message, code: waiting.code as ErrorCode, retryAt: waiting.retryAt },
+          summary: `${run.opened.startedAt} ${waiting.message}`,
           outputs: [],
           visit: this.modelVisitOf(run, 'waiting', 0),
         };

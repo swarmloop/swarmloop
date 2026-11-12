@@ -151,13 +151,13 @@ export async function listen(
     }
     if (issueKey && hooks.failOnce === issueKey) {
       hooks.failOnce = '';
-      res.writeHead(500);
+      res.writeHead(403);
       res.end('nope');
       return;
     }
     if (remainingFailures > 0 && url.pathname.startsWith('/rest/api/3/issue/')) {
       remainingFailures -= 1;
-      res.writeHead(500);
+      res.writeHead(403);
       res.end('nope');
       return;
     }

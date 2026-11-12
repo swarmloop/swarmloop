@@ -37,6 +37,7 @@ import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { Reconciler } from './reconciler';
+import { RunSettler } from './run-settler';
 import { PipelineService } from './pipeline.service';
 import { AuthModule } from '../auth/auth.module';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
@@ -80,6 +81,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     CommandService,
     MergeWatch,
     Reconciler,
+    RunSettler,
     RunRebase,
     MergeRequestDrafts,
     { provide: RunRebaseEnvironment, useExisting: EnvironmentService },

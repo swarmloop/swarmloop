@@ -44,7 +44,7 @@
     "currentStep": "prepare",
     "runtime": "cursor",
     "spentUsd": 30,
-    "status": "waiting"
+    "status": "blocked"
   },
   "visits": [
     {

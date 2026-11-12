@@ -13,9 +13,9 @@ import type { StepRegistry } from '../steps/step.registry';
 import type { RunStop } from '../agent/run-stop';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { assertKey, isStep } from '../core/pipeline-result';
-import { writeRunState } from '../history/run-state';
+import { deriveState, writeRunState } from '../history/run-state';
 import { ERROR_CODES } from '../contract/error-codes';
-import { REASON, STOP_NOTE } from '../contract/run-state';
+import { REASON, STOP_NOTE, TIMED_RETRY_CODES } from '../contract/run-state';
 import { reportFailure } from '../steps/shared/step-failure';
 import { CHAT_LOCK, chatHeld } from './chat-lock';
 import { flagError } from './flag-error';
@@ -151,6 +151,10 @@ export class RunLifecycle implements OnModuleInit {
     if (!run) {
       return { exitCode: 1, message: `${key} is missing` };
     }
+    if (this.waitsOnOutage(run)) {
+      await this.releaseStopped(run);
+      return { exitCode: 0, message: `${key} stopped` };
+    }
     if (!this.inflight.has(key) && run.status !== 'running' && !this.runStop.halted(key)) {
       return { exitCode: 0, message: `${key} is stopped` };
     }
@@ -176,6 +180,20 @@ export class RunLifecycle implements OnModuleInit {
     }
     this.runStop.clear(key);
     return { exitCode: 0, message: `${key} stopped` };
+  }
+
+  /** A run that waits for a host or for docker is stopped for good: no automatic try starts it until Resume. */
+  private waitsOnOutage(run: RunEntity): boolean {
+    const code = run.status === 'waiting' ? deriveState(run).reason?.code : undefined;
+    return !!code && TIMED_RETRY_CODES.includes(code) && !this.inflight.has(run.key);
+  }
+
+  private async releaseStopped(run: RunEntity): Promise<void> {
+    await this.runs.release(run, {
+      status: 'blocked',
+      reason: { code: REASON.stopped, message: STOP_NOTE },
+      stepStartedAt: null,
+    });
   }
 
   claimed(key: string): boolean {
