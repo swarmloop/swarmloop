@@ -15,6 +15,7 @@ import {
 import { AppConfig } from '../config/env';
 import { decide, parseAllow } from './allow-list';
 import { AuthService, type Credentials } from './auth.service';
+import { CheckoutRepos } from './checkout-repos';
 import { ConnectionsService } from './connections.service';
 import { cookieOptions, startState, STATE_COOKIE, type CookieResponse } from './cookies';
 import { GithubAppService, type ManifestForm } from './github-app.service';
@@ -39,6 +40,7 @@ export class AuthController {
     private readonly connections: ConnectionsService,
     private readonly apps: HostAppsService,
     private readonly githubApp: GithubAppService,
+    private readonly repos: CheckoutRepos,
   ) {}
 
   /** `login` is false until the first app is connected: the dashboard then shows the first-run screen. */
@@ -101,7 +103,9 @@ export class AuthController {
   @Get('me')
   async me(@Req() request: { headers: { cookie?: string } }): Promise<MeView> {
     const session = await this.sessions.find(sessionIdOf(request.headers.cookie));
-    return session ? { user: session.user, provider: session.provider } : { user: null };
+    return session
+      ? { user: session.user, provider: session.provider, avatarUrl: session.avatarUrl ?? null }
+      : { user: null };
   }
 
   @Get(':provider/login')
@@ -129,6 +133,17 @@ export class AuthController {
       .catch((error: unknown) => {
         throw new BadGatewayException(error instanceof Error ? error.message : `${provider.name} login failed`);
       });
+    const { grant } = identity;
+    const push = grant
+      ? async () => {
+          const repos = (await this.repos.list()).filter((repo) => repo.host === provider.name);
+          return provider.canPush(grant.accessToken, repos).catch((error: unknown) => {
+            throw new BadGatewayException(
+              error instanceof Error ? error.message : `${provider.name} push check failed`,
+            );
+          });
+        }
+      : undefined;
     const verdict = await decide(
       parseAllow(this.config.env.SWARMLOOP_ALLOW),
       { provider: provider.name, ...identity },
@@ -137,16 +152,19 @@ export class AuthController {
         ((await this.connections.ownsOrFirst(provider.name, identity.user, this.auth.onThisMachine(request.headers)))
           ? identity.user
           : null),
+      push,
     );
     if (!verdict.allowed) {
-      throw new ForbiddenException(`${provider.name}:${identity.user} may not log in: ${verdict.reason}`);
+      throw new ForbiddenException(
+        verdict.message ?? `${provider.name}:${identity.user} may not log in: ${verdict.reason}`,
+      );
     }
     if (identity.grant) {
       await this.connections.connect(provider.name, identity.user, identity.grant).catch((error: unknown) => {
         throw new BadGatewayException(error instanceof Error ? error.message : `${provider.name} connect failed`);
       });
     }
-    const session = await this.sessions.create(identity.user, provider.name);
+    const session = await this.sessions.create(identity.user, provider.name, identity.avatarUrl);
     response.cookie(SESSION_COOKIE, session.id, {
       ...cookieOptions(this.config),
       path: '/',

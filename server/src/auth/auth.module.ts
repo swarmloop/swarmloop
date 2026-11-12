@@ -7,6 +7,7 @@ import { HistoryModule } from '../history/history.module';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { AuthService, OAUTH_PROVIDERS } from './auth.service';
+import { CheckoutRepos } from './checkout-repos';
 import { ConnectionsController } from './connections.controller';
 import { ConnectionsService } from './connections.service';
 import { GithubAppService } from './github-app.service';
@@ -21,6 +22,7 @@ import { SessionService } from './session.service';
   controllers: [AuthController, ConnectionsController],
   providers: [
     SessionService,
+    CheckoutRepos,
     LoginStates,
     AuthService,
     HostAppsService,
