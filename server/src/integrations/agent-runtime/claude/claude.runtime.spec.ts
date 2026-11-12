@@ -4,6 +4,10 @@ describe('ClaudeRuntime', () => {
   const runtime = new ClaudeRuntime();
   const mounts = [{ containerPath: '/work/demo' }];
 
+  it('loads CLAUDE.md by itself', () => {
+    expect(runtime.ownRuleFiles()).toEqual(['CLAUDE.md']);
+  });
+
   it('opens the brief directory', () => {
     expect(runtime.briefArgs()).toEqual(['--add-dir', '/work/brief']);
   });
