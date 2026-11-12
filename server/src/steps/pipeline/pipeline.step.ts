@@ -47,6 +47,7 @@ import {
 import { finishedRuns, readFailures, readNotes, rerunJobs } from './ci-host';
 import { ARTIFACTS } from '../contract/artifacts';
 import { mergeRequestDetails, parseMergeRequests } from '../merge-request/merge-request-record';
+import { pipelineReturn } from './ci-only';
 import { finish } from './pipeline-result';
 import { stuckAtStart } from './stuck-start';
 import { hasDraft, markReady } from './pipeline-draft';
@@ -401,8 +402,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       return finish('blocked', report, 'blocked', body);
     }
     opened.run.attemptsPipeline += 1;
-    const reason = failures.map((failure) => `${failure.project} ${failure.name}`).join(',') || 'pipeline failed';
-    await this.events.recordLoop(opened.run, 'pipeline', opened.run.attemptsPipeline, reason);
+    const checked = await this.kernel.visits.latestChecked(opened.run.id);
+    const { reason, detail } = await pipelineReturn(failures, seen, ctx, checked, root(this.config));
+    await this.events.recordLoop(opened.run, 'pipeline', opened.run.attemptsPipeline, reason, detail);
     const issues = failureIssues(failures, body);
     return finish('waiting', this.report(opened, 'pipeline failed', body), 'waiting', body, issues);
   }

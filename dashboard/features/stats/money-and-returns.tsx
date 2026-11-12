@@ -7,10 +7,10 @@ import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import type { StatsShare, StatsView } from '@contract/api';
+import type { StatsCiReturns, StatsReason, StatsShare, StatsView } from '@contract/api';
 import { BarList, type BarRow } from './bar-list';
 import { CHART, ChartCard, MONO } from './chart-parts';
-import { big, percent, usd } from './stats-format';
+import { big, percent, returnsByKind, usd } from './stats-format';
 
 type By = 'steps' | 'models' | 'agents';
 
@@ -77,25 +77,63 @@ export function MoneyBreakdown({ stats }: { stats: StatsView }): ReactElement {
 
 const REASON_NAMES: Record<string, string> = { pipeline: 'CI pipeline' };
 
+function reasonDetail(reason: StatsReason): string {
+  if (reason.name === 'pipeline') {
+    return `${reason.returns} times CI failed and the work went back`;
+  }
+  if (reason.name === 'checks') {
+    return `${reason.returns} times the required checks failed and the work went back`;
+  }
+  return `${reason.returns} times the ${reason.name} reviewer sent the work back`;
+}
+
+/** CI returns by whether the checks of the same content had passed; for the ones they had, the jobs to cover with a check. */
+function CiOnly({ ci }: { ci: StatsCiReturns }): ReactElement | null {
+  if (ci.only + ci.withChecks === 0) {
+    return null;
+  }
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+        CI returns
+      </Typography>
+      <Typography sx={{ fontSize: 13 }}>
+        CI only: {ci.only} · CI and checks: {ci.withChecks}
+      </Typography>
+      {ci.jobs.length > 0 ? (
+        <Box component="ul" aria-label="CI-only jobs" sx={{ m: 0, mt: 0.5, pl: 2.5, fontSize: 12.5 }}>
+          {ci.jobs.map((job) => (
+            <li key={job.name}>
+              <Box component="span" sx={{ fontFamily: MONO }}>
+                {job.name}
+              </Box>{' '}
+              {job.returns} {job.returns === 1 ? 'time' : 'times'}, no check covers it
+            </li>
+          ))}
+        </Box>
+      ) : null}
+    </Box>
+  );
+}
+
 /** Who sent work back, and how many times each run went back. */
 export function Returns({ stats }: { stats: StatsView }): ReactElement {
   const { totals } = stats;
-  const returns = totals.reviewReturns + totals.pipelineReturns;
+  const returns = totals.returnsByKind.reduce((sum, { returns: count }) => sum + count, 0);
+  const { ciReturns } = stats;
   const rows: BarRow[] = stats.reasons.map((reason) => ({
     name: REASON_NAMES[reason.name] ?? reason.name,
     value: reason.returns,
     label: String(reason.returns),
-    detail:
-      reason.name === 'pipeline'
-        ? `${reason.returns} times CI failed and the work went back`
-        : `${reason.returns} times the ${reason.name} reviewer sent the work back`,
+    detail: reasonDetail(reason),
+    parts: reason.commands?.map((command) => ({ name: command.name, label: String(command.returns) })),
   }));
   const maxRuns = Math.max(...stats.returnsPerRun.map((bucket) => bucket.runs), 1);
   return (
     <ChartCard
       title="Why work came back"
       headline={`${returns} ${returns === 1 ? 'return' : 'returns'}`}
-      note={`${totals.reviewReturns} from reviewers · ${totals.pipelineReturns} from CI · ${percent(totals.firstPass, totals.done)} of done runs passed first time`}
+      note={`${returnsByKind(totals.returnsByKind, ' · ')} · ${percent(totals.firstPass, totals.done)} of done runs passed first time`}
     >
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 172px' }, gap: 3, alignItems: 'start' }}>
         <BarList
@@ -166,6 +204,9 @@ export function Returns({ stats }: { stats: StatsView }): ReactElement {
             ))}
           </Box>
         </Box>
+      </Box>
+      <Box sx={{ mt: 2 }}>
+        <CiOnly ci={ciReturns} />
       </Box>
     </ChartCard>
   );

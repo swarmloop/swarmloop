@@ -1,6 +1,15 @@
-import type { RunOutcome, StatsDay, StatsRun, StatsShare, StatsView } from '../contract/api';
+import type {
+  RunOutcome,
+  StatsCiReturns,
+  StatsDay,
+  StatsReason,
+  StatsRun,
+  StatsShare,
+  StatsView,
+} from '../contract/api';
 import type { StatsRows, StatsRunRow, StatsStepRow } from '../history/stats.repository';
 import { LIMIT_VISIT } from '../history/visit.repository';
+import { readLoopDetail } from '../history/loop-detail';
 import { readOutcome } from '../history/run-state';
 import { runName } from './run-view/flow';
 
@@ -70,13 +79,19 @@ function round(usd: number): number {
   return Math.round(usd * 100) / 100;
 }
 
-function median(values: number[]): number | null {
+function exactMedian(values: number[]): number | null {
   if (values.length === 0) {
     return null;
   }
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+  return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+/** The median in whole numbers. */
+function median(values: number[]): number | null {
+  const exact = exactMedian(values);
+  return exact === null ? null : Math.round(exact);
 }
 
 function emptyDays(from: string, to: string): Map<string, StatsDay> {
@@ -149,14 +164,27 @@ function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: n
   return { totals, byRun, shellEdits, byAgent, steps: sortedShares(bySteps), models: sortedShares(byModels) };
 }
 
-/** Returns: by run, by reviewer (CI as `pipeline`), and on the day each happened. */
+/** What sent the work back: the loop counter. Returns of the checks step before it had its own counter were recorded under implement. */
+function kindOf(loop: StatsRows['loops'][number]): string {
+  return loop.counter === 'implement' && loop.reason === 'required checks failed' ? 'checks' : loop.counter;
+}
+
+function ranked(counts: Map<string, number>): { name: string; returns: number }[] {
+  return [...counts.entries()]
+    .map(([name, returns]) => ({ name, returns }))
+    .sort((a, b) => b.returns - a.returns || a.name.localeCompare(b.name));
+}
+
+/** Returns: by run, by kind, by reason (one reviewer per entry), the CI ones by whether the checks had passed, and on the day each happened. */
 function returnsOf(loops: StatsRows['loops'], days: Map<string, StatsDay>, tzOffset: number) {
   const byRun = new Map<number, number>();
+  const kinds = new Map<string, number>();
   const reasons = new Map<string, number>();
-  let review = 0;
-  let pipeline = 0;
-  const count = (name: string): void => {
-    reasons.set(name, (reasons.get(name) ?? 0) + 1);
+  const commands = new Map<string, number>();
+  const ciJobs = new Map<string, number>();
+  const ci: StatsCiReturns = { only: 0, withChecks: 0, jobs: [] };
+  const count = (counts: Map<string, number>, name: string): void => {
+    counts.set(name, (counts.get(name) ?? 0) + 1);
   };
   for (const loop of loops) {
     byRun.set(loop.runId, (byRun.get(loop.runId) ?? 0) + 1);
@@ -164,22 +192,68 @@ function returnsOf(loops: StatsRows['loops'], days: Map<string, StatsDay>, tzOff
     if (day) {
       day.returns += 1;
     }
-    if (loop.counter === 'pipeline') {
-      pipeline += 1;
-      count('pipeline');
+    const kind = kindOf(loop);
+    const detail = readLoopDetail(loop.detail);
+    count(kinds, kind);
+    if (kind === 'review') {
+      const reviewers = loop.reason
+        .split(',')
+        .map((name) => name.trim().replace(/^review_/, ''))
+        .filter((name) => name !== '');
+      (reviewers.length > 0 ? reviewers : ['review']).forEach((name) => count(reasons, name));
       continue;
     }
-    review += 1;
-    const reviewers = loop.reason
-      .split(',')
-      .map((name) => name.trim().replace(/^review_/, ''))
-      .filter((name) => name !== '');
-    (reviewers.length > 0 ? reviewers : ['review']).forEach(count);
+    count(reasons, kind);
+    (kind === 'checks' ? (detail.commands ?? []) : []).forEach((name) => count(commands, name));
+    if (kind === 'pipeline') {
+      if (detail.ciOnly) {
+        ci.only += 1;
+        (detail.jobs ?? []).forEach((name) => count(ciJobs, name));
+      } else {
+        ci.withChecks += 1;
+      }
+    }
   }
-  const ranked = [...reasons.entries()]
-    .map(([name, returns]) => ({ name, returns }))
-    .sort((a, b) => b.returns - a.returns || a.name.localeCompare(b.name));
-  return { byRun, review, pipeline, reasons: ranked };
+  const bars: StatsReason[] = ranked(reasons).map((reason) =>
+    reason.name === 'checks' && commands.size > 0 ? { ...reason, commands: ranked(commands) } : reason,
+  );
+  return {
+    byRun,
+    review: kinds.get('review') ?? 0,
+    pipeline: kinds.get('pipeline') ?? 0,
+    kinds: ranked(kinds).map(({ name, returns }) => ({ kind: name, returns })),
+    reasons: bars,
+    ci: { ...ci, jobs: ranked(ciJobs) },
+  };
+}
+
+/**
+ * Tasks: the done runs with no parent. A split run is one task with its subtasks, whatever their state, so its spend
+ * and returns are summed over the run and its subtasks.
+ */
+function tasksOf(runs: StatsRunRow[], spent: Map<number, { usd: number }>, backs: Map<number, number>) {
+  const children = new Map<number, number[]>();
+  for (const run of runs) {
+    const parent = run.parentRunId ?? null;
+    if (parent !== null) {
+      children.set(parent, [...(children.get(parent) ?? []), run.id]);
+    }
+  }
+  const tasks = runs
+    .filter((run) => outcomeOf(run.status) === 'done' && (run.parentRunId ?? null) === null)
+    .map((run) => {
+      const ids = [run.id, ...(children.get(run.id) ?? [])];
+      const total = (of: (id: number) => number): number => ids.reduce((sum, id) => sum + of(id), 0);
+      return { usd: total((id) => spent.get(id)?.usd ?? 0), returns: total((id) => backs.get(id) ?? 0) };
+    });
+  const usds = tasks.map((task) => task.usd);
+  return {
+    tasks: tasks.length,
+    usdPerTask: tasks.length > 0 ? round(usds.reduce((a, b) => a + b, 0) / tasks.length) : 0,
+    medianUsdPerTask: round(exactMedian(usds) ?? 0),
+    tasksBack: tasks.filter((task) => task.returns > 0).length,
+    medianReturnsPerTask: median(tasks.map((task) => task.returns)),
+  };
 }
 
 /** The statistics of the runs in `rows`. `durations` is the working time of each run by id. */
@@ -258,6 +332,8 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
       tokensOut: spend.totals.tokensOut,
       reviewReturns: returns.review,
       pipelineReturns: returns.pipeline,
+      returnsByKind: returns.kinds,
+      ...tasksOf(rows.runs, spend.byRun, returns.byRun),
       firstPass,
       limits: rows.steps.filter(limited).length,
       agentMs: spend.totals.agentMs,
@@ -276,6 +352,7 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
       .map((entry) => ({ ...entry, usd: round(entry.usd) }))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
     reasons: returns.reasons,
+    ciReturns: returns.ci,
     returnsPerRun: RETURN_BUCKETS.map((bucket, index) => ({ returns: bucket, runs: buckets[index] })),
     runs: runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.key.localeCompare(b.key)),
   };

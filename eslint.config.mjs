@@ -57,6 +57,18 @@ const layerImports = {
   cli: ['core', 'config', 'history', 'pipeline'],
 };
 
+// Test code is the files the package builds leave out: tsconfig.json and tsconfig.build.json exclude the same list.
+const TEST_FILES = [
+  '**/*.{test,spec}.{ts,tsx,js,mjs}',
+  '**/*.spec-helpers.ts',
+  'dashboard/test/**',
+  'dashboard/vitest.{config,setup}.ts',
+  'server/src/testing/**',
+  'server/test/**',
+  'server/jest.{config,setup}.js',
+];
+const TEST_LIBRARIES = ['vitest', 'jest', '@jest/globals', '@testing-library/*', '@nestjs/testing'];
+
 const SOCKET_SYNTAX = {
   selector: "CallExpression[callee.object.name='socket'][callee.property.name=/^(on|off)$/]",
   message: 'Subscribe to socket events only in features/shell/use-live-bridge.ts',
@@ -123,6 +135,25 @@ export default tseslint.config(
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
       ],
       'no-console': 'error',
+    },
+  },
+  {
+    // The typescript-eslint rule, because a later block that sets the core no-restricted-imports would replace these options.
+    files: sourceFiles,
+    ignores: TEST_FILES,
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: TEST_LIBRARIES,
+              message:
+                'Only test code imports a test library: name the file *.spec.ts, *.test.ts, *.spec-helpers.ts, or put it in test/.',
+            },
+          ],
+        },
+      ],
     },
   },
   {

@@ -6,6 +6,9 @@ import { returns } from '../../api/run-view/flow';
 import { EnvironmentService } from '../../environment/environment.service';
 import { RequiredCheckFailed, RequiredCheckRepeated } from '../../environment/project-environments';
 import { DocumentRepository } from '../../history/document.repository';
+import { EventRepository } from '../../history/event.repository';
+import { readLoopDetail } from '../../history/loop-detail';
+import { VisitRepository } from '../../history/visit.repository';
 import type { RunEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
@@ -41,6 +44,7 @@ describe('checks step', () => {
       expect(run?.currentStep).toBe('code-review');
       expect(run?.status).toBe('waiting');
       expect(run?.attemptsChecks).toBe(0);
+      expect(await app.get(VisitRepository).latestChecked(run!.id)).toEqual({});
     } finally {
       await app.close();
     }
@@ -81,6 +85,9 @@ describe('checks step', () => {
       expect(run.status).toBe('waiting');
       expect(run.attemptsChecks).toBe(1);
       expect(returns(run)).toEqual([{ counter: 'checks', count: 1, from: 'checks', to: 'implement' }]);
+      const [loop] = await app.get(EventRepository).listLoops(run.id);
+      expect(readLoopDetail(loop.detail)).toEqual({ commands: ['npm run lint'] });
+      expect(await app.get(VisitRepository).latestChecked(run.id)).toBeNull();
       const issues = JSON.parse((await app.get(DocumentRepository).latestBody('PROJ-201', 'issues')) ?? '[]');
       expect(issues).toHaveLength(1);
       expect(issues[0].body).toContain('$ npm run lint');

@@ -52,4 +52,19 @@ describe('VisitRepository', () => {
       await db.close();
     }
   });
+
+  it('keeps the content a checks visit ran on, and reads the newest checks visit', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const run = await db.app.get(RunRepository).begin('run-checked', 'checks');
+      expect(await visits.latestChecked(run.id)).toBeNull();
+      await visits.finishVisit(run, { ...repositoryVisit(), step: 'checks', checkedCommits: { 'g/p': 'tree-1' } });
+      expect(await visits.latestChecked(run.id)).toEqual({ 'g/p': 'tree-1' });
+      await visits.finishVisit(run, { ...repositoryVisit(), step: 'checks' });
+      expect(await visits.latestChecked(run.id)).toBeNull();
+    } finally {
+      await db.close();
+    }
+  });
 });

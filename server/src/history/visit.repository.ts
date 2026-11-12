@@ -132,6 +132,7 @@ export class VisitRepository {
         resumed: visit.resumed ? 1 : 0,
         preparedMs: visit.preparedMs ?? null,
         shellEdits: visit.shellEdits ?? 0,
+        checkedCommits: visit.checkedCommits ? JSON.stringify(visit.checkedCommits) : null,
         attemptId,
       }),
     );
@@ -211,6 +212,12 @@ export class VisitRepository {
 
   async saveStat(stat: StepStatEntity): Promise<void> {
     await this.stepStats.save(stat);
+  }
+
+  /** The content each project was checked at by the newest checks visit; null when there is none or it did not pass. */
+  async latestChecked(runId: number): Promise<Record<string, string> | null> {
+    const stat = await this.stepStats.findOne({ where: { runId, step: 'checks' }, order: { id: 'DESC' } });
+    return stat?.checkedCommits ? (JSON.parse(stat.checkedCommits) as Record<string, string>) : null;
   }
 
   async listStats(runId: number): Promise<StepStatEntity[]> {

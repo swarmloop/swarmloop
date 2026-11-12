@@ -82,10 +82,10 @@ export function StatsSection({ version }: { version: string }): ReactElement {
             transition: 'opacity 200ms',
           }}
         >
-          <StatTiles totals={stats.totals} />
+          <StatTiles totals={stats.totals} days={stats.days.length} />
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '7fr 5fr' }, gap: 2 }}>
             <RunsPerDay days={stats.days} total={stats.totals} selected={day} onSelect={setDay} />
-            <SpendPerDay days={stats.days} total={stats.totals.usd} />
+            <SpendPerDay days={stats.days} totals={stats.totals} />
           </Box>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 2 }}>
             <MergeShare days={stats.days} totals={stats.totals} />

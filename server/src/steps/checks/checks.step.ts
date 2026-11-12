@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import type { SandboxMount } from '../../core/sandbox-mount';
 import { agentFor } from '../../config/agents';
 import { StepName } from '../../contract/steps';
 import { EnvironmentService } from '../../environment/environment.service';
 import { RequiredCheckFailed, RequiredCheckRepeated } from '../../environment/project-environments';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { EventRepository } from '../../history/event.repository';
+import { captureTree } from '../../git/worktree-tree';
 import { root } from '../../history/run-paths';
 import type { SampleDraft } from '../../history/visit';
 import { BaseStep, StepContext } from '../base-step';
@@ -13,11 +15,25 @@ import type { InputSpec, StepInput, StepResult } from '../contract/step-contract
 import { failedCommands } from '../implement/failed-commands';
 import { checkRepeatedBlock, checksLine, implementFacts } from '../implement/implement-record';
 import { issueOf } from '../shared/handoff';
+import { originProject } from '../pipeline/pipeline-report';
 import { StepKernel } from '../step-kernel';
 
 const INPUTS = {
   repos: { artifact: ARTIFACTS.repos, need: 'start' },
 } as const satisfies InputSpec;
+
+/** The content tree of each project's worktree, by origin project: what a pipeline commit is compared with later. */
+async function checkedTrees(mounts: SandboxMount[]): Promise<Record<string, string>> {
+  const trees: Record<string, string> = {};
+  for (const mount of mounts) {
+    const project = await originProject(mount.hostPath);
+    const captured = project ? await captureTree(mount.hostPath) : null;
+    if (project && captured) {
+      trees[project] = captured.tree;
+    }
+  }
+  return trees;
+}
 
 /** The server checks of the project, run after the implementation. A failure returns to implement, as a review does. */
 @Injectable()
@@ -57,7 +73,7 @@ export class ChecksStep extends BaseStep<typeof INPUTS> {
         summary: `${opened.startedAt} checks done\n${checks}`,
         outputs: [],
         facts: implementFacts(checks),
-        visit: { samples },
+        visit: { samples, checkedCommits: await checkedTrees(mounts) },
       };
     } catch (error) {
       if (error instanceof RequiredCheckRepeated) {
@@ -78,7 +94,9 @@ export class ChecksStep extends BaseStep<typeof INPUTS> {
   ): Promise<StepResult> {
     const { run } = opened;
     run.attemptsChecks += 1;
-    await this.events.recordLoop(run, 'checks', run.attemptsChecks, 'required checks failed');
+    await this.events.recordLoop(run, 'checks', run.attemptsChecks, 'required checks failed', {
+      commands: error.failed.map((failure) => failure.command),
+    });
     const body = error.message;
     const issues = [issueOf('checks', 'required checks failed', body, error.failed)];
     return {
