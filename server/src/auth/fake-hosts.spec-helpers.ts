@@ -82,12 +82,28 @@ export async function startFakeHosts(): Promise<FakeHost> {
         send({ permissions: { project_access: { access_level: pushers.has(`${name}:${project}`) ? 30 : 10 } } });
       } else if (path.startsWith('/api/v4/groups')) {
         send([]);
+      } else if (path.startsWith('/api/v3/users/')) {
+        const owner = path.slice('/api/v3/users/'.length);
+        if (owner === 'nobody') {
+          response.writeHead(404).end();
+        } else {
+          send({ login: owner, type: owner === 'acme' ? 'Organization' : 'User' });
+        }
+      } else if (path === '/api/v3/app/installations/7') {
+        send({ account: { login: 'acme' } });
       } else if (path.startsWith('/api/v3/user/orgs')) {
         send([]);
       } else if (path.startsWith('/api/v3/user/installations?')) {
         send({ installations: [{ id: 7, app_id: 42, repository_selection: 'selected' }] });
       } else if (path.startsWith('/api/v3/user/installations/7/repositories') && request.method === 'GET') {
-        send({ repositories: [{ full_name: `${name}/site` }] });
+        if (name === 'bob') {
+          // bob has 150 repositories, which take two pages of 100
+          const page = Number(new URL(path, 'http://fake').searchParams.get('page') ?? 1);
+          const rows = Array.from({ length: 150 }, (_, index) => ({ full_name: `bob/repo-${index}` }));
+          send({ repositories: rows.slice((page - 1) * 100, page * 100) });
+        } else {
+          send({ repositories: [{ full_name: `${name}/site` }] });
+        }
       } else if (path.startsWith('/api/v3/user/installations/7/repositories/') && request.method === 'PUT') {
         response.writeHead(204).end();
       } else if (path.startsWith('/api/v3/repos/') && request.method === 'GET') {

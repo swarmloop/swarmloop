@@ -1,7 +1,8 @@
-import { BadRequestException, Controller, Delete, Get, Param, Post, Res } from '@nestjs/common';
+import { BadRequestException, Controller, Delete, ForbiddenException, Get, Param, Post, Res } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import type { ConnectionView, ConnectionsView } from '../contract/api';
 import { Actor } from './actor.decorator';
+import { CheckoutRepos } from './checkout-repos';
 import { ConnectionsService } from './connections.service';
 import { startState, type CookieResponse } from './cookies';
 import { GithubAppService } from './github-app.service';
@@ -20,6 +21,7 @@ export class ConnectionsController {
     private readonly connections: ConnectionsService,
     private readonly githubApp: GithubAppService,
     private readonly states: LoginStates,
+    private readonly repos: CheckoutRepos,
   ) {}
 
   @Get()
@@ -45,6 +47,22 @@ export class ConnectionsController {
     };
   }
 
+  /** Forgets the stored GitHub App and the connections made through it so the first-run form comes back. Only its maker, or the machine token. The app on GitHub stays. */
+  @Delete('github/app')
+  async replaceApp(@Actor() actor: string | null): Promise<{ ok: true }> {
+    const app = this.apps.find('github');
+    if (!app) {
+      throw new BadRequestException('there is no GitHub App to replace');
+    }
+    if (actor !== 'machine' && actor !== app.madeBy) {
+      throw new ForbiddenException(`Only ${app.madeBy ?? 'the machine token'} can replace this app`);
+    }
+    await this.apps.forget('github');
+    // Their tokens belong to the old app: the new one cannot refresh them, and they would keep the install step shut.
+    await this.connections.disconnectAll('github');
+    return { ok: true };
+  }
+
   @Delete(':host')
   async disconnect(@Param('host') host: string, @Actor() actor: string | null): Promise<{ ok: true }> {
     if (actor) {
@@ -61,6 +79,23 @@ export class ConnectionsController {
     return host;
   }
 
+  private settingsUrl(host: ProviderName, slug: string | undefined): string | null {
+    return host === 'github' && slug
+      ? `${new URL(this.config.env.GITHUB_BASE_URL || 'https://github.com').origin}/settings/apps/${encodeURIComponent(slug)}`
+      : null;
+  }
+
+  /** The owners of the checkouts, when the installation covers none of them. */
+  private async missingOwners(installed: string[]): Promise<string[]> {
+    const have = new Set(installed.map((name) => name.toLowerCase()));
+    const checkouts = (await this.repos.list().catch(() => [])).filter((repo) => repo.host === 'github');
+    if (checkouts.some((repo) => have.has(`${repo.owner}/${repo.name}`.toLowerCase()))) {
+      return [];
+    }
+    const owners = new Map(checkouts.map((repo) => [repo.owner.toLowerCase(), repo.owner]));
+    return [...owners.values()];
+  }
+
   private async view(host: ProviderName, actor: string | null): Promise<ConnectionView> {
     const stored = this.apps.find(host);
     const credentials = this.apps.credentials(host);
@@ -73,10 +108,13 @@ export class ConnectionsController {
         ? {
             name: stored?.slug || (host === 'github' ? 'OAuth app' : 'OAuth application'),
             clientId: credentials.clientId,
+            madeBy: stored?.madeBy ?? null,
+            settingsUrl: this.settingsUrl(host, stored?.slug),
           }
         : null,
       account: health?.login ?? null,
       repositories,
+      missingOwners: host === 'github' && health ? await this.missingOwners(repositories) : [],
       selection: health?.selection === 'selected' ? 'selected' : health?.selection === 'all' ? 'all' : null,
       health: health && { status: health.status, expiresAt: health.expiresAt, refreshedAt: health.refreshedAt },
     };

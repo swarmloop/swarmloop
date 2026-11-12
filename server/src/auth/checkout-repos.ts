@@ -37,4 +37,15 @@ export class CheckoutRepos {
     }
     return refs;
   }
+
+  /** The owners of the checkouts on a host, the one with most checkouts first and ties in alphabetical order. */
+  async owners(host: ProviderName): Promise<string[]> {
+    const counts = new Map<string, number>();
+    for (const repo of await this.list()) {
+      if (repo.host === host) {
+        counts.set(repo.owner, (counts.get(repo.owner) ?? 0) + 1);
+      }
+    }
+    return [...counts.keys()].sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0) || a.localeCompare(b));
+  }
 }

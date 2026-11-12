@@ -5,6 +5,7 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
+import { ConnectionsController } from './connections.controller';
 import { AuthModule } from './auth.module';
 import { PUBLIC_KEY } from './public.decorator';
 
@@ -61,6 +62,13 @@ describe('the route table', () => {
     }
     expect(controllers.filter((controller) => !open(controller)).flatMap(routes)).not.toContain('health');
     expect(controllers).toContain(AuthController);
+  });
+
+  it('lists the setup routes with their siblings: first-run routes open, Replace app guarded', () => {
+    expect(routes(AuthController)).toEqual(expect.arrayContaining(['auth/github/owner', 'auth/github/install']));
+    expect(open(AuthController)).toBe(true);
+    expect(routes(ConnectionsController)).toContain('connections/github/app');
+    expect(open(ConnectionsController)).toBe(false);
   });
 
   it('opens no controller under another path', () => {

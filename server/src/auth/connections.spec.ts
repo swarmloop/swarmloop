@@ -1,4 +1,6 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
+import { execFileSync } from 'child_process';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, statSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
 import { GitAuthError } from '../core/swarmloop-error';
@@ -7,6 +9,7 @@ import { Reconciler } from '../pipeline/reconciler';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { RemoteRepositories } from '../steps/prepare/remote-repositories.service';
 import { createTestApp, type TestApp } from '../testing/test-app';
+import { HostAppsService } from './host-apps.service';
 import { ConnectionsService } from './connections.service';
 import { startFakeHosts, type FakeHost } from './fake-hosts.spec-helpers';
 import { SecretBox, secretKey } from './secret-box';
@@ -152,6 +155,85 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     expect(out.status).toBe(200);
     expect(await connections().health('github', 'alice')).toBeNull();
     expect(await app.app.get(DataSource).query(`SELECT * FROM connections`)).toEqual([]);
+  });
+
+  const github = async (cookie: string) => {
+    const view = (await (await fetch(`${app.url}/connections`, { headers: { cookie } })).json()) as {
+      connections: { host: string; repositories: string[]; missingOwners: string[]; app: { madeBy: string | null } }[];
+    };
+    return view.connections.find((item) => item.host === 'github');
+  };
+
+  it('lists every repository of the installation over two pages', async () => {
+    await makeApp();
+    expect((await github(await signIn('bob')))?.repositories).toHaveLength(150);
+  });
+
+  it('names the owners of the checkouts when the installation covers none, and says nothing when one is covered', async () => {
+    await app.close();
+    const checkouts = mkdtempSync(join(tmpdir(), 'swarmloop-connections-checkouts-'));
+    const checkout = (name: string, project: string) => {
+      mkdirSync(join(checkouts, name), { recursive: true });
+      execFileSync('git', ['init', '-q', join(checkouts, name)]);
+      execFileSync('git', ['-C', join(checkouts, name), 'remote', 'add', 'origin', `${fake.url}/${project}.git`]);
+    };
+    app = await createTestApp({
+      env: {
+        GITHUB_BASE_URL: fake.url,
+        SWARMLOOP_ALLOW: 'github:alice',
+        SWARMLOOP_TOKEN: TOKEN,
+        CHECKOUTS_ROOT: checkouts,
+      },
+    });
+    try {
+      checkout('a', 'acme/site');
+      checkout('b', 'Zed/api');
+      await makeApp();
+      const alice = await signIn('alice');
+      expect((await github(alice))?.missingOwners).toEqual(['acme', 'Zed']);
+      checkout('c', 'alice/site');
+      expect((await github(alice))?.missingOwners).toEqual([]);
+    } finally {
+      rmSync(checkouts, { recursive: true, force: true });
+    }
+  });
+
+  it('lets only the maker or the machine token replace the app, and then shows the first-run form', async () => {
+    await makeApp();
+    const alice = await signIn('alice');
+    const bob = await signIn('bob');
+    const stored = app.app.get(HostAppsService).find('github');
+    expect((await github(alice))?.app.madeBy).toBe('machine');
+    await app.app.get(HostAppsService).save({ ...(stored as NonNullable<typeof stored>), madeBy: 'alice' });
+    const replace = (headers: Record<string, string>) =>
+      fetch(`${app.url}/connections/github/app`, { method: 'DELETE', headers });
+    const refused = await replace({ cookie: bob });
+    expect(refused.status).toBe(403);
+    expect(((await refused.json()) as { message: string }).message).toBe('Only alice can replace this app');
+    expect(await app.app.get(DataSource).query(`SELECT * FROM host_apps`)).toHaveLength(1);
+    expect((await replace({ cookie: alice })).status).toBe(200);
+    expect(await app.app.get(DataSource).query(`SELECT * FROM host_apps`)).toEqual([]);
+    expect(await (await fetch(`${app.url}/auth/first-run`)).json()).toEqual({ login: false });
+  });
+
+  it('opens the install step of the new app after Replace app, although people had connected to the old one', async () => {
+    await makeApp();
+    await signIn('alice');
+    expect((await fetch(`${app.url}/auth/github/install`)).status).toBe(403);
+    await fetch(`${app.url}/connections/github/app`, { method: 'DELETE', headers: authed });
+    await makeApp();
+    const install = await fetch(`${app.url}/auth/github/install`);
+    expect(install.status).toBe(200);
+    expect(install.headers.getSetCookie().join(';')).toContain('swarmloop_state=');
+  });
+
+  it('lets the machine token replace the app, stored as made by machine, and the first-run form returns', async () => {
+    await makeApp();
+    const [row] = await app.app.get(DataSource).query<Record<string, string>[]>(`SELECT made_by FROM host_apps`);
+    expect(row.made_by).toBe('machine');
+    expect((await fetch(`${app.url}/connections/github/app`, { method: 'DELETE', headers: authed })).status).toBe(200);
+    expect(app.app.get(HostAppsService).find('github')).toBeNull();
+    expect((await fetch(`${app.url}/auth/github/manifest`)).status).toBe(200);
   });
 
   it('runs of person A call the host with the token of A, those of B with B, and a CLI run with the env token', async () => {

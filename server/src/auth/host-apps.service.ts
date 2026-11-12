@@ -14,6 +14,8 @@ interface HostApp {
   clientId: string;
   clientSecret: string;
   privateKey: string;
+  /** The login of the person who made the app, or `machine`. Null for an app made earlier. */
+  madeBy: string | null;
 }
 
 /** The app of each host: the one Connect stored, encrypted, else the OAuth app of the environment. */
@@ -36,6 +38,7 @@ export class HostAppsService implements AppSource, OnModuleInit {
         clientId: row.clientId,
         clientSecret: this.box.open(row.clientSecret),
         privateKey: row.privateKey ? this.box.open(row.privateKey) : '',
+        madeBy: row.madeBy,
       });
     }
   }
@@ -53,8 +56,15 @@ export class HostAppsService implements AppSource, OnModuleInit {
       clientId: app.clientId,
       clientSecret: this.box.seal(app.clientSecret),
       privateKey: app.privateKey ? this.box.seal(app.privateKey) : '',
+      madeBy: app.madeBy,
     });
     this.apps.set(app.host, app);
+  }
+
+  /** Drops the stored app. The app on the host stays. */
+  async forget(host: ProviderName): Promise<void> {
+    await this.rows.delete({ host });
+    this.apps.delete(host);
   }
 
   credentials(host: ProviderName): AppCredentials | null {
