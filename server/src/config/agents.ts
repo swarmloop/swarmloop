@@ -170,6 +170,23 @@ export function runtimesInUse(env: AgentEnv): RuntimeName[] {
   return [...new Set(all.map((agent) => agent.runtime))];
 }
 
+/** The models env names for each runtime, once each, in env order: the role lists and the two short-form models. */
+export function knownModels(env: AgentEnv): Partial<Record<RuntimeName, string[]>> {
+  const named = [
+    ...TIERS.flatMap((tier) => ROLES.flatMap((role) => agentsOf(env, role, tier))),
+    { runtime: env.RUNTIME, model: env.MODEL_PLAN },
+    { runtime: env.RUNTIME, model: env.MODEL_IMPLEMENT },
+  ];
+  const models: Partial<Record<RuntimeName, string[]>> = {};
+  for (const { runtime, model } of named) {
+    const list = (models[runtime] ??= []);
+    if (!list.includes(model)) {
+      list.push(model);
+    }
+  }
+  return models;
+}
+
 interface CredentialEnv {
   CURSOR_API_KEY: string;
   ANTHROPIC_API_KEY: string;
