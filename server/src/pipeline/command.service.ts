@@ -1,4 +1,5 @@
 import { ConflictException, HttpException, Injectable, Logger } from '@nestjs/common';
+import type { StoredAgents } from '../contract/api';
 import type { CommandEntity, RunEntity } from '../history/entities';
 import { CommandRepository, conflict } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
@@ -28,7 +29,7 @@ export type CommandHandler = (
 export interface SubmitOptions {
   idempotencyKey?: string;
   expectedRevision?: number;
-  create?: { targetPath: string | null; startedBy?: string | null };
+  create?: { targetPath: string | null; startedBy?: string | null; agents?: StoredAgents | null };
   /** Runs this command in this process instead of the registered handler. The CLI uses it. */
   run?: CommandHandler;
 }

@@ -101,6 +101,42 @@ describe('agentFor', () => {
   });
 });
 
+describe('agentFor with a stored choice', () => {
+  const env = testEnv({ AGENTS_PLAN: 'cursor:env-plan', AGENTS_SUBTASK_PLAN: 'cursor:env-sub-plan' });
+  const agents = {
+    main: {
+      plan: [
+        { runtime: 'claude', model: 'mine' },
+        { runtime: 'codex', model: 'next' },
+      ],
+    },
+    subtask: { plan: [{ runtime: 'codex', model: 'sub-mine' }] },
+  };
+
+  it('uses the stored list before env and keeps its order', () => {
+    expect(agentFor(env, { agents }, 'plan')).toEqual({ runtime: 'claude', model: 'mine' });
+    expect(agentsFor(env, { agents }, 'plan').map((agent) => agent.model)).toEqual(['mine', 'next']);
+  });
+
+  it('never feeds the main list to a subtask, which uses its own tier', () => {
+    expect(agentFor(env, { parentRunId: 3, agents: { main: agents.main } }, 'plan')).toEqual({
+      runtime: 'cursor',
+      model: 'env-sub-plan',
+    });
+    expect(agentFor(env, { parentRunId: 3, agents }, 'plan')).toEqual({ runtime: 'codex', model: 'sub-mine' });
+  });
+
+  it('uses env for a role the choice does not name, and when there is no choice', () => {
+    expect(agentFor(env, { agents }, 'implement')).toEqual(agentFor(env, null, 'implement'));
+    expect(agentFor(env, { agents: null }, 'plan')).toEqual({ runtime: 'cursor', model: 'env-plan' });
+  });
+
+  it('skips a stored runtime that is no longer known', () => {
+    const stale = { main: { plan: [{ runtime: 'gemini', model: 'g' }] } };
+    expect(agentFor(env, { agents: stale }, 'plan')).toEqual({ runtime: 'cursor', model: 'env-plan' });
+  });
+});
+
 describe('availableAgent', () => {
   const env = testEnv({
     AGENTS_REVIEW: 'claude:review-m,codex:gpt-6.1-sol,cursor:grok-4.7-high',

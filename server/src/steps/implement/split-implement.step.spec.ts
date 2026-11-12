@@ -660,7 +660,7 @@ describe('subtask questions', () => {
     const parent = await seedParent(app, [task('a'), task('b')]);
     await documents.putDocument(parent, 'contract', '- names are camelCase\n');
     await documents.putDocument(parent, 'repos', 'demo\n');
-    const runtime = agentFor(app.app.get(AppConfig).env, null, 'plan').runtime;
+    const runtime = agentFor(app.app.get(AppConfig).env, parent, 'plan').runtime;
     mkdirSync(join(app.root, 'data'), { recursive: true });
     mkdirSync(agentStateDir(app.root, KEY, 'plan'), { recursive: true });
     writeFileSync(join(app.root, 'data', `${KEY}-plan-session.json`), JSON.stringify({ chatId: 'chat-1', runtime }));

@@ -1,4 +1,5 @@
 import { agentFor } from '../../config/agents';
+import type { RunEntity } from '../../history/entities';
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, Issue, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
@@ -107,9 +108,9 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     return storedPlan(this.documents, key);
   }
 
-  protected profile(env: SwarmloopEnv): AgentProfile {
+  protected profile(env: SwarmloopEnv, run?: RunEntity | null): AgentProfile {
     return {
-      ...agentFor(env, null, 'implement'),
+      ...agentFor(env, run ?? null, 'implement'),
       mode: 'agent',
       tools: 'write',
       timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
@@ -149,14 +150,14 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
     const full = skillPrompt('implement', input.requirements, names, sections, mounts, { deferExecutionRules: true });
     const added = await ctx.reread(ARTIFACTS.addedRepos);
-    const continued = await resumableChat(root(this.config), key, 'implement', this.profile(this.config.env).runtime);
+    const { runtime } = this.profile(env, ctx.opened.run);
+    const continued = await resumableChat(root(this.config), key, 'implement', runtime);
     const basePrompt = withAddedRepos(continued?.chatId ? implementFollowUp(plan, notes, merged) : full, added);
     const settled = await this.settleRebase(input.requirements, ctx, marker, names, branch, storedStderr);
     if (settled) {
       return settled;
     }
     const heads = await featureHeads(mounts, branch);
-    const { runtime } = this.profile(env);
     const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime, samples: ctx.samples };
     const reproject = projectFor(this.environments, place);
     const { prompt, project, allowHosts, manifestHosts, executionRules } = await agentWorkplace(
@@ -346,7 +347,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
         key,
         step: this.name,
         mounts,
-        runtime: this.profile(this.config.env).runtime,
+        runtime: this.profile(this.config.env, ctx.opened.run).runtime,
         samples: ctx.samples,
       };
       const workplace = await agentWorkplace(

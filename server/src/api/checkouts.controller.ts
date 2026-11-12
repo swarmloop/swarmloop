@@ -4,6 +4,7 @@ import type { CreateRepositoryBody, ProjectListView, RemoteEntry, RemoteListView
 import { Actor } from '../auth/actor.decorator';
 import { RemoteRepositories } from '../steps/prepare/remote-repositories.service';
 import { PrepareStep } from '../steps/prepare/prepare.step';
+import { UserSettingRepository } from '../history/user-setting.repository';
 import { SwarmloopError } from '../core/swarmloop-error';
 
 @Controller('checkouts')
@@ -12,6 +13,7 @@ export class CheckoutsController {
     private readonly prepare: PrepareStep,
     private readonly config: AppConfig,
     private readonly remote: RemoteRepositories,
+    private readonly settings: UserSettingRepository,
   ) {}
 
   @Get()
@@ -20,9 +22,10 @@ export class CheckoutsController {
   }
 
   @Get('projects')
-  projects(): ProjectListView {
+  async projects(@Actor() actor: string | null): Promise<ProjectListView> {
     try {
-      return { ...this.prepare.listProjects(), split: this.config.env.SPLIT === 'auto' };
+      const settings = actor ? await this.settings.read(actor) : null;
+      return { ...this.prepare.listProjects(), split: settings?.split ?? this.config.env.SPLIT === 'auto' };
     } catch (error) {
       if (error instanceof SwarmloopError) {
         throw new BadRequestException(error.message);

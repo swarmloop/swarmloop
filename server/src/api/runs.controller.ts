@@ -42,6 +42,7 @@ import {
 import { Actor } from '../auth/actor.decorator';
 import type { CommandInput, CommandReceipt, CommandType } from '../contract/command';
 import type { StepEventPage } from '../contract/step-events';
+import { UserSettingRepository } from '../history/user-setting.repository';
 import { CommandService } from '../pipeline/command.service';
 import type { SubmitOptions } from '../pipeline/command.service';
 import type { ReplayPayload, ShellPayload, StepPayload } from './command-handlers';
@@ -61,6 +62,7 @@ export class RunsController {
     private readonly runs: RunCommandsService,
     private readonly commands: CommandService,
     private readonly shell: ShellService,
+    private readonly settings: UserSettingRepository,
   ) {}
 
   @Get('runs')
@@ -171,9 +173,10 @@ export class RunsController {
     @Res({ passthrough: true }) response: { status(code: number): void },
     @Actor() actor: string | null,
   ): Promise<RunRef & CommandReceipt> {
-    const plan = await this.runs.plan(body);
+    const settings = actor ? await this.settings.read(actor) : null;
+    const plan = await this.runs.plan(body, settings?.split);
     const result = await this.dispatch<RunRef>('start', plan.key, { ...plan }, undefined, {
-      create: { targetPath: null, startedBy: actor },
+      create: { targetPath: null, startedBy: actor, agents: settings?.agents ?? null },
       expectedRevision: body.expectedRevision,
     });
     response.status(httpStatus(result));
