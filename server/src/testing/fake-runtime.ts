@@ -33,11 +33,8 @@ export class FakeSandbox {
 
   /** The calls for `createTestApp({ sandbox })`. Bound, so the same sandbox serves an app after a restart. */
   readonly calls = {
-    stopRun: (): Promise<'gone'> => this.answer('gone'),
-    attemptRunning: (): Promise<boolean> => this.answer(false),
+    stopRun: (): Promise<'gone' | 'unknown'> => Promise.resolve(this.silent ? 'unknown' : 'gone'),
+    attemptRunning: (): Promise<boolean | null> => Promise.resolve(this.silent ? null : false),
+    dockerAnswers: (): Promise<boolean> => Promise.resolve(!this.silent),
   };
-
-  private answer<T>(value: T): Promise<T> {
-    return this.silent ? Promise.reject(new Error('docker did not answer')) : Promise.resolve(value);
-  }
 }

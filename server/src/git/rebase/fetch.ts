@@ -1,9 +1,11 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
+import type { Clock } from '../../core/clock';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { originRef, promptBase } from '../base-ref';
 import type { RebaseHosts } from './types';
 import { git, GIT_LIMITS, gitDetail, originUrl, redact } from '../git';
+import { withGitHostRetries } from '../host-retry';
 import { cloneSource } from './clone-index';
 import { resolveGitPath } from './hidden-worktree';
 
@@ -59,7 +61,7 @@ function withCheckoutLock<T>(checkout: string, run: () => Promise<T>): Promise<T
   return current;
 }
 
-/** Fetch one source branch. One fetch runs at a time per checkout. A missing ref tries the next candidate. A ref lock is retried. Any other fetch failure stops the step. */
+/** Fetch one source branch. One fetch runs at a time per checkout. A missing ref tries the next candidate. A ref lock is retried. A transient host or network failure is retried, then the step waits. Any other fetch failure stops the step. */
 async function fetchSource(
   cwd: string,
   repo: string,
@@ -77,7 +79,7 @@ async function fetchSource(
     throw new SwarmloopError(sshFailure(repo, origin, registry, step));
   }
   const checkout = await cloneSource(cwd);
-  return withCheckoutLock(checkout, () => fetchLocked(cwd, repo, url, refspec, name, secret, step));
+  return withCheckoutLock(checkout, () => fetchLocked(cwd, repo, url, refspec, name, secret, step, hosts.clock));
 }
 
 async function fetchLocked(
@@ -88,18 +90,19 @@ async function fetchLocked(
   name: string,
   secret: string,
   step: 'prepare' | 'rebase',
+  clock: Clock,
 ): Promise<boolean> {
   for (let attempt = 0; attempt < FETCH_LOCK_ATTEMPTS; attempt += 1) {
     try {
+      const args = ['-C', cwd, 'fetch', url ?? 'origin', refspec];
+      await withGitHostRetries(
+        url,
+        clock,
+        () => git(args, { GIT_TERMINAL_PROMPT: '0' }, { timeoutMs: GIT_LIMITS.fetch }),
+        secret,
+      );
       if (url) {
-        await git(['-C', cwd, 'fetch', url, refspec], { GIT_TERMINAL_PROMPT: '0' }, { timeoutMs: GIT_LIMITS.fetch });
         await clearFetchedToken(cwd, name, secret);
-      } else {
-        await git(
-          ['-C', cwd, 'fetch', 'origin', refspec],
-          { GIT_TERMINAL_PROMPT: '0' },
-          { timeoutMs: GIT_LIMITS.fetch },
-        );
       }
       return true;
     } catch (error) {

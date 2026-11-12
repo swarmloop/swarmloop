@@ -1,6 +1,4 @@
 import 'reflect-metadata';
-import { chmodSync, writeFileSync } from 'fs';
-import { join } from 'path';
 import { Reconciler } from '../pipeline/reconciler';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import type { CodeHost } from '../integrations/code-host/code-host';
@@ -28,8 +26,6 @@ interface FlowHarness {
   restart(): Promise<void>;
   /** Docker does not answer for `ms` of fake time; `tick()` moves that time. */
   dockerSilent(ms: number): void;
-  /** The next push to the origin fails once on a 502; later pushes go through. */
-  failNextPush(): void;
   close(): Promise<void>;
 }
 
@@ -53,6 +49,9 @@ export async function createFlowHarness(key: string): Promise<FlowHarness> {
       const reconciler = harness.app.app.get(Reconciler);
       await reconciler.reconcileRuns();
       await reconciler.resumeLimited();
+      await reconciler.resumeHostUnavailable();
+      await reconciler.resumeDocker();
+      await reconciler.resumeDiskLow();
       await reconciler.resumeGitAuth();
       await reconciler.resumeSubtaskParents();
       await reconciler.watchMerges();
@@ -65,7 +64,6 @@ export async function createFlowHarness(key: string): Promise<FlowHarness> {
       wire(harness, key);
     },
     dockerSilent: (ms) => sandbox.goSilent(ms),
-    failNextPush: () => failOnce(join(first.root, `${REPO}.git`)),
     close: () => harness.app.close(),
   };
   wire(harness, key);
@@ -75,15 +73,4 @@ export async function createFlowHarness(key: string): Promise<FlowHarness> {
 function wire(harness: FlowHarness, key: string): void {
   jest.spyOn(harness.app.app.get(CodeHostRegistry), 'byName').mockReturnValue(harness.host as unknown as CodeHost);
   holdDetachedStarts(harness.app.pipeline, key, harness.launched);
-}
-
-/** A pre-receive hook that refuses the first push the way a host answers a 502, then lets pushes through. */
-function failOnce(bare: string): void {
-  const hook = join(bare, 'hooks', 'pre-receive');
-  const marker = join(bare, 'push-failed-once');
-  writeFileSync(
-    hook,
-    `#!/bin/sh\nif [ ! -e "${marker}" ]; then touch "${marker}"; echo "The requested URL returned error: 502" >&2; exit 1; fi\n`,
-  );
-  chmodSync(hook, 0o755);
 }

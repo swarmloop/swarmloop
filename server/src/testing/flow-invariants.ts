@@ -1,12 +1,16 @@
 import { ERROR_CODES } from '../contract/error-codes';
-import { AUTO_RETRY_CODES, NEEDS_PERSON, type RunState, type StateReason } from '../contract/run-state';
+import {
+  AUTO_RETRY_CODES,
+  NEEDS_PERSON,
+  TIMED_RETRY_CODES,
+  type RunState,
+  type StateReason,
+} from '../contract/run-state';
 import type { StepStatEntity } from '../history/entities';
 import { deriveState } from '../history/run-state';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import type { TestApp } from './test-app';
-
-const TIMED_CODES: readonly string[] = [ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.DOCKER_UNAVAILABLE];
 
 /**
  * What must hold for every run after a reconciler tick. It throws one error that lists each run and rule that broke.
@@ -52,6 +56,6 @@ function visitRules(key: string, state: RunState, reason: StateReason | null, st
 /** An automatic next try names its time; a stop names the action a person takes. */
 function saysWhatNext(code: string | null, message: string | undefined, retryAt: string | undefined): boolean {
   if (!code || !message) return false;
-  if (TIMED_CODES.includes(code)) return Boolean(retryAt);
+  if (TIMED_RETRY_CODES.includes(code)) return Boolean(retryAt);
   return AUTO_RETRY_CODES.includes(code) || code in NEEDS_PERSON;
 }

@@ -87,13 +87,13 @@ export async function withRetries<T>(
   throw last;
 }
 
-interface HostRetryTiming {
+export interface HostRetryTiming {
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
 }
 
 /** The shared policy of every host call: 5 tries, exponential backoff with full jitter, `Retry-After` first. */
-async function withHostRetries<T>(
+export async function withHostRetries<T>(
   run: () => Promise<T>,
   isTransient: (error: unknown) => boolean,
   timing: HostRetryTiming = {},

@@ -129,7 +129,7 @@ export const AUTO_RETRY_CODES: readonly string[] = [
 ];
 
 /** The waiting codes whose next try is timed: a person may try now. */
-const TIMED_RETRY_CODES: readonly string[] = [ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.DOCKER_UNAVAILABLE];
+export const TIMED_RETRY_CODES: readonly string[] = [ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.DOCKER_UNAVAILABLE];
 
 /** The one place that says which actions a state allows. Availability follows what the dashboard offered before. */
 export function actionsFor(state: RunState, reasonCode: string | null = null): RunAction[] {

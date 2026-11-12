@@ -12,6 +12,7 @@ import { save } from '../testing/runs.spec-helpers';
 import { CommandService } from './command.service';
 import { DiskGuard } from './disk-guard';
 import { Reconciler } from './reconciler';
+import { PipelineService } from './pipeline.service';
 
 const KEY = 'PROJ-700';
 const GB = 1024 ** 3;
@@ -64,6 +65,25 @@ describe('reconciler waits and automatic tries', () => {
 
       expect(accept).not.toHaveBeenCalled();
     });
+  });
+
+  describe('Stop on an outage wait', () => {
+    it.each([ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.DOCKER_UNAVAILABLE])(
+      'leaves a run waiting on %s stopped, and no automatic try starts it',
+      async (code) => {
+        const world = await boot({ dockerAnswers: jest.fn().mockResolvedValue(true) });
+        await park(world, 'waiting', code, { retryAt: new Date(world.clock.now()).toISOString() });
+
+        await expect(world.app.get(PipelineService).stop(KEY)).resolves.toMatchObject({ exitCode: 0 });
+        world.clock.advance(600_000);
+        await world.app.get(Reconciler).resumeHostUnavailable();
+        await world.app.get(Reconciler).resumeDocker();
+
+        expect(accept).not.toHaveBeenCalled();
+        expect(await reasonOf(world)).toMatchObject({ code: 'STOPPED' });
+        expect(await world.app.get(RunRepository).findRun(KEY)).toMatchObject({ status: 'blocked' });
+      },
+    );
   });
 
   describe('docker that does not answer', () => {

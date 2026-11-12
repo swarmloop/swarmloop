@@ -1,4 +1,4 @@
-import { writeFileSync } from 'fs';
+import { chmodSync, existsSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -52,5 +52,22 @@ describe('RebasedPublisher unknown push result', () => {
       'connection reset',
     );
     expect(push).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('RebasedPublisher host outage', () => {
+  it('pushes again when the first push fails once on a 502', async () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0);
+    const { tree, origin, publisher, remoteTip } = await setup();
+    const marker = join(origin, 'failed-once');
+    const hook = join(origin, 'hooks', 'pre-receive');
+    writeFileSync(
+      hook,
+      `#!/bin/sh\nif [ ! -e "${marker}" ]; then touch "${marker}"; echo "The requested URL returned error: 502" >&2; exit 1; fi\n`,
+    );
+    chmodSync(hook, 0o755);
+    await expect(publisher.pushRef(tree, branch, null, { codeHost: '', startedBy: null }, origin)).resolves.toBe(true);
+    expect(existsSync(marker)).toBe(true);
+    expect(remoteTip()).toBe(git(tree.path, ['rev-parse', 'HEAD']));
   });
 });
