@@ -18,9 +18,8 @@ import type { OpenedStep } from '../steps/step-run';
 import { closeStep, openStep, preparedMs } from '../steps/step-run';
 import type { HttpCallDraft } from '../core/swarmloop-error';
 import { reportFailure } from './shared/step-failure';
-import { FetchFailed, GitAuthError, SwarmloopError } from '../core/swarmloop-error';
-import { IMAGE_ERROR_CODES } from '../contract/error-codes';
-import { StepStopped } from './shared/step-stopped';
+import { FetchFailed, HostUnavailable } from '../core/swarmloop-error';
+import { errorEnd } from './step-error-end';
 import { recordHandoff } from './shared/handoff';
 import { recordEnd, recordInputs, stepEventSink } from './shared/step-event-recording';
 import type { Artifact } from './contract/artifact';
@@ -56,6 +55,8 @@ export interface StepEnd {
   code?: string;
   /** The usage limit a run waits for, with `code` `RUNTIME_LIMIT`. */
   limit?: LimitState;
+  /** When the next automatic try happens, with `code` `HOST_UNAVAILABLE` or `DOCKER_UNAVAILABLE`. */
+  retryAt?: string;
   /** The problems this end sends back. They are recorded as events only. */
   issues?: Issue[];
   /** What the attempt did, for the event that ends it. */
@@ -218,27 +219,12 @@ abstract class StepCore implements Step {
       if (closed) {
         throw error;
       }
-      if (error instanceof StepStopped) {
-        return ctx.end({ outcome: 'blocked', exitCode: 1, line: `${opened.startedAt} ${error.message}` });
-      }
-      if (error instanceof GitAuthError) {
-        return ctx.end({
-          outcome: 'waiting',
-          exitCode: 0,
-          line: `${opened.startedAt} ${error.message}`,
-          code: error.code,
-        });
-      }
-      if (error instanceof SwarmloopError && IMAGE_ERROR_CODES.includes(error.code)) {
-        return ctx.end({
-          outcome: 'blocked',
-          exitCode: 1,
-          line: `${opened.startedAt} ${error.message}`,
-          code: error.code,
-        });
-      }
-      if (error instanceof FetchFailed) {
+      if (error instanceof FetchFailed || error instanceof HostUnavailable) {
         calls.push(...error.httpCalls);
+      }
+      const ending = errorEnd(error, opened.startedAt, this.clock, this.config.env);
+      if (ending) {
+        return ctx.end(ending);
       }
       return ctx.end({
         outcome: 'failed',
@@ -317,6 +303,7 @@ abstract class StepCore implements Step {
       moveTo: input.moveTo,
       code: input.code,
       limit: input.limit,
+      retryAt: input.retryAt,
       visit,
     });
     await recordEnd(this.documents, this.kernel.stepEvents, {
@@ -397,6 +384,7 @@ export abstract class BaseStep<S extends InputSpec = InputSpec> extends StepCore
       line: result.summary,
       code: result.route.to === 'block' || result.route.to === 'wait' ? result.route.code : undefined,
       limit: result.route.to === 'wait' ? result.route.limit : undefined,
+      retryAt: result.route.to === 'wait' ? result.route.retryAt : undefined,
       issues: result.route.to === 'return' ? result.route.issues : undefined,
       facts: result.facts,
       visit: { ...result.visit, ...(documents.length > 0 ? { documents } : {}) },

@@ -9,6 +9,9 @@ import { goldenApp } from './shared/model-golden.spec-helpers';
 import { StepKernel } from './step-kernel';
 import { ResearchStep } from './research/research.step';
 import type { StepResult } from './contract/step-contract';
+import { ERROR_CODES } from '../contract/error-codes';
+import { failedLaunches } from '../core/pipeline-result';
+import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { agentFailure, combineAgentResults } from './shared/agent-result';
 import { modelVisit } from './shared/model-visit';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE, skillPrompt, workingDirectoryBlock } from './shared/skill-prompt';
@@ -405,6 +408,71 @@ describe('agent step failure', () => {
       logged.mockRestore();
       await golden.close();
     }
+  });
+});
+
+describe('agent step during a passing outage', () => {
+  async function waitingRun(
+    thrown: Error,
+  ): Promise<{ stateReason: string | null; status: string; stats: string[]; retryAt: string }> {
+    const golden = await goldenApp('agent-outage', {
+      agent: jest.fn().mockRejectedValue(thrown),
+      worktrees: ['PROJ-32/billing-api'],
+    });
+    try {
+      const run = await golden.runs.begin('PROJ-32', 'prepare');
+      run.status = 'waiting';
+      run.currentStep = 'research';
+      await golden.runs.saveRun(run);
+      await golden.seedDocuments.putDocument(run, 'requirements', '{"prompt":"ship the field"}\n');
+      const kernel = new StepKernel(
+        golden.runs,
+        golden.documents,
+        golden.visits,
+        golden.flows,
+        golden.clock,
+        golden.config,
+        golden.stepEvents,
+      );
+      const retryAt = new Date(golden.clock.now() + golden.config.env.RECONCILE_MS).toISOString();
+      await new ResearchStep(kernel, golden.sandbox, golden.launcher).execute('PROJ-32');
+      const stored = await golden.runs.findRun('PROJ-32');
+      const stats = await golden.visits.listStats(run.id);
+      return {
+        stateReason: stored?.stateReason ?? null,
+        status: stored?.status ?? '',
+        stats: stats.map((item) => item.status),
+        retryAt,
+      };
+    } finally {
+      await golden.close();
+    }
+  }
+
+  it('waits with the host message and its next try when a host stays down', async () => {
+    const retryAt = '2026-11-12T15:00:00.000Z';
+    const ended = await waitingRun(new HostUnavailable('api.github.com', 'HTTP 503', retryAt));
+    expect(ended.status).toBe('waiting');
+    expect(JSON.parse(ended.stateReason ?? '{}')).toEqual({
+      code: 'HOST_UNAVAILABLE',
+      message: `api.github.com did not answer: HTTP 503; next try at ${retryAt}`,
+      retryAt,
+    });
+    expect(ended.stats).toEqual(['waiting']);
+    expect(failedLaunches([{ id: 1, step: 'research', status: ended.stats[0] }], 'research', 0)).toBe(0);
+  });
+
+  it('waits with DOCKER_UNAVAILABLE when docker is down, one tick ahead', async () => {
+    const ended = await waitingRun(
+      new SwarmloopError('docker is not running', { code: ERROR_CODES.DOCKER_UNAVAILABLE }),
+    );
+    expect(ended.status).toBe('waiting');
+    expect(JSON.parse(ended.stateReason ?? '{}')).toEqual({
+      code: 'DOCKER_UNAVAILABLE',
+      message: `docker did not answer; next try at ${ended.retryAt}`,
+      retryAt: ended.retryAt,
+    });
+    expect(ended.stats).toEqual(['waiting']);
   });
 });
 

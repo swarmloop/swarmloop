@@ -40,7 +40,12 @@ function readReason(stored: string | null | undefined): StateReason | null {
   try {
     const parsed = JSON.parse(stored) as Partial<StateReason>;
     return typeof parsed.code === 'string'
-      ? { code: parsed.code, message: String(parsed.message ?? ''), ...(parsed.limit ? { limit: parsed.limit } : {}) }
+      ? {
+          code: parsed.code,
+          message: String(parsed.message ?? ''),
+          ...(parsed.limit ? { limit: parsed.limit } : {}),
+          ...(typeof parsed.retryAt === 'string' ? { retryAt: parsed.retryAt } : {}),
+        }
       : null;
   } catch {
     return null;
@@ -68,7 +73,10 @@ function blockedState(stored: StateReason | null, facts: StateFacts): { state: R
     stored?.code === REASON.stopped ||
     stored?.code === ERROR_CODES.RESOURCE_UNKNOWN ||
     stored?.code === ERROR_CODES.INPUT_MISSING ||
-    stored?.code === ERROR_CODES.SUBTASK_BLOCKED;
+    stored?.code === ERROR_CODES.SUBTASK_BLOCKED ||
+    stored?.code === REASON.loopLimit ||
+    stored?.code === ERROR_CODES.SPEND_LIMIT ||
+    stored?.code === ERROR_CODES.PIPELINE_UNFIXED;
   const code = kept ? stored.code : (facts.blockCode ?? stored?.code ?? REASON.blocked);
   return {
     state: code === REASON.stopped ? 'stopped' : 'blocked',
@@ -85,6 +93,8 @@ function unfinishedState(
     stored &&
     (stored.code === ERROR_CODES.RUNTIME_LIMIT ||
       stored.code === ERROR_CODES.GIT_AUTH ||
+      stored.code === ERROR_CODES.HOST_UNAVAILABLE ||
+      stored.code === ERROR_CODES.DOCKER_UNAVAILABLE ||
       SUBTASK_WAIT_CODES.includes(stored.code as ErrorCode))
   )
     return { state: 'waiting', reason: stored };

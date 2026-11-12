@@ -47,6 +47,8 @@ export interface StateReason {
   message: string;
   /** Set with `RUNTIME_LIMIT`. */
   limit?: LimitState;
+  /** Set with `HOST_UNAVAILABLE` and `DOCKER_UNAVAILABLE`: when the next automatic try happens, UTC, ISO 8601. */
+  retryAt?: string;
 }
 
 /** The codes of a state reason. */
@@ -81,6 +83,8 @@ const RESUMABLE_BLOCKS: readonly string[] = [
   REASON.ciLogUnavailable,
   REASON.ciNotRun,
   REASON.ciTimeout,
+  ERROR_CODES.SPEND_LIMIT,
+  ERROR_CODES.PIPELINE_UNFIXED,
   ERROR_CODES.DISK_LOW,
   ERROR_CODES.WORKSPACE_LOST,
   ERROR_CODES.BRANCH_IN_USE,
@@ -88,6 +92,44 @@ const RESUMABLE_BLOCKS: readonly string[] = [
   ERROR_CODES.SUBTASK_BLOCKED,
   ...IMAGE_ERROR_CODES,
 ];
+
+/** The reason codes that need a person, each with the action that clears it. */
+export const NEEDS_PERSON: Readonly<Record<string, RunAction>> = {
+  NEEDS_ANSWERS: 'answer',
+  [ERROR_CODES.GIT_AUTH]: 'resume',
+  [ERROR_CODES.IMAGE_MISSING]: 'resume',
+  [ERROR_CODES.WORKSPACE_LOST]: 'resume',
+  [ERROR_CODES.BRANCH_IN_USE]: 'resume',
+  [ERROR_CODES.BRANCH_DIVERGED]: 'resume',
+  [ERROR_CODES.REBASE_CONFLICT]: 'rebase',
+  [REASON.stopped]: 'resume',
+  [REASON.loopLimit]: 'resume',
+  [ERROR_CODES.SPEND_LIMIT]: 'resume',
+  [REASON.checkFailed]: 'resume',
+  [REASON.didNotFit]: 'resume',
+  [REASON.ciNotRun]: 'resume',
+  [REASON.ciLogUnavailable]: 'resume',
+  [REASON.ciTimeout]: 'resume',
+  [ERROR_CODES.PIPELINE_UNFIXED]: 'resume',
+  [ERROR_CODES.SUBTASK_BLOCKED]: 'resume',
+  [ERROR_CODES.DISK_LOW]: 'resume',
+  [ERROR_CODES.INPUT_MISSING]: 'replay',
+  [ERROR_CODES.RESOURCE_UNKNOWN]: 'replay',
+  [REASON.blocked]: 'replay',
+  [ERROR_CODES.STEP_FAILED]: 'resume',
+};
+
+/** The waiting reason codes that end by themselves: the run tries again without a person. */
+export const AUTO_RETRY_CODES: readonly string[] = [
+  ERROR_CODES.RUNTIME_LIMIT,
+  ERROR_CODES.HOST_UNAVAILABLE,
+  ERROR_CODES.DOCKER_UNAVAILABLE,
+  ERROR_CODES.SUBTASKS_RUNNING,
+  ERROR_CODES.SUBTASK_WAITING,
+];
+
+/** The waiting codes whose next try is timed: a person may try now. */
+const TIMED_RETRY_CODES: readonly string[] = [ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.DOCKER_UNAVAILABLE];
 
 /** The one place that says which actions a state allows. Availability follows what the dashboard offered before. */
 export function actionsFor(state: RunState, reasonCode: string | null = null): RunAction[] {
@@ -100,6 +142,7 @@ export function actionsFor(state: RunState, reasonCode: string | null = null): R
       if (reasonCode === ERROR_CODES.RUNTIME_LIMIT || reasonCode === ERROR_CODES.GIT_AUTH) {
         return ['resume', 'replay', 'rebase'];
       }
+      if (reasonCode && TIMED_RETRY_CODES.includes(reasonCode)) return ['stop', 'resume', 'replay', 'rebase'];
       return reasonCode && SUBTASK_WAIT_CODES.includes(reasonCode as ErrorCode)
         ? ['stop', 'resume', 'replay', 'rebase']
         : ['answer', 'replay', 'rebase'];
