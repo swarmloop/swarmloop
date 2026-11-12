@@ -80,7 +80,6 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
       {flow.tasks?.length ? (
         <TaskLayers
           layers={flow.tasks}
-          line={flow.taskLine}
           mergeQueue={flow.mergeQueue}
           decisions={flow.decisions}
           onSkip={(taskId) =>

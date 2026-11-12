@@ -29,7 +29,7 @@ import { reviewDecision } from '../steps/code-review/code-review-record';
 import type { StepEventPage } from '../contract/step-events';
 import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
 import type { LiveSample } from '../contract/live';
-import { listExtras } from './run-view/status';
+import { childrenByParent, epicTotal, listExtras } from './run-view/status';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
@@ -66,6 +66,7 @@ export class RunQueriesService {
     const runs = await this.runs.listRuns();
     const durations = await this.runs.durationByRun();
     const keys = new Map(runs.map((run) => [run.id, run.key]));
+    const childrenOf = childrenByParent(runs);
     return {
       runs: runs.map((run) => ({
         key: run.key,
@@ -76,11 +77,14 @@ export class RunQueriesService {
         updatedAt: run.updatedAt,
         stepStartedAt: run.stepStartedAt,
         durationMs: durations.get(run.id) ?? 0,
-        usd: run.spentUsd + openSpend(run, this.pipeline, this.live).usd,
+        usd: this.usdOf(run),
         ...listExtras(run, keys),
+        ...epicTotal(run, childrenOf.get(run.id) ?? [], this.usdOf, this.clock.now()),
       })),
     };
   }
+
+  private readonly usdOf = (run: RunEntity): number => run.spentUsd + openSpend(run, this.pipeline, this.live).usd;
 
   private async parentOf(run: RunEntity): Promise<{ parentKey?: string }> {
     const parent = typeof run.parentRunId === 'number' ? await this.runs.findById(run.parentRunId) : null;
@@ -102,6 +106,7 @@ export class RunQueriesService {
     const state = await runState(this.commands, shown, open, documents);
     const maxReturns = this.config.env.MAX_RETURNS;
     const reportMs = await this.visits.codeReviewReportMs(run.id);
+    const children = await this.runs.children(run);
     return {
       key: run.key,
       name: runName(run.key, run.prompt),
@@ -111,7 +116,8 @@ export class RunQueriesService {
       stepStartedAt: run.stepStartedAt,
       ...(await this.parentOf(run)),
       ...(run.startedBy ? { startedBy: run.startedBy } : {}),
-      ...taskView(documents, run.currentStep, await taskRuns(this.runs, run, documents, this.pipeline, this.live)),
+      ...taskView(documents, run.currentStep, await taskRuns(this.runs, children, documents, this.pipeline, this.live)),
+      ...epicTotal(shown, children, this.usdOf, this.clock.now()),
       ...state,
       sentence: withSkip(
         sentence(shown, open, documents, stats, maxReturns),

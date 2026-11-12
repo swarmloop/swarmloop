@@ -127,6 +127,7 @@ export function taskLayers(documents: DocumentEntity[], children: TaskRuns = new
         title: task.title,
         files: task.files,
         proof: task.proof,
+        depends: task.depends,
         status: task.status,
         note: task.note,
         ...(children.has(task.id) ? { run: children.get(task.id) } : {}),

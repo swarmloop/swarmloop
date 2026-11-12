@@ -37,14 +37,21 @@ export function RunHeader({
   onStop: () => void;
 }): ReactElement {
   const metric = flow.metrics;
+  const epic = flow.epic;
   const metricItems: { Icon?: typeof Schedule; text: string; tip: string; color?: string }[] = [
     { text: metric.status, tip: 'Run status', color: statusColor(metric.status) },
     {
       Icon: Schedule,
-      text: duration(metric.durationMs + openMs),
+      text: epic
+        ? `${duration(epic.durationMs)} total · ${duration(metric.durationMs + openMs)} this run`
+        : duration(metric.durationMs + openMs),
       tip: 'Total time the steps have run. Reviewers that run together count as the slowest one, then the report and the remaining time in that step. Time waiting on a person, and time sitting idle after a failure, is not included.',
     },
-    { Icon: Paid, text: money(metric.usd), tip: 'Session spend' },
+    {
+      Icon: Paid,
+      text: epic ? `${money(epic.usd)} total · ${money(metric.usd)} this run` : money(metric.usd),
+      tip: 'Session spend',
+    },
     { Icon: DataUsage, text: `${tokens(metric.tokens)} tok`, tip: 'Session tokens' },
     { Icon: Speed, text: `cpu ${metric.cpuPeak.toFixed(0)}%`, tip: 'Highest CPU in the session' },
     { Icon: MemoryIcon, text: `mem ${memory(metric.memPeak)}`, tip: 'Highest memory in the session' },

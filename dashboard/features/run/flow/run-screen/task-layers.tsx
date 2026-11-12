@@ -1,57 +1,65 @@
 import type { ReactElement } from 'react';
-import type { Route } from 'next';
-import Link from 'next/link';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
+import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import type { TaskLayer } from '@contract/api';
 import { duration, money } from '../../../../lib/format';
+import { TaskDecisions } from './task-decisions';
+import { TaskRow } from './task-row';
 
-/** The tasks of a split plan, one block per dependency layer, with the status of each and a line for all. */
+/** `7 tasks · 7 merged · 4h 25m · $14.68`: the sums cover the tasks that have started. */
+function summaryLine(tasks: TaskLayer['tasks']): string {
+  const runs = tasks.flatMap((task) => (task.run ? [task.run] : []));
+  const merged = tasks.filter((task) => task.status === 'merged').length;
+  const totals =
+    runs.length > 0
+      ? [
+          duration(runs.reduce((sum, run) => sum + run.durationMs, 0)),
+          money(runs.reduce((sum, run) => sum + run.usd, 0)),
+        ]
+      : [];
+  return [`${tasks.length} tasks`, `${merged} merged`, ...totals].join(' · ');
+}
+
+/** The tasks of a split plan: one row per task, grouped by stage, with the merge queue and the decisions below. */
 export function TaskLayers({
   layers,
-  line,
   mergeQueue,
   decisions,
   onSkip,
 }: {
   layers: TaskLayer[];
-  line?: string;
   mergeQueue?: { id: string; title: string }[];
   decisions?: string;
   onSkip: (taskId: string) => void;
 }): ReactElement {
+  const tasks = layers.flatMap((layer) => layer.tasks);
+  const merged = tasks.filter((task) => task.status === 'merged').length;
   return (
-    <Box component="section" aria-label="Tasks" sx={{ my: 2, display: 'grid', gap: 1 }}>
+    <Box component="section" aria-label="Tasks" sx={{ my: 2, display: 'grid', gap: 1, minWidth: 0 }}>
       <Typography variant="subtitle2">Tasks</Typography>
-      {line ? <Typography variant="body2">{line}</Typography> : null}
+      <Typography variant="body2">{summaryLine(tasks)}</Typography>
+      <LinearProgress
+        variant="determinate"
+        value={tasks.length > 0 ? (merged / tasks.length) * 100 : 0}
+        aria-label="Merged"
+        sx={{ height: 4, borderRadius: 2 }}
+      />
       {layers.map((layer) => (
-        <Box key={layer.layer} sx={{ display: 'grid', gap: 0.5 }}>
-          <Typography variant="caption" color="text.secondary">
-            Layer {layer.layer + 1}
+        <Box key={layer.layer} sx={{ display: 'grid', gap: 0.5, minWidth: 0 }}>
+          <Typography variant="overline" color="text.secondary" sx={{ display: 'block', lineHeight: 1.5 }}>
+            Stage {layer.layer + 1}
           </Typography>
-          {layer.tasks.map((task) => (
-            <Box key={`${task.title} ${task.proof}`} sx={{ pl: 1, minWidth: 0 }}>
-              <Typography variant="body2">
-                {task.title} · {task.status}
-                {task.note ? ` · ${task.note}` : ''}
-                {task.status === 'blocked' ? (
-                  <Button size="small" sx={{ ml: 1 }} onClick={() => onSkip(task.id)}>
-                    Skip task
-                  </Button>
-                ) : null}
-              </Typography>
-              {task.run ? (
-                <Typography variant="caption" color="text.secondary">
-                  {task.run.currentStep} · {money(task.run.usd)} · {duration(task.run.durationMs)} ·{' '}
-                  <Link href={`/runs/${task.run.key}` as Route}>Open run</Link>
-                </Typography>
-              ) : null}
-              <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
-                files: {task.files.join(', ')} · proof: {task.proof}
-              </Typography>
-            </Box>
-          ))}
+          {layer.layer === 0 ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              A stage starts when the stages before it are merged.
+            </Typography>
+          ) : null}
+          <Box component="ul" sx={{ m: 0, p: 0, display: 'grid', gap: 0.5 }}>
+            {layer.tasks.map((task) => (
+              <TaskRow key={`${task.title} ${task.proof}`} task={task} onSkip={onSkip} />
+            ))}
+          </Box>
         </Box>
       ))}
       {mergeQueue?.length ? (
@@ -66,16 +74,7 @@ export function TaskLayers({
           ))}
         </Box>
       ) : null}
-      {decisions ? (
-        <Box component="section" aria-label="Decisions">
-          <Typography variant="caption" color="text.secondary">
-            decisions:
-          </Typography>
-          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-            {decisions}
-          </Typography>
-        </Box>
-      ) : null}
+      {decisions ? <TaskDecisions text={decisions} /> : null}
     </Box>
   );
 }

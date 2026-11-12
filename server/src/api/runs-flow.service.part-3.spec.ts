@@ -112,6 +112,53 @@ describe('runs api', () => {
     }
   });
 
+  it('gives the parent its epic totals and depends on each task', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-epic-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const parent = await runs.begin('proj-epic', 'implement');
+      parent.spentUsd = 1;
+      await runs.saveRun(parent);
+      await documents.putDocument(
+        parent,
+        'requirements',
+        JSON.stringify({ prompt: 'x', plan: { items: ['x'], decision: 'approve' } }),
+      );
+      const task = (id: string, depends: string[]) => ({
+        id,
+        title: id.toUpperCase(),
+        description: '',
+        depends,
+        files: [],
+        proof: '',
+        status: 'waiting',
+      });
+      await documents.putDocument(parent, 'subtasks', JSON.stringify([task('a', []), task('b', ['a'])]));
+      const child = await runs.openSubtask('proj-epic-a', parent.id, 'a');
+      child.spentUsd = 2.5;
+      await runs.saveRun(child);
+      const alone = await runs.begin('proj-alone', 'implement');
+      alone.spentUsd = 4;
+      await runs.saveRun(alone);
+
+      const queries = app.get(RunQueriesService);
+      const flow = await queries.flow('proj-epic');
+      const listed = (await queries.list()).runs;
+
+      expect(flow.epic?.usd).toBe(3.5);
+      expect(flow.epic?.durationMs).toBeGreaterThanOrEqual(0);
+      expect(flow.tasks?.flatMap((layer) => layer.tasks.map((t) => t.depends))).toEqual([[], ['a']]);
+      expect(listed.find((run) => run.key === 'proj-epic')?.epic?.usd).toBe(3.5);
+      expect(listed.find((run) => run.key === 'proj-epic-a')?.epic).toBeUndefined();
+      expect(listed.find((run) => run.key === 'proj-alone')?.epic).toBeUndefined();
+      expect((await queries.flow('proj-alone')).epic).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('opens the subtask of a run for the person who started the parent', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-subtask-owner-'));
     const app = await boot(root);
