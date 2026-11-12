@@ -8,6 +8,9 @@ swarmloop runs coding agents through a fixed flow: requirements, research, plan,
 - The server never runs a project's commands (npm, pip, go…) itself. Project commands run only in the project's image (the agent sandbox and the checks step) and in CI.
 - Vendor code (agent runtimes, code hosts, issue trackers, other providers) goes in its adapter under `server/src/integrations/`, behind the interface of its kind. Do not add a vendor name or a branch on a vendor (`if (runtime === 'claude')`) to code outside its adapter; when the core needs something new from a vendor, add it to the interface and implement it in every adapter.
 - Every failure path ends in a state the flow already handles: a return with the reason, a retry with the reason, or a stop that says what to do. Never leave a run in a state that only a person editing data can fix.
+- A delay or outage of something outside swarmloop (a code host, CI, docker, a model's usage limit) is a wait that shows its next try, never a failure. A person is asked only when such a wait runs out, and the message says what was tried.
+- A new idempotency key names the event it is for (the attempt that died, the outage, the commit), never a counter that other writes move, such as a run's revision.
+- What the dashboard shows of a run comes from that run's own state, live; never from a copy that another run wrote.
 - Never log a secret, put it in a URL, or send it to the browser.
 - Text the dashboard shows is plain words for a person: no raw JSON, no internal ids or class names, each document shown by its kind.
 
@@ -33,6 +36,8 @@ swarmloop runs coding agents through a fixed flow: requirements, research, plan,
 - A test fails when the change is reverted. It checks behavior through the public interface the tree already tests: no private calls, no mock call counts, no large snapshots where one value matters, fake timers instead of sleeping.
 - Test helpers live in `*.spec-helpers.ts`, `server/src/testing/` or `dashboard/test/`. Product code never imports a test library.
 - The golden traces in `server/src/testing/golden/` change only when the task names that behavior change.
+- A test gives the same result on every run and under every seed of `server-test-seeds`: it starts every timer and background pass it depends on itself, and a failure under one seed is a race in the code or the test, to be found.
+- Never loosen an assertion, skip or delete a test, or widen a tolerance to make CI green. Change a test only when the test itself is wrong, and say why in the summary.
 - Database changes are additive migrations in `server/src/history/migrations/`.
 
 ## Checks and CI
@@ -44,6 +49,8 @@ swarmloop runs coding agents through a fixed flow: requirements, research, plan,
 ## Changes
 
 - The smallest change that does the task: no drive-by edits, no renames outside the scope.
+- Fix the cause, not the symptom: a fix that only matches the name, message, id or value seen in the failure, while the same failure under another name still happens, is not a fix.
+- In a subtask of an epic, change only your task's files, the files its own tests need and the shared files the contract names. A red check in code that another task owns, or in a test that also fails on the base, is not yours: name it in your summary and do not change it.
 - A capability (what a screen shows, what a command does, what a step receives, what the server guarantees) changes or goes only when the task names it in `Removes` or `Behavior change` (see `CONTRIBUTING.md`). Any other removed capability is a stop, not a silent change.
 - Code, comments, commit messages and agent output are in English.
 - `docs/` is the maintainer's local folder (git ignores it): never add, change or commit anything there.
