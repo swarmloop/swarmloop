@@ -8,6 +8,10 @@ describe('CodexRuntime', () => {
     expect(runtime.planModeHasPlanTool).toBe(false);
   });
 
+  it('loads AGENTS.md by itself', () => {
+    expect(runtime.ownRuleFiles()).toEqual(['AGENTS.md']);
+  });
+
   it('prefers the subscription file and rejects an empty pair', () => {
     expect(
       runtime.credential({ cursorKey: '', anthropicKey: '', oauthToken: '', codexAuth: 'auth', codexApiKey: 'key' }),

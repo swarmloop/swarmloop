@@ -28,6 +28,7 @@ import { parseReview } from './code-review-record';
 import { fixNotes } from './review-input';
 import { closeReview, recordAngle } from './review-report';
 import type { Finished, Opinion, Reviewer, ReviewDeps, Usage } from './reviewer';
+import { projectRules } from '../shared/project-rules';
 import { decidedOk, REVIEWERS, runJob } from './reviewer';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 
@@ -301,10 +302,10 @@ function reviewJob(reviewer: Reviewer, input: RoundInput) {
     input.subtasks,
     reviewer.name === 'requirements' ? SUBTASK_PROOF_CHECK : undefined,
   );
-  return {
-    reviewer,
-    ...agentFor(input.env, input.opened.run, 'code-review'),
-    prompt: skillPrompt(`code-review/${reviewer.name}`, input.requirements, names, sections, input.mounts),
-    mounts: input.mounts,
-  };
+  const promptFor = (runtime: string): string =>
+    skillPrompt(`code-review/${reviewer.name}`, input.requirements, names, sections, input.mounts, {
+      rules: projectRules(names, input.mounts, runtime, false),
+    });
+  const agent = agentFor(input.env, input.opened.run, 'code-review');
+  return { reviewer, ...agent, prompt: promptFor(agent.runtime), promptFor, mounts: input.mounts };
 }

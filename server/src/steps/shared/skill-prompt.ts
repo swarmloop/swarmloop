@@ -53,11 +53,16 @@ export function plainSummary(text: string): string {
   return lines.map((line) => (line.startsWith('- ') ? line : `- ${line}`)).join('\n');
 }
 
+/** The name a prompt gives a mounted repository. */
+export function mountLabel(names: string[], mount: SandboxMount, index: number): string {
+  return mount.containerPath.startsWith('/work/')
+    ? mount.containerPath.slice('/work/'.length)
+    : (names[index] ?? names[0] ?? 'work');
+}
+
 export function workingDirectoryBlock(names: string[], mounts: SandboxMount[]): string {
   const labeled = mounts.map((mount, index) => ({
-    name: mount.containerPath.startsWith('/work/')
-      ? mount.containerPath.slice('/work/'.length)
-      : (names[index] ?? names[0] ?? 'work'),
+    name: mountLabel(names, mount, index),
     path: mount.containerPath,
     state: sourceState(mount.hostPath),
   }));
@@ -123,7 +128,12 @@ export function skillPrompt(
   names: string[],
   sections: { heading: string; body: string }[] = [],
   mounts: SandboxMount[] = [],
-  options: { deferExecutionRules?: boolean; split?: boolean; planTool?: boolean } = {},
+  options: {
+    deferExecutionRules?: boolean;
+    split?: boolean;
+    planTool?: boolean;
+    rules?: { heading: string; body: string }[];
+  } = {},
 ): string {
   const file = join(__dirname, '../../../../skills', skill, 'SKILL.md');
   let text = '';
@@ -139,7 +149,17 @@ export function skillPrompt(
   // The `## Split` section of a skill is for a run that may split. Any other run reads the text before it.
   const body = options.split ? text : (text.split(/^## Split$/m)[0] ?? text);
   const executionRule = options.deferExecutionRules ? '' : LOCAL_RUN_RULE;
-  const parts = [where, '', executionRule, '', body.trimEnd(), '', 'Requirements:', requirementsBrief(requirements)];
+  const parts = [
+    where,
+    '',
+    executionRule,
+    '',
+    body.trimEnd(),
+    '',
+    ...(options.rules ?? []).flatMap((rule) => [`${rule.heading}:`, rule.body.trimEnd(), '']),
+    'Requirements:',
+    requirementsBrief(requirements),
+  ];
   for (const section of sections) {
     parts.push('', `${section.heading}:`, section.body.trimEnd());
   }
