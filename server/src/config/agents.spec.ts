@@ -5,6 +5,7 @@ import {
   agentsFor,
   assertAgents,
   availableAgent,
+  knownModels,
   parseAgentList,
   ROLE_OF_STEP,
   roleOf,
@@ -101,6 +102,42 @@ describe('agentFor', () => {
   });
 });
 
+describe('agentFor with a stored choice', () => {
+  const env = testEnv({ AGENTS_PLAN: 'cursor:env-plan', AGENTS_SUBTASK_PLAN: 'cursor:env-sub-plan' });
+  const agents = {
+    main: {
+      plan: [
+        { runtime: 'claude', model: 'mine' },
+        { runtime: 'codex', model: 'next' },
+      ],
+    },
+    subtask: { plan: [{ runtime: 'codex', model: 'sub-mine' }] },
+  };
+
+  it('uses the stored list before env and keeps its order', () => {
+    expect(agentFor(env, { agents }, 'plan')).toEqual({ runtime: 'claude', model: 'mine' });
+    expect(agentsFor(env, { agents }, 'plan').map((agent) => agent.model)).toEqual(['mine', 'next']);
+  });
+
+  it('never feeds the main list to a subtask, which uses its own tier', () => {
+    expect(agentFor(env, { parentRunId: 3, agents: { main: agents.main } }, 'plan')).toEqual({
+      runtime: 'cursor',
+      model: 'env-sub-plan',
+    });
+    expect(agentFor(env, { parentRunId: 3, agents }, 'plan')).toEqual({ runtime: 'codex', model: 'sub-mine' });
+  });
+
+  it('uses env for a role the choice does not name, and when there is no choice', () => {
+    expect(agentFor(env, { agents }, 'implement')).toEqual(agentFor(env, null, 'implement'));
+    expect(agentFor(env, { agents: null }, 'plan')).toEqual({ runtime: 'cursor', model: 'env-plan' });
+  });
+
+  it('skips a stored runtime that is no longer known', () => {
+    const stale = { main: { plan: [{ runtime: 'gemini', model: 'g' }] } };
+    expect(agentFor(env, { agents: stale }, 'plan')).toEqual({ runtime: 'cursor', model: 'env-plan' });
+  });
+});
+
 describe('availableAgent', () => {
   const env = testEnv({
     AGENTS_REVIEW: 'claude:review-m,codex:gpt-6.1-sol,cursor:grok-4.7-high',
@@ -160,5 +197,24 @@ describe('the runtimes in use and the start-up check', () => {
     expect(() => assertAgents({ ...testEnv({ AGENTS_SUBTASK_REVIEW: 'cursor:' }), ...KEYS })).toThrow(
       /AGENTS_SUBTASK_REVIEW.*empty model/,
     );
+  });
+});
+
+describe('the models env knows', () => {
+  it('lists the short form models under RUNTIME', () => {
+    expect(knownModels(testEnv({ RUNTIME: 'claude', MODEL_PLAN: 'p', MODEL_IMPLEMENT: 'i' }))).toEqual({
+      claude: ['p', 'i'],
+    });
+  });
+
+  it('adds the role lists in order, with no duplicates, and keeps the short form models', () => {
+    const env = testEnv({
+      RUNTIME: 'cursor',
+      MODEL_PLAN: 'p',
+      MODEL_IMPLEMENT: 'i',
+      AGENTS_PLAN: 'claude:a,codex:b,claude:a',
+      AGENTS_SUBTASK_REVIEW: 'claude:c',
+    });
+    expect(knownModels(env)).toEqual({ claude: ['a', 'c'], codex: ['b'], cursor: ['i', 'p'] });
   });
 });

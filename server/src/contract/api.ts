@@ -356,13 +356,15 @@ export interface RemoteListView {
 export interface ConnectionView {
   host: 'github' | 'gitlab';
   /** The GitHub App or the OAuth application, by name and client id. Null when none is set up. */
-  app: { name: string; clientId: string } | null;
+  app: { name: string; clientId: string; madeBy?: string | null; settingsUrl?: string | null } | null;
   /** The login of the person, or null when they are not connected on this host. */
   account: string | null;
   /** `owner/name` of the repositories the installation covers. */
   repositories: string[];
   selection: 'all' | 'selected' | null;
   health: { status: 'ok' | 'broken'; expiresAt: string | null; refreshedAt: string | null } | null;
+  /** Owners of the repositories this server works on that the installation does not cover. */
+  missingOwners?: string[];
 }
 
 export interface ConnectionsView {
@@ -509,4 +511,31 @@ export interface StatsView {
   returnsPerRun: { returns: string; runs: number }[];
   /** Every run of the range, newest first. */
   runs: StatsRun[];
+}
+
+/** One runtime and model, as stored for a person and on a run. */
+interface StoredAgent {
+  runtime: string;
+  model: string;
+}
+
+type StoredRoleLists = Partial<Record<'plan' | 'implement' | 'review', StoredAgent[]>>;
+
+/** Ordered agent lists per tier and role. A list that is absent is the server default. */
+export interface StoredAgents {
+  main?: StoredRoleLists;
+  subtask?: StoredRoleLists;
+}
+
+/** What a person sets for their own runs. A key that is absent is "Use server default". */
+export interface SettingsBody {
+  agents?: StoredAgents;
+  split?: boolean;
+}
+
+/** `/auth/me`: who is signed in. */
+export interface MeView {
+  user: string | null;
+  provider?: string;
+  avatarUrl?: string | null;
 }

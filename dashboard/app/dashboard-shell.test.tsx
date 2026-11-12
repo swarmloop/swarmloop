@@ -59,8 +59,9 @@ describe('Shell', () => {
     vi.mocked(getSession).mockResolvedValue({ user: 'octocat' });
     renderShell();
 
-    expect(await screen.findByText('octocat')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Logout' })).toBeInTheDocument();
+    await userEvent.setup().click(await screen.findByRole('button', { name: /octocat/ }));
+
+    expect(screen.getByRole('menuitem', { name: 'Log out' })).toBeInTheDocument();
   });
 
   it('draws no shell on the login page', async () => {

@@ -2,13 +2,15 @@ import { BadRequestException, ConflictException, Inject, Injectable } from '@nes
 import { Clock } from '../core/clock';
 import { AppConfig } from '../config/env';
 import { assertWorkPath } from './work-path';
+import { phaseNames, projectNames } from './run-input';
+import type { StoredAgents } from '../contract/api';
 import { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { assertKey, isStep, nextSessionKey, normalizePhases, ticketKey } from '../core/pipeline-result';
+import { assertKey, isStep, nextSessionKey, ticketKey } from '../core/pipeline-result';
 import { parseSubtasks, SUBTASKS_KIND, type Subtask } from '../contract/subtask';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { SubtaskPort } from '../pipeline/subtask-port';
@@ -19,7 +21,7 @@ import { requirementsBrief } from '../steps/shared/requirements-brief';
 import { PhaseName, pipelineStepOf, reviewerOf, STEPS } from '../contract/steps';
 import { REASON, STOP_NOTE } from '../contract/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
-import { CHECKOUT_NAME, storedProjects } from '../config/checkout-path';
+import { storedProjects } from '../config/checkout-path';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -52,6 +54,8 @@ export interface StartPlan {
   parentRunId?: number;
   taskId?: string;
   startedBy?: string | null;
+  /** The parent's stored agents, copied to its subtask. */
+  agents?: StoredAgents | null;
   /** The planner may split the run into subtasks. Never set for a subtask. */
   split?: boolean;
 }
@@ -96,13 +100,13 @@ export class RunCommandsService {
   }
 
   /** The checks of a new run, and the session it opens. Nothing is written. */
-  async plan(body: CreateRunBody): Promise<StartPlan> {
+  async plan(body: CreateRunBody, split?: boolean): Promise<StartPlan> {
     const prompt = body.prompt?.trim() || undefined;
     const given = body.key?.trim() ?? '';
     if (!given && !prompt) {
       throw new BadRequestException('prompt is missing');
     }
-    const phases = this.phases(body.phases);
+    const phases = phaseNames(body.phases);
     let key = given || (await this.tracker.ticketKeys(prompt ?? ''))[0] || `run-${this.clock.now().toString(36)}`;
     try {
       assertKey(key);
@@ -120,17 +124,23 @@ export class RunCommandsService {
       throw new BadRequestException('prompt is missing');
     }
     const projects =
-      storedProjects(existing?.projects).length > 0
-        ? storedProjects(existing?.projects)
-        : this.projectNames(body.projects);
+      storedProjects(existing?.projects).length > 0 ? storedProjects(existing?.projects) : projectNames(body.projects);
     if (!path && projects.length === 0) {
       throw new BadRequestException('projects is missing');
     }
-    return { key, prompt, path, phases, phasesGiven: body.phases !== undefined, projects, split: this.splits(body) };
+    return {
+      key,
+      prompt,
+      path,
+      phases,
+      phasesGiven: body.phases !== undefined,
+      projects,
+      split: this.splits(body, split),
+    };
   }
 
-  async start(body: CreateRunBody): Promise<RunRef> {
-    return this.startPlanned(await this.plan(body));
+  async start(body: CreateRunBody, split?: boolean): Promise<RunRef> {
+    return this.startPlanned(await this.plan(body, split));
   }
 
   /** The prompt of a subtask: its task, the parent brief, and the feature branch it starts from. */
@@ -158,7 +168,7 @@ export class RunCommandsService {
       return { key: existing.key, status: existing.status === 'done' ? 'done' : 'started' };
     }
     const plan = await this.subtaskPlan(parent, task);
-    const link = { parentRunId: parent.id, taskId: task.id, startedBy: parent.startedBy };
+    const link = { parentRunId: parent.id, taskId: task.id, startedBy: parent.startedBy, agents: parent.agents };
     return this.startPlanned({ ...plan, split: false, ...link });
   }
 
@@ -169,7 +179,7 @@ export class RunCommandsService {
       return existing;
     }
     const plan = await this.subtaskPlan(parent, task);
-    const run = await this.runs.openSubtask(plan.key, parent.id, task.id, parent.startedBy);
+    const run = await this.runs.openSubtask(plan.key, parent.id, task.id, parent.startedBy, parent.agents);
     await this.flows.noteFlow(plan.key, plan.phases, null);
     return run;
   }
@@ -184,7 +194,7 @@ export class RunCommandsService {
     const result = await this.pipeline.startDetached(run.key, {
       prompt,
       projects: storedProjects(parent.projects),
-      phases: this.phases(),
+      phases: phaseNames(),
     });
     if (!result.message.includes('already running')) {
       this.demandStart(result);
@@ -197,7 +207,13 @@ export class RunCommandsService {
     const existing = plan.created ? null : await this.runs.findRun(key);
     if (!existing && plan.parentRunId !== undefined) {
       // The row only links the subtask to its parent; the run still starts as a new one.
-      await this.runs.openSubtask(key, plan.parentRunId, plan.taskId ?? '', plan.startedBy ?? null);
+      await this.runs.openSubtask(
+        key,
+        plan.parentRunId,
+        plan.taskId ?? '',
+        plan.startedBy ?? null,
+        plan.agents ?? null,
+      );
     } else if (!existing && plan.split && !path) {
       await this.runs.openSplit(key);
     }
@@ -272,7 +288,7 @@ export class RunCommandsService {
     }
     await this.runs.bumpGeneration(key);
     if (phases !== undefined) {
-      await this.flows.noteFlow(key, this.phases(phases), name);
+      await this.flows.noteFlow(key, phaseNames(phases), name);
     }
     return this.accepted(key, await this.pipeline.replay(key, name, text));
   }
@@ -385,27 +401,9 @@ export class RunCommandsService {
     return { key: session, run: await this.runs.findRun(session) };
   }
 
-  /** A subtask never splits. A new run follows its checkbox, then the `SPLIT` default. */
-  private splits(body: CreateRunBody): boolean {
-    return body.split ?? this.config.env.SPLIT === 'auto';
-  }
-
-  private phases(input?: string[]): PhaseName[] {
-    try {
-      return normalizePhases(input);
-    } catch (error) {
-      throw new BadRequestException(error instanceof Error ? error.message : 'phases are invalid');
-    }
-  }
-
-  private projectNames(input?: string[]): string[] {
-    const names = [...new Set((input ?? []).map((name) => name.trim()).filter((name) => name.length > 0))].sort();
-    for (const name of names) {
-      if (name.startsWith('.') || name.startsWith('run-') || !CHECKOUT_NAME.test(name)) {
-        throw new BadRequestException(`${name} is not a project`);
-      }
-    }
-    return names;
+  /** A subtask never splits. A new run follows its checkbox, then the starter's own setting, then the `SPLIT` default. */
+  private splits(body: CreateRunBody, personal?: boolean): boolean {
+    return body.split ?? personal ?? this.config.env.SPLIT === 'auto';
   }
 
   private async rememberPrompt(key: string, prompt: string): Promise<void> {

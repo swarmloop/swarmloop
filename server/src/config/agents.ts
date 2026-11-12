@@ -1,3 +1,4 @@
+import type { StoredAgents } from '../contract/api';
 import type { CODE_REVIEWERS, StepName } from '../contract/steps';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
@@ -30,7 +31,7 @@ interface AgentEnv {
 }
 
 /** What `agentFor` reads of a run: only a run with a parent is a subtask. */
-type AgentRun = object & { parentRunId?: number | null };
+type AgentRun = object & { parentRunId?: number | null; agents?: StoredAgents | null };
 
 /** Everything that launches or prices an agent: the steps of a run, and the work done outside the pipeline. */
 type AgentUse =
@@ -96,8 +97,27 @@ const LISTS: Record<Tier, Record<Role, keyof AgentEnv>> = {
   subtask: { plan: 'AGENTS_SUBTASK_PLAN', implement: 'AGENTS_SUBTASK_IMPLEMENT', review: 'AGENTS_SUBTASK_REVIEW' },
 };
 
-/** The agents of one role in one tier, in fallback order. An unset list falls back to the main role, then to the short form. */
-function agentsOf(env: AgentEnv, role: Role, tier: Tier = 'main'): Agent[] {
+/** The run's stored choice for one role and tier. An entry whose runtime is unknown is dropped. */
+function storedAgents(run: AgentRun | null | undefined, role: Role, tier: Tier): Agent[] {
+  const agents: Agent[] = [];
+  for (const { runtime, model } of run?.agents?.[tier]?.[role] ?? []) {
+    const known = RUNTIME_NAMES.find((candidate) => candidate === runtime);
+    if (known) {
+      agents.push({ runtime: known, model });
+    }
+  }
+  return agents;
+}
+
+/**
+ * The agents of one role in one tier, in fallback order. The run's stored choice comes first; else an unset list
+ * falls back to the main role, then to the short form.
+ */
+function agentsOf(env: AgentEnv, role: Role, tier: Tier = 'main', run?: AgentRun | null): Agent[] {
+  const stored = storedAgents(run, role, tier);
+  if (stored.length > 0) {
+    return stored;
+  }
   for (const candidate of tier === 'subtask' ? [tier, 'main' as const] : [tier]) {
     const name = LISTS[candidate][role];
     if (env[name] !== '') {
@@ -112,13 +132,13 @@ export function agentFor(env: AgentEnv, run: AgentRun | null, step: AgentUseName
 export function agentFor(env: AgentEnv, run: AgentRun | null, step: string): Agent | null;
 export function agentFor(env: AgentEnv, run: AgentRun | null, step: string): Agent | null {
   const role = roleFor(step);
-  return role ? agentsOf(env, role, tierOf(run))[0] : null;
+  return role ? agentsOf(env, role, tierOf(run), run)[0] : null;
 }
 
 /** Every agent of a step's role and tier, in fallback order. Empty for a step without an agent. */
 export function agentsFor(env: AgentEnv, run: AgentRun | null, step: string): Agent[] {
   const role = roleFor(step);
-  return role ? agentsOf(env, role, tierOf(run)) : [];
+  return role ? agentsOf(env, role, tierOf(run), run) : [];
 }
 
 /**
@@ -144,10 +164,27 @@ export function roleOf(run: AgentRun | null, step: string): { role: Role; tier: 
   return role ? { role, tier: tierOf(run) } : null;
 }
 
-/** Every distinct runtime named in any role of any tier. */
+/** Every distinct runtime named in any role of any tier of the server defaults (env). */
 export function runtimesInUse(env: AgentEnv): RuntimeName[] {
   const all = TIERS.flatMap((tier) => ROLES.flatMap((role) => agentsOf(env, role, tier)));
   return [...new Set(all.map((agent) => agent.runtime))];
+}
+
+/** The models env names for each runtime, once each, in env order: the role lists and the two short-form models. */
+export function knownModels(env: AgentEnv): Partial<Record<RuntimeName, string[]>> {
+  const named = [
+    ...TIERS.flatMap((tier) => ROLES.flatMap((role) => agentsOf(env, role, tier))),
+    { runtime: env.RUNTIME, model: env.MODEL_PLAN },
+    { runtime: env.RUNTIME, model: env.MODEL_IMPLEMENT },
+  ];
+  const models: Partial<Record<RuntimeName, string[]>> = {};
+  for (const { runtime, model } of named) {
+    const list = (models[runtime] ??= []);
+    if (!list.includes(model)) {
+      list.push(model);
+    }
+  }
+  return models;
 }
 
 interface CredentialEnv {

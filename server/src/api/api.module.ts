@@ -15,6 +15,8 @@ import { CheckoutsController } from './checkouts.controller';
 import { HealthController } from './health.controller';
 import { ReadinessController } from './readiness.controller';
 import { RunsController } from './runs.controller';
+import { SettingsController } from './settings.controller';
+import { SettingsService } from './settings.service';
 import { StatsController } from './stats.controller';
 import { SubtaskClose } from './subtask-close';
 import { RunCommandsService } from './run-commands.service';
@@ -32,7 +34,14 @@ import { RunRebaseService } from './run-rebase.service';
     SandboxModule,
     ReadinessModule,
   ],
-  controllers: [HealthController, ReadinessController, RunsController, CheckoutsController, StatsController],
+  controllers: [
+    HealthController,
+    ReadinessController,
+    RunsController,
+    CheckoutsController,
+    StatsController,
+    SettingsController,
+  ],
   providers: [
     RunQueriesService,
     RunCommandsService,
@@ -40,6 +49,7 @@ import { RunRebaseService } from './run-rebase.service';
     RunRebaseService,
     ChatService,
     ShellService,
+    SettingsService,
     CommandHandlers,
     LiveGateway,
   ],

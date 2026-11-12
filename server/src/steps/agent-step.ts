@@ -111,7 +111,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
   }
 
   /** The runtime, model, mode, time limit and session policy of this step, known before it runs. */
-  protected abstract profile(env: SwarmloopEnv): AgentProfile;
+  protected abstract profile(env: SwarmloopEnv, run?: RunEntity | null): AgentProfile;
 
   /**
    * The model body. Its documents are `outputs`, then the `handoff`, then the ones in `visit.documents`;
@@ -141,7 +141,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     const run: ModelRun = {
       key: opened.run.key,
       opened,
-      profile: this.profile(env),
+      profile: this.profile(env, opened.run),
       auto: options.auto,
       workspace: join(root(this.config), 'worktrees', opened.run.key),
       prompt: '',
@@ -197,7 +197,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
 
   /** Before `work` ran, the visit still names the model and mode, with no samples. */
   protected override failureVisit(opened: OpenedStep): Partial<VisitDraft> {
-    const { mode, runtime, model } = this.profile(this.config.env);
+    const { mode, runtime, model } = this.profile(this.config.env, opened.run);
     return modelVisit({
       opened,
       now: this.clock.now(),

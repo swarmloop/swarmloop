@@ -15,7 +15,8 @@ import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import type { ConnectionView } from '@contract/api';
-import { disconnect, getConnections, installMore, reconnectUrl } from '../../lib/endpoints';
+import { disconnect, getConnections, getSession, installMore, reconnectUrl, replaceApp } from '../../lib/endpoints';
+import { FirstRun } from './first-run';
 import { localTime } from '../../lib/format';
 
 const NAMES = { github: 'GitHub', gitlab: 'GitLab' } as const;
@@ -25,10 +26,15 @@ export function ConnectionsPage(): ReactElement {
   const [connections, setConnections] = useState<ConnectionView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [asking, setAsking] = useState<ConnectionView | null>(null);
+  const [replacing, setReplacing] = useState<ConnectionView | null>(null);
+  const [login, setLogin] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    getConnections().then(
-      (view) => setConnections(view.connections),
+    Promise.all([getConnections(), getSession()]).then(
+      ([view, me]) => {
+        setConnections(view.connections);
+        setLogin(me.user);
+      },
       (cause: unknown) => setError(cause instanceof Error ? cause.message : 'connections could not be read'),
     );
   }, []);
@@ -56,6 +62,16 @@ export function ConnectionsPage(): ReactElement {
     }
   }
 
+  async function confirmReplace(): Promise<void> {
+    setReplacing(null);
+    try {
+      await replaceApp();
+      load();
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'the app could not be replaced');
+    }
+  }
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 900 }}>
       <Box>
@@ -67,14 +83,45 @@ export function ConnectionsPage(): ReactElement {
         </Typography>
       </Box>
       {error ? <Alert severity="error">{error}</Alert> : null}
-      {(connections ?? []).map((connection) => (
-        <HostCard
-          key={connection.host}
-          connection={connection}
-          onInstall={() => void addRepositories(connection.host)}
-          onDisconnect={() => setAsking(connection)}
-        />
-      ))}
+      {(connections ?? []).map((connection) =>
+        connection.host === 'github' && connection.app === null ? (
+          <FirstRun key={connection.host} />
+        ) : (
+          <HostCard
+            key={connection.host}
+            connection={connection}
+            login={login}
+            onReplace={() => setReplacing(connection)}
+            onInstall={() => void addRepositories(connection.host)}
+            onDisconnect={() => setAsking(connection)}
+          />
+        ),
+      )}
+      <Dialog open={replacing !== null} onClose={() => setReplacing(null)} aria-labelledby="replace-title">
+        <DialogTitle id="replace-title">Replace {replacing?.app?.name}?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            The app is forgotten here and the first-run form opens again. The app on GitHub stays
+            {replacing?.app?.settingsUrl ? (
+              <>
+                {' '}
+                (delete it in its{' '}
+                <Link href={replacing.app.settingsUrl} target="_blank" rel="noopener noreferrer">
+                  GitHub settings
+                </Link>
+                )
+              </>
+            ) : null}
+            .
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReplacing(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={() => void confirmReplace()}>
+            Replace app
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={asking !== null} onClose={() => setAsking(null)} aria-labelledby="disconnect-title">
         <DialogTitle id="disconnect-title">Disconnect {asking ? NAMES[asking.host] : ''}?</DialogTitle>
         <DialogContent>
@@ -93,15 +140,20 @@ export function ConnectionsPage(): ReactElement {
 
 function HostCard({
   connection,
+  login,
+  onReplace,
   onInstall,
   onDisconnect,
 }: {
   connection: ConnectionView;
+  login: string | null;
+  onReplace: () => void;
   onInstall: () => void;
   onDisconnect: () => void;
 }): ReactElement {
   const name = NAMES[connection.host];
   const { health } = connection;
+  const maker = login !== null && connection.app?.madeBy === login;
   return (
     <Paper
       variant="outlined"
@@ -128,11 +180,24 @@ function HostCard({
           ? `${connection.host === 'github' ? 'App' : 'Application'} ${connection.app.name} · ${connection.app.clientId}`
           : 'No app or application is set up yet.'}
       </Typography>
+      {connection.missingOwners?.length ? (
+        <Alert severity="warning">
+          The installation covers none of this server's repositories. Missing owners:{' '}
+          {connection.missingOwners.join(', ')}. Use Install on more repositories.
+        </Alert>
+      ) : null}
       {connection.account ? <Typography>Signed in as {connection.account}</Typography> : null}
       {health ? (
         <Typography variant="body2" color="text.secondary">
           {health.expiresAt ? `Token expires ${localTime(health.expiresAt)}` : 'Token does not expire'}
           {health.refreshedAt ? ` · refreshed ${localTime(health.refreshedAt)}` : ''}
+        </Typography>
+      ) : null}
+      {connection.host === 'github' && connection.app && !maker ? (
+        <Typography variant="body2" color="text.secondary">
+          {connection.app.madeBy
+            ? `Only ${connection.app.madeBy} can replace this app`
+            : 'Only the person who made this app can replace it, and it has no recorded maker'}
         </Typography>
       ) : null}
       {connection.host === 'github' && connection.account ? (
@@ -162,6 +227,11 @@ function HostCard({
         {connection.app ? (
           <Button variant="outlined" size="small" component={Link} href={reconnectUrl(connection.host)}>
             {connection.account ? 'Reconnect' : `Connect ${name}`}
+          </Button>
+        ) : null}
+        {connection.host === 'github' && connection.app ? (
+          <Button variant="outlined" size="small" disabled={!maker} onClick={onReplace}>
+            Replace app
           </Button>
         ) : null}
         {connection.account ? (

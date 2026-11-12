@@ -23,7 +23,6 @@ export function ThemeModeSwitch(): React.ReactElement | null {
           setMode(value);
         }
       }}
-      sx={{ mr: 2 }}
     >
       <ToggleButton value="light" aria-label="light">
         <LightMode fontSize="small" />

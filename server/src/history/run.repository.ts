@@ -1,4 +1,5 @@
 import { agentFor } from '../config/agents';
+import type { StoredAgents } from '../contract/api';
 import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -87,13 +88,18 @@ export class RunRepository {
   }
 
   /** A waiting run row that is not stored yet. */
-  newWaitingRun(key: string, targetPath: string | null, startedBy: string | null = null): RunEntity {
+  newWaitingRun(
+    key: string,
+    targetPath: string | null,
+    startedBy: string | null = null,
+    agents: StoredAgents | null = null,
+  ): RunEntity {
     const env = this.config.env;
     const now = this.clock.iso();
     const created = this.runs.create({
       key,
       ...stateColumns({ currentStep: 'requirements', ownerInstance: null, activeAttempt: null }, { status: 'waiting' }),
-      runtime: agentFor(env, null, 'implement').runtime,
+      runtime: agentFor(env, { agents }, 'implement').runtime,
       requirementsVia: env.REQUIREMENTS_VIA,
       issueTracker: env.ISSUE_TRACKER,
       codeHost: '',
@@ -103,6 +109,7 @@ export class RunRepository {
       attemptsChecks: 0,
       agentCalls: 0,
       spentUsd: 0,
+      agents,
       targetPath,
       projects: null,
       prompt: null,
@@ -123,8 +130,11 @@ export class RunRepository {
     parentRunId: number,
     taskId: string,
     startedBy: string | null = null,
+    agents: StoredAgents | null = null,
   ): Promise<RunEntity> {
-    return this.saveRun(Object.assign(this.newWaitingRun(key, null, startedBy), { parentRunId, taskId }));
+    const run = Object.assign(this.newWaitingRun(key, null, startedBy, agents), { parentRunId, taskId });
+    run.runtime = agentFor(this.config.env, run, 'implement').runtime;
+    return this.saveRun(run);
   }
 
   /** The run row of a split run. The command door may have made it already: then it is marked split. */
@@ -152,7 +162,7 @@ export class RunRepository {
       if (this.held(existing)) {
         break;
       }
-      const runtime = agentFor(this.config.env, null, 'implement').runtime;
+      const runtime = agentFor(this.config.env, existing, 'implement').runtime;
       const now = this.clock.iso();
       const claimed = await this.runs
         .createQueryBuilder()
