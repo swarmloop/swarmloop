@@ -1,3 +1,6 @@
+/** The loop counter of the history lines the merge watch writes. They are not returns of a step. */
+export const MERGE_WATCH_COUNTER = 'merge-watch';
+
 /** What `EventRepository.recordLoop` stores in `detail`. */
 interface LoopDetail {
   /** The failed commands of a checks return. */

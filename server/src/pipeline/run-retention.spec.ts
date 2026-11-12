@@ -1,10 +1,14 @@
 import 'reflect-metadata';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
+import { DocumentRepository } from '../history/document.repository';
 import { RunEntity } from '../history/entities';
+import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
+import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { checkOutputPath } from '../core/check-output';
+import { MergeWatch } from './merge-watch';
 import { RunRetention } from './run-retention';
 import { ageRun, clean, freshRun, leaveFiles, makeWorld, seedRun, type World } from './workspace.spec-helpers';
 import { git } from '../steps/prepare/prepare.step.spec-helpers';
@@ -116,6 +120,33 @@ describe('RunRetention', () => {
       expect((await freshRun(world)).workspace).toBe('removed');
     },
   );
+
+  it('frees the worktree of a stopped run whose merge request was merged, after the merge watch made it done', async () => {
+    world = await makeWorld('PROJ-15');
+    await age(world, 0, 'failed');
+    const table = world.app.get<Repository<RunEntity>>(getRepositoryToken(RunEntity));
+    await table.update({ key: 'PROJ-15' }, { codeHost: 'github' });
+    const record = {
+      project: 'acme/demo',
+      iid: 1,
+      url: 'https://github.com/acme/demo/pull/1',
+      draft: false,
+      summary: '',
+    };
+    await world.app
+      .get(DocumentRepository)
+      .putDocument(await freshRun(world), 'merge_request', renderMergeRequest([record]));
+    jest
+      .spyOn(world.app.get(MergeRequestLookup), 'state')
+      .mockResolvedValue({ state: 'merged', sha: 'abc', by: 'queue', at: '2026-05-01T10:00:00Z', httpCalls: [] });
+
+    await world.app.get(MergeWatch).run();
+
+    expect(await world.app.get(RunRetention).apply(3)).toEqual(['PROJ-15']);
+    expect(existsSync(world.worktree)).toBe(false);
+    const run = await freshRun(world);
+    expect([run.status, run.state, run.workspace]).toEqual(['done', 'merged', 'removed']);
+  });
 
   it('keeps everything of a done run that is not merged and younger than the threshold', async () => {
     world = await makeWorld('PROJ-13');

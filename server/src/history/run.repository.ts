@@ -2,7 +2,7 @@ import { agentFor } from '../config/agents';
 import type { StoredAgents } from '../contract/api';
 import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
 import { randomUUID } from 'crypto';
 import { Clock } from '../core/clock';
@@ -278,6 +278,10 @@ export class RunRepository {
 
   async listRuns(): Promise<RunEntity[]> {
     return this.runs.find({ order: { createdAt: 'DESC', id: 'DESC' } });
+  }
+
+  async findRuns(where: FindOptionsWhere<RunEntity>): Promise<RunEntity[]> {
+    return this.runs.find({ where, order: { createdAt: 'DESC', id: 'DESC' } });
   }
 
   /** Drop this run's rows and the files swarmloop stored for it. Worktrees stay with prepare. */
