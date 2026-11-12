@@ -4,6 +4,10 @@ describe('CursorRuntime', () => {
   const runtime = new CursorRuntime();
   const mounts = [{ containerPath: '/work/demo' }];
 
+  it('loads AGENTS.md and CLAUDE.md by itself', () => {
+    expect(runtime.ownRuleFiles()).toEqual(['AGENTS.md', 'CLAUDE.md']);
+  });
+
   it('prints plan mode and agent mode with resume and mcp approval', () => {
     expect(
       runtime.printArgs({

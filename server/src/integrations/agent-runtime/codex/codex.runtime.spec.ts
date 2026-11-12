@@ -4,6 +4,10 @@ describe('CodexRuntime', () => {
   const runtime = new CodexRuntime();
   const mounts = [{ containerPath: '/work/demo' }];
 
+  it('loads AGENTS.md by itself', () => {
+    expect(runtime.ownRuleFiles()).toEqual(['AGENTS.md']);
+  });
+
   it('prefers the subscription file and rejects an empty pair', () => {
     expect(
       runtime.credential({ cursorKey: '', anthropicKey: '', oauthToken: '', codexAuth: 'auth', codexApiKey: 'key' }),

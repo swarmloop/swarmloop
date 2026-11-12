@@ -39,6 +39,11 @@ export class CodexRuntime extends AbstractAgentRuntime {
     };
   }
 
+  // Codex 0.167.0 loads AGENTS.md: https://developers.openai.com/codex/guides/agents-md
+  ownRuleFiles(): readonly string[] {
+    return ['AGENTS.md'];
+  }
+
   briefArgs(): string[] {
     return ['--add-dir', '/work/brief'];
   }

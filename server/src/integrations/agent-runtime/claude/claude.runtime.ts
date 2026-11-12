@@ -75,6 +75,11 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
     };
   }
 
+  // Claude Code 2.1.319 loads CLAUDE.md only: https://code.claude.com/docs/en/memory
+  ownRuleFiles(): readonly string[] {
+    return ['CLAUDE.md'];
+  }
+
   briefArgs(): string[] {
     return ['--add-dir', '/work/brief'];
   }

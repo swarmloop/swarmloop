@@ -19,6 +19,11 @@ export class CursorRuntime extends AbstractAgentRuntime {
     return { name: 'CURSOR_API_KEY', value: keys.cursorKey };
   }
 
+  // Cursor CLI 2025.11.25 loads AGENTS.md and CLAUDE.md: https://cursor.com/docs/cli/using#rules
+  ownRuleFiles(): readonly string[] {
+    return ['AGENTS.md', 'CLAUDE.md'];
+  }
+
   briefArgs(): string[] {
     return ['--add-dir', '/work/brief'];
   }
