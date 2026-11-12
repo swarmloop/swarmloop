@@ -191,7 +191,7 @@
     "currentStep": "checks",
     "runtime": "cursor",
     "spentUsd": 0,
-    "status": "waiting"
+    "status": "blocked"
   },
   "visits": [
     {

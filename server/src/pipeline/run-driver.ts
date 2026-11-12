@@ -3,6 +3,7 @@ import type { AppConfig } from '../config/env';
 import { overSpend } from '../agent/limits';
 import type { RunStop } from '../agent/run-stop';
 import type { DocumentRepository } from '../history/document.repository';
+import type { RunEntity } from '../history/entities';
 import type { RunRepository } from '../history/run.repository';
 import type { VisitRepository } from '../history/visit.repository';
 import type { Clock } from '../core/clock';
@@ -19,6 +20,8 @@ import {
   loopMark,
   settle,
 } from '../core/pipeline-result';
+import { ERROR_CODES } from '../contract/error-codes';
+import { REASON } from '../contract/run-state';
 import type { StepName } from '../contract/steps';
 import { STEPS } from '../contract/steps';
 import { root } from '../history/run-paths';
@@ -116,6 +119,14 @@ export class RunDriver {
       const visits = next ? countedVisits(stats, next, mark) : 0;
       const following = autoContinues(step, run, visits, env.MAX_RETURNS);
       if (!following) {
+        if (next && run) {
+          await this.block(
+            run,
+            next,
+            REASON.loopLimit,
+            `${next} ran ${visits} times (MAX_RETURNS); Resume starts another round`,
+          );
+        }
         return result;
       }
       step = following;
@@ -136,7 +147,27 @@ export class RunDriver {
     }
     const message = `${key} is over the spend limit. ${step} was not started`;
     await this.documents.putDocument(existing, 'spend', `${message}\n`);
+    if (existing.status !== 'done') {
+      const spent = existing.spentUsd.toFixed(2);
+      const limit = this.config.env.MAX_RUN_USD.toFixed(2);
+      await this.block(
+        existing,
+        step,
+        ERROR_CODES.SPEND_LIMIT,
+        `spent $${spent} of MAX_RUN_USD $${limit}; raise MAX_RUN_USD, then Resume`,
+      );
+    }
     return message;
+  }
+
+  /** Releases the run blocked on a step, with the reason a person reads. */
+  private async block(run: RunEntity, step: StepName, code: string, message: string): Promise<void> {
+    await this.runs.release(run, {
+      status: 'blocked',
+      currentStep: step,
+      reason: { code, message },
+      stepStartedAt: null,
+    });
   }
 
   /** Why a step may not start: the spend limit first, then a workspace or disk that cannot be made ready. */
@@ -162,12 +193,7 @@ export class RunDriver {
       if (!block) {
         throw error;
       }
-      await this.runs.release(run, {
-        status: 'blocked',
-        currentStep: step,
-        reason: { code: block.code, message: block.message },
-        stepStartedAt: null,
-      });
+      await this.block(run, step, block.code, block.message);
       await this.documents.putDocument(run, 'error', `${block.message}\n`);
       return block.message;
     }
