@@ -52,6 +52,11 @@ export function shortLine(item: ReadinessItem): string {
   }
 }
 
+/** The `name size` parts of what swarmloop itself uses, from the Disk line. Empty for any other line. */
+function ownUse(item: ReadinessItem): string {
+  return item.id === 'disk' ? (item.line.match(/swarmloop uses (.*)$/)?.[1] ?? '') : '';
+}
+
 /** What a run needs, at a glance: one tile per check. An item that is not ok also says what to do. */
 export function ReadinessPanel(): ReactElement | null {
   const { items, error } = useReadiness();
@@ -122,6 +127,11 @@ export function ReadinessPanel(): ReactElement | null {
                   <Typography sx={{ fontSize: 12, color: 'text.secondary', lineHeight: 1.3 }} noWrap>
                     {item.status === 'ok' ? shortLine(item) : word}
                   </Typography>
+                  {ownUse(item) ? (
+                    <Typography sx={{ fontSize: 11, color: 'text.secondary', lineHeight: 1.3 }}>
+                      {ownUse(item)}
+                    </Typography>
+                  ) : null}
                 </Box>
               </Box>
             </Tooltip>

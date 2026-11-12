@@ -19,6 +19,7 @@ const CATCH_UP_MARKER = 'retention-catch-up';
 export class Housekeeping implements OnModuleDestroy {
   private readonly logger = new Logger(Housekeeping.name);
   private timer: NodeJS.Timeout | null = null;
+  private freeTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly config: AppConfig,
@@ -47,11 +48,21 @@ export class Housekeeping implements OnModuleDestroy {
     writeFileSync(marker, `${this.clock.iso()}\n`);
   }
 
-  /** Once a day: dangling images and old build cache. */
+  /** Once a day: dangling images and old build cache. Every `MERGE_WATCH_MIN` minutes: the workspaces of merged and closed runs. */
   schedule(): void {
     this.stop();
     this.timer = setInterval(() => void this.disk.pruneDocker(), DAY_MS);
     this.timer.unref();
+    this.freeTimer = setInterval(() => void this.freeSettledRuns(), this.config.env.MERGE_WATCH_MIN * 60_000);
+    this.freeTimer.unref();
+  }
+
+  private async freeSettledRuns(): Promise<void> {
+    try {
+      await this.retention.apply(this.config.env.RETAIN_DONE_DAYS);
+    } catch (error) {
+      this.logger.warn(`retention pass failed: ${String(error)}`);
+    }
   }
 
   onModuleDestroy(): void {
@@ -61,6 +72,8 @@ export class Housekeeping implements OnModuleDestroy {
   private stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.freeTimer) clearInterval(this.freeTimer);
+    this.freeTimer = null;
   }
 
   private async tidyRegistrations(): Promise<void> {

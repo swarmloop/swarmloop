@@ -33,6 +33,23 @@ describe('ReadinessPanel', () => {
     expect(screen.queryByText(/nothing to do/)).not.toBeInTheDocument();
   });
 
+  it("lists the four parts of swarmloop's own disk use with sizes on the Disk tile", async () => {
+    vi.mocked(getReadiness).mockResolvedValue({
+      items: [
+        {
+          id: 'disk',
+          status: 'ok',
+          line: '19.7 GB free, a step needs 10 GB (MIN_FREE_GB); swarmloop uses worktrees 1.2 GB, logs 3.0 MB, backups 500.0 MB, environment cache 0 B',
+          action: 'nothing to do',
+        },
+      ],
+    });
+    renderPanel();
+    const tile = await screen.findByLabelText(/^Disk: ready/);
+    expect(tile).toHaveTextContent('19.7 GB free');
+    expect(tile).toHaveTextContent('worktrees 1.2 GB, logs 3.0 MB, backups 500.0 MB, environment cache 0 B');
+  });
+
   it('says it is ready when every check passes', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [{ id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' }],

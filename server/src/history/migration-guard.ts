@@ -1,17 +1,27 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'fs';
+import { copyFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, rmSync } from 'fs';
 import { basename, dirname, join } from 'path';
+import { pipeline } from 'stream/promises';
+import { createGzip } from 'zlib';
+import { Logger } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 import { SwarmloopError } from '../core/swarmloop-error';
 
 const BACKUPS = 'backups';
 const KEPT_BACKUPS = 3;
-const BACKUP_FILE = /^swarmloop-.+\.sqlite$/;
+const BACKUP_FILE = /^swarmloop-.+\.sqlite(\.gz)?$/;
 const SESSION_FILE = /-session\.json$/;
 /** `2026-01-01T00-00-00-000Z`: the same length for every backup, so the names sort by time. */
 const TIME_LENGTH = 24;
 
+const logger = new Logger('MigrationGuard');
+
+/** A backup's name without `.sqlite.gz` or `.sqlite`: the stem its `.sessions` folder shares. */
+function stemOf(name: string): string {
+  return name.replace(/\.sqlite(\.gz)?$/, '');
+}
+
 function backupTime(file: string): string {
-  return basename(file, '.sqlite').slice(-TIME_LENGTH);
+  return stemOf(basename(file)).slice(-TIME_LENGTH);
 }
 
 /** The backup files in `data/backups`, newest first. */
@@ -40,10 +50,14 @@ async function unknownMigrations(dataSource: DataSource): Promise<string[]> {
   return applied.map((row) => row.name).filter((name) => !known.has(name));
 }
 
+function restoreCommand(backup: string, database: string): string {
+  return backup.endsWith('.gz') ? `gunzip -c ${backup} > ${database}` : `cp ${backup} ${database}`;
+}
+
 function refuse(unknown: string[], backups: string): SwarmloopError {
   const newest = listBackups(backups)[0];
   const restore = newest
-    ? `To run this version, restore the backup ${join(backups, newest)}; otherwise start the newer version.`
+    ? `To run this version, restore the backup ${join(backups, newest)} with \`${restoreCommand(join(backups, newest), join(dirname(backups), 'swarmloop.sqlite'))}\`; otherwise start the newer version.`
     : `No backup is in ${backups}: start the newer version.`;
   return new SwarmloopError(
     `The database was migrated by a newer version: this server does not know its migrations ${unknown.join(', ')}. ${restore}`,
@@ -62,23 +76,58 @@ function copySessions(data: string, destination: string): void {
   }
 }
 
+async function gzipFile(source: string, destination: string): Promise<void> {
+  try {
+    await pipeline(createReadStream(source), createGzip(), createWriteStream(destination));
+  } catch (error) {
+    rmSync(destination, { force: true });
+    throw error;
+  }
+}
+
 async function backUp(dataSource: DataSource, data: string, now: string): Promise<void> {
   const backups = join(data, BACKUPS);
   const stem = `swarmloop-${now.replace(/[:.]/g, '-')}`;
+  const plain = join(backups, `${stem}.sqlite.tmp`);
   try {
     mkdirSync(backups, { recursive: true });
     await (
       dataSource.driver as unknown as { databaseConnection: { backup(file: string): Promise<unknown> } }
-    ).databaseConnection.backup(join(backups, `${stem}.sqlite`));
+    ).databaseConnection.backup(plain);
+    await gzipFile(plain, join(backups, `${stem}.sqlite.gz`));
     copySessions(data, join(backups, `${stem}.sessions`));
   } catch (error) {
     throw new SwarmloopError(
       `The database was not migrated: its backup in ${backups} failed (${error instanceof Error ? error.message : String(error)}). Fix that, then start again.`,
     );
+  } finally {
+    if (existsSync(plain)) {
+      rmSync(plain, { force: true });
+    }
   }
+}
+
+/** Gzips the plain backups of older versions, one at a time. A failure is logged and never blocks the start. */
+async function compressOldBackups(backups: string): Promise<void> {
+  const names = listBackups(backups);
+  for (const name of names.filter((file) => file.endsWith('.sqlite'))) {
+    const plain = join(backups, name);
+    try {
+      if (!names.includes(`${name}.gz`)) {
+        await gzipFile(plain, `${plain}.gz`);
+      }
+      rmSync(plain, { force: true });
+    } catch (error) {
+      logger.warn(`backup ${name} was not compressed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
+/** Keeps the newest backups, with their `.sessions` folders. */
+function pruneBackups(backups: string): void {
   for (const stale of listBackups(backups).slice(KEPT_BACKUPS)) {
     rmSync(join(backups, stale), { force: true });
-    rmSync(join(backups, `${basename(stale, '.sqlite')}.sessions`), { recursive: true, force: true });
+    rmSync(join(backups, `${stemOf(stale)}.sessions`), { recursive: true, force: true });
   }
 }
 
@@ -95,4 +144,6 @@ export async function guardMigration(dataSource: DataSource, now: string): Promi
   if ((await tableExists(dataSource, 'runs')) && (await dataSource.showMigrations())) {
     await backUp(dataSource, data, now);
   }
+  await compressOldBackups(join(data, BACKUPS));
+  pruneBackups(join(data, BACKUPS));
 }

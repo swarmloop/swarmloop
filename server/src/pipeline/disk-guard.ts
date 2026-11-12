@@ -95,7 +95,7 @@ function gb(bytes: number): string {
 }
 
 /** The bytes of a file or of everything under a directory. An entry that vanishes while it is read counts as zero. */
-async function treeBytes(path: string): Promise<number> {
+export async function treeBytes(path: string): Promise<number> {
   try {
     const stats = await lstat(path);
     if (!stats.isDirectory()) {
@@ -107,7 +107,7 @@ async function treeBytes(path: string): Promise<number> {
   }
 }
 
-async function total(paths: string[]): Promise<number> {
+export async function total(paths: string[]): Promise<number> {
   let sum = 0;
   for (const path of paths) {
     sum += await treeBytes(path);
