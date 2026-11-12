@@ -255,6 +255,14 @@
       "step": "implement"
     },
     {
+      "kind": "command.started",
+      "step": "implement"
+    },
+    {
+      "kind": "command.finished",
+      "step": "implement"
+    },
+    {
       "kind": "artifact.produced",
       "step": "implement"
     },
@@ -288,25 +296,25 @@
     ]
   },
   "result": {
-    "exitCode": 1,
-    "message": "<t> pipeline failure left unfixed"
+    "exitCode": 0,
+    "message": "<t> pipeline failure left unchanged, CI rerun: - changed the parser so empty fields stay"
   },
   "run": {
     "agentCalls": 2,
     "attemptsPipeline": 0,
     "attemptsQa": 0,
     "attemptsReview": 0,
-    "currentStep": "implement",
+    "currentStep": "commit",
     "runtime": "cursor",
     "spentUsd": 0.02,
-    "status": "failed"
+    "status": "waiting"
   },
   "visits": [
     {
       "documents": [
         {
-          "body": "pipeline failure left unfixed\n",
-          "kind": "error"
+          "body": "billing-api\n",
+          "kind": "ci_rerun"
         }
       ],
       "exchanges": [
@@ -317,13 +325,13 @@
           "responseText": "implementation:\n- changed the field parser\n- ran unit tests\n\nsummary:\n- changed the parser so empty fields stay"
         }
       ],
-      "exitCode": 1,
+      "exitCode": 0,
       "httpCalls": [],
       "killReason": null,
       "mode": "agent",
       "model": "grok-4.7",
       "resumed": false,
-      "status": "failed",
+      "status": "done",
       "step": "implement",
       "tokensIn": 20,
       "tokensOut": 8,

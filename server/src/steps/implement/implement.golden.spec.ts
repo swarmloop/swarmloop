@@ -77,7 +77,7 @@ describe('implement step golden traces', () => {
       expect(done.message).toContain('the failed pipeline ran on an older commit');
     });
 
-    it('with no stale repo it fails as left unfixed', async () => {
+    it('with no stale repo it jumps to commit with a CI rerun', async () => {
       const done = await goldenRun({
         step: 'implement',
         key: 'PROJ-304',
@@ -85,7 +85,7 @@ describe('implement step golden traces', () => {
         agent: agent(),
         prepare: ({ app, worktree }) => prepare(app, 'PROJ-304', worktree, (head) => head),
       });
-      expect(done.message).toContain('pipeline failure left unfixed');
+      expect(done.message).toContain('pipeline failure left unchanged, CI rerun: ');
     });
   });
 

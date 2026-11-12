@@ -10,6 +10,7 @@ import { resumableChat } from '../../agent/agent-session';
 import { settled, withStatuses } from '../../contract/subtask';
 import { StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
+import { ERROR_CODES } from '../../contract/error-codes';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { branchName, summaryForBranch } from '../branch/branch-name';
 import { isChecksReturn, isPipelineReturn, withAddedRepos } from '../follow-up';
@@ -25,7 +26,7 @@ import {
   withSubtasks,
 } from '../shared/handoff';
 import { projectRules } from '../shared/project-rules';
-import { parseSummary, skillPrompt } from '../shared/skill-prompt';
+import { parseSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { bulletList, items, section } from '../shared/markdown-section';
 import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
@@ -37,6 +38,7 @@ import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name'
 import { settleRebase, type RebaseDeps } from './implement-rebase';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { staleRepos, unchangedSincePipeline } from '../pipeline/pipeline-report';
+import { pipelineRefRepos } from '../pipeline/pipeline-ref-repos';
 import { rerunFailed } from './failed-commands';
 import { checksStillRed, implementFollowUp } from './implement.prompts';
 import { parseImplementation, withReturnNotes } from './implement-record';
@@ -47,6 +49,10 @@ import { SplitImplementStep } from './split-implement.step';
 
 /** The follow-ups a checks return gets in one visit while its failed commands are still red. */
 const MAX_CHECK_FOLLOW_UPS = 2;
+
+/** The visit summary of a CI rerun after an unchanged pipeline failure; the agent's own explanation follows it. */
+const UNFIXED_RERUN = 'pipeline failure left unchanged, CI rerun: ';
+const NO_EXPLANATION = 'the agent gave no explanation';
 
 const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
@@ -203,8 +209,13 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     if (pipelineReturn && (await unchanged())) {
       const repeated = pipelineIssues.find((issue) => unfixed.has(issue.id));
       if (repeated) {
-        const line = `${ctx.opened.startedAt} pipeline failure left unfixed twice: ${repeated.title}`;
-        return { route: { to: 'block', reason: line }, summary: line, outputs: [] };
+        const explanation = await this.previousExplanation(ctx.opened.run.id);
+        const line = `${ctx.opened.startedAt} ${repeated.title} failed twice on the same commit and the agent changed nothing: ${explanation}`;
+        return {
+          route: { to: 'block', code: ERROR_CODES.PIPELINE_UNFIXED, reason: line },
+          summary: line,
+          outputs: [],
+        };
       }
       agentResult = await ctx.launch({
         prompt: withEnvironment(
@@ -233,13 +244,15 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
             visit: { documents: [textDocument(ARTIFACTS.ciRerun.kind, `${stale.join('\n')}\n`)] },
           };
         }
-        return this.unfixedFailure(
+        const refRepos = await pipelineRefRepos(await ctx.reread(ARTIFACTS.pipelineRef), mounts);
+        return this.rerunResult(
           input.requirements,
           ctx,
           planText,
           planOutput,
-          'pipeline failure left unfixed',
+          summaryOr(agentResult.responseText, NO_EXPLANATION).trim(),
           pipelineIssues,
+          refRepos,
         );
       }
     }
@@ -292,29 +305,48 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     };
   }
 
-  /** A pipeline failure that the retry left unchanged on disk: stop with the corrected checklist, if one came back. */
-  private unfixedFailure(
+  /** The explanation the agent gave on the CI rerun the last implement visit asked for. */
+  private async previousExplanation(runId: number): Promise<string> {
+    let last = '';
+    let after = 0;
+    for (;;) {
+      const page = await this.kernel.stepEvents.page(runId, { step: this.name, after });
+      for (const event of page.events) {
+        if (event.kind === 'attempt.finished' && event.summary.startsWith(UNFIXED_RERUN)) {
+          last = event.summary.slice(UNFIXED_RERUN.length).trim();
+        }
+      }
+      if (page.next === null) {
+        return last || NO_EXPLANATION;
+      }
+      after = page.next;
+    }
+  }
+
+  /** A pipeline failure the retry left unchanged on disk: CI runs the failed jobs again on the same commit. */
+  private rerunResult(
     requirements: string,
     ctx: ModelStepContext,
     planText: string,
     planOutput: string,
-    text: string,
+    explanation: string,
     issues: Issue[],
+    repos: string[],
   ): StepResult {
     const corrected = correctedPlan(requirements, planText, planOutput);
-    const line = `${ctx.opened.startedAt} ${text}`;
     const documents = [
       ...(issues.length > 0
         ? [textDocument(ARTIFACTS.unfixedIssue.kind, issues.map((issue) => issue.id).join('\n'))]
         : []),
+      textDocument(ARTIFACTS.ciRerun.kind, `${repos.join('\n')}\n`),
       ...(corrected ? [textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] : []),
     ];
     return {
-      route: { to: 'fail', error: { code: this.name, message: line } },
-      summary: line,
+      route: { to: 'jump', step: 'commit' },
+      summary: `${ctx.opened.startedAt} ${UNFIXED_RERUN}${explanation}`,
       outputs: [],
       handoff: corrected?.handoff,
-      visit: documents.length > 0 ? { documents } : undefined,
+      visit: { documents },
     };
   }
 }
