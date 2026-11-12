@@ -11,7 +11,38 @@ function readText(path) {
   return bytes.includes(0) ? null : bytes.toString('utf8');
 }
 
-export function findViolations({ root, rules, files }) {
+function gitIgnores(root) {
+  return (path) => {
+    try {
+      execFileSync('git', ['check-ignore', '-q', path], { cwd: root, stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
+
+/** A path that `AGENTS.md` names in backticks must exist in the repository or be ignored by git. */
+function agentsPathViolations(root, isIgnored) {
+  const file = join(root, 'AGENTS.md');
+  if (!existsSync(file)) {
+    return [];
+  }
+  const violations = [];
+  readFileSync(file, 'utf8')
+    .split('\n')
+    .forEach((line, index) => {
+      for (const [, token] of line.matchAll(/`([^`]+)`/g)) {
+        const isPath = token.includes('/') || /\.\w+$/.test(token);
+        if (isPath && !/[* ]/.test(token) && !existsSync(join(root, token)) && !isIgnored(token)) {
+          violations.push(`AGENTS.md:${index + 1}: ${token}`);
+        }
+      }
+    });
+  return violations;
+}
+
+export function findViolations({ root, rules, files, isIgnored = gitIgnores(root) }) {
   const violations = [];
   for (const rel of rules.mustNotExist) {
     if (existsSync(join(root, rel))) {
@@ -68,6 +99,7 @@ export function findViolations({ root, rules, files }) {
       }
     });
   }
+  violations.push(...agentsPathViolations(root, isIgnored));
   return violations;
 }
 

@@ -17,6 +17,7 @@ import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS
 import { AgentLauncher } from '../shared/agent-launcher';
 import { returnedNotes, textDocument, withHandoff } from '../shared/handoff';
 import { section } from '../shared/markdown-section';
+import { projectRules } from '../shared/project-rules';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { correctedPlan, requireApprovedPlan } from '../plan/plan-record';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
@@ -96,18 +97,16 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     );
     const branch = branchName(key, summaryForBranch(input.requirements, key));
     const heads = await featureHeads(mounts, branch);
-    const continued = await resumableChat(
-      root(this.config),
-      key,
-      'implement-improve',
-      this.profile(this.config.env, ctx.opened.run).runtime,
-    );
-    const full = skillPrompt('implement-improve', input.requirements, names, sections, mounts, {
-      deferExecutionRules: true,
-    });
+    const { runtime } = this.profile(this.config.env, ctx.opened.run);
+    const continued = await resumableChat(root(this.config), key, 'implement-improve', runtime);
+    const fullFor = (target: string): string =>
+      skillPrompt('implement-improve', input.requirements, names, sections, mounts, {
+        deferExecutionRules: true,
+        rules: projectRules(names, mounts, target, false),
+      });
+    const full = fullFor(runtime);
     const chosen = continued?.chatId ? implementImproveFollowUp(returned) : full;
     const added = await ctx.reread(ARTIFACTS.addedRepos);
-    const { runtime } = this.profile(this.config.env, ctx.opened.run);
     const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime, samples: ctx.samples };
     const reproject = projectFor(this.environments, place);
     const { prompt, project, allowHosts, manifestHosts, executionRules } = await agentWorkplace(
@@ -122,6 +121,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       manifestHosts,
       project,
       projectFor: reproject,
+      briefFor: (other) => withEnvironment(withAddedRepos(fullFor(other), added), executionRules),
       sections: ['implementation'],
       validate: (text) => {
         if (section(text, 'implementation') !== null) {

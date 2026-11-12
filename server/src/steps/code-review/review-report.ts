@@ -15,6 +15,7 @@ import { assertRoute } from '../contract/returns';
 import { routeToEnd } from '../contract/route';
 import type { Route } from '../contract/step-contract';
 import { agentFailure } from '../shared/agent-result';
+import { projectRules } from '../shared/project-rules';
 import { appendImpact, mergeHandoff, textDocument, withImpact } from '../shared/handoff';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { REPORT_CONTINUE, reportFollowUp } from './code-review.prompts';
@@ -65,9 +66,13 @@ export async function writeReport(
     ],
     impact,
   );
-  const full = skillPrompt('code-review/report', requirements, names, sections, mounts);
-  const prompt = continued ? appendImpact(reportFollowUp(brief, implementation), impact) : full;
+  const fullFor = (runtime: string): string =>
+    skillPrompt('code-review/report', requirements, names, sections, mounts, {
+      rules: projectRules(names, mounts, runtime, false),
+    });
   const asked = agentFor(env, opened.run, 'code-review-report');
+  const full = fullFor(asked.runtime);
+  const prompt = continued ? appendImpact(reportFollowUp(brief, implementation), impact) : full;
   const empty: Usage = { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] };
   try {
     const directory = join(deps.root, 'data');
@@ -85,6 +90,7 @@ export async function writeReport(
       prompt,
       failover: true,
       brief: full,
+      briefFor: fullFor,
       workspace: mounts[0]?.containerPath ?? '/work',
       mounts,
       auto,

@@ -11,6 +11,7 @@ import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
+import { projectRules } from '../shared/project-rules';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { appendImpact, assumptions, withContract, withHandoff, withImpact } from '../shared/handoff';
 import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../shared/skill-prompt';
@@ -88,15 +89,23 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       mounts,
     );
     // Research shares this chat, so only a stored plan visit makes this a re-plan.
-    const continued = (await this.visits.hasAgentVisit(ctx.opened.run.id, 'plan'))
-      ? await resumableChat(root(this.config), key, 'plan', this.profile(this.config.env, ctx.opened.run).runtime)
-      : null;
+    const { runtime } = this.profile(this.config.env, ctx.opened.run);
+    const chat = await resumableChat(root(this.config), key, 'plan', runtime);
+    const continued = (await this.visits.hasAgentVisit(ctx.opened.run.id, 'plan')) ? chat : null;
     const limits = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);
-    const full = skillPrompt('plan', input.requirements, names, sections, mounts, { split: limits.maySplit });
-    const chosen = continued?.chatId ? appendImpact(planFollowUp(answers), impact) : full;
-    const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));
+    const added = await ctx.reread(ARTIFACTS.addedRepos);
+    const fullFor = (target: string, received: boolean): string =>
+      skillPrompt('plan', input.requirements, names, sections, mounts, {
+        split: limits.maySplit,
+        rules: projectRules(names, mounts, target, received),
+      });
+    const finish = (prompt: string): string => `${withAddedRepos(prompt, added)}\n\n${PLAN_EXECUTION_RULE}`;
+    const chosen = continued?.chatId ? appendImpact(planFollowUp(answers), impact) : fullFor(runtime, !!chat?.chatId);
     let agentResult = await ctx.launch({
-      prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`,
+      prompt: finish(chosen),
+      // A chat the CLI no longer has starts anew with the rules the full prompt left out.
+      freshPrompt: !continued?.chatId && chat?.chatId ? finish(fullFor(runtime, false)) : undefined,
+      briefFor: (other) => finish(fullFor(other, false)),
       mounts,
       sections: ['plan'],
       validate: (text, output) => {

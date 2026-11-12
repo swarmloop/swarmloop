@@ -53,11 +53,16 @@ export function plainSummary(text: string): string {
   return lines.map((line) => (line.startsWith('- ') ? line : `- ${line}`)).join('\n');
 }
 
+/** The name a prompt gives a mounted repository. */
+export function mountLabel(names: string[], mount: SandboxMount, index: number): string {
+  return mount.containerPath.startsWith('/work/')
+    ? mount.containerPath.slice('/work/'.length)
+    : (names[index] ?? names[0] ?? 'work');
+}
+
 export function workingDirectoryBlock(names: string[], mounts: SandboxMount[]): string {
   const labeled = mounts.map((mount, index) => ({
-    name: mount.containerPath.startsWith('/work/')
-      ? mount.containerPath.slice('/work/'.length)
-      : (names[index] ?? names[0] ?? 'work'),
+    name: mountLabel(names, mount, index),
     path: mount.containerPath,
     state: sourceState(mount.hostPath),
   }));
@@ -101,7 +106,7 @@ export function skillPrompt(
   names: string[],
   sections: { heading: string; body: string }[] = [],
   mounts: SandboxMount[] = [],
-  options: { deferExecutionRules?: boolean; split?: boolean } = {},
+  options: { deferExecutionRules?: boolean; split?: boolean; rules?: { heading: string; body: string }[] } = {},
 ): string {
   const file = join(__dirname, '../../../../skills', skill, 'SKILL.md');
   let text = '';
@@ -124,6 +129,7 @@ export function skillPrompt(
     '',
     skillText.trimEnd(),
     '',
+    ...(options.rules ?? []).flatMap((rule) => [`${rule.heading}:`, rule.body.trimEnd(), '']),
     'Requirements:',
     requirementsBrief(requirements),
   ];

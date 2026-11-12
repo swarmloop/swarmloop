@@ -126,3 +126,18 @@ describe('implement skill rules', () => {
     },
   );
 });
+
+describe('project rules in a skill prompt', () => {
+  const rules = [{ heading: 'Project rules (api)', body: 'Keep it small.\n' }];
+
+  it('is byte-identical without rules', () => {
+    expect(skillPrompt('plan', '{}', ['api'], [], [], { rules: [] })).toBe(skillPrompt('plan', '{}', ['api']));
+  });
+
+  it('puts each section after the skill text and before the requirements', () => {
+    const prompt = skillPrompt('plan', '{}', ['api'], [], [], { rules });
+    const skillEnd = prompt.indexOf('Project rules (api):');
+    expect(skillEnd).toBeGreaterThan(prompt.indexOf('# '));
+    expect(prompt).toContain('Project rules (api):\nKeep it small.\n\nRequirements:');
+  });
+});

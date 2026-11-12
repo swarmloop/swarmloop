@@ -16,6 +16,8 @@ import { AgentLauncher } from '../shared/agent-launcher';
 import { isSubtask } from '../../contract/subtask';
 import { assumptions, withContract, withHandoff } from '../shared/handoff';
 import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
+import { resumableChat } from '../../agent/agent-session';
+import { projectRules } from '../shared/project-rules';
 import { mountsForStep } from '../../git/repo-names';
 import { parseImpact, parseResearch, renderImpact } from './research-record';
 import { RESEARCH_CONTINUE } from './research.prompts';
@@ -67,9 +69,17 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       await this.parentContract(ctx.opened.run),
     );
     const mounts = mountsForStep(root(this.config), ctx.opened.run.key, names, null);
-    const full = skillPrompt('research', input.requirements, names, sections, mounts);
+    const promptFor = (runtime: string, received: boolean): string =>
+      skillPrompt('research', input.requirements, names, sections, mounts, {
+        rules: projectRules(names, mounts, runtime, received),
+      });
+    const { runtime } = this.profile(this.config.env, ctx.opened.run);
+    const chat = await resumableChat(root(this.config), ctx.opened.run.key, 'research', runtime);
     const agentResult = await ctx.launch({
-      prompt: full,
+      prompt: promptFor(runtime, !!chat?.chatId),
+      // A chat the CLI no longer has starts anew with the rules this prompt left out.
+      freshPrompt: chat?.chatId ? promptFor(runtime, false) : undefined,
+      briefFor: (other) => promptFor(other, false),
       mounts,
       continuePrompt: RESEARCH_CONTINUE,
       sections: ['questions'],

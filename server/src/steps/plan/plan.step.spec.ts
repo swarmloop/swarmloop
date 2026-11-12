@@ -182,6 +182,19 @@ describe('plan step', () => {
       expect(input.prompt).not.toContain('## Split');
     });
 
+    it('adds no project rules to the research chat of the same runtime', async () => {
+      const input = (await runSplit('PROJ-63', 'plan:\n- x', { chat: true, rules: RULES('claude') })).input;
+      expect(input.resumeChatId).toBe('chat-1');
+      expect(input.prompt).not.toContain('Project rules');
+      expect(input.freshPrompt).toContain('Project rules (billing-api):\nKeep it small.\n\nRequirements:');
+    });
+
+    it('opens a new chat with the project rules when the stored chat belongs to another runtime', async () => {
+      const input = (await runSplit('PROJ-64', 'plan:\n- x', { chat: true, rules: RULES('cursor') })).input;
+      expect(input.resumeChatId).toBeNull();
+      expect(input.prompt).toContain('Project rules (billing-api):\nKeep it small.\n\nRequirements:');
+    });
+
     it('sends a subtask the plan skill without Split on its first visit', async () => {
       const input = await stepFirst('PROJ-62-t1', { subtask: true });
       expect(input.prompt).toContain('# Plan');
@@ -496,19 +509,26 @@ const splitReply = [
   '- two parts',
 ].join('\n');
 
+const RULES = (chatRuntime: string) => ({ text: 'Keep it small.\n', chatRuntime });
+
 interface SplitOptions {
   split?: boolean;
   subtask?: boolean;
   /** Leaves the chat research shares with the plan step. */
   chat?: boolean;
+  /** The plan agent is Claude, the repository has this `AGENTS.md`, and the stored chat belongs to `chatRuntime`. */
+  rules?: { text: string; chatRuntime: string };
 }
 
 async function runSplit(key: string, answer: string, options: SplitOptions = {}) {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-split-'));
   await writeEnv(root);
   mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
+  if (options.rules) {
+    writeFileSync(join(root, 'worktrees', key, 'billing-api', 'AGENTS.md'), options.rules.text);
+  }
   if (options.chat) {
-    writeChat(root, key);
+    writeChat(root, key, options.rules?.chatRuntime);
   }
   const agent = jest.fn().mockResolvedValue(result(answer));
   const app = await boot(root, agent);
@@ -520,6 +540,7 @@ async function runSplit(key: string, answer: string, options: SplitOptions = {})
     await runs.saveRun({
       ...seeded,
       split: options.split ?? true,
+      ...(options.rules ? { agents: { main: { plan: [{ runtime: 'claude', model: 'm-claude' }] } } } : {}),
       ...(parent ? { parentRunId: parent.id, taskId: 't1' } : {}),
     });
     const done = await app.get(PipelineService).step('plan', key);
@@ -650,11 +671,11 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, question
   await documents.putDocument(seeded, 'questions', questions);
 }
 
-function writeChat(root: string, key: string): void {
+function writeChat(root: string, key: string, runtime = 'cursor'): void {
   mkdirSync(join(root, 'data', 'agent-state', key, 'plan'), { recursive: true });
   writeFileSync(
     join(root, 'data', `${key}-plan-session.json`),
-    `${JSON.stringify({ runtime: 'cursor', chatId: 'chat-1', resumed: true, completed: true, killReason: null, usd: 0 })}\n`,
+    `${JSON.stringify({ runtime, chatId: 'chat-1', resumed: true, completed: true, killReason: null, usd: 0 })}\n`,
   );
 }
 

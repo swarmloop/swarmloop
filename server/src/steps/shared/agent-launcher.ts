@@ -60,6 +60,8 @@ interface AgentLaunchRequest {
   failover?: boolean;
   /** The full prompt for a new chat on another agent, when `prompt` is a follow-up. Defaults to `prompt`. */
   brief?: string;
+  /** The full prompt for a new chat on the given runtime. Defaults to `brief`. */
+  briefFor?: (runtime: RuntimeName) => string;
 }
 
 /**
