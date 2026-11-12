@@ -47,6 +47,9 @@ describe('captureTree', () => {
   it('hashes only the files that changed: a file git still sees as unchanged keeps its stored content', async () => {
     const repo = bigRepo(200);
     const file = join(repo, 'd1', 'f1.txt');
+    // Rewriting the file moves its ctime, and git compares ctime by the second: when the clock ticks over between
+    // the refresh and the rewrite, git reads the file again. Only mtime and size say "unchanged" here.
+    git(repo, ['config', 'core.trustctime', 'false']);
     // An mtime older than the index, so git does not treat the file as racily clean.
     const past = new Date(Date.now() - 3_600_000);
     utimesSync(file, past, past);

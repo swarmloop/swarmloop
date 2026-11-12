@@ -17,6 +17,7 @@ import { RunRepository } from '../../history/run.repository';
 import { deriveState, writeRunState } from '../../history/run-state';
 import { CommandService } from '../../pipeline/command.service';
 import { Reconciler } from '../../pipeline/reconciler';
+import { SubtaskPort } from '../../pipeline/subtask-port';
 import { createTestApp, type TestApp } from '../../testing/test-app';
 import { save } from '../../testing/runs.spec-helpers';
 import { NO_CI_NOTE } from './split-implement.step';
@@ -776,5 +777,45 @@ describe('subtask questions', () => {
     expect(prompts).toHaveLength(0);
     expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBeNull();
     expect(await documents.latestBody(KEY, 'contract')).toBe('- names are camelCase\n');
+  });
+
+  it('leaves the parent as it was for a pass that finds nothing new, and records the fingerprint', async () => {
+    const built = await world();
+    app = built.app;
+    await seedParent(app, [task('a')]);
+    await pass(app);
+    await work(app, 'a');
+    const runs = app.app.get(RunRepository);
+    const before = (await runs.findRun(KEY))!;
+    const visits = (await app.app.get(VisitRepository).listStats(before.id)).length;
+
+    await pass(app);
+
+    const after = (await runs.findRun(KEY))!;
+    expect(after.revision).toBe(before.revision);
+    expect(deriveState(after).reason).toEqual(deriveState(before).reason);
+    expect(await app.app.get(VisitRepository).listStats(after.id)).toHaveLength(visits);
+    expect(after.subtaskFingerprint).toBe(await runs.subtaskFingerprint(after));
+  });
+
+  it('records what a pass saw, so a pass that starts a subtask is followed by one that sees the start', async () => {
+    const built = await world();
+    app = built.app;
+    await seedParent(app, [task('a'), task('b', ['a'])]);
+    const runs = app.app.get(RunRepository);
+    const subtasks = app.app.get(SubtaskPort);
+
+    await pass(app);
+    let parent = (await runs.findRun(KEY))!;
+    expect(parent.subtaskFingerprint).not.toBeNull();
+    expect(await subtasks.subtasksChanged(parent)).toBe(true);
+    expect(deriveState(parent).reason?.message).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+
+    await pass(app);
+    parent = (await runs.findRun(KEY))!;
+    expect(await subtasks.subtasksChanged(parent)).toBe(false);
+
+    await finish(app, 'a');
+    expect(await subtasks.subtasksChanged(parent)).toBe(true);
   });
 });

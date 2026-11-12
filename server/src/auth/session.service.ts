@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
 import { LessThanOrEqual, Repository } from 'typeorm';
 import { Clock } from '../core/clock';
-import { SessionEntity } from '../history/entities';
+import { SessionEntity } from '../history/session.entity';
 
 export const SESSION_COOKIE = 'swarmloop_session';
 export const SESSION_DAYS = 14;

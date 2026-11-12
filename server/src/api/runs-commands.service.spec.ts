@@ -603,4 +603,29 @@ describe('runs api', () => {
       }
     });
   });
+
+  it('answers a resume of a running split parent as started, and of any other running run as already running', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-pass-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const parent = await save(runs, 'proj-pass', 'implement', 'running');
+      parent.split = true;
+      parent.ownerPid = process.pid;
+      await runs.saveRun(parent);
+      const child = await save(runs, 'proj-pass-a', 'research', 'running');
+      child.parentRunId = parent.id;
+      child.taskId = 'a';
+      await runs.saveRun(child);
+      const plain = await save(runs, 'proj-plain', 'implement', 'running');
+      plain.ownerPid = process.pid;
+      await runs.saveRun(plain);
+      const commands = app.get(RunCommandsService);
+
+      await expect(commands.resume('proj-pass')).resolves.toEqual({ key: 'proj-pass', status: 'started' });
+      await expect(commands.resume('proj-plain')).rejects.toThrow('proj-plain is already running');
+    } finally {
+      await app.close();
+    }
+  });
 });

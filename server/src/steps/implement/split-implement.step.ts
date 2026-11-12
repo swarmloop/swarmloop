@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ERROR_CODES } from '../../contract/error-codes';
+import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../../contract/error-codes';
 import { deriveState } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
 import { readyTasks, settled, statusLine, unmetDepends, withStatuses, type Subtask } from '../../contract/subtask';
@@ -10,6 +10,8 @@ import { SplitMerge } from './split-merge';
 import { BaseStep, StepContext } from '../base-step';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
+import type { PipelineResult, StepOptions } from '../../core/pipeline-result';
+import type { StepSnapshot } from '../step';
 import { StepKernel } from '../step-kernel';
 
 const INPUTS = {
@@ -22,7 +24,7 @@ export const NO_CI_NOTE = 'no CI on the feature branch';
  * Implement of a split run: a server step, no agent. A pass does what is due and ends with the parent waiting, so
  * it never holds the run. It starts again when a subtask changes status or on the reconciler timer. A pass is
  * idempotent and the only place that decides what happens next. It answers one question of a subtask first: the
- * answer is a decision in the `contract`.
+ * answer is a decision in the `contract`. A pass with nothing new opens no step: it adds no visit and no attempt.
  */
 @Injectable()
 export class SplitImplementStep extends BaseStep<typeof INPUTS> {
@@ -36,6 +38,36 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     private readonly merges: SplitMerge,
   ) {
     super(kernel);
+  }
+
+  override async execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
+    const parent = await this.runs.findRun(key);
+    if (parent && (await this.quiet(parent))) {
+      await this.runs.recordSubtaskFingerprint(parent, await this.runs.subtaskFingerprint(parent));
+      return { exitCode: 0, message: `${key} has nothing new` };
+    }
+    // Taken before the pass reads the subtasks: a subtask that changes during the pass, whose resume is a no-op,
+    // still differs from it, so the timer starts the pass that sees it.
+    const seen = parent ? await this.runs.subtaskFingerprint(parent) : null;
+    const result = await super.execute(key, options, snapshot);
+    if (parent && seen !== null) await this.runs.recordSubtaskFingerprint(parent, seen);
+    return result;
+  }
+
+  /** True when a pass would merge, start, answer, finish and write nothing: the parent waits and every open task is as it was. */
+  private async quiet(parent: RunEntity): Promise<boolean> {
+    const code = deriveState(parent).reason?.code ?? '';
+    if (parent.status !== 'waiting' || !SUBTASK_WAIT_CODES.some((wait) => wait === code)) return false;
+    const tasks = withStatuses((await this.reader.reread(parent.key, ARTIFACTS.subtasks)) ?? []);
+    if (tasks.every(settled)) return false;
+    for (const task of tasks.filter((item) => !settled(item))) {
+      const child = await this.subtasks.find(parent, task.id);
+      if (!child) return false;
+      const { state } = deriveState(child);
+      const changed = state === 'stopped' || this.statusOf(task, child, state) !== task.status;
+      if (changed || task.status === 'green' || (await this.subtasks.asking(child))) return false;
+    }
+    return readyTasks(tasks, this.config.env.SUBTASKS_PARALLEL).length === 0;
   }
 
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
@@ -60,8 +92,8 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     }
     const waiting = tasks.some((task) => task.status === 'running') ? null : this.missing(tasks);
     const code = waiting ? ERROR_CODES.SUBTASK_WAITING : ERROR_CODES.SUBTASKS_RUNNING;
-    const text = `${startedAt} ${waiting ? `${line} · waiting for ${waiting}` : line}`;
-    return { route: { to: 'wait', reason: text, code }, summary: text, outputs };
+    const text = waiting ? `${line} · waiting for ${waiting}` : line;
+    return { route: { to: 'wait', reason: text, code }, summary: `${startedAt} ${text}`, outputs };
   }
 
   /**

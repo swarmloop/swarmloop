@@ -22,6 +22,7 @@ import { ShellEdits1795200000000 } from './1795200000000-shell-edits';
 import { CheckCommandName1795300000000 } from './1795300000000-check-command-name';
 import { ReturnDetail1795300000000 } from './1795300000000-return-detail';
 import { UserSettings1795400000000 } from './1795400000000-user-settings';
+import { SubtaskFingerprint1795500000000 } from './1795500000000-subtask-fingerprint';
 
 // To add a migration: run `npm run migration:generate -- src/history/migrations/<name>`, export the generated class
 // from its own file, and append it here. Migrations run in list order at startup.
@@ -50,4 +51,5 @@ export const migrations = [
   CheckCommandName1795300000000,
   ReturnDetail1795300000000,
   UserSettings1795400000000,
+  SubtaskFingerprint1795500000000,
 ];

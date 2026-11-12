@@ -1,4 +1,5 @@
 import { ConnectionEntity, HostAppEntity, UserSettingEntity } from './connection-entities';
+import { SessionEntity } from './session.entity';
 import type { StoredAgents } from '../contract/api';
 import { Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
 
@@ -66,6 +67,10 @@ export class RunEntity {
   /** 'removed' after retention took the worktrees of a done run; the next action recreates them. */
   @Column({ type: 'text', nullable: true })
   workspace!: string | null;
+
+  /** What the last pass of a split parent saw of its subtasks; null before the first pass. */
+  @Column({ name: 'subtask_fingerprint', type: 'text', nullable: true })
+  subtaskFingerprint!: string | null;
 
   @Column({ name: 'active_attempt', type: 'text', nullable: true })
   activeAttempt!: string | null;
@@ -541,23 +546,6 @@ export class RuntimeCooldownEntity {
   /** 1 when `until` is the reset the provider named, 0 when it is the default cooldown. */
   @Column({ name: 'reset_known', type: 'integer' })
   resetKnown!: number;
-}
-
-/** A login session. The cookie holds `id`; the row says who it is and when it ends. */
-@Entity('sessions')
-export class SessionEntity {
-  @PrimaryColumn({ type: 'text' })
-  id!: string;
-
-  @Column({ type: 'text' })
-  user!: string;
-
-  @Column({ type: 'text' })
-  provider!: string;
-
-  /** ISO 8601 UTC. */
-  @Column({ name: 'expires_at', type: 'text' })
-  expiresAt!: string;
 }
 
 export const entities = [

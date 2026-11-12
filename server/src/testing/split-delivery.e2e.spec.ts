@@ -7,6 +7,7 @@ import { Reconciler } from '../pipeline/reconciler';
 import { parseSubtasks, type Subtask } from '../contract/subtask';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
+import { VisitRepository } from '../history/visit.repository';
 import { deriveState, writeRunState } from '../history/run-state';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import type { CodeHost } from '../integrations/code-host/code-host';
@@ -236,5 +237,31 @@ describe('a split run is reviewed and delivered as one merge request', () => {
 
     expect(await statuses(app)).toEqual({ a: 'merged', b: 'merged', c: 'merged' });
     expect((await parentRun(app))?.currentStep).toBe('checks');
+  });
+
+  it('gets at most one pass per subtask change plus one over 10 reconciler ticks, and ends done', async () => {
+    const built = await world();
+    app = built.app;
+    const ticks = async () => {
+      for (let tick = 0; tick < 10; tick++) {
+        await app.app.get(Reconciler).resumeSubtaskParents();
+        await settle(app);
+      }
+    };
+
+    await app.pipeline.step('implement', KEY);
+    await ticks();
+    await finish(app, 'a', 1);
+    await finish(app, 'b', 2);
+    await app.pipeline.step('implement', KEY);
+    await ticks();
+    await finish(app, 'c', 3);
+    await app.pipeline.step('implement', KEY);
+    await ticks();
+
+    expect(await statuses(app)).toEqual({ a: 'merged', b: 'merged', c: 'merged' });
+    expect((await parentRun(app))?.currentStep).toBe('checks');
+    const visits = await app.app.get(VisitRepository).listStats((await parentRun(app))!.id);
+    expect(visits.filter((visit) => visit.step === 'implement').length).toBeLessThanOrEqual(3 + 1);
   });
 });
