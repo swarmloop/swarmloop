@@ -18,10 +18,10 @@ export class ApiError extends Error {
   }
 }
 
-/** A 401 means the session is gone: the browser goes to the login page, unless it is there already. */
+/** A 401 means the session is gone: the browser goes to the login page with the page it left as `next`, unless it is there already. */
 function signedOut(response: Response): void {
   if (response.status === 401 && typeof window !== 'undefined' && window.location.pathname !== '/login') {
-    window.location.assign('/login');
+    window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
   }
 }
 
