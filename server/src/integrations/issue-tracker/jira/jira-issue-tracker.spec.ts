@@ -3,6 +3,8 @@ import type { AddressInfo } from 'net';
 import { AppConfig } from '../../../config/env';
 import { testEnv } from '../../../config/env.spec-helpers';
 import { SystemClock } from '../../../core/clock';
+import { HostUnavailable } from '../../../core/swarmloop-error';
+import { instantBackoff } from '../../instant-backoff.spec-helpers';
 import type { SwarmloopEnv } from '../../../config/env';
 import type { LinkedPagesService } from '../../linked-pages/linked-pages';
 import { JiraIssueTracker } from './jira-issue-tracker';
@@ -74,6 +76,31 @@ describe('JiraIssueTracker.ticketKeys', () => {
       expect([...jira.asked].sort()).toEqual(['CVE', 'GPT', 'ISO', 'PROJ', 'SHA', 'UTF']);
     } finally {
       await jira.close();
+    }
+  });
+});
+
+describe('JiraIssueTracker while Jira is down', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('lets a project lookup that never answers surface as HostUnavailable, and asks again once Jira is back', async () => {
+    instantBackoff();
+    let up = false;
+    const server = createServer((_req, res) => {
+      res.writeHead(up ? 200 : 503);
+      res.end('{}');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const tracker = trackerWith(configured(base));
+      await expect(tracker.ticketKeys('Do PROJ-12')).rejects.toBeInstanceOf(HostUnavailable);
+      up = true;
+      expect(await tracker.ticketKeys('Do PROJ-12')).toEqual(['PROJ-12']);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 });

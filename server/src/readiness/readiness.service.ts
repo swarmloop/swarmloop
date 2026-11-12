@@ -21,6 +21,8 @@ type Outcome = Omit<ReadinessItem, 'id'>;
 const GB = 1024 ** 3;
 const DASHBOARD_PORT = 3921;
 const PROBE_TIMEOUT_MS = 1500;
+/** How long the report waits for a host whose calls are being retried. */
+const HOST_WAIT_MS = 5000;
 /** How long the size walk of the Disk line is reused: a walk of every worktree is slow, and sizes move slowly. */
 const OWN_USE_TTL_MS = 60_000;
 const NOTHING = 'nothing to do';
@@ -261,7 +263,7 @@ export class ReadinessService {
   private async hostToken(name: (typeof this.hosts.names)[number]): Promise<Outcome> {
     const key = this.hosts.credentials(name).tokenKey;
     try {
-      await this.hosts.byName(name).readCurrentUser();
+      await withinWait(this.hosts.byName(name).readCurrentUser(), HOST_WAIT_MS);
     } catch (error) {
       const calls = error instanceof FetchFailed ? error.httpCalls : [];
       if (calls.some((call) => call.statusCode === 401 || call.statusCode === 403)) {
@@ -271,6 +273,14 @@ export class ReadinessService {
     }
     return ok(`${key} is accepted`);
   }
+}
+
+/** The answer, or a rejection when it takes longer than `ms`; the late answer is dropped. */
+function withinWait<T>(answer: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('no answer in time')), ms);
+    answer.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
 }
 
 function size(bytes: number): string {
