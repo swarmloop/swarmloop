@@ -140,7 +140,7 @@ describe('requirements step', () => {
   });
 
   it('fails a bad issue fetch before writing a requirements record', async () => {
-    const server = await listen(500);
+    const server = await listen(403);
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-fail-'));
     const app = await boot(root, server.base, 'direct', jest.fn(), jest.fn());
     try {

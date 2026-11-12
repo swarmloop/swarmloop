@@ -1,8 +1,15 @@
 import type { RemoteRepository, RepositoryOwner } from '../../contract/api';
 import type { SwarmloopEnv } from '../../config/env';
 import type { Clock } from '../../core/clock';
-import { FetchFailed, MergeConflict, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
+import {
+  FetchFailed,
+  HostUnavailable,
+  MergeConflict,
+  SwarmloopError,
+  type HttpCallDraft,
+} from '../../core/swarmloop-error';
 import { request } from '../http';
+import { configuredHost, providerMessage } from './provider-message';
 import { requestState } from './request-state';
 import { remoteProject } from './remote-project';
 import type {
@@ -430,7 +437,7 @@ export abstract class AbstractCodeHost implements CodeHost {
   }
 
   protected rethrow(error: unknown, calls: HttpCallDraft[]): never {
-    if (error instanceof FetchFailed) {
+    if (error instanceof FetchFailed || error instanceof HostUnavailable) {
       throw error;
     }
     const message = error instanceof Error ? error.message : this.failure;
@@ -438,28 +445,5 @@ export abstract class AbstractCodeHost implements CodeHost {
       throw error;
     }
     throw new FetchFailed(message, calls);
-  }
-}
-
-/** The `message` or `error` text of a host's JSON answer. */
-function providerMessage(body: Buffer): string {
-  try {
-    const parsed = JSON.parse(body.toString('utf8')) as { message?: unknown; error?: unknown } | null;
-    const text = parsed?.message ?? parsed?.error;
-    return typeof text === 'string' ? text.trim() : '';
-  } catch {
-    return '';
-  }
-}
-
-function configuredHost(base: string): string | null {
-  const trimmed = base.trim();
-  if (!trimmed) {
-    return null;
-  }
-  try {
-    return new URL(trimmed).hostname.toLowerCase();
-  } catch {
-    return null;
   }
 }

@@ -8,6 +8,7 @@ import { AppConfig, type SwarmloopEnv } from '../config/env';
 import { testEnv } from '../config/env.spec-helpers';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { ReadinessId, ReadinessItem } from '../contract/api';
+import { instantBackoff } from '../integrations/instant-backoff.spec-helpers';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { DiskGuard } from '../pipeline/disk-guard';
 import { imageName } from '../sandbox/image-resolver';
@@ -33,6 +34,7 @@ describe('ReadinessService', () => {
   });
 
   afterEach(async () => {
+    jest.restoreAllMocks();
     global.fetch = original;
     for (const dir of dirs.splice(0)) {
       chmodSync(dir, 0o700);
@@ -246,6 +248,7 @@ describe('ReadinessService', () => {
     });
 
     it('warns when the host cannot be reached', async () => {
+      instantBackoff();
       const service = setup(github);
       global.fetch = jest.fn(async () => {
         throw new TypeError('fetch failed');
@@ -254,7 +257,23 @@ describe('ReadinessService', () => {
     });
   });
 
+  it('reports an unreachable host within a bounded wait while its calls are retried', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    try {
+      const service = setup({ GITHUB_TOKEN: 'ghp', GITHUB_BASE_URL: 'https://github.com' });
+      global.fetch = jest.fn(async () => {
+        throw new TypeError('fetch failed');
+      });
+      const item = itemOf(service, 'code-host-token');
+      await jest.advanceTimersByTimeAsync(5000);
+      expect(await item).toMatchObject({ status: 'warn', line: 'GITHUB_TOKEN could not be checked' });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('never pulls an image and sends no write across a full report', async () => {
+    instantBackoff();
     const service = setup({ GITHUB_TOKEN: 'ghp', GITHUB_BASE_URL: 'https://github.com' });
     await service.report();
     expect(docker.mock.calls.flatMap(([args]) => args as string[])).not.toContain('pull');

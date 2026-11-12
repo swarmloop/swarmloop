@@ -2,9 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { basename } from 'path';
 import { AppConfig } from '../../../config/env';
 import { Clock } from '../../../core/clock';
-import { HttpStatusError, request } from '../../http';
+import { request } from '../../http';
 import { ERROR_CODES } from '../../../contract/error-codes';
-import { FetchFailed, HttpCallDraft, IssueNotFound, SwarmloopError } from '../../../core/swarmloop-error';
+import {
+  FetchFailed,
+  HostUnavailable,
+  HttpCallDraft,
+  IssueNotFound,
+  SwarmloopError,
+} from '../../../core/swarmloop-error';
 import { encodedBody, headersFor, LinkedPagesService } from '../../linked-pages/linked-pages';
 import { PageReadContext } from '../../linked-pages/page-reader';
 import { AbstractIssueTracker } from '../abstract-issue-tracker';
@@ -118,8 +124,7 @@ export class JiraIssueTracker extends AbstractIssueTracker {
     try {
       response = await request(this.clock, url, headers, calls);
     } catch (error) {
-      const status = error instanceof HttpStatusError ? error.status : 'failed';
-      throw notFoundOr(key, status, calls);
+      throw error instanceof HostUnavailable ? error : notFoundOr(key, 'failed', calls);
     }
     if (response.status < 200 || response.status >= 300) {
       throw notFoundOr(key, response.status, calls);

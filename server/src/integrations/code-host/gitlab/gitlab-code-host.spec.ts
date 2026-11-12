@@ -1,3 +1,4 @@
+import { instantBackoff } from '../../instant-backoff.spec-helpers';
 import { testEnv } from '../../../config/env.spec-helpers';
 import { FakeClock } from '../../../core/fake-clock.spec-helpers';
 import type { CodeHostEnv } from '../abstract-code-host';
@@ -9,7 +10,12 @@ const TOKEN = 'super-secret-token';
 describe('gitlab host', () => {
   const original = global.fetch;
 
+  beforeEach(() => {
+    instantBackoff();
+  });
+
   afterEach(() => {
+    jest.restoreAllMocks();
     global.fetch = original;
   });
 

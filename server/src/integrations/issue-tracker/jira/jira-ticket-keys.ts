@@ -1,6 +1,7 @@
 import type { AppConfig, SwarmloopEnv } from '../../../config/env';
 import type { Clock } from '../../../core/clock';
-import { HttpStatusError, request } from '../../http';
+import { request } from '../../http';
+import { HostUnavailable } from '../../../core/swarmloop-error';
 
 const KEY_IN_TEXT = /[A-Z][A-Z0-9]+-\d+/g;
 
@@ -41,6 +42,7 @@ export class JiraTicketKeys {
     if (!known) {
       known = this.lookupProject(project);
       this.projects.set(project, known);
+      known.catch(() => this.projects.delete(project));
     }
     return known;
   }
@@ -58,7 +60,9 @@ export class JiraTicketKeys {
       );
       status = response.status;
     } catch (error) {
-      status = error instanceof HttpStatusError ? error.status : null;
+      if (error instanceof HostUnavailable) {
+        throw error;
+      }
     }
     if (status !== null && status >= 200 && status < 300) {
       return true;
