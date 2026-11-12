@@ -61,6 +61,32 @@ export class AuthController {
     return this.githubApp.manifest(org?.trim() || undefined, state);
   }
 
+  /** First run only: who owns the repositories this server works on, to fill in the owner of the app. */
+  @Get('github/owner')
+  async owner(@Req() request: { headers: Headers }): Promise<{ owner: string; others: string[] }> {
+    await this.assertFirstRun(request.headers);
+    const [owner = '', ...others] = await this.repos.owners('github');
+    return { owner, others };
+  }
+
+  /** The GitHub page where the person installs the app they just made, until the first person has logged in. */
+  @Get('github/install')
+  async install(
+    @Req() request: { headers: Headers },
+    @Res({ passthrough: true }) response: CookieResponse,
+  ): Promise<{ url: string }> {
+    const onMachine =
+      (await this.auth.actorOf(request.headers)) === 'machine' || this.auth.onThisMachine(request.headers);
+    if (!onMachine || (await this.connections.anyConnected())) {
+      throw new ForbiddenException('a login exists, or this is not the machine the server runs on');
+    }
+    const app = this.apps.find('github');
+    if (!app) {
+      throw new BadRequestException('there is no GitHub App to install');
+    }
+    return { url: this.githubApp.installUrl(app.slug, this.startState('github', response, false).state) };
+  }
+
   /** First run only: where GitHub redirects after the manifest. The app is stored, then the person installs and authorizes it. */
   @Get('github/created')
   async created(
@@ -73,10 +99,11 @@ export class AuthController {
     if (!code || !this.takeState(request.headers, state, response)) {
       throw new BadRequestException('the app was not made from here or the link has expired: try again');
     }
-    const slug = await this.githubApp.convert(code).catch((error: unknown) => {
+    // First run opens only on this machine or with the machine token, so there is no person to name yet.
+    await this.githubApp.convert(code, 'machine').catch((error: unknown) => {
       throw new BadGatewayException(error instanceof Error ? error.message : 'github did not make the app');
     });
-    response.redirect(this.githubApp.installUrl(slug, this.startState('github', response, false).state));
+    response.redirect('/login?install=1');
   }
 
   /** First run only: the OAuth application of a GitLab instance, stored encrypted. */
@@ -91,7 +118,15 @@ export class AuthController {
     if (!clientId || !clientSecret) {
       throw new BadRequestException('clientId and clientSecret are required');
     }
-    await this.apps.save({ host: 'gitlab', appId: '', slug: '', clientId, clientSecret, privateKey: '' });
+    await this.apps.save({
+      host: 'gitlab',
+      appId: '',
+      slug: '',
+      clientId,
+      clientSecret,
+      privateKey: '',
+      madeBy: 'machine',
+    });
     return { ok: true };
   }
 
@@ -120,10 +155,18 @@ export class AuthController {
     @Param('provider') name: string,
     @Query('code') code: string | undefined,
     @Query('state') state: string | undefined,
+    @Query('installation_id') installationId: string | undefined,
+    @Query('setup_action') setupAction: string | undefined,
     @Req() request: { headers: Headers },
     @Res() response: CookieResponse,
   ): Promise<void> {
     const provider = this.provider(name);
+    if (provider.name === 'github' && setupAction === 'install' && installationId && !state && !code) {
+      // An install started on GitHub's own page: nobody is signed in by it, the person logs in next.
+      const account = (await this.githubApp.installedAccount(installationId)) ?? '';
+      response.redirect(`/login?installed=${encodeURIComponent(account)}`);
+      return;
+    }
     const pending = this.takeState(request.headers, state, response);
     if (!pending || pending.provider !== provider.name || !code) {
       throw new BadRequestException('the login did not start here or has expired: try again');
