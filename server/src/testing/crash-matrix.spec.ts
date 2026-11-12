@@ -238,7 +238,7 @@ describe('crash matrix', () => {
 
   it('the timer reaches the same reconcile and finds a dead owner without a restart', async () => {
     const relaunched = holdRelaunches();
-    app = await createTestApp({ env: { RECONCILE_MS: '50' } });
+    app = await createTestApp({ env: { RECONCILE_MS: '50' }, reconcilerTimer: true });
     const reconciler = app.app.get(Reconciler);
     const original = reconciler.reconcile.bind(reconciler);
     const ticked = new Promise<void>((done) => {
@@ -260,6 +260,7 @@ describe('crash matrix', () => {
     const killAttempt = jest.fn().mockResolvedValue(true);
     app = await createTestApp({
       env: { RECONCILE_MS: '100' },
+      reconcilerTimer: true,
       sandbox: { attemptRunning: () => Promise.resolve(true), killAttempt },
     });
     const reconciler = app.app.get(Reconciler);

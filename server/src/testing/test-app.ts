@@ -56,6 +56,8 @@ interface TestAppOptions {
   realImplement?: boolean;
   /** The app removes the root when it closes. Defaults to true for a root it made. */
   ownsRoot?: boolean;
+  /** Starts the reconciler's timer. Off by default: a pass the spec did not ask for would reach the runs it drives by hand. */
+  reconcilerTimer?: boolean;
 }
 
 export class ScriptedFakeAgentRunner {
@@ -195,7 +197,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     if (ownsRoot) await rm(root, { recursive: true, force: true });
     throw error;
   }
-  app.get(Reconciler).schedule();
+  if (options.reconcilerTimer) {
+    app.get(Reconciler).schedule();
+  }
   const server = app.getHttpServer() as Server;
   const address = server.address() as AddressInfo | null;
   if (!address || typeof address === 'string') {
