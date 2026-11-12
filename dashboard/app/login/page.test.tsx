@@ -176,6 +176,17 @@ describe('LoginPage', () => {
     expect(screen.queryByText('Log in to swarmloop')).not.toBeInTheDocument();
   });
 
+  it('shows a login problem above the first-run form when no provider is configured', async () => {
+    vi.mocked(getProviders).mockResolvedValue({ providers: [] });
+    window.history.pushState({}, '', '/login?error=host&host=github&reason=x');
+
+    render(<LoginPage />);
+
+    await screen.findByRole('heading', { name: 'Connect swarmloop to your code host' });
+    expect(await screen.findByText('GitHub did not answer: x')).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+  });
+
   it('gives the first button focus', async () => {
     vi.mocked(getProviders).mockResolvedValue({ providers: ['github', 'gitlab'] });
 

@@ -161,7 +161,10 @@ export default function LoginPage(): ReactElement {
       >
         <Logo />
         {firstRun ? (
-          <FirstRun />
+          <>
+            <LoginProblemAlert />
+            <FirstRun />
+          </>
         ) : (
           <>
             <Typography variant="h5" component="h1" color="text.primary">
