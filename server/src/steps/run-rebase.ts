@@ -11,7 +11,7 @@ import { root } from '../history/run-paths';
 import { branchName, commitMessage, summaryForBranch } from './branch/branch-name';
 import { completeRebase, rebaseFeatureRepos } from '../git/rebase';
 import { repoNames } from '../git/repo-names';
-import { SwarmloopError } from '../core/swarmloop-error';
+import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { mountsForStep } from '../git/repo-names';
 import { ARTIFACTS } from './contract/artifacts';
 import { ERROR_CODES } from '../contract/error-codes';
@@ -73,6 +73,7 @@ export class RunRebase {
       );
       await completeRebase(journal);
     } catch (error) {
+      if (error instanceof HostUnavailable) throw error;
       const message = error instanceof SwarmloopError ? error.message : 'rebase failed';
       throw new ConflictException(message);
     }
@@ -100,6 +101,7 @@ export class RunRebase {
     try {
       await this.drafts.backToDraft(run);
     } catch (error) {
+      if (error instanceof HostUnavailable) throw error;
       throw new ConflictException(error instanceof SwarmloopError ? error.message : 'merge request failed');
     }
   }

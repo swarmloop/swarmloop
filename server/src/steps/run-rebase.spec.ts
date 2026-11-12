@@ -2,6 +2,7 @@ import { ConflictException } from '@nestjs/common';
 import { RunRebase } from './run-rebase';
 import { actionsFor, REASON, type RunState } from '../contract/run-state';
 import { deriveState, writeRunState } from '../history/run-state';
+import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import type { RunEntity } from '../history/entities';
 
 const PAST_GUARD = 'past the guard';
@@ -25,14 +26,14 @@ const ROWS: {
   { state: 'closed', status: 'done', merge: { closed: { repo: 'demo', by: null, at: '2026-11-11' } } },
 ];
 
-function rebaseOf(run: RunEntity): RunRebase {
+function rebaseOf(run: RunEntity, backToDraft: () => Promise<void> = async () => undefined): RunRebase {
   const runs = {
     findRun: async () => run,
     bumpGeneration: async () => {
       throw new Error(PAST_GUARD);
     },
   };
-  const drafts = { backToDraft: async () => undefined };
+  const drafts = { backToDraft };
   return new RunRebase(
     runs as never,
     {} as never,
@@ -80,5 +81,19 @@ describe('run rebase', () => {
   it('rebases a stopped run, which Rebase is offered to', async () => {
     const run = runOf({ state: 'stopped', status: 'blocked', code: REASON.stopped });
     await expect(rebaseOf(run).rebase('f36-1')).rejects.toThrow(PAST_GUARD);
+  });
+
+  it('lets an outage of the host through when the merge request goes back to draft', async () => {
+    const run = runOf({ state: 'stopped', status: 'blocked', code: REASON.stopped });
+    const outage = new HostUnavailable('api.github.com', 'HTTP 503', '2026-11-12T15:00:00.000Z');
+    await expect(rebaseOf(run, () => Promise.reject(outage)).rebase('f36-1')).rejects.toBe(outage);
+  });
+
+  it('turns any other error of the draft call into a conflict', async () => {
+    const run = runOf({ state: 'stopped', status: 'blocked', code: REASON.stopped });
+    const refused = () => Promise.reject(new SwarmloopError('draft refused'));
+    await expect(rebaseOf(run, refused).rebase('f36-1')).rejects.toThrow(
+      new ConflictException('draft refused').message,
+    );
   });
 });
