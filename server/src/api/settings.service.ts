@@ -1,7 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { loadPriceTable } from '../agent/prices';
 import { agentsFor, credentialFor, knownModels } from '../config/agents';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
+import { resolveRepoRoot } from '../config/repo-root';
 import { rawEnv } from '../config/process-env';
+import { Clock } from '../core/clock';
 import type { SettingsBody, StoredAgents } from '../contract/api';
 import type { SettingsView } from '../contract/settings';
 import { UserSettingRepository } from '../history/user-setting.repository';
@@ -66,16 +69,18 @@ export class SettingsService {
   constructor(
     private readonly config: AppConfig,
     private readonly stored: UserSettingRepository,
+    private readonly clock: Clock,
   ) {}
 
   async view(actor: string | null): Promise<SettingsView> {
     const env = this.config.env;
-    const models = knownModels(env);
+    const { runtimes, limited } = await this.models();
     const settings = actor && actor !== 'machine' ? ((await this.stored.read(actor)) ?? {}) : {};
     return {
       settings,
       defaults: { agents: this.defaultAgents(), split: env.SPLIT === 'auto' },
-      runtimes: this.connected().map((runtime) => ({ runtime, models: models[runtime] ?? [] })),
+      runtimes,
+      modelsLimited: limited,
       server: [...SERVER_NAMES, ...PROCESS_ENV_NAMES].map((name) => {
         const value = String((name in env ? env[name as keyof SwarmloopEnv] : rawEnv()[name]) ?? '');
         const secret = SECRET.test(name);
@@ -86,7 +91,7 @@ export class SettingsService {
 
   /** Checks the whole body, then replaces the person's settings. A refused body changes nothing. */
   async save(login: string, body: unknown): Promise<SettingsView> {
-    const settings = this.validate(body);
+    const settings = await this.validate(body);
     await this.stored.save(login, settings);
     return this.view(login);
   }
@@ -103,6 +108,22 @@ export class SettingsService {
     return { main: listOf(null), subtask: listOf(1) };
   }
 
+  /** Per connected runtime: the models env names, then its priced models. Limited when a table could not be read. */
+  private async models(): Promise<{ runtimes: SettingsView['runtimes']; limited: boolean }> {
+    const env = this.config.env;
+    const named = knownModels(env);
+    const root = resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname);
+    let limited = false;
+    const runtimes = await Promise.all(
+      this.connected().map(async (runtime) => {
+        const priced = Object.keys(await loadPriceTable(root, runtime, this.clock.now()));
+        limited ||= priced.length === 0;
+        return { runtime, models: [...new Set([...(named[runtime] ?? []), ...priced])] };
+      }),
+    );
+    return { runtimes, limited };
+  }
+
   private connected(): RuntimeName[] {
     return RUNTIME_NAMES.filter((runtime) => {
       try {
@@ -114,7 +135,7 @@ export class SettingsService {
     });
   }
 
-  private validate(body: unknown): SettingsBody {
+  private async validate(body: unknown): Promise<SettingsBody> {
     const given = this.record(body, 'settings');
     this.onlyKeys(given, ['agents', 'split'], 'settings');
     const settings: SettingsBody = {};
@@ -125,15 +146,16 @@ export class SettingsService {
       settings.split = given.split;
     }
     if (given.agents !== undefined) {
-      settings.agents = this.validateAgents(given.agents);
+      settings.agents = await this.validateAgents(given.agents);
     }
     return settings;
   }
 
-  private validateAgents(value: unknown): StoredAgents {
+  private async validateAgents(value: unknown): Promise<StoredAgents> {
     const tiers = this.record(value, 'agents');
     this.onlyKeys(tiers, TIERS, 'agents');
     const agents: StoredAgents = {};
+    const { runtimes } = await this.models();
     for (const tier of TIERS) {
       if (tiers[tier] === undefined) {
         continue;
@@ -141,17 +163,23 @@ export class SettingsService {
       const roles = this.record(tiers[tier], `agents.${tier}`);
       this.onlyKeys(roles, ROLES, `agents.${tier}`);
       agents[tier] = Object.fromEntries(
-        ROLES.filter((role) => roles[role] !== undefined).map((role) => [role, this.validateList(roles[role], role)]),
+        ROLES.filter((role) => roles[role] !== undefined).map((role) => [
+          role,
+          this.validateList(roles[role], role, runtimes),
+        ]),
       );
     }
     return agents;
   }
 
-  private validateList(list: unknown, role: string): { runtime: string; model: string }[] {
+  private validateList(
+    list: unknown,
+    role: string,
+    runtimes: SettingsView['runtimes'],
+  ): { runtime: string; model: string }[] {
     if (!Array.isArray(list) || list.length === 0) {
       refuse(`the agents of ${role} must be a non-empty list; leave the role out to use the server default`);
     }
-    const known = knownModels(this.config.env);
     return list.map((item: unknown) => {
       const entry = this.record(item, `an agent of ${role}`);
       const { runtime, model } = entry;
@@ -165,7 +193,7 @@ export class SettingsService {
         const reason = error instanceof Error ? error.message : String(error);
         refuse(`agent ${name}:${model} of ${role} has no credential: ${reason}`);
       }
-      if (!known[name]?.includes(model)) {
+      if (!runtimes.find((offered) => offered.runtime === name)?.models.includes(model)) {
         refuse(`agent ${name}:${model} of ${role} has an unknown model for ${name}`);
       }
       return { runtime: name, model };

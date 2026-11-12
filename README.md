@@ -377,10 +377,10 @@ When the API is on another machine, set the URL in `env`:
 | `RUNTIME` | `cursor`, `claude`, or `codex`. The runtime of the short form. The run stores the runtime of its first `implement` agent. |
 | `MODEL_PLAN` | Short form: model of the `plan` and `review` roles on `RUNTIME`. `.env.example` uses `grok-4.7-xhigh`. |
 | `MODEL_IMPLEMENT` | Short form: model of the `implement` role on `RUNTIME`. `.env.example` uses `grok-4.7-high`. |
-| `AGENTS_PLAN` | Agents of the `plan` role (research, plan, plan improve, the merge request text), `runtime:model`, comma-separated. The first is used, the rest are the fallback order. Empty: `RUNTIME:MODEL_PLAN`. |
-| `AGENTS_IMPLEMENT` | Agents of the `implement` role (implement, implement improve, rebase conflicts, chat and shell). Empty: `RUNTIME:MODEL_IMPLEMENT`. |
-| `AGENTS_REVIEW` | Agents of the `review` role (every code reviewer and the review report). Empty: `RUNTIME:MODEL_PLAN`. |
-| `AGENTS_SUBTASK_PLAN`, `AGENTS_SUBTASK_IMPLEMENT`, `AGENTS_SUBTASK_REVIEW` | The same for a run with a parent. Empty: the main role. |
+| `AGENTS_PLAN` | Agents of the `plan` role (research, plan, plan improve, the merge request text), `runtime:model`, comma-separated. The first is used, the rest are the fallback order. Empty: `RUNTIME:MODEL_PLAN`. Each person can override it in Settings. |
+| `AGENTS_IMPLEMENT` | Agents of the `implement` role (implement, implement improve, rebase conflicts, chat and shell). Empty: `RUNTIME:MODEL_IMPLEMENT`. Each person can override it in Settings. |
+| `AGENTS_REVIEW` | Agents of the `review` role (every code reviewer and the review report). Empty: `RUNTIME:MODEL_PLAN`. Each person can override it in Settings. |
+| `AGENTS_SUBTASK_PLAN`, `AGENTS_SUBTASK_IMPLEMENT`, `AGENTS_SUBTASK_REVIEW` | The same for a run with a parent. Empty: the main role. Each person can override it in Settings. |
 | `ISSUE_TRACKER` | `jira` |
 | `REQUIREMENTS_VIA` | `agent` or `direct`. Both build the requirements record in the server. The model does not rewrite it. |
 | `CHECKOUTS_ROOT` | Folder of git clones listed in **New run**. It must hold only the repositories swarmloop works on. |
@@ -389,7 +389,7 @@ When the API is on another machine, set the URL in `env`:
 | `TICK_MS` | How often a running pipeline is polled. `.env.example` uses `15000`. |
 | `SWARMLOOP_API_HOST`, `SWARMLOOP_API_PORT` | Where the API listens. `.env.example` uses `127.0.0.1:3920`. Without a login provider the server refuses to start on another address. |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, `GITLAB_OAUTH_CLIENT_ID`, `GITLAB_OAUTH_CLIENT_SECRET` | Login with GitHub or GitLab. See [Login](#login). |
-| `SWARMLOOP_ALLOW` | Who may log in: `github:<user>`, `github-org:<org>`, `gitlab:<user>`, `gitlab-group:<group>`. Empty: the owner of `GITHUB_TOKEN` or `GITLAB_TOKEN`. |
+| `SWARMLOOP_ALLOW` | Who may log in: `github:<user>`, `github-org:<org>`, `gitlab:<user>`, `gitlab-group:<group>`. Empty: a person who can push to a repository this server works on, or the first person to log in on the server's own machine while nobody is connected; a plain GitHub OAuth App from `.env` keeps the owner of `GITHUB_TOKEN`. |
 | `SWARMLOOP_TOKEN` | Bearer token for the CLI, ACP and scripts. Empty: made in `data/token`. |
 
 Spend, tokens, retries, and timeouts are in [Limits](#-limits-on-money-tokens-and-time). A missing key stops bootstrap and names the variable. Copy `.env.example` and change what you want.
@@ -408,7 +408,9 @@ The panel has a login with GitHub and with GitLab. Nothing acts without a sessio
 2. Put the id and secret in `.env`: `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`, `GITLAB_OAUTH_CLIENT_ID` and `GITLAB_OAUTH_CLIENT_SECRET`. The login page shows a button for each provider that has both.
 3. Say who may log in with `SWARMLOOP_ALLOW`, comma-separated: `github:<user>`, `github-org:<org>`, `gitlab:<user>`, `gitlab-group:<group>`. Empty means a person whose own token can push to at least one repository this server works on (`CHECKOUTS_ROOT`, narrowed by `SWARMLOOP_REPOS`), on the host they log in with; read access is not enough, and a refusal says `<host>:<login> can't push to any repository this server works on`. A plain GitHub OAuth App from `.env` keeps the owner of `GITHUB_TOKEN` as the default. A non-empty list works as written and only narrows or names people. Membership is checked once, at login, with the person's own token, which is not kept. A refused login names the account and the reason.
 
-The GitHub App made from the dashboard is private and belongs to the account that owns the repositories. A private app can be installed only on its owner, and only that account or the members of the owning organization can sign in to it. People outside the organization (outside collaborators) cannot sign in to a private organization app: add them to the organization instead. An install started on GitHub's own page returns to swarmloop with `Installed on <account>` and a Log in button. Connections has **Replace app** for the person who made the app, with a confirm: the stored app is forgotten and the first-run form returns, the app on GitHub stays, and Connections links to its settings for deleting it.
+The GitHub App made from the dashboard is private and belongs to the account that owns the repositories. A private app can be installed only on its owner, and only that account or the members of the owning organization can sign in to it. People outside the organization (outside collaborators) cannot sign in to a private organization app: add them to the organization instead. An install started on GitHub's own page returns to swarmloop with `Installed on <account>` and a Log in button. Connections has **Replace app** for the person who made the app, with a confirm that names who gets disconnected. It starts the same manifest flow as first run, and the old app keeps working until GitHub returns the new one; only then are the connections made through the old app removed, and their runs wait with `GIT_AUTH` until those people log in again. Cancelling on GitHub changes nothing. The app on GitHub stays, and Connections links to its settings for deleting it.
+
+The Settings page lets each person choose the agents per role and tier for their own runs. The `AGENTS_*` values in `.env` are the server default. The choice is read when a run starts and kept on the run.
 
 A session lasts 14 days, or until Logout. Every run records who started it, and the run page shows it. The CLI, ACP, smoke and scripts send `SWARMLOOP_TOKEN` as `Authorization: Bearer <token>`. When it is empty the server makes one in `data/token`, and `docker compose exec server node dist/main.js doctor` prints it.
 

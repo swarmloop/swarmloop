@@ -1,11 +1,21 @@
-import { BadRequestException, Controller, Delete, ForbiddenException, Get, Param, Post, Res } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import type { ConnectionView, ConnectionsView } from '../contract/api';
 import { Actor } from './actor.decorator';
 import { CheckoutRepos } from './checkout-repos';
 import { ConnectionsService } from './connections.service';
 import { startState, type CookieResponse } from './cookies';
-import { GithubAppService } from './github-app.service';
+import { GithubAppService, type ManifestForm } from './github-app.service';
 import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
 import type { ProviderName } from './oauth-provider';
@@ -47,9 +57,13 @@ export class ConnectionsController {
     };
   }
 
-  /** Forgets the stored GitHub App and the connections made through it so the first-run form comes back. Only its maker, or the machine token. The app on GitHub stays. */
-  @Delete('github/app')
-  async replaceApp(@Actor() actor: string | null): Promise<{ ok: true }> {
+  /** Starts the manifest flow for a new GitHub App. The old app and its connections stay until GitHub returns the new one. Only its maker, or the machine token. */
+  @Post('github/app')
+  async replaceApp(
+    @Query('org') org: string | undefined,
+    @Actor() actor: string | null,
+    @Res({ passthrough: true }) response: CookieResponse,
+  ): Promise<ManifestForm> {
     const app = this.apps.find('github');
     if (!app) {
       throw new BadRequestException('there is no GitHub App to replace');
@@ -57,10 +71,8 @@ export class ConnectionsController {
     if (actor !== 'machine' && actor !== app.madeBy) {
       throw new ForbiddenException(`Only ${app.madeBy ?? 'the machine token'} can replace this app`);
     }
-    await this.apps.forget('github');
-    // Their tokens belong to the old app: the new one cannot refresh them, and they would keep the install step shut.
-    await this.connections.disconnectAll('github');
-    return { ok: true };
+    const { state } = startState(this.states, this.config, 'github', response, true, actor as string);
+    return this.githubApp.manifest(org?.trim() || (await this.repos.owners('github').catch(() => []))[0], state);
   }
 
   @Delete(':host')
@@ -100,6 +112,7 @@ export class ConnectionsController {
     const stored = this.apps.find(host);
     const credentials = this.apps.credentials(host);
     const health = actor && actor !== 'machine' ? await this.connections.health(host, actor) : null;
+    const mayReplace = host === 'github' && stored && (actor === 'machine' || actor === stored.madeBy);
     const repositories =
       host === 'github' && health ? await this.connections.repositories(actor as string).catch(() => []) : [];
     return {
@@ -117,6 +130,7 @@ export class ConnectionsController {
       missingOwners: host === 'github' && health ? await this.missingOwners(repositories) : [],
       selection: health?.selection === 'selected' ? 'selected' : health?.selection === 'all' ? 'all' : null,
       health: health && { status: health.status, expiresAt: health.expiresAt, refreshedAt: health.refreshedAt },
+      connected: mayReplace ? await this.connections.loginsOn(host) : [],
     };
   }
 }

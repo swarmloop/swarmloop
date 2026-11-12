@@ -289,14 +289,34 @@ describe('login with a connecting app: who may log in when SWARMLOOP_ALLOW is em
 
   it('refuses a person whose token cannot see the repository, and any person when no checkout is on the host', async () => {
     await start('github');
+    const away = { 'x-forwarded-host': 'panel.example' };
+    const from = async (user: string, headers: Record<string, string>) => {
+      const begin = await fetch(`${app.url}/auth/github/login`, { redirect: 'manual' });
+      const state = new URL(begin.headers.get('location') ?? '').searchParams.get('state') ?? '';
+      return fetch(`${app.url}/auth/github/callback?code=${user}&state=${state}`, {
+        redirect: 'manual',
+        headers: { ...headers, cookie: `swarmloop_state=${state}` },
+      });
+    };
+    const refused = await from('ann', away);
+    expect(refused.status).toBe(403);
+    expect(((await refused.json()) as { message: string }).message).toBe(pushMessage('github', 'ann'));
+    expect((await signIn('github', 'ann')).status).toBe(302);
+    const second = await signIn('github', 'bob');
+    expect(second.status).toBe(403);
+    expect(((await second.json()) as { message: string }).message).toBe(pushMessage('github', 'bob'));
+  });
+
+  it('with a checkout the push rule still decides after the first person', async () => {
+    await start('github');
     checkout('site', 'acme/site');
-    fake.pushers.add('ann:acme/site');
-    fake.hidden.add('ann:acme/site');
-    expect((await signIn('github', 'ann')).status).toBe(403);
-    rmSync(join(checkouts, 'site'), { recursive: true, force: true });
-    app.clock.advance(60_000);
+    expect((await signIn('github', 'ann')).status).toBe(302);
+    fake.pushers.add('bob:acme/site');
+    fake.hidden.add('bob:acme/site');
+    expect((await signIn('github', 'bob')).status).toBe(403);
     fake.hidden.clear();
-    expect((await signIn('github', 'ann')).status).toBe(403);
+    app.clock.advance(60_000);
+    expect((await signIn('github', 'bob')).status).toBe(302);
   });
 
   it('on GitLab asks for Developer access', async () => {

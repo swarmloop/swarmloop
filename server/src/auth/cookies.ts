@@ -21,8 +21,9 @@ export function startState(
   provider: ProviderName,
   response: CookieResponse,
   pkce = true,
+  replaceBy?: string,
 ): { state: string; verifier: string } {
-  const started = states.start(provider, pkce);
+  const started = states.start(provider, pkce, replaceBy);
   response.cookie(STATE_COOKIE, started.state, { ...cookieOptions(config), path: '/auth', maxAge: 10 * 60 * 1000 });
   return started;
 }

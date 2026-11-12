@@ -87,7 +87,7 @@ export class AuthController {
     return { url: this.githubApp.installUrl(app.slug, this.startState('github', response, false).state) };
   }
 
-  /** First run only: where GitHub redirects after the manifest. The app is stored, then the person installs and authorizes it. */
+  /** Where GitHub redirects after the manifest, on first run or when the maker replaces the app. The app is stored, then the person installs and authorizes it. */
   @Get('github/created')
   async created(
     @Query('code') code: string | undefined,
@@ -95,15 +95,42 @@ export class AuthController {
     @Req() request: { headers: Headers },
     @Res() response: CookieResponse,
   ): Promise<void> {
-    await this.assertFirstRun(request.headers);
+    if (!(await this.auth.firstRunOpen(request.headers))) {
+      await this.replaced(code, state, request.headers, response);
+      return;
+    }
     if (!code || !this.takeState(request.headers, state, response)) {
       throw new BadRequestException('the app was not made from here or the link has expired: try again');
     }
     // First run opens only on this machine or with the machine token, so there is no person to name yet.
-    await this.githubApp.convert(code, 'machine').catch((error: unknown) => {
+    await this.convertApp(code, 'machine');
+    response.redirect('/login?install=1');
+  }
+
+  /** An app exists: only the state of a replace flow gets in. The new app is stored first, then the old connections go. */
+  private async replaced(
+    code: string | undefined,
+    state: string | undefined,
+    headers: Headers,
+    response: CookieResponse,
+  ): Promise<void> {
+    const pending = this.takeState(headers, state, response);
+    if (pending?.replaceBy === undefined) {
+      throw new ForbiddenException('a login exists, or this is not the machine the server runs on');
+    }
+    if (!code) {
+      throw new BadRequestException('the app was not made from here or the link has expired: try again');
+    }
+    const slug = await this.convertApp(code, pending.replaceBy);
+    // Their tokens belong to the old app: the new one cannot refresh them.
+    await this.connections.disconnectAll('github');
+    response.redirect(this.githubApp.installUrl(slug, this.startState('github', response, false).state));
+  }
+
+  private convertApp(code: string, madeBy: string): Promise<string> {
+    return this.githubApp.convert(code, madeBy).catch((error: unknown) => {
       throw new BadGatewayException(error instanceof Error ? error.message : 'github did not make the app');
     });
-    response.redirect('/login?install=1');
   }
 
   /** First run only: the OAuth application of a GitLab instance, stored encrypted. */
@@ -187,6 +214,9 @@ export class AuthController {
           });
         }
       : undefined;
+    const first = grant
+      ? async () => this.auth.onThisMachine(request.headers) && (await this.connections.noneOn(provider.name))
+      : undefined;
     const verdict = await decide(
       parseAllow(this.config.env.SWARMLOOP_ALLOW),
       { provider: provider.name, ...identity },
@@ -196,6 +226,7 @@ export class AuthController {
           ? identity.user
           : null),
       push,
+      first,
     );
     if (!verdict.allowed) {
       throw new ForbiddenException(

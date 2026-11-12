@@ -54,6 +54,11 @@ export function AgentsSection({
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {view.modelsLimited ? (
+        <Typography variant="body2" color="text.secondary">
+          The model list is limited to the server&apos;s models for now.
+        </Typography>
+      ) : null}
       {TIERS.map((tier) => (
         <Paper key={tier} variant="outlined" sx={{ p: 2 }}>
           <Typography variant="h6" component="h3" sx={{ textTransform: 'capitalize', mb: 1 }}>

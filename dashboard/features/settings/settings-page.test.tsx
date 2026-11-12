@@ -16,8 +16,9 @@ const view = (settings: SettingsView['settings'] = {}): SettingsView => ({
   defaults: { agents: { main: roles, subtask: roles }, split: true },
   runtimes: [
     { runtime: 'claude', models: ['opus', 'sonnet'] },
-    { runtime: 'codex', models: ['gpt'] },
+    { runtime: 'codex', models: ['gpt', 'gpt-priced'] },
   ],
+  modelsLimited: false,
   server: [
     { name: 'MAX_RUN_USD', secret: false, value: '5' },
     { name: 'SWARMLOOP_SECRET', secret: true, value: 'set' },
@@ -58,6 +59,17 @@ describe('SettingsPage', () => {
 
     expect(saveSettings).toHaveBeenCalledWith({});
     expect(await screen.findByText('Saved')).toBeInTheDocument();
+  });
+
+  it('offers a model only the price table has, and says when the list is limited', async () => {
+    const user = await openOwnPlan();
+    expect(screen.queryByText("The model list is limited to the server's models for now.")).not.toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: 'Add to main plan' }));
+    expect(await screen.findByRole('option', { name: 'codex:gpt-priced' })).toBeInTheDocument();
+
+    vi.mocked(getSettings).mockResolvedValue({ ...view(), modelsLimited: true });
+    render(<SettingsPage />);
+    expect(await screen.findByText("The model list is limited to the server's models for now.")).toBeInTheDocument();
   });
 
   it('adds a connected runtime and model, then saves', async () => {

@@ -50,8 +50,9 @@ export const getConnections = (): Promise<ConnectionsView> => api<ConnectionsVie
 export const installMore = (host: string): Promise<{ url: string }> => api(`/connections/${host}/install`, post());
 export const reconnectUrl = (host: string): string => `/auth/${host}/login`;
 export const disconnect = (host: string): Promise<{ ok: true }> => api(`/connections/${host}`, { method: 'DELETE' });
-/** Forgets the stored GitHub App, so the first-run form returns. The app on GitHub stays. */
-export const replaceApp = (): Promise<{ ok: true }> => api('/connections/github/app', { method: 'DELETE' });
+/** The manifest form for a new GitHub App. The old app and its connections stay until GitHub returns the new one. */
+export const replaceApp = (): Promise<{ action: string; manifest: Record<string, unknown> }> =>
+  api('/connections/github/app', post());
 /** The person's own settings with the server defaults, the connected runtimes and the env-only settings. */
 export const getSettings = (): Promise<SettingsView> => api<SettingsView>('/settings');
 export const saveSettings = (body: SettingsBody): Promise<SettingsView> =>

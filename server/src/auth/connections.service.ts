@@ -67,6 +67,11 @@ export class ConnectionsService {
     return (await this.rows.countBy({ host })) === 0;
   }
 
+  /** The logins connected on the host, sorted. */
+  async loginsOn(host: ProviderName): Promise<string[]> {
+    return (await this.rows.findBy({ host })).map((row) => row.login).sort();
+  }
+
   /** True when any person has a working connection. */
   async anyConnected(): Promise<boolean> {
     return (await this.rows.countBy({ status: 'ok' })) > 0;

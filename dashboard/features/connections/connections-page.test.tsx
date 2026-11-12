@@ -88,25 +88,40 @@ describe('ConnectionsPage', () => {
   });
 
   it('confirms with the app name and its GitHub settings, then shows the first-run form', async () => {
-    vi.mocked(getConnections).mockResolvedValueOnce(connected);
-    vi.mocked(replaceApp).mockResolvedValue({ ok: true });
-    render(<ConnectionsPage />);
+    const withPeople = (people: string[]): ConnectionsView => ({
+      connections: connected.connections.map((item) =>
+        item.host === 'github' ? { ...item, connected: people } : item,
+      ),
+    });
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => undefined);
+    vi.mocked(getConnections).mockResolvedValue(withPeople(['alice', 'bob']));
+    vi.mocked(replaceApp).mockResolvedValue({ action: 'https://github.com/settings/apps/new', manifest: { a: 1 } });
+    const { unmount } = render(<ConnectionsPage />);
     await userEvent.click(await screen.findByRole('button', { name: 'Replace app' }));
 
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Replace swarmloop-app?');
+    expect(dialog).toHaveTextContent('alice, bob will be disconnected.');
+    expect(dialog).toHaveTextContent('Their runs wait with GIT_AUTH until they log in again.');
+    expect(dialog).toHaveTextContent('The app on GitHub stays');
     expect(within(dialog).getByRole('link', { name: 'GitHub settings' })).toHaveAttribute(
       'href',
       'https://github.com/settings/apps/swarmloop-app',
     );
     expect(replaceApp).not.toHaveBeenCalled();
-    vi.mocked(getConnections).mockResolvedValue({
-      connections: connected.connections.map((item) => ({ ...item, app: null, account: null, health: null })),
-    });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Replace app' }));
 
     await waitFor(() => expect(replaceApp).toHaveBeenCalledTimes(1));
-    expect(await screen.findByRole('button', { name: 'Create GitHub App' })).toBeInTheDocument();
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(document.querySelector('form')).toHaveAttribute('action', 'https://github.com/settings/apps/new');
+    expect(document.querySelector('input[name="manifest"]')).toHaveValue('{"a":1}');
+    unmount();
+
+    vi.mocked(getConnections).mockResolvedValue(withPeople(['a', 'b', 'c', 'd', 'e', 'f']));
+    render(<ConnectionsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Replace app' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('6 people will be disconnected.');
+    submit.mockRestore();
   });
 
   it('warns about the owners the installation misses, and only then', async () => {
