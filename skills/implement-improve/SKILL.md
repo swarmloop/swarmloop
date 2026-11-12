@@ -22,7 +22,7 @@ If a command is rejected, stop and say so. Do not search the machine. Do not rea
 
 Package registries are reachable for a library install. Do not call Jira, GitLab, or any other host.
 
-End the answer with `summary`, and with `implementation` when this pass changed the files. `implementation` says what this pass changed. When nothing changed and the return is not a pipeline failure, omit `implementation`. `summary` says why the files were left or what changed.
+End the answer with `summary`, and with `implementation` when this pass changed the files. `implementation` says what this pass changed. When nothing changed and the return is not a pipeline failure, omit `implementation`. `summary` says why the files were left or what changed, and ends with one line for each item of the input or the plan that is not built, `not built: <item> - <why>`, or the single line `not built: nothing`. Stopping part way without that line is never allowed.
 
 ```
 implementation:
@@ -30,4 +30,5 @@ implementation:
 
 summary:
 - why
+- not built: nothing
 ```

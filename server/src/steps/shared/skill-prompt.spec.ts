@@ -54,7 +54,7 @@ describe('impact skill rules', () => {
     expect(text).toContain('The approved checklist alone does not authorize a removal.');
     expect(text).toContain('Dead code that nothing relies on');
     expect(text).not.toContain('A behavior that checklist removes is not a missing requirement');
-    expect(text).toContain('name one broken behavior');
+    expect(text).toContain('the return names every one of them, not only the first');
     expect(text).toContain('decision: return');
   });
 
@@ -67,6 +67,81 @@ describe('impact skill rules', () => {
     expect(text).toContain('named in `Removes` or `Behavior change`');
     expect(text).toContain('name one broken behavior');
     expect(text).toContain('decision: return');
+  });
+});
+
+describe('review against the input', () => {
+  const reviewers = [
+    'code-review',
+    'code-review/requirements',
+    'code-review/quality',
+    'code-review/regressions',
+    'code-review/security',
+    'code-review/performance',
+  ];
+  const authority =
+    "the input says what must be true, the plan says how, implement's account says why it was done this way";
+  const loosened =
+    'loosens or removes an assertion, skips or deletes a test, or widens a tolerance. That is a return unless';
+
+  it('requirements lists the input, checks each item and returns every unmet one at once', () => {
+    const text = skill('code-review/requirements');
+    expect(text).toContain("list what the input asks for, numbered in the input's order");
+    expect(text).toContain('Then check each one against the code.');
+    expect(text).toContain('`met: <item> (<where>)`, `partial: <item> - <what is missing>` or `missing: <item>`');
+    expect(text).toContain('the return names every one of them, not only the first');
+    expect(text).toContain("check each plan item's `proof:` against the diff");
+    expect(text).toContain('Do not ask for a new subsystem the input does not ask for.');
+    expect(text).toContain('Do not return that behavior again');
+    expect(text.indexOf('list what the input asks for')).toBeLessThan(text.indexOf("plan item's `proof:`"));
+  });
+
+  it.each(reviewers)('%s holds the authority line and never passes on the plan alone', (name) => {
+    const text = skill(name);
+    expect(text).toContain(authority);
+    expect(text).toContain('"The plan said to stop" and "the plan asks nothing more" are never a reason');
+    expect(text).toContain('is never the reason on its own');
+    expect(text).not.toContain('already what the approved plan asks');
+  });
+
+  it.each(['code-review/requirements', 'code-review/regressions'])(
+    '%s returns a loosened assertion in a CI fix',
+    (name) => {
+      const text = skill(name);
+      expect(text).toContain(loosened);
+      expect(text).toContain(
+        "implement's account says why the old assertion was wrong and what the new one still proves",
+      );
+      expect(text).toContain('Do not take it on trust.');
+    },
+  );
+
+  it('the report opens with the requirements list', () => {
+    const text = skill('code-review/report');
+    expect(text.indexOf('## Requirements')).toBeGreaterThan(-1);
+    expect(text.indexOf('## Requirements')).toBeLessThan(text.indexOf('## What changed'));
+  });
+});
+
+describe('plan-improve and implement answer to the input', () => {
+  it('plan-improve checks the coverage of the input before anything else', () => {
+    const text = skill('plan-improve');
+    expect(text).toContain('Before anything else, list every item the input asks for');
+    expect(text).toContain('`- added: <item> - <why>`');
+    expect(text.indexOf('Before anything else')).toBeLessThan(text.indexOf('[plan tool]'));
+  });
+
+  it.each(['implement', 'implement-improve'])('%s ends the account with a not built line', (name) => {
+    const text = skill(name);
+    expect(text).toContain('`not built: <item> - <why>`');
+    expect(text).toContain('`not built: nothing`');
+    expect(text).toContain('Stopping part way without that line is never allowed.');
+  });
+
+  it('implement changes a test only when the test is wrong and says why', () => {
+    expect(skill('implement')).toContain(
+      'Change a test only when the test is wrong, and say in `summary` why the old assertion was wrong',
+    );
   });
 });
 

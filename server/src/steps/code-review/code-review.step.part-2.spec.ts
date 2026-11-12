@@ -274,6 +274,11 @@ describe('code-review step', () => {
       }
       const proofCheck = reviewers.filter((call) => call.prompt.includes("Check every task's proof"));
       expect(proofCheck.map((call) => call.step)).toEqual(['code-review-requirements']);
+      const prompt = proofCheck[0].prompt;
+      expect(prompt).toContain('Check every requirement of the input against the merged diff');
+      expect(prompt.indexOf('Check every requirement of the input against the merged diff')).toBeLessThan(
+        prompt.indexOf("Check every task's proof"),
+      );
     } finally {
       await app.close();
     }
