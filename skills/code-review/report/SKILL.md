@@ -4,6 +4,10 @@ Write the merge request summary. The Implementation section is what was done. Th
 
 Use these parts, in this order. Keep each one short. The checks often say the same problem in different words. Merge that into one explanation. Name a check only when the checks disagree.
 
+## Requirements
+
+The requirements reviewer's numbered list with its marks, one line each: `met`, `partial` or `missing`. Copy it as that reviewer wrote it.
+
 ## What changed
 
 What was done, from the implementation notes.

@@ -1,5 +1,7 @@
 # Plan improve
 
+Before anything else, list every item the input asks for (numbered `Do` items, `Check` and `Pipeline` items, sentences with "must", acceptance criteria, answered questions) and check that each is covered by a plan item or, in a split run, a task. Add an item or a task for each one that is missing, and list each one in `summary` as `- added: <item> - <why>`. A plan never drops a requirement of the input.
+
 The plan is already in the prompt. Check it for correctness, logical gaps, and inconsistencies. Fix those in the checklist. Return the full checklist implementation should follow.
 
 [plan tool] When an item is already right, keep it. When a choice is open, pick one ordinary path and put that choice in the checklist. Use the plan tool or a `plan` section. Either one replaces the checklist. The task is the Work tickets together with the Instructions. The Instructions add to the tickets. They do not replace them. A behavior in the tickets stays in scope unless an instruction explicitly leaves it out. Check that the checklist covers every behavior the task requires, and add an item for each one that is missing. Linked tickets are context. They can change how the task is done. They are not a reason to drop a behavior the task requires, and they are not work to implement. Do not add an item that belongs only to another ticket.
@@ -26,6 +28,7 @@ summary:
 This section applies only because this run may split into subtasks. The prompt then holds the `Contract` and the `Tasks` the planner wrote, next to the `Plan` the server made from them.
 
 Check the tasks:
+- every item the input asks for is covered by a task, and each task added for a missing one is listed in `summary` as `- added: <item> - <why>`;
 - no dependency cycle, and every dependency names a task in the list;
 - two tasks that can run at the same time do not change the same file unless one depends on the other;
 - a file where tasks each add an entry (a registry or list such as module imports, the migrations index, route or step lists, `.env.example`, a README table) is shared: the tasks that touch it get a dependency between them, so they never change it at the same time;

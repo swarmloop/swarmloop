@@ -81,4 +81,4 @@ export function approvedChecklist(items: string[]): string {
 
 /** What the requirements reviewer is asked about the subtasks of a split run. */
 export const SUBTASK_PROOF_CHECK =
-  "This run was split into the subtasks below. Check every task's proof and the requirements as a whole.";
+  "This run was split into the subtasks below. Check every requirement of the input against the merged diff first. Check every task's proof after that.";
