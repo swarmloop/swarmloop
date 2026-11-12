@@ -201,6 +201,7 @@ export const SERVICE_KINDS: Readonly<Record<string, string>> = {
   snapshot: 'pipeline/worktree-snapshot',
   environment: 'environment/project-environments',
   checks_pass: 'environment/project-environments',
+  checks_skipped: 'environment/project-environments',
   [REBASE_JOURNAL]: 'git/rebase/journal',
   loop_mark: 'pipeline/run-driver',
   spend: 'pipeline/run-driver',

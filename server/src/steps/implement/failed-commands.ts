@@ -9,7 +9,7 @@ const TRACE_TAIL_CHARS = 6000;
  * The failed commands of the returned issues. A checks issue carries them as data. A pipeline issue carries its job
  * trace: each command the project also runs as a check that the trace names failed there, with the trace's end.
  */
-async function failedCommands(
+export async function failedCommands(
   environments: EnvironmentService,
   returns: Issue[] | null,
   place: EnvironmentInput,

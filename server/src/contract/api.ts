@@ -163,6 +163,8 @@ export interface CheckCommandView {
   index: number;
   repo: string;
   command: string;
+  /** The short name of the command; null for a row from before names. */
+  name: string | null;
   status: 'waiting' | 'running' | 'passed' | 'failed' | 'skipped';
   startedAt: string | null;
   endedAt: string | null;

@@ -1,4 +1,5 @@
 import type { EnvironmentRecord } from './environment-types';
+import { checkRun } from './environment-config';
 
 export function environmentNote(record: EnvironmentRecord, step?: string): string {
   const { config } = record;
@@ -19,7 +20,7 @@ export function environmentNote(record: EnvironmentRecord, step?: string): strin
       improving
         ? 'The implement agent already ran the full checks in its session. When this pass changes no file, do not run them again. When it changes files, run the narrowest command that covers the change, because the server runs the full checks after this answer, before code review. These are the checks:'
         : 'Run these checks when a coherent piece of work is done and always before your final summary. When one fails, fix the cause and run it again. Do not run them after every small edit.',
-      ...config.checks.map((check) => `- \`${check}\``),
+      ...config.checks.map((check) => `- \`${checkRun(check)}\``),
     );
   } else {
     lines.push(

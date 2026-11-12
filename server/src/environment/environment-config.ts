@@ -9,6 +9,14 @@ const SWARMLOOP_DIR = '.swarmloop';
 const DEVCONTAINER_FILES = ['.devcontainer/devcontainer.json', '.devcontainer.json'];
 const CACHE_ROOT = '/home/sandbox/';
 
+/** A check: a command string, or the command with a short name and the git pathspecs it covers. */
+export type CheckEntry = string | { run: string; name?: string; paths?: string[] };
+
+/** The shell command of a check entry. */
+export function checkRun(entry: CheckEntry): string {
+  return typeof entry === 'string' ? entry : entry.run;
+}
+
 /** Where the agent's toolchain comes from: the image, one setup command, caches, and the checks it must run. */
 export interface EnvironmentConfig {
   source: string;
@@ -18,7 +26,7 @@ export interface EnvironmentConfig {
   context?: string;
   setup?: string;
   cache: string[];
-  checks: string[];
+  checks: CheckEntry[];
   /** `registries`: the agent may install packages itself. `setup`: only setup reaches the registries. */
   network?: AgentNetwork;
   /** Hosts the project needs besides the built-in registries: for its setup, and for the agent. */
@@ -56,12 +64,28 @@ const hostsSchema = Joi.object({
   agent: Joi.array().items(Joi.string().allow('')),
 }).unknown(true);
 
+const checkEntry = Joi.alternatives()
+  .try(
+    Joi.string().min(1),
+    Joi.object({
+      run: Joi.string().min(1).required(),
+      name: Joi.string().min(1),
+      paths: Joi.array().items(Joi.string().min(1)).min(1),
+    }),
+  )
+  .messages({
+    'alternatives.match':
+      '"checks" entries must be a command string or an object with "run", and optionally "name" and "paths"',
+    'alternatives.types':
+      '"checks" entries must be a command string or an object with "run", and optionally "name" and "paths"',
+  });
+
 const swarmloopSchema = Joi.object({
   version: Joi.number().valid(1).required(),
   image: Joi.string().min(1),
   dockerfile: dockerfilePath,
   setup: Joi.string().min(1),
-  checks: Joi.array().items(Joi.string().min(1)),
+  checks: Joi.array().items(checkEntry),
   cache: Joi.array().items(cachePath),
   network: Joi.string().valid(...NETWORKS),
   hosts: hostsSchema,
@@ -148,7 +172,7 @@ export function fromSwarmloop(text: string): EnvironmentConfig {
     image?: string;
     dockerfile?: string;
     setup?: string;
-    checks?: string[];
+    checks?: CheckEntry[];
     cache?: string[];
     network?: AgentNetwork;
     hosts?: ProjectHosts;

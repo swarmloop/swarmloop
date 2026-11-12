@@ -17,7 +17,8 @@ import type { SandboxMount } from '../core/sandbox-mount';
 import type { ProjectLaunch } from '../sandbox/sandbox-launch';
 import { agentImage, prepareStateDir, sandboxUserId } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
-import { originHosts, readEnvironmentConfig } from './environment-config';
+import { addCheckRows } from './check-rows';
+import { checkRun, originHosts, readEnvironmentConfig } from './environment-config';
 import { checksFingerprint } from './checks-fingerprint';
 import { countsFor } from '../history/gate-stamp';
 import { git } from '../git/git';
@@ -141,38 +142,29 @@ export class ProjectEnvironments {
 
   /**
    * Server-owned completion gate. Each repository uses its own frozen commands and image. Every command runs, up to
-   * CHECKS_PARALLEL at once, and a failure of one does not stop the others: the error names all of them.
+   * CHECKS_PARALLEL at once, and a failure of one does not stop the others: the error names all of them. A command
+   * with `paths` that the run's diff does not touch is skipped, unless the last return named it (`named`).
    */
-  async check(input: EnvironmentInput): Promise<{ passed: number; total: number }> {
+  async check(input: EnvironmentInput, named: FailedCommand[] = []): Promise<{ passed: number; total: number }> {
     const attemptId = input.run.activeAttempt ?? '';
     const repos: CheckedRepo[] = [];
     let passed = 0;
     let total = 0;
     for (const mount of input.mounts) {
       const prepared = await this.prepare({ ...input, mounts: [mount] });
-      const commands = prepared?.record.config.checks ?? [];
-      if (!prepared || commands.length === 0) {
+      const entries = prepared?.record.config.checks ?? [];
+      if (!prepared || entries.length === 0) {
         continue;
       }
       const fingerprint = await this.fingerprint(input, prepared);
       const skipped = await this.skipIfPassed(input, prepared, fingerprint);
-      const rows: CheckCommandEntity[] = [];
-      for (const command of commands) {
-        rows.push(
-          await this.commands.add({
-            runId: input.run.id,
-            attemptId,
-            repo: prepared.record.repo,
-            command,
-            commandIndex: total + rows.length,
-            ...(skipped ? { status: 'skipped', skipped: 1, exitCode: 0 } : {}),
-          }),
-        );
-      }
-      total += commands.length;
-      if (skipped) {
-        passed += commands.length;
-      } else {
+      const { rows, byPaths } = await addCheckRows(
+        { documents: this.documents, commands: this.commands, live: this.live },
+        { input, mount, prepared, named, skipped, offset: total },
+      );
+      total += entries.length;
+      passed += skipped ? entries.length : byPaths;
+      if (!skipped && rows.length > 0) {
         repos.push({ mount, prepared, fingerprint, rows, results: [] });
       }
     }
@@ -217,7 +209,7 @@ export class ProjectEnvironments {
         continue;
       }
       const repo = prepared.record.repo;
-      const listed = prepared.record.config.checks ?? [];
+      const listed = (prepared.record.config.checks ?? []).map(checkRun);
       for (const { command } of failed.filter((item) => item.repo === repo && listed.includes(item.command))) {
         const result = await runShell(this.shellDeps(), input, prepared.launch, command, mount, 'checks');
         if (result.exitCode !== 0) {

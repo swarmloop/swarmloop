@@ -9,6 +9,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
+import { issueOf } from '../shared/handoff';
 import { boot, featureTree, reply, result, seed, writeEnv } from '../implement/implement.step.spec-helpers';
 
 const failure =
@@ -40,6 +41,25 @@ describe('checks step', () => {
       expect(run?.currentStep).toBe('code-review');
       expect(run?.status).toBe('waiting');
       expect(run?.attemptsChecks).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('passes the commands of the returned issues to the checks', async () => {
+    const { app, runs } = await booted('PROJ-205');
+    try {
+      const failed = { repo: 'billing-api', command: 'npm test --prefix server', tail: 'red' };
+      await app
+        .get(DocumentRepository)
+        .putDocument(
+          (await runs.findRun('PROJ-205'))!,
+          'issues',
+          JSON.stringify([issueOf('checks', 'failed', 'x', [failed])]),
+        );
+      const check = jest.spyOn(app.get(EnvironmentService), 'check').mockResolvedValue({ passed: 1, total: 1 });
+      await app.get(PipelineService).step('checks', 'PROJ-205');
+      expect(check).toHaveBeenCalledWith(expect.anything(), [failed]);
     } finally {
       await app.close();
     }

@@ -5,7 +5,7 @@ import { basename } from 'path';
 import { git } from '../git/git';
 import type { RunEntity } from '../history/entities';
 import type { SandboxMount } from '../core/sandbox-mount';
-import { readEnvironmentConfig } from './environment-config';
+import { checkRun, readEnvironmentConfig } from './environment-config';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { CheckCommandRepository } from '../history/check-command.repository';
 import { DocumentRepository } from '../history/document.repository';
@@ -32,9 +32,15 @@ export class EnvironmentService extends ProjectEnvironments {
     const found: Omit<FailedCommand, 'tail'>[] = [];
     for (const mount of input.mounts) {
       const record = await this.record({ ...input, mounts: [mount] });
-      found.push(...(record?.config.checks ?? []).map((command) => ({ repo: record!.repo, command })));
+      found.push(...(record?.config.checks ?? []).map((check) => ({ repo: record!.repo, command: checkRun(check) })));
     }
     return found;
+  }
+
+  /** The commands of a repository that the paths of its last checks visit skipped. */
+  async skippedChecks(key: string, repo: string): Promise<{ names: string[] } | null> {
+    const stored = await this.repository.latestBody(key, `checks_skipped:${repo}`);
+    return stored ? (JSON.parse(stored) as { names: string[] }) : null;
   }
 
   /** An explicit rebase adopts the new trusted base environment, never the agent's edited manifest. */

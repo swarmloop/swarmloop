@@ -39,6 +39,7 @@ import {
   verdictOf,
   type Verdict,
   failureIssues,
+  type Failure,
   type InfraCode,
   type Seen,
 } from './pipeline-report';
@@ -47,6 +48,8 @@ import { ARTIFACTS } from '../contract/artifacts';
 import { mergeRequestDetails, parseMergeRequests } from '../merge-request/merge-request-record';
 import { finish } from './pipeline-result';
 import { hasDraft, markReady } from './pipeline-draft';
+import { basename } from 'path';
+import { EnvironmentService } from '../../environment/environment.service';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
 /** `repos` is read only when a green or absent pipeline asks whether CI started, so it is loaded there. */
@@ -78,6 +81,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     private readonly registry: CodeHostRegistry,
     private readonly rebase: RunRebase,
     private readonly runStop: RunStop,
+    private readonly environments: EnvironmentService,
   ) {
     super(kernel);
   }
@@ -370,6 +374,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     if (unreadable) {
       return finish('blocked', this.report(opened, 'pipeline log unavailable', unreadable), 'blocked', unreadable);
     }
+    await this.noteSkippedByPaths(ctx, failures);
     const body = traces ? renderFail(failures, seen, note) : `${note.trim()}\n`;
     if (ctx.options.auto && (await this.sameFailure(ctx, seen))) {
       const report = this.report(opened, 'pipeline already failed for this commit', body);
@@ -384,6 +389,24 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     await this.events.recordLoop(opened.run, 'pipeline', opened.run.attemptsPipeline, reason);
     const issues = failureIssues(failures, body);
     return finish('waiting', this.report(opened, 'pipeline failed', body), 'waiting', body, issues);
+  }
+
+  /**
+   * Ends the trace of a failed job with `<name> was skipped by its paths` for each command that its `paths` skipped in the
+   * last checks visit (the visit precedes the commit CI runs on, so no commit can be compared) and that the job is named like, so the project can fix its paths.
+   */
+  private async noteSkippedByPaths(ctx: StepContext, failures: Failure[]): Promise<void> {
+    for (const failure of failures) {
+      const skipped = await this.environments.skippedChecks(ctx.opened.run.key, basename(failure.project));
+      const job = failure.name.toLowerCase();
+      for (const name of skipped?.names ?? []) {
+        const own = name.toLowerCase();
+        const line = `${name} was skipped by its paths`;
+        if ((job.includes(own) || own.includes(job)) && !failure.trace.includes(line)) {
+          failure.trace = `${failure.trace.trimEnd()}\n${line}\n`;
+        }
+      }
+    }
   }
 
   private async sameFailure(ctx: StepContext, seen: Seen[]): Promise<boolean> {

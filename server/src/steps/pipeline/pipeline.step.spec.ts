@@ -240,6 +240,42 @@ describe('pipeline step', () => {
     }
   });
 
+  describe('a failed job named like a command that the paths of the checks visit skipped', () => {
+    async function failedJob(key: string, skipped?: { names: string[] }) {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-skipped-'));
+      const read = jest.fn(() =>
+        Promise.resolve({ snapshot: shot('failed', [job(7, 'Unit', false)]), httpCalls: [call('GET')] }),
+      );
+      const trace = jest.fn(() => Promise.resolve({ trace: 'log 7\n', httpCalls: [call('GET')] }));
+      const app = await boot(root, read, trace);
+      await seed(app, key);
+      const run = (await app.get(RunRepository).findRun(key))!;
+      const documents = app.get(DocumentRepository);
+      await documents.putDocument(run, 'repos', 'demo\n');
+      if (skipped) {
+        await documents.putDocument(run, 'checks_skipped:demo', JSON.stringify(skipped));
+      }
+      await app.get(PipelineService).step('pipeline', key);
+      const issues = JSON.parse((await documents.latestBody(key, 'issues')) ?? '[]') as { body: string }[];
+      await app.close();
+      return issues.map((issue) => issue.body).join('\n');
+    }
+
+    it('says that the command was skipped by its paths', async () => {
+      const body = await failedJob('PROJ-310', { names: ['unit tests', 'lint'] });
+      expect(body).toContain('log 7');
+      expect(body).toContain('unit tests was skipped by its paths');
+      expect(body).not.toContain('lint was skipped');
+    });
+
+    it.each([
+      ['no job that matches', { names: ['lint'] }],
+      ['no document', undefined],
+    ])('says nothing for %s', async (_label, skipped) => {
+      expect(await failedJob('PROJ-311', skipped)).not.toContain('was skipped by its paths');
+    });
+  });
+
   it('does not send the same failed run back to implement', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-same-'));
     const read = jest.fn(() =>

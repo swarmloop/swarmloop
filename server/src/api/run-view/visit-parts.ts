@@ -40,6 +40,7 @@ export function commandViewsOf(rows: CheckCommandEntity[]): CheckCommandView[] {
     index: row.commandIndex,
     repo: row.repo,
     command: row.command,
+    name: row.name,
     status: row.status as CheckCommandView['status'],
     startedAt: row.startedAt,
     endedAt: row.endedAt,

@@ -1,11 +1,12 @@
 import { createHash } from 'crypto';
 import type { SandboxMount } from '../core/sandbox-mount';
+import type { CheckEntry } from './environment-config';
 import { worktreeSnapshot } from '../git/worktree-git';
 
 /** What the fingerprint reads of a prepared environment. */
 interface FingerprintEnvironment {
   launch: { image: string };
-  record: { config: { checks: string[]; hosts?: unknown }; setup?: { command: string } };
+  record: { config: { checks: CheckEntry[]; hosts?: unknown }; setup?: { command: string } };
 }
 
 /**

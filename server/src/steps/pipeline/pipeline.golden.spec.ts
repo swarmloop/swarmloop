@@ -1,3 +1,4 @@
+import { EnvironmentService } from '../../environment/environment.service';
 import 'reflect-metadata';
 import { StepKernel } from '../step-kernel';
 import { mkdtemp, rm } from 'fs/promises';
@@ -53,6 +54,7 @@ describe('pipeline step golden traces', () => {
       app.get(CodeHostRegistry),
       app.get(RunRebase),
       app.get(RunStop),
+      app.get(EnvironmentService),
     );
     const result = await step.execute(KEY);
     const trail = await traceRun(app.get(DataSource), KEY, { pipeline: documents.kinds });

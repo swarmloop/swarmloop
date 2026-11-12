@@ -455,6 +455,10 @@ export class CheckCommandEntity {
   @Column({ type: 'text' })
   command!: string;
 
+  /** The short name the checks list shows; null on rows from before names. */
+  @Column({ type: 'varchar', nullable: true })
+  name!: string | null;
+
   @Column({ name: 'command_index', type: 'integer' })
   commandIndex!: number;
 
