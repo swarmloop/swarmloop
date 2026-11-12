@@ -22,8 +22,9 @@ export function startState(
   response: CookieResponse,
   pkce = true,
   replaceBy?: string,
+  next?: string,
 ): { state: string; verifier: string } {
-  const started = states.start(provider, pkce, replaceBy);
+  const started = states.start(provider, pkce, replaceBy, next);
   response.cookie(STATE_COOKIE, started.state, { ...cookieOptions(config), path: '/auth', maxAge: 10 * 60 * 1000 });
   return started;
 }

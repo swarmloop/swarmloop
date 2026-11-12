@@ -45,8 +45,7 @@ describe('decide', () => {
     expect(await decide([], login, noOwner, async () => true)).toEqual({ allowed: true });
     expect(await decide([], login, noOwner, async () => false)).toEqual({
       allowed: false,
-      reason: expect.any(String),
-      message: "github:Ann can't push to any repository this server works on",
+      reason: "can't push to any repository this server works on",
     });
   });
 
@@ -70,7 +69,7 @@ describe('decide', () => {
       ),
     ).toMatchObject({
       allowed: false,
-      message: "github:Ann can't push to any repository this server works on",
+      reason: "can't push to any repository this server works on",
     });
     const first = jest.fn(async () => false);
     expect(await decide([], login, noOwner, async () => true, first)).toEqual({ allowed: true });
