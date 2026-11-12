@@ -87,12 +87,10 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       [requirements, answers, prior, impact].join('\n'),
       mounts,
     );
-    const continued = await resumableChat(
-      root(this.config),
-      key,
-      'plan',
-      this.profile(this.config.env, ctx.opened.run).runtime,
-    );
+    // Research shares this chat, so only a stored plan visit makes this a re-plan.
+    const continued = (await this.visits.hasAgentVisit(ctx.opened.run.id, 'plan'))
+      ? await resumableChat(root(this.config), key, 'plan', this.profile(this.config.env, ctx.opened.run).runtime)
+      : null;
     const limits = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);
     const full = skillPrompt('plan', input.requirements, names, sections, mounts, { split: limits.maySplit });
     const chosen = continued?.chatId ? appendImpact(planFollowUp(answers), impact) : full;
