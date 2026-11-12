@@ -7,6 +7,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 import { REASON } from '../contract/run-state';
 import { DocumentRepository } from '../history/document.repository';
+import { EventRepository } from '../history/event.repository';
 import { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
@@ -213,5 +214,77 @@ describe('MergeWatch', () => {
     const run = await find('PROJ-8');
     expect(Date.now() - Date.parse(run.doneAt!)).toBeGreaterThan(1.9 * DAY_MS);
     expect((await find('PROJ-9')).doneAt).toBeNull();
+  });
+
+  /** A run that is not done, with one merge request per project. */
+  async function unfinishedRun(key: string, status: string, state: string, projects: string[]): Promise<void> {
+    await doneRun(key, projects);
+    await table().update({ key }, { status, state, doneAt: null, mergeOutcome: null });
+  }
+
+  const loops = async (key: string) => app.get(EventRepository).listLoops((await find(key)).id);
+
+  it('turns a stopped run whose only request was merged into done, merged, and says so in its history', async () => {
+    await unfinishedRun('PROJ-10', 'failed', 'stopped', ['acme/demo']);
+    answers.set('acme/demo#1', merged('queue'));
+
+    await app.get(MergeWatch).run();
+
+    const run = await find('PROJ-10');
+    expect([run.status, run.state]).toEqual(['done', 'merged']);
+    expect(Object.keys(JSON.parse(run.mergeOutcome!).merged)).toEqual(['acme/demo']);
+    expect((await loops('PROJ-10')).map((loop) => [loop.counter, loop.reason])).toEqual([
+      ['merge-watch', 'The merge request was merged on GitHub while the run was stopped; the run is done.'],
+    ]);
+  });
+
+  it('leaves a blocked run with one request merged and one open as it is', async () => {
+    await unfinishedRun('PROJ-11', 'blocked', 'blocked', ['acme/one', 'acme/two']);
+    answers.set('acme/one#1', merged('queue'));
+    answers.set('acme/two#2', { state: 'open' });
+    const before = await find('PROJ-11');
+
+    await app.get(MergeWatch).run();
+
+    const run = await find('PROJ-11');
+    expect([run.status, run.state, run.stateReason, run.mergeOutcome, run.revision]).toEqual([
+      'blocked',
+      'blocked',
+      before.stateReason,
+      null,
+      before.revision,
+    ]);
+    expect(await loops('PROJ-11')).toEqual([]);
+  });
+
+  it('keeps a stopped run while another request is open even if one was closed', async () => {
+    await unfinishedRun('PROJ-12', 'failed', 'stopped', ['acme/one', 'acme/two']);
+    answers.set('acme/one#1', { state: 'closed', by: 'grace', at: '2026-05-02T08:00:00Z' });
+    answers.set('acme/two#2', { state: 'open' });
+
+    await app.get(MergeWatch).run();
+
+    expect((await find('PROJ-12')).status).toBe('failed');
+  });
+
+  it('turns a waiting run whose request was closed into done, closed', async () => {
+    await unfinishedRun('PROJ-13', 'waiting', 'waiting', ['acme/demo']);
+    answers.set('acme/demo#1', { state: 'closed', by: 'grace', at: '2026-05-02T08:00:00Z' });
+
+    await app.get(MergeWatch).run();
+
+    const run = await find('PROJ-13');
+    expect([run.status, run.state]).toEqual(['done', 'closed']);
+    expect((await loops('PROJ-13'))[0].reason).toContain('closed on GitHub while the run was waiting');
+  });
+
+  it('leaves a running run with a merged request alone', async () => {
+    await unfinishedRun('PROJ-14', 'running', 'running', ['acme/demo']);
+    answers.set('acme/demo#1', merged('queue'));
+
+    await app.get(MergeWatch).run();
+
+    expect((await find('PROJ-14')).status).toBe('running');
+    expect(reads).toBe(0);
   });
 });
