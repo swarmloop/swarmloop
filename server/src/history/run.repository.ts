@@ -7,7 +7,7 @@ import { AppConfig } from '../config/env';
 import { randomUUID } from 'crypto';
 import { Clock } from '../core/clock';
 import { SERVER_INSTANCE } from '../core/server-instance';
-import { claimedColumns, stateColumns } from './run-state';
+import { claimedColumns, deriveState, stateColumns } from './run-state';
 import type { RunStateChange } from './run-state';
 import { LiveHub } from '../live/live.hub';
 import { existsSync, readdirSync } from 'fs';
@@ -74,6 +74,18 @@ export class RunRepository {
       return index === -1 ? order.length : index;
     };
     return rows.sort((a, b) => place(a) - place(b) || a.id - b.id);
+  }
+
+  /** The key, revision and state of every subtask of a run: what a pass of the parent sees. */
+  async subtaskFingerprint(parent: RunEntity): Promise<string> {
+    const children = await this.children(parent);
+    const seen = children.map((child) => [child.key, child.revision, deriveState(child).state]);
+    return JSON.stringify(seen.sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+  }
+
+  /** Stores the fingerprint without a run change: no revision, no update time, no notice. */
+  async recordSubtaskFingerprint(parent: RunEntity, subtaskFingerprint: string): Promise<void> {
+    await this.runs.update({ id: parent.id }, { subtaskFingerprint });
   }
 
   async findSubtask(parent: RunEntity, taskId: string): Promise<RunEntity | null> {

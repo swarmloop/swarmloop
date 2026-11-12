@@ -272,6 +272,19 @@ export class SubtaskPort extends SubtaskOps {
     await this.commands.accept('resume', parent.key, {}, { idempotencyKey });
   }
 
+  /** True when the subtasks are not as the last pass saw them, or when no pass recorded them yet. */
+  async subtasksChanged(parent: RunEntity): Promise<boolean> {
+    return (
+      parent.subtaskFingerprint === null || parent.subtaskFingerprint !== (await this.runs.subtaskFingerprint(parent))
+    );
+  }
+
+  /** A split parent in implement with subtask runs: a pass that already runs, or is queued, is enough for a resume. */
+  async hasPass(key: string): Promise<boolean> {
+    const run = await this.runs.findRun(key);
+    return !!run?.split && run.currentStep === 'implement' && (await this.runs.children(run)).length > 0;
+  }
+
   /** Between passes: the parent waits for its subtasks, or a blocked subtask stopped it. */
   passDue(parent: RunEntity): boolean {
     const { state, reason } = deriveState(parent);

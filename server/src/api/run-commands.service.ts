@@ -16,8 +16,6 @@ import { ARTIFACTS } from '../steps/contract/artifacts';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { SubtaskClose } from './subtask-close';
 import { deriveState, writeRunState } from '../history/run-state';
-import { branchName, summaryForBranch } from '../steps/branch/branch-name';
-import { requirementsBrief } from '../steps/shared/requirements-brief';
 import { PhaseName, pipelineStepOf, reviewerOf, STEPS } from '../contract/steps';
 import { REASON, STOP_NOTE } from '../contract/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
@@ -38,7 +36,7 @@ import {
   RunRef,
   StartStepBody,
 } from '../contract/api';
-import { subtaskPrompt } from './subtask-prompt';
+import { subtaskPromptOf } from './subtask-prompt';
 import { requireRun, RunQueriesService } from './run-queries.service';
 
 /** What `plan` decided for a new run. It is the payload of the start command. */
@@ -143,20 +141,10 @@ export class RunCommandsService {
     return this.startPlanned(await this.plan(body, split));
   }
 
-  /** The prompt of a subtask: its task, the parent brief, and the feature branch it starts from. */
-  private async subtaskPromptOf(parent: RunEntity, task: Subtask): Promise<string> {
-    const requirements = await this.documents.latestBody(parent.key, 'requirements');
-    if (!requirements?.trim()) {
-      throw new BadRequestException('requirements is missing');
-    }
-    const branch = branchName(parent.key, summaryForBranch(requirements, parent.key));
-    return subtaskPrompt(task, requirementsBrief(requirements), branch);
-  }
-
   private async subtaskPlan(parent: RunEntity, task: Subtask): Promise<StartPlan> {
     return this.plan({
       key: `${parent.key}-${task.id}`,
-      prompt: await this.subtaskPromptOf(parent, task),
+      prompt: await subtaskPromptOf(this.documents, parent, task),
       projects: storedProjects(parent.projects),
     });
   }
@@ -190,7 +178,7 @@ export class RunCommandsService {
     if (!run || run.status !== 'waiting' || run.currentStep !== 'requirements' || this.runs.held(run)) {
       return;
     }
-    const prompt = await this.subtaskPromptOf(parent, task);
+    const prompt = await subtaskPromptOf(this.documents, parent, task);
     const result = await this.pipeline.startDetached(run.key, {
       prompt,
       projects: storedProjects(parent.projects),
@@ -381,13 +369,21 @@ export class RunCommandsService {
     if (view.resume === 'blocked') {
       throw new ConflictException('run is blocked');
     }
+    const pass = await this.subtasks.hasPass(key);
     if (view.resume === 'running') {
+      if (pass) {
+        return { key, status: 'started' };
+      }
       throw new ConflictException(`${key} is already running`);
     }
     if (view.resume === 'done') {
       return { key, status: 'done' };
     }
-    return this.accepted(key, await this.pipeline.startDetached(key, prompt?.trim() ? { prompt: prompt.trim() } : {}));
+    const result = await this.pipeline.startDetached(key, prompt?.trim() ? { prompt: prompt.trim() } : {});
+    if (pass && result.message.includes('already running')) {
+      return { key, status: 'started' };
+    }
+    return this.accepted(key, result);
   }
 
   /** New run always opens the next free session. Resume keeps the current one. */

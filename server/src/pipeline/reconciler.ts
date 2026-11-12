@@ -173,13 +173,14 @@ export class Reconciler implements OnModuleDestroy {
   }
 
   /**
-   * A split run waits between its passes: the timer starts the next one, and so does a restart. The key holds the
-   * revision, so a parent that no pass touched is resumed once, not on every tick.
+   * A split run waits between its passes. The timer and a restart resume it only when its subtasks changed since
+   * the last pass (an event was lost) or when no pass recorded them yet.
    */
   async resumeSubtaskParents(): Promise<void> {
     for (const run of await this.runs.listRuns()) {
       if (run.status !== 'waiting' || !this.subtasks.passDue(run)) continue;
       try {
+        if (!(await this.subtasks.subtasksChanged(run))) continue;
         await this.subtasks.resumeParent(run, `subtasks-${run.revision}`);
       } catch (error) {
         this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
