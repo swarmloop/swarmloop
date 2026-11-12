@@ -21,6 +21,7 @@ import { cookieOptions, startState, STATE_COOKIE, type CookieResponse } from './
 import { GithubAppService, type ManifestForm } from './github-app.service';
 import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
+import { problemOf, problemUrl, safeNext, type ProblemBase } from './login-problem';
 import type { MeView } from '../contract/api';
 import type { OAuthProvider, ProviderName } from './oauth-provider';
 import { Public } from './public.decorator';
@@ -95,36 +96,40 @@ export class AuthController {
     @Req() request: { headers: Headers },
     @Res() response: CookieResponse,
   ): Promise<void> {
-    if (!(await this.auth.firstRunOpen(request.headers))) {
-      await this.replaced(code, state, request.headers, response);
-      return;
-    }
-    if (!code || !this.takeState(request.headers, state, response)) {
-      throw new BadRequestException('the app was not made from here or the link has expired: try again');
-    }
+    const firstRun = await this.auth.firstRunOpen(request.headers);
+    const pending = this.takeState(request.headers, state, response);
     // First run opens only on this machine or with the machine token, so there is no person to name yet.
-    await this.convertApp(code, 'machine');
-    response.redirect('/login?install=1');
+    const madeBy = firstRun ? (pending ? 'machine' : undefined) : pending?.replaceBy;
+    const base = firstRun ? '/login' : await this.replaceBase(pending, request.headers);
+    try {
+      if (!code || madeBy === undefined) {
+        throw new BadRequestException('the app was not made from here or the link has expired: try again');
+      }
+      const slug = await this.convertApp(code, madeBy);
+      if (firstRun) {
+        response.redirect('/login?install=1');
+        return;
+      }
+      // Their tokens belong to the old app: the new one cannot refresh them.
+      await this.connections.disconnectAll('github');
+      response.redirect(this.githubApp.installUrl(slug, this.startState('github', response, false).state));
+    } catch (error) {
+      response.redirect(this.problemOrThrow(error, base, 'github'));
+    }
   }
 
-  /** An app exists: only the state of a replace flow gets in. The new app is stored first, then the old connections go. */
-  private async replaced(
-    code: string | undefined,
-    state: string | undefined,
-    headers: Headers,
-    response: CookieResponse,
-  ): Promise<void> {
-    const pending = this.takeState(headers, state, response);
-    if (pending?.replaceBy === undefined) {
-      throw new ForbiddenException('a login exists, or this is not the machine the server runs on');
+  /** A replace flow returns to Connections, where the signed-in person is; anything else lands on the login page. */
+  private async replaceBase(pending: { replaceBy?: string } | null, headers: Headers): Promise<ProblemBase> {
+    const signedIn = !pending && (await this.sessions.find(sessionIdOf(headers.cookie))) !== null;
+    return pending?.replaceBy !== undefined || signedIn ? '/connections' : '/login';
+  }
+
+  private problemOrThrow(error: unknown, base: ProblemBase, host: string): string {
+    const url = problemOf(error, base, host);
+    if (url === null) {
+      throw error;
     }
-    if (!code) {
-      throw new BadRequestException('the app was not made from here or the link has expired: try again');
-    }
-    const slug = await this.convertApp(code, pending.replaceBy);
-    // Their tokens belong to the old app: the new one cannot refresh them.
-    await this.connections.disconnectAll('github');
-    response.redirect(this.githubApp.installUrl(slug, this.startState('github', response, false).state));
+    return url;
   }
 
   private convertApp(code: string, madeBy: string): Promise<string> {
@@ -171,9 +176,13 @@ export class AuthController {
   }
 
   @Get(':provider/login')
-  login(@Param('provider') name: string, @Res() response: CookieResponse): void {
+  login(
+    @Param('provider') name: string,
+    @Query('next') next: string | undefined,
+    @Res() response: CookieResponse,
+  ): void {
     const provider = this.provider(name);
-    const { state, verifier } = this.startState(provider.name, response);
+    const { state, verifier } = this.startState(provider.name, response, true, safeNext(next));
     response.redirect(provider.authorizeUrl(this.redirectUri(provider), state, verifier));
   }
 
@@ -187,6 +196,23 @@ export class AuthController {
     @Req() request: { headers: Headers },
     @Res() response: CookieResponse,
   ): Promise<void> {
+    try {
+      await this.signIn(name, code, state, installationId, setupAction, request.headers, response);
+    } catch (error) {
+      response.redirect(this.problemOrThrow(error, '/login', name));
+    }
+  }
+
+  /** Every failure throws; `callback` turns it into a redirect to the login page. */
+  private async signIn(
+    name: string,
+    code: string | undefined,
+    state: string | undefined,
+    installationId: string | undefined,
+    setupAction: string | undefined,
+    headers: Headers,
+    response: CookieResponse,
+  ): Promise<void> {
     const provider = this.provider(name);
     if (provider.name === 'github' && setupAction === 'install' && installationId && !state && !code) {
       // An install started on GitHub's own page: nobody is signed in by it, the person logs in next.
@@ -194,7 +220,7 @@ export class AuthController {
       response.redirect(`/login?installed=${encodeURIComponent(account)}`);
       return;
     }
-    const pending = this.takeState(request.headers, state, response);
+    const pending = this.takeState(headers, state, response);
     if (!pending || pending.provider !== provider.name || !code) {
       throw new BadRequestException('the login did not start here or has expired: try again');
     }
@@ -215,23 +241,24 @@ export class AuthController {
         }
       : undefined;
     const first = grant
-      ? async () => this.auth.onThisMachine(request.headers) && (await this.connections.noneOn(provider.name))
+      ? async () => this.auth.onThisMachine(headers) && (await this.connections.noneOn(provider.name))
       : undefined;
     const verdict = await decide(
       parseAllow(this.config.env.SWARMLOOP_ALLOW),
       { provider: provider.name, ...identity },
       async () =>
         (await provider.tokenOwner()) ??
-        ((await this.connections.ownsOrFirst(provider.name, identity.user, this.auth.onThisMachine(request.headers)))
+        ((await this.connections.ownsOrFirst(provider.name, identity.user, this.auth.onThisMachine(headers)))
           ? identity.user
           : null),
       push,
       first,
     );
     if (!verdict.allowed) {
-      throw new ForbiddenException(
-        verdict.message ?? `${provider.name}:${identity.user} may not log in: ${verdict.reason}`,
+      response.redirect(
+        problemUrl('/login', 'refused', { host: provider.name, account: identity.user, reason: verdict.reason }),
       );
+      return;
     }
     if (identity.grant) {
       // The first person to sign in through an app made on this machine is the one who made it.
@@ -249,7 +276,7 @@ export class AuthController {
       path: '/',
       maxAge: SESSION_DAYS * 24 * 3600 * 1000,
     });
-    response.redirect('/');
+    response.redirect(safeNext(pending.next));
   }
 
   @Post('logout')
@@ -271,8 +298,8 @@ export class AuthController {
     }
   }
 
-  private startState(provider: ProviderName, response: CookieResponse, pkce = true) {
-    return startState(this.states, this.config, provider, response, pkce);
+  private startState(provider: ProviderName, response: CookieResponse, pkce = true, next?: string) {
+    return startState(this.states, this.config, provider, response, pkce, undefined, next);
   }
 
   /** The login for `state`, once, when the browser holds the same state. */

@@ -12,6 +12,8 @@ interface LoginState {
   verifier: string;
   /** Set when the maker of the app started a replace: their login, or `machine`. */
   replaceBy?: string;
+  /** The same-origin path the person opened before the login: the callback returns there. */
+  next?: string;
 }
 
 /** The PKCE verifier of each login in flight, by `state`. They live in memory for ten minutes. */
@@ -22,7 +24,7 @@ export class LoginStates {
   constructor(private readonly clock: Clock) {}
 
   /** `pkce` false is for a code GitHub sends after an install, which no challenge was asked for: the verifier is empty. */
-  start(provider: ProviderName, pkce = true, replaceBy?: string): { state: string; verifier: string } {
+  start(provider: ProviderName, pkce = true, replaceBy?: string, next?: string): { state: string; verifier: string } {
     const now = this.clock.now();
     // Entries are in start order and share one TTL, so the sweep ends at the first live one.
     for (const [state, entry] of this.open) {
@@ -36,7 +38,7 @@ export class LoginStates {
     }
     const state = randomBytes(16).toString('hex');
     const verifier = pkce ? randomBytes(32).toString('base64url') : '';
-    this.open.set(state, { provider, verifier, replaceBy, expires: now + TTL_MS });
+    this.open.set(state, { provider, verifier, replaceBy, next, expires: now + TTL_MS });
     return { state, verifier };
   }
 

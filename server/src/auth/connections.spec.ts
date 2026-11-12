@@ -9,6 +9,8 @@ import { Reconciler } from '../pipeline/reconciler';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { RemoteRepositories } from '../steps/prepare/remote-repositories.service';
 import { createTestApp, type TestApp } from '../testing/test-app';
+import { redirectOf } from './login-problem.spec-helpers';
+import { GithubAppService } from './github-app.service';
 import { HostAppsService } from './host-apps.service';
 import { ConnectionsService } from './connections.service';
 import { startFakeHosts, type FakeHost } from './fake-hosts.spec-helpers';
@@ -271,8 +273,33 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     await signIn('alice');
     const begin = await fetch(`${app.url}/auth/github/login`, { redirect: 'manual' });
     const state = new URL(begin.headers.get('location') ?? '').searchParams.get('state') ?? '';
-    const refused = await created(state, away);
-    expect(refused.status).toBe(403);
+    expect(redirectOf(await created(state, away))).toEqual({ path: '/login', query: { error: 'expired' } });
+    expect(await connections().loginsOn('github')).toEqual(['alice']);
+  });
+
+  it('sends a Replace app failure back to Connections, with a replace state or with only a session', async () => {
+    await makeApp();
+    const alice = await signIn('alice');
+    const noCode = async (state: string) =>
+      fetch(`${app.url}/auth/github/created?state=${state}`, {
+        redirect: 'manual',
+        headers: { ...away, cookie: `swarmloop_state=${state}` },
+      });
+    expect(redirectOf(await noCode(await stateOf(await replace({ cookie: alice, ...away }))))).toEqual({
+      path: '/connections',
+      query: { error: 'expired' },
+    });
+    jest.spyOn(app.app.get(GithubAppService), 'convert').mockRejectedValueOnce(new Error('github is down'));
+    const failed = redirectOf(await created(await stateOf(await replace({ cookie: alice, ...away })), away));
+    expect(failed).toEqual({
+      path: '/connections',
+      query: { error: 'host', host: 'github', reason: 'github is down' },
+    });
+    const lost = await fetch(`${app.url}/auth/github/created?code=manifest-code&state=forged`, {
+      redirect: 'manual',
+      headers: { ...away, cookie: alice },
+    });
+    expect(redirectOf(lost)).toEqual({ path: '/connections', query: { error: 'expired' } });
     expect(await connections().loginsOn('github')).toEqual(['alice']);
   });
 
@@ -361,7 +388,7 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
       redirect: 'manual',
       headers: { cookie: `swarmloop_state=${state}`, 'x-forwarded-host': 'panel.example' },
     });
-    expect(remote.status).toBe(403);
+    expect(redirectOf(remote).query).toMatchObject({ error: 'refused', account: 'mallory' });
   });
 
   it('keeps a broken connection on one host from stopping a run on the other', async () => {
