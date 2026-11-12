@@ -281,6 +281,7 @@ describe('StepDetail', () => {
         index: 0,
         repo: 'api',
         command: 'npm test',
+        name: null,
         status: 'passed',
         startedAt: '2026-01-01T00:00:00.000Z',
         endedAt: '2026-01-01T00:00:05.000Z',
@@ -291,6 +292,7 @@ describe('StepDetail', () => {
         index: 1,
         repo: 'api',
         command: 'npm run lint',
+        name: null,
         status: 'failed',
         startedAt: '2026-01-01T00:00:00.000Z',
         endedAt: '2026-01-01T00:02:03.000Z',
@@ -301,6 +303,7 @@ describe('StepDetail', () => {
         index: 2,
         repo: 'web',
         command: 'npm run build',
+        name: null,
         status: 'running',
         startedAt: '2026-01-01T00:00:00.000Z',
         endedAt: null,
@@ -311,6 +314,7 @@ describe('StepDetail', () => {
         index: 3,
         repo: 'web',
         command: 'npm run e2e',
+        name: null,
         status: 'waiting',
         startedAt: null,
         endedAt: null,
@@ -321,6 +325,7 @@ describe('StepDetail', () => {
         index: 4,
         repo: 'web',
         command: 'npm run docs',
+        name: null,
         status: 'skipped',
         startedAt: null,
         endedAt: null,
@@ -331,6 +336,7 @@ describe('StepDetail', () => {
         index: 0,
         repo: 'api',
         command: 'npm test',
+        name: null,
         status: 'failed',
         startedAt: null,
         endedAt: null,
@@ -364,6 +370,27 @@ describe('StepDetail', () => {
       ]);
       expect(within(rows[1]).getAllByRole('cell')[3]).toHaveTextContent('2m 3s');
       expect(within(rows[1]).getAllByRole('cell')[4]).toHaveTextContent('2');
+    });
+
+    it('shows the name of a command and falls back to the command line when it has none', async () => {
+      vi.mocked(getStep).mockResolvedValue(
+        stepView({
+          step: 'checks',
+          visits: [visitView({ attemptId: 'att-1', status: 'running' })],
+          descriptor: { name: 'checks', kind: 'server' },
+          commands: [
+            { ...commands[0], name: 'server tests' },
+            { ...commands[1], name: null },
+          ],
+        }),
+      );
+      detail({ step: 'checks' });
+
+      const table = await screen.findByRole('table', { name: 'Check commands' });
+      const rows = within(table).getAllByRole('row').slice(1);
+      expect(within(rows[0]).getAllByRole('cell')[1]).toHaveTextContent('server tests');
+      expect(within(rows[0]).getAllByRole('cell')[1]).toHaveAttribute('title', 'npm test');
+      expect(within(rows[1]).getAllByRole('cell')[1]).toHaveTextContent('npm run lint');
     });
 
     it('shows passed/total and the slowest command in the header', async () => {

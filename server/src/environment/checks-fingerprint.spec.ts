@@ -61,4 +61,15 @@ describe('checksFingerprint', () => {
     ]);
     expect(seen.size).toBe(4);
   });
+
+  it('changes with the name or paths of a check entry', async () => {
+    const entry = (extra: object) =>
+      prepared({ config: { ...record.config, checks: [{ run: 'npm test', ...extra }] } });
+    const seen = new Set([
+      await fingerprint(entry({})),
+      await fingerprint(entry({ name: 'unit' })),
+      await fingerprint(entry({ paths: ['server/'] })),
+    ]);
+    expect(seen.size).toBe(3);
+  });
 });

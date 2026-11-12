@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { CheckCommandEntity } from './entities';
 
 type CheckCommandDraft = Pick<CheckCommandEntity, 'runId' | 'attemptId' | 'repo' | 'command' | 'commandIndex'> &
-  Partial<Pick<CheckCommandEntity, 'status' | 'skipped' | 'startedAt' | 'endedAt' | 'exitCode'>>;
+  Partial<Pick<CheckCommandEntity, 'name' | 'status' | 'skipped' | 'startedAt' | 'endedAt' | 'exitCode'>>;
 
 /** The commands of the checks visits of a run, one row each. */
 @Injectable()
@@ -13,7 +13,15 @@ export class CheckCommandRepository {
 
   add(draft: CheckCommandDraft): Promise<CheckCommandEntity> {
     return this.rows.save(
-      this.rows.create({ status: 'waiting', skipped: 0, startedAt: null, endedAt: null, exitCode: null, ...draft }),
+      this.rows.create({
+        name: null,
+        status: 'waiting',
+        skipped: 0,
+        startedAt: null,
+        endedAt: null,
+        exitCode: null,
+        ...draft,
+      }),
     );
   }
 

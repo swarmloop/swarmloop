@@ -582,6 +582,85 @@ describe('ProjectEnvironments checks', () => {
     expect(rows.at(-1)).toMatchObject({ status: 'skipped', skipped: 1 });
   });
 
+  describe('commands with a name and paths', () => {
+    const entries = [
+      'npm test server',
+      { run: 'npm run e2e', name: 'end to end' },
+      { run: 'npm test --prefix server', name: 'server tests', paths: ['server/'] },
+    ];
+
+    it('names a string entry by its label and an object entry by its name', async () => {
+      const { service, input, rows } = setup({ config: { ...manifest, checks: entries } });
+      await service.check(input);
+      expect(rows.map((row) => [row.command, row.name])).toEqual([
+        ['npm test server', 'npm test server'],
+        ['npm run e2e', 'end to end'],
+        ['npm test --prefix server', 'server tests'],
+      ]);
+    });
+
+    it('skips a command whose paths the diff does not touch and counts it as passed', async () => {
+      const { service, input, rows, spawned, stored, live } = setup({ config: { ...manifest, checks: entries } });
+      writeFiles(input.mounts[0].hostPath, { 'dashboard/app.ts': 'x\n' });
+      const done = await service.check(input);
+      expect(done).toEqual({ passed: 3, total: 3 });
+      expect(rows.map((row) => [row.commandIndex, row.status])).toEqual([
+        [0, 'passed'],
+        [1, 'passed'],
+        [2, 'skipped'],
+      ]);
+      expect(spawned.filter((launch) => launch.allowHosts.length === 0)).toHaveLength(2);
+      const tail = 'no change under server/';
+      expect(stored.map((item) => item.body).some((body) => body.includes(`"tail":"${tail}"`))).toBe(true);
+      expect(live.log).toHaveBeenCalledWith(expect.objectContaining({ body: `server tests: ${tail}\n` }));
+      const skipped = stored.find((item) => item.kind === 'checks_skipped:' + basename(input.mounts[0].hostPath));
+      expect(JSON.parse(skipped?.body ?? '{}')).toMatchObject({ names: ['server tests'] });
+    });
+
+    it('runs a command when the diff touches its paths, tracked or untracked', async () => {
+      const untracked = setup({ config: { ...manifest, checks: entries } });
+      writeFiles(untracked.input.mounts[0].hostPath, { 'server/src/x.ts': 'x\n' });
+      await untracked.service.check(untracked.input);
+      expect(untracked.rows.at(-1)?.status).toBe('passed');
+
+      const tracked = setup({ config: { ...manifest, checks: entries } });
+      const repo = tracked.input.mounts[0].hostPath;
+      commitFiles(repo, { 'server/a.ts': 'a\n' });
+      writeFiles(repo, { 'server/a.ts': 'b\n' });
+      await tracked.service.check(tracked.input);
+      expect(tracked.rows.at(-1)?.status).toBe('passed');
+    });
+
+    it('runs a command that the last return named although its paths are untouched', async () => {
+      const { service, input, rows } = setup({ config: { ...manifest, checks: entries } });
+      const repo = basename(input.mounts[0].hostPath);
+      writeFiles(input.mounts[0].hostPath, { 'dashboard/app.ts': 'x\n' });
+      await service.check(input, [{ repo, command: 'npm test --prefix server', tail: '' }]);
+      expect(rows.at(-1)?.status).toBe('passed');
+    });
+
+    it('replaces the stored skips when a later visit runs the command', async () => {
+      const { service, input, stored } = setup({ config: { ...manifest, checks: entries } });
+      const kind = `checks_skipped:${basename(input.mounts[0].hostPath)}`;
+      await service.check(input);
+      expect(JSON.parse(stored.filter((item) => item.kind === kind).at(-1)?.body ?? '{}').names).toEqual([
+        'server tests',
+      ]);
+      writeFiles(input.mounts[0].hostPath, { 'server/src/x.ts': 'x\n' });
+      await service.check(input);
+      expect(JSON.parse(stored.filter((item) => item.kind === kind).at(-1)?.body ?? '{}').names).toEqual([]);
+    });
+
+    it('lets the fingerprint skip win over the paths', async () => {
+      const { service, input, rows, spawned } = setup({ config: { ...manifest, checks: entries } });
+      await service.check(input);
+      const before = spawned.length;
+      await service.check(input);
+      expect(spawned).toHaveLength(before);
+      expect(rows.slice(-3).map((row) => row.status)).toEqual(['skipped', 'skipped', 'skipped']);
+    });
+  });
+
   it('writes the full output of a long command to its own file', async () => {
     const { service, input, root } = setup({ checkLines: 50_000 });
     await service.check({ ...input, run: { id: 1, activeAttempt: 'attempt-1' } as RunEntity });

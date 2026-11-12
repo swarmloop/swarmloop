@@ -28,6 +28,43 @@ describe('fromSwarmloop', () => {
     });
   });
 
+  it('reads a check as a command string or as an object with an optional name and paths', () => {
+    const checks = fromSwarmloop(
+      JSON.stringify({
+        version: 1,
+        image: 'a',
+        checks: [
+          'npm test',
+          { run: 'npm run lint' },
+          { run: 'npm test -w server', name: 'server', paths: ['server/'] },
+        ],
+      }),
+    ).checks;
+    expect(checks).toEqual([
+      'npm test',
+      { run: 'npm run lint' },
+      { run: 'npm test -w server', name: 'server', paths: ['server/'] },
+    ]);
+  });
+
+  it('rejects a check that is neither a string nor an object, and names the accepted forms', () => {
+    expect(() => fromSwarmloop(JSON.stringify({ version: 1, image: 'a', checks: [5] }))).toThrow(
+      '.swarmloop.json: "checks" entries must be a command string or an object with "run", and optionally "name" and "paths"',
+    );
+  });
+
+  it.each([
+    ['an empty run', { run: '' }, '"checks[0].run" is not allowed to be empty'],
+    ['no run', { name: 'x' }, '"checks[0].run" is required'],
+    ['an unknown key', { run: 'x', path: ['a'] }, '"checks[0].path" is not allowed'],
+    ['paths that are not an array', { run: 'x', paths: 'server/' }, '"checks[0].paths" must be an array'],
+    ['empty paths', { run: 'x', paths: [] }, '"checks[0].paths" must contain at least 1 items'],
+  ])('rejects a check object with %s and names the field', (_label, entry, message) => {
+    expect(() => fromSwarmloop(JSON.stringify({ version: 1, image: 'a', checks: [entry] }))).toThrow(
+      `.swarmloop.json: ${message}`,
+    );
+  });
+
   it('names the new key for a key of the first format', () => {
     expect(() => fromSwarmloop(JSON.stringify({ version: 1, image: 'a', install: 'x', verify: ['y'] }))).toThrow(
       '.swarmloop.json: "install" is now "setup", "verify" is now "checks"',

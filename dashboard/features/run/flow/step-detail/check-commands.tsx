@@ -80,7 +80,9 @@ export function CheckCommands({
           return [
             <TableRow key={command.index}>
               <TableCell sx={{ fontFamily: 'var(--font-mono)' }}>{command.repo}</TableCell>
-              <TableCell sx={{ fontFamily: 'var(--font-mono)' }}>{command.command}</TableCell>
+              <TableCell sx={{ fontFamily: 'var(--font-mono)' }} title={command.command}>
+                {command.name ?? command.command}
+              </TableCell>
               <TableCell sx={{ color: statusColor(TONE[command.status]) }}>{command.status}</TableCell>
               <TableCell align="right">{ms === null ? '' : duration(ms)}</TableCell>
               <TableCell align="right">{command.exitCode ?? ''}</TableCell>

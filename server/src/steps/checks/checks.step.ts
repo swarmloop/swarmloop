@@ -10,6 +10,7 @@ import type { SampleDraft } from '../../history/visit';
 import { BaseStep, StepContext } from '../base-step';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
+import { failedCommands } from '../implement/failed-commands';
 import { checkRepeatedBlock, checksLine, implementFacts } from '../implement/implement-record';
 import { issueOf } from '../shared/handoff';
 import { StepKernel } from '../step-kernel';
@@ -47,7 +48,10 @@ export class ChecksStep extends BaseStep<typeof INPUTS> {
       samples,
     };
     try {
-      const checks = checksLine(await ctx.activity('Server checks', () => this.environments.check(place), checksLine));
+      const named = await failedCommands(this.environments, await ctx.reread(ARTIFACTS.issues), place);
+      const checks = checksLine(
+        await ctx.activity('Server checks', () => this.environments.check(place, named), checksLine),
+      );
       return {
         route: { to: 'next' },
         summary: `${opened.startedAt} checks done\n${checks}`,

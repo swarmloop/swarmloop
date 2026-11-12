@@ -50,6 +50,8 @@ import { mergeRequestDetails, parseMergeRequests } from '../merge-request/merge-
 import { finish } from './pipeline-result';
 import { stuckAtStart } from './stuck-start';
 import { hasDraft, markReady } from './pipeline-draft';
+import { noteSkippedByPaths } from './pipeline-skipped';
+import { EnvironmentService } from '../../environment/environment.service';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
 /** `repos` is read only when a green or absent pipeline asks whether CI started, so it is loaded there. */
@@ -81,6 +83,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     private readonly registry: CodeHostRegistry,
     private readonly rebase: RunRebase,
     private readonly runStop: RunStop,
+    private readonly environments: EnvironmentService,
   ) {
     super(kernel);
   }
@@ -387,6 +390,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     if (unreadable) {
       return finish('blocked', this.report(opened, 'pipeline log unavailable', unreadable), 'blocked', unreadable);
     }
+    await noteSkippedByPaths(this.environments, opened.run.key, failures);
     const body = traces ? renderFail(failures, seen, note) : `${note.trim()}\n`;
     if (ctx.options.auto && (await this.sameFailure(ctx, seen))) {
       const report = this.report(opened, 'pipeline already failed for this commit', body);
