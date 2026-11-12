@@ -16,7 +16,7 @@ import type { RunSummary } from '@contract/api';
 import { NewRunDialog } from '../features/new-run';
 import { useReadiness } from '../features/readiness';
 import { RemoveRunDialog, RunList, useRuns } from '../features/runs';
-import { Account, Shell, ThemeModeSwitch, useNewRun } from '../features/shell';
+import { Account, Shell, useNewRun } from '../features/shell';
 
 const DrawerWidth = 280;
 
@@ -141,11 +141,6 @@ function DashboardFrame({
               {connected ? 'live' : 'offline'}
             </Typography>
           </Box>
-          <Button component={Link} href="/connections" color="inherit" sx={{ mr: 1 }}>
-            Connections
-          </Button>
-          <Account />
-          <ThemeModeSwitch />
           <Box component="span" title={blocker?.action}>
             <Button variant="contained" startIcon={<AddIcon />} onClick={openNewRun} disabled={blocker !== null}>
               New run
@@ -170,20 +165,25 @@ function DashboardFrame({
         }}
       >
         <Toolbar />
-        <RunList
-          query={query}
-          onQuery={setQuery}
-          runs={runs}
-          visible={visible}
-          selected={selected}
-          now={now}
-          error={error}
-          onOpen={(key) => router.push(`/runs/${key}` as Route)}
-          onRemove={(run) => {
-            setRemoveError(null);
-            setPendingRemove(run);
-          }}
-        />
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <RunList
+            query={query}
+            onQuery={setQuery}
+            runs={runs}
+            visible={visible}
+            selected={selected}
+            now={now}
+            error={error}
+            onOpen={(key) => router.push(`/runs/${key}` as Route)}
+            onRemove={(run) => {
+              setRemoveError(null);
+              setPendingRemove(run);
+            }}
+          />
+        </Box>
+        <Box sx={{ borderTop: 1, borderColor: 'divider' }}>
+          <Account />
+        </Box>
       </Drawer>
       <Box component="main" sx={{ ml: `${DrawerWidth}px`, minHeight: '100vh', minWidth: 0 }}>
         <Toolbar />

@@ -1,6 +1,7 @@
 import { Body, Controller, ForbiddenException, Get, Put } from '@nestjs/common';
 import { Actor } from '../auth/actor.decorator';
-import { SettingsService, type SettingsView } from './settings.service';
+import type { SettingsView } from '../contract/settings';
+import { SettingsService } from './settings.service';
 
 @Controller('settings')
 export class SettingsController {

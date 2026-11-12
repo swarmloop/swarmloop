@@ -3,6 +3,7 @@ import { agentsFor, credentialFor, knownModels } from '../config/agents';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
 import { rawEnv } from '../config/process-env';
 import type { SettingsBody, StoredAgents } from '../contract/api';
+import type { SettingsView } from '../contract/settings';
 import { UserSettingRepository } from '../history/user-setting.repository';
 import { RUNTIME_NAMES, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 
@@ -55,26 +56,6 @@ const SERVER_NAMES = [
 const PROCESS_ENV_NAMES = ['PROJECT_HOSTS_ALLOW'] as const;
 
 const SECRET = /TOKEN$|SECRET$|API_KEY$/;
-
-export interface ServerSetting {
-  name: string;
-  secret: boolean;
-  /** The env value, or `set` / `not set` for a secret. */
-  value: string;
-}
-
-/** What `GET /settings` and `PUT /settings` answer. */
-export interface SettingsView {
-  /** The person's own settings; empty for the machine token and for a person with none. */
-  settings: SettingsBody;
-  defaults: {
-    agents: Record<(typeof TIERS)[number], Record<keyof typeof ROLE_STEPS, string[]>>;
-    split: boolean;
-  };
-  /** The runtimes with a credential, each with the models env names for it. */
-  runtimes: { runtime: RuntimeName; models: string[] }[];
-  server: ServerSetting[];
-}
 
 function refuse(reason: string): never {
   throw new BadRequestException(reason);
