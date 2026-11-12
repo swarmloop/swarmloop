@@ -14,6 +14,7 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
   abstract readonly name: RuntimeName;
   abstract readonly command: 'agent' | 'claude' | 'codex';
   abstract readonly syncsChatMode: boolean;
+  abstract readonly planModeHasPlanTool: boolean;
   abstract readonly priceSource: string;
 
   get component(): `agent-${RuntimeName}` {

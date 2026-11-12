@@ -37,6 +37,10 @@ export function parseTasks(text: string, limits: TaskLimits): TaskGraph {
     throw new SwarmloopError('contract is missing');
   }
   const tasks = taskLines(section(text, 'tasks') ?? '');
+  const unread = writtenIds(text).filter((id) => !tasks.some((task) => task.id === id));
+  if (unread.length > 0) {
+    throw new SwarmloopError(`tasks ${unread.join(', ')} were written but not read`);
+  }
   if (tasks.length === 0) {
     throw new SwarmloopError('tasks is empty');
   }
@@ -44,6 +48,10 @@ export function parseTasks(text: string, limits: TaskLimits): TaskGraph {
     throw new SwarmloopError(`too many tasks: ${tasks.length}, the limit is ${limits.maxTasks}`);
   }
   assertGraph(tasks);
+  const bare = tasks.find((task) => !task.description);
+  if (bare) {
+    throw new SwarmloopError(`task ${bare.id} has no description`);
+  }
   return { contract, tasks };
 }
 
@@ -62,15 +70,49 @@ export function splitOutputs(graph: TaskGraph | null): ArtifactValue[] {
 
 function taskLines(block: string): Subtask[] {
   const tasks: Subtask[] = [];
+  let body: string[] = [];
+  const close = (): void => {
+    const last = tasks[tasks.length - 1];
+    if (last) {
+      last.description = dedent(body);
+    }
+    body = [];
+  };
   for (const line of block.split(/\r?\n/)) {
     if (/^-\s/.test(line)) {
+      close();
       tasks.push(taskOf(line.slice(2)));
-    } else if (line.trim() && tasks.length > 0) {
-      const last = tasks[tasks.length - 1];
-      last.description = `${last.description}${last.description ? '\n' : ''}${line.trim()}`;
+    } else {
+      body.push(line);
     }
   }
+  close();
   return tasks;
+}
+
+/** The lines of a description without the common indent and without blank lines at the start and the end. */
+function dedent(lines: string[]): string {
+  const kept = [...lines];
+  while (kept.length > 0 && !kept[0].trim()) {
+    kept.shift();
+  }
+  while (kept.length > 0 && !kept[kept.length - 1].trim()) {
+    kept.pop();
+  }
+  const indent = Math.min(...kept.filter((line) => line.trim()).map((line) => /^\s*/.exec(line)?.[0].length ?? 0));
+  return kept.map((line) => line.slice(Math.min(indent, line.length)).trimEnd()).join('\n');
+}
+
+/** The ids of every task-shaped line of the answer, wherever it stands. */
+function writtenIds(text: string): string[] {
+  const ids: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const id = /^\s*-\s+([^|\s][^|]*?)\s*\|[^|]*\|\s*depends:.*\|\s*files:.*\|\s*proof:/.exec(line)?.[1];
+    if (id && !ids.includes(id)) {
+      ids.push(id);
+    }
+  }
+  return ids;
 }
 
 function taskOf(line: string): Subtask {

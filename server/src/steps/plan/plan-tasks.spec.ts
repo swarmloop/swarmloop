@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { planFromAgent } from './plan-record';
 import { parseTasks, planItemsFromTasks, splitAnswer } from './plan-tasks';
@@ -100,5 +102,50 @@ describe('parseTasks', () => {
     expect(splitAnswer(old)).toBe(false);
     expect(planFromAgent(old).items).toEqual(['add the field - files: a.ts - proof: a.spec.ts']);
     expect(splitAnswer(answer(column))).toBe(true);
+  });
+});
+
+describe('a task description', () => {
+  const fixture = (name: string): string => readFileSync(join(__dirname, 'fixtures', name), 'utf8');
+  const IDS = ['runtime-rule-files', 'prompt-rules', 'plan-skills', 'repo-rules'];
+
+  it.each(['f49-plan.answer.md', 'f49-plan-improve.answer.md'])('keeps all four tasks of %s', (name) => {
+    const tasks = parseTasks(fixture(name), limits).tasks;
+    expect(tasks.map((task) => task.id)).toEqual(IDS);
+    expect(tasks[2].description).toContain('names no project, file or tool:');
+    expect(tasks[3].description).toContain('one rule per line');
+  });
+
+  it('keeps a line ending with a colon, a nested list and a blank line', () => {
+    const tasks = parseTasks(fixture('f49-plan.answer.md'), limits).tasks;
+    expect(tasks[0].description).toBe(
+      [
+        'Each adapter says which rule files its CLI reads:',
+        '- claude reads CLAUDE.md',
+        '- cursor reads AGENTS.md',
+        '',
+        'The adapter spec pins both.',
+      ].join('\n'),
+    );
+  });
+
+  it('ends at a summary label after the tasks', () => {
+    const tasks = parseTasks(answer([...column, ...api]), limits).tasks;
+    expect(tasks[1].description).toBe('Sends it.');
+  });
+
+  it('fails naming a task line outside the tasks section', () => {
+    const text = `${answer(column)}\n- lost | Lost | depends: none | files: z.ts | proof: z.spec.ts\n`;
+    expect(refused(text)).toBe('tasks lost were written but not read');
+  });
+
+  it('fails naming an indented task line', () => {
+    const text = answer([...column, '  - nested | Nested | depends: none | files: z.ts | proof: z.spec.ts']);
+    expect(refused(text)).toBe('tasks nested were written but not read');
+  });
+
+  it('fails for a task with no description', () => {
+    const text = answer([...column, '- bare | Bare | depends: none | files: z.ts | proof: z.spec.ts']);
+    expect(refused(text)).toBe('task bare has no description');
   });
 });

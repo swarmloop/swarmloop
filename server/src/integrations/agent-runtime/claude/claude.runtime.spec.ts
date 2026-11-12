@@ -4,6 +4,10 @@ describe('ClaudeRuntime', () => {
   const runtime = new ClaudeRuntime();
   const mounts = [{ containerPath: '/work/demo' }];
 
+  it('says whether its plan mode has a plan tool', () => {
+    expect(runtime.planModeHasPlanTool).toBe(false);
+  });
+
   it('opens the brief directory', () => {
     expect(runtime.briefArgs()).toEqual(['--add-dir', '/work/brief']);
   });

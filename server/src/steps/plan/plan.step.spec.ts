@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { EventEmitter } from 'events';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -180,6 +180,12 @@ describe('plan step', () => {
       expect(input.resumeChatId).toBe('chat-1');
       expect(input.prompt).toContain('# Plan');
       expect(input.prompt).not.toContain('## Split');
+    });
+
+    it('asks a runtime without a plan tool for the checklist in the answer', async () => {
+      const input = await stepFirst('PROJ-63', { runtime: 'claude' });
+      expect(input.prompt).toContain('Write the checklist in the `plan:` section of your answer.');
+      expect(input.prompt).not.toContain('plan tool');
     });
 
     it('sends a subtask the plan skill without Split on its first visit', async () => {
@@ -501,11 +507,16 @@ interface SplitOptions {
   subtask?: boolean;
   /** Leaves the chat research shares with the plan step. */
   chat?: boolean;
+  runtime?: string;
 }
 
 async function runSplit(key: string, answer: string, options: SplitOptions = {}) {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-split-'));
   await writeEnv(root);
+  if (options.runtime) {
+    const env = join(root, '.env');
+    writeFileSync(env, readFileSync(env, 'utf8').replace('RUNTIME=cursor', `RUNTIME=${options.runtime}`));
+  }
   mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
   if (options.chat) {
     writeChat(root, key);

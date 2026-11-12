@@ -8,6 +8,7 @@ import type { RunEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { root } from '../history/run-paths';
 import { RunRepository } from '../history/run.repository';
+import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { agentFor } from '../config/agents';
 import { CHAT_LOCK, chatLockBody } from '../pipeline/chat-lock';
 import { settleShell, shellHolding } from '../pipeline/shell-lock';
@@ -15,7 +16,7 @@ import { ServiceContextService } from '../integrations/service-context';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { agentFailure } from '../steps/shared/agent-result';
-import { LOCAL_RUN_RULE } from '../steps/shared/skill-prompt';
+import { LOCAL_RUN_RULE, skillText } from '../steps/shared/skill-prompt';
 import { mountsForRun } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -78,7 +79,7 @@ export class ChatService {
         runtime,
         model,
         timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
-        prompt: await this.prompt(key, body.skill, prompt, mounts[0].hostPath, servers),
+        prompt: await this.prompt(key, body.skill, prompt, mounts[0].hostPath, servers, runtime),
         workspace: mounts[0].containerPath,
         mounts,
         approveMcps: servers.length > 0,
@@ -147,9 +148,10 @@ export class ChatService {
     text: string,
     directory: string,
     servers: McpServerSpec[],
+    runtime: string,
   ): Promise<string> {
     const name = skill?.trim() ?? '';
-    const body = name ? this.skill(name) : '';
+    const body = name ? this.skill(name, runtime) : '';
     const stored = await this.documents.latestBody(key, 'requirements');
     let notes = '';
     try {
@@ -174,13 +176,13 @@ export class ChatService {
     return parts.join('\n');
   }
 
-  private skill(name: string): string {
+  private skill(name: string, runtime: string): string {
     if (!/^[a-z0-9-]+$/.test(name)) {
       throw new BadRequestException(`${name} skill is missing`);
     }
     const file = join(resolveRepoRoot(this.config.env.SWARMLOOP_ROOT, __dirname), 'skills', name, 'SKILL.md');
     try {
-      return readFileSync(file, 'utf8').trimEnd();
+      return skillText(readFileSync(file, 'utf8'), runtimeFor(runtime).planModeHasPlanTool).trimEnd();
     } catch {
       throw new BadRequestException(`${name} skill is missing`);
     }

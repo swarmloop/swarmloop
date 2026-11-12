@@ -1,4 +1,5 @@
 import { agentFor } from '../../config/agents';
+import { runtimeFor } from '../../integrations/agent-runtime/agent-runtime.registry';
 import type { RunEntity } from '../../history/entities';
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, StepCapabilities, StepInput, StepResult } from '../contract/step-contract';
@@ -92,7 +93,10 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       ? await resumableChat(root(this.config), key, 'plan', this.profile(this.config.env, ctx.opened.run).runtime)
       : null;
     const limits = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);
-    const full = skillPrompt('plan', input.requirements, names, sections, mounts, { split: limits.maySplit });
+    const full = skillPrompt('plan', input.requirements, names, sections, mounts, {
+      split: limits.maySplit,
+      planTool: runtimeFor(this.profile(this.config.env, ctx.opened.run).runtime).planModeHasPlanTool,
+    });
     const chosen = continued?.chatId ? appendImpact(planFollowUp(answers), impact) : full;
     const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));
     let agentResult = await ctx.launch({

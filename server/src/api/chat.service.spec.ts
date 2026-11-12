@@ -17,6 +17,11 @@ describe('chat', () => {
     await mkdir(join(root, 'skills', 'research'), { recursive: true });
     await mkdir(project, { recursive: true });
     await writeFile(join(root, 'skills', 'research', 'SKILL.md'), '# Research\n\nRead the ticket.\n');
+    await mkdir(join(root, 'skills', 'plan'), { recursive: true });
+    await writeFile(
+      join(root, 'skills', 'plan', 'SKILL.md'),
+      '# Plan\n[plan tool] Use the tool.\n[no plan tool] Use the answer.\n',
+    );
     const run = {
       id: 4,
       key: 'PROJ-1',
@@ -90,6 +95,15 @@ describe('chat', () => {
     expect(saved.map((row) => (row as { status: string }).status)).toEqual(['running', 'waiting']);
     expect(documents.some((row) => row.startsWith(`chat_lock:waiting ${process.pid}`))).toBe(true);
     expect(documents.some((row) => row.startsWith('chat_lock:clear'))).toBe(true);
+    await chat.speak('PROJ-1', {
+      prompt: 'plan it',
+      skill: 'plan',
+      cwd: project,
+      mcpServers: [{ name: 'idea', command: 'idea-mcp', args: [], env: [{ name: 'TOKEN', value: 'secret-value' }] }],
+    });
+    const planned = agent.mock.calls[1][0].prompt;
+    expect(planned).toContain('Use the tool.');
+    expect(planned).not.toMatch(/\[(no )?plan tool\]/);
   });
 
   it('refuses a chat while the feature is running', async () => {

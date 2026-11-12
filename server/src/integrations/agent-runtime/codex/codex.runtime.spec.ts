@@ -4,6 +4,10 @@ describe('CodexRuntime', () => {
   const runtime = new CodexRuntime();
   const mounts = [{ containerPath: '/work/demo' }];
 
+  it('says whether its plan mode has a plan tool', () => {
+    expect(runtime.planModeHasPlanTool).toBe(false);
+  });
+
   it('prefers the subscription file and rejects an empty pair', () => {
     expect(
       runtime.credential({ cursorKey: '', anthropicKey: '', oauthToken: '', codexAuth: 'auth', codexApiKey: 'key' }),
