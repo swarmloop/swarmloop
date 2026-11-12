@@ -2,7 +2,6 @@ import 'reflect-metadata';
 import { ERROR_CODES } from '../contract/error-codes';
 import { deriveState, writeRunState } from '../history/run-state';
 import { RunRepository } from '../history/run.repository';
-import { VisitRepository } from '../history/visit.repository';
 import { CommandService } from '../pipeline/command.service';
 import { createFlowHarness } from './flow-harness';
 import { assertInvariants } from './flow-invariants';
