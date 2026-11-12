@@ -35,6 +35,16 @@ describe('DiskGuard', () => {
     expect(docker).not.toHaveBeenCalled();
   });
 
+  it('reads whether the space is above MIN_FREE_GB without cleaning anything', async () => {
+    const guard = await setup('PROJ-9');
+    await seedRun(world.app, 'PROJ-8', 'done', 0);
+    guard.useFreeBytes(async () => 5 * GB);
+    await expect(guard.hasFreeSpace()).resolves.toBe(false);
+    guard.useFreeBytes(async () => 10 * GB);
+    await expect(guard.hasFreeSpace()).resolves.toBe(true);
+    expect(docker).not.toHaveBeenCalled();
+  });
+
   it('cleans the oldest done run first and goes on once the disk has room', async () => {
     const guard = await setup('PROJ-2');
     await seedRun(world.app, 'PROJ-3', 'running', 0);

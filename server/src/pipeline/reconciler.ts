@@ -10,8 +10,10 @@ import { SERVER_INSTANCE } from '../core/server-instance';
 import type { RunEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { deriveState } from '../history/run-state';
+import { deriveState, writeRunState } from '../history/run-state';
 import { RuntimeCooldownRepository } from '../history/runtime-cooldown.repository';
+import { DiskGuard } from './disk-guard';
+import { dockerWait } from '../steps/step-error-end';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CHAT_LOCK, chatResume, readChatLock } from './chat-lock';
 import { CommandService } from './command.service';
@@ -49,6 +51,7 @@ export class Reconciler implements OnModuleDestroy {
     private readonly cooldowns: RuntimeCooldownRepository,
     private readonly subtasks: SubtaskPort,
     private readonly mergeWatch: MergeWatch,
+    private readonly disk: DiskGuard,
     @Optional() private readonly connections?: ConnectionsService,
   ) {}
 
@@ -97,6 +100,9 @@ export class Reconciler implements OnModuleDestroy {
   private async reconcileAll(): Promise<void> {
     await this.reconcileRuns();
     await this.resumeLimited();
+    await this.resumeHostUnavailable();
+    await this.resumeDocker();
+    await this.resumeDiskLow();
     await this.resumeGitAuth();
     await this.resumeSubtaskParents();
     await this.watchMerges();
@@ -130,6 +136,80 @@ export class Reconciler implements OnModuleDestroy {
         this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+  }
+
+  /** A run that waits for a host goes on by itself, once, when the next try its reason names has come. */
+  async resumeHostUnavailable(): Promise<void> {
+    for (const run of await this.withReason('waiting', ERROR_CODES.HOST_UNAVAILABLE)) {
+      const retryAt = Date.parse(deriveState(run).reason?.retryAt ?? '');
+      if (Number.isFinite(retryAt) && this.clock.now() < retryAt) continue;
+      await this.resumeOnce(run, `host-${run.revision}`, () => Promise.resolve(true));
+    }
+  }
+
+  /**
+   * A run that waits for docker is probed on every tick and starts nothing while docker is silent. A run with its
+   * attempt goes back to settling once docker answers; a run with none gets a resume.
+   */
+  async resumeDocker(): Promise<void> {
+    for (const seen of await this.withReason('waiting', ERROR_CODES.DOCKER_UNAVAILABLE)) {
+      try {
+        if (seen.activeAttempt === null) {
+          const answers = await this.sandbox.dockerAnswers();
+          if (!answers) await this.refreshDockerWait(seen.key);
+          else await this.resumeOnce(seen, `docker-${seen.revision}`, () => Promise.resolve(true));
+          continue;
+        }
+        const running = await this.sandbox.attemptRunning(seen.activeAttempt);
+        if (running === null) await this.refreshDockerWait(seen.key);
+        else await this.settleAnswered(seen.key);
+      } catch (error) {
+        this.logger.warn(
+          `docker wait of ${seen.key} failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+
+  /** A run blocked for lack of disk goes on by itself, once, when the free space is above `MIN_FREE_GB`. Nothing is cleaned. */
+  async resumeDiskLow(): Promise<void> {
+    for (const run of await this.withReason('blocked', ERROR_CODES.DISK_LOW)) {
+      await this.resumeOnce(run, `disk-${run.revision}`, () => this.disk.hasFreeSpace());
+    }
+  }
+
+  private async withReason(status: string, code: string): Promise<RunEntity[]> {
+    return (await this.runs.listRuns()).filter(
+      (run) => run.status === status && deriveState(run).reason?.code === code,
+    );
+  }
+
+  /** Accepts one resume under `key` when `ready` says so. A stopped run is `blocked` with `STOPPED`, so it never gets here. */
+  private async resumeOnce(run: RunEntity, key: string, ready: () => Promise<boolean>): Promise<void> {
+    try {
+      if (!(await ready())) return;
+      await this.commands.accept('resume', run.key, {}, { idempotencyKey: key });
+    } catch (error) {
+      this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** Docker is still silent: the next try moves forward. The run is read again, and only a run that still waits is written. */
+  private async refreshDockerWait(key: string): Promise<void> {
+    const run = await this.runs.findRun(key);
+    if (run?.status !== 'waiting' || deriveState(run).reason?.code !== ERROR_CODES.DOCKER_UNAVAILABLE) return;
+    const { code, message, retryAt } = dockerWait(this.clock, this.config.env);
+    writeRunState(run, { status: 'waiting', ownerPid: null, reason: { code, message, retryAt } });
+    await this.runs.saveRun(run);
+  }
+
+  /** Docker answered: the run goes back to settling, as if its process had just died. */
+  private async settleAnswered(key: string): Promise<void> {
+    const run = await this.runs.findRun(key);
+    if (run?.status !== 'waiting' || deriveState(run).reason?.code !== ERROR_CODES.DOCKER_UNAVAILABLE) return;
+    writeRunState(run, { status: 'running', ownerPid: null });
+    await this.runs.saveRun(run);
+    await this.reconcile(run);
   }
 
   /** A run that waits for a person to reconnect goes on by itself, once, when their connection is ok again. */
