@@ -17,6 +17,7 @@ import {
   StepEventEntity,
   StepStatEntity,
 } from '../entities';
+import { UserSettingEntity } from '../user-setting-entity';
 import { historyDatabaseOptions } from '../history.module';
 
 async function withDataSource<T>(options: DataSourceOptions, use: (dataSource: DataSource) => Promise<T>): Promise<T> {
@@ -39,6 +40,7 @@ async function insertOneRowPerTable(dataSource: DataSource): Promise<void> {
     requirementsVia: 'direct',
     issueTracker: 'jira',
     codeHost: 'gitlab',
+    agents: { main: { plan: [{ runtime: 'claude', model: 'opus' }] } },
     createdAt: at,
     updatedAt: at,
   });
@@ -105,6 +107,7 @@ async function insertOneRowPerTable(dataSource: DataSource): Promise<void> {
     occurredAt: at,
     recordedAt: at,
   });
+  await dataSource.getRepository(UserSettingEntity).insert({ login: 'ada', key: 'split', value: 'true' });
 }
 
 async function snapshot(dataSource: DataSource) {
@@ -113,7 +116,7 @@ async function snapshot(dataSource: DataSource) {
   );
   const rows: Record<string, unknown[]> = {};
   for (const metadata of dataSource.entityMetadatas) {
-    rows[metadata.tableName] = await dataSource.query(`SELECT * FROM "${metadata.tableName}" ORDER BY id`);
+    rows[metadata.tableName] = await dataSource.query(`SELECT * FROM "${metadata.tableName}" ORDER BY rowid`);
   }
   return { schema, rows };
 }
