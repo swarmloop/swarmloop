@@ -2,33 +2,67 @@
 
 import type { ReactElement } from 'react';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
+import ButtonBase from '@mui/material/ButtonBase';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
 import Typography from '@mui/material/Typography';
+import type { MeView } from '@contract/api';
 import { getSession, logout } from '../../lib/endpoints';
+import { ThemeModeSwitch } from './theme-mode-switch';
 
-/** The logged-in user and a Logout button. Nothing shows when nobody is logged in, as on a server without a login. */
-export function Account(): ReactElement | null {
-  const [user, setUser] = useState<string | null>(null);
+/** The signed-in person as a button; it opens Settings, Connections, the theme switch and Log out. */
+export function Account(): ReactElement {
+  const [me, setMe] = useState<MeView | null>(null);
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
-    getSession().then(
-      (session) => setUser(session.user),
-      () => setUser(null),
-    );
+    getSession().then(setMe, () => setMe(null));
   }, []);
 
-  if (!user) {
-    return null;
-  }
+  const login = me?.user ?? '';
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
-      <Typography variant="body2" color="text.secondary">
-        {user}
-      </Typography>
-      <Button color="inherit" onClick={() => void logout().finally(() => window.location.assign('/login'))}>
-        Logout
-      </Button>
-    </Box>
+    <>
+      <ButtonBase
+        aria-haspopup="menu"
+        aria-expanded={anchor !== null}
+        onClick={(event) => setAnchor(event.currentTarget)}
+        sx={{ width: '100%', justifyContent: 'flex-start', gap: 1.25, px: 2, py: 1.5, textAlign: 'left' }}
+      >
+        <Avatar src={me?.avatarUrl ?? undefined} alt="" sx={{ width: 32, height: 32, fontSize: 14 }}>
+          {login.slice(0, 2).toUpperCase()}
+        </Avatar>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="body2" noWrap>
+            {login || 'Account'}
+          </Typography>
+          {me?.provider ? (
+            <Typography variant="caption" color="text.secondary" noWrap>
+              {me.provider}
+            </Typography>
+          ) : null}
+        </Box>
+      </ButtonBase>
+      <Menu
+        open={anchor !== null}
+        anchorEl={anchor}
+        onClose={() => setAnchor(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <MenuItem component={Link} href="/settings" onClick={() => setAnchor(null)}>
+          Settings
+        </MenuItem>
+        <MenuItem component={Link} href="/connections" onClick={() => setAnchor(null)}>
+          Connections
+        </MenuItem>
+        <Box sx={{ px: 2, py: 1 }}>
+          <ThemeModeSwitch />
+        </Box>
+        <MenuItem onClick={() => void logout().finally(() => window.location.assign('/login'))}>Log out</MenuItem>
+      </Menu>
+    </>
   );
 }
