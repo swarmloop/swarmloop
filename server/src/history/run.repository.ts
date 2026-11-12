@@ -276,11 +276,7 @@ export class RunRepository {
     this.live?.changed(key);
   }
 
-  async listRuns(): Promise<RunEntity[]> {
-    return this.runs.find({ order: { createdAt: 'DESC', id: 'DESC' } });
-  }
-
-  async findRuns(where: FindOptionsWhere<RunEntity>): Promise<RunEntity[]> {
+  async listRuns(where?: FindOptionsWhere<RunEntity>): Promise<RunEntity[]> {
     return this.runs.find({ where, order: { createdAt: 'DESC', id: 'DESC' } });
   }
 

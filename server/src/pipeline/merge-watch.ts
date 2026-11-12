@@ -42,7 +42,7 @@ export class MergeWatch {
 
   /** One pass over the runs that are not working and whose merge requests have not ended. */
   async run(): Promise<void> {
-    for (const run of await this.runs.findRuns({ status: Not('running'), mergeOutcome: IsNull() })) {
+    for (const run of await this.runs.listRuns({ status: Not('running'), mergeOutcome: IsNull() })) {
       try {
         await (run.status === 'done' ? this.watch(run) : this.watchUnfinished(run));
       } catch (error) {
