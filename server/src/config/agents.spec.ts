@@ -5,6 +5,7 @@ import {
   agentsFor,
   assertAgents,
   availableAgent,
+  knownModels,
   parseAgentList,
   ROLE_OF_STEP,
   roleOf,
@@ -196,5 +197,24 @@ describe('the runtimes in use and the start-up check', () => {
     expect(() => assertAgents({ ...testEnv({ AGENTS_SUBTASK_REVIEW: 'cursor:' }), ...KEYS })).toThrow(
       /AGENTS_SUBTASK_REVIEW.*empty model/,
     );
+  });
+});
+
+describe('the models env knows', () => {
+  it('lists the short form models under RUNTIME', () => {
+    expect(knownModels(testEnv({ RUNTIME: 'claude', MODEL_PLAN: 'p', MODEL_IMPLEMENT: 'i' }))).toEqual({
+      claude: ['p', 'i'],
+    });
+  });
+
+  it('adds the role lists in order, with no duplicates, and keeps the short form models', () => {
+    const env = testEnv({
+      RUNTIME: 'cursor',
+      MODEL_PLAN: 'p',
+      MODEL_IMPLEMENT: 'i',
+      AGENTS_PLAN: 'claude:a,codex:b,claude:a',
+      AGENTS_SUBTASK_REVIEW: 'claude:c',
+    });
+    expect(knownModels(env)).toEqual({ claude: ['a', 'c'], codex: ['b'], cursor: ['i', 'p'] });
   });
 });

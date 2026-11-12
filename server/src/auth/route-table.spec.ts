@@ -3,6 +3,7 @@ import { PATH_METADATA } from '@nestjs/common/constants';
 import { APP_GUARD } from '@nestjs/core';
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { SettingsController } from '../api/settings.controller';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { ConnectionsController } from './connections.controller';
@@ -41,7 +42,7 @@ describe('the route table', () => {
   const open = (controller: Controller) => Reflect.getMetadata(PUBLIC_KEY, controller) === true;
 
   it('guards every route globally: ApiModule imports AuthModule, which registers the guard', () => {
-    expect(controllers).toHaveLength(6);
+    expect(controllers).toHaveLength(7);
     expect(apiModule).toMatch(/imports: \[[^\]]*\bAuthModule\b/);
     for (const controller of controllers.filter((candidate) => candidate !== AuthController)) {
       expect(apiModule).toMatch(new RegExp(`controllers: \\[[^\\]]*\\b${controller.name}\\b`));
@@ -69,6 +70,12 @@ describe('the route table', () => {
     expect(open(AuthController)).toBe(true);
     expect(routes(ConnectionsController)).toContain('connections/github/app');
     expect(open(ConnectionsController)).toBe(false);
+  });
+
+  it('guards GET and PUT /settings', () => {
+    expect(routes(SettingsController).map((route) => route.replace(/\/+$/, ''))).toEqual(['settings', 'settings']);
+    expect(open(SettingsController)).toBe(false);
+    expect(controllers).toContain(SettingsController);
   });
 
   it('opens no controller under another path', () => {
