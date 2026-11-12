@@ -5,12 +5,13 @@ import { chargeStream } from '../agent/spend';
 import { loadPriceTable } from '../agent/prices';
 import { resolveRepoRoot } from '../config/repo-root';
 import { ERROR_CODES } from '../contract/error-codes';
-import { REASON } from '../contract/run-state';
+import { REASON, type StateReason } from '../contract/run-state';
 import type { StepName } from '../contract/steps';
 import { hasFinalResult, stepOutput } from '../core/attempt-output';
 import { barrier } from '../core/barrier';
 import { Clock } from '../core/clock';
 import { delay } from '../core/delay';
+import { HostUnavailable } from '../core/swarmloop-error';
 import { isStep } from '../core/pipeline-result';
 import { recordStepEvent, runInStepScope } from '../core/step-event-scope';
 import type { RunEntity } from '../history/entities';
@@ -77,10 +78,20 @@ export class RunSettler {
       });
       return true;
     }
-    await this.runs.release(run, { status: 'failed', stepStartedAt: null });
+    const before = { status: run.status, reason: run.stateReason, stepStartedAt: run.stepStartedAt };
+    const released = await this.runs.release(run, { status: 'failed', stepStartedAt: null });
     try {
       await this.rebases.rebase(run.key, true);
     } catch (error) {
+      if (error instanceof HostUnavailable) {
+        this.logger.warn(`rebase of ${run.key} waits for the host: ${error.message}`);
+        await this.runs.release(released, {
+          status: before.status,
+          reason: before.reason ? (JSON.parse(before.reason) as StateReason) : null,
+          stepStartedAt: before.stepStartedAt,
+        });
+        return true;
+      }
       const message = error instanceof Error ? error.message : 'rebase failed';
       await this.runs.release((await this.runs.findRun(run.key)) ?? run, {
         status: 'blocked',

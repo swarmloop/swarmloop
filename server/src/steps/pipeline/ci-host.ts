@@ -1,5 +1,5 @@
 import type { CodeHost } from '../../integrations/code-host/code-host';
-import { FetchFailed, type HttpCallDraft } from '../../core/swarmloop-error';
+import { FetchFailed, HostUnavailable, type HttpCallDraft } from '../../core/swarmloop-error';
 import { checkTrace, appChecks, runRows, type Failure, type RunRow, type Seen } from './pipeline-report';
 
 /** The runs of a red pipeline that the host can still act on. */
@@ -20,6 +20,9 @@ export async function rerunJobs(host: CodeHost, runs: RunRow[], calls: HttpCallD
     try {
       calls.push(...(await host.rerunFailedJobs(item.project, item.id)).httpCalls);
     } catch (error) {
+      if (error instanceof HostUnavailable) {
+        throw error;
+      }
       noteCalls(error, calls);
       errors.push(`${item.project}: ${error instanceof Error ? error.message : 're-run failed'}`);
     }
@@ -60,6 +63,9 @@ export async function readFailures(
         const trace = await host.readJobTrace(item.project, item.job.id);
         return { item, trace: trace.trace, calls: trace.httpCalls };
       } catch (error) {
+        if (error instanceof HostUnavailable) {
+          throw error;
+        }
         const message = error instanceof Error ? error.message : 'pipeline failed';
         return { item, trace: '', unavailable: message, calls: error instanceof FetchFailed ? error.httpCalls : [] };
       }
