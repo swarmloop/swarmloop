@@ -146,6 +146,7 @@ describe('plan step', () => {
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-45', '');
+      await storePlanVisit(app, 'PROJ-45');
       const done = await app.get(PipelineService).step('plan', 'PROJ-45');
       expect(done.exitCode).toBe(0);
       const input = agent.mock.calls[0]?.[0] as AgentRunInput;
@@ -157,6 +158,77 @@ describe('plan step', () => {
       expect(input.prompt).not.toContain('# Plan');
       expect(input.prompt).not.toContain('ship the field');
       expect(input.prompt).not.toContain('What previous steps did');
+    } finally {
+      await app.close();
+    }
+  });
+
+  describe('first visit in the research chat', () => {
+    const stepFirst = async (key: string, options: SplitOptions = {}) =>
+      (await runSplit(key, ['plan:', '- add the field'].join('\n'), { ...options, chat: true })).input;
+
+    it('sends the plan skill with Split on the first visit in the research chat', async () => {
+      const input = await stepFirst('PROJ-60');
+      expect(input.resumeChatId).toBe('chat-1');
+      expect(input.prompt).toContain('# Plan');
+      expect(input.prompt).toContain('## Split');
+      expect(input.prompt).not.toContain('The requirements in this message are the whole task');
+    });
+
+    it('sends the plan skill without Split on the first visit of a run that may not split', async () => {
+      const input = await stepFirst('PROJ-61', { split: false });
+      expect(input.resumeChatId).toBe('chat-1');
+      expect(input.prompt).toContain('# Plan');
+      expect(input.prompt).not.toContain('## Split');
+    });
+
+    it('sends a subtask the plan skill without Split on its first visit', async () => {
+      const input = await stepFirst('PROJ-62-t1', { subtask: true });
+      expect(input.prompt).toContain('# Plan');
+      expect(input.prompt).not.toContain('## Split');
+    });
+  });
+
+  it('continues with the follow-up after answers', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-answers-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-63', 'billing-api'), { recursive: true });
+    writeChat(root, 'PROJ-63');
+    const agent = jest
+      .fn()
+      .mockResolvedValueOnce(result(['questions:', '- which column type?'].join('\n')))
+      .mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-63', '');
+      await app.get(PipelineService).step('plan', 'PROJ-63');
+      const run = await app.get(RunRepository).findRun('PROJ-63');
+      await app.get(DocumentRepository).putDocument(run!, 'answers', 'question: which column type?\nanswer: text\n');
+      await app.get(PipelineService).step('plan', 'PROJ-63');
+      const [first, second] = agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt);
+      expect(first).toContain('# Plan');
+      expect(second).toContain('The requirements in this message are the whole task');
+      expect(second).toContain('answer: text');
+      expect(second).not.toContain('# Plan');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('continues with the follow-up when the plan step is replayed after a finished visit', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-replay-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-64', 'billing-api'), { recursive: true });
+    writeChat(root, 'PROJ-64');
+    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-64', '');
+      await storePlanVisit(app, 'PROJ-64');
+      await app.get(PipelineService).step('plan', 'PROJ-64');
+      const { prompt } = agent.mock.calls[0]?.[0] as AgentRunInput;
+      expect(prompt).toContain('The requirements in this message are the whole task');
+      expect(prompt).not.toContain('# Plan');
     } finally {
       await app.close();
     }
@@ -247,6 +319,7 @@ describe('plan step', () => {
     try {
       await seed(app, 'PROJ-46', '');
       await seed(app, 'PROJ-47', '');
+      await storePlanVisit(app, 'PROJ-47');
       await putImpact(app, 'PROJ-47', '- live agent log | step-documents.tsx | kept\n');
       await app.get(PipelineService).step('plan', 'PROJ-46');
       await app.get(PipelineService).step('plan', 'PROJ-47');
@@ -423,37 +496,48 @@ const splitReply = [
   '- two parts',
 ].join('\n');
 
-describe('plan step with split', () => {
-  async function runSplit(key: string, answer: string, options: { split?: boolean; subtask?: boolean } = {}) {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-split-'));
-    await writeEnv(root);
-    mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result(answer));
-    const app = await boot(root, agent);
-    try {
-      const runs = app.get(RunRepository);
-      await seed(app, key, '');
-      const seeded = (await runs.findRun(key))!;
-      const parent = options.subtask ? await runs.openWaiting(`${key}-parent`, '/target') : null;
-      await runs.saveRun({
-        ...seeded,
-        split: options.split ?? true,
-        ...(parent ? { parentRunId: parent.id, taskId: 't1' } : {}),
-      });
-      const done = await app.get(PipelineService).step('plan', key);
-      const documents = app.get(DocumentRepository);
-      return {
-        done,
-        run: await runs.findRun(key),
-        subtasks: await documents.latestBody(key, 'subtasks'),
-        contract: await documents.latestBody(key, 'contract'),
-        requirements: await documents.latestBody(key, 'requirements'),
-      };
-    } finally {
-      await app.close();
-    }
-  }
+interface SplitOptions {
+  split?: boolean;
+  subtask?: boolean;
+  /** Leaves the chat research shares with the plan step. */
+  chat?: boolean;
+}
 
+async function runSplit(key: string, answer: string, options: SplitOptions = {}) {
+  const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-split-'));
+  await writeEnv(root);
+  mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
+  if (options.chat) {
+    writeChat(root, key);
+  }
+  const agent = jest.fn().mockResolvedValue(result(answer));
+  const app = await boot(root, agent);
+  try {
+    const runs = app.get(RunRepository);
+    await seed(app, key, '');
+    const seeded = (await runs.findRun(key))!;
+    const parent = options.subtask ? await runs.openWaiting(`${key}-parent`, '/target') : null;
+    await runs.saveRun({
+      ...seeded,
+      split: options.split ?? true,
+      ...(parent ? { parentRunId: parent.id, taskId: 't1' } : {}),
+    });
+    const done = await app.get(PipelineService).step('plan', key);
+    const documents = app.get(DocumentRepository);
+    return {
+      done,
+      input: agent.mock.calls[0]?.[0] as AgentRunInput,
+      run: await runs.findRun(key),
+      subtasks: await documents.latestBody(key, 'subtasks'),
+      contract: await documents.latestBody(key, 'contract'),
+      requirements: await documents.latestBody(key, 'requirements'),
+    };
+  } finally {
+    await app.close();
+  }
+}
+
+describe('plan step with split', () => {
   it('split answer writes plan items, subtasks and contract', async () => {
     const out = await runSplit('PROJ-80', splitReply);
     expect(out.done.exitCode).toBe(0);
@@ -564,6 +648,50 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, question
   await documents.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
   await documents.putDocument(seeded, 'repos', 'billing-api\n');
   await documents.putDocument(seeded, 'questions', questions);
+}
+
+function writeChat(root: string, key: string): void {
+  mkdirSync(join(root, 'data', 'agent-state', key, 'plan'), { recursive: true });
+  writeFileSync(
+    join(root, 'data', `${key}-plan-session.json`),
+    `${JSON.stringify({ runtime: 'cursor', chatId: 'chat-1', resumed: true, completed: true, killReason: null, usd: 0 })}\n`,
+  );
+}
+
+/** One finished plan visit with an agent exchange, as an earlier plan visit of the run leaves it. */
+async function storePlanVisit(app: Awaited<ReturnType<typeof boot>>, key: string): Promise<void> {
+  const run = (await app.get(RunRepository).findRun(key))!;
+  const at = new Date().toISOString();
+  await app.get(VisitRepository).finishVisit(run, {
+    step: 'plan',
+    runtime: 'cursor',
+    model: 'opus-5.5-extra-high',
+    mode: 'plan',
+    startedAt: at,
+    finishedAt: at,
+    durationMs: 5,
+    status: 'done',
+    exitCode: 0,
+    killReason: null,
+    tokensIn: 10,
+    tokensOut: 4,
+    usd: 0.01,
+    samples: [],
+    exchange: {
+      model: 'opus-5.5-extra-high',
+      startedAt: at,
+      finishedAt: at,
+      durationMs: 5,
+      requestText: 'plan',
+      responseText: 'plan:\n- add the field',
+      chatId: 'chat-1',
+      resumed: false,
+      killReason: null,
+    },
+    httpCalls: [],
+    document: null,
+    resumed: false,
+  });
 }
 
 async function putImpact(app: Awaited<ReturnType<typeof boot>>, key: string, body: string): Promise<void> {

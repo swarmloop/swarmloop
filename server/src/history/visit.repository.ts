@@ -224,6 +224,15 @@ export class VisitRepository {
     return this.stepStats.find({ where: { runId }, order: { id: 'ASC' } });
   }
 
+  /** Whether an agent ran in a finished (done or waiting) visit of this step: a visit with a stored exchange. */
+  async hasAgentVisit(runId: number, step: string): Promise<boolean> {
+    const stats = await this.stepStats.find({ where: { runId, step, status: In(['done', 'waiting']) } });
+    if (stats.length === 0) {
+      return false;
+    }
+    return (await this.exchanges.count({ where: { stepStatId: In(stats.map((stat) => stat.id)) } })) > 0;
+  }
+
   async listSamples(statIds: number[]): Promise<ResourceSampleEntity[]> {
     if (statIds.length === 0) {
       return [];
