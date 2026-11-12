@@ -269,3 +269,14 @@ test('asks git whether a missing path in AGENTS.md is ignored', () => {
 
   assert.deepEqual(findViolations({ root, rules, files: [] }), []);
 });
+
+test('forbidOutside reports a host name in the login page and lets the host map keep it', () => {
+  const line = `const host = '${['Git', 'Hub'].join('')}';\n`;
+  const files = { 'dashboard/app/login/page.tsx': line, 'dashboard/app/login/hosts.tsx': line };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], /^dashboard\/app\/login\/page\.tsx:1:/);
+});

@@ -47,16 +47,26 @@ describe('api', () => {
 
   it('sends the browser to the login page on a 401, but not when it is there already', async () => {
     const assign = vi.fn();
-    vi.stubGlobal('location', { assign, pathname: '/runs/a' });
+    vi.stubGlobal('location', { assign, pathname: '/runs/a', search: '' });
     respond(401, { message: 'log in first' });
 
     await expect(api('/runs')).rejects.toMatchObject({ status: 401 });
-    expect(assign).toHaveBeenCalledWith('/login');
+    expect(assign).toHaveBeenCalledWith('/login?next=%2Fruns%2Fa');
 
     assign.mockClear();
-    vi.stubGlobal('location', { assign, pathname: '/login' });
+    vi.stubGlobal('location', { assign, pathname: '/login', search: '' });
     await expect(api('/auth/providers')).rejects.toMatchObject({ status: 401 });
     expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('passes the page and its query as next on a 401', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { assign, pathname: '/runs/x', search: '?tab=log' });
+    respond(401, { message: 'log in first' });
+
+    await expect(api('/runs/x')).rejects.toMatchObject({ status: 401 });
+
+    expect(assign).toHaveBeenCalledWith('/login?next=%2Fruns%2Fx%3Ftab%3Dlog');
   });
 
   it('returns the body of a successful response', async () => {
@@ -87,13 +97,13 @@ describe('runLog', () => {
 
   it('sends the session cookie and goes to the login page on a 401', async () => {
     const assign = vi.fn();
-    vi.stubGlobal('location', { assign, pathname: '/runs/a' });
+    vi.stubGlobal('location', { assign, pathname: '/runs/a', search: '' });
     const fetchMock = answer(401);
 
     await expect(runLog('proj-1', 'plan')).resolves.toBeNull();
 
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ credentials: 'include' });
-    expect(assign).toHaveBeenCalledWith('/login');
+    expect(assign).toHaveBeenCalledWith('/login?next=%2Fruns%2Fa');
   });
 
   it('adds tail and from to the query', async () => {
