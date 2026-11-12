@@ -38,6 +38,8 @@ function makeRepo() {
   for (const script of scripts) {
     copyFileSync(join(scriptsDir, script), join(root, 'scripts', script));
   }
+  // The linter itself is covered by check-worktree.test.mjs; here it is a script that finds nothing.
+  writeFile(root, 'scripts/lint-added-lines.mjs', '');
   writeFile(root, 'a.ts', 'export const a = 1;\n');
   commit(root, 'base');
   const base = git(root, 'rev-parse', 'HEAD').trim();

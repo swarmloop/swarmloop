@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'fs';
 
-import { mkdtemp } from 'fs/promises';
+import { mkdtemp, rm } from 'fs/promises';
 
 import { tmpdir } from 'os';
 
@@ -33,7 +33,25 @@ import { httpStatus } from './runs.controller';
 
 import { boot, remember, featureWorktree, denyEnv, git } from '../testing/runs.spec-helpers';
 
+// These specs diff the temp folder, so they use a folder of their own: jest workers share the real one.
+jest.mock('os', () => {
+  const actual = jest.requireActual<Record<string, unknown> & { tmpdir: () => string }>('os');
+  return { ...actual, tmpdir: () => process.env.RUNS_REBASE_SPEC_TMP ?? actual.tmpdir() };
+});
+
 describe('runs api', () => {
+  let ownTmp: string;
+
+  beforeAll(async () => {
+    ownTmp = await mkdtemp(join(tmpdir(), 'swarmloop-own-tmp-'));
+    process.env.RUNS_REBASE_SPEC_TMP = ownTmp;
+  });
+
+  afterAll(async () => {
+    delete process.env.RUNS_REBASE_SPEC_TMP;
+    await rm(ownTmp, { recursive: true, force: true });
+  });
+
   it('returns a conflict once and commits the resolution on the next call', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-markers-'));
     const { tree, clone } = featureWorktree(root, 'proj-64');

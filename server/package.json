@@ -6,7 +6,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
-    "test": "jest --runInBand --randomize",
+    "test": "jest --randomize --maxWorkers=50%",
     "migration:run": "npm run build && typeorm -d dist/history/data-source.js migration:run",
     "migration:generate": "npm run build && typeorm -d dist/history/data-source.js migration:generate"
   },

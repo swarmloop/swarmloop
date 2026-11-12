@@ -3,18 +3,55 @@
   "image": "node:22-bookworm",
   "setup": "npm ci --prefix server && npm ci --prefix dashboard && bash scripts/ci-tools.sh dashboard-test && bash scripts/ci-tools.sh lint",
   "checks": [
-    "npm run typecheck --prefix server",
-    "npm test --prefix server",
-    "npm run typecheck --prefix dashboard",
-    "npm test --prefix dashboard",
-    "npx eslint .",
-    "node_modules/.bin/knip --include files,exports,types",
-    "node_modules/.bin/madge --circular --extensions ts,tsx --ts-config server/tsconfig.json server/src dashboard",
-    "node --test scripts/ci-tools.test.mjs scripts/lint-run-state.test.mjs scripts/lint-test-imports.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs docker/egress/proxy.test.mjs",
-    "node --test scripts/check-structure.test.mjs scripts/check-worktree.test.mjs && node scripts/check-structure.mjs",
-    "node scripts/check-worktree.mjs",
-    "npm run build --prefix server",
-    "npm run build --prefix dashboard"
+    {
+      "run": "npm run typecheck --prefix server",
+      "name": "server types",
+      "paths": ["server/"]
+    },
+    {
+      "run": "npm test --prefix server",
+      "name": "server tests",
+      "paths": ["server/"]
+    },
+    {
+      "run": "npm run typecheck --prefix dashboard",
+      "name": "dashboard types",
+      "paths": ["dashboard/", "server/src/contract"]
+    },
+    {
+      "run": "npm test --prefix dashboard",
+      "name": "dashboard tests",
+      "paths": ["dashboard/", "server/src/contract"]
+    },
+    {
+      "run": "npx eslint .",
+      "name": "eslint"
+    },
+    {
+      "run": "node_modules/.bin/knip --include files,exports,types",
+      "name": "knip"
+    },
+    {
+      "run": "node_modules/.bin/madge --circular --extensions ts,tsx --ts-config server/tsconfig.json server/src dashboard",
+      "name": "cycles"
+    },
+    {
+      "run": "node --test scripts/ci-tools.test.mjs scripts/lint-run-state.test.mjs scripts/lint-test-imports.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs docker/egress/proxy.test.mjs",
+      "name": "script tests"
+    },
+    {
+      "run": "node --test scripts/check-structure.test.mjs scripts/check-worktree.test.mjs && node scripts/check-structure.mjs",
+      "name": "structure"
+    },
+    {
+      "run": "node scripts/check-worktree.mjs",
+      "name": "worktree lint"
+    },
+    {
+      "run": "npm run build --prefix dashboard",
+      "name": "dashboard build",
+      "paths": ["dashboard/", "server/src/contract"]
+    }
   ],
   "cache": ["/home/sandbox/.npm"]
 }

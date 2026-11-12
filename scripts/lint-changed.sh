@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Runs the strict ESLint config on the .ts and .tsx files changed since <base-ref>.
-# Usage: scripts/lint-changed.sh <base-ref> [eslint args]
+# Runs the strict ESLint config on the .ts and .tsx files changed since <base-ref>. Errors fail anywhere in a changed
+# file; warnings fail only on lines the change added or modified.
+# Usage: scripts/lint-changed.sh <base-ref> [--fix]
 
 if [ "$#" -lt 1 ]; then
-  echo "usage: $0 <base-ref> [eslint args]" >&2
+  echo "usage: $0 <base-ref> [--fix]" >&2
   exit 1
 fi
 
@@ -19,4 +20,4 @@ if [ -z "$changed" ]; then
 fi
 
 mapfile -t files <<< "$changed"
-npx eslint -c eslint.strict.config.mjs "$@" "${files[@]}"
+node "$(dirname "$0")/lint-added-lines.mjs" "$@" "$(git merge-base "$base_ref" HEAD)" "${files[@]}"

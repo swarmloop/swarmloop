@@ -15,6 +15,12 @@ vi.mock('../../../lib/endpoints', () => ({
 
 const allPhases = ['planning', 'implementation', 'checks', 'code-review', 'ci'];
 
+// One paste is one change event; typing it key by key re-renders the whole dialog per character.
+async function pastePrompt(user: UserEvent, text: string): Promise<void> {
+  await user.click(screen.getByRole('textbox', { name: /Prompt/ }));
+  await user.paste(text);
+}
+
 async function pickProject(user: UserEvent, name: string): Promise<void> {
   await user.click(screen.getByRole('combobox', { name: 'Projects' }));
   await user.click(await screen.findByRole('option', { name }));
@@ -34,7 +40,7 @@ describe('NewRunDialog', () => {
     const start = screen.getByRole('button', { name: 'Start' });
     expect(start).toBeDisabled();
 
-    await user.type(screen.getByRole('textbox', { name: /Prompt/ }), 'Ship it');
+    await pastePrompt(user, 'Ship it');
     expect(start).toBeDisabled();
 
     await pickProject(user, 'swarmloop');
@@ -46,11 +52,11 @@ describe('NewRunDialog', () => {
     vi.mocked(ticketKeys).mockResolvedValueOnce({ keys: ['PROJ-12', 'PROJ-13'] });
     render(<NewRunDialog open onClose={vi.fn()} />);
 
-    await user.type(screen.getByRole('textbox', { name: /Prompt/ }), 'Do PROJ-12 and PROJ-13');
+    await pastePrompt(user, 'Do PROJ-12 and PROJ-13');
     expect(await screen.findByText('Jira: PROJ-12, PROJ-13')).toBeInTheDocument();
 
     vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
-    await user.type(screen.getByRole('textbox', { name: /Prompt/ }), ' now');
+    await pastePrompt(user, ' now');
     expect(await screen.findByText('no Jira tickets')).toBeInTheDocument();
   });
 
@@ -68,7 +74,7 @@ describe('NewRunDialog', () => {
     render(<NewRunDialog open onClose={vi.fn()} onCreated={onCreated} />);
 
     await user.click(screen.getByRole('checkbox', { name: 'ci' }));
-    await user.type(screen.getByRole('textbox', { name: /Prompt/ }), 'Ship it');
+    await pastePrompt(user, 'Ship it');
     await pickProject(user, 'swarmloop');
     await user.click(screen.getByRole('button', { name: 'Start' }));
 
@@ -91,7 +97,7 @@ describe('NewRunDialog', () => {
     const user = userEvent.setup();
     render(<NewRunDialog open onClose={vi.fn()} />);
     await user.click(screen.getByRole('checkbox', { name: 'May split into subtasks' }));
-    await user.type(screen.getByRole('textbox', { name: /Prompt/ }), 'Ship it');
+    await pastePrompt(user, 'Ship it');
     await pickProject(user, 'swarmloop');
     await user.click(screen.getByRole('button', { name: 'Start' }));
 
@@ -103,7 +109,7 @@ describe('NewRunDialog', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
     render(<NewRunDialog open onClose={onClose} onSubmit={onSubmit} />);
-    await user.type(screen.getByRole('textbox', { name: /Prompt/ }), 'Ship it');
+    await pastePrompt(user, 'Ship it');
     await pickProject(user, 'swarmloop');
 
     await user.click(screen.getByRole('button', { name: 'Start' }));
@@ -117,7 +123,7 @@ describe('NewRunDialog', () => {
     vi.mocked(listProjects).mockResolvedValue({ projects: ['swarmloop'] });
     vi.mocked(createRun).mockRejectedValue(new Error('run refused'));
     render(<NewRunDialog open onClose={vi.fn()} />);
-    await user.type(screen.getByRole('textbox', { name: /Prompt/ }), 'Ship it');
+    await pastePrompt(user, 'Ship it');
     await pickProject(user, 'swarmloop');
 
     await user.click(screen.getByRole('button', { name: 'Start' }));
@@ -164,7 +170,7 @@ describe('NewRunDialog', () => {
 
     expect(createRepository).toHaveBeenCalledTimes(2);
     expect(onClose).not.toHaveBeenCalled();
-    await user.type(screen.getByRole('textbox', { name: /Prompt/ }), 'Ship it');
+    await pastePrompt(user, 'Ship it');
     await user.click(screen.getByRole('button', { name: 'Start' }));
     await waitFor(() =>
       expect(createRun).toHaveBeenCalledWith(expect.objectContaining({ projects: ['first', 'second'] })),
