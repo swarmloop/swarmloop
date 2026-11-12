@@ -40,4 +40,18 @@ describe('decide', () => {
     const verdict = await decide([], login, noOwner);
     expect(verdict).toEqual({ allowed: false, reason: expect.stringContaining('no github token') });
   });
+
+  it('with an empty list lets in a person who can push, and refuses one who cannot with the push message', async () => {
+    expect(await decide([], login, noOwner, async () => true)).toEqual({ allowed: true });
+    expect(await decide([], login, noOwner, async () => false)).toEqual({
+      allowed: false,
+      reason: expect.any(String),
+      message: "github:Ann can't push to any repository this server works on",
+    });
+  });
+
+  it('ignores the push check when the list is not empty', async () => {
+    expect(await decide(parseAllow('github:bob'), login, noOwner, async () => true)).toMatchObject({ allowed: false });
+    expect(await decide(parseAllow('github:ann'), login, noOwner, async () => false)).toEqual({ allowed: true });
+  });
 });

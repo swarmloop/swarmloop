@@ -39,14 +39,27 @@ interface Login {
   groups: string[];
 }
 
-type Verdict = { allowed: true } | { allowed: false; reason: string };
+type Verdict = { allowed: true } | { allowed: false; reason: string; message?: string };
 
 /**
- * Who may log in. An empty list lets in only the owner of the configured token of that provider, which `owner`
- * looks up (null when no token is configured).
+ * Who may log in. An empty list lets in whoever `push` says can push to a repository this server works on; without
+ * `push` it lets in only the owner of the configured token of that provider, which `owner` looks up (null when no
+ * token is configured).
  */
-export async function decide(entries: Entry[], login: Login, owner: () => Promise<string | null>): Promise<Verdict> {
+export async function decide(
+  entries: Entry[],
+  login: Login,
+  owner: () => Promise<string | null>,
+  push?: () => Promise<boolean>,
+): Promise<Verdict> {
   const user = login.user.toLowerCase();
+  if (entries.length === 0 && push) {
+    if (await push()) {
+      return { allowed: true };
+    }
+    const reason = "can't push to any repository this server works on";
+    return { allowed: false, reason, message: `${login.provider}:${login.user} ${reason}` };
+  }
   if (entries.length === 0) {
     const tokenOwner = await owner();
     if (tokenOwner === null) {

@@ -15,6 +15,10 @@ export interface FakeHost {
   revoked: Set<string>;
   /** Every secret the fake handed out. */
   secrets: string[];
+  /** `<login>:<owner>/<name>` of the repositories a person can push to. */
+  pushers: Set<string>;
+  /** `<login>:<owner>/<name>` of the repositories a person cannot see: the host answers 404. */
+  hidden: Set<string>;
   stop(): Promise<void>;
 }
 
@@ -27,6 +31,8 @@ export async function startFakeHosts(): Promise<FakeHost> {
   const seen: Seen[] = [];
   const secrets: string[] = [];
   const revoked = new Set<string>();
+  const pushers = new Set<string>();
+  const hidden = new Set<string>();
   const issued = new Map<string, number>();
   const issue = (name: string) => {
     const count = (issued.get(name) ?? 0) + 1;
@@ -68,9 +74,12 @@ export async function startFakeHosts(): Promise<FakeHost> {
           send(issue(String(sent.code)));
         }
       } else if (path === '/api/v3/user') {
-        send({ login: name });
+        send({ login: name, avatar_url: `https://avatars.test/${name}.png` });
       } else if (path === '/api/v4/user') {
-        send({ username: name });
+        send({ username: name, avatar_url: `https://avatars.test/${name}.png` });
+      } else if (path.startsWith('/api/v4/projects/') && request.method === 'GET') {
+        const project = decodeURIComponent(path.slice('/api/v4/projects/'.length));
+        send({ permissions: { project_access: { access_level: pushers.has(`${name}:${project}`) ? 30 : 10 } } });
       } else if (path.startsWith('/api/v4/groups')) {
         send([]);
       } else if (path.startsWith('/api/v3/user/orgs')) {
@@ -82,7 +91,12 @@ export async function startFakeHosts(): Promise<FakeHost> {
       } else if (path.startsWith('/api/v3/user/installations/7/repositories/') && request.method === 'PUT') {
         response.writeHead(204).end();
       } else if (path.startsWith('/api/v3/repos/') && request.method === 'GET') {
-        send({ id: 99 });
+        const project = path.split('?')[0].slice('/api/v3/repos/'.length);
+        if (hidden.has(`${name}:${project}`)) {
+          response.writeHead(404).end();
+        } else {
+          send({ id: 99, permissions: { push: pushers.has(`${name}:${project}`) } });
+        }
       } else if (path.endsWith('/pulls') && request.method === 'POST') {
         send({ number: 5, html_url: `https://example.test/pull/5`, body: '' }, 201);
       } else {
@@ -97,6 +111,8 @@ export async function startFakeHosts(): Promise<FakeHost> {
     seen,
     revoked,
     secrets,
+    pushers,
+    hidden,
     stop: () => new Promise((resolve) => server.close(() => resolve())),
   };
 }

@@ -12,7 +12,7 @@ export async function startFakeGithub(orgs: Record<string, string[]>): Promise<{
         const { code } = JSON.parse(body) as { code: string };
         send({ access_token: `tok-${code}` });
       } else if (request.url === '/api/v3/user') {
-        send({ login: name });
+        send({ login: name, avatar_url: `https://avatars.test/${name}.png` });
       } else if (request.url?.startsWith('/api/v3/user/orgs')) {
         send((orgs[name] ?? []).map((login) => ({ login })));
       } else {
