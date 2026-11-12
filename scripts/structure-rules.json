@@ -11,6 +11,12 @@
       "pattern": "bsize"
     },
     {
+      "include": "dashboard/app/login/",
+      "allowFiles": ["dashboard/app/login/hosts.tsx"],
+      "exclude": "\\.test\\.tsx?$",
+      "pattern": "[Gg]it[Hh]ub|[Gg]it[Ll]ab"
+    },
+    {
       "include": "server/src/",
       "allowFiles": ["server/src/sandbox/image-resolver"],
       "allowLine": "-placeholder|mkdtemp|EGRESS_CONTAINER",

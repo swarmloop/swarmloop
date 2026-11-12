@@ -39,7 +39,7 @@ interface Login {
   groups: string[];
 }
 
-type Verdict = { allowed: true } | { allowed: false; reason: string; message?: string };
+type Verdict = { allowed: true } | { allowed: false; reason: string };
 
 /**
  * Who may log in. An empty list lets in whoever `push` says can push to a repository this server works on, or whom `first` says is the first person on the
@@ -59,8 +59,7 @@ export async function decide(
     if ((await push()) || (first && (await first()))) {
       return { allowed: true };
     }
-    const reason = "can't push to any repository this server works on";
-    return { allowed: false, reason, message: `${login.provider}:${login.user} ${reason}` };
+    return { allowed: false, reason: "can't push to any repository this server works on" };
   }
   if (entries.length === 0) {
     const tokenOwner = await owner();

@@ -9,6 +9,7 @@ import { CommandService } from '../pipeline/command.service';
 import { createTestApp, type TestApp } from '../testing/test-app';
 import { startFakeHosts, type FakeHost } from './fake-hosts.spec-helpers';
 import { startFakeGithub } from './fake-provider.spec-helpers';
+import { redirectOf } from './login-problem.spec-helpers';
 
 const TOKEN = 'machine-secret';
 
@@ -90,10 +91,10 @@ describe('login and the auth guard', () => {
   it('refuses a user outside SWARMLOOP_ALLOW and says which account and why', async () => {
     await start('github:ann');
     const response = await login('mallory');
-    expect(response.status).toBe(403);
-    expect(((await response.json()) as { message: string }).message).toBe(
-      'github:mallory may not log in: not listed in SWARMLOOP_ALLOW',
-    );
+    expect(redirectOf(response)).toEqual({
+      path: '/login',
+      query: { error: 'refused', host: 'github', account: 'mallory', reason: 'not listed in SWARMLOOP_ALLOW' },
+    });
     expect(sessionCookie(response)).toBe('');
   });
 
@@ -106,23 +107,72 @@ describe('login and the auth guard', () => {
   it('lets in a member of a listed org', async () => {
     await start('github-org:acme');
     expect((await login('carol')).status).toBe(302);
-    expect((await login('dave')).status).toBe(403);
+    expect(redirectOf(await login('dave')).query.error).toBe('refused');
   });
 
   it('refuses a wrong state, a missing state cookie and a replayed login', async () => {
     await start('github:ann');
-    expect((await login('ann', () => 'code=ann&state=forged')).status).toBe(400);
+    expect(redirectOf(await login('ann', () => 'code=ann&state=forged'))).toEqual({
+      path: '/login',
+      query: { error: 'expired' },
+    });
     const start1 = await fetch(`${app.url}/auth/github/login`, { redirect: 'manual' });
     const state = new URL(start1.headers.get('location') ?? '').searchParams.get('state');
-    expect((await fetch(`${app.url}/auth/github/callback?code=ann&state=${state}`)).status).toBe(400);
+    const unbound = await fetch(`${app.url}/auth/github/callback?code=ann&state=${state}`, { redirect: 'manual' });
+    expect(redirectOf(unbound).query.error).toBe('expired');
     const cookie = `swarmloop_state=${state}`;
     const first = await fetch(`${app.url}/auth/github/callback?code=ann&state=${state}`, {
       headers: { cookie },
       redirect: 'manual',
     });
     expect(first.status).toBe(302);
-    const again = await fetch(`${app.url}/auth/github/callback?code=ann&state=${state}`, { headers: { cookie } });
-    expect(again.status).toBe(400);
+    const again = await fetch(`${app.url}/auth/github/callback?code=ann&state=${state}`, {
+      headers: { cookie },
+      redirect: 'manual',
+    });
+    expect(redirectOf(again).query.error).toBe('expired');
+  });
+
+  it('sends a failing host to the login page as host and keeps every redirect free of codes, states and tokens', async () => {
+    await start('github:ann');
+    const refused = await login('mallory');
+    await app.close();
+    app = await createTestApp({
+      env: {
+        GITHUB_BASE_URL: 'http://127.0.0.1:1',
+        GITHUB_OAUTH_CLIENT_ID: 'client',
+        GITHUB_OAUTH_CLIENT_SECRET: 'secret',
+        SWARMLOOP_ALLOW: 'github:ann',
+        SWARMLOOP_TOKEN: TOKEN,
+      },
+    });
+    const failed = await login('ann');
+    const { path, query } = redirectOf(failed);
+    expect(path).toBe('/login');
+    expect(query).toMatchObject({ error: 'host', host: 'github' });
+    expect(query.reason).toBeTruthy();
+    for (const location of [refused.headers.get('location'), failed.headers.get('location')]) {
+      expect(location).not.toMatch(/code=|state=|tok-|token/);
+    }
+  });
+
+  it('returns to the page the person opened, and to / for anything that is not a same-origin path', async () => {
+    await start('github:ann');
+    const signInNext = async (next: string): Promise<Response> => {
+      const begin = await fetch(`${app.url}/auth/github/login?next=${encodeURIComponent(next)}`, {
+        redirect: 'manual',
+      });
+      const state = new URL(begin.headers.get('location') ?? '').searchParams.get('state') ?? '';
+      return fetch(`${app.url}/auth/github/callback?code=ann&state=${state}`, {
+        redirect: 'manual',
+        headers: { cookie: `swarmloop_state=${state}` },
+      });
+    };
+    expect((await signInNext('/runs/x')).headers.get('location')).toBe('/runs/x');
+    for (const next of ['//evil.example', 'https://evil.example', '/\\evil.example']) {
+      expect((await signInNext(next)).headers.get('location')).toBe('/');
+    }
+    expect((await login('ann')).headers.get('location')).toBe('/');
   });
 
   it('logs out: the session no longer opens the API', async () => {
@@ -254,8 +304,12 @@ describe('login with a connecting app: who may log in when SWARMLOOP_ALLOW is em
     });
   };
 
-  const pushMessage = (host: string, user: string) =>
-    `${host}:${user} can't push to any repository this server works on`;
+  const pushRefusal = (host: string, account: string) => ({
+    error: 'refused',
+    host,
+    account,
+    reason: "can't push to any repository this server works on",
+  });
 
   beforeEach(() => {
     checkouts = mkdtempSync(join(tmpdir(), 'swarmloop-auth-checkouts-'));
@@ -282,8 +336,7 @@ describe('login with a connecting app: who may log in when SWARMLOOP_ALLOW is em
       avatarUrl: 'https://avatars.test/ann.png',
     });
     const refused = await signIn('github', 'bob');
-    expect(refused.status).toBe(403);
-    expect(((await refused.json()) as { message: string }).message).toBe(pushMessage('github', 'bob'));
+    expect(redirectOf(refused).query).toEqual(pushRefusal('github', 'bob'));
     expect(refused.headers.getSetCookie().some((c) => c.startsWith('swarmloop_session='))).toBe(false);
   });
 
@@ -299,12 +352,10 @@ describe('login with a connecting app: who may log in when SWARMLOOP_ALLOW is em
       });
     };
     const refused = await from('ann', away);
-    expect(refused.status).toBe(403);
-    expect(((await refused.json()) as { message: string }).message).toBe(pushMessage('github', 'ann'));
+    expect(redirectOf(refused).query).toEqual(pushRefusal('github', 'ann'));
     expect((await signIn('github', 'ann')).status).toBe(302);
     const second = await signIn('github', 'bob');
-    expect(second.status).toBe(403);
-    expect(((await second.json()) as { message: string }).message).toBe(pushMessage('github', 'bob'));
+    expect(redirectOf(second).query).toEqual(pushRefusal('github', 'bob'));
   });
 
   it('with a checkout the push rule still decides after the first person', async () => {
@@ -313,7 +364,7 @@ describe('login with a connecting app: who may log in when SWARMLOOP_ALLOW is em
     expect((await signIn('github', 'ann')).status).toBe(302);
     fake.pushers.add('bob:acme/site');
     fake.hidden.add('bob:acme/site');
-    expect((await signIn('github', 'bob')).status).toBe(403);
+    expect(redirectOf(await signIn('github', 'bob')).query.error).toBe('refused');
     fake.hidden.clear();
     app.clock.advance(60_000);
     expect((await signIn('github', 'bob')).status).toBe(302);
@@ -325,15 +376,14 @@ describe('login with a connecting app: who may log in when SWARMLOOP_ALLOW is em
     fake.pushers.add('carol:team/dev/tool');
     expect((await signIn('gitlab', 'carol')).status).toBe(302);
     const refused = await signIn('gitlab', 'dave');
-    expect(refused.status).toBe(403);
-    expect(((await refused.json()) as { message: string }).message).toBe(pushMessage('gitlab', 'dave'));
+    expect(redirectOf(refused).query).toEqual(pushRefusal('gitlab', 'dave'));
   });
 
   it('works as today when SWARMLOOP_ALLOW is not empty', async () => {
     await start('github', 'github:bob');
     checkout('site', 'acme/site');
     expect((await signIn('github', 'bob')).status).toBe(302);
-    expect((await signIn('github', 'ann')).status).toBe(403);
+    expect(redirectOf(await signIn('github', 'ann')).query.error).toBe('refused');
   });
 });
 
@@ -432,9 +482,9 @@ describe('first run: the manifest, the owner, the install step and the install r
     expect((await callback('installation_id=8&setup_action=install')).headers.get('location')).toBe(
       '/login?installed=',
     );
-    expect((await callback('setup_action=install')).status).toBe(400);
-    expect((await callback('installation_id=7&setup_action=update')).status).toBe(400);
-    expect((await callback('installation_id=7&setup_action=install&code=x')).status).toBe(400);
+    expect(redirectOf(await callback('setup_action=install')).query.error).toBe('expired');
+    expect(redirectOf(await callback('installation_id=7&setup_action=update')).query.error).toBe('expired');
+    expect(redirectOf(await callback('installation_id=7&setup_action=install&code=x')).query.error).toBe('expired');
   });
 
   it('closes the owner route once an app exists, and the install route to others and after a login', async () => {

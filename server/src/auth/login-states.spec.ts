@@ -13,6 +13,12 @@ describe('LoginStates', () => {
     expect(states.take(late.state)).toBeNull();
   });
 
+  it('returns the stored next path with the login', () => {
+    const states = new LoginStates(new FakeClock());
+    const started = states.start('github', true, undefined, '/runs/x');
+    expect(states.take(started.state)).toMatchObject({ next: '/runs/x' });
+  });
+
   it('holds at most MAX_PENDING logins and drops the oldest first', () => {
     const states = new LoginStates(new FakeClock());
     const oldest = states.start('github');
