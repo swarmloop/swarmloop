@@ -92,6 +92,23 @@ export function failedLaunches(
   return stats.filter((item) => item.step === step && item.status === 'failed' && item.id >= from).length;
 }
 
+/** Launches of this step from the mark onward: the distinct attempts of its failed visits, plus the dead attempt when its visit is not stored yet. */
+export function failedAttemptLaunches(
+  stats: { id: number; step: string; status: string; attemptId: string | null }[],
+  step: string,
+  mark: number,
+  deadAttempt: string,
+): number {
+  const from = mark > 0 ? mark : 1;
+  const attempts = new Set<string>([deadAttempt]);
+  for (const item of stats) {
+    if (item.step === step && item.status === 'failed' && item.id >= from && item.attemptId !== null) {
+      attempts.add(item.attemptId);
+    }
+  }
+  return attempts.size;
+}
+
 export function nextStep(name: StepName, phases?: readonly PhaseName[]): StepName {
   const allowed = new Set(phases ?? PHASES);
   let index = STEPS.indexOf(name);

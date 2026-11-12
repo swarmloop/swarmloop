@@ -46,14 +46,13 @@ describe('reconciler waits and automatic tries', () => {
       const world = await boot();
       const retryAt = new Date(world.clock.now() + 300_000).toISOString();
       await park(world, 'waiting', ERROR_CODES.HOST_UNAVAILABLE, { retryAt });
-      const run = (await world.app.get(RunRepository).findRun(KEY))!;
 
       await world.app.get(Reconciler).resumeHostUnavailable();
       expect(accept).not.toHaveBeenCalled();
 
       world.clock.advance(300_000);
       await world.app.get(Reconciler).resumeHostUnavailable();
-      expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `host-${run.revision}` });
+      expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `host-none-${retryAt}` });
     });
 
     it('never resumes a stopped run', async () => {
@@ -145,14 +144,19 @@ describe('reconciler waits and automatic tries', () => {
       const dockerAnswers = jest.fn().mockResolvedValue(false);
       const world = await boot({ dockerAnswers });
       await park(world, 'waiting', ERROR_CODES.DOCKER_UNAVAILABLE);
-      const run = (await world.app.get(RunRepository).findRun(KEY))!;
 
       await world.app.get(Reconciler).resumeDocker();
       expect(accept).not.toHaveBeenCalled();
 
       dockerAnswers.mockResolvedValue(true);
+      const waiting = await world.app.get(RunRepository).findRun(KEY);
       await world.app.get(Reconciler).resumeDocker();
-      expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `docker-${run.revision}` });
+      expect(accept).toHaveBeenCalledWith(
+        'resume',
+        KEY,
+        {},
+        { idempotencyKey: `docker-none-${deriveState(waiting!).reason?.retryAt}` },
+      );
     });
 
     it('never resumes a stopped run', async () => {
@@ -171,7 +175,6 @@ describe('reconciler waits and automatic tries', () => {
       world.app.get(AppConfig).env.MIN_FREE_GB = 10;
       const guard = world.app.get(DiskGuard);
       await park(world, 'blocked', ERROR_CODES.DISK_LOW);
-      const run = (await world.app.get(RunRepository).findRun(KEY))!;
 
       guard.useFreeBytes(async () => 5 * GB);
       await world.app.get(Reconciler).resumeDiskLow();
@@ -179,7 +182,7 @@ describe('reconciler waits and automatic tries', () => {
 
       guard.useFreeBytes(async () => 20 * GB);
       await world.app.get(Reconciler).resumeDiskLow();
-      expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `disk-${run.revision}` });
+      expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: 'disk-none-reason' });
     });
 
     it('never resumes a stopped run', async () => {
@@ -196,18 +199,18 @@ describe('reconciler waits and automatic tries', () => {
   describe('a step cut by a restart', () => {
     /** A run `running` with a dead owner and an attempt: `reconcile` stores its `process died` visit. */
     async function cut(world: TestApp) {
-      const run = await world.app.get(RunRepository).begin(KEY, 'implement');
-      await world.app.get(Reconciler).reconcile(run);
-      return (await world.app.get(RunRepository).findRun(KEY))!;
+      const begun = await world.app.get(RunRepository).begin(KEY, 'implement');
+      await world.app.get(Reconciler).reconcile(begun);
+      return { run: (await world.app.get(RunRepository).findRun(KEY))!, attempt: begun.activeAttempt };
     }
 
     it('is relaunched once while failed launches are below MAX_LAUNCHES', async () => {
       const world = await boot();
-      const run = await cut(world);
+      const { run, attempt } = await cut(world);
 
       expect(run.status).toBe('failed');
       expect(accept).toHaveBeenCalledTimes(1);
-      expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `relaunch-${run.revision}` });
+      expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `relaunch-${attempt}` });
       await world.app.get(Reconciler).reconcileRuns();
       expect(accept).toHaveBeenCalledTimes(1);
     });
@@ -216,7 +219,7 @@ describe('reconciler waits and automatic tries', () => {
       const world = await boot();
       world.app.get(AppConfig).env.MAX_LAUNCHES = 1;
 
-      const run = await cut(world);
+      const { run } = await cut(world);
 
       expect(run.status).toBe('failed');
       expect(accept).not.toHaveBeenCalled();
@@ -248,6 +251,36 @@ describe('reconciler waits and automatic tries', () => {
       await world.app.get(Reconciler).reconcileRuns();
 
       expect(accept).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the timer', () => {
+    it('queues one pass, not one per tick, while a direct pass holds the reconciler', async () => {
+      const world = await createTestApp({ env: { RECONCILE_MS: '100' } });
+      app = world;
+      const commands = world.app.get(CommandService);
+      const recover = jest.spyOn(commands, 'recover');
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      recover.mockImplementationOnce(() => gate);
+      const reconciler = world.app.get(Reconciler);
+      const direct = reconciler.reconcileAll();
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+      try {
+        reconciler.schedule();
+        jest.advanceTimersByTime(500);
+      } finally {
+        jest.useRealTimers();
+      }
+
+      release();
+      await direct;
+      await reconciler.reconcileRuns();
+      await reconciler.reconcileRuns();
+
+      expect(recover).toHaveBeenCalledTimes(2);
     });
   });
 });

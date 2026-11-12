@@ -3,6 +3,7 @@ import {
   continues,
   continuesSameStep,
   countedVisits,
+  failedAttemptLaunches,
   failedLaunches,
   loopMark,
   nextStep,
@@ -109,5 +110,37 @@ describe('continues', () => {
     expect(failedLaunches(stats, 'code-review', 4)).toBe(1);
     expect(failedLaunches(stats, 'implement', 9)).toBe(1);
     expect(failedLaunches(stats, 'code-review', 11)).toBe(0);
+  });
+
+  describe('failedAttemptLaunches', () => {
+    const visit = (id: number, attemptId: string | null, step = 'implement', status = 'failed') => ({
+      id,
+      step,
+      status,
+      attemptId,
+    });
+
+    it('counts a dead attempt whose visit is stored once', () => {
+      expect(failedAttemptLaunches([visit(1, 'a1')], 'implement', 0, 'a1')).toBe(1);
+    });
+
+    it('counts a dead attempt whose visit is not stored yet', () => {
+      expect(failedAttemptLaunches([], 'implement', 0, 'a1')).toBe(1);
+    });
+
+    it('counts two attempts', () => {
+      expect(failedAttemptLaunches([visit(1, 'a1'), visit(2, 'a2')], 'implement', 0, 'a2')).toBe(2);
+      expect(failedAttemptLaunches([visit(1, 'a1')], 'implement', 0, 'a2')).toBe(2);
+    });
+
+    it('ignores a visit below the mark, another step and a visit that did not fail', () => {
+      const stats = [
+        visit(1, 'a1'),
+        visit(5, 'a2', 'code-review'),
+        visit(6, 'a3', 'implement', 'done'),
+        visit(7, null),
+      ];
+      expect(failedAttemptLaunches(stats, 'implement', 3, 'a4')).toBe(1);
+    });
   });
 });
