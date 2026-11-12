@@ -15,7 +15,6 @@ export interface StoredAgents {
 /** What a person sets for their own runs. A key that is absent is "Use server default". */
 export interface SettingsBody {
   agents?: StoredAgents;
-  split?: boolean;
 }
 
 export interface ServerSetting {
@@ -31,7 +30,6 @@ export interface SettingsView {
   settings: SettingsBody;
   defaults: {
     agents: Record<'main' | 'subtask', Record<'plan' | 'implement' | 'review', string[]>>;
-    split: boolean;
   };
   /** The runtimes with a credential, each with env's models, then its priced models. */
   runtimes: { runtime: string; models: string[] }[];

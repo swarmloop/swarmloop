@@ -13,7 +13,7 @@ vi.mock('../shell', () => ({ ThemeModeSwitch: () => <p>theme switch</p> }));
 const roles = { plan: ['claude:opus'], implement: ['claude:sonnet'], review: ['claude:sonnet'] };
 const view = (settings: SettingsView['settings'] = {}): SettingsView => ({
   settings,
-  defaults: { agents: { main: roles, subtask: roles }, split: true },
+  defaults: { agents: { main: roles, subtask: roles } },
   runtimes: [
     { runtime: 'claude', models: ['opus', 'sonnet'] },
     { runtime: 'codex', models: ['gpt', 'gpt-priced'] },
@@ -128,16 +128,12 @@ describe('SettingsPage', () => {
     expect(screen.queryByText('Saved')).not.toBeInTheDocument();
   });
 
-  it('saves a SPLIT override and goes back to the server default when it is cleared', async () => {
+  it('renders no SPLIT control and saves no split', async () => {
     const user = userEvent.setup();
     render(<SettingsPage />);
 
-    await user.click(await screen.findByRole('switch', { name: 'Use server default for SPLIT' }));
-    await user.click(screen.getByRole('button', { name: 'off' }));
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-    expect(saveSettings).toHaveBeenLastCalledWith(expect.objectContaining({ split: false }));
-
-    await user.click(screen.getByRole('switch', { name: 'Use server default for SPLIT' }));
+    await screen.findByRole('button', { name: 'Save' });
+    expect(screen.queryByText(/SPLIT/)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(vi.mocked(saveSettings).mock.lastCall![0]).not.toHaveProperty('split');
   });

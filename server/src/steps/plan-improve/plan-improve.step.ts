@@ -19,8 +19,8 @@ import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../sh
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { storedPlan } from '../step';
 import { parsePlan, readPlan, reviewedItems, withPlan } from '../plan/plan-record';
-import { parseTasks, planItemsFromTasks, splitAnswer, splitLimits, splitOutputs } from '../plan/plan-tasks';
-import { PLAN_IMPROVE_FOLLOW_UP } from './plan-improve.prompts';
+import { parseTasks, planItemsFromTasks, splitAnswer, splitLimits, splitOutputs, unbounded } from '../plan/plan-tasks';
+import { mergeTasks, PLAN_IMPROVE_FOLLOW_UP } from './plan-improve.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
@@ -74,13 +74,17 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     const maySplit = limits.maySplit;
     const tasks = maySplit ? ((await ctx.reread(ARTIFACTS.subtasks)) ?? []) : [];
     const contract = tasks.length > 0 ? ((await ctx.reread(ARTIFACTS.contract)) ?? '') : '';
+    // A plan over the limit is merged once; the final parse below ends it as a plan error when it still does not fit.
+    const oversized = tasks.length > limits.maxTasks;
     const splitSections =
       tasks.length > 0
         ? [
             { heading: 'Contract', body: contract },
             { heading: 'Tasks', body: JSON.stringify(tasks, null, 2) },
+            ...(oversized ? [{ heading: 'Merge', body: mergeTasks(tasks.length, limits.maxTasks) }] : []),
           ]
         : [];
+    const answerLimits = oversized ? unbounded(limits) : limits;
     const fullFor = (target: string, received: boolean): string =>
       skillPrompt(
         'plan-improve',
@@ -108,7 +112,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
       briefFor: (other) => finish(fullFor(other, false)),
       mounts,
       sections: ['plan'],
-      validate: (text) => (splitAnswer(text) ? parseTasks(text, limits) : parsePlan(text)),
+      validate: (text) => (splitAnswer(text) ? parseTasks(text, answerLimits) : parsePlan(text)),
     });
     // A split answer is written back as tasks. A plan answer turns a split back into one plan.
     const graph = splitAnswer(agentResult.responseText) ? parseTasks(agentResult.responseText, limits) : null;

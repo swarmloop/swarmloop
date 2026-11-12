@@ -5,8 +5,6 @@ import Box from '@mui/material/Box';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Paper from '@mui/material/Paper';
 import Switch from '@mui/material/Switch';
-import ToggleButton from '@mui/material/ToggleButton';
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 import type { SettingsBody, StoredAgents } from '@contract/api';
 import type { SettingsView } from '@contract/settings';
@@ -24,7 +22,7 @@ function agentOf(entry: string): { runtime: string; model: string } {
   return { runtime: entry.slice(0, at), model: entry.slice(at + 1) };
 }
 
-/** The role lists and the `SPLIT` choice of the person; a key left out is the server default. */
+/** The role lists of the person; a key left out is the server default. */
 export function AgentsSection({
   view,
   draft,
@@ -45,11 +43,6 @@ export function AgentsSection({
     }
     const agents: StoredAgents = { ...draft.agents, [tier]: roles };
     onChange({ ...draft, agents });
-  }
-
-  function setSplit(split: boolean | undefined): void {
-    const { split: _old, ...rest } = draft;
-    onChange(split === undefined ? rest : { ...rest, split });
   }
 
   return (
@@ -98,33 +91,6 @@ export function AgentsSection({
           })}
         </Paper>
       ))}
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Typography variant="h6" component="h3" sx={{ mb: 1 }}>
-          Runs
-        </Typography>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={draft.split === undefined}
-              onChange={(_event, useDefault) => setSplit(useDefault ? undefined : view.defaults.split)}
-              slotProps={{ input: { 'aria-label': 'Use server default for SPLIT' } }}
-            />
-          }
-          label={`SPLIT: server default (${view.defaults.split ? 'auto' : 'off'})`}
-        />
-        {draft.split !== undefined ? (
-          <ToggleButtonGroup
-            exclusive
-            size="small"
-            aria-label="SPLIT"
-            value={draft.split ? 'auto' : 'off'}
-            onChange={(_event, value: 'auto' | 'off' | null) => value && setSplit(value === 'auto')}
-          >
-            <ToggleButton value="auto">auto</ToggleButton>
-            <ToggleButton value="off">off</ToggleButton>
-          </ToggleButtonGroup>
-        ) : null}
-      </Paper>
     </Box>
   );
 }

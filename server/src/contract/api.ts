@@ -302,10 +302,9 @@ export interface RewindView {
   step: string;
 }
 
-/** The projects a new run can use, and whether a new run may split by default (the server's `SPLIT`). */
+/** The projects a new run can use. */
 export interface ProjectListView {
   projects: string[];
-  split?: boolean;
 }
 
 /** A repository of a code host that the server's token can push to. */

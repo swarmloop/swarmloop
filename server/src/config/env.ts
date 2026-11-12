@@ -164,7 +164,7 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     AGENTS_SUBTASK_IMPLEMENT: config.get<string>('AGENTS_SUBTASK_IMPLEMENT') ?? '',
     AGENTS_SUBTASK_REVIEW: config.get<string>('AGENTS_SUBTASK_REVIEW') ?? '',
     SPLIT: config.get<'auto' | 'off'>('SPLIT') ?? 'off',
-    SPLIT_MAX_TASKS: config.get<number>('SPLIT_MAX_TASKS') ?? 12,
+    SPLIT_MAX_TASKS: config.get<number>('SPLIT_MAX_TASKS') ?? 48,
     SUBTASKS_PARALLEL: config.get<number>('SUBTASKS_PARALLEL') ?? 3,
     SWARMLOOP_ROOT: root ? root : undefined,
     CHECKOUTS_ROOT: checkoutsRoot ? checkoutsRoot : undefined,

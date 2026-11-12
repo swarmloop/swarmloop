@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { planFromAgent } from './plan-record';
-import { parseTasks, planItemsFromTasks, splitAnswer } from './plan-tasks';
+import { parseTasks, planItemsFromTasks, splitAnswer, unbounded } from './plan-tasks';
 
 const limits = { maySplit: true, maxTasks: 12 };
 
@@ -72,6 +72,15 @@ describe('parseTasks', () => {
     expect(refused(answer([...column, ...api]), { maySplit: true, maxTasks: 1 })).toBe(
       'too many tasks: 2, the limit is 1',
     );
+  });
+
+  it('unbounded lifts the task limit and keeps a subtask from splitting', () => {
+    const many = Array.from({ length: 49 }, (_, n) => [
+      `- t${n} | Task ${n} | depends: none | files: a.ts | proof: a.spec.ts "t${n}"`,
+      '  Does it.',
+    ]).flat();
+    expect(parseTasks(answer(many), unbounded({ maySplit: true, maxTasks: 48 })).tasks).toHaveLength(49);
+    expect(refused(answer(many), unbounded({ maySplit: false, maxTasks: 48 }))).toContain('tasks are not allowed');
   });
 
   it('a duplicate id', () => {

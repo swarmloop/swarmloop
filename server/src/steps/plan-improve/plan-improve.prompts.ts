@@ -12,3 +12,7 @@ export const PLAN_IMPROVE_FOLLOW_UP = [
   'summary:',
   '- why',
 ].join('\n');
+
+export function mergeTasks(count: number, limit: number): string {
+  return `The plan has ${count} tasks and the limit is ${limit}. Merge tasks that belong together until the plan has at most ${limit} tasks. The limit is a safety limit against a runaway plan, not a target.`;
+}

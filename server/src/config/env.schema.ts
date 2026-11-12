@@ -70,7 +70,7 @@ export const envSchema = Joi.object({
   AGENTS_SUBTASK_IMPLEMENT: Joi.string().allow('').default(''),
   AGENTS_SUBTASK_REVIEW: Joi.string().allow('').default(''),
   SPLIT: Joi.string().valid('auto', 'off').default('auto'),
-  SPLIT_MAX_TASKS: Joi.number().integer().min(1).default(12),
+  SPLIT_MAX_TASKS: Joi.number().integer().min(1).default(48),
   SUBTASKS_PARALLEL: Joi.number().integer().min(1).default(3),
   SWARMLOOP_ROOT: Joi.string().allow('').optional(),
   CHECKOUTS_ROOT: Joi.string().allow('').optional(),

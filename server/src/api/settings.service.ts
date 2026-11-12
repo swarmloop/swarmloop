@@ -78,7 +78,7 @@ export class SettingsService {
     const settings = actor && actor !== 'machine' ? ((await this.stored.read(actor)) ?? {}) : {};
     return {
       settings,
-      defaults: { agents: this.defaultAgents(), split: env.SPLIT === 'auto' },
+      defaults: { agents: this.defaultAgents() },
       runtimes,
       modelsLimited: limited,
       server: [...SERVER_NAMES, ...PROCESS_ENV_NAMES].map((name) => {
@@ -137,14 +137,8 @@ export class SettingsService {
 
   private async validate(body: unknown): Promise<SettingsBody> {
     const given = this.record(body, 'settings');
-    this.onlyKeys(given, ['agents', 'split'], 'settings');
+    this.onlyKeys(given, ['agents'], 'settings');
     const settings: SettingsBody = {};
-    if (given.split !== undefined) {
-      if (typeof given.split !== 'boolean') {
-        refuse('split must be true or false');
-      }
-      settings.split = given.split;
-    }
     if (given.agents !== undefined) {
       settings.agents = await this.validateAgents(given.agents);
     }

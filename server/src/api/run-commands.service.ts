@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Inject, Injectable } from '@nes
 import { Clock } from '../core/clock';
 import { AppConfig } from '../config/env';
 import { assertWorkPath } from './work-path';
-import { phaseNames, projectNames } from './run-input';
+import { assertRunId, phaseNames, projectsOf } from './run-input';
 import type { StoredAgents } from '../contract/api';
 import { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
@@ -98,7 +98,7 @@ export class RunCommandsService {
   }
 
   /** The checks of a new run, and the session it opens. Nothing is written. */
-  async plan(body: CreateRunBody, split?: boolean): Promise<StartPlan> {
+  async plan(body: CreateRunBody): Promise<StartPlan> {
     const prompt = body.prompt?.trim() || undefined;
     const given = body.key?.trim() ?? '';
     if (!given && !prompt) {
@@ -106,11 +106,7 @@ export class RunCommandsService {
     }
     const phases = phaseNames(body.phases);
     let key = given || (await this.tracker.ticketKeys(prompt ?? ''))[0] || `run-${this.clock.now().toString(36)}`;
-    try {
-      assertKey(key);
-    } catch (error) {
-      throw new BadRequestException(error instanceof Error ? error.message : 'run id is invalid');
-    }
+    assertRunId(key);
     const path = body.path?.trim() || undefined;
     if (path) {
       assertWorkPath(path, this.config);
@@ -121,11 +117,7 @@ export class RunCommandsService {
     if (!path && !prompt && !existing?.prompt) {
       throw new BadRequestException('prompt is missing');
     }
-    const projects =
-      storedProjects(existing?.projects).length > 0 ? storedProjects(existing?.projects) : projectNames(body.projects);
-    if (!path && projects.length === 0) {
-      throw new BadRequestException('projects is missing');
-    }
+    const projects = projectsOf(body.projects, existing?.projects, path);
     return {
       key,
       prompt,
@@ -133,12 +125,12 @@ export class RunCommandsService {
       phases,
       phasesGiven: body.phases !== undefined,
       projects,
-      split: this.splits(body, split),
+      split: this.splits(body),
     };
   }
 
-  async start(body: CreateRunBody, split?: boolean): Promise<RunRef> {
-    return this.startPlanned(await this.plan(body, split));
+  async start(body: CreateRunBody): Promise<RunRef> {
+    return this.startPlanned(await this.plan(body));
   }
 
   private async subtaskPlan(parent: RunEntity, task: Subtask): Promise<StartPlan> {
@@ -397,9 +389,9 @@ export class RunCommandsService {
     return { key: session, run: await this.runs.findRun(session) };
   }
 
-  /** A subtask never splits. A new run follows its checkbox, then the starter's own setting, then the `SPLIT` default. */
-  private splits(body: CreateRunBody, personal?: boolean): boolean {
-    return body.split ?? personal ?? this.config.env.SPLIT === 'auto';
+  /** A subtask never splits. A new run follows `split` in its body, else the server's `SPLIT`. */
+  private splits(body: CreateRunBody): boolean {
+    return body.split ?? this.config.env.SPLIT === 'auto';
   }
 
   private async rememberPrompt(key: string, prompt: string): Promise<void> {
