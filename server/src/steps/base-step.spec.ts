@@ -14,7 +14,10 @@ import { AGENT_RUNNER } from '../agent/agent-runner';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { StepName } from '../contract/steps';
 import { PASTE_READER } from '../integrations/linked-pages/paste-page.reader';
-import { FetchFailed, HttpCallDraft, SwarmloopError } from '../core/swarmloop-error';
+import { FetchFailed, HostUnavailable, HttpCallDraft, SwarmloopError } from '../core/swarmloop-error';
+import { ERROR_CODES } from '../contract/error-codes';
+import { actionsFor } from '../contract/run-state';
+import { failedLaunches } from '../core/pipeline-result';
 import { ARTIFACTS } from './contract/artifacts';
 import type { InputSpec, Route, StepInput, StepResult } from './contract/step-contract';
 import { BaseStep, StepContext } from './base-step';
@@ -175,6 +178,74 @@ describe('base step', () => {
       expect(calls.map((item) => [item.provider, item.url, item.statusCode])).toEqual([
         [call.provider, call.url, call.statusCode],
       ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('waits with the host message and its next try when a host stays down, and the visit is not a failed launch', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-base-host-'));
+    const app = await boot(root);
+    try {
+      const retryAt = '2026-11-12T15:00:00.000Z';
+      const call: HttpCallDraft = {
+        provider: 'github',
+        method: 'GET',
+        url: 'https://api.github.com/repos/o/r/pulls/1',
+        statusCode: 503,
+        durationMs: 5,
+        error: null,
+      };
+      app.get(StubStep).thrown = new HostUnavailable('api.github.com', 'HTTP 503', retryAt, [call]);
+      await app.get(StubStep).execute('BASE-9');
+      const run = await app.get(RunRepository).findRun('BASE-9');
+      const calls = await app.get(EventRepository).listHttpCalls(run?.id ?? 0);
+      expect(calls.map((item) => item.url)).toEqual([call.url]);
+      expect(run?.status).toBe('waiting');
+      expect(JSON.parse(run?.stateReason ?? '{}')).toEqual({
+        code: 'HOST_UNAVAILABLE',
+        message: `api.github.com did not answer: HTTP 503; next try at ${retryAt}`,
+        retryAt,
+      });
+      const stats = await app.get(VisitRepository).listStats(run?.id ?? 0);
+      expect(stats.map((item) => item.status)).toEqual(['waiting']);
+      expect(failedLaunches(stats, 'branch', 0)).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('waits on DOCKER_UNAVAILABLE one tick ahead when docker is down', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-base-docker-'));
+    const clock = new FakeClock(Date.parse('2026-11-12T14:00:00.000Z'));
+    const app = await boot(root, clock);
+    try {
+      app.get(StubStep).thrown = new SwarmloopError('docker is not running', { code: ERROR_CODES.DOCKER_UNAVAILABLE });
+      await app.get(StubStep).execute('BASE-10');
+      const run = await app.get(RunRepository).findRun('BASE-10');
+      const reason = JSON.parse(run?.stateReason ?? '{}') as { code: string; message: string; retryAt: string };
+      expect(run?.status).toBe('waiting');
+      expect(reason.code).toBe('DOCKER_UNAVAILABLE');
+      expect(Date.parse(reason.retryAt)).toBeGreaterThan(clock.now());
+      expect(reason.message).toBe(`docker did not answer; next try at ${reason.retryAt}`);
+      const stats = await app.get(VisitRepository).listStats(run?.id ?? 0);
+      expect(failedLaunches(stats, 'branch', 0)).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('still blocks on IMAGE_MISSING and offers Resume', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-base-image-'));
+    const app = await boot(root);
+    try {
+      app.get(StubStep).thrown = new SwarmloopError('image is missing', { code: ERROR_CODES.IMAGE_MISSING });
+      await app.get(StubStep).execute('BASE-11');
+      const run = await app.get(RunRepository).findRun('BASE-11');
+      expect(run?.status).toBe('blocked');
+      expect(run?.state).toBe('blocked');
+      expect(JSON.parse(run?.stateReason ?? '{}')).toMatchObject({ code: 'IMAGE_MISSING' });
+      expect(actionsFor('blocked', 'IMAGE_MISSING')).toContain('resume');
     } finally {
       await app.close();
     }

@@ -49,7 +49,7 @@ export type Route =
   | { to: 'next' }
   | { to: 'jump'; step: StepName }
   | { to: 'return'; step: StepName; issues: Issue[] }
-  | { to: 'wait'; reason: string; code?: ErrorCode; limit?: LimitState }
+  | { to: 'wait'; reason: string; code?: ErrorCode; limit?: LimitState; retryAt?: string }
   | { to: 'block'; reason: string; code?: ErrorCode }
   | { to: 'fail'; error: StepFailure };
 

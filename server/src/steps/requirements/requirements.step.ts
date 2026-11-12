@@ -4,9 +4,18 @@ import { StepKernel } from '../step-kernel';
 import { runDir } from '../../history/run-paths';
 import { RunEntity } from '../../history/entities';
 import { SampleDraft, sampleSelf } from '../../history/visit';
-import { FetchFailed, HttpCallDraft, IssueNotFound, SwarmloopError, PasteNeeded } from '../../core/swarmloop-error';
+import {
+  FetchFailed,
+  HostUnavailable,
+  HttpCallDraft,
+  IssueNotFound,
+  SwarmloopError,
+  PasteNeeded,
+} from '../../core/swarmloop-error';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { ERROR_CODES } from '../../contract/error-codes';
+import type { ErrorCode } from '../../contract/error-codes';
+import { waitingEnd } from '../step-error-end';
 import { StepName } from '../../contract/steps';
 import { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
 import { IssueTracker, runKeys } from '../../integrations/issue-tracker/issue-tracker';
@@ -171,6 +180,19 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
           artifact: ARTIFACTS.pending,
         });
       }
+      const waiting = waitingEnd(error, this.clock, this.config.env);
+      if (waiting) {
+        return finish({
+          written: emptyWrite(),
+          calls: error instanceof HostUnavailable ? error.httpCalls : [],
+          outcome: 'waiting',
+          exitCode: 0,
+          message: waiting.message,
+          code: waiting.code as ErrorCode,
+          retryAt: waiting.retryAt,
+          body: null,
+        });
+      }
       if (error instanceof SwarmloopError && error.code === ERROR_CODES.INPUT_MISSING) {
         return finish({
           written: emptyWrite(),
@@ -256,7 +278,7 @@ function routeOf(input: RequirementsFinish): Route {
     case 'ok':
       return { to: 'next' };
     case 'waiting':
-      return { to: 'wait', reason: input.message };
+      return { to: 'wait', reason: input.message, code: input.code, retryAt: input.retryAt };
     case 'blocked':
       return { to: 'block', reason: input.message, code: input.code };
     case 'failed':

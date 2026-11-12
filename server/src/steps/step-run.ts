@@ -69,6 +69,7 @@ export async function closeStep(input: {
   moveTo?: StepName;
   code?: string;
   limit?: LimitState;
+  retryAt?: string;
 }): Promise<PipelineResult> {
   const phases = await input.flows.activePhases(input.run.id);
   const settled = settle(input.previousStep, input.previousStatus, input.step, input.outcome, input.moveTo, phases);
@@ -92,7 +93,12 @@ export async function closeStep(input: {
     status: settled.status,
     currentStep: settled.currentStep,
     reason: code
-      ? { code, message: failureText(input.line), ...(input.limit ? { limit: input.limit } : {}) }
+      ? {
+          code,
+          message: failureText(input.line),
+          ...(input.limit ? { limit: input.limit } : {}),
+          ...(input.retryAt ? { retryAt: input.retryAt } : {}),
+        }
       : undefined,
     facts: code ? { blockCode: code } : undefined,
   });

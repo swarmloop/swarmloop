@@ -20,7 +20,7 @@ import { DocumentRepository } from '../../history/document.repository';
 
 import { PipelineService } from '../../pipeline/pipeline.service';
 
-import { SwarmloopError } from '../../core/swarmloop-error';
+import { HostUnavailable, SwarmloopError } from '../../core/swarmloop-error';
 
 import type { IssueTracker } from '../../integrations/issue-tracker/issue-tracker';
 
@@ -220,6 +220,23 @@ describe('requirements step', () => {
         exitCode: 1,
         message: expect.stringMatching(/^requirements failed: database is locked \(E-[0-9a-z]{8}\)$/),
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('waits with HOST_UNAVAILABLE and its next try when the tracker stays down', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-outage-'));
+    const app = await boot(root, 'http://127.0.0.1:9', 'direct', jest.fn(), jest.fn());
+    const retryAt = '2026-11-12T15:00:00.000Z';
+    try {
+      jest
+        .spyOn(app.get<IssueTracker>(ISSUE_TRACKER), 'fetch')
+        .mockRejectedValue(new HostUnavailable('jira.example.com', 'HTTP 503', retryAt));
+      await app.get(PipelineService).step('requirements', 'PROJ-2', { prompt: 'Build it' });
+      const run = await app.get(RunRepository).findRun('PROJ-2');
+      expect(run?.status).toBe('waiting');
+      expect(JSON.parse(run?.stateReason ?? '{}')).toMatchObject({ code: 'HOST_UNAVAILABLE', retryAt });
     } finally {
       await app.close();
     }

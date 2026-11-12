@@ -15,8 +15,10 @@ export interface RequirementsFinish {
   message: string;
   /** Lines the handoff carries after the message. */
   notes?: string[];
-  /** The error code of a block. */
+  /** The error code of a block or of a wait with a next try. */
   code?: ErrorCode;
+  /** When the next automatic try happens, with `code` `HOST_UNAVAILABLE`. */
+  retryAt?: string;
   body: string | null;
   /** What `body` is stored as. The requirements record unless this says otherwise. */
   artifact?: Artifact<string>;

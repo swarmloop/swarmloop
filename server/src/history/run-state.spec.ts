@@ -212,3 +212,58 @@ describe('deriveState of a split run between passes', () => {
     ).toMatchObject({ state: 'blocked', reason: { code: ERROR_CODES.SUBTASK_BLOCKED } });
   });
 });
+
+describe('deriveState of a run with a next try', () => {
+  const retryAt = '2026-11-12T14:05:00.000Z';
+  const stored = (code: string) => JSON.stringify({ code, message: 'did not answer', retryAt });
+
+  it.each([ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.DOCKER_UNAVAILABLE])(
+    'a waiting run with %s is waiting',
+    (code) => {
+      expect(deriveState({ status: 'waiting', stateReason: stored(code) })).toEqual({
+        state: 'waiting',
+        reason: { code, message: 'did not answer', retryAt },
+      });
+    },
+  );
+
+  it('keeps the next try through a write', () => {
+    const run = {
+      status: 'running',
+      currentStep: 'pipeline',
+      ownerPid: 1,
+      ownerInstance: 'a',
+      activeAttempt: 'x',
+    } as Parameters<typeof writeRunState>[0];
+    writeRunState(run, {
+      status: 'waiting',
+      reason: { code: ERROR_CODES.HOST_UNAVAILABLE, message: 'did not answer', retryAt },
+    });
+    expect(run.state).toBe('waiting');
+    expect(deriveState({ status: run.status, stateReason: run.stateReason }).reason?.retryAt).toBe(retryAt);
+  });
+});
+
+describe('deriveState of a block that a person must clear', () => {
+  const stored = (code: string) => JSON.stringify({ code, message: 'stopped' });
+
+  it.each([REASON.loopLimit, ERROR_CODES.SPEND_LIMIT, ERROR_CODES.PIPELINE_UNFIXED])('keeps the stored %s', (code) => {
+    expect(deriveState({ status: 'blocked', stateReason: stored(code) }, { blockCode: REASON.blocked })).toMatchObject({
+      state: 'blocked',
+      reason: { code },
+    });
+  });
+
+  it('keeps a stored RESOURCE_UNKNOWN and reads a blocked DOCKER_UNAVAILABLE as before', () => {
+    expect(
+      deriveState(
+        { status: 'blocked', stateReason: stored(ERROR_CODES.RESOURCE_UNKNOWN) },
+        { blockCode: REASON.blocked },
+      ),
+    ).toMatchObject({ state: 'blocked', reason: { code: ERROR_CODES.RESOURCE_UNKNOWN } });
+    expect(deriveState({ status: 'blocked', stateReason: stored(ERROR_CODES.DOCKER_UNAVAILABLE) }, {})).toMatchObject({
+      state: 'blocked',
+      reason: { code: ERROR_CODES.DOCKER_UNAVAILABLE },
+    });
+  });
+});
