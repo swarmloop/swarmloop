@@ -350,6 +350,7 @@ export default tseslint.config(
     files: dashboardFiles,
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     plugins: { '@next/next': nextPlugin, 'react-hooks': reactHooks },
+    settings: { next: { rootDir: 'dashboard/' } },
     rules: {
       ...nextPlugin.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
