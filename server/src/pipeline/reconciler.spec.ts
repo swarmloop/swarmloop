@@ -2,6 +2,8 @@ import 'reflect-metadata';
 import { ERROR_CODES } from '../contract/error-codes';
 import { AppConfig } from '../config/env';
 import { deriveState, writeRunState } from '../history/run-state';
+import { RunStop } from '../agent/run-stop';
+import { CommandRepository } from '../history/command.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { createTestApp } from '../testing/test-app';
@@ -166,6 +168,64 @@ describe('reconciler waits and automatic tries', () => {
       await park(world, 'blocked', 'STOPPED');
 
       await world.app.get(Reconciler).resumeDiskLow();
+
+      expect(accept).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a step cut by a restart', () => {
+    /** A run `running` with a dead owner and an attempt: `reconcile` stores its `process died` visit. */
+    async function cut(world: TestApp) {
+      const run = await world.app.get(RunRepository).begin(KEY, 'implement');
+      await world.app.get(Reconciler).reconcile(run);
+      return (await world.app.get(RunRepository).findRun(KEY))!;
+    }
+
+    it('is relaunched once while failed launches are below MAX_LAUNCHES', async () => {
+      const world = await boot();
+      const run = await cut(world);
+
+      expect(run.status).toBe('failed');
+      expect(accept).toHaveBeenCalledTimes(1);
+      expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `relaunch-${run.revision}` });
+      await world.app.get(Reconciler).reconcileRuns();
+      expect(accept).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays failed at MAX_LAUNCHES', async () => {
+      const world = await boot();
+      world.app.get(AppConfig).env.MAX_LAUNCHES = 1;
+
+      const run = await cut(world);
+
+      expect(run.status).toBe('failed');
+      expect(accept).not.toHaveBeenCalled();
+    });
+
+    it('is not relaunched when a Stop is pending', async () => {
+      const world = await boot();
+      const run = await world.app.get(RunRepository).begin(KEY, 'implement');
+      await world.app.get(CommandRepository).accept({ type: 'stop', key: KEY, payload: {}, admit: () => undefined });
+
+      await world.app.get(Reconciler).reconcile(run);
+
+      expect(accept).not.toHaveBeenCalled();
+    });
+
+    it('is not relaunched when its run is halted', async () => {
+      const world = await boot();
+      world.app.get(RunStop).halt(KEY);
+
+      await cut(world);
+
+      expect(accept).not.toHaveBeenCalled();
+    });
+
+    it('is not relaunched while docker is silent and no visit was stored', async () => {
+      const world = await boot();
+      await park(world, 'waiting', ERROR_CODES.DOCKER_UNAVAILABLE);
+
+      await world.app.get(Reconciler).reconcileRuns();
 
       expect(accept).not.toHaveBeenCalled();
     });

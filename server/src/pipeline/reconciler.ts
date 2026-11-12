@@ -4,13 +4,17 @@ import { ConnectionsService } from '../auth/connections.service';
 import { AppConfig } from '../config/env';
 import { agentsFor } from '../config/agents';
 import { ERROR_CODES } from '../contract/error-codes';
+import { RunStop } from '../agent/run-stop';
 import { Clock } from '../core/clock';
+import { failedLaunches, loopMark } from '../core/pipeline-result';
 import { AwakeTime } from '../core/awake-time';
 import { SERVER_INSTANCE } from '../core/server-instance';
 import type { RunEntity } from '../history/entities';
+import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { deriveState, writeRunState } from '../history/run-state';
+import { VisitRepository } from '../history/visit.repository';
 import { RuntimeCooldownRepository } from '../history/runtime-cooldown.repository';
 import { DiskGuard } from './disk-guard';
 import { dockerWait } from '../steps/step-error-end';
@@ -52,6 +56,9 @@ export class Reconciler implements OnModuleDestroy {
     private readonly subtasks: SubtaskPort,
     private readonly mergeWatch: MergeWatch,
     private readonly disk: DiskGuard,
+    private readonly commandLog: CommandRepository,
+    private readonly visits: VisitRepository,
+    private readonly runStop: RunStop,
     @Optional() private readonly connections?: ConnectionsService,
   ) {}
 
@@ -271,7 +278,22 @@ export class Reconciler implements OnModuleDestroy {
       return;
     }
     if (await this.settler.settleRebase(run)) return;
+    const stopping = (await this.commandLog.pending(run.id)).some((command) => command.type === 'stop');
     await this.settler.settleAttempt(run, this.slept);
+    if (!stopping) await this.relaunchInterrupted(run.key);
+  }
+
+  /**
+   * A step cut by a restart has its `process died` visit stored and its run `failed`. It is relaunched through the
+   * resume a person would press, under the same `MAX_LAUNCHES` rule as the driver. A stopped run is not relaunched.
+   */
+  private async relaunchInterrupted(key: string): Promise<void> {
+    const run = await this.runs.findRun(key);
+    if (run?.status !== 'failed' || run.currentStep === 'done' || this.runStop.halted(key)) return;
+    const mark = loopMark(await this.documents.latestBody(key, 'loop_mark'));
+    if (failedLaunches(await this.visits.listStats(run.id), run.currentStep, mark) >= this.config.env.MAX_LAUNCHES)
+      return;
+    await this.resumeOnce(run, `relaunch-${run.revision}`, () => Promise.resolve(true));
   }
 
   /** The owner is this process and its step is in flight, or a chat of this process holds the run. */
