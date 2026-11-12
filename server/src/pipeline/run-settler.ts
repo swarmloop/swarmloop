@@ -25,6 +25,7 @@ import { SandboxService } from '../sandbox/sandbox.service';
 import { fingerprintOf, parseJournal, unfinished, REBASE_JOURNAL } from '../git/rebase';
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
 import { RunRebase } from '../steps/run-rebase';
+import { dockerWait } from '../steps/step-error-end';
 import { StepRegistry } from '../steps/step.registry';
 import { WorkspaceGuard, workspaceBlock } from './workspace-guard';
 
@@ -185,13 +186,12 @@ export class RunSettler {
     return null;
   }
 
-  /** Docker did not answer: the run is blocked and nothing new writes to it, until a Resume. */
+  /** Docker did not answer: the run waits with its attempt, nothing starts, and the reconciler probes again. */
   private async blocked(run: RunEntity): Promise<void> {
-    await this.runs.release(run, {
-      status: 'blocked',
-      reason: { code: ERROR_CODES.RESOURCE_UNKNOWN, message: silentMessage(run.key) },
-      stepStartedAt: null,
-    });
+    const { code, message, retryAt } = dockerWait(this.clock, this.config.env);
+    writeRunState(run, { status: 'waiting', ownerPid: null, reason: { code, message, retryAt } });
+    run.stepStartedAt = null;
+    await this.runs.saveRun(run);
   }
 
   /** The attempt ended without a visit: it gets one, through `finalize`, once. */

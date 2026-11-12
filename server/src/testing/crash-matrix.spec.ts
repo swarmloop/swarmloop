@@ -161,7 +161,7 @@ describe('crash matrix', () => {
     expect(await visits(app)).toMatchObject([{ status: 'failed', attemptId: run.activeAttempt }]);
   });
 
-  it('docker silent: read-only probes with backoff, then blocked with RESOURCE_UNKNOWN and no visit', async () => {
+  it('docker silent: read-only probes with backoff, then waiting with DOCKER_UNAVAILABLE, its attempt kept and no visit', async () => {
     const attemptRunning = jest.fn().mockResolvedValue(null);
     const waited: number[] = [];
     jest.spyOn(delays, 'delay').mockImplementation((ms) => {
@@ -176,8 +176,8 @@ describe('crash matrix', () => {
     expect(attemptRunning).toHaveBeenCalledTimes(3);
     expect(waited).toEqual([1_000, 2_000]);
     const stored = await app.app.get(RunRepository).findRun(KEY);
-    expect(stored).toMatchObject({ status: 'blocked', activeAttempt: null });
-    expect(JSON.parse(stored?.stateReason ?? '{}')).toMatchObject({ code: 'RESOURCE_UNKNOWN' });
+    expect(stored).toMatchObject({ status: 'waiting', activeAttempt: run.activeAttempt });
+    expect(JSON.parse(stored?.stateReason ?? '{}')).toMatchObject({ code: 'DOCKER_UNAVAILABLE' });
     expect(await visits(app)).toHaveLength(0);
   });
 

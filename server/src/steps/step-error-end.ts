@@ -13,6 +13,15 @@ interface ErrorEnd {
   retryAt?: string;
 }
 
+/** The wait of a docker that does not answer: its code, text and next try. */
+export function dockerWait(
+  clock: Clock,
+  env: Pick<SwarmloopEnv, 'RECONCILE_MS'>,
+): { code: string; message: string; retryAt: string } {
+  const retryAt = new Date(clock.now() + env.RECONCILE_MS).toISOString();
+  return { code: ERROR_CODES.DOCKER_UNAVAILABLE, message: `docker did not answer; next try at ${retryAt}`, retryAt };
+}
+
 /** The code, text and next try of a passing outage: a host that did not answer or a docker that is down. Null for any other error. */
 export function waitingEnd(
   error: unknown,
@@ -23,8 +32,7 @@ export function waitingEnd(
     return { code: error.code, message: error.message, retryAt: error.retryAt };
   }
   if (error instanceof SwarmloopError && error.code === ERROR_CODES.DOCKER_UNAVAILABLE) {
-    const retryAt = new Date(clock.now() + env.RECONCILE_MS).toISOString();
-    return { code: error.code, message: `docker did not answer; next try at ${retryAt}`, retryAt };
+    return dockerWait(clock, env);
   }
   return null;
 }
