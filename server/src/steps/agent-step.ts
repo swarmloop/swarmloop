@@ -69,6 +69,8 @@ export interface ModelStepContext {
     /** Checks the final answer before returning it, so a malformed answer can be corrected in the same chat. */
     validate?: (text: string, output: string | undefined) => void;
     project?: ProjectLaunch;
+    /** The full prompt for a new chat on the given runtime, when the launch moves to another agent after a provider limit. */
+    briefFor?: (runtime: RuntimeName) => string;
     /** The project launch for the runtime of another agent, when the launch moves to one after a provider limit. */
     projectFor?: (runtime: RuntimeName) => Promise<ProjectLaunch | undefined>;
   }) => Promise<AgentRunResult>;
@@ -279,6 +281,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       freshPrompt: launch.freshPrompt === undefined ? undefined : withInstructions(launch.freshPrompt),
       failover: true,
       brief: launch.freshPrompt === undefined ? prompt : withInstructions(launch.freshPrompt),
+      briefFor: launch.briefFor && ((runtime) => withInstructions(launch.briefFor?.(runtime) ?? prompt)),
       sections: launch.sections,
       validate: launch.validate,
       parseFailureEnding: answerEnding(this.name),

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -241,4 +242,30 @@ test('forbidOutside reports an ecosystem folder in product code and lets a spec 
 
   assert.equal(violations.length, 1);
   assert.match(violations[0], /^server\/src\/x\.ts:1:/);
+});
+
+test('reports a path in AGENTS.md that does not exist and is not ignored', () => {
+  const root = makeRoot({ 'AGENTS.md': 'Rules.\nSee `src/gone/` and `gone.md`.\n' });
+
+  const violations = findViolations({ root, rules, files: [], isIgnored: () => false });
+
+  assert.deepEqual(violations, ['AGENTS.md:2: src/gone/', 'AGENTS.md:2: gone.md']);
+});
+
+test('accepts an existing path, an ignored path, a glob and a plain word in AGENTS.md', () => {
+  const root = makeRoot({
+    'AGENTS.md': 'Use `src/there.ts`, `local/`, `*.spec-helpers.ts`, `if (a/b)` and `Clock`.\n',
+    'src/there.ts': '',
+  });
+
+  const violations = findViolations({ root, rules, files: [], isIgnored: (path) => path === 'local/' });
+
+  assert.deepEqual(violations, []);
+});
+
+test('asks git whether a missing path in AGENTS.md is ignored', () => {
+  const root = makeRoot({ 'AGENTS.md': 'Keep `.gitignore` and `local/` out.\n', '.gitignore': 'local/\n' });
+  execFileSync('git', ['init', '-q'], { cwd: root });
+
+  assert.deepEqual(findViolations({ root, rules, files: [] }), []);
 });

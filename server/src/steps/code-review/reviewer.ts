@@ -42,6 +42,16 @@ export interface Finished {
   limit?: RuntimeLimit;
 }
 
+/** One reviewer launch. `briefFor` is the full prompt for another runtime, set when `prompt` is the full prompt. */
+interface ReviewLaunch {
+  reviewer: Reviewer;
+  runtime: RuntimeName;
+  model: string;
+  prompt: string;
+  mounts: SandboxMount[];
+  briefFor?: (runtime: RuntimeName) => string;
+}
+
 export interface Usage {
   tokensIn: number;
   tokensOut: number;
@@ -63,14 +73,7 @@ export async function runJob(
   opened: OpenedStep,
   key: string,
   env: SwarmloopEnv,
-  job: {
-    reviewer: Reviewer;
-    runtime: RuntimeName;
-    model: string;
-    prompt: string;
-    mounts: SandboxMount[];
-    stale: boolean;
-  },
+  job: Omit<ReviewLaunch, 'briefFor'> & { promptFor: (runtime: RuntimeName) => string; stale: boolean },
   fix: { implement: string; reviewed: string },
   plan: string,
   returned: string | null,
@@ -80,19 +83,26 @@ export async function runJob(
 ): Promise<Finished> {
   const step = `code-review-${job.reviewer.name}`;
   const session = await resumableChat(deps.root, key, step, job.runtime);
-  const chosen =
-    fresh || !session?.chatId
-      ? job.prompt
-      : retry && !job.stale
-        ? reviewContinue(job.reviewer.name)
-        : reviewResume(job.reviewer.name, fix.implement, fix.reviewed, plan, returned);
+  const full = fresh || !session?.chatId;
+  const chosen = full
+    ? job.prompt
+    : retry && !job.stale
+      ? reviewContinue(job.reviewer.name)
+      : reviewResume(job.reviewer.name, fix.implement, fix.reviewed, plan, returned);
   const prompt = chosen;
   return one(
     deps,
     opened,
     key,
     env,
-    { reviewer: job.reviewer, runtime: job.runtime, model: job.model, prompt, mounts: job.mounts },
+    {
+      reviewer: job.reviewer,
+      runtime: job.runtime,
+      model: job.model,
+      prompt,
+      mounts: job.mounts,
+      briefFor: full ? job.promptFor : undefined,
+    },
     auto,
     fresh,
   );
@@ -108,7 +118,7 @@ async function one(
   opened: OpenedStep,
   key: string,
   env: SwarmloopEnv,
-  job: { reviewer: Reviewer; runtime: RuntimeName; model: string; prompt: string; mounts: SandboxMount[] },
+  job: ReviewLaunch,
   auto?: boolean,
   fresh = false,
 ): Promise<Finished> {
@@ -147,7 +157,7 @@ async function launchReview(
   opened: OpenedStep,
   key: string,
   env: SwarmloopEnv,
-  job: { reviewer: Reviewer; runtime: RuntimeName; model: string; prompt: string; mounts: SandboxMount[] },
+  job: ReviewLaunch,
   auto?: boolean,
   fresh = false,
 ): Promise<AgentRunResult> {
@@ -169,6 +179,7 @@ async function launchReview(
     resume: fresh ? false : undefined,
     failover: true,
     brief: job.prompt,
+    briefFor: job.briefFor,
     validate: (text, output) => parseReview(text, output ?? ''),
     parseFailureEnding: answerEnding('code-review'),
   });

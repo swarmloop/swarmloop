@@ -24,6 +24,8 @@ interface FailoverTarget {
   prompt: string;
   /** The full prompt for a new chat on another agent. A follow-up prompt only a resumed chat can use never goes there. */
   brief?: string;
+  /** The full prompt for a new chat on the given runtime. A prompt built for another runtime may miss rule files it loads by itself. */
+  briefFor?: (runtime: RuntimeName) => string;
   freshPrompt?: string;
   resume?: boolean;
   auto?: boolean;
@@ -64,7 +66,10 @@ export class LimitFailover {
     }
     const next = availableAgent(this.config.env, request.run, this.use(request), cooling);
     if (next) {
-      return { ...request, ...next };
+      const moved = { ...request, ...next };
+      return next.runtime !== request.runtime && request.briefFor
+        ? { ...moved, prompt: request.briefFor(next.runtime) }
+        : moved;
     }
     if (request.auto) {
       throw await this.waiting(request, request.runtime, undefined);
@@ -97,7 +102,13 @@ export class LimitFailover {
       text: `${limitText(request.runtime, resetsAt)} Continued with ${continuedWith}.`,
     });
     // A chat cannot move between runtimes: the new agent starts a new chat with the full brief.
-    return { ...request, ...next, resume: false, prompt: request.brief ?? request.prompt, freshPrompt: undefined };
+    return {
+      ...request,
+      ...next,
+      resume: false,
+      prompt: request.briefFor?.(next.runtime) ?? request.brief ?? request.prompt,
+      freshPrompt: undefined,
+    };
   }
 
   /** The error of a step whose every agent of the role is limited. It says when the run goes on. */

@@ -61,6 +61,8 @@ export interface AgentRuntime {
   credential(keys: RuntimeKeys): { name: string; value: string };
   /** The provider limit the end of a launch reports, or null when it is no limit: an auth, billing, network or context error is none. */
   classifyLimit(input: LimitInput): LimitHit | null;
+  /** The rule file names the CLI loads by itself from its working directory. */
+  ownRuleFiles(): readonly string[];
   briefArgs(): string[];
   printArgs(input: AgentPrintInput): string[];
   terminalArgs(input: AgentTerminalInput): string[];

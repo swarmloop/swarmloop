@@ -249,6 +249,8 @@ With **ci** ticked there is no click between the plan and the merge request. You
 
 The instructions for every step are Markdown files in `skills/`. Edit one, rebuild the server, and every run after that follows it, for everyone on the server. The rules live in the repo and get reviewed like code. They are not a setting in someone's IDE.
 
+A project tailors swarmloop with `.swarmloop.json` and `skills/`, and puts its own rules in `AGENTS.md` at the repository root. Every step of every runtime gets that file, for every repository of a run.
+
 ### 🔍 Five reviewers, and they can say no
 
 Requirements, quality, regressions, security, and performance review the diff at the same time, on a read-only mount. A report sums them up. Each reviewer ends with `decision: ok` or `decision: return`. A return sends the run back to implementation with the finding. A red pipeline does the same, on its own counter. `.env.example` allows 10 review returns and 6 pipeline returns.

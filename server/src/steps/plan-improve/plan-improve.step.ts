@@ -12,6 +12,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
+import { projectRules } from '../shared/project-rules';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { appendImpact, withHandoff, withImpact } from '../shared/handoff';
 import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../shared/skill-prompt';
@@ -66,12 +67,8 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     const names = checkedRepoNames((await ctx.reread(ARTIFACTS.repos)) ?? []);
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     const prior = await ctx.reread(ARTIFACTS.handoff);
-    const continued = await resumableChat(
-      root(this.config),
-      key,
-      'plan-improve',
-      this.profile(this.config.env, ctx.opened.run).runtime,
-    );
+    const { runtime } = this.profile(this.config.env, ctx.opened.run);
+    const continued = await resumableChat(root(this.config), key, 'plan-improve', runtime);
     const impact = await ctx.reread(ARTIFACTS.impact);
     const limits = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);
     const maySplit = limits.maySplit;
@@ -84,24 +81,31 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
             { heading: 'Tasks', body: JSON.stringify(tasks, null, 2) },
           ]
         : [];
-    const full = skillPrompt(
-      'plan-improve',
-      input.requirements,
-      names,
-      withImpact(
-        withHandoff([{ heading: 'Plan', body: JSON.stringify(plan, null, 2) }, ...splitSections], prior),
-        impact,
-      ),
-      mounts,
-      {
-        split: maySplit,
-        planTool: runtimeFor(this.profile(this.config.env, ctx.opened.run).runtime).planModeHasPlanTool,
-      },
-    );
-    const chosen = continued?.chatId && !maySplit ? appendImpact(PLAN_IMPROVE_FOLLOW_UP, impact) : full;
-    const prompt = withAddedRepos(chosen, await ctx.reread(ARTIFACTS.addedRepos));
+    const fullFor = (target: string, received: boolean): string =>
+      skillPrompt(
+        'plan-improve',
+        input.requirements,
+        names,
+        withImpact(
+          withHandoff([{ heading: 'Plan', body: JSON.stringify(plan, null, 2) }, ...splitSections], prior),
+          impact,
+        ),
+        mounts,
+        {
+          split: maySplit,
+          planTool: runtimeFor(target).planModeHasPlanTool,
+          rules: projectRules(names, mounts, target, received),
+        },
+      );
+    const added = await ctx.reread(ARTIFACTS.addedRepos);
+    const finish = (prompt: string): string => `${withAddedRepos(prompt, added)}\n\n${PLAN_EXECUTION_RULE}`;
+    const chosen =
+      continued?.chatId && !maySplit
+        ? appendImpact(PLAN_IMPROVE_FOLLOW_UP, impact)
+        : fullFor(runtime, !!continued?.chatId);
     const agentResult = await ctx.launch({
-      prompt: `${prompt}\n\n${PLAN_EXECUTION_RULE}`,
+      prompt: finish(chosen),
+      briefFor: (other) => finish(fullFor(other, false)),
       mounts,
       sections: ['plan'],
       validate: (text) => (splitAnswer(text) ? parseTasks(text, limits) : parsePlan(text)),

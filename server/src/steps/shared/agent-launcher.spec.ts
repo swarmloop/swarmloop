@@ -15,6 +15,7 @@ import { sessionFileName } from '../../history/session-group';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { SandboxService } from '../../sandbox/sandbox.service';
 import { AgentLauncher } from './agent-launcher';
+import { LimitFailover } from './limit-failover';
 import { SwarmloopError } from '../../core/swarmloop-error';
 
 const CHAT = JSON.stringify({ session_id: 'chat-9' });
@@ -480,5 +481,88 @@ describe('AgentLauncher runtime of the agent', () => {
       project: { cliVolume: 'cli-codex' },
     });
     expect(result.agent).toEqual({ runtime: 'codex', model: 'm-codex' });
+  });
+
+  describe('with the real failover', () => {
+    const ran = { chatId: null, tokensIn: 0, tokensOut: 0, usd: 0, calls: 1, exitCode: 0, resumed: false, samples: [] };
+
+    function setup(cooling: string[], limited = cooling.length === 0) {
+      const root = mkdtempSync(join(tmpdir(), 'swarmloop-launcher-briefs-'));
+      const runEntity = {
+        agentCalls: 0,
+        spentUsd: 0,
+        agents: {
+          main: {
+            implement: [
+              { runtime: 'claude', model: 'm-claude' },
+              { runtime: 'codex', model: 'm-codex' },
+            ],
+          },
+        },
+      } as never;
+      const run = jest.fn().mockResolvedValue({ ...ran, responseText: 'done' });
+      if (limited) {
+        run.mockResolvedValueOnce({ ...ran, responseText: 'limit', limit: { window: '5-hour' } });
+      }
+      const runner = { run };
+      const failover = new LimitFailover(
+        new AppConfig(testEnv()),
+        new FakeClock(),
+        {
+          cooling: async () => new Set(cooling),
+          set: async (runtime: string) => {
+            cooling.push(runtime);
+          },
+          earliest: async () => ({ until: 0, resumeAt: 1 }),
+        } as never,
+        { finishVisit: async () => undefined } as never,
+      );
+      const launcher = new AgentLauncher(
+        runner as never,
+        { tokenTotal: async () => 0 } as never,
+        new RunStop(),
+        failover,
+      );
+      const launch = (extra: object) =>
+        launcher.launch({
+          root,
+          run: runEntity,
+          key: 'run',
+          step: 'implement',
+          mode: 'agent',
+          tools: 'write',
+          runtime: 'claude',
+          model: 'm-claude',
+          timeLimitMs: 1,
+          prompt: 'prompt for claude',
+          workspace: root,
+          mounts: [],
+          failover: true,
+          ...extra,
+        });
+      return { runner, launch };
+    }
+
+    it('sends the brief of the new runtime after a limit', async () => {
+      const { runner, launch } = setup([]);
+      await launch({ brief: 'old brief', briefFor: (runtime: string) => `brief for ${runtime}` });
+      expect(runner.run.mock.calls[1][0].prompt).toContain('brief for codex');
+    });
+
+    it('sends the brief of the new runtime when a launch starts on another runtime', async () => {
+      const { runner, launch } = setup(['claude']);
+      await launch({ briefFor: (runtime: string) => `brief for ${runtime}` });
+      expect(runner.run.mock.calls[0][0]).toMatchObject({ runtime: 'codex' });
+      expect(runner.run.mock.calls[0][0].prompt).toContain('brief for codex');
+    });
+
+    it('falls back to the brief or the prompt without briefFor', async () => {
+      const limited = setup([]);
+      await limited.launch({ brief: 'old brief' });
+      expect(limited.runner.run.mock.calls[1][0].prompt).toContain('old brief');
+      const started = setup(['claude']);
+      await started.launch({});
+      expect(started.runner.run.mock.calls[0][0].prompt).toContain('prompt for claude');
+    });
   });
 });
