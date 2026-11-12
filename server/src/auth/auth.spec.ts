@@ -206,10 +206,17 @@ describe('login with a connecting app: who may log in when SWARMLOOP_ALLOW is em
     execFileSync('git', ['-C', path, 'remote', 'add', 'origin', `${fake.url}/${project}.git`]);
   }
 
+  const machine = { authorization: `Bearer ${TOKEN}` };
+
   async function start(host: 'github' | 'gitlab', allow = ''): Promise<void> {
     fake = await startFakeHosts();
     app = await createTestApp({
       env: {
+        // the .env of an earlier app in this file stays in process.env: no OAuth app but the one made here
+        GITHUB_OAUTH_CLIENT_ID: '',
+        GITHUB_OAUTH_CLIENT_SECRET: '',
+        GITLAB_OAUTH_CLIENT_ID: '',
+        GITLAB_OAUTH_CLIENT_SECRET: '',
         ...(host === 'github' ? { GITHUB_BASE_URL: fake.url } : { GITLAB_BASE_URL: fake.url }),
         SWARMLOOP_ALLOW: allow,
         SWARMLOOP_TOKEN: TOKEN,
@@ -217,18 +224,21 @@ describe('login with a connecting app: who may log in when SWARMLOOP_ALLOW is em
       },
     });
     if (host === 'github') {
-      const manifest = await fetch(`${app.url}/auth/github/manifest`);
+      const manifest = await fetch(`${app.url}/auth/github/manifest`, { headers: machine });
+      expect(manifest.status).toBe(200);
       const state = new URL(((await manifest.json()) as { action: string }).action).searchParams.get('state') ?? '';
-      await fetch(`${app.url}/auth/github/created?code=manifest-code&state=${state}`, {
+      const created = await fetch(`${app.url}/auth/github/created?code=manifest-code&state=${state}`, {
         redirect: 'manual',
-        headers: { cookie: `swarmloop_state=${state}` },
+        headers: { ...machine, cookie: `swarmloop_state=${state}` },
       });
+      expect(created.status).toBe(302);
     } else {
-      await fetch(`${app.url}/auth/gitlab/application`, {
+      const saved = await fetch(`${app.url}/auth/gitlab/application`, {
         method: 'POST',
-        headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+        headers: { ...machine, 'content-type': 'application/json' },
         body: JSON.stringify({ clientId: 'gl-id', clientSecret: 'gl-secret' }),
       });
+      expect(saved.status).toBe(201);
     }
   }
 
