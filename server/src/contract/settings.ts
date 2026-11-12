@@ -1,4 +1,22 @@
-import type { SettingsBody } from './api';
+/** One runtime and model, as stored for a person and on a run. */
+interface StoredAgent {
+  runtime: string;
+  model: string;
+}
+
+type StoredRoleLists = Partial<Record<'plan' | 'implement' | 'review', StoredAgent[]>>;
+
+/** Ordered agent lists per tier and role. A list that is absent is the server default. */
+export interface StoredAgents {
+  main?: StoredRoleLists;
+  subtask?: StoredRoleLists;
+}
+
+/** What a person sets for their own runs. A key that is absent is "Use server default". */
+export interface SettingsBody {
+  agents?: StoredAgents;
+  split?: boolean;
+}
 
 export interface ServerSetting {
   name: string;

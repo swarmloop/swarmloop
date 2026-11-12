@@ -17,7 +17,7 @@ import {
   StepEventEntity,
   StepStatEntity,
 } from '../entities';
-import { UserSettingEntity } from '../user-setting-entity';
+import { UserSettingEntity } from '../connection-entities';
 import { historyDatabaseOptions } from '../history.module';
 
 async function withDataSource<T>(options: DataSourceOptions, use: (dataSource: DataSource) => Promise<T>): Promise<T> {

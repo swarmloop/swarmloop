@@ -1,5 +1,4 @@
-import { ConnectionEntity, HostAppEntity } from './connection-entities';
-import { UserSettingEntity } from './user-setting-entity';
+import { ConnectionEntity, HostAppEntity, UserSettingEntity } from './connection-entities';
 import type { StoredAgents } from '../contract/api';
 import { Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
 

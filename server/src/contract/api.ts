@@ -2,6 +2,8 @@ import type { CommandInput } from './command';
 import type { MergeOutcome, RunAction, RunState, StateReason } from './run-state';
 import type { SubtaskStatus } from './subtask';
 
+export type { SettingsBody, StoredAgents } from './settings';
+
 export interface RunSummary {
   key: string;
   name: string;
@@ -511,26 +513,6 @@ export interface StatsView {
   returnsPerRun: { returns: string; runs: number }[];
   /** Every run of the range, newest first. */
   runs: StatsRun[];
-}
-
-/** One runtime and model, as stored for a person and on a run. */
-interface StoredAgent {
-  runtime: string;
-  model: string;
-}
-
-type StoredRoleLists = Partial<Record<'plan' | 'implement' | 'review', StoredAgent[]>>;
-
-/** Ordered agent lists per tier and role. A list that is absent is the server default. */
-export interface StoredAgents {
-  main?: StoredRoleLists;
-  subtask?: StoredRoleLists;
-}
-
-/** What a person sets for their own runs. A key that is absent is "Use server default". */
-export interface SettingsBody {
-  agents?: StoredAgents;
-  split?: boolean;
 }
 
 /** `/auth/me`: who is signed in. */

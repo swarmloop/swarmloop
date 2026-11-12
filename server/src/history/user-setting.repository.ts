@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { SettingsBody } from '../contract/api';
-import { UserSettingEntity } from './user-setting-entity';
+import { UserSettingEntity } from './connection-entities';
 import { transaction } from './transaction';
 
 /** The settings a person chose for their own runs. One row per setting key; a key without a row is the server default. */
