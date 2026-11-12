@@ -138,6 +138,11 @@ export class CommandRepository {
     return keys.filter((key): key is string => key !== null);
   }
 
+  /** Every command of a run, oldest first, whatever its state. */
+  listForRun(runId: number): Promise<CommandEntity[]> {
+    return this.commands.find({ where: { runId }, order: { createdAt: 'ASC' } });
+  }
+
   /** The commands of a run that are accepted or executing. */
   pending(runId: number): Promise<CommandEntity[]> {
     return this.commands.find({ where: { runId, state: In(['accepted', 'executing']) } });

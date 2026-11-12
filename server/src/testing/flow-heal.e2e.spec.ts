@@ -58,7 +58,7 @@ describe('a passing outage or a restart heals on the reconciler ticks', () => {
     expect(accept).not.toHaveBeenCalled();
 
     await tickFor(2);
-    expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `host-${run.revision}` });
+    expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `host-none-${retryAt}` });
   });
 
   it('waits while docker is silent for 10 minutes, starts nothing, then settles the run', async () => {
@@ -88,7 +88,7 @@ describe('a passing outage or a restart heals on the reconciler ticks', () => {
     const accepted = jest
       .spyOn(CommandService.prototype, 'accept')
       .mockImplementation(() => Promise.resolve({} as never));
-    await flow.app.app.get(RunRepository).begin(KEY, 'implement');
+    const begun = await flow.app.app.get(RunRepository).begin(KEY, 'implement');
 
     await flow.restart();
     await flow.tick();
@@ -97,6 +97,6 @@ describe('a passing outage or a restart heals on the reconciler ticks', () => {
     const cut = await find();
     expect(cut.status).toBe('failed');
     expect(accepted).toHaveBeenCalledTimes(1);
-    expect(accepted).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `relaunch-${cut.revision}` });
+    expect(accepted).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `relaunch-${begun.activeAttempt}` });
   });
 });
