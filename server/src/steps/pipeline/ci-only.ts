@@ -1,6 +1,7 @@
 import { git } from '../../git/git';
 import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { VisitRepository } from '../../history/visit.repository';
 import type { StepContext } from '../base-step';
 import { originProject } from './pipeline-report';
 import type { Failure, Seen } from './pipeline-report';
@@ -14,9 +15,10 @@ export async function pipelineReturn(
   failures: Failure[],
   seen: Seen[],
   ctx: StepContext,
-  checked: Record<string, string> | null,
+  visits: VisitRepository,
   root: string,
 ): Promise<{ reason: string; detail: { ciOnly: boolean; jobs: string[] } }> {
+  const checked = await visits.latestChecked(ctx.opened.run.id);
   const jobs = failures.map((failure) => failure.name);
   const reason = failures.map((failure) => `${failure.project} ${failure.name}`).join(',') || 'pipeline failed';
   // The repos are read only when the checks passed, so a return without a checks visit reads nothing more than before.
