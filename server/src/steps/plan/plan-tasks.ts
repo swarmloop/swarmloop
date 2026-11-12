@@ -22,6 +22,11 @@ export function splitLimits(run: RunEntity, maxTasks: number): TaskLimits {
   return { maySplit: run.split && !isSubtask(run), maxTasks };
 }
 
+/** The same limits with no cap on the task count: the plan step stores an oversized plan, and plan-improve merges it. */
+export function unbounded(limits: TaskLimits): TaskLimits {
+  return { ...limits, maxTasks: Number.POSITIVE_INFINITY };
+}
+
 /** A split answer has a `tasks:` section and no `plan:` section. */
 export function splitAnswer(text: string): boolean {
   return section(text, 'tasks') !== null && section(text, 'plan') === null;

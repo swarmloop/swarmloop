@@ -1,15 +1,18 @@
+import { DataSource } from 'typeorm';
+import { UserSettingEntity } from './connection-entities';
 import { repositoryDatabase } from './repository.spec-helpers';
 import { UserSettingRepository } from './user-setting.repository';
 
 const plan = { main: { plan: [{ runtime: 'claude', model: 'opus' }] } };
+const review = { subtask: { review: [{ runtime: 'claude', model: 'sonnet' }] } };
 
 describe('UserSettingRepository', () => {
   it('reads back what was saved', async () => {
     const db = await repositoryDatabase();
     try {
       const settings = db.app.get(UserSettingRepository);
-      await settings.save('ada', { agents: plan, split: true });
-      expect(await settings.read('ada')).toEqual({ agents: plan, split: true });
+      await settings.save('ada', { agents: plan });
+      expect(await settings.read('ada')).toEqual({ agents: plan });
     } finally {
       await db.close();
     }
@@ -19,9 +22,11 @@ describe('UserSettingRepository', () => {
     const db = await repositoryDatabase();
     try {
       const settings = db.app.get(UserSettingRepository);
-      await settings.save('ada', { agents: plan, split: true });
-      await settings.save('ada', { split: false });
-      expect(await settings.read('ada')).toEqual({ split: false });
+      await settings.save('ada', { agents: plan });
+      await settings.save('ada', {});
+      expect(await settings.read('ada')).toBeNull();
+      await settings.save('ada', { agents: review });
+      expect(await settings.read('ada')).toEqual({ agents: review });
     } finally {
       await db.close();
     }
@@ -31,11 +36,26 @@ describe('UserSettingRepository', () => {
     const db = await repositoryDatabase();
     try {
       const settings = db.app.get(UserSettingRepository);
-      await settings.save('ada', { split: true });
-      await settings.save('grace', { split: false });
-      expect(await settings.read('ada')).toEqual({ split: true });
-      expect(await settings.read('grace')).toEqual({ split: false });
+      await settings.save('ada', { agents: plan });
+      await settings.save('grace', { agents: review });
+      expect(await settings.read('ada')).toEqual({ agents: plan });
+      expect(await settings.read('grace')).toEqual({ agents: review });
       expect(await settings.read('alan')).toBeNull();
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('ignores a stored key that is not a setting any more, such as a personal split', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const settings = db.app.get(UserSettingRepository);
+      const rows = db.app.get(DataSource).getRepository(UserSettingEntity);
+      await rows.insert({ login: 'ada', key: 'agents', value: JSON.stringify(plan) });
+      await rows.insert({ login: 'ada', key: 'split', value: 'true' });
+      await rows.insert({ login: 'grace', key: 'split', value: 'true' });
+      expect(await settings.read('ada')).toEqual({ agents: plan });
+      expect(await settings.read('grace')).toBeNull();
     } finally {
       await db.close();
     }

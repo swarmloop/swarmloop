@@ -20,7 +20,7 @@ const MINE: SettingsBody = {
     subtask: { implement: [{ runtime: 'codex', model: 'mine-sub' }] },
   },
 };
-const THEIRS: SettingsBody = { agents: { main: { plan: [{ runtime: 'codex', model: 'theirs-plan' }] } }, split: true };
+const THEIRS: SettingsBody = { agents: { main: { plan: [{ runtime: 'codex', model: 'theirs-plan' }] } } };
 
 async function world() {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-user-settings-'));
@@ -122,17 +122,22 @@ describe('a run uses the starter settings', () => {
     }
   });
 
-  it('applies a personal split, which an explicit choice beats', async () => {
-    const { app } = await world();
-    try {
-      const commands = app.get(RunCommandsService);
-      expect((await commands.plan({ key: 'p-8', prompt: 'x', projects: ['demo'] }, true)).split).toBe(true);
-      expect((await commands.plan({ key: 'p-9', prompt: 'x', projects: ['demo'], split: false }, true)).split).toBe(
-        false,
-      );
-      expect((await commands.plan({ key: 'p-10', prompt: 'x', projects: ['demo'] }, false)).split).toBe(false);
-    } finally {
-      await app.close();
-    }
-  });
+  it.each([
+    ['auto', undefined, true],
+    ['off', undefined, false],
+    ['auto', false, false],
+    ['off', true, true],
+  ] as const)(
+    'the server SPLIT=%s decides a run sent with split %s: it plans split %s',
+    async (split, sent, planned) => {
+      const { app, env } = await world();
+      try {
+        (env as { SPLIT: string }).SPLIT = split;
+        const body = { key: 'p-8', prompt: 'x', projects: ['demo'], ...(sent === undefined ? {} : { split: sent }) };
+        expect((await app.get(RunCommandsService).plan(body)).split).toBe(planned);
+      } finally {
+        await app.close();
+      }
+    },
+  );
 });

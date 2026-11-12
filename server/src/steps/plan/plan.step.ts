@@ -19,7 +19,15 @@ import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../sh
 import { unanswered } from '../shared/answers';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { planFromAgent, planQuestions, readPlan, withPlan } from './plan-record';
-import { parseTasks, planItemsFromTasks, splitAnswer, splitLimits, splitOutputs, type TaskLimits } from './plan-tasks';
+import {
+  parseTasks,
+  planItemsFromTasks,
+  splitAnswer,
+  splitLimits,
+  splitOutputs,
+  unbounded,
+  type TaskLimits,
+} from './plan-tasks';
 import { withNamedFileLines } from './named-file-lines';
 import { planFollowUp, SUBTASK_DECIDES } from './plan.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -110,7 +118,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       sections: ['plan'],
       validate: (text, output) => {
         if (splitAnswer(text)) {
-          parseTasks(text, limits);
+          parseTasks(text, unbounded(limits));
         } else if (!planQuestions(text)) {
           planFromAgent(text, output ?? '');
         }
@@ -134,7 +142,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
         outputs: [{ artifact: ARTIFACTS.questions, value: asked }],
       };
     }
-    const { graph, plan } = answerPlan(agentResult.responseText, agentResult.output ?? '', limits);
+    const { graph, plan } = answerPlan(agentResult.responseText, agentResult.output ?? '', unbounded(limits));
     const body = withPlan(requirements, plan);
     const summary = summaryOr(
       agentResult.responseText,

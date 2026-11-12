@@ -228,7 +228,11 @@ const correctedReply = [
 ].join('\n');
 
 describe('plan-improve step with split', () => {
-  async function improveSplit(key: string, answer: string, options: { split?: boolean; tasks?: boolean } = {}) {
+  async function improveSplit(
+    key: string,
+    answer: string,
+    options: { split?: boolean; tasks?: boolean; stored?: typeof storedTasks } = {},
+  ) {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-split-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
@@ -241,7 +245,7 @@ describe('plan-improve step with split', () => {
       await runs.saveRun({ ...run, split: options.split ?? true });
       if (options.tasks ?? true) {
         const documents = app.get(DocumentRepository);
-        await documents.putDocument(run, 'subtasks', `${JSON.stringify(storedTasks)}\n`);
+        await documents.putDocument(run, 'subtasks', `${JSON.stringify(options.stored ?? storedTasks)}\n`);
         await documents.putDocument(run, 'contract', '- the column is called `split`\n');
       }
       const done = await app.get(PipelineService).step('plan-improve', key);
@@ -290,6 +294,49 @@ describe('plan-improve step with split', () => {
     expect(out.done.message).toContain('task column depends on unknown task nope');
     expect(out.run?.currentStep).toBe('plan-improve');
     expect(JSON.parse(out.subtasks ?? '[]')).toEqual(storedTasks);
+  });
+
+  describe('at the default task limit', () => {
+    const many = (count: number) =>
+      Array.from({ length: count }, (_, n) => ({ ...storedTasks[0], id: `t${n}`, title: `Task ${n}` }));
+    const answerOf = (count: number) =>
+      [
+        'contract:',
+        '- one field',
+        '',
+        'tasks:',
+        ...Array.from({ length: count }, (_, n) => [
+          `- t${n} | Task ${n} | depends: none | files: a.ts | proof: a.spec.ts`,
+          '  Adds it.',
+        ]).flat(),
+        '',
+        'summary:',
+        '- merged',
+      ].join('\n');
+    const prompts = (agent: jest.Mock) => agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt);
+
+    it('does not ask for a merge when the plan is at the limit', async () => {
+      const out = await improveSplit('PROJ-94', answerOf(48), { stored: many(48) });
+      expect(out.done.exitCode).toBe(0);
+      expect(prompts(out.agent)[0]).not.toContain('Merge');
+      expect(JSON.parse(out.subtasks ?? '[]')).toHaveLength(48);
+    });
+
+    it('asks once to merge a plan over the limit and writes the merged plan', async () => {
+      const out = await improveSplit('PROJ-95', answerOf(48), { stored: many(49) });
+      expect(out.done.exitCode).toBe(0);
+      expect(prompts(out.agent)).toHaveLength(1);
+      expect(prompts(out.agent)[0]).toContain('The plan has 49 tasks and the limit is 48.');
+      expect(JSON.parse(out.subtasks ?? '[]')).toHaveLength(48);
+    });
+
+    it('ends in a plan error when the merged plan is still over the limit', async () => {
+      const out = await improveSplit('PROJ-96', answerOf(49), { stored: many(49) });
+      expect(out.done.exitCode).toBe(1);
+      expect(out.done.message).toContain('too many tasks: 49, the limit is 48');
+      expect(prompts(out.agent)).toHaveLength(1);
+      expect(out.run?.currentStep).toBe('plan-improve');
+    });
   });
 
   it('a run that does not split is unchanged', async () => {

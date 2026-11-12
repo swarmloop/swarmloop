@@ -233,7 +233,7 @@ describe('split settings', () => {
   it('SPLIT defaults to off and SPLIT_MAX_TASKS to 12', () => {
     const { error, value } = envSchema.validate(complete, { abortEarly: false, convert: true });
     expect(error).toBeUndefined();
-    expect(value).toMatchObject({ SPLIT: 'auto', SPLIT_MAX_TASKS: 12 });
+    expect(value).toMatchObject({ SPLIT: 'auto', SPLIT_MAX_TASKS: 48 });
   });
 
   it('rejects a SPLIT value other than auto or off', () => {

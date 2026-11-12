@@ -174,7 +174,7 @@ export class RunsController {
     @Actor() actor: string | null,
   ): Promise<RunRef & CommandReceipt> {
     const settings = actor ? await this.settings.read(actor) : null;
-    const plan = await this.runs.plan(body, settings?.split);
+    const plan = await this.runs.plan(body);
     const result = await this.dispatch<RunRef>('start', plan.key, { ...plan }, undefined, {
       create: { targetPath: null, startedBy: actor, agents: settings?.agents ?? null },
       expectedRevision: body.expectedRevision,

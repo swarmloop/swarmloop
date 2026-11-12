@@ -584,6 +584,18 @@ describe('plan step with split', () => {
     expect(out.contract).toContain('the column is called `split`');
   });
 
+  it('stores a plan of 49 tasks at the default task limit, for plan-improve to merge', async () => {
+    const tasks = Array.from({ length: 49 }, (_, n) => [
+      `- t${n} | Task ${n} | depends: none | files: a.ts | proof: a.spec.ts`,
+      '  Does it.',
+    ]).flat();
+    const answer = ['contract:', '- one field', '', 'tasks:', ...tasks, '', 'summary:', '- why'].join('\n');
+    const out = await runSplit('PROJ-83', answer);
+    expect(out.done.exitCode).toBe(0);
+    expect(out.run?.currentStep).toBe('plan-improve');
+    expect(JSON.parse(out.subtasks ?? '[]')).toHaveLength(49);
+  });
+
   it('a bad graph is a plan error', async () => {
     const out = await runSplit('PROJ-81', splitReply.replace('depends: none', 'depends: api'));
     expect(out.done.exitCode).toBe(1);

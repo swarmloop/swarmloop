@@ -22,7 +22,6 @@ const MINE: SettingsBody = {
       ],
     },
   },
-  split: false,
 };
 
 /** A fresh price cache of one runtime, as `loadPriceTable` writes it. */
@@ -129,12 +128,15 @@ describe('settings', () => {
     ['an empty list', { agents: { main: { plan: [] } } }],
     ['an unknown role', { agents: { main: { chat: [{ runtime: 'claude', model: 'opus' }] } } }],
     ['an unknown tier', { agents: { side: {} } }],
-    ['a non-boolean split', { split: 'yes' }],
+    ['a personal split', { split: true }],
     ['an unknown key', { theme: 'dark' }],
   ])('refuses %s', async (_name, body) => {
     const { app, repo, controller } = await world();
     try {
       await expect(controller.save('alice', body)).rejects.toThrow(BadRequestException);
+      if ('split' in body) {
+        await expect(controller.save('alice', body)).rejects.toThrow('"split"');
+      }
       expect(await repo.read('alice')).toBeNull();
     } finally {
       await app.close();
@@ -148,7 +150,6 @@ describe('settings', () => {
       const view = await controller.read('machine');
       expect(view.settings).toEqual({});
       expect(view.defaults.agents.main.plan).toEqual(['claude:opus', 'cursor:grok', 'codex:gpt']);
-      expect(view.defaults.split).toBe(true);
       expect(view.runtimes.map((entry) => entry.runtime)).toEqual(['cursor', 'claude']);
       expect(() => controller.save('machine', MINE)).toThrow(ForbiddenException);
     } finally {

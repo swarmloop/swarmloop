@@ -107,7 +107,7 @@ async function insertOneRowPerTable(dataSource: DataSource): Promise<void> {
     occurredAt: at,
     recordedAt: at,
   });
-  await dataSource.getRepository(UserSettingEntity).insert({ login: 'ada', key: 'split', value: 'true' });
+  await dataSource.getRepository(UserSettingEntity).insert({ login: 'ada', key: 'agents', value: '{}' });
 }
 
 async function snapshot(dataSource: DataSource) {
