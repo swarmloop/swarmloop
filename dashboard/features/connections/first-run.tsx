@@ -8,7 +8,7 @@ import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { getManifest, saveGitlabApplication } from '../../lib/endpoints';
+import { getManifest, getOwner, saveGitlabApplication } from '../../lib/endpoints';
 
 interface ManifestForm {
   action: string;
@@ -29,11 +29,26 @@ function ManifestPost({ form }: { form: ManifestForm }): ReactElement {
 /** The first screen of a server with no login yet: make the GitHub App, or hand over the GitLab application. */
 export function FirstRun(): ReactElement {
   const [org, setOrg] = useState('');
+  const [others, setOthers] = useState<string[]>([]);
+  const typed = useRef(false);
   const [form, setForm] = useState<ManifestForm | null>(null);
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    // Without an owner the person types one.
+    getOwner().then(
+      (view) => {
+        if (!typed.current) {
+          setOrg(view.owner);
+        }
+        setOthers(view.others);
+      },
+      () => undefined,
+    );
+  }, []);
 
   async function createGithubApp(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -86,12 +101,20 @@ export function FirstRun(): ReactElement {
             Creates a GitHub App for you, from a manifest. You then install it on the repositories you choose.
           </Typography>
           <TextField
-            label="Organization that will own the app (optional)"
-            helperText="Leave empty for your own account. To use the app on other accounts and organizations too, make it public on GitHub (Advanced, Make public) and install it there."
+            label="Account that owns the app"
             size="small"
+            required
             value={org}
-            onChange={(event) => setOrg(event.target.value)}
+            onChange={(event) => {
+              typed.current = true;
+              setOrg(event.target.value);
+            }}
           />
+          {others.length > 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              The other owners ({others.join(', ')}) get their own app later.
+            </Typography>
+          ) : null}
           <Button type="submit" variant="contained">
             Create GitHub App
           </Button>
