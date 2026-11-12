@@ -7,6 +7,7 @@ import type {
   CreateRunBody,
   FlowView,
   HistoryView,
+  MeView,
   ProjectsView,
   ProjectListView,
   ReadinessView,
@@ -16,11 +17,13 @@ import type {
   SkipTaskBody,
   RunRef,
   RunsView,
+  SettingsBody,
   StatsView,
   StepView,
   TicketKeysBody,
   TicketKeysView,
 } from '@contract/api';
+import type { SettingsView } from '@contract/settings';
 import type { StepEventPage } from '@contract/step-events';
 
 const run = (key: string): string => `/runs/${encodeURIComponent(key)}`;
@@ -31,11 +34,15 @@ const post = (body?: unknown): RequestInit => ({
 });
 
 export const getProviders = (): Promise<{ providers: string[] }> => api('/auth/providers');
-/** The logged-in user, or `null` when nobody is (also when no login is configured). */
-export const getSession = (): Promise<{ user: string | null }> => api('/auth/me');
+/** The signed-in person, with the host and the avatar of the host account. */
+export const getSession = (): Promise<MeView> => api<MeView>('/auth/me');
 /** The manifest of the GitHub App and the GitHub page it is posted to, for the account or an organization. */
 export const getManifest = (org: string): Promise<{ action: string; manifest: Record<string, unknown> }> =>
   api(`/auth/github/manifest${org ? `?org=${encodeURIComponent(org)}` : ''}`);
+/** The owner of the repositories this server works on, and the other owners, for the first-run form. */
+export const getOwner = (): Promise<{ owner: string; others: string[] }> => api('/auth/github/owner');
+/** The page where the app is installed on the repositories; asking sets the state cookie of the login. */
+export const getInstallUrl = (): Promise<{ url: string }> => api('/auth/github/install');
 export const saveGitlabApplication = (clientId: string, clientSecret: string): Promise<{ ok: true }> =>
   api('/auth/gitlab/application', post({ clientId, clientSecret }));
 export const getConnections = (): Promise<ConnectionsView> => api<ConnectionsView>('/connections');
@@ -43,6 +50,12 @@ export const getConnections = (): Promise<ConnectionsView> => api<ConnectionsVie
 export const installMore = (host: string): Promise<{ url: string }> => api(`/connections/${host}/install`, post());
 export const reconnectUrl = (host: string): string => `/auth/${host}/login`;
 export const disconnect = (host: string): Promise<{ ok: true }> => api(`/connections/${host}`, { method: 'DELETE' });
+/** Forgets the stored GitHub App, so the first-run form returns. The app on GitHub stays. */
+export const replaceApp = (): Promise<{ ok: true }> => api('/connections/github/app', { method: 'DELETE' });
+/** The person's own settings with the server defaults, the connected runtimes and the env-only settings. */
+export const getSettings = (): Promise<SettingsView> => api<SettingsView>('/settings');
+export const saveSettings = (body: SettingsBody): Promise<SettingsView> =>
+  api<SettingsView>('/settings', { method: 'PUT', body: JSON.stringify(body) });
 export const logout = (): Promise<unknown> => api('/auth/logout', post());
 export const getReadiness = (): Promise<ReadinessView> => api<ReadinessView>('/readiness');
 export const listRuns = (): Promise<RunsView> => api<RunsView>('/runs');

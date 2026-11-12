@@ -1,4 +1,5 @@
 import { agentFor } from '../../config/agents';
+import type { RunEntity } from '../../history/entities';
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
@@ -50,9 +51,9 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     super(kernel, sandbox, launcher);
   }
 
-  protected profile(env: SwarmloopEnv): AgentProfile {
+  protected profile(env: SwarmloopEnv, run?: RunEntity | null): AgentProfile {
     return {
-      ...agentFor(env, null, 'implement-improve'),
+      ...agentFor(env, run ?? null, 'implement-improve'),
       mode: 'agent',
       tools: 'write',
       timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
@@ -99,14 +100,14 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       root(this.config),
       key,
       'implement-improve',
-      this.profile(this.config.env).runtime,
+      this.profile(this.config.env, ctx.opened.run).runtime,
     );
     const full = skillPrompt('implement-improve', input.requirements, names, sections, mounts, {
       deferExecutionRules: true,
     });
     const chosen = continued?.chatId ? implementImproveFollowUp(returned) : full;
     const added = await ctx.reread(ARTIFACTS.addedRepos);
-    const { runtime } = this.profile(this.config.env);
+    const { runtime } = this.profile(this.config.env, ctx.opened.run);
     const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime, samples: ctx.samples };
     const reproject = projectFor(this.environments, place);
     const { prompt, project, allowHosts, manifestHosts, executionRules } = await agentWorkplace(

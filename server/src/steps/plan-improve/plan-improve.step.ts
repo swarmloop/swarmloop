@@ -1,4 +1,5 @@
 import { agentFor } from '../../config/agents';
+import type { RunEntity } from '../../history/entities';
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
@@ -40,9 +41,9 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     super(kernel, sandbox, launcher);
   }
 
-  protected profile(env: SwarmloopEnv): AgentProfile {
+  protected profile(env: SwarmloopEnv, run?: RunEntity | null): AgentProfile {
     return {
-      ...agentFor(env, null, 'plan-improve'),
+      ...agentFor(env, run ?? null, 'plan-improve'),
       mode: 'plan',
       tools: 'plan',
       timeLimitMs: env.PLAN_TIMEOUT_MS,
@@ -68,7 +69,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
       root(this.config),
       key,
       'plan-improve',
-      this.profile(this.config.env).runtime,
+      this.profile(this.config.env, ctx.opened.run).runtime,
     );
     const impact = await ctx.reread(ARTIFACTS.impact);
     const limits = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);

@@ -3,8 +3,10 @@ import { PATH_METADATA } from '@nestjs/common/constants';
 import { APP_GUARD } from '@nestjs/core';
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { SettingsController } from '../api/settings.controller';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
+import { ConnectionsController } from './connections.controller';
 import { AuthModule } from './auth.module';
 import { PUBLIC_KEY } from './public.decorator';
 
@@ -40,7 +42,7 @@ describe('the route table', () => {
   const open = (controller: Controller) => Reflect.getMetadata(PUBLIC_KEY, controller) === true;
 
   it('guards every route globally: ApiModule imports AuthModule, which registers the guard', () => {
-    expect(controllers).toHaveLength(6);
+    expect(controllers).toHaveLength(7);
     expect(apiModule).toMatch(/imports: \[[^\]]*\bAuthModule\b/);
     for (const controller of controllers.filter((candidate) => candidate !== AuthController)) {
       expect(apiModule).toMatch(new RegExp(`controllers: \\[[^\\]]*\\b${controller.name}\\b`));
@@ -61,6 +63,19 @@ describe('the route table', () => {
     }
     expect(controllers.filter((controller) => !open(controller)).flatMap(routes)).not.toContain('health');
     expect(controllers).toContain(AuthController);
+  });
+
+  it('lists the setup routes with their siblings: first-run routes open, Replace app guarded', () => {
+    expect(routes(AuthController)).toEqual(expect.arrayContaining(['auth/github/owner', 'auth/github/install']));
+    expect(open(AuthController)).toBe(true);
+    expect(routes(ConnectionsController)).toContain('connections/github/app');
+    expect(open(ConnectionsController)).toBe(false);
+  });
+
+  it('guards GET and PUT /settings', () => {
+    expect(routes(SettingsController).map((route) => route.replace(/\/+$/, ''))).toEqual(['settings', 'settings']);
+    expect(open(SettingsController)).toBe(false);
+    expect(controllers).toContain(SettingsController);
   });
 
   it('opens no controller under another path', () => {

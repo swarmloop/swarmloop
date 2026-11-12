@@ -3,14 +3,16 @@ import type { CommandService } from '../pipeline/command.service';
 import type { RunCommandsService } from './run-commands.service';
 import type { RunQueriesService } from './run-queries.service';
 import { httpStatus, RunsController } from './runs.controller';
+import type { UserSettingRepository } from '../history/user-setting.repository';
 import type { ShellService } from './shell.service';
 
-function controllerWith(runs: object = {}, commands: object = {}): RunsController {
+function controllerWith(runs: object = {}, commands: object = {}, settings: object = {}): RunsController {
   return new RunsController(
     {} as RunQueriesService,
     runs as RunCommandsService,
     commands as CommandService,
     {} as ShellService,
+    { read: jest.fn().mockResolvedValue(null), ...settings } as unknown as UserSettingRepository,
   );
 }
 
@@ -41,6 +43,7 @@ describe('RunsController', () => {
       {} as RunCommandsService,
       {} as CommandService,
       {} as ShellService,
+      {} as UserSettingRepository,
     );
     expect(await controller.events('proj-1', 'commit', '4', '50')).toBe(page);
     expect(queries.stepEventPage).toHaveBeenCalledWith('proj-1', { step: 'commit', after: '4', limit: '50' });
@@ -53,6 +56,7 @@ describe('RunsController', () => {
       {} as RunCommandsService,
       {} as CommandService,
       {} as ShellService,
+      {} as UserSettingRepository,
     );
     expect(await controller.stepLog('proj-1', 'plan', 'a-1')).toBe('log');
     expect(queries.stepLog).toHaveBeenCalledWith('proj-1', 'plan', 'a-1', { tail: undefined, from: undefined });
@@ -79,7 +83,7 @@ describe('RunsController', () => {
     expect(commands.submit).toHaveBeenCalledWith('start', 'proj-1', expect.any(Object), {
       idempotencyKey: undefined,
       expectedRevision: undefined,
-      create: { targetPath: null, startedBy: 'octocat' },
+      create: { targetPath: null, startedBy: 'octocat', agents: null },
     });
     expect(response.status).toHaveBeenCalledWith(202);
   });

@@ -1,5 +1,13 @@
+import { execFileSync } from 'child_process';
+import { generateKeyPairSync } from 'crypto';
+import { mkdirSync, mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { ConnectionsService } from './connections.service';
+import { HostAppsService } from './host-apps.service';
 import { CommandService } from '../pipeline/command.service';
 import { createTestApp, type TestApp } from '../testing/test-app';
+import { startFakeHosts, type FakeHost } from './fake-hosts.spec-helpers';
 import { startFakeGithub } from './fake-provider.spec-helpers';
 
 const TOKEN = 'machine-secret';
@@ -75,6 +83,7 @@ describe('login and the auth guard', () => {
     expect(await (await fetch(`${app.url}/auth/me`, { headers: { cookie } })).json()).toEqual({
       user: 'ann',
       provider: 'github',
+      avatarUrl: 'https://avatars.test/ann.png',
     });
   });
 
@@ -86,6 +95,12 @@ describe('login and the auth guard', () => {
       'github:mallory may not log in: not listed in SWARMLOOP_ALLOW',
     );
     expect(sessionCookie(response)).toBe('');
+  });
+
+  it('keeps the default of today for a plain OAuth App when the list is empty', async () => {
+    await start('');
+    // no checkout and no token: the push rule would refuse, the machine rule lets the person in
+    expect((await login('ann')).status).toBe(302);
   });
 
   it('lets in a member of a listed org', async () => {
@@ -178,5 +193,242 @@ describe('without a login provider', () => {
     } finally {
       await app.close();
     }
+  });
+});
+
+describe('login with a connecting app: who may log in when SWARMLOOP_ALLOW is empty', () => {
+  let fake: FakeHost;
+  let app: TestApp;
+  let checkouts: string;
+
+  /** A checkout whose origin is `project` on the fake host. */
+  function checkout(name: string, project: string): void {
+    const path = join(checkouts, name);
+    mkdirSync(path, { recursive: true });
+    execFileSync('git', ['init', '-q', path]);
+    execFileSync('git', ['-C', path, 'remote', 'add', 'origin', `${fake.url}/${project}.git`]);
+  }
+
+  const machine = { authorization: `Bearer ${TOKEN}` };
+
+  async function start(host: 'github' | 'gitlab', allow = ''): Promise<void> {
+    fake = await startFakeHosts();
+    app = await createTestApp({
+      env: {
+        // the .env of an earlier app in this file stays in process.env: no OAuth app but the one made here
+        GITHUB_OAUTH_CLIENT_ID: '',
+        GITHUB_OAUTH_CLIENT_SECRET: '',
+        GITLAB_OAUTH_CLIENT_ID: '',
+        GITLAB_OAUTH_CLIENT_SECRET: '',
+        ...(host === 'github' ? { GITHUB_BASE_URL: fake.url } : { GITLAB_BASE_URL: fake.url }),
+        SWARMLOOP_ALLOW: allow,
+        SWARMLOOP_TOKEN: TOKEN,
+        CHECKOUTS_ROOT: checkouts,
+      },
+    });
+    if (host === 'github') {
+      const manifest = await fetch(`${app.url}/auth/github/manifest`, { headers: machine });
+      expect(manifest.status).toBe(200);
+      const state = new URL(((await manifest.json()) as { action: string }).action).searchParams.get('state') ?? '';
+      const created = await fetch(`${app.url}/auth/github/created?code=manifest-code&state=${state}`, {
+        redirect: 'manual',
+        headers: { ...machine, cookie: `swarmloop_state=${state}` },
+      });
+      expect(created.status).toBe(302);
+    } else {
+      const saved = await fetch(`${app.url}/auth/gitlab/application`, {
+        method: 'POST',
+        headers: { ...machine, 'content-type': 'application/json' },
+        body: JSON.stringify({ clientId: 'gl-id', clientSecret: 'gl-secret' }),
+      });
+      expect(saved.status).toBe(201);
+    }
+  }
+
+  const signIn = async (host: string, user: string): Promise<Response> => {
+    const begin = await fetch(`${app.url}/auth/${host}/login`, { redirect: 'manual' });
+    const state = new URL(begin.headers.get('location') ?? '').searchParams.get('state') ?? '';
+    return fetch(`${app.url}/auth/${host}/callback?code=${user}&state=${state}`, {
+      redirect: 'manual',
+      headers: { cookie: `swarmloop_state=${state}` },
+    });
+  };
+
+  const pushMessage = (host: string, user: string) =>
+    `${host}:${user} can't push to any repository this server works on`;
+
+  beforeEach(() => {
+    checkouts = mkdtempSync(join(tmpdir(), 'swarmloop-auth-checkouts-'));
+  });
+  afterEach(async () => {
+    await app.close();
+    await fake.stop();
+    rmSync(checkouts, { recursive: true, force: true });
+  });
+
+  it('lets in a person who can push, and refuses one with read access only', async () => {
+    await start('github');
+    checkout('site', 'acme/site');
+    fake.pushers.add('ann:acme/site');
+    const ok = await signIn('github', 'ann');
+    expect(ok.status).toBe(302);
+    const cookie =
+      ok.headers
+        .getSetCookie()
+        .find((c) => c.startsWith('swarmloop_session='))
+        ?.split(';')[0] ?? '';
+    expect(await (await fetch(`${app.url}/auth/me`, { headers: { cookie } })).json()).toMatchObject({
+      user: 'ann',
+      avatarUrl: 'https://avatars.test/ann.png',
+    });
+    const refused = await signIn('github', 'bob');
+    expect(refused.status).toBe(403);
+    expect(((await refused.json()) as { message: string }).message).toBe(pushMessage('github', 'bob'));
+    expect(refused.headers.getSetCookie().some((c) => c.startsWith('swarmloop_session='))).toBe(false);
+  });
+
+  it('refuses a person whose token cannot see the repository, and any person when no checkout is on the host', async () => {
+    await start('github');
+    checkout('site', 'acme/site');
+    fake.pushers.add('ann:acme/site');
+    fake.hidden.add('ann:acme/site');
+    expect((await signIn('github', 'ann')).status).toBe(403);
+    rmSync(join(checkouts, 'site'), { recursive: true, force: true });
+    app.clock.advance(60_000);
+    fake.hidden.clear();
+    expect((await signIn('github', 'ann')).status).toBe(403);
+  });
+
+  it('on GitLab asks for Developer access', async () => {
+    await start('gitlab');
+    checkout('tool', 'team/dev/tool');
+    fake.pushers.add('carol:team/dev/tool');
+    expect((await signIn('gitlab', 'carol')).status).toBe(302);
+    const refused = await signIn('gitlab', 'dave');
+    expect(refused.status).toBe(403);
+    expect(((await refused.json()) as { message: string }).message).toBe(pushMessage('gitlab', 'dave'));
+  });
+
+  it('works as today when SWARMLOOP_ALLOW is not empty', async () => {
+    await start('github', 'github:bob');
+    checkout('site', 'acme/site');
+    expect((await signIn('github', 'bob')).status).toBe(302);
+    expect((await signIn('github', 'ann')).status).toBe(403);
+  });
+});
+
+describe('first run: the manifest, the owner, the install step and the install return', () => {
+  let fake: FakeHost;
+  let app: TestApp;
+  let checkouts: string;
+
+  function checkout(name: string, project: string): void {
+    const path = join(checkouts, name);
+    mkdirSync(path, { recursive: true });
+    execFileSync('git', ['init', '-q', path]);
+    execFileSync('git', ['-C', path, 'remote', 'add', 'origin', `${fake.url}/${project}.git`]);
+  }
+
+  beforeEach(async () => {
+    checkouts = mkdtempSync(join(tmpdir(), 'swarmloop-auth-first-run-'));
+    fake = await startFakeHosts();
+    app = await createTestApp({
+      env: {
+        GITHUB_OAUTH_CLIENT_ID: '',
+        GITHUB_OAUTH_CLIENT_SECRET: '',
+        GITHUB_BASE_URL: fake.url,
+        SWARMLOOP_ALLOW: '',
+        SWARMLOOP_TOKEN: TOKEN,
+        CHECKOUTS_ROOT: checkouts,
+      },
+    });
+  });
+  afterEach(async () => {
+    await app.close();
+    await fake.stop();
+    rmSync(checkouts, { recursive: true, force: true });
+  });
+
+  const manifest = async (owner?: string) => {
+    const response = await fetch(`${app.url}/auth/github/manifest${owner === undefined ? '' : `?org=${owner}`}`);
+    const form = (await response.json()) as { action: string; manifest: Record<string, unknown> };
+    return { ...form, target: new URL(form.action) };
+  };
+
+  it('makes the manifest private, and uses the organization page only for an organization', async () => {
+    const org = await manifest('acme');
+    expect(org.manifest.public).toBe(false);
+    expect(org.target.pathname).toBe('/organizations/acme/settings/apps/new');
+    expect((await manifest('ann')).target.pathname).toBe('/settings/apps/new');
+    expect((await manifest('nobody')).target.pathname).toBe('/settings/apps/new');
+    expect((await manifest()).target.pathname).toBe('/settings/apps/new');
+  });
+
+  it('names the owner of the checkouts, the most common first, and the others', async () => {
+    expect(await (await fetch(`${app.url}/auth/github/owner`)).json()).toEqual({ owner: '', others: [] });
+    checkout('a', 'acme/site');
+    app.clock.advance(60_000);
+    expect(await (await fetch(`${app.url}/auth/github/owner`)).json()).toEqual({ owner: 'acme', others: [] });
+    checkout('b', 'zed/one');
+    checkout('c', 'zed/two');
+    app.clock.advance(60_000);
+    expect(await (await fetch(`${app.url}/auth/github/owner`)).json()).toEqual({ owner: 'zed', others: ['acme'] });
+  });
+
+  it('makes the app, sends the person to the install step and gives the install link with a state', async () => {
+    expect((await fetch(`${app.url}/auth/github/install`)).status).toBe(400);
+    const { action } = await manifest();
+    const state = new URL(action).searchParams.get('state') ?? '';
+    const created = await fetch(`${app.url}/auth/github/created?code=manifest-code&state=${state}`, {
+      redirect: 'manual',
+      headers: { cookie: `swarmloop_state=${state}` },
+    });
+    expect(created.status).toBe(302);
+    expect(created.headers.get('location')).toBe('/login?install=1');
+    const install = await fetch(`${app.url}/auth/github/install`);
+    const { url } = (await install.json()) as { url: string };
+    const next = new URL(url);
+    expect(next.pathname).toBe('/apps/swarmloop-app/installations/new');
+    expect(install.headers.getSetCookie().join(';')).toContain(`swarmloop_state=${next.searchParams.get('state')}`);
+  });
+
+  it('shows the installed account for an install started on GitHub, and keeps other missing-state callbacks 400', async () => {
+    const callback = (query: string) => fetch(`${app.url}/auth/github/callback?${query}`, { redirect: 'manual' });
+    const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    await app.app.get(HostAppsService).save({
+      host: 'github',
+      appId: '42',
+      slug: 'swarmloop-app',
+      clientId: 'Iv.fake',
+      clientSecret: 'secret',
+      privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+      madeBy: 'machine',
+    });
+    const installed = await callback('installation_id=7&setup_action=install');
+    expect(installed.status).toBe(302);
+    expect(installed.headers.get('location')).toBe('/login?installed=acme');
+    const call = fake.seen.find((seen) => seen.path === '/api/v3/app/installations/7');
+    expect(call?.authorization).toMatch(/^Bearer [\w-]+\.[\w-]+\.[\w-]+$/);
+    expect((await callback('installation_id=8&setup_action=install')).headers.get('location')).toBe(
+      '/login?installed=',
+    );
+    expect((await callback('setup_action=install')).status).toBe(400);
+    expect((await callback('installation_id=7&setup_action=update')).status).toBe(400);
+    expect((await callback('installation_id=7&setup_action=install&code=x')).status).toBe(400);
+  });
+
+  it('closes the owner route once an app exists, and the install route to others and after a login', async () => {
+    const { action } = await manifest();
+    const state = new URL(action).searchParams.get('state') ?? '';
+    await fetch(`${app.url}/auth/github/created?code=manifest-code&state=${state}`, {
+      redirect: 'manual',
+      headers: { cookie: `swarmloop_state=${state}` },
+    });
+    expect((await fetch(`${app.url}/auth/github/owner`)).status).toBe(403);
+    const away = { 'x-forwarded-host': 'panel.example' };
+    expect((await fetch(`${app.url}/auth/github/install`, { headers: away })).status).toBe(403);
+    expect((await fetch(`${app.url}/auth/github/install`)).status).toBe(200);
+    await app.app.get(ConnectionsService).connect('github', 'ann', { accessToken: 'ghu_ann_1', refreshToken: '' });
+    expect((await fetch(`${app.url}/auth/github/install`)).status).toBe(403);
   });
 });

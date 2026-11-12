@@ -1,4 +1,5 @@
-import { ConnectionEntity, HostAppEntity } from './connection-entities';
+import { ConnectionEntity, HostAppEntity, UserSettingEntity } from './connection-entities';
+import type { StoredAgents } from '../contract/api';
 import { Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('runs')
@@ -115,6 +116,10 @@ export class RunEntity {
   /** Who started the run: a login name, or `machine` for the token. Null for a run the CLI started and for old rows. */
   @Column({ name: 'started_by', type: 'text', nullable: true })
   startedBy!: string | null;
+
+  /** The starter's agent lists as they were when the run started. Never in an HTTP run payload. Null means env. */
+  @Column({ type: 'simple-json', nullable: true })
+  agents!: StoredAgents | null;
 }
 
 @Entity('documents')
@@ -574,4 +579,5 @@ export const entities = [
   SessionEntity,
   HostAppEntity,
   ConnectionEntity,
+  UserSettingEntity,
 ];

@@ -62,6 +62,11 @@ export class ConnectionsService {
     );
   }
 
+  /** True when nobody is connected on the host yet. */
+  async noneOn(host: ProviderName): Promise<boolean> {
+    return (await this.rows.countBy({ host })) === 0;
+  }
+
   /** True when any person has a working connection. */
   async anyConnected(): Promise<boolean> {
     return (await this.rows.countBy({ status: 'ok' })) > 0;
@@ -77,6 +82,11 @@ export class ConnectionsService {
 
   async disconnect(host: ProviderName, login: string): Promise<void> {
     await this.rows.delete({ id: idOf(host, login) });
+  }
+
+  /** Drops every person's connection to a host, for tokens that belong to an app that was replaced. */
+  async disconnectAll(host: ProviderName): Promise<void> {
+    await this.rows.delete({ host });
   }
 
   /** The access token of a person on a host, refreshed when it is about to end. Null when the person has no connection. Only the code-host layer reads it. */
@@ -108,9 +118,18 @@ export class ConnectionsService {
       return [];
     }
     const api = githubEndpoints(this.config.env).api;
-    const body = await this.send(`${api}/user/installations/${found.id}/repositories?per_page=100`, token);
-    const rows = (body as { repositories?: { full_name?: string }[] }).repositories ?? [];
-    return rows.flatMap((row) => (row.full_name ? [row.full_name] : []));
+    const names: string[] = [];
+    for (let page = 1; ; page++) {
+      const body = await this.send(
+        `${api}/user/installations/${found.id}/repositories?per_page=100&page=${page}`,
+        token,
+      );
+      const rows = (body as { repositories?: { full_name?: string }[] }).repositories ?? [];
+      names.push(...rows.flatMap((row) => (row.full_name ? [row.full_name] : [])));
+      if (rows.length < 100) {
+        return names;
+      }
+    }
   }
 
   /** Adds a new repository (`owner/name`) to the person's installation when it covers selected repositories only. */

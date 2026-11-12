@@ -21,6 +21,10 @@ export class HostAppEntity {
 
   @Column({ name: 'private_key', type: 'text' })
   privateKey!: string;
+
+  /** The login of the person who made the app, or `machine`. Null for an app made earlier. */
+  @Column({ name: 'made_by', type: 'text', nullable: true })
+  madeBy!: string | null;
 }
 
 /** One person's grant on one host. The tokens are ciphertext; `status` is `ok` or `broken`. */
@@ -58,4 +62,17 @@ export class ConnectionEntity {
   /** `all` or `selected` repositories of the GitHub installation. */
   @Column({ type: 'text', nullable: true })
   selection!: string | null;
+}
+
+/** One personal setting: the person's login, the setting key (`agents`, `split`) and its value as JSON text. */
+@Entity('user_settings')
+export class UserSettingEntity {
+  @PrimaryColumn({ type: 'varchar' })
+  login!: string;
+
+  @PrimaryColumn({ type: 'varchar' })
+  key!: string;
+
+  @Column({ type: 'text' })
+  value!: string;
 }

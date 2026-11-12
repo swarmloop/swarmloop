@@ -1,15 +1,20 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getManifest, saveGitlabApplication } from '../../lib/endpoints';
+import { getManifest, getOwner, saveGitlabApplication } from '../../lib/endpoints';
 import { FirstRun } from './first-run';
 
-vi.mock('../../lib/endpoints', () => ({ getManifest: vi.fn(), saveGitlabApplication: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({
+  getManifest: vi.fn(),
+  getOwner: vi.fn(),
+  saveGitlabApplication: vi.fn(),
+}));
 
 const submit = vi.fn();
 beforeEach(() => {
   vi.mocked(getManifest).mockReset();
   vi.mocked(saveGitlabApplication).mockReset();
+  vi.mocked(getOwner).mockReset().mockResolvedValue({ owner: 'acme', others: [] });
   vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(submit);
 });
 afterEach(() => vi.restoreAllMocks());
@@ -21,7 +26,10 @@ describe('FirstRun', () => {
       manifest: { name: 'swarmloop-panel' },
     });
     render(<FirstRun />);
-    await userEvent.type(screen.getByLabelText(/Organization/), 'acme');
+    const field = screen.getByLabelText(/Account that owns the app/);
+    await waitFor(() => expect(field).toHaveValue('acme'));
+    await userEvent.clear(field);
+    await userEvent.type(field, 'acme');
     await userEvent.click(screen.getByRole('button', { name: 'Create GitHub App' }));
 
     await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
@@ -56,5 +64,32 @@ describe('FirstRun', () => {
 
     expect(saveGitlabApplication).toHaveBeenCalledWith('gl-id', 'gl-secret');
     expect(await screen.findByText('a login exists')).toBeInTheDocument();
+  });
+
+  it('prefills the owner and sends it to the manifest', async () => {
+    vi.mocked(getOwner).mockResolvedValue({ owner: 'beta', others: [] });
+    vi.mocked(getManifest).mockResolvedValue({ action: 'https://github.com/x', manifest: {} });
+    render(<FirstRun />);
+    await waitFor(() => expect(screen.getByLabelText(/Account that owns the app/)).toHaveValue('beta'));
+    await userEvent.click(screen.getByRole('button', { name: 'Create GitHub App' }));
+
+    await waitFor(() => expect(getManifest).toHaveBeenCalledWith('beta'));
+  });
+
+  it('names the other owners in one line, and says nothing when there are none', async () => {
+    vi.mocked(getOwner).mockResolvedValue({ owner: 'acme', others: ['zed', 'yan'] });
+    const { unmount } = render(<FirstRun />);
+    expect(await screen.findByText('The other owners (zed, yan) get their own app later.')).toBeInTheDocument();
+    unmount();
+
+    vi.mocked(getOwner).mockResolvedValue({ owner: 'acme', others: [] });
+    render(<FirstRun />);
+    await waitFor(() => expect(screen.getByLabelText(/Account that owns the app/)).toHaveValue('acme'));
+    expect(screen.queryByText(/other owners/)).not.toBeInTheDocument();
+  });
+
+  it('offers no public option', () => {
+    render(<FirstRun />);
+    expect(screen.queryByText(/public/i)).not.toBeInTheDocument();
   });
 });

@@ -6,6 +6,13 @@ import type { SwarmloopEnv } from '../config/env';
 
 export type ProviderName = 'github' | 'gitlab';
 
+/** A repository of a checkout, on the host its origin points to. */
+export interface RepoRef {
+  host: ProviderName;
+  owner: string;
+  name: string;
+}
+
 /** The tokens a login granted, for a provider that keeps them. */
 export interface Grant {
   accessToken: string;
@@ -16,6 +23,7 @@ export interface Grant {
 
 interface Identity {
   user: string;
+  avatarUrl?: string;
   /** The orgs (GitHub) or groups (GitLab) the person belongs to. */
   groups: string[];
   /** Set when the provider connects the person: one authorization signs in and connects. */
@@ -39,6 +47,8 @@ export interface OAuthProvider {
   identify(code: string, redirectUri: string, verifier: string): Promise<Identity>;
   /** The owner of the configured `GITHUB_TOKEN` / `GITLAB_TOKEN`, or null when none is set. */
   tokenOwner(): Promise<string | null>;
+  /** True when the token can push to at least one of `repos`. A repository the token cannot see counts as no push. */
+  canPush(token: string, repos: RepoRef[]): Promise<boolean>;
 }
 
 type OAuthEnv = Pick<
@@ -63,6 +73,10 @@ export interface Endpoints {
   /** The call that lists orgs or groups, and the field that holds each name. */
   groups: { path: string; field: string };
   userHeaders(token: string): Record<string, string>;
+  /** The API path of a repository. */
+  repoPath(ref: RepoRef): string;
+  /** Whether the repository row says the token can push. */
+  pushes(row: Record<string, unknown>): boolean;
 }
 
 function challengeOf(verifier: string): string {
@@ -121,8 +135,10 @@ class HttpOAuthProvider implements OAuthProvider {
     }
     const headers = this.endpoints.userHeaders(granted.access_token);
     const { groups } = this.endpoints;
+    const person = await this.userOf(headers);
     return {
-      user: await this.userOf(headers),
+      user: text(person[this.endpoints.user.field]),
+      ...(text(person.avatar_url) ? { avatarUrl: text(person.avatar_url) } : {}),
       groups: names(await this.send(`${this.endpoints.api}${groups.path}`, headers), groups.field),
       ...(this.keepsTokens()
         ? {
@@ -140,7 +156,29 @@ class HttpOAuthProvider implements OAuthProvider {
     if (this.serverToken === '') {
       return null;
     }
-    return this.userOf(this.endpoints.userHeaders(this.serverToken));
+    return text((await this.userOf(this.endpoints.userHeaders(this.serverToken)))[this.endpoints.user.field]);
+  }
+
+  /** Asks the host about the repositories a few at a time and stops at the first one the person can push to. */
+  async canPush(token: string, repos: RepoRef[]): Promise<boolean> {
+    const headers = this.endpoints.userHeaders(token);
+    const pushes = async (repo: RepoRef): Promise<boolean> => {
+      const response = await request(this.clock, `${this.endpoints.api}${this.endpoints.repoPath(repo)}`, headers, []);
+      if (response.status === 403 || response.status === 404) {
+        return false;
+      }
+      if (response.status >= 400) {
+        throw new SwarmloopError(`${this.name} answered ${response.status}`);
+      }
+      return this.endpoints.pushes(JSON.parse(response.body.toString('utf8')) as Record<string, unknown>);
+    };
+    for (let at = 0; at < repos.length; at += PUSH_CHECKS_AT_ONCE) {
+      const answers = await Promise.all(repos.slice(at, at + PUSH_CHECKS_AT_ONCE).map(pushes));
+      if (answers.includes(true)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private credentials(): AppCredentials {
@@ -151,10 +189,8 @@ class HttpOAuthProvider implements OAuthProvider {
     return app;
   }
 
-  private async userOf(headers: Record<string, string>): Promise<string> {
-    const { user } = this.endpoints;
-    const row = (await this.send(`${this.endpoints.api}${user.path}`, headers)) as Record<string, unknown>;
-    return text(row[user.field]);
+  private async userOf(headers: Record<string, string>): Promise<Record<string, unknown>> {
+    return (await this.send(`${this.endpoints.api}${this.endpoints.user.path}`, headers)) as Record<string, unknown>;
   }
 
   private async send(url: string, headers: Record<string, string>, init?: { method: string; body: string }) {
@@ -165,6 +201,9 @@ class HttpOAuthProvider implements OAuthProvider {
     return JSON.parse(response.body.toString('utf8')) as unknown;
   }
 }
+
+/** How many repositories one login asks the host about at the same time. */
+const PUSH_CHECKS_AT_ONCE = 5;
 
 const text = (value: unknown): string => (typeof value === 'string' ? value : '');
 
@@ -186,6 +225,8 @@ export function githubEndpoints(env: Pick<OAuthEnv, 'GITHUB_BASE_URL'>): Endpoin
     }),
     user: { path: '/user', field: 'login' },
     groups: { path: '/user/orgs?per_page=100', field: 'login' },
+    repoPath: (ref) => `/repos/${ref.owner}/${ref.name}`,
+    pushes: (row) => (row.permissions as { push?: unknown } | undefined)?.push === true,
   };
 }
 
@@ -200,6 +241,14 @@ export function gitlabEndpoints(env: Pick<OAuthEnv, 'GITLAB_BASE_URL'>): Endpoin
     userHeaders: (token) => ({ Authorization: `Bearer ${token}` }),
     user: { path: '/user', field: 'username' },
     groups: { path: '/groups?min_access_level=10&per_page=100', field: 'full_path' },
+    repoPath: (ref) => `/projects/${encodeURIComponent(`${ref.owner}/${ref.name}`)}`,
+    pushes: (row) => {
+      const { project_access, group_access } = (row.permissions ?? {}) as Record<
+        string,
+        { access_level?: number } | null
+      >;
+      return Math.max(project_access?.access_level ?? 0, group_access?.access_level ?? 0) >= 30;
+    },
   };
 }
 

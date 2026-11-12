@@ -1,4 +1,5 @@
 import { agentFor } from '../../config/agents';
+import type { RunEntity } from '../../history/entities';
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, StepCapabilities, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
@@ -39,9 +40,9 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     super(kernel, sandbox, launcher);
   }
 
-  protected profile(env: SwarmloopEnv): AgentProfile {
+  protected profile(env: SwarmloopEnv, run?: RunEntity | null): AgentProfile {
     return {
-      ...agentFor(env, null, 'research'),
+      ...agentFor(env, run ?? null, 'research'),
       mode: 'plan',
       tools: 'plan',
       timeLimitMs: env.RESEARCH_TIMEOUT_MS,
