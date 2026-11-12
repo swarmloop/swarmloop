@@ -199,6 +199,10 @@ export class StepStatEntity {
   @Column({ name: 'kill_reason', type: 'text', nullable: true })
   killReason!: string | null;
 
+  /** JSON map of project to the content tree a checks visit ran on. Null for any other visit. */
+  @Column({ name: 'checked_commits', type: 'text', nullable: true })
+  checkedCommits!: string | null;
+
   @Column({ name: 'tokens_in', type: 'integer', default: 0 })
   tokensIn!: number;
 
@@ -309,6 +313,10 @@ export class LoopEventEntity {
 
   @Column({ type: 'text' })
   reason!: string;
+
+  /** JSON about the return: the failed commands of a checks return, the failed jobs of a pipeline return. Null on older rows. */
+  @Column({ type: 'text', nullable: true })
+  detail!: string | null;
 
   @Column({ name: 'created_at' })
   createdAt!: string;

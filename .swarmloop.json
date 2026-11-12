@@ -10,7 +10,7 @@
     "npx eslint .",
     "node_modules/.bin/knip --include files,exports,types",
     "node_modules/.bin/madge --circular --extensions ts,tsx --ts-config server/tsconfig.json server/src dashboard",
-    "node --test scripts/ci-tools.test.mjs scripts/lint-run-state.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs docker/egress/proxy.test.mjs",
+    "node --test scripts/ci-tools.test.mjs scripts/lint-run-state.test.mjs scripts/lint-test-imports.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs docker/egress/proxy.test.mjs",
     "node --test scripts/check-structure.test.mjs scripts/check-worktree.test.mjs && node scripts/check-structure.mjs",
     "node scripts/check-worktree.mjs",
     "npm run build --prefix server",

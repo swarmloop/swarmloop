@@ -3,7 +3,7 @@
 import type { PointerEvent, ReactElement } from 'react';
 import { useState } from 'react';
 import Box from '@mui/material/Box';
-import type { StatsDay } from '@contract/api';
+import type { StatsDay, StatsTotals } from '@contract/api';
 import { CHART, ChartCard, ChartTip, MONO, TipRow, useWidth } from './chart-parts';
 import { dayLabel, longDayLabel, ticks, usd } from './stats-format';
 
@@ -11,7 +11,8 @@ const HEIGHT = 220;
 const PAD = { top: 10, right: 12, bottom: 26, left: 48 };
 
 /** Dollars spent each day, with a crosshair that snaps to the nearest day. */
-export function SpendPerDay({ days, total }: { days: StatsDay[]; total: number }): ReactElement {
+export function SpendPerDay({ days, totals }: { days: StatsDay[]; totals: StatsTotals }): ReactElement {
+  const total = totals.usd;
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const plotWidth = Math.max(width - PAD.left - PAD.right, 1);
@@ -24,6 +25,12 @@ export function SpendPerDay({ days, total }: { days: StatsDay[]; total: number }
   const line = days.map((day, index) => `${index === 0 ? 'M' : 'L'}${x(index)},${y(day.usd)}`).join(' ');
   const area = days.length > 0 ? `${line} L${x(days.length - 1)},${y(0)} L${x(0)},${y(0)} Z` : '';
   const labelEvery = Math.max(1, Math.ceil(days.length / Math.max(2, Math.floor(plotWidth / 64))));
+  const last = days.length - 1;
+  // The last day always has its label: a regular label that would touch it gives way.
+  const labelled = (index: number): boolean =>
+    index === last || (index % labelEvery === 0 && last - index >= labelEvery * 0.75);
+  const anchor = (index: number): 'start' | 'end' | 'middle' =>
+    index === 0 && last > 0 ? 'start' : index === last && last > 0 ? 'end' : 'middle';
   const spending = days.filter((day) => day.usd > 0);
   const peak = spending.reduce<StatsDay | null>(
     (best, day) => (best === null || day.usd > best.usd ? day : best),
@@ -39,11 +46,11 @@ export function SpendPerDay({ days, total }: { days: StatsDay[]; total: number }
 
   return (
     <ChartCard
-      title="Spend per day"
-      headline={usd(total)}
+      title="Spend"
+      headline={`${usd(total)} in ${days.length} ${days.length === 1 ? 'day' : 'days'}`}
       note={
         peak
-          ? `${usd(total / spending.length)} on an average working day · peak ${usd(peak.usd)} on ${dayLabel(peak.day)}`
+          ? `${usd(total / spending.length)} per working day · ${usd(totals.usdPerTask)} per task (median ${usd(totals.medianUsdPerTask)}) · peak ${usd(peak.usd)} on ${dayLabel(peak.day)}`
           : 'nothing spent yet'
       }
     >
@@ -52,7 +59,7 @@ export function SpendPerDay({ days, total }: { days: StatsDay[]; total: number }
           width={width}
           height={HEIGHT}
           role="img"
-          aria-label={`Spend per day, ${usd(total)} in all`}
+          aria-label={`Spend per day, ${usd(total)} in ${days.length} ${days.length === 1 ? 'day' : 'days'}`}
           style={{ display: 'block' }}
         >
           <defs>
@@ -78,12 +85,12 @@ export function SpendPerDay({ days, total }: { days: StatsDay[]; total: number }
             </g>
           ))}
           {days.map((day, index) =>
-            index % labelEvery === 0 ? (
+            labelled(index) ? (
               <text
                 key={day.day}
                 x={x(index)}
                 y={HEIGHT - 8}
-                textAnchor="middle"
+                textAnchor={anchor(index)}
                 fontSize={11}
                 fontFamily={MONO}
                 fill={CHART.axis}

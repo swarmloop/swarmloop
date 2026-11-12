@@ -4,7 +4,7 @@ import { In, MoreThanOrEqual, Repository } from 'typeorm';
 import { LoopEventEntity, RunEntity, StepStatEntity } from './entities';
 
 export type StatsRunRow = Pick<RunEntity, 'id' | 'key' | 'prompt' | 'status' | 'runtime' | 'createdAt'> &
-  Partial<Pick<RunEntity, 'state' | 'mergeOutcome' | 'doneAt'>>;
+  Partial<Pick<RunEntity, 'parentRunId' | 'state' | 'mergeOutcome' | 'doneAt'>>;
 export type StatsStepRow = Pick<
   StepStatEntity,
   | 'runId'
@@ -20,7 +20,8 @@ export type StatsStepRow = Pick<
   | 'finishedAt'
   | 'shellEdits'
 >;
-export type StatsLoopRow = Pick<LoopEventEntity, 'runId' | 'counter' | 'reason' | 'createdAt'>;
+export type StatsLoopRow = Pick<LoopEventEntity, 'runId' | 'counter' | 'reason' | 'createdAt'> &
+  Partial<Pick<LoopEventEntity, 'detail'>>;
 
 export interface StatsRows {
   /** When the first run of all started, or null before any. A range never reaches back past it. */
@@ -46,6 +47,7 @@ export class StatsRepository {
         id: true,
         key: true,
         prompt: true,
+        parentRunId: true,
         status: true,
         runtime: true,
         createdAt: true,
@@ -80,7 +82,7 @@ export class StatsRepository {
       where: scope,
     });
     const loops = await this.loops.find({
-      select: { runId: true, counter: true, reason: true, createdAt: true },
+      select: { runId: true, counter: true, reason: true, detail: true, createdAt: true },
       where: scope,
     });
     return { firstRunAt, runs, steps, loops };

@@ -47,6 +47,7 @@ import {
 import { finishedRuns, readFailures, readNotes, rerunJobs } from './ci-host';
 import { ARTIFACTS } from '../contract/artifacts';
 import { mergeRequestDetails, parseMergeRequests } from '../merge-request/merge-request-record';
+import { pipelineReturn } from './ci-only';
 import { finish } from './pipeline-result';
 import { stuckAtStart } from './stuck-start';
 import { hasDraft, markReady } from './pipeline-draft';
@@ -393,16 +394,15 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     await noteSkippedByPaths(this.environments, opened.run.key, failures);
     const body = traces ? renderFail(failures, seen, note) : `${note.trim()}\n`;
     if (ctx.options.auto && (await this.sameFailure(ctx, seen))) {
-      const report = this.report(opened, 'pipeline already failed for this commit', body);
-      return finish('failed', report, 'failed', body);
+      return finish('failed', this.report(opened, 'pipeline already failed for this commit', body), 'failed', body);
     }
     if (opened.run.attemptsPipeline >= env.MAX_PIPELINE_RETURNS) {
       const report = this.report(opened, 'pipeline return limit reached', body);
       return finish('blocked', report, 'blocked', body);
     }
     opened.run.attemptsPipeline += 1;
-    const reason = failures.map((failure) => `${failure.project} ${failure.name}`).join(',') || 'pipeline failed';
-    await this.events.recordLoop(opened.run, 'pipeline', opened.run.attemptsPipeline, reason);
+    const { reason, detail } = await pipelineReturn(failures, seen, ctx, this.kernel.visits, root(this.config));
+    await this.events.recordLoop(opened.run, 'pipeline', opened.run.attemptsPipeline, reason, detail);
     const issues = failureIssues(failures, body);
     return finish('waiting', this.report(opened, 'pipeline failed', body), 'waiting', body, issues);
   }

@@ -29,7 +29,7 @@ describe('StatsSection', () => {
     expect(screen.getByLabelText('Success rate: 67%')).toBeInTheDocument();
     expect(screen.getByLabelText('First-pass rate: 50%')).toBeInTheDocument();
     expect(screen.getByLabelText('Spend: $4.25')).toBeInTheDocument();
-    expect(screen.getByLabelText('Returns: 3')).toBeInTheDocument();
+    expect(screen.getByLabelText('Returns: 50% came back')).toBeInTheDocument();
     expect(screen.getByLabelText('Usage limits: 2')).toBeInTheDocument();
     expect(screen.getByText(/runs started Nov 8 – Nov 10/)).toBeInTheDocument();
     expect(vi.mocked(getStats)).toHaveBeenCalledWith(30, expect.any(Number));
@@ -136,6 +136,86 @@ describe('StatsSection', () => {
     vi.mocked(getStats).mockRejectedValue(new Error('api is down'));
     renderSection();
     expect(await screen.findByText(/Statistics are not available: api is down/)).toBeInTheDocument();
+  });
+});
+
+describe('StatsSection tasks and returns', () => {
+  const week = ['05', '06', '07', '08', '09', '10', '11'].map((date) => ({
+    ...statsView().days[1],
+    day: `2026-11-${date}`,
+  }));
+
+  function totals(overrides: Partial<ReturnType<typeof statsView>['totals']>) {
+    return { ...statsView().totals, ...overrides };
+  }
+
+  it('says how many tasks came back, how often most do, and where the returns came from', async () => {
+    vi.mocked(getStats).mockResolvedValue(
+      statsView({
+        days: week,
+        totals: totals({
+          tasks: 4,
+          tasksBack: 3,
+          medianReturnsPerTask: 1,
+          returnsByKind: [
+            { kind: 'checks', returns: 2 },
+            { kind: 'review', returns: 2 },
+            { kind: 'pipeline', returns: 1 },
+          ],
+        }),
+      }),
+    );
+    renderSection();
+
+    const tile = await screen.findByLabelText('Returns: 75% came back');
+    expect(tile).toHaveTextContent(
+      'most come back once · 5 returns in 7 days: 2 from checks, 2 from reviewers, 1 from CI',
+    );
+  });
+
+  it.each([
+    [0, 'most pass first time'],
+    [2, 'most come back 2 times'],
+  ])('puts a median of %i returns per task in words', async (median, words) => {
+    vi.mocked(getStats).mockResolvedValue(statsView({ totals: totals({ medianReturnsPerTask: median }) }));
+    renderSection();
+
+    expect(await screen.findByLabelText(/^Returns: /)).toHaveTextContent(words);
+  });
+
+  it('names the period of the spend, what a task costs, and keeps the last day label whole', async () => {
+    vi.mocked(getStats).mockResolvedValue(
+      statsView({
+        days: week.map((day, index) => ({ ...day, usd: [0, 0, 0, 0, 100, 78.41, 71.59][index] })),
+        totals: totals({ usd: 250, usdPerTask: 7.01, medianUsdPerTask: 4 }),
+      }),
+    );
+    renderSection();
+
+    const card = await screen.findByRole('region', { name: 'Spend' });
+    expect(within(card).getByText('$250 in 7 days')).toBeInTheDocument();
+    expect(
+      within(card).getByText('$83.33 per working day · $7.01 per task (median $4.00) · peak $100 on Nov 9'),
+    ).toBeInTheDocument();
+    expect(within(card).getByText('Nov 11')).toHaveAttribute('text-anchor', 'end');
+  });
+
+  it('shows the returns CI caught alone with the jobs and how often, and the commands checks failed on', async () => {
+    vi.mocked(getStats).mockResolvedValue(
+      statsView({
+        reasons: [
+          { name: 'checks', returns: 3, commands: [{ name: 'npm run lint', returns: 2 }] },
+          { name: 'pipeline', returns: 3 },
+        ],
+        ciReturns: { only: 2, withChecks: 1, jobs: [{ name: 'docker', returns: 2 }] },
+      }),
+    );
+    renderSection();
+
+    const card = await screen.findByRole('region', { name: 'Why work came back' });
+    expect(within(card).getByText('CI only: 2 · CI and checks: 1')).toBeInTheDocument();
+    expect(within(within(card).getByRole('list', { name: 'CI-only jobs' })).getByText('docker')).toBeInTheDocument();
+    expect(within(card).getByText('npm run lint')).toBeInTheDocument();
   });
 });
 

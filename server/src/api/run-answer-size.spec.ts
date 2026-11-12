@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
 import { repositoryVisit } from '../history/repository.spec-helpers';
+import { EventRepository } from '../history/event.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { boot, save } from '../testing/runs.spec-helpers';
@@ -102,6 +103,21 @@ describe('a run with a 10 MB log', () => {
       expect(step.visits[0]).toMatchObject({ logBytes: 15, logLines: 2 });
       const history = await queries.readHistory('proj-old');
       expect(history.documents.map((item) => item.kind)).toEqual(['log']);
+    });
+  });
+
+  it('marks a pipeline return that no check covers in the history', async () => {
+    await withBigRun(async (queries, app) => {
+      const run = await save(app.get(RunRepository), 'proj-ci', 'implement', 'waiting');
+      const events = app.get(EventRepository);
+      await events.recordLoop(run, 'pipeline', 1, 'CI job docker failed; no check covers it', {
+        ciOnly: true,
+        jobs: ['docker'],
+      });
+      await events.recordLoop(run, 'pipeline', 2, 'g/p lint', { ciOnly: false, jobs: ['lint'] });
+      await events.recordLoop(run, 'checks', 1, 'required checks failed');
+      const history = await queries.readHistory('proj-ci');
+      expect(history.loops.map((loop) => loop.ciOnly)).toEqual([true, undefined, undefined]);
     });
   });
 

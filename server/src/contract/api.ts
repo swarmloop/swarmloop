@@ -187,7 +187,8 @@ export interface HistoryView {
   documents: { kind: string; attempt: number; body: string; createdAt: string }[];
   files: { name: string; path: string; body: string | null }[];
   exchanges: { stepStatId: number; model: string; durationMs: number; request: string; response: string }[];
-  loops: { counter: string; attempt: number; reason: string; createdAt: string }[];
+  /** `ciOnly`: a pipeline return where CI failed and the checks of the same content had passed. */
+  loops: { counter: string; attempt: number; reason: string; ciOnly?: true; createdAt: string }[];
   calls: { method: string; url: string; statusCode: number | null; durationMs: number; error: string | null }[];
   samples: { stepStatId: number; at: string; cpu: number; memory: number; source: string }[];
   stats: {
@@ -440,6 +441,20 @@ export interface StatsRun {
   createdAt: string;
 }
 
+/** One source of returns. A `checks` reason lists the commands that failed most. */
+export interface StatsReason {
+  name: string;
+  returns: number;
+  commands?: { name: string; returns: number }[];
+}
+
+/** `only`: CI failed where the checks had passed, with the jobs that did it. `withChecks`: the rest. */
+export interface StatsCiReturns {
+  only: number;
+  withChecks: number;
+  jobs: { name: string; returns: number }[];
+}
+
 export interface StatsTotals {
   runs: number;
   done: number;
@@ -450,6 +465,16 @@ export interface StatsTotals {
   tokensOut: number;
   /** Times a reviewer sent the work back to implementation. */
   reviewReturns: number;
+  /** Every return by the loop counter that sent it back (`checks`, `review`, `pipeline`, ...), most first. */
+  returnsByKind: { kind: string; returns: number }[];
+  /** Tasks: done runs with no parent. A split run is one task with its subtasks. */
+  tasks: number;
+  /** Mean and median spend of a task. */
+  usdPerTask: number;
+  medianUsdPerTask: number;
+  /** Tasks that came back at least once, and the median of returns per task; null without a task. */
+  tasksBack: number;
+  medianReturnsPerTask: number | null;
   /** Times the CI pipeline sent the work back. */
   pipelineReturns: number;
   /** Done runs that never went back. */
@@ -477,7 +502,9 @@ export interface StatsView {
   models: StatsShare[];
   agents: StatsShare[];
   /** Who sent work back: one reviewer per entry, and `pipeline` for CI. */
-  reasons: { name: string; returns: number }[];
+  reasons: StatsReason[];
+  /** Pipeline returns split by whether the checks of the same content had passed. */
+  ciReturns: StatsCiReturns;
   /** How many runs went back 0, 1, 2, 3 and 4 or more times. */
   returnsPerRun: { returns: string; runs: number }[];
   /** Every run of the range, newest first. */

@@ -89,6 +89,15 @@ describe('buildStats', () => {
       tokensOut: 400,
       reviewReturns: 2,
       pipelineReturns: 1,
+      returnsByKind: [
+        { kind: 'review', returns: 2 },
+        { kind: 'pipeline', returns: 1 },
+      ],
+      tasks: 2,
+      usdPerTask: 1.63,
+      medianUsdPerTask: 1.63,
+      tasksBack: 1,
+      medianReturnsPerTask: 1,
       firstPass: 1,
       limits: 0,
       agentMs: 5 * 60_000,
@@ -280,5 +289,120 @@ describe('stats range', () => {
     await expect(controller.report('7.5')).rejects.toBeInstanceOf(BadRequestException);
     await expect(controller.report('30', '9999')).rejects.toBeInstanceOf(BadRequestException);
     await expect(controller.report(undefined, '-60')).resolves.toMatchObject({ to: '2026-11-10' });
+  });
+
+  describe('kinds of returns and tasks', () => {
+    const at = '2026-11-10T08:00:00.000Z';
+    const run = (id: number, extra: Partial<StatsRows['runs'][number]> = {}) => ({
+      id,
+      key: `run-${id}`,
+      prompt: null,
+      status: 'done',
+      runtime: 'claude',
+      createdAt: at,
+      ...extra,
+    });
+    const view = (loops: StatsRows['loops'], runs = [run(1)], steps: StatsRows['steps'] = []) =>
+      buildStats({ firstRunAt: at, runs, steps, loops }, new Map(), NOW, { days: 7, tzOffset: WARSAW });
+
+    it('counts each loop counter as its own kind and old checks returns as checks', () => {
+      const stats = view([
+        { runId: 1, counter: 'checks', reason: 'required checks failed', createdAt: at },
+        { runId: 1, counter: 'implement', reason: 'required checks failed', createdAt: at },
+        { runId: 1, counter: 'review', reason: 'review_quality,review_security', createdAt: at },
+        { runId: 1, counter: 'pipeline', reason: 'g/p lint', createdAt: at },
+        { runId: 1, counter: 'adopted', reason: 'adopted 2 commits', createdAt: at },
+      ]);
+
+      expect(stats.totals.returnsByKind).toEqual([
+        { kind: 'checks', returns: 2 },
+        { kind: 'adopted', returns: 1 },
+        { kind: 'pipeline', returns: 1 },
+        { kind: 'review', returns: 1 },
+      ]);
+      expect(stats.reasons.map(({ name, returns }) => [name, returns])).toEqual([
+        ['checks', 2],
+        ['adopted', 1],
+        ['pipeline', 1],
+        ['quality', 1],
+        ['security', 1],
+      ]);
+    });
+
+    it('opens the checks bar to the commands that failed most', () => {
+      const detail = (...commands: string[]) => JSON.stringify({ commands });
+      const stats = view([
+        {
+          runId: 1,
+          counter: 'checks',
+          reason: 'required checks failed',
+          detail: detail('npm run lint'),
+          createdAt: at,
+        },
+        {
+          runId: 1,
+          counter: 'checks',
+          reason: 'required checks failed',
+          detail: detail('npm run lint', 'npm test'),
+          createdAt: at,
+        },
+        { runId: 1, counter: 'checks', reason: 'required checks failed', createdAt: at },
+      ]);
+
+      expect(stats.reasons).toEqual([
+        {
+          name: 'checks',
+          returns: 3,
+          commands: [
+            { name: 'npm run lint', returns: 2 },
+            { name: 'npm test', returns: 1 },
+          ],
+        },
+      ]);
+    });
+
+    it('splits CI returns into CI only, with job names, and CI and checks', () => {
+      const pipeline = (detail?: object) => ({
+        runId: 1,
+        counter: 'pipeline',
+        reason: 'x',
+        detail: detail && JSON.stringify(detail),
+        createdAt: at,
+      });
+      const stats = view([
+        pipeline({ ciOnly: true, jobs: ['docker'] }),
+        pipeline({ ciOnly: true, jobs: ['docker', 'e2e'] }),
+        pipeline({ ciOnly: false, jobs: ['lint'] }),
+        pipeline(),
+      ]);
+
+      expect(stats.ciReturns).toEqual({
+        only: 2,
+        withChecks: 2,
+        jobs: [
+          { name: 'docker', returns: 2 },
+          { name: 'e2e', returns: 1 },
+        ],
+      });
+    });
+
+    it('takes the mean and the median spend of a task in cents', () => {
+      const runs = [run(1), run(2), run(3)];
+      const steps = [step(1, 'implement', 2, at), step(2, 'implement', 4, at), step(3, 'implement', 30, at)];
+
+      const { totals } = view([], runs, steps);
+
+      expect([totals.tasks, totals.usdPerTask, totals.medianUsdPerTask]).toEqual([3, 12, 4]);
+    });
+
+    it('counts a split run with its subtasks as one task', () => {
+      const runs = [run(1), run(2, { parentRunId: 1 }), run(3, { parentRunId: 1, status: 'blocked' })];
+      const steps = [step(1, 'plan', 1, at), step(2, 'implement', 3, at), step(3, 'implement', 3, at)];
+      const loops = [{ runId: 2, counter: 'review', reason: 'review_quality', createdAt: at }];
+
+      const { totals } = view(loops, runs, steps);
+
+      expect([totals.tasks, totals.usdPerTask, totals.tasksBack, totals.medianReturnsPerTask]).toEqual([1, 7, 1, 1]);
+    });
   });
 });

@@ -1,5 +1,7 @@
 import { stepOutput } from '../../core/attempt-output';
-import type { LaunchView, VisitView } from '../../contract/api';
+import type { HistoryView, LaunchView, VisitView } from '../../contract/api';
+import type { LoopEventEntity } from '../../history/entities';
+import { readLoopDetail } from '../../history/loop-detail';
 import type { LiveSample } from '../../contract/live';
 import { liveVisitKey } from '../../contract/visit-key';
 import { textSize } from '../run-queries-log';
@@ -65,4 +67,16 @@ export function launchView(row: { phases: string; fromStep: string | null; creat
     phases = [];
   }
   return { phases, fromStep: row.fromStep, createdAt: row.createdAt };
+}
+
+/** A return of the history; `ciOnly` only when CI failed where the checks had passed. */
+export function loopView(loop: LoopEventEntity): HistoryView['loops'][number] {
+  const { counter, attempt, reason, createdAt } = loop;
+  return {
+    counter,
+    attempt,
+    reason,
+    ...(readLoopDetail(loop.detail).ciOnly ? { ciOnly: true as const } : {}),
+    createdAt,
+  };
 }

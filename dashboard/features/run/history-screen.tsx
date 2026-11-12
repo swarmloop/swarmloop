@@ -187,6 +187,7 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
         {view.loops.map((loop) => (
           <Typography key={`${loop.counter}-${loop.attempt}`} variant="body2">
             {loop.counter} {loop.attempt}: {loop.reason}
+            {loop.ciOnly ? ' · CI only: no check covers it' : ''}
           </Typography>
         ))}
         {view.calls.map((call, index) => (

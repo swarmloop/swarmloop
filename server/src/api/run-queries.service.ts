@@ -36,7 +36,7 @@ import { latest, metrics, openItems, phases, reason, returns, runName, sentence,
 import { belongsToVisit, documentView, filesOf, legacyLogs, taskView, withReturnNotes } from './run-view/documents';
 import { taskRuns } from './run-view/task-runs';
 import { visitKey } from '../contract/visit-key';
-import { launchView, liveVisit } from './run-view/live';
+import { launchView, liveVisit, loopView } from './run-view/live';
 import { commandViewsOf, exchangesOf, reviewChecks, samplesOf } from './run-view/visit-parts';
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
 import { readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
@@ -240,12 +240,7 @@ export class RunQueriesService {
         request: exchange.requestText,
         response: exchange.responseText,
       })),
-      loops: loops.map((loop) => ({
-        counter: loop.counter,
-        attempt: loop.attempt,
-        reason: loop.reason,
-        createdAt: loop.createdAt,
-      })),
+      loops: loops.map(loopView),
       calls: calls.map((call) => ({
         method: call.method,
         url: call.url,

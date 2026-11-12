@@ -74,3 +74,12 @@ export function ticks(max: number, { count = 4, whole = false }: { count?: numbe
   }
   return result;
 }
+
+const KIND_NAMES: Record<string, string> = { checks: 'checks', review: 'reviewers', pipeline: 'CI' };
+
+/** Returns by the kind that sent them back, as `40 from checks, 34 from reviewers, 31 from CI`. Those three always show; another kind (a new loop step) follows under its own counter. */
+export function returnsByKind(kinds: { kind: string; returns: number }[], separator: string): string {
+  const counts = new Map(Object.keys(KIND_NAMES).map((kind) => [kind, 0]));
+  kinds.forEach(({ kind, returns }) => counts.set(kind, (counts.get(kind) ?? 0) + returns));
+  return [...counts].map(([kind, returns]) => `${returns} from ${KIND_NAMES[kind] ?? kind}`).join(separator);
+}

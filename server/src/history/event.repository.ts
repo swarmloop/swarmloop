@@ -13,13 +13,14 @@ export class EventRepository {
     @InjectRepository(HttpCallEntity) private readonly httpCalls: Repository<HttpCallEntity>,
   ) {}
 
-  async recordLoop(run: RunEntity, counter: string, attempt: number, reason: string): Promise<void> {
+  async recordLoop(run: RunEntity, counter: string, attempt: number, reason: string, detail?: object): Promise<void> {
     await this.loops.save(
       this.loops.create({
         runId: run.id,
         counter,
         attempt,
         reason,
+        detail: detail ? JSON.stringify(detail) : null,
         createdAt: this.clock.iso(),
       }),
     );

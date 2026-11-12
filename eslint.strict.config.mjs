@@ -4,13 +4,7 @@ import tseslint from 'typescript-eslint';
 const typedFiles = ['**/*.{ts,tsx}'];
 const testFiles = ['**/*.spec.ts', '**/*.spec-helpers.ts', '**/*.test.ts', '**/*.test.tsx'];
 // dashboard/tsconfig.json excludes these test and config files. dashboard/tsconfig.test.json includes them.
-const dashboardTestFiles = [
-  'dashboard/**/*.test.{ts,tsx}',
-  'dashboard/vitest.*.ts',
-  'dashboard/test/fake-socket.ts',
-  'dashboard/test/viewport.ts',
-  'dashboard/test/raw-json.ts',
-];
+const dashboardTestFiles = ['dashboard/**/*.test.{ts,tsx}', 'dashboard/vitest.*.ts', 'dashboard/test/**'];
 const maxLines = (max) => ['error', { max, skipBlankLines: true, skipComments: true }];
 const typedRules = {
   '@typescript-eslint/no-floating-promises': 'error',

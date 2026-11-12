@@ -63,6 +63,8 @@ export interface VisitDraft {
   preparedMs?: number | null;
   /** Bash tool calls of the visit that changed files through a script or `sed -i`. */
   shellEdits?: number;
+  /** A passed checks visit: the content tree each project (by origin) was checked at. Failed and skipped visits leave it out. */
+  checkedCommits?: Record<string, string>;
 }
 
 export function summarizeSamples(samples: SampleDraft[]): {

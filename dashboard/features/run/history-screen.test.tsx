@@ -52,4 +52,21 @@ describe('HistoryScreen', () => {
     expect(screen.getByText('title: a bug; tags: x, y; meta: line: 3')).toBeInTheDocument();
     expectNoRawJson(document.body);
   });
+
+  it('marks a return that only CI caught', async () => {
+    const at = { createdAt: 't' };
+    vi.mocked(getHistory).mockResolvedValue(
+      historyView({
+        loops: [
+          { counter: 'pipeline', attempt: 1, reason: 'CI job docker failed; no check covers it', ciOnly: true, ...at },
+          { counter: 'checks', attempt: 1, reason: 'required checks failed', ...at },
+        ],
+      }),
+    );
+
+    render(<HistoryScreen runKey="run-1" />);
+
+    expect(await screen.findByText(/pipeline 1: CI job docker failed.*CI only/)).toBeInTheDocument();
+    expect(screen.getByText('checks 1: required checks failed')).toBeInTheDocument();
+  });
 });

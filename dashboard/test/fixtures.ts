@@ -146,6 +146,15 @@ export function statsView(overrides: Partial<StatsView> = {}): StatsView {
       tokensOut: 400,
       reviewReturns: 2,
       pipelineReturns: 1,
+      returnsByKind: [
+        { kind: 'review', returns: 2 },
+        { kind: 'pipeline', returns: 1 },
+      ],
+      tasks: 2,
+      usdPerTask: 2.13,
+      medianUsdPerTask: 2.13,
+      tasksBack: 1,
+      medianReturnsPerTask: 1,
       firstPass: 1,
       limits: 2,
       agentMs: 300_000,
@@ -169,6 +178,7 @@ export function statsView(overrides: Partial<StatsView> = {}): StatsView {
       { name: 'quality', returns: 2 },
       { name: 'pipeline', returns: 1 },
     ],
+    ciReturns: { only: 0, withChecks: 1, jobs: [] },
     returnsPerRun: [
       { returns: '0', runs: 2 },
       { returns: '1', runs: 1 },
