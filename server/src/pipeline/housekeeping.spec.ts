@@ -3,6 +3,10 @@ import { existsSync, renameSync } from 'fs';
 import { join } from 'path';
 import { git } from '../steps/prepare/prepare.step.spec-helpers';
 import { Housekeeping } from './housekeeping';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import type { Repository } from 'typeorm';
+import { RunEntity } from '../history/entities';
+import { RunRetention } from './run-retention';
 import { ageRun, makeWorld, type World } from './workspace.spec-helpers';
 
 describe('Housekeeping startup', () => {
@@ -53,5 +57,32 @@ describe('Housekeeping startup', () => {
     await world.app.get(Housekeeping).startup();
 
     expect(existsSync(world.worktree)).toBe(true);
+  });
+});
+
+describe('Housekeeping schedule', () => {
+  let world: World;
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await world.app.close();
+  });
+
+  it('frees a run that turned merged on the next scheduled pass', async () => {
+    world = await makeWorld('PROJ-5');
+    await ageRun(world.app, 'PROJ-5', 'done', 0);
+    const table = world.app.get<Repository<RunEntity>>(getRepositoryToken(RunEntity));
+    await table.update({ key: 'PROJ-5' }, { state: 'merged' });
+    const intervals = jest.spyOn(global, 'setInterval');
+    const apply = jest.spyOn(world.app.get(RunRetention), 'apply');
+    const housekeeping = world.app.get(Housekeeping);
+
+    housekeeping.schedule();
+    const pass = intervals.mock.calls.find(([, delay]) => delay === 5 * 60_000)?.[0] as () => void;
+    pass();
+    await apply.mock.results[0].value;
+
+    expect(existsSync(world.worktree)).toBe(false);
+    housekeeping.onModuleDestroy();
   });
 });

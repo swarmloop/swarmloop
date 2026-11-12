@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync } from 'fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { createServer, type Server } from 'http';
 import type { AddressInfo } from 'net';
 import { tmpdir } from 'os';
@@ -63,7 +63,8 @@ describe('ReadinessService', () => {
       }
       throw new TypeError('fetch failed');
     }) as unknown as typeof fetch;
-    return new ReadinessService(config, sandbox, disk, CodeHostRegistry.create(config.env, new FakeClock()));
+    const clock = new FakeClock();
+    return new ReadinessService(config, sandbox, disk, CodeHostRegistry.create(config.env, clock), clock);
   }
 
   /** The calls that left for a code host. The port probes stay on this machine. */
@@ -128,6 +129,28 @@ describe('ReadinessService', () => {
     expect(low.line).toContain('4.0 GB free');
     expect((await itemOf(setup({ MIN_FREE_GB: 10 }, 12 * GB), 'disk')).status).toBe('warn');
     expect((await itemOf(setup({ MIN_FREE_GB: 10 }, 15 * GB), 'disk')).status).toBe('ok');
+  });
+
+  it('lists what swarmloop itself uses after the free space, with a size each', async () => {
+    const service = setup();
+    const home = dirs[0];
+    mkdirSync(join(home, 'worktrees', 'run-1'));
+    writeFileSync(join(home, 'worktrees', 'run-1', 'file'), Buffer.alloc(2048));
+    writeFileSync(join(home, 'data', 'run-1-implement-output.txt'), Buffer.alloc(1024));
+    mkdirSync(join(home, 'data', 'backups'));
+    writeFileSync(join(home, 'data', 'backups', 'swarmloop-x.sqlite.gz'), Buffer.alloc(3 * 1024 * 1024));
+    const { line } = await itemOf(service, 'disk');
+    expect(line).toMatch(/^50\.0 GB free, a step needs \d+ GB \(MIN_FREE_GB\); swarmloop uses /);
+    expect(line).toContain('worktrees 2.0 KB, logs 1.0 KB, backups 3.0 MB, environment cache 0 B');
+  });
+
+  it('walks the folders for the Disk line once, not on every report', async () => {
+    const service = setup();
+    const home = dirs[0];
+    const before = (await itemOf(service, 'disk')).line;
+    writeFileSync(join(home, 'worktrees', 'late'), Buffer.alloc(4096));
+
+    expect((await itemOf(service, 'disk')).line).toBe(before);
   });
 
   it('fails for a directory the server cannot write and names chown', async () => {

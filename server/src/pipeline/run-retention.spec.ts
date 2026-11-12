@@ -85,15 +85,75 @@ describe('RunRetention', () => {
     world = await makeWorld('PROJ-10');
     await age(world, 0);
     const table = world.app.get<Repository<RunEntity>>(getRepositoryToken(RunEntity));
-    await table.update({ key: 'PROJ-10' }, { state: 'closed' });
-    expect(await world.app.get(RunRetention).apply(3)).toEqual([]);
     await table.update({ key: 'PROJ-10' }, { state: 'merged' });
-    expect(await world.app.get(RunRetention).apply(0)).toEqual([]);
 
-    expect(await world.app.get(RunRetention).apply(3)).toEqual(['PROJ-10']);
+    expect(await world.app.get(RunRetention).apply(0)).toEqual(['PROJ-10']);
 
     expect(existsSync(world.worktree)).toBe(false);
     expect((await freshRun(world)).workspace).toBe('removed');
+  });
+
+  it.each(['merged', 'closed'] as const)(
+    'a run that turns %s has no worktree and no agent-state folder, and its history stays',
+    async (state) => {
+      world = await makeWorld('PROJ-12');
+      const files = leaveFiles(world.swarm, 'PROJ-12');
+      const check = checkOutputPath(world.swarm, 'PROJ-12', 'checks', 'attempt1', 0);
+      writeFileSync(check, 'out\n');
+      await age(world, 0);
+      const table = world.app.get<Repository<RunEntity>>(getRepositoryToken(RunEntity));
+      await table.update({ key: 'PROJ-12' }, { state });
+
+      expect(await world.app.get(RunRetention).apply(3)).toEqual(['PROJ-12']);
+
+      expect(existsSync(world.worktree)).toBe(false);
+      expect(existsSync(join(world.swarm, 'worktrees', 'PROJ-12'))).toBe(false);
+      expect(existsSync(files.state)).toBe(false);
+      expect(git(world.clone, ['worktree', 'list', '--porcelain'])).not.toContain(world.worktree);
+      expect(existsSync(files.output)).toBe(true);
+      expect(existsSync(check)).toBe(true);
+      expect(existsSync(files.session)).toBe(true);
+      expect((await freshRun(world)).workspace).toBe('removed');
+    },
+  );
+
+  it('keeps everything of a done run that is not merged and younger than the threshold', async () => {
+    world = await makeWorld('PROJ-13');
+    const files = leaveFiles(world.swarm, 'PROJ-13');
+    await age(world, 1);
+
+    expect(await world.app.get(RunRetention).apply(3)).toEqual([]);
+
+    expect(existsSync(world.worktree)).toBe(true);
+    expect(existsSync(files.state)).toBe(true);
+    expect(existsSync(files.output)).toBe(true);
+  });
+
+  it('removes the output files of a freed merged run only after the threshold, and never when it is 0', async () => {
+    world = await makeWorld('PROJ-14');
+    const files = leaveFiles(world.swarm, 'PROJ-14');
+    await age(world, 10);
+    const table = world.app.get<Repository<RunEntity>>(getRepositoryToken(RunEntity));
+    await table.update({ key: 'PROJ-14' }, { state: 'merged' });
+    const retention = world.app.get(RunRetention);
+
+    expect(await retention.apply(0)).toEqual(['PROJ-14']);
+    expect(existsSync(files.output)).toBe(true);
+    expect(await retention.apply(0)).toEqual([]);
+    expect(existsSync(files.output)).toBe(true);
+    expect(await retention.apply(3)).toEqual(['PROJ-14']);
+    expect(existsSync(files.output)).toBe(false);
+    expect(await retention.apply(3)).toEqual([]);
+  });
+
+  it('cleanOldest skips a freed merged run that has only files left', async () => {
+    world = await makeWorld('PROJ-15');
+    await age(world, 10);
+    const table = world.app.get<Repository<RunEntity>>(getRepositoryToken(RunEntity));
+    await table.update({ key: 'PROJ-15' }, { state: 'merged' });
+    await clean(world);
+
+    expect(await world.app.get(RunRetention).cleanOldest('other')).toBeNull();
   });
 
   it("ages a done run by when the merge watch first saw it, not by the watch's later writes", async () => {
