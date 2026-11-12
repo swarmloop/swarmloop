@@ -33,7 +33,9 @@ export interface SettingsView {
     agents: Record<'main' | 'subtask', Record<'plan' | 'implement' | 'review', string[]>>;
     split: boolean;
   };
-  /** The runtimes with a credential, each with the models env names for it. */
+  /** The runtimes with a credential, each with env's models, then its priced models. */
   runtimes: { runtime: string; models: string[] }[];
+  /** True when a runtime's price table could not be read: its list holds env's models only. */
+  modelsLimited: boolean;
   server: ServerSetting[];
 }

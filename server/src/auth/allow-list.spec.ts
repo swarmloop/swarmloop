@@ -50,6 +50,33 @@ describe('decide', () => {
     });
   });
 
+  it('with an empty list lets in the first person on the machine when push fails, and never asks when push passes', async () => {
+    expect(
+      await decide(
+        [],
+        login,
+        noOwner,
+        async () => false,
+        async () => true,
+      ),
+    ).toEqual({ allowed: true });
+    expect(
+      await decide(
+        [],
+        login,
+        noOwner,
+        async () => false,
+        async () => false,
+      ),
+    ).toMatchObject({
+      allowed: false,
+      message: "github:Ann can't push to any repository this server works on",
+    });
+    const first = jest.fn(async () => false);
+    expect(await decide([], login, noOwner, async () => true, first)).toEqual({ allowed: true });
+    expect(first).not.toHaveBeenCalled();
+  });
+
   it('ignores the push check when the list is not empty', async () => {
     expect(await decide(parseAllow('github:bob'), login, noOwner, async () => true)).toMatchObject({ allowed: false });
     expect(await decide(parseAllow('github:ann'), login, noOwner, async () => false)).toEqual({ allowed: true });

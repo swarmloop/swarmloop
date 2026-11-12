@@ -367,6 +367,8 @@ export interface ConnectionView {
   health: { status: 'ok' | 'broken'; expiresAt: string | null; refreshedAt: string | null } | null;
   /** Owners of the repositories this server works on that the installation does not cover. */
   missingOwners?: string[];
+  /** People connected through the app; only for who may replace it. */
+  connected?: string[];
 }
 
 export interface ConnectionsView {

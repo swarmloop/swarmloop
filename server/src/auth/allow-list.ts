@@ -42,7 +42,8 @@ interface Login {
 type Verdict = { allowed: true } | { allowed: false; reason: string; message?: string };
 
 /**
- * Who may log in. An empty list lets in whoever `push` says can push to a repository this server works on; without
+ * Who may log in. An empty list lets in whoever `push` says can push to a repository this server works on, or whom `first` says is the first person on the
+ * server's own machine; without
  * `push` it lets in only the owner of the configured token of that provider, which `owner` looks up (null when no
  * token is configured).
  */
@@ -51,10 +52,11 @@ export async function decide(
   login: Login,
   owner: () => Promise<string | null>,
   push?: () => Promise<boolean>,
+  first?: () => Promise<boolean>,
 ): Promise<Verdict> {
   const user = login.user.toLowerCase();
   if (entries.length === 0 && push) {
-    if (await push()) {
+    if ((await push()) || (first && (await first()))) {
       return { allowed: true };
     }
     const reason = "can't push to any repository this server works on";

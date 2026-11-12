@@ -61,12 +61,6 @@ export class HostAppsService implements AppSource, OnModuleInit {
     this.apps.set(app.host, app);
   }
 
-  /** Drops the stored app. The app on the host stays. */
-  async forget(host: ProviderName): Promise<void> {
-    await this.rows.delete({ host });
-    this.apps.delete(host);
-  }
-
   credentials(host: ProviderName): AppCredentials | null {
     const stored = this.find(host);
     if (stored) {

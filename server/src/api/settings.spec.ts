@@ -1,10 +1,11 @@
 import 'reflect-metadata';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { mkdtemp } from 'fs/promises';
+import { mkdir, mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { testEnv } from '../config/env.spec-helpers';
 import { AppConfig } from '../config/env';
+import { SystemClock } from '../core/clock';
 import type { SettingsBody } from '../contract/api';
 import { UserSettingRepository } from '../history/user-setting.repository';
 import { boot } from '../testing/runs.spec-helpers';
@@ -24,9 +25,21 @@ const MINE: SettingsBody = {
   split: false,
 };
 
+/** A fresh price cache of one runtime, as `loadPriceTable` writes it. */
+async function cachePrices(root: string, runtime: string, models: string[]): Promise<void> {
+  const row = { inputPerMillion: 1, outputPerMillion: 2, cacheReadPerMillion: 0.1, cacheWritePerMillion: 1 };
+  await mkdir(join(root, 'data'), { recursive: true });
+  await writeFile(
+    join(root, 'data', `price-cache-${runtime}.json`),
+    JSON.stringify({ fetchedAt: new Date().toISOString(), prices: Object.fromEntries(models.map((m) => [m, row])) }),
+  );
+}
+
 async function world() {
-  const app = await boot(await mkdtemp(join(tmpdir(), 'swarmloop-settings-')));
+  const root = await mkdtemp(join(tmpdir(), 'swarmloop-settings-'));
+  const app = await boot(root);
   const env = testEnv({
+    SWARMLOOP_ROOT: root,
     ...KEYS,
     CURSOR_API_KEY: 'cur',
     AGENTS_PLAN: 'claude:opus,cursor:grok,codex:gpt',
@@ -35,11 +48,17 @@ async function world() {
     MODEL_IMPLEMENT: 'grok',
   });
   const repo = app.get(UserSettingRepository);
-  const controller = new SettingsController(new SettingsService(new AppConfig(env), repo));
-  return { app, repo, controller, env };
+  const controller = new SettingsController(new SettingsService(new AppConfig(env), repo, new SystemClock()));
+  return { app, repo, controller, env, root };
 }
 
 describe('settings', () => {
+  beforeEach(() => {
+    // No price table is reachable unless a test writes a cache.
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('offline'));
+  });
+  afterEach(() => jest.restoreAllMocks());
+
   it('saves and reads back what a person chose', async () => {
     const { app, repo, controller } = await world();
     try {
@@ -70,6 +89,37 @@ describe('settings', () => {
     try {
       const body = { agents: { main: { plan: [{ runtime: 'claude', model: 'nope' }] } } };
       await expect(controller.save('alice', body)).rejects.toThrow(/claude:nope.*unknown model/);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("offers the priced models of a connected runtime after env's, and accepts them", async () => {
+    const { app, root, controller } = await world();
+    try {
+      await cachePrices(root, 'claude', ['opus', 'priced-new']);
+      const view = await controller.read('alice');
+      const claude = view.runtimes.find((entry) => entry.runtime === 'claude')?.models ?? [];
+      expect(claude).toContain('priced-new');
+      expect(claude.indexOf('opus')).toBeLessThan(claude.indexOf('priced-new'));
+      expect(claude.filter((model) => model === 'opus')).toHaveLength(1);
+      const body = { agents: { main: { plan: [{ runtime: 'claude', model: 'priced-new' }] } } };
+      expect((await controller.save('alice', body)).settings).toEqual(body);
+      const other = { agents: { main: { plan: [{ runtime: 'claude', model: 'in-neither' }] } } };
+      await expect(controller.save('alice', other)).rejects.toThrow(/claude:in-neither.*unknown model/);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("lists and accepts env's models only, and says so, when no price table can be read", async () => {
+    const { app, controller } = await world();
+    try {
+      const view = await controller.read('alice');
+      expect(view.modelsLimited).toBe(true);
+      expect(view.runtimes.find((entry) => entry.runtime === 'cursor')?.models).toEqual(['grok']);
+      const body = { agents: { main: { plan: [{ runtime: 'cursor', model: 'grok' }] } } };
+      expect((await controller.save('alice', body)).settings).toEqual(body);
     } finally {
       await app.close();
     }

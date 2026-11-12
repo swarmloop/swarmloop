@@ -10,13 +10,13 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { getManifest, getOwner, saveGitlabApplication } from '../../lib/endpoints';
 
-interface ManifestForm {
+export interface ManifestForm {
   action: string;
   manifest: Record<string, unknown>;
 }
 
 /** GitHub takes the manifest as a form post, so the page builds the form and sends it. */
-function ManifestPost({ form }: { form: ManifestForm }): ReactElement {
+export function ManifestPost({ form }: { form: ManifestForm }): ReactElement {
   const ref = useRef<HTMLFormElement>(null);
   useEffect(() => ref.current?.submit(), []);
   return (

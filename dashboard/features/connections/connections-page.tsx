@@ -16,10 +16,19 @@ import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import type { ConnectionView } from '@contract/api';
 import { disconnect, getConnections, getSession, installMore, reconnectUrl, replaceApp } from '../../lib/endpoints';
-import { FirstRun } from './first-run';
+import { FirstRun, ManifestPost, type ManifestForm } from './first-run';
 import { localTime } from '../../lib/format';
 
 const NAMES = { github: 'GitHub', gitlab: 'GitLab' } as const;
+const NAMED_MAX = 5;
+
+/** Who the replace disconnects: by name when there are few, else the count. */
+function disconnected(people: string[]): string {
+  if (people.length === 0) {
+    return 'Everyone connected through this app';
+  }
+  return people.length <= NAMED_MAX ? people.join(', ') : `${people.length} people`;
+}
 
 /** Per host: the app, the connected account, the repositories, the health of the token, and Reconnect and Disconnect. */
 export function ConnectionsPage(): ReactElement {
@@ -27,6 +36,7 @@ export function ConnectionsPage(): ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [asking, setAsking] = useState<ConnectionView | null>(null);
   const [replacing, setReplacing] = useState<ConnectionView | null>(null);
+  const [form, setForm] = useState<ManifestForm | null>(null);
   const [login, setLogin] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -65,8 +75,7 @@ export function ConnectionsPage(): ReactElement {
   async function confirmReplace(): Promise<void> {
     setReplacing(null);
     try {
-      await replaceApp();
-      load();
+      setForm(await replaceApp());
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : 'the app could not be replaced');
     }
@@ -97,11 +106,13 @@ export function ConnectionsPage(): ReactElement {
           />
         ),
       )}
+      {form ? <ManifestPost key={form.action} form={form} /> : null}
       <Dialog open={replacing !== null} onClose={() => setReplacing(null)} aria-labelledby="replace-title">
         <DialogTitle id="replace-title">Replace {replacing?.app?.name}?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            The app is forgotten here and the first-run form opens again. The app on GitHub stays
+            {disconnected(replacing?.connected ?? [])} will be disconnected. Their runs wait with GIT_AUTH until they
+            log in again. The app on GitHub stays
             {replacing?.app?.settingsUrl ? (
               <>
                 {' '}

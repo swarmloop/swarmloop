@@ -159,7 +159,13 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
 
   const github = async (cookie: string) => {
     const view = (await (await fetch(`${app.url}/connections`, { headers: { cookie } })).json()) as {
-      connections: { host: string; repositories: string[]; missingOwners: string[]; app: { madeBy: string | null } }[];
+      connections: {
+        host: string;
+        repositories: string[];
+        missingOwners: string[];
+        connected: string[];
+        app: { madeBy: string | null };
+      }[];
     };
     return view.connections.find((item) => item.host === 'github');
   };
@@ -199,29 +205,82 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     }
   });
 
+  const away = { 'x-forwarded-host': 'panel.example' };
+  const replace = (headers: Record<string, string>) =>
+    fetch(`${app.url}/connections/github/app`, { method: 'POST', headers });
+  const stateOf = async (response: Response): Promise<string> =>
+    new URL(((await response.json()) as { action: string }).action).searchParams.get('state') ?? '';
+  const created = (state: string, headers: Record<string, string> = {}) =>
+    fetch(`${app.url}/auth/github/created?code=manifest-code&state=${state}`, {
+      redirect: 'manual',
+      headers: { ...headers, cookie: `swarmloop_state=${state}` },
+    });
+
   it('lets only the maker or the machine token replace the app, and then shows the first-run form', async () => {
     await makeApp();
     const alice = await signIn('alice');
     const bob = await signIn('bob');
     // The first person to sign in through the new app is its maker; the second one is not.
     expect((await github(alice))?.app.madeBy).toBe('alice');
-    const replace = (headers: Record<string, string>) =>
-      fetch(`${app.url}/connections/github/app`, { method: 'DELETE', headers });
     const refused = await replace({ cookie: bob });
     expect(refused.status).toBe(403);
     expect(((await refused.json()) as { message: string }).message).toBe('Only alice can replace this app');
     expect(await app.app.get(DataSource).query(`SELECT * FROM host_apps`)).toHaveLength(1);
-    expect((await replace({ cookie: alice })).status).toBe(200);
-    expect(await app.app.get(DataSource).query(`SELECT * FROM host_apps`)).toEqual([]);
-    expect(await (await fetch(`${app.url}/auth/first-run`)).json()).toEqual({ login: false });
+    const started = await replace({ cookie: alice, ...away });
+    expect(started.status).toBe(201);
+    expect(((await started.json()) as { manifest: { public: boolean } }).manifest.public).toBe(false);
+    expect((await github(alice))?.connected).toEqual(['alice', 'bob']);
+    expect((await github(bob))?.connected).toEqual([]);
+    // The first-run routes stay shut while the old app exists.
+    expect((await fetch(`${app.url}/auth/github/manifest`)).status).toBe(403);
+  });
+
+  it('keeps the old app and every connection until GitHub returns the new one, then swaps them', async () => {
+    await makeApp();
+    const alice = await signIn('alice');
+    await signIn('bob');
+    const before = app.app.get(HostAppsService).find('github');
+    const started = await replace({ cookie: alice, ...away });
+    const state = await stateOf(started);
+    expect(started.headers.getSetCookie().join(';')).toContain(`swarmloop_state=${state}`);
+    expect(app.app.get(HostAppsService).find('github')).toEqual(before);
+    expect(await connections().tokenFor('github', 'alice')).toBe('ghu_alice_1');
+    expect(await connections().tokenFor('github', 'bob')).toBe('ghu_bob_1');
+    const saved = jest.spyOn(app.app.get(HostAppsService), 'save');
+    const dropped = jest.spyOn(connections(), 'disconnectAll');
+    const returned = await created(state, away);
+    expect(returned.status).toBe(302);
+    expect(returned.headers.get('location')).toContain('/installations/new');
+    expect(app.app.get(HostAppsService).find('github')?.madeBy).toBe('alice');
+    expect(await connections().loginsOn('github')).toEqual([]);
+    expect(saved.mock.invocationCallOrder[0]).toBeLessThan(dropped.mock.invocationCallOrder[0]);
+  });
+
+  it('leaves the app and the connections as they were when the new app is never returned', async () => {
+    await makeApp();
+    const alice = await signIn('alice');
+    const before = app.app.get(HostAppsService).find('github');
+    expect((await replace({ cookie: alice, ...away })).status).toBe(201);
+    app.clock.advance(11 * 60 * 1000);
+    expect(app.app.get(HostAppsService).find('github')).toEqual(before);
+    expect(await connections().loginsOn('github')).toEqual(['alice']);
+  });
+
+  it('refuses a created call from another machine that holds a plain state while an app exists', async () => {
+    await makeApp();
+    await signIn('alice');
+    const begin = await fetch(`${app.url}/auth/github/login`, { redirect: 'manual' });
+    const state = new URL(begin.headers.get('location') ?? '').searchParams.get('state') ?? '';
+    const refused = await created(state, away);
+    expect(refused.status).toBe(403);
+    expect(await connections().loginsOn('github')).toEqual(['alice']);
   });
 
   it('opens the install step of the new app after Replace app, although people had connected to the old one', async () => {
     await makeApp();
     await signIn('alice');
     expect((await fetch(`${app.url}/auth/github/install`)).status).toBe(403);
-    await fetch(`${app.url}/connections/github/app`, { method: 'DELETE', headers: authed });
-    await makeApp();
+    expect((await created(await stateOf(await replace(authed)))).status).toBe(302);
     const install = await fetch(`${app.url}/auth/github/install`);
     expect(install.status).toBe(200);
     expect(install.headers.getSetCookie().join(';')).toContain('swarmloop_state=');
@@ -231,9 +290,10 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     await makeApp();
     const [row] = await app.app.get(DataSource).query<Record<string, string>[]>(`SELECT made_by FROM host_apps`);
     expect(row.made_by).toBe('machine');
-    expect((await fetch(`${app.url}/connections/github/app`, { method: 'DELETE', headers: authed })).status).toBe(200);
-    expect(app.app.get(HostAppsService).find('github')).toBeNull();
-    expect((await fetch(`${app.url}/auth/github/manifest`)).status).toBe(200);
+    const started = await replace(authed);
+    expect(started.status).toBe(201);
+    expect((await created(await stateOf(started))).status).toBe(302);
+    expect(app.app.get(HostAppsService).find('github')?.madeBy).toBe('machine');
   });
 
   it('runs of person A call the host with the token of A, those of B with B, and a CLI run with the env token', async () => {
