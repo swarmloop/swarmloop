@@ -20,6 +20,7 @@ import { cookieOptions, startState, STATE_COOKIE, type CookieResponse } from './
 import { GithubAppService, type ManifestForm } from './github-app.service';
 import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
+import type { MeView } from '../contract/api';
 import type { OAuthProvider, ProviderName } from './oauth-provider';
 import { Public } from './public.decorator';
 import { cookieValue, SESSION_COOKIE, SESSION_DAYS, SessionService, sessionIdOf } from './session.service';
@@ -98,7 +99,7 @@ export class AuthController {
   }
 
   @Get('me')
-  async me(@Req() request: { headers: { cookie?: string } }): Promise<{ user: string | null; provider?: string }> {
+  async me(@Req() request: { headers: { cookie?: string } }): Promise<MeView> {
     const session = await this.sessions.find(sessionIdOf(request.headers.cookie));
     return session ? { user: session.user, provider: session.provider } : { user: null };
   }
