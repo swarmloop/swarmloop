@@ -44,7 +44,7 @@ export class ChecksStep extends BaseStep<typeof INPUTS> {
       key,
       step: this.name,
       mounts,
-      runtime: agentFor(this.config.env, null, 'implement').runtime,
+      runtime: agentFor(this.config.env, opened.run, 'implement').runtime,
       samples,
     };
     try {

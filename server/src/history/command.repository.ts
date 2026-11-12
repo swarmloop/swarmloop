@@ -8,6 +8,7 @@ import type { RunState } from '../contract/run-state';
 import { CommandEntity, RunEntity } from './entities';
 import { RunRepository } from './run.repository';
 import { transaction } from './transaction';
+import type { StoredAgents } from '../contract/api';
 import { deriveState } from './run-state';
 
 interface AcceptInput {
@@ -17,7 +18,7 @@ interface AcceptInput {
   idempotencyKey?: string;
   expectedRevision?: number;
   /** Creates the run in the same transaction when it does not exist. */
-  create?: { targetPath: string | null; startedBy?: string | null };
+  create?: { targetPath: string | null; startedBy?: string | null; agents?: StoredAgents | null };
   /** The pure policy. It throws to refuse the command. */
   admit: (run: RunEntity | null) => void;
 }
@@ -161,7 +162,7 @@ export function conflict(
 }
 
 function waitingRun(runs: RunRepository, key: string, create: AcceptInput['create']): RunEntity {
-  return runs.newWaitingRun(key, create?.targetPath ?? null, create?.startedBy ?? null);
+  return runs.newWaitingRun(key, create?.targetPath ?? null, create?.startedBy ?? null, create?.agents ?? null);
 }
 
 function samePayload(stored: string, incoming: Record<string, unknown>): boolean {

@@ -129,7 +129,7 @@ export class SubtaskPort extends SubtaskOps {
   ): Promise<string | null> {
     const parent = opened.run;
     const env = this.config.env;
-    const { runtime, model } = agentFor(env, null, 'plan');
+    const { runtime, model } = agentFor(env, parent, 'plan');
     const dir = root(this.config);
     if (!(await resumableChat(dir, parent.key, 'plan', runtime))?.chatId) return null;
     const prompt = subtaskAsks(task, questions, contract);

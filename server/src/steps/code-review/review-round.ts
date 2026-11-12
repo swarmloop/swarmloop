@@ -303,7 +303,7 @@ function reviewJob(reviewer: Reviewer, input: RoundInput) {
   );
   return {
     reviewer,
-    ...agentFor(input.env, null, 'code-review'),
+    ...agentFor(input.env, input.opened.run, 'code-review'),
     prompt: skillPrompt(`code-review/${reviewer.name}`, input.requirements, names, sections, input.mounts),
     mounts: input.mounts,
   };
