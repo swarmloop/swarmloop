@@ -49,7 +49,7 @@ export async function runShell(
   command: string,
   mount: SandboxMount,
   phase: 'setup' | 'checks',
-  check?: { index: number; file: string },
+  check?: { index: number; file: string; name?: string },
   /** The manifest hosts of the setup. Checks get none. */
   manifest?: ManifestHosts,
 ): Promise<{ exitCode: number; tail: string }> {
@@ -72,6 +72,8 @@ export async function runShell(
       lines.splice(1, lines.length - keep);
     }
   };
+  // The wait for machine resources is live only: it never reaches the output file, the tail or the exit code.
+  let waiting = '';
   let shown = 0;
   const show = (force = false) => {
     const now = clock.now();
@@ -80,7 +82,7 @@ export async function runShell(
       live?.log({
         key: input.key,
         step: input.step,
-        body: `${lines.slice(-LIVE_LINES).join('\n')}\n`,
+        body: `${[...lines.slice(-LIVE_LINES), ...(waiting ? [waiting] : [])].join('\n')}\n`,
         ...(check ? { command: check.index, samples: liveSamples(input.samples ?? []) } : {}),
       });
     }
@@ -95,6 +97,15 @@ export async function runShell(
     args: [command],
   });
   let timedOut = false;
+  const repo = basename(mount.hostPath);
+  const work =
+    phase === 'checks'
+      ? {
+          kind: 'check' as const,
+          name: check?.name ?? command,
+          label: `check ${check?.name ?? command} of ${input.key}`,
+        }
+      : { kind: 'setup' as const, name: repo, label: `setup of ${repo} for ${input.key}` };
   const child = await sandbox
     .spawn({
       runtime: input.runtime,
@@ -108,12 +119,18 @@ export async function runShell(
       command: [],
       userId,
       project: { ...launch, shell: command },
+      work,
+      onWait: (line) => {
+        waiting = line;
+        show(true);
+      },
     })
     .catch((error: unknown) => {
       finish({ exitCode: null });
       file?.end();
       throw error;
     });
+  waiting = '';
   const take = containerSampler(
     sandbox,
     clock,
