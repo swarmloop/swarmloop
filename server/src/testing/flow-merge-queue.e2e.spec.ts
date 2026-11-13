@@ -1,17 +1,20 @@
 import 'reflect-metadata';
-import { mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { ERROR_CODES } from '../contract/error-codes';
 import { parseSubtasks, type Subtask } from '../contract/subtask';
 import { ConflictException } from '@nestjs/common';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { FlowRepository } from '../history/flow.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { writeRunState } from '../history/run-state';
+import { deriveState, writeRunState } from '../history/run-state';
 import { CommandService } from '../pipeline/command.service';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { branchName, summaryForBranch } from '../steps/branch/branch-name';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
+import { putStamped } from '../steps/shared/gate.spec-helpers';
+import * as fetchModule from '../git/rebase/fetch';
 import { RunRebase } from '../steps/run-rebase';
 import { createFlowHarness } from './flow-harness';
 import { assertInvariants } from './flow-invariants';
@@ -44,7 +47,7 @@ describe('the feature branch stays green: every merge is of a task tested on top
   let realRebases = false;
 
   beforeEach(async () => {
-    flow = await createFlowHarness(KEY);
+    flow = await createFlowHarness(KEY, { realHost: true, taskWorktrees: true });
     rebases = [];
     realRebases = false;
     const commands = flow.app.app.get(CommandService);
@@ -178,16 +181,73 @@ describe('the feature branch stays green: every merge is of a task tested on top
     const second = await deliver('b', 'src/b.ts', 'export const b = 1;\n');
 
     await pass();
+    expect([...flow.host.merged.keys()]).toEqual([first.iid]);
+    // The rebase ran on the worktree of b, so its pipeline step now tests b on top of a.
     pushed(second.tree, second.branch, 'fail');
     const run = (await runs().findRun(`${KEY}-b`))!;
-    writeRunState(run, { status: 'waiting', currentStep: 'implement' });
+    run.codeHost = 'gitlab';
+    writeRunState(run, { status: 'running', currentStep: 'pipeline' });
     await runs().saveRun(run);
+    const ref = `project: group/demo\nref: ${second.branch}\nsha: ${git(second.tree, ['rev-parse', 'HEAD'])}\n`;
+    await putStamped(flow.app.app, run, 'pipeline_ref', ref, ['demo']);
+    await putStamped(flow.app.app, run, 'review_report', '- the field ships\n', ['demo']);
+
+    await flow.app.pipeline.step('pipeline', `${KEY}-b`);
+
+    const returned = (await runs().findRun(`${KEY}-b`))!;
+    expect(returned.currentStep).toBe('implement');
+    expect(returned.attemptsPipeline).toBe(1);
+    // The driver would start implement now. The step ended with the run working at implement, as the parent sees it.
+    writeRunState(returned, { status: 'running', currentStep: 'implement' });
+    await runs().saveRun(returned);
+    await pass();
+    expect([...flow.host.merged.keys()]).toEqual([first.iid]);
+    expect(flow.host.landed.every((landing) => landing.testedOnTop)).toBe(true);
+    expect(flow.host.ci.passed(git(second.tree, ['rev-parse', 'HEAD']), second.branch)).toBe(false);
+  });
+
+  it('rebases a green task whose worktree retention removed, with no person involved, and merges nothing untested', async () => {
+    await seedEpic([task('a'), task('b')]);
+    const first = await deliver('a', 'src/a.ts', 'export const a = 1;\n');
+    const second = await deliver('b', 'src/b.ts', 'export const b = 1;\n');
+    rmSync(second.tree, { recursive: true, force: true });
+
     await pass();
 
     expect([...flow.host.merged.keys()]).toEqual([first.iid]);
     expect(await statuses()).toEqual({ a: 'merged', b: 'running' });
-    expect(flow.host.landed.every((landing) => landing.testedOnTop)).toBe(true);
-    expect(flow.host.ci.passed(git(second.tree, ['rev-parse', 'HEAD']), second.branch)).toBe(false);
+    expect(rebases.map((sent) => [sent.key, sent.payload])).toEqual([[`${KEY}-b`, { byParent: true }]]);
+    expect(await noteOf('b')).toBe('rebased onto the epic: the feature branch moved on');
+  });
+
+  it('waits with its next try when the branch of a green task cannot be fetched, and rebases it once the host answers', async () => {
+    await seedEpic([task('a'), task('b')]);
+    const first = await deliver('a', 'src/a.ts', 'export const a = 1;\n');
+    const second = await deliver('b', 'src/b.ts', 'export const b = 1;\n');
+    // The host does not answer a fetch in the worktree of b, as long as the spec says so.
+    let hostDown = true;
+    const fetched = fetchModule.fetchBranch.bind(fetchModule);
+    jest
+      .spyOn(fetchModule, 'fetchBranch')
+      .mockImplementation((cwd, ...rest) =>
+        hostDown && cwd.startsWith(second.tree) ? Promise.resolve(false) : fetched(cwd, ...rest),
+      );
+
+    await pass();
+
+    expect([...flow.host.merged.keys()]).toEqual([first.iid]);
+    const { state, reason } = deriveState((await runs().findRun(KEY))!);
+    expect(state).toBe('waiting');
+    expect(reason?.code).toBe(ERROR_CODES.HOST_UNAVAILABLE);
+    expect(reason?.retryAt).toBeDefined();
+    expect(reason?.message).toContain('could not be fetched');
+    expect(rebases).toEqual([]);
+
+    hostDown = false;
+    for (let minute = 0; minute < 6; minute += 1) await pass();
+
+    expect(rebases.map((sent) => sent.key)).toEqual([`${KEY}-b`]);
+    expect([...flow.host.merged.keys()]).toEqual([first.iid]);
   });
 
   it('rebases a failed task that a merge put in conflict, with the note on both pages', async () => {

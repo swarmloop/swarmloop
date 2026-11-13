@@ -204,7 +204,7 @@ export class SubtaskPort extends SubtaskOps {
   }
 
   override async behindTip(parent: RunEntity, run: RunEntity): Promise<string | null> {
-    return this.worktrees.behindTip(run, await this.reposOf(run), await this.branchOf(parent));
+    return this.worktrees.behindTip(parent, run, await this.reposOf(run), await this.branchOf(parent));
   }
 
   override async conflictFiles(parent: RunEntity, run: RunEntity): Promise<string[]> {

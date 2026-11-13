@@ -11,6 +11,8 @@ interface MergeOutcome {
   tasks: Subtask[];
   /** Why the host refused a merge for a reason other than a conflict. It blocks the parent. */
   refusal: string | null;
+  /** Why a green task's branch could not be fetched to place it on the feature branch. It is a wait with a next try, never a refusal. */
+  unfetched: string | null;
 }
 
 /**
@@ -39,7 +41,13 @@ export class SplitMerge {
       if (task.status !== 'green') continue;
       const child = await this.subtasks.find(parent, task.id);
       const hasRequest = child && (await this.subtasks.mergeRequests(child)).length > 0;
-      const moved = child && hasRequest ? await this.rebases.behind(parent, task, child) : null;
+      let moved: Subtask | null = null;
+      try {
+        moved = child && hasRequest ? await this.rebases.behind(parent, task, child) : null;
+      } catch (error) {
+        if (!(error instanceof FetchFailed)) throw error;
+        return { tasks: current, refusal: null, unfetched: `subtask ${task.id} was not merged: ${error.message}` };
+      }
       if (moved) {
         current = current.map((item) => (item.id === task.id ? moved : item));
         continue;
@@ -49,11 +57,11 @@ export class SplitMerge {
       const { done, refusal } = outcome;
       current = current.map((item) => (item.id === task.id ? done : item));
       if (done.status !== 'merged') {
-        return { tasks: current, refusal };
+        return { tasks: current, refusal, unfetched: null };
       }
       current = await this.rebases.afterMerge(parent, current, done, Object.values(done.merged ?? {}).at(-1) ?? '');
     }
-    return { tasks: current, refusal: null };
+    return { tasks: current, refusal: null, unfetched: null };
   }
 
   /** Merges the requests of a task that no merge recorded yet, one repository after the other. Null for a task with no merge request. */

@@ -11,6 +11,7 @@ import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import type { RunEntity } from '../history/entities';
 import { putStamped } from '../steps/shared/gate.spec-helpers';
+import { SubtaskOps } from '../steps/shared/subtask-ops';
 import { FakeCodeHost } from './fake-code-host';
 import { FakeSandbox, holdDetachedStarts } from './fake-runtime';
 import { featureWorktree, git, remember } from './runs.spec-helpers';
@@ -52,10 +53,13 @@ interface FlowHarness {
   close(): Promise<void>;
 }
 
-/** With `realHost` the merge-request and pipeline steps are the real ones on the fake host, and `begin` is for them. */
+/**
+ * With `realHost` the merge-request and pipeline steps are the real ones on the fake host, and `begin` is for them.
+ * Task runs have no worktree unless `taskWorktrees` says the spec makes them; without them every task is answered as on top of the feature branch.
+ */
 export async function createFlowHarness(
   key: string,
-  options: { realHost?: boolean; env?: Record<string, string> } = {},
+  options: { realHost?: boolean; taskWorktrees?: boolean; env?: Record<string, string> } = {},
 ): Promise<FlowHarness> {
   const sandbox = new FakeSandbox();
   const env = { ...options.env };
@@ -111,7 +115,7 @@ export async function createFlowHarness(
       const before = harness.app.clock.now();
       harness.app = await harness.app.restart();
       harness.app.clock.advance(before - harness.app.clock.now());
-      wire(harness, key);
+      wire(harness, key, options.taskWorktrees);
       if (diskBytes !== null) useDisk(harness, diskBytes);
     },
     dockerSilent: (ms) => sandbox.goSilent(ms),
@@ -135,7 +139,7 @@ export async function createFlowHarness(
     },
     close: () => harness.app.close(),
   };
-  wire(harness, key);
+  wire(harness, key, options.taskWorktrees);
   return harness;
 }
 
@@ -143,7 +147,8 @@ function useDisk(harness: FlowHarness, bytes: number): void {
   harness.app.app.get(DiskGuard).useFreeBytes(() => Promise.resolve(bytes));
 }
 
-function wire(harness: FlowHarness, key: string): void {
+function wire(harness: FlowHarness, key: string, taskWorktrees = false): void {
+  if (!taskWorktrees) jest.spyOn(harness.app.app.get(SubtaskOps), 'behindTip').mockResolvedValue(null);
   jest.spyOn(harness.app.app.get(CodeHostRegistry), 'byName').mockReturnValue(harness.host as unknown as CodeHost);
   holdDetachedStarts(harness.app.pipeline, key, harness.launched);
 }

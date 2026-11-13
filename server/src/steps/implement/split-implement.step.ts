@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../../contract/error-codes';
+import { HOST_RETRY_MS } from '../../integrations/http';
 import { deriveState } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
 import {
@@ -102,7 +103,7 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     const needed = await this.needs.run(ctx.opened, withStatuses(input.subtasks), base);
     const contract = needed.contract === base ? answered : needed.contract;
     const followed = await this.refresh(run, needed.tasks);
-    const { tasks: merged, refusal } = await this.merges.run(run, followed);
+    const { tasks: merged, refusal, unfetched } = await this.merges.run(run, followed);
     const tasks = await this.explain(run, await this.start(run, merged));
     const outputs: StepResult['outputs'] = [
       ...(JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }]),
@@ -111,6 +112,15 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     const line = statusLine(tasks);
     const blocked = tasks.filter((task) => task.status === 'blocked');
     const action = blocked.length > 0 ? `${blockedNames(blocked)}; ${BLOCKED_ACTION}` : null;
+    if (unfetched && !tasks.some((task) => task.status === 'running')) {
+      const retryAt = new Date(this.clock.now() + HOST_RETRY_MS).toISOString();
+      const text = `${line}; ${unfetched}; next try at ${retryAt}${action ? `; ${action}` : ''}`;
+      return {
+        route: { to: 'wait', reason: text, code: ERROR_CODES.HOST_UNAVAILABLE, retryAt },
+        summary: `${startedAt} ${text}`,
+        outputs,
+      };
+    }
     if ((blocked.length > 0 || refusal) && !this.canMove(tasks, refusal)) {
       const text = `${startedAt} ${refusal ?? blockedNames(blocked)}: ${line}${blocked.length > 0 ? `; ${BLOCKED_ACTION}` : ''}`;
       return { route: { to: 'block', reason: text, code: ERROR_CODES.SUBTASK_BLOCKED }, summary: text, outputs };

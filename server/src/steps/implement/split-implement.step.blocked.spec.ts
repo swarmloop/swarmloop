@@ -1,4 +1,8 @@
 import 'reflect-metadata';
+import { DocumentRepository } from '../../history/document.repository';
+import { FetchFailed } from '../../core/swarmloop-error';
+import { SubtaskOps } from '../shared/subtask-ops';
+import { renderMergeRequest } from '../merge-request/merge-request-record';
 import { RunRepository } from '../../history/run.repository';
 import { writeRunState } from '../../history/run-state';
 import { ERROR_CODES } from '../../contract/error-codes';
@@ -48,6 +52,32 @@ describe('split implement, a blocked task', () => {
     expect(state.state).toBe('blocked');
     expect(state.reason?.code).toBe(ERROR_CODES.SUBTASK_BLOCKED);
     expect(state.reason?.message).toContain('subtask a is blocked');
+  });
+
+  it('names the blocked task and its action in the wait when the branch of a green task cannot be fetched', async () => {
+    const built = await world();
+    app = built.app;
+    await seedParent(app, [task('a'), task('b')]);
+    await pass(app);
+    await block(app, 'a');
+    const green = await child(app, 'b');
+    const record = { project: 'demo', iid: 2, url: 'https://code.example/demo/2', draft: false, summary: '' };
+    await app.app.get(DocumentRepository).putDocument(green, 'repos', 'demo\n');
+    await app.app.get(DocumentRepository).putDocument(green, 'merge_request', renderMergeRequest([record]));
+    writeRunState(green, { status: 'done', currentStep: 'done' });
+    await app.app.get(RunRepository).saveRun(green);
+    jest
+      .spyOn(app.app.get(SubtaskOps), 'behindTip')
+      .mockRejectedValue(new FetchFailed('main of demo could not be fetched'));
+
+    await pass(app);
+
+    const state = await parentState(app);
+    expect(state.state).toBe('waiting');
+    expect(state.reason?.code).toBe(ERROR_CODES.HOST_UNAVAILABLE);
+    expect(state.reason?.retryAt).toBeDefined();
+    expect(state.reason?.message).toContain('subtask a is blocked; Resume, Replay or Skip task clears it');
+    expect(state.reason?.message).toContain('could not be fetched');
   });
 
   it('says a task that waits only for a slot is waiting for a free slot', async () => {
