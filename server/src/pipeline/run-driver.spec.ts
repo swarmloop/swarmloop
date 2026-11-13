@@ -59,6 +59,38 @@ describe('run driver blocks', () => {
   });
 });
 
+describe('run driver jumps to the step that just finished', () => {
+  it('runs plan-improve again when it jumps to itself, and goes on past it', async () => {
+    let visits = 0;
+    const { state } = await drive(
+      {
+        'plan-improve': () => {
+          visits += 1;
+          return visits === 1 ? { outcome: 'ok', exitCode: 0, moveTo: 'plan-improve' } : { outcome: 'ok', exitCode: 0 };
+        },
+      },
+      { auto: true },
+    );
+    expect(visits).toBe(2);
+    expect(state).toBe('done');
+  });
+
+  it('stops for a person when a step waits on itself', async () => {
+    let visits = 0;
+    const { state } = await drive(
+      {
+        research: () => {
+          visits += 1;
+          return { outcome: 'waiting', exitCode: 0 };
+        },
+      },
+      { auto: true },
+    );
+    expect(visits).toBe(1);
+    expect(state).toBe('idle');
+  });
+});
+
 describe('run driver and the parent of a subtask', () => {
   it('Resume of a blocked subtask runs a parent pass at once, while the subtask still works', async () => {
     const { app } = await world();

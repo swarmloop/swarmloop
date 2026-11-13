@@ -15,6 +15,7 @@ import {
   autoContinues,
   countedVisits,
   continues,
+  lastVisitStatus,
   failedLaunches,
   isStep,
   loopMark,
@@ -118,9 +119,10 @@ export class RunDriver {
         stepOptions = { ...stepOptions, auto: true };
         continue;
       }
-      const next = continues(step, run);
+      const lastVisit = lastVisitStatus(stats, step);
+      const next = continues(step, run, lastVisit);
       const visits = next ? countedVisits(stats, next, mark) : 0;
-      const following = autoContinues(step, run, visits, env.MAX_RETURNS);
+      const following = autoContinues(step, run, visits, env.MAX_RETURNS, lastVisit);
       if (!following) {
         if (next && run) {
           await this.block(
@@ -144,7 +146,7 @@ export class RunDriver {
       return null;
     }
     const stats = await this.visits.listStats(existing.id);
-    const last = [...stats].reverse().find((item) => item.step === step)?.status ?? null;
+    const last = lastVisitStatus(stats, step);
     if (continuesSameStep(existing.status, existing.currentStep, step, last)) {
       return null;
     }

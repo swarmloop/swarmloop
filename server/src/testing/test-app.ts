@@ -80,7 +80,7 @@ class FakeCodeHost {
   }
 }
 
-class ScriptedStep extends BaseStep<Record<string, never>> {
+export class ScriptedStep extends BaseStep<Record<string, never>> {
   readonly inputs = {};
   readonly outputs = [];
   override readonly usesModel = false;
