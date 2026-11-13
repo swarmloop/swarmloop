@@ -137,4 +137,31 @@ describe('one blocked task holds only its dependents', () => {
     expect(during.c).toBe('merged');
     expect(during.a).toBe('running');
   });
+
+  it('Skip closes a blocked task for good: its dependents go on and no command on it is accepted', async () => {
+    const { app } = flow;
+    const runs = app.app.get(RunRepository);
+    const parent = (await runs.findRun(KEY))!;
+    await app.app
+      .get(DocumentRepository)
+      .putDocument(parent, 'subtasks', `${JSON.stringify([task('a'), task('b', ['a'])])}\n`);
+    await app.pipeline.step('implement', KEY);
+    await end(app, 'a', 'blocked');
+    await app.pipeline.step('implement', KEY);
+    await assertInvariants(app);
+    expect((await statuses(app)).b).toBe('waiting');
+
+    await app.app.get(CommandService).submit('skip', KEY, { taskId: 'a' });
+    await app.app.get(CommandService).idle();
+    await app.pipeline.whenIdle(KEY);
+    await app.pipeline.step('implement', KEY);
+    await assertInvariants(app);
+
+    expect((await statuses(app)).a).toBe('skipped');
+    expect((await statuses(app)).b).toBe('running');
+    const child = (await runs.findRun(`${KEY}-a`))!;
+    expect(deriveState(child).state).toBe('skipped');
+    await expect(app.app.get(CommandService).submit('resume', child.key, {})).rejects.toThrow('this task was skipped');
+    await expect(app.app.get(CommandService).submit('rebase', child.key, {})).rejects.toThrow('this task was skipped');
+  });
 });

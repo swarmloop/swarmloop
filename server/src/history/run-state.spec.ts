@@ -270,3 +270,10 @@ describe('deriveState of a block that a person must clear', () => {
     });
   });
 });
+
+describe('deriveState of a skipped task', () => {
+  it.each(['failed', 'blocked', 'waiting', 'running'])('is skipped whatever the status (%s)', (status) => {
+    const stateReason = JSON.stringify({ code: REASON.skipped, message: 'this task was skipped' });
+    expect(deriveState({ status, stateReason }).state).toBe('skipped');
+  });
+});

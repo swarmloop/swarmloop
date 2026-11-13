@@ -20,6 +20,7 @@ import { SettingsService } from './settings.service';
 import { StatsController } from './stats.controller';
 import { SubtaskClose } from './subtask-close';
 import { RunCommandsService } from './run-commands.service';
+import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { RunQueriesService } from './run-queries.service';
 import { RunRebaseService } from './run-rebase.service';
 
@@ -45,6 +46,7 @@ import { RunRebaseService } from './run-rebase.service';
   providers: [
     RunQueriesService,
     RunCommandsService,
+    RunSubtaskCommandsService,
     SubtaskClose,
     RunRebaseService,
     ChatService,
