@@ -3,6 +3,7 @@ import { isSubtask, type Subtask } from '../../contract/subtask';
 import type { RunEntity } from '../../history/entities';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { ArtifactValue } from '../contract/step-contract';
+import { parseKeep, type KeepLine } from '../shared/keep-lines';
 import { section } from '../shared/markdown-section';
 
 interface TaskGraph {
@@ -10,6 +11,8 @@ interface TaskGraph {
   tasks: Subtask[];
   /** One line per dependency the server added, in the form of the contract's `decisions:`. */
   decisions: string[];
+  /** The capabilities that must keep working. They are constraints on tasks, never tasks. */
+  keep: KeepLine[];
 }
 
 export interface TaskLimits {
@@ -59,7 +62,15 @@ export function parseTasks(text: string, limits: TaskLimits): TaskGraph {
   if (bare) {
     throw new SwarmloopError(`task ${bare.id} has no description`);
   }
-  return { contract, tasks, decisions: chainSharedFiles(tasks) };
+  const bareFiles = tasks.find((task) => task.files.length === 0);
+  if (bareFiles) {
+    throw new SwarmloopError(`task ${bareFiles.id} has no file to change`);
+  }
+  const keep = parseKeep(
+    section(text, 'keep'),
+    tasks.map((task) => task.id),
+  );
+  return { contract, tasks, decisions: chainSharedFiles(tasks), keep };
 }
 
 /** The l17 checklist items the server writes from the tasks: `title - files: .. - proof: ..`. */
@@ -67,10 +78,11 @@ export function planItemsFromTasks(tasks: Subtask[]): string[] {
   return tasks.map((task) => `${task.title} - files: ${task.files.join(', ')} - proof: ${task.proof}`);
 }
 
-/** The documents of a split plan: its tasks and contract. No graph clears the tasks of an earlier split. */
+/** The documents of a split plan: its tasks, kept capabilities and contract. No graph clears the tasks of an earlier split. */
 export function splitOutputs(graph: TaskGraph | null): ArtifactValue[] {
   return [
     { artifact: ARTIFACTS.subtasks, value: graph?.tasks ?? [] },
+    { artifact: ARTIFACTS.keep, value: graph?.keep ?? [] },
     ...(graph ? [{ artifact: ARTIFACTS.contract, value: withDecisions(graph.contract, graph.decisions) }] : []),
   ];
 }

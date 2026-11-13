@@ -14,7 +14,16 @@ export function answerEnding(step: string): string | null {
   return ENDINGS[step] ?? null;
 }
 
+/** A split plan that names a kept capability badly, or a task with nothing to change, is asked again by name. */
+const SPLIT_PLAN_DEFECT = /^(keep line .+|task .+ has no file to change)$/;
+
 export function parseFailureFollowUp(error: unknown, ending: string | null): string | null {
+  if (error instanceof SwarmloopError && SPLIT_PLAN_DEFECT.test(error.message) && ending) {
+    return [
+      `Your split plan has a problem: ${error.message}. Do not redo the work.`,
+      'Return the whole corrected split answer in the same format.',
+    ].join('\n');
+  }
   if (!(error instanceof SwarmloopError) || !/^[a-z_ -]+ is (missing|empty)$/.test(error.message) || !ending) {
     return null;
   }

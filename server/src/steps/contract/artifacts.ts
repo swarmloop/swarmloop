@@ -2,6 +2,7 @@ import { CODE_REVIEWERS, STEPS, type StepName } from '../../contract/steps';
 import { REBASE_CONFLICT, REBASE_JOURNAL } from '../../git/rebase';
 import type { Issue } from './step-contract';
 import { CONTRACT_KIND, SUBTASKS_KIND, type Subtask } from '../../contract/subtask';
+import type { KeepLine } from '../shared/keep-lines';
 import { requirementsView } from '../../contract/requirements-view';
 import {
   artifact,
@@ -129,6 +130,12 @@ export const ARTIFACTS = {
     readers: ['plan-improve', 'branch', 'implement', 'implement-improve'],
     codec: jsonArrayCodec<Subtask>(),
     summarize: (tasks) => listSummary(tasks.length, 'tasks', tasks[0]?.title),
+  }),
+  keep: artifact('keep', {
+    writers: ['plan', 'plan-improve'],
+    readers: ['plan-improve', 'code-review'],
+    codec: jsonArrayCodec<KeepLine>(),
+    summarize: (lines) => listSummary(lines.length, 'kept capabilities', lines[0]?.capability),
   }),
   contract: artifact(CONTRACT_KIND, {
     writers: ['plan', 'plan-improve', 'implement'],

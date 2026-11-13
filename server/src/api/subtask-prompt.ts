@@ -6,15 +6,18 @@ import { branchName, summaryForBranch } from '../steps/branch/branch-name';
 import { deriveState } from '../history/run-state';
 import { requirementsBrief } from '../steps/shared/requirements-brief';
 import { mergeSummaryOf } from '../pipeline/merge-summary';
+import { ARTIFACTS } from '../steps/contract/artifacts';
+import { keepFor, renderKeep } from '../steps/shared/keep-lines';
 import { renderTaskMap, taskMap, type TaskRuns } from '../steps/shared/task-map';
 
 /** The prompt of a subtask: its task, the parent's requirements as context, and the branch it starts from. */
-function subtaskPrompt(task: Subtask, map: string, brief: string, branch: string): string {
+function subtaskPrompt(task: Subtask, map: string, kept: string, brief: string, branch: string): string {
   return [
     `${task.title}\n\n${task.description}`,
     `files: ${task.files.join(', ')}`,
     `proof: ${task.proof}`,
     ...(map ? [map] : []),
+    ...(kept ? [kept] : []),
     `Requirements of the parent run, for context:\n${brief.trimEnd()}`,
     `branch: ${branch}`,
   ].join('\n\n');
@@ -33,6 +36,13 @@ async function dependencySummaries(
     if (summary) summaries[id] = summary;
   }
   return summaries;
+}
+
+/** The kept capabilities of the parent's split that name `task`, as a constraint on its checks, reviewers and proof. */
+function keptBlock(body: string | null, task: Subtask): string {
+  const lines = keepFor(body ? ARTIFACTS.keep.parse(body) : [], task.id);
+  if (lines.length === 0) return '';
+  return `Kept capabilities (this task's checks, reviewers and proof must keep each one green):\n${renderKeep(lines)}`;
 }
 
 /** The prompt of a subtask of a parent run: its task, the task map, the parent brief, and the feature branch it starts from. */
@@ -54,5 +64,6 @@ export async function subtaskPromptOf(
   }
   const summaries = await dependencySummaries(documents, task, children);
   const map = renderTaskMap(taskMap(tasks, task, runs, summaries));
-  return subtaskPrompt(task, map, requirementsBrief(requirements), branch);
+  const kept = keptBlock(await documents.latestBody(parent.key, ARTIFACTS.keep.kind), task);
+  return subtaskPrompt(task, map, kept, requirementsBrief(requirements), branch);
 }

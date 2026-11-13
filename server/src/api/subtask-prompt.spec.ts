@@ -115,4 +115,26 @@ describe('subtaskPromptOf', () => {
       await db.close();
     }
   });
+
+  it('puts a keep line into the prompt of the tasks it names only', async () => {
+    const { db, documents, parent } = await setup();
+    try {
+      const tasks = [task('a'), task('b')];
+      const before = await subtaskPromptOf(documents, parent, tasks[1], tasks, []);
+      await documents.putDocument(
+        parent,
+        'keep',
+        JSON.stringify([{ capability: 'login works', proof: 'login.spec.ts', tasks: ['a'] }]),
+      );
+
+      const named = await subtaskPromptOf(documents, parent, tasks[0], tasks, []);
+      const other = await subtaskPromptOf(documents, parent, tasks[1], tasks, []);
+
+      expect(named).toContain('Kept capabilities');
+      expect(named).toContain('- login works (proof: login.spec.ts)');
+      expect(other).toBe(before);
+    } finally {
+      await db.close();
+    }
+  });
 });

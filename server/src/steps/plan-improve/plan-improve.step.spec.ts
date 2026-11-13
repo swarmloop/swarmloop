@@ -231,7 +231,7 @@ describe('plan-improve step with split', () => {
   async function improveSplit(
     key: string,
     answer: string,
-    options: { split?: boolean; tasks?: boolean; stored?: typeof storedTasks } = {},
+    options: { split?: boolean; tasks?: boolean; stored?: typeof storedTasks; keep?: string } = {},
   ) {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-split-'));
     await writeEnv(root);
@@ -247,6 +247,7 @@ describe('plan-improve step with split', () => {
         const documents = app.get(DocumentRepository);
         await documents.putDocument(run, 'subtasks', `${JSON.stringify(options.stored ?? storedTasks)}\n`);
         await documents.putDocument(run, 'contract', '- the column is called `split`\n');
+        if (options.keep) await documents.putDocument(run, 'keep', options.keep);
       }
       const done = await app.get(PipelineService).step('plan-improve', key);
       const documents = app.get(DocumentRepository);
@@ -256,6 +257,7 @@ describe('plan-improve step with split', () => {
         run: await runs.findRun(key),
         subtasks: await documents.latestBody(key, 'subtasks'),
         contract: await documents.latestBody(key, 'contract'),
+        keep: await documents.latestBody(key, 'keep'),
         requirements: await documents.latestBody(key, 'requirements'),
       };
     } finally {
@@ -294,6 +296,44 @@ describe('plan-improve step with split', () => {
     expect(out.done.message).toContain('task column depends on unknown task nope');
     expect(out.run?.currentStep).toBe('plan-improve');
     expect(JSON.parse(out.subtasks ?? '[]')).toEqual(storedTasks);
+  });
+
+  describe('the keep: section', () => {
+    const keepLine = '- login works | proof: login.spec.ts | tasks: column';
+    const withKeep = (line: string): string => correctedReply.replace('tasks:\n', `keep:\n${line}\n\ntasks:\n`);
+    const prompts = (agent: jest.Mock) => agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt);
+
+    it('stores a valid section as the keep document', async () => {
+      const out = await improveSplit('PROJ-97', withKeep(keepLine));
+      expect(out.done.exitCode).toBe(0);
+      expect(JSON.parse(out.keep ?? '[]')).toEqual([
+        { capability: 'login works', proof: 'login.spec.ts', tasks: ['column'] },
+      ]);
+    });
+
+    it('shows the stored lines in the next prompt, and not when there are none', async () => {
+      const stored = JSON.stringify([{ capability: 'login works', proof: 'login.spec.ts', tasks: ['column'] }]);
+      const shown = await improveSplit('PROJ-98', correctedReply, { keep: stored });
+      expect(prompts(shown.agent)[0]).toContain('- login works (proof: login.spec.ts)');
+      const plain = await improveSplit('PROJ-99', correctedReply);
+      expect(prompts(plain.agent)[0]).not.toContain('Keep:\n');
+      expect(JSON.parse(plain.keep ?? 'null')).toEqual([]);
+    });
+
+    it('asks once in the same chat when a line names an unknown task', async () => {
+      const out = await improveSplit('PROJ-100', withKeep('- login works | proof: login.spec.ts | tasks: ghost'));
+      expect(out.done.exitCode).toBe(1);
+      expect(prompts(out.agent)).toHaveLength(2);
+      expect(prompts(out.agent)[1]).toContain('unknown task ghost');
+    });
+
+    it('clears the lines when the split turns back into one plan', async () => {
+      const stored = JSON.stringify([{ capability: 'login works', proof: 'login.spec.ts', tasks: ['column'] }]);
+      const out = await improveSplit('PROJ-101', ['plan:', '- add the field', '', 'summary:', '- one'].join('\n'), {
+        keep: stored,
+      });
+      expect(JSON.parse(out.keep ?? 'null')).toEqual([]);
+    });
   });
 
   describe('at the default task limit', () => {
