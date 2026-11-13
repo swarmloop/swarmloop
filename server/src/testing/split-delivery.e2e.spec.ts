@@ -14,6 +14,7 @@ import { renderMergeRequest } from '../steps/merge-request/merge-request-record'
 import { RunQueriesService } from '../api/run-queries.service';
 import { save } from './runs.spec-helpers';
 import { createFlowHarness } from './flow-harness';
+import { assertInvariants } from './flow-invariants';
 import type { TestApp } from './test-app';
 
 const KEY = 'PROJ-400';
@@ -105,6 +106,8 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     const flow = await app.app.get(RunQueriesService).flow(KEY);
     expect(flow.taskLine).toBe('Split: 3 tasks · 3 merged');
     expect(flow.decisions).toBe('- subtask a: store UTC');
+    const improve = flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'implement-improve');
+    expect(improve).toMatchObject({ status: 'skipped', note: 'each task checked its own work' });
 
     await app.pipeline.step('checks', KEY);
     await app.pipeline.step('code-review', KEY);
@@ -137,15 +140,19 @@ describe('a split run is reviewed and delivered as one merge request', () => {
 
     await app.pipeline.step('implement', KEY);
 
+    expect((await parentRun(app))?.currentStep).toBe('implement-improve');
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain('the field is missing');
     expect(prompts[0]).toContain('decisions:\n- subtask a: store UTC');
     expect(prompts[0]).toContain('- Task b\n  changed: Do b.');
-    for (const step of ['code-review', 'commit', 'merge-request', 'pipeline'] as const) {
+    await app.pipeline.step('implement-improve', KEY);
+    expect((await parentRun(app))?.currentStep).toBe('checks');
+    for (const step of ['checks', 'code-review', 'commit', 'merge-request', 'pipeline'] as const) {
       await app.pipeline.step(step, KEY);
     }
     const done = (await parentRun(app))!;
     expect(done.currentStep).toBe('done');
+    await assertInvariants(app);
     expect(await statuses(app)).toEqual({ a: 'merged', b: 'merged', c: 'merged' });
   });
 

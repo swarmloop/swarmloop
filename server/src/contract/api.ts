@@ -93,7 +93,10 @@ export interface FlowView {
     cpuPeak: number;
     memPeak: number;
   };
-  phases: { phase: string; steps: { name: string; status: string; current: boolean; attempts: number }[] }[];
+  phases: {
+    phase: string;
+    steps: { name: string; status: string; current: boolean; attempts: number; note?: string }[];
+  }[];
   returns: { counter: string; count: number; from: string; to: 'implement' }[];
   items: FlowItem[];
   paths: { repo: string; path: string }[];

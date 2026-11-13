@@ -93,6 +93,14 @@ export function FlowBoard({
                         preparing
                       </Box>
                     ) : null}
+                    {step.note ? (
+                      <Box
+                        component="span"
+                        sx={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'text.secondary' }}
+                      >
+                        {step.note}
+                      </Box>
+                    ) : null}
                     {step.attempts > 0 ? (
                       <Box
                         component="span"
