@@ -2,7 +2,8 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { planFromAgent } from './plan-record';
-import { parseTasks, planItemsFromTasks, splitAnswer, unbounded } from './plan-tasks';
+import { ARTIFACTS } from '../contract/artifacts';
+import { parseTasks, planItemsFromTasks, reaches, splitAnswer, splitOutputs, unbounded } from './plan-tasks';
 
 const limits = { maySplit: true, maxTasks: 12 };
 
@@ -156,5 +157,84 @@ describe('a task description', () => {
   it('fails for a task with no description', () => {
     const text = answer([...column, '- bare | Bare | depends: none | files: z.ts | proof: z.spec.ts']);
     expect(refused(text)).toBe('task bare has no description');
+  });
+});
+
+describe('shared files', () => {
+  const task = (id: string, depends: string, files: string): string[] => [
+    `- ${id} | ${id} | depends: ${depends} | files: ${files} | proof: ${id}.spec.ts`,
+    '  Does it.',
+  ];
+  const stored = (lines: string[], contract?: string): { depends: Record<string, string[]>; contract: string } => {
+    const graph = parseTasks(answer(lines, contract), limits);
+    const doc = splitOutputs(graph).find((output) => output.artifact === ARTIFACTS.contract);
+    return {
+      depends: Object.fromEntries(graph.tasks.map((item) => [item.id, item.depends])),
+      contract: String(doc?.value),
+    };
+  };
+
+  it('chains two parallel tasks naming one file, later to earlier, with one decisions line', () => {
+    const result = stored([...task('a', 'none', 'x.ts'), ...task('b', 'none', 'x.ts, y.ts')]);
+    expect(result.depends).toEqual({ a: [], b: ['a'] });
+    expect(result.contract).toBe('- the field is called `split`\n\ndecisions:\n- b depends on a: both change x.ts');
+  });
+
+  it('keeps tasks that share no file parallel and adds no decisions block', () => {
+    const result = stored([...task('a', 'none', 'x.ts'), ...task('b', 'none', 'y.ts')]);
+    expect(result.depends).toEqual({ a: [], b: [] });
+    expect(result.contract).toBe('- the field is called `split`');
+  });
+
+  it('adds nothing for tasks already joined by a direct or transitive path', () => {
+    const result = stored([...task('a', 'none', 'x.ts'), ...task('b', 'a', 'y.ts'), ...task('c', 'b', 'x.ts')]);
+    expect(result.depends).toEqual({ a: [], b: ['a'], c: ['b'] });
+    expect(result.contract).not.toContain('decisions:');
+  });
+
+  it('accepts an order that is not topological and puts the edge on the later task of the graph order', () => {
+    const result = stored([...task('c', 'b', 'x.ts'), ...task('b', 'none', 'y.ts'), ...task('a', 'none', 'x.ts')]);
+    expect(result.depends.c).toEqual(['b']);
+    expect(result.depends.b).toEqual([]);
+    expect(result.depends.a).toEqual(['c']);
+    expect(result.contract).toContain('- a depends on c: both change x.ts');
+  });
+
+  it('chains three tasks on one file with one edge and one line each, and no cycle', () => {
+    const result = stored([...task('a', 'none', 'x.ts'), ...task('b', 'none', 'x.ts'), ...task('c', 'none', 'x.ts')]);
+    expect(result.depends).toEqual({ a: [], b: ['a'], c: ['b'] });
+    expect(result.contract.match(/depends on/g)).toHaveLength(2);
+  });
+
+  it('puts the line under an existing decisions heading', () => {
+    const result = stored(
+      [...task('a', 'none', 'x.ts'), ...task('b', 'none', 'x.ts')],
+      '- a rule\n\ndecisions:\n- subtask q: chose it\n\n- later note',
+    );
+    expect(result.contract).toBe(
+      '- a rule\n\ndecisions:\n- subtask q: chose it\n- b depends on a: both change x.ts\n\n- later note',
+    );
+  });
+
+  it('gives one edge and one line for two shared files of one pair', () => {
+    const result = stored([...task('a', 'none', 'x.ts, y.ts'), ...task('b', 'none', 'x.ts, y.ts')]);
+    expect(result.depends.b).toEqual(['a']);
+    expect(result.contract.match(/depends on/g)).toHaveLength(1);
+  });
+
+  it('reaches answers a direct path, a transitive path and no path', () => {
+    const tasks = parseTasks(
+      answer([
+        ...task('a', 'none', 'x.ts'),
+        ...task('b', 'a', 'y.ts'),
+        ...task('c', 'b', 'z.ts'),
+        ...task('d', 'none', 'w.ts'),
+      ]),
+      limits,
+    ).tasks;
+    expect(reaches(tasks, 'b', 'a')).toBe(true);
+    expect(reaches(tasks, 'c', 'a')).toBe(true);
+    expect(reaches(tasks, 'a', 'c')).toBe(false);
+    expect(reaches(tasks, 'd', 'a')).toBe(false);
   });
 });

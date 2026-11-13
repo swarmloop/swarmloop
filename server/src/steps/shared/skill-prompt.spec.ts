@@ -48,6 +48,16 @@ describe('impact skill rules', () => {
     expect(skill('plan')).toContain('`files:` (the paths it changes) and `proof:`');
   });
 
+  it('plan skills say files lists every changed file and a task changing a listed file depends on it', () => {
+    for (const name of ['plan', 'plan-improve']) {
+      const text = skill(name);
+      expect(text).toContain(
+        '`files:` lists every file the task will change, including its tests and the shared test helpers and fixtures they need',
+      );
+      expect(text).toContain('a task that changes a file another task lists depends on that task');
+    }
+  });
+
   it('requirements holds the removal rule and the dead-code exception, and not the old sentence', () => {
     const text = skill('code-review/requirements');
     expect(text).toContain('A behavior the diff removes or makes unreachable is a return unless the task names it');
