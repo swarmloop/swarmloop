@@ -7,10 +7,11 @@ import { join } from 'path';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
 import { testEnv } from '../config/env.spec-helpers';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
-import type { ReadinessId, ReadinessItem } from '../contract/api';
+import type { ReadinessId, ReadinessItem } from '../contract/readiness';
 import { instantBackoff } from '../integrations/instant-backoff.spec-helpers';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { DiskGuard } from '../pipeline/disk-guard';
+import { OwnUseMeter } from '../pipeline/own-use-meter';
 import { imageName } from '../sandbox/image-resolver';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { ReadinessService } from './readiness.service';
@@ -24,6 +25,10 @@ describe('ReadinessService', () => {
   let docker: jest.Mock;
   let freePort = 0;
   let fetched: { method: string; url: string }[];
+  let clock: FakeClock;
+  let meter: OwnUseMeter;
+  let sandbox: SandboxService;
+  let config: AppConfig;
 
   /** A port nothing listens on: one that was just given back. */
   beforeAll(async () => {
@@ -49,11 +54,11 @@ describe('ReadinessService', () => {
     dirs.push(home);
     mkdirSync(join(home, 'data'));
     mkdirSync(join(home, 'worktrees'));
-    const config = new AppConfig(
+    config = new AppConfig(
       testEnv({ SWARMLOOP_ROOT: home, SWARMLOOP_API_PORT: freePort, CURSOR_API_KEY: 'key', ...env }),
     );
     docker = jest.fn(async () => '');
-    const sandbox = new SandboxService();
+    sandbox = new SandboxService();
     sandbox.useDocker(docker);
     const disk = new DiskGuard(config, {} as never, sandbox);
     disk.useFreeBytes(async () => free);
@@ -65,8 +70,9 @@ describe('ReadinessService', () => {
       }
       throw new TypeError('fetch failed');
     }) as unknown as typeof fetch;
-    const clock = new FakeClock();
-    return new ReadinessService(config, sandbox, disk, CodeHostRegistry.create(config.env, clock), clock);
+    clock = new FakeClock();
+    meter = new OwnUseMeter(config, clock);
+    return new ReadinessService(config, sandbox, disk, CodeHostRegistry.create(config.env, clock), clock, meter);
   }
 
   /** The calls that left for a code host. The port probes stay on this machine. */
@@ -75,7 +81,7 @@ describe('ReadinessService', () => {
   }
 
   async function itemOf(service: ReadinessService, id: ReadinessId): Promise<ReadinessItem> {
-    const found = (await service.report()).items.find((item) => item.id === id);
+    const found = (await service.fresh()).items.find((item) => item.id === id);
     if (!found) {
       throw new Error(`no ${id} item`);
     }
@@ -146,13 +152,97 @@ describe('ReadinessService', () => {
     expect(line).toContain('worktrees 2.0 KB, logs 1.0 KB, backups 3.0 MB, environment cache 0 B');
   });
 
-  it('walks the folders for the Disk line once, not on every report', async () => {
+  it('says the sizes are not measured yet, and that it measured 4 min ago once it did', async () => {
     const service = setup();
-    const home = dirs[0];
-    const before = (await itemOf(service, 'disk')).line;
-    writeFileSync(join(home, 'worktrees', 'late'), Buffer.alloc(4096));
+    expect((await service.report()).items.find((item) => item.id === 'disk')?.line).toContain(
+      '; sizes not measured yet',
+    );
+    await meter.measure();
+    clock.advance(4 * 60_000 + 5000);
+    jest.spyOn(meter, 'measure').mockResolvedValue();
+    expect((await service.fresh()).items.find((item) => item.id === 'disk')?.line).toMatch(
+      /environment cache 0 B, measured 4 min ago$/,
+    );
+  });
 
-    expect((await itemOf(service, 'disk')).line).toBe(before);
+  it('answers a report from the last measure without walking the folders', async () => {
+    const service = setup();
+    const measure = jest.spyOn(meter, 'measure');
+    await service.report();
+    clock.advance(10 * 60_000);
+    await service.report();
+    expect(measure).not.toHaveBeenCalled();
+  });
+
+  it('measures once for a fresh report and keeps the cached one', async () => {
+    const service = setup();
+    const measure = jest.spyOn(meter, 'measure');
+    const first = await service.report();
+    clock.advance(10 * 60_000);
+    const fresh = await service.fresh();
+    expect(measure).toHaveBeenCalledTimes(1);
+    expect(fresh.checkedAt).not.toBe(first.checkedAt);
+    expect((await service.report()).checkedAt).toBe(first.checkedAt);
+  });
+
+  it('carries the time of the report and the load of the sandbox snapshot', async () => {
+    const service = setup();
+    const load = {
+      capacityCpus: 4,
+      capacityMemoryBytes: 8 * GB,
+      usedCpus: 1,
+      usedMemoryBytes: GB,
+      running: ['a'],
+      waiting: [],
+    };
+    jest.spyOn(sandbox, 'snapshot').mockReturnValue(load);
+    expect(await service.report()).toMatchObject({ checkedAt: clock.iso(), load });
+  });
+
+  it('keeps the last report while a stale one refreshes, one refresh at a time', async () => {
+    const service = setup();
+    const first = await service.report();
+    clock.advance(30_000);
+    expect(await service.report()).toBe(first);
+    expect(docker).toHaveBeenCalled();
+
+    const release: (() => void)[] = [];
+    docker.mockReset();
+    docker.mockImplementation(() => new Promise<string>((done) => release.push(() => done(''))));
+    clock.advance(31_000);
+    const [a, b] = await Promise.all([service.report(), service.report()]);
+    expect(a).toBe(first);
+    expect(b).toBe(first);
+    const infoCalls = (): number => docker.mock.calls.filter(([args]) => (args as string[])[0] === 'info').length;
+    expect(infoCalls()).toBe(1);
+
+    const built = new Promise<void>((done) => {
+      const load = sandbox.snapshot();
+      jest.spyOn(sandbox, 'snapshot').mockImplementation(() => {
+        done();
+        return load;
+      });
+    });
+    release.splice(0).forEach((done) => done());
+    await built;
+    await new Promise((flushed) => setImmediate(flushed));
+    expect(infoCalls()).toBe(1);
+    expect((await service.report()).checkedAt).toBe(clock.iso());
+  });
+
+  it('answers within a second with no items when a check hangs', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    try {
+      const service = setup();
+      const releases: (() => void)[] = [];
+      docker.mockImplementation(() => new Promise<string>((done) => releases.push(() => done(''))));
+      const answer = service.report();
+      await jest.advanceTimersByTimeAsync(1000);
+      expect(await answer).toMatchObject({ items: [], checkedAt: null });
+      releases.forEach((release) => release());
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('fails for a directory the server cannot write and names chown', async () => {
@@ -264,6 +354,7 @@ describe('ReadinessService', () => {
       global.fetch = jest.fn(async () => {
         throw new TypeError('fetch failed');
       });
+      jest.spyOn(meter, 'measure').mockResolvedValue();
       const item = itemOf(service, 'code-host-token');
       await jest.advanceTimersByTimeAsync(5000);
       expect(await item).toMatchObject({ status: 'warn', line: 'GITHUB_TOKEN could not be checked' });

@@ -47,6 +47,8 @@ describe('DashboardShell readiness', () => {
   it('disables the header New run with the action while an item fails, and keeps the page usable', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [{ id: 'docker', status: 'fail', line: 'docker is not running', action: 'start Docker' }],
+      checkedAt: null,
+      load: null,
     });
     renderShell();
     expect(await screen.findByTitle('start Docker')).toBeInTheDocument();

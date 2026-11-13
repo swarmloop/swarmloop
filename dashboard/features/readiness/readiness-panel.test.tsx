@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ReadinessItem } from '@contract/api';
+import type { ReadinessItem } from '@contract/readiness';
 import { getReadiness } from '../../lib/endpoints';
 import { QueryWrapper } from '../../test/query-wrapper';
 import { ReadinessPanel, shortLine } from './readiness-panel';
@@ -17,6 +17,8 @@ function renderPanel(): void {
   );
 }
 
+const CHECKED_AT = '2026-01-01T00:00:00.000Z';
+
 describe('ReadinessPanel', () => {
   it('shows a tile per check and spells out what to do for one that fails', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
@@ -24,6 +26,8 @@ describe('ReadinessPanel', () => {
         { id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' },
         { id: 'disk', status: 'fail', line: '2.0 GB free', action: 'free some disk space' },
       ],
+      checkedAt: CHECKED_AT,
+      load: null,
     });
     renderPanel();
     expect(await screen.findByText(/2\.0 GB free/)).toHaveTextContent('free some disk space');
@@ -43,6 +47,8 @@ describe('ReadinessPanel', () => {
           action: 'nothing to do',
         },
       ],
+      checkedAt: CHECKED_AT,
+      load: null,
     });
     renderPanel();
     const tile = await screen.findByLabelText(/^Disk: ready/);
@@ -53,6 +59,8 @@ describe('ReadinessPanel', () => {
   it('says it is ready when every check passes', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [{ id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' }],
+      checkedAt: CHECKED_AT,
+      load: null,
     });
     renderPanel();
     expect(await screen.findByText('Ready to run')).toBeInTheDocument();
