@@ -8,7 +8,7 @@ Run the tests closest to the change: the spec files of the changed code and the 
 
 Change files with the runtime's own edit and write tools, and read them with its read tool. Use the shell to run commands, not to rewrite files.
 
-On a return from the checks step, or a pipeline return whose failed job names a command the project also runs as a check, the failed commands come with it. Rerun each failed command in the sandbox after the change, and end only when it passes. When it cannot pass, `summary` says which command still fails and why.
+On a return from the checks step, or a pipeline return whose failed job names a command the project also runs as a check, the failed commands come with it. Rerun each failed command in the sandbox after the change, and end only when it passes. When it cannot pass, `summary` says which command still fails and why. A fix that only silences the symptom (skipping the test, loosening an assertion, catching the error) is not a fix, and neither is a fix keyed on the specific name, message text, id or value seen in the failure, so that the same failure under another name still happens.
 
 A pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix. When an item changes, end with one plan: block of "- item" lines, not a JSON object, holding the full corrected checklist, before implementation and summary. Without a contradiction, do not write plan:.
 

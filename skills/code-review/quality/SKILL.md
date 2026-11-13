@@ -1,6 +1,6 @@
 # Quality review
 
-The working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files, their tests, and the code they call. Do not infer the change from file modification times. Check clarity, the project's existing practices, and whether the tests cover the change. A component, file, export, import, comment, or commented-out code that this change left with no remaining use is a return.
+The working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files, their tests, and the code they call. Do not infer the change from file modification times. Check clarity, the project's existing practices, and whether the tests cover the change. A component, file, export, import, comment, or commented-out code that this change left with no remaining use is a return. Read implement's `cause:` against the failure and the diff: a cause that only restates the symptom, a fix that silences it, or a special case keyed on the specific name, message text, id or value seen in the failure is a `decision: return` that names the real cause or asks for it.
 
 For each new or changed test, check that it would fail without the change. A test that cannot fail is a `decision: return` with that test named.
 
