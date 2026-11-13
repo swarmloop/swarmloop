@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createTheme } from '@mui/material/styles';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -78,7 +78,8 @@ describe('CheckCommands', () => {
     await user.click(screen.getByRole('button', { name: 'Show lint' }));
 
     expect(screen.getByText('npm run lint')).toBeInTheDocument();
-    expect(await screen.findByLabelText('Output of npm run lint')).toHaveTextContent('all green');
+    const output = await screen.findByLabelText('Output of npm run lint');
+    await waitFor(() => expect(output).toHaveTextContent('all green'));
     expect(screen.getByText('CPU 77%')).toBeInTheDocument();
   });
 
@@ -86,7 +87,8 @@ describe('CheckCommands', () => {
     list([row({ status: 'failed', exitCode: 3 })]);
 
     expect(screen.getByText('exit 3')).toBeInTheDocument();
-    expect(await screen.findByLabelText('Output of npm run test:unit -- --coverage')).toHaveTextContent('all green');
+    const output = await screen.findByLabelText('Output of npm run test:unit -- --coverage');
+    await waitFor(() => expect(output).toHaveTextContent('all green'));
   });
 
   it('says a finished visit has no commands, and says nothing while it runs', () => {

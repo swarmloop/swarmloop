@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentProps, type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -419,7 +419,8 @@ describe('StepDetail', () => {
       vi.mocked(getRunLog).mockResolvedValue('$ npm run lint\nerror: no-unused-vars\nexit 2\n');
       detail({ step: 'checks' });
 
-      expect(await screen.findByLabelText('Output of npm run lint')).toHaveTextContent('error: no-unused-vars');
+      const output = await screen.findByLabelText('Output of npm run lint');
+      await waitFor(() => expect(output).toHaveTextContent('error: no-unused-vars'));
       expect(getRunLog).toHaveBeenCalledWith('run-1', 'checks', 'att-1', { command: 1 });
     });
 
