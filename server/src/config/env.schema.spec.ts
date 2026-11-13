@@ -25,7 +25,6 @@ async function compileWith(values: Record<string, string | number>): Promise<App
 }
 
 const complete = {
-  RUNTIME: 'cursor',
   REQUIREMENTS_VIA: 'agent',
   ISSUE_TRACKER: 'jira',
   JIRA_BASE_URL: '',
@@ -56,8 +55,9 @@ const complete = {
   MERGE_REQUEST_TIMEOUT_MS: 600_000,
   PIPELINE_TIMEOUT_MS: 1_800_000,
   PIPELINE_START_TIMEOUT_MS: 180_000,
-  MODEL_PLAN: 'grok-4.7-high',
-  MODEL_IMPLEMENT: 'grok-4.7-high',
+  AGENTS_PLAN: 'cursor:grok-4.7-high',
+  AGENTS_IMPLEMENT: 'cursor:grok-4.7-high',
+  AGENTS_REVIEW: 'cursor:grok-4.7-high',
   SWARMLOOP_API_PORT: 3920,
   SWARMLOOP_API_HOST: '127.0.0.1',
 };
@@ -71,9 +71,16 @@ describe('env schema', () => {
   });
 
   it('names a missing variable', () => {
-    const { error } = envSchema.validate({ ...complete, RUNTIME: undefined }, { abortEarly: false, convert: true });
-    expect(error?.message).toContain('RUNTIME');
+    const { error } = envSchema.validate({ ...complete, MAX_RETURNS: undefined }, { abortEarly: false, convert: true });
+    expect(error?.message).toContain('MAX_RETURNS');
     expect(error?.message).toContain('missing');
+  });
+
+  it('a missing or empty AGENTS_PLAN is a start-up error naming it', () => {
+    for (const AGENTS_PLAN of [undefined, '']) {
+      const { error } = envSchema.validate({ ...complete, AGENTS_PLAN }, { abortEarly: false, convert: true });
+      expect(error?.message).toContain('AGENTS_PLAN is missing: set it as in .env.example');
+    }
   });
 
   it('names an unknown provider value', () => {
@@ -90,7 +97,7 @@ describe('env schema', () => {
     expect(error).toBeUndefined();
     expect(value.MAX_AGENT_CALLS).toBe(50);
     expect(value.MAX_PIPELINE_RETURNS).toBe(6);
-    expect(value.MODEL_PLAN).toBe('grok-4.7-high');
+    expect(value.AGENTS_PLAN).toBe('cursor:grok-4.7-high');
     const missing = envSchema.validate(
       { ...complete, MAX_AGENT_CALLS: undefined },
       { abortEarly: false, convert: true },
@@ -147,9 +154,8 @@ describe('env schema', () => {
   it('provides the validated env through AppConfig', async () => {
     const config = await compileWith(complete);
     expect(config.env).toMatchObject({
-      RUNTIME: 'cursor',
+      AGENTS_PLAN: 'cursor:grok-4.7-high',
       MAX_AGENT_CALLS: 50,
-      MODEL_PLAN: 'grok-4.7-high',
       SWARMLOOP_API_PORT: 3920,
     });
   });
@@ -169,7 +175,12 @@ describe('env schema', () => {
 
   it('accepts codex with both keys empty', () => {
     const { error, value } = envSchema.validate(
-      { ...complete, RUNTIME: 'codex' },
+      {
+        ...complete,
+        AGENTS_PLAN: 'codex:gpt-6.1-sol',
+        AGENTS_IMPLEMENT: 'codex:gpt-6.1-sol',
+        AGENTS_REVIEW: 'codex:gpt-6.1-sol',
+      },
       { abortEarly: false, convert: true },
     );
     expect(error).toBeUndefined();
@@ -177,12 +188,14 @@ describe('env schema', () => {
     expect(value.CODEX_API_KEY).toBe('');
   });
 
-  it('reads the agent roles and leaves them empty by default', async () => {
+  it('reads the main agent lists and leaves the subtask lists empty by default', async () => {
     const plain = await compileWith(complete);
     expect(plain.env).toMatchObject({
-      AGENTS_PLAN: '',
-      AGENTS_IMPLEMENT: '',
-      AGENTS_REVIEW: '',
+      AGENTS_PLAN: 'cursor:grok-4.7-high',
+      AGENTS_IMPLEMENT: 'cursor:grok-4.7-high',
+      AGENTS_REVIEW: 'cursor:grok-4.7-high',
+      AGENTS_SUBTASK_PLAN: '',
+      AGENTS_SUBTASK_IMPLEMENT: '',
       AGENTS_SUBTASK_REVIEW: '',
     });
     const listed = await compileWith({
@@ -200,8 +213,26 @@ describe('env schema', () => {
       await compileWith(complete);
       expect(warn).not.toHaveBeenCalled();
       const config = await compileWith({ ...complete, MODEL_RESEARCH: 'grok-4.7-high' });
-      expect(config.env.MODEL_PLAN).toBe('grok-4.7-high');
+      expect(config.env.AGENTS_PLAN).toBe('cursor:grok-4.7-high');
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('MODEL_RESEARCH is set but was never read'));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('RUNTIME=cursor and MODEL_PLAN=x change nothing and produce one warning naming both', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      const plain = await compileWith(complete);
+      expect(warn).not.toHaveBeenCalled();
+      const old = await compileWith({ ...complete, RUNTIME: 'cursor', MODEL_PLAN: 'x' });
+      expect(old.env).toEqual(plain.env);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const text = String(warn.mock.calls[0][0]);
+      expect(text).toContain(
+        'RUNTIME and MODEL_PLAN are no longer read: the agents are AGENTS_PLAN, AGENTS_IMPLEMENT and AGENTS_REVIEW',
+      );
+      expect(text).not.toContain('MODEL_IMPLEMENT');
     } finally {
       warn.mockRestore();
     }
@@ -225,7 +256,7 @@ describe('env schema', () => {
     await writeFile(path, 'REQUIREMENTS_VIA=agent\nISSUE_TRACKER=jira\n');
     await expect(
       Test.createTestingModule({ imports: [SwarmloopConfigModule.forRoot(path)] }).compile(),
-    ).rejects.toThrow(/RUNTIME/);
+    ).rejects.toThrow(/AGENTS_PLAN/);
   });
 });
 

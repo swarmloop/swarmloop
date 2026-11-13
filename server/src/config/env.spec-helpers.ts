@@ -3,7 +3,6 @@ import type { SwarmloopEnv } from './env';
 /** A complete env for specs. Overrides replace only the fields a spec cares about. */
 export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
   return {
-    RUNTIME: 'cursor',
     REQUIREMENTS_VIA: 'agent',
     ISSUE_TRACKER: 'jira',
     JIRA_BASE_URL: '',
@@ -49,11 +48,9 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     MERGE_REQUEST_TIMEOUT_MS: 600_000,
     PIPELINE_TIMEOUT_MS: 1_800_000,
     PIPELINE_START_TIMEOUT_MS: 180_000,
-    MODEL_PLAN: 'grok-4.7-high',
-    MODEL_IMPLEMENT: 'grok-4.7-high',
-    AGENTS_PLAN: '',
-    AGENTS_IMPLEMENT: '',
-    AGENTS_REVIEW: '',
+    AGENTS_PLAN: 'cursor:grok-4.7-high',
+    AGENTS_IMPLEMENT: 'cursor:grok-4.7-high',
+    AGENTS_REVIEW: 'cursor:grok-4.7-high',
     AGENTS_SUBTASK_PLAN: '',
     AGENTS_SUBTASK_IMPLEMENT: '',
     AGENTS_SUBTASK_REVIEW: '',

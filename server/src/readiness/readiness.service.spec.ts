@@ -178,11 +178,24 @@ describe('ReadinessService', () => {
   });
 
   it('fails when the runtime has no model credential, and passes with one', async () => {
-    const missing = await itemOf(setup({ RUNTIME: 'claude' }), 'model-credential');
-    expect(missing).toMatchObject({ status: 'fail', action: expect.stringContaining('ANTHROPIC_API_KEY') });
-    expect((await itemOf(setup({ RUNTIME: 'claude', CLAUDE_CODE_OAUTH_TOKEN: 't' }), 'model-credential')).status).toBe(
-      'ok',
+    const missing = await itemOf(
+      setup({ AGENTS_PLAN: 'claude:m', AGENTS_IMPLEMENT: 'claude:m', AGENTS_REVIEW: 'claude:m' }),
+      'model-credential',
     );
+    expect(missing).toMatchObject({ status: 'fail', action: expect.stringContaining('ANTHROPIC_API_KEY') });
+    expect(
+      (
+        await itemOf(
+          setup({
+            AGENTS_PLAN: 'claude:m',
+            AGENTS_IMPLEMENT: 'claude:m',
+            AGENTS_REVIEW: 'claude:m',
+            CLAUDE_CODE_OAUTH_TOKEN: 't',
+          }),
+          'model-credential',
+        )
+      ).status,
+    ).toBe('ok');
     expect((await itemOf(setup({ CURSOR_API_KEY: '' }), 'model-credential')).status).toBe('fail');
   });
 

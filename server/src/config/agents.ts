@@ -17,11 +17,8 @@ type Role = (typeof ROLES)[number];
 const TIERS = ['main', 'subtask'] as const;
 type Tier = (typeof TIERS)[number];
 
-/** The env values that name agents: the short form and the role lists. */
+/** The env values that name agents: the role lists. */
 interface AgentEnv {
-  RUNTIME: RuntimeName;
-  MODEL_PLAN: string;
-  MODEL_IMPLEMENT: string;
   AGENTS_PLAN: string;
   AGENTS_IMPLEMENT: string;
   AGENTS_REVIEW: string;
@@ -111,20 +108,16 @@ function storedAgents(run: AgentRun | null | undefined, role: Role, tier: Tier):
 
 /**
  * The agents of one role in one tier, in fallback order. The run's stored choice comes first; else an unset list
- * falls back to the main role, then to the short form.
+ * falls back to the main role, whose list is required.
  */
 function agentsOf(env: AgentEnv, role: Role, tier: Tier = 'main', run?: AgentRun | null): Agent[] {
   const stored = storedAgents(run, role, tier);
   if (stored.length > 0) {
     return stored;
   }
-  for (const candidate of tier === 'subtask' ? [tier, 'main' as const] : [tier]) {
-    const name = LISTS[candidate][role];
-    if (env[name] !== '') {
-      return parseAgentList(name, env[name]);
-    }
-  }
-  return [{ runtime: env.RUNTIME, model: role === 'implement' ? env.MODEL_IMPLEMENT : env.MODEL_PLAN }];
+  const own = LISTS[tier][role];
+  const name = env[own] === '' ? LISTS.main[role] : own;
+  return parseAgentList(name, env[name]);
 }
 
 /** The agent a step runs on, or null when the step has none. The only place that maps a step to a role and an agent. */
@@ -170,15 +163,10 @@ export function runtimesInUse(env: AgentEnv): RuntimeName[] {
   return [...new Set(all.map((agent) => agent.runtime))];
 }
 
-/** The models env names for each runtime, once each, in env order: the role lists and the two short-form models. */
+/** The models env names for each runtime, once each, in env order: the role lists. */
 export function knownModels(env: AgentEnv): Partial<Record<RuntimeName, string[]>> {
-  const named = [
-    ...TIERS.flatMap((tier) => ROLES.flatMap((role) => agentsOf(env, role, tier))),
-    { runtime: env.RUNTIME, model: env.MODEL_PLAN },
-    { runtime: env.RUNTIME, model: env.MODEL_IMPLEMENT },
-  ];
   const models: Partial<Record<RuntimeName, string[]>> = {};
-  for (const { runtime, model } of named) {
+  for (const { runtime, model } of TIERS.flatMap((tier) => ROLES.flatMap((role) => agentsOf(env, role, tier)))) {
     const list = (models[runtime] ??= []);
     if (!list.includes(model)) {
       list.push(model);

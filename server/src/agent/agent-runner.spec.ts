@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
 import { Logger } from '@nestjs/common';
+import { parseAgentList } from '../config/agents';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
 import { testEnv } from '../config/env.spec-helpers';
 import { SystemClock } from '../core/clock';
@@ -36,7 +37,7 @@ describe('AgentProcessRunner agent runtime', () => {
       'other-runtime',
       [{ chunks: [chatStream('chat-9')] }],
       { resumeChatId: null, runtime: 'claude' },
-      { RUNTIME: 'cursor', CURSOR_API_KEY: 'cursor-key', ANTHROPIC_API_KEY: 'anthropic-key' },
+      { CURSOR_API_KEY: 'cursor-key', ANTHROPIC_API_KEY: 'anthropic-key' },
     );
     const launch = spawn.mock.calls[0]?.[0] as {
       runtime: string;
@@ -150,8 +151,9 @@ function config(root: string, patch: Partial<SwarmloopEnv> = {}): AppConfig {
       ANTHROPIC_API_KEY: 'test-key',
       MAX_AGENT_CALLS: 20,
       MAX_RUN_USD: 25,
-      MODEL_PLAN: 'm',
-      MODEL_IMPLEMENT: 'm',
+      AGENTS_PLAN: 'cursor:m',
+      AGENTS_IMPLEMENT: 'cursor:m',
+      AGENTS_REVIEW: 'cursor:m',
       SWARMLOOP_ROOT: root,
       ...patch,
     }),
@@ -406,7 +408,11 @@ describe('AgentProcessRunner limit continuation', () => {
 });
 
 describe('AgentProcessRunner ended early', () => {
-  const claude = { RUNTIME: 'claude' } as const;
+  const claude = {
+    AGENTS_PLAN: 'claude:m',
+    AGENTS_IMPLEMENT: 'claude:m',
+    AGENTS_REVIEW: 'claude:m',
+  } as const;
   const answered = doneStream('implementation:\n- changed it\n');
 
   it('relaunches once in the same chat with the foreground follow-up when background work was killed', async () => {
@@ -577,8 +583,10 @@ async function start(
   });
   const runner = new AgentProcessRunner(config(root, env), new SystemClock(), sandbox(spawn), stop);
   try {
-    const { RUNTIME = 'cursor' } = env;
-    const result = await runner.run(input(root, outputFile, { runtime: RUNTIME, ...patch }));
+    const runtime = env.AGENTS_IMPLEMENT
+      ? parseAgentList('AGENTS_IMPLEMENT', env.AGENTS_IMPLEMENT)[0].runtime
+      : 'cursor';
+    const result = await runner.run(input(root, outputFile, { runtime, ...patch }));
     return { result, spawn, outputFile, root };
   } finally {
     clock?.mockRestore();

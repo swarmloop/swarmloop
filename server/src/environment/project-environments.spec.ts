@@ -36,7 +36,7 @@ function setup(
     config?: unknown;
     onCheck?: (repo: string) => void;
     imageId?: () => string;
-    /** The global runtime of the server. An agent's own runtime never comes from it. */
+    /** The runtime of the server's agent lists. An agent's own runtime never comes from it. */
     RUNTIME?: 'claude' | 'codex';
   } = {},
 ) {
@@ -138,7 +138,13 @@ function setup(
     }),
   };
   const live = { log: jest.fn() };
-  const env = testEnv({ RUNTIME: options.RUNTIME ?? 'codex', SWARMLOOP_ROOT: root });
+  const listed = `${options.RUNTIME ?? 'codex'}:m`;
+  const env = testEnv({
+    AGENTS_PLAN: listed,
+    AGENTS_IMPLEMENT: listed,
+    AGENTS_REVIEW: listed,
+    SWARMLOOP_ROOT: root,
+  });
   const service = new ProjectEnvironments({
     env: () => env,
     clock: new FakeClock(),

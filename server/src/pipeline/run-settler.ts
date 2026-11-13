@@ -228,7 +228,7 @@ export class RunSettler {
     const charge = step?.charge
       ? await step.charge(run.key, env, pricesOf, run.activeAttempt)
       : model
-        ? chargeStream(model, saved, await pricesOf(agent?.runtime ?? env.RUNTIME))
+        ? chargeStream(model, saved, await pricesOf(agent?.runtime ?? agentFor(env, run, 'implement').runtime))
         : null;
     run.spentUsd += charge?.usd ?? 0;
     writeRunState(run, { status: 'failed', ownerPid: null });

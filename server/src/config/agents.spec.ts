@@ -63,16 +63,29 @@ describe('the role of a step', () => {
 });
 
 describe('agentFor', () => {
-  it('gives today’s runtime and models when only RUNTIME and MODEL_* are set', () => {
-    const env = testEnv({ RUNTIME: 'claude', MODEL_PLAN: 'plan-m', MODEL_IMPLEMENT: 'impl-m' });
+  it('the three main lists set and the subtask lists empty: a subtask uses the main lists', () => {
+    const env = testEnv({
+      AGENTS_PLAN: 'claude:plan-m',
+      AGENTS_IMPLEMENT: 'claude:impl-m',
+      AGENTS_REVIEW: 'claude:plan-m',
+    });
+    const child = { parentRunId: 1 };
     const planned = ['research', 'plan', 'plan-improve', 'merge-request', 'code-review', 'code-review-report'];
     const built = ['implement', 'implement-improve', 'chat', 'shell', 'rebase'];
     for (const step of [...planned, ...CODE_REVIEWERS.map((name) => `code-review-${name}`)]) {
       expect(agentFor(env, null, step)).toEqual({ runtime: 'claude', model: 'plan-m' });
+      expect(agentFor(env, child, step)).toEqual({ runtime: 'claude', model: 'plan-m' });
     }
     for (const step of built) {
       expect(agentFor(env, null, step)).toEqual({ runtime: 'claude', model: 'impl-m' });
+      expect(agentFor(env, child, step)).toEqual({ runtime: 'claude', model: 'impl-m' });
     }
+  });
+
+  it('with AGENTS_IMPLEMENT=codex:gpt-6.1-sol implement and subtask implement use Codex', () => {
+    const env = testEnv({ AGENTS_IMPLEMENT: 'codex:gpt-6.1-sol' });
+    expect(agentFor(env, null, 'implement')).toEqual({ runtime: 'codex', model: 'gpt-6.1-sol' });
+    expect(agentFor(env, { parentRunId: 1 }, 'implement')).toEqual({ runtime: 'codex', model: 'gpt-6.1-sol' });
   });
 
   it('uses the first agent of a role and sends review to another runtime than implement', () => {
@@ -201,20 +214,16 @@ describe('the runtimes in use and the start-up check', () => {
 });
 
 describe('the models env knows', () => {
-  it('lists the short form models under RUNTIME', () => {
-    expect(knownModels(testEnv({ RUNTIME: 'claude', MODEL_PLAN: 'p', MODEL_IMPLEMENT: 'i' }))).toEqual({
-      claude: ['p', 'i'],
-    });
+  it('lists the models of the main lists under their runtime', () => {
+    const env = testEnv({ AGENTS_PLAN: 'claude:p', AGENTS_IMPLEMENT: 'claude:i', AGENTS_REVIEW: 'claude:p' });
+    expect(knownModels(env)).toEqual({ claude: ['p', 'i'] });
   });
 
-  it('adds the role lists in order, with no duplicates, and keeps the short form models', () => {
+  it('adds the role lists in order, with no duplicates, and gives only the list models', () => {
     const env = testEnv({
-      RUNTIME: 'cursor',
-      MODEL_PLAN: 'p',
-      MODEL_IMPLEMENT: 'i',
       AGENTS_PLAN: 'claude:a,codex:b,claude:a',
       AGENTS_SUBTASK_REVIEW: 'claude:c',
     });
-    expect(knownModels(env)).toEqual({ claude: ['a', 'c'], codex: ['b'], cursor: ['i', 'p'] });
+    expect(knownModels(env)).toEqual({ claude: ['a', 'c'], codex: ['b'], cursor: ['grok-4.7-high'] });
   });
 });

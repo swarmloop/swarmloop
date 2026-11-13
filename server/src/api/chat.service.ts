@@ -52,7 +52,7 @@ export class ChatService {
     const env = this.config.env;
     const { runtime, model } = agentFor(env, found, 'chat');
     if (!model) {
-      throw new BadRequestException('MODEL_IMPLEMENT is missing');
+      throw new BadRequestException('AGENTS_IMPLEMENT is missing');
     }
     if (!body.cwd?.trim()) {
       await this.workspace.ensureForRequest(run);

@@ -19,7 +19,7 @@ describe('RunRepository', () => {
       await runs.saveRun(run);
       expect((await runs.findRun(run.key))?.prompt).toBe('updated');
       expect((await runs.findRun(run.key))?.updatedAt).toBe(db.clock.iso());
-      db.config.env.RUNTIME = 'codex';
+      db.config.env.AGENTS_IMPLEMENT = 'codex:gpt-6.1-sol';
       const started = await runs.begin(run.key, 'research');
       expect(started.status).toBe('running');
       expect(started.runtime).toBe('codex');

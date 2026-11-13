@@ -54,16 +54,17 @@ You need Docker and one model key. No Jira, no git token, no CI.
 
    Set `CHECKOUTS_ROOT` in `.env` to a folder that holds only the repositories swarmloop works on. It is mounted into the server, so keep other projects out of it. `SWARMLOOP_REPOS` (comma-separated folder names) narrows it further.
 
-2. In `.env`, set `CURSOR_API_KEY` from the [Cursor dashboard](https://cursor.com/dashboard), **API Keys**. That key uses your Cursor plan, so there is no separate API bill. For Claude, set `RUNTIME=claude` and either `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` to use your Claude subscription, or `ANTHROPIC_API_KEY` from [Claude Console](https://platform.claude.com/settings/keys). A subscription token is for your own use on your own server, not one plan shared by a team. Leave every other secret empty.
+2. In `.env`, set the key of the runtime your `AGENTS_*` name (Claude by default): `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` to use your Claude subscription, or `ANTHROPIC_API_KEY` from [Claude Console](https://platform.claude.com/settings/keys). A subscription token is for your own use on your own server, not one plan shared by a team. Leave every other secret empty.
 
-   For Codex:
+   For Cursor: set `CURSOR_API_KEY` from the [Cursor dashboard](https://cursor.com/dashboard), **API Keys** (it uses your Cursor plan, so there is no separate API bill), and switch `AGENTS_PLAN`, `AGENTS_IMPLEMENT` and `AGENTS_REVIEW` to `cursor:<model>`.
 
-   - `RUNTIME=codex`.
+   For Codex: switch `AGENTS_PLAN`, `AGENTS_IMPLEMENT` and `AGENTS_REVIEW` to `codex:<model>`, then:
+
    - Subscription (ChatGPT Plus or Pro, no API bill): on your own machine run `codex login`. On a server without a browser run `codex login --device-auth`. Then put the file in `.env` as one line: `CODEX_AUTH=$(base64 -w0 ~/.codex/auth.json)` (macOS: `base64 -i ~/.codex/auth.json | tr -d '\n'`), pasted as the value, not as a command. The file is a password: never commit it, never share it. It is for your own use on your own server, not one plan shared by a team. Use this login only for swarmloop: a ChatGPT login can be refreshed from one place at a time, so also running `codex` with it on your laptop would log the server out. On a team server, log in once on that server.
    - API key instead: `CODEX_API_KEY` from the [OpenAI platform dashboard](https://platform.openai.com/api-keys) (API keys); it is billed per token. If both are set, `CODEX_AUTH` wins.
    - The server keeps the login in `data/codex/` (it survives restarts) and refreshes it itself every few days, so parallel reviewers and steps never fight over it. `CODEX_AUTH` in `.env` is only the starting point: it is used again only when you change its value. Nothing to do by hand, unless the log says `Codex login expired`: then run `codex login`, paste the new value into `CODEX_AUTH` and restart the server.
    - **Subscriptions and automated use.** A subscription (Claude, ChatGPT or Cursor plan) has usage windows, and swarmloop stops using a runtime for the rest of a window when its CLI reports the limit (see `LIMIT_COOLDOWN_MIN`). Whether a plan may drive a CLI unattended is the provider's rule, not swarmloop's: read [Anthropic's consumer and commercial terms](https://www.anthropic.com/legal), [OpenAI's terms of use](https://openai.com/policies/terms-of-use/) and [Cursor's terms of service](https://cursor.com/terms-of-service) before you run a subscription login unattended. The API-key settings (`ANTHROPIC_API_KEY`, `CODEX_API_KEY`) are the metered, automation-friendly path. This note was written without opening those pages, so check the current wording yourself.
-   - A quick check: start a run with `RUNTIME=codex`; the first step answers if the login works.
+   - A quick check: start a run with the three lists on `codex:<model>`; the first step answers if the login works.
 
 3. Start it. The release images are pulled, nothing is built here:
 
@@ -201,8 +202,7 @@ The `data/` folder holds secrets: the Codex login, the session files and the his
 
 ### 🔀 Cursor, Claude, or Codex
 
-- `RUNTIME=cursor`, `RUNTIME=claude`, or `RUNTIME=codex`. Change the line and restart the server: the next step uses that agent and opens a new chat with the full brief.
-- Each role can use its own agent, a `runtime:model` pair: `AGENTS_PLAN`, `AGENTS_IMPLEMENT`, and `AGENTS_REVIEW`. `MODEL_PLAN` and `MODEL_IMPLEMENT` with `RUNTIME` stay as the short form. A step whose agent runs on another runtime than its stored chat opens a new chat with the full brief.
+- Each role names its agents as `runtime:model` pairs, with `runtime` one of `cursor`, `claude` or `codex`: `AGENTS_PLAN`, `AGENTS_IMPLEMENT`, and `AGENTS_REVIEW`. Change the lists and restart the server: the next step uses that agent. A step whose agent runs on another runtime than its stored chat opens a new chat with the full brief.
 - Dollars come from the vendor's published price list, cached for a day.
 - Another agent is the same three pieces: a sandbox image under `docker/sandbox`, its API hosts and key, and the code that reads its output. The pipeline, the history, and the panel stay as they are.
 - For contributors building from a checkout, `docker/sandbox/build.sh` builds the three agent images and the `swarmloop-egress` proxy image (`compose.build.yml` builds them too). Run it again after you update swarmloop. Docker reuses its cache, so to get newer CLIs and certificates run `docker/sandbox/build.sh --fresh`, every few months is enough. Each image keeps its whole CLI under `/opt/swarmloop`, together with a CA certificate bundle (the public root list of Debian's `ca-certificates` package) and, for Codex, `rg`. swarmloop can therefore mount the CLI into another image.
@@ -376,12 +376,9 @@ When the API is on another machine, set the URL in `env`:
 
 | Variable | Values |
 | --- | --- |
-| `RUNTIME` | `cursor`, `claude`, or `codex`. The runtime of the short form. The run stores the runtime of its first `implement` agent. |
-| `MODEL_PLAN` | Short form: model of the `plan` and `review` roles on `RUNTIME`. `.env.example` uses `grok-4.7-xhigh`. |
-| `MODEL_IMPLEMENT` | Short form: model of the `implement` role on `RUNTIME`. `.env.example` uses `grok-4.7-high`. |
-| `AGENTS_PLAN` | Agents of the `plan` role (research, plan, plan improve, the merge request text), `runtime:model`, comma-separated. The first is used, the rest are the fallback order. Empty: `RUNTIME:MODEL_PLAN`. Each person can override it in Settings. |
-| `AGENTS_IMPLEMENT` | Agents of the `implement` role (implement, implement improve, rebase conflicts, chat and shell). Empty: `RUNTIME:MODEL_IMPLEMENT`. Each person can override it in Settings. |
-| `AGENTS_REVIEW` | Agents of the `review` role (every code reviewer and the review report). Empty: `RUNTIME:MODEL_PLAN`. Each person can override it in Settings. |
+| `AGENTS_PLAN` | Agents of the `plan` role (research, plan, plan improve, the merge request text), `runtime:model`, comma-separated. The first is used, the rest are the fallback order. Required; `.env.example` sets `claude:…`. Each person can override it in Settings. |
+| `AGENTS_IMPLEMENT` | Agents of the `implement` role (implement, implement improve, rebase conflicts, chat and shell). Required; `.env.example` sets `claude:…`. Each person can override it in Settings. |
+| `AGENTS_REVIEW` | Agents of the `review` role (every code reviewer and the review report). Required; `.env.example` sets `claude:…`. Each person can override it in Settings. |
 | `AGENTS_SUBTASK_PLAN`, `AGENTS_SUBTASK_IMPLEMENT`, `AGENTS_SUBTASK_REVIEW` | The same for a run with a parent. Empty: the main role. Each person can override it in Settings. |
 | `SPLIT` | `auto`: the planner may split a big task into subtasks, `off`: it never does; set per server, not per run in the dashboard. Default `auto`. |
 | `ISSUE_TRACKER` | `jira` |

@@ -57,10 +57,7 @@ describe('plan-improve step', () => {
   it('asks a runtime without a plan tool for a plan section, and names no plan tool', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-'));
     await writeEnv(root);
-    writeFileSync(
-      join(root, '.env'),
-      readFileSync(join(root, '.env'), 'utf8').replace('RUNTIME=cursor', 'RUNTIME=claude'),
-    );
+    writeFileSync(join(root, '.env'), readFileSync(join(root, '.env'), 'utf8').replaceAll('=cursor:', '=claude:'));
     mkdirSync(join(root, 'worktrees', 'PROJ-58', 'billing-api'), { recursive: true });
     const agent = jest.fn().mockResolvedValue(result(reply));
     const app = await boot(root, agent);
@@ -366,7 +363,6 @@ async function writeEnv(root: string): Promise<void> {
   await writeFile(
     join(root, '.env'),
     [
-      'RUNTIME=cursor',
       'REQUIREMENTS_VIA=direct',
       'ISSUE_TRACKER=jira',
       'JIRA_BASE_URL=',
@@ -392,8 +388,9 @@ async function writeEnv(root: string): Promise<void> {
       'MERGE_REQUEST_TIMEOUT_MS=600000',
       'PIPELINE_TIMEOUT_MS=1800000',
       'PIPELINE_START_TIMEOUT_MS=180000',
-      'MODEL_PLAN=opus-5.5-extra-high',
-      'MODEL_IMPLEMENT=grok-4.7',
+      'AGENTS_PLAN=cursor:opus-5.5-extra-high',
+      'AGENTS_IMPLEMENT=cursor:grok-4.7',
+      'AGENTS_REVIEW=cursor:opus-5.5-extra-high',
       'SWARMLOOP_API_PORT=3920',
       'SWARMLOOP_API_HOST=127.0.0.1',
       `SWARMLOOP_ROOT=${root}`,

@@ -90,7 +90,7 @@ describe('AgentLauncher relaunch', () => {
       kill: jest.fn().mockResolvedValue(undefined),
     } as unknown as SandboxService;
     const config = new AppConfig(
-      testEnv({ CURSOR_API_KEY: 'k', ANTHROPIC_API_KEY: 'k', MODEL_IMPLEMENT: 'm', SWARMLOOP_ROOT: root }),
+      testEnv({ CURSOR_API_KEY: 'k', ANTHROPIC_API_KEY: 'k', AGENTS_IMPLEMENT: 'cursor:m', SWARMLOOP_ROOT: root }),
     );
     const runner = new AgentProcessRunner(config, clock, sandbox, new RunStop());
     const visits = { tokenTotal: () => Promise.resolve(0) } as unknown as VisitRepository;
@@ -199,7 +199,7 @@ describe('AgentLauncher loop', () => {
       kill: jest.fn().mockResolvedValue(undefined),
     } as unknown as SandboxService;
     const config = new AppConfig(
-      testEnv({ CURSOR_API_KEY: 'k', MODEL_IMPLEMENT: 'm', SWARMLOOP_ROOT: root, LOOP_REPEAT: 2 }),
+      testEnv({ CURSOR_API_KEY: 'k', AGENTS_IMPLEMENT: 'cursor:m', SWARMLOOP_ROOT: root, LOOP_REPEAT: 2 }),
     );
     const runner = new AgentProcessRunner(config, clock, sandbox, new RunStop());
     const visits = { tokenTotal: () => Promise.resolve(0) } as unknown as VisitRepository;
