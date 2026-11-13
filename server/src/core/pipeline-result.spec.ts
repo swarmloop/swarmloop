@@ -5,6 +5,7 @@ import {
   countedVisits,
   failedAttemptLaunches,
   failedLaunches,
+  lastVisitStatus,
   loopMark,
   nextStep,
   normalizePhases,
@@ -77,6 +78,25 @@ describe('continues', () => {
     expect(nextStep('pipeline')).toBe('done');
     expect(nextStep('pipeline', ['planning', 'ci'])).toBe('done');
     expect(continues('merge-request', null)).toBeNull();
+  });
+
+  it('runs a step again when it jumped to itself, and stops when it only paused', () => {
+    const run = { status: 'waiting', currentStep: 'plan-improve' };
+    expect(continues('plan-improve', run, 'done')).toBe('plan-improve');
+    expect(continues('plan-improve', run, 'waiting')).toBeNull();
+    expect(continues('plan-improve', run)).toBeNull();
+    expect(continues('plan-improve', { status: 'done', currentStep: 'done' }, 'done')).toBeNull();
+  });
+
+  it('reads the newest visit of a step', () => {
+    const stats = [
+      { step: 'plan', status: 'done' },
+      { step: 'plan-improve', status: 'waiting' },
+      { step: 'plan-improve', status: 'done' },
+      { step: 'branch', status: 'failed' },
+    ];
+    expect(lastVisitStatus(stats, 'plan-improve')).toBe('done');
+    expect(lastVisitStatus(stats, 'implement')).toBeNull();
   });
 
   it('lets the third looping visit run and does not auto-start a fourth', () => {

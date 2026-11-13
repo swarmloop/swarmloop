@@ -1,4 +1,4 @@
-import type { OnModuleInit } from '@nestjs/common';
+import type { OnApplicationBootstrap } from '@nestjs/common';
 import { Logger } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import type { AppConfig } from '../config/env';
@@ -27,7 +27,7 @@ import type { RunInstructions } from './run-instructions';
 import type { StepName } from '../contract/steps';
 import { STEPS } from '../contract/steps';
 
-export class RunLifecycle implements OnModuleInit {
+export class RunLifecycle implements OnApplicationBootstrap {
   private readonly logger = new Logger('PipelineService');
   private readonly inflight = new Set<string>();
   private readonly idleWaiters = new Map<string, Set<() => void>>();
@@ -46,7 +46,7 @@ export class RunLifecycle implements OnModuleInit {
     private readonly reconciler: Reconciler,
   ) {}
 
-  async onModuleInit(): Promise<void> {
+  async onApplicationBootstrap(): Promise<void> {
     await this.reconciler.start((key) => this.inflight.has(key));
   }
 

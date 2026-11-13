@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { RunStop } from '../agent/run-stop';
 import type { RunEntity } from '../history/entities';
@@ -23,7 +23,7 @@ import { RunLifecycle } from './run-lifecycle';
 import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 
 @Injectable()
-export class PipelineService implements OnModuleInit {
+export class PipelineService implements OnApplicationBootstrap {
   private readonly instructions: RunInstructions;
   private readonly driver: RunDriver;
   private readonly lifecycle: RunLifecycle;
@@ -75,8 +75,8 @@ export class PipelineService implements OnModuleInit {
     );
   }
 
-  onModuleInit(): Promise<void> {
-    return this.lifecycle.onModuleInit();
+  onApplicationBootstrap(): Promise<void> {
+    return this.lifecycle.onApplicationBootstrap();
   }
 
   async run(key: string, options: StepOptions = {}): Promise<PipelineResult> {

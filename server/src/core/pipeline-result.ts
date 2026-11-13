@@ -42,9 +42,24 @@ export function normalizePhases(input?: readonly string[]): PhaseName[] {
   return PHASES.filter((phase) => wanted.has(phase));
 }
 
-/** The next step to run, or null when this pause needs a person. */
-export function continues(finished: StepName, run: { status: string; currentStep: string } | null): StepName | null {
-  if (!run || run.status !== 'waiting' || run.currentStep === finished) {
+/** Status of the newest stored visit of a step, or null when it has none. */
+export function lastVisitStatus(stats: { step: string; status: string }[], step: string): string | null {
+  return [...stats].reverse().find((item) => item.step === step)?.status ?? null;
+}
+
+/**
+ * The next step to run, or null when this pause needs a person. A run waiting on the step that just finished
+ * continues only when that step's last visit is `done`: the step jumped to itself, a wait or return is `waiting`.
+ */
+export function continues(
+  finished: StepName,
+  run: { status: string; currentStep: string } | null,
+  lastVisit?: string | null,
+): StepName | null {
+  if (!run || run.status !== 'waiting') {
+    return null;
+  }
+  if (run.currentStep === finished && lastVisit !== 'done') {
     return null;
   }
   if (!isStep(run.currentStep) || run.currentStep === 'done') {
@@ -65,8 +80,9 @@ export function autoContinues(
   run: { status: string; currentStep: string } | null,
   nextVisits: number,
   maxReturns: number,
+  lastVisit?: string | null,
 ): StepName | null {
-  const next = continues(finished, run);
+  const next = continues(finished, run, lastVisit);
   if (!next || (isLoopStep(next) && nextVisits >= maxReturns)) {
     return null;
   }
