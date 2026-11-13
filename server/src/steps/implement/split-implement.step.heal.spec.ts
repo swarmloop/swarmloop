@@ -1,5 +1,11 @@
 import 'reflect-metadata';
 import { ERROR_CODES } from '../../contract/error-codes';
+import { parseSubtasks } from '../../contract/subtask';
+import { DocumentRepository } from '../../history/document.repository';
+import { CommandService } from '../../pipeline/command.service';
+import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import type { CodeHost } from '../../integrations/code-host/code-host';
+import { renderMergeRequest } from '../merge-request/merge-request-record';
 import { RunRepository } from '../../history/run.repository';
 import { REASON } from '../../contract/run-state';
 import { writeRunState } from '../../history/run-state';
@@ -7,7 +13,9 @@ import type { TestApp } from '../../testing/test-app';
 import {
   child,
   finish,
+  KEY,
   parentState,
+  requirements,
   pass,
   seedParent,
   setStatus,
@@ -99,4 +107,52 @@ describe('split implement, subtasks that heal or block', () => {
       expect(parent.reason?.message).toContain('subtask a');
     },
   );
+
+  it('e03b rebase: a failed task that a merge put in conflict is rebased with the note, and a stopped one is left', async () => {
+    app = (await world()).app;
+    const parent = await seedParent(app, [task('a'), { ...task('b'), files: ['src/a.ts'] }, task('c')]);
+    parent.codeHost = 'github';
+    await app.app.get(RunRepository).saveRun(parent);
+    const documents = app.app.get(DocumentRepository);
+    await documents.putDocument(parent, 'repos', 'demo\n');
+    await pass(app);
+    for (const [id, iid, status] of [
+      ['a', 1, 'done'],
+      ['b', 2, 'failed'],
+      ['c', 3, 'blocked'],
+    ] as const) {
+      const run = await child(app, id);
+      const record = { project: 'demo', iid, url: `https://code.example/demo/${iid}`, draft: false, summary: '' };
+      await documents.putDocument(run, 'requirements', requirements);
+      await documents.putDocument(run, 'repos', 'demo\n');
+      await documents.putDocument(run, 'merge_request', renderMergeRequest([record]));
+      const stopped = id === 'c' ? { reason: { code: REASON.stopped, message: 'stopped' } } : {};
+      writeRunState(run, { status, currentStep: 'implement', ...stopped });
+      await app.app.get(RunRepository).saveRun(run);
+    }
+    const host = {
+      readMergeRequest: (_project: string, iid: number) =>
+        Promise.resolve({ state: 'open', sha: null, conflicts: iid !== 1, httpCalls: [] }),
+      mergeMergeRequest: () => Promise.resolve({ sha: 'abc', httpCalls: [] }),
+      deleteBranch: () => Promise.resolve({ httpCalls: [] }),
+    };
+    jest.spyOn(app.app.get(CodeHostRegistry), 'byName').mockReturnValue(host as unknown as CodeHost);
+    const commands = app.app.get(CommandService);
+    const accept = commands.accept.bind(commands);
+    const rebased: string[] = [];
+    jest.spyOn(commands, 'accept').mockImplementation((type, key, payload, options) => {
+      if (type !== 'rebase') return accept(type, key, payload, options);
+      rebased.push(key);
+      return Promise.resolve({}) as ReturnType<typeof accept>;
+    });
+
+    await pass(app);
+
+    expect(await statuses(app)).toMatchObject({ a: 'merged', b: 'running' });
+    expect(rebased).toEqual([`${KEY}-b`]);
+    const listed = parseSubtasks(await documents.latestBody(KEY, 'subtasks'));
+    expect(listed.find((item) => item.id === 'b')?.note).toBe(
+      'rebased onto the epic after a merged (conflict in src/a.ts)',
+    );
+  });
 });

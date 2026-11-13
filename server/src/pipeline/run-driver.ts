@@ -87,6 +87,7 @@ export class RunDriver {
       if (this.runStop.halted(key)) {
         return { exitCode: ran ? 0 : 1, message: `${key} stopped` };
       }
+      step = ((await this.subtasks?.applyPendingRebase(key)) as StepName | null) ?? step;
       const blocked = await this.stopBefore(key, step);
       if (blocked) {
         return { exitCode: ran ? 0 : 1, message: blocked };

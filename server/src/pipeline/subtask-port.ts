@@ -1,5 +1,4 @@
 import { RebasedPublisher } from '../steps/shared/rebased-publisher';
-import { existsSync } from 'fs';
 import { join } from 'path';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { agentFor } from '../config/agents';
@@ -8,10 +7,7 @@ import { resumableChat } from '../agent/agent-session';
 import { visitStatus } from '../core/pipeline-result';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
-import { fetchBranch } from '../git/rebase';
-import { originRef } from '../git/base-ref';
-import { git } from '../git/git';
-import { mountsForStep, repoNames, worktreePath } from '../git/repo-names';
+import { mountsForStep, repoNames } from '../git/repo-names';
 import { root } from '../history/run-paths';
 import { parseMergeRequests } from '../steps/merge-request/merge-request-record';
 import { branchName, summaryForBranch } from '../steps/branch/branch-name';
@@ -21,7 +17,7 @@ import { RunRepository } from '../history/run.repository';
 import { deriveState, writeRunState } from '../history/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
 import { isSubtask, parseSubtasks, settled, SUBTASKS_KIND, type Subtask } from '../contract/subtask';
-import { SubtaskOps, type SubtaskMergeRequest } from '../steps/shared/subtask-ops';
+import { SubtaskOps, type RebaseEvent, type SubtaskMergeRequest } from '../steps/shared/subtask-ops';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
 import type { AgentRunResult } from '../agent/agent-runner';
@@ -37,7 +33,9 @@ import { StepStopped } from '../steps/shared/step-stopped';
 import { DECIDE_YOURSELF, subtaskAsks } from '../steps/plan/plan.prompts';
 import type { OpenedStep } from '../steps/step-run';
 import { DELIVERED_PREFIX } from '../steps/commit/commit-result';
+import { RunRebase } from '../steps/run-rebase';
 import { CommandService } from './command.service';
+import { SubtaskWorktrees } from './subtask-worktrees';
 
 /** What the api layer does for the subtasks of a parent. It registers itself at init, so `pipeline` never imports `api`. */
 interface SubtaskStarter {
@@ -54,6 +52,7 @@ export class SubtaskPort extends SubtaskOps {
   /** The planner's reply per subtask run whose delivery was refused, so a retry sends it again and does not ask again. */
   private readonly undelivered = new Map<string, string | null>();
   private starter: SubtaskStarter | null = null;
+  private readonly worktrees: SubtaskWorktrees;
 
   constructor(
     private readonly runs: RunRepository,
@@ -63,9 +62,11 @@ export class SubtaskPort extends SubtaskOps {
     private readonly visits: VisitRepository,
     private readonly config: AppConfig,
     private readonly clock: Clock,
-    @Optional() private readonly publisher?: RebasedPublisher,
+    @Optional() publisher?: RebasedPublisher,
+    @Optional() private readonly rebaser?: RunRebase,
   ) {
     super();
+    this.worktrees = new SubtaskWorktrees(config, clock, publisher);
   }
 
   register(starter: SubtaskStarter): void {
@@ -197,19 +198,19 @@ export class SubtaskPort extends SubtaskOps {
   }
 
   override async catchUp(parent: RunEntity, run: RunEntity): Promise<void> {
-    const branch = await this.branchOf(parent);
-    const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
-    const hosts = (await this.publisher?.hostsFor(run)) ?? { ...this.config.env, clock: this.clock };
-    for (const repo of names) {
-      const path = worktreePath(root(this.config), run.key, repo);
-      if (!existsSync(path) || !(await fetchBranch(path, repo, branch, hosts))) continue;
-      try {
-        await git(['-C', path, 'rebase', '--autostash', originRef(branch)]);
-      } catch (error) {
-        await git(['-C', path, 'rebase', '--abort']).catch(() => undefined);
-        this.logger.warn(`${run.key} was not caught up: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
+    await this.worktrees.catchUp(run, await this.reposOf(run), await this.branchOf(parent));
+  }
+
+  override async behindTip(parent: RunEntity, run: RunEntity): Promise<string | null> {
+    return this.worktrees.behindTip(run, await this.reposOf(run), await this.branchOf(parent));
+  }
+
+  override async conflictFiles(parent: RunEntity, run: RunEntity): Promise<string[]> {
+    return this.worktrees.conflictFiles(run, await this.reposOf(run), await this.branchOf(parent));
+  }
+
+  private async reposOf(run: RunEntity): Promise<string[]> {
+    return repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
   }
 
   override async rerun(run: RunEntity, lines: string[]): Promise<void> {
@@ -271,29 +272,88 @@ export class SubtaskPort extends SubtaskOps {
   }
 
   override async fastForward(parent: RunEntity): Promise<void> {
-    const branch = await this.branchOf(parent);
-    const names = repoNames((await this.documents.latestBody(parent.key, ARTIFACTS.repos.kind)) ?? '');
-    const hosts = (await this.publisher?.hostsFor(parent)) ?? { ...this.config.env, clock: this.clock };
-    for (const repo of names) {
-      const path = worktreePath(root(this.config), parent.key, repo);
-      if (existsSync(path) && (await fetchBranch(path, repo, branch, hosts))) {
-        await git(['-C', path, 'merge', '--ff-only', originRef(branch)]);
-      }
-    }
+    await this.worktrees.fastForward(parent, await this.reposOf(parent), await this.branchOf(parent));
   }
 
-  override async rebase(run: RunEntity): Promise<void> {
-    if (!['failed', 'done', 'waiting'].includes(run.status) || (await this.mergeRequests(run)).length === 0) return;
+  override async rebase(run: RunEntity, event?: RebaseEvent): Promise<boolean> {
+    if (!(await this.canTakeRebase(run, !!event))) return false;
+    if (deriveState(run).state === 'running') {
+      if (event) await this.queueRebase(run, event.note);
+      return !!event;
+    }
     try {
+      await this.sendRebase(run, event);
+    } catch (error) {
+      this.logger.warn(`${run.key} was not rebased: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+    if (event) await this.noteRebase(run, event.note);
+    return true;
+  }
+
+  /**
+   * Sends the Rebase. The key names the event; when the command of that key died, the next try is a new event named
+   * after the command that died, so a rebase that failed once is sent again and never the same one twice.
+   */
+  private async sendRebase(run: RunEntity, event?: RebaseEvent): Promise<void> {
+    if (!event) {
       await this.commands.accept(
         'rebase',
         run.key,
-        {},
+        { byParent: true },
         { idempotencyKey: `subtask-rebase-${run.revision}-${run.generation}` },
       );
-    } catch (error) {
-      this.logger.warn(`${run.key} was not rebased: ${error instanceof Error ? error.message : String(error)}`);
+      return;
     }
+    let idempotencyKey = `subtask-rebase-${run.key}-${event.tip}`;
+    for (;;) {
+      const sent = await this.commands.accept('rebase', run.key, { byParent: true }, { idempotencyKey });
+      if (!sent.replayed || sent.command.state !== 'failed') return;
+      idempotencyKey = `${idempotencyKey}-after-${sent.command.id}`;
+    }
+  }
+
+  /** A run that waits for a person or a sibling is never resumed by a rebase, and a stopped one is a person's. */
+  private async canTakeRebase(run: RunEntity, byEvent: boolean): Promise<boolean> {
+    const { state, reason } = deriveState(run);
+    const states = byEvent
+      ? ['failed', 'done', 'waiting', 'idle', 'blocked', 'running']
+      : ['failed', 'done', 'waiting', 'idle'];
+    if (!states.includes(state)) return false;
+    if (state === 'waiting' && (reason?.code === ERROR_CODES.SUBTASK_WAITING || (await this.asking(run)))) return false;
+    return (await this.mergeRequests(run)).length > 0;
+  }
+
+  private async queueRebase(run: RunEntity, note: string): Promise<void> {
+    if ((await this.documents.latestBody(run.key, ARTIFACTS.pendingRebase.kind)) !== note) {
+      await this.documents.putDocument(run, ARTIFACTS.pendingRebase.kind, note);
+    }
+  }
+
+  private async noteRebase(run: RunEntity, note: string): Promise<void> {
+    const handoff = await this.documents.latestBody(run.key, ARTIFACTS.handoff.kind);
+    await this.documents.putDocument(run, ARTIFACTS.handoff.kind, mergeHandoff(handoff, 'rebase', note));
+  }
+
+  /**
+   * Takes the rebase a working subtask run was sent, now that its step has ended. Returns the step the run goes on
+   * at, or null when nothing was waiting or the rebase was refused.
+   */
+  async applyPendingRebase(key: string): Promise<string | null> {
+    const run = await this.runs.findRun(key);
+    const note =
+      run && isSubtask(run) ? (await this.documents.latestBody(key, ARTIFACTS.pendingRebase.kind))?.trim() : '';
+    if (!run || !note) return null;
+    await this.documents.putDocument(run, ARTIFACTS.pendingRebase.kind, '');
+    try {
+      await this.rebaser?.rebase(key, false, true);
+    } catch (error) {
+      this.logger.warn(`${key} was not rebased: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+    const moved = await this.runs.findRun(key);
+    if (moved) await this.noteRebase(moved, note);
+    return moved?.currentStep ?? null;
   }
 
   /** Sends a Rebase to every subtask of the parent that is not merged or skipped. */

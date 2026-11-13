@@ -171,6 +171,7 @@ export const ARTIFACTS = {
     readers: ['merge-request'],
     summarize: firstLine,
   }),
+  pendingRebase: artifact('pending_rebase', { writers: [], readers: [], external: true, summarize: firstLine }),
   commit: artifact('commit', { writers: ['commit'], readers: ['commit'], summarize: firstLine }),
   mergeRequest: artifact('merge_request', {
     writers: ['merge-request', 'pipeline'],

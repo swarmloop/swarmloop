@@ -16,6 +16,7 @@ import { sampleSelf } from '../../history/visit';
 import { withDecision } from '../shared/handoff';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { SplitMerge } from './split-merge';
+import { REBASED_PREFIX } from './split-rebase';
 import { SplitNeeds } from './split-needs';
 import { earliestRetry } from './subtask-retry';
 import { BaseStep, StepContext } from '../base-step';
@@ -182,7 +183,8 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     const delivered = child.status === 'done' ? await this.subtasks.deliveredNote(child) : null;
     if (delivered) return { ...task, status: 'skipped', note: delivered };
     const status = this.statusOf(task, child, state);
-    const note = status === 'green' && (await this.subtasks.withoutCi(child)) ? NO_CI_NOTE : undefined;
+    const rebased = status !== 'green' && task.note?.startsWith(REBASED_PREFIX) ? task.note : undefined;
+    const note = status === 'green' && (await this.subtasks.withoutCi(child)) ? NO_CI_NOTE : rebased;
     return { ...task, status, note };
   }
 
