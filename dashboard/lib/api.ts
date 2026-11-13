@@ -8,10 +8,15 @@ function apiUrl(path: string): string {
   return `/swarmloop-api${suffix}`;
 }
 
+/** What the dashboard's proxy answers with 503 when the API does not answer in time. */
+const PROXY_BUSY_MESSAGE = 'the server is busy';
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** The dashboard's proxy found the API too busy to answer: worth retrying. */
+    readonly busy = false,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -38,7 +43,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   signedOut(response);
   if (!response.ok) {
-    throw new ApiError(response.status, await errorMessage(response));
+    const message = await errorMessage(response);
+    if (response.status === 503 && message === PROXY_BUSY_MESSAGE) {
+      throw new ApiError(503, 'The server is busy, retrying', true);
+    }
+    throw new ApiError(response.status, message);
   }
   return response.json() as Promise<T>;
 }

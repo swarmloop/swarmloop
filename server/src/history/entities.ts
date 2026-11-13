@@ -458,6 +458,7 @@ export class StepEventEntity {
 /** One command of a checks visit. The row exists from the start of the visit, so the window can show it waiting. */
 @Entity('check_commands')
 @Index('IDX_check_commands_run_id', ['runId'])
+@Index('IDX_check_commands_attempt_id', ['attemptId'])
 export class CheckCommandEntity {
   @PrimaryGeneratedColumn()
   id!: number;

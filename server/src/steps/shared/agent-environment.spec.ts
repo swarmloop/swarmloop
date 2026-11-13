@@ -1,7 +1,7 @@
 import type { PreparedEnvironment } from '../../environment/environment-types';
 import type { ProjectEnvironments } from '../../environment/project-environments';
 import type { RunEntity } from '../../history/entities';
-import { packageRegistries } from '../../sandbox/sandbox-launch';
+import { packageRegistries } from '../../sandbox/sandbox-hosts';
 import { skillPrompt, LOCAL_RUN_RULE } from './skill-prompt';
 import { implementFollowUp, implementImproveFollowUp } from '../implement/implement.prompts';
 import { agentWorkplace } from './agent-environment';

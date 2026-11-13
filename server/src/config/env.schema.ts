@@ -35,6 +35,8 @@ export const envSchema = Joi.object({
   MAX_PIPELINE_RETURNS: Joi.number().integer().min(1).default(6),
   MAX_LAUNCHES: Joi.number().integer().min(1).required(),
   CHECKS_PARALLEL: Joi.number().integer().min(1).default(3),
+  RESERVE_CPUS: Joi.number().min(0).default(1),
+  RESERVE_MEMORY_GB: Joi.number().min(0).default(2),
   LIMIT_COOLDOWN_MIN: Joi.number().integer().min(1).default(60),
   STOP_GRACE_S: Joi.number().integer().min(1).default(10),
   RECONCILE_MS: Joi.number().integer().min(1).default(60_000),

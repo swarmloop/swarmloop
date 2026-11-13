@@ -9,6 +9,7 @@ import { parseAgentList } from '../config/agents';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
 import { testEnv } from '../config/env.spec-helpers';
 import { SystemClock } from '../core/clock';
+import type { LiveHub } from '../live/live.hub';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import type { AgentRunInput } from './agent-runner';
 import { AGENT_CONTINUE, AgentProcessRunner, readSession } from './agent-runner';
@@ -91,6 +92,52 @@ describe('AgentProcessRunner resume output', () => {
     expect(result.output).toContain('second-stream');
     expect(result.output).not.toContain('previous-visit-transcript');
     expect(await readFile(outputFile, 'utf8')).toMatch(/^previous-visit-transcript\n/);
+  });
+});
+
+describe('AgentProcessRunner wait line', () => {
+  it('tells a queued agent waits for machine resources instead of waiting for output', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-agent-wait-'));
+    const outputFile = join(root, 'data', 'run1-implement-output.txt');
+    mkdirSync(join(root, 'data'), { recursive: true });
+    writePriceCache(root);
+    const wait = 'waiting for machine resources: 2 checks run';
+    const spawn = jest.fn((launch: { onWait?: (line: string) => void }) => {
+      launch.onWait?.(wait);
+      return Promise.resolve(fakeChild(['agent-output\n'], 0));
+    });
+    const live = { log: jest.fn(), dropSpend: jest.fn(), changed: jest.fn() };
+    const runner = new AgentProcessRunner(
+      config(root),
+      new SystemClock(),
+      sandbox(spawn),
+      new RunStop(),
+      live as unknown as LiveHub,
+    );
+    await runner.run(input(root, outputFile, { resumeChatId: null }));
+    const bodies = live.log.mock.calls.map(([entry]: [{ body: string }]) => entry.body);
+    const waiting = bodies.indexOf(`${wait}\n`);
+    expect(waiting).toBeGreaterThan(bodies.indexOf('waiting for output\n'));
+    expect(bodies.slice(waiting + 1).join('')).toContain('agent-output');
+  });
+
+  it('writes no wait line when the agent starts at once', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-agent-nowait-'));
+    const outputFile = join(root, 'data', 'run1-implement-output.txt');
+    mkdirSync(join(root, 'data'), { recursive: true });
+    writePriceCache(root);
+    const spawn = jest.fn(() => Promise.resolve(fakeChild(['agent-output\n'], 0)));
+    const live = { log: jest.fn(), dropSpend: jest.fn(), changed: jest.fn() };
+    const runner = new AgentProcessRunner(
+      config(root),
+      new SystemClock(),
+      sandbox(spawn),
+      new RunStop(),
+      live as unknown as LiveHub,
+    );
+    await runner.run(input(root, outputFile, { resumeChatId: null }));
+    const bodies = live.log.mock.calls.map(([entry]: [{ body: string }]) => entry.body);
+    expect(bodies.some((body) => body.startsWith('waiting for machine resources'))).toBe(false);
   });
 });
 

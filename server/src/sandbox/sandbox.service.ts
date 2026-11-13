@@ -2,11 +2,13 @@ import { spawn, ChildProcess, execFile } from 'child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
-import { Injectable, Logger } from '@nestjs/common';
-import { splitList } from '../config/env';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { AppConfig, splitList } from '../config/env';
 import { rawEnv } from '../config/process-env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { SystemClock } from '../core/clock';
+import type { HeavyWork, Footprint, FootprintSource } from '../core/heavy-work';
+import type { MachineLoad } from '../contract/readiness';
 import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { barrier } from '../core/barrier';
 import { ERROR_CODES } from '../contract/error-codes';
@@ -14,20 +16,21 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import type { SandboxMount } from '../core/sandbox-mount';
 import {
   BindMount,
-  containerName,
   emptyEnvFile,
   EnvMask,
   agentImage,
-  isLocalHost,
   prepareStateDir,
   SandboxLaunch,
   resolveDaemonPath,
   sandboxArgs,
-  sandboxNetworkName,
   sandboxUserId,
-  hostName,
-  stepContainers,
 } from '../sandbox/sandbox-launch';
+import { hostName, isLocalHost, sandboxNetworkName } from './sandbox-hosts';
+import { attemptRunning, killAttempt, stopRun } from './run-containers';
+import type { DockerRunner } from './run-containers';
+import { footprintOf, memoryCap } from './footprint';
+import { heavyWorkOf } from './heavy-work-of';
+import { MachineBudget } from './machine-budget';
 import { workRootsAt } from './allowed-path';
 import { Egress, egressMode } from './egress';
 import { imageMissing } from './image-resolver';
@@ -36,10 +39,12 @@ import { projectGitMount } from './project-git';
 import { collectEnvMasks } from './env-masks';
 import { parseDockerStats } from './docker-stats';
 
-export type DockerRunner = (args: string[], timeoutMs?: number) => Promise<string>;
+export type { DockerRunner };
 
 export interface SandboxChild extends ChildProcess {
   containerName: string;
+  /** The memory cap the container started with. Unset for a container that did not go through `spawn`. */
+  memoryCapBytes?: number;
 }
 
 @Injectable()
@@ -48,10 +53,43 @@ export class SandboxService {
   private readonly maskFile = join(tmpdir(), 'swarmloop-empty-env');
   private binds: BindMount[] | null = null;
   private egressProxy: Egress | null = null;
+  private footprints: FootprintSource | null = null;
+  private budget: MachineBudget;
+
+  constructor(@Optional() private readonly config?: AppConfig) {
+    this.budget = this.newBudget();
+  }
 
   useDocker(docker: DockerRunner): void {
     this.docker = docker;
     this.egressProxy = null;
+    this.budget = this.newBudget();
+  }
+
+  /** Where the footprints of heavy work are learned from. Without one the seeds stand in. */
+  useFootprints(source: FootprintSource): void {
+    this.footprints = source;
+  }
+
+  /** What heavy work runs and waits now, against what the machine budget allows. */
+  snapshot(): MachineLoad {
+    return this.budget.snapshot();
+  }
+
+  private newBudget(): MachineBudget {
+    const env = this.config?.env;
+    return new MachineBudget((args, timeoutMs) => this.docker(args, timeoutMs), {
+      cpus: env?.RESERVE_CPUS ?? 1,
+      memoryBytes: (env?.RESERVE_MEMORY_GB ?? 2) * 1024 ** 3,
+    });
+  }
+
+  private async footprintFor(work: HeavyWork): Promise<Footprint> {
+    try {
+      return footprintOf(work.kind, (await this.footprints?.peaks(work.kind, work.name)) ?? []);
+    } catch {
+      return footprintOf(work.kind, []);
+    }
   }
 
   /** The egress proxy all sandboxes go out through. SANDBOX_EGRESS=open turns it off. */
@@ -96,13 +134,19 @@ export class SandboxService {
     const egress = this.egress();
     const metadata: SandboxMount[] = [];
     let release = () => undefined as void;
+    let releaseBudget = () => undefined as void;
     const cleanup = () => {
       release();
+      releaseBudget();
       for (const mount of metadata) {
         rmSync(mount.hostPath, { recursive: true, force: true });
       }
     };
     try {
+      const work = heavyWorkOf(given);
+      const footprint = await this.footprintFor(work);
+      releaseBudget = await this.budget.acquire(work, footprint, given.onWait);
+      const memoryCapBytes = given.memoryCapBytes ?? memoryCap(work.kind, footprint);
       if (given.project && given.statePath) {
         prepareStateDir(given.statePath, given.userId);
         const directory = join(dirname(given.statePath), 'git-metadata');
@@ -111,11 +155,12 @@ export class SandboxService {
           metadata.push(...(await projectGitMount(mount, directory)));
         }
       }
-      const prepared = { ...given, mounts: [...given.mounts, ...metadata] };
+      const prepared = { ...given, mounts: [...given.mounts, ...metadata], memoryCapBytes };
       const acquired = egress ? await withEgress(egress, prepared) : { launch: prepared, release: () => undefined };
       release = acquired.release;
       const { launch } = acquired;
       const child = await this.spawnLaunch(launch);
+      child.memoryCapBytes = memoryCapBytes;
       child.once('close', cleanup);
       child.once('error', cleanup);
       return child;
@@ -190,47 +235,9 @@ export class SandboxService {
    * Stops every container of the run: graceful first, then a kill, then a second listing to confirm.
    * 'unknown' when docker did not answer or a container is still listed.
    */
-  async stopRun(runKey: string, step: string, graceSeconds: number): Promise<'gone' | 'unknown'> {
-    try {
-      const listed = await this.runContainers(runKey, step);
-      for (const id of listed) {
-        await this.dockerAllowingGone(['stop', '-t', String(graceSeconds), id], (graceSeconds + 30) * 1000);
-      }
-      for (const id of listed) {
-        await this.dockerAllowingGone(['kill', id], 30_000);
-      }
-      return (await this.runContainers(runKey, step)).length === 0 ? 'gone' : 'unknown';
-    } catch {
-      return 'unknown';
-    }
-  }
-
-  /** The containers of a run by label. Containers from before the labels are found by name. Throws when docker fails. */
-  private async runContainers(runKey: string, step: string): Promise<string[]> {
-    const labeled = await this.listed(['ps', '-q', '--filter', `label=swarmloop.run=${runKey}`]);
-    const base = containerName(runKey, step);
-    const fallback = await this.listed(['ps', '--filter', `name=${base}`, '--format', '{{.Names}}']);
-    return [...new Set([...labeled, ...stepContainers(base, fallback)])];
-  }
-
-  private async listed(args: string[]): Promise<string[]> {
-    const raw = await this.docker(args);
-    return raw
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-  }
-
-  /** Runs a stop or kill. A container that is already gone is the goal, not an error. */
-  private async dockerAllowingGone(args: string[], timeoutMs: number): Promise<void> {
-    try {
-      await this.docker(args, timeoutMs);
-    } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      if (!text.includes('No such container') && !text.includes('is not running')) {
-        throw error;
-      }
-    }
+  stopRun(runKey: string, step: string, graceSeconds: number): Promise<'gone' | 'unknown'> {
+    this.budget.cancelWaiting(runKey);
+    return stopRun(this.docker, runKey, step, graceSeconds);
   }
 
   /** True when docker answers. Read-only: nothing starts, and a failure is false, never a throw. */
@@ -244,24 +251,13 @@ export class SandboxService {
   }
 
   /** True while a container of the attempt runs, false when none does, null when docker did not answer. */
-  async attemptRunning(attemptId: string): Promise<boolean | null> {
-    try {
-      return (await this.listed(['ps', '-q', '--filter', `label=swarmloop.attempt=${attemptId}`])).length > 0;
-    } catch {
-      return null;
-    }
+  attemptRunning(attemptId: string): Promise<boolean | null> {
+    return attemptRunning(this.docker, attemptId);
   }
 
   /** Kills and removes the containers of an attempt. False when docker did not answer or one is still listed. */
-  async killAttempt(attemptId: string): Promise<boolean> {
-    try {
-      for (const id of await this.listed(['ps', '-aq', '--filter', `label=swarmloop.attempt=${attemptId}`])) {
-        await this.dockerAllowingGone(['rm', '-f', id], 30_000);
-      }
-      return (await this.attemptRunning(attemptId)) === false;
-    } catch {
-      return false;
-    }
+  killAttempt(attemptId: string): Promise<boolean> {
+    return killAttempt(this.docker, attemptId);
   }
 
   /**

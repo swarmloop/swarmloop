@@ -1,7 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Module, type OnModuleInit } from '@nestjs/common';
+import { RunStop } from '../agent/run-stop';
+import { HaltedRuns } from '../core/halted-runs';
 import { HistoryModule } from '../history/history.module';
 import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
+import { SandboxService } from '../sandbox/sandbox.service';
+import { FootprintRepository } from '../history/footprint.repository';
 import { BranchStep } from '../steps/branch/branch.step';
 import { CommitStep } from '../steps/commit/commit.step';
 import { BranchCheckout } from '../steps/shared/branch-checkout';
@@ -32,6 +36,7 @@ import { StepRegistry } from '../steps/step.registry';
 import { EnvironmentService } from '../environment/environment.service';
 import { DiskGuard } from './disk-guard';
 import { Housekeeping } from './housekeeping';
+import { OwnUseMeter } from './own-use-meter';
 import { RunRetention } from './run-retention';
 import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
@@ -59,6 +64,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     WorkspaceGuard,
     RunRetention,
     DiskGuard,
+    OwnUseMeter,
     Housekeeping,
     MergeRequestStep,
     MergeRequestLookup,
@@ -86,6 +92,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     MergeRequestDrafts,
     { provide: RunRebaseEnvironment, useExisting: EnvironmentService },
     EnvironmentService,
+    { provide: HaltedRuns, useExisting: RunStop },
   ],
   exports: [
     PipelineService,
@@ -95,6 +102,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     Housekeeping,
     WorkspaceGuard,
     DiskGuard,
+    OwnUseMeter,
     RunRebase,
     PrepareStep,
     ProjectAppendService,
@@ -107,4 +115,13 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     StepRegistry,
   ],
 })
-export class PipelineModule {}
+export class PipelineModule implements OnModuleInit {
+  constructor(
+    private readonly sandbox: SandboxService,
+    private readonly footprints: FootprintRepository,
+  ) {}
+
+  onModuleInit(): void {
+    this.sandbox.useFootprints(this.footprints);
+  }
+}

@@ -33,6 +33,22 @@ describe('api', () => {
     await expect(api('/runs')).rejects.toMatchObject({ status: 500, message: 'HTTP 500' });
   });
 
+  it('says the server is busy for the proxy 503', async () => {
+    respond(503, { message: 'the server is busy' });
+
+    await expect(api('/runs')).rejects.toMatchObject({
+      status: 503,
+      message: 'The server is busy, retrying',
+      busy: true,
+    });
+  });
+
+  it('keeps the message of a 503 the API sends itself', async () => {
+    respond(503, { message: 'docker is down' });
+
+    await expect(api('/runs')).rejects.toMatchObject({ status: 503, message: 'docker is down', busy: false });
+  });
+
   it('sends the session cookie, and X-Swarmloop on a write only', async () => {
     respond(200, {});
 
