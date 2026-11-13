@@ -1,13 +1,21 @@
 import 'reflect-metadata';
+import { writeFileSync } from 'fs';
+import { join } from 'path';
 import { Reconciler } from '../pipeline/reconciler';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import type { CodeHost } from '../integrations/code-host/code-host';
+import { DocumentRepository } from '../history/document.repository';
+import { RunRepository } from '../history/run.repository';
+import type { RunEntity } from '../history/entities';
+import { putStamped } from '../steps/shared/gate.spec-helpers';
 import { FakeCodeHost } from './fake-code-host';
 import { FakeSandbox, holdDetachedStarts } from './fake-runtime';
-import { featureWorktree, git } from './runs.spec-helpers';
+import { featureWorktree, git, remember } from './runs.spec-helpers';
 import { createTestApp, type TestApp } from './test-app';
 
 const REPO = 'demo';
+const PROJECT = 'group/demo';
+const ORIGIN = `https://gitlab.example/${PROJECT}.git`;
 /** The default of `RECONCILE_MS`, which the test env keeps. */
 const RECONCILE_MS = 60_000;
 
@@ -20,6 +28,10 @@ interface FlowHarness {
   sandbox: FakeSandbox;
   /** The keys of the subtask runs the parent asked to start, in order. */
   launched: string[];
+  /** Begins the run at `step` on the fake gitlab host, with what the real merge-request and pipeline steps read: the origin is a gitlab url, and the worktree head is the commit CI is asked about. */
+  begin(step: 'merge-request' | 'pipeline'): Promise<RunEntity>;
+  /** A new commit on the feature branch, pushed; the run's pipeline ref and review report stand for it. Returns its sha. */
+  recommit(): Promise<string>;
   /** One reconciler pass: the fake clock moves by the reconcile interval, then every pass of a tick runs. */
   tick(): Promise<void>;
   /** The server stops and starts again on the same root and database. The host and sandbox stay. */
@@ -29,13 +41,14 @@ interface FlowHarness {
   close(): Promise<void>;
 }
 
-export async function createFlowHarness(key: string): Promise<FlowHarness> {
+/** With `realHost` the merge-request and pipeline steps are the real ones on the fake host, and `begin` is for them. */
+export async function createFlowHarness(key: string, options: { realHost?: boolean } = {}): Promise<FlowHarness> {
   const sandbox = new FakeSandbox();
   const feature = `feature/${key}-ship-the-field`;
-  const first = await createTestApp({ realImplement: true, sandbox: sandbox.calls });
+  const first = await createTestApp({ realImplement: true, realHost: options.realHost, sandbox: sandbox.calls });
   const { tree, clone } = featureWorktree(first.root, key, REPO);
   git(tree, ['push', 'origin', feature]);
-  const host = new FakeCodeHost(clone, feature);
+  const host = new FakeCodeHost(clone, feature, () => harness.app.clock.now());
 
   const harness: FlowHarness = {
     app: first,
@@ -43,6 +56,25 @@ export async function createFlowHarness(key: string): Promise<FlowHarness> {
     host,
     sandbox,
     launched: [],
+    begin: async (step) => {
+      useGitlabOrigin(first.root, tree);
+      const { app } = harness;
+      const run = await remember(app.app.get(RunRepository), app.app.get(DocumentRepository), key, step, 'waiting');
+      run.codeHost = 'gitlab';
+      await app.app.get(RunRepository).saveRun(run);
+      await app.app.get(DocumentRepository).putDocument(run, 'implementation', '- shipped the field\n');
+      await seedGates(harness, run, feature);
+      return run;
+    },
+    recommit: async () => {
+      const { app } = harness;
+      const run = (await app.app.get(RunRepository).findRun(key))!;
+      writeFileSync(join(tree, 'src', 'readme.ts'), `export const readme = ${app.clock.now()};\n`);
+      git(tree, ['commit', '-am', 'fix: the pipeline']);
+      git(tree, ['push', 'origin', feature]);
+      await seedGates(harness, run, feature);
+      return git(tree, ['rev-parse', 'HEAD']);
+    },
     tick: async () => {
       harness.app.clock.advance(RECONCILE_MS);
       sandbox.elapse(RECONCILE_MS);
@@ -73,4 +105,23 @@ export async function createFlowHarness(key: string): Promise<FlowHarness> {
 function wire(harness: FlowHarness, key: string): void {
   jest.spyOn(harness.app.app.get(CodeHostRegistry), 'byName').mockReturnValue(harness.host as unknown as CodeHost);
   holdDetachedStarts(harness.app.pipeline, key, harness.launched);
+}
+
+/**
+ * The origin becomes a gitlab url, which `remoteProject` parses. A push still reaches the local bare repository through
+ * `pushInsteadOf`; `insteadOf` would show the bare path in `remote get-url`, so it is not used.
+ */
+function useGitlabOrigin(root: string, tree: string): void {
+  const bare = join(root, `${REPO}.git`);
+  git(tree, ['remote', 'set-url', 'origin', ORIGIN]);
+  git(tree, ['config', '--add', `url.${bare}.pushInsteadOf`, ORIGIN]);
+  git(tree, ['config', '--add', `url.${bare}.pushInsteadOf`, ORIGIN.replace('https://', 'https://oauth2:token@')]);
+}
+
+/** The pipeline ref of the worktree head and the review report, stamped for the worktree as the steps before them leave them. */
+async function seedGates(harness: FlowHarness, run: RunEntity, feature: string): Promise<void> {
+  const sha = git(harness.tree, ['rev-parse', 'HEAD']);
+  const ref = `project: ${PROJECT}\nref: ${feature}\nsha: ${sha}\n`;
+  await putStamped(harness.app.app, run, 'pipeline_ref', ref, [REPO]);
+  await putStamped(harness.app.app, run, 'review_report', '- the field ships\n', [REPO]);
 }
