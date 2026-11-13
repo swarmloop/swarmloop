@@ -252,6 +252,7 @@ export class ProjectEnvironments {
       const root = resolveRepoRoot(this.deps.env().SWARMLOOP_ROOT, __dirname);
       result = await runShell(this.shellDeps(), input, repo.prepared.launch, row.command, repo.mount, 'checks', {
         index: row.commandIndex,
+        name: row.name ?? row.command,
         file: checkOutputPath(root, input.key, input.step, attemptId, row.commandIndex),
       });
     } catch (error) {

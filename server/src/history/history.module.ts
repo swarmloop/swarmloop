@@ -23,6 +23,7 @@ import { StepEventLog } from './step-event.log';
 import { FlakyTestRepository } from './flaky-test.repository';
 import { RuntimeCooldownRepository } from './runtime-cooldown.repository';
 import { UserSettingRepository } from './user-setting.repository';
+import { FootprintRepository } from './footprint.repository';
 
 /** A commit is copied into the database file. The default waits for 1000 pages, so a finished status stays only in the WAL. */
 export function configureDatabase(db: { pragma: (statement: string) => unknown }): void {
@@ -76,6 +77,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     RuntimeCooldownRepository,
     FlakyTestRepository,
     UserSettingRepository,
+    FootprintRepository,
   ],
   exports: [
     RunRepository,
@@ -91,6 +93,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     RuntimeCooldownRepository,
     FlakyTestRepository,
     UserSettingRepository,
+    FootprintRepository,
     TypeOrmModule,
   ],
 })
