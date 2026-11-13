@@ -421,5 +421,27 @@ describe('stats range', () => {
 
       expect([totals.tasks, totals.usdPerTask, totals.tasksBack, totals.medianReturnsPerTask]).toEqual([1, 7, 1, 1]);
     });
+
+    it('counts a split run once, by its parent, with its subtasks in its spend and returns', () => {
+      const runs = [
+        run(1, { status: 'done', state: 'merged' }),
+        run(2, { parentRunId: 1, state: 'merged' }),
+        run(3, { parentRunId: 1, status: 'failed' }),
+        run(4, { parentRunId: 1, status: 'waiting' }),
+        run(5, { status: 'running' }),
+      ];
+      const steps = [step(1, 'plan', 1, at), step(2, 'implement', 3, at), step(3, 'implement', 2, at)];
+      const loops = [{ runId: 2, counter: 'review', reason: 'review_quality', createdAt: at }];
+
+      const stats = view(loops, runs, steps);
+      const day = stats.days.find((entry) => entry.day === localDay(at, WARSAW));
+
+      expect([stats.totals.runs, stats.totals.done, stats.totals.active, stats.totals.failed]).toEqual([2, 1, 1, 0]);
+      expect([day?.done, day?.active, day?.failed]).toEqual([1, 1, 0]);
+      expect(stats.totals.merged).toBe(1);
+      expect(stats.runs).toHaveLength(2);
+      expect(stats.runs.find((entry) => entry.key === 'run-1')).toMatchObject({ usd: 6, returns: 1 });
+      expect(stats.agents.map(({ name, count }) => [name, count])).toEqual([['claude', 5]]);
+    });
   });
 });
