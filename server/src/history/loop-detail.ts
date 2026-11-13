@@ -1,6 +1,9 @@
 /** The loop counter of the history lines the merge watch writes. They are not returns of a step. */
 export const MERGE_WATCH_COUNTER = 'merge-watch';
 
+/** The loop counter of the history lines a CI that does not start writes: the nudge of the host. They are not returns of a step. */
+export const CI_WAIT_COUNTER = 'ci-wait';
+
 /** What `EventRepository.recordLoop` stores in `detail`. */
 interface LoopDetail {
   /** The failed commands of a checks return. */

@@ -6,6 +6,7 @@ import type {
   MergeRequestQuery,
   MergeRequestRecord,
   PipelineDiagnosis,
+  PipelineRef,
   SelectedHost,
 } from '../integrations/code-host/code-host';
 import { FakeCi } from './fake-ci';
@@ -21,6 +22,8 @@ export class FakeCodeHost {
   readonly merged = new Map<number, string>();
   readonly ci = new FakeCi();
   private readonly requests = new Map<number, MergeRequestRecord & { source: string }>();
+  /** The pipelines the server asked the host to start, in order. */
+  readonly nudged: PipelineRef[] = [];
   private downUntil = 0;
   private downStatus = 503;
   private retryAfterMs = HOST_RETRY_MS;
@@ -229,6 +232,13 @@ export class FakeCodeHost {
         : undefined;
     const reason = code === 'closed' ? 'merge request is closed' : 'merge request has a conflict';
     return Promise.resolve(code ? { reason, code, httpCalls: [] } : { reason: null, httpCalls: [] });
+  }
+
+  startPipeline(ref: PipelineRef): Answer<'startPipeline'> {
+    this.guard();
+    this.nudged.push(ref);
+    this.ci.nudge(ref.sha);
+    return Promise.resolve({ httpCalls: [] });
   }
 
   readJobTrace(): Answer<'readJobTrace'> {

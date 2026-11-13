@@ -50,7 +50,7 @@ describe('split implement, subtasks that heal or block', () => {
     for (const id of ids) await setStatus(app, id, 'running');
   }
 
-  it.each([ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.DOCKER_UNAVAILABLE])(
+  it.each([ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.CI_NOT_STARTED, ERROR_CODES.DOCKER_UNAVAILABLE])(
     'makes the parent wait with the next try of a subtask that waits on %s',
     async (code) => {
       await started(['a']);

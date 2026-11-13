@@ -9,6 +9,7 @@ import { checkedRepoNames, hasCi, worktreePath } from '../../git/repo-names';
 import { originProject, type Seen } from './pipeline-report';
 import { ARTIFACTS } from '../contract/artifacts';
 import { automaticRebase } from './pipeline-rebase';
+import { waitForCi } from './ci-not-started';
 
 /** Only the trigger is automatic. Rebase itself is the action used by the API button. */
 export async function missingPipeline(input: {
@@ -28,12 +29,14 @@ export async function missingPipeline(input: {
   const run = ctx.opened.run;
   const notes = [input.missing.map((repo) => `${repo} CI did not start`).join(', ')];
   const conflicts: PipelineRef[] = [];
+  const unexplained: PipelineRef[] = [];
   let closed = false;
   for (const ref of records.filter((ref) =>
     seen.some((item) => item.project === ref.project && item.runs.length === 0),
   )) {
     notes.push(`project: ${ref.project}`, `ref: ${ref.ref}`, `sha: ${ref.sha ?? 'unknown'}`);
     const diagnosis = await host.diagnoseMissingPipeline?.(ref);
+    if (!diagnosis?.code) unexplained.push(ref);
     if (!diagnosis) continue;
     ctx.calls.push(...diagnosis.httpCalls);
     if (diagnosis.reason) notes.push(diagnosis.reason);
@@ -51,7 +54,9 @@ export async function missingPipeline(input: {
     };
   };
   if (closed) return end('blocked');
-  if (conflicts.length === 0) return end('failed');
+  if (conflicts.length === 0) {
+    return unexplained.length === 0 ? end('failed') : waitForCi({ ctx, events, host, refs: unexplained, notes });
+  }
   const history = JSON.parse((await ctx.reread(ARTIFACTS.pipelineRebases)) ?? '[]') as string[];
   const sources = conflicts.map((ref) => `${ref.project}@${ref.sha ?? 'unknown'}`);
   if (history.some((source) => sources.includes(source)))

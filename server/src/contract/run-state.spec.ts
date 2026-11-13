@@ -21,7 +21,7 @@ describe('actionsFor a split run between passes', () => {
 });
 
 describe('actionsFor the codes with a next try or a limit', () => {
-  it.each([ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.DOCKER_UNAVAILABLE])(
+  it.each([ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.CI_NOT_STARTED, ERROR_CODES.DOCKER_UNAVAILABLE])(
     'offers Stop, Resume (try now), Replay and Rebase while waiting on %s',
     (code) => {
       expect(actionsFor('waiting', code)).toEqual(['stop', 'resume', 'replay', 'rebase']);

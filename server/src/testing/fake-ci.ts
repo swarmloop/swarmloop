@@ -3,7 +3,11 @@ import type { PipelineJob, PipelineSnapshot } from '../integrations/code-host/co
 const URL = 'https://gitlab.example/group/demo/-/pipelines/9';
 
 type Script =
-  { kind: 'pass' } | { kind: 'fail'; log: string } | { kind: 'silent' } | { kind: 'queued' } | { kind: 'timed-out' };
+  | { kind: 'pass' }
+  | { kind: 'fail'; log: string }
+  | { kind: 'silent'; startsOnNudge: boolean }
+  | { kind: 'queued' }
+  | { kind: 'timed-out' };
 
 /** The CI of a fake code host: what each commit's pipeline says, as a spec scripts it. The latest script for a sha wins. */
 export class FakeCi {
@@ -34,9 +38,15 @@ export class FakeCi {
     this.until = { log: jobLog, present };
   }
 
-  /** No run ever starts for the commit. */
-  silent(sha: string): void {
-    this.scripts.set(sha, { kind: 'silent' });
+  /** No run starts for the commit, until the host is nudged when `startsOnNudge` is set; then the commit passes. */
+  silent(sha: string, startsOnNudge = false): void {
+    this.scripts.set(sha, { kind: 'silent', startsOnNudge });
+  }
+
+  /** The host was asked to start the pipeline of the commit. */
+  nudge(sha: string | undefined): void {
+    const script = sha ? this.scripts.get(sha) : undefined;
+    if (sha && script?.kind === 'silent' && script.startsOnNudge) this.pass(sha);
   }
 
   /** The host accepted a run for the commit and never starts a job. */

@@ -99,6 +99,7 @@ export async function createFlowHarness(
       await reconciler.reconcileRuns();
       await reconciler.resumeLimited();
       await reconciler.resumeHostUnavailable();
+      await reconciler.resumeCiNotStarted();
       await reconciler.resumeDocker();
       await reconciler.resumeDiskLow();
       await reconciler.resumeGitAuth();

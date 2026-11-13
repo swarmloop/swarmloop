@@ -95,6 +95,7 @@ function unfinishedState(
     (stored.code === ERROR_CODES.RUNTIME_LIMIT ||
       stored.code === ERROR_CODES.GIT_AUTH ||
       stored.code === ERROR_CODES.HOST_UNAVAILABLE ||
+      stored.code === ERROR_CODES.CI_NOT_STARTED ||
       stored.code === ERROR_CODES.DOCKER_UNAVAILABLE ||
       SUBTASK_WAIT_CODES.includes(stored.code as ErrorCode))
   )

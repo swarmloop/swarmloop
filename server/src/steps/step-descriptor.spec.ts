@@ -79,6 +79,7 @@ describe('step descriptors', () => {
       'return',
       'issues',
       'pipeline_rebases',
+      'ci_waits',
       'flaky',
       'merge_request',
     ]);

@@ -33,6 +33,20 @@ describe('gitlab host', () => {
     expect((await service().diagnoseMissingPipeline(ref)).code).toBe('closed');
   });
 
+  it("creates the merge request's pipeline to start CI that never started", async () => {
+    const seen = mockFetch([opened(), { id: 7 }]);
+    const result = await service().startPipeline({ project: 'group/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' });
+    expect(seen.map((call) => call.method)).toEqual(['GET', 'POST']);
+    expect(seen[1]?.url).toBe('https://gitlab.example/api/v4/projects/group%2Fdemo/merge_requests/12/pipelines');
+    expect(JSON.stringify(result.httpCalls)).not.toContain(TOKEN);
+  });
+
+  it('creates no pipeline when no merge request is open for the ref', async () => {
+    const seen = mockFetch([[]]);
+    await service().startPipeline({ project: 'group/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' });
+    expect(seen.map((call) => call.method)).toEqual(['GET']);
+  });
+
   it('returns an open merge request and does not create another', async () => {
     const seen = mockFetch([opened()]);
     const result = await service().findMergeRequest({ project: 'group/demo', source: 'feature/PROJ-1-ship' });

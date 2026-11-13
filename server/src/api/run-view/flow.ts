@@ -167,6 +167,7 @@ function doneSentence(run: RunEntity): string {
 
 const OUTAGE_NAMES: Record<string, string> = {
   [ERROR_CODES.HOST_UNAVAILABLE]: 'A host did not answer.',
+  [ERROR_CODES.CI_NOT_STARTED]: 'The host has not started CI for the commit.',
   [ERROR_CODES.DOCKER_UNAVAILABLE]: 'Docker did not answer.',
 };
 

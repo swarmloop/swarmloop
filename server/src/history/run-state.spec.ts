@@ -220,7 +220,7 @@ describe('deriveState of a run with a next try', () => {
   const retryAt = '2026-11-12T14:05:00.000Z';
   const stored = (code: string) => JSON.stringify({ code, message: 'did not answer', retryAt });
 
-  it.each([ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.DOCKER_UNAVAILABLE])(
+  it.each([ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.CI_NOT_STARTED, ERROR_CODES.DOCKER_UNAVAILABLE])(
     'a waiting run with %s is waiting',
     (code) => {
       expect(deriveState({ status: 'waiting', stateReason: stored(code) })).toEqual({

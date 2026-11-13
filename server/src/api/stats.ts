@@ -9,7 +9,7 @@ import type {
 } from '../contract/api';
 import type { StatsRows, StatsRunRow, StatsStepRow } from '../history/stats.repository';
 import { LIMIT_VISIT } from '../history/visit.repository';
-import { MERGE_WATCH_COUNTER, readLoopDetail } from '../history/loop-detail';
+import { CI_WAIT_COUNTER, MERGE_WATCH_COUNTER, readLoopDetail } from '../history/loop-detail';
 import { readOutcome } from '../history/run-state';
 import { runName } from './run-view/flow';
 
@@ -186,7 +186,7 @@ function returnsOf(loops: StatsRows['loops'], days: Map<string, StatsDay>, tzOff
   const count = (counts: Map<string, number>, name: string): void => {
     counts.set(name, (counts.get(name) ?? 0) + 1);
   };
-  for (const loop of loops.filter(({ counter }) => counter !== MERGE_WATCH_COUNTER)) {
+  for (const loop of loops.filter(({ counter }) => counter !== MERGE_WATCH_COUNTER && counter !== CI_WAIT_COUNTER)) {
     byRun.set(loop.runId, (byRun.get(loop.runId) ?? 0) + 1);
     const day = days.get(localDay(loop.createdAt, tzOffset));
     if (day) {
