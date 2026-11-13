@@ -15,16 +15,6 @@ export type {
   StatsView,
 } from './stats';
 export type { TaskLayer } from './task-layer';
-export type {
-  RunOutcome,
-  StatsCiReturns,
-  StatsDay,
-  StatsReason,
-  StatsRun,
-  StatsShare,
-  StatsTotals,
-  StatsView,
-} from './stats';
 
 export interface RunSummary {
   key: string;

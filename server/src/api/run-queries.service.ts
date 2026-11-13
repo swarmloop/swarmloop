@@ -31,7 +31,14 @@ import { taskRuns } from './run-view/task-runs';
 import { ReviewerSteps } from './run-view/reviewer-steps';
 import { visitKey } from '../contract/visit-key';
 import { launchView, liveVisit, loopView } from './run-view/live';
-import { commandViewsOf, effortOf, exchangesOf, latestCommandViews, reviewChecks, samplesOf } from './run-view/visit-parts';
+import {
+  commandViewsOf,
+  effortOf,
+  exchangesOf,
+  latestCommandViews,
+  reviewChecks,
+  samplesOf,
+} from './run-view/visit-parts';
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
 import { readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
 import { openSpend } from './run-queries-spend';
