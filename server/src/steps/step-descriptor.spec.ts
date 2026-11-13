@@ -74,7 +74,14 @@ describe('step descriptors', () => {
     const described = app.get(StepRegistry).describe(testEnv());
     const kinds = (step: string) => described.find((item) => item.name === step)?.outputs;
     expect(kinds('commit')).toEqual(['commit', 'pipeline_ref', 'ci_skip']);
-    expect(kinds('pipeline')).toEqual(['pipeline_log', 'return', 'issues', 'pipeline_rebases', 'merge_request']);
+    expect(kinds('pipeline')).toEqual([
+      'pipeline_log',
+      'return',
+      'issues',
+      'pipeline_rebases',
+      'flaky',
+      'merge_request',
+    ]);
     expect(kinds('merge-request')).toEqual(['merge_request', 'rebase_merge_skip']);
     expect(kinds('branch')).toEqual([]);
   });

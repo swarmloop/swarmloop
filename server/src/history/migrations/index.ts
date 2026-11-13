@@ -27,6 +27,8 @@ import { DropPersonalSplit1795600000000 } from './1795600000000-drop-personal-sp
 
 // To add a migration: run `npm run migration:generate -- src/history/migrations/<name>`, export the generated class
 // from its own file, and append it here. Migrations run in list order at startup.
+import { FlakyTests1795700000000 } from './1795700000000-flaky-tests';
+
 export const migrations = [
   InitialSchema1793664000000,
   RetireVerifyStep1793800000000,
@@ -54,4 +56,5 @@ export const migrations = [
   UserSettings1795400000000,
   SubtaskFingerprint1795500000000,
   DropPersonalSplit1795600000000,
+  FlakyTests1795700000000,
 ];

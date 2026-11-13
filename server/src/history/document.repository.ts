@@ -1,6 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { Clock } from '../core/clock';
 import { LiveHub } from '../live/live.hub';
 import { RunEntity, DocumentEntity } from './entities';
@@ -67,6 +67,19 @@ export class DocumentRepository {
       order: { id: 'DESC' },
     });
     return found ? { id: found.id, body: found.body } : null;
+  }
+
+  /** The body of the latest document of `kind` that was stored before the document `beforeId`. Null when there is none. */
+  async bodyBefore(key: string, kind: string, beforeId: number): Promise<string | null> {
+    const run = await this.runs.findOne({ where: { key } });
+    if (!run) {
+      return null;
+    }
+    const found = await this.documents.findOne({
+      where: { runId: run.id, kind, id: LessThan(beforeId) },
+      order: { id: 'DESC' },
+    });
+    return found?.body ?? null;
   }
 
   /** The id of the latest document of each kind that the run has. */

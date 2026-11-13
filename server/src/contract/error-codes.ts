@@ -24,6 +24,7 @@ export const ERROR_CODES = {
   HOST_UNAVAILABLE: 'HOST_UNAVAILABLE',
   PIPELINE_UNFIXED: 'PIPELINE_UNFIXED',
   SPEND_LIMIT: 'SPEND_LIMIT',
+  TEST_FLAKY: 'TEST_FLAKY',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

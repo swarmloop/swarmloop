@@ -6,7 +6,7 @@ import { agentsFor } from '../config/agents';
 import { ERROR_CODES } from '../contract/error-codes';
 import { RunStop } from '../agent/run-stop';
 import { Clock } from '../core/clock';
-import { failedLaunches, loopMark } from '../core/pipeline-result';
+import { failedAttemptLaunches, loopMark } from '../core/pipeline-result';
 import { AwakeTime } from '../core/awake-time';
 import { SERVER_INSTANCE } from '../core/server-instance';
 import type { RunEntity } from '../history/entities';
@@ -30,13 +30,16 @@ export { silentMessage } from './run-settler';
 
 /**
  * One idempotent look at the runs and commands that a process left behind. It runs at startup and every
- * `RECONCILE_MS`. A run it has settled is no longer `running`, so a second pass without new facts changes nothing.
+ * `RECONCILE_MS`, one pass at a time: a call that comes while a pass works waits for it. A run it has settled is no longer `running`, so a second pass without new facts changes nothing.
  */
 @Injectable()
 export class Reconciler implements OnModuleDestroy {
   private readonly logger = new Logger(Reconciler.name);
   private claimed: (key: string) => boolean = () => false;
   private timer: NodeJS.Timeout | null = null;
+  /** The pass in flight, or the last one queued. */
+  private pass: Promise<void> | null = null;
+  /** The pass a tick started, until it ends. A tick that finds it set does not queue another. */
   private tick: Promise<void> | null = null;
   private awake: AwakeTime | null = null;
   /** When the merge watch last ran. Null before its first pass. */
@@ -65,7 +68,7 @@ export class Reconciler implements OnModuleDestroy {
   /** The startup pass over the runs. `claimed` says which runs a step of this process holds. */
   async start(claimed: (key: string) => boolean): Promise<void> {
     this.claimed = claimed;
-    await this.reconcileRuns();
+    await this.exclusive(() => this.reconcileRunsNow());
   }
 
   /**
@@ -79,10 +82,10 @@ export class Reconciler implements OnModuleDestroy {
     this.timer.unref();
   }
 
-  /** Stops the timer and waits for the tick that runs, so nothing reads the database after it closes. */
+  /** Stops the timer and waits for the pass that runs, so nothing reads the database after it closes. */
   async onModuleDestroy(): Promise<void> {
     this.stop();
-    await this.tick;
+    await this.pass?.catch(() => undefined);
   }
 
   private stop(): void {
@@ -90,7 +93,7 @@ export class Reconciler implements OnModuleDestroy {
     this.timer = null;
   }
 
-  /** A tick that comes while the last one still works is skipped. A failed tick is logged and the next one runs. */
+  /** A tick while an earlier tick's pass runs or waits is skipped. A failed tick is logged and the next one runs. */
   private tickOnce(): void {
     const gap = this.awake?.observe() ?? 0;
     if (gap > 0) this.slept.push({ at: this.clock.now(), ms: gap });
@@ -104,20 +107,38 @@ export class Reconciler implements OnModuleDestroy {
       });
   }
 
-  private async reconcileAll(): Promise<void> {
-    await this.reconcileRuns();
-    await this.resumeLimited();
-    await this.resumeHostUnavailable();
-    await this.resumeDocker();
-    await this.resumeDiskLow();
-    await this.resumeGitAuth();
-    await this.resumeSubtaskParents();
-    await this.watchMerges();
-    await this.reconcileCommands();
+  /** Runs `work` after the pass in flight has settled, whether it succeeded or failed. The caller sees its own result. */
+  private exclusive(work: () => Promise<void>): Promise<void> {
+    const previous = this.pass ?? Promise.resolve();
+    const mine = previous.catch(() => undefined).then(work);
+    const tail = mine.catch(() => undefined);
+    this.pass = tail;
+    void tail.then(() => {
+      if (this.pass === tail) this.pass = null;
+    });
+    return mine;
+  }
+
+  reconcileAll(): Promise<void> {
+    return this.exclusive(async () => {
+      await this.reconcileRunsNow();
+      await this.resumeLimited();
+      await this.resumeHostUnavailable();
+      await this.resumeDocker();
+      await this.resumeDiskLow();
+      await this.resumeGitAuth();
+      await this.resumeSubtaskParents();
+      await this.watchMerges();
+      await this.reconcileCommands();
+    });
+  }
+
+  reconcileRuns(): Promise<void> {
+    return this.exclusive(() => this.reconcileRunsNow());
   }
 
   /** The runs in `running`, `stopping` or `recovering`: all three are a `running` status. */
-  async reconcileRuns(): Promise<void> {
+  private async reconcileRunsNow(): Promise<void> {
     for (const run of await this.runs.listRuns()) {
       if (run.status !== 'running') continue;
       try {
@@ -150,7 +171,7 @@ export class Reconciler implements OnModuleDestroy {
     for (const run of await this.withReason('waiting', ERROR_CODES.HOST_UNAVAILABLE)) {
       const retryAt = Date.parse(deriveState(run).reason?.retryAt ?? '');
       if (Number.isFinite(retryAt) && this.clock.now() < retryAt) continue;
-      await this.resumeOnce(run, `host-${run.revision}`, () => Promise.resolve(true));
+      await this.resumeOnce(run, await this.outageKey('host', run), () => Promise.resolve(true));
     }
   }
 
@@ -164,7 +185,7 @@ export class Reconciler implements OnModuleDestroy {
         if (seen.activeAttempt === null) {
           const answers = await this.sandbox.dockerAnswers();
           if (!answers) await this.refreshDockerWait(seen.key);
-          else await this.resumeOnce(seen, `docker-${seen.revision}`, () => Promise.resolve(true));
+          else await this.resumeOnce(seen, await this.outageKey('docker', seen), () => Promise.resolve(true));
           continue;
         }
         const running = await this.sandbox.attemptRunning(seen.activeAttempt);
@@ -181,8 +202,16 @@ export class Reconciler implements OnModuleDestroy {
   /** A run blocked for lack of disk goes on by itself, once, when the free space is above `MIN_FREE_GB`. Nothing is cleaned. */
   async resumeDiskLow(): Promise<void> {
     for (const run of await this.withReason('blocked', ERROR_CODES.DISK_LOW)) {
-      await this.resumeOnce(run, `disk-${run.revision}`, () => this.disk.hasFreeSpace());
+      await this.resumeOnce(run, await this.outageKey('disk', run), () => this.disk.hasFreeSpace());
     }
+  }
+
+  /** Names an outage by the attempt it cut and by its own retry time (or message), so another write to the run does not move it. */
+  private async outageKey(prefix: 'host' | 'docker' | 'disk', run: RunEntity): Promise<string> {
+    const stats = await this.visits.listStats(run.id);
+    const attempt = stats[stats.length - 1]?.attemptId ?? 'none';
+    const reason = deriveState(run).reason;
+    return `${prefix}-${attempt}-${(prefix === 'disk' ? reason?.message : reason?.retryAt) ?? ''}`;
   }
 
   private async withReason(status: string, code: string): Promise<RunEntity[]> {
@@ -279,21 +308,24 @@ export class Reconciler implements OnModuleDestroy {
     }
     if (await this.settler.settleRebase(run)) return;
     const stopping = (await this.commandLog.pending(run.id)).some((command) => command.type === 'stop');
+    const deadAttempt = run.activeAttempt;
     await this.settler.settleAttempt(run, this.slept);
-    if (!stopping) await this.relaunchInterrupted(run.key);
+    if (!stopping) await this.relaunchInterrupted(run.key, deadAttempt);
   }
 
   /**
    * A step cut by a restart has its `process died` visit stored and its run `failed`. It is relaunched through the
    * resume a person would press, under the same `MAX_LAUNCHES` rule as the driver. A stopped run is not relaunched.
+   * The key names the dead attempt, so two passes over it make one command and two attempts never share one.
    */
-  private async relaunchInterrupted(key: string): Promise<void> {
+  private async relaunchInterrupted(key: string, deadAttempt: string | null): Promise<void> {
+    if (deadAttempt === null) return;
     const run = await this.runs.findRun(key);
     if (run?.status !== 'failed' || run.currentStep === 'done' || this.runStop.halted(key)) return;
     const mark = loopMark(await this.documents.latestBody(key, 'loop_mark'));
-    if (failedLaunches(await this.visits.listStats(run.id), run.currentStep, mark) >= this.config.env.MAX_LAUNCHES)
-      return;
-    await this.resumeOnce(run, `relaunch-${run.revision}`, () => Promise.resolve(true));
+    const stats = await this.visits.listStats(run.id);
+    if (failedAttemptLaunches(stats, run.currentStep, mark, deadAttempt) >= this.config.env.MAX_LAUNCHES) return;
+    await this.resumeOnce(run, `relaunch-${deadAttempt}`, () => Promise.resolve(true));
   }
 
   /** The owner is this process and its step is in flight, or a chat of this process holds the run. */

@@ -1,4 +1,10 @@
-import { mergeRequestDetails, parseMergeRequests, remoteProject, renderMergeRequest } from './merge-request-record';
+import {
+  mergeRequestDetails,
+  parseMergeRequestSummaries,
+  parseMergeRequests,
+  remoteProject,
+  renderMergeRequest,
+} from './merge-request-record';
 
 describe('merge request record', () => {
   it('reads a project path from an ssh or https origin', () => {
@@ -61,5 +67,20 @@ describe('merge request record', () => {
       'https://x/1 (ready)',
       'https://x/2 (draft)',
     ]);
+  });
+
+  it('reads the prose of each record without flaky lines', () => {
+    const body = renderMergeRequest([
+      { project: 'group/demo', iid: 12, url: 'https://gitlab.example/a/12', draft: true, summary: '' },
+      {
+        project: 'group/web',
+        iid: 4,
+        url: 'https://gitlab.example/b/4',
+        draft: false,
+        summary: 'Web field.\n\nSecond paragraph.\n\nflaky: slow test\nflaky: other test',
+      },
+    ]);
+    expect(parseMergeRequestSummaries(body)).toEqual(['', 'Web field.\n\nSecond paragraph.']);
+    expect(() => parseMergeRequestSummaries('')).toThrow(/merge_request is missing/);
   });
 });

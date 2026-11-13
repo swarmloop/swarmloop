@@ -12,6 +12,7 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 import { RunStop } from '../../agent/run-stop';
 import { DocumentRepository } from '../../history/document.repository';
 import { EventRepository } from '../../history/event.repository';
+import { FlakyTestRepository } from '../../history/flaky-test.repository';
 import { FlowRepository } from '../../history/flow.repository';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
@@ -55,6 +56,7 @@ describe('pipeline step golden traces', () => {
       app.get(RunRebase),
       app.get(RunStop),
       app.get(EnvironmentService),
+      app.get(FlakyTestRepository),
     );
     const result = await step.execute(KEY);
     const trail = await traceRun(app.get(DataSource), KEY, { pipeline: documents.kinds });

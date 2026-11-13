@@ -32,6 +32,7 @@ export function blockCode(step: string, error: string | null): string {
   if ((error ?? '').includes(REASON.ciLogUnavailable)) return REASON.ciLogUnavailable;
   if ((error ?? '').includes(REASON.ciNotRun)) return REASON.ciNotRun;
   if ((error ?? '').includes(REASON.ciTimeout)) return REASON.ciTimeout;
+  if ((error ?? '').includes(ERROR_CODES.TEST_FLAKY)) return ERROR_CODES.TEST_FLAKY;
   return isLoopStep(step) ? REASON.loopLimit : REASON.blocked;
 }
 

@@ -6,13 +6,13 @@ import { missingPipeline, missingRuns } from './missing-pipeline';
 import { backToReview, staleGates } from './stale-gates';
 import { type SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { FlakyTestRepository } from '../../history/flaky-test.repository';
 import { EventRepository } from '../../history/event.repository';
 import { root } from '../../history/run-paths';
 import { delay } from '../../core/delay';
 import { AwakeTime } from '../../core/awake-time';
 import { recordStepEvent } from '../../core/step-event-scope';
 import type { StepName } from '../../contract/steps';
-import type { OpenedStep } from '../../steps/step-run';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import { SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { CI_INFRA_SOURCE, issueOf } from '../shared/handoff';
@@ -24,9 +24,7 @@ import {
   ciTitle,
   jobResults,
   parsePipelineRefs,
-  renderFail,
   renderInfra,
-  renderUnreadable,
   renderNone,
   renderPass,
   stopLine,
@@ -39,19 +37,18 @@ import {
   checkFacts,
   verdictOf,
   type Verdict,
-  failureIssues,
   type InfraCode,
   type Seen,
 } from './pipeline-report';
-import { finishedRuns, readFailures, readNotes, rerunJobs } from './ci-host';
+import { finishedRuns, readNotes, rerunJobs } from './ci-host';
 import { ARTIFACTS } from '../contract/artifacts';
 import { mergeRequestDetails, parseMergeRequests } from '../merge-request/merge-request-record';
 import { cancelRunning } from './cancel-running';
-import { pipelineReturn } from './ci-only';
+import { flakyOnPass } from './flaky-tests';
 import { finish } from './pipeline-result';
 import { stuckAtStart } from './stuck-start';
 import { hasDraft, markReady } from './pipeline-draft';
-import { noteSkippedByPaths } from './pipeline-skipped';
+import { red, report, type RedDeps } from './pipeline-red';
 import { EnvironmentService } from '../../environment/environment.service';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
@@ -75,6 +72,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     ARTIFACTS.return,
     ARTIFACTS.issues,
     ARTIFACTS.pipelineRebases,
+    ARTIFACTS.flaky,
     ARTIFACTS.mergeRequest,
   ];
 
@@ -85,8 +83,19 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     private readonly rebase: RunRebase,
     private readonly runStop: RunStop,
     private readonly environments: EnvironmentService,
+    private readonly flaky: FlakyTestRepository,
   ) {
     super(kernel);
+  }
+
+  private get redDeps(): RedDeps {
+    return {
+      environments: this.environments,
+      events: this.events,
+      visits: this.kernel.visits,
+      config: this.config,
+      flaky: this.flaky,
+    };
   }
 
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
@@ -95,7 +104,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     const records = parsePipelineRefs(input.pipelineRef ?? '');
     const skipped = input.ciSkip?.trim() ?? '';
     if (records.length === 0 && skipped) {
-      return finish('ok', this.report(opened, skipped), 'skipped', skipped);
+      return finish('ok', report(opened, skipped), 'skipped', skipped);
     }
     const host = await this.registry.hostFor(opened.run);
     if (records.length === 0) {
@@ -211,11 +220,11 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         awakeTime: () => this.awakeTime(env),
       });
       if (!settled.traces) {
-        return this.red(ctx, env, settled.seen, host, settled.note, false);
+        return red(this.redDeps, ctx, env, settled.seen, host, settled.note, false);
       }
       const next = verdictOf(settled.seen);
       if (next === 'red' || next === 'wait') {
-        return this.red(ctx, env, settled.seen, host, settled.note, true);
+        return red(this.redDeps, ctx, env, settled.seen, host, settled.note, true);
       }
       seen = settled.seen;
       verdict = next;
@@ -223,14 +232,14 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     if (verdict === 'red') {
       const cause = classify(seen);
       return cause === 'failed'
-        ? this.red(ctx, env, seen, host)
+        ? red(this.redDeps, ctx, env, seen, host)
         : this.infra(ctx, env, records, seen, cause === 'timeout' ? 'CI_TIMEOUT' : 'CI_NOT_RUN', host, reruns);
     }
     if (verdict === 'stop') {
-      return finish('failed', this.report(opened, stopLine(seen)), 'failed');
+      return finish('failed', report(opened, stopLine(seen)), 'failed');
     }
     if (verdict === 'manual') {
-      return finish('waiting', this.report(opened, 'pipeline is manual'), 'waiting');
+      return finish('waiting', report(opened, 'pipeline is manual'), 'waiting');
     }
     const missing = await missingRuns(ctx, root(this.config), seen);
     if (missing && missing.length > 0) {
@@ -262,16 +271,21 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         return this.route(ctx, env, records, watched.seen, watched.verdict, host, reruns);
       }
       const body = renderNone(seen);
-      return finish('ok', this.report(opened, 'nothing started', body), 'done', body);
+      return finish('ok', report(opened, 'nothing started', body), 'done', body);
     }
     const warnings = seen.flatMap((item) =>
       item.jobs
         .filter((job) => job.status === 'failed' && job.allowFailure)
         .map((job) => `${item.project} ${job.name}`),
     );
+    const deps = { documents: this.kernel.documents, flaky: this.flaky, root: root(this.config) };
+    const flaky = await flakyOnPass(deps, ctx, records, seen, host);
+    if (flaky) {
+      return flaky;
+    }
     const body = renderPass(seen, warnings);
     await markReady(ctx, this.registry);
-    return finish('ok', this.report(opened, 'pipeline done', body), 'done', body);
+    return finish('ok', report(opened, 'pipeline done', body), 'done', body);
   }
 
   /** The wait ended with no run left to cancel: a check that never showed up is dropped, one that never ended is red. */
@@ -285,7 +299,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   ): Promise<StepResult> {
     const note = pendingNote(seen, Math.round(env.PIPELINE_TIMEOUT_MS / 60000));
     if (note) {
-      return this.red(ctx, env, seen, host, note, true);
+      return red(this.redDeps, ctx, env, seen, host, note, true);
     }
     const settled = seen.map((item) => ({ ...item, awaiting: [] }));
     return this.route(ctx, env, records, settled, verdictOf(settled), host, reruns);
@@ -321,58 +335,11 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     const body = `${renderInfra(code, seen, notes)}${errors.map((error) => `rerun: ${error}\n`).join('')}`;
     const result = finish(
       'blocked',
-      this.report(opened, code === 'CI_TIMEOUT' ? 'CI timed out' : 'CI did not run', body),
+      report(opened, code === 'CI_TIMEOUT' ? 'CI timed out' : 'CI did not run', body),
       'blocked',
       body,
     );
     const issue = issueOf(CI_INFRA_SOURCE, code, body);
     return { ...result, outputs: [...result.outputs, { artifact: ARTIFACTS.issues, value: [issue] }] };
-  }
-
-  private async red(
-    ctx: StepContext,
-    env: SwarmloopEnv,
-    seen: Seen[],
-    host: CodeHost,
-    note = '',
-    traces = true,
-  ): Promise<StepResult> {
-    const { opened, calls } = ctx;
-    // A run swarmloop canceled itself (it comes with a note) has canceled jobs that are its failure; otherwise only failed jobs are.
-    const counted = note ? ['failed', 'canceled', 'timed_out'] : ['failed'];
-    const failures = traces ? await readFailures(seen, calls, host, counted) : [];
-    const unreadable = renderUnreadable(failures);
-    if (unreadable) {
-      return finish('blocked', this.report(opened, 'pipeline log unavailable', unreadable), 'blocked', unreadable);
-    }
-    await noteSkippedByPaths(this.environments, opened.run.key, failures);
-    const body = traces ? renderFail(failures, seen, note) : `${note.trim()}\n`;
-    if (ctx.options.auto && (await this.sameFailure(ctx, seen))) {
-      return finish('failed', this.report(opened, 'pipeline already failed for this commit', body), 'failed', body);
-    }
-    if (opened.run.attemptsPipeline >= env.MAX_PIPELINE_RETURNS) {
-      const report = this.report(opened, 'pipeline return limit reached', body);
-      return finish('blocked', report, 'blocked', body);
-    }
-    opened.run.attemptsPipeline += 1;
-    const { reason, detail } = await pipelineReturn(failures, seen, ctx, this.kernel.visits, root(this.config));
-    await this.events.recordLoop(opened.run, 'pipeline', opened.run.attemptsPipeline, reason, detail);
-    const issues = failureIssues(failures, body);
-    return finish('waiting', this.report(opened, 'pipeline failed', body), 'waiting', body, issues);
-  }
-
-  private async sameFailure(ctx: StepContext, seen: Seen[]): Promise<boolean> {
-    const previous = (await ctx.reread(ARTIFACTS.pipelineLog)) ?? '';
-    const lines = new Set(previous.split('\n').map((line) => line.trim()));
-    if (!lines.has('result: fail')) {
-      return false;
-    }
-    const failed = seen.filter((item) => item.status === 'failed' || item.status === 'canceled');
-    return failed.length > 0 && failed.every((item) => item.id !== null && lines.has(`pipeline: ${item.id}`));
-  }
-
-  private report(opened: OpenedStep, text: string, body = ''): string {
-    const head = `${opened.startedAt} ${text}`;
-    return body ? `${head}\n${body.trimEnd()}` : head;
   }
 }

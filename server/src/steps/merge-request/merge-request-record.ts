@@ -8,21 +8,27 @@ export interface MergeRequestLine {
   draft: boolean;
 }
 
+interface MergeRequestBlock extends MergeRequestLine {
+  prose: string[];
+}
+
 /** A record without a `draft:` line is from before drafts and reads as ready. */
-export function parseMergeRequests(body: string): MergeRequestLine[] {
-  const records: MergeRequestLine[] = [];
+function readBlocks(body: string): MergeRequestBlock[] {
+  const records: MergeRequestBlock[] = [];
   let project = '';
   let iid = 0;
   let url = '';
   let draft = false;
+  let prose: string[] = [];
   const flush = (): void => {
     if (project && iid > 0 && url) {
-      records.push({ project, iid, url, draft });
+      records.push({ project, iid, url, draft, prose });
     }
     project = '';
     iid = 0;
     url = '';
     draft = false;
+    prose = [];
   };
   for (const line of body.split('\n')) {
     if (line.startsWith('project: ')) {
@@ -36,6 +42,8 @@ export function parseMergeRequests(body: string): MergeRequestLine[] {
       url = line.slice('url: '.length).trim();
     } else if (line.startsWith('draft: ')) {
       draft = line.slice('draft: '.length).trim() === 'true';
+    } else {
+      prose.push(line);
     }
   }
   flush();
@@ -43,6 +51,20 @@ export function parseMergeRequests(body: string): MergeRequestLine[] {
     throw new SwarmloopError('merge_request is missing');
   }
   return records;
+}
+
+export function parseMergeRequests(body: string): MergeRequestLine[] {
+  return readBlocks(body).map(({ project, iid, url, draft }) => ({ project, iid, url, draft }));
+}
+
+/** The prose of each record, in record order, without the `flaky:` lines a pipeline pass appended. */
+export function parseMergeRequestSummaries(body: string): string[] {
+  return readBlocks(body).map((record) =>
+    record.prose
+      .filter((line) => !line.startsWith('flaky: '))
+      .join('\n')
+      .trim(),
+  );
 }
 
 export function renderMergeRequest(records: (MergeRequestLine & { summary: string })[]): string {

@@ -20,6 +20,7 @@ import { EventRepository } from './event.repository';
 import { CheckoutRepository } from './checkout.repository';
 import { StatsRepository } from './stats.repository';
 import { StepEventLog } from './step-event.log';
+import { FlakyTestRepository } from './flaky-test.repository';
 import { RuntimeCooldownRepository } from './runtime-cooldown.repository';
 import { UserSettingRepository } from './user-setting.repository';
 
@@ -73,6 +74,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     CheckCommandRepository,
     StatsRepository,
     RuntimeCooldownRepository,
+    FlakyTestRepository,
     UserSettingRepository,
   ],
   exports: [
@@ -87,6 +89,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     CheckCommandRepository,
     StatsRepository,
     RuntimeCooldownRepository,
+    FlakyTestRepository,
     UserSettingRepository,
     TypeOrmModule,
   ],

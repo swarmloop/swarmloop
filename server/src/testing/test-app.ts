@@ -54,6 +54,8 @@ interface TestAppOptions {
   env?: Record<string, string>;
   /** A split run takes the real implement step, with its passes, in place of the scripted one. */
   realImplement?: boolean;
+  /** Starts the reconciler's timer. Off by default: a test drives its passes itself, one awaited pass at a time. */
+  reconcilerTimer?: boolean;
   /** The app removes the root when it closes. Defaults to true for a root it made. */
   ownsRoot?: boolean;
 }
@@ -195,7 +197,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     if (ownsRoot) await rm(root, { recursive: true, force: true });
     throw error;
   }
-  app.get(Reconciler).schedule();
+  if (options.reconcilerTimer) app.get(Reconciler).schedule();
   const server = app.getHttpServer() as Server;
   const address = server.address() as AddressInfo | null;
   if (!address || typeof address === 'string') {
