@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReadinessItem } from '@contract/readiness';
+import { ApiError } from '../../lib/api';
 import { getReadiness } from '../../lib/endpoints';
 import { QueryWrapper } from '../../test/query-wrapper';
 import { ReadinessProvider, useReadiness } from './use-readiness';
@@ -15,11 +16,14 @@ const item = (id: ReadinessItem['id'], status: ReadinessItem['status']): Readine
 });
 
 function Probe() {
-  const { items, blocker, error } = useReadiness();
+  const { items, blocker, error, loading, refreshFailed, checkedAt } = useReadiness();
   return (
     <div>
       <p>items: {items.length}</p>
       <p>blocker: {blocker?.id ?? 'none'}</p>
+      <p>loading: {String(loading)}</p>
+      <p>refreshFailed: {String(refreshFailed)}</p>
+      <p>checkedAt: {checkedAt ?? 'none'}</p>
       {error ? <p>error: {error}</p> : null}
     </div>
   );
@@ -37,6 +41,10 @@ function renderProbe(): void {
 const CHECKED_AT = '2026-01-01T00:00:00.000Z';
 
 describe('useReadiness', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('blocks on the first fail item', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [item('docker', 'ok'), item('disk', 'fail'), item('paths', 'fail')],
@@ -64,5 +72,54 @@ describe('useReadiness', () => {
     renderProbe();
     expect(await screen.findByText('error: boom')).toBeInTheDocument();
     expect(screen.getByText('blocker: none')).toBeInTheDocument();
+  });
+
+  it('refreshes every minute and on window focus, and keeps the last report when a refresh fails', async () => {
+    vi.useFakeTimers();
+    vi.mocked(getReadiness).mockReset();
+    vi.mocked(getReadiness).mockResolvedValue({ items: [item('disk', 'fail')], checkedAt: CHECKED_AT, load: null });
+    renderProbe();
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(getReadiness).toHaveBeenCalledTimes(1);
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+    expect(getReadiness).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      fireEvent.focus(window);
+      window.dispatchEvent(new Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(getReadiness).toHaveBeenCalledTimes(3);
+    vi.mocked(getReadiness).mockRejectedValue(new Error('boom'));
+    await act(() => vi.advanceTimersByTimeAsync(61_000));
+    expect(screen.getByText('refreshFailed: true')).toBeInTheDocument();
+    expect(screen.getByText('blocker: disk')).toBeInTheDocument();
+    expect(screen.getByText(`checkedAt: ${CHECKED_AT}`)).toBeInTheDocument();
+    expect(screen.queryByText('error: boom')).not.toBeInTheDocument();
+  });
+
+  it('counts an empty report without a time as loading, and one with items as a report', async () => {
+    vi.mocked(getReadiness).mockResolvedValue({ items: [], checkedAt: null, load: null });
+    renderProbe();
+    expect(await screen.findByText('items: 0')).toBeInTheDocument();
+    expect(screen.getByText('loading: true')).toBeInTheDocument();
+  });
+
+  it('is not loading for a report with items and no time', async () => {
+    vi.mocked(getReadiness).mockResolvedValue({ items: [item('docker', 'ok')], checkedAt: null, load: null });
+    renderProbe();
+    expect(await screen.findByText('items: 1')).toBeInTheDocument();
+    expect(screen.getByText('loading: false')).toBeInTheDocument();
+  });
+
+  it('retries sooner than a minute while the server is busy', async () => {
+    vi.useFakeTimers();
+    vi.mocked(getReadiness).mockReset();
+    vi.mocked(getReadiness).mockRejectedValue(new ApiError(503, 'The server is busy, retrying', true));
+    renderProbe();
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(getReadiness).toHaveBeenCalledTimes(1);
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    expect(vi.mocked(getReadiness).mock.calls.length).toBeGreaterThan(1);
+    expect(screen.getByText('error: The server is busy, retrying')).toBeInTheDocument();
   });
 });

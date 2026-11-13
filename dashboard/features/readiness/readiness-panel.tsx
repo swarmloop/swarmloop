@@ -1,24 +1,26 @@
 'use client';
 
 import type { ReactElement } from 'react';
+import { useEffect, useState } from 'react';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import WarningAmber from '@mui/icons-material/WarningAmber';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
+import Skeleton from '@mui/material/Skeleton';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import type { ReadinessItem } from '@contract/readiness';
 import { useReadiness } from './use-readiness';
 
-const STATUS = {
+export const STATUS = {
   ok: { color: 'success.main', Icon: CheckCircle, word: 'ready' },
   warn: { color: 'warning.main', Icon: WarningAmber, word: 'warning' },
   fail: { color: 'error.main', Icon: ErrorIcon, word: 'problem' },
 } as const satisfies Record<ReadinessItem['status'], { color: string; Icon: typeof CheckCircle; word: string }>;
 
-const NAMES: Record<ReadinessItem['id'], string> = {
+export const NAMES: Record<ReadinessItem['id'], string> = {
   docker: 'Docker',
   arch: 'Platform',
   images: 'Images',
@@ -57,19 +59,67 @@ function ownUse(item: ReadinessItem): string {
   return item.id === 'disk' ? (item.line.match(/swarmloop uses (.*)$/)?.[1] ?? '') : '';
 }
 
-/** What a run needs, at a glance: one tile per check. An item that is not ok also says what to do. */
-export function ReadinessPanel(): ReactElement | null {
-  const { items, error } = useReadiness();
-  if (error) {
-    return <Alert severity="warning">Readiness is not available: {error}</Alert>;
+/** The age of a report in words: `30 s`, `4 min` or `2 h`. */
+function ageWords(checkedAt: string, now: number): string {
+  const seconds = Math.max(0, Math.round((now - Date.parse(checkedAt)) / 1000));
+  if (seconds < 60) {
+    return `${seconds} s`;
   }
-  if (items.length === 0) {
-    return null;
+  return seconds < 3600 ? `${Math.floor(seconds / 60)} min` : `${Math.floor(seconds / 3600)} h`;
+}
+
+/** The current time, re-read every second so an age on screen keeps counting. */
+function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
+const GRID_SX = {
+  listStyle: 'none',
+  m: 0,
+  p: 0,
+  display: 'grid',
+  gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' },
+  gap: 1,
+} as const;
+
+function PanelLoading(): ReactElement {
+  return (
+    <Paper variant="outlined" component="section" id="readiness" aria-label="Readiness" sx={{ p: { xs: 2, md: 2.5 } }}>
+      <Typography sx={{ fontWeight: 600, mb: 1.5 }}>Checking readiness</Typography>
+      <Box component="ul" sx={GRID_SX}>
+        {(Object.keys(NAMES) as ReadinessItem['id'][]).map((id) => (
+          <Box component="li" key={id} data-testid="readiness-placeholder">
+            <Skeleton variant="rounded" height={56} />
+          </Box>
+        ))}
+      </Box>
+    </Paper>
+  );
+}
+
+/** What a run needs, at a glance: one tile per check. An item that is not ok also says what to do. */
+export function ReadinessPanel(): ReactElement {
+  const { items, error, loading, refreshFailed, checkedAt } = useReadiness();
+  const now = useNow();
+  if (error) {
+    return (
+      <Alert id="readiness" severity="warning">
+        Readiness is not available: {error}
+      </Alert>
+    );
+  }
+  if (loading) {
+    return <PanelLoading />;
   }
   const problems = items.filter((item) => item.status !== 'ok');
   const failing = problems.some((item) => item.status === 'fail');
   return (
-    <Paper variant="outlined" component="section" aria-label="Readiness" sx={{ p: { xs: 2, md: 2.5 } }}>
+    <Paper variant="outlined" component="section" id="readiness" aria-label="Readiness" sx={{ p: { xs: 2, md: 2.5 } }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
         <Box
           component="span"
@@ -86,18 +136,18 @@ export function ReadinessPanel(): ReactElement | null {
         <Typography variant="body2" color="text.secondary">
           {items.length - problems.length} of {items.length} checks pass
         </Typography>
+        {checkedAt ? (
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+            checked {ageWords(checkedAt, now)} ago
+          </Typography>
+        ) : null}
+        {refreshFailed ? (
+          <Typography variant="caption" color="text.secondary" sx={checkedAt ? undefined : { ml: 'auto' }}>
+            could not refresh, retrying
+          </Typography>
+        ) : null}
       </Box>
-      <Box
-        component="ul"
-        sx={{
-          listStyle: 'none',
-          m: 0,
-          p: 0,
-          display: 'grid',
-          gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' },
-          gap: 1,
-        }}
-      >
+      <Box component="ul" sx={GRID_SX}>
         {items.map((item) => {
           const { color, Icon, word } = STATUS[item.status];
           return (

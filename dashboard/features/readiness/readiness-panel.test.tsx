@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReadinessItem } from '@contract/readiness';
+import { ApiError } from '../../lib/api';
 import { getReadiness } from '../../lib/endpoints';
 import { QueryWrapper } from '../../test/query-wrapper';
 import { ReadinessPanel, shortLine } from './readiness-panel';
@@ -83,5 +84,57 @@ describe('shortLine', () => {
     expect(shortLine(item('model-credential', 'CLAUDE_CODE_OAUTH_TOKEN is set for claude'))).toBe('claude');
     expect(shortLine(item('code-host-token', 'GITHUB_TOKEN is accepted'))).toBe('github');
     expect(shortLine(item('arch', 'arm64 is supported'))).toBe('arm64');
+  });
+});
+
+describe('ReadinessPanel refresh', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('shows placeholder tiles while the first report loads', () => {
+    vi.mocked(getReadiness).mockReturnValue(new Promise(() => undefined));
+    renderPanel();
+    expect(screen.getAllByTestId('readiness-placeholder')).toHaveLength(8);
+    expect(screen.getByRole('region', { name: 'Readiness' })).toHaveAttribute('id', 'readiness');
+  });
+
+  it('says how old the report is', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:30.000Z'));
+    vi.mocked(getReadiness).mockResolvedValue({
+      items: [{ id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' }],
+      checkedAt: CHECKED_AT,
+      load: null,
+    });
+    renderPanel();
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByText('checked 30 s ago')).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+    expect(screen.getByText(/^checked 1 min ago/)).toBeInTheDocument();
+  });
+
+  it('keeps the tiles and says quietly that a refresh failed', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:30.000Z'));
+    vi.mocked(getReadiness).mockResolvedValueOnce({
+      items: [{ id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' }],
+      checkedAt: CHECKED_AT,
+      load: null,
+    });
+    renderPanel();
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    vi.mocked(getReadiness).mockRejectedValue(new Error('boom'));
+    await act(() => vi.advanceTimersByTimeAsync(61_000));
+    expect(screen.getByText('could not refresh, retrying')).toBeInTheDocument();
+    expect(screen.getByLabelText('Docker: ready, docker answers')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows the busy message, never HTTP 500, when no report came yet', async () => {
+    vi.mocked(getReadiness).mockRejectedValue(new ApiError(503, 'The server is busy, retrying', true));
+    renderPanel();
+    expect(await screen.findByText(/The server is busy, retrying/)).toBeInTheDocument();
+    expect(screen.queryByText(/HTTP 500/)).not.toBeInTheDocument();
   });
 });
