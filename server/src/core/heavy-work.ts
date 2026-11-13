@@ -15,13 +15,11 @@ export interface HeavyWork {
 
 /** What one piece of work takes at its peak. */
 export interface Footprint {
-  cpus: number;
   memoryBytes: number;
 }
 
-/** The peak CPU and memory of one finished piece of work, as the resource samples record them. */
+/** The peak memory of one finished piece of work, as the resource samples record it. */
 export interface FootprintPeak {
-  cpuPercent: number;
   rssBytes: number;
 }
 

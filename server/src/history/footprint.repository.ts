@@ -10,18 +10,17 @@ const PIECES = 50;
 const VISITS = 500;
 
 interface PeakRow {
-  cpuPercent: number | string | null;
   rssBytes: number | string | null;
 }
 
-/** The peak CPU and memory of the last finished pieces of work of one kind, read from the resource samples. */
+/** The peak memory of the last finished pieces of work of one kind, read from the resource samples. */
 @Injectable()
 export class FootprintRepository implements FootprintSource {
   constructor(@InjectRepository(ResourceSampleEntity) private readonly samples: Repository<ResourceSampleEntity>) {}
 
   async peaks(kind: HeavyKind, name: string): Promise<FootprintPeak[]> {
     const rows: PeakRow[] = await this.samples.query(...this.queryOf(kind, name));
-    return rows.map((row) => ({ cpuPercent: Number(row.cpuPercent) || 0, rssBytes: Number(row.rssBytes) || 0 }));
+    return rows.map((row) => ({ rssBytes: Number(row.rssBytes) || 0 }));
   }
 
   private queryOf(kind: HeavyKind, name: string): [string, string[]] {
@@ -52,7 +51,7 @@ export class FootprintRepository implements FootprintSource {
    * samples by their index, so the read never grows with the whole history.
    */
   private peakSql(join: string, where: string): string {
-    return `SELECT MAX(r.cpu_percent) AS cpuPercent, MAX(r.rss_bytes) AS rssBytes
+    return `SELECT MAX(r.rss_bytes) AS rssBytes
        FROM resource_samples r
        INNER JOIN step_stats s ON s.id = r.step_stat_id
        ${join}

@@ -2,6 +2,7 @@
 
 import type { ReactElement } from 'react';
 import Link from 'next/link';
+import HourglassEmpty from '@mui/icons-material/HourglassEmpty';
 import Box from '@mui/material/Box';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
@@ -9,65 +10,65 @@ import type { MachineLoad, ReadinessItem } from '@contract/readiness';
 import { NAMES, STATUS } from './readiness-panel';
 import { useReadiness } from './use-readiness';
 
-function worst(items: ReadinessItem[]): ReadinessItem['status'] | null {
-  if (items.length === 0) {
-    return null;
-  }
-  return items.some((item) => item.status === 'fail')
-    ? 'fail'
-    : items.some((item) => item.status === 'warn')
-      ? 'warn'
-      : 'ok';
+/** Gigabytes with one decimal, and no `.0`: `9.1`, `12`. */
+function gb(bytes: number): string {
+  return (bytes / 1024 ** 3).toFixed(1).replace(/\.0$/, '');
 }
 
-function Meter({ label, used, capacity }: { label: string; used: number; capacity: number }): ReactElement {
-  const percent = Math.min(100, Math.round((used / capacity) * 100));
-  return (
-    <Box
-      role="meter"
-      aria-label={label}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={percent}
-      sx={{ width: 28, height: 4, borderRadius: 2, bgcolor: 'action.hover', overflow: 'hidden' }}
-    >
-      <Box sx={{ width: `${percent}%`, height: '100%', bgcolor: 'primary.main' }} />
-    </Box>
-  );
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
 }
 
 function Details({ items, load }: { items: ReadinessItem[]; load: MachineLoad | null }): ReactElement {
-  const failing = items.filter((item) => item.status === 'fail');
+  const listed = items.filter((item) => item.status !== 'ok');
   return (
     <Box>
-      {failing.map((item) => (
+      {listed.map((item) => (
         <Typography key={item.id} variant="body2">
           {NAMES[item.id]}: {item.line}
         </Typography>
       ))}
-      {load ? (
+      {load && load.waiting.length > 0 ? (
         <>
-          <Typography variant="body2">Running: {load.running.join(', ') || 'none'}</Typography>
-          <Typography variant="body2">Waiting: {load.waiting.join(', ') || 'none'}</Typography>
+          <Typography variant="body2">
+            Memory booked: {gb(load.usedMemoryBytes)} of {gb(load.capacityMemoryBytes)} GB
+          </Typography>
+          <Typography variant="body2">Waiting work starts when its memory fits.</Typography>
         </>
-      ) : (
-        <Typography variant="body2">No limit is known</Typography>
-      )}
+      ) : null}
     </Box>
   );
 }
 
-/** The compact header item: the worst readiness color and the load of heavy work against the budget. */
-export function ReadinessStatus(): ReactElement {
+/** The compact header item: setup problems first, then work waiting for the machine, then setup warnings; else nothing. */
+export function ReadinessStatus(): ReactElement | null {
   const { items, load } = useReadiness();
-  const status = worst(items);
-  const sized = load !== null && load.capacityCpus > 0 && load.capacityMemoryBytes > 0;
+  const failing = items.filter((item) => item.status === 'fail').length;
+  const warning = items.filter((item) => item.status === 'warn').length;
+  const waiting = load?.waiting.length ?? 0;
+  let shown: { Icon: typeof HourglassEmpty; color: string; text: string };
+  if (failing > 0) {
+    shown = {
+      Icon: STATUS.fail.Icon,
+      color: STATUS.fail.color,
+      text: plural(failing, 'setup problem', 'setup problems'),
+    };
+  } else if (waiting > 0) {
+    shown = { Icon: HourglassEmpty, color: 'warning.main', text: `${waiting} waiting for machine` };
+  } else if (warning > 0) {
+    shown = {
+      Icon: STATUS.warn.Icon,
+      color: STATUS.warn.color,
+      text: plural(warning, 'setup warning', 'setup warnings'),
+    };
+  } else {
+    return null;
+  }
   return (
     <Tooltip title={<Details items={items} load={load} />} arrow disableInteractive>
       <Box
         component={Link}
         href="/#readiness"
-        aria-label={`Readiness: ${status ? STATUS[status].word : 'checking'}`}
         sx={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -77,17 +78,10 @@ export function ReadinessStatus(): ReactElement {
           textDecoration: 'none',
         }}
       >
-        <Box
-          component="span"
-          data-testid="readiness-dot"
-          sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: status ? STATUS[status].color : 'text.disabled' }}
-        />
-        {sized ? (
-          <>
-            <Meter label="CPU" used={load.usedCpus} capacity={load.capacityCpus} />
-            <Meter label="Memory" used={load.usedMemoryBytes} capacity={load.capacityMemoryBytes} />
-          </>
-        ) : null}
+        <shown.Icon fontSize="small" sx={{ color: shown.color }} />
+        <Typography variant="body2" color="text.secondary">
+          {shown.text}
+        </Typography>
       </Box>
     </Tooltip>
   );

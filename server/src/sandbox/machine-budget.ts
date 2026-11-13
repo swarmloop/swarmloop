@@ -4,12 +4,10 @@ import type { MachineLoad } from '../contract/readiness';
 import type { DockerRunner } from './run-containers';
 
 interface Reserve {
-  cpus: number;
   memoryBytes: number;
 }
 
 interface Limit {
-  cpus: number;
   memoryBytes: number;
 }
 
@@ -25,9 +23,10 @@ interface Entry {
 }
 
 /**
- * The one place that decides whether heavy work may start. The CPUs and memory the Docker daemon has, less the reserve
- * of the server and the dashboard, are shared by all runs through one first-come-first-served queue. Without an answer
- * from docker there is no limit.
+ * The one place that decides whether heavy work may start. The memory the Docker daemon has, less the reserve of the
+ * server and the dashboard, is shared by all runs through one first-come-first-served queue. CPU is not counted: it is
+ * left to `--cpu-shares`, because short CPU only slows work while short memory kills it. Without an answer from docker
+ * there is no limit.
  */
 export class MachineBudget {
   private limit: Promise<Limit | null> | null = null;
@@ -46,7 +45,7 @@ export class MachineBudget {
     if (!limit) {
       return () => undefined;
     }
-    const exclusive = work.alone === true || footprint.cpus > limit.cpus || footprint.memoryBytes > limit.memoryBytes;
+    const exclusive = work.alone === true || footprint.memoryBytes > limit.memoryBytes;
     return new Promise((resolve, reject) => {
       const entry: Entry = {
         work,
@@ -79,9 +78,7 @@ export class MachineBudget {
   snapshot(): MachineLoad {
     const used = [...this.running];
     return {
-      capacityCpus: this.known?.cpus ?? 0,
       capacityMemoryBytes: this.known?.memoryBytes ?? 0,
-      usedCpus: used.reduce((sum, entry) => sum + entry.footprint.cpus, 0),
       usedMemoryBytes: used.reduce((sum, entry) => sum + entry.footprint.memoryBytes, 0),
       running: used.map((entry) => entry.work.label),
       waiting: this.queue.map((entry) => entry.work.label),
@@ -104,15 +101,11 @@ export class MachineBudget {
 
   private async read(): Promise<Limit | null> {
     try {
-      const [cpus, memory] = (await this.docker(['info', '--format', '{{.NCPU}} {{.MemTotal}}'])).trim().split(/\s+/);
-      const total = { cpus: Number(cpus), memoryBytes: Number(memory) };
-      if (!(total.cpus > 0) || !(total.memoryBytes > 0) || !Number.isFinite(total.cpus + total.memoryBytes)) {
+      const total = Number((await this.docker(['info', '--format', '{{.MemTotal}}'])).trim());
+      if (!Number.isFinite(total) || !(total > 0)) {
         return null;
       }
-      return {
-        cpus: Math.max(0, total.cpus - this.reserve.cpus),
-        memoryBytes: Math.max(0, total.memoryBytes - this.reserve.memoryBytes),
-      };
+      return { memoryBytes: Math.max(0, total - this.reserve.memoryBytes) };
     } catch {
       return null;
     }
@@ -140,8 +133,7 @@ export class MachineBudget {
     if (entry.exclusive || running.some((other) => other.exclusive)) {
       return false;
     }
-    const cpus = running.reduce((sum, other) => sum + other.footprint.cpus, entry.footprint.cpus);
     const memory = running.reduce((sum, other) => sum + other.footprint.memoryBytes, entry.footprint.memoryBytes);
-    return cpus <= limit.cpus && memory <= limit.memoryBytes;
+    return memory <= limit.memoryBytes;
   }
 }

@@ -30,12 +30,15 @@ describe('SandboxService machine budget', () => {
     process.env = { ...saved };
   });
 
-  /** A machine of 3 CPUs and 5 GB with a reserve of 1 CPU and 1 GB: room for one seed-sized piece. */
-  function service(info: () => Promise<string> | string = () => `3 ${5 * GB}`, spawnFails = false): SandboxService {
-    const sandbox = new SandboxService(new AppConfig(testEnv({ RESERVE_CPUS: 1, RESERVE_MEMORY_GB: 1 })));
+  /** 4 GB with a reserve of 1 GB: room for one seed-sized piece. */
+  function service(
+    info: (args: string[]) => Promise<string> | string = () => `${4 * GB}`,
+    spawnFails = false,
+  ): SandboxService {
+    const sandbox = new SandboxService(new AppConfig(testEnv({ RESERVE_MEMORY_GB: 1 })));
     sandbox.useDocker(async (args) => {
       if (args[0] === 'info') {
-        return info();
+        return info(args);
       }
       return '';
     });
@@ -124,8 +127,8 @@ describe('SandboxService machine budget', () => {
   });
 
   it('sizes the cap from the footprint source, and falls back to the seed when it fails', async () => {
-    const sandbox = service(() => `3 ${50 * GB}`);
-    const peaks = Array.from({ length: 5 }, () => ({ cpuPercent: 100, rssBytes: 6 * GB }));
+    const sandbox = service(() => `${50 * GB}`);
+    const peaks = Array.from({ length: 5 }, () => ({ rssBytes: 6 * GB }));
     const source: FootprintSource = { peaks: () => Promise.resolve(peaks) };
     sandbox.useFootprints(source);
     const learned = await sandbox.spawn(launch('plan'));
@@ -134,6 +137,17 @@ describe('SandboxService machine budget', () => {
     sandbox.useFootprints({ peaks: () => Promise.reject(new Error('no stats')) });
     const seeded = await sandbox.spawn(launch('review'));
     expect(seeded.memoryCapBytes).toBe(3 * GB);
+  });
+
+  it('starts work with a high CPU peak while its memory fits', async () => {
+    const sandbox = service((args) => (args.join(' ').includes('NCPU') ? `1 ${4 * GB}` : `${4 * GB}`));
+    const peaks = Array.from({ length: 5 }, () => ({ cpuPercent: 800, rssBytes: GB }));
+    sandbox.useFootprints({ peaks: () => Promise.resolve(peaks) });
+    const reasons: string[] = [];
+    await sandbox.spawn(launch('plan', { onWait: (reason) => reasons.push(reason) }));
+    await sandbox.spawn(launch('review', { onWait: (reason) => reasons.push(reason) }));
+    expect(children).toHaveLength(2);
+    expect(reasons).toEqual([]);
   });
 
   it('starts at once without a limit when docker does not tell its size', async () => {

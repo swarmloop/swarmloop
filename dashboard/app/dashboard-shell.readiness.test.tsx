@@ -71,7 +71,7 @@ describe('DashboardShell readiness', () => {
       load: null,
     });
     renderShell();
-    expect(await screen.findByRole('link', { name: 'Readiness: problem' })).toHaveAttribute('href', '/#readiness');
+    expect(await screen.findByRole('link', { name: '1 setup problem' })).toHaveAttribute('href', '/#readiness');
     expect(await screen.findAllByTitle('start Docker')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'New run' })).toBeDisabled();
   });

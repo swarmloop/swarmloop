@@ -137,15 +137,11 @@ describe('env schema', () => {
     expect(bad.error?.message).toContain('CHECKS_PARALLEL');
   });
 
-  it('defaults the machine reserve to 1 CPU and 2 GB and rejects negative values', () => {
+  it('defaults the memory reserve to 2 GB and rejects negative values', () => {
     const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
-    expect(value.RESERVE_CPUS).toBe(1);
     expect(value.RESERVE_MEMORY_GB).toBe(2);
-    const set = envSchema.validate({ ...complete, RESERVE_CPUS: '0.5', RESERVE_MEMORY_GB: '4' }, { convert: true });
-    expect(set.value.RESERVE_CPUS).toBe(0.5);
+    const set = envSchema.validate({ ...complete, RESERVE_MEMORY_GB: '4' }, { convert: true });
     expect(set.value.RESERVE_MEMORY_GB).toBe(4);
-    const bad = envSchema.validate({ ...complete, RESERVE_CPUS: -1 }, { convert: true });
-    expect(bad.error?.message).toContain('RESERVE_CPUS');
     const badMemory = envSchema.validate({ ...complete, RESERVE_MEMORY_GB: -1 }, { convert: true });
     expect(badMemory.error?.message).toContain('RESERVE_MEMORY_GB');
   });
