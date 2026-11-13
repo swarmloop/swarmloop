@@ -168,6 +168,8 @@ export interface StepOptions {
   phases?: PhaseName[];
   auto?: boolean;
   reviewer?: string;
+  /** Called once the step is open and the run is `running`. The driver uses it to wake the parent of a subtask that left `blocked` or `failed`. */
+  opened?: () => Promise<void>;
 }
 
 /** Keep the output already on disk when the process dies. */

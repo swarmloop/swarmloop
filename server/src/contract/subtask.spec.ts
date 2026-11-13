@@ -1,4 +1,4 @@
-import { parseSubtasks, readyTasks, splitLine, statusLine, type Subtask } from './subtask';
+import { parseSubtasks, readyTasks, splitLine, statusLine, waitNote, type Subtask } from './subtask';
 
 describe('parseSubtasks', () => {
   it('parseSubtasks reads depends and status', () => {
@@ -40,6 +40,42 @@ describe('readyTasks', () => {
     const tasks = [task('a', 'running'), task('b', 'waiting'), task('c', 'waiting'), task('d', 'waiting')];
     expect(readyTasks(tasks, 3).map((item) => item.id)).toEqual(['b', 'c']);
     expect(readyTasks(tasks, 1)).toEqual([]);
+  });
+});
+
+describe('a blocked task', () => {
+  it('holds back its dependents at one and two levels, and an independent task stays ready', () => {
+    const tasks = [
+      task('a', 'blocked'),
+      task('b', 'waiting', ['a']),
+      task('c', 'waiting', ['b']),
+      task('d', 'waiting'),
+    ];
+    expect(readyTasks(tasks, 3).map((item) => item.id)).toEqual(['d']);
+  });
+
+  it('does not loop on a dependency cycle', () => {
+    const tasks = [task('a', 'waiting', ['b']), task('b', 'waiting', ['a'])];
+    expect(readyTasks(tasks, 3)).toEqual([]);
+    expect(waitNote(tasks[0], tasks)).toBe('waiting for b');
+  });
+});
+
+describe('waitNote', () => {
+  it('names the blocked task behind a chain', () => {
+    const tasks = [task('a', 'blocked'), task('b', 'waiting', ['a']), task('c', 'waiting', ['b'])];
+    expect(waitNote(tasks[1], tasks)).toBe('waiting for a, which is blocked');
+    expect(waitNote(tasks[2], tasks)).toBe('waiting for a, which is blocked');
+  });
+
+  it('names the tasks that are not settled and never a merged one', () => {
+    const tasks = [task('a', 'merged'), task('b', 'running'), task('c', 'waiting', ['a', 'b'])];
+    expect(waitNote(tasks[2], tasks)).toBe('waiting for b');
+  });
+
+  it('says a task that waits only for a slot is waiting for a free slot', () => {
+    const tasks = [task('a', 'running'), task('b', 'running'), task('c', 'waiting', ['d']), task('d', 'merged')];
+    expect(waitNote(tasks[2], tasks)).toBe('waiting for a free slot: 2 of SUBTASKS_PARALLEL running');
   });
 });
 

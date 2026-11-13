@@ -68,8 +68,10 @@ export class RunDriver {
 
   /** Drives the run, then tells its parent, if it has one, that this subtask changed. */
   async drive(name: StepName, key: string, options: StepOptions): Promise<PipelineResult> {
+    const wake = await this.subtasks?.leavingKey(key);
+    const opened = wake ? async () => this.subtasks?.notifyParent(key, wake) : undefined;
     try {
-      return await this.driveSteps(name, key, options);
+      return await this.driveSteps(name, key, opened ? { ...options, opened } : options);
     } finally {
       await this.subtasks?.notifyParent(key);
     }

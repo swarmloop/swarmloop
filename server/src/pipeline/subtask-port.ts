@@ -261,16 +261,23 @@ export class SubtaskPort extends SubtaskOps {
   }
 
   /** Sends the parent of a subtask a `resume`, so its next pass sees the subtask as it is now. */
-  async notifyParent(key: string): Promise<void> {
+  async notifyParent(key: string, idempotencyKey?: string): Promise<void> {
     try {
       const run = await this.runs.findRun(key);
       const parent = run && isSubtask(run) ? await this.runs.findById(run.parentRunId as number) : null;
       if (run && parent && this.passDue(parent)) {
-        await this.resumeParent(parent, `subtask-${run.key}-${run.revision}`);
+        await this.resumeParent(parent, idempotencyKey ?? `subtask-${run.key}-${run.revision}`);
       }
     } catch (error) {
       this.logger.warn(`parent of ${key} was not told: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /** The key of the wake-up for a subtask that is `blocked` or `failed` and is about to leave that state; null for any other run. */
+  async leavingKey(key: string): Promise<string | null> {
+    const run = await this.runs.findRun(key);
+    if (!run || !isSubtask(run) || !['blocked', 'failed'].includes(deriveState(run).state)) return null;
+    return `subtask-left-${run.key}-${(await this.visits.listStats(run.id)).length}`;
   }
 
   /** Sends `resume` to a parent that waits between passes. A pass that already runs, or is queued, is enough. */

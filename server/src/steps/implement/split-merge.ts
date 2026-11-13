@@ -31,9 +31,6 @@ export class SplitMerge {
 
   async run(parent: RunEntity, tasks: Subtask[]): Promise<MergeOutcome> {
     let current = tasks;
-    if (tasks.some((task) => task.status === 'blocked')) {
-      return { tasks, refusal: null };
-    }
     for (const task of tasks.filter((item) => item.status === 'green')) {
       const outcome = await this.merge(parent, task);
       if (!outcome) continue;
