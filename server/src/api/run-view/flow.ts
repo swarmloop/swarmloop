@@ -8,7 +8,13 @@ import type { StateFacts } from '../../history/run-state';
 import type { RunAction, RunState, StateReason } from '../../contract/run-state';
 import type { FlowItem, FlowView } from '../../contract/api';
 import type { LiveUsage } from '../../contract/live';
-import { isReviewStep, PHASES as CONTRACT_PHASES, PHASE_STEPS, pipelineStepOf } from '../../contract/steps';
+import {
+  IMPROVE_SKIPPED_NOTE,
+  isReviewStep,
+  PHASES as CONTRACT_PHASES,
+  PHASE_STEPS,
+  pipelineStepOf,
+} from '../../contract/steps';
 import { stepOutput } from '../../core/attempt-output';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered } from '../../steps/shared/answers';
@@ -71,6 +77,7 @@ export function phases(
         status,
         current: isReviewStep(name) ? status === 'running' || status === 'preparing' : parent === run.currentStep,
         attempts: chipAttempts(name, run, stats, documents, root, round),
+        ...(status === 'skipped' && name === 'implement-improve' ? { note: IMPROVE_SKIPPED_NOTE } : {}),
       };
     });
     if (phase.phase !== 'code-review') {
@@ -171,6 +178,7 @@ function doneSentence(run: RunEntity): string {
 
 const OUTAGE_NAMES: Record<string, string> = {
   [ERROR_CODES.HOST_UNAVAILABLE]: 'A host did not answer.',
+  [ERROR_CODES.CI_NOT_STARTED]: 'The host has not started CI for the commit.',
   [ERROR_CODES.DOCKER_UNAVAILABLE]: 'Docker did not answer.',
 };
 

@@ -65,6 +65,18 @@ function runOf(row: (typeof ROWS)[number]): RunEntity {
 }
 
 describe('run rebase', () => {
+  it.each([
+    ['a blocked subtask the parent moves', { parentRunId: 7 }, true, PAST_GUARD],
+    ['a working subtask the parent moves', { parentRunId: 7 }, true, PAST_GUARD],
+    ['a blocked subtask a person moves', { parentRunId: 7 }, false, 'f36-1 is blocked'],
+    ['a blocked run that is no subtask', { parentRunId: null }, true, 'f36-1 is blocked'],
+  ])('takes %s only as the parent sends it', async (name, link, byParent, outcome) => {
+    const run = { ...runOf({ state: 'blocked', status: 'blocked' }), ...link };
+    if (name.includes('working')) writeRunState(run, { status: 'running', currentStep: 'implement' });
+
+    await expect(rebaseOf(run).rebase('f36-1', false, byParent)).rejects.toThrow(outcome);
+  });
+
   it.each(ROWS)('follows what actionsFor offers for $status run in state $state', async (row) => {
     const run = runOf(row);
     const { state, reason } = deriveState(run);

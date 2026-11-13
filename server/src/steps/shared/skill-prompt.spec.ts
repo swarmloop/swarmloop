@@ -48,6 +48,16 @@ describe('impact skill rules', () => {
     expect(skill('plan')).toContain('`files:` (the paths it changes) and `proof:`');
   });
 
+  it('plan skills say files lists every changed file and a task changing a listed file depends on it', () => {
+    for (const name of ['plan', 'plan-improve']) {
+      const text = skill(name);
+      expect(text).toContain(
+        '`files:` lists every file the task will change, including its tests and the shared test helpers and fixtures they need',
+      );
+      expect(text).toContain('a task that changes a file another task lists depends on that task');
+    }
+  });
+
   it('requirements holds the removal rule and the dead-code exception, and not the old sentence', () => {
     const text = skill('code-review/requirements');
     expect(text).toContain('A behavior the diff removes or makes unreachable is a return unless the task names it');
@@ -155,6 +165,15 @@ describe('split skill text', () => {
   });
 });
 
+describe('the split keep: section', () => {
+  it.each(['plan', 'plan-improve'])('%s says keep: lines, tasks that change the tree and proof: new', (name) => {
+    const text = skillPrompt(name, '{}', ['api'], [], [], { split: true });
+    expect(text).toContain('- <capability> | proof: <test or new <test>> | tasks: <ids');
+    expect(text).toMatch(/tasks are only work that changes the tree/i);
+    expect(text).toContain('proof: new <test>');
+  });
+});
+
 describe('implement skill rules', () => {
   const rules = [
     'Run the tests closest to the change: the spec files of the changed code and the ones that import it.',
@@ -248,4 +267,48 @@ describe('project rules in a skill prompt', () => {
     expect(skillEnd).toBeGreaterThan(prompt.indexOf('# '));
     expect(prompt).toContain('Project rules (api):\nKeep it small.\n\nRequirements:');
   });
+});
+
+describe('fix-the-cause sentence', () => {
+  it.each(['implement', 'implement-improve', 'code-review/quality', 'code-review/regressions'])(
+    '%s names the special case keyed on what the failure showed',
+    (name) => {
+      expect(skill(name)).toContain('keyed on the specific name, message text, id or value seen in the failure');
+    },
+  );
+
+  it.each(['code-review/quality', 'code-review/regressions'])(
+    "%s reads implement's cause against the failure and the diff",
+    (name) => {
+      expect(skill(name)).toContain("Read implement's `cause:` against the failure and the diff");
+    },
+  );
+});
+
+describe('needs: a task that needs a sibling waits for it', () => {
+  it('has the plan skill name needs: and never ask for a stop-and-report item', () => {
+    const plan = skill('plan');
+
+    expect(plan).toContain('`needs:`');
+    expect(plan).toContain('A checklist never has an item like "stop and report if X is missing"');
+    expect(plan).not.toMatch(/^- .*stop and report/im);
+  });
+
+  it.each(['research', 'plan', 'implement'])('%s says when and how to write needs:', (name) => {
+    expect(skill(name)).toContain('`- <id>: <what it needs from that task>`');
+  });
+
+  it('limits a fix that makes a job pass to the files of the task and leaves a red job of a sibling alone', () => {
+    const text = skill('implement');
+
+    expect(text).toContain("part of the task only within the task's own files");
+    expect(text).toContain('named as the cause in `cause:` and left alone');
+  });
+
+  it.each(['code-review/requirements', 'code-review/regressions'])(
+    '%s returns a change to the file of another task with no dependency path',
+    (name) => {
+      expect(skill(name)).toMatch(/a change to a file .* another task lists/);
+    },
+  );
 });

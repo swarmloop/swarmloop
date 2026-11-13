@@ -134,7 +134,12 @@ export function RunHeader({
       </Box>
       {flow.status === 'done' ? (
         <Box sx={{ mt: 0.75 }}>
-          <RunStateLabel status={flow.status} merge={flow.merge} />
+          <RunStateLabel
+            status={flow.status}
+            merge={flow.merge}
+            subtask={Boolean(flow.parentKey)}
+            mergeWait={flow.mergeWait}
+          />
         </Box>
       ) : null}
       {launches.length > 0 ? (

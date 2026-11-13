@@ -1,6 +1,6 @@
 import type { DocumentEntity } from '../../history/entities';
 import type { FlowView, TaskLayer } from '../../contract/api';
-import { parseSubtasks, splitLine, type Subtask } from '../../contract/subtask';
+import { parseSubtasks, shownTaskState, splitLine, type Subtask } from '../../contract/subtask';
 import { STEPS, type StepName } from '../../contract/steps';
 import { readPlan } from '../../steps/plan/plan-record';
 import { composedReturn } from '../../steps/shared/handoff';
@@ -128,7 +128,7 @@ export function taskLayers(documents: DocumentEntity[], children: TaskRuns = new
         files: task.files,
         proof: task.proof,
         depends: task.depends,
-        status: task.status,
+        status: shownTaskState(task, children.get(task.id)),
         note: task.note,
         ...(children.has(task.id) ? { run: children.get(task.id) } : {}),
       },
@@ -167,8 +167,9 @@ export function taskView(
 ): Pick<FlowView, 'tasks' | 'taskLine' | 'mergeQueue' | 'decisions'> {
   const tasks = taskLayers(documents, children);
   const line = taskLine(documents, currentStep);
+  const shown = new Map(tasks.flatMap((layer) => layer.tasks).map((task) => [task.id, task.status]));
   const queue = parseSubtasks(latest(documents, 'subtasks'))
-    .filter((task) => task.status === 'green')
+    .filter((task) => shown.get(task.id) === 'green')
     .map(({ id, title }) => ({ id, title }));
   const decisions = decisionsOf(latest(documents, 'contract'));
   return {

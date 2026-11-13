@@ -23,9 +23,10 @@ import {
 } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
 import type { Subtask } from '../../contract/subtask';
+import type { KeepLine } from '../shared/keep-lines';
 import { SUBTASK_PROOF_CHECK } from './code-review.prompts';
 import { parseReview } from './code-review-record';
-import { fixNotes } from './review-input';
+import { fixNotes, withKeep } from './review-input';
 import { closeReview, recordAngle } from './review-report';
 import type { Finished, Opinion, Reviewer, ReviewDeps, Usage } from './reviewer';
 import { projectRules } from '../shared/project-rules';
@@ -68,6 +69,7 @@ interface RoundInput {
   impact: string | null;
   contract: string | null;
   subtasks: Subtask[] | null;
+  keep: KeepLine[] | null;
   auto: boolean | undefined;
   fresh: boolean;
   retry: boolean;
@@ -291,7 +293,7 @@ function reviewJob(reviewer: Reviewer, input: RoundInput) {
   const names = input.mounts.map((mount) => basename(mount.hostPath));
   const notesSection = input.notes?.trim() ? [{ heading: 'Implementation', body: input.notes }] : [];
   const planSection = input.plan.trim() ? [{ heading: 'Plan', body: input.plan }] : [];
-  const sections = withSubtasks(
+  const listed = withSubtasks(
     withContract(
       withImpact(
         withHandoff(withReturnNotes([input.diff, ...notesSection, ...planSection], input.returned), input.handoff),
@@ -302,6 +304,7 @@ function reviewJob(reviewer: Reviewer, input: RoundInput) {
     input.subtasks,
     reviewer.name === 'requirements' ? SUBTASK_PROOF_CHECK : undefined,
   );
+  const sections = reviewer.name === 'regressions' ? withKeep(listed, input.keep) : listed;
   const promptFor = (runtime: string): string =>
     skillPrompt(`code-review/${reviewer.name}`, input.requirements, names, sections, input.mounts, {
       rules: projectRules(names, input.mounts, runtime, false),

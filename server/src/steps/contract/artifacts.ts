@@ -2,6 +2,7 @@ import { CODE_REVIEWERS, STEPS, type StepName } from '../../contract/steps';
 import { REBASE_CONFLICT, REBASE_JOURNAL } from '../../git/rebase';
 import type { Issue } from './step-contract';
 import { CONTRACT_KIND, SUBTASKS_KIND, type Subtask } from '../../contract/subtask';
+import type { KeepLine } from '../shared/keep-lines';
 import { requirementsView } from '../../contract/requirements-view';
 import {
   artifact,
@@ -106,7 +107,7 @@ export const ARTIFACTS = {
     summarize: firstLine,
   }),
   issues: artifact('issues', {
-    writers: ['checks', 'code-review', 'pipeline'],
+    writers: ['checks', 'code-review', 'pipeline', 'commit'],
     readers: ['checks', 'implement', 'implement-improve'],
     codec: jsonArrayCodec<Issue>(),
     summarize: (issues) => listSummary(issues.length, 'issues', issues[0]?.title),
@@ -118,6 +119,7 @@ export const ARTIFACTS = {
   }),
   answers: artifact('answers', { writers: [], readers: ['research', 'plan'], external: true, summarize: firstLine }),
   questions: artifact('questions', { writers: ['research', 'plan'], readers: ['plan'], summarize: firstLine }),
+  needs: artifact('needs', { writers: ['research', 'plan', 'implement'], readers: [], summarize: firstLine }),
   impact: artifact('impact', {
     writers: ['research'],
     readers: ['plan', 'plan-improve', 'code-review'],
@@ -128,6 +130,12 @@ export const ARTIFACTS = {
     readers: ['plan-improve', 'branch', 'implement', 'implement-improve'],
     codec: jsonArrayCodec<Subtask>(),
     summarize: (tasks) => listSummary(tasks.length, 'tasks', tasks[0]?.title),
+  }),
+  keep: artifact('keep', {
+    writers: ['plan', 'plan-improve'],
+    readers: ['plan-improve', 'code-review'],
+    codec: jsonArrayCodec<KeepLine>(),
+    summarize: (lines) => listSummary(lines.length, 'kept capabilities', lines[0]?.capability),
   }),
   contract: artifact(CONTRACT_KIND, {
     writers: ['plan', 'plan-improve', 'implement'],
@@ -145,6 +153,7 @@ export const ARTIFACTS = {
     summarize: summarizePipeline,
   }),
   pipelineRebases: artifact('pipeline_rebases', { writers: ['pipeline'], readers: ['pipeline'], summarize: firstLine }),
+  ciWaits: artifact('ci_waits', { writers: ['pipeline'], readers: ['pipeline'], summarize: firstLine }),
   flaky: artifact('flaky', { writers: ['pipeline'], readers: ['pipeline'], summarize: firstLine }),
   ciSkip: artifact('ci_skip', {
     writers: ['commit'],
@@ -163,6 +172,9 @@ export const ARTIFACTS = {
     readers: ['merge-request'],
     summarize: firstLine,
   }),
+  /** The files a merged task changed, one path per line, read from its merge into the feature branch. */
+  mergedFiles: artifact('merged_files', { writers: [], readers: [], external: true, summarize: firstLine }),
+  pendingRebase: artifact('pending_rebase', { writers: [], readers: [], external: true, summarize: firstLine }),
   commit: artifact('commit', { writers: ['commit'], readers: ['commit'], summarize: firstLine }),
   mergeRequest: artifact('merge_request', {
     writers: ['merge-request', 'pipeline'],

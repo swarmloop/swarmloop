@@ -36,5 +36,7 @@ export class FakeSandbox {
     stopRun: (): Promise<'gone' | 'unknown'> => Promise.resolve(this.silent ? 'unknown' : 'gone'),
     attemptRunning: (): Promise<boolean | null> => Promise.resolve(this.silent ? null : false),
     dockerAnswers: (): Promise<boolean> => Promise.resolve(!this.silent),
+    pruneDocker: (): Promise<void> => Promise.resolve(),
+    dockerUsage: (): Promise<string> => Promise.resolve('nothing'),
   };
 }

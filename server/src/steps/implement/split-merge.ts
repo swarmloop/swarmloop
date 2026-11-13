@@ -1,27 +1,32 @@
 import { Injectable } from '@nestjs/common';
-import { settled, type Subtask } from '../../contract/subtask';
+import type { Subtask } from '../../contract/subtask';
 import type { RunEntity } from '../../history/entities';
 import { FetchFailed, MergeConflict } from '../../core/swarmloop-error';
 import type { CodeHost } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { SubtaskOps, type SubtaskMergeRequest } from '../shared/subtask-ops';
+import { SplitRebase } from './split-rebase';
 
 interface MergeOutcome {
   tasks: Subtask[];
   /** Why the host refused a merge for a reason other than a conflict. It blocks the parent. */
   refusal: string | null;
+  /** Why a green task's branch could not be fetched to place it on the feature branch. It is a wait with a next try, never a refusal. */
+  unfetched: string | null;
 }
 
 /**
- * The merge stage of a pass: the green tasks merge into the feature branch one at a time, in task order. A merge
+ * The merge queue of a pass: the green tasks merge into the feature branch one at a time, in task order. A merge
  * request never names its target here: it merges into the branch it was opened against, which is the feature branch
- * for every subtask. A task that conflicts is sent a Rebase and comes back green when its gates ran again.
+ * for every subtask. A task merges only when its last CI ran on top of the feature branch as it is now; a task
+ * behind it is rebased and merges when its gates ran again. After a merge every task that conflicts is rebased.
  */
 @Injectable()
 export class SplitMerge {
   constructor(
     private readonly subtasks: SubtaskOps,
     private readonly hosts: CodeHostRegistry,
+    private readonly rebases: SplitRebase,
   ) {}
 
   /** The host the person who started the run talks to. */
@@ -31,20 +36,32 @@ export class SplitMerge {
 
   async run(parent: RunEntity, tasks: Subtask[]): Promise<MergeOutcome> {
     let current = tasks;
-    if (tasks.some((task) => task.status === 'blocked')) {
-      return { tasks, refusal: null };
-    }
-    for (const task of tasks.filter((item) => item.status === 'green')) {
+    for (const queued of tasks.filter((item) => item.status === 'green')) {
+      const task = current.find((item) => item.id === queued.id) ?? queued;
+      if (task.status !== 'green') continue;
+      const child = await this.subtasks.find(parent, task.id);
+      const hasRequest = child && (await this.subtasks.mergeRequests(child)).length > 0;
+      let moved: Subtask | null = null;
+      try {
+        moved = child && hasRequest ? await this.rebases.behind(parent, task, child) : null;
+      } catch (error) {
+        if (!(error instanceof FetchFailed)) throw error;
+        return { tasks: current, refusal: null, unfetched: `subtask ${task.id} was not merged: ${error.message}` };
+      }
+      if (moved) {
+        current = current.map((item) => (item.id === task.id ? moved : item));
+        continue;
+      }
       const outcome = await this.merge(parent, task);
       if (!outcome) continue;
       const { done, refusal } = outcome;
       current = current.map((item) => (item.id === task.id ? done : item));
       if (done.status !== 'merged') {
-        return { tasks: current, refusal };
+        return { tasks: current, refusal, unfetched: null };
       }
-      await this.rebaseConflicting(parent, current);
+      current = await this.rebases.afterMerge(parent, current, done, Object.values(done.merged ?? {}).at(-1) ?? '');
     }
-    return { tasks: current, refusal: null };
+    return { tasks: current, refusal: null, unfetched: null };
   }
 
   /** Merges the requests of a task that no merge recorded yet, one repository after the other. Null for a task with no merge request. */
@@ -70,6 +87,7 @@ export class SplitMerge {
       }
       throw error;
     }
+    await this.subtasks.recordMerged(parent, child, merged);
     const branch = await this.subtasks.branchOf(child);
     for (const request of requests) {
       await (await this.hostOf(parent)).deleteBranch(request.project, branch);
@@ -80,18 +98,5 @@ export class SplitMerge {
 
   private async mergeOne(parent: RunEntity, request: SubtaskMergeRequest): Promise<string> {
     return (await (await this.hostOf(parent)).mergeMergeRequest(request.project, request.iid)).sha;
-  }
-
-  /** An open task whose merge request conflicts after a merge is sent a Rebase. A green one finds out when its own merge is refused. */
-  private async rebaseConflicting(parent: RunEntity, tasks: Subtask[]): Promise<void> {
-    for (const task of tasks.filter((item) => !settled(item) && item.status !== 'green')) {
-      const child = await this.subtasks.find(parent, task.id);
-      for (const request of child ? await this.subtasks.mergeRequests(child) : []) {
-        if ((await (await this.hostOf(parent)).readMergeRequest(request.project, request.iid)).conflicts) {
-          await this.subtasks.rebase(child as RunEntity);
-          break;
-        }
-      }
-    }
   }
 }

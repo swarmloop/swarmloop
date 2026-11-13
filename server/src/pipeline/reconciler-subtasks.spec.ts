@@ -21,11 +21,16 @@ import { SubtaskPort } from './subtask-port';
 const KEY = 'PROJ-500';
 
 /** A split parent that waits for one running subtask, with the fingerprint of its last pass recorded or not. */
-async function waitingParent(app: TestApp, recorded: boolean) {
+async function waitingParent(app: TestApp, recorded: boolean, blocked = false) {
   const runs = app.app.get(RunRepository);
   const parent = await save(runs, KEY, 'implement', 'waiting');
   parent.split = true;
-  writeRunState(parent, { status: 'waiting', reason: { code: ERROR_CODES.SUBTASKS_RUNNING, message: 'running' } });
+  writeRunState(
+    parent,
+    blocked
+      ? { status: 'blocked', reason: { code: ERROR_CODES.SUBTASK_BLOCKED, message: 'subtask a is blocked' } }
+      : { status: 'waiting', reason: { code: ERROR_CODES.SUBTASKS_RUNNING, message: 'running' } },
+  );
   await runs.saveRun(parent);
   const child = await save(runs, `${KEY}-a`, 'research', 'running');
   child.parentRunId = parent.id;
@@ -74,6 +79,19 @@ describe('reconciler and the subtasks of a parent', () => {
   it('resumes a parent with no fingerprint', async () => {
     await waitingParent(app, false);
 
+    await ticks(1);
+
+    expect(resumed).toHaveBeenCalledTimes(1);
+  });
+
+  it('wakes a parent blocked with SUBTASK_BLOCKED when a subtask changed, and leaves it when nothing changed', async () => {
+    const { runs, child } = await waitingParent(app, true, true);
+
+    await ticks(2);
+    expect(resumed).not.toHaveBeenCalled();
+
+    writeRunState(child, { status: 'done', currentStep: 'done' });
+    await runs.saveRun(child);
     await ticks(1);
 
     expect(resumed).toHaveBeenCalledTimes(1);

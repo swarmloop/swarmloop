@@ -38,9 +38,9 @@ describe('commit step golden traces', () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  async function trace(name: string, tree: string, stub?: () => void) {
+  async function trace(name: string, tree: string, stub?: () => void | Promise<void>) {
     await seed(app);
-    stub?.();
+    await stub?.();
     const documents = recordingDocuments(app.get(DocumentRepository));
     const step = new CommitStep(
       new StepKernel(
@@ -84,8 +84,14 @@ describe('commit step golden traces', () => {
     await trace('no-origin', tree);
   });
 
-  it('fails with a SwarmloopError when there is nothing to commit', async () => {
-    await trace('swarmloop-error', featureTree(root));
+  it('fails with a SwarmloopError when a re-run of CI cannot be pushed', async () => {
+    const tree = featureTree(root);
+    runGit(tree, ['push', '-q', '-u', 'origin', `feature/${KEY}-ship-the-field`]);
+    runGit(tree, ['remote', 'set-url', 'origin', join(root, 'gone.git')]);
+    await trace('swarmloop-error', tree, async () => {
+      const run = (await app.get(RunRepository).findRun(KEY))!;
+      await app.get(DocumentRepository).putDocument(run, 'ci_rerun', 'demo old -> new\n');
+    });
   });
 
   it('fails with the generic text when a dependency throws a plain Error', async () => {

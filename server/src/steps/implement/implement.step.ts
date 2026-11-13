@@ -7,7 +7,7 @@ import { SwarmloopEnv } from '../../config/env';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
 import { resumableChat } from '../../agent/agent-session';
-import { settled, withStatuses } from '../../contract/subtask';
+import { isSubtask, settled, withStatuses } from '../../contract/subtask';
 import { StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { ERROR_CODES } from '../../contract/error-codes';
@@ -41,6 +41,7 @@ import { staleRepos, unchangedSincePipeline } from '../pipeline/pipeline-report'
 import { pipelineRefRepos } from '../pipeline/pipeline-ref-repos';
 import { rerunFailed } from './failed-commands';
 import { checksStillRed, implementFollowUp } from './implement.prompts';
+import { implementNeedsWait } from './implement-needs';
 import { parseImplementation, withReturnNotes } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { StepSnapshot } from '../step';
@@ -78,6 +79,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.rebaseMergeSkip,
     ARTIFACTS.subtasks,
     ARTIFACTS.contract,
+    ARTIFACTS.needs,
   ];
 
   constructor(
@@ -193,10 +195,17 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       projectFor: reproject,
       briefFor: (other) => withEnvironment(withAddedRepos(fullFor(other), added), executionRules),
       sections: ['implementation'],
-      validate: (text) => parseImplementation(text),
+      validate: (text) => {
+        if (!implementNeedsWait(ctx.opened.run, '', text)) parseImplementation(text);
+      },
       freshPrompt: continued?.chatId ? withEnvironment(withAddedRepos(full, added), executionRules) : undefined,
     });
     await assertUncommitted(mounts, branch, heads);
+    const waiting = implementNeedsWait(ctx.opened.run, ctx.opened.startedAt, agentResult.responseText);
+    if (waiting) {
+      return waiting;
+    }
+    if (isSubtask(ctx.opened.run)) await ctx.write(ARTIFACTS.needs, '');
     let planText = agentResult.responseText;
     let planOutput = agentResult.output ?? '';
     const unchanged = async (): Promise<boolean> =>

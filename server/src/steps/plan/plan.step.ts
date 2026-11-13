@@ -29,6 +29,7 @@ import {
   type TaskLimits,
 } from './plan-tasks';
 import { withNamedFileLines } from './named-file-lines';
+import { needsWait, parseNeeds } from '../shared/needs';
 import { planFollowUp, SUBTASK_DECIDES } from './plan.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 
@@ -48,7 +49,14 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
   readonly name: StepName = 'plan';
   override readonly capabilities: StepCapabilities = { revisesRequirements: true };
 
-  readonly outputs = [ARTIFACTS.requirements, ARTIFACTS.questions, ARTIFACTS.subtasks, ARTIFACTS.contract];
+  readonly outputs = [
+    ARTIFACTS.requirements,
+    ARTIFACTS.questions,
+    ARTIFACTS.subtasks,
+    ARTIFACTS.keep,
+    ARTIFACTS.contract,
+    ARTIFACTS.needs,
+  ];
 
   constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
     super(kernel, sandbox, launcher);
@@ -109,6 +117,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
         planTool: runtimeFor(target).planModeHasPlanTool,
         rules: projectRules(names, mounts, target, received),
       });
+    const subtask = isSubtask(ctx.opened.run);
     const finish = (prompt: string): string => `${withAddedRepos(prompt, added)}\n\n${PLAN_EXECUTION_RULE}`;
     const chosen = continued?.chatId ? appendImpact(planFollowUp(answers), impact) : fullFor(runtime, !!chat?.chatId);
     let agentResult = await ctx.launch({
@@ -117,6 +126,9 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       mounts,
       sections: ['plan'],
       validate: (text, output) => {
+        if (subtask && parseNeeds(text).length > 0) {
+          return;
+        }
         if (splitAnswer(text)) {
           parseTasks(text, unbounded(limits));
         } else if (!planQuestions(text)) {
@@ -124,9 +136,13 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
         }
       },
     });
+    const needs = subtask ? parseNeeds(agentResult.responseText) : [];
+    if (needs.length > 0) {
+      return needsWait(ctx.opened.startedAt, needs);
+    }
+    if (subtask) await ctx.write(ARTIFACTS.needs, '');
     const asked = planQuestions(agentResult.responseText);
     // A subtask asks no one: it decides the questions itself and records them as assumptions.
-    const subtask = isSubtask(ctx.opened.run);
     if (asked && subtask) {
       agentResult = await ctx.launch({
         prompt: SUBTASK_DECIDES,

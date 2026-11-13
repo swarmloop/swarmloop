@@ -261,6 +261,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     const impact = await ctx.reread(ARTIFACTS.impact);
     const split = opened.run.split;
     const contract = split ? await ctx.reread(ARTIFACTS.contract) : null;
+    const keep = split ? await ctx.reread(ARTIFACTS.keep) : null;
     const subtasks = split ? await ctx.reread(ARTIFACTS.subtasks) : null;
     const finished = await runRound(deps, {
       opened,
@@ -278,6 +279,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       impact,
       contract,
       subtasks,
+      keep,
       auto: options.auto,
       fresh,
       retry,

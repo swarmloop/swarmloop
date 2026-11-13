@@ -70,6 +70,35 @@ describe('RunList', () => {
     expect(screen.getByText(/by grace/)).toBeInTheDocument();
   });
 
+  it('labels a green subtask Queued to merge into the epic with its wait reason, never Ready to merge', () => {
+    const queued = {
+      ...runSummary(),
+      status: 'done',
+      currentStep: 'done',
+      parentKey: 'run-0',
+      taskId: 'a',
+      mergeWait: 'waiting for b, which is blocked',
+    };
+    list({ runs: [queued], visible: [queued] });
+
+    expect(screen.getByText('Queued to merge into the epic')).toBeInTheDocument();
+    expect(screen.getByText('waiting for b, which is blocked')).toBeInTheDocument();
+    expect(screen.queryByText('Ready to merge')).not.toBeInTheDocument();
+  });
+
+  it('labels a merged subtask Merged', () => {
+    const merged = {
+      ...runSummary(),
+      status: 'done',
+      parentKey: 'run-0',
+      merge: { merged: { 'acme/demo': { sha: 'abcdef123', by: null, at: '2026-05-01T10:00:00.000Z', url: null } } },
+    };
+    list({ runs: [merged], visible: [merged] });
+
+    expect(screen.getByText('Merged')).toBeInTheDocument();
+    expect(screen.queryByText('Queued to merge into the epic')).not.toBeInTheDocument();
+  });
+
   it('shows no merge label on a run that is not done', () => {
     list();
 

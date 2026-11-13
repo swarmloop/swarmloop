@@ -4,6 +4,7 @@ import { RunRepository } from '../../history/run.repository';
 import { deriveState, writeRunState } from '../../history/run-state';
 import { CommandService } from '../../pipeline/command.service';
 import { createTestApp, type TestApp } from '../../testing/test-app';
+import { SubtaskOps } from '../shared/subtask-ops';
 import { save } from '../../testing/runs.spec-helpers';
 
 export const KEY = 'PROJ-300';
@@ -24,13 +25,14 @@ export const requirements = `${JSON.stringify({
   plan: { name: 'plan', overview: '', items: ['do it'], decision: 'approve' },
 })}\n`;
 
-/** An app with the real implement step. Starting a subtask run is recorded, not run. */
+/** An app with the real implement step. Starting a subtask run is recorded, not run. The runs have no worktree, so every task is answered as on top of the feature branch; the merge queue has its own whole-flow spec. */
 export async function world(env: Record<string, string> = {}) {
   const app = await createTestApp({
     realImplement: true,
     env,
     sandbox: { stopRun: () => Promise.resolve('gone') },
   });
+  jest.spyOn(app.app.get(SubtaskOps), 'behindTip').mockResolvedValue(null);
   return { app, ...instrument(app) };
 }
 

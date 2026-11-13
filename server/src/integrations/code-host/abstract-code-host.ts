@@ -46,7 +46,7 @@ export abstract class AbstractCodeHost implements CodeHost {
   constructor(
     protected readonly env: CodeHostEnv,
     protected readonly clock: Clock,
-    private readonly failure: string,
+    protected readonly failure: string,
     private readonly rejectedToken: string,
   ) {}
 
@@ -112,6 +112,8 @@ export abstract class AbstractCodeHost implements CodeHost {
       this.rethrow(error, calls);
     }
   }
+
+  abstract startPipeline(ref: PipelineRef, reason: string): Promise<{ httpCalls: HttpCallDraft[] }>;
 
   abstract setDraft(project: string, iid: number, draft: boolean): Promise<{ httpCalls: HttpCallDraft[] }>;
 

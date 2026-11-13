@@ -15,6 +15,7 @@ export const RUN_STATES = [
   'done',
   'merged',
   'closed',
+  'skipped',
 ] as const;
 export type RunState = (typeof RUN_STATES)[number];
 
@@ -47,7 +48,7 @@ export interface StateReason {
   message: string;
   /** Set with `RUNTIME_LIMIT`. */
   limit?: LimitState;
-  /** Set with `HOST_UNAVAILABLE` and `DOCKER_UNAVAILABLE`: when the next automatic try happens, UTC, ISO 8601. */
+  /** Set with `HOST_UNAVAILABLE`, `CI_NOT_STARTED` and `DOCKER_UNAVAILABLE`: when the next automatic try happens, UTC, ISO 8601. */
   retryAt?: string;
 }
 
@@ -59,13 +60,17 @@ export const REASON = {
   didNotFit: 'DID_NOT_FIT',
   loopLimit: 'LOOP_LIMIT',
   ciLogUnavailable: 'CI_LOG_UNAVAILABLE',
-  ciNotRun: 'CI_NOT_RUN',
+  ciNotRun: ERROR_CODES.CI_NOT_RUN,
   ciTimeout: 'CI_TIMEOUT',
   blocked: 'BLOCKED',
   recovering: 'RECOVERING',
   mergeWatchUnavailable: 'MERGE_WATCH_UNAVAILABLE',
   mergeWatchStopped: 'MERGE_WATCH_STOPPED',
+  skipped: 'SKIPPED',
 } as const;
+
+/** What every command on a skipped task's run is refused with. */
+export const SKIPPED_NOTE = 'this task was skipped';
 
 /** What a stopped step says. It also tells a stopped block from the others when only the error text is known. */
 export const STOP_NOTE = 'Stopped by request. Commits, pushes and merge requests stay: Stop is not a rollback.';
@@ -125,13 +130,18 @@ export const NEEDS_PERSON: Readonly<Record<string, RunAction>> = {
 export const AUTO_RETRY_CODES: readonly string[] = [
   ERROR_CODES.RUNTIME_LIMIT,
   ERROR_CODES.HOST_UNAVAILABLE,
+  ERROR_CODES.CI_NOT_STARTED,
   ERROR_CODES.DOCKER_UNAVAILABLE,
   ERROR_CODES.SUBTASKS_RUNNING,
   ERROR_CODES.SUBTASK_WAITING,
 ];
 
 /** The waiting codes whose next try is timed: a person may try now. */
-export const TIMED_RETRY_CODES: readonly string[] = [ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.DOCKER_UNAVAILABLE];
+export const TIMED_RETRY_CODES: readonly string[] = [
+  ERROR_CODES.HOST_UNAVAILABLE,
+  ERROR_CODES.CI_NOT_STARTED,
+  ERROR_CODES.DOCKER_UNAVAILABLE,
+];
 
 /** The one place that says which actions a state allows. Availability follows what the dashboard offered before. */
 export function actionsFor(state: RunState, reasonCode: string | null = null): RunAction[] {
@@ -157,6 +167,7 @@ export function actionsFor(state: RunState, reasonCode: string | null = null): R
     case 'done':
       return ['replay', 'rebase'];
     case 'merged':
+    case 'skipped':
       return [];
     case 'closed':
       return ['replay'];

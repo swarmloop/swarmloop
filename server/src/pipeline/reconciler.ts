@@ -124,6 +124,7 @@ export class Reconciler implements OnModuleDestroy {
       await this.reconcileRunsNow();
       await this.resumeLimited();
       await this.resumeHostUnavailable();
+      await this.resumeCiNotStarted();
       await this.resumeDocker();
       await this.resumeDiskLow();
       await this.resumeGitAuth();
@@ -168,10 +169,19 @@ export class Reconciler implements OnModuleDestroy {
 
   /** A run that waits for a host goes on by itself, once, when the next try its reason names has come. */
   async resumeHostUnavailable(): Promise<void> {
-    for (const run of await this.withReason('waiting', ERROR_CODES.HOST_UNAVAILABLE)) {
+    await this.resumeTimed(ERROR_CODES.HOST_UNAVAILABLE, 'host');
+  }
+
+  /** A run whose CI did not start looks again, once, when the next look its reason names has come. */
+  async resumeCiNotStarted(): Promise<void> {
+    await this.resumeTimed(ERROR_CODES.CI_NOT_STARTED, 'ci');
+  }
+
+  private async resumeTimed(code: string, prefix: 'host' | 'ci'): Promise<void> {
+    for (const run of await this.withReason('waiting', code)) {
       const retryAt = Date.parse(deriveState(run).reason?.retryAt ?? '');
       if (Number.isFinite(retryAt) && this.clock.now() < retryAt) continue;
-      await this.resumeOnce(run, await this.outageKey('host', run), () => Promise.resolve(true));
+      await this.resumeOnce(run, await this.outageKey(prefix, run), () => Promise.resolve(true));
     }
   }
 
@@ -207,7 +217,7 @@ export class Reconciler implements OnModuleDestroy {
   }
 
   /** Names an outage by the attempt it cut and by its own retry time (or message), so another write to the run does not move it. */
-  private async outageKey(prefix: 'host' | 'docker' | 'disk', run: RunEntity): Promise<string> {
+  private async outageKey(prefix: 'host' | 'ci' | 'docker' | 'disk', run: RunEntity): Promise<string> {
     const stats = await this.visits.listStats(run.id);
     const attempt = stats[stats.length - 1]?.attemptId ?? 'none';
     const reason = deriveState(run).reason;
@@ -267,7 +277,7 @@ export class Reconciler implements OnModuleDestroy {
    */
   async resumeSubtaskParents(): Promise<void> {
     for (const run of await this.runs.listRuns()) {
-      if (run.status !== 'waiting' || !this.subtasks.passDue(run)) continue;
+      if (!this.subtasks.passDue(run)) continue;
       try {
         if (!(await this.subtasks.subtasksChanged(run))) continue;
         await this.subtasks.resumeParent(run, `subtasks-${run.revision}`);

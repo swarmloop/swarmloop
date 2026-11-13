@@ -143,6 +143,32 @@ describe('RunScreen', () => {
     expect(skipTask).toHaveBeenCalledWith('run-1', 'b');
   });
 
+  it('shows a resumed blocked subtask as running, with no Skip task on its row', async () => {
+    const tasks = [
+      {
+        layer: 0,
+        tasks: [
+          {
+            id: 'b',
+            title: 'Send it',
+            files: [],
+            proof: 'b',
+            depends: [],
+            status: 'running' as const,
+            run: { key: 'run-1-b', state: 'running' as const, currentStep: 'implement', usd: 0, durationMs: 0 },
+          },
+        ],
+      },
+    ];
+    vi.mocked(getFlow).mockResolvedValue(flowView({ tasks, taskLine: 'Split: 1 tasks · 0 merged · 1 running' }));
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    const region = await screen.findByRole('region', { name: 'Tasks' });
+    expect(region).toHaveTextContent('running');
+    expect(region).not.toHaveTextContent('blocked');
+    expect(within(region).queryByRole('button', { name: 'Skip task' })).not.toBeInTheDocument();
+  });
+
   it('shows the split panel and only its own cost for the parent', async () => {
     const base = flowView();
     vi.mocked(getFlow).mockResolvedValue(
@@ -162,7 +188,7 @@ describe('RunScreen', () => {
                 proof: 'a',
                 depends: [],
                 status: 'running',
-                run: { key: 'run-1-a', currentStep: 'implement', usd: 7, durationMs: 1000 },
+                run: { key: 'run-1-a', state: 'running', currentStep: 'implement', usd: 7, durationMs: 1000 },
               },
             ],
           },

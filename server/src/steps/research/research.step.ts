@@ -20,6 +20,7 @@ import { resumableChat } from '../../agent/agent-session';
 import { projectRules } from '../shared/project-rules';
 import { mountsForStep } from '../../git/repo-names';
 import { parseImpact, parseResearch, renderImpact } from './research-record';
+import { needsWait, parseNeeds } from '../shared/needs';
 import { RESEARCH_CONTINUE } from './research.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 
@@ -36,7 +37,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
   readonly name: StepName = 'research';
   override readonly capabilities: StepCapabilities = { revisesRequirements: true };
 
-  readonly outputs = [ARTIFACTS.questions, ARTIFACTS.repos, ARTIFACTS.impact];
+  readonly outputs = [ARTIFACTS.questions, ARTIFACTS.repos, ARTIFACTS.impact, ARTIFACTS.needs];
 
   constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
     super(kernel, sandbox, launcher);
@@ -75,14 +76,24 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       });
     const { runtime } = this.profile(this.config.env, ctx.opened.run);
     const chat = await resumableChat(root(this.config), ctx.opened.run.key, 'research', runtime);
+    const subtask = isSubtask(ctx.opened.run);
     const agentResult = await ctx.launch({
       prompt: promptFor(runtime, !!chat?.chatId),
       briefFor: (other) => promptFor(other, false),
       mounts,
       continuePrompt: RESEARCH_CONTINUE,
       sections: ['questions'],
-      validate: (text) => parseResearch(text),
+      validate: (text) => {
+        if (!subtask || parseNeeds(text).length === 0) parseResearch(text);
+      },
     });
+    const needs = subtask ? parseNeeds(agentResult.responseText) : [];
+    if (needs.length > 0) {
+      await ctx.write(ARTIFACTS.repos, ARTIFACTS.repos.parse(renderProjects(names)));
+      const wait = needsWait(ctx.opened.startedAt, needs);
+      return { ...wait, outputs: [{ artifact: ARTIFACTS.questions, value: '' }, ...wait.outputs] };
+    }
+    if (subtask) await ctx.write(ARTIFACTS.needs, '');
     const parsed = parseResearch(agentResult.responseText);
     const impact = parseImpact(agentResult.responseText);
     const repos = renderProjects(names);
@@ -90,7 +101,6 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     // itself and records them as assumptions: no subtask waits for a person.
     const { run } = ctx.opened;
     const parent = isSubtask(run) ? await this.runs.findById(run.parentRunId as number) : null;
-    const subtask = isSubtask(run);
     const paused = parsed.questions !== '' && (!subtask || (parent?.split === true && !answers.trim()));
     const assumed = subtask && !paused ? assumptions(parsed.questions) : '';
     await ctx.write(ARTIFACTS.repos, ARTIFACTS.repos.parse(repos));

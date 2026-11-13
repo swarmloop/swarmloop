@@ -9,6 +9,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 
 import { RunRepository } from '../../history/run.repository';
+import { deriveState } from '../../history/run-state';
 
 import { DocumentRepository } from '../../history/document.repository';
 
@@ -170,7 +171,7 @@ describe('pipeline step', () => {
     }
   });
 
-  it('fails when a workflow exists and no run starts', async () => {
+  it('waits for CI when a workflow exists and no run starts, whatever the host says of the request', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-configured-'));
     const read = jest.fn(() => Promise.resolve({ snapshot: null, httpCalls: [call('GET')] }));
     const previousTick = process.env.TICK_MS;
@@ -200,15 +201,16 @@ describe('pipeline step', () => {
       mkdirSync(workflow, { recursive: true });
       await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-311');
-      expect(result.exitCode).toBe(1);
-      expect(result.message).toContain('demo CI did not start');
+      expect(result.message).toContain('CI has not started for');
       expect(read.mock.calls.length).toBeGreaterThan(1);
       const after = await app.get(RunRepository).findRun('PROJ-311');
       expect(after?.currentStep).toBe('pipeline');
-      expect(after?.status).toBe('failed');
-      const error = await app.get(DocumentRepository).latestBody('PROJ-311', 'error');
-      expect(error).toContain('PR has merge conflicts');
-      expect(error).toContain('sha:');
+      expect(after?.status).toBe('waiting');
+      expect(deriveState(after!).reason?.code).toBe('CI_NOT_STARTED');
+      const log = await app.get(DocumentRepository).latestBody('PROJ-311', 'pipeline_log');
+      expect(log).toContain('demo CI did not start');
+      expect(log).toContain('PR has merge conflicts');
+      expect(log).toContain('sha:');
       expect(diagnose).toHaveBeenCalledTimes(1);
     } finally {
       restore('TICK_MS', previousTick);
@@ -319,7 +321,7 @@ describe('pipeline step', () => {
     }
   });
 
-  it('fails when one workflow never starts and another run passed', async () => {
+  it('waits for CI when one workflow never starts and another run passed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-partial-'));
     const read = jest.fn((ref: { project: string }) => {
       if (ref.project === 'group/web') {
@@ -351,12 +353,14 @@ describe('pipeline step', () => {
         await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
       }
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-312');
-      expect(result.exitCode).toBe(1);
-      expect(result.message).toContain('web CI did not start');
+      expect(result.message).toContain('CI has not started for');
       expect(read.mock.calls.length).toBeGreaterThan(2);
       const after = await app.get(RunRepository).findRun('PROJ-312');
       expect(after?.currentStep).toBe('pipeline');
-      expect(after?.status).toBe('failed');
+      expect(after?.status).toBe('waiting');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-312', 'pipeline_log')).toContain(
+        'web CI did not start',
+      );
     } finally {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);
@@ -420,7 +424,7 @@ describe('pipeline step', () => {
         mkdirSync(workflow, { recursive: true });
         await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
         const result = await app.get(PipelineService).step('pipeline', 'PROJ-316');
-        expect(result.message).toContain('demo CI did not start');
+        expect(result.message).toContain('CI has not started for');
         // 300 s of awake time is ten polls; the sleep adds none.
         expect(read.mock.calls.length).toBeGreaterThanOrEqual(10);
       } finally {

@@ -1,5 +1,5 @@
 import type { DocumentEntity } from '../../history/entities';
-import { belongsToVisit, decisionsOf, taskLayers, taskLine, taskView } from './documents';
+import { belongsToVisit, decisionsOf, taskLayers, taskLine, taskView, type TaskRuns } from './documents';
 
 describe('belongsToVisit', () => {
   const kinds = ['return', 'issues'];
@@ -114,11 +114,26 @@ describe('taskView', () => {
   it('adds the own run of a task, the merge queue in plan order and the decisions', () => {
     const subtasks = doc('subtasks', JSON.stringify([task('a', 'green'), task('b', 'running'), task('c', 'green')]));
     const contract = doc('contract', 'decisions:\n- subtask b: store UTC\n');
-    const run = { key: 'p-1-b', currentStep: 'implement', usd: 0.5, durationMs: 1000 };
+    const run: TaskRuns extends Map<string, infer R> ? R : never = {
+      key: 'p-1-b',
+      state: 'running',
+      currentStep: 'implement',
+      usd: 0.5,
+      durationMs: 1000,
+    };
+    const green = (key: string): typeof run => ({ ...run, key, state: 'done' });
 
-    const view = taskView([approved, subtasks, contract], 'implement', new Map([['b', run]]));
+    const view = taskView(
+      [approved, subtasks, contract],
+      'implement',
+      new Map([
+        ['a', green('p-1-a')],
+        ['b', run],
+        ['c', green('p-1-c')],
+      ]),
+    );
 
-    expect(view.tasks?.[0]?.tasks.map((item) => item.run)).toEqual([undefined, run, undefined]);
+    expect(view.tasks?.[0]?.tasks.map((item) => item.run)).toEqual([green('p-1-a'), run, green('p-1-c')]);
     expect(view.mergeQueue).toEqual([
       { id: 'a', title: 'A' },
       { id: 'c', title: 'C' },
@@ -131,5 +146,44 @@ describe('taskView', () => {
 
     expect(view).not.toHaveProperty('mergeQueue');
     expect(view).not.toHaveProperty('decisions');
+  });
+
+  it('shows the own state of the run, not the stored copy', () => {
+    const run = { key: 'p-1-a', state: 'running' as const, currentStep: 'implement', usd: 0, durationMs: 0 };
+    const subtasks = doc('subtasks', JSON.stringify([task('a', 'blocked'), task('b', 'merged'), task('c', 'running')]));
+
+    const view = taskView([approved, subtasks], 'implement', new Map([['a', run]]));
+
+    expect(view.tasks?.[0]?.tasks.map((item) => item.status)).toEqual(['running', 'merged', 'waiting']);
+  });
+
+  it('reads a task the parent merged as merged, and lists a done run with no outcome in the merge queue', () => {
+    const run = { key: 'p-1-a', currentStep: 'commit', usd: 0, durationMs: 0 };
+    const subtasks = doc('subtasks', JSON.stringify([task('a', 'running'), task('b', 'merged')]));
+
+    const view = taskView(
+      [approved, subtasks],
+      'implement',
+      new Map([
+        ['a', { ...run, state: 'done' as const }],
+        ['b', { ...run, key: 'p-1-b', state: 'merged' as const }],
+      ]),
+    );
+
+    expect(view.mergeQueue).toEqual([{ id: 'a', title: 'A' }]);
+    expect(view.tasks?.[0]?.tasks.map((item) => item.status)).toEqual(['green', 'merged']);
+  });
+
+  it('lists the merge queue in plan order, not layer order', () => {
+    const plan = [{ ...task('c', 'green'), depends: ['a'] }, task('d', 'green'), task('a', 'merged')];
+    const run = { key: 'p-1-x', currentStep: 'done', usd: 0, durationMs: 0 };
+    const runs: TaskRuns = new Map([
+      ['c', { ...run, state: 'done' }],
+      ['d', { ...run, state: 'done' }],
+    ]);
+
+    const view = taskView([approved, doc('subtasks', JSON.stringify(plan))], 'implement', runs);
+
+    expect(view.mergeQueue?.map((item) => item.id)).toEqual(['c', 'd']);
   });
 });

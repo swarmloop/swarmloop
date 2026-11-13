@@ -10,9 +10,11 @@ import { CheckoutRepository } from '../history/checkout.repository';
 import { root } from '../history/run-paths';
 import { branchName, commitMessage, summaryForBranch } from './branch/branch-name';
 import { completeRebase, rebaseFeatureRepos } from '../git/rebase';
-import { repoNames } from '../git/repo-names';
+import { sameOwnDiff } from '../git/rebase/own-diff';
+import { git } from '../git/git';
+import { isSubtask } from '../contract/subtask';
 import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
-import { mountsForStep } from '../git/repo-names';
+import { mountsForStep, repoNames, worktreePath } from '../git/repo-names';
 import { ARTIFACTS } from './contract/artifacts';
 import { ERROR_CODES } from '../contract/error-codes';
 import { deriveState, writeRunState } from '../history/run-state';
@@ -47,13 +49,15 @@ export class RunRebase {
     private readonly registry: CodeHostRegistry,
   ) {}
 
-  /** A reconciler resume of an unfinished journal is not a new command: it does not raise the generation. */
-  async rebase(key: string, resume = false): Promise<'resume' | 'start'> {
+  /**
+   * A reconciler resume of an unfinished journal is not a new command: it does not raise the generation. `byParent`
+   * is the parent of a subtask moving it onto the feature branch, which a person is never offered for a blocked or
+   * working run. A blocked subtask is moved and left blocked (`stay`): only a person's Resume, Replay or Skip moves it on.
+   */
+  async rebase(key: string, resume = false, byParent = false): Promise<'resume' | 'start' | 'stay'> {
     const run = await this.requireRun(key);
-    const { state, reason } = deriveState(run);
-    if (!actionsFor(state, reason?.code ?? null).includes('rebase')) {
-      throw new ConflictException(`${key} is ${state}`);
-    }
+    this.assertOffered(run, byParent);
+    const stays = byParent && deriveState(run).state === 'blocked';
     const status = run.status;
     if (!resume) {
       await this.assertSubtasksIdle(run);
@@ -63,6 +67,7 @@ export class RunRebase {
     const journal = runJournal(this.documents, await this.requireRun(key));
     let stop: Awaited<ReturnType<typeof rebaseFeatureRepos>>;
     const bases = new Map<string, string>();
+    const heads = status === 'done' ? await this.heads(run) : new Map<string, string>();
     try {
       stop = await this.rebaseWorktrees(run, bases, journal);
       const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
@@ -84,17 +89,27 @@ export class RunRebase {
         ARTIFACTS.rebaseConflict.kind,
         unfinished ? 'pending-implement\n' : 'pending\n',
       );
-      return this.startAtImplement(run);
+      return stays ? 'stay' : this.startAtImplement(run);
     }
+    if (stays) return 'stay';
     if (await this.checklistUnfinished(run)) {
       return this.startAtImplement(run);
     }
     if (status === 'done') {
       await this.documents.putDocument(await this.requireRun(key), ARTIFACTS.rebaseMergeSkip.kind, 'skip\n');
-      return this.startAtReview(key);
+      return (await this.reviewStands(run, heads, bases)) ? this.startAtChecks(run) : this.startAtReview(key);
     }
     // Every review and CI result of the old generation is stale: a step that reads them goes back through code-review.
     return AFTER_REVIEW.includes(run.currentStep) ? this.startAtReview(key) : 'resume';
+  }
+
+  /** A Rebase is for the states `actionsFor` offers it in, and for a blocked or working subtask when its parent sends it. */
+  private assertOffered(run: RunEntity, byParent: boolean): void {
+    const { state, reason } = deriveState(run);
+    const parentMay = byParent && isSubtask(run) && (state === 'blocked' || state === 'running');
+    if (!parentMay && !actionsFor(state, reason?.code ?? null).includes('rebase')) {
+      throw new ConflictException(`${run.key} is ${state}`);
+    }
   }
 
   private async turnBackToDraft(run: RunEntity): Promise<void> {
@@ -113,6 +128,42 @@ export class RunRebase {
       (child) => child.status === 'running' || this.runs.held(child),
     );
     if (working) throw new ConflictException(ERROR_CODES.SUBTASKS_RUNNING);
+  }
+
+  /** The head of every worktree of the run, before a rebase moves it. */
+  private async heads(run: RunEntity): Promise<Map<string, string>> {
+    const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
+    const heads = new Map<string, string>();
+    for (const repo of names) {
+      heads.set(repo, await git(['-C', worktreePath(root(this.config), run.key, repo), 'rev-parse', 'HEAD']));
+    }
+    return heads;
+  }
+
+  /** A review of a branch stands when the rebase left what the branch changes as it was. */
+  private async reviewStands(
+    run: RunEntity,
+    heads: ReadonlyMap<string, string>,
+    bases: ReadonlyMap<string, string>,
+  ): Promise<boolean> {
+    if (!isSubtask(run) || heads.size === 0) return false;
+    for (const [repo, before] of heads) {
+      const base = bases.get(repo);
+      const cwd = worktreePath(root(this.config), run.key, repo);
+      if (!base || !(await sameOwnDiff(cwd, before, base).catch(() => false))) return false;
+    }
+    return true;
+  }
+
+  /** The rebase changed nothing in the branch's own diff: its code review stands, so the checks and CI run again. */
+  private async startAtChecks(run: RunEntity): Promise<'start'> {
+    const checks = (await this.flows.activePhases(run.id)).includes('checks');
+    await this.flows.noteFlow(run.key, checks ? ['checks', 'ci'] : ['ci'], checks ? 'checks' : 'commit');
+    const next = await this.requireRun(run.key);
+    writeRunState(next, { status: 'waiting', currentStep: checks ? 'checks' : 'commit' });
+    next.stepStartedAt = null;
+    await this.runs.saveRun(next);
+    return 'start';
   }
 
   private async startAtReview(key: string): Promise<'start'> {

@@ -151,6 +151,7 @@ abstract class StepCore implements Step {
     options: StepOptions = {},
   ): Promise<PipelineResult> {
     const opened = await openStep(this.runs, this.clock, key, this.name);
+    await options.opened?.();
     return this.recordsEvents
       ? this.inEventScope(opened, () => this.attempt(opened, key, body, snapshot, options))
       : this.attempt(opened, key, body, snapshot, options);

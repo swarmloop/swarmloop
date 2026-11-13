@@ -56,17 +56,52 @@ describe('implement step', () => {
     }
   });
 
+  it('waits with the needs of a subtask whose answer ends with needs:, commits nothing, and ignores the section in any other run', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-needs-'));
+    await writeEnv(root);
+    const subtaskTree = featureTree(root, 'PROJ-147-t1', 'billing-api');
+    const plainTree = featureTree(root, 'PROJ-148', 'other');
+    const needs = ['needs:', '- t0: the retry policy'].join('\n');
+    const agent = jest.fn(async () => result(['implementation:', '- nothing yet', needs].join('\n')));
+    const app = await boot(root, agent);
+    try {
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const parent = await runs.openWaiting('PROJ-147', '/target');
+      await seed(app, 'PROJ-147-t1', 'approve');
+      const child = await runs.findRun('PROJ-147-t1');
+      await runs.saveRun({ ...child!, parentRunId: parent.id, taskId: 't1' });
+      await seed(app, 'PROJ-148', 'approve', 'other\n');
+      const head = git(subtaskTree, ['rev-parse', 'HEAD']);
+
+      await app.get(PipelineService).step('implement', 'PROJ-147-t1');
+
+      const waiting = await runs.findRun('PROJ-147-t1');
+      expect(waiting?.currentStep).toBe('implement');
+      expect(waiting?.status).toBe('waiting');
+      expect(await documents.latestBody('PROJ-147-t1', 'needs')).toBe('needs:\n- t0: the retry policy\n');
+      expect(git(subtaskTree, ['rev-parse', 'HEAD'])).toBe(head);
+      expect(git(subtaskTree, ['status', '--porcelain'])).toBe('');
+
+      writeFileSync(join(plainTree, 'field.ts'), 'export const field = 1;\n');
+      await app.get(PipelineService).step('implement', 'PROJ-148');
+      expect(await documents.latestBody('PROJ-148', 'needs')).toBeNull();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('sends the stored issues to the agent when no return document is stored', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-issues-'));
     await writeEnv(root);
-    const worktree = featureTree(root, 'PROJ-148', 'billing-api');
+    const worktree = featureTree(root, 'PROJ-148', 'other');
     const agent = jest.fn(async (_input: AgentRunInput) => {
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
       return result(reply);
     });
     const app = await boot(root, agent);
     try {
-      await seed(app, 'PROJ-148', 'approve');
+      await seed(app, 'PROJ-148', 'approve', 'other\n');
       const documents = app.get(DocumentRepository);
       const run = await app.get(RunRepository).findRun('PROJ-148');
       const issues = [issueOf('pipeline', 'unit failed', 'Assertion failed\n')];
@@ -209,7 +244,7 @@ describe('implement step', () => {
   it('keeps project execution rules on a resumed pipeline retry without preparing twice', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-retry-policy-'));
     await writeEnv(root);
-    featureTree(root, 'PROJ-148', 'billing-api');
+    featureTree(root, 'PROJ-148', 'other');
     mkdirSync(join(root, 'data'), { recursive: true });
     mkdirSync(join(root, 'data', 'agent-state', 'PROJ-148', 'implement'), { recursive: true });
     writeFileSync(
@@ -219,7 +254,7 @@ describe('implement step', () => {
     const agent = jest.fn().mockResolvedValue(result(reply));
     const app = await boot(root, agent);
     try {
-      await seed(app, 'PROJ-148', 'approve');
+      await seed(app, 'PROJ-148', 'approve', 'other\n');
       const run = (await app.get(RunRepository).findRun('PROJ-148'))!;
       await app
         .get(DocumentRepository)

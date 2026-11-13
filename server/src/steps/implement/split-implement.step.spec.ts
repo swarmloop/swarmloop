@@ -157,6 +157,22 @@ describe('split implement', () => {
     expect((await tasksOf(app))[0]).toMatchObject({ status: 'green', note: NO_CI_NOTE });
   });
 
+  it('marks a task skipped with the note when its run ended with the behavior already delivered, and its dependent starts', async () => {
+    const built = await world();
+    app = built.app;
+    await seedParent(app, [task('a'), task('b', ['a'])]);
+    await pass(app);
+    await finish(app, 'a');
+    await app.app.get(DocumentRepository).putDocument(await child(app, 'a'), 'commit', 'already delivered: src/a.ts\n');
+
+    await pass(app);
+
+    expect(await tasksOf(app)).toMatchObject([
+      { id: 'a', status: 'skipped', note: 'already delivered: src/a.ts' },
+      { id: 'b', status: 'running' },
+    ]);
+  });
+
   it('blocks the parent naming the failed subtask, and Skip task goes on', async () => {
     const built = await world();
     app = built.app;
@@ -293,9 +309,8 @@ describe('split implement', () => {
   it('keeps a parent stopped that a blocked subtask held', async () => {
     const built = await world();
     app = built.app;
-    await seedParent(app, [task('a'), task('b')]);
+    await seedParent(app, [task('a')]);
     await pass(app);
-    await work(app, 'b');
     const failed = await child(app, 'a');
     writeRunState(failed, { status: 'blocked', reason: { code: 'BLOCKED', message: 'x' } });
     await app.app.get(RunRepository).saveRun(failed);

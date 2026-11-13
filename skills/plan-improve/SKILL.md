@@ -31,17 +31,23 @@ Check the tasks:
 - every item the input asks for is covered by a task, and each task added for a missing one is listed in `summary` as `- added: <item> - <why>`;
 - no dependency cycle, and every dependency names a task in the list;
 - two tasks that can run at the same time do not change the same file unless one depends on the other;
+- `files:` lists every file the task will change, including its tests and the shared test helpers and fixtures they need, and a task that changes a file another task lists depends on that task (the server adds the dependency when the planner forgets);
 - a file where tasks each add an entry (a registry or list such as module imports, the migrations index, route or step lists, `.env.example`, a README table) is shared: the tasks that touch it get a dependency between them, so they never change it at the same time;
+- tasks are only work that changes the tree: a task that only reruns existing tests and changes no file becomes a `keep:` line (`- <capability> | proof: <test> | tasks: <ids that touch it>`), and every task has a file to change;
+- a `keep:` line whose proof test does not exist yet says `proof: new <test>`, and writing that test is in the `proof:` of the first task the line names;
 - every task has a proof;
 - every task is about one normal run of work, so cut a task that is much more and merge a task that is much less.
 
 The task limit is only a safety limit against a runaway plan. It is not a target.
 
-Return the corrected `contract:` and `tasks:` in the same format, and do not write `plan:`, because the server writes it from `tasks:`. When the split is not worth it, because one run can do the whole change, return one `plan:` instead.
+Return the corrected `contract:`, the stored `keep:` lines (when the prompt holds a `Keep` section) and `tasks:` in the same format, and do not write `plan:`, because the server writes it from `tasks:`. When the split is not worth it, because one run can do the whole change, return one `plan:` instead.
 
 ```
 contract:
 - decision
+
+keep:
+- <capability> | proof: <test or new <test>> | tasks: <ids>
 
 tasks:
 - <id> | <title> | depends: <ids or none> | files: <paths> | proof: <test or check>
