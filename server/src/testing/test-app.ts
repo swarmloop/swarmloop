@@ -47,8 +47,6 @@ type FakeSandbox = Record<string, (...args: never[]) => Promise<unknown>>;
 
 interface TestAppOptions {
   root?: string;
-  /** Starts the reconciler's timer. Off by default: a spec drives its passes by hand. */
-  reconcilerTimer?: boolean;
   runner?: ScriptedFakeAgentRunner;
   /** Replaces calls of the fake sandbox, for a spec that needs a container. */
   sandbox?: FakeSandbox;
@@ -56,6 +54,8 @@ interface TestAppOptions {
   env?: Record<string, string>;
   /** A split run takes the real implement step, with its passes, in place of the scripted one. */
   realImplement?: boolean;
+  /** Starts the reconciler's timer. Off by default: a test drives its passes itself, one awaited pass at a time. */
+  reconcilerTimer?: boolean;
   /** The app removes the root when it closes. Defaults to true for a root it made. */
   ownsRoot?: boolean;
 }

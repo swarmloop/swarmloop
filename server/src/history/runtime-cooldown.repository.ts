@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { RuntimeCooldownEntity } from './entities';
+import { RuntimeCooldownEntity } from './runtime-cooldown.entity';
 
 /** How long after the provider's reset a waiting run goes on: the window is surely open again. */
 export const RESUME_AFTER_RESET_MS = 60_000;

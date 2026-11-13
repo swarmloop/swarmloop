@@ -1,4 +1,5 @@
 import { ConnectionEntity, HostAppEntity, UserSettingEntity } from './connection-entities';
+import { RuntimeCooldownEntity } from './runtime-cooldown.entity';
 import { SessionEntity } from './session.entity';
 import type { StoredAgents } from '../contract/api';
 import { Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
@@ -528,24 +529,6 @@ export class CommandEntity {
 
   @Column({ name: 'updated_at' })
   updatedAt!: string;
-}
-
-/** One runtime whose provider limit has not ended. All runs share it, because they share the subscription. */
-@Entity('runtime_cooldowns')
-export class RuntimeCooldownEntity {
-  @PrimaryGeneratedColumn()
-  id!: number;
-
-  @Column({ type: 'text', unique: true })
-  runtime!: string;
-
-  /** When the runtime may be used again, ISO 8601 UTC. */
-  @Column({ type: 'text' })
-  until!: string;
-
-  /** 1 when `until` is the reset the provider named, 0 when it is the default cooldown. */
-  @Column({ name: 'reset_known', type: 'integer' })
-  resetKnown!: number;
 }
 
 export const entities = [

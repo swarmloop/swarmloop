@@ -386,4 +386,17 @@ describe('crash matrix', () => {
     expect(relaunched).toEqual([`relaunch-${attempts[0]}`, `relaunch-${attempts[1]}`]);
     expect((await runs.findRun(KEY))?.status).toBe('failed');
   });
+
+  it('two passes started together over one dead attempt make one relaunch command', async () => {
+    app = await createTestApp();
+    const accepted = jest.spyOn(CommandService.prototype, 'accept');
+    await app.app.get(RunRepository).begin(KEY, 'implement');
+    const reconciler = app.app.get(Reconciler);
+
+    await Promise.all([reconciler.reconcileRuns(), reconciler.reconcileRuns()]);
+
+    const [dead] = await visits(app);
+    const keys = accepted.mock.calls.map((call) => call[3]?.idempotencyKey);
+    expect(keys.filter((key) => key === `relaunch-${dead.attemptId}`)).toHaveLength(1);
+  });
 });
