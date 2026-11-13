@@ -1,6 +1,7 @@
 import type { RunEntity } from '../../history/entities';
 import type { Subtask } from '../../contract/subtask';
 import type { OpenedStep } from '../step-run';
+import type { Need } from './needs';
 
 /** One merge request of a subtask: the repository it is for, and where the host has it. */
 export interface SubtaskMergeRequest {
@@ -46,4 +47,17 @@ export abstract class SubtaskOps {
    * itself and the result is null.
    */
   abstract answer(opened: OpenedStep, child: RunEntity, task: Subtask, contract: string): Promise<string | null>;
+  /** The needs a subtask run ended its step with: the sibling tasks it waits for. None when it asked for nothing. */
+  abstract needsOf(run: RunEntity): Promise<Need[]>;
+  /** The merge request text of a subtask run, or an empty string. */
+  abstract mergeSummary(run: RunEntity): Promise<string>;
+  /** Brings the worktrees of a subtask run, edits that are not committed included, up to the feature branch as it is on origin. */
+  abstract catchUp(parent: RunEntity, run: RunEntity): Promise<void>;
+  /**
+   * Ends the wait of a subtask run that asked for needs: the needs are cleared, the lines go into its handoff, and the
+   * step that asked runs again in its chat. `event` names what ended the wait, so a repeat of the same event is one resume.
+   */
+  abstract rerun(run: RunEntity, lines: string[]): Promise<void>;
+  /** Asks the planner of the parent, in the parent's own chat, a question about a task. Null when it gave no usable answer. */
+  abstract askAbout(opened: OpenedStep, task: Subtask, question: string, contract: string): Promise<string | null>;
 }

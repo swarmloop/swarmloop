@@ -76,7 +76,7 @@ export function splitOutputs(graph: TaskGraph | null): ArtifactValue[] {
 }
 
 /** The contract with the added lines under its `decisions:` heading, or under a new one. */
-function withDecisions(contract: string, decisions: string[]): string {
+export function withDecisions(contract: string, decisions: string[]): string {
   if (decisions.length === 0) {
     return contract;
   }

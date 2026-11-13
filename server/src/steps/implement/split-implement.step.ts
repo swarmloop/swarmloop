@@ -16,6 +16,7 @@ import { sampleSelf } from '../../history/visit';
 import { withDecision } from '../shared/handoff';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { SplitMerge } from './split-merge';
+import { SplitNeeds } from './split-needs';
 import { earliestRetry } from './subtask-retry';
 import { BaseStep, StepContext } from '../base-step';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -48,12 +49,15 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
   readonly inputs = INPUTS;
   readonly outputs = [ARTIFACTS.subtasks, ARTIFACTS.implementation, ARTIFACTS.contract];
 
+  private readonly needs: SplitNeeds;
+
   constructor(
     kernel: StepKernel,
     private readonly subtasks: SubtaskOps,
     private readonly merges: SplitMerge,
   ) {
     super(kernel);
+    this.needs = new SplitNeeds(subtasks);
   }
 
   override async execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
@@ -75,7 +79,7 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     const code = deriveState(parent).reason?.code ?? '';
     if (parent.status !== 'waiting' || !SUBTASK_WAIT_CODES.some((wait) => wait === code)) return false;
     const tasks = withStatuses((await this.reader.reread(parent.key, ARTIFACTS.subtasks)) ?? []);
-    if (tasks.every(settled)) return false;
+    if (tasks.every(settled) || (await this.needs.pending(parent, tasks))) return false;
     const children: RunEntity[] = [];
     for (const task of tasks.filter((item) => !settled(item))) {
       const child = await this.subtasks.find(parent, task.id);
@@ -86,14 +90,17 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       if (changed || task.status === 'green' || (await this.subtasks.asking(child))) return false;
     }
     if (earliestRetry(children) !== (deriveState(parent).reason?.retryAt ?? null)) return false;
-    return readyTasks(tasks, this.config.env.SUBTASKS_PARALLEL).length === 0;
+    return readyTasks(tasks, await this.slots(parent, tasks)).length === 0;
   }
 
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const { run, startedAt } = ctx.opened;
     const before = JSON.stringify(withStatuses(input.subtasks));
-    const contract = await this.answer(ctx, withStatuses(input.subtasks));
-    const followed = await this.refresh(run, withStatuses(input.subtasks));
+    const answered = await this.answer(ctx, withStatuses(input.subtasks));
+    const base = answered ?? (await ctx.reread(ARTIFACTS.contract)) ?? '';
+    const needed = await this.needs.run(ctx.opened, withStatuses(input.subtasks), base);
+    const contract = needed.contract === base ? answered : needed.contract;
+    const followed = await this.refresh(run, needed.tasks);
     const { tasks: merged, refusal } = await this.merges.run(run, followed);
     const tasks = await this.explain(run, await this.start(run, merged));
     const outputs: StepResult['outputs'] = [
@@ -186,9 +193,14 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     return task.status === 'running' || launched ? 'running' : 'waiting';
   }
 
+  /** The tasks that may run at once. A task that waits for a sibling holds no slot, or the sibling could never start. */
+  private async slots(parent: RunEntity, tasks: Subtask[]): Promise<number> {
+    return this.config.env.SUBTASKS_PARALLEL + (await this.needs.waiting(parent, tasks));
+  }
+
   /** Starts the tasks whose dependencies are merged or skipped, up to `SUBTASKS_PARALLEL` at a time. */
   private async start(parent: RunEntity, tasks: Subtask[]): Promise<Subtask[]> {
-    const ready = readyTasks(tasks, this.config.env.SUBTASKS_PARALLEL).map((task) => task.id);
+    const ready = readyTasks(tasks, await this.slots(parent, tasks)).map((task) => task.id);
     for (const task of tasks.filter((item) => ready.includes(item.id))) {
       await this.subtasks.launch(parent, task);
     }

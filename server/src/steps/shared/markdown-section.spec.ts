@@ -20,6 +20,12 @@ describe('Markdown sections', () => {
     expect(bulletSection(text, 'implementation')).toBe('- changed\n');
   });
 
+  it('ends a section at the needs label', () => {
+    const text = ['summary:', '- chose x', 'needs:', '- a: the policy'].join('\n');
+
+    expect(bulletSection(text, 'summary')).toBe('- chose x\n');
+  });
+
   it('keeps legacy cause and files/proof section bodies', () => {
     const text = ['cause:', '- parser', '', 'files:', '- a.ts', '', 'proof:', '- npm test'].join('\n');
 

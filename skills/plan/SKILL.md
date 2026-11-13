@@ -8,6 +8,8 @@ Each item is the smallest change that does the work. Keep to the structure and p
 
 Before writing the checklist, find the size and complexity limits the project sets (its rules, its lint config). For each file the checklist changes, compare its current size with the limit. When the change would take a file past the limit or within about 15% of it, the first item that touches the file splits it by responsibility in a move-only change (no logic change), and later items add the new code to the file that now owns it.
 
+A checklist never has an item like "stop and report if X is missing". A result that a sibling task makes and that is not merged yet is not missing: a subtask of a split run ends its answer with a `needs:` section, one line per sibling task id, `- <id>: <what it needs from that task>`, and nothing else. The server makes the task wait and runs this step again when that sibling is merged. A run that is not a subtask writes no `needs:`.
+
 Each checklist item stays one `- item` line and ends with `files:` (the paths it changes) and `proof:` (the test or check that shows it is done), for example `- add X to Y - files: src/billing/invoice - proof: the invoice total test`.
 
 The prompt may hold an `Impact` section: the capabilities the task touches, one `- <capability> | <file> | <status>` line each. Every `kept` capability that the checklist touches gets an item `- keep: <capability> - files: <paths> - proof: <test>`.
