@@ -30,6 +30,8 @@ export interface SandboxLaunch {
   maskFile: string;
   /** Only the runtime model key. Other tokens stay out of the container. */
   env?: { name: string; value: string }[];
+  /** Names the container gets with an empty value, to clear what the image or a profile would set. */
+  unsetEnv?: string[];
   /** Durable home for the vendor session. Replaces the /home/sandbox tmpfs. */
   statePath?: string;
   stateDaemonPath?: string;

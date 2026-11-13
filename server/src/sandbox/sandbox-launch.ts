@@ -276,6 +276,12 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
     }
     args.push('--env', `${item.name}=${item.value}`);
   }
+  for (const name of launch.unsetEnv ?? []) {
+    if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) {
+      throw new SwarmloopError('sandbox env is not allowed');
+    }
+    args.push('--env', `${name}=`);
+  }
   for (const mount of launch.mounts) {
     args.push('--mount', sandboxMount(mount));
   }

@@ -124,6 +124,14 @@ describe('sandbox launch', () => {
       );
     });
 
+    it('passes a name in unsetEnv empty and refuses a name that is not an env name', () => {
+      const claude = launch({ runtime: 'claude', command: ['claude'] });
+      const args = sandboxArgs({ ...claude, unsetEnv: ['CLAUDE_CODE_EFFORT_LEVEL'] }, home, '');
+      expect(args[args.indexOf('CLAUDE_CODE_EFFORT_LEVEL=') - 1]).toBe('--env');
+      expect(sandboxArgs(claude, home, '').join(' ')).not.toContain('CLAUDE_CODE_EFFORT_LEVEL');
+      expect(() => sandboxArgs({ ...claude, unsetEnv: ['x=1'] }, home, '')).toThrow('sandbox env is not allowed');
+    });
+
     it('refuses an address outside the sandbox range', () => {
       expect(() => sandboxArgs(launch({ allowHosts: ['*.cursor.sh'], egress: { ip: '198.18.0.2' } }), home)).toThrow(
         SwarmloopError,

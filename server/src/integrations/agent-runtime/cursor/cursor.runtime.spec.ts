@@ -65,4 +65,27 @@ describe('CursorRuntime', () => {
       'write the server',
     ]);
   });
+
+  describe('effort', () => {
+    const args = ['--print', '--model', 'grok-4.7', '--trust', 'go'];
+    const withList = new CursorRuntime();
+    withList.setModelIds(['grok-4.7', 'grok-4.7-high', 'grok-4.7-xhigh']);
+
+    it('swaps the model id for the one with the level', () => {
+      const launch = withList.withEffort({ model: 'grok-4.7', args, unsetEnv: [] }, 'high');
+      expect(launch.model).toBe('grok-4.7-high');
+      expect(launch.args).toEqual(['--print', '--model', 'grok-4.7-high', '--trust', 'go']);
+    });
+
+    it('leaves an old id that names its effort unchanged', () => {
+      const old = { model: 'grok-4.7-high', args: ['--model', 'grok-4.7-high'], unsetEnv: [] };
+      expect(withList.efforts('grok-4.7-high')).toEqual([]);
+      expect(withList.withEffort(old, 'low')).toBe(old);
+    });
+
+    it('has no levels until a list is set', () => {
+      expect(runtime.efforts('grok-4.7')).toEqual([]);
+      expect(withList.efforts('grok-4.7')).toEqual(['high', 'xhigh']);
+    });
+  });
 });

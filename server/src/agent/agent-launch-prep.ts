@@ -18,6 +18,8 @@ interface Launch {
   userId: ReturnType<typeof sandboxUserId>;
   statePath: string;
   args: string[];
+  /** Env names the container gets empty, so an inherited value never reaches the CLI. */
+  unsetEnv: string[];
   briefs: SandboxMount[];
 }
 
@@ -58,9 +60,13 @@ export class AgentLaunchPrep {
     }
     const delivered = spillPrompt(input.prompt, statePath, input.step);
     const briefs = briefMounts(statePath, input.step, delivered.mounts);
-    const args = runtime.printArgs({ ...input, prompt: delivered.text });
+    let args = runtime.printArgs({ ...input, prompt: delivered.text });
     if (briefs.length > 0) {
       args.unshift(...runtime.briefArgs());
+    }
+    let unsetEnv: string[] = [];
+    if (input.effort) {
+      ({ args, unsetEnv } = runtime.withEffort({ model: input.model, args, unsetEnv }, input.effort));
     }
     if (!resumed) {
       this.live?.log({
@@ -71,6 +77,6 @@ export class AgentLaunchPrep {
         usage: { tokensIn: 0, tokensOut: 0, usd: 0 },
       });
     }
-    return { userId, statePath, args, briefs };
+    return { userId, statePath, args, unsetEnv, briefs };
   }
 }
