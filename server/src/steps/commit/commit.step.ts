@@ -7,7 +7,8 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
 import { baseBranch, originRef } from '../../git/base-ref';
 import { authorArgs, originUrl } from '../../git/git';
-import { commitResult } from './commit-result';
+import { commitResult, deliveredResult, undeliveredResult } from './commit-result';
+import { unchangedOutcome } from './commit-delivered';
 import { gitAt, status, Tree } from './commit-git';
 import { checkedRepoNames } from '../../git/repo-names';
 import { RunStop } from '../../agent/run-stop';
@@ -40,7 +41,7 @@ const INPUTS = {
 export class CommitStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'commit';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.commit, ARTIFACTS.pipelineRef, ARTIFACTS.ciSkip];
+  readonly outputs = [ARTIFACTS.commit, ARTIFACTS.pipelineRef, ARTIFACTS.ciSkip, ARTIFACTS.issues];
 
   constructor(
     kernel: StepKernel,
@@ -69,6 +70,9 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     const again = await this.resume(opened, stored);
     if (!phases.includes('ci') && !again) {
       const body = await this.preview(trees, branch, named);
+      if (body === null) {
+        return this.unchanged(opened);
+      }
       return commitResult('waiting', `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
     }
     const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, await this.checkouts.listDenyPaths());
@@ -78,7 +82,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
         await this.publisher.stampRefs(opened.run, trees);
         return commitResult('ok', `${opened.startedAt} commit done\n${branch}`);
       }
-      throw new SwarmloopError('nothing to commit');
+      return this.unchanged(opened);
     }
     assertNotStopped(this.runStop, key);
     const heads: string[] = [];
@@ -140,7 +144,16 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     }
   }
 
-  private async preview(trees: Tree[], branch: string, named: string | null): Promise<string> {
+  /** Nothing to commit is not an error: the task is already delivered, or the run goes back to implement. */
+  private async unchanged(opened: OpenedStep): Promise<StepResult> {
+    const outcome = await unchangedOutcome(this.kernel.documents, opened.run.key);
+    return 'delivered' in outcome
+      ? deliveredResult(opened.startedAt, outcome.delivered)
+      : undeliveredResult(opened.startedAt, outcome.issues);
+  }
+
+  /** The paths a commit would take, or null when the tree is unchanged. */
+  private async preview(trees: Tree[], branch: string, named: string | null): Promise<string | null> {
     const planned = await this.plan(trees, await this.checkouts.listDenyPaths());
     if (planned.length > 0) {
       return renderPaths(planned);
@@ -152,7 +165,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
       }
     }
     if (pending.length === 0) {
-      throw new SwarmloopError('nothing to commit');
+      return null;
     }
     return `${pending.join('\n')}\n`;
   }

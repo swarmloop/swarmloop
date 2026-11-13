@@ -33,6 +33,7 @@ import { modelVisit } from '../steps/shared/model-visit';
 import { StepStopped } from '../steps/shared/step-stopped';
 import { DECIDE_YOURSELF, subtaskAsks } from '../steps/plan/plan.prompts';
 import type { OpenedStep } from '../steps/step-run';
+import { DELIVERED_PREFIX } from '../steps/commit/commit-result';
 import { CommandService } from './command.service';
 
 /** What the api layer does for the subtasks of a parent. It registers itself at init, so `pipeline` never imports `api`. */
@@ -177,6 +178,11 @@ export class SubtaskPort extends SubtaskOps {
 
   override async withoutCi(run: RunEntity): Promise<boolean> {
     return ((await this.documents.latestBody(run.key, 'pipeline_log')) ?? '').startsWith('result: none');
+  }
+
+  override async deliveredNote(run: RunEntity): Promise<string | null> {
+    const body = ((await this.documents.latestBody(run.key, ARTIFACTS.commit.kind)) ?? '').trim();
+    return body.startsWith(DELIVERED_PREFIX) ? body : null;
   }
 
   override async resume(run: RunEntity): Promise<void> {
