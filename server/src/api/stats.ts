@@ -12,6 +12,7 @@ import { agentStep, limited, round, RUNTIME_DEFAULT, share, sortedShares } from 
 import { CI_WAIT_COUNTER, MERGE_WATCH_COUNTER, readLoopDetail } from '../history/loop-detail';
 import { readOutcome } from '../history/run-state';
 import { runName } from './run-view/flow';
+import { countedRunsOf, sumOver } from './stats-units';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
@@ -213,20 +214,12 @@ function returnsOf(loops: StatsRows['loops'], days: Map<string, StatsDay>, tzOff
  * and returns are summed over the run and its subtasks.
  */
 function tasksOf(runs: StatsRunRow[], spent: Map<number, { usd: number }>, backs: Map<number, number>) {
-  const children = new Map<number, number[]>();
-  for (const run of runs) {
-    const parent = run.parentRunId ?? null;
-    if (parent !== null) {
-      children.set(parent, [...(children.get(parent) ?? []), run.id]);
-    }
-  }
-  const tasks = runs
-    .filter((run) => outcomeOf(run.status) === 'done' && (run.parentRunId ?? null) === null)
-    .map((run) => {
-      const ids = [run.id, ...(children.get(run.id) ?? [])];
-      const total = (of: (id: number) => number): number => ids.reduce((sum, id) => sum + of(id), 0);
-      return { usd: total((id) => spent.get(id)?.usd ?? 0), returns: total((id) => backs.get(id) ?? 0) };
-    });
+  const tasks = countedRunsOf(runs)
+    .filter(({ run }) => outcomeOf(run.status) === 'done')
+    .map(({ ids }) => ({
+      usd: sumOver(ids, (id) => spent.get(id)?.usd ?? 0),
+      returns: sumOver(ids, (id) => backs.get(id) ?? 0),
+    }));
   const usds = tasks.map((task) => task.usd);
   return {
     tasks: tasks.length,
@@ -254,11 +247,18 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
   const toMergeByDay = new Map<string, number[]>();
   const ended = { merged: 0, closed: 0 };
   let firstPass = 0;
-  const runs: StatsRun[] = rows.runs.map((run) => {
+  for (const run of rows.runs) {
+    const used = new Map([[run.runtime, { usd: 0, tokens: 0 }], ...(spend.byAgent.get(run.id) ?? [])]);
+    for (const [runtime, agent] of used) {
+      share(agents, runtime, agent.usd, agent.tokens);
+    }
+  }
+  const counted = countedRunsOf(rows.runs);
+  const runs: StatsRun[] = counted.map(({ run, ids }) => {
     const outcome = outcomeOf(run.status);
-    const backs = returns.byRun.get(run.id) ?? 0;
-    const spent = spend.byRun.get(run.id) ?? { usd: 0, tokens: 0 };
-    const durationMs = durations.get(run.id) ?? 0;
+    const backs = sumOver(ids, (id) => returns.byRun.get(id) ?? 0);
+    const usd = sumOver(ids, (id) => spend.byRun.get(id)?.usd ?? 0);
+    const durationMs = sumOver(ids, (id) => durations.get(id) ?? 0);
     counts[outcome] += 1;
     buckets[Math.min(backs, RETURN_BUCKETS.length - 1)] += 1;
     if (outcome === 'done' && backs === 0) {
@@ -266,10 +266,6 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
     }
     if (outcome === 'done' && durationMs > 0) {
       doneDurations.push(durationMs);
-    }
-    const used = new Map([[run.runtime, { usd: 0, tokens: 0 }], ...(spend.byAgent.get(run.id) ?? [])]);
-    for (const [runtime, agent] of used) {
-      share(agents, runtime, agent.usd, agent.tokens);
     }
     const day = days.get(localDay(run.createdAt, range.tzOffset));
     if (day) {
@@ -294,9 +290,9 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
       name,
       status: run.status,
       outcome,
-      usd: round(spent.usd),
+      usd: round(usd),
       returns: backs,
-      shellEdits: spend.shellEdits.get(run.id) ?? 0,
+      shellEdits: sumOver(ids, (id) => spend.shellEdits.get(id) ?? 0),
       durationMs,
       createdAt: run.createdAt,
     };
@@ -306,7 +302,7 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
     from,
     to,
     totals: {
-      runs: rows.runs.length,
+      runs: counted.length,
       ...counts,
       usd: round(spend.totals.usd),
       tokensIn: spend.totals.tokensIn,
