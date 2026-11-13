@@ -30,7 +30,7 @@ function renderPage(): void {
 
 describe('HomePage', () => {
   it('offers Connect in the empty state', async () => {
-    vi.mocked(getReadiness).mockResolvedValue({ items: [], checkedAt: null, load: null });
+    vi.mocked(getReadiness).mockResolvedValue({ items: [], checkedAt: null });
     renderPage();
     expect(await screen.findByRole('link', { name: 'Connect GitHub or GitLab' })).toHaveAttribute(
       'href',
@@ -42,7 +42,6 @@ describe('HomePage', () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [{ id: 'docker', status: 'fail', line: 'docker is not running', action: 'start Docker' }],
       checkedAt: null,
-      load: null,
     });
     renderPage();
     expect(await screen.findByText(/docker is not running/)).toHaveTextContent('start Docker');
@@ -56,7 +55,7 @@ describe('HomePage', () => {
   });
 
   it('shows the statistics under the checks', async () => {
-    vi.mocked(getReadiness).mockResolvedValue({ items: [], checkedAt: null, load: null });
+    vi.mocked(getReadiness).mockResolvedValue({ items: [], checkedAt: null });
     renderPage();
     expect(screen.getByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     expect(screen.getByText(/No runs yet/)).toBeInTheDocument();

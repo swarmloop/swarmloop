@@ -18,6 +18,8 @@ export interface ShellConfig {
   egress: string | undefined;
   /** A Docker runtime such as `runsc`, as on the server. */
   engine: string;
+  /** The memory in GB that Docker keeps for the server and the dashboard, as on the server. */
+  reserveMemoryGb: number;
 }
 
 /** Reads the model key for the sandbox env only. Callers must not print the result. */
@@ -31,7 +33,7 @@ export function readShellConfig(file: string): ShellConfig {
   }
   for (const line of body.split('\n')) {
     const match =
-      /^(?:export\s+)?(AGENTS_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CODEX_AUTH|CODEX_API_KEY|CHECKOUTS_ROOT|SWARMLOOP_REPOS|SANDBOX_EGRESS|SANDBOX_DOCKER_RUNTIME)=(.*)$/.exec(
+      /^(?:export\s+)?(AGENTS_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CODEX_AUTH|CODEX_API_KEY|CHECKOUTS_ROOT|SWARMLOOP_REPOS|SANDBOX_EGRESS|SANDBOX_DOCKER_RUNTIME|RESERVE_MEMORY_GB)=(.*)$/.exec(
         line.trim(),
       );
     if (!match) {
@@ -52,7 +54,13 @@ export function readShellConfig(file: string): ShellConfig {
     repos: splitList(values.get('SWARMLOOP_REPOS')),
     egress: values.get('SANDBOX_EGRESS'),
     engine: values.get('SANDBOX_DOCKER_RUNTIME') ?? '',
+    reserveMemoryGb: reserveGigabytes(values.get('RESERVE_MEMORY_GB')),
   };
+}
+
+function reserveGigabytes(value: string | undefined): number {
+  const given = value === undefined || value === '' ? Number.NaN : Number(value);
+  return Number.isFinite(given) && given >= 0 ? given : 2;
 }
 
 function firstImplementAgent(listed: string): { runtime: RuntimeName; model: string } {

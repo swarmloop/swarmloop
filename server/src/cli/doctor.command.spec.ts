@@ -9,10 +9,7 @@ const config = { env: { SWARMLOOP_ROOT: '/unused', SWARMLOOP_TOKEN: 'machine-sec
 async function doctor(items: ReadinessItem[]): Promise<string> {
   const out = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
   try {
-    await new DoctorCommand(
-      { fresh: async () => ({ items, checkedAt: null, load: null }) } as ReadinessService,
-      config,
-    ).run();
+    await new DoctorCommand({ fresh: async () => ({ items, checkedAt: null }) } as ReadinessService, config).run();
     return out.mock.calls.map(([text]) => String(text)).join('');
   } finally {
     out.mockRestore();

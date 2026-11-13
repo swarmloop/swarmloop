@@ -7,8 +7,6 @@ import { AppConfig, splitList } from '../config/env';
 import { rawEnv } from '../config/process-env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { SystemClock } from '../core/clock';
-import type { HeavyWork, Footprint, FootprintSource } from '../core/heavy-work';
-import type { MachineLoad } from '../contract/readiness';
 import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { barrier } from '../core/barrier';
 import { ERROR_CODES } from '../contract/error-codes';
@@ -28,9 +26,6 @@ import {
 import { hostName, isLocalHost, sandboxNetworkName } from './sandbox-hosts';
 import { attemptRunning, killAttempt, stopRun } from './run-containers';
 import type { DockerRunner } from './run-containers';
-import { footprintOf, memoryCap } from './footprint';
-import { heavyWorkOf } from './heavy-work-of';
-import { MachineBudget } from './machine-budget';
 import { workRootsAt } from './allowed-path';
 import { Egress, egressMode } from './egress';
 import { imageMissing } from './image-resolver';
@@ -38,6 +33,7 @@ import { withEgress } from './egress-launch';
 import { projectGitMount } from './project-git';
 import { collectEnvMasks } from './env-masks';
 import { parseDockerStats } from './docker-stats';
+import { containerMemoryCap } from './memory-cap';
 
 export type { DockerRunner };
 
@@ -53,42 +49,23 @@ export class SandboxService {
   private readonly maskFile = join(tmpdir(), 'swarmloop-empty-env');
   private binds: BindMount[] | null = null;
   private egressProxy: Egress | null = null;
-  private footprints: FootprintSource | null = null;
-  private budget: MachineBudget;
+  private memoryCap: number | undefined;
 
-  constructor(@Optional() private readonly config?: AppConfig) {
-    this.budget = this.newBudget();
-  }
+  constructor(@Optional() private readonly config?: AppConfig) {}
 
   useDocker(docker: DockerRunner): void {
     this.docker = docker;
     this.egressProxy = null;
-    this.budget = this.newBudget();
+    this.memoryCap = undefined;
   }
 
-  /** Where the footprints of heavy work are learned from. Without one the seeds stand in. */
-  useFootprints(source: FootprintSource): void {
-    this.footprints = source;
-  }
-
-  /** What heavy work runs and waits now, against what the machine budget allows. */
-  snapshot(): MachineLoad {
-    return this.budget.snapshot();
-  }
-
-  private newBudget(): MachineBudget {
-    const env = this.config?.env;
-    return new MachineBudget((args, timeoutMs) => this.docker(args, timeoutMs), {
-      memoryBytes: (env?.RESERVE_MEMORY_GB ?? 2) * 1024 ** 3,
-    });
-  }
-
-  private async footprintFor(work: HeavyWork): Promise<Footprint> {
-    try {
-      return footprintOf(work.kind, (await this.footprints?.peaks(work.kind, work.name)) ?? []);
-    } catch {
-      return footprintOf(work.kind, []);
-    }
+  /** Docker's memory less the reserve, the same for every container. Only an answer is kept, so an outage is tried again. */
+  private async containerCap(): Promise<number | undefined> {
+    this.memoryCap ??= await containerMemoryCap(
+      (args, timeoutMs) => this.docker(args, timeoutMs),
+      (this.config?.env.RESERVE_MEMORY_GB ?? 2) * 1024 ** 3,
+    );
+    return this.memoryCap;
   }
 
   /** The egress proxy all sandboxes go out through. SANDBOX_EGRESS=open turns it off. */
@@ -133,19 +110,14 @@ export class SandboxService {
     const egress = this.egress();
     const metadata: SandboxMount[] = [];
     let release = () => undefined as void;
-    let releaseBudget = () => undefined as void;
     const cleanup = () => {
       release();
-      releaseBudget();
       for (const mount of metadata) {
         rmSync(mount.hostPath, { recursive: true, force: true });
       }
     };
     try {
-      const work = heavyWorkOf(given);
-      const footprint = await this.footprintFor(work);
-      releaseBudget = await this.budget.acquire(work, footprint, given.onWait);
-      const memoryCapBytes = given.memoryCapBytes ?? memoryCap(work.kind, footprint);
+      const memoryCapBytes = await this.containerCap();
       if (given.project && given.statePath) {
         prepareStateDir(given.statePath, given.userId);
         const directory = join(dirname(given.statePath), 'git-metadata');
@@ -235,7 +207,6 @@ export class SandboxService {
    * 'unknown' when docker did not answer or a container is still listed.
    */
   stopRun(runKey: string, step: string, graceSeconds: number): Promise<'gone' | 'unknown'> {
-    this.budget.cancelWaiting(runKey);
     return stopRun(this.docker, runKey, step, graceSeconds);
   }
 

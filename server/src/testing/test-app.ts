@@ -173,7 +173,6 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
       kill: () => Promise.resolve(),
       attemptRunning: () => Promise.resolve(false),
       killAttempt: () => Promise.resolve(true),
-      useFootprints: () => undefined,
       ...options.sandbox,
     })
     .compile();

@@ -16,7 +16,6 @@ import {
   SETUP_DOWNLOADS,
   sandboxNetworkName,
 } from './sandbox-hosts';
-import { SANDBOX_CPU_SHARES } from './footprint';
 import { imageName } from './image-resolver';
 import { assertDaemonPath, assertMask, assertMount, assertProject, sandboxMount } from './sandbox-checks';
 import { CLI_ROOT, egressProxyArgs, projectImageArgs } from './sandbox-args';
@@ -35,6 +34,9 @@ const PROJECT_PIDS = '1024';
 export const KEEP_PATH = `printf 'export PATH="%s"\\n' "$PATH" > "$HOME/.profile" && cp "$HOME/.profile" "$HOME/.bash_profile" && exec "$@"`;
 
 const SANDBOX_PIDS = '256';
+
+/** Below the default weight of 1024 that the server and the dashboard keep, so they win a fight for the CPU. */
+const SANDBOX_CPU_SHARES = 512;
 
 const MODEL_ENV = new Set(RUNTIME_NAMES.flatMap((name) => runtimeFor(name).credentialNames));
 /** Settings a CLI behind the egress proxy may get on top of its placeholder key. */

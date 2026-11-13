@@ -72,7 +72,7 @@ export class ReadinessService {
     try {
       return await withinWait(this.refresh(), FIRST_WAIT_MS);
     } catch {
-      return { items: [], checkedAt: null, load: this.sandbox.snapshot() };
+      return { items: [], checkedAt: null };
     }
   }
 
@@ -116,7 +116,7 @@ export class ReadinessService {
         }
       }),
     );
-    return { items, checkedAt: this.clock.iso(), load: this.sandbox.snapshot() };
+    return { items, checkedAt: this.clock.iso() };
   }
 
   private async docker(): Promise<Outcome> {

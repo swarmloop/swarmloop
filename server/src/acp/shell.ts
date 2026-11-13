@@ -20,7 +20,7 @@ import {
   sandboxUserId,
 } from '../sandbox/sandbox-launch';
 import { hostName, isLocalHost, sandboxNetworkName } from '../sandbox/sandbox-hosts';
-import { footprintOf, memoryCap } from '../sandbox/footprint';
+import { containerMemoryCap } from '../sandbox/memory-cap';
 import { workRootsAt } from '../sandbox/allowed-path';
 import { collectEnvMasks } from '../sandbox/env-masks';
 import type { ShellFeature, ShellMatch } from '../contract/api';
@@ -218,7 +218,7 @@ async function attach(
     stateDaemonPath: statePath,
     stdin: interactive,
     tty: interactive,
-    memoryCapBytes: memoryCap('agent', footprintOf('agent', [])),
+    memoryCapBytes: await containerMemoryCap(dockerOutput, config.reserveMemoryGb * 1024 ** 3),
   };
   const egress =
     egressMode(config.egress) === 'proxy'

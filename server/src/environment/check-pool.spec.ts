@@ -16,7 +16,8 @@ const GB = 1024 ** 3;
 
 function setup(options: {
   exits: (command: string, launch: SandboxLaunch, attempt: number) => number;
-  capacity?: number;
+  /** The fixed memory cap every container of the fake sandbox carries. */
+  cap?: number;
   halted?: () => boolean;
   live?: LiveHub;
 }) {
@@ -27,7 +28,6 @@ function setup(options: {
   const sandbox = {
     stats: jest.fn().mockResolvedValue({ cpuPercent: 5, rssBytes: 1024 }),
     kill: jest.fn().mockResolvedValue(undefined),
-    snapshot: jest.fn(() => ({ capacityMemoryBytes: options.capacity ?? 16 * GB })),
     spawn: jest.fn((launch: SandboxLaunch) => {
       spawned.push(launch);
       const command = launch.project?.shell ?? '';
@@ -39,7 +39,7 @@ function setup(options: {
         stdout: new PassThrough(),
         stderr: new PassThrough(),
         containerName: 'swarmloop-pool',
-        memoryCapBytes: launch.memoryCapBytes ?? 4 * GB,
+        memoryCapBytes: options.cap ?? 4 * GB,
       });
       setImmediate(() => {
         child.stdout.write(`output of ${command} #${attempt}\n`);
@@ -63,7 +63,6 @@ function setup(options: {
   const pool = new CheckPool({
     checksParallel: () => 2,
     clock,
-    sandbox: sandbox as unknown as ConstructorParameters<typeof CheckPool>[0]['sandbox'],
     documents,
     commands,
     live: options.live,
@@ -99,19 +98,12 @@ const killedFirst = (name: string) => (command: string, _launch: SandboxLaunch, 
   command === name && attempt === 1 ? 137 : 0;
 
 describe('CheckPool', () => {
-  it('runs a check killed by its memory cap once more alone with the budget memory', async () => {
+  it('runs a check killed by its memory cap once more under the same cap, and reports no kill when it passes', async () => {
     const { pool, input, repoOf, spawned } = setup({ exits: killedFirst('b') });
     await pool.runAll(input, 'a1', [repoOf(['a', 'b'])]);
     const second = spawned.filter((launch) => launch.project?.shell === 'b');
     expect(second).toHaveLength(2);
-    expect(second[0].alone).toBeUndefined();
-    expect(second[1]).toMatchObject({ alone: true, memoryCapBytes: 16 * GB });
-  });
-
-  it('never gives the retry less than the seed when the budget has no memory limit', async () => {
-    const { pool, input, repoOf, spawned } = setup({ exits: killedFirst('a'), capacity: 0 });
-    await pool.runAll(input, 'a1', [repoOf(['a'])]);
-    expect(spawned[1].memoryCapBytes).toBe(4 * GB);
+    expect(second[1]).toEqual(second[0]);
   });
 
   it('counts a pass on the retry as passed and keeps the other checks in order', async () => {
@@ -132,7 +124,7 @@ describe('CheckPool', () => {
   it('fails the row and throws an environment error when the retry is killed again', async () => {
     const { pool, input, repoOf, checkDocuments } = setup({
       exits: (command) => (command === 'b' ? 137 : 0),
-      capacity: 6 * GB,
+      cap: 6 * GB,
     });
     const repo = repoOf(['a', 'b', 'c']);
     const error = await pool.runAll(input, 'a1', [repo]).catch((caught: unknown) => caught);

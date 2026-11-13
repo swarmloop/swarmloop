@@ -185,18 +185,6 @@ describe('ReadinessService', () => {
     expect((await service.report()).checkedAt).toBe(first.checkedAt);
   });
 
-  it('carries the time of the report and the load of the sandbox snapshot', async () => {
-    const service = setup();
-    const load = {
-      capacityMemoryBytes: 8 * GB,
-      usedMemoryBytes: GB,
-      running: ['a'],
-      waiting: [],
-    };
-    jest.spyOn(sandbox, 'snapshot').mockReturnValue(load);
-    expect(await service.report()).toMatchObject({ checkedAt: clock.iso(), load });
-  });
-
   it('keeps the last report while a stale one refreshes, one refresh at a time', async () => {
     const service = setup();
     const first = await service.report();
@@ -214,15 +202,10 @@ describe('ReadinessService', () => {
     const infoCalls = (): number => docker.mock.calls.filter(([args]) => (args as string[])[0] === 'info').length;
     expect(infoCalls()).toBe(1);
 
-    const built = new Promise<void>((done) => {
-      const load = sandbox.snapshot();
-      jest.spyOn(sandbox, 'snapshot').mockImplementation(() => {
-        done();
-        return load;
-      });
-    });
     release.splice(0).forEach((done) => done());
-    await built;
+    for (let turns = 0; turns < 50 && (await service.report()) === first; turns++) {
+      await new Promise((flushed) => setImmediate(flushed));
+    }
     await new Promise((flushed) => setImmediate(flushed));
     expect(infoCalls()).toBe(1);
     expect((await service.report()).checkedAt).toBe(clock.iso());
