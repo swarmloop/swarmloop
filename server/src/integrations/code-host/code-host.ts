@@ -166,6 +166,11 @@ export interface CodeHost {
     jobs?: boolean,
   ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
   diagnoseMissingPipeline?(ref: PipelineRef): Promise<PipelineDiagnosis>;
+  /**
+   * Nudges the host to start the CI of a request's head that never started, and puts `reason` on the request's
+   * timeline as a comment. Nothing is sent when the host has no open request for the ref.
+   */
+  startPipeline(ref: PipelineRef, reason: string): Promise<{ httpCalls: HttpCallDraft[] }>;
   /** One page of the repositories the token can push to. `more` is true when a next page may exist. */
   listRepositories(
     page: number,

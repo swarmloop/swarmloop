@@ -5,7 +5,8 @@ import { join } from 'path';
 import { testEnv } from '../../config/env.spec-helpers';
 import type { RemoteRepository, RepositoryOwner } from '../../contract/api';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
-import { FetchFailed } from '../../core/swarmloop-error';
+import { FetchFailed, HostUnavailable } from '../../core/swarmloop-error';
+import * as gitModule from '../../git/git';
 import type { CodeHost } from '../../integrations/code-host/code-host';
 import type { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { RemoteRepositories } from './remote-repositories.service';
@@ -107,7 +108,25 @@ const repo = (host: 'github' | 'gitlab', owner: string, name: string): RemoteRep
   defaultBranch: 'main',
 });
 
+/** Makes `git clone` fail with the given stderr for the first `times` calls; every other git call and later clones run for real. */
+function failClone(stderr: string, times: number): jest.SpyInstance {
+  const real = jest.requireActual<typeof gitModule>('../../git/git').git;
+  let failed = 0;
+  return jest.spyOn(gitModule, 'git').mockImplementation(async (args, env, options) => {
+    if (args[0] === 'clone' && failed < times) {
+      failed += 1;
+      throw Object.assign(new Error('Command failed: git clone'), { stderr });
+    }
+    return real(args, env, options);
+  });
+}
+
 describe('RemoteRepositories', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
   it('lists nothing and says why when no host has a token', async () => {
     const { service, github } = harness({ token: '' });
     const view = await service.list();
@@ -243,5 +262,42 @@ describe('RemoteRepositories', () => {
     await expect(service.create({ host: 'github', owner: 'acme', name: 'fresh' }, null)).rejects.toThrow(
       'Resource not accessible (needs repo scope)',
     );
+  });
+
+  describe('clone through the git host policy', () => {
+    it('clones again after one transient failure', async () => {
+      jest.useFakeTimers();
+      const { service, checkouts, github } = harness({ github: [repo('github', 'acme', 'demo')] });
+      github.seed('acme/demo');
+      failClone('fatal: unable to access: Could not resolve host: github.example', 1);
+      const cloned = service.clone('demo', null);
+      await jest.advanceTimersByTimeAsync(60_000);
+      await cloned;
+      expect(existsSync(join(checkouts, 'demo', 'README.md'))).toBe(true);
+    });
+
+    it('ends in HOST_UNAVAILABLE with a next try and no token when the host stays down', async () => {
+      jest.useFakeTimers();
+      const { service, github } = harness({ github: [repo('github', 'acme', 'demo')] });
+      github.seed('acme/demo');
+      failClone(`fatal: unable to access 'https://oauth2:${TOKEN}@github.example/acme/demo.git': Connection reset`, 99);
+      const cloned = service.clone('demo', null).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      await jest.advanceTimersByTimeAsync(10 * 60_000);
+      const error = await cloned;
+      expect(error).toBeInstanceOf(HostUnavailable);
+      expect((error as HostUnavailable).message).not.toContain(TOKEN);
+      expect((error as HostUnavailable).retryAt).toEqual(expect.any(String));
+    });
+
+    it('says the clone failed and does not retry a refusal', async () => {
+      const { service, github } = harness({ github: [repo('github', 'acme', 'demo')] });
+      github.seed('acme/demo');
+      const spy = failClone('fatal: Authentication failed for https://github.example/acme/demo.git', 99);
+      await expect(service.clone('demo', null)).rejects.toThrow('clone of acme/demo failed: ');
+      expect(spy.mock.calls.filter(([args]) => args[0] === 'clone')).toHaveLength(1);
+    });
   });
 });

@@ -155,6 +155,70 @@ describe('research step', () => {
     }
   });
 
+  it('waits with the needs of a subtask whose answer ends with needs:, and ignores the section in any other run', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-needs-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-24-t1', 'billing-api'), { recursive: true });
+    mkdirSync(join(root, 'worktrees', 'PROJ-25', 'billing-api'), { recursive: true });
+    const answer = ['needs:', '- t0: the retry policy'].join('\n');
+    const alone = ['summary:', '- looking', 'questions:', '- none', answer].join('\n');
+    const agent = jest.fn().mockResolvedValueOnce(result(answer)).mockResolvedValueOnce(result(alone));
+    const app = await boot(root, agent);
+    const runs = app.get(RunRepository);
+    const documents = app.get(DocumentRepository);
+    const parent = await runs.openWaiting('PROJ-24', '/target');
+    const child = await runs.begin('PROJ-24-t1', 'prepare');
+    child.status = 'waiting';
+    child.currentStep = 'research';
+    child.parentRunId = parent.id;
+    child.taskId = 't1';
+    await runs.saveRun(child);
+    await documents.putDocument(child, 'requirements', '{"prompt":"ship the field"}\n');
+    const plain = await runs.begin('PROJ-25', 'prepare');
+    plain.status = 'waiting';
+    plain.currentStep = 'research';
+    await runs.saveRun(plain);
+    await documents.putDocument(plain, 'requirements', '{"prompt":"ship the field"}\n');
+    try {
+      await app.get(PipelineService).step('research', 'PROJ-24-t1');
+      const waiting = await runs.findRun('PROJ-24-t1');
+      expect(waiting?.currentStep).toBe('research');
+      expect(waiting?.status).toBe('waiting');
+      expect(await documents.latestBody('PROJ-24-t1', 'needs')).toBe('needs:\n- t0: the retry policy\n');
+
+      await app.get(PipelineService).step('research', 'PROJ-25');
+      expect((await runs.findRun('PROJ-25'))?.currentStep).toBe('plan');
+      expect(await documents.latestBody('PROJ-25', 'needs')).toBeNull();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('clears a stale need of a subtask that finishes without needs:', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-stale-needs-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-26-t1', 'billing-api'), { recursive: true });
+    const agent = jest.fn().mockResolvedValue(result(['summary:', '- looking', 'questions:', '- none'].join('\n')));
+    const app = await boot(root, agent);
+    const runs = app.get(RunRepository);
+    const documents = app.get(DocumentRepository);
+    const parent = await runs.openWaiting('PROJ-26', '/target');
+    const child = await runs.begin('PROJ-26-t1', 'prepare');
+    child.status = 'waiting';
+    child.currentStep = 'research';
+    child.parentRunId = parent.id;
+    child.taskId = 't1';
+    await runs.saveRun(child);
+    await documents.putDocument(child, 'requirements', '{"prompt":"ship the field"}\n');
+    await documents.putDocument(child, 'needs', 'needs:\n- t0: the retry policy\n');
+    try {
+      await app.get(PipelineService).step('research', 'PROJ-26-t1');
+      expect(await documents.latestBody('PROJ-26-t1', 'needs')).toBe('');
+    } finally {
+      await app.close();
+    }
+  });
+
   describe('a subtask whose parent is split', () => {
     async function splitSubtask(answers?: string) {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-split-'));

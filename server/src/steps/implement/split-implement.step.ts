@@ -2,11 +2,22 @@ import { Injectable } from '@nestjs/common';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../../contract/error-codes';
 import { deriveState } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
-import { readyTasks, settled, statusLine, unmetDepends, withStatuses, type Subtask } from '../../contract/subtask';
+import {
+  readyTasks,
+  settled,
+  statusLine,
+  unmetDepends,
+  waitNote,
+  withStatuses,
+  type Subtask,
+} from '../../contract/subtask';
 import type { StepName } from '../../contract/steps';
+import { sampleSelf } from '../../history/visit';
 import { withDecision } from '../shared/handoff';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { SplitMerge } from './split-merge';
+import { REBASED_PREFIX } from './split-rebase';
+import { SplitNeeds } from './split-needs';
 import { earliestRetry } from './subtask-retry';
 import { BaseStep, StepContext } from '../base-step';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -18,6 +29,12 @@ import { StepKernel } from '../step-kernel';
 const INPUTS = {
   subtasks: { artifact: ARTIFACTS.subtasks, need: 'run' },
 } as const satisfies InputSpec;
+
+const BLOCKED_ACTION = 'Resume, Replay or Skip task clears it';
+
+function blockedNames(blocked: Subtask[]): string {
+  return blocked.map((task) => `subtask ${task.id} is blocked`).join('; ');
+}
 
 export const NO_CI_NOTE = 'no CI on the feature branch';
 
@@ -33,12 +50,15 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
   readonly inputs = INPUTS;
   readonly outputs = [ARTIFACTS.subtasks, ARTIFACTS.implementation, ARTIFACTS.contract];
 
+  private readonly needs: SplitNeeds;
+
   constructor(
     kernel: StepKernel,
     private readonly subtasks: SubtaskOps,
     private readonly merges: SplitMerge,
   ) {
     super(kernel);
+    this.needs = new SplitNeeds(subtasks);
   }
 
   override async execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
@@ -60,7 +80,7 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     const code = deriveState(parent).reason?.code ?? '';
     if (parent.status !== 'waiting' || !SUBTASK_WAIT_CODES.some((wait) => wait === code)) return false;
     const tasks = withStatuses((await this.reader.reread(parent.key, ARTIFACTS.subtasks)) ?? []);
-    if (tasks.every(settled)) return false;
+    if (tasks.every(settled) || (await this.needs.pending(parent, tasks))) return false;
     const children: RunEntity[] = [];
     for (const task of tasks.filter((item) => !settled(item))) {
       const child = await this.subtasks.find(parent, task.id);
@@ -71,24 +91,28 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       if (changed || task.status === 'green' || (await this.subtasks.asking(child))) return false;
     }
     if (earliestRetry(children) !== (deriveState(parent).reason?.retryAt ?? null)) return false;
-    return readyTasks(tasks, this.config.env.SUBTASKS_PARALLEL).length === 0;
+    return readyTasks(tasks, await this.slots(parent, tasks)).length === 0;
   }
 
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const { run, startedAt } = ctx.opened;
     const before = JSON.stringify(withStatuses(input.subtasks));
-    const contract = await this.answer(ctx, withStatuses(input.subtasks));
-    const followed = await this.refresh(run, withStatuses(input.subtasks));
+    const answered = await this.answer(ctx, withStatuses(input.subtasks));
+    const base = answered ?? (await ctx.reread(ARTIFACTS.contract)) ?? '';
+    const needed = await this.needs.run(ctx.opened, withStatuses(input.subtasks), base);
+    const contract = needed.contract === base ? answered : needed.contract;
+    const followed = await this.refresh(run, needed.tasks);
     const { tasks: merged, refusal } = await this.merges.run(run, followed);
-    const blocked = merged.find((task) => task.status === 'blocked');
-    const tasks = await this.explain(run, blocked || refusal ? merged : await this.start(run, merged));
+    const tasks = await this.explain(run, await this.start(run, merged));
     const outputs: StepResult['outputs'] = [
       ...(JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }]),
       ...(contract === null ? [] : [{ artifact: ARTIFACTS.contract, value: contract }]),
     ];
     const line = statusLine(tasks);
-    if (blocked || refusal) {
-      const text = `${startedAt} ${blocked ? `subtask ${blocked.id} is ${blocked.status}` : refusal}: ${line}`;
+    const blocked = tasks.filter((task) => task.status === 'blocked');
+    const action = blocked.length > 0 ? `${blockedNames(blocked)}; ${BLOCKED_ACTION}` : null;
+    if ((blocked.length > 0 || refusal) && !this.canMove(tasks, refusal)) {
+      const text = `${startedAt} ${refusal ?? blockedNames(blocked)}: ${line}${blocked.length > 0 ? `; ${BLOCKED_ACTION}` : ''}`;
       return { route: { to: 'block', reason: text, code: ERROR_CODES.SUBTASK_BLOCKED }, summary: text, outputs };
     }
     if (tasks.every(settled)) {
@@ -96,17 +120,23 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     }
     const retryAt = earliestRetry(await this.openChildren(run, tasks));
     if (retryAt) {
-      const text = `${line}; next try at ${retryAt}`;
+      const text = `${line}; next try at ${retryAt}${action ? `; ${action}` : ''}`;
       return {
         route: { to: 'wait', reason: text, code: ERROR_CODES.SUBTASK_WAITING, retryAt },
         summary: `${startedAt} ${text}`,
         outputs,
       };
     }
-    const waiting = tasks.some((task) => task.status === 'running') ? null : this.missing(tasks);
+    const running = tasks.some((task) => task.status === 'running');
+    const waiting = running ? null : this.missing(tasks);
     const code = waiting ? ERROR_CODES.SUBTASK_WAITING : ERROR_CODES.SUBTASKS_RUNNING;
-    const text = waiting ? `${line} · waiting for ${waiting}` : line;
+    const text = `${waiting ? `${line} · waiting for ${waiting}` : line}${action ? `; ${action}` : ''}`;
     return { route: { to: 'wait', reason: text, code }, summary: `${startedAt} ${text}`, outputs };
+  }
+
+  /** True when a task runs, or a green one is still to merge: the parent waits, and is blocked only when nothing can move. */
+  private canMove(tasks: Subtask[], refusal: string | null): boolean {
+    return tasks.some((task) => task.status === 'running' || (task.status === 'green' && !refusal));
   }
 
   private async openChildren(parent: RunEntity, tasks: Subtask[]): Promise<RunEntity[]> {
@@ -150,8 +180,11 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       // A Stop of the parent stopped this run. Resume goes on where it stopped.
       await this.subtasks.resume(child);
     }
+    const delivered = child.status === 'done' ? await this.subtasks.deliveredNote(child) : null;
+    if (delivered) return { ...task, status: 'skipped', note: delivered };
     const status = this.statusOf(task, child, state);
-    const note = status === 'green' && (await this.subtasks.withoutCi(child)) ? NO_CI_NOTE : undefined;
+    const rebased = status !== 'green' && task.note?.startsWith(REBASED_PREFIX) ? task.note : undefined;
+    const note = status === 'green' && (await this.subtasks.withoutCi(child)) ? NO_CI_NOTE : rebased;
     return { ...task, status, note };
   }
 
@@ -162,9 +195,14 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     return task.status === 'running' || launched ? 'running' : 'waiting';
   }
 
+  /** The tasks that may run at once. A task that waits for a sibling holds no slot, or the sibling could never start. */
+  private async slots(parent: RunEntity, tasks: Subtask[]): Promise<number> {
+    return this.config.env.SUBTASKS_PARALLEL + (await this.needs.waiting(parent, tasks));
+  }
+
   /** Starts the tasks whose dependencies are merged or skipped, up to `SUBTASKS_PARALLEL` at a time. */
   private async start(parent: RunEntity, tasks: Subtask[]): Promise<Subtask[]> {
-    const ready = readyTasks(tasks, this.config.env.SUBTASKS_PARALLEL).map((task) => task.id);
+    const ready = readyTasks(tasks, await this.slots(parent, tasks)).map((task) => task.id);
     for (const task of tasks.filter((item) => ready.includes(item.id))) {
       await this.subtasks.launch(parent, task);
     }
@@ -175,11 +213,14 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
   private async explain(parent: RunEntity, tasks: Subtask[]): Promise<Subtask[]> {
     const explained: Subtask[] = [];
     for (const task of tasks) {
-      const unmet = task.status === 'waiting' ? unmetDepends(task, tasks) : [];
-      const note = unmet.length > 0 ? `waiting for ${unmet.join(', ')}` : undefined;
-      const child = note ? await this.subtasks.find(parent, task.id) : null;
-      if (child && note) await this.subtasks.waitFor(child, note);
-      explained.push(task.status === 'waiting' ? { ...task, note } : task);
+      if (task.status !== 'waiting') {
+        explained.push(task);
+        continue;
+      }
+      const note = waitNote(task, tasks);
+      const child = await this.subtasks.find(parent, task.id);
+      if (child) await this.subtasks.waitFor(child, note);
+      explained.push({ ...task, note });
     }
     return explained;
   }
@@ -192,19 +233,24 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     return unmet.size > 0 ? [...unmet].join(', ') : null;
   }
 
-  /** Every task is merged or skipped: the checks run on the feature branch, and implement-improve is skipped. */
+  /**
+   * Every task is merged or skipped: the checks run on the feature branch. The flow keeps its implementation phase,
+   * so a later return of the parent's own implement goes on to implement-improve. Only this merge visit skips it.
+   */
   private async finish(
     run: RunEntity,
     tasks: Subtask[],
     ctx: StepContext,
     outputs: StepResult['outputs'],
   ): Promise<StepResult> {
-    const next = (await this.flows.activePhases(run.id)).includes('checks') ? 'checks' : 'code-review';
+    const active = await this.flows.activePhases(run.id);
+    const next = active.includes('checks') ? 'checks' : 'code-review';
     await this.flows.noteFlow(
       run.key,
-      next === 'checks' ? ['checks', 'code-review', 'ci'] : ['code-review', 'ci'],
+      next === 'checks' ? ['implementation', 'checks', 'code-review', 'ci'] : ['implementation', 'code-review', 'ci'],
       next,
     );
+    await this.skipImprove(ctx);
     const body = `${tasks.map((task) => `- ${task.title} (${task.status})`).join('\n')}\n`;
     return {
       route: { to: 'jump', step: next },
@@ -212,5 +258,29 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       outputs: [...outputs, { artifact: ARTIFACTS.implementation, value: body }],
       handoff: `- ${statusLine(tasks)}\n`,
     };
+  }
+
+  private async skipImprove(ctx: StepContext): Promise<void> {
+    const { run, startedAt, started } = ctx.opened;
+    const finishedAt = this.clock.iso();
+    await this.visits.finishVisit(run, {
+      step: 'implement-improve',
+      model: null,
+      mode: null,
+      startedAt,
+      finishedAt,
+      durationMs: this.clock.now() - started,
+      status: 'skipped',
+      exitCode: 0,
+      killReason: null,
+      tokensIn: 0,
+      tokensOut: 0,
+      usd: 0,
+      samples: [sampleSelf(finishedAt)],
+      exchange: null,
+      httpCalls: [],
+      document: null,
+      resumed: false,
+    });
   }
 }

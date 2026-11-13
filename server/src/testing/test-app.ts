@@ -14,6 +14,7 @@ import { HealthController } from '../api/health.controller';
 import { LiveGateway } from '../api/live.gateway';
 import { SubtaskClose } from '../api/subtask-close';
 import { RunCommandsService } from '../api/run-commands.service';
+import { RunSubtaskCommandsService } from '../api/run-subtask-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { RunsController } from '../api/runs.controller';
@@ -31,6 +32,8 @@ import { SandboxModule } from '../sandbox/sandbox.module';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { BaseStep, type StepContext } from '../steps/base-step';
 import { ImplementStep } from '../steps/implement/implement.step';
+import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
+import { PipelineStep } from '../steps/pipeline/pipeline.step';
 import { StepRegistry } from '../steps/step.registry';
 import type { StepCapabilities, StepResult } from '../steps/contract/step-contract';
 import type { Step, StepSnapshot } from '../steps/step';
@@ -54,6 +57,8 @@ interface TestAppOptions {
   env?: Record<string, string>;
   /** A split run takes the real implement step, with its passes, in place of the scripted one. */
   realImplement?: boolean;
+  /** The merge-request and pipeline steps are the real ones, on a gitlab host the spec swaps for a fake. The other steps stay scripted. */
+  realHost?: boolean;
   /** Starts the reconciler's timer. Off by default: a test drives its passes itself, one awaited pass at a time. */
   reconcilerTimer?: boolean;
   /** The app removes the root when it closes. Defaults to true for a root it made. */
@@ -121,7 +126,10 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   const ownsRoot = options.ownsRoot ?? options.root === undefined;
   const root = options.root ?? (await mkdtemp(join(tmpdir(), 'swarmloop-test-app-')));
   mkdirSync(root, { recursive: true });
-  await writeFile(join(root, '.env'), testEnv(root, options.env));
+  const hostEnv = options.realHost
+    ? { GITLAB_BASE_URL: 'https://gitlab.example', GITLAB_TOKEN: 'token', ...options.env }
+    : options.env;
+  await writeFile(join(root, '.env'), testEnv(root, hostEnv));
   const clock = new FakeClock();
   const runner = options.runner ?? new ScriptedFakeAgentRunner();
   const codeHost = new FakeCodeHost();
@@ -144,6 +152,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     providers: [
       RunQueriesService,
       RunCommandsService,
+      RunSubtaskCommandsService,
       SubtaskClose,
       RunRebaseService,
       ChatService,
@@ -188,6 +197,11 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
         },
       }) as Step,
     );
+  }
+
+  if (options.realHost) {
+    steps.set('merge-request', module.get(MergeRequestStep));
+    steps.set('pipeline', module.get(PipelineStep));
   }
 
   const app = module.createNestApplication();

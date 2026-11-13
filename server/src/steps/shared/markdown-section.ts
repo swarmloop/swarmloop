@@ -35,6 +35,7 @@ export function section(text: string, name: string): string | null {
 
 const SECTION_LABELS = [
   'contract',
+  'keep',
   'tasks',
   'plan',
   'questions',
@@ -44,6 +45,7 @@ const SECTION_LABELS = [
   'cause',
   'files',
   'proof',
+  'needs',
 ];
 
 /** A section ends only at a label of an answer: at column 0, alone on its line, plain or as a heading or bold. */

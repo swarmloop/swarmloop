@@ -1,3 +1,5 @@
+import type { RunState } from './run-state';
+
 /** One task in the `subtasks` document of a parent run. */
 export interface Subtask {
   id: string;
@@ -63,10 +65,74 @@ export function unmetDepends(task: Subtask, tasks: Subtask[]): string[] {
   });
 }
 
-/** The waiting tasks that may start now: every dependency is settled, up to `parallel` tasks at a time. */
+/** The blocked tasks that `task` depends on, directly or through other unsettled tasks. */
+function blockedAncestors(task: Subtask, tasks: Subtask[]): string[] {
+  const seen = new Set<string>();
+  const blocked: string[] = [];
+  const queue = [...task.depends];
+  for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+    const found = tasks.find((item) => item.id === id);
+    if (seen.has(id) || !found || settled(found)) continue;
+    seen.add(id);
+    if (found.status === 'blocked') blocked.push(id);
+    queue.push(...found.depends);
+  }
+  return blocked;
+}
+
+/** The waiting tasks that may start now: every dependency is settled and none is behind a blocked task, up to `parallel` tasks at a time. */
 export function readyTasks(tasks: Subtask[], parallel: number): Subtask[] {
   const free = Math.max(0, parallel - tasks.filter((task) => task.status === 'running').length);
-  return tasks.filter((task) => task.status === 'waiting' && unmetDepends(task, tasks).length === 0).slice(0, free);
+  return tasks
+    .filter(
+      (task) =>
+        task.status === 'waiting' &&
+        unmetDepends(task, tasks).length === 0 &&
+        blockedAncestors(task, tasks).length === 0,
+    )
+    .slice(0, free);
+}
+
+/** What a waiting task waits for: a blocked task, the tasks it depends on, or a free slot. Never a settled task. */
+export function waitNote(task: Subtask, tasks: Subtask[]): string {
+  const blocked = blockedAncestors(task, tasks);
+  if (blocked.length > 0) return `waiting for ${blocked.join(', ')}, which is blocked`;
+  const unmet = unmetDepends(task, tasks);
+  if (unmet.length > 0) return `waiting for ${unmet.join(', ')}`;
+  const running = tasks.filter((item) => item.status === 'running').length;
+  return `waiting for a free slot: ${running} of SUBTASKS_PARALLEL running`;
+}
+
+/** The task's own run, as far as its shown state needs it. */
+interface TaskRunState {
+  state: RunState;
+  currentStep: string;
+}
+
+/** The state every page shows for a task. A task the parent closed keeps its stored status; any other task with a run shows that run's own state; one without a run waits. */
+export function shownTaskState(task: Subtask, run?: TaskRunState): SubtaskStatus {
+  if (settled(task)) return task.status;
+  if (!run) return 'waiting';
+  switch (run.state) {
+    case 'done':
+      return 'green';
+    case 'merged':
+    case 'skipped':
+      return run.state;
+    case 'blocked':
+    case 'failed':
+    case 'stopped':
+    case 'closed':
+      return 'blocked';
+    case 'waiting':
+      return run.currentStep === 'requirements' ? 'waiting' : 'running';
+    case 'idle':
+    case 'queued':
+    case 'recovering':
+    case 'running':
+    case 'stopping':
+      return 'running';
+  }
 }
 
 /** `4/7 merged · 2 running · 1 waiting`. A count of zero is left out. */

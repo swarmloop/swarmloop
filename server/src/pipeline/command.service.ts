@@ -5,7 +5,7 @@ import { CommandRepository, conflict } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { blockCode, deriveState } from '../history/run-state';
-import { actionsFor } from '../contract/run-state';
+import { actionsFor, SKIPPED_NOTE } from '../contract/run-state';
 import type { CommandReceipt, CommandType } from '../contract/command';
 import { barrier } from '../core/barrier';
 import { assertKey } from '../core/pipeline-result';
@@ -176,6 +176,9 @@ export class CommandService {
   private admit(type: CommandType, key: string, run: RunEntity | null, code: string | null): void {
     if (!run) return;
     const held = this.runs.held(run);
+    if (type !== 'remove' && deriveState(run).state === 'skipped') {
+      throw new ConflictException(SKIPPED_NOTE);
+    }
     if (BUSY_TYPES.includes(type) && held) {
       throw conflict('RUN_BUSY', `${key} is already running`, run, 'running');
     }

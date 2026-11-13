@@ -1,3 +1,4 @@
+import type { RunState } from './run-state';
 import type { SubtaskStatus } from './subtask';
 
 /** The tasks that can start together once the layers before them are done. */
@@ -12,6 +13,6 @@ export interface TaskLayer {
     status: SubtaskStatus;
     note?: string;
     /** The subtask's own run, once it has started. */
-    run?: { key: string; currentStep: string; usd: number; durationMs: number };
+    run?: { key: string; state: RunState; currentStep: string; usd: number; durationMs: number };
   }[];
 }

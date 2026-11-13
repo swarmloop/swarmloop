@@ -15,7 +15,7 @@ import { ARTIFACTS } from '../steps/contract/artifacts';
 import type { InputSpec } from '../steps/contract/step-contract';
 import { StepRegistry } from '../steps/step.registry';
 import type { Step, StepSnapshot } from '../steps/step';
-import { createTestApp } from '../testing/test-app';
+import { createTestApp, type TestApp } from '../testing/test-app';
 import { recordingDocuments, traceRun, type RecordingDocuments } from '../testing/step-trace.spec-helpers';
 import { PipelineService } from './pipeline.service';
 import { deriveState } from '../history/run-state';
@@ -23,7 +23,7 @@ import { actionsFor } from '../contract/run-state';
 
 export const KEY = 'PROJ-1';
 
-export type Script = (visit: number, ctx: StepContext) => Omit<StepEnd, 'line'>;
+export type Script = (visit: number, ctx: StepContext) => Omit<StepEnd, 'line'> | Promise<Omit<StepEnd, 'line'>>;
 
 const INPUTS = { requirements: { artifact: ARTIFACTS.requirements, need: 'start' } } as const satisfies InputSpec;
 
@@ -55,7 +55,7 @@ class DriverStep extends BaseStep<typeof INPUTS> {
       async (ctx) => {
         await this.reader.read(key, this.inputs);
         this.count += 1;
-        const end = this.script(this.count, ctx);
+        const end = await this.script(this.count, ctx);
         return ctx.end({ ...end, line: `${ctx.opened.startedAt} ${this.name} ${end.outcome}` });
       },
       snapshot,
@@ -70,25 +70,35 @@ class DriverStep extends BaseStep<typeof INPUTS> {
 
 export const ok: Script = () => ({ outcome: 'ok', exitCode: 0 });
 
+/** The steps in `names` end their visits as their scripts say; every other step is the one the app has. */
+export function installScripts(app: TestApp, scripts: Partial<Record<StepName, Script>>, names: readonly StepName[]) {
+  const base = {
+    runs: app.app.get(RunRepository),
+    visits: app.app.get(VisitRepository),
+    flows: app.app.get(FlowRepository),
+    clock: app.app.get(Clock),
+    config: app.app.get(AppConfig),
+    stepEvents: app.app.get(StepEventLog),
+  };
+  const documents = app.app.get(DocumentRepository);
+  const steps = new Map<StepName, DriverStep>();
+  for (const name of names) {
+    steps.set(name, new DriverStep(name, recordingDocuments(documents), base, scripts[name] ?? ok));
+  }
+  const registry = app.app.get<{ get(name: StepName): Step | null }>(StepRegistry);
+  const original = registry.get.bind(registry);
+  registry.get = (name) => steps.get(name) ?? original(name);
+  return steps;
+}
+
 export async function drive(scripts: Partial<Record<StepName, Script>>, options: StepOptions, key = KEY) {
   const app = await createTestApp();
   try {
-    const base = {
-      runs: app.app.get(RunRepository),
-      visits: app.app.get(VisitRepository),
-      flows: app.app.get(FlowRepository),
-      clock: app.app.get(Clock),
-      config: app.app.get(AppConfig),
-      stepEvents: app.app.get(StepEventLog),
-    };
-    const documents = app.app.get(DocumentRepository);
-    const steps = new Map<StepName, DriverStep>();
-    for (const name of STEPS) {
-      if (name === 'done') continue;
-      steps.set(name, new DriverStep(name, recordingDocuments(documents), base, scripts[name] ?? ok));
-    }
-    const registry = app.app.get<{ get(name: StepName): Step | null }>(StepRegistry);
-    registry.get = (name) => steps.get(name) ?? null;
+    const steps = installScripts(
+      app,
+      scripts,
+      STEPS.filter((name) => name !== 'done'),
+    );
     const result = await app.app.get(PipelineService).runThrough(key, options);
     const reads = Object.fromEntries([...steps].map(([name, step]) => [name, step.recorder.kinds]));
     const stored = await app.app.get(RunRepository).findRun(key);

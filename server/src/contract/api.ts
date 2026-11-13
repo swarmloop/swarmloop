@@ -31,6 +31,8 @@ export interface RunSummary {
   /** Set on a subtask only: the key of its parent run and its task id. */
   parentKey?: string;
   taskId?: string;
+  /** Set on a done subtask the parent has not merged yet: what the merge waits for, when it waits for something. */
+  mergeWait?: string;
   /** Set on a run with subtask runs only: its own cost plus its subtasks', and the wall clock from its start to its end. */
   epic?: { usd: number; durationMs: number };
 }
@@ -66,6 +68,8 @@ export interface FlowView {
   stepStartedAt: string | null;
   /** Set on a subtask only: the key of its parent run. */
   parentKey?: string;
+  /** Set on a done subtask the parent has not merged yet: what the merge waits for, when it waits for something. */
+  mergeWait?: string;
   /** Who started the run. Missing for a run the CLI started and for runs from before logins. */
   startedBy?: string;
   /** The tasks of a split plan after plan-improve, by dependency layer. Missing when the run does not split. */
@@ -100,7 +104,10 @@ export interface FlowView {
     cpuPeak: number;
     memPeak: number;
   };
-  phases: { phase: string; steps: { name: string; status: string; current: boolean; attempts: number }[] }[];
+  phases: {
+    phase: string;
+    steps: { name: string; status: string; current: boolean; attempts: number; note?: string }[];
+  }[];
   returns: { counter: string; count: number; from: string; to: 'implement' }[];
   /** The commands of the latest checks attempt. Missing when the run has none. */
   checkCommands?: CheckCommandView[];

@@ -8,9 +8,8 @@ import { git } from '../../git/git';
 import { checkedRepoNames, hasCi, worktreePath } from '../../git/repo-names';
 import { originProject, type Seen } from './pipeline-report';
 import { ARTIFACTS } from '../contract/artifacts';
-import { writeRunState } from '../../history/run-state';
-import { HostUnavailable } from '../../core/swarmloop-error';
-import { ERROR_CODES } from '../../contract/error-codes';
+import { automaticRebase } from './pipeline-rebase';
+import { waitForCi } from './ci-not-started';
 
 /** Only the trigger is automatic. Rebase itself is the action used by the API button. */
 export async function missingPipeline(input: {
@@ -30,12 +29,14 @@ export async function missingPipeline(input: {
   const run = ctx.opened.run;
   const notes = [input.missing.map((repo) => `${repo} CI did not start`).join(', ')];
   const conflicts: PipelineRef[] = [];
+  const unexplained: PipelineRef[] = [];
   let closed = false;
   for (const ref of records.filter((ref) =>
     seen.some((item) => item.project === ref.project && item.runs.length === 0),
   )) {
     notes.push(`project: ${ref.project}`, `ref: ${ref.ref}`, `sha: ${ref.sha ?? 'unknown'}`);
     const diagnosis = await host.diagnoseMissingPipeline?.(ref);
+    if (!diagnosis?.code) unexplained.push(ref);
     if (!diagnosis) continue;
     ctx.calls.push(...diagnosis.httpCalls);
     if (diagnosis.reason) notes.push(diagnosis.reason);
@@ -53,7 +54,9 @@ export async function missingPipeline(input: {
     };
   };
   if (closed) return end('blocked');
-  if (conflicts.length === 0) return end('failed');
+  if (conflicts.length === 0) {
+    return unexplained.length === 0 ? end('failed') : waitForCi({ ctx, events, host, refs: unexplained, notes });
+  }
   const history = JSON.parse((await ctx.reread(ARTIFACTS.pipelineRebases)) ?? '[]') as string[];
   const sources = conflicts.map((ref) => `${ref.project}@${ref.sha ?? 'unknown'}`);
   if (history.some((source) => sources.includes(source)))
@@ -71,31 +74,7 @@ export async function missingPipeline(input: {
       { artifact: ARTIFACTS.pipelineLog, value: `result: rebase\n${notes.join('\n')}\n` },
     ],
     visit: { status: 'waiting' },
-    afterClose: async (ended) => {
-      if (input.halted()) return { ...ended, message: 'automatic rebase cancelled by Stop' };
-      try {
-        const next = await rebase.rebase(run.key);
-        return { ...ended, resume: next === 'resume' };
-      } catch (error) {
-        if (error instanceof HostUnavailable) {
-          const fresh = (await runs.findRun(run.key))!;
-          writeRunState(fresh, {
-            status: 'waiting',
-            reason: { code: ERROR_CODES.HOST_UNAVAILABLE, message: error.message, retryAt: error.retryAt },
-          });
-          fresh.stepStartedAt = null;
-          await runs.saveRun(fresh);
-          return { ...ended, message: error.message };
-        }
-        const detail = `automatic rebase failed: ${error instanceof Error ? error.message : 'unknown error'}`;
-        const fresh = (await runs.findRun(run.key))!;
-        writeRunState(fresh, { status: 'blocked', reason: { code: ERROR_CODES.REBASE_CONFLICT, message: detail } });
-        fresh.stepStartedAt = null;
-        await ctx.write(ARTIFACTS.error, `${detail}\n`);
-        await runs.saveRun(fresh);
-        return { exitCode: 1, message: detail };
-      }
-    },
+    afterClose: automaticRebase({ ctx, runs, rebase, halted: input.halted }),
   };
 }
 

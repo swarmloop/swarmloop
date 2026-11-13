@@ -5,6 +5,7 @@ import { Reconciler } from '../pipeline/reconciler';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { ChatService } from './chat.service';
 import { RunCommandsService, StartPlan } from './run-commands.service';
+import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { RunRebaseService } from './run-rebase.service';
 import { ShellService } from './shell.service';
 
@@ -29,6 +30,7 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     private readonly executor: CommandService,
     private readonly reconciler: Reconciler,
     private readonly runs: RunCommandsService,
+    private readonly taskCommands: RunSubtaskCommandsService,
     private readonly rebases: RunRebaseService,
     private readonly chat: ChatService,
     private readonly shell: ShellService,
@@ -37,8 +39,8 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
 
   onModuleInit(): void {
     this.subtasks.register({
-      open: (parent, task) => this.runs.openSubtask(parent, task),
-      launch: (parent, task) => this.runs.launchSubtask(parent, task),
+      open: (parent, task) => this.taskCommands.openSubtask(parent, task),
+      launch: (parent, task) => this.taskCommands.launchSubtask(parent, task),
     });
     const on = this.executor.register.bind(this.executor);
     on('start', (_key, payload) => this.runs.startPlanned(payload as unknown as StartPlan));
@@ -54,9 +56,9 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     });
     on('stop', (key) => this.runs.stop(key));
     on('remove', (key) => this.runs.remove(key));
-    on('skip', (key, payload) => this.runs.skipTask(key, (payload.taskId as string | undefined) ?? ''));
+    on('skip', (key, payload) => this.taskCommands.skipTask(key, (payload.taskId as string | undefined) ?? ''));
     on('projects', (key, payload) => this.runs.addProject(key, (payload as AddProjectBody).name ?? ''));
-    on('rebase', (key) => this.rebases.rebase(key));
+    on('rebase', (key, payload) => this.rebases.rebase(key, payload.byParent === true));
     on('chat', (key, payload) => this.chat.speak(key, payload));
     on('rewind', (key, payload) => this.shell.rewind(key, Number(payload.id)));
     on('shell', (key, payload, context) => {

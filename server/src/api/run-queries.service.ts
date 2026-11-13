@@ -22,6 +22,7 @@ import { renderProjects, storedProjects } from '../config/checkout-path';
 import type { StepEventPage } from '../contract/step-events';
 import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
 import type { LiveSample } from '../contract/live';
+import { mergeWaits, parentOf } from './run-view/merge-wait';
 import { childrenByParent, epicTotal, listExtras } from './run-view/status';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
@@ -82,6 +83,7 @@ export class RunQueriesService {
     const durations = await this.runs.durationByRun();
     const keys = new Map(runs.map((run) => [run.id, run.key]));
     const childrenOf = childrenByParent(runs);
+    const waits = await mergeWaits(this.documents, runs, keys);
     return {
       runs: runs.map((run) => ({
         key: run.key,
@@ -94,17 +96,13 @@ export class RunQueriesService {
         durationMs: durations.get(run.id) ?? 0,
         usd: this.usdOf(run),
         ...listExtras(run, keys),
+        ...waits.get(run.key),
         ...epicTotal(run, childrenOf.get(run.id) ?? [], this.usdOf, this.clock.now()),
       })),
     };
   }
 
   private readonly usdOf = (run: RunEntity): number => run.spentUsd + openSpend(run, this.pipeline, this.live).usd;
-
-  private async parentOf(run: RunEntity): Promise<{ parentKey?: string }> {
-    const parent = typeof run.parentRunId === 'number' ? await this.runs.findById(run.parentRunId) : null;
-    return parent ? { parentKey: parent.key } : {};
-  }
 
   async flow(key: string): Promise<FlowView> {
     const run = await requireRun(this.runs, key);
@@ -130,7 +128,7 @@ export class RunQueriesService {
       currentStep: run.currentStep,
       updatedAt: run.updatedAt,
       stepStartedAt: run.stepStartedAt,
-      ...(await this.parentOf(run)),
+      ...(await parentOf(this.runs, this.documents, run)),
       ...(run.startedBy ? { startedBy: run.startedBy } : {}),
       ...taskView(documents, run.currentStep, await taskRuns(this.runs, children, documents, this.pipeline, this.live)),
       ...epicTotal(shown, children, this.usdOf, this.clock.now()),

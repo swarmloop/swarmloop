@@ -33,6 +33,9 @@ export const PHASE_STEPS: Record<PhaseName, readonly string[]> = {
   ci: ['commit', 'merge-request', 'pipeline', 'done'],
 };
 
+/** Why the merge visit of a split parent skips implement-improve. */
+export const IMPROVE_SKIPPED_NOTE = 'each task checked its own work';
+
 export function isReviewStep(value: string): boolean {
   return REVIEW_STEPS.includes(value);
 }

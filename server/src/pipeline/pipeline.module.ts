@@ -19,6 +19,7 @@ import { ImplementImproveStep } from '../steps/implement/implement-improve.step'
 import { ImplementStep } from '../steps/implement/implement.step';
 import { SplitImplementStep } from '../steps/implement/split-implement.step';
 import { SplitMerge } from '../steps/implement/split-merge';
+import { SplitRebase } from '../steps/implement/split-rebase';
 import { SubtaskOps } from '../steps/shared/subtask-ops';
 import { SubtaskPort } from './subtask-port';
 import { PlanImproveStep } from '../steps/plan-improve/plan-improve.step';
@@ -74,6 +75,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     ImplementStep,
     SplitImplementStep,
     SplitMerge,
+    SplitRebase,
     SubtaskPort,
     { provide: SubtaskOps, useExisting: SubtaskPort },
     ImplementImproveStep,

@@ -16,6 +16,8 @@ The task names a capability when the requirements hold a `Removes` or `Behavior 
 
 When a capability would change, go away or become unreachable and the task does not name it, ask one question per capability in `questions`, in plain words: `This change makes <capability> <unreachable|go away|change>. Is that intended?` Ask only about real removals. Do not ask about an internal refactor that keeps every capability reachable, and do not ask about a capability the task names.
 
+A subtask of a split run may need a sibling task before it can go on: something it must use is made by a sibling task that is not merged yet (the task map in the prompt says who makes what). Then end the answer with a `needs:` section, one line per sibling task id, `- <id>: <what it needs from that task>`, and nothing else: do not do that task's work, do not write `assumed:` for it, and leave the other sections out. The server makes the task wait, and runs this step again when that sibling is merged. A run that is not a subtask writes no `needs:`.
+
 End the answer with these three sections and nothing after them. `summary` says what the tree shows, and what is still open when `questions` is not `none`.
 
 `questions` lists a decision the requirement leaves open only when two choices would build different things, and neither the requirement nor the tree decides it. A detail a later step can settle from the requirement or from ordinary practice is not a question. Use `- none` when no such decision is open.

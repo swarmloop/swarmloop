@@ -63,6 +63,15 @@ const INPUTS = {
 /** The pauses before the two automatic re-runs of a run whose jobs never ran. */
 const RERUN_PAUSES_MS = [60_000, 300_000];
 
+/** What was tried before a person is asked: the wait for a run that never started, or the reruns that ended the same way. */
+function triedLine(unstarted: boolean, reruns: number, notes: string, startTimeoutMs: number): string {
+  if (unstarted) {
+    const minutes = Math.round(startTimeoutMs / 60000);
+    return `tried: waited ${minutes} minutes for the host to start the run${notes ? `; the host says: ${notes}` : ''}\n`;
+  }
+  return reruns > 0 ? `tried: ${reruns} reruns of the failed jobs\n` : '';
+}
+
 @Injectable()
 export class PipelineStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'pipeline';
@@ -72,6 +81,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     ARTIFACTS.return,
     ARTIFACTS.issues,
     ARTIFACTS.pipelineRebases,
+    ARTIFACTS.ciWaits,
     ARTIFACTS.flaky,
     ARTIFACTS.mergeRequest,
   ];
@@ -95,6 +105,17 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       visits: this.kernel.visits,
       config: this.config,
       flaky: this.flaky,
+      defaultBranch: {
+        runs: this.runs,
+        rebase: this.rebase,
+        halted: (key) => this.runStop.halted(key),
+        hosts: async (run) => ({
+          ...this.config.env,
+          ...(await this.registry.tokensFor(run.startedBy, run.codeHost)),
+          clock: this.clock,
+        }),
+        root: root(this.config),
+      },
     };
   }
 
@@ -320,7 +341,8 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   ): Promise<StepResult> {
     const { opened, calls } = ctx;
     const finished = finishedRuns(seen);
-    const pause = unstartedRuns(seen).length > 0 ? undefined : RERUN_PAUSES_MS[reruns];
+    const unstarted = unstartedRuns(seen);
+    const pause = unstarted.length > 0 ? undefined : RERUN_PAUSES_MS[reruns];
     const errors: string[] = [];
     if (pause !== undefined) {
       await delay(pause);
@@ -331,8 +353,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         return this.route(ctx, env, records, watched.seen, watched.verdict, host, reruns + 1);
       }
     }
-    const notes = await readNotes(host, finished, calls);
-    const body = `${renderInfra(code, seen, notes)}${errors.map((error) => `rerun: ${error}\n`).join('')}`;
+    const notes = await readNotes(host, unstarted.length > 0 ? unstarted : finished, calls);
+    const tried = triedLine(unstarted.length > 0, reruns, notes, env.PIPELINE_START_TIMEOUT_MS);
+    const body = `${renderInfra(code, seen, notes)}${tried}${errors.map((error) => `rerun: ${error}\n`).join('')}`;
     const result = finish(
       'blocked',
       report(opened, code === 'CI_TIMEOUT' ? 'CI timed out' : 'CI did not run', body),

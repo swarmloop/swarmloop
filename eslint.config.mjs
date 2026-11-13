@@ -250,6 +250,7 @@ export default tseslint.config(
       'server/src/steps/shared/handoff.ts', // reads and merges the handoff document
       'server/src/steps/shared/rebased-publisher.ts', // records the refs it pushed for the implement step
       'server/src/steps/prepare/project-append.service.ts', // adds a project to a run between its visits
+      'server/src/steps/commit/commit-delivered.ts', // reads the stored reviews an unchanged tree is judged from
       'server/src/steps/code-review/review-input.ts', // reads the run's repos and records the ones it detaches
       'server/src/steps/code-review/review-round.ts', // reads the stored reviews a round continues from
       'server/src/steps/code-review/review-report.ts', // reads the handoff the report is written from

@@ -95,6 +95,7 @@ function unfinishedState(
     (stored.code === ERROR_CODES.RUNTIME_LIMIT ||
       stored.code === ERROR_CODES.GIT_AUTH ||
       stored.code === ERROR_CODES.HOST_UNAVAILABLE ||
+      stored.code === ERROR_CODES.CI_NOT_STARTED ||
       stored.code === ERROR_CODES.DOCKER_UNAVAILABLE ||
       SUBTASK_WAIT_CODES.includes(stored.code as ErrorCode))
   )
@@ -107,6 +108,7 @@ function unfinishedState(
 /** Today's facts to the honest state. The only place that maps `status` and the facts to a state. */
 export function deriveState(run: StateRow, facts: StateFacts = {}): { state: RunState; reason: StateReason | null } {
   const stored = readReason(run.stateReason);
+  if (stored?.code === REASON.skipped) return { state: 'skipped', reason: stored };
   switch (run.status) {
     case 'running':
       if (facts.recovering) return { state: 'recovering', reason: stored };

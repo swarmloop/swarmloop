@@ -21,7 +21,7 @@ describe('actionsFor a split run between passes', () => {
 });
 
 describe('actionsFor the codes with a next try or a limit', () => {
-  it.each([ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.DOCKER_UNAVAILABLE])(
+  it.each([ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.CI_NOT_STARTED, ERROR_CODES.DOCKER_UNAVAILABLE])(
     'offers Stop, Resume (try now), Replay and Rebase while waiting on %s',
     (code) => {
       expect(actionsFor('waiting', code)).toEqual(['stop', 'resume', 'replay', 'rebase']);
@@ -58,6 +58,7 @@ describe('the sweep of every reason code', () => {
     REASON.recovering,
     REASON.mergeWatchUnavailable,
     REASON.mergeWatchStopped,
+    REASON.skipped,
     ERROR_CODES.RUN_BUSY,
     ERROR_CODES.REVISION_CONFLICT,
     ERROR_CODES.SESSION_INCOMPATIBLE,
@@ -74,5 +75,11 @@ describe('the sweep of every reason code', () => {
     for (const action of Object.values(NEEDS_PERSON)) {
       expect(['resume', 'replay', 'rebase', 'answer']).toContain(action);
     }
+  });
+});
+
+describe('actionsFor a skipped task', () => {
+  it('offers no Resume, Replay or Rebase', () => {
+    expect(actionsFor('skipped', REASON.skipped)).toEqual([]);
   });
 });
