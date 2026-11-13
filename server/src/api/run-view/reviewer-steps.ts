@@ -22,7 +22,7 @@ import type { stepMeta } from '../run-queries-run';
 import { visitLogSize } from '../run-queries-log';
 import { decisionLine, decisionStatus, hasOutput, reviewerOutcome, roundLog } from './chips';
 import { belongsToVisit, documentView, legacyLogs } from './documents';
-import { exchangesOf, samplesOf } from './visit-parts';
+import { effortOf, exchangesOf, samplesOf } from './visit-parts';
 
 /** What the reviewer steps read of the service that builds them. */
 interface ReviewerStepDeps {
@@ -84,6 +84,7 @@ export class ReviewerSteps {
         attempt: index + 1,
         status: decisionStatus(verdict, stat.status),
         model,
+        ...effortOf(stat),
         mode: 'agent' as const,
         durationMs: stat.durationMs,
         tokensIn: latestDone ? (charge?.tokensIn ?? 0) : 0,
@@ -135,6 +136,7 @@ export class ReviewerSteps {
         attempt: stat.attempt,
         status: decisionStatus(verdict, stat.status),
         model: stat.model,
+        ...effortOf(stat),
         mode: stat.mode,
         durationMs: stat.durationMs,
         tokensIn: stat.tokensIn,

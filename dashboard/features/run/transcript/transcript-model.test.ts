@@ -27,6 +27,16 @@ const bodies: [StepEventBody, 'left' | 'right'][] = [
   [{ kind: 'attempt.interrupted', route: 'wait', summary: 'stopped' }, 'left'],
   [{ kind: 'http.call', method: 'GET', url: 'https://x.test', statusCode: 200, durationMs: 5 }, 'left'],
   [{ kind: 'host.suspended', durationMs: 2_400_000 }, 'left'],
+  [
+    {
+      kind: 'agent.effort_capped',
+      model: 'm',
+      level: 'high',
+      wanted: 'max',
+      text: 'm supports up to high; ran at high instead of max.',
+    },
+    'left',
+  ],
   [{ kind: 'agent.limited', runtime: 'claude', text: 'Claude hit its usage limit.' }, 'left'],
   [{ kind: 'agent.loop_hint', command: 'npm test', errorLine: 'FAIL', count: 4 }, 'left'],
   [{ kind: 'agent.launched', ...launch }, 'left'],

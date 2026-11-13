@@ -129,7 +129,7 @@ export class SubtaskPort extends SubtaskOps {
   ): Promise<string | null> {
     const parent = opened.run;
     const env = this.config.env;
-    const { runtime, model } = agentFor(env, parent, 'plan');
+    const { runtime, model, ...effort } = agentFor(env, parent, 'plan');
     const dir = root(this.config);
     if (!(await resumableChat(dir, parent.key, 'plan', runtime))?.chatId) return null;
     const prompt = subtaskAsks(task, questions, contract);
@@ -146,6 +146,7 @@ export class SubtaskPort extends SubtaskOps {
         tools: 'plan',
         runtime,
         model,
+        ...effort,
         timeLimitMs: env.PLAN_TIMEOUT_MS,
         prompt,
         workspace: join(dir, 'worktrees', parent.key),
@@ -166,6 +167,7 @@ export class SubtaskPort extends SubtaskOps {
         mode: 'plan',
         runtime,
         model,
+        ...effort,
         agent: result,
         prompt,
         status: visitStatus(answer ? 'ok' : 'failed'),

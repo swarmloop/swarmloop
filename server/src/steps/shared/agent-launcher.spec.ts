@@ -566,3 +566,83 @@ describe('AgentLauncher runtime of the agent', () => {
     });
   });
 });
+
+describe('AgentLauncher effort', () => {
+  async function launched(extra: object) {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-launcher-effort-'));
+    const runner = {
+      run: jest.fn().mockResolvedValue({
+        responseText: 'ok',
+        chatId: null,
+        tokensIn: 0,
+        tokensOut: 0,
+        usd: 0,
+        killReason: null,
+        exitCode: 0,
+        resumed: false,
+        calls: 1,
+        samples: [],
+        durationMs: 0,
+        startedAt: '',
+        finishedAt: '',
+      }),
+    };
+    const events: StepEvent[] = [];
+    const scope = {
+      runId: 1,
+      attemptId: 'attempt-1',
+      step: 'implement' as const,
+      root,
+      clock: new FakeClock(),
+      sink: (event: StepEvent) => {
+        events.push(event);
+        return Promise.resolve();
+      },
+    };
+    const launcher = new AgentLauncher(runner as never, { tokenTotal: async () => 0 } as never, new RunStop());
+    await runInStepScope(scope, 0, () =>
+      launcher.launch({
+        root,
+        run: { agentCalls: 0, spentUsd: 0 } as never,
+        key: 'run',
+        step: 'implement',
+        mode: 'agent',
+        tools: 'write',
+        runtime: 'codex',
+        model: 'm-codex',
+        timeLimitMs: 1,
+        prompt: 'prompt',
+        workspace: root,
+        mounts: [],
+        ...extra,
+      }),
+    );
+    return { input: runner.run.mock.calls[0][0], events };
+  }
+
+  it('runs a capped agent at the level it got and says what was wanted', async () => {
+    const { input, events } = await launched({ effort: 'xhigh', effortNote: 'capped:max' });
+
+    expect(input.effort).toBe('xhigh');
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        kind: 'agent.effort_capped',
+        text: 'm-codex supports up to xhigh; ran at xhigh instead of max.',
+      }),
+    );
+  });
+
+  it('launches an agent without an effort with no effort in the input and no event', async () => {
+    const { input, events } = await launched({});
+
+    expect('effort' in input).toBe(false);
+    expect(events.some((event) => event.kind === 'agent.effort_capped')).toBe(false);
+  });
+
+  it('records no cap event for an effort an epic raised', async () => {
+    const { input, events } = await launched({ effort: 'xhigh', effortNote: 'epic' });
+
+    expect(input.effort).toBe('xhigh');
+    expect(events.some((event) => event.kind === 'agent.effort_capped')).toBe(false);
+  });
+});

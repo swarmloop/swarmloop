@@ -122,6 +122,7 @@ export function actorOf(item: TranscriptItem): Actor {
       case 'agent.launched':
       case 'agent.finished':
       case 'agent.limited':
+      case 'agent.effort_capped':
       case 'agent.loop_hint':
       case 'agent.tool':
       case 'agent.message':
@@ -242,6 +243,7 @@ class ItemBuilder {
       case 'http.call':
       case 'host.suspended':
       case 'agent.limited':
+      case 'agent.effort_capped':
       case 'agent.loop_hint':
         if (!repeatedIssue(this.shown, event)) {
           this.push({ event, side: sideOf(event), end: null, problem: problemOf(event, null) });

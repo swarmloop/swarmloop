@@ -10,7 +10,7 @@ import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.re
  * An agent is a runtime, the model it runs and how hard it works. It is written `runtime:model[:effort]`.
  * `effortNote` says why a resolved effort is not the agent's own: `epic` or `capped:<wanted>`.
  */
-interface Agent {
+export interface Agent {
   runtime: RuntimeName;
   model: string;
   effort?: Effort;

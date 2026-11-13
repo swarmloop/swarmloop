@@ -85,6 +85,7 @@ const ALL_KINDS: Record<StepEventKind, true> = {
   'agent.message': true,
   'host.suspended': true,
   'agent.limited': true,
+  'agent.effort_capped': true,
   'agent.loop_hint': true,
   'activity.started': true,
   'activity.finished': true,
@@ -363,6 +364,25 @@ describe('step events', () => {
     }).execute('E-1');
     const events = await eventsOf('E-1');
     expect(events.find((event) => event.kind === 'host.suspended')).toMatchObject({ durationMs: 2_400_000 });
+  });
+
+  it('stores that a model ran at a lower effort than wanted', async () => {
+    await seed('E-1');
+    await probe('commit', (ctx) => {
+      recordStepEvent({
+        kind: 'agent.effort_capped',
+        model: 'gpt-6.1-sol',
+        level: 'xhigh',
+        wanted: 'max',
+        text: 'gpt-6.1-sol supports up to xhigh; ran at xhigh instead of max.',
+      });
+      return Promise.resolve(finished(ctx));
+    }).execute('E-1');
+    const events = await eventsOf('E-1');
+    expect(events.find((event) => event.kind === 'agent.effort_capped')).toMatchObject({
+      level: 'xhigh',
+      wanted: 'max',
+    });
   });
 
   it('stores the usage limit that moved a launch to another agent', async () => {
