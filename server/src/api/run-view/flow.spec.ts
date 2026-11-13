@@ -154,3 +154,34 @@ describe('sentence of a stop with its own next step', () => {
     );
   });
 });
+
+describe('implement-improve of a split parent', () => {
+  const run = { key: 'K-1', status: 'waiting', currentStep: 'checks', activeAttempt: null } as RunEntity;
+  const chip = (stats: Partial<StepStatEntity>[], name: string) =>
+    phases(run, stats as StepStatEntity[], [], tmpdir())
+      .flatMap((phase) => phase.steps)
+      .find((step) => step.name === name);
+
+  it('is listed as skipped with the reason', () => {
+    const step = chip([{ id: 1, step: 'implement-improve', status: 'skipped', attempt: 1 }], 'implement-improve');
+    expect(step).toMatchObject({ status: 'skipped', note: 'each task checked its own work' });
+  });
+
+  it.each(['running', 'failed', 'blocked', 'waiting'])(
+    'shows the live state when a returned parent is at implement-improve and %s',
+    (status) => {
+      const live = { ...run, status, currentStep: 'implement-improve' };
+      const stats = [{ id: 1, step: 'implement-improve', status: 'skipped', attempt: 1 }] as StepStatEntity[];
+      const step = phases(live, stats, [], tmpdir())
+        .flatMap((phase) => phase.steps)
+        .find((item) => item.name === 'implement-improve');
+      expect(step?.status).toBe(status);
+      expect(step?.note).toBeUndefined();
+    },
+  );
+
+  it('has no note when it is not skipped', () => {
+    const step = chip([{ id: 1, step: 'implement-improve', status: 'ok', attempt: 1 }], 'implement-improve');
+    expect(step?.note).toBeUndefined();
+  });
+});

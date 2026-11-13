@@ -12,6 +12,7 @@ import {
   type Subtask,
 } from '../../contract/subtask';
 import type { StepName } from '../../contract/steps';
+import { sampleSelf } from '../../history/visit';
 import { withDecision } from '../shared/handoff';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { SplitMerge } from './split-merge';
@@ -218,19 +219,24 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     return unmet.size > 0 ? [...unmet].join(', ') : null;
   }
 
-  /** Every task is merged or skipped: the checks run on the feature branch, and implement-improve is skipped. */
+  /**
+   * Every task is merged or skipped: the checks run on the feature branch. The flow keeps its implementation phase,
+   * so a later return of the parent's own implement goes on to implement-improve. Only this merge visit skips it.
+   */
   private async finish(
     run: RunEntity,
     tasks: Subtask[],
     ctx: StepContext,
     outputs: StepResult['outputs'],
   ): Promise<StepResult> {
-    const next = (await this.flows.activePhases(run.id)).includes('checks') ? 'checks' : 'code-review';
+    const active = await this.flows.activePhases(run.id);
+    const next = active.includes('checks') ? 'checks' : 'code-review';
     await this.flows.noteFlow(
       run.key,
-      next === 'checks' ? ['checks', 'code-review', 'ci'] : ['code-review', 'ci'],
+      next === 'checks' ? ['implementation', 'checks', 'code-review', 'ci'] : ['implementation', 'code-review', 'ci'],
       next,
     );
+    await this.skipImprove(ctx);
     const body = `${tasks.map((task) => `- ${task.title} (${task.status})`).join('\n')}\n`;
     return {
       route: { to: 'jump', step: next },
@@ -238,5 +244,29 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       outputs: [...outputs, { artifact: ARTIFACTS.implementation, value: body }],
       handoff: `- ${statusLine(tasks)}\n`,
     };
+  }
+
+  private async skipImprove(ctx: StepContext): Promise<void> {
+    const { run, startedAt, started } = ctx.opened;
+    const finishedAt = this.clock.iso();
+    await this.visits.finishVisit(run, {
+      step: 'implement-improve',
+      model: null,
+      mode: null,
+      startedAt,
+      finishedAt,
+      durationMs: this.clock.now() - started,
+      status: 'skipped',
+      exitCode: 0,
+      killReason: null,
+      tokensIn: 0,
+      tokensOut: 0,
+      usd: 0,
+      samples: [sampleSelf(finishedAt)],
+      exchange: null,
+      httpCalls: [],
+      document: null,
+      resumed: false,
+    });
   }
 }

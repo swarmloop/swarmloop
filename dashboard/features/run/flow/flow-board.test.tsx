@@ -35,6 +35,30 @@ describe('FlowBoard', () => {
     expect(card).toHaveAttribute('aria-current', 'step');
   });
 
+  it('shows why a skipped card is skipped', () => {
+    const board: FlowView['phases'] = [
+      {
+        phase: 'implementation',
+        steps: [
+          {
+            name: 'implement-improve',
+            status: 'skipped',
+            current: false,
+            attempts: 0,
+            note: 'each task checked its own work',
+          },
+          { name: 'implement', status: 'done', current: false, attempts: 1 },
+        ],
+      },
+    ];
+    render(<FlowBoard phases={board} returns={[]} selected={null} onSelect={vi.fn()} />);
+
+    expect(
+      within(screen.getByRole('button', { name: /implement-improve/ })).getByText('each task checked its own work'),
+    ).toBeInTheDocument();
+    expect(within(screen.getByRole('button', { name: /^implement\s*1$/ })).queryByText(/checked/)).toBeNull();
+  });
+
   it('reports the clicked step by name', async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();

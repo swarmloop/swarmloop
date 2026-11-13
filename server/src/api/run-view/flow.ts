@@ -8,7 +8,7 @@ import type { StateFacts } from '../../history/run-state';
 import type { RunAction, RunState, StateReason } from '../../contract/run-state';
 import type { FlowItem, FlowView } from '../../contract/api';
 import type { LiveUsage } from '../../contract/live';
-import { isReviewStep, pipelineStepOf } from '../../contract/steps';
+import { IMPROVE_SKIPPED_NOTE, isReviewStep, pipelineStepOf } from '../../contract/steps';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered } from '../../steps/shared/answers';
 import { items } from '../../steps/shared/markdown-section';
@@ -71,6 +71,7 @@ export function phases(
         status,
         current: isReviewStep(name) ? status === 'running' || status === 'preparing' : parent === run.currentStep,
         attempts: chipAttempts(name, run, stats, documents, root, log, round),
+        ...(status === 'skipped' ? { note: IMPROVE_SKIPPED_NOTE } : {}),
       };
     });
     if (phase.phase !== 'code-review') {

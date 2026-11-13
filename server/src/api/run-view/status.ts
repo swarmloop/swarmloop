@@ -10,11 +10,11 @@ export function stepStatus(name: string, run: RunEntity, stat: StepStatEntity | 
   if (name === 'done') {
     return run.status === 'done' ? 'done' : 'idle';
   }
-  if (stat?.status === 'skipped') {
-    return 'skipped';
-  }
   if (name === run.currentStep) {
     return run.status === 'done' ? 'done' : run.status;
+  }
+  if (stat?.status === 'skipped') {
+    return 'skipped';
   }
   if (isLoopStep(name) && stat?.status === 'waiting') {
     return 'failed';
