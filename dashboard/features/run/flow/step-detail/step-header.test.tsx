@@ -113,6 +113,43 @@ describe('StepHeader', () => {
     expect(screen.queryByText(/agent/)).not.toBeInTheDocument();
   });
 
+  describe('effort', () => {
+    const claude = {
+      name: 'implement',
+      kind: 'agent' as const,
+      agent: {
+        runtime: 'claude',
+        model: 'claude-opus-5-5',
+        mode: 'agent' as const,
+        tools: 'write' as const,
+        timeLimitMs: 1,
+        session: 'fresh' as const,
+      },
+    };
+    const shown = (fields: Parameters<typeof visitView>[0]) => {
+      const view = stepView({ descriptor: claude, visits: [visitView(fields)] });
+      header({ view, visit: view.visits[0], attempt: 0, attempts: 1 });
+    };
+
+    it('shows the effort after the model', () => {
+      shown({ effort: 'high' });
+
+      expect(screen.getByText('claude · claude-opus-5-5 · high')).toBeInTheDocument();
+    });
+
+    it('marks an effort the epic raised', () => {
+      shown({ effort: 'xhigh', effortNote: 'epic' });
+
+      expect(screen.getByText('claude · claude-opus-5-5 · xhigh (epic)')).toBeInTheDocument();
+    });
+
+    it('adds nothing for a capped note', () => {
+      shown({ effort: 'max', effortNote: 'capped:max' });
+
+      expect(screen.getByText('claude · claude-opus-5-5 · max')).toBeInTheDocument();
+    });
+  });
+
   it('shows the reviewers of code-review', () => {
     header({
       view: stepView({
