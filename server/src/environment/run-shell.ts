@@ -49,10 +49,10 @@ export async function runShell(
   command: string,
   mount: SandboxMount,
   phase: 'setup' | 'checks',
-  check?: { index: number; file: string; name?: string },
+  check?: { index: number; file: string; name?: string; alone?: boolean; memoryCapBytes?: number },
   /** The manifest hosts of the setup. Checks get none. */
   manifest?: ManifestHosts,
-): Promise<{ exitCode: number; tail: string }> {
+): Promise<{ exitCode: number; tail: string; outOfMemoryBytes?: number }> {
   const { root, clock, sandbox, live } = deps;
   const userId = sandboxUserId();
   const unit = check ? `${basename(mount.hostPath)}-${check.index}` : basename(mount.hostPath);
@@ -120,6 +120,8 @@ export async function runShell(
       userId,
       project: { ...launch, shell: command },
       work,
+      ...(check?.alone ? { alone: true } : {}),
+      ...(check?.memoryCapBytes === undefined ? {} : { memoryCapBytes: check.memoryCapBytes }),
       onWait: (line) => {
         waiting = line;
         show(true);
@@ -188,7 +190,11 @@ export async function runShell(
     mkdirSync(dirname(outputFile), { recursive: true });
     writeFileSync(outputFile, `${lines.join('\n')}\n`);
   }
-  return { exitCode, tail: lines.slice(-TAIL_LINES).join('\n').slice(-TAIL_CHARS) };
+  const tail = lines.slice(-TAIL_LINES).join('\n').slice(-TAIL_CHARS);
+  // 137 is a kill by the container's memory cap unless it was the timeout that killed it.
+  return exitCode === 137 && !timedOut && child.memoryCapBytes !== undefined
+    ? { exitCode, tail, outOfMemoryBytes: child.memoryCapBytes }
+    : { exitCode, tail };
 }
 
 function liveSamples(samples: readonly SampleDraft[]): LiveSample[] {

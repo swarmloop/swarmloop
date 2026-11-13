@@ -2,14 +2,14 @@ import { basename, join } from 'path';
 import type { SwarmloopEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import type { Clock } from '../core/clock';
-import { checkOutputPath } from '../core/check-output';
 import { runProbe } from './image-probe';
+import { CheckPool } from './check-pool';
 import { runShell, type ShellDeps } from './run-shell';
 import { startCommandSpan } from '../core/step-event-scope';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { CheckCommandRepository } from '../history/check-command.repository';
 import type { DocumentRepository } from '../history/document.repository';
-import type { CheckCommandEntity, RunEntity } from '../history/entities';
+import type { RunEntity } from '../history/entities';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime';
 import type { LiveHub } from '../live/live.hub';
 import { CliBundles } from '../sandbox/cli-bundle';
@@ -51,7 +51,7 @@ export class RequiredCheckRepeated extends RequiredCheckFailed {}
 interface EnvironmentDeps {
   env: () => Pick<SwarmloopEnv, 'SWARMLOOP_ROOT' | 'CHECKS_PARALLEL'>;
   clock: Clock;
-  sandbox: Pick<SandboxService, 'run' | 'spawn' | 'kill' | 'stateDaemonPath' | 'stats'>;
+  sandbox: Pick<SandboxService, 'run' | 'spawn' | 'kill' | 'stateDaemonPath' | 'stats' | 'snapshot'>;
   documents: Pick<DocumentRepository, 'latestBody' | 'putDocument'>;
   commands: Pick<CheckCommandRepository, 'add' | 'save'>;
   live?: Pick<LiveHub, 'log'>;
@@ -66,6 +66,7 @@ export class ProjectEnvironments {
   private readonly documents: EnvironmentDeps['documents'];
   private readonly commands: EnvironmentDeps['commands'];
   private readonly live?: EnvironmentDeps['live'];
+  private readonly pool: CheckPool;
 
   constructor(private readonly deps: EnvironmentDeps) {
     this.clock = deps.clock;
@@ -73,6 +74,14 @@ export class ProjectEnvironments {
     this.documents = deps.documents;
     this.commands = deps.commands;
     this.live = deps.live;
+    this.pool = new CheckPool({
+      checksParallel: () => deps.env().CHECKS_PARALLEL,
+      clock: deps.clock,
+      sandbox: deps.sandbox,
+      documents: deps.documents,
+      commands: deps.commands,
+      shell: () => this.shellDeps(),
+    });
     this.bundles = new CliBundles((args, timeoutMs) => this.sandbox.run(args, timeoutMs));
   }
 
@@ -109,7 +118,7 @@ export class ProjectEnvironments {
     if (command && !done) {
       const manifest = { hosts: record.config.hosts?.setup ?? [], origins };
       const result = await runShell(this.shellDeps(), input, launch, command, mount, 'setup', undefined, manifest);
-      record.setup = { command, image, ...result };
+      record.setup = { command, image, exitCode: result.exitCode, tail: result.tail };
       await this.documents.putDocument(input.run, ENVIRONMENT, JSON.stringify(record));
       await this.documents.putDocument(input.run, `${ENVIRONMENT}:${record.repo}`, JSON.stringify(record));
     }
@@ -168,7 +177,7 @@ export class ProjectEnvironments {
         repos.push({ mount, prepared, fingerprint, rows, results: [] });
       }
     }
-    await this.runAll(input, attemptId, repos);
+    await this.pool.runAll(input, attemptId, repos);
     const failures: CheckFailure[] = [];
     for (const repo of repos) {
       const own = await this.failuresOf(input, repo);
@@ -220,58 +229,6 @@ export class ProjectEnvironments {
     return red;
   }
 
-  /** Runs the commands of every repository in a pool of CHECKS_PARALLEL. Waits for all of them, then throws the first error. */
-  private async runAll(input: EnvironmentInput, attemptId: string, repos: CheckedRepo[]): Promise<void> {
-    const jobs = repos.flatMap((repo) => repo.rows.map((row) => ({ repo, row })));
-    const errors: unknown[] = [];
-    let next = 0;
-    const worker = async (): Promise<void> => {
-      for (let job = jobs[next++]; job; job = jobs[next++]) {
-        try {
-          job.repo.results[job.repo.rows.indexOf(job.row)] = await this.runCommand(input, attemptId, job.repo, job.row);
-        } catch (error) {
-          errors.push(error);
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(this.deps.env().CHECKS_PARALLEL, jobs.length) }, worker));
-    if (errors.length > 0) {
-      throw errors[0];
-    }
-  }
-
-  private async runCommand(
-    input: EnvironmentInput,
-    attemptId: string,
-    repo: CheckedRepo,
-    row: CheckCommandEntity,
-  ): Promise<{ exitCode: number; tail: string }> {
-    await this.mark(row, { status: 'running', startedAt: this.clock.iso() });
-    let result: { exitCode: number; tail: string };
-    try {
-      const root = resolveRepoRoot(this.deps.env().SWARMLOOP_ROOT, __dirname);
-      result = await runShell(this.shellDeps(), input, repo.prepared.launch, row.command, repo.mount, 'checks', {
-        index: row.commandIndex,
-        name: row.name ?? row.command,
-        file: checkOutputPath(root, input.key, input.step, attemptId, row.commandIndex),
-      });
-    } catch (error) {
-      await this.mark(row, { status: 'failed', endedAt: this.clock.iso() });
-      throw error;
-    }
-    await this.mark(row, {
-      status: result.exitCode === 0 ? 'passed' : 'failed',
-      exitCode: result.exitCode,
-      endedAt: this.clock.iso(),
-    });
-    await this.documents.putDocument(
-      input.run,
-      'checks',
-      JSON.stringify({ repo: repo.prepared.record.repo, command: row.command, ...result }),
-    );
-    return result;
-  }
-
   private shellDeps(): ShellDeps {
     return {
       root: resolveRepoRoot(this.deps.env().SWARMLOOP_ROOT, __dirname),
@@ -279,10 +236,6 @@ export class ProjectEnvironments {
       sandbox: this.sandbox,
       live: this.live,
     };
-  }
-
-  private async mark(row: CheckCommandEntity, patch: Partial<CheckCommandEntity>): Promise<void> {
-    await this.commands.save(Object.assign(row, patch));
   }
 
   /** What went wrong in one repository: each failed command, and the files the commands changed. */
