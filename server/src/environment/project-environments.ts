@@ -3,7 +3,7 @@ import type { SwarmloopEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import type { Clock } from '../core/clock';
 import { runProbe } from './image-probe';
-import { CheckPool, outOfMemoryError, runOnceMoreAlone } from './check-pool';
+import { CheckPool, outOfMemoryError, runOnceMore } from './check-pool';
 import { runShell, type ShellDeps } from './run-shell';
 import { startCommandSpan } from '../core/step-event-scope';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -51,7 +51,7 @@ export class RequiredCheckRepeated extends RequiredCheckFailed {}
 interface EnvironmentDeps {
   env: () => Pick<SwarmloopEnv, 'SWARMLOOP_ROOT' | 'CHECKS_PARALLEL'>;
   clock: Clock;
-  sandbox: Pick<SandboxService, 'run' | 'spawn' | 'kill' | 'stateDaemonPath' | 'stats' | 'snapshot'>;
+  sandbox: Pick<SandboxService, 'run' | 'spawn' | 'kill' | 'stateDaemonPath' | 'stats'>;
   documents: Pick<DocumentRepository, 'latestBody' | 'putDocument'>;
   commands: Pick<CheckCommandRepository, 'add' | 'save'>;
   live?: Pick<LiveHub, 'log' | 'changed'>;
@@ -78,7 +78,6 @@ export class ProjectEnvironments {
     this.pool = new CheckPool({
       checksParallel: () => deps.env().CHECKS_PARALLEL,
       clock: deps.clock,
-      sandbox: deps.sandbox,
       documents: deps.documents,
       commands: deps.commands,
       live: deps.live,
@@ -222,7 +221,7 @@ export class ProjectEnvironments {
       const repo = prepared.record.repo;
       const listed = (prepared.record.config.checks ?? []).map(checkRun);
       for (const { command } of failed.filter((item) => item.repo === repo && listed.includes(item.command))) {
-        const result = await runOnceMoreAlone(this.shellDeps(), this.sandbox, input, prepared.launch, command, mount);
+        const result = await runOnceMore(this.shellDeps(), input, prepared.launch, command, mount);
         if (result.outOfMemoryBytes !== undefined) {
           throw outOfMemoryError(repo, command, result.outOfMemoryBytes);
         }

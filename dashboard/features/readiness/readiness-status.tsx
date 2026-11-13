@@ -2,24 +2,18 @@
 
 import type { ReactElement } from 'react';
 import Link from 'next/link';
-import HourglassEmpty from '@mui/icons-material/HourglassEmpty';
 import Box from '@mui/material/Box';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import type { MachineLoad, ReadinessItem } from '@contract/readiness';
+import type { ReadinessItem } from '@contract/readiness';
 import { NAMES, STATUS } from './readiness-panel';
 import { useReadiness } from './use-readiness';
-
-/** Gigabytes with one decimal, and no `.0`: `9.1`, `12`. */
-function gb(bytes: number): string {
-  return (bytes / 1024 ** 3).toFixed(1).replace(/\.0$/, '');
-}
 
 function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-function Details({ items, load }: { items: ReadinessItem[]; load: MachineLoad | null }): ReactElement {
+function Details({ items }: { items: ReadinessItem[] }): ReactElement {
   const listed = items.filter((item) => item.status !== 'ok');
   return (
     <Box>
@@ -28,33 +22,22 @@ function Details({ items, load }: { items: ReadinessItem[]; load: MachineLoad | 
           {NAMES[item.id]}: {item.line}
         </Typography>
       ))}
-      {load && load.waiting.length > 0 ? (
-        <>
-          <Typography variant="body2">
-            Memory booked: {gb(load.usedMemoryBytes)} of {gb(load.capacityMemoryBytes)} GB
-          </Typography>
-          <Typography variant="body2">Waiting work starts when its memory fits.</Typography>
-        </>
-      ) : null}
     </Box>
   );
 }
 
-/** The compact header item: setup problems first, then work waiting for the machine, then setup warnings; else nothing. */
+/** The compact header item: setup problems first, then setup warnings; else nothing. */
 export function ReadinessStatus(): ReactElement | null {
-  const { items, load } = useReadiness();
+  const { items } = useReadiness();
   const failing = items.filter((item) => item.status === 'fail').length;
   const warning = items.filter((item) => item.status === 'warn').length;
-  const waiting = load?.waiting.length ?? 0;
-  let shown: { Icon: typeof HourglassEmpty; color: string; text: string };
+  let shown: { Icon: typeof STATUS.fail.Icon; color: string; text: string };
   if (failing > 0) {
     shown = {
       Icon: STATUS.fail.Icon,
       color: STATUS.fail.color,
       text: plural(failing, 'setup problem', 'setup problems'),
     };
-  } else if (waiting > 0) {
-    shown = { Icon: HourglassEmpty, color: 'warning.main', text: `${waiting} waiting for machine` };
   } else if (warning > 0) {
     shown = {
       Icon: STATUS.warn.Icon,
@@ -65,7 +48,7 @@ export function ReadinessStatus(): ReactElement | null {
     return null;
   }
   return (
-    <Tooltip title={<Details items={items} load={load} />} arrow disableInteractive>
+    <Tooltip title={<Details items={items} />} arrow disableInteractive>
       <Box
         component={Link}
         href="/#readiness"

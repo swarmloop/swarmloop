@@ -3,7 +3,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { createContext, useContext, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { MachineLoad, ReadinessItem, ReadinessView } from '@contract/readiness';
+import type { ReadinessItem, ReadinessView } from '@contract/readiness';
 import { ApiError } from '../../lib/api';
 import { getReadiness } from '../../lib/endpoints';
 
@@ -19,8 +19,6 @@ interface Readiness {
   refreshFailed: boolean;
   /** When the held report was built; null when none is held or it has no time yet. */
   checkedAt: string | null;
-  /** What heavy work takes of the machine; null when unknown. */
-  load: MachineLoad | null;
 }
 
 const REFRESH_MS = 60_000;
@@ -36,7 +34,6 @@ const ReadinessContext = createContext<Readiness>({
   loading: false,
   refreshFailed: false,
   checkedAt: null,
-  load: null,
 });
 
 /** A minute between refreshes; while the server builds its first report or is busy, a short wait that doubles with each failure. */
@@ -72,7 +69,6 @@ export function ReadinessProvider({ children }: { children: ReactNode }): ReactE
       loading: !failed && (!report || (items.length === 0 && report.checkedAt === null)),
       refreshFailed: failed && report !== undefined,
       checkedAt: report?.checkedAt ?? null,
-      load: report?.load ?? null,
     };
   }, [query.data, query.error]);
   return <ReadinessContext.Provider value={value}>{children}</ReadinessContext.Provider>;

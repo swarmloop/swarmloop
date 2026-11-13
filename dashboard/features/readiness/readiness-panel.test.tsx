@@ -28,7 +28,6 @@ describe('ReadinessPanel', () => {
         { id: 'disk', status: 'fail', line: '2.0 GB free', action: 'free some disk space' },
       ],
       checkedAt: CHECKED_AT,
-      load: null,
     });
     renderPanel();
     expect(await screen.findByText(/2\.0 GB free/)).toHaveTextContent('free some disk space');
@@ -49,7 +48,6 @@ describe('ReadinessPanel', () => {
         },
       ],
       checkedAt: CHECKED_AT,
-      load: null,
     });
     renderPanel();
     const tile = await screen.findByLabelText(/^Disk: ready/);
@@ -61,7 +59,6 @@ describe('ReadinessPanel', () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [{ id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' }],
       checkedAt: CHECKED_AT,
-      load: null,
     });
     renderPanel();
     expect(await screen.findByText('Ready to run')).toBeInTheDocument();
@@ -105,7 +102,6 @@ describe('ReadinessPanel refresh', () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [{ id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' }],
       checkedAt: CHECKED_AT,
-      load: null,
     });
     renderPanel();
     await act(() => vi.advanceTimersByTimeAsync(0));
@@ -120,7 +116,6 @@ describe('ReadinessPanel refresh', () => {
     vi.mocked(getReadiness).mockResolvedValueOnce({
       items: [{ id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' }],
       checkedAt: CHECKED_AT,
-      load: null,
     });
     renderPanel();
     await act(() => vi.advanceTimersByTimeAsync(0));

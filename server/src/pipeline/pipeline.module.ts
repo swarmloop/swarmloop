@@ -1,11 +1,9 @@
-import { Module, type OnModuleInit } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { RunStop } from '../agent/run-stop';
 import { HaltedRuns } from '../core/halted-runs';
 import { HistoryModule } from '../history/history.module';
 import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
-import { SandboxService } from '../sandbox/sandbox.service';
-import { FootprintRepository } from '../history/footprint.repository';
 import { BranchStep } from '../steps/branch/branch.step';
 import { CommitStep } from '../steps/commit/commit.step';
 import { BranchCheckout } from '../steps/shared/branch-checkout';
@@ -117,13 +115,4 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     StepRegistry,
   ],
 })
-export class PipelineModule implements OnModuleInit {
-  constructor(
-    private readonly sandbox: SandboxService,
-    private readonly footprints: FootprintRepository,
-  ) {}
-
-  onModuleInit(): void {
-    this.sandbox.useFootprints(this.footprints);
-  }
-}
+export class PipelineModule {}

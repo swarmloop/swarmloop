@@ -178,14 +178,6 @@ export class AgentProcessRunner {
       unsetEnv: launch.unsetEnv,
       userId: launch.userId,
       ...(input.project ? { project: input.project } : {}),
-      onWait: (line) =>
-        this.live?.log({
-          key: input.runKey,
-          step: input.liveStep ?? input.step,
-          body: `${line}\n`,
-          samples: [],
-          usage: { tokensIn: 0, tokensOut: 0, usd: 0 },
-        }),
     });
     const step = input.liveStep ?? input.step;
     await recordLaunch(input.outputFile, input.runKey, step);

@@ -49,7 +49,6 @@ describe('useReadiness', () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [item('docker', 'ok'), item('disk', 'fail'), item('paths', 'fail')],
       checkedAt: CHECKED_AT,
-      load: null,
     });
     renderProbe();
     expect(await screen.findByText('blocker: disk')).toBeInTheDocument();
@@ -60,7 +59,6 @@ describe('useReadiness', () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [item('images', 'warn'), item('docker', 'ok')],
       checkedAt: CHECKED_AT,
-      load: null,
     });
     renderProbe();
     expect(await screen.findByText('items: 2')).toBeInTheDocument();
@@ -77,7 +75,7 @@ describe('useReadiness', () => {
   it('refreshes every minute and on window focus, and keeps the last report when a refresh fails', async () => {
     vi.useFakeTimers();
     vi.mocked(getReadiness).mockReset();
-    vi.mocked(getReadiness).mockResolvedValue({ items: [item('disk', 'fail')], checkedAt: CHECKED_AT, load: null });
+    vi.mocked(getReadiness).mockResolvedValue({ items: [item('disk', 'fail')], checkedAt: CHECKED_AT });
     renderProbe();
     await act(() => vi.advanceTimersByTimeAsync(0));
     expect(getReadiness).toHaveBeenCalledTimes(1);
@@ -98,14 +96,14 @@ describe('useReadiness', () => {
   });
 
   it('counts an empty report without a time as loading, and one with items as a report', async () => {
-    vi.mocked(getReadiness).mockResolvedValue({ items: [], checkedAt: null, load: null });
+    vi.mocked(getReadiness).mockResolvedValue({ items: [], checkedAt: null });
     renderProbe();
     expect(await screen.findByText('items: 0')).toBeInTheDocument();
     expect(screen.getByText('loading: true')).toBeInTheDocument();
   });
 
   it('is not loading for a report with items and no time', async () => {
-    vi.mocked(getReadiness).mockResolvedValue({ items: [item('docker', 'ok')], checkedAt: null, load: null });
+    vi.mocked(getReadiness).mockResolvedValue({ items: [item('docker', 'ok')], checkedAt: null });
     renderProbe();
     expect(await screen.findByText('items: 1')).toBeInTheDocument();
     expect(screen.getByText('loading: false')).toBeInTheDocument();
@@ -127,8 +125,8 @@ describe('useReadiness', () => {
     vi.useFakeTimers();
     vi.mocked(getReadiness).mockReset();
     vi.mocked(getReadiness)
-      .mockResolvedValueOnce({ items: [], checkedAt: null, load: null })
-      .mockResolvedValue({ items: [item('docker', 'fail')], checkedAt: '2026-11-13T10:00:00Z', load: null });
+      .mockResolvedValueOnce({ items: [], checkedAt: null })
+      .mockResolvedValue({ items: [item('docker', 'fail')], checkedAt: '2026-11-13T10:00:00Z' });
     renderProbe();
     await act(() => vi.advanceTimersByTimeAsync(0));
     expect(screen.getByText('loading: true')).toBeInTheDocument();

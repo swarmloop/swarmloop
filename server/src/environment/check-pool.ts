@@ -4,9 +4,7 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import type { CheckCommandRepository } from '../history/check-command.repository';
 import type { DocumentRepository } from '../history/document.repository';
 import type { CheckCommandEntity } from '../history/entities';
-import { footprintOf } from '../sandbox/footprint';
 import type { LiveHub } from '../live/live.hub';
-import type { SandboxService } from '../sandbox/sandbox.service';
 import type { CheckedRepo, EnvironmentInput } from './environment-types';
 import { runShell, type ShellDeps } from './run-shell';
 
@@ -15,7 +13,6 @@ const GB = 1024 ** 3;
 interface CheckPoolDeps {
   checksParallel: () => number;
   clock: Clock;
-  sandbox: Pick<SandboxService, 'snapshot'>;
   documents: Pick<DocumentRepository, 'putDocument'>;
   commands: Pick<CheckCommandRepository, 'save'>;
   live?: Pick<LiveHub, 'changed'>;
@@ -37,12 +34,11 @@ export function outOfMemoryError(repo: string, name: string, killedAt: number): 
 }
 
 /**
- * Runs a check command. When its container ran out of memory it runs once more alone, with the cap raised to what the
- * budget allows. A kill by a Stop is not a memory kill, so it is never run again.
+ * Runs a check command. When its container ran out of memory it runs once more under the same cap. A kill by a Stop
+ * is not a memory kill, so it is never run again.
  */
-export async function runOnceMoreAlone(
+export async function runOnceMore(
   deps: ShellDeps,
-  sandbox: Pick<SandboxService, 'snapshot'>,
   input: EnvironmentInput,
   launch: CheckedRepo['prepared']['launch'],
   command: string,
@@ -53,12 +49,10 @@ export async function runOnceMoreAlone(
   if (first.outOfMemoryBytes === undefined) {
     return first;
   }
-  const seed = footprintOf('check', []).memoryBytes;
-  const limits = { alone: true, memoryCapBytes: Math.max(sandbox.snapshot().capacityMemoryBytes, seed) };
-  return runShell(deps, input, launch, command, mount, 'checks', check, undefined, limits);
+  return runShell(deps, input, launch, command, mount, 'checks', check);
 }
 
-/** Runs the check commands of every repository in a pool, and runs a command that ran out of memory once more alone. */
+/** Runs the check commands of every repository in a pool, and runs a command that ran out of memory once more. */
 export class CheckPool {
   constructor(private readonly deps: CheckPoolDeps) {}
 
@@ -92,21 +86,13 @@ export class CheckPool {
     const { clock, shell } = this.deps;
     await this.mark(input, row, { status: 'running', startedAt: clock.iso() });
     const name = row.name ?? row.command;
-    let outcome: Awaited<ReturnType<typeof runOnceMoreAlone>>;
+    let outcome: Awaited<ReturnType<typeof runOnceMore>>;
     try {
-      outcome = await runOnceMoreAlone(
-        shell(),
-        this.deps.sandbox,
-        input,
-        repo.prepared.launch,
-        row.command,
-        repo.mount,
-        {
-          index: row.commandIndex,
-          name,
-          file: checkOutputPath(shell().root, input.key, input.step, attemptId, row.commandIndex),
-        },
-      );
+      outcome = await runOnceMore(shell(), input, repo.prepared.launch, row.command, repo.mount, {
+        index: row.commandIndex,
+        name,
+        file: checkOutputPath(shell().root, input.key, input.step, attemptId, row.commandIndex),
+      });
     } catch (error) {
       await this.mark(input, row, { status: 'failed', endedAt: clock.iso() });
       throw error;

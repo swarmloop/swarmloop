@@ -4,7 +4,6 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { AppConfig } from '../config/env';
 import { testEnv } from '../config/env.spec-helpers';
-import type { FootprintSource } from '../core/heavy-work';
 import { SandboxService } from './sandbox.service';
 import type { SandboxChild } from './sandbox.service';
 import type { SandboxLaunch } from './sandbox-types';
@@ -13,26 +12,37 @@ const GB = 1024 ** 3;
 
 type Given = Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots'>;
 
-describe('SandboxService machine budget', () => {
+const projectLaunch = {
+  image: 'swarmloop-env-demo:0123456789ab',
+  cliVolume: 'swarmloop-cli-claude-0123456789ab',
+  path: '/usr/local/bin:/usr/bin:/bin',
+  certFile: true,
+  caches: [],
+  shell: 'npm test',
+};
+
+describe('SandboxService memory cap', () => {
   const saved = { ...process.env };
   let root: string;
   let children: SandboxChild[];
+  let runs: string[][];
 
   beforeEach(() => {
-    root = realpathSync(mkdtempSync(join(tmpdir(), 'swarmloop-budget-')));
+    root = realpathSync(mkdtempSync(join(tmpdir(), 'swarmloop-cap-')));
     mkdirSync(join(root, 'worktrees', 'k', 'demo'), { recursive: true });
     process.env.SWARMLOOP_ROOT = root;
     process.env.SANDBOX_EGRESS = 'open';
     children = [];
+    runs = [];
   });
 
   afterEach(() => {
     process.env = { ...saved };
   });
 
-  /** 4 GB with a reserve of 1 GB: room for one seed-sized piece. */
+  /** 3 GB with a reserve of 1 GB: small enough that a queue would hold work back. */
   function service(
-    info: (args: string[]) => Promise<string> | string = () => `${4 * GB}`,
+    info: (args: string[]) => Promise<string> | string = () => `${3 * GB}`,
     spawnFails = false,
   ): SandboxService {
     const sandbox = new SandboxService(new AppConfig(testEnv({ RESERVE_MEMORY_GB: 1 })));
@@ -43,6 +53,7 @@ describe('SandboxService machine budget', () => {
       return '';
     });
     sandbox.spawnDocker = (args) => {
+      runs.push(args);
       if (spawnFails) {
         throw new Error('docker run failed');
       }
@@ -68,93 +79,50 @@ describe('SandboxService machine budget', () => {
     };
   }
 
-  async function settled(): Promise<void> {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-
-  it('makes a second agent wait for the first and tells why', async () => {
+  it('starts three checks and five agents of different runs at once', async () => {
     const sandbox = service();
-    const first = await sandbox.spawn(launch('plan'));
-    const reasons: string[] = [];
-    let started = false;
-    const second = sandbox.spawn(launch('review', { onWait: (reason) => reasons.push(reason) })).then((child) => {
-      started = true;
-      return child;
-    });
-    await settled();
-    expect(started).toBe(false);
-    expect(reasons).toEqual(['waiting for machine resources: claude agent of k']);
-    expect(sandbox.snapshot()).toMatchObject({ running: ['claude agent of k'], waiting: ['claude agent of k'] });
-    first.emit('close');
-    await second;
-    expect(started).toBe(true);
+    const checks = [0, 1, 2].map((index) =>
+      sandbox.spawn(launch(`checks-${index}`, { runKey: `check-run-${index}`, command: [], project: projectLaunch })),
+    );
+    const agents = [0, 1, 2, 3, 4].map((index) =>
+      sandbox.spawn(launch(`implement-${index}`, { runKey: `run-${index}` })),
+    );
+    await expect(Promise.all([...checks, ...agents])).resolves.toHaveLength(8);
+    expect(children).toHaveLength(8);
   });
 
-  it('drops a launch that waits when its run is stopped, so no container starts for it', async () => {
+  it('gives every container the same memory cap and the lower CPU weight', async () => {
     const sandbox = service();
-    const first = await sandbox.spawn(launch('plan', { runKey: 'one' }));
-    const waiting = sandbox.spawn(launch('review', { runKey: 'two' }));
-    const rejection = expect(waiting).rejects.toThrow('the run was stopped');
-    await settled();
-    await sandbox.stopRun('two', 'review', 1);
-    await rejection;
-    first.emit('close');
-    await settled();
-    expect(children).toHaveLength(1);
-    expect(sandbox.snapshot()).toMatchObject({ running: [], waiting: [] });
+    const agent = await sandbox.spawn(launch('plan'));
+    const check = await sandbox.spawn(launch('checks-0', { command: [], project: projectLaunch }));
+    expect(runs).toHaveLength(2);
+    for (const args of runs) {
+      expect(args[args.indexOf('--memory') + 1]).toBe(`${2 * GB}b`);
+      expect(args[args.indexOf('--cpu-shares') + 1]).toBe('512');
+    }
+    expect(agent.memoryCapBytes).toBe(2 * GB);
+    expect(check.memoryCapBytes).toBe(2 * GB);
   });
 
-  it('releases the budget when the container errors', async () => {
-    const sandbox = service();
-    const first = await sandbox.spawn(launch('plan'));
-    first.emit('error', new Error('gone'));
-    await expect(sandbox.spawn(launch('review'))).resolves.toBeDefined();
+  it('starts without a memory cap when docker does not tell its size', async () => {
+    const sandbox = service(() => Promise.reject(new Error('down')));
+    const child = await sandbox.spawn(launch('plan'));
+    expect(runs[0]).not.toContain('--memory');
+    expect(child.memoryCapBytes).toBeUndefined();
   });
 
-  it('releases the budget when the spawn throws', async () => {
+  it('asks docker again on the next launch after it gave no answer', async () => {
+    let answer: string | Error = new Error('down');
+    const sandbox = service(() => (answer instanceof Error ? Promise.reject(answer) : answer));
+    await sandbox.spawn(launch('plan'));
+    answer = `${5 * GB}`;
+    const later = await sandbox.spawn(launch('review'));
+    expect(later.memoryCapBytes).toBe(4 * GB);
+  });
+
+  it('releases nothing and leaves nothing behind when the spawn throws', async () => {
     const sandbox = service(undefined, true);
     await expect(sandbox.spawn(launch('plan'))).rejects.toThrow('docker run failed');
-    expect(sandbox.snapshot().running).toEqual([]);
-  });
-
-  it('puts the memory cap on the child, and a given cap wins', async () => {
-    const sandbox = service();
-    const first = await sandbox.spawn(launch('plan'));
-    expect(first.memoryCapBytes).toBe(3 * GB);
-    first.emit('close');
-    const given = await sandbox.spawn(launch('review', { memoryCapBytes: 7 * GB }));
-    expect(given.memoryCapBytes).toBe(7 * GB);
-  });
-
-  it('sizes the cap from the footprint source, and falls back to the seed when it fails', async () => {
-    const sandbox = service(() => `${50 * GB}`);
-    const peaks = Array.from({ length: 5 }, () => ({ rssBytes: 6 * GB }));
-    const source: FootprintSource = { peaks: () => Promise.resolve(peaks) };
-    sandbox.useFootprints(source);
-    const learned = await sandbox.spawn(launch('plan'));
-    expect(learned.memoryCapBytes).toBe(9 * GB);
-    learned.emit('close');
-    sandbox.useFootprints({ peaks: () => Promise.reject(new Error('no stats')) });
-    const seeded = await sandbox.spawn(launch('review'));
-    expect(seeded.memoryCapBytes).toBe(3 * GB);
-  });
-
-  it('starts work with a high CPU peak while its memory fits', async () => {
-    const sandbox = service((args) => (args.join(' ').includes('NCPU') ? `1 ${4 * GB}` : `${4 * GB}`));
-    const peaks = Array.from({ length: 5 }, () => ({ cpuPercent: 800, rssBytes: GB }));
-    sandbox.useFootprints({ peaks: () => Promise.resolve(peaks) });
-    const reasons: string[] = [];
-    await sandbox.spawn(launch('plan', { onWait: (reason) => reasons.push(reason) }));
-    await sandbox.spawn(launch('review', { onWait: (reason) => reasons.push(reason) }));
-    expect(children).toHaveLength(2);
-    expect(reasons).toEqual([]);
-  });
-
-  it('starts at once without a limit when docker does not tell its size', async () => {
-    const sandbox = service(() => Promise.reject(new Error('down')));
-    await sandbox.spawn(launch('plan'));
-    await sandbox.spawn(launch('review'));
-    expect(children).toHaveLength(2);
   });
 
   it('starts at once without a config, with the default reserve', async () => {

@@ -48,7 +48,6 @@ describe('DashboardShell readiness', () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [{ id: 'docker', status: 'fail', line: 'docker is not running', action: 'start Docker' }],
       checkedAt: null,
-      load: null,
     });
     renderShell();
     expect(await screen.findByTitle('start Docker')).toBeInTheDocument();
@@ -68,7 +67,6 @@ describe('DashboardShell readiness', () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [{ id: 'docker', status: 'fail', line: 'docker is not running', action: 'start Docker' }],
       checkedAt: null,
-      load: null,
     });
     renderShell();
     expect(await screen.findByRole('link', { name: '1 setup problem' })).toHaveAttribute('href', '/#readiness');
