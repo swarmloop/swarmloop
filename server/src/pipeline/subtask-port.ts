@@ -29,6 +29,9 @@ import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { agentFailure } from '../steps/shared/agent-result';
 import { unanswered } from '../steps/shared/answers';
 import { items } from '../steps/shared/markdown-section';
+import { parseNeeds, type Need } from '../steps/shared/needs';
+import { mergeHandoff } from '../steps/shared/handoff';
+import { mergeSummaryOf } from './merge-summary';
 import { modelVisit } from '../steps/shared/model-visit';
 import { StepStopped } from '../steps/shared/step-stopped';
 import { DECIDE_YOURSELF, subtaskAsks } from '../steps/plan/plan.prompts';
@@ -99,7 +102,7 @@ export class SubtaskPort extends SubtaskOps {
     const questions = (await this.documents.latestBody(child.key, ARTIFACTS.questions.kind)) ?? '';
     const answer = this.undelivered.has(child.key)
       ? (this.undelivered.get(child.key) ?? null)
-      : await this.plannerAnswer(opened, task, questions, contract);
+      : await this.askAbout(opened, task, questions, contract);
     const text = answer ?? DECIDE_YOURSELF;
     const answers = items(questions).map((id) => ({ kind: 'question', id, body: text }));
     try {
@@ -122,7 +125,7 @@ export class SubtaskPort extends SubtaskOps {
    * A follow-up visit of the plan step in the chat of the parent, recorded like any visit of that step. The pass
    * already holds the parent, so nothing else uses the chat meanwhile. Null when the planner gave no usable answer.
    */
-  private async plannerAnswer(
+  override async askAbout(
     opened: OpenedStep,
     task: Subtask,
     questions: string,
@@ -183,6 +186,52 @@ export class SubtaskPort extends SubtaskOps {
   override async deliveredNote(run: RunEntity): Promise<string | null> {
     const body = ((await this.documents.latestBody(run.key, ARTIFACTS.commit.kind)) ?? '').trim();
     return body.startsWith(DELIVERED_PREFIX) ? body : null;
+  }
+
+  override async needsOf(run: RunEntity): Promise<Need[]> {
+    return parseNeeds((await this.documents.latestBody(run.key, ARTIFACTS.needs.kind)) ?? '');
+  }
+
+  override mergeSummary(run: RunEntity): Promise<string> {
+    return mergeSummaryOf(this.documents, run.key);
+  }
+
+  override async catchUp(parent: RunEntity, run: RunEntity): Promise<void> {
+    const branch = await this.branchOf(parent);
+    const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
+    const hosts = (await this.publisher?.hostsFor(run)) ?? { ...this.config.env, clock: this.clock };
+    for (const repo of names) {
+      const path = worktreePath(root(this.config), run.key, repo);
+      if (!existsSync(path) || !(await fetchBranch(path, repo, branch, hosts))) continue;
+      try {
+        await git(['-C', path, 'rebase', '--autostash', originRef(branch)]);
+      } catch (error) {
+        await git(['-C', path, 'rebase', '--abort']).catch(() => undefined);
+        this.logger.warn(`${run.key} was not caught up: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  override async rerun(run: RunEntity, lines: string[]): Promise<void> {
+    const needs = await this.documents.latestBody(run.key, ARTIFACTS.needs.kind);
+    const handoff = await this.documents.latestBody(run.key, ARTIFACTS.handoff.kind);
+    await this.documents.putDocument(run, ARTIFACTS.needs.kind, '');
+    await this.documents.putDocument(
+      run,
+      ARTIFACTS.handoff.kind,
+      mergeHandoff(handoff, run.currentStep, lines.join('\n')),
+    );
+    try {
+      await this.commands.accept(
+        'resume',
+        run.key,
+        {},
+        { idempotencyKey: `subtask-needs-${run.key}-${(await this.visits.listStats(run.id)).length}` },
+      );
+    } catch (error) {
+      await this.documents.putDocument(run, ARTIFACTS.needs.kind, needs ?? '');
+      throw error;
+    }
   }
 
   override async resume(run: RunEntity): Promise<void> {

@@ -4,9 +4,8 @@ import type { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
 import { branchName, summaryForBranch } from '../steps/branch/branch-name';
 import { deriveState } from '../history/run-state';
-import { ARTIFACTS } from '../steps/contract/artifacts';
-import { parseMergeRequestSummaries } from '../steps/merge-request/merge-request-record';
 import { requirementsBrief } from '../steps/shared/requirements-brief';
+import { mergeSummaryOf } from '../pipeline/merge-summary';
 import { renderTaskMap, taskMap, type TaskRuns } from '../steps/shared/task-map';
 
 /** The prompt of a subtask: its task, the parent's requirements as context, and the branch it starts from. */
@@ -30,13 +29,8 @@ async function dependencySummaries(
   const summaries: Record<string, string> = {};
   for (const id of task.depends) {
     const child = children.find((item) => item.taskId === id);
-    const body = child ? await documents.latestBody(child.key, ARTIFACTS.mergeRequest.kind) : null;
-    if (!body) continue;
-    try {
-      summaries[id] = parseMergeRequestSummaries(body).filter(Boolean).join('\n\n');
-    } catch {
-      continue;
-    }
+    const summary = child ? await mergeSummaryOf(documents, child.key) : '';
+    if (summary) summaries[id] = summary;
   }
   return summaries;
 }

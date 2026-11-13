@@ -118,6 +118,7 @@ export const ARTIFACTS = {
   }),
   answers: artifact('answers', { writers: [], readers: ['research', 'plan'], external: true, summarize: firstLine }),
   questions: artifact('questions', { writers: ['research', 'plan'], readers: ['plan'], summarize: firstLine }),
+  needs: artifact('needs', { writers: ['research', 'plan', 'implement'], readers: [], summarize: firstLine }),
   impact: artifact('impact', {
     writers: ['research'],
     readers: ['plan', 'plan-improve', 'code-review'],

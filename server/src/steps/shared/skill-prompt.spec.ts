@@ -275,3 +275,31 @@ describe('fix-the-cause sentence', () => {
     },
   );
 });
+
+describe('needs: a task that needs a sibling waits for it', () => {
+  it('has the plan skill name needs: and never ask for a stop-and-report item', () => {
+    const plan = skill('plan');
+
+    expect(plan).toContain('`needs:`');
+    expect(plan).toContain('A checklist never has an item like "stop and report if X is missing"');
+    expect(plan).not.toMatch(/^- .*stop and report/im);
+  });
+
+  it.each(['research', 'plan', 'implement'])('%s says when and how to write needs:', (name) => {
+    expect(skill(name)).toContain('`- <id>: <what it needs from that task>`');
+  });
+
+  it('limits a fix that makes a job pass to the files of the task and leaves a red job of a sibling alone', () => {
+    const text = skill('implement');
+
+    expect(text).toContain("part of the task only within the task's own files");
+    expect(text).toContain('named as the cause in `cause:` and left alone');
+  });
+
+  it.each(['code-review/requirements', 'code-review/regressions'])(
+    '%s returns a change to the file of another task with no dependency path',
+    (name) => {
+      expect(skill(name)).toMatch(/a change to a file .* another task lists/);
+    },
+  );
+});
