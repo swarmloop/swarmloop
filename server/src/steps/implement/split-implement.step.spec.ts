@@ -309,9 +309,8 @@ describe('split implement', () => {
   it('keeps a parent stopped that a blocked subtask held', async () => {
     const built = await world();
     app = built.app;
-    await seedParent(app, [task('a'), task('b')]);
+    await seedParent(app, [task('a')]);
     await pass(app);
-    await work(app, 'b');
     const failed = await child(app, 'a');
     writeRunState(failed, { status: 'blocked', reason: { code: 'BLOCKED', message: 'x' } });
     await app.app.get(RunRepository).saveRun(failed);

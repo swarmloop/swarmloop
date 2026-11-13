@@ -267,7 +267,7 @@ export class Reconciler implements OnModuleDestroy {
    */
   async resumeSubtaskParents(): Promise<void> {
     for (const run of await this.runs.listRuns()) {
-      if (run.status !== 'waiting' || !this.subtasks.passDue(run)) continue;
+      if (!this.subtasks.passDue(run)) continue;
       try {
         if (!(await this.subtasks.subtasksChanged(run))) continue;
         await this.subtasks.resumeParent(run, `subtasks-${run.revision}`);

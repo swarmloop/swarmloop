@@ -1,4 +1,16 @@
-import { drive } from './run-driver.spec-helpers';
+import { RunRepository } from '../history/run.repository';
+import { deriveState, writeRunState } from '../history/run-state';
+import {
+  child,
+  KEY as PARENT,
+  pass,
+  seedParent,
+  settle,
+  task,
+  world,
+} from '../steps/implement/split-implement.spec-helpers';
+import { CommandService } from './command.service';
+import { drive, installScripts } from './run-driver.spec-helpers';
 
 describe('run driver blocks', () => {
   it('blocks a review return loop at MAX_RETURNS with LOOP_LIMIT and offers Resume', async () => {
@@ -42,5 +54,44 @@ describe('run driver blocks', () => {
     );
     expect(state).toBe('failed');
     expect(launches).toBe(3);
+  });
+});
+
+describe('run driver and the parent of a subtask', () => {
+  it('Resume of a blocked subtask runs a parent pass at once, while the subtask still works', async () => {
+    const { app } = await world();
+    try {
+      await seedParent(app, [task('a'), task('b', ['a'])]);
+      await pass(app);
+      const blocked = await child(app, 'a');
+      writeRunState(blocked, {
+        status: 'blocked',
+        currentStep: 'research',
+        reason: { code: 'LOOP_LIMIT', message: 'research ran 3 times (MAX_RETURNS); Resume starts another round' },
+      });
+      await app.app.get(RunRepository).saveRun(blocked);
+      await pass(app);
+      expect(deriveState((await app.app.get(RunRepository).findRun(PARENT))!).state).toBe('blocked');
+
+      let parentDuringVisit: string | null = null;
+      installScripts(
+        app,
+        {
+          research: async () => {
+            await app.app.get(CommandService).idle();
+            await app.pipeline.whenIdle(PARENT);
+            parentDuringVisit = deriveState((await app.app.get(RunRepository).findRun(PARENT))!).state;
+            return { outcome: 'waiting', exitCode: 0 };
+          },
+        },
+        ['research'],
+      );
+      await app.pipeline.runThrough(`${PARENT}-a`);
+      await settle(app);
+
+      expect(parentDuringVisit).toBe('waiting');
+    } finally {
+      await app.close();
+    }
   });
 });
