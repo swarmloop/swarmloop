@@ -47,6 +47,19 @@ export class FakeCodeHost {
     return this.requests.size;
   }
 
+  /** The CI of a commit with no script fails with `log` while the commit lacks `file`, and passes once it has it. */
+  requireFile(file: string, log: string): void {
+    const bare = `${this.clone}.git`;
+    this.ci.failUntil(log, (sha) => {
+      try {
+        git(bare, ['cat-file', '-e', `${sha}:${file}`]);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  }
+
   /** The request is closed without a merge, as a person does on the host. */
   closeRequest(iid: number): void {
     this.closed.add(iid);

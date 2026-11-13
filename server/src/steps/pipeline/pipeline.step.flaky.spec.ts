@@ -96,6 +96,25 @@ describe('pipeline step and flaky tests', () => {
     }
   });
 
+  it('makes no record for a pass after the rebase onto the default branch', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-flaky-rebase-'));
+    const trace = jest.fn(() => Promise.resolve({ trace: 'passed log\n', httpCalls: [call('GET')] }));
+    const { app } = await bootPassing(root, trace);
+    try {
+      await failedOnce(app);
+      const run = (await app.get(RunRepository).findRun(KEY))!;
+      const rebaseLog =
+        'result: rebase\nproject: group/demo\ndefault branch: origin/main\ntest only on it: unit.test.ts\n';
+      await app.get(DocumentRepository).putDocument(run, 'pipeline_log', rebaseLog);
+      const result = await app.get(PipelineService).step('pipeline', KEY);
+      expect(result.exitCode).toBe(0);
+      expect(await records(app)).toHaveLength(0);
+      expect(await app.get(DocumentRepository).latestBody(KEY, 'flaky')).toBeNull();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('blocks with TEST_FLAKY when the test has a record on another run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-flaky-block-'));
     const { app } = await bootPassing(

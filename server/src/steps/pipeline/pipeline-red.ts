@@ -15,6 +15,7 @@ import { readFailures } from './ci-host';
 import { pipelineReturn } from './ci-only';
 import { finish } from './pipeline-result';
 import { noteSkippedByPaths } from './pipeline-skipped';
+import { defaultBranchTests, type DefaultBranchDeps } from './default-branch-tests';
 import { failureIssues, renderFail, renderUnreadable, type Seen } from './pipeline-report';
 
 export interface RedDeps {
@@ -23,6 +24,7 @@ export interface RedDeps {
   visits: VisitRepository;
   config: AppConfig;
   flaky: FlakyTestRepository;
+  defaultBranch: DefaultBranchDeps;
 }
 
 export async function red(
@@ -41,6 +43,10 @@ export async function red(
   const unreadable = renderUnreadable(failures);
   if (unreadable) {
     return finish('blocked', report(opened, 'pipeline log unavailable', unreadable), 'blocked', unreadable);
+  }
+  const rebased = note ? null : await defaultBranchTests(deps.defaultBranch, ctx, failures);
+  if (rebased) {
+    return rebased;
   }
   for (const failure of failures.filter((item) => !item.check)) {
     if (await deps.flaky.blocks(failure.project, failure.name, mainRef(opened.run.prompt))) {
