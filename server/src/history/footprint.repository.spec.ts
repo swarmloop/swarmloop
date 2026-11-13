@@ -51,9 +51,9 @@ describe('FootprintRepository', () => {
       const otherId = await visit(db, 'run-2', [sample('0', 900, 9000)], { attemptId: 'a2' });
       await command(db, otherId, 'a2', 0, 'make', 'build');
       const footprints = db.app.get(FootprintRepository);
-      expect(await footprints.peaks('check', 'unit')).toEqual([{ cpuPercent: 300, rssBytes: 900 }]);
-      expect(await footprints.peaks('check', 'npm run lint')).toEqual([{ cpuPercent: 700, rssBytes: 5000 }]);
-      expect(await footprints.peaks('check', 'build')).toEqual([{ cpuPercent: 900, rssBytes: 9000 }]);
+      expect(await footprints.peaks('check', 'unit')).toEqual([{ rssBytes: 900 }]);
+      expect(await footprints.peaks('check', 'npm run lint')).toEqual([{ rssBytes: 5000 }]);
+      expect(await footprints.peaks('check', 'build')).toEqual([{ rssBytes: 9000 }]);
       expect(await footprints.peaks('check', 'npm test')).toEqual([]);
     } finally {
       await db.close();
@@ -79,9 +79,7 @@ describe('FootprintRepository', () => {
       await visit(db, 'run-1', [sample('setup', 200, 2000), sample('setup', 100, 3000)], { projects: 'app\n' });
       await visit(db, 'run-2', [sample('setup', 800, 8000)], { projects: 'app\nweb\n' });
       await visit(db, 'run-3', [sample('agent', 800, 8000)], { projects: 'app\n' });
-      expect(await db.app.get(FootprintRepository).peaks('setup', 'app')).toEqual([
-        { cpuPercent: 200, rssBytes: 3000 },
-      ]);
+      expect(await db.app.get(FootprintRepository).peaks('setup', 'app')).toEqual([{ rssBytes: 3000 }]);
     } finally {
       await db.close();
     }
@@ -95,8 +93,8 @@ describe('FootprintRepository', () => {
       await visit(db, 'run-3', [sample('agent', 900, 9000)], { runtime: 'claude' });
       await visit(db, 'run-4', [sample('server', 900, 9000)], { runtime: 'codex' });
       expect(await db.app.get(FootprintRepository).peaks('agent', 'codex')).toEqual([
-        { cpuPercent: 400, rssBytes: 4000 },
-        { cpuPercent: 150, rssBytes: 1000 },
+        { rssBytes: 4000 },
+        { rssBytes: 1000 },
       ]);
     } finally {
       await db.close();
@@ -116,8 +114,8 @@ describe('FootprintRepository', () => {
       }
       const peaks = await footprints.peaks('agent', 'codex');
       expect(peaks).toHaveLength(50);
-      expect(peaks[0]).toEqual({ cpuPercent: 54, rssBytes: 54 });
-      expect(peaks.at(-1)).toEqual({ cpuPercent: 5, rssBytes: 5 });
+      expect(peaks[0]).toEqual({ rssBytes: 54 });
+      expect(peaks.at(-1)).toEqual({ rssBytes: 5 });
     } finally {
       await db.close();
     }

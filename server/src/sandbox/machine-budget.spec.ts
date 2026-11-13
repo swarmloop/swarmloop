@@ -2,15 +2,15 @@ import { MachineBudget } from './machine-budget';
 import type { DockerRunner } from './run-containers';
 
 const GB = 1024 ** 3;
-const small = { cpus: 1, memoryBytes: GB };
+const small = { memoryBytes: GB };
 
-/** A machine of 5 CPUs and 11 GB with a reserve of 1 CPU and 1 GB: room for two pieces of 2 CPUs and 4 GB. */
-function budget(answer: string | Error = `5 ${11 * GB}`): MachineBudget {
+/** 11 GB with a reserve of 1 GB: room for two checks of 4 GB. */
+function budget(answer: string | Error = `${11 * GB}`): MachineBudget {
   const docker: DockerRunner = () => (answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer));
-  return new MachineBudget(docker, { cpus: 1, memoryBytes: GB });
+  return new MachineBudget(docker, { memoryBytes: GB });
 }
 
-const check = { cpus: 2, memoryBytes: 4 * GB };
+const check = { memoryBytes: 4 * GB };
 const work = (label: string, alone = false, runKey = 'k') => ({
   kind: 'check' as const,
   runKey,
@@ -48,9 +48,9 @@ describe('MachineBudget', () => {
     const machine = budget();
     await machine.acquire(work('a'), check);
     await machine.acquire(work('b'), check);
-    expect(machine.snapshot()).toMatchObject({ capacityCpus: 4, capacityMemoryBytes: 10 * GB, usedCpus: 4 });
+    expect(machine.snapshot()).toMatchObject({ capacityMemoryBytes: 10 * GB, usedMemoryBytes: 8 * GB });
     let started = false;
-    void machine.acquire(work('c'), small).then(() => {
+    void machine.acquire(work('c'), { memoryBytes: 3 * GB }).then(() => {
       started = true;
     });
     await settled();
@@ -61,7 +61,7 @@ describe('MachineBudget', () => {
     const machine = budget();
     const first = await machine.acquire(work('a'), small);
     let started = false;
-    const big = machine.acquire(work('big'), { cpus: 9, memoryBytes: 40 * GB }).then((release) => {
+    const big = machine.acquire(work('big'), { memoryBytes: 40 * GB }).then((release) => {
       started = true;
       return release;
     });
@@ -97,7 +97,7 @@ describe('MachineBudget', () => {
   it('serves the queue first come first served: a blocked head holds the smaller work behind it', async () => {
     const machine = budget();
     const first = await machine.acquire(work('a'), check);
-    await machine.acquire(work('b'), small);
+    await machine.acquire(work('b'), check);
     const order: string[] = [];
     void machine.acquire(work('big'), check).then(() => order.push('big'));
     void machine.acquire(work('small'), small).then(() => order.push('small'));
@@ -174,7 +174,7 @@ describe('MachineBudget', () => {
       await machine.acquire(work('a'), check);
       await machine.acquire(work('b'), check);
       await machine.acquire(work('c'), check);
-      expect(machine.snapshot().capacityCpus).toBe(0);
+      expect(machine.snapshot().capacityMemoryBytes).toBe(0);
     },
   );
 });

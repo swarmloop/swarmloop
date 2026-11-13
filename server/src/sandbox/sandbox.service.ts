@@ -79,7 +79,6 @@ export class SandboxService {
   private newBudget(): MachineBudget {
     const env = this.config?.env;
     return new MachineBudget((args, timeoutMs) => this.docker(args, timeoutMs), {
-      cpus: env?.RESERVE_CPUS ?? 1,
       memoryBytes: (env?.RESERVE_MEMORY_GB ?? 2) * 1024 ** 3,
     });
   }

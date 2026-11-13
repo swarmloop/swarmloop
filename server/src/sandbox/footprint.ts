@@ -4,9 +4,9 @@ const GB = 1024 ** 3;
 /** Fewer samples than this say too little: the seed stands in. */
 const MIN_PEAKS = 5;
 const SEEDS: Record<HeavyKind, Footprint> = {
-  check: { cpus: 2, memoryBytes: 4 * GB },
-  setup: { cpus: 2, memoryBytes: 4 * GB },
-  agent: { cpus: 2, memoryBytes: 2 * GB },
+  check: { memoryBytes: 4 * GB },
+  setup: { memoryBytes: 4 * GB },
+  agent: { memoryBytes: 2 * GB },
 };
 const HEADROOM = 1.5;
 
@@ -23,10 +23,7 @@ export function footprintOf(kind: HeavyKind, peaks: readonly FootprintPeak[]): F
   if (peaks.length < MIN_PEAKS) {
     return SEEDS[kind];
   }
-  return {
-    cpus: p80(peaks.map((peak) => peak.cpuPercent / 100)),
-    memoryBytes: p80(peaks.map((peak) => peak.rssBytes)),
-  };
+  return { memoryBytes: p80(peaks.map((peak) => peak.rssBytes)) };
 }
 
 /** The memory a container may take: its footprint with headroom, and never less than the seed. */

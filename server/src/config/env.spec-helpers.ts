@@ -23,7 +23,6 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     MAX_PIPELINE_RETURNS: 6,
     MAX_LAUNCHES: 3,
     CHECKS_PARALLEL: 3,
-    RESERVE_CPUS: 1,
     RESERVE_MEMORY_GB: 2,
     LIMIT_COOLDOWN_MIN: 60,
     STOP_GRACE_S: 10,

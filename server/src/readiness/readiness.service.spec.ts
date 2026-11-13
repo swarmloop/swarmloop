@@ -188,9 +188,7 @@ describe('ReadinessService', () => {
   it('carries the time of the report and the load of the sandbox snapshot', async () => {
     const service = setup();
     const load = {
-      capacityCpus: 4,
       capacityMemoryBytes: 8 * GB,
-      usedCpus: 1,
       usedMemoryBytes: GB,
       running: ['a'],
       waiting: [],
