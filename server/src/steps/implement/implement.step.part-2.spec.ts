@@ -321,10 +321,9 @@ describe('implement step', () => {
   it('launches the conflict resolution of an epic parent at the epic effort', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-epic-effort-'));
     await writeEnv(root);
-    const env = (await readFile(join(root, '.env'), 'utf8')).replace(
-      'AGENTS_IMPLEMENT=cursor:grok-4.7',
-      'AGENTS_IMPLEMENT=claude:claude-sonnet-5-5:high\nEPIC_EFFORT=xhigh',
-    );
+    const env = (await readFile(join(root, '.env'), 'utf8'))
+      .replace('AGENTS_IMPLEMENT=cursor:grok-4.7', 'AGENTS_IMPLEMENT=claude:claude-sonnet-5-5:high')
+      .replace('EPIC_EFFORT=', 'EPIC_EFFORT=xhigh');
     await writeFile(join(root, '.env'), env);
     const tree = conflictedTree(root, 'PROJ-69', 'billing-api');
     const agent = jest.fn(async (input: AgentRunInput) => {

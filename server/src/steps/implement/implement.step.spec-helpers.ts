@@ -195,6 +195,7 @@ export async function writeEnv(root: string, implementTimeout = 1800000): Promis
       'AGENTS_PLAN=cursor:opus-5.5-extra-high',
       'AGENTS_IMPLEMENT=cursor:grok-4.7',
       'AGENTS_REVIEW=cursor:opus-5.5-extra-high',
+      'EPIC_EFFORT=',
       'SWARMLOOP_API_PORT=3920',
       'SWARMLOOP_API_HOST=127.0.0.1',
       `SWARMLOOP_ROOT=${root}`,
