@@ -31,7 +31,7 @@ export async function restoreHiddenWorktree(
   captured: string,
 ): Promise<void> {
   try {
-    await git(['-C', cwd, 'rev-parse', '--verify', '--quiet', HIDDEN_REF]);
+    await git(['-C', cwd, 'rev-parse', '--verify', '--quiet', HIDDEN_REF], undefined, { answers: [1] });
   } catch (error) {
     if (gitMissing(error)) {
       return;

@@ -98,7 +98,7 @@ describe('readableLog', () => {
       '{"type":"tool_call","snippet":"reviewChipStatus(\'decision: return\\\\nprocess exited 0\\\\n\')"}\n';
     expect(logFinished(quoted)).toBe(false);
     expect(reviewChipStatus(quoted)).toBe(null);
-    expect(reviewChipStatus('decision: return\nprocess exited 0\n')).toBe('waiting');
+    expect(reviewChipStatus('decision: return\nprocess exited 0\n')).toBe('returned');
     expect(reviewChipStatus('decision: ok\nprocess exited 0\n')).toBe('done');
     const prompt = JSON.stringify({
       type: 'user',
@@ -108,7 +108,7 @@ describe('readableLog', () => {
     });
     expect(reviewChipStatus(`${prompt}\nprocess exited 1\n`)).toBe('failed');
     const answered = `${prompt}\n${JSON.stringify({ type: 'result', result: 'notes\ndecision: return\n' })}\n`;
-    expect(reviewChipStatus(answered)).toBe('waiting');
+    expect(reviewChipStatus(answered)).toBe('returned');
   });
 });
 

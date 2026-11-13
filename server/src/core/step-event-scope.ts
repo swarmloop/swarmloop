@@ -110,6 +110,8 @@ interface CommandSpec {
   cwd: string;
   executable: string;
   args: string[];
+  /** The exit codes that are an answer of this call, not a failure. */
+  answers?: number[];
 }
 
 interface CommandOutcome {
@@ -121,8 +123,18 @@ interface CommandOutcome {
   output?: string;
 }
 
+function isAnswer(spec: CommandSpec, outcome: CommandOutcome): boolean {
+  return (
+    outcome.exitCode !== null &&
+    !outcome.timedOut &&
+    !outcome.cancelled &&
+    Boolean(spec.answers?.includes(outcome.exitCode))
+  );
+}
+
 function keptOutput(spec: CommandSpec, outcome: CommandOutcome): string | null {
-  const failed = outcome.exitCode !== 0 || Boolean(outcome.timedOut) || Boolean(outcome.cancelled);
+  const failed =
+    (outcome.exitCode !== 0 && !isAnswer(spec, outcome)) || Boolean(outcome.timedOut) || Boolean(outcome.cancelled);
   if (!outcome.output || (!failed && isReadOnlyGit(spec.executable, spec.args))) {
     return null;
   }
@@ -156,6 +168,7 @@ export function startCommandSpan(spec: CommandSpec): (outcome: CommandOutcome) =
       durationMs: scope.clock.now() - started,
       timedOut: outcome.timedOut ?? false,
       cancelled: outcome.cancelled ?? false,
+      ...(isAnswer(spec, outcome) ? { answer: true as const } : {}),
       output: keptOutput(spec, outcome),
     });
 }

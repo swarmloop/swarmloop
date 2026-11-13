@@ -107,11 +107,82 @@ describe('chips of a code-review that is preparing', () => {
     const chips = reviewChips({}, { 'code-review-quality': 'starting\n' });
 
     expect(Object.values(chips)).not.toContain('preparing');
-    expect(chips['code-review-requirements']).toBe('idle');
+    expect(chips['code-review-requirements']).toBe('running');
   });
 
   it('keeps a card idle when the run is not in code-review', () => {
     expect(reviewChips({ currentStep: 'implement' })['code-review-quality']).toBe('idle');
+  });
+});
+
+describe('chips of a second code-review round', () => {
+  const finished = (decision: string) =>
+    `${JSON.stringify({ type: 'result', result: `notes\ndecision: ${decision}\n` })}\nprocess exited 0\n`;
+  const ANGLES = ['requirements', 'quality', 'regressions', 'security', 'performance'];
+  const roundOne = new Date(1000);
+  const roundTwo = new Date(5000);
+
+  /** Round 1 returned on every angle and the report; round 2 has written the given logs. */
+  function chips(logs: Record<string, string>): Record<string, string> {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-chip-round-'));
+    mkdirSync(join(root, 'data'));
+    const write = (name: string, attempt: string, body: string, at: Date) => {
+      const file = join(root, 'data', `K-1-${name}-${attempt}-output.txt`);
+      writeFileSync(file, body);
+      utimesSync(file, at, at);
+    };
+    for (const name of [...ANGLES.map((angle) => `code-review-${angle}`), 'code-review-report']) {
+      write(name, 'one', finished('return'), roundOne);
+    }
+    for (const [name, body] of Object.entries(logs)) {
+      write(name, 'two', body, new Date(6000));
+    }
+    const documents = [
+      ...ANGLES.map((angle) => ({ stepStatId: 1, kind: `review_${angle}`, body: 'old\ndecision: return\n' })),
+      { stepStatId: 1, kind: 'review_report', body: 'old\ndecision: return\n' },
+    ] as DocumentEntity[];
+    const stats = [
+      { id: 1, step: 'code-review', attempt: 1, status: 'waiting', stepStartedAt: roundOne.toISOString() },
+    ] as StepStatEntity[];
+    const run = {
+      key: 'K-1',
+      status: 'running',
+      currentStep: 'code-review',
+      activeAttempt: 'two',
+      stepStartedAt: roundTwo.toISOString(),
+    } as RunEntity;
+    const steps = phases(run, stats, documents, root).find((phase) => phase.phase === 'code-review')?.steps ?? [];
+    return Object.fromEntries(steps.map((step) => [step.name, step.status]));
+  }
+
+  const NOT_YET = ['returned', 'failed', 'waiting', 'done', 'idle'];
+
+  it('shows every reviewer and the report as preparing before anything is written in round 2', () => {
+    expect(new Set(Object.values(chips({})))).toEqual(new Set(['preparing']));
+  });
+
+  it('shows a reviewer that is still starting, and the others, as running, not as round 1 left them', () => {
+    const shown = chips({ 'code-review-quality': 'starting\n' });
+    expect(Object.values(shown).filter((status) => NOT_YET.includes(status))).toEqual([]);
+    expect(shown['code-review-quality']).toBe('running');
+    expect(shown['code-review']).toBe('running');
+  });
+
+  it('shows only the reviewer that decided in round 2 as decided, and the report as running', () => {
+    const shown = chips({ 'code-review-quality': finished('ok'), 'code-review-security': 'thinking\n' });
+    expect(shown['code-review-quality']).toBe('done');
+    expect(shown['code-review-security']).toBe('running');
+    expect(shown['code-review-requirements']).toBe('running');
+    expect(shown['code-review']).toBe('running');
+  });
+
+  it('shows a reviewer that returned in round 2 as returned and the report as done once all decided', () => {
+    const logs = Object.fromEntries(ANGLES.map((angle) => [`code-review-${angle}`, finished('ok')]));
+    logs['code-review-quality'] = finished('return');
+    const shown = chips({ ...logs, 'code-review-report': finished('ok') });
+    expect(shown['code-review-quality']).toBe('returned');
+    expect(shown['code-review-requirements']).toBe('done');
+    expect(shown['code-review']).toBe('done');
   });
 });
 

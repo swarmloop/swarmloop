@@ -341,7 +341,7 @@ function registrationPresent(worktree: string): boolean {
 
 async function has(cwd: string, ref: string): Promise<boolean> {
   try {
-    await git(['-C', cwd, 'cat-file', '-e', ref], undefined, { timeoutMs: GIT_LIMITS.query });
+    await git(['-C', cwd, 'cat-file', '-e', ref], undefined, { timeoutMs: GIT_LIMITS.query, answers: [1, 128] });
     return true;
   } catch {
     return false;
@@ -350,7 +350,10 @@ async function has(cwd: string, ref: string): Promise<boolean> {
 
 async function isAncestor(cwd: string, older: string, newer: string): Promise<boolean> {
   try {
-    await git(['-C', cwd, 'merge-base', '--is-ancestor', older, newer], undefined, { timeoutMs: GIT_LIMITS.query });
+    await git(['-C', cwd, 'merge-base', '--is-ancestor', older, newer], undefined, {
+      timeoutMs: GIT_LIMITS.query,
+      answers: [1],
+    });
     return true;
   } catch {
     return false;

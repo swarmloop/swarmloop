@@ -17,6 +17,8 @@ export const GIT_LIMITS = {
 
 interface GitOptions {
   timeoutMs?: number;
+  /** The exit codes that are an answer of this call, not a failure: the command span records them as such. */
+  answers?: number[];
 }
 
 export function git(args: string[], env?: NodeJS.ProcessEnv, options?: GitOptions): Promise<string> {
@@ -49,6 +51,7 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string, opti
     cwd: directory ? resolve(directory) : process.cwd(),
     executable: 'git',
     args,
+    ...(options.answers ? { answers: options.answers } : {}),
   });
   return new Promise((done, fail) => {
     const child = execFile(
@@ -201,7 +204,9 @@ export function gitDetail(error: unknown): string {
 
 export async function authorArgs(cwd: string): Promise<string[]> {
   try {
-    const email = (await git(['-C', cwd, 'config', '--local', '--get', 'user.email'])).trim();
+    const email = (
+      await git(['-C', cwd, 'config', '--local', '--get', 'user.email'], undefined, { answers: [1] })
+    ).trim();
     if (email) {
       return [];
     }

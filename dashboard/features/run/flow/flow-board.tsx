@@ -2,7 +2,9 @@
 
 import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import Undo from '@mui/icons-material/Undo';
 import { phaseLabel } from '../../../lib/phase-label';
 import { stepLabel, withReport } from '../phases';
 import type { FlowView } from '@contract/api';
@@ -35,85 +37,95 @@ export function FlowBoard({
             <Box sx={{ display: 'grid', gap: 0.75 }}>
               {withReport(phase.steps).map((step) => {
                 const active = step.name === selected;
+                const returned = step.status === 'returned';
                 return (
-                  <Box
+                  <Tooltip
                     key={step.name}
-                    component="button"
-                    type="button"
-                    onClick={() => onSelect(step.name)}
-                    aria-current={step.current ? 'step' : undefined}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1,
-                      width: '100%',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      font: 'inherit',
-                      color: step.status === 'idle' ? 'text.secondary' : 'text.primary',
-                      bgcolor: active ? 'background.default' : 'background.paper',
-                      border: '1px solid',
-                      borderColor: failedStep(step.status)
-                        ? statusColor(step.status)
-                        : step.current
-                          ? 'primary.main'
-                          : 'divider',
-                      borderRadius: 1.5,
-                      transition: 'border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease',
-                      boxShadow: (theme) =>
-                        step.current
-                          ? `0 0 0 3px rgba(${failedStep(step.status) ? theme.vars?.palette.error.mainChannel : theme.vars?.palette.primary.mainChannel} / 0.14)`
-                          : 'none',
-                      px: 1.25,
-                      py: 1,
-                    }}
+                    describeChild
+                    title={returned ? `returned to ${returnTarget(returns, step.name)}` : ''}
                   >
                     <Box
-                      component="span"
+                      component="button"
+                      type="button"
+                      onClick={() => onSelect(step.name)}
+                      aria-current={step.current ? 'step' : undefined}
                       sx={{
-                        width: 7,
-                        height: 7,
-                        borderRadius: '50%',
-                        bgcolor: statusColor(step.status),
-                        flexShrink: 0,
-                        animation:
-                          step.status === 'running' || step.status === 'preparing'
-                            ? 'swarmloop-pulse 1.6s ease-in-out infinite'
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        width: '100%',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        font: 'inherit',
+                        color: step.status === 'idle' ? 'text.secondary' : 'text.primary',
+                        bgcolor: active ? 'background.default' : 'background.paper',
+                        border: '1px solid',
+                        borderColor: failedStep(step.status)
+                          ? statusColor(step.status)
+                          : step.current
+                            ? 'primary.main'
+                            : 'divider',
+                        borderRadius: 1.5,
+                        transition: 'border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease',
+                        boxShadow: (theme) =>
+                          step.current
+                            ? `0 0 0 3px rgba(${failedStep(step.status) ? theme.vars?.palette.error.mainChannel : theme.vars?.palette.primary.mainChannel} / 0.14)`
                             : 'none',
+                        px: 1.25,
+                        py: 1,
                       }}
-                    />
-                    <Box
-                      component="span"
-                      sx={{ fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.3, overflowWrap: 'anywhere' }}
                     >
-                      {stepLabel(step.name)}
-                    </Box>
-                    {step.status === 'preparing' ? (
-                      <Box component="span" sx={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'info.main' }}>
-                        preparing
-                      </Box>
-                    ) : null}
-                    {step.attempts > 0 ? (
+                      {returned ? (
+                        <Undo sx={{ fontSize: 12, color: statusColor('returned'), flexShrink: 0 }} />
+                      ) : (
+                        <Box
+                          component="span"
+                          sx={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: '50%',
+                            bgcolor: statusColor(step.status),
+                            flexShrink: 0,
+                            animation:
+                              step.status === 'running' || step.status === 'preparing'
+                                ? 'swarmloop-pulse 1.6s ease-in-out infinite'
+                                : 'none',
+                          }}
+                        />
+                      )}
                       <Box
                         component="span"
-                        sx={{
-                          ml: 'auto',
-                          minWidth: 18,
-                          height: 18,
-                          px: 0.5,
-                          borderRadius: 9,
-                          bgcolor: statusColor(step.status),
-                          color: 'primary.contrastText',
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: 11,
-                          lineHeight: '18px',
-                          textAlign: 'center',
-                        }}
+                        sx={{ fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.3, overflowWrap: 'anywhere' }}
                       >
-                        {step.attempts}
+                        {stepLabel(step.name)}
                       </Box>
-                    ) : null}
-                  </Box>
+                      {step.status === 'preparing' ? (
+                        <Box component="span" sx={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'info.main' }}>
+                          preparing
+                        </Box>
+                      ) : null}
+                      {step.attempts > 0 ? (
+                        <Box
+                          component="span"
+                          sx={{
+                            ml: 'auto',
+                            minWidth: 18,
+                            height: 18,
+                            px: 0.5,
+                            borderRadius: 9,
+                            bgcolor: statusColor(step.status),
+                            color: 'primary.contrastText',
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 11,
+                            lineHeight: '18px',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {step.attempts}
+                        </Box>
+                      ) : null}
+                    </Box>
+                  </Tooltip>
                 );
               })}
             </Box>
@@ -161,6 +173,12 @@ export function FlowBoard({
       ) : null}
     </Box>
   );
+}
+
+/** Where the work of a returned step went: the target of its return edge. */
+function returnTarget(returns: FlowView['returns'], step: string): string {
+  const from = step.startsWith('code-review') ? 'code-review' : step;
+  return returns.find((edge) => edge.from === from)?.to ?? 'implement';
 }
 
 function failedStep(status: string): boolean {

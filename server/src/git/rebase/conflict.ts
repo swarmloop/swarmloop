@@ -36,7 +36,7 @@ export async function branchHasAllowedChange(cwd: string, prompt: string | null,
   for (const name of names) {
     const ref = originRef(name);
     try {
-      await git(['-C', cwd, 'rev-parse', '--verify', '--quiet', ref]);
+      await git(['-C', cwd, 'rev-parse', '--verify', '--quiet', ref], undefined, { answers: [1] });
       base = ref;
       break;
     } catch (error) {

@@ -204,7 +204,11 @@ function repoName(mount: SandboxMount): string {
 
 async function inside(cwd: string): Promise<boolean> {
   try {
-    return (await gitRaw(['-C', cwd, 'rev-parse', '--is-inside-work-tree'])).trim() === 'true';
+    return (
+      (
+        await gitRaw(['-C', cwd, 'rev-parse', '--is-inside-work-tree'], undefined, undefined, { answers: [128] })
+      ).trim() === 'true'
+    );
   } catch {
     return false;
   }
@@ -225,7 +229,11 @@ async function baseRef(cwd: string, named: string | null): Promise<string | null
 
 async function hasRef(cwd: string, ref: string): Promise<boolean> {
   try {
-    return (await gitRaw(['-C', cwd, 'rev-parse', '--verify', '--quiet', ref])).trim().length > 0;
+    return (
+      (
+        await gitRaw(['-C', cwd, 'rev-parse', '--verify', '--quiet', ref], undefined, undefined, { answers: [1] })
+      ).trim().length > 0
+    );
   } catch {
     return false;
   }
@@ -234,7 +242,7 @@ async function hasRef(cwd: string, ref: string): Promise<boolean> {
 async function untrackedBodies(cwd: string, paths: string[]): Promise<string> {
   const blocks: string[] = [];
   for (const file of paths) {
-    const body = await optional(cwd, ['diff', '--no-index', '--', '/dev/null', file]);
+    const body = await optional(cwd, ['diff', '--no-index', '--', '/dev/null', file], [1]);
     if (body?.trim()) {
       blocks.push(body.trimEnd());
     }
@@ -242,9 +250,9 @@ async function untrackedBodies(cwd: string, paths: string[]): Promise<string> {
   return blocks.join('\n\n');
 }
 
-async function optional(cwd: string, args: string[]): Promise<string | null> {
+async function optional(cwd: string, args: string[], answers?: number[]): Promise<string | null> {
   try {
-    return await gitRaw(['-C', cwd, ...args]);
+    return await gitRaw(['-C', cwd, ...args], undefined, undefined, { answers });
   } catch (error) {
     if (isOutputCap(error)) {
       throw new SwarmloopError('git diff is too large to read');

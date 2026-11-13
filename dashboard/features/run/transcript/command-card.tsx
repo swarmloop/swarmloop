@@ -3,7 +3,7 @@ import Box from '@mui/material/Box';
 import type { StepEvent } from '@contract/step-events';
 import { duration } from '../../../lib/format';
 import { Bubble, Code, Detail } from './bubble';
-import { commandLine } from './transcript-model';
+import { commandLine } from './transcript-problems';
 
 type Started = Extract<StepEvent, { kind: 'command.started' }>;
 type Finished = Extract<StepEvent, { kind: 'command.finished' }>;

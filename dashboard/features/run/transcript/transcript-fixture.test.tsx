@@ -1,5 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { createTheme } from '@mui/material/styles';
 import { describe, expect, it, vi } from 'vitest';
 import type { StepEvent } from '@contract/step-events';
 import { StepDocuments } from '../flow/step-detail/step-documents';
@@ -238,6 +239,26 @@ describe('the step window for a fixture run', () => {
 
     feed([stepEvent(1, { kind: 'agent.launched', ...launch, tools: 'write' })]);
     expect(screen.getByText('tools: all')).toBeInTheDocument();
+  });
+
+  it('shows the exit of a failed agent tool as muted text on its row, and no problem', () => {
+    feed([
+      stepEvent(1, { kind: 'agent.launched', ...launch }),
+      stepEvent(2, {
+        kind: 'agent.tool',
+        tool: 'shell',
+        target: 'npm test',
+        status: 'failed',
+        durationMs: 1200,
+        resultLine: 'exit 1',
+      }),
+    ]);
+
+    const row = screen.getByText(/^shell npm test/);
+    expect(row).toHaveTextContent('exit 1');
+    expect(row).toHaveStyle({ color: createTheme().palette.text.secondary });
+    expect(screen.queryByRole('article', { name: /Error/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /problem/ })).not.toBeInTheDocument();
   });
 
   it('lists the tool calls in order, eight first, and the rest on `show all`', async () => {

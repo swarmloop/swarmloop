@@ -157,7 +157,7 @@ function safeProject(origin: string): string | null {
 
 export async function originProject(dir: string): Promise<string | null> {
   try {
-    return safeProject(await git(['-C', dir, 'remote', 'get-url', 'origin']));
+    return safeProject(await git(['-C', dir, 'remote', 'get-url', 'origin'], undefined, { answers: [2] }));
   } catch {
     return null;
   }

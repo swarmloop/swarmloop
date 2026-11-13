@@ -77,6 +77,25 @@ describe('step event scope', () => {
     expect(events[1]).toMatchObject({ spanId: (events[0] as { spanId: string }).spanId });
   });
 
+  it('marks an exit that the call declared as an answer, and no other', async () => {
+    const events: StepEvent[] = [];
+    await runInStepScope(scope(1, events), 0, () => {
+      const spec = { actor: 'server' as const, repo: 'demo', cwd: '/srv/root', executable: 'git', args: ['fetch'] };
+      startCommandSpan({ ...spec, answers: [1] })({ exitCode: 1, output: 'no\n' });
+      startCommandSpan({ ...spec, answers: [1] })({ exitCode: 2 });
+      startCommandSpan(spec)({ exitCode: 1 });
+      startCommandSpan({ ...spec, answers: [1] })({ exitCode: 0 });
+      return Promise.resolve();
+    });
+    const ended = events.filter((event) => event.kind === 'command.finished');
+    expect(ended.map((event) => ('answer' in event ? event.answer : undefined))).toEqual([
+      true,
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
   it('keeps the events of two scopes that run at once apart', async () => {
     const first: StepEvent[] = [];
     const second: StepEvent[] = [];

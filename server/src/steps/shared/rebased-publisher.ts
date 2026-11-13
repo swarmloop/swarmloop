@@ -44,7 +44,7 @@ export class RebasedPublisher {
 
   async optionalRev(tree: Tree, ref: string): Promise<string | null> {
     try {
-      return await git(['-C', tree.path, 'rev-parse', '--verify', '--quiet', ref]);
+      return await git(['-C', tree.path, 'rev-parse', '--verify', '--quiet', ref], undefined, { answers: [1] });
     } catch (error) {
       if (gitMissing(error)) {
         return null;

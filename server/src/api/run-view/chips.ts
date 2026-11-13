@@ -11,10 +11,33 @@ import { stepStatus, latest } from './status';
 import type { FlowView } from '../../contract/api';
 import { REVIEW_KINDS } from './run-view.types';
 
-/** The log of the running attempt of a step, and whether it is still being written. */
-export function activeLog(root: string, run: RunEntity, name: string): { body: string; current: boolean } {
-  const body = stepOutput(root, run.key, name, run.activeAttempt);
-  return { body, current: logStillOpen(body) };
+/** The log of one reviewer or the report, only when it was written since the open round began. */
+export function roundLog(root: string, run: RunEntity, name: string): string {
+  const path = stepOutputPath(root, run.key, name, run.activeAttempt);
+  if (!path) {
+    return '';
+  }
+  const started = Date.parse(run.stepStartedAt ?? '');
+  try {
+    if (Number.isFinite(started) && statSync(path).mtimeMs < started) {
+      return '';
+    }
+  } catch {
+    return '';
+  }
+  return stepOutput(root, run.key, name, run.activeAttempt);
+}
+
+/** True while code-review runs: its reviewers and its report belong to the round that began at `stepStartedAt`. */
+function roundOpen(run: RunEntity): boolean {
+  return run.status === 'running' && run.currentStep === 'code-review';
+}
+
+const reviewKind = (name: string): string => `review_${name.slice('code-review-'.length)}`;
+
+/** `ok` is done, `return` is returned, and anything else is what the caller says. */
+export function decisionStatus(decision: 'ok' | 'return' | null, otherwise: string): string {
+  return decision === 'ok' ? 'done' : decision === 'return' ? 'returned' : otherwise;
 }
 
 export function chipStatus(
@@ -22,53 +45,57 @@ export function chipStatus(
   run: RunEntity,
   stat: StepStatEntity | undefined,
   documents: DocumentEntity[],
-  log: { body: string; current: boolean } | null,
   round: { attempts: number; status: string } | null,
-  preparing = false,
+  /** The last log of a reviewer that has no stored visit of its own, when no round is open. */
+  log = '',
 ): string {
   if (!isReviewStep(name)) {
     return stepStatus(pipelineStepOf(name), run, stat);
   }
-  const kind = `review_${name.slice('code-review-'.length)}`;
+  if (round) {
+    return round.status;
+  }
+  const kind = reviewKind(name);
   if (stat?.step === name) {
-    if (round) {
-      return round.status;
-    }
-    if (run.currentStep === 'code-review' && run.status === 'running' && log?.current) {
-      return 'running';
-    }
     return storedReviewerStatus(stat, documents, kind);
   }
-  const stored = latest(documents, kind) ?? '';
-  const text = log?.body ?? '';
-  if (run.currentStep === 'code-review' && run.status === 'running' && log?.current) {
-    return 'running';
-  }
-  const fromLog = reviewDecision(text);
-  const saved = reviewDecision(stored);
-  const decision = run.currentStep === 'code-review' && fromLog ? fromLog : saved || fromLog;
-  if (decision === 'ok') {
-    return 'done';
-  }
-  if (decision === 'return') {
-    return 'waiting';
-  }
-  if (text.trim() !== '' && text.trim() !== 'waiting for output' && text.trim() !== 'starting') {
-    return 'failed';
-  }
-  return preparing ? 'preparing' : 'idle';
+  const saved = reviewDecision(latest(documents, kind) ?? '');
+  const fromLog = reviewDecision(log);
+  const decision = run.currentStep === 'code-review' && fromLog ? fromLog : (saved ?? fromLog);
+  return decisionStatus(decision, hasOutput(log) ? 'failed' : 'idle');
 }
 
-/** True while code-review is open and none of its reviewers or its report has started writing a log: the step is still preparing. */
+/** A log that holds output of an attempt: still being written, or finished. */
+export function hasOutput(body: string): boolean {
+  return logStillOpen(body) || liveLogFinished(body);
+}
+
+/** True while code-review is open and none of its reviewers or its report has written a log in this round: the step is still preparing. */
 export function reviewPreparing(root: string, run: RunEntity): boolean {
-  if (run.currentStep !== 'code-review' || run.status !== 'running') {
+  if (!roundOpen(run)) {
     return false;
   }
   const names = [...REVIEW_KINDS.map((kind) => `code-review-${kind.slice('review_'.length)}`), 'code-review-report'];
-  return names.every((name) => activeLog(root, run, name).body.trim() === '');
+  return names.every((name) => roundLog(root, run, name).trim() === '');
 }
 
-/** The report is written after the five angles, so it stays idle while one angle is running. */
+/** Where a reviewer or the report stands in the open round, from what it wrote in this round only. */
+function roundStanding(
+  body: string,
+  prior: number,
+  preparing: boolean,
+  decision: (body: string) => 'ok' | 'return' | null,
+): { attempts: number; status: string } {
+  if (liveLogFinished(body)) {
+    return { attempts: prior + 1, status: decisionStatus(decision(body), 'failed') };
+  }
+  if (logStillOpen(body)) {
+    return { attempts: prior + 1, status: 'running' };
+  }
+  return { attempts: prior, status: preparing ? 'preparing' : 'running' };
+}
+
+/** The report is written after the angles. Until its own decision in the open round arrives it is working. */
 export function reportChip(
   run: RunEntity,
   stats: StepStatEntity[],
@@ -76,37 +103,25 @@ export function reportChip(
   root: string,
   preparing = false,
 ): FlowView['phases'][number]['steps'][number] {
-  const log = activeLog(root, run, 'code-review-report');
-  const stored = (latest(documents, 'review_report') ?? '').trim();
+  const saved = reportAttempts(stats, documents);
+  if (roundOpen(run)) {
+    const standing = roundStanding(roundLog(root, run, 'code-review-report'), saved, preparing, reviewDecision);
+    return {
+      name: 'code-review',
+      status: standing.status,
+      current: standing.status === 'running' || standing.status === 'preparing',
+      attempts: standing.attempts,
+    };
+  }
   const verdict = angleVerdict(
     REVIEW_KINDS.map((kind) => latest(documents, kind) ?? '').filter((body) => body.trim() !== ''),
   );
-  const body = log.body.trim();
-  const opened = body !== '' && body !== 'waiting for output';
-  const writing = run.currentStep === 'code-review' && run.status === 'running' && log.current;
   const visit = stats.filter((item) => item.step === 'code-review').at(-1);
   const loopStatus = stepStatus('code-review', run, visit);
-  const waiting = preparing ? 'preparing' : 'idle';
-  const shown = writing
-    ? 'running'
-    : body === 'starting'
-      ? waiting
-      : verdict === 'ok'
-        ? 'done'
-        : verdict === 'return'
-          ? 'waiting'
-          : stored
-            ? 'done'
-            : opened
-              ? 'failed'
-              : waiting;
-  const status = run.currentStep !== 'code-review' && loopStatus === 'failed' ? loopStatus : shown;
-  return {
-    name: 'code-review',
-    status,
-    current: status === 'running' || status === 'preparing',
-    attempts: reportAttempts(stats, documents, writing),
-  };
+  const shown = decisionStatus(verdict, (latest(documents, 'review_report') ?? '').trim() ? 'done' : 'idle');
+  const status =
+    run.currentStep !== 'code-review' && (loopStatus === 'failed' || loopStatus === 'returned') ? loopStatus : shown;
+  return { name: 'code-review', status, current: false, attempts: saved };
 }
 
 /** The badge is the visit the detail lists. A relaunch inside that visit does not raise it. A stored step with no launch record stays 0. */
@@ -116,11 +131,10 @@ export function chipAttempts(
   stats: StepStatEntity[],
   documents: DocumentEntity[],
   root: string,
-  log: { body: string; current: boolean } | null,
   round: { attempts: number; status: string } | null,
 ): number {
   if (isReviewStep(name)) {
-    return reviewerAttempts(name, run, stats, documents, log, round);
+    return round ? round.attempts : reviewerAttempts(name, stats, documents);
   }
   const own = stats.filter((stat) => stat.step === name);
   const last = own.at(-1)?.attempt ?? 0;
@@ -137,72 +151,38 @@ export function chipAttempts(
   return last;
 }
 
-function reviewerAttempts(
+/** The stored visits of a reviewer: its own, or the code-review visits that hold a document of its kind. */
+function reviewerAttempts(name: string, stats: StepStatEntity[], documents: DocumentEntity[]): number {
+  const own = stats.filter((stat) => stat.step === name);
+  return own.length > 0 ? (own.at(-1)?.attempt ?? 0) : ownedVisits(stats, documents, reviewKind(name));
+}
+
+function ownedVisits(stats: StepStatEntity[], documents: DocumentEntity[], kind: string): number {
+  return stats.filter(
+    (stat) =>
+      stat.step === 'code-review' &&
+      documents.some((document) => document.stepStatId === stat.id && document.kind === kind),
+  ).length;
+}
+
+/** This reviewer's chip while the code-review round is open, from this round only. Null when no round is open. */
+export function reviewerRound(
   name: string,
   run: RunEntity,
   stats: StepStatEntity[],
   documents: DocumentEntity[],
-  log: { body: string; current: boolean } | null,
-  round: { attempts: number; status: string } | null,
-): number {
-  const parentRunning = run.status === 'running' && run.currentStep === 'code-review';
-  const own = stats.filter((stat) => stat.step === name);
-  if (own.length > 0) {
-    if (round) {
-      return round.attempts;
-    }
-    const attempt = own.at(-1)?.attempt ?? 0;
-    return parentRunning && log?.current ? attempt + 1 : attempt;
-  }
-  const kind = `review_${name.slice('code-review-'.length)}`;
-  const owned = stats.filter(
-    (stat) =>
-      stat.step === 'code-review' &&
-      documents.some((document) => document.stepStatId === stat.id && document.kind === kind),
-  );
-  const raw = parentRunning ? (log?.body ?? '') : '';
-  const live = parentRunning && raw.trim() !== '' && raw.trim() !== 'waiting for output' && raw.trim() !== 'starting';
-  return owned.length + (live ? 1 : 0);
-}
-
-/** This reviewer's chip while the code-review round is still open. Null keeps today's visit. */
-export function reviewerRound(
-  name: string,
-  run: RunEntity,
-  stat: StepStatEntity,
-  documents: DocumentEntity[],
   root: string,
+  preparing = false,
 ): { attempts: number; status: string } | null {
-  if (run.status !== 'running' || run.currentStep !== 'code-review' || !run.stepStartedAt) {
+  if (!roundOpen(run)) {
     return null;
   }
-  const stored = storedReviewerStatus(stat, documents, `review_${name.slice('code-review-'.length)}`);
-  if (stat.stepStartedAt === run.stepStartedAt) {
-    return { attempts: stat.attempt, status: stored };
+  const last = stats.filter((stat) => stat.step === name).at(-1);
+  if (last && run.stepStartedAt && last.stepStartedAt === run.stepStartedAt) {
+    return { attempts: last.attempt, status: storedReviewerStatus(last, documents, reviewKind(name)) };
   }
-  const path = stepOutputPath(root, run.key, name, run.activeAttempt);
-  let mtimeMs = 0;
-  try {
-    mtimeMs = path ? statSync(path).mtimeMs : 0;
-  } catch {
-    return { attempts: stat.attempt, status: stored };
-  }
-  if (!path || mtimeMs < Date.parse(run.stepStartedAt)) {
-    return { attempts: stat.attempt, status: stored };
-  }
-  const body = stepOutput(root, run.key, name, run.activeAttempt);
-  const trimmed = body.trim();
-  if (trimmed === '' || trimmed === 'starting' || trimmed === 'waiting for output') {
-    return { attempts: stat.attempt, status: stored };
-  }
-  if (!liveLogFinished(body)) {
-    return { attempts: stat.attempt + 1, status: 'running' };
-  }
-  const decision = reviewDecision(body);
-  return {
-    attempts: stat.attempt + 1,
-    status: decision === 'ok' ? 'done' : decision === 'return' ? 'waiting' : 'failed',
-  };
+  const prior = reviewerAttempts(name, stats, documents);
+  return roundStanding(roundLog(root, run, name), prior, preparing, reviewDecision);
 }
 
 function storedReviewerStatus(stat: StepStatEntity, documents: DocumentEntity[], kind: string): string {
@@ -211,11 +191,8 @@ function storedReviewerStatus(stat: StepStatEntity, documents: DocumentEntity[],
     .map((document) => document.body)
     .join('\n');
   const decision = reviewDecision(body);
-  if (decision === 'ok') {
-    return 'done';
-  }
-  if (decision === 'return') {
-    return 'waiting';
+  if (decision) {
+    return decisionStatus(decision, 'done');
   }
   if (stat.status === 'failed' || stat.status === 'blocked') {
     return 'failed';
@@ -224,24 +201,12 @@ function storedReviewerStatus(stat: StepStatEntity, documents: DocumentEntity[],
   return stat.status === 'waiting' || stat.status === LIMIT_VISIT.status ? 'waiting' : 'done';
 }
 
-function reportAttempts(stats: StepStatEntity[], documents: DocumentEntity[], writing: boolean): number {
-  const saved = stats.filter(
-    (stat) =>
-      stat.step === 'code-review' &&
-      documents.some((document) => document.stepStatId === stat.id && document.kind === 'review_report'),
-  ).length;
-  return saved + (writing ? 1 : 0);
+function reportAttempts(stats: StepStatEntity[], documents: DocumentEntity[]): number {
+  return ownedVisits(stats, documents, 'review_report');
 }
 
 export function reviewerOutcome(text: string, fallback: string): string {
-  const decision = reviewDecision(text);
-  if (decision === 'ok') {
-    return 'done';
-  }
-  if (decision === 'return') {
-    return 'waiting';
-  }
-  return fallback;
+  return decisionStatus(reviewDecision(text), fallback);
 }
 
 export function angleVerdict(bodies: string[]): 'ok' | 'return' | null {

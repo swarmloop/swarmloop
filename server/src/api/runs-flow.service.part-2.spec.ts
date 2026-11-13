@@ -177,11 +177,11 @@ describe('runs api', () => {
       expect(at(running, 'code-review-regressions')?.attempts).toBe(2);
       expect(at(running, 'code-review-regressions')?.status).toBe('running');
       expect(at(running, 'code-review-performance')?.attempts).toBe(2);
-      expect(at(running, 'code-review-performance')?.status).toBe('waiting');
+      expect(at(running, 'code-review-performance')?.status).toBe('returned');
       expect(at(running, 'code-review-quality')?.attempts).toBe(1);
-      expect(at(running, 'code-review-quality')?.status).toBe('waiting');
+      expect(at(running, 'code-review-quality')?.status).toBe('running');
       expect(at(running, 'code-review-security')?.attempts).toBe(1);
-      expect(at(running, 'code-review-security')?.status).toBe('waiting');
+      expect(at(running, 'code-review-security')?.status).toBe('running');
 
       run.status = 'waiting';
       await runRepository.saveRun(run);
@@ -189,13 +189,14 @@ describe('runs api', () => {
       expect(at(held, 'code-review-requirements')?.attempts).toBe(1);
       expect(at(held, 'code-review-requirements')?.status).toBe('done');
       expect(at(held, 'code-review-quality')?.attempts).toBe(1);
-      expect(at(held, 'code-review-quality')?.status).toBe('waiting');
+      expect(at(held, 'code-review-quality')?.status).toBe('returned');
       expect(at(held, 'code-review-regressions')?.attempts).toBe(1);
       expect(at(held, 'code-review-regressions')?.status).toBe('done');
       expect(at(held, 'code-review-security')?.attempts).toBe(1);
-      expect(at(held, 'code-review-security')?.status).toBe('waiting');
+      expect(at(held, 'code-review-security')?.status).toBe('returned');
       expect(at(held, 'code-review-performance')?.attempts).toBe(1);
       expect(at(held, 'code-review-performance')?.status).toBe('done');
+      expect(at(held, 'code-review')?.status).toBe('returned');
 
       run.status = 'running';
       run.currentStep = 'code-review';
@@ -217,11 +218,11 @@ describe('runs api', () => {
       await writeFile(join(root, 'data', 'proj-round-code-review-report-output.txt'), 'thinking\n');
       const saved = await chips();
       expect(at(saved, 'code-review-requirements')?.attempts).toBe(2);
-      expect(at(saved, 'code-review-requirements')?.status).toBe('waiting');
+      expect(at(saved, 'code-review-requirements')?.status).toBe('returned');
       expect(at(saved, 'code-review-quality')?.attempts).toBe(2);
       expect(at(saved, 'code-review-quality')?.status).toBe('done');
       expect(at(saved, 'code-review-regressions')?.attempts).toBe(2);
-      expect(at(saved, 'code-review-regressions')?.status).toBe('waiting');
+      expect(at(saved, 'code-review-regressions')?.status).toBe('returned');
       expect(at(saved, 'code-review-security')?.attempts).toBe(2);
       expect(at(saved, 'code-review-security')?.status).toBe('done');
       expect(at(saved, 'code-review-performance')?.attempts).toBe(2);
@@ -277,7 +278,7 @@ describe('runs api', () => {
       const chips =
         (await app.get(RunQueriesService).flow('proj-23')).phases.find((phase) => phase.phase === 'code-review')
           ?.steps ?? [];
-      expect(chips.find((step) => step.name === 'code-review-quality')?.status).toBe('waiting');
+      expect(chips.find((step) => step.name === 'code-review-quality')?.status).toBe('returned');
     } finally {
       await app.close();
     }

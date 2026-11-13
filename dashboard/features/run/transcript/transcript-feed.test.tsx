@@ -44,7 +44,7 @@ function scrollBox() {
 
 describe('TranscriptFeed', () => {
   it('shows a failed command as an error with the word, an accessible name, its cause, id and action', () => {
-    feed([...commandEvents(1, 's', { executable: 'make', args: ['test'], exitCode: 2 })]);
+    feed([...commandEvents(1, 's', { executable: 'make', args: ['test'], exitCode: 2, actor: 'server' })]);
 
     const card = screen.getByRole('article', { name: 'Error: exit code 2' });
     expect(within(card).getByText('Error')).toBeInTheDocument();
@@ -125,7 +125,7 @@ describe('TranscriptFeed', () => {
   it('keeps the order when a filter is chosen', () => {
     feed([
       input,
-      ...commandEvents(2, 's', { executable: 'make', exitCode: 1 }),
+      ...commandEvents(2, 's', { executable: 'make', exitCode: 1, actor: 'server' }),
       stepEvent(4, { kind: 'handoff.received', handoffId: 7, issueIds: ['i'] }),
       artifact,
     ]);
@@ -141,13 +141,30 @@ describe('TranscriptFeed', () => {
     const scroll = vi.fn();
     Element.prototype.scrollIntoView = scroll;
     feed([
-      ...commandEvents(1, 's', { executable: 'make', exitCode: 1 }),
-      ...commandEvents(4, 's', { executable: 'lint', exitCode: 2 }),
+      ...commandEvents(1, 's', { executable: 'make', exitCode: 1, actor: 'server' }),
+      ...commandEvents(4, 's', { executable: 'lint', exitCode: 2, actor: 'server' }),
     ]);
 
     await user.click(screen.getByRole('button', { name: '2 problems' }));
     expect(scroll).toHaveBeenCalledTimes(1);
     expect(scroll.mock.contexts[0]).toBe(document.getElementById('problem-event-1'));
+  });
+
+  it('shows no problem for an answer of a server call or for an agent command that exits non-zero', () => {
+    feed([
+      ...commandEvents(1, 'a', {
+        executable: 'git',
+        args: ['config', '--get', 'user.email'],
+        exitCode: 1,
+        actor: 'server',
+        answer: true,
+      }),
+      ...commandEvents(4, 'b', { executable: 'make', exitCode: 1 }),
+    ]);
+
+    expect(screen.queryByRole('article', { name: /Error/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /problem/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/make/)).toBeInTheDocument();
   });
 
   it('folds seven consecutive actions into one expandable row', async () => {

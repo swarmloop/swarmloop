@@ -17,7 +17,7 @@ export function stepStatus(name: string, run: RunEntity, stat: StepStatEntity | 
     return run.status === 'done' ? 'done' : run.status;
   }
   if (isLoopStep(name) && stat?.status === 'waiting') {
-    return 'failed';
+    return 'returned';
   }
   const current = STEPS.indexOf(run.currentStep as StepName);
   const index = STEPS.indexOf(name as StepName);

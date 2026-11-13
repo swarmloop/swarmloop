@@ -69,7 +69,7 @@ export function StepDocuments({
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 2 }}>
           {shownChecks.map((item) => {
             const tone =
-              item.decision === 'decision: ok' ? 'done' : item.decision === 'decision: return' ? 'waiting' : '';
+              item.decision === 'decision: ok' ? 'done' : item.decision === 'decision: return' ? 'returned' : '';
             return (
               <Button
                 key={item.name}

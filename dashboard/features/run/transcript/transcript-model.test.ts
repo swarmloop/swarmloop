@@ -3,7 +3,7 @@ import type { StepEvent, StepEventBody } from '@contract/step-events';
 import { localTime } from '../../../lib/format';
 import { foldActions } from './action-rows';
 import { commandEvents, stepEvent } from '../../../test/step-events';
-import { actorOf, firstProblemId, groupByActor, groupByAttempt, issueLinks, sideOf } from './transcript-model';
+import { actorOf, problemSummary, groupByActor, groupByAttempt, issueLinks, sideOf } from './transcript-model';
 
 const agent = {
   runtime: 'claude',
@@ -86,11 +86,24 @@ describe('groupByAttempt', () => {
   it('pairs a command with its end and reads the problem from it', () => {
     const [group] = groupByAttempt([
       ...commandEvents(1, 'a', { executable: 'ls' }),
-      ...commandEvents(3, 'b', { executable: 'make', exitCode: 2 }),
+      ...commandEvents(3, 'b', { executable: 'make', exitCode: 2, actor: 'server' }),
     ]);
 
     expect(group?.items.map((item) => item.end?.exitCode)).toEqual([0, 2]);
     expect(group?.items.map((item) => item.problem?.cause ?? null)).toEqual([null, 'exit code 2']);
+  });
+
+  it('reads a problem only from a server command that failed and was not an answer', () => {
+    const problems = (...events: StepEvent[][]) =>
+      groupByAttempt(events.flat()).flatMap((group) => group.items.map((item) => item.problem?.cause ?? null));
+
+    expect(
+      problems(
+        commandEvents(1, 'a', { executable: 'make', exitCode: 1, actor: 'server' }),
+        commandEvents(3, 'b', { executable: 'make', exitCode: 1, actor: 'server', answer: true }),
+        commandEvents(5, 'c', { executable: 'make', exitCode: 1, actor: 'agent' }),
+      ),
+    ).toEqual(['exit code 1', null, null]);
   });
 
   it('finds a problem in a kill, an http error and an interrupted attempt', () => {
@@ -146,10 +159,13 @@ describe('groupByAttempt', () => {
   });
 
   it('names the first problem of the step', () => {
-    expect(firstProblemId(events)).toBeNull();
-    expect(firstProblemId([...events, ...commandEvents(8, 'x', { executable: 'make', exitCode: 1 }, second)])).toBe(
-      'event-8',
-    );
+    expect(problemSummary(events).firstId).toBeNull();
+    expect(
+      problemSummary([
+        ...events,
+        ...commandEvents(8, 'x', { executable: 'make', exitCode: 1, actor: 'server' }, second),
+      ]).firstId,
+    ).toBe('event-8');
   });
 });
 
@@ -158,7 +174,11 @@ describe('foldActions', () => {
     foldActions(
       groupByAttempt(
         Array.from({ length: count }, (_, index) =>
-          commandEvents(index * 3 + 1, `a${index}`, { executable: 'make', exitCode: index === failAt ? 1 : 0 }),
+          commandEvents(index * 3 + 1, `a${index}`, {
+            executable: 'make',
+            exitCode: index === failAt ? 1 : 0,
+            actor: 'server',
+          }),
         ).flat(),
       ).flatMap((group) => group.items),
     );

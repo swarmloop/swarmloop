@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
-import { resolveRepoRoot } from '../config/repo-root';
-import { DocumentEntity, RunEntity, StepStatEntity } from '../history/entities';
+import { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -13,28 +12,23 @@ import { EventRepository } from '../history/event.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { StepEventLog } from '../history/step-event.log';
 import { root } from '../history/run-paths';
-import { agentFor } from '../config/agents';
-import { Charge, chargeStream } from '../agent/spend';
-import { loadPriceTable } from '../agent/prices';
 import { LiveHub } from '../live/live.hub';
-import { logStillOpen } from '../agent/live-output';
-import { stepOutput } from '../core/attempt-output';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { StepRegistry } from '../steps/step.registry';
 import { isStep } from '../core/pipeline-result';
 import { isReviewStep } from '../contract/steps';
 import { parsePaths } from '../git/commit-paths';
 import { renderProjects, storedProjects } from '../config/checkout-path';
-import { reviewDecision } from '../steps/code-review/code-review-record';
 import type { StepEventPage } from '../contract/step-events';
 import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
 import type { LiveSample } from '../contract/live';
 import { childrenByParent, epicTotal, listExtras } from './run-view/status';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
-import { angleVerdict, decisionLine, reviewerOutcome } from './run-view/chips';
+import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
 import { belongsToVisit, documentView, filesOf, legacyLogs, taskView, withReturnNotes } from './run-view/documents';
 import { taskRuns } from './run-view/task-runs';
+import { ReviewerSteps } from './run-view/reviewer-steps';
 import { visitKey } from '../contract/visit-key';
 import { launchView, liveVisit, loopView } from './run-view/live';
 import { commandViewsOf, exchangesOf, reviewChecks, samplesOf } from './run-view/visit-parts';
@@ -60,7 +54,21 @@ export class RunQueriesService {
     private readonly clock: Clock,
     private readonly checkCommands: CheckCommandRepository,
     @Optional() private readonly live?: LiveHub,
-  ) {}
+  ) {
+    this.reviewers = new ReviewerSteps({
+      runs,
+      documents,
+      visits,
+      config,
+      clock,
+      live,
+      reviewRunning: (run) => this.reviewRunning(run),
+      runningVisit: (run, name, previousAttempt, samples) => this.runningVisit(run, name, previousAttempt, samples),
+      meta: (run, name) => this.meta(run, name),
+    });
+  }
+
+  private readonly reviewers: ReviewerSteps;
 
   async list(): Promise<RunsView> {
     const runs = await this.runs.listRuns();
@@ -164,7 +172,7 @@ export class RunQueriesService {
 
   async step(key: string, name: string): Promise<StepView> {
     if (isReviewStep(name)) {
-      return this.reviewerStep(key, name);
+      return this.reviewers.step(key, name);
     }
     if (!isStep(name)) {
       throw new BadRequestException(`${name} is unknown`);
@@ -189,7 +197,7 @@ export class RunQueriesService {
         id: stat.id,
         key: visitKey(stat.id),
         attempt: stat.attempt,
-        status: verdict === 'ok' ? 'done' : verdict === 'return' ? 'waiting' : stat.status,
+        status: decisionStatus(verdict, stat.status),
         model: stat.model,
         mode: stat.mode,
         durationMs: stat.durationMs,
@@ -278,127 +286,6 @@ export class RunQueriesService {
         memPeak: stat.memPeak,
       })),
     };
-  }
-
-  private async reviewerStep(key: string, name: string): Promise<StepView> {
-    const run = await requireRun(this.runs, key);
-    const documents = await this.documents.listDocuments(run.id);
-    const own = (await this.visits.listStats(run.id)).filter((stat) => stat.step === name);
-    if (own.length > 0) {
-      return this.angleStep(run, name, documents, own);
-    }
-    const stats = (await this.visits.listStats(run.id)).filter((stat) => stat.step === 'code-review');
-    const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
-    const kind = `review_${name.slice('code-review-'.length)}`;
-    const parentRunning = this.reviewRunning(run);
-    const ownedStats = stats.filter((stat) =>
-      documents.some((document) => document.stepStatId === stat.id && document.kind === kind),
-    );
-    const attempt = parentRunning ? run.activeAttempt : (ownedStats.at(-1)?.attemptId ?? null);
-    const raw = stepOutput(root(this.config), key, name, attempt);
-    const env = this.config.env;
-    const agent = agentFor(env, run, name);
-    const model = agent?.model ?? null;
-    let charge: Charge | null = null;
-    if (agent && raw.trim() && raw !== 'waiting for output') {
-      charge = chargeStream(
-        agent.model,
-        raw,
-        await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), agent.runtime, this.clock.now()),
-      );
-    }
-    const open = parentRunning && logStillOpen(raw);
-    const visits: VisitView[] = ownedStats.map((stat, index) => {
-      const latestDone = index === ownedStats.length - 1 && !parentRunning;
-      const owned = documents.filter((document) => document.stepStatId === stat.id && document.kind === kind);
-      const log = latestDone ? raw : '';
-      const ownedText = owned.map((item) => item.body).join('\n');
-      const verdict = reviewDecision(`${ownedText}\n${log}`);
-      return {
-        id: stat.id,
-        key: visitKey(stat.id),
-        attempt: index + 1,
-        status: verdict === 'ok' ? 'done' : verdict === 'return' ? 'waiting' : reviewerOutcome(log, stat.status),
-        model,
-        mode: 'agent' as const,
-        durationMs: stat.durationMs,
-        tokensIn: latestDone ? (charge?.tokensIn ?? 0) : 0,
-        tokensOut: latestDone ? (charge?.tokensOut ?? 0) : 0,
-        usd: latestDone ? (charge?.usd ?? 0) : 0,
-        cpuAvg: stat.cpuAvg,
-        cpuPeak: stat.cpuPeak,
-        memAvg: stat.memAvg,
-        memPeak: stat.memPeak,
-        killReason: stat.killReason,
-        decision: verdict ? `decision: ${verdict}` : decisionLine(ownedText),
-        ...visitLogSize(this.config, run, name, stat, documents),
-        documents: [...owned, ...legacyLogs(documents, stat)].map(documentView),
-        exchanges: [],
-        samples: samplesOf(samples, stat.id),
-      };
-    });
-    const placeholder = raw.trim() === '' || raw.trim() === 'waiting for output' || raw.trim() === 'starting';
-    const live = parentRunning && !placeholder;
-    if (live) {
-      visits.push({
-        ...this.runningVisit(run, name, visits.length, this.live?.samplesOf(run.key, name)),
-        model,
-        mode: 'agent',
-        status: open ? 'running' : reviewerOutcome(raw, 'failed'),
-        ...(charge ? { tokensIn: charge.tokensIn, tokensOut: charge.tokensOut, usd: charge.usd } : {}),
-      });
-    }
-    return { step: name, ...(await this.meta(run, name)), visits, checks: [] };
-  }
-
-  /** A reviewer visit is the same record as any other step: its own log, exchange, and chart. */
-  private async angleStep(
-    run: RunEntity,
-    name: string,
-    documents: DocumentEntity[],
-    stats: StepStatEntity[],
-  ): Promise<StepView> {
-    const kind = `review_${name.slice('code-review-'.length)}`;
-    const kinds = [kind, 'error'];
-    const exchanges = await this.visits.listExchanges(stats.map((stat) => stat.id));
-    const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
-    const parentRunning = this.reviewRunning(run);
-    const visits = stats.map((stat, index) => {
-      const owned = documents.filter((document) => document.stepStatId === stat.id && document.kind === kind);
-      const verdict = reviewDecision(owned.map((item) => item.body).join('\n'));
-      return {
-        id: stat.id,
-        key: visitKey(stat.id),
-        attempt: stat.attempt,
-        status: verdict === 'ok' ? 'done' : verdict === 'return' ? 'waiting' : stat.status,
-        model: stat.model,
-        mode: stat.mode,
-        durationMs: stat.durationMs,
-        tokensIn: stat.tokensIn,
-        tokensOut: stat.tokensOut,
-        usd: stat.usd,
-        cpuAvg: stat.cpuAvg,
-        cpuPeak: stat.cpuPeak,
-        memAvg: stat.memAvg,
-        memPeak: stat.memPeak,
-        killReason: stat.killReason,
-        decision: verdict ? `decision: ${verdict}` : decisionLine(owned.map((item) => item.body).join('\n')),
-        ...visitLogSize(this.config, run, name, stat, documents, {
-          latest: index === stats.length - 1,
-          reviewRunning: parentRunning,
-        }),
-        documents: [
-          ...documents.filter((document) => belongsToVisit(document, stat.id, kinds, index === stats.length - 1)),
-          ...legacyLogs(documents, stat),
-        ].map(documentView),
-        exchanges: exchangesOf(exchanges, stat.id),
-        samples: samplesOf(samples, stat.id),
-      };
-    });
-    if (parentRunning && logStillOpen(stepOutput(root(this.config), run.key, name, run.activeAttempt))) {
-      visits.push(this.runningVisit(run, name, stats.at(-1)?.attempt ?? 0, this.live?.samplesOf(run.key, name)));
-    }
-    return { step: name, ...(await this.meta(run, name)), visits, checks: [] };
   }
 
   /** True while the code-review step runs, so its reviewers write the run's active attempt. */

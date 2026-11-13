@@ -24,7 +24,15 @@ export function stepEvent(
 export function commandEvents(
   seq: number,
   spanId: string,
-  command: { executable: string; args?: string[]; exitCode?: number | null; output?: string | null },
+  command: {
+    executable: string;
+    args?: string[];
+    exitCode?: number | null;
+    output?: string | null;
+    /** Who ran it. A server call may declare its exit an `answer`. Defaults to the agent. */
+    actor?: 'server' | 'agent';
+    answer?: true;
+  },
   overrides: Partial<Pick<StepEvent, 'attemptId' | 'step'>> = {},
 ): StepEvent[] {
   return [
@@ -33,7 +41,7 @@ export function commandEvents(
       {
         kind: 'command.started',
         spanId,
-        actor: 'agent',
+        actor: command.actor ?? 'agent',
         repo: 'swarmloop',
         cwd: 'work/swarmloop',
         executable: command.executable,
@@ -51,6 +59,7 @@ export function commandEvents(
         durationMs: 1500,
         timedOut: false,
         cancelled: false,
+        ...(command.answer ? { answer: command.answer } : {}),
         output: command.output ?? null,
       },
       overrides,

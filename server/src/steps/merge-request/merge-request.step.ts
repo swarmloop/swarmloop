@@ -221,7 +221,9 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
 
   private async defaultBranch(path: string): Promise<string | null> {
     try {
-      const name = await git(['-C', path, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
+      const name = await git(['-C', path, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], undefined, {
+        answers: [128],
+      });
       const branch = name.replace(/^origin\//, '');
       return branch && branch !== 'HEAD' ? branch : null;
     } catch {
@@ -231,7 +233,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
 
   private async ref(repo: string, path: string, name: string): Promise<string | null> {
     try {
-      return await git(['-C', path, 'rev-parse', '--verify', '--quiet', name]);
+      return await git(['-C', path, 'rev-parse', '--verify', '--quiet', name], undefined, { answers: [1] });
     } catch (error) {
       if (gitMissing(error)) {
         return null;
