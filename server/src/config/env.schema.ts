@@ -1,13 +1,16 @@
 import Joi from 'joi';
 import { parseAllow } from '../auth/allow-list';
-import { RUNTIME_NAMES } from '../integrations/agent-runtime/agent-runtime.registry';
 import { IssueTrackerRegistry } from '../integrations/issue-tracker/issue-tracker.registry';
 import { names } from '../integrations/requirements-source/requirements-source.registry';
 
+const MAIN_AGENTS_MISSING = '{{#key}} is missing: set it as in .env.example';
+
+/** A main agent list has no default: an empty or missing one is a start-up error. */
+function mainAgents(): Joi.StringSchema {
+  return Joi.string().required().messages({ 'any.required': MAIN_AGENTS_MISSING, 'string.empty': MAIN_AGENTS_MISSING });
+}
+
 export const envSchema = Joi.object({
-  RUNTIME: Joi.string()
-    .valid(...RUNTIME_NAMES)
-    .required(),
   REQUIREMENTS_VIA: Joi.string()
     .valid(...names)
     .required(),
@@ -61,11 +64,9 @@ export const envSchema = Joi.object({
   MERGE_REQUEST_TIMEOUT_MS: Joi.number().required(),
   PIPELINE_TIMEOUT_MS: Joi.number().required(),
   PIPELINE_START_TIMEOUT_MS: Joi.number().required(),
-  MODEL_PLAN: Joi.string().required(),
-  MODEL_IMPLEMENT: Joi.string().required(),
-  AGENTS_PLAN: Joi.string().allow('').default(''),
-  AGENTS_IMPLEMENT: Joi.string().allow('').default(''),
-  AGENTS_REVIEW: Joi.string().allow('').default(''),
+  AGENTS_PLAN: mainAgents(),
+  AGENTS_IMPLEMENT: mainAgents(),
+  AGENTS_REVIEW: mainAgents(),
   AGENTS_SUBTASK_PLAN: Joi.string().allow('').default(''),
   AGENTS_SUBTASK_IMPLEMENT: Joi.string().allow('').default(''),
   AGENTS_SUBTASK_REVIEW: Joi.string().allow('').default(''),

@@ -231,7 +231,6 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
 
 function testEnv(root: string, overrides: Record<string, string> = {}): string {
   return [
-    'RUNTIME=cursor',
     'REQUIREMENTS_VIA=direct',
     'ISSUE_TRACKER=jira',
     'JIRA_BASE_URL=',
@@ -257,8 +256,9 @@ function testEnv(root: string, overrides: Record<string, string> = {}): string {
     'MERGE_REQUEST_TIMEOUT_MS=600000',
     'PIPELINE_TIMEOUT_MS=1800000',
     'PIPELINE_START_TIMEOUT_MS=180000',
-    'MODEL_PLAN=opus-5.5-extra-high',
-    'MODEL_IMPLEMENT=grok-4.7',
+    'AGENTS_PLAN=cursor:opus-5.5-extra-high',
+    'AGENTS_IMPLEMENT=cursor:grok-4.7',
+    'AGENTS_REVIEW=cursor:opus-5.5-extra-high',
     'SPLIT=off',
     'SWARMLOOP_API_PORT=0',
     'SWARMLOOP_API_HOST=127.0.0.1',

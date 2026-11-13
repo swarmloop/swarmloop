@@ -147,6 +147,31 @@ describe('chat', () => {
     );
     await expect(chat.speak('PROJ-1', { prompt: '  ' })).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('refuses a chat when the stored implement agent has no model', async () => {
+    const runRepository = {
+      findRun: async () => ({
+        key: 'PROJ-1',
+        status: 'waiting',
+        agents: { main: { implement: [{ runtime: 'cursor', model: '' }] } },
+      }),
+      held: () => false,
+    };
+    const documentRepository = { latestBody: async () => null };
+    const chat = new ChatService(
+      runRepository as never,
+      documentRepository as never,
+      config('/tmp'),
+      new FakeClock(),
+      { assertReady: async () => undefined } as never,
+      new AgentLauncher({ run: jest.fn() } as never, {} as never, new RunStop()),
+      {
+        block: async () => '',
+      } as never,
+      { ensureForRequest: async () => undefined } as never,
+    );
+    await expect(chat.speak('PROJ-1', { prompt: 'hello' })).rejects.toThrow('AGENTS_IMPLEMENT is missing');
+  });
 });
 
 function config(root: string): AppConfig {
@@ -166,8 +191,9 @@ function config(root: string): AppConfig {
       CODE_REVIEW_TIMEOUT_MS: 1000,
       MERGE_REQUEST_TIMEOUT_MS: 1000,
       PIPELINE_TIMEOUT_MS: 1000,
-      MODEL_PLAN: 'plan-model',
-      MODEL_IMPLEMENT: 'implement-model',
+      AGENTS_PLAN: 'cursor:plan-model',
+      AGENTS_IMPLEMENT: 'cursor:implement-model',
+      AGENTS_REVIEW: 'cursor:plan-model',
     }),
   );
 }

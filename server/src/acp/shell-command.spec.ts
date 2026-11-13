@@ -54,7 +54,7 @@ describe('shell config', () => {
   it('reads the runtime and the implement model', () => {
     const dir = mkdtempSync(join(tmpdir(), 'swarmloop-env-'));
     const file = join(dir, 'env');
-    writeFileSync(file, 'RUNTIME=cursor\nMODEL_IMPLEMENT=from-env\nCURSOR_API_KEY=dummy\n');
+    writeFileSync(file, 'AGENTS_IMPLEMENT=cursor:from-env\nCURSOR_API_KEY=dummy\n');
     const config = readShellConfig(file);
     expect(config.runtime).toBe('cursor');
     expect(config.model).toBe('from-env');
@@ -65,8 +65,26 @@ describe('shell config', () => {
   it('reads the sandbox runtime as the server does', () => {
     const dir = mkdtempSync(join(tmpdir(), 'swarmloop-env-'));
     const file = join(dir, 'env');
-    writeFileSync(file, 'RUNTIME=codex\nSANDBOX_DOCKER_RUNTIME=runsc\n');
+    writeFileSync(file, 'AGENTS_IMPLEMENT=codex:gpt-6.1-sol\nSANDBOX_DOCKER_RUNTIME=runsc\n');
     expect(readShellConfig(file).engine).toBe('runsc');
+  });
+});
+
+describe('shell config without the lists', () => {
+  it('works with only AGENTS_IMPLEMENT', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'swarmloop-env-'));
+    const file = join(dir, 'env');
+    writeFileSync(file, 'AGENTS_IMPLEMENT=codex:gpt-6.1-sol,cursor:grok-4.7\n');
+    expect(readShellConfig(file)).toMatchObject({ runtime: 'codex', model: 'gpt-6.1-sol' });
+  });
+
+  it('names AGENTS_IMPLEMENT when it is missing or invalid', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'swarmloop-env-'));
+    const file = join(dir, 'env');
+    writeFileSync(file, 'CURSOR_API_KEY=dummy\n');
+    expect(() => readShellConfig(file)).toThrow('AGENTS_IMPLEMENT is missing or invalid');
+    writeFileSync(file, 'AGENTS_IMPLEMENT=cursor\n');
+    expect(() => readShellConfig(file)).toThrow('AGENTS_IMPLEMENT is missing or invalid');
   });
 });
 

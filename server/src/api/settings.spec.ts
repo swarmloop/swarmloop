@@ -43,8 +43,8 @@ async function world() {
     CURSOR_API_KEY: 'cur',
     AGENTS_PLAN: 'claude:opus,cursor:grok,codex:gpt',
     SPLIT: 'auto',
-    MODEL_PLAN: 'grok',
-    MODEL_IMPLEMENT: 'grok',
+    AGENTS_IMPLEMENT: 'cursor:grok',
+    AGENTS_REVIEW: 'cursor:grok',
   });
   const repo = app.get(UserSettingRepository);
   const controller = new SettingsController(new SettingsService(new AppConfig(env), repo, new SystemClock()));

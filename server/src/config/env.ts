@@ -1,10 +1,8 @@
 import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
-import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import type { RequirementsVia } from '../integrations/requirements-source/requirements-source.registry';
 
 export interface SwarmloopEnv {
-  RUNTIME: RuntimeName;
   REQUIREMENTS_VIA: RequirementsVia;
   ISSUE_TRACKER: string;
   JIRA_BASE_URL: string;
@@ -50,8 +48,6 @@ export interface SwarmloopEnv {
   MERGE_REQUEST_TIMEOUT_MS: number;
   PIPELINE_TIMEOUT_MS: number;
   PIPELINE_START_TIMEOUT_MS: number;
-  MODEL_PLAN: string;
-  MODEL_IMPLEMENT: string;
   AGENTS_PLAN: string;
   AGENTS_IMPLEMENT: string;
   AGENTS_REVIEW: string;
@@ -102,14 +98,26 @@ export class AppConfig {
   constructor(readonly env: SwarmloopEnv) {}
 }
 
+/** The short form that named agents before the lists. It is ignored, with one warning. */
+function warnIgnoredAgentEnv(config: ConfigService): void {
+  const set = ['RUNTIME', 'MODEL_PLAN', 'MODEL_IMPLEMENT'].filter((name) => config.get(name) !== undefined);
+  if (set.length === 0) {
+    return;
+  }
+  const names = set.length > 1 ? `${set.slice(0, -1).join(', ')} and ${set[set.length - 1]}` : set[0];
+  new Logger('Config').warn(
+    `${names} ${set.length > 1 ? 'are' : 'is'} no longer read: the agents are AGENTS_PLAN, AGENTS_IMPLEMENT and AGENTS_REVIEW`,
+  );
+}
+
 export function readEnv(config: ConfigService): SwarmloopEnv {
   if (config.get('MODEL_RESEARCH') !== undefined) {
-    new Logger('Config').warn('MODEL_RESEARCH is set but was never read: research runs on MODEL_PLAN or AGENTS_PLAN');
+    new Logger('Config').warn('MODEL_RESEARCH is set but was never read: research runs on AGENTS_PLAN');
   }
+  warnIgnoredAgentEnv(config);
   const root = config.get<string>('SWARMLOOP_ROOT');
   const checkoutsRoot = config.get<string>('CHECKOUTS_ROOT');
   return {
-    RUNTIME: config.getOrThrow<RuntimeName>('RUNTIME'),
     REQUIREMENTS_VIA: config.getOrThrow<RequirementsVia>('REQUIREMENTS_VIA'),
     ISSUE_TRACKER: config.getOrThrow<string>('ISSUE_TRACKER'),
     JIRA_BASE_URL: config.getOrThrow<string>('JIRA_BASE_URL'),
@@ -155,11 +163,9 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     MERGE_REQUEST_TIMEOUT_MS: config.getOrThrow<number>('MERGE_REQUEST_TIMEOUT_MS'),
     PIPELINE_TIMEOUT_MS: config.getOrThrow<number>('PIPELINE_TIMEOUT_MS'),
     PIPELINE_START_TIMEOUT_MS: config.getOrThrow<number>('PIPELINE_START_TIMEOUT_MS'),
-    MODEL_PLAN: config.getOrThrow<string>('MODEL_PLAN'),
-    MODEL_IMPLEMENT: config.getOrThrow<string>('MODEL_IMPLEMENT'),
-    AGENTS_PLAN: config.get<string>('AGENTS_PLAN') ?? '',
-    AGENTS_IMPLEMENT: config.get<string>('AGENTS_IMPLEMENT') ?? '',
-    AGENTS_REVIEW: config.get<string>('AGENTS_REVIEW') ?? '',
+    AGENTS_PLAN: config.getOrThrow<string>('AGENTS_PLAN'),
+    AGENTS_IMPLEMENT: config.getOrThrow<string>('AGENTS_IMPLEMENT'),
+    AGENTS_REVIEW: config.getOrThrow<string>('AGENTS_REVIEW'),
     AGENTS_SUBTASK_PLAN: config.get<string>('AGENTS_SUBTASK_PLAN') ?? '',
     AGENTS_SUBTASK_IMPLEMENT: config.get<string>('AGENTS_SUBTASK_IMPLEMENT') ?? '',
     AGENTS_SUBTASK_REVIEW: config.get<string>('AGENTS_SUBTASK_REVIEW') ?? '',

@@ -170,7 +170,7 @@ async function attach(
 ): Promise<void> {
   const runtime = runtimeFor(feature.runtime);
   if (!config.model) {
-    throw new Error('MODEL_IMPLEMENT is missing');
+    throw new Error('AGENTS_IMPLEMENT is missing');
   }
   const mounts = hostMounts(feature, root, config.checkoutsRoot);
   const workspace = mounts[0]?.containerPath ?? '/work';

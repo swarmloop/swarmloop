@@ -2,7 +2,6 @@ import { readFileSync } from 'fs';
 import { parseAgentList } from '../config/agents';
 import { splitList } from '../config/env';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
-import { RUNTIME_NAMES } from '../integrations/agent-runtime/agent-runtime.registry';
 
 export interface ShellConfig {
   runtime: RuntimeName;
@@ -32,7 +31,7 @@ export function readShellConfig(file: string): ShellConfig {
   }
   for (const line of body.split('\n')) {
     const match =
-      /^(?:export\s+)?(RUNTIME|MODEL_IMPLEMENT|AGENTS_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CODEX_AUTH|CODEX_API_KEY|CHECKOUTS_ROOT|SWARMLOOP_REPOS|SANDBOX_EGRESS|SANDBOX_DOCKER_RUNTIME)=(.*)$/.exec(
+      /^(?:export\s+)?(AGENTS_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CODEX_AUTH|CODEX_API_KEY|CHECKOUTS_ROOT|SWARMLOOP_REPOS|SANDBOX_EGRESS|SANDBOX_DOCKER_RUNTIME)=(.*)$/.exec(
         line.trim(),
       );
     if (!match) {
@@ -40,15 +39,10 @@ export function readShellConfig(file: string): ShellConfig {
     }
     values.set(match[1], unquote(match[2].trim()));
   }
-  const listed = values.get('AGENTS_IMPLEMENT') ?? '';
-  const implement = listed === '' ? undefined : parseAgentList('AGENTS_IMPLEMENT', listed)[0];
-  const runtime = implement?.runtime ?? values.get('RUNTIME');
-  if (!isRuntimeName(runtime)) {
-    throw new Error('RUNTIME is missing');
-  }
+  const implement = firstImplementAgent(values.get('AGENTS_IMPLEMENT') ?? '');
   return {
-    runtime,
-    model: implement?.model ?? values.get('MODEL_IMPLEMENT') ?? '',
+    runtime: implement.runtime,
+    model: implement.model,
     cursorKey: values.get('CURSOR_API_KEY') ?? '',
     anthropicKey: values.get('ANTHROPIC_API_KEY') ?? '',
     oauthToken: values.get('CLAUDE_CODE_OAUTH_TOKEN') ?? '',
@@ -61,8 +55,16 @@ export function readShellConfig(file: string): ShellConfig {
   };
 }
 
-function isRuntimeName(value: string | undefined): value is RuntimeName {
-  return RUNTIME_NAMES.some((name) => name === value);
+function firstImplementAgent(listed: string): { runtime: RuntimeName; model: string } {
+  try {
+    const [first] = listed === '' ? [] : parseAgentList('AGENTS_IMPLEMENT', listed);
+    if (first) {
+      return first;
+    }
+  } catch {
+    // An unparsable list is reported the same way as a missing one.
+  }
+  throw new Error('AGENTS_IMPLEMENT is missing or invalid');
 }
 
 function unquote(value: string): string {
