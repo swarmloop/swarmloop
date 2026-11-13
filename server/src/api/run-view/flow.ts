@@ -8,7 +8,7 @@ import type { StateFacts } from '../../history/run-state';
 import type { RunAction, RunState, StateReason } from '../../contract/run-state';
 import type { FlowItem, FlowView } from '../../contract/api';
 import type { LiveUsage } from '../../contract/live';
-import { isReviewStep, pipelineStepOf } from '../../contract/steps';
+import { isReviewStep, PHASES as CONTRACT_PHASES, PHASE_STEPS, pipelineStepOf } from '../../contract/steps';
 import { stepOutput } from '../../core/attempt-output';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered } from '../../steps/shared/answers';
@@ -95,7 +95,12 @@ export function returns(run: RunEntity): FlowView['returns'] {
   if (run.attemptsChecks > 0) {
     edges.push({ counter: 'checks', count: run.attemptsChecks, from: 'checks', to: 'implement' });
   }
-  return edges;
+  return edges.sort((a, b) => boardPlace(a.from) - boardPlace(b.from));
+}
+
+/** Where the phase that holds a step sits on the board; the lines nearest to implement come first. */
+function boardPlace(step: string): number {
+  return CONTRACT_PHASES.findIndex((phase) => PHASE_STEPS[phase].includes(step));
 }
 
 export function openItems(run: RunEntity, documents: DocumentEntity[], pasteUrls: string[]): FlowItem[] {

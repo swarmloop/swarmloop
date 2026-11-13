@@ -16,6 +16,8 @@ import { FlowRepository } from '../history/flow.repository';
 
 import { LiveHub } from '../live/live.hub';
 
+import { CheckCommandRepository } from '../history/check-command.repository';
+
 import { RunQueriesService } from './run-queries.service';
 
 import { RunCommandsService } from './run-commands.service';
@@ -187,6 +189,34 @@ describe('runs api', () => {
       const child = await app.get(RunCommandsService).openSubtask(parent, task);
 
       expect(child.startedBy).toBe('alice');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('carries only the rows of the latest checks attempt in the flow', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-check-rows-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const commands = app.get(CheckCommandRepository);
+      const run = await runs.begin('proj-rows', 'checks');
+      await runs.saveRun(run);
+      expect((await app.get(RunQueriesService).flow('proj-rows')).checkCommands).toBeUndefined();
+      await commands.add({ runId: run.id, attemptId: 'att-1', repo: 'api', command: 'npm test', commandIndex: 0 });
+      const second = await commands.add({
+        runId: run.id,
+        attemptId: 'att-2',
+        repo: 'api',
+        command: 'npm run lint',
+        name: 'lint',
+        commandIndex: 0,
+      });
+      await commands.save({ ...second, status: 'running' });
+      const flow = await app.get(RunQueriesService).flow('proj-rows');
+      expect(flow.checkCommands?.map((row) => [row.attempt, row.name, row.status])).toEqual([
+        ['att-2', 'lint', 'running'],
+      ]);
     } finally {
       await app.close();
     }

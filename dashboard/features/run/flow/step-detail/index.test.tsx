@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentProps, type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,6 +6,7 @@ import { LiveBridgeProvider, useLiveActions } from '../../../shell';
 import { receive, resetFakeSocket } from '../../../../test/fake-socket';
 import { QueryWrapper } from '../../../../test/query-wrapper';
 import { getRunLog, getStep, getStepEvents } from '../../../../lib/endpoints';
+import type { CheckCommandView } from '@contract/api';
 import { stepView, visitView } from '../../../../test/fixtures';
 import { commandEvents, stepEvent } from '../../../../test/step-events';
 import { StepDetail } from './index';
@@ -363,6 +364,7 @@ describe('StepDetail', () => {
     ] as const;
 
     beforeEach(() => {
+      vi.mocked(getRunLog).mockResolvedValue('');
       vi.mocked(getStep).mockResolvedValue(
         stepView({
           step: 'checks',
@@ -376,18 +378,14 @@ describe('StepDetail', () => {
     it('lists the commands of the visit with their status, duration and exit code', async () => {
       detail({ step: 'checks' });
 
-      const table = await screen.findByRole('table', { name: 'Check commands' });
-      const rows = within(table).getAllByRole('row').slice(1);
-      expect(rows).toHaveLength(5);
-      expect(rows.map((row) => within(row).getAllByRole('cell')[2]?.textContent)).toEqual([
-        'passed',
-        'failed',
-        'running',
-        'waiting',
-        'skipped',
-      ]);
-      expect(within(rows[1]).getAllByRole('cell')[3]).toHaveTextContent('2m 3s');
-      expect(within(rows[1]).getAllByRole('cell')[4]).toHaveTextContent('2');
+      await screen.findByRole('button', { name: /npm run lint/ });
+      const lines = screen.getAllByRole('listitem').filter((line) => within(line).queryByRole('button'));
+      expect(lines).toHaveLength(5);
+      expect(
+        lines.map((line) => within(line).getByText(/^(queued|running|passed|failed|skipped)$/).textContent),
+      ).toEqual(['passed', 'failed', 'running', 'queued', 'skipped']);
+      expect(lines[1]).toHaveTextContent('2m 3s');
+      expect(lines[1]).toHaveTextContent('exit 2');
     });
 
     it('shows the name of a command and falls back to the command line when it has none', async () => {
@@ -404,11 +402,11 @@ describe('StepDetail', () => {
       );
       detail({ step: 'checks' });
 
-      const table = await screen.findByRole('table', { name: 'Check commands' });
-      const rows = within(table).getAllByRole('row').slice(1);
-      expect(within(rows[0]).getAllByRole('cell')[1]).toHaveTextContent('server tests');
-      expect(within(rows[0]).getAllByRole('cell')[1]).toHaveAttribute('title', 'npm test');
-      expect(within(rows[1]).getAllByRole('cell')[1]).toHaveTextContent('npm run lint');
+      const user = userEvent.setup();
+      expect(await screen.findByRole('button', { name: 'Show server tests' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /npm run lint/ })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Show server tests' }));
+      expect(screen.getByText('npm test')).toBeInTheDocument();
     });
 
     it('shows passed/total and the slowest command in the header', async () => {
@@ -419,19 +417,17 @@ describe('StepDetail', () => {
 
     it('opens the full output of a finished command from its stored file', async () => {
       vi.mocked(getRunLog).mockResolvedValue('$ npm run lint\nerror: no-unused-vars\nexit 2\n');
-      const user = userEvent.setup();
       detail({ step: 'checks' });
 
-      await user.click(await screen.findByRole('button', { name: 'Show output of npm run lint' }));
-
-      expect(await screen.findByLabelText('Output of npm run lint')).toHaveTextContent('error: no-unused-vars');
+      const output = await screen.findByLabelText('Output of npm run lint');
+      await waitFor(() => expect(output).toHaveTextContent('error: no-unused-vars'));
       expect(getRunLog).toHaveBeenCalledWith('run-1', 'checks', 'att-1', { command: 1 });
     });
 
     it('streams the output of a running command as it arrives', async () => {
       const user = userEvent.setup();
       detail({ step: 'checks' });
-      await user.click(await screen.findByRole('button', { name: 'Show output of npm run build' }));
+      await user.click(await screen.findByRole('button', { name: 'Show npm run build' }));
 
       act(() =>
         receive('log', {
@@ -444,7 +440,42 @@ describe('StepDetail', () => {
       );
 
       expect(await screen.findByLabelText('Output of npm run build')).toHaveTextContent('compiling 12 files');
-      expect(getRunLog).not.toHaveBeenCalled();
+      expect(getRunLog).not.toHaveBeenCalledWith('run-1', 'checks', 'att-1', { command: 2 });
+    });
+
+    it('shows the rows of a second visit as the live flow delivers them, never "no check commands" while it runs', async () => {
+      vi.mocked(getStep).mockResolvedValue(
+        stepView({
+          step: 'checks',
+          visits: [visitView({ attemptId: 'att-2', status: 'running' })],
+          descriptor: { name: 'checks', kind: 'server' },
+          commands: [],
+        }),
+      );
+      const props = {
+        runKey: 'run-1',
+        step: 'checks',
+        live: true,
+        revision: '2026-01-01T00:00:00.000Z',
+        now: 0,
+        attempts: 1,
+      };
+      const { rerender } = render(<StepDetail {...props} />, { wrapper: Wrapper });
+
+      expect(await screen.findByText('0/0 passed')).toBeInTheDocument();
+      expect(screen.queryByText(/no check commands/)).toBeNull();
+
+      const live = [0, 1].map((index) => ({
+        ...commands[0],
+        attempt: 'att-2',
+        index,
+        status: index === 0 ? 'passed' : 'running',
+      }));
+      rerender(<StepDetail {...props} liveCommands={live as unknown as CheckCommandView[]} />);
+
+      expect(await screen.findByText(/^1\/2 passed/)).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /^Show / })).toHaveLength(2);
+      expect(screen.queryByText(/no check commands/)).toBeNull();
     });
   });
 });

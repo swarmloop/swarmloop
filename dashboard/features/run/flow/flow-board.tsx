@@ -7,7 +7,8 @@ import Typography from '@mui/material/Typography';
 import Undo from '@mui/icons-material/Undo';
 import { phaseLabel } from '../../../lib/phase-label';
 import { stepLabel, withReport } from '../phases';
-import type { FlowView } from '@contract/api';
+import type { CheckCommandView, FlowView } from '@contract/api';
+import { ChecksProgress } from './checks-progress';
 import { statusColor } from '../../../theme/theme';
 
 export function FlowBoard({
@@ -15,11 +16,14 @@ export function FlowBoard({
   returns,
   selected,
   onSelect,
+  checkCommands = [],
 }: {
   phases: FlowView['phases'];
   returns: FlowView['returns'];
   selected: string | null;
   onSelect: (name: string) => void;
+  /** The commands of the latest checks attempt: the checks card shows how far they are. */
+  checkCommands?: CheckCommandView[];
 }): ReactElement {
   const columns = Math.max(phases.length, 1);
   return (
@@ -51,6 +55,7 @@ export function FlowBoard({
                       aria-current={step.current ? 'step' : undefined}
                       sx={{
                         display: 'flex',
+                        flexWrap: 'wrap',
                         alignItems: 'center',
                         gap: 1,
                         width: '100%',
@@ -123,6 +128,9 @@ export function FlowBoard({
                         >
                           {step.attempts}
                         </Box>
+                      ) : null}
+                      {step.name === 'checks' && checkCommands.length > 0 ? (
+                        <ChecksProgress commands={checkCommands} />
                       ) : null}
                     </Box>
                   </Tooltip>

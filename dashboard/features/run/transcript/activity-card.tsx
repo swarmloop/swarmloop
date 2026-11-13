@@ -11,13 +11,17 @@ import type { TranscriptItem } from './transcript-model';
 export function ActivityCard({
   event,
   activity,
+  live,
 }: {
   event: Extract<StepEvent, { kind: 'activity.started' }>;
   activity: NonNullable<TranscriptItem['activity']>;
+  /** Whether the step is still running: an activity that never finished is `ended` once it is not. */
+  live: boolean;
 }): ReactElement {
   const { finished, commands, reads } = activity;
+  const running = !finished && live;
   const parts = [
-    finished ? duration(finished.durationMs) : 'running',
+    finished ? duration(finished.durationMs) : running ? 'running' : 'ended',
     commands.length > 0 ? `${commands.length} commands` : '',
     reads > 0 ? `${reads} git reads` : '',
   ].filter(Boolean);
@@ -25,7 +29,7 @@ export function ActivityCard({
     <Bubble
       side="left"
       title="Activity"
-      running={!finished}
+      running={running}
       meta={parts.join(' · ')}
       detail={
         commands.length > 0 ? (

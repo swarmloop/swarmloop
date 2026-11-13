@@ -54,6 +54,8 @@ function Card({
   attempt,
   agent,
   role,
+  live,
+  activities,
 }: {
   runKey: string;
   item: TranscriptItem;
@@ -61,6 +63,8 @@ function Card({
   attempt: number;
   agent: AgentLog | null;
   role: AgentRole | null;
+  live: boolean;
+  activities: boolean;
 }): ReactElement | null {
   const { event } = item;
   if (item.reads) {
@@ -78,7 +82,7 @@ function Card({
     case 'command.started':
       return <CommandCard event={event} end={item.end} />;
     case 'activity.started':
-      return item.activity ? <ActivityCard event={event} activity={item.activity} /> : null;
+      return item.activity && activities ? <ActivityCard event={event} activity={item.activity} live={live} /> : null;
     case 'agent.launched':
       return item.bubble ? <AgentCard bubble={item.bubble} agent={agent} role={role} /> : null;
     case 'agent.finished':
@@ -135,6 +139,7 @@ export function TranscriptFeed({
   role = null,
   live = false,
   now = 0,
+  activities = true,
 }: {
   runKey: string;
   /** What the step recorded. Null while it is read: the feed shows placeholders. */
@@ -149,6 +154,8 @@ export function TranscriptFeed({
   live?: boolean;
   /** The time now in ms, to tell how long a running step has been silent. */
   now?: number;
+  /** Whether the activity cards show. The checks window leaves them out: it lists its commands itself. */
+  activities?: boolean;
 }): ReactElement {
   const [unseen, setUnseen] = useState(false);
   const width = useBubbleWidth();
@@ -265,6 +272,8 @@ export function TranscriptFeed({
                   attempt={group.number}
                   agent={item.event.eventId === lastLaunch ? agent : null}
                   role={role}
+                  live={live}
+                  activities={activities}
                 />
               </BubbleProvider>
             );

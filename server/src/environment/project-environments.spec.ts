@@ -142,7 +142,7 @@ function setup(
       return Promise.resolve(child);
     }),
   };
-  const live = { log: jest.fn() };
+  const live = { log: jest.fn(), changed: jest.fn() };
   const listed = `${options.RUNTIME ?? 'codex'}:m`;
   const env = testEnv({
     AGENTS_PLAN: listed,

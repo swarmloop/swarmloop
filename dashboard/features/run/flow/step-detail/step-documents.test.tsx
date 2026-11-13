@@ -144,4 +144,65 @@ describe('StepDocuments', () => {
       expectNoRawJson(document.body);
     });
   });
+
+  describe('the checks window', () => {
+    const at = (second: number) => `2026-01-01T00:00:0${second}.000Z`;
+    const rows = [0, 1].map((index) => ({
+      attempt: 'att-1',
+      index,
+      repo: 'api',
+      command: `npm run step${index}`,
+      name: `step ${index}`,
+      status: 'passed' as const,
+      startedAt: at(0),
+      endedAt: at(2),
+      exitCode: 0,
+    }));
+    const finished = visitView({
+      attemptId: 'att-1',
+      status: 'done',
+      samples: [
+        { at: at(0), cpu: 10, memory: 100, source: '0' },
+        { at: at(1), cpu: 20, memory: 200, source: '1' },
+      ],
+      documents: [
+        {
+          kind: 'checks',
+          attempt: 1,
+          body: JSON.stringify({ repo: 'api', command: 'npm test', exitCode: 0, tail: '\u001b[32mok\u001b[0m' }),
+          createdAt: 't',
+        },
+      ],
+    });
+    const serverChecks = stepEvent(
+      1,
+      { kind: 'activity.started', spanId: 'act', title: 'Server checks' },
+      { step: 'checks' },
+    );
+
+    it('draws one total chart, then the commands, then the transcript', () => {
+      documents({ shownChecks: [], visit: finished, commands: rows, events: [serverChecks] });
+
+      const chart = screen.getByRole('img', { name: 'CPU and memory' });
+      const list = screen.getByRole('list', { name: 'Check commands' });
+      const transcript = screen.getByTestId('transcript-feed');
+      expect(screen.getAllByRole('img', { name: 'CPU and memory' })).toHaveLength(1);
+      expect(screen.queryByText(/^command 0/)).toBeNull();
+      expect(chart.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(list.compareDocumentPosition(transcript) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('keeps no raw result document and no Server checks card in a finished visit', () => {
+      documents({ shownChecks: [], visit: finished, commands: rows, events: [] });
+      expect(screen.queryByText(/^\{"/)).toBeNull();
+      expect(document.body.textContent).not.toContain('\u001b');
+      expect(screen.queryByText('checks')).toBeNull();
+    });
+
+    it('shows no Server checks card, also when its activity never finished', () => {
+      documents({ shownChecks: [], visit: finished, commands: rows, events: [serverChecks] });
+
+      expect(screen.queryByText('Server checks')).toBeNull();
+    });
+  });
 });

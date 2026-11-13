@@ -17,11 +17,14 @@ import type { IssueLinks } from '../../transcript/transcript-model';
 import { CheckCommands } from './check-commands';
 import { StepChart } from './step-chart';
 
-/** The documents of a visit from before events were kept, once each. The log and the review documents have their own place. */
-function legacyDocuments(visit: StepView['visits'][number] | undefined): StepView['visits'][number]['documents'] {
+/** The documents of a visit from before events were kept, once each. The log, the review documents and, in a window that lists its commands, the checks result have their own place. */
+function legacyDocuments(
+  visit: StepView['visits'][number] | undefined,
+  commands: boolean,
+): StepView['visits'][number]['documents'] {
   const latest = new Map<string, StepView['visits'][number]['documents'][number]>();
   for (const item of visit?.documents ?? []) {
-    if (item.kind !== 'log' && !item.kind.startsWith('review_') && item.body) {
+    if (item.kind !== 'log' && !item.kind.startsWith('review_') && !(commands && item.kind === 'checks') && item.body) {
       latest.set(item.kind, item);
     }
   }
@@ -90,8 +93,8 @@ export function StepDocuments({
           })}
         </Box>
       ) : null}
-      {commands ? <CheckCommands runKey={runKey} commands={commands} now={now} /> : null}
-      <StepChart visit={visit} />
+      <StepChart visit={visit} total={commands !== undefined} />
+      {commands ? <CheckCommands runKey={runKey} commands={commands} visit={visit} now={now} /> : null}
       {events === null || recorded ? (
         <TranscriptFeed
           runKey={runKey}
@@ -101,6 +104,7 @@ export function StepDocuments({
           role={role}
           live={visit?.status === 'running'}
           now={now}
+          activities={commands === undefined}
         />
       ) : null}
       {recorded && agentStep && !launched ? <AgentLogPanel agent={agent} tools={false} open /> : null}
@@ -116,7 +120,7 @@ export function StepDocuments({
       ) : null}
       {document ? <MarkdownBody text={document} /> : null}
       {events?.length === 0
-        ? legacyDocuments(visit).map((item) => (
+        ? legacyDocuments(visit, commands !== undefined).map((item) => (
             <Box key={item.kind} sx={{ mt: 2, minWidth: 0 }}>
               <Typography variant="caption" color="text.secondary">
                 {item.kind}

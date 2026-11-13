@@ -76,7 +76,13 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         onRebase={rebaseRun}
         onStop={() => setConfirmStop(true)}
       />
-      <FlowBoard phases={phases} returns={flow.returns} selected={selected} onSelect={selectStep} />
+      <FlowBoard
+        phases={phases}
+        returns={flow.returns}
+        selected={selected}
+        onSelect={selectStep}
+        checkCommands={flow.checkCommands}
+      />
       {flow.tasks?.length ? (
         <TaskLayers
           layers={flow.tasks}
@@ -101,6 +107,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
           revision={flow.updatedAt}
           attempts={phases.flatMap((phase) => phase.steps).find((step) => step.name === selected)?.attempts ?? 0}
           now={now}
+          liveCommands={flow.checkCommands}
           onReplay={
             selected === 'code-review' || flow.status === 'running' || !flow.actions.includes('replay')
               ? undefined

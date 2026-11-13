@@ -2,7 +2,7 @@ import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/en
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { phases, reason, sentence } from './flow';
+import { phases, reason, returns, sentence } from './flow';
 
 describe('failure reason', () => {
   it('shows the current pipeline error instead of an older failing test', () => {
@@ -23,6 +23,13 @@ describe('failure reason', () => {
       { stepStatId: 2, kind: 'error', body: 'pipeline failed' },
     ] as DocumentEntity[];
     expect(reason(run, documents, stats)).toContain('sha: new');
+  });
+});
+
+describe('return lines', () => {
+  it('lists returns from checks, code-review and pipeline in board order', () => {
+    const run = { attemptsReview: 1, attemptsPipeline: 2, attemptsChecks: 3 } as RunEntity;
+    expect(returns(run).map((edge) => edge.from)).toEqual(['checks', 'code-review', 'pipeline']);
   });
 });
 

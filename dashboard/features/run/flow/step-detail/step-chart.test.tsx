@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { visitView } from '../../../../test/fixtures';
-import { StepChart } from './step-chart';
+import { CommandChart, StepChart } from './step-chart';
 
 describe('StepChart', () => {
   it('shows nothing when there is no visit', () => {
@@ -71,5 +71,30 @@ describe('StepChart', () => {
     );
 
     expect(screen.getByRole('img', { name: 'CPU and memory' })).toBeInTheDocument();
+  });
+
+  it('draws the step total only when asked, without a line for each command', () => {
+    const at = (second: number) => `2026-01-01T00:00:0${second}.000Z`;
+    const samples = [
+      { at: at(0), cpu: 10, memory: 100, source: '0' },
+      { at: at(1), cpu: 20, memory: 200, source: '1' },
+    ];
+    render(<StepChart total visit={visitView({ status: 'done', samples })} />);
+
+    expect(screen.getByText(/^total 30%/)).toBeInTheDocument();
+    expect(screen.queryByText(/command 0/)).toBeNull();
+  });
+});
+
+describe('CommandChart', () => {
+  it('draws only the samples of its own command', () => {
+    const at = (second: number) => `2026-01-01T00:00:0${second}.000Z`;
+    const samples = [
+      { at: at(0), cpu: 10, memory: 100, source: '0' },
+      { at: at(1), cpu: 55, memory: 200, source: '1' },
+    ];
+    render(<CommandChart index={1} visit={visitView({ status: 'done', samples })} />);
+
+    expect(screen.getByText('CPU 55%')).toBeInTheDocument();
   });
 });

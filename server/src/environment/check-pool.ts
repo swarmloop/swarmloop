@@ -5,6 +5,7 @@ import type { CheckCommandRepository } from '../history/check-command.repository
 import type { DocumentRepository } from '../history/document.repository';
 import type { CheckCommandEntity } from '../history/entities';
 import { footprintOf } from '../sandbox/footprint';
+import type { LiveHub } from '../live/live.hub';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import type { CheckedRepo, EnvironmentInput } from './environment-types';
 import { runShell, type ShellDeps } from './run-shell';
@@ -17,6 +18,7 @@ interface CheckPoolDeps {
   sandbox: Pick<SandboxService, 'snapshot'>;
   documents: Pick<DocumentRepository, 'putDocument'>;
   commands: Pick<CheckCommandRepository, 'save'>;
+  live?: Pick<LiveHub, 'changed'>;
   shell: () => ShellDeps;
 }
 
@@ -64,6 +66,7 @@ export class CheckPool {
   async runAll(input: EnvironmentInput, attemptId: string, repos: CheckedRepo[]): Promise<void> {
     const jobs = repos.flatMap((repo) => repo.rows.map((row) => ({ repo, row })));
     const errors: unknown[] = [];
+    this.deps.live?.changed(input.key);
     let next = 0;
     const worker = async (): Promise<void> => {
       for (let job = jobs[next++]; job; job = jobs[next++]) {
@@ -87,7 +90,7 @@ export class CheckPool {
     row: CheckCommandEntity,
   ): Promise<CheckResult> {
     const { clock, shell } = this.deps;
-    await this.mark(row, { status: 'running', startedAt: clock.iso() });
+    await this.mark(input, row, { status: 'running', startedAt: clock.iso() });
     const name = row.name ?? row.command;
     let outcome: Awaited<ReturnType<typeof runOnceMoreAlone>>;
     try {
@@ -105,7 +108,7 @@ export class CheckPool {
         },
       );
     } catch (error) {
-      await this.mark(row, { status: 'failed', endedAt: clock.iso() });
+      await this.mark(input, row, { status: 'failed', endedAt: clock.iso() });
       throw error;
     }
     const killedAt = outcome.outOfMemoryBytes;
@@ -113,7 +116,7 @@ export class CheckPool {
       exitCode: outcome.exitCode,
       tail: killedAt === undefined ? outcome.tail : `ran out of memory at ${gigabytes(killedAt)} GB`,
     };
-    await this.mark(row, {
+    await this.mark(input, row, {
       status: result.exitCode === 0 ? 'passed' : 'failed',
       exitCode: result.exitCode,
       endedAt: clock.iso(),
@@ -129,7 +132,12 @@ export class CheckPool {
     return result;
   }
 
-  private async mark(row: CheckCommandEntity, patch: Partial<CheckCommandEntity>): Promise<void> {
+  private async mark(
+    input: EnvironmentInput,
+    row: CheckCommandEntity,
+    patch: Partial<CheckCommandEntity>,
+  ): Promise<void> {
     await this.deps.commands.save(Object.assign(row, patch));
+    this.deps.live?.changed(input.key);
   }
 }

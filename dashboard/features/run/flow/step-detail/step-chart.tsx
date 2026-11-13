@@ -43,7 +43,14 @@ function sourceLines(samples: Sample[]): SeriesLine[] | undefined {
 }
 
 /** The chart of the containers the visit started. The server process itself is not a container. */
-export function StepChart({ visit }: { visit: StepView['visits'][number] | undefined }): ReactElement | null {
+export function StepChart({
+  visit,
+  total = false,
+}: {
+  visit: StepView['visits'][number] | undefined;
+  /** Draw the step total only, not a line for each source. */
+  total?: boolean;
+}): ReactElement | null {
   if (!visit) {
     return null;
   }
@@ -57,7 +64,19 @@ export function StepChart({ visit }: { visit: StepView['visits'][number] | undef
   }
   return (
     <Box sx={{ mt: 2 }}>
-      <SeriesChart samples={samples} lines={sourceLines(samples)} />
+      <SeriesChart samples={samples} lines={total ? [totalLine(samples)] : sourceLines(samples)} />
     </Box>
   );
+}
+
+/** The chart of one check command: the samples of its container. */
+export function CommandChart({
+  visit,
+  index,
+}: {
+  visit: StepView['visits'][number] | undefined;
+  index: number;
+}): ReactElement {
+  const samples = (visit?.samples ?? []).filter((sample) => sample.source === String(index));
+  return <SeriesChart samples={samples} />;
 }

@@ -31,7 +31,7 @@ import { taskRuns } from './run-view/task-runs';
 import { ReviewerSteps } from './run-view/reviewer-steps';
 import { visitKey } from '../contract/visit-key';
 import { launchView, liveVisit, loopView } from './run-view/live';
-import { commandViewsOf, exchangesOf, reviewChecks, samplesOf } from './run-view/visit-parts';
+import { commandViewsOf, exchangesOf, latestCommandViews, reviewChecks, samplesOf } from './run-view/visit-parts';
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
 import { readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
 import { openSpend } from './run-queries-spend';
@@ -115,6 +115,7 @@ export class RunQueriesService {
     const maxReturns = this.config.env.MAX_RETURNS;
     const reportMs = await this.visits.codeReviewReportMs(run.id);
     const children = await this.runs.children(run);
+    const checkCommands = latestCommandViews(await this.checkCommands.list(run.id));
     return {
       key: run.key,
       name: runName(run.key, run.prompt),
@@ -141,6 +142,7 @@ export class RunQueriesService {
       ),
       phases: phases(shown, stats, documents, root(this.config)),
       returns: returns(shown),
+      ...(checkCommands.length > 0 ? { checkCommands } : {}),
       items: open,
       paths: run.currentStep === 'commit' ? parsePaths(latest(documents, 'commit') ?? '') : [],
       reason: reason(shown, documents, stats),

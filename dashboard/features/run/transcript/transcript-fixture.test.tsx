@@ -192,6 +192,29 @@ describe('the step window for a fixture run', () => {
     expect(screen.getByText('git -C swarmloop switch -c feature/ship-the-field')).toBeInTheDocument();
   });
 
+  it('never shows an activity that did not finish as running once the visit ended', () => {
+    const events = [stepEvent(1, { kind: 'activity.started', spanId: 'a', title: 'Server checks' })];
+    const view = render(<TranscriptFeed runKey="run-1" events={events} live={false} />, { wrapper: QueryWrapper });
+
+    expect(screen.getByText('Server checks')).toBeInTheDocument();
+    expect(screen.getByText('ended')).toBeInTheDocument();
+    expect(screen.queryByText(/running/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+
+    view.rerender(<TranscriptFeed runKey="run-1" events={events} live />);
+
+    expect(screen.getByText('running')).toBeInTheDocument();
+  });
+
+  it('leaves the activity cards out when the window lists its commands itself', () => {
+    const events = [stepEvent(1, { kind: 'activity.started', spanId: 'a', title: 'Server checks' })];
+    render(<TranscriptFeed runKey="run-1" events={events} live={false} activities={false} />, {
+      wrapper: QueryWrapper,
+    });
+
+    expect(screen.queryByText('Server checks')).not.toBeInTheDocument();
+  });
+
   it('shows what the attempt came to, and the changed files and the checks of an implement attempt', () => {
     feed(fixtureRun());
 

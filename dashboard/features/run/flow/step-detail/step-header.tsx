@@ -37,13 +37,11 @@ const stepMetricIcon: Partial<Record<StepMetricKind, typeof Schedule>> = {
   memory: MemoryIcon,
 };
 
-/** `<runtime> · <model>` for an agent step, `server` for a server step, and the reviewers of code review. */
-function describe({ kind, agent, reviewers }: StepDescriptor): string {
+/** `<runtime> · <model>` for an agent step, and the reviewers of code review. */
+function describe({ agent, reviewers }: StepDescriptor): string {
   const parts: string[] = [];
   if (agent) {
     parts.push(agent.runtime, agent.model);
-  } else if (kind === 'server') {
-    parts.push('server');
   }
   if (reviewers) {
     parts.push(`reviewers: ${reviewers.map((item) => item.name).join(', ')}`);
@@ -97,6 +95,7 @@ export function StepHeader({
   /** The slowest server command between the previous visit's end and this visit's first event. */
   slowestPrepared?: { command: string; ms: number } | null;
 }): ReactElement {
+  const server = view.descriptor.kind === 'server';
   return (
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, minWidth: 0 }}>
@@ -138,15 +137,11 @@ export function StepHeader({
           />
         ) : null}
       </Box>
-      <Typography sx={{ mt: 0.5, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'text.secondary' }}>
-        {describe(view.descriptor)}
-      </Typography>
-      {commands ? (
-        <Typography sx={{ mt: 0.5, fontFamily: 'var(--font-mono)', fontSize: 13 }}>
-          {commands.passed}/{commands.total} passed
-          {commands.slowest ? ` · slowest: ${commands.slowest.command} ${duration(commands.slowest.ms)}` : ''}
+      {server ? null : (
+        <Typography sx={{ mt: 0.5, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'text.secondary' }}>
+          {describe(view.descriptor)}
         </Typography>
-      ) : null}
+      )}
       {problem ? (
         <Link
           href={`#${problemId(problem)}`}
@@ -181,7 +176,14 @@ export function StepHeader({
               {slowestPrepared ? ` · slowest: ${slowestPrepared.command} ${duration(slowestPrepared.ms)}` : ''}
             </Box>
           ) : null}
+          {commands ? (
+            <Box component="span">
+              {commands.passed}/{commands.total} passed
+              {commands.slowest ? ` · slowest: ${commands.slowest.command} ${duration(commands.slowest.ms)}` : ''}
+            </Box>
+          ) : null}
           {stepMetrics({
+            server,
             status: label,
             attempt: shownAttempt,
             durationMs: shownDuration,
