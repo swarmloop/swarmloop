@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import type { ReadinessItem } from '../contract/api';
+import type { ReadinessItem } from '../contract/readiness';
 import type { ReadinessService } from '../readiness/readiness.service';
 import type { AppConfig } from '../config/env';
 import { DoctorCommand } from './doctor.command';
@@ -9,7 +9,10 @@ const config = { env: { SWARMLOOP_ROOT: '/unused', SWARMLOOP_TOKEN: 'machine-sec
 async function doctor(items: ReadinessItem[]): Promise<string> {
   const out = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
   try {
-    await new DoctorCommand({ report: async () => ({ items }) } as ReadinessService, config).run();
+    await new DoctorCommand(
+      { fresh: async () => ({ items, checkedAt: null, load: null }) } as ReadinessService,
+      config,
+    ).run();
     return out.mock.calls.map(([text]) => String(text)).join('');
   } finally {
     out.mockRestore();

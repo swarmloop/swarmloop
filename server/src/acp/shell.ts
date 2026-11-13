@@ -12,16 +12,15 @@ import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import {
   agentStateDir,
   containerName,
-  hostName,
   agentImage,
-  isLocalHost,
   modelApiHosts,
   modelCredential,
   prepareStateDir,
   sandboxArgs,
-  sandboxNetworkName,
   sandboxUserId,
 } from '../sandbox/sandbox-launch';
+import { hostName, isLocalHost, sandboxNetworkName } from '../sandbox/sandbox-hosts';
+import { footprintOf, memoryCap } from '../sandbox/footprint';
 import { workRootsAt } from '../sandbox/allowed-path';
 import { collectEnvMasks } from '../sandbox/env-masks';
 import type { ShellFeature, ShellMatch } from '../contract/api';
@@ -219,6 +218,7 @@ async function attach(
     stateDaemonPath: statePath,
     stdin: interactive,
     tty: interactive,
+    memoryCapBytes: memoryCap('agent', footprintOf('agent', [])),
   };
   const egress =
     egressMode(config.egress) === 'proxy'

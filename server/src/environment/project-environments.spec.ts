@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { mkdtempSync, writeFileSync } from 'fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, join } from 'path';
 import { PassThrough } from 'stream';
@@ -36,6 +36,8 @@ function setup(
     config?: unknown;
     onCheck?: (repo: string) => void;
     imageId?: () => string;
+    /** The line a queued container hears from the budget before it starts. */
+    wait?: string;
     /** The runtime of the server's agent lists. An agent's own runtime never comes from it. */
     RUNTIME?: 'claude' | 'codex';
   } = {},
@@ -99,6 +101,9 @@ function setup(
     kill: jest.fn().mockResolvedValue(undefined),
     spawn: jest.fn((launch: SandboxLaunch) => {
       spawned.push(launch);
+      if (options.wait) {
+        launch.onWait?.(options.wait);
+      }
       const child = Object.assign(new EventEmitter(), {
         stdout: new PassThrough(),
         stderr: new PassThrough(),
@@ -275,6 +280,26 @@ describe('ProjectEnvironments', () => {
     await expect(service.prepare(input)).rejects.toThrow('environment setup failed (exit 1)');
     expect(spawned).toHaveLength(2);
     expect(records().at(-1)?.setup?.tail).toContain('npm warn old');
+  });
+
+  it('shows a queued check and a queued setup the wait line live only, then their normal output', async () => {
+    const wait = 'waiting for machine resources: 2 checks run';
+    const { service, input, live, stored, root } = setup({ wait });
+    await service.check(input);
+    const logs = live.log.mock.calls.map(([entry]: [{ body: string; command?: number }]) => entry);
+    const waited = logs.filter((entry) => entry.body.includes(wait));
+    expect(waited.some((entry) => entry.command === 0)).toBe(true);
+    expect(waited.some((entry) => entry.command === undefined)).toBe(true);
+    const lastCheck = logs.filter((entry) => entry.command === 0).at(-1);
+    expect(lastCheck?.body).toContain('added 12 packages');
+    expect(lastCheck?.body).not.toContain(wait);
+    const record = JSON.parse(stored.find((document) => document.kind === 'checks')!.body);
+    expect(JSON.stringify(record)).not.toContain(wait);
+    const files = readdirSync(join(root, 'data'), { withFileTypes: true }).filter((entry) => entry.isFile());
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      expect(readFileSync(join(root, 'data', file.name), 'utf8')).not.toContain(wait);
+    }
   });
 
   it('runs required checks without model credentials and records actual exit codes', async () => {

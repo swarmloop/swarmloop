@@ -11,7 +11,8 @@ import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime';
 import type { LiveHub } from '../live/live.hub';
 import { containerSampler } from '../sandbox/container-sampler';
 import type { ManifestHosts, ProjectLaunch } from '../sandbox/sandbox-launch';
-import { agentStateDir, sandboxUserId, setupHosts } from '../sandbox/sandbox-launch';
+import { setupHosts } from '../sandbox/sandbox-hosts';
+import { agentStateDir, sandboxUserId } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 
 const SETUP_TIMEOUT_MS = 30 * 60_000;
@@ -35,6 +36,8 @@ export interface ShellDeps {
   clock: Clock;
   sandbox: Pick<SandboxService, 'spawn' | 'kill' | 'stats'>;
   live?: Pick<LiveHub, 'log'>;
+  /** True for a run the user stopped: its containers die by docker stop and kill, not by their memory cap. */
+  halted?: (key: string) => boolean;
 }
 
 /**
@@ -48,10 +51,12 @@ export async function runShell(
   command: string,
   mount: SandboxMount,
   phase: 'setup' | 'checks',
-  check?: { index: number; file: string },
+  check?: { index: number; file: string; name?: string },
   /** The manifest hosts of the setup. Checks get none. */
   manifest?: ManifestHosts,
-): Promise<{ exitCode: number; tail: string }> {
+  /** A check that ran out of memory runs again with these: alone, under the cap the budget allows. */
+  limits?: { alone: boolean; memoryCapBytes: number },
+): Promise<{ exitCode: number; tail: string; outOfMemoryBytes?: number }> {
   const { root, clock, sandbox, live } = deps;
   const userId = sandboxUserId();
   const unit = check ? `${basename(mount.hostPath)}-${check.index}` : basename(mount.hostPath);
@@ -71,6 +76,8 @@ export async function runShell(
       lines.splice(1, lines.length - keep);
     }
   };
+  // The wait for machine resources is live only: it never reaches the output file, the tail or the exit code.
+  let waiting = '';
   let shown = 0;
   const show = (force = false) => {
     const now = clock.now();
@@ -79,7 +86,7 @@ export async function runShell(
       live?.log({
         key: input.key,
         step: input.step,
-        body: `${lines.slice(-LIVE_LINES).join('\n')}\n`,
+        body: `${[...lines.slice(-LIVE_LINES), ...(waiting ? [waiting] : [])].join('\n')}\n`,
         ...(check ? { command: check.index, samples: liveSamples(input.samples ?? []) } : {}),
       });
     }
@@ -94,6 +101,15 @@ export async function runShell(
     args: [command],
   });
   let timedOut = false;
+  const repo = basename(mount.hostPath);
+  const work =
+    phase === 'checks'
+      ? {
+          kind: 'check' as const,
+          name: check?.name ?? command,
+          label: `check ${check?.name ?? command} of ${input.key}`,
+        }
+      : { kind: 'setup' as const, name: repo, label: `setup of ${repo} for ${input.key}` };
   const child = await sandbox
     .spawn({
       runtime: input.runtime,
@@ -107,12 +123,19 @@ export async function runShell(
       command: [],
       userId,
       project: { ...launch, shell: command },
+      work,
+      ...(limits ? { alone: limits.alone, memoryCapBytes: limits.memoryCapBytes } : {}),
+      onWait: (line) => {
+        waiting = line;
+        show(true);
+      },
     })
     .catch((error: unknown) => {
       finish({ exitCode: null });
       file?.end();
       throw error;
     });
+  waiting = '';
   const take = containerSampler(
     sandbox,
     clock,
@@ -170,7 +193,11 @@ export async function runShell(
     mkdirSync(dirname(outputFile), { recursive: true });
     writeFileSync(outputFile, `${lines.join('\n')}\n`);
   }
-  return { exitCode, tail: lines.slice(-TAIL_LINES).join('\n').slice(-TAIL_CHARS) };
+  const tail = lines.slice(-TAIL_LINES).join('\n').slice(-TAIL_CHARS);
+  // 137 is a kill by the container's memory cap unless swarmloop killed it: the timeout or a Stop.
+  return exitCode === 137 && !timedOut && !deps.halted?.(input.key) && child.memoryCapBytes !== undefined
+    ? { exitCode, tail, outOfMemoryBytes: child.memoryCapBytes }
+    : { exitCode, tail };
 }
 
 function liveSamples(samples: readonly SampleDraft[]): LiveSample[] {

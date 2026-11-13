@@ -14,7 +14,7 @@ import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
 import { NewRunDialog } from '../features/new-run';
-import { useReadiness } from '../features/readiness';
+import { ReadinessStatus, useReadiness } from '../features/readiness';
 import { RemoveRunDialog, RunList, useRuns } from '../features/runs';
 import { Account, Shell, useNewRun } from '../features/shell';
 
@@ -141,6 +141,7 @@ function DashboardFrame({
               {connected ? 'live' : 'offline'}
             </Typography>
           </Box>
+          <ReadinessStatus />
           <Box component="span" title={blocker?.action}>
             <Button variant="contained" startIcon={<AddIcon />} onClick={openNewRun} disabled={blocker !== null}>
               New run

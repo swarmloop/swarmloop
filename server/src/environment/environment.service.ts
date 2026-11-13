@@ -1,6 +1,7 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
+import { HaltedRuns } from '../core/halted-runs';
 import { basename } from 'path';
 import { git } from '../git/git';
 import type { RunEntity } from '../history/entities';
@@ -23,8 +24,17 @@ export class EnvironmentService extends ProjectEnvironments {
     private readonly repository: DocumentRepository,
     commands: CheckCommandRepository,
     @Optional() live?: LiveHub,
+    @Optional() haltedRuns?: HaltedRuns,
   ) {
-    super({ env: () => config.env, clock, sandbox, documents: repository, commands, live });
+    super({
+      env: () => config.env,
+      clock,
+      sandbox,
+      documents: repository,
+      commands,
+      live,
+      halted: (key) => haltedRuns?.halted(key) ?? false,
+    });
   }
 
   /** The check commands the run's repositories list, from the environment the run stored. */

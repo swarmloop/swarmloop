@@ -47,6 +47,8 @@ describe('DashboardShell readiness', () => {
   it('disables the header New run with the action while an item fails, and keeps the page usable', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [{ id: 'docker', status: 'fail', line: 'docker is not running', action: 'start Docker' }],
+      checkedAt: null,
+      load: null,
     });
     renderShell();
     expect(await screen.findByTitle('start Docker')).toBeInTheDocument();
@@ -59,5 +61,18 @@ describe('DashboardShell readiness', () => {
     renderShell();
     await screen.findByText('page content');
     expect(screen.getByRole('button', { name: 'New run' })).toBeEnabled();
+  });
+
+  it.each(['/', '/runs/x'])('shows the readiness status in the header on %s', async (path) => {
+    vi.mocked(usePathname).mockReturnValue(path);
+    vi.mocked(getReadiness).mockResolvedValue({
+      items: [{ id: 'docker', status: 'fail', line: 'docker is not running', action: 'start Docker' }],
+      checkedAt: null,
+      load: null,
+    });
+    renderShell();
+    expect(await screen.findByRole('link', { name: 'Readiness: problem' })).toHaveAttribute('href', '/#readiness');
+    expect(await screen.findAllByTitle('start Docker')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'New run' })).toBeDisabled();
   });
 });

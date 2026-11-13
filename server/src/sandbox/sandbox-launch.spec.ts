@@ -10,19 +10,17 @@ import { collectEnvMasks } from './env-masks';
 import { SandboxService } from './sandbox.service';
 import { parseDockerStats } from './docker-stats';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
+import { hostRefusal, packageRegistries, setupHosts } from './sandbox-hosts';
 import {
   agentStateDir,
   emptyEnvFile,
-  hostRefusal,
   modelCredential,
-  packageRegistries,
   mountsForRun,
   resolveDaemonPath,
   KEEP_PATH,
   sandboxArgs,
   sandboxEngine,
   sandboxUserId,
-  setupHosts,
   stepContainers,
 } from '../sandbox/sandbox-launch';
 
@@ -46,6 +44,19 @@ function launch(patch: Partial<SandboxLaunch> = {}): SandboxLaunch {
 }
 
 describe('sandbox launch', () => {
+  describe('machine limits', () => {
+    it('gives every container a lower CPU weight than the default', () => {
+      const args = sandboxArgs(launch(), home, '');
+      expect(args[args.indexOf('--cpu-shares') + 1]).toBe('512');
+    });
+
+    it('caps the memory only when a cap is given', () => {
+      expect(sandboxArgs(launch(), home, '')).not.toContain('--memory');
+      const args = sandboxArgs(launch({ memoryCapBytes: 6 * 1024 ** 3 }), home, '');
+      expect(args[args.indexOf('--memory') + 1]).toBe('6442450944b');
+    });
+  });
+
   describe('run labels', () => {
     it('labels every run container with its run, step and attempt', () => {
       const labels = (args: string[]) => args.filter((arg, index) => args[index - 1] === '--label');

@@ -1,4 +1,3 @@
-import { join } from 'path';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
@@ -7,28 +6,18 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
 import { AwakeTime, SAMPLE_MS } from '../core/awake-time';
 import type { AgentRuntime, AgentTools } from '../integrations/agent-runtime/agent-runtime';
-import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
-import { runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
-import type { SandboxMount } from '../core/sandbox-mount';
-import {
-  agentStateDir,
-  modelApiHosts,
-  modelCredential,
-  prepareStateDir,
-  writeHomeFiles,
-  sandboxUserId,
-} from '../sandbox/sandbox-launch';
+import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
+import { modelApiHosts, modelCredential } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
 import { emptyResult, type AgentRunResult } from './agent-result';
 export type { AgentRunResult } from './agent-result';
 import { callsExceeded, type KillReason } from './limits';
-import { syncChatMode } from './chat-mode';
-import { sessionHome } from '../history/session-group';
 import { RunStop } from './run-stop';
 import { loadPriceTable } from './prices';
 import { recordLaunch } from './agent-launches';
-import { briefMounts, readOnlyTree, spillPrompt } from './agent-args';
+import { readOnlyTree } from './agent-args';
+import { AgentLaunchPrep } from './agent-launch-prep';
 import { AgentProcess } from './agent-process';
 import {
   AGENT_BACKGROUND_KILLED_CONTINUE,
@@ -53,18 +42,10 @@ export const AGENT_RUNNER = Symbol('AGENT_RUNNER');
 
 export type AgentRunInput = BaseAgentRunInput & { tools: AgentTools };
 
-/** What one launch needs before it is spawned. */
-interface Launch {
-  userId: ReturnType<typeof sandboxUserId>;
-  statePath: string;
-  args: string[];
-  briefs: SandboxMount[];
-}
-
 @Injectable()
 export class AgentProcessRunner {
   private readonly logger = new Logger(AgentProcessRunner.name);
-  private codexAuth: CodexAuthStore | null = null;
+  private readonly launchPrep: AgentLaunchPrep;
 
   constructor(
     private readonly config: AppConfig,
@@ -72,7 +53,9 @@ export class AgentProcessRunner {
     private readonly sandbox: SandboxService,
     private readonly runStop: RunStop,
     @Optional() private readonly live?: LiveHub,
-  ) {}
+  ) {
+    this.launchPrep = new AgentLaunchPrep(config, clock, live);
+  }
 
   async run(input: AgentRunInput): Promise<AgentRunResult> {
     try {
@@ -157,16 +140,6 @@ export class AgentProcessRunner {
     }
   }
 
-  /** The subscription login, refreshed once by the server so parallel containers never race on it. */
-  private async codexLogin(runtime: RuntimeName, env: AppConfig['env']): Promise<string> {
-    if (runtime !== 'codex' || env.CODEX_AUTH === '') {
-      return env.CODEX_AUTH;
-    }
-    const dir = join(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), 'data', 'codex');
-    this.codexAuth ??= new CodexAuthStore(dir, codexAuthDeps(this.clock));
-    return this.codexAuth.current(env.CODEX_AUTH);
-  }
-
   /** One launch of the process: spawn it, read its stream until it exits, and return what it did. */
   private async once(
     input: AgentRunInput,
@@ -175,7 +148,7 @@ export class AgentProcessRunner {
     priorOutput: string,
   ): Promise<AgentRunResult> {
     const env = this.config.env;
-    const launch = this.prepare(input, runtime, resumed);
+    const launch = this.launchPrep.prepare(input, runtime, resumed);
     const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime.name, this.clock.now());
     const started = this.clock.now();
     const awake = new AwakeTime(this.clock, SAMPLE_MS, input.onSuspended);
@@ -197,13 +170,21 @@ export class AgentProcessRunner {
           env.CURSOR_API_KEY,
           env.ANTHROPIC_API_KEY,
           env.CLAUDE_CODE_OAUTH_TOKEN,
-          await this.codexLogin(runtime.name, env),
+          await this.launchPrep.codexLogin(runtime.name, env),
           env.CODEX_API_KEY,
         ),
       ],
       command: [runtime.command, ...launch.args],
       userId: launch.userId,
       ...(input.project ? { project: input.project } : {}),
+      onWait: (line) =>
+        this.live?.log({
+          key: input.runKey,
+          step: input.liveStep ?? input.step,
+          body: `${line}\n`,
+          samples: [],
+          usage: { tokensIn: 0, tokensOut: 0, usd: 0 },
+        }),
     });
     const step = input.liveStep ?? input.step;
     await recordLaunch(input.outputFile, input.runKey, step);
@@ -357,36 +338,5 @@ export class AgentProcessRunner {
       startedAt: new Date(started).toISOString(),
       finishedAt: new Date(finished).toISOString(),
     };
-  }
-
-  /** Prepares the state directory, chat mode, prompt delivery, and arguments for one launch. */
-  private prepare(input: AgentRunInput, runtime: AgentRuntime, resumed: boolean): Launch {
-    const userId = sandboxUserId();
-    const statePath = agentStateDir(
-      resolveRepoRoot(this.config.env.SWARMLOOP_ROOT, __dirname),
-      input.runKey,
-      sessionHome(input.step),
-    );
-    prepareStateDir(statePath, userId);
-    writeHomeFiles(runtime.homeFiles(), statePath, userId);
-    if (runtime.syncsChatMode && input.resumeChatId) {
-      syncChatMode(statePath, input.resumeChatId, input.mode);
-    }
-    const delivered = spillPrompt(input.prompt, statePath, input.step);
-    const briefs = briefMounts(statePath, input.step, delivered.mounts);
-    const args = runtime.printArgs({ ...input, prompt: delivered.text });
-    if (briefs.length > 0) {
-      args.unshift(...runtime.briefArgs());
-    }
-    if (!resumed) {
-      this.live?.log({
-        key: input.runKey,
-        step: input.liveStep ?? input.step,
-        body: 'waiting for output\n',
-        samples: [],
-        usage: { tokensIn: 0, tokensOut: 0, usd: 0 },
-      });
-    }
-    return { userId, statePath, args, briefs };
   }
 }

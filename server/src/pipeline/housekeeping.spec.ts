@@ -6,6 +6,7 @@ import { Housekeeping } from './housekeeping';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 import { RunEntity } from '../history/entities';
+import { OwnUseMeter } from './own-use-meter';
 import { RunRetention } from './run-retention';
 import { ageRun, makeWorld, type World } from './workspace.spec-helpers';
 
@@ -58,6 +59,18 @@ describe('Housekeeping startup', () => {
 
     expect(existsSync(world.worktree)).toBe(true);
   });
+
+  it('measures the sizes at startup, also when the catch-up already ran', async () => {
+    world = await makeWorld('PROJ-6');
+    await world.app.get(Housekeeping).startup();
+    const meter = world.app.get(OwnUseMeter);
+    const measure = jest.spyOn(meter, 'measure');
+
+    await world.app.get(Housekeeping).startup();
+    await measure.mock.results[0].value;
+
+    expect(meter.last()?.line).toContain('swarmloop uses worktrees');
+  });
 });
 
 describe('Housekeeping schedule', () => {
@@ -84,5 +97,23 @@ describe('Housekeeping schedule', () => {
 
     expect(existsSync(world.worktree)).toBe(false);
     housekeeping.onModuleDestroy();
+  });
+
+  it("measures the sizes every 10 minutes, in an unref'd timer that stop clears", async () => {
+    world = await makeWorld('PROJ-7');
+    const intervals = jest.spyOn(global, 'setInterval');
+    const cleared = jest.spyOn(global, 'clearInterval');
+    const measure = jest.spyOn(world.app.get(OwnUseMeter), 'measure');
+    const housekeeping = world.app.get(Housekeeping);
+
+    housekeeping.schedule();
+    const index = intervals.mock.calls.findIndex(([, delay]) => delay === 10 * 60_000);
+    expect(index).toBeGreaterThanOrEqual(0);
+    intervals.mock.calls[index][0]();
+    await measure.mock.results[0].value;
+    expect(world.app.get(OwnUseMeter).last()).not.toBeNull();
+
+    housekeeping.onModuleDestroy();
+    expect(cleared).toHaveBeenCalledWith(intervals.mock.results[index].value);
   });
 });

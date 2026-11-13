@@ -10,7 +10,6 @@ import type {
   MeView,
   ProjectsView,
   ProjectListView,
-  ReadinessView,
   RemoteEntry,
   RemoteListView,
   ReplayBody,
@@ -23,6 +22,7 @@ import type {
   TicketKeysBody,
   TicketKeysView,
 } from '@contract/api';
+import type { ReadinessView } from '@contract/readiness';
 import type { SettingsView } from '@contract/settings';
 import type { StepEventPage } from '@contract/step-events';
 
