@@ -120,7 +120,12 @@ export async function boot(
   extra = 'PIPELINE_TIMEOUT_MS=0\n',
   cancel: jest.Mock = jest.fn(() => Promise.resolve({ httpCalls: [] as HttpCallDraft[] })),
   clock?: Clock,
-  infra: { rerunFailedJobs?: jest.Mock; readRunNotes?: jest.Mock; setDraft?: jest.Mock } = {},
+  infra: {
+    rerunFailedJobs?: jest.Mock;
+    readRunNotes?: jest.Mock;
+    setDraft?: jest.Mock;
+    updateMergeRequest?: jest.Mock;
+  } = {},
 ) {
   await writeFile(
     join(root, '.env'),

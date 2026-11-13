@@ -19,6 +19,9 @@ describe('DocumentRepository', () => {
       const rows = await documents.listDocuments(run.id);
       expect(rows.map((row) => row.body)).toEqual(['first', 'updated']);
       expect(await documents.latestDocument(run.key, 'requirements')).toEqual({ id: rows[1].id, body: 'updated' });
+      expect(await documents.bodyBefore(run.key, 'requirements', rows[1].id)).toBe('first');
+      expect(await documents.bodyBefore(run.key, 'requirements', rows[0].id)).toBeNull();
+      expect(await documents.bodyBefore('missing', 'requirements', rows[1].id)).toBeNull();
     } finally {
       await db.close();
     }
