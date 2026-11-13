@@ -1,0 +1,15 @@
+Available models
+
+auto - Auto
+composer-2 - Composer 2
+grok-4.7 - Grok 4.7
+grok-4.7-low - Grok 4.7 Low
+grok-4.7-high - Grok 4.7 High
+grok-4.7-xhigh - Grok 4.7 Extra High
+opus-5.5 - Claude Opus 5.5
+opus-5.5-medium - Claude Opus 5.5 Medium
+opus-5.5-high - Claude Opus 5.5 High
+opus-5.5-extra-high - Claude Opus 5.5 Extra High
+sonnet-5.5 - Claude Sonnet 5.5 (current)
+
+Tip: use --model <id> to select a model.

@@ -1,3 +1,4 @@
+import type { Effort } from '../../contract/effort';
 import type { LimitHit, LimitInput } from './runtime-limit';
 import type { RuntimeName } from './runtime-name';
 
@@ -47,6 +48,13 @@ export interface EgressCredential {
   api?: { upstream: string; header: string; value: string };
 }
 
+/** The parts of a launch a level can change: the model id, the CLI arguments and the env names to clear. */
+export interface EffortLaunch {
+  model: string;
+  args: string[];
+  unsetEnv: string[];
+}
+
 export interface AgentRuntime {
   readonly name: RuntimeName;
   readonly command: 'agent' | 'claude' | 'codex';
@@ -68,6 +76,12 @@ export interface AgentRuntime {
   terminalArgs(input: AgentTerminalInput): string[];
   /** Files written into the CLI home before every print launch. */
   homeFiles(): HomeFile[];
+  /** The levels this CLI supports for a model. None when it has no way to set one. */
+  efforts(model: string): readonly Effort[];
+  /** The launch with the level applied to arguments that are already built. */
+  withEffort(launch: EffortLaunch, level: Effort): EffortLaunch;
+  /** The CLI arguments that print its model ids, or null when the levels do not depend on a list. */
+  modelListArgs(): string[] | null;
   /** The credential for a container behind the egress proxy. */
   egressCredential(credential: { name: string; value: string }, api: string): EgressCredential;
 }
