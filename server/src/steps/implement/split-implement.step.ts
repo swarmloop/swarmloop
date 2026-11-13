@@ -150,6 +150,8 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       // A Stop of the parent stopped this run. Resume goes on where it stopped.
       await this.subtasks.resume(child);
     }
+    const delivered = child.status === 'done' ? await this.subtasks.deliveredNote(child) : null;
+    if (delivered) return { ...task, status: 'skipped', note: delivered };
     const status = this.statusOf(task, child, state);
     const note = status === 'green' && (await this.subtasks.withoutCi(child)) ? NO_CI_NOTE : undefined;
     return { ...task, status, note };

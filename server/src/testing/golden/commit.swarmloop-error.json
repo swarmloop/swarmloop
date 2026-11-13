@@ -7,6 +7,10 @@
     {
       "body": "demo\n",
       "kind": "repos"
+    },
+    {
+      "body": "demo old -> new\n",
+      "kind": "ci_rerun"
     }
   ],
   "events": [
@@ -43,11 +47,7 @@
       "step": "commit"
     },
     {
-      "kind": "command.started",
-      "step": "commit"
-    },
-    {
-      "kind": "command.finished",
+      "kind": "activity.started",
       "step": "commit"
     },
     {
@@ -88,6 +88,26 @@
     },
     {
       "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "activity.finished",
       "step": "commit"
     },
     {
@@ -103,12 +123,13 @@
   "git": {
     "demo": {
       "branch": "feature/PROJ-100-ship-the-field",
-      "log": ["init"],
+      "log": ["Re-run CI", "init"],
       "refs": [
         "refs/heads/feature/PROJ-100-ship-the-field <sha:1>",
-        "refs/heads/holder <sha:1>",
-        "refs/heads/main <sha:1>",
-        "refs/remotes/origin/main <sha:1>"
+        "refs/heads/holder <sha:2>",
+        "refs/heads/main <sha:2>",
+        "refs/remotes/origin/feature/PROJ-100-ship-the-field <sha:2>",
+        "refs/remotes/origin/main <sha:2>"
       ],
       "status": []
     }
@@ -119,7 +140,7 @@
   },
   "result": {
     "exitCode": 1,
-    "message": "<t> nothing to commit"
+    "message": "<t> demo push failed: fatal: '<root>/gone.git' does not appear to be a git repository"
   },
   "run": {
     "agentCalls": 0,
@@ -135,7 +156,7 @@
     {
       "documents": [
         {
-          "body": "nothing to commit\n",
+          "body": "demo push failed: fatal: '<root>/gone.git' does not appear to be a git repository\n",
           "kind": "error"
         }
       ],

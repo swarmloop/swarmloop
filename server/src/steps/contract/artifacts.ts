@@ -106,7 +106,7 @@ export const ARTIFACTS = {
     summarize: firstLine,
   }),
   issues: artifact('issues', {
-    writers: ['checks', 'code-review', 'pipeline'],
+    writers: ['checks', 'code-review', 'pipeline', 'commit'],
     readers: ['checks', 'implement', 'implement-improve'],
     codec: jsonArrayCodec<Issue>(),
     summarize: (issues) => listSummary(issues.length, 'issues', issues[0]?.title),

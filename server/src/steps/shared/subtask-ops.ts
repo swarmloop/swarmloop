@@ -26,6 +26,8 @@ export abstract class SubtaskOps {
   abstract waitFor(run: RunEntity, message: string): Promise<void>;
   /** True when no pipeline ran for the merge request of a subtask run. */
   abstract withoutCi(run: RunEntity): Promise<boolean>;
+  /** The `already delivered: <where>` note of a subtask run that ended without a change, or null. */
+  abstract deliveredNote(run: RunEntity): Promise<string | null>;
   /** The merge requests of a subtask run, in the order of its repositories. None until the run opened them. */
   abstract mergeRequests(run: RunEntity): Promise<SubtaskMergeRequest[]>;
   /** The branch of a subtask run. */

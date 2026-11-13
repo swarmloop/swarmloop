@@ -4,6 +4,7 @@ import type { Route } from './step-contract';
 
 /** The steps a step may send work back to. */
 export const RETURNS: Partial<Record<StepName, readonly StepName[]>> = {
+  commit: ['implement'],
   checks: ['implement'],
   'code-review': ['implement'],
   pipeline: ['implement'],
@@ -11,6 +12,7 @@ export const RETURNS: Partial<Record<StepName, readonly StepName[]>> = {
 
 /** The steps a step may jump to, past the ones that follow it. */
 export const JUMPS: Partial<Record<StepName, readonly StepName[]>> = {
+  commit: ['done'],
   implement: ['commit', 'checks', 'code-review'],
   pipeline: ['code-review'],
 };
