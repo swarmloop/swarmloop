@@ -8,6 +8,7 @@ describe('actionsFor a block that a person can fix', () => {
     ERROR_CODES.BRANCH_IN_USE,
     ERROR_CODES.BRANCH_DIVERGED,
     ERROR_CODES.SUBTASK_BLOCKED,
+    ERROR_CODES.TEST_FLAKY,
   ])('offers Resume after %s', (code) => {
     expect(actionsFor('blocked', code)).toEqual(['resume', 'replay']);
   });
