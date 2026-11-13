@@ -2,6 +2,9 @@ import type { StatsShare } from '../contract/api';
 import type { StatsStepRow } from '../history/stats.repository';
 import { LIMIT_VISIT } from '../history/visit.repository';
 
+/** The name of the effort share for a visit that ran at its runtime's default. */
+export const RUNTIME_DEFAULT = 'runtime default';
+
 /** Steps that ran an agent. The others (branch, commit, pipeline watch) spend nothing. */
 export function agentStep(step: StatsStepRow): boolean {
   return step.model !== null || step.tokensIn > 0 || step.usd > 0;

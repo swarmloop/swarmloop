@@ -3,7 +3,7 @@ import { join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
 import { actionsFor, REASON } from '../contract/run-state';
 import type { RunAction, RunState } from '../contract/run-state';
-import { blockCode, deriveState, stateColumns, writeRunState } from './run-state';
+import { blockCode, clearEpic, deriveState, markEpic, stateColumns, writeRunState } from './run-state';
 
 const GOLDEN_DIR = join(__dirname, '..', 'testing', 'golden');
 
@@ -268,5 +268,15 @@ describe('deriveState of a block that a person must clear', () => {
       state: 'blocked',
       reason: { code: ERROR_CODES.DOCKER_UNAVAILABLE },
     });
+  });
+});
+
+describe('the epic mark', () => {
+  it('markEpic sets the time the plan split and clearEpic clears it', () => {
+    const run = { epicAt: null as string | null };
+    markEpic(run, '2026-11-13T10:00:00.000Z');
+    expect(run.epicAt).toBe('2026-11-13T10:00:00.000Z');
+    clearEpic(run);
+    expect(run.epicAt).toBeNull();
   });
 });

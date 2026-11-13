@@ -53,6 +53,21 @@ describe('VisitRepository', () => {
     }
   });
 
+  it('records the effort of a visit and why, and null for a visit that names none', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const run = await db.app.get(RunRepository).begin('run-effort', 'code-review');
+      await visits.finishVisit(run, { ...repositoryVisit(), effort: 'high', effortNote: 'epic' });
+      await visits.finishVisit(run, repositoryVisit());
+      const stats = await visits.listStats(run.id);
+      expect(stats.map((stat) => stat.effort)).toEqual(['high', null]);
+      expect(stats.map((stat) => stat.effortNote)).toEqual(['epic', null]);
+    } finally {
+      await db.close();
+    }
+  });
+
   it('keeps the content a checks visit ran on, and reads the newest checks visit', async () => {
     const db = await repositoryDatabase();
     try {
