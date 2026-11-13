@@ -188,6 +188,16 @@ export function writeRunState(
   Object.assign(run, stateColumns(run, change));
 }
 
+/** Marks the run as an epic from `at`, in memory. Persist it with `saveRun`. */
+export function markEpic(run: Pick<RunEntity, 'epicAt'>, at: string): void {
+  run.epicAt = at;
+}
+
+/** Clears the epic mark, in memory. Persist it with `saveRun`. */
+export function clearEpic(run: Pick<RunEntity, 'epicAt'>): void {
+  run.epicAt = null;
+}
+
 /** The columns of a run that a step takes. */
 export function claimedColumns(step: string, activeAttempt: string): StateColumns {
   return stateColumns(

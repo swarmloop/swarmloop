@@ -2,6 +2,8 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { AgentTools } from '../../integrations/agent-runtime/agent-runtime';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { effortFields } from '../../contract/effort';
+import type { EffortFields } from '../../contract/effort';
 import { AppConfig } from '../../config/env';
 import { redact } from '../../core/redact';
 import { AGENT_RUNNER, readSession } from '../../agent/agent-runner';
@@ -27,7 +29,7 @@ import { combineAgentResults } from './agent-result';
 import { parseFailureFollowUp } from './parse-failure-follow-up';
 import { LimitFailover } from './limit-failover';
 
-interface AgentLaunchRequest {
+interface AgentLaunchRequest extends EffortFields {
   root: string;
   run: RunEntity;
   key: string;
@@ -153,9 +155,11 @@ export class AgentLauncher {
     for (;;) {
       const result = await this.launchOn(current);
       if (!result.limit) {
-        return current.runtime === request.runtime && current.model === request.model
+        return current.runtime === request.runtime &&
+          current.model === request.model &&
+          current.effort === request.effort
           ? result
-          : { ...result, agent: { runtime: current.runtime, model: current.model } };
+          : { ...result, agent: { runtime: current.runtime, model: current.model, ...effortFields(current) } };
       }
       current = await this.moved(current, await failover.limited(current, result));
     }
@@ -188,6 +192,7 @@ export class AgentLauncher {
       model: launch.model,
       reason: chatId !== null ? null : newChatReason(request.resume, existsSync(sessionFile), removed),
     });
+    this.recordCap(request);
     recordStepEvent({
       kind: 'context.manifest',
       sections: promptSections(request.prompt),
@@ -217,6 +222,7 @@ export class AgentLauncher {
       sessionFile,
       runtime: request.runtime,
       model: request.model,
+      ...(request.effort ? { effort: request.effort } : {}),
       agentCalls: request.run.agentCalls,
       spentUsd: request.run.spentUsd,
       tokensInRun: await this.visits.tokenTotal(request.run.id),
@@ -272,6 +278,20 @@ export class AgentLauncher {
       parseFailureEnding: null,
     });
     return combineAgentResults([result, retried]) ?? retried;
+  }
+
+  /** An effort the runtime could not give is said once per launch: what the model supports and what ran instead. */
+  private recordCap(request: AgentLaunchRequest): void {
+    const wanted = request.effortNote?.startsWith('capped:') ? request.effortNote.slice('capped:'.length) : null;
+    if (wanted && request.effort) {
+      recordStepEvent({
+        kind: 'agent.effort_capped',
+        model: request.model,
+        level: request.effort,
+        wanted,
+        text: `${request.model} supports up to ${request.effort}; ran at ${request.effort} instead of ${wanted}.`,
+      });
+    }
   }
 
   private parseFailureFollowUp(request: AgentLaunchRequest, result: AgentRunResult): string | null {

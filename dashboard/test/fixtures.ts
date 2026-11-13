@@ -173,6 +173,7 @@ export function statsView(overrides: Partial<StatsView> = {}): StatsView {
       { name: 'plan', usd: 1, tokens: 1100, count: 1 },
     ],
     models: [{ name: 'model-a', usd: 3.75, tokens: 3300, count: 3 }],
+    efforts: [{ name: 'runtime default', usd: 3.75, tokens: 3300, count: 3 }],
     agents: [{ name: 'claude', usd: 4, tokens: 3300, count: 2 }],
     reasons: [
       { name: 'quality', returns: 2 },

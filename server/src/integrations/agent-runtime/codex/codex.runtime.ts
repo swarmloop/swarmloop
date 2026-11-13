@@ -1,9 +1,18 @@
 import { SwarmloopError } from '../../../core/swarmloop-error';
+import type { Effort } from '../../../contract/effort';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
-import type { AgentPrintInput, AgentTerminalInput, EgressCredential, RuntimeKeys } from '../agent-runtime';
+import type {
+  AgentPrintInput,
+  AgentTerminalInput,
+  EffortLaunch,
+  EgressCredential,
+  RuntimeKeys,
+} from '../agent-runtime';
 import { CODEX_LIMITS } from './codex-limit';
 
 export const CODEX_KEY_PLACEHOLDER = 'sk-swarmloop-egress-placeholder';
+
+const CODEX_EFFORTS: readonly Effort[] = ['low', 'medium', 'high', 'xhigh'];
 
 export class CodexRuntime extends AbstractAgentRuntime {
   readonly name = 'codex' as const;
@@ -74,6 +83,14 @@ export class CodexRuntime extends AbstractAgentRuntime {
       args.push('resume', input.resumeChatId);
     }
     return args;
+  }
+
+  override efforts(_model: string): readonly Effort[] {
+    return CODEX_EFFORTS;
+  }
+
+  override withEffort(launch: EffortLaunch, level: Effort): EffortLaunch {
+    return this.insertAfterModel(launch, '-m', ['-c', `model_reasoning_effort=${level}`]);
   }
 
   protected override partialOutputFlag(): string | null {

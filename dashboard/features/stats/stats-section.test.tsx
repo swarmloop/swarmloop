@@ -61,6 +61,24 @@ describe('StatsSection', () => {
     expect(within(money).getAllByText('model-a').length).toBeGreaterThan(0);
   });
 
+  it('groups the spend by effort on request', async () => {
+    vi.mocked(getStats).mockResolvedValue(
+      statsView({
+        efforts: [
+          { name: 'high', usd: 2, tokens: 2000, count: 2 },
+          { name: 'runtime default', usd: 1.75, tokens: 1300, count: 1 },
+        ],
+      }),
+    );
+    renderSection();
+    const money = await screen.findByRole('region', { name: 'Where the money goes' });
+    expect(within(money).queryByText('high')).not.toBeInTheDocument();
+    await userEvent.setup().click(within(money).getByRole('button', { name: 'Effort' }));
+    expect(within(money).getAllByText('high').length).toBeGreaterThan(0);
+    expect(within(money).getByText('runtime default')).toBeInTheDocument();
+    expect(within(money).queryByText('implement')).not.toBeInTheDocument();
+  });
+
   it('shows the share of finished runs that were merged, the closed count apart, and both charts', async () => {
     renderSection();
     expect(await screen.findByLabelText('Merged: 33%')).toBeInTheDocument();

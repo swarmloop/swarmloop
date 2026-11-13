@@ -12,6 +12,7 @@ function step(runId: number, name: string, usd: number, finishedAt: string, extr
     step: name,
     runtime: null,
     model: usd > 0 ? 'model-a' : null,
+    effort: null,
     status: 'done',
     killReason: null,
     usd,
@@ -202,6 +203,22 @@ describe('buildStats', () => {
     expect(stats.models.map((entry) => [entry.name, entry.usd, entry.count])).toEqual([
       ['gpt-6.1-sol', 1, 1],
       ['claude-opus-5-5', 0.5, 0],
+    ]);
+  });
+
+  it('groups the spend by the effort of the visit, and names the visits without one runtime default', () => {
+    const data = rows();
+    data.steps = [
+      step(1, 'plan', 2, '2026-11-08T12:00:00.000Z', { effort: 'high' }),
+      step(1, 'implement', 1, '2026-11-08T12:01:00.000Z', { effort: 'high' }),
+      step(1, 'code-review-quality', 4, '2026-11-08T12:02:00.000Z', { effort: 'xhigh' }),
+      step(1, 'implement-improve', 0.5, '2026-11-08T12:03:00.000Z'),
+    ];
+    const stats = buildStats(data, durations, NOW, { days: 7, tzOffset: WARSAW });
+    expect(stats.efforts.map((entry) => [entry.name, entry.usd, entry.tokens, entry.count])).toEqual([
+      ['xhigh', 4, 1100, 1],
+      ['high', 3, 2200, 2],
+      ['runtime default', 0.5, 1100, 1],
     ]);
   });
 

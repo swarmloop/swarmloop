@@ -8,7 +8,7 @@ import type {
   StatsView,
 } from '../contract/api';
 import type { StatsRows, StatsRunRow, StatsStepRow } from '../history/stats.repository';
-import { LIMIT_VISIT } from '../history/visit.repository';
+import { agentStep, limited, round, RUNTIME_DEFAULT, share, sortedShares } from './stats-groups';
 import { MERGE_WATCH_COUNTER, readLoopDetail } from '../history/loop-detail';
 import { readOutcome } from '../history/run-state';
 import { runName } from './run-view/flow';
@@ -48,35 +48,6 @@ export function outcomeOf(status: string): RunOutcome {
     return 'done';
   }
   return status === 'failed' || status === 'blocked' ? 'failed' : 'active';
-}
-
-/** Steps that ran an agent. The others (branch, commit, pipeline watch) spend nothing. */
-function agentStep(step: StatsStepRow): boolean {
-  return step.model !== null || step.tokensIn > 0 || step.usd > 0;
-}
-
-/** A launch that ended on a provider limit. Its spend counts under the agent that hit it; it counts as `limit`, not as a visit. */
-function limited(step: StatsStepRow): boolean {
-  return step.status === LIMIT_VISIT.status && step.killReason === LIMIT_VISIT.killReason;
-}
-
-function share(rows: Map<string, StatsShare>, name: string, usd: number, tokens: number, count = 1): void {
-  const entry = rows.get(name) ?? { name, usd: 0, tokens: 0, count: 0 };
-  entry.usd += usd;
-  entry.tokens += tokens;
-  entry.count += count;
-  rows.set(name, entry);
-}
-
-function sortedShares(rows: Map<string, StatsShare>): StatsShare[] {
-  return [...rows.values()]
-    .filter((entry) => entry.usd > 0 || entry.tokens > 0)
-    .map((entry) => ({ ...entry, usd: round(entry.usd) }))
-    .sort((a, b) => b.usd - a.usd || b.tokens - a.tokens || a.name.localeCompare(b.name));
-}
-
-function round(usd: number): number {
-  return Math.round(usd * 100) / 100;
 }
 
 function exactMedian(values: number[]): number | null {
@@ -134,6 +105,7 @@ function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: n
   const byAgent = new Map<number, Map<string, { usd: number; tokens: number }>>();
   const bySteps = new Map<string, StatsShare>();
   const byModels = new Map<string, StatsShare>();
+  const byEfforts = new Map<string, StatsShare>();
   for (const step of steps) {
     const tokens = step.tokensIn + step.tokensOut;
     totals.usd += step.usd;
@@ -152,6 +124,7 @@ function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: n
     if (agentStep(step)) {
       totals.agentMs += step.durationMs;
       share(bySteps, step.step, step.usd, tokens, limited(step) ? 0 : 1);
+      share(byEfforts, step.effort ?? RUNTIME_DEFAULT, step.usd, tokens, limited(step) ? 0 : 1);
     }
     if (step.model) {
       share(byModels, step.model, step.usd, tokens, limited(step) ? 0 : 1);
@@ -161,7 +134,15 @@ function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: n
       day.usd += step.usd;
     }
   }
-  return { totals, byRun, shellEdits, byAgent, steps: sortedShares(bySteps), models: sortedShares(byModels) };
+  return {
+    totals,
+    byRun,
+    shellEdits,
+    byAgent,
+    steps: sortedShares(bySteps),
+    models: sortedShares(byModels),
+    efforts: sortedShares(byEfforts),
+  };
 }
 
 /** What sent the work back: the loop counter. Returns of the checks step before it had its own counter were recorded under implement. */
@@ -348,6 +329,7 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
     })),
     steps: spend.steps,
     models: spend.models,
+    efforts: spend.efforts,
     agents: [...agents.values()]
       .map((entry) => ({ ...entry, usd: round(entry.usd) }))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),

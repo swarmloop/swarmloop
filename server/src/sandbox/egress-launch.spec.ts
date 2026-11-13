@@ -56,6 +56,23 @@ describe('withEgress', () => {
     expect(typeof release).toBe('function');
   });
 
+  it('drops an env item named in unsetEnv and keeps the name for the empty value', async () => {
+    const { egress } = fakeEgress();
+    const { launch } = await withEgress(egress, {
+      runtime: 'claude' as const,
+      allowHosts: ['api.anthropic.com'],
+      command: ['claude'],
+      env: [
+        { name: 'ANTHROPIC_API_KEY', value: 'sk-ant-real' },
+        { name: 'CLAUDE_CODE_EFFORT_LEVEL', value: 'low' },
+      ],
+      unsetEnv: ['CLAUDE_CODE_EFFORT_LEVEL'],
+    });
+    expect(launch.env?.map((item) => item.name)).not.toContain('CLAUDE_CODE_EFFORT_LEVEL');
+    expect(JSON.stringify(launch.env)).not.toContain('"low"');
+    expect(launch.unsetEnv).toEqual(['CLAUDE_CODE_EFFORT_LEVEL']);
+  });
+
   it('gives Claude a placeholder subscription token and sends the real one as a bearer token', async () => {
     const { egress, policies } = fakeEgress();
     const { launch } = await withEgress(egress, {

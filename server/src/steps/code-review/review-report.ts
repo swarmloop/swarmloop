@@ -1,3 +1,4 @@
+import { effortFields } from '../../contract/effort';
 import { agentFor } from '../../config/agents';
 import { mkdirSync, writeFileSync } from 'fs';
 import { basename, join } from 'path';
@@ -103,10 +104,11 @@ export async function writeReport(
       },
       parseFailureEnding: answerEnding('code-review/report'),
     });
-    const { runtime, model } = result.agent ?? asked;
+    const { runtime, model, ...effort } = result.agent ?? asked;
     const exchange: ExchangeDraft = {
       runtime,
       model,
+      ...effortFields(effort),
       startedAt: result.startedAt,
       finishedAt: result.finishedAt,
       durationMs: result.durationMs,
@@ -161,6 +163,7 @@ export async function recordAngle(
     step: `code-review-${item.reviewer.name}`,
     runtime: item.runtime,
     model: item.model,
+    ...effortFields(item),
     mode: 'ask',
     startedAt: result.startedAt,
     finishedAt: result.finishedAt,
@@ -234,6 +237,7 @@ export function closeReview(
       step: 'code-review',
       runtime: exchanges.find((exchange) => exchange.runtime)?.runtime ?? null,
       model: exchanges.find((exchange) => exchange.model)?.model ?? null,
+      ...effortFields(exchanges.find((exchange) => exchange.effort) ?? {}),
       mode: 'ask',
       startedAt: opened.startedAt,
       finishedAt: ctx.clock.iso(),
@@ -263,6 +267,7 @@ function exchangeOf(item: Finished): ExchangeDraft {
   return {
     runtime: item.runtime,
     model: item.model,
+    ...effortFields(item),
     startedAt: result.startedAt,
     finishedAt: result.finishedAt,
     durationMs: result.durationMs,

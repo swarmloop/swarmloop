@@ -102,6 +102,61 @@ describe('code-review step and a provider limit', () => {
     }
   });
 
+  it('launches every reviewer and the report at the epic effort for the parent of a split run', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-epic-effort-'));
+    await envWith(root, 'claude:m-claude:high');
+    mkdirSync(join(root, 'worktrees', 'PROJ-303', 'billing-api'), { recursive: true });
+    const agent = answers(() => false);
+    const app = await boot(root, agent, new FakeClock(START));
+    try {
+      await seed(app, 'PROJ-303');
+      const runs = app.get(RunRepository);
+      const parent = (await runs.findRun('PROJ-303'))!;
+      parent.epicAt = '2026-11-08T18:00:00.000Z';
+      await runs.saveRun(parent);
+      await app.get(PipelineService).step('code-review', 'PROJ-303');
+      const calls = agent.mock.calls.map((call) => call[0]);
+      const stats = await app.get(VisitRepository).listStats(parent.id);
+
+      expect(calls.length).toBeGreaterThan(1);
+      expect(calls.map((call) => call.effort)).toEqual(calls.map(() => 'xhigh'));
+      expect(stats.filter((stat) => stat.step.startsWith('code-review-')).map((stat) => stat.effort)).not.toContain(
+        null,
+      );
+      expect(stats.find((stat) => stat.step === 'code-review')).toMatchObject({ effort: 'xhigh', effortNote: 'epic' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('records the effort of the agent a limited reviewer moved to', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-limit-effort-'));
+    await envWith(root, 'claude:m-claude:high,codex:m-codex:low');
+    mkdirSync(join(root, 'worktrees', 'PROJ-304', 'billing-api'), { recursive: true });
+    const agent = answers((input) => input.runtime === 'claude' && input.step === 'code-review-quality');
+    const app = await boot(root, agent, new FakeClock(START));
+    try {
+      await seed(app, 'PROJ-304');
+      await app.get(PipelineService).step('code-review', 'PROJ-304');
+      const calls = agent.mock.calls.map((call) => call[0]);
+      const run = (await app.get(RunRepository).findRun('PROJ-304'))!;
+      const quality = (await app.get(VisitRepository).listStats(run.id)).filter(
+        (stat) => stat.step === 'code-review-quality',
+      );
+
+      expect(calls.filter((call) => call.step === 'code-review-quality').map((call) => call.effort)).toEqual([
+        'high',
+        'low',
+      ]);
+      expect(quality.map((stat) => [stat.runtime, stat.effort])).toEqual([
+        ['claude', 'high'],
+        ['codex', 'low'],
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('waits with RUNTIME_LIMIT when no other agent is left and goes on once, by itself, after the reset', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-limit-wait-'));
     await envWith(root, 'claude:m-claude');

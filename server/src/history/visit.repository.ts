@@ -114,6 +114,8 @@ export class VisitRepository {
         attempt: previous + 1,
         runtime: visit.runtime ?? null,
         model: visit.model,
+        effort: visit.effort ?? null,
+        effortNote: visit.effortNote ?? null,
         mode: visit.mode,
         startedAt: visit.startedAt,
         stepStartedAt: run.stepStartedAt,

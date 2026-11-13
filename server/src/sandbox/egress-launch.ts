@@ -8,6 +8,7 @@ interface EgressReady {
   allowHosts: string[];
   command: string[];
   env?: { name: string; value: string }[];
+  unsetEnv?: string[];
   egress?: { ip: string };
 }
 
@@ -29,6 +30,9 @@ export async function withEgress<T extends EgressReady>(
   let args: string[] = [];
   let api: EgressPolicy['api'];
   for (const item of launch.env ?? []) {
+    if (launch.unsetEnv?.includes(item.name)) {
+      continue;
+    }
     if (!runtime.credentialNames.includes(item.name)) {
       env.push(item);
       continue;

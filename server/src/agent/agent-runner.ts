@@ -175,6 +175,7 @@ export class AgentProcessRunner {
         ),
       ],
       command: [runtime.command, ...launch.args],
+      unsetEnv: launch.unsetEnv,
       userId: launch.userId,
       ...(input.project ? { project: input.project } : {}),
       onWait: (line) =>

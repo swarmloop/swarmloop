@@ -153,6 +153,14 @@ describe('env schema', () => {
     expect(bad.error?.message).toContain('LIMIT_COOLDOWN_MIN');
   });
 
+  it('defaults EPIC_EFFORT to xhigh, allows it empty and rejects any other word', () => {
+    expect(envSchema.validate(complete, { convert: true }).value.EPIC_EFFORT).toBe('xhigh');
+    expect(envSchema.validate({ ...complete, EPIC_EFFORT: '' }, { convert: true }).value.EPIC_EFFORT).toBe('');
+    expect(envSchema.validate({ ...complete, EPIC_EFFORT: 'max' }, { convert: true }).error).toBeUndefined();
+    const bad = envSchema.validate({ ...complete, EPIC_EFFORT: 'extreme' }, { convert: true });
+    expect(bad.error?.message).toContain('EPIC_EFFORT');
+  });
+
   it('defaults LOOP_REPEAT to 4 and rejects zero', () => {
     const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
     expect(value.LOOP_REPEAT).toBe(4);

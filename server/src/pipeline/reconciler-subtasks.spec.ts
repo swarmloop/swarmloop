@@ -5,6 +5,16 @@ import { writeRunState } from '../history/run-state';
 import { createTestApp } from '../testing/test-app';
 import type { TestApp } from '../testing/test-app';
 import { save } from '../testing/runs.spec-helpers';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { agentFor } from '../config/agents';
+import { AppConfig } from '../config/env';
+import { testEnv } from '../config/env.spec-helpers';
+import { FakeClock } from '../core/fake-clock.spec-helpers';
+import type { RunEntity } from '../history/entities';
+import { sessionFileName, sessionHome } from '../history/session-group';
+import { agentStateDir } from '../sandbox/sandbox-launch';
 import { Reconciler } from './reconciler';
 import { SubtaskPort } from './subtask-port';
 
@@ -67,5 +77,84 @@ describe('reconciler and the subtasks of a parent', () => {
     await ticks(1);
 
     expect(resumed).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the agents of an epic parent and of its subtasks', () => {
+  let app: TestApp;
+
+  beforeEach(async () => {
+    app = await createTestApp({
+      env: {
+        EPIC_EFFORT: 'xhigh',
+        AGENTS_PLAN: 'claude:claude-opus-5-5:high',
+        AGENTS_SUBTASK_PLAN: 'claude:claude-sonnet-5-5:medium',
+      },
+    });
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it("keeps a subtask's agents at the effort of the subtask tier", async () => {
+    const { runs, child } = await waitingParent(app, true);
+    const parent = (await runs.findRun(KEY))!;
+    parent.epicAt = '2026-11-13T10:00:00.000Z';
+    await runs.saveRun(parent);
+
+    const { env } = app.app.get(AppConfig);
+
+    expect(agentFor(env, child, 'plan')).toEqual({ runtime: 'claude', model: 'claude-sonnet-5-5', effort: 'medium' });
+  });
+
+  it("runs the parent's answer to a subtask question at the epic effort", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'swarmloop-reconciler-subtasks-'));
+    mkdirSync(join(dir, 'data'), { recursive: true });
+    mkdirSync(agentStateDir(dir, KEY, sessionHome('plan')), { recursive: true });
+    writeFileSync(
+      join(dir, 'data', sessionFileName(KEY, 'plan')),
+      JSON.stringify({ runtime: 'claude', chatId: 'chat-1', usd: 0 }),
+    );
+    const parent = { key: KEY, targetPath: dir, agentCalls: 0, spentUsd: 0, epicAt: '2026-11-13T10:00:00.000Z' };
+    const launch = jest.fn().mockResolvedValue({
+      responseText: 'use the shared helper',
+      chatId: 'chat-1',
+      tokensIn: 0,
+      tokensOut: 0,
+      usd: 0,
+      killReason: null,
+      exitCode: 0,
+      resumed: true,
+      calls: 1,
+      samples: [],
+      durationMs: 0,
+      startedAt: '',
+      finishedAt: '',
+    });
+    const env = testEnv({
+      SWARMLOOP_ROOT: dir,
+      EPIC_EFFORT: 'xhigh',
+      AGENTS_PLAN: 'claude:claude-opus-5-5:high',
+      AGENTS_SUBTASK_PLAN: 'claude:claude-sonnet-5-5:medium',
+    });
+    const port = new SubtaskPort(
+      {} as never,
+      { latestBody: async () => 'app\n' } as never,
+      { submit: async () => undefined } as never,
+      { launch } as never,
+      { finishVisit: async () => undefined } as never,
+      new AppConfig(env),
+      new FakeClock(),
+    );
+
+    await port.answer(
+      { run: parent, startedAt: '2026-11-13T10:00:00.000Z' } as never,
+      { key: `${KEY}-a` } as RunEntity,
+      { id: 'a' } as never,
+      'contract',
+    );
+
+    expect(launch.mock.calls[0][0]).toMatchObject({ effort: 'xhigh', effortNote: 'epic' });
   });
 });

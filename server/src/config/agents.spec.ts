@@ -1,4 +1,7 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { CODE_REVIEWERS, STEPS } from '../contract/steps';
+import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { testEnv } from './env.spec-helpers';
 import {
   agentFor,
@@ -6,10 +9,12 @@ import {
   assertAgents,
   availableAgent,
   knownModels,
+  parseAgent,
   parseAgentList,
   ROLE_OF_STEP,
   roleOf,
   runtimesInUse,
+  runtimesNamingEffort,
 } from './agents';
 
 const KEYS = { CURSOR_API_KEY: 'c', ANTHROPIC_API_KEY: 'a', CODEX_API_KEY: 'x' };
@@ -225,5 +230,128 @@ describe('the models env knows', () => {
       AGENTS_SUBTASK_REVIEW: 'claude:c',
     });
     expect(knownModels(env)).toEqual({ claude: ['a', 'c'], codex: ['b'], cursor: ['grok-4.7-high'] });
+  });
+});
+
+describe('agents with an effort', () => {
+  const recorded = readFileSync(
+    join(__dirname, '../integrations/agent-runtime/cursor/cursor-models.recorded.txt'),
+    'utf8',
+  );
+  beforeEach(() => runtimeFor('cursor').useModelList(recorded));
+  afterEach(() => runtimeFor('cursor').useModelList(''));
+
+  const epicRun = { epicAt: '2026-11-13T10:00:00Z' };
+  const claudeEnv = (extra: Record<string, string> = {}) =>
+    testEnv({ AGENTS_PLAN: 'claude:claude-opus-5-5:high', EPIC_EFFORT: 'xhigh', ...extra });
+
+  it('parses the effort after the model, and none without it', () => {
+    expect(parseAgent('AGENTS_PLAN', 'claude:claude-opus-5-5:high')).toEqual({
+      runtime: 'claude',
+      model: 'claude-opus-5-5',
+      effort: 'high',
+    });
+    expect(parseAgent('AGENTS_PLAN', 'claude:claude-opus-5-5')).toEqual({
+      runtime: 'claude',
+      model: 'claude-opus-5-5',
+    });
+  });
+
+  it('keeps a Cursor id that carries its own level as the model', () => {
+    expect(parseAgent('AGENTS_PLAN', 'cursor:grok-4.7-high')).toEqual({ runtime: 'cursor', model: 'grok-4.7-high' });
+    expect(agentFor(testEnv({ AGENTS_PLAN: 'cursor:grok-4.7-high' }), null, 'plan')).toEqual({
+      runtime: 'cursor',
+      model: 'grok-4.7-high',
+    });
+  });
+
+  it('keeps the model of a Cursor agent and its level apart', () => {
+    expect(agentFor(testEnv({ AGENTS_PLAN: 'cursor:grok-4.7:high' }), null, 'plan')).toEqual({
+      runtime: 'cursor',
+      model: 'grok-4.7',
+      effort: 'high',
+    });
+  });
+
+  it('refuses a level the runtime does not declare, naming the agent and the role', () => {
+    expect(() => parseAgent('AGENTS_REVIEW', 'cursor:some-model:xhigh')).toThrow(
+      /AGENTS_REVIEW.*cursor:some-model:xhigh/,
+    );
+    expect(() => parseAgent('AGENTS_PLAN', 'codex:gpt-6.1-sol:max')).toThrow(/AGENTS_PLAN.*codex:gpt-6.1-sol:max/);
+    expect(() => assertAgents({ ...testEnv({ AGENTS_PLAN: 'codex:gpt-6.1-sol:max' }), ...KEYS })).toThrow(
+      /codex:gpt-6.1-sol:max/,
+    );
+  });
+
+  it('drops a stored level its runtime no longer declares and keeps the model', () => {
+    const agents = { main: { plan: [{ runtime: 'codex', model: 'gpt-6.1-sol', effort: 'max' }] } };
+    expect(agentFor(claudeEnv(), { agents }, 'plan')).toEqual({ runtime: 'codex', model: 'gpt-6.1-sol' });
+  });
+
+  it('raises the parent of a split run to EPIC_EFFORT and says so', () => {
+    expect(agentFor(claudeEnv(), epicRun, 'plan')).toEqual({
+      runtime: 'claude',
+      model: 'claude-opus-5-5',
+      effort: 'xhigh',
+      effortNote: 'epic',
+    });
+  });
+
+  it('never lowers an agent that is above EPIC_EFFORT', () => {
+    const env = claudeEnv({ AGENTS_PLAN: 'claude:claude-opus-5-5:max' });
+    expect(agentFor(env, epicRun, 'plan')).toEqual({ runtime: 'claude', model: 'claude-opus-5-5', effort: 'max' });
+  });
+
+  it('holds the level to the highest the runtime declares and says so', () => {
+    const env = claudeEnv({ AGENTS_PLAN: 'codex:gpt-6.1-sol:high', EPIC_EFFORT: 'max' });
+    expect(agentFor(env, epicRun, 'plan')).toMatchObject({
+      runtime: 'codex',
+      effort: 'xhigh',
+      effortNote: 'capped:max',
+    });
+  });
+
+  it('changes nothing when EPIC_EFFORT is empty or the run is not split', () => {
+    expect(agentFor(claudeEnv({ EPIC_EFFORT: '' }), epicRun, 'plan').effort).toBe('high');
+    expect(agentFor(claudeEnv(), {}, 'plan').effort).toBe('high');
+  });
+
+  it("gives a subtask its tier's agents and efforts, never raised", () => {
+    const env = claudeEnv({ AGENTS_SUBTASK_PLAN: 'claude:sub:low' });
+    expect(agentFor(env, { parentRunId: 2, ...epicRun }, 'plan')).toEqual({
+      runtime: 'claude',
+      model: 'sub',
+      effort: 'low',
+    });
+    expect(agentFor(claudeEnv({ AGENTS_SUBTASK_PLAN: 'claude:sub' }), { parentRunId: 2 }, 'plan')).toEqual({
+      runtime: 'claude',
+      model: 'sub',
+    });
+  });
+
+  it('resolves the effort of the next agent when a limit moves the work', () => {
+    const env = claudeEnv({ AGENTS_REVIEW: 'claude:a:high,codex:b:high' });
+    expect(availableAgent(env, epicRun, 'code-review', new Set(['claude']))).toEqual({
+      runtime: 'codex',
+      model: 'b',
+      effort: 'xhigh',
+      effortNote: 'epic',
+    });
+  });
+
+  it('names the runtimes whose env agents name an effort', () => {
+    expect(runtimesNamingEffort(testEnv({ AGENTS_PLAN: 'claude:m:high', AGENTS_REVIEW: 'cursor:grok-4.7' }))).toEqual([
+      'claude',
+    ]);
+  });
+});
+
+describe('a level that needs a model list that is not loaded', () => {
+  it('is refused with what to do, from env and from a stored run', () => {
+    expect(() => parseAgent('AGENTS_PLAN', 'cursor:grok-4.7:high')).toThrow(
+      /model list of cursor is not loaded.*start/,
+    );
+    const stored = { main: { plan: [{ runtime: 'cursor', model: 'grok-4.7', effort: 'high' }] } };
+    expect(() => agentFor(testEnv(), { agents: stored }, 'plan')).toThrow(/model list of cursor is not loaded/);
   });
 });

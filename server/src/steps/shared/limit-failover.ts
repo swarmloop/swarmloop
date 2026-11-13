@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { AppConfig } from '../../config/env';
+import { effortFields } from '../../contract/effort';
+import type { EffortFields } from '../../contract/effort';
 import { agentsFor, availableAgent } from '../../config/agents';
+import type { Agent } from '../../config/agents';
 import type { AgentRunResult } from '../../agent/agent-result';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { Clock } from '../../core/clock';
@@ -14,7 +17,7 @@ import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name'
 import type { Route } from '../contract/step-contract';
 
 /** What a launch that may move to another agent tells the failover. */
-interface FailoverTarget {
+interface FailoverTarget extends EffortFields {
   run: RunEntity;
   step: string;
   liveStep?: string;
@@ -66,7 +69,7 @@ export class LimitFailover {
     }
     const next = availableAgent(this.config.env, request.run, this.use(request), cooling);
     if (next) {
-      const moved = { ...request, ...next };
+      const moved = this.moveTo(request, next);
       return next.runtime !== request.runtime && request.briefFor
         ? { ...moved, prompt: request.briefFor(next.runtime) }
         : moved;
@@ -103,12 +106,17 @@ export class LimitFailover {
     });
     // A chat cannot move between runtimes: the new agent starts a new chat with the full brief.
     return {
-      ...request,
-      ...next,
+      ...this.moveTo(request, next),
       resume: false,
       prompt: request.briefFor?.(next.runtime) ?? request.brief ?? request.prompt,
       freshPrompt: undefined,
     };
+  }
+
+  /** The request on the next agent, which brings its own effort: the old agent's level never stays on it. */
+  private moveTo<T extends FailoverTarget>(request: T, next: Agent): T {
+    const { effort: _effort, effortNote: _effortNote, ...rest } = request;
+    return { ...rest, ...next } as T;
   }
 
   /** The error of a step whose every agent of the role is limited. It says when the run goes on. */
@@ -136,6 +144,7 @@ export class LimitFailover {
       step: this.use(request),
       runtime: request.runtime,
       model: request.model,
+      ...effortFields(request),
       mode: request.mode,
       startedAt: result.startedAt,
       finishedAt: result.finishedAt,

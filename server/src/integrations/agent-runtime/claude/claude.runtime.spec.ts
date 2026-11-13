@@ -101,4 +101,41 @@ describe('ClaudeRuntime', () => {
       expect(denied('write')).toEqual(L00K);
     });
   });
+
+  describe('effort', () => {
+    const base = { model: 'claude-opus-5-5', prompt: 'do it', mounts, resumeChatId: null, tools: 'write' as const };
+
+    it('declares every level', () => {
+      expect(runtime.efforts('claude-opus-5-5')).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+    });
+
+    it('puts --effort before the prompt and clears the env override', () => {
+      const args = runtime.printArgs(base);
+      const launch = runtime.withEffort({ model: base.model, args, unsetEnv: [] }, 'high');
+      expect(launch.args.slice(launch.args.indexOf('--model'), launch.args.indexOf('--model') + 4)).toEqual([
+        '--model',
+        'claude-opus-5-5',
+        '--effort',
+        'high',
+      ]);
+      expect(launch.args.at(-1)).toBe('do it');
+      expect(launch.unsetEnv).toEqual(['CLAUDE_CODE_EFFORT_LEVEL']);
+    });
+
+    it('puts --effort in terminal args too', () => {
+      const args = runtime.terminalArgs({ model: 'm', workspace: '/work', resumeChatId: null, vendor: [] });
+      expect(runtime.withEffort({ model: 'm', args, unsetEnv: [] }, 'max').args.slice(0, 4)).toEqual([
+        '--model',
+        'm',
+        '--effort',
+        'max',
+      ]);
+    });
+
+    it('launches without an effort exactly as before', () => {
+      const args = runtime.printArgs(base);
+      expect(args).not.toContain('--effort');
+      expect(runtime.homeFiles().length).toBeGreaterThan(0);
+    });
+  });
 });

@@ -1,5 +1,5 @@
 import { readFileSync } from 'fs';
-import { parseAgentList } from '../config/agents';
+import { splitAgent } from '../config/agents';
 import { splitList } from '../config/env';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 
@@ -57,9 +57,10 @@ export function readShellConfig(file: string): ShellConfig {
 
 function firstImplementAgent(listed: string): { runtime: RuntimeName; model: string } {
   try {
-    const [first] = listed === '' ? [] : parseAgentList('AGENTS_IMPLEMENT', listed);
+    // The shell runs without an effort, and the server start-up checks the level, so the level is not asked here.
+    const [first] = listed === '' ? [] : listed.split(',').map((item) => splitAgent('AGENTS_IMPLEMENT', item));
     if (first) {
-      return first;
+      return { runtime: first.runtime, model: first.model };
     }
   } catch {
     // An unparsable list is reported the same way as a missing one.

@@ -1,6 +1,14 @@
 import { SwarmloopError } from '../../../core/swarmloop-error';
+import { EFFORTS, type Effort } from '../../../contract/effort';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
-import type { AgentPrintInput, AgentTools, EgressCredential, HomeFile, RuntimeKeys } from '../agent-runtime';
+import type {
+  AgentPrintInput,
+  AgentTools,
+  EffortLaunch,
+  EgressCredential,
+  HomeFile,
+  RuntimeKeys,
+} from '../agent-runtime';
 import { CLAUDE_LIMITS } from './claude-limit';
 import { DENY_BACKGROUND_HOOK, DENY_BACKGROUND_SCRIPT } from './claude-hook';
 
@@ -83,6 +91,16 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
 
   briefArgs(): string[] {
     return ['--add-dir', '/work/brief'];
+  }
+
+  override efforts(_model: string): readonly Effort[] {
+    return EFFORTS;
+  }
+
+  /** `CLAUDE_CODE_EFFORT_LEVEL` beats `--effort` without a warning, so it is cleared and the flag is what counts. */
+  override withEffort(launch: EffortLaunch, level: Effort): EffortLaunch {
+    const set = this.insertAfterModel(launch, '--model', ['--effort', level]);
+    return { ...set, unsetEnv: [...set.unsetEnv, 'CLAUDE_CODE_EFFORT_LEVEL'] };
   }
 
   protected override partialOutputFlag(): string {

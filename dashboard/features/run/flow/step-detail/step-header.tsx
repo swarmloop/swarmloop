@@ -37,11 +37,14 @@ const stepMetricIcon: Partial<Record<StepMetricKind, typeof Schedule>> = {
   memory: MemoryIcon,
 };
 
-/** `<runtime> · <model>` for an agent step, and the reviewers of code review. */
-function describe({ agent, reviewers }: StepDescriptor): string {
+/** `<runtime> · <model> · <effort>` for an agent step, and the reviewers of code review. */
+function describe({ agent, reviewers }: StepDescriptor, visit: StepView['visits'][number] | undefined): string {
   const parts: string[] = [];
   if (agent) {
     parts.push(agent.runtime, agent.model);
+    if (visit?.effort) {
+      parts.push(visit.effortNote === 'epic' ? `${visit.effort} (epic)` : visit.effort);
+    }
   }
   if (reviewers) {
     parts.push(`reviewers: ${reviewers.map((item) => item.name).join(', ')}`);
@@ -139,7 +142,7 @@ export function StepHeader({
       </Box>
       {server ? null : (
         <Typography sx={{ mt: 0.5, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'text.secondary' }}>
-          {describe(view.descriptor)}
+          {describe(view.descriptor, visit)}
         </Typography>
       )}
       {problem ? (

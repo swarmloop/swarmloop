@@ -55,6 +55,7 @@ export interface SwarmloopEnv {
   AGENTS_SUBTASK_PLAN: string;
   AGENTS_SUBTASK_IMPLEMENT: string;
   AGENTS_SUBTASK_REVIEW: string;
+  EPIC_EFFORT: string;
   SPLIT: 'auto' | 'off';
   SPLIT_MAX_TASKS: number;
   SUBTASKS_PARALLEL: number;
@@ -171,6 +172,7 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     AGENTS_SUBTASK_PLAN: config.get<string>('AGENTS_SUBTASK_PLAN') ?? '',
     AGENTS_SUBTASK_IMPLEMENT: config.get<string>('AGENTS_SUBTASK_IMPLEMENT') ?? '',
     AGENTS_SUBTASK_REVIEW: config.get<string>('AGENTS_SUBTASK_REVIEW') ?? '',
+    EPIC_EFFORT: config.get<string>('EPIC_EFFORT') ?? '',
     SPLIT: config.get<'auto' | 'off'>('SPLIT') ?? 'off',
     SPLIT_MAX_TASKS: config.get<number>('SPLIT_MAX_TASKS') ?? 48,
     SUBTASKS_PARALLEL: config.get<number>('SUBTASKS_PARALLEL') ?? 3,

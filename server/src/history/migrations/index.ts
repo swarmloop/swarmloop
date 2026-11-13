@@ -1,3 +1,4 @@
+import { AgentEffort1795900000000 } from './1795900000000-agent-effort';
 import { InitialSchema1793664000000 } from './1793664000000-initial-schema';
 import { RetireVerifyStep1793800000000 } from './1793800000000-retire-verify-step';
 import { RunAttempts1793900000000 } from './1793900000000-run-attempts';
@@ -59,4 +60,5 @@ export const migrations = [
   DropPersonalSplit1795600000000,
   FlakyTests1795700000000,
   CheckCommandsAttemptIndex1795800000000,
+  AgentEffort1795900000000,
 ];
