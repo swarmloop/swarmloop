@@ -82,6 +82,8 @@ export interface AgentRuntime {
   withEffort(launch: EffortLaunch, level: Effort): EffortLaunch;
   /** The CLI arguments that print its model ids, or null when the levels do not depend on a list. */
   modelListArgs(): string[] | null;
+  /** Takes what the model list printed. A runtime whose levels do not depend on a list ignores it. */
+  useModelList(output: string): void;
   /** The credential for a container behind the egress proxy. */
   egressCredential(credential: { name: string; value: string }, api: string): EgressCredential;
 }

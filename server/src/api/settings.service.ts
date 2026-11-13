@@ -1,14 +1,16 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { loadPriceTable } from '../agent/prices';
-import { agentsFor, credentialFor, knownModels } from '../config/agents';
+import { useCachedModelList } from '../agent/runtime-model-lists';
+import { agentsFor, credentialFor, knownModels, parseAgent } from '../config/agents';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { rawEnv } from '../config/process-env';
 import { Clock } from '../core/clock';
 import type { SettingsBody, StoredAgents } from '../contract/api';
 import type { SettingsView } from '../contract/settings';
+import { isEffort } from '../contract/effort';
 import { UserSettingRepository } from '../history/user-setting.repository';
-import { RUNTIME_NAMES, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
+import { RUNTIME_NAMES, runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 
 const TIERS = ['main', 'subtask'] as const;
 /** The role and the step whose agents are that role's list. */
@@ -102,13 +104,15 @@ export class SettingsService {
       Object.fromEntries(
         ROLES.map((role) => [
           role,
-          agentsFor(env, { parentRunId }, ROLE_STEPS[role]).map((agent) => `${agent.runtime}:${agent.model}`),
+          agentsFor(env, { parentRunId }, ROLE_STEPS[role]).map(
+            (agent) => `${agent.runtime}:${agent.model}${agent.effort ? `:${agent.effort}` : ''}`,
+          ),
         ]),
       ) as Record<keyof typeof ROLE_STEPS, string[]>;
     return { main: listOf(null), subtask: listOf(1) };
   }
 
-  /** Per connected runtime: the models env names, then its priced models. Limited when a table could not be read. */
+  /** Per connected runtime: the models env names, then its priced models, and the levels of each. Limited when a table could not be read. */
   private async models(): Promise<{ runtimes: SettingsView['runtimes']; limited: boolean }> {
     const env = this.config.env;
     const named = knownModels(env);
@@ -118,7 +122,10 @@ export class SettingsService {
       this.connected().map(async (runtime) => {
         const priced = Object.keys(await loadPriceTable(root, runtime, this.clock.now()));
         limited ||= priced.length === 0;
-        return { runtime, models: [...new Set([...(named[runtime] ?? []), ...priced])] };
+        await useCachedModelList(root, runtimeFor(runtime), this.clock.now());
+        const models = [...new Set([...(named[runtime] ?? []), ...priced])];
+        const levels = models.map((model): [string, string[]] => [model, [...runtimeFor(runtime).efforts(model)]]);
+        return { runtime, models, efforts: Object.fromEntries(levels.filter(([, found]) => found.length > 0)) };
       }),
     );
     return { runtimes, limited };
@@ -170,13 +177,13 @@ export class SettingsService {
     list: unknown,
     role: string,
     runtimes: SettingsView['runtimes'],
-  ): { runtime: string; model: string }[] {
+  ): { runtime: string; model: string; effort?: string }[] {
     if (!Array.isArray(list) || list.length === 0) {
       refuse(`the agents of ${role} must be a non-empty list; leave the role out to use the server default`);
     }
     return list.map((item: unknown) => {
       const entry = this.record(item, `an agent of ${role}`);
-      const { runtime, model } = entry;
+      const { runtime, model, effort } = entry;
       const name = RUNTIME_NAMES.find((candidate) => candidate === runtime);
       if (!name || typeof model !== 'string') {
         refuse(`an agent of ${role} needs a known runtime and a model`);
@@ -190,7 +197,18 @@ export class SettingsService {
       if (!runtimes.find((offered) => offered.runtime === name)?.models.includes(model)) {
         refuse(`agent ${name}:${model} of ${role} has an unknown model for ${name}`);
       }
-      return { runtime: name, model };
+      if (effort === undefined) {
+        return { runtime: name, model };
+      }
+      if (typeof effort !== 'string' || !isEffort(effort)) {
+        refuse(`agent ${name}:${model} of ${role} has an unknown effort`);
+      }
+      try {
+        parseAgent(role, `${name}:${model}:${effort}`);
+      } catch (error) {
+        refuse(error instanceof Error ? error.message : String(error));
+      }
+      return { runtime: name, model, effort };
     });
   }
 

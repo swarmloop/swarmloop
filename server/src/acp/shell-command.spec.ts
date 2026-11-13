@@ -78,6 +78,13 @@ describe('shell config without the lists', () => {
     expect(readShellConfig(file)).toMatchObject({ runtime: 'codex', model: 'gpt-6.1-sol' });
   });
 
+  it('reads a Cursor agent that names an effort without a model list', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'swarmloop-env-'));
+    const file = join(dir, 'env');
+    writeFileSync(file, 'AGENTS_IMPLEMENT=cursor:grok-4.7:high\n');
+    expect(readShellConfig(file)).toMatchObject({ runtime: 'cursor', model: 'grok-4.7' });
+  });
+
   it('names AGENTS_IMPLEMENT when it is missing or invalid', () => {
     const dir = mkdtempSync(join(tmpdir(), 'swarmloop-env-'));
     const file = join(dir, 'env');

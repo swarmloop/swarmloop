@@ -1,9 +1,12 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { mkdirSync } from 'fs';
 import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
-import { assertAgents } from './config/agents';
+import { warmModelLists } from './agent/runtime-model-lists';
+import { sandboxModelLister } from './agent/model-list';
+import { assertAgents, credentialFor } from './config/agents';
 import { AppConfig } from './config/env';
 import { assertEnvFile } from './config/load-env';
 import { resolveRepoRoot } from './config/repo-root';
@@ -13,6 +16,7 @@ import { Reconciler } from './pipeline/reconciler';
 import { bindRefusal } from './auth/bind-check';
 import { HostAppsService } from './auth/host-apps.service';
 import { allowedOrigins } from './live/origins';
+import { SandboxService } from './sandbox/sandbox.service';
 
 async function bootstrap(): Promise<void> {
   const envError = assertEnvFile(join(resolveRepoRoot(undefined, __dirname), '.env'));
@@ -38,6 +42,13 @@ async function bootstrap(): Promise<void> {
     app.enableShutdownHooks();
     app.enableCors({ origin: allowedOrigins(env.SWARMLOOP_PUBLIC_URL), credentials: true });
     app.useWebSocketAdapter(new IoAdapter(app));
+    const root = resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname);
+    const mount = { hostPath: join(root, 'worktrees'), containerPath: '/work' };
+    mkdirSync(mount.hostPath, { recursive: true });
+    const sandbox = app.get(SandboxService);
+    await warmModelLists(env, root, Date.now(), (runtime) =>
+      sandboxModelLister(sandbox, runtime, credentialFor(env, runtime.name), mount),
+    );
     assertAgents(env);
     await app.listen(env.SWARMLOOP_API_PORT, env.SWARMLOOP_API_HOST);
     const housekeeping = app.get(Housekeeping);
