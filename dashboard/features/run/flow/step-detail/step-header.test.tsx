@@ -34,6 +34,26 @@ describe('StepHeader', () => {
     expect(screen.getByText('implement')).toBeInTheDocument();
   });
 
+  it('shows a server step with status, time, passed and slowest only: no cost, tokens, cpu or model line', () => {
+    const view = stepView({
+      descriptor: { name: 'checks', kind: 'server' },
+      visits: [visitView({ usd: 1.5, tokensIn: 9, tokensOut: 8, cpuPeak: 70 })],
+    });
+    header({
+      view,
+      visit: view.visits[0],
+      attempt: 0,
+      attempts: 1,
+      commands: { passed: 8, total: 12, slowest: { command: 'unit tests', ms: 65_000 } },
+    });
+
+    expect(screen.getByText('8/12 passed · slowest: unit tests 1m 5s')).toBeInTheDocument();
+    expect(screen.queryByText(/\$/)).toBeNull();
+    expect(screen.queryByText(/ in$| out$/)).toBeNull();
+    expect(screen.queryByText(/cpu|mem /)).toBeNull();
+    expect(screen.queryByText('server')).toBeNull();
+  });
+
   it('says the step has not run when there is no visit', () => {
     header({ view: stepView({ visits: [] }), visit: undefined, attempt: 0, attempts: 0 });
 
@@ -150,7 +170,7 @@ describe('StepHeader', () => {
   it('says server for a server step and names no mode next to the kind', () => {
     header({ view: stepView({ descriptor: { name: 'commit', kind: 'server' } }) });
 
-    expect(screen.getByText('server')).toBeInTheDocument();
+    expect(screen.queryByText('server')).not.toBeInTheDocument();
     expect(screen.queryByText(/\bagent\b/)).not.toBeInTheDocument();
   });
 

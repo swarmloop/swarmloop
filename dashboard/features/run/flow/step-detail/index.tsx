@@ -8,7 +8,8 @@ import { useStep } from '../../use-step';
 import { issueLinks, problemSummary } from '../../transcript/transcript-model';
 import { slowestBeforeAttempt } from '../../transcript/prepared-wait';
 import { useStepEvents } from '../../transcript/use-step-events';
-import { commandSummary, visitCommands } from '../../check-commands';
+import type { CheckCommandView } from '@contract/api';
+import { commandSummary, liveCommands as withLive, visitCommands } from '../../check-commands';
 import { shownStatus, stepText, visitChecks } from '../../step-view';
 import { useVisitLog } from '../../use-visit-log';
 import { StepDocuments } from './step-documents';
@@ -25,6 +26,7 @@ export function StepDetail({
   onResume,
   resumeLabel,
   attempts,
+  liveCommands,
 }: {
   runKey: string;
   step: string;
@@ -36,6 +38,8 @@ export function StepDetail({
   onResume?: () => void;
   resumeLabel?: string;
   attempts: number;
+  /** The rows of the latest checks attempt from the live flow: they replace the step view's rows of that attempt. */
+  liveCommands?: CheckCommandView[];
 }): React.ReactElement | null {
   const { view, attempt, setAttempt, error, follow } = useStep(runKey, step, live, revision, attempts);
   const [check, setCheck] = useState<string | null>(null);
@@ -82,7 +86,7 @@ export function StepDetail({
   const text = stepText(step, shownVisit, selected, checks);
   const logs = selected ? '' : text.logs || (stored.text ?? '');
   const { document } = text;
-  const commands = view.commands ? visitCommands(view.commands, visit) : undefined;
+  const commands = view.commands ? visitCommands(withLive(view.commands, liveCommands), visit) : undefined;
   return (
     <Paper sx={{ mt: 3, p: 2.5, border: 1, borderColor: 'divider', minWidth: 0 }}>
       <StepHeader

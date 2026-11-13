@@ -48,6 +48,15 @@ export function commandViewsOf(rows: CheckCommandEntity[]): CheckCommandView[] {
   }));
 }
 
+/** The commands of the latest checks attempt: the rows of the attempt of the newest row. */
+export function latestCommandViews(rows: CheckCommandEntity[]): CheckCommandView[] {
+  const newest = rows.reduce<CheckCommandEntity | undefined>(
+    (last, row) => (!last || row.id > last.id ? row : last),
+    undefined,
+  );
+  return commandViewsOf(rows.filter((row) => row.attemptId === newest?.attemptId));
+}
+
 /** The decision of each reviewer that wrote one. */
 export function reviewChecks(documents: DocumentEntity[]): StepView['checks'] {
   return REVIEW_KINDS.map((kind) => {

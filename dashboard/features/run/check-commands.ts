@@ -10,6 +10,39 @@ export function visitCommands(commands: CheckCommandView[] | undefined, visit: V
   return commands.filter((command) => command.attempt === visit.attemptId);
 }
 
+/** What a command is called: its short name, or its command line for a row from before names. */
+export function commandLabel(command: CheckCommandView): string {
+  return command.name ?? command.command;
+}
+
+/** The rows of the step view, with every row of the attempt the live rows belong to replaced by the live rows. */
+export function liveCommands(
+  viewRows: CheckCommandView[] | undefined,
+  flowRows: CheckCommandView[] | undefined,
+): CheckCommandView[] {
+  const live = flowRows ?? [];
+  const attempts = new Set(live.map((row) => row.attempt));
+  return [...(viewRows ?? []).filter((row) => !attempts.has(row.attempt)), ...live];
+}
+
+/** Commands by state. A skipped command counts as passed; a stored `waiting` command is queued. */
+export function commandCounts(commands: CheckCommandView[]): {
+  passed: number;
+  failed: number;
+  running: number;
+  queued: number;
+  total: number;
+} {
+  const of = (...states: CheckCommandView['status'][]) => commands.filter((row) => states.includes(row.status)).length;
+  return {
+    passed: of('passed', 'skipped'),
+    failed: of('failed'),
+    running: of('running'),
+    queued: of('waiting'),
+    total: commands.length,
+  };
+}
+
 /** How long a command ran, or has been running. Null before it started. */
 export function commandMs(command: CheckCommandView, now: number): number | null {
   if (!command.startedAt) {
@@ -28,11 +61,11 @@ export function commandSummary(
   for (const command of commands) {
     const ms = commandMs(command, now);
     if (ms !== null && (!slowest || ms > slowest.ms)) {
-      slowest = { command: command.command, ms };
+      slowest = { command: commandLabel(command), ms };
     }
   }
   return {
-    passed: commands.filter((command) => command.status === 'passed' || command.status === 'skipped').length,
+    passed: commandCounts(commands).passed,
     total: commands.length,
     slowest,
   };

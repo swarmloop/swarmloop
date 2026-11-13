@@ -108,7 +108,7 @@ describe('Bubble', () => {
   });
 
   it('marks a running bubble with a progress line', () => {
-    feed([stepEvent(1, { kind: 'activity.started', spanId: 'a', title: 'Check out' })]);
+    feed([stepEvent(1, { kind: 'activity.started', spanId: 'a', title: 'Check out' })], true);
 
     expect(within(screen.getByRole('article')).getByRole('progressbar')).toBeInTheDocument();
   });

@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import { createTheme } from '@mui/material/styles';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { FlowView } from '@contract/api';
+import type { CheckCommandView, FlowView } from '@contract/api';
 import { FlowBoard } from './flow-board';
 
 const phases: FlowView['phases'] = [
@@ -95,5 +95,60 @@ describe('FlowBoard', () => {
     expect(screen.getByText('checks → implement · checks × 2')).toBeInTheDocument();
     expect(screen.getByText('code-review → implement · review × 1')).toBeInTheDocument();
     expect(screen.getByText('code review')).toBeInTheDocument();
+  });
+
+  describe('the checks card', () => {
+    const board: FlowView['phases'] = [
+      { phase: 'checks', steps: [{ name: 'checks', status: 'running', current: true, attempts: 1 }] },
+    ];
+    const rows = (statuses: CheckCommandView['status'][]): CheckCommandView[] =>
+      statuses.map((status, index) => ({
+        attempt: 'att-1',
+        index,
+        repo: 'api',
+        command: `cmd ${index}`,
+        name: null,
+        status,
+        startedAt: null,
+        endedAt: null,
+        exitCode: null,
+      }));
+    const draw = (statuses: CheckCommandView['status'][]) => {
+      render(
+        <FlowBoard phases={board} returns={[]} selected={null} onSelect={vi.fn()} checkCommands={rows(statuses)} />,
+      );
+      return screen.getByRole('button', { name: /checks/ });
+    };
+
+    it('shows passed/total and the bar while the checks run', () => {
+      const statuses: CheckCommandView['status'][] = [
+        ...Array<CheckCommandView['status']>(8).fill('passed'),
+        'running',
+        'running',
+        'waiting',
+        'waiting',
+      ];
+      const card = draw(statuses);
+
+      expect(within(card).getByText('8/12')).toBeInTheDocument();
+      const part = (name: string) => card.querySelector(`[data-part="${name}"]`);
+      expect(part('passed')).toHaveStyle({ flexGrow: '8' });
+      expect(part('running')).toHaveStyle({ flexGrow: '2' });
+      expect(part('queued')).toHaveStyle({ flexGrow: '2' });
+    });
+
+    it('shows N failed in the error color with an icon after a failure', () => {
+      const card = draw(['passed', 'failed', 'failed']);
+
+      expect(within(card).getByText('2 failed')).toHaveStyle({ color: createTheme().palette.error.main });
+      expect(within(card).getByTestId('ErrorOutlineIcon')).toBeInTheDocument();
+      expect(within(card).queryByText(/\d+\/\d+/)).toBeNull();
+    });
+
+    it('shows 12/12 when every command passed', () => {
+      const card = draw(Array<CheckCommandView['status']>(12).fill('passed'));
+
+      expect(within(card).getByText('12/12')).toBeInTheDocument();
+    });
   });
 });

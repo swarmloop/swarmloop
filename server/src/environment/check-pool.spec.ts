@@ -9,6 +9,7 @@ import type { CheckCommandEntity, RunEntity } from '../history/entities';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import { CheckPool } from './check-pool';
 import type { CheckedRepo, EnvironmentInput } from './environment-types';
+import { LiveHub } from '../live/live.hub';
 import { RequiredCheckFailed } from './project-environments';
 
 const GB = 1024 ** 3;
@@ -17,6 +18,7 @@ function setup(options: {
   exits: (command: string, launch: SandboxLaunch, attempt: number) => number;
   capacity?: number;
   halted?: () => boolean;
+  live?: LiveHub;
 }) {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-pool-'));
   const spawned: SandboxLaunch[] = [];
@@ -64,6 +66,7 @@ function setup(options: {
     sandbox: sandbox as unknown as ConstructorParameters<typeof CheckPool>[0]['sandbox'],
     documents,
     commands,
+    live: options.live,
     shell: () => ({
       root,
       clock,
@@ -176,5 +179,15 @@ describe('CheckPool', () => {
     await pool.runAll(input, 'a1', [repoOf(['a', 'b', 'c', 'd', 'e'])]);
     expect(spawned).toHaveLength(10);
     expect(alive.max).toBe(2);
+  });
+
+  it('tells the live hub on every row change, so a window sees running and then passed', async () => {
+    const live = new LiveHub();
+    const { pool, input, repoOf } = setup({ exits: () => 0, live });
+    const repo = repoOf(['a']);
+    const seen: string[] = [];
+    live.onChanged((key) => seen.push(`${key}:${repo.rows[0].status}`));
+    await pool.runAll(input, 'a1', [repo]);
+    expect(seen).toEqual(['r1:undefined', 'r1:running', 'r1:passed']);
   });
 });

@@ -20,6 +20,8 @@ export function stepMetrics(input: {
   cpuPeak: number;
   memAvg: number;
   memPeak: number;
+  /** A server step spends nothing and has no model: it keeps status, time and attempt. */
+  server?: boolean;
 }): StepMetric[] {
   const items: StepMetric[] = [
     { kind: 'status', text: input.status, tip: 'Step status' },
@@ -27,6 +29,9 @@ export function stepMetrics(input: {
   ];
   if (input.attempt > 0) {
     items.push({ kind: 'attempt', text: `attempt ${input.attempt}`, tip: 'Attempt' });
+  }
+  if (input.server) {
+    return items;
   }
   items.push(
     { kind: 'spend', text: money(input.usd), tip: 'Spend for this attempt' },
