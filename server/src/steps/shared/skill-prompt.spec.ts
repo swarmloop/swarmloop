@@ -249,3 +249,19 @@ describe('project rules in a skill prompt', () => {
     expect(prompt).toContain('Project rules (api):\nKeep it small.\n\nRequirements:');
   });
 });
+
+describe('fix-the-cause sentence', () => {
+  it.each(['implement', 'implement-improve', 'code-review/quality', 'code-review/regressions'])(
+    '%s names the special case keyed on what the failure showed',
+    (name) => {
+      expect(skill(name)).toContain('keyed on the specific name, message text, id or value seen in the failure');
+    },
+  );
+
+  it.each(['code-review/quality', 'code-review/regressions'])(
+    "%s reads implement's cause against the failure and the diff",
+    (name) => {
+      expect(skill(name)).toContain("Read implement's `cause:` against the failure and the diff");
+    },
+  );
+});
