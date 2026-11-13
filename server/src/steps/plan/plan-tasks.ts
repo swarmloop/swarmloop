@@ -8,6 +8,8 @@ import { section } from '../shared/markdown-section';
 interface TaskGraph {
   contract: string;
   tasks: Subtask[];
+  /** One line per dependency the server added, in the form of the contract's `decisions:`. */
+  decisions: string[];
 }
 
 export interface TaskLimits {
@@ -57,7 +59,7 @@ export function parseTasks(text: string, limits: TaskLimits): TaskGraph {
   if (bare) {
     throw new SwarmloopError(`task ${bare.id} has no description`);
   }
-  return { contract, tasks };
+  return { contract, tasks, decisions: chainSharedFiles(tasks) };
 }
 
 /** The l17 checklist items the server writes from the tasks: `title - files: .. - proof: ..`. */
@@ -69,8 +71,26 @@ export function planItemsFromTasks(tasks: Subtask[]): string[] {
 export function splitOutputs(graph: TaskGraph | null): ArtifactValue[] {
   return [
     { artifact: ARTIFACTS.subtasks, value: graph?.tasks ?? [] },
-    ...(graph ? [{ artifact: ARTIFACTS.contract, value: graph.contract }] : []),
+    ...(graph ? [{ artifact: ARTIFACTS.contract, value: withDecisions(graph.contract, graph.decisions) }] : []),
   ];
+}
+
+/** The contract with the added lines under its `decisions:` heading, or under a new one. */
+function withDecisions(contract: string, decisions: string[]): string {
+  if (decisions.length === 0) {
+    return contract;
+  }
+  const lines = contract.split('\n');
+  const heading = lines.findIndex((line) => /^decisions:\s*$/i.test(line.trim()));
+  if (heading < 0) {
+    return [contract, '', 'decisions:', ...decisions.map((line) => `- ${line}`)].join('\n');
+  }
+  let end = heading + 1;
+  while (end < lines.length && lines[end].trim()) {
+    end += 1;
+  }
+  lines.splice(end, 0, ...decisions.map((line) => `- ${line}`));
+  return lines.join('\n');
 }
 
 function taskLines(block: string): Subtask[] {
@@ -172,6 +192,56 @@ function assertGraph(tasks: Subtask[]): void {
   if (cycle) {
     throw new SwarmloopError(`tasks have a dependency cycle: ${cycle.join(' -> ')}`);
   }
+}
+
+/** True when task `from` depends on task `to`, directly or through other tasks. */
+export function reaches(tasks: Subtask[], from: string, to: string): boolean {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const seen = new Set<string>();
+  const stack = [from];
+  while (stack.length > 0) {
+    const id = stack.pop() as string;
+    for (const next of byId.get(id)?.depends ?? []) {
+      if (next === to) {
+        return true;
+      }
+      if (!seen.has(next)) {
+        seen.add(next);
+        stack.push(next);
+      }
+    }
+  }
+  return false;
+}
+
+/** The tasks in dependency order; a task with no order against another keeps its plan position. The graph is acyclic. */
+function topologicalOrder(tasks: Subtask[]): Subtask[] {
+  const rest = [...tasks];
+  const ordered: Subtask[] = [];
+  while (rest.length > 0) {
+    const index = rest.findIndex((task) => task.depends.every((id) => ordered.some((done) => done.id === id)));
+    ordered.push(...rest.splice(index, 1));
+  }
+  return ordered;
+}
+
+/**
+ * Chains tasks that name one file with no dependency path between them: the later task in a topological order
+ * depends on the earlier one, so no cycle can appear. Returns one decisions line per added edge.
+ */
+function chainSharedFiles(tasks: Subtask[]): string[] {
+  const ordered = topologicalOrder(tasks);
+  const decisions: string[] = [];
+  ordered.forEach((later, position) => {
+    for (const earlier of ordered.slice(0, position).reverse()) {
+      const shared = later.files.find((file) => earlier.files.includes(file));
+      if (shared && !reaches(tasks, later.id, earlier.id) && !reaches(tasks, earlier.id, later.id)) {
+        later.depends.push(earlier.id);
+        decisions.push(`${later.id} depends on ${earlier.id}: both change ${shared}`);
+      }
+    }
+  });
+  return decisions;
 }
 
 /** The ids of one cycle in dependency order, or null when the graph is acyclic. */
