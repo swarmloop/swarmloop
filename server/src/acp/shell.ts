@@ -12,16 +12,14 @@ import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import {
   agentStateDir,
   containerName,
-  hostName,
   agentImage,
-  isLocalHost,
   modelApiHosts,
   modelCredential,
   prepareStateDir,
   sandboxArgs,
-  sandboxNetworkName,
   sandboxUserId,
 } from '../sandbox/sandbox-launch';
+import { hostName, isLocalHost, sandboxNetworkName } from '../sandbox/sandbox-hosts';
 import { workRootsAt } from '../sandbox/allowed-path';
 import { collectEnvMasks } from '../sandbox/env-masks';
 import type { ShellFeature, ShellMatch } from '../contract/api';

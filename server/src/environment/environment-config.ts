@@ -2,7 +2,7 @@ import { posix } from 'path';
 import Joi from 'joi';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { git, gitDetail, originUrl } from '../git/git';
-import { hostRefusal, remoteHost } from '../sandbox/sandbox-launch';
+import { hostRefusal, remoteHost } from '../sandbox/sandbox-hosts';
 
 const SWARMLOOP_FILE = '.swarmloop.json';
 const SWARMLOOP_DIR = '.swarmloop';
