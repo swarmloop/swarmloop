@@ -5,6 +5,7 @@ import type {
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
+  PipelineDiagnosis,
   SelectedHost,
 } from '../integrations/code-host/code-host';
 import { FakeCi } from './fake-ci';
@@ -23,6 +24,8 @@ export class FakeCodeHost {
   private downUntil = 0;
   private downStatus = 503;
   private retryAfterMs = HOST_RETRY_MS;
+  private readonly closed = new Set<number>();
+  private conflicting = false;
 
   constructor(
     private readonly clone: string,
@@ -35,6 +38,21 @@ export class FakeCodeHost {
     this.downUntil = this.now() + ms;
     this.downStatus = status;
     this.retryAfterMs = retryAfterMs;
+  }
+
+  /** How many merge requests were opened. */
+  get opened(): number {
+    return this.requests.size;
+  }
+
+  /** The request is closed without a merge, as a person does on the host. */
+  closeRequest(iid: number): void {
+    this.closed.add(iid);
+  }
+
+  /** Every request has a merge conflict with its base, until it is switched off. */
+  conflicts(on: boolean): void {
+    this.conflicting = on;
   }
 
   selected(): SelectedHost {
@@ -91,13 +109,19 @@ export class FakeCodeHost {
   readMergeRequest(
     _project: string,
     iid: number,
-  ): Promise<{ state: 'open' | 'merged'; sha: string | null; conflicts: boolean; draft: boolean; httpCalls: [] }> {
+  ): Promise<{
+    state: 'open' | 'merged' | 'closed';
+    sha: string | null;
+    conflicts: boolean;
+    draft: boolean;
+    httpCalls: [];
+  }> {
     this.guard();
     const sha = this.merged.get(iid) ?? null;
     return Promise.resolve({
-      state: sha ? 'merged' : 'open',
+      state: sha ? 'merged' : this.closed.has(iid) ? 'closed' : 'open',
       sha,
-      conflicts: false,
+      conflicts: this.conflicting,
       draft: this.requests.get(iid)?.draft ?? false,
       httpCalls: [],
     });
@@ -107,7 +131,12 @@ export class FakeCodeHost {
     this.guard();
     const sha = this.merged.get(iid);
     const at = new Date(this.now()).toISOString();
-    return Promise.resolve({ ...(sha ? { state: 'merged', sha, by: null, at } : { state: 'open' }), httpCalls: [] });
+    const state = sha
+      ? { state: 'merged' as const, sha, by: null, at }
+      : this.closed.has(iid)
+        ? { state: 'closed' as const, by: null, at }
+        : { state: 'open' as const };
+    return Promise.resolve({ ...state, httpCalls: [] });
   }
 
   mergeMergeRequest(_project: string, iid: number): Answer<'mergeMergeRequest'> {
@@ -136,6 +165,18 @@ export class FakeCodeHost {
     return Promise.resolve({ snapshot: this.ci.snapshot(ref.sha), httpCalls: [] });
   }
 
+  /** What a host says when no run started: a closed request or a merge conflict, else nothing. */
+  diagnoseMissingPipeline(): Promise<PipelineDiagnosis> {
+    this.guard();
+    const code = [...this.requests.keys()].some((iid) => this.closed.has(iid))
+      ? 'closed'
+      : this.conflicting
+        ? 'merge-conflict'
+        : undefined;
+    const reason = code === 'closed' ? 'merge request is closed' : 'merge request has a conflict';
+    return Promise.resolve(code ? { reason, code, httpCalls: [] } : { reason: null, httpCalls: [] });
+  }
+
   readJobTrace(): Answer<'readJobTrace'> {
     this.guard();
     return Promise.resolve({ trace: this.ci.trace(), httpCalls: [] });
@@ -153,7 +194,7 @@ export class FakeCodeHost {
 
   readRunNotes(): Answer<'readRunNotes'> {
     this.guard();
-    return Promise.resolve({ notes: '', httpCalls: [] });
+    return Promise.resolve({ notes: this.ci.notes, httpCalls: [] });
   }
 
   private guard(): void {
