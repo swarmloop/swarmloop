@@ -12,8 +12,9 @@ import type {
   RepositoryOwner,
 } from '../../contract/api';
 import { Clock } from '../../core/clock';
-import { SwarmloopError } from '../../core/swarmloop-error';
+import { HostUnavailable, SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail } from '../../git/git';
+import { withGitHostRetries } from '../../git/host-retry';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
 import { CodeHostRegistry, type CodeHostName } from '../../integrations/code-host/code-host.registry';
@@ -141,9 +142,18 @@ export class RemoteRepositories {
   private async cloneInto(hosts: CodeHostRegistry, repository: RemoteRepository, actor: string | null): Promise<void> {
     const host = hosts.byName(repository.host);
     const project = `${repository.owner}/${repository.name}`;
+    const url = host.cloneUrl(project);
     try {
-      await git(['clone', host.cloneUrl(project), this.folder(repository.name)], host.cloneEnv());
+      await withGitHostRetries(
+        url,
+        this.clock,
+        () => git(['clone', url, this.folder(repository.name)], host.cloneEnv()),
+        host.selected().token,
+      );
     } catch (error) {
+      if (error instanceof HostUnavailable) {
+        throw error;
+      }
       throw new SwarmloopError(`clone of ${project} failed: ${gitDetail(error)}`);
     }
     this.logger.log(`${actor ?? 'nobody'} cloned ${project} from ${repository.host}`);
