@@ -363,7 +363,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['dashboard/lib/api.ts'],
+    files: ['dashboard/lib/api.ts', 'dashboard/middleware.ts'],
     rules: { 'no-restricted-globals': 'off' },
   },
   {
