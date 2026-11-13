@@ -22,6 +22,14 @@ export class StepStatEntity {
   @Column({ type: 'text', nullable: true })
   model!: string | null;
 
+  /** The effort the agent ran with. Null when it ran at its runtime's default. */
+  @Column({ type: 'text', nullable: true })
+  effort!: string | null;
+
+  /** Why the effort is what it is, such as `epic` when the epic setting raised it. */
+  @Column({ name: 'effort_note', type: 'text', nullable: true })
+  effortNote!: string | null;
+
   @Column({ type: 'text', nullable: true })
   mode!: string | null;
 
