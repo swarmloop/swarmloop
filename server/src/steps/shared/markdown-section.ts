@@ -35,6 +35,7 @@ export function section(text: string, name: string): string | null {
 
 const SECTION_LABELS = [
   'contract',
+  'keep',
   'tasks',
   'plan',
   'questions',

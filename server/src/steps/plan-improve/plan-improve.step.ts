@@ -21,6 +21,7 @@ import { storedPlan } from '../step';
 import { parsePlan, readPlan, reviewedItems, withPlan } from '../plan/plan-record';
 import { parseTasks, planItemsFromTasks, splitAnswer, splitLimits, splitOutputs, unbounded } from '../plan/plan-tasks';
 import { mergeTasks, PLAN_IMPROVE_FOLLOW_UP } from './plan-improve.prompts';
+import { renderKeep } from '../shared/keep-lines';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
@@ -30,6 +31,7 @@ const INPUTS = {
   addedRepos: lateInput(ARTIFACTS.addedRepos),
   subtasks: lateInput(ARTIFACTS.subtasks),
   contract: lateInput(ARTIFACTS.contract),
+  keep: lateInput(ARTIFACTS.keep),
   instructions: instructionsInput('plan-improve'),
 } as const satisfies InputSpec;
 
@@ -37,7 +39,7 @@ const INPUTS = {
 export class PlanImproveStep extends AgentStep<typeof INPUTS> {
   readonly inputs = INPUTS;
   readonly name: StepName = 'plan-improve';
-  readonly outputs = [ARTIFACTS.requirements, ARTIFACTS.subtasks, ARTIFACTS.contract];
+  readonly outputs = [ARTIFACTS.requirements, ARTIFACTS.subtasks, ARTIFACTS.keep, ARTIFACTS.contract];
 
   constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
     super(kernel, sandbox, launcher);
@@ -74,6 +76,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     const maySplit = limits.maySplit;
     const tasks = maySplit ? ((await ctx.reread(ARTIFACTS.subtasks)) ?? []) : [];
     const contract = tasks.length > 0 ? ((await ctx.reread(ARTIFACTS.contract)) ?? '') : '';
+    const keep = tasks.length > 0 ? ((await ctx.reread(ARTIFACTS.keep)) ?? []) : [];
     // A plan over the limit is merged once; the final parse below ends it as a plan error when it still does not fit.
     const oversized = tasks.length > limits.maxTasks;
     const splitSections =
@@ -81,6 +84,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
         ? [
             { heading: 'Contract', body: contract },
             { heading: 'Tasks', body: JSON.stringify(tasks, null, 2) },
+            ...(keep.length > 0 ? [{ heading: 'Keep', body: renderKeep(keep) }] : []),
             ...(oversized ? [{ heading: 'Merge', body: mergeTasks(tasks.length, limits.maxTasks) }] : []),
           ]
         : [];

@@ -115,4 +115,35 @@ describe('code-review step', () => {
       await app.close();
     }
   });
+
+  it('gives the regressions reviewer of a split run the keep lines and makes no run from them', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-keep-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-97', 'billing-api'), { recursive: true });
+    const agent = jest.fn(async (input: AgentRunInput) => result(`notes\n\ndecision: ok\n`, input.step));
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-97');
+      const runs = app.get(RunRepository);
+      const run = await runs.findRun('PROJ-97');
+      run!.split = true;
+      await runs.saveRun(run!);
+      const documents = app.get(DocumentRepository);
+      await documents.putDocument(
+        run!,
+        'keep',
+        JSON.stringify([{ capability: 'login works', proof: 'login.spec.ts', tasks: ['a'] }]),
+      );
+      await documents.putDocument(run!, 'subtasks', JSON.stringify([]));
+      const done = await app.get(PipelineService).step('code-review', 'PROJ-97');
+      expect(done.exitCode).toBe(0);
+      const sent = agent.mock.calls.map((call) => call[0]).filter((call) => call.step.startsWith('code-review-'));
+      const holding = sent.filter((call) => call.prompt.includes('- login works (proof: login.spec.ts)'));
+      expect(holding.map((call) => call.step)).toEqual(['code-review-regressions']);
+      expect(holding[0].prompt).toContain('Check each line against the merged diff');
+      expect(await runs.children(run!)).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
 });

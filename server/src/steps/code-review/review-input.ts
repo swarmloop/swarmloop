@@ -15,6 +15,7 @@ import { handoffSection } from '../shared/handoff';
 import { mountsForStep, repoNames } from '../../git/repo-names';
 import { approvedChecklist } from './code-review.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
+import { renderKeep, type KeepLine } from '../shared/keep-lines';
 
 export async function repoMounts(
   runs: RunRepository,
@@ -116,4 +117,15 @@ export function fixNotes(
 function passNote(what: string, why: string): string {
   const parts = [what.trim() ? `What was done:\n${what.trim()}` : '', why.trim() ? `Why:\n${why.trim()}` : ''];
   return parts.filter((part) => part.length > 0).join('\n');
+}
+
+const KEEP_CHECK =
+  'Check each line against the merged diff. A capability the diff breaks is a return that names the capability.';
+
+/** The `Keep` section of a split parent's final review: the kept capabilities and how to check them. Left out with no lines. */
+export function withKeep(
+  sections: { heading: string; body: string }[],
+  keep: KeepLine[] | null,
+): { heading: string; body: string }[] {
+  return keep?.length ? [...sections, { heading: 'Keep', body: `${renderKeep(keep)}\n\n${KEEP_CHECK}` }] : sections;
 }

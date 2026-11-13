@@ -53,6 +53,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.requirements,
     ARTIFACTS.questions,
     ARTIFACTS.subtasks,
+    ARTIFACTS.keep,
     ARTIFACTS.contract,
     ARTIFACTS.needs,
   ];

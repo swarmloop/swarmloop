@@ -165,6 +165,15 @@ describe('split skill text', () => {
   });
 });
 
+describe('the split keep: section', () => {
+  it.each(['plan', 'plan-improve'])('%s says keep: lines, tasks that change the tree and proof: new', (name) => {
+    const text = skillPrompt(name, '{}', ['api'], [], [], { split: true });
+    expect(text).toContain('- <capability> | proof: <test or new <test>> | tasks: <ids');
+    expect(text).toMatch(/tasks are only work that changes the tree/i);
+    expect(text).toContain('proof: new <test>');
+  });
+});
+
 describe('implement skill rules', () => {
   const rules = [
     'Run the tests closest to the change: the spec files of the changed code and the ones that import it.',

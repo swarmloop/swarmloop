@@ -238,3 +238,39 @@ describe('shared files', () => {
     expect(reaches(tasks, 'd', 'a')).toBe(false);
   });
 });
+
+describe('keep: lines', () => {
+  const tasks = [
+    '- a | a | depends: none | files: a.ts | proof: a.spec.ts',
+    '  Does it.',
+    '- b | b | depends: a | files: b.ts | proof: b.spec.ts',
+    '  Does it.',
+  ];
+  const withKeep = (keep: string[], lines = tasks): string =>
+    answer(lines).replace('tasks:', ['keep:', ...keep, '', 'tasks:'].join('\n'));
+
+  it('reads a valid section and stores it as the keep document', () => {
+    const graph = parseTasks(withKeep(['- login works | proof: login.spec.ts | tasks: a, b']), limits);
+    expect(graph.keep).toEqual([{ capability: 'login works', proof: 'login.spec.ts', tasks: ['a', 'b'] }]);
+    expect(splitOutputs(graph).find((out) => out.artifact === ARTIFACTS.keep)?.value).toEqual(graph.keep);
+  });
+
+  it('keeps the keep lines out of the stored contract', () => {
+    const graph = parseTasks(withKeep(['- login works | proof: login.spec.ts | tasks: a']), limits);
+    const stored = splitOutputs(graph).find((out) => out.artifact === ARTIFACTS.contract)?.value;
+    expect(stored).toBe('- the field is called `split`');
+  });
+
+  it('reads a missing section and none as no line, and clears the document with no graph', () => {
+    expect(parseTasks(answer(tasks), limits).keep).toEqual([]);
+    expect(parseTasks(withKeep(['- none']), limits).keep).toEqual([]);
+    expect(splitOutputs(null).find((out) => out.artifact === ARTIFACTS.keep)?.value).toEqual([]);
+  });
+
+  it('names a line with no task, a line with an unknown task and a task with no file', () => {
+    expect(refused(withKeep(['- login works | proof: login.spec.ts | tasks: none']))).toContain('login works');
+    expect(refused(withKeep(['- login works | proof: login.spec.ts | tasks: zed']))).toContain('unknown task zed');
+    const bare = tasks.map((line) => line.replace('files: b.ts', 'files: '));
+    expect(refused(answer(bare))).toBe('task b has no file to change');
+  });
+});
