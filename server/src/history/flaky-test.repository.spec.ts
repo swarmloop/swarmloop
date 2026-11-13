@@ -31,33 +31,33 @@ describe('FlakyTestRepository', () => {
   it('does not block on one record on one run', () =>
     withFlaky(async (flaky) => {
       await flaky.record(draft('run-a'));
-      expect(await flaky.blocks('repo', 'a step relaunched once', 'run-a', MAIN)).toBe(false);
+      expect(await flaky.blocks('repo', 'a step relaunched once', MAIN)).toBe(false);
     }));
 
-  it('blocks a run that meets a test recorded on another run', () =>
+  it('does not block on one record on another run', () =>
     withFlaky(async (flaky) => {
       await flaky.record(draft('run-a'));
-      expect(await flaky.blocks('repo', 'a step relaunched once', 'run-b', MAIN)).toBe(true);
+      expect(await flaky.blocks('repo', 'a step relaunched once', MAIN)).toBe(false);
     }));
 
   it('blocks on records on two runs', () =>
     withFlaky(async (flaky) => {
       await flaky.record(draft('run-a'));
       await flaky.record(draft('run-b'));
-      expect(await flaky.blocks('repo', 'a step relaunched once', 'run-a', MAIN)).toBe(true);
+      expect(await flaky.blocks('repo', 'a step relaunched once', MAIN)).toBe(true);
     }));
 
   it('blocks on a record on the main ref', () =>
     withFlaky(async (flaky) => {
       await flaky.record(draft('run-a', { ref: MAIN }));
-      expect(await flaky.blocks('repo', 'a step relaunched once', 'run-a', MAIN)).toBe(true);
+      expect(await flaky.blocks('repo', 'a step relaunched once', MAIN)).toBe(true);
     }));
 
   it('does not count a record of another test or project', () =>
     withFlaky(async (flaky) => {
       await flaky.record(draft('run-a', { test: 'other test' }));
       await flaky.record(draft('run-b', { project: 'other', ref: MAIN }));
-      expect(await flaky.blocks('repo', 'a step relaunched once', 'run-c', MAIN)).toBe(false);
+      expect(await flaky.blocks('repo', 'a step relaunched once', MAIN)).toBe(false);
     }));
 
   it('keeps blocking after later records', () =>
@@ -66,6 +66,6 @@ describe('FlakyTestRepository', () => {
       await flaky.record(draft('run-b'));
       await flaky.record(draft('run-c', { test: 'other test' }));
       await flaky.record(draft('run-a'));
-      expect(await flaky.blocks('repo', 'a step relaunched once', 'run-c', MAIN)).toBe(true);
+      expect(await flaky.blocks('repo', 'a step relaunched once', MAIN)).toBe(true);
     }));
 });

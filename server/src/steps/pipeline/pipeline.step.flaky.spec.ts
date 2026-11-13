@@ -195,7 +195,7 @@ describe('pipeline step and flaky tests', () => {
     }
   });
 
-  it('blocks a red run whose failed test already has a record on another run', async () => {
+  it('returns a red run to the agent when its failed test has a record on one other run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-flaky-red-'));
     const read = jest.fn(() =>
       Promise.resolve({ snapshot: shot('failed', [job(5, 'unit', false)]), httpCalls: [call('GET')] }),
@@ -209,11 +209,10 @@ describe('pipeline step and flaky tests', () => {
       await seed(app, KEY, `${one}sha: ${SHA_A}\n`);
       await app.get(FlakyTestRepository).record(earlier);
       const result = await app.get(PipelineService).step('pipeline', KEY);
-      expect(result.message).toContain('TEST_FLAKY: unit failed and passed on the same code twice');
+      expect(result.message).not.toContain('TEST_FLAKY');
       const run = await app.get(RunRepository).findRun(KEY);
-      expect(run?.status).toBe('blocked');
-      expect(run?.attemptsPipeline).toBe(0);
-      expect(await app.get(DocumentRepository).latestBody(KEY, 'return')).toBeNull();
+      expect(run?.status).not.toBe('blocked');
+      expect(await app.get(DocumentRepository).latestBody(KEY, 'return')).not.toBeNull();
     } finally {
       await app.close();
     }

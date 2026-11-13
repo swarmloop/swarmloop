@@ -1,5 +1,4 @@
 import type { DocumentRepository } from '../../history/document.repository';
-import type { RunEntity } from '../../history/entities';
 import type { FlakyTestRepository } from '../../history/flaky-test.repository';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import { git } from '../../git/git';
@@ -113,12 +112,6 @@ async function updateMergeRequests(ctx: StepContext, host: CodeHost, tests: stri
   await ctx.write(ARTIFACTS.mergeRequest, renderMergeRequest(updated));
 }
 
-async function latestLog(documents: DocumentRepository, run: RunEntity): Promise<{ id: number; body: string } | null> {
-  const id = (await documents.latestIds(run.id, [ARTIFACTS.pipelineLog.kind])).get(ARTIFACTS.pipelineLog.kind);
-  const body = id === undefined ? null : await documents.bodyBefore(run.key, ARTIFACTS.pipelineLog.kind, id + 1);
-  return id === undefined || body === null ? null : { id, body };
-}
-
 /**
  * A pass after a failed log: a job that failed there and passes now on the same code is flaky.
  * It is stored, shown on the run and in the merge request, and blocks when its test already blocks.
@@ -132,10 +125,17 @@ export async function flakyOnPass(
   host: CodeHost,
 ): Promise<StepResult | null> {
   const { opened } = ctx;
-  const failed = await latestLog(deps.documents, opened.run);
-  if (!failed || !failed.body.split('\n').some((line) => line.trim() === 'result: fail')) {
+  const failedId = (await deps.documents.latestIds(opened.run.id, [ARTIFACTS.pipelineLog.kind])).get(
+    ARTIFACTS.pipelineLog.kind,
+  );
+  const failedBody =
+    failedId === undefined
+      ? null
+      : await deps.documents.bodyBefore(opened.run.key, ARTIFACTS.pipelineLog.kind, failedId + 1);
+  if (failedId === undefined || !failedBody?.split('\n').some((line) => line.trim() === 'result: fail')) {
     return null;
   }
+  const failed = { id: failedId, body: failedBody };
   const refBody = await deps.documents.bodyBefore(opened.run.key, ARTIFACTS.pipelineRef.kind, failed.id);
   const earlier = parsePipelineRefs(refBody ?? '');
   const known = flakyTests(await ctx.reread(ARTIFACTS.flaky));
@@ -173,7 +173,7 @@ export async function flakyOnPass(
   await ctx.write(ARTIFACTS.flaky, tests.map((test) => `flaky: ${test}`).join('\n'));
   await updateMergeRequests(ctx, host, tests);
   for (const { project, job } of found) {
-    if (await deps.flaky.blocks(project, job, opened.run.key, mainRef(opened.run.prompt))) {
+    if (await deps.flaky.blocks(project, job, mainRef(opened.run.prompt))) {
       return flakyBlock(opened, job);
     }
   }

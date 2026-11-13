@@ -43,7 +43,7 @@ export async function red(
     return finish('blocked', report(opened, 'pipeline log unavailable', unreadable), 'blocked', unreadable);
   }
   for (const failure of failures.filter((item) => !item.check)) {
-    if (await deps.flaky.blocks(failure.project, failure.name, opened.run.key, mainRef(opened.run.prompt))) {
+    if (await deps.flaky.blocks(failure.project, failure.name, mainRef(opened.run.prompt))) {
       return flakyBlock(opened, failure.name);
     }
   }

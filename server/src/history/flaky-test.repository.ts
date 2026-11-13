@@ -14,10 +14,10 @@ export class FlakyTestRepository {
     await this.rows.insert(draft);
   }
 
-  /** True when the test has records on two different runs (`runId` counts as one) or a record on `mainRef`. */
-  async blocks(project: string, test: string, runId: string, mainRef: string): Promise<boolean> {
+  /** True when the test has records on two different runs or a record on `mainRef`. */
+  async blocks(project: string, test: string, mainRef: string): Promise<boolean> {
     const records = await this.rows.find({ select: { runId: true, ref: true }, where: { project, test } });
-    const runs = new Set([runId, ...records.map((record) => record.runId)]);
+    const runs = new Set(records.map((record) => record.runId));
     return runs.size >= 2 || records.some((record) => record.ref === mainRef);
   }
 }
