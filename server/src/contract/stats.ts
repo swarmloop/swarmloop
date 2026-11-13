@@ -16,7 +16,7 @@ export interface StatsDay {
   medianToMergeMs: number | null;
 }
 
-/** Spend and tokens of one step, model or agent. `count` is visits for steps and models, runs for agents. */
+/** Spend and tokens of one step, model, effort or agent. `count` is visits for steps, models and efforts, runs for agents. */
 export interface StatsShare {
   name: string;
   usd: number;
@@ -96,6 +96,8 @@ export interface StatsView {
   days: StatsDay[];
   steps: StatsShare[];
   models: StatsShare[];
+  /** Spend by the effort the visit ran with; a visit that named none is under `runtime default`. */
+  efforts: StatsShare[];
   agents: StatsShare[];
   /** Who sent work back: one reviewer per entry, and `pipeline` for CI. */
   reasons: StatsReason[];

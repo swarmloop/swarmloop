@@ -8,19 +8,13 @@ import Switch from '@mui/material/Switch';
 import Typography from '@mui/material/Typography';
 import type { SettingsBody, StoredAgents } from '@contract/api';
 import type { SettingsView } from '@contract/settings';
+import { agentOf, entryOf } from './agent-entry';
 import { AgentList } from './agent-list';
 
 const TIERS = ['main', 'subtask'] as const;
 const ROLES = ['plan', 'implement', 'review'] as const;
 type Tier = (typeof TIERS)[number];
 type Role = (typeof ROLES)[number];
-
-/** The list is `runtime:model`; a model may hold a colon, a runtime does not. */
-const entryOf = (agent: { runtime: string; model: string }): string => `${agent.runtime}:${agent.model}`;
-function agentOf(entry: string): { runtime: string; model: string } {
-  const at = entry.indexOf(':');
-  return { runtime: entry.slice(0, at), model: entry.slice(at + 1) };
-}
 
 /** The role lists of the person; a key left out is the server default. */
 export function AgentsSection({
@@ -32,8 +26,6 @@ export function AgentsSection({
   draft: SettingsBody;
   onChange: (draft: SettingsBody) => void;
 }): ReactElement {
-  const choices = view.runtimes.flatMap(({ runtime, models }) => models.map((model) => `${runtime}:${model}`));
-
   function setList(tier: Tier, role: Role, list: string[] | undefined): void {
     const roles = { ...draft.agents?.[tier] };
     if (list === undefined || list.length === 0) {
@@ -82,7 +74,7 @@ export function AgentsSection({
                   <AgentList
                     label={label}
                     value={own}
-                    choices={choices}
+                    runtimes={view.runtimes}
                     onChange={(list) => setList(tier, role, list)}
                   />
                 )}

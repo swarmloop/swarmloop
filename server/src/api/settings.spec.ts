@@ -93,6 +93,32 @@ describe('settings', () => {
     }
   });
 
+  it('refuses a level the runtime does not declare for the model, naming the agent', async () => {
+    const { app, repo, controller } = await world();
+    try {
+      const body = { agents: { main: { plan: [{ runtime: 'cursor', model: 'grok', effort: 'xhigh' }] } } };
+      await expect(controller.save('alice', body)).rejects.toThrow(/plan.*cursor:grok:xhigh/);
+      const word = { agents: { main: { plan: [{ runtime: 'claude', model: 'opus', effort: 'ultra' }] } } };
+      await expect(controller.save('alice', word)).rejects.toThrow(/claude:opus.*unknown effort/);
+      expect(await repo.read('alice')).toBeNull();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('lists the levels per model and stores a level the runtime declares', async () => {
+    const { app, controller } = await world();
+    try {
+      const view = await controller.read('alice');
+      const claude = view.runtimes.find((entry) => entry.runtime === 'claude');
+      expect(claude?.efforts.opus).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+      const body = { agents: { main: { plan: [{ runtime: 'claude', model: 'opus', effort: 'high' }] } } };
+      expect((await controller.save('alice', body)).settings).toEqual(body);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("offers the priced models of a connected runtime after env's, and accepts them", async () => {
     const { app, root, controller } = await world();
     try {

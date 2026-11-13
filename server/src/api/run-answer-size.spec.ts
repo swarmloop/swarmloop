@@ -137,4 +137,23 @@ describe('a run with a 10 MB log', () => {
       });
     },
   );
+
+  it.each(['implement', 'code-review-quality'])('shows the effort a stored %s visit ran with', async (step) => {
+    await withBigRun(async (queries, app) => {
+      const run = await save(app.get(RunRepository), 'proj-effort', 'implement', 'waiting');
+      await app
+        .get(VisitRepository)
+        .finishVisit(run, { ...repositoryVisit(), step, effort: 'high', effortNote: 'epic' });
+      const visit = (await queries.step('proj-effort', step)).visits[0];
+      expect(visit).toMatchObject({ effort: 'high', effortNote: 'epic' });
+    });
+  });
+
+  it('leaves the effort out of a stored visit that ran at the default', async () => {
+    await withBigRun(async (queries) => {
+      const visit = (await queries.step('proj-big', 'implement')).visits[0];
+      expect('effort' in visit).toBe(false);
+      expect('effortNote' in visit).toBe(false);
+    });
+  });
 });

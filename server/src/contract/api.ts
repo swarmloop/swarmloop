@@ -1,8 +1,19 @@
+import type { Effort } from './effort';
 import type { CommandInput } from './command';
 import type { MergeOutcome, RunAction, RunState, StateReason } from './run-state';
 import type { TaskLayer } from './task-layer';
 
 export type { SettingsBody, StoredAgents } from './settings';
+export type {
+  RunOutcome,
+  StatsCiReturns,
+  StatsDay,
+  StatsReason,
+  StatsRun,
+  StatsShare,
+  StatsTotals,
+  StatsView,
+} from './stats';
 export type { TaskLayer } from './task-layer';
 export type {
   RunOutcome,
@@ -119,6 +130,10 @@ export interface VisitView {
   attempt: number;
   status: string;
   model: string | null;
+  /** How hard the agent worked. Absent when it ran at its runtime's default. */
+  effort?: Effort;
+  /** Why the effort is what it is, such as `epic`. */
+  effortNote?: string;
   mode: string | null;
   durationMs: number;
   /** What the run waited for between the end of the visit before and this visit's first event. */

@@ -15,8 +15,8 @@ const view = (settings: SettingsView['settings'] = {}): SettingsView => ({
   settings,
   defaults: { agents: { main: roles, subtask: roles } },
   runtimes: [
-    { runtime: 'claude', models: ['opus', 'sonnet'] },
-    { runtime: 'codex', models: ['gpt', 'gpt-priced'] },
+    { runtime: 'claude', models: ['opus', 'sonnet'], efforts: { opus: ['low', 'high'], sonnet: [] } },
+    { runtime: 'codex', models: ['gpt', 'gpt-priced'], efforts: {} },
   ],
   modelsLimited: false,
   server: [
@@ -27,6 +27,9 @@ const view = (settings: SettingsView['settings'] = {}): SettingsView => ({
 const own = (...entries: [string, string][]): SettingsView['settings'] => ({
   agents: { main: { plan: entries.map(([runtime, model]) => ({ runtime, model })) } },
 });
+const ownHigh: SettingsView['settings'] = {
+  agents: { main: { plan: [{ runtime: 'claude', model: 'opus', effort: 'high' }] } },
+};
 
 beforeEach(() => {
   vi.mocked(getSettings).mockReset().mockResolvedValue(view());
@@ -90,6 +93,56 @@ describe('SettingsPage', () => {
       },
     });
     expect(await screen.findByText('Saved')).toBeInTheDocument();
+  });
+
+  it('offers the levels of the chosen model, with the runtime default first', async () => {
+    const user = await openOwnPlan();
+
+    await user.click(screen.getByRole('combobox', { name: 'Effort of claude:opus' }));
+
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Runtime default',
+      'low',
+      'high',
+    ]);
+  });
+
+  it('offers no level for a model that has none', async () => {
+    await openOwnPlan(own(['claude', 'sonnet']));
+
+    expect(screen.queryByRole('combobox', { name: /^Effort of/ })).not.toBeInTheDocument();
+  });
+
+  it('saves the chosen level', async () => {
+    const user = await openOwnPlan();
+
+    await user.click(screen.getByRole('combobox', { name: 'Effort of claude:opus' }));
+    await user.click(await screen.findByRole('option', { name: 'high' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(saveSettings).toHaveBeenCalledWith({
+      agents: { main: { plan: [{ runtime: 'claude', model: 'opus', effort: 'high' }] } },
+    });
+  });
+
+  it('saves no level after the runtime default is chosen', async () => {
+    const user = await openOwnPlan(ownHigh);
+
+    await user.click(screen.getByRole('combobox', { name: 'Effort of claude:opus:high' }));
+    await user.click(await screen.findByRole('option', { name: 'Runtime default' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(saveSettings).toHaveBeenCalledWith({ agents: { main: { plan: [{ runtime: 'claude', model: 'opus' }] } } });
+  });
+
+  it('clears a level the new model lacks', async () => {
+    const user = await openOwnPlan(ownHigh);
+
+    await user.click(screen.getByRole('combobox', { name: 'Model of claude:opus:high' }));
+    await user.click(await screen.findByRole('option', { name: 'sonnet' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(saveSettings).toHaveBeenCalledWith({ agents: { main: { plan: [{ runtime: 'claude', model: 'sonnet' }] } } });
   });
 
   it('reorders by drag', async () => {

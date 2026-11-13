@@ -1,4 +1,5 @@
 import type { SandboxMount } from '../core/sandbox-mount';
+import type { Effort } from '../contract/effort';
 import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
 import type { ManifestHosts, ProjectLaunch } from '../sandbox/sandbox-launch';
 
@@ -9,6 +10,8 @@ export interface AgentRunInput {
   sessionFile: string;
   runtime: RuntimeName;
   model: string;
+  /** How hard the agent works. Without it the runtime runs at its own default. */
+  effort?: Effort;
   agentCalls: number;
   spentUsd: number;
   tokensInRun: number;

@@ -11,7 +11,13 @@ type Activity = Extract<
   StepEvent,
   {
     kind:
-      'attempt.finished' | 'attempt.interrupted' | 'http.call' | 'host.suspended' | 'agent.limited' | 'agent.loop_hint';
+      | 'attempt.finished'
+      | 'attempt.interrupted'
+      | 'http.call'
+      | 'host.suspended'
+      | 'agent.limited'
+      | 'agent.effort_capped'
+      | 'agent.loop_hint';
   }
 >;
 
@@ -36,6 +42,13 @@ export function ActionCard({ event, outcome }: { event: Activity; outcome?: stri
     return (
       <Bubble side="left" title="Usage limit" type="warning">
         {limitSentence(event)}
+      </Bubble>
+    );
+  }
+  if (event.kind === 'agent.effort_capped') {
+    return (
+      <Bubble side="left" title="Effort lowered" type="activity">
+        {event.text}
       </Bubble>
     );
   }

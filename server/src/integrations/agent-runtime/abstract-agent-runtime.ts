@@ -1,8 +1,10 @@
+import type { Effort } from '../../contract/effort';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import type {
   AgentPrintInput,
   AgentRuntime,
   AgentTerminalInput,
+  EffortLaunch,
   EgressCredential,
   HomeFile,
   RuntimeKeys,
@@ -73,6 +75,35 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
 
   homeFiles(): HomeFile[] {
     return [];
+  }
+
+  efforts(_model: string): readonly Effort[] {
+    return [];
+  }
+
+  withEffort(launch: EffortLaunch, _level: Effort): EffortLaunch {
+    return launch;
+  }
+
+  modelListArgs(): string[] | null {
+    return null;
+  }
+
+  useModelList(_output: string): void {}
+
+  listLoaded(): boolean {
+    return true;
+  }
+
+  /** The launch with `items` put right after the value of `flag`, which puts them before the prompt. Unchanged when the flag is absent. */
+  protected insertAfterModel(launch: EffortLaunch, flag: string, items: string[]): EffortLaunch {
+    const at = launch.args.indexOf(flag);
+    if (at < 0) {
+      return launch;
+    }
+    const args = [...launch.args];
+    args.splice(at + 2, 0, ...items);
+    return { ...launch, args };
   }
 
   protected appendPrintFlags(_args: string[], _input: AgentPrintInput): void {}

@@ -4,7 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
-import { mkdtemp } from 'fs/promises';
+import { mkdtemp, readFile, writeFile } from 'fs/promises';
 
 import { tmpdir } from 'os';
 
@@ -313,6 +313,39 @@ describe('implement step', () => {
       expect(() =>
         git(tree, ['rev-parse', '--verify', 'refs/remotes/origin/feature/PROJ-66-ship-the-field']),
       ).toThrow();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('launches the conflict resolution of an epic parent at the epic effort', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-epic-effort-'));
+    await writeEnv(root);
+    const env = (await readFile(join(root, '.env'), 'utf8'))
+      .replace('AGENTS_IMPLEMENT=cursor:grok-4.7', 'AGENTS_IMPLEMENT=claude:claude-sonnet-5-5:high')
+      .replace('EPIC_EFFORT=', 'EPIC_EFFORT=xhigh');
+    await writeFile(join(root, '.env'), env);
+    const tree = conflictedTree(root, 'PROJ-69', 'billing-api');
+    const agent = jest.fn(async (input: AgentRunInput) => {
+      if (input.prompt.includes('The commit being replayed is')) {
+        writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 3;\n');
+        return result('edited the conflict\n');
+      }
+      return result(reply);
+    });
+    const app = await boot(root, agent);
+    try {
+      await seed(app, 'PROJ-69', 'approve');
+      const runs = app.get(RunRepository);
+      const run = (await runs.findRun('PROJ-69'))!;
+      run.epicAt = '2026-01-01T00:00:00.000Z';
+      await runs.saveRun(run);
+      await app.get(DocumentRepository).putDocument(run, REBASE_CONFLICT, 'pending-implement\n');
+      await app.get(PipelineService).step('implement', 'PROJ-69');
+      const conflict = agent.mock.calls
+        .map((call) => call[0])
+        .find((i) => i.prompt.includes('The commit being replayed is'));
+      expect(conflict?.effort).toBe('xhigh');
     } finally {
       await app.close();
     }

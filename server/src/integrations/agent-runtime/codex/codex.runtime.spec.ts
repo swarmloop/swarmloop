@@ -119,4 +119,35 @@ describe('CodexRuntime', () => {
     expect(withBrief.slice(0, 2)).toEqual(['--add-dir', '/work/brief']);
     expect(withBrief.at(-1)).toBe('read the worktrees');
   });
+
+  describe('effort', () => {
+    const base = { model: 'gpt-6.1-sol', prompt: 'do it', mounts, tools: 'write' as const };
+
+    it('declares low to xhigh and not max', () => {
+      expect(runtime.efforts('gpt-6.1-sol')).toEqual(['low', 'medium', 'high', 'xhigh']);
+    });
+
+    it('puts the reasoning effort before the prompt', () => {
+      const args = runtime.printArgs({ ...base, resumeChatId: null });
+      const launch = runtime.withEffort({ model: base.model, args, unsetEnv: [] }, 'high');
+      expect(launch.args.slice(launch.args.indexOf('-m'), launch.args.indexOf('-m') + 4)).toEqual([
+        '-m',
+        'gpt-6.1-sol',
+        '-c',
+        'model_reasoning_effort=high',
+      ]);
+      expect(launch.args.at(-1)).toBe('do it');
+      expect(launch.unsetEnv).toEqual([]);
+    });
+
+    it('keeps the flag before resume on a resumed run', () => {
+      const args = runtime.printArgs({ ...base, resumeChatId: 'chat-1' });
+      const launch = runtime.withEffort({ model: base.model, args, unsetEnv: [] }, 'low').args;
+      expect(launch.indexOf('-c')).toBeLessThan(launch.indexOf('resume'));
+    });
+
+    it('launches without an effort exactly as before', () => {
+      expect(runtime.printArgs({ ...base, resumeChatId: null })).not.toContain('-c');
+    });
+  });
 });

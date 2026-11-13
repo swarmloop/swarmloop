@@ -12,11 +12,12 @@ import { BarList, type BarRow } from './bar-list';
 import { CHART, ChartCard, MONO } from './chart-parts';
 import { big, percent, returnsByKind, usd } from './stats-format';
 
-type By = 'steps' | 'models' | 'agents';
+type By = 'steps' | 'models' | 'efforts' | 'agents';
 
 const BY: { by: By; label: string; unit: string }[] = [
   { by: 'steps', label: 'Step', unit: 'visits' },
   { by: 'models', label: 'Model', unit: 'calls' },
+  { by: 'efforts', label: 'Effort', unit: 'visits' },
   { by: 'agents', label: 'Agent', unit: 'runs' },
 ];
 
@@ -29,7 +30,7 @@ function shareRows(shares: StatsShare[], total: number, unit: string): BarRow[] 
   }));
 }
 
-/** Where the dollars went: by step, by model, or by agent. */
+/** Where the dollars went: by step, by model, by effort, or by agent. */
 export function MoneyBreakdown({ stats }: { stats: StatsView }): ReactElement {
   const [by, setBy] = useState<By>('steps');
   const unit = BY.find((entry) => entry.by === by)?.unit ?? '';

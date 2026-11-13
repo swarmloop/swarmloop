@@ -1,4 +1,5 @@
 import type { HttpCallDraft } from '../core/swarmloop-error';
+import type { Effort, EffortFields } from '../contract/effort';
 
 export interface SampleDraft {
   sampledAt: string;
@@ -17,7 +18,7 @@ export function sampleSelf(sampledAt: string): SampleDraft {
   };
 }
 
-export interface ExchangeDraft {
+export interface ExchangeDraft extends EffortFields {
   /** The runtime of the agent. Only the visit records it; the exchange row keeps the model. */
   runtime?: string;
   model: string;
@@ -42,6 +43,10 @@ export interface VisitDraft {
   /** The runtime of the agent that ran this visit. Absent for a visit that ran no agent. */
   runtime?: string | null;
   model: string | null;
+  /** The effort the agent ran with. Absent when it ran at its runtime's default. */
+  effort?: Effort;
+  /** Why the effort is what it is, such as `epic`. */
+  effortNote?: string;
   mode: string | null;
   startedAt: string;
   finishedAt: string;

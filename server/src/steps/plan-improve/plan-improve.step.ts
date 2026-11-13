@@ -2,9 +2,12 @@ import { agentFor } from '../../config/agents';
 import { runtimeFor } from '../../integrations/agent-runtime/agent-runtime.registry';
 import type { RunEntity } from '../../history/entities';
 import { Injectable } from '@nestjs/common';
-import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
+import type { AgentProfile, InputSpec, Route, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
 import { SwarmloopEnv } from '../../config/env';
+import { isEffort } from '../../contract/effort';
+import { isSubtask } from '../../contract/subtask';
+import { clearEpic, markEpic } from '../../history/run-state';
 import { root } from '../../history/run-paths';
 import { resumableChat } from '../../agent/agent-session';
 import { StepName } from '../../contract/steps';
@@ -125,7 +128,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
       plainSummary(agentResult.responseText) || next.items.map((item) => `- ${item}`).join('\n'),
     );
     return {
-      route: { to: 'next' },
+      route: this.epicRoute(ctx.opened.run, !!graph),
       summary: `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`,
       outputs: [
         { artifact: ARTIFACTS.requirements, value: withPlan(requirements, next) },
@@ -133,5 +136,18 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
       ],
       handoff: summary,
     };
+  }
+
+  /** A fresh split of a run marks it an epic and plans once more at the epic effort. A plan answer clears the mark. */
+  private epicRoute(run: RunEntity, split: boolean): Route {
+    if (!split) {
+      if (run.epicAt) clearEpic(run);
+      return { to: 'next' };
+    }
+    if (!run.epicAt && !isSubtask(run) && isEffort(this.config.env.EPIC_EFFORT)) {
+      markEpic(run, this.clock.iso());
+      return { to: 'jump', step: 'plan-improve' };
+    }
+    return { to: 'next' };
   }
 }

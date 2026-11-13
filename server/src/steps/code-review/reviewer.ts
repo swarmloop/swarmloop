@@ -1,5 +1,7 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { effortFields } from '../../contract/effort';
+import type { EffortFields } from '../../contract/effort';
 import type { SwarmloopEnv } from '../../config/env';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { VisitRepository } from '../../history/visit.repository';
@@ -30,7 +32,7 @@ export interface Opinion {
   body: string;
 }
 
-export interface Finished {
+export interface Finished extends EffortFields {
   reviewer: Reviewer;
   runtime: RuntimeName;
   model: string;
@@ -43,7 +45,7 @@ export interface Finished {
 }
 
 /** One reviewer launch. `briefFor` is the full prompt for another runtime, set when `prompt` is the full prompt. */
-interface ReviewLaunch {
+interface ReviewLaunch extends EffortFields {
   reviewer: Reviewer;
   runtime: RuntimeName;
   model: string;
@@ -99,6 +101,7 @@ export async function runJob(
       reviewer: job.reviewer,
       runtime: job.runtime,
       model: job.model,
+      ...effortFields(job),
       prompt,
       mounts: job.mounts,
       briefFor: full ? job.promptFor : undefined,
@@ -130,7 +133,13 @@ async function one(
     const result = await launchReview(deps, opened, key, env, job, auto, fresh);
     // A reviewer that took over from a limited agent is recorded and priced as the agent that ran.
     const agent = result.agent ?? job;
-    const ran = { reviewer: job.reviewer, runtime: agent.runtime, model: agent.model, prompt: job.prompt };
+    const ran = {
+      reviewer: job.reviewer,
+      runtime: agent.runtime,
+      model: agent.model,
+      ...effortFields(agent),
+      prompt: job.prompt,
+    };
     refused = refusedWrite(result.output);
     const failure = agentFailure(result, 'code-review', 'ask');
     if (failure) {
@@ -144,6 +153,7 @@ async function one(
       reviewer: job.reviewer,
       runtime: job.runtime,
       model: job.model,
+      ...effortFields(job),
       prompt: job.prompt,
       result: null,
       error: message,
@@ -170,6 +180,7 @@ async function launchReview(
     tools: 'read',
     runtime: job.runtime,
     model: job.model,
+    ...effortFields(job),
     timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
     prompt: job.prompt,
     continuePrompt: reviewContinue(job.reviewer.name),

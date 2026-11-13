@@ -11,6 +11,7 @@ export type StatsStepRow = Pick<
   | 'step'
   | 'runtime'
   | 'model'
+  | 'effort'
   | 'status'
   | 'killReason'
   | 'usd'
@@ -70,6 +71,7 @@ export class StatsRepository {
         step: true,
         runtime: true,
         model: true,
+        effort: true,
         status: true,
         killReason: true,
         usd: true,

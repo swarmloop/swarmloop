@@ -1,5 +1,6 @@
 import Joi from 'joi';
 import { parseAllow } from '../auth/allow-list';
+import { EFFORTS } from '../contract/effort';
 import { IssueTrackerRegistry } from '../integrations/issue-tracker/issue-tracker.registry';
 import { names } from '../integrations/requirements-source/requirements-source.registry';
 
@@ -71,6 +72,9 @@ export const envSchema = Joi.object({
   AGENTS_SUBTASK_PLAN: Joi.string().allow('').default(''),
   AGENTS_SUBTASK_IMPLEMENT: Joi.string().allow('').default(''),
   AGENTS_SUBTASK_REVIEW: Joi.string().allow('').default(''),
+  EPIC_EFFORT: Joi.string()
+    .valid('', ...EFFORTS)
+    .default('xhigh'),
   SPLIT: Joi.string().valid('auto', 'off').default('auto'),
   SPLIT_MAX_TASKS: Joi.number().integer().min(1).default(48),
   SUBTASKS_PARALLEL: Joi.number().integer().min(1).default(3),

@@ -51,6 +51,39 @@ describe('AgentProcessRunner agent runtime', () => {
     expect(launch.env).toEqual([{ name: 'ANTHROPIC_API_KEY', value: 'anthropic-key' }]);
     expect(launch.allowHosts).toContain('api.anthropic.com');
   });
+
+  it('launches a Claude agent with an effort at that level and clears the env override', async () => {
+    const { spawn } = await start('claude-effort', [{ chunks: [chatStream('chat-9')] }], {
+      resumeChatId: null,
+      runtime: 'claude',
+      effort: 'high',
+    });
+    const launch = spawn.mock.calls[0]?.[0] as { command: string[]; unsetEnv: string[] };
+    expect(launch.command.join(' ')).toContain('--effort high');
+    expect(launch.unsetEnv).toEqual(['CLAUDE_CODE_EFFORT_LEVEL']);
+  });
+
+  it('launches a Codex agent with an effort through its config flag', async () => {
+    const { spawn } = await start(
+      'codex-effort',
+      [{ chunks: [chatStream('chat-9')] }],
+      { resumeChatId: null, runtime: 'codex', effort: 'high' },
+      { CODEX_API_KEY: 'codex-key' },
+    );
+    const launch = spawn.mock.calls[0]?.[0] as { command: string[]; unsetEnv: string[] };
+    expect(launch.command.join(' ')).toContain('-c model_reasoning_effort=high');
+    expect(launch.unsetEnv).toEqual([]);
+  });
+
+  it('launches an agent without an effort with no effort flag and no env change', async () => {
+    const { spawn } = await start('no-effort', [{ chunks: [chatStream('chat-9')] }], {
+      resumeChatId: null,
+      runtime: 'claude',
+    });
+    const launch = spawn.mock.calls[0]?.[0] as { command: string[]; unsetEnv: string[] };
+    expect(launch.command).not.toContain('--effort');
+    expect(launch.unsetEnv).toEqual([]);
+  });
 });
 
 describe('AgentProcessRunner resume output', () => {
