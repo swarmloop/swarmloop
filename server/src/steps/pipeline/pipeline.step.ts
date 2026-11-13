@@ -6,6 +6,7 @@ import { missingPipeline, missingRuns } from './missing-pipeline';
 import { backToReview, staleGates } from './stale-gates';
 import { type SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { FlakyTestRepository } from '../../history/flaky-test.repository';
 import { EventRepository } from '../../history/event.repository';
 import { root } from '../../history/run-paths';
 import { delay } from '../../core/delay';
@@ -43,6 +44,7 @@ import { finishedRuns, readNotes, rerunJobs } from './ci-host';
 import { ARTIFACTS } from '../contract/artifacts';
 import { mergeRequestDetails, parseMergeRequests } from '../merge-request/merge-request-record';
 import { cancelRunning } from './cancel-running';
+import { flakyOnPass } from './flaky-tests';
 import { finish } from './pipeline-result';
 import { stuckAtStart } from './stuck-start';
 import { hasDraft, markReady } from './pipeline-draft';
@@ -81,12 +83,19 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     private readonly rebase: RunRebase,
     private readonly runStop: RunStop,
     private readonly environments: EnvironmentService,
+    private readonly flaky: FlakyTestRepository,
   ) {
     super(kernel);
   }
 
   private get redDeps(): RedDeps {
-    return { environments: this.environments, events: this.events, visits: this.kernel.visits, config: this.config };
+    return {
+      environments: this.environments,
+      events: this.events,
+      visits: this.kernel.visits,
+      config: this.config,
+      flaky: this.flaky,
+    };
   }
 
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
@@ -269,6 +278,11 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         .filter((job) => job.status === 'failed' && job.allowFailure)
         .map((job) => `${item.project} ${job.name}`),
     );
+    const deps = { documents: this.kernel.documents, flaky: this.flaky, root: root(this.config) };
+    const flaky = await flakyOnPass(deps, ctx, records, seen, host);
+    if (flaky) {
+      return flaky;
+    }
     const body = renderPass(seen, warnings);
     await markReady(ctx, this.registry);
     return finish('ok', report(opened, 'pipeline done', body), 'done', body);

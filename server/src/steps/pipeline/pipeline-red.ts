@@ -1,5 +1,8 @@
+import { baseBranch } from '../../git/base-ref';
+import { ERROR_CODES } from '../../contract/error-codes';
 import { type AppConfig, type SwarmloopEnv } from '../../config/env';
 import type { EventRepository } from '../../history/event.repository';
+import type { FlakyTestRepository } from '../../history/flaky-test.repository';
 import type { VisitRepository } from '../../history/visit.repository';
 import { root } from '../../history/run-paths';
 import type { EnvironmentService } from '../../environment/environment.service';
@@ -19,6 +22,7 @@ export interface RedDeps {
   events: EventRepository;
   visits: VisitRepository;
   config: AppConfig;
+  flaky: FlakyTestRepository;
 }
 
 export async function red(
@@ -38,6 +42,11 @@ export async function red(
   if (unreadable) {
     return finish('blocked', report(opened, 'pipeline log unavailable', unreadable), 'blocked', unreadable);
   }
+  for (const failure of failures.filter((item) => !item.check)) {
+    if (await deps.flaky.blocks(failure.project, failure.name, opened.run.key, mainRef(opened.run.prompt))) {
+      return flakyBlock(opened, failure.name);
+    }
+  }
   await noteSkippedByPaths(deps.environments, opened.run.key, failures);
   const body = traces ? renderFail(failures, seen, note) : `${note.trim()}\n`;
   if (ctx.options.auto && (await sameFailure(ctx, seen))) {
@@ -52,6 +61,17 @@ export async function red(
   await deps.events.recordLoop(opened.run, 'pipeline', opened.run.attemptsPipeline, reason, detail);
   const issues = failureIssues(failures, body);
   return finish('waiting', report(opened, 'pipeline failed', body), 'waiting', body, issues);
+}
+
+/** The ref a flaky record on the main line is compared with: the merge request target. */
+export function mainRef(prompt: string | null | undefined): string {
+  return baseBranch(prompt) ?? 'main';
+}
+
+/** The end of a step that meets a test that already failed and passed on the same code twice. */
+export function flakyBlock(opened: OpenedStep, test: string): StepResult {
+  const body = `${ERROR_CODES.TEST_FLAKY}: ${test} failed and passed on the same code twice; fix the race, not the test\n`;
+  return finish('blocked', report(opened, body.trim()), 'blocked', body);
 }
 
 async function sameFailure(ctx: StepContext, seen: Seen[]): Promise<boolean> {
