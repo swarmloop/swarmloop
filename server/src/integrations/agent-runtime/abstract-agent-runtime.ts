@@ -89,6 +89,8 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
     return null;
   }
 
+  useModelList(_output: string): void {}
+
   /** The launch with `items` put right after the value of `flag`, which puts them before the prompt. Unchanged when the flag is absent. */
   protected insertAfterModel(launch: EffortLaunch, flag: string, items: string[]): EffortLaunch {
     const at = launch.args.indexOf(flag);

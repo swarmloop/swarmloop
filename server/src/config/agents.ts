@@ -1,13 +1,20 @@
 import type { StoredAgents } from '../contract/api';
 import type { CODE_REVIEWERS, StepName } from '../contract/steps';
+import type { Effort } from '../contract/effort';
+import { EFFORTS, highestOf, isEffort } from '../contract/effort';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 
-/** An agent is a runtime and the model it runs. It is written `runtime:model`. */
+/**
+ * An agent is a runtime, the model it runs and how hard it works. It is written `runtime:model[:effort]`.
+ * `effortNote` says why a resolved effort is not the agent's own: `epic` or `capped:<wanted>`.
+ */
 interface Agent {
   runtime: RuntimeName;
   model: string;
+  effort?: Effort;
+  effortNote?: string;
 }
 
 const ROLES = ['plan', 'implement', 'review'] as const;
@@ -25,10 +32,15 @@ interface AgentEnv {
   AGENTS_SUBTASK_PLAN: string;
   AGENTS_SUBTASK_IMPLEMENT: string;
   AGENTS_SUBTASK_REVIEW: string;
+  EPIC_EFFORT: string;
 }
 
 /** What `agentFor` reads of a run: only a run with a parent is a subtask. */
-type AgentRun = object & { parentRunId?: number | null; agents?: StoredAgents | null };
+type AgentRun = object & {
+  parentRunId?: number | null;
+  epicAt?: string | null;
+  agents?: StoredAgents | null;
+};
 
 /** Everything that launches or prices an agent: the steps of a run, and the work done outside the pipeline. */
 type AgentUse =
@@ -70,23 +82,45 @@ function roleFor(step: string): Role | null {
   return Object.hasOwn(ROLE_OF_STEP, step) ? ROLE_OF_STEP[step as AgentUse] : null;
 }
 
-/** An ordered, comma-separated list of `runtime:model`. The first agent runs; the rest are the fallback order. */
+/**
+ * One agent, `runtime:model[:effort]`. The runtime is everything before the first colon. A trailing `:<word>` is the
+ * effort only when the word is one of the five levels, so `cursor:grok-4.7-high` keeps its model id. `name` is the
+ * env name or the role, and it is in every error.
+ */
+export function parseAgent(name: string, entry: string): Agent {
+  const agent = splitAgent(name, entry);
+  const { runtime, model, effort } = agent;
+  if (effort && !runtimeFor(runtime).efforts(model).includes(effort)) {
+    throw new SwarmloopError(
+      `${name} has agent "${runtime}:${model}:${effort}" and ${runtime} does not support effort ${effort} for ${model}`,
+    );
+  }
+  return agent;
+}
+
+/** The parts of an entry, without asking the runtime whether it supports the level. */
+export function splitAgent(name: string, entry: string): Agent {
+  const text = entry.trim();
+  const colon = text.indexOf(':');
+  const runtime = colon < 0 ? text : text.slice(0, colon).trim();
+  const rest = colon < 0 ? '' : text.slice(colon + 1).trim();
+  const known = RUNTIME_NAMES.find((candidate) => candidate === runtime);
+  if (!known) {
+    throw new SwarmloopError(`${name} has unknown runtime "${runtime}" in agent "${text}"`);
+  }
+  const last = rest.lastIndexOf(':');
+  const tail = last < 0 ? '' : rest.slice(last + 1).trim();
+  const effort = isEffort(tail) ? tail : undefined;
+  const model = effort ? rest.slice(0, last).trim() : rest;
+  if (model === '') {
+    throw new SwarmloopError(`${name} has an empty model in agent "${text}"`);
+  }
+  return effort ? { runtime: known, model, effort } : { runtime: known, model };
+}
+
+/** An ordered, comma-separated list of `runtime:model[:effort]`. The first agent runs; the rest are the fallback order. */
 export function parseAgentList(name: string, text: string): Agent[] {
-  const agents = text.split(',').map((item) => {
-    const entry = item.trim();
-    const colon = entry.indexOf(':');
-    const runtime = colon < 0 ? entry : entry.slice(0, colon).trim();
-    const model = colon < 0 ? '' : entry.slice(colon + 1).trim();
-    const known = RUNTIME_NAMES.find((candidate) => candidate === runtime);
-    if (!known) {
-      throw new SwarmloopError(`${name} has unknown runtime "${runtime}" in agent "${entry}"`);
-    }
-    if (model === '') {
-      throw new SwarmloopError(`${name} has an empty model in agent "${entry}"`);
-    }
-    return { runtime: known, model };
-  });
-  return agents;
+  return text.split(',').map((item) => parseAgent(name, item));
 }
 
 const LISTS: Record<Tier, Record<Role, keyof AgentEnv>> = {
@@ -94,16 +128,55 @@ const LISTS: Record<Tier, Record<Role, keyof AgentEnv>> = {
   subtask: { plan: 'AGENTS_SUBTASK_PLAN', implement: 'AGENTS_SUBTASK_IMPLEMENT', review: 'AGENTS_SUBTASK_REVIEW' },
 };
 
-/** The run's stored choice for one role and tier. An entry whose runtime is unknown is dropped. */
+/**
+ * The run's stored choice for one role and tier. An entry whose runtime is unknown is dropped. A stored level that
+ * its runtime no longer declares is dropped too: it was checked when saved, and a changed model list must not stop a
+ * running run.
+ */
 function storedAgents(run: AgentRun | null | undefined, role: Role, tier: Tier): Agent[] {
   const agents: Agent[] = [];
-  for (const { runtime, model } of run?.agents?.[tier]?.[role] ?? []) {
+  for (const { runtime, model, effort } of run?.agents?.[tier]?.[role] ?? []) {
     const known = RUNTIME_NAMES.find((candidate) => candidate === runtime);
-    if (known) {
+    if (!known) {
+      continue;
+    }
+    try {
+      agents.push(effort ? parseAgent(role, `${known}:${model}:${effort}`) : { runtime: known, model });
+    } catch {
       agents.push({ runtime: known, model });
     }
   }
   return agents;
+}
+
+/**
+ * The level an agent runs at: its own, raised to `EPIC_EFFORT` for the parent of a split run (never lowered), then
+ * held to the highest level its runtime declares for the model.
+ */
+function resolveEffort(agent: Agent, run: AgentRun | null | undefined, env: AgentEnv): Agent {
+  const { effort: own, ...base } = agent;
+  let wanted = own;
+  let note: string | undefined;
+  const epic = env.EPIC_EFFORT;
+  if (
+    isEffort(epic) &&
+    run &&
+    !run.parentRunId &&
+    run.epicAt &&
+    (!own || EFFORTS.indexOf(epic) > EFFORTS.indexOf(own))
+  ) {
+    wanted = epic;
+    note = 'epic';
+  }
+  const levels = runtimeFor(agent.runtime).efforts(agent.model);
+  if (!wanted || levels.length === 0) {
+    return base;
+  }
+  const level = highestOf(levels, wanted);
+  if (level !== wanted) {
+    note = `capped:${wanted}`;
+  }
+  return { ...base, ...(level ? { effort: level } : {}), ...(note ? { effortNote: note } : {}) };
 }
 
 /**
@@ -113,11 +186,11 @@ function storedAgents(run: AgentRun | null | undefined, role: Role, tier: Tier):
 function agentsOf(env: AgentEnv, role: Role, tier: Tier = 'main', run?: AgentRun | null): Agent[] {
   const stored = storedAgents(run, role, tier);
   if (stored.length > 0) {
-    return stored;
+    return stored.map((agent) => resolveEffort(agent, run, env));
   }
   const own = LISTS[tier][role];
   const name = env[own] === '' ? LISTS.main[role] : own;
-  return parseAgentList(name, env[name]);
+  return parseAgentList(name, env[name]).map((agent) => resolveEffort(agent, run, env));
 }
 
 /** The agent a step runs on, or null when the step has none. The only place that maps a step to a role and an agent. */
@@ -161,6 +234,13 @@ export function roleOf(run: AgentRun | null, step: string): { role: Role; tier: 
 export function runtimesInUse(env: AgentEnv): RuntimeName[] {
   const all = TIERS.flatMap((tier) => ROLES.flatMap((role) => agentsOf(env, role, tier)));
   return [...new Set(all.map((agent) => agent.runtime))];
+}
+
+/** The runtimes whose env agents name an effort. Their model lists must be read before the levels can be checked. */
+export function runtimesNamingEffort(env: AgentEnv): RuntimeName[] {
+  const names = TIERS.flatMap((tier) => ROLES.map((role) => LISTS[tier][role])).filter((name) => env[name] !== '');
+  const agents = names.flatMap((name) => env[name].split(',').map((item) => splitAgent(name, item)));
+  return [...new Set(agents.filter((agent) => agent.effort).map((agent) => agent.runtime))];
 }
 
 /** The models env names for each runtime, once each, in env order: the role lists. */

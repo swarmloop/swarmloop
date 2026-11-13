@@ -3,7 +3,7 @@ import type { Effort } from '../../../contract/effort';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
 import type { AgentPrintInput, EffortLaunch, RuntimeKeys } from '../agent-runtime';
 import { CURSOR_LIMITS } from './cursor-limit';
-import { effortsOf, idWithEffort } from './cursor-models';
+import { effortsOf, idWithEffort, parseModelIds } from './cursor-models';
 
 export class CursorRuntime extends AbstractAgentRuntime {
   readonly name = 'cursor' as const;
@@ -36,7 +36,11 @@ export class CursorRuntime extends AbstractAgentRuntime {
     return ['--list-models'];
   }
 
-  /** The ids from the cached model list. Until they are set no model has a level. */
+  /** The ids from the model list. Until they are set no model has a level. */
+  override useModelList(output: string): void {
+    this.setModelIds(parseModelIds(output));
+  }
+
   setModelIds(ids: readonly string[]): void {
     this.modelIds = ids;
   }

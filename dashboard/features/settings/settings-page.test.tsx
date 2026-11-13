@@ -15,8 +15,8 @@ const view = (settings: SettingsView['settings'] = {}): SettingsView => ({
   settings,
   defaults: { agents: { main: roles, subtask: roles } },
   runtimes: [
-    { runtime: 'claude', models: ['opus', 'sonnet'] },
-    { runtime: 'codex', models: ['gpt', 'gpt-priced'] },
+    { runtime: 'claude', models: ['opus', 'sonnet'], efforts: {} },
+    { runtime: 'codex', models: ['gpt', 'gpt-priced'], efforts: {} },
   ],
   modelsLimited: false,
   server: [
