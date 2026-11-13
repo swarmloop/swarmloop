@@ -174,6 +174,8 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('heading', { name: 'Connect swarmloop to your code host' })).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(screen.queryByText('Log in to swarmloop')).not.toBeInTheDocument();
+    // The form reads the owner after it mounts; the test ends only once that read has landed.
+    expect(await screen.findByDisplayValue('acme')).toBeInTheDocument();
   });
 
   it('shows a login problem above the first-run form when no provider is configured', async () => {
@@ -185,6 +187,7 @@ describe('LoginPage', () => {
     await screen.findByRole('heading', { name: 'Connect swarmloop to your code host' });
     expect(await screen.findByText('GitHub did not answer: x')).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(await screen.findByDisplayValue('acme')).toBeInTheDocument();
   });
 
   it('gives the first button focus', async () => {
