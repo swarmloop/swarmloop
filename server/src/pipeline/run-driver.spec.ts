@@ -1,4 +1,6 @@
 import { RunRepository } from '../history/run.repository';
+import { DocumentRepository } from '../history/document.repository';
+import { RunRebase } from '../steps/run-rebase';
 import { deriveState, writeRunState } from '../history/run-state';
 import {
   child,
@@ -90,6 +92,39 @@ describe('run driver and the parent of a subtask', () => {
       await settle(app);
 
       expect(parentDuringVisit).toBe('waiting');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('takes the rebase a working subtask was sent before its next step, and goes on at the step the rebase chose', async () => {
+    const { app } = await world();
+    try {
+      await seedParent(app, [task('a')]);
+      await pass(app);
+      const run = await child(app, 'a');
+      writeRunState(run, { status: 'waiting', currentStep: 'research' });
+      await app.app.get(RunRepository).saveRun(run);
+      await app.app.get(DocumentRepository).putDocument(run, 'pending_rebase', 'rebased onto the epic after b merged');
+      jest.spyOn(app.app.get(RunRebase), 'rebase').mockImplementation(async (key) => {
+        const moved = (await app.app.get(RunRepository).findRun(key))!;
+        writeRunState(moved, { status: 'waiting', currentStep: 'implement' });
+        await app.app.get(RunRepository).saveRun(moved);
+        return 'start';
+      });
+      const ran: string[] = [];
+      const visit = (name: string) => () => {
+        ran.push(name);
+        return { outcome: 'waiting' as const, exitCode: 0 };
+      };
+      installScripts(app, { research: visit('research'), implement: visit('implement') }, ['research', 'implement']);
+
+      await app.pipeline.runThrough(`${PARENT}-a`);
+      await settle(app);
+
+      expect(ran[0]).toBe('implement');
+      expect(ran).not.toContain('research');
+      expect(await app.app.get(DocumentRepository).latestBody(`${PARENT}-a`, 'pending_rebase')).toBe('');
     } finally {
       await app.close();
     }

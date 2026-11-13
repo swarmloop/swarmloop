@@ -8,7 +8,9 @@ type Script =
 /** The CI of a fake code host: what each commit's pipeline says, as a spec scripts it. The latest script for a sha wins. */
 export class FakeCi {
   private readonly scripts = new Map<string, Script>();
+  private readonly branchScripts = new Map<string, Script>();
   private read: string | undefined;
+  private readBranch: string | undefined;
   private readCount = 0;
   private noted = '';
 
@@ -19,6 +21,11 @@ export class FakeCi {
   /** The `test` job of the commit fails with `jobLog` as its log. */
   fail(sha: string, jobLog: string): void {
     this.scripts.set(sha, { kind: 'fail', log: jobLog });
+  }
+
+  /** The `test` job of every commit of the branch fails with `jobLog` as its log, whatever the commit, until a sha is scripted. */
+  failBranch(branch: string, jobLog: string): void {
+    this.branchScripts.set(branch, { kind: 'fail', log: jobLog });
   }
 
   /** No run ever starts for the commit. */
@@ -50,10 +57,21 @@ export class FakeCi {
     return this.readCount;
   }
 
-  snapshot(sha: string | undefined): PipelineSnapshot | null {
+  /** True when the pipeline of the commit is scripted to pass. */
+  passed(sha: string | undefined, branch?: string): boolean {
+    return this.outcome(sha, branch)?.kind === 'pass';
+  }
+
+  /** What the commit's pipeline is scripted to do: its own script, else the script of its branch. */
+  private outcome(sha: string | undefined, branch?: string): Script | undefined {
+    return (sha ? this.scripts.get(sha) : undefined) ?? (branch ? this.branchScripts.get(branch) : undefined);
+  }
+
+  snapshot(sha: string | undefined, branch?: string): PipelineSnapshot | null {
     this.read = sha;
+    this.readBranch = branch;
     this.readCount += 1;
-    const script = sha ? this.scripts.get(sha) : undefined;
+    const script = this.outcome(sha, branch);
     if (!script || script.kind === 'silent') {
       return null;
     }
@@ -72,7 +90,7 @@ export class FakeCi {
 
   /** The log of the failed job of the commit read last, or an empty text. */
   trace(): string {
-    const script = this.read ? this.scripts.get(this.read) : undefined;
+    const script = this.outcome(this.read, this.readBranch);
     return script?.kind === 'fail' ? script.log : '';
   }
 }

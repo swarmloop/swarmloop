@@ -26,6 +26,8 @@ export class FakeCodeHost {
   private retryAfterMs = HOST_RETRY_MS;
   private readonly closed = new Set<number>();
   private conflicting = false;
+  /** For each merge: the head that landed, the feature tip it landed on, and whether its CI passed on top of that tip. */
+  readonly landed: { iid: number; head: string; tip: string; testedOnTop: boolean }[] = [];
 
   constructor(
     private readonly clone: string,
@@ -50,7 +52,7 @@ export class FakeCodeHost {
     this.closed.add(iid);
   }
 
-  /** Every request has a merge conflict with its base, until it is switched off. */
+  /** Every request has a merge conflict with its base, until it is switched off. A request also conflicts when its branch does not merge with the feature branch in git. */
   conflicts(on: boolean): void {
     this.conflicting = on;
   }
@@ -121,7 +123,7 @@ export class FakeCodeHost {
     return Promise.resolve({
       state: sha ? 'merged' : this.closed.has(iid) ? 'closed' : 'open',
       sha,
-      conflicts: this.conflicting,
+      conflicts: this.conflicting || this.mergeTree(iid) === null,
       draft: this.requests.get(iid)?.draft ?? false,
       httpCalls: [],
     });
@@ -139,15 +141,54 @@ export class FakeCodeHost {
     return Promise.resolve({ ...state, httpCalls: [] });
   }
 
+  /**
+   * The merge adds one commit to the feature branch. It has the tree of the request's branch merged onto the feature
+   * tip, as a squash merge has; a request whose branch is not on origin merges the tip's own tree.
+   */
   mergeMergeRequest(_project: string, iid: number): Answer<'mergeMergeRequest'> {
     this.guard();
     git(this.clone, ['fetch', 'origin']);
     const tip = git(this.clone, ['rev-parse', `origin/${this.feature}`]);
-    const tree = git(this.clone, ['rev-parse', `${tip}^{tree}`]);
+    const tree = this.mergeTree(iid) ?? git(this.clone, ['rev-parse', `${tip}^{tree}`]);
     const sha = git(this.clone, ['commit-tree', tree, '-p', tip, '-m', `squash !${iid}`]);
     git(this.clone, ['push', 'origin', `${sha}:refs/heads/${this.feature}`]);
     this.merged.set(iid, sha);
+    this.recordLanding(iid, tip);
     return Promise.resolve({ sha, httpCalls: [] });
+  }
+
+  /** The tree of the request's branch merged onto the feature tip. The tip's tree when the branch is not on origin, null on a conflict. */
+  private mergeTree(iid: number): string | null {
+    const source = this.requests.get(iid)?.source;
+    if (!source || !this.onOrigin(source)) return git(this.clone, ['rev-parse', `origin/${this.feature}^{tree}`]);
+    try {
+      return git(this.clone, ['merge-tree', '--write-tree', `origin/${this.feature}`, `origin/${source}`]);
+    } catch {
+      return null;
+    }
+  }
+
+  private onOrigin(branch: string): boolean {
+    git(this.clone, ['fetch', 'origin']);
+    try {
+      git(this.clone, ['rev-parse', '--verify', '--quiet', `origin/${branch}`]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private recordLanding(iid: number, tip: string): void {
+    const source = this.requests.get(iid)?.source;
+    if (!source || !this.onOrigin(source)) return;
+    const head = git(this.clone, ['rev-parse', `origin/${source}`]);
+    let testedOnTop = true;
+    try {
+      git(this.clone, ['merge-base', '--is-ancestor', tip, head]);
+    } catch {
+      testedOnTop = false;
+    }
+    this.landed.push({ iid, head, tip, testedOnTop: testedOnTop && this.ci.passed(head, source) });
   }
 
   closeMergeRequest(): Answer<'closeMergeRequest'> {
@@ -160,9 +201,9 @@ export class FakeCodeHost {
     return Promise.resolve({ httpCalls: [] });
   }
 
-  readBranchPipeline(ref: { sha?: string }): Answer<'readBranchPipeline'> {
+  readBranchPipeline(ref: { sha?: string; ref?: string }): Answer<'readBranchPipeline'> {
     this.guard();
-    return Promise.resolve({ snapshot: this.ci.snapshot(ref.sha), httpCalls: [] });
+    return Promise.resolve({ snapshot: this.ci.snapshot(ref.sha, ref.ref), httpCalls: [] });
   }
 
   /** What a host says when no run started: a closed request or a merge conflict, else nothing. */

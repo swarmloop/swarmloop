@@ -10,6 +10,12 @@ export interface SubtaskMergeRequest {
   iid: number;
 }
 
+/** What moved the feature branch under a subtask: the commit it moved to, and the words that say why the task was rebased. */
+export interface RebaseEvent {
+  tip: string;
+  note: string;
+}
+
 /**
  * What the split pass needs of the runs of its subtasks. It is a token: the pipeline layer provides it, so a step
  * never imports `pipeline` or `api`.
@@ -37,8 +43,16 @@ export abstract class SubtaskOps {
   abstract recordMerged(run: RunEntity, merged: Record<string, string>): Promise<void>;
   /** Moves the worktrees of the parent to the feature branch as it is on origin. */
   abstract fastForward(parent: RunEntity): Promise<void>;
-  /** Sends a subtask run the Rebase command, when it has a merge request and is in a state that takes it. */
-  abstract rebase(run: RunEntity): Promise<void>;
+  /**
+   * Moves a subtask run onto the feature branch, when it has a merge request and is in a state that takes it. A run
+   * that works takes it when its current step ends, and a run that waits for a person or a sibling is left alone.
+   * With `event` the move and its note are one for that event. True when the run was sent the rebase or will take it.
+   */
+  abstract rebase(run: RunEntity, event?: RebaseEvent): Promise<boolean>;
+  /** The tip of the feature branch when the head of a subtask run, and so its last CI, does not contain it; null when it does. */
+  abstract behindTip(parent: RunEntity, run: RunEntity): Promise<string | null>;
+  /** The files in which the head of a subtask run conflicts with the feature branch. Empty when git names none. */
+  abstract conflictFiles(parent: RunEntity, run: RunEntity): Promise<string[]>;
   /** True when the run waits in research for answers to its questions. */
   abstract asking(run: RunEntity): Promise<boolean>;
   /**
