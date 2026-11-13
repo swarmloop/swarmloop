@@ -14,7 +14,7 @@ export class DoctorCommand extends CommandRunner {
   }
 
   async run(): Promise<void> {
-    const { items } = await this.readiness.report();
+    const { items } = await this.readiness.fresh();
     for (const item of items) {
       process.stdout.write(`[${item.status}] ${item.id}: ${item.line} -> ${item.action}\n`);
     }

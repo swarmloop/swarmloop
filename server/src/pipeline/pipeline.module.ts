@@ -34,6 +34,7 @@ import { StepRegistry } from '../steps/step.registry';
 import { EnvironmentService } from '../environment/environment.service';
 import { DiskGuard } from './disk-guard';
 import { Housekeeping } from './housekeeping';
+import { OwnUseMeter } from './own-use-meter';
 import { RunRetention } from './run-retention';
 import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
@@ -61,6 +62,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     WorkspaceGuard,
     RunRetention,
     DiskGuard,
+    OwnUseMeter,
     Housekeeping,
     MergeRequestStep,
     MergeRequestLookup,
@@ -97,6 +99,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     Housekeeping,
     WorkspaceGuard,
     DiskGuard,
+    OwnUseMeter,
     RunRebase,
     PrepareStep,
     ProjectAppendService,

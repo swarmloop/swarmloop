@@ -9,9 +9,11 @@ import { root } from '../history/run-paths';
 import { listGitProjects, resolveCheckoutPath } from '../config/checkout-path';
 import { CheckoutService } from '../steps/shared/checkout.service';
 import { DiskGuard } from './disk-guard';
+import { OwnUseMeter } from './own-use-meter';
 import { RunRetention } from './run-retention';
 
 const DAY_MS = 86_400_000;
+const MEASURE_MS = 600_000;
 const CATCH_UP_MARKER = 'retention-catch-up';
 
 /** What the API process does on its own: at startup, and once a day. A CLI process never runs it. */
@@ -20,6 +22,7 @@ export class Housekeeping implements OnModuleDestroy {
   private readonly logger = new Logger(Housekeeping.name);
   private timer: NodeJS.Timeout | null = null;
   private freeTimer: NodeJS.Timeout | null = null;
+  private measureTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly config: AppConfig,
@@ -27,6 +30,7 @@ export class Housekeeping implements OnModuleDestroy {
     private readonly retention: RunRetention,
     private readonly disk: DiskGuard,
     private readonly clock: Clock,
+    private readonly meter: OwnUseMeter,
   ) {}
 
   /**
@@ -34,6 +38,7 @@ export class Housekeeping implements OnModuleDestroy {
    * applies retention to the runs that finished before it existed.
    */
   async startup(): Promise<void> {
+    void this.measureSizes();
     try {
       await this.tidyRegistrations();
     } catch (error) {
@@ -48,13 +53,24 @@ export class Housekeeping implements OnModuleDestroy {
     writeFileSync(marker, `${this.clock.iso()}\n`);
   }
 
-  /** Once a day: dangling images and old build cache. Every `MERGE_WATCH_MIN` minutes: the workspaces of merged and closed runs. */
+  /** Every 10 minutes: the sizes for readiness. Once a day: dangling images and old build cache. Every `MERGE_WATCH_MIN` minutes: the workspaces of merged and closed runs. */
   schedule(): void {
     this.stop();
     this.timer = setInterval(() => void this.disk.pruneDocker(), DAY_MS);
     this.timer.unref();
     this.freeTimer = setInterval(() => void this.freeSettledRuns(), this.config.env.MERGE_WATCH_MIN * 60_000);
     this.freeTimer.unref();
+    this.measureTimer = setInterval(() => void this.measureSizes(), MEASURE_MS);
+    this.measureTimer.unref();
+  }
+
+  /** The sizes readiness shows, measured here so that no request walks the disk. */
+  private async measureSizes(): Promise<void> {
+    try {
+      await this.meter.measure();
+    } catch (error) {
+      this.logger.warn(`sizes were not measured: ${String(error)}`);
+    }
   }
 
   private async freeSettledRuns(): Promise<void> {
@@ -74,6 +90,8 @@ export class Housekeeping implements OnModuleDestroy {
     this.timer = null;
     if (this.freeTimer) clearInterval(this.freeTimer);
     this.freeTimer = null;
+    if (this.measureTimer) clearInterval(this.measureTimer);
+    this.measureTimer = null;
   }
 
   private async tidyRegistrations(): Promise<void> {

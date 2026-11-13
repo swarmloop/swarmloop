@@ -381,22 +381,6 @@ export interface ChatView {
   text: string;
 }
 
-export type ReadinessId =
-  'docker' | 'arch' | 'images' | 'disk' | 'paths' | 'ports' | 'model-credential' | 'code-host-token';
-
-export interface ReadinessItem {
-  id: ReadinessId;
-  status: 'ok' | 'warn' | 'fail';
-  /** One line that says what was found. */
-  line: string;
-  /** One next step. For an `ok` item it says there is nothing to do. */
-  action: string;
-}
-
-export interface ReadinessView {
-  items: ReadinessItem[];
-}
-
 /** How a run ended up, for the statistics: done, still going (running, waiting, stopped), or failed (failed, blocked). */
 export type RunOutcome = 'done' | 'active' | 'failed';
 

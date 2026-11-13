@@ -3,7 +3,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { createContext, useContext, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { ReadinessItem } from '@contract/api';
+import type { ReadinessItem } from '@contract/readiness';
 import { getReadiness } from '../../lib/endpoints';
 
 interface Readiness {

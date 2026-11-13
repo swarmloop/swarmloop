@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ReadinessItem } from '@contract/api';
+import type { ReadinessItem } from '@contract/readiness';
 import { getReadiness } from '../../lib/endpoints';
 import { QueryWrapper } from '../../test/query-wrapper';
 import { ReadinessProvider, useReadiness } from './use-readiness';
@@ -34,10 +34,14 @@ function renderProbe(): void {
   );
 }
 
+const CHECKED_AT = '2026-01-01T00:00:00.000Z';
+
 describe('useReadiness', () => {
   it('blocks on the first fail item', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [item('docker', 'ok'), item('disk', 'fail'), item('paths', 'fail')],
+      checkedAt: CHECKED_AT,
+      load: null,
     });
     renderProbe();
     expect(await screen.findByText('blocker: disk')).toBeInTheDocument();
@@ -45,7 +49,11 @@ describe('useReadiness', () => {
   });
 
   it('does not block on warn items', async () => {
-    vi.mocked(getReadiness).mockResolvedValue({ items: [item('images', 'warn'), item('docker', 'ok')] });
+    vi.mocked(getReadiness).mockResolvedValue({
+      items: [item('images', 'warn'), item('docker', 'ok')],
+      checkedAt: CHECKED_AT,
+      load: null,
+    });
     renderProbe();
     expect(await screen.findByText('items: 2')).toBeInTheDocument();
     expect(screen.getByText('blocker: none')).toBeInTheDocument();

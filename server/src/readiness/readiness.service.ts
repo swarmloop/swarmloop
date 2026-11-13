@@ -1,17 +1,18 @@
 import { credentialFor, runtimesInUse } from '../config/agents';
-import { access, readdir, stat } from 'fs/promises';
+import { access, stat } from 'fs/promises';
 import { constants } from 'fs';
 import { join } from 'path';
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
-import type { ReadinessId, ReadinessItem, ReadinessView } from '../contract/api';
+import type { ReadinessId, ReadinessItem, ReadinessView } from '../contract/readiness';
 import { Clock } from '../core/clock';
 import { FetchFailed } from '../core/swarmloop-error';
 import { root } from '../history/run-paths';
 import { runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { ConnectionsService } from '../auth/connections.service';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
-import { DiskGuard, total, treeBytes } from '../pipeline/disk-guard';
+import { DiskGuard } from '../pipeline/disk-guard';
+import { OwnUseMeter } from '../pipeline/own-use-meter';
 import { imageName } from '../sandbox/image-resolver';
 import { agentImage, sandboxUserId } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
@@ -23,8 +24,10 @@ const DASHBOARD_PORT = 3921;
 const PROBE_TIMEOUT_MS = 1500;
 /** How long the report waits for a host whose calls are being retried. */
 const HOST_WAIT_MS = 5000;
-/** How long the size walk of the Disk line is reused: a walk of every worktree is slow, and sizes move slowly. */
-const OWN_USE_TTL_MS = 60_000;
+/** A report older than this starts a refresh in the background. */
+const STALE_MS = 60_000;
+/** How long the first report is waited for. */
+const FIRST_WAIT_MS = 1000;
 const NOTHING = 'nothing to do';
 const RANK: Record<Outcome['status'], number> = { ok: 0, warn: 1, fail: 2 };
 
@@ -44,7 +47,9 @@ function worst(outcomes: Outcome[]): Outcome {
  */
 @Injectable()
 export class ReadinessService {
-  private ownUseCache: { at: number; line: Promise<string> } | null = null;
+  private readonly logger = new Logger(ReadinessService.name);
+  private cached: { report: ReadinessView; at: number } | null = null;
+  private building: Promise<ReadinessView> | null = null;
 
   constructor(
     private readonly config: AppConfig,
@@ -52,10 +57,45 @@ export class ReadinessService {
     private readonly disk: DiskGuard,
     private readonly hosts: CodeHostRegistry,
     private readonly clock: Clock,
+    private readonly meter: OwnUseMeter,
     @Optional() private readonly connections?: ConnectionsService,
   ) {}
 
+  /** The last full report at once; one that is stale starts a refresh in the background. The first call waits at most 1 s. */
   async report(): Promise<ReadinessView> {
+    if (this.cached) {
+      if (this.clock.now() - this.cached.at >= STALE_MS) {
+        void this.refresh().catch((error) => this.logger.warn(`readiness refresh failed: ${String(error)}`));
+      }
+      return this.cached.report;
+    }
+    try {
+      return await withinWait(this.refresh(), FIRST_WAIT_MS);
+    } catch {
+      return { items: [], checkedAt: null, load: this.sandbox.snapshot() };
+    }
+  }
+
+  /** Measures the sizes once and builds a report, for `swarmloop doctor`. The cached report stays as it is. */
+  async fresh(): Promise<ReadinessView> {
+    await this.meter.measure();
+    return this.build();
+  }
+
+  /** One build at a time, shared by every caller; it fills the cache when it ends. */
+  private refresh(): Promise<ReadinessView> {
+    this.building ??= this.build()
+      .then((report) => {
+        this.cached = { report, at: this.clock.now() };
+        return report;
+      })
+      .finally(() => {
+        this.building = null;
+      });
+    return this.building;
+  }
+
+  private async build(): Promise<ReadinessView> {
     const checks: [ReadinessId, () => Outcome | Promise<Outcome>][] = [
       ['docker', () => this.docker()],
       ['arch', () => this.arch()],
@@ -76,7 +116,7 @@ export class ReadinessService {
         }
       }),
     );
-    return { items };
+    return { items, checkedAt: this.clock.iso(), load: this.sandbox.snapshot() };
   }
 
   private async docker(): Promise<Outcome> {
@@ -123,7 +163,7 @@ export class ReadinessService {
   private async diskSpace(): Promise<Outcome> {
     const minimum = this.config.env.MIN_FREE_GB;
     const free = (await this.disk.smallestFree()) / GB;
-    const line = `${free.toFixed(1)} GB free, a step needs ${minimum} GB (MIN_FREE_GB); ${await this.ownUse()}`;
+    const line = `${free.toFixed(1)} GB free, a step needs ${minimum} GB (MIN_FREE_GB); ${this.ownUse()}`;
     if (free < minimum) {
       return { status: 'fail', line, action: 'free some disk space or lower MIN_FREE_GB' };
     }
@@ -133,26 +173,14 @@ export class ReadinessService {
     return ok(line);
   }
 
-  /** The size breakdown, walked at most once per `OWN_USE_TTL_MS`, also for requests that arrive together. */
-  private ownUse(): Promise<string> {
-    if (!this.ownUseCache || this.clock.now() - this.ownUseCache.at >= OWN_USE_TTL_MS) {
-      this.ownUseCache = { at: this.clock.now(), line: this.measureOwnUse() };
+  /** The last measure of the sizes with its age; the walk itself runs in the background. */
+  private ownUse(): string {
+    const last = this.meter.last();
+    if (!last) {
+      return 'sizes not measured yet';
     }
-    return this.ownUseCache.line;
-  }
-
-  /** What swarmloop itself takes: worktrees, logs (output files), backups and the environment cache. */
-  private async measureOwnUse(): Promise<string> {
-    const base = root(this.config);
-    const data = join(base, 'data');
-    const logs = (await readdir(data).catch(() => [])).filter((name) => /-(output|log)\.txt$/.test(name));
-    const parts = [
-      ['worktrees', await treeBytes(join(base, 'worktrees'))],
-      ['logs', await total(logs.map((name) => join(data, name)))],
-      ['backups', await treeBytes(join(data, 'backups'))],
-      ['environment cache', await treeBytes(join(data, 'env-cache'))],
-    ] as const;
-    return `swarmloop uses ${parts.map(([name, bytes]) => `${name} ${size(bytes)}`).join(', ')}`;
+    const minutes = Math.floor((this.clock.now() - last.at) / 60_000);
+    return `${last.line}, ${minutes < 1 ? 'measured just now' : `measured ${minutes} min ago`}`;
   }
 
   private async paths(): Promise<Outcome> {
@@ -281,15 +309,4 @@ function withinWait<T>(answer: Promise<T>, ms: number): Promise<T> {
     const timer = setTimeout(() => reject(new Error('no answer in time')), ms);
     answer.then(resolve, reject).finally(() => clearTimeout(timer));
   });
-}
-
-function size(bytes: number): string {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`;
 }
