@@ -104,6 +104,17 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       visits: this.kernel.visits,
       config: this.config,
       flaky: this.flaky,
+      defaultBranch: {
+        runs: this.runs,
+        rebase: this.rebase,
+        halted: (key) => this.runStop.halted(key),
+        hosts: async (run) => ({
+          ...this.config.env,
+          ...(await this.registry.tokensFor(run.startedBy, run.codeHost)),
+          clock: this.clock,
+        }),
+        root: root(this.config),
+      },
     };
   }
 

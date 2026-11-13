@@ -9,6 +9,7 @@ type Script =
 export class FakeCi {
   private readonly scripts = new Map<string, Script>();
   private readonly branchScripts = new Map<string, Script>();
+  private until: { log: string; present: (sha: string) => boolean } | undefined;
   private read: string | undefined;
   private readBranch: string | undefined;
   private readCount = 0;
@@ -26,6 +27,11 @@ export class FakeCi {
   /** The `test` job of every commit of the branch fails with `jobLog` as its log, whatever the commit, until a sha is scripted. */
   failBranch(branch: string, jobLog: string): void {
     this.branchScripts.set(branch, { kind: 'fail', log: jobLog });
+  }
+
+  /** A commit with no script of its own fails with `jobLog` until `present` says it has what the log asks for, and passes after. */
+  failUntil(jobLog: string, present: (sha: string) => boolean): void {
+    this.until = { log: jobLog, present };
   }
 
   /** No run ever starts for the commit. */
@@ -62,9 +68,13 @@ export class FakeCi {
     return this.outcome(sha, branch)?.kind === 'pass';
   }
 
-  /** What the commit's pipeline is scripted to do: its own script, else the script of its branch. */
+  /** What the commit's pipeline is scripted to do: its own script, else the script of its branch, else the `failUntil` rule. */
   private outcome(sha: string | undefined, branch?: string): Script | undefined {
-    return (sha ? this.scripts.get(sha) : undefined) ?? (branch ? this.branchScripts.get(branch) : undefined);
+    const scripted = (sha ? this.scripts.get(sha) : undefined) ?? (branch ? this.branchScripts.get(branch) : undefined);
+    if (scripted || !this.until || !sha) {
+      return scripted;
+    }
+    return this.until.present(sha) ? { kind: 'pass' } : { kind: 'fail', log: this.until.log };
   }
 
   snapshot(sha: string | undefined, branch?: string): PipelineSnapshot | null {
