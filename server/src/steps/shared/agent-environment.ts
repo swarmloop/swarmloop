@@ -3,7 +3,7 @@ import { environmentNote, withEnvironment } from '../../environment/environment-
 import type { EnvironmentInput } from '../../environment/environment-types';
 import type { ProjectEnvironments } from '../../environment/project-environments';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
-import { packageRegistries } from '../../sandbox/sandbox-launch';
+import { packageRegistries } from '../../sandbox/sandbox-hosts';
 import type { ManifestHosts, ProjectLaunch } from '../../sandbox/sandbox-launch';
 
 interface AgentWorkplace {

@@ -11,7 +11,8 @@ import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime';
 import type { LiveHub } from '../live/live.hub';
 import { containerSampler } from '../sandbox/container-sampler';
 import type { ManifestHosts, ProjectLaunch } from '../sandbox/sandbox-launch';
-import { agentStateDir, sandboxUserId, setupHosts } from '../sandbox/sandbox-launch';
+import { setupHosts } from '../sandbox/sandbox-hosts';
+import { agentStateDir, sandboxUserId } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 
 const SETUP_TIMEOUT_MS = 30 * 60_000;

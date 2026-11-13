@@ -41,6 +41,14 @@ export interface SandboxLaunch {
   stdin?: boolean;
   /** Allocate a terminal. Only the interactive vendor screen needs one. */
   tty?: boolean;
+  /** What a shell launch is for the machine budget: a check command or a setup. Without it a shell launch is a setup. */
+  work?: { kind: 'check' | 'setup'; name: string; label: string };
+  /** Hears why the launch waits for machine resources. */
+  onWait?: (reason: string) => void;
+  /** Starts with nothing else running, such as the retry of a check that ran out of memory. */
+  alone?: boolean;
+  /** The memory the container may take. Set by the service from the footprint unless the caller gives it. */
+  memoryCapBytes?: number;
 }
 
 export interface ProjectLaunch {
