@@ -1,4 +1,5 @@
 import { ConnectionEntity, HostAppEntity, UserSettingEntity } from './connection-entities';
+import { FlakyTestEntity } from './flaky-test.entity';
 import { RuntimeCooldownEntity } from './runtime-cooldown.entity';
 import { SessionEntity } from './session.entity';
 import type { StoredAgents } from '../contract/api';
@@ -547,6 +548,7 @@ export const entities = [
   CheckCommandEntity,
   CommandEntity,
   RuntimeCooldownEntity,
+  FlakyTestEntity,
   SessionEntity,
   HostAppEntity,
   ConnectionEntity,

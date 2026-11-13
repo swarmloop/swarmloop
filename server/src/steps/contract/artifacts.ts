@@ -145,6 +145,7 @@ export const ARTIFACTS = {
     summarize: summarizePipeline,
   }),
   pipelineRebases: artifact('pipeline_rebases', { writers: ['pipeline'], readers: ['pipeline'], summarize: firstLine }),
+  flaky: artifact('flaky', { writers: ['pipeline'], readers: ['pipeline'], summarize: firstLine }),
   ciSkip: artifact('ci_skip', {
     writers: ['commit'],
     readers: ['commit', 'merge-request', 'pipeline'],

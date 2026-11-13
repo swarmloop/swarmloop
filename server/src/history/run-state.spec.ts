@@ -92,6 +92,9 @@ describe('blockCode', () => {
     expect(blockCode('pipeline', 'CI_LOG_UNAVAILABLE: a failed job has no readable log')).toBe(REASON.ciLogUnavailable);
     expect(blockCode('pipeline', 'CI_NOT_RUN: CI did not run lint')).toBe(REASON.ciNotRun);
     expect(blockCode('pipeline', 'CI_TIMEOUT: lint timed out')).toBe(REASON.ciTimeout);
+    const flaky = 'TEST_FLAKY: a test failed and passed on the same code twice; fix the race, not the test';
+    expect(blockCode('pipeline', flaky)).toBe(ERROR_CODES.TEST_FLAKY);
+    expect(blockCode('prepare', flaky)).toBe(ERROR_CODES.TEST_FLAKY);
   });
 });
 

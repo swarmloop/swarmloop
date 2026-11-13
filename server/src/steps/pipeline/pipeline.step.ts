@@ -70,6 +70,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     ARTIFACTS.return,
     ARTIFACTS.issues,
     ARTIFACTS.pipelineRebases,
+    ARTIFACTS.flaky,
     ARTIFACTS.mergeRequest,
   ];
 
