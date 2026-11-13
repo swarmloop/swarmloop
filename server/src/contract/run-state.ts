@@ -15,6 +15,7 @@ export const RUN_STATES = [
   'done',
   'merged',
   'closed',
+  'skipped',
 ] as const;
 export type RunState = (typeof RUN_STATES)[number];
 
@@ -65,7 +66,11 @@ export const REASON = {
   recovering: 'RECOVERING',
   mergeWatchUnavailable: 'MERGE_WATCH_UNAVAILABLE',
   mergeWatchStopped: 'MERGE_WATCH_STOPPED',
+  skipped: 'SKIPPED',
 } as const;
+
+/** What every command on a skipped task's run is refused with. */
+export const SKIPPED_NOTE = 'this task was skipped';
 
 /** What a stopped step says. It also tells a stopped block from the others when only the error text is known. */
 export const STOP_NOTE = 'Stopped by request. Commits, pushes and merge requests stay: Stop is not a rollback.';
@@ -157,6 +162,7 @@ export function actionsFor(state: RunState, reasonCode: string | null = null): R
     case 'done':
       return ['replay', 'rebase'];
     case 'merged':
+    case 'skipped':
       return [];
     case 'closed':
       return ['replay'];

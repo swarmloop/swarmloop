@@ -249,6 +249,7 @@ export class SubtaskPort extends SubtaskOps {
   /** Stops every subtask of the parent. A subtask that is not running stays as it is. */
   async stopAll(parent: RunEntity): Promise<void> {
     for (const child of await this.runs.children(parent)) {
+      if (deriveState(child).state === 'skipped') continue;
       await this.stop(child);
     }
   }

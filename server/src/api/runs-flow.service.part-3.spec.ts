@@ -18,7 +18,7 @@ import { LiveHub } from '../live/live.hub';
 
 import { RunQueriesService } from './run-queries.service';
 
-import { RunCommandsService } from './run-commands.service';
+import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 
 import { boot, visit } from '../testing/runs.spec-helpers';
 
@@ -184,7 +184,7 @@ describe('runs api', () => {
         status: 'pending' as const,
       };
 
-      const child = await app.get(RunCommandsService).openSubtask(parent, task);
+      const child = await app.get(RunSubtaskCommandsService).openSubtask(parent, task);
 
       expect(child.startedBy).toBe('alice');
     } finally {

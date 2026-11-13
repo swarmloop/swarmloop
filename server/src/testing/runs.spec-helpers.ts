@@ -27,6 +27,7 @@ import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { ISSUE_TRACKER } from '../integrations/issue-tracker/tokens';
 import { SubtaskClose } from '../api/subtask-close';
 import { RunCommandsService } from '../api/run-commands.service';
+import { RunSubtaskCommandsService } from '../api/run-subtask-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { WorkspaceGuard } from '../pipeline/workspace-guard';
@@ -88,6 +89,7 @@ export async function boot(
     providers: [
       RunQueriesService,
       RunCommandsService,
+      RunSubtaskCommandsService,
       SubtaskClose,
       CommandService,
       SubtaskPort,

@@ -3,12 +3,15 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { CommandService } from '../pipeline/command.service';
+import { deriveState } from '../history/run-state';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { PHASES } from '../contract/steps';
 import { RunCommandsService } from './run-commands.service';
+import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { AppConfig } from '../config/env';
 import { RunQueriesService } from './run-queries.service';
 import { httpStatus } from './runs.controller';
@@ -507,7 +510,7 @@ describe('runs api', () => {
           proof: 'p',
           status: 'pending',
         };
-        await app.get(RunCommandsService).startSubtask(parent, task);
+        await app.get(RunSubtaskCommandsService).startSubtask(parent, task);
         expect((await app.get(RunRepository).findRun('PROJ-301-t1'))?.split).toBe(false);
       } finally {
         await app.close();
@@ -546,7 +549,7 @@ describe('runs api', () => {
       const app = await boot(root, pipeline);
       try {
         const parent = await parentRun(app);
-        const commands = app.get(RunCommandsService);
+        const commands = app.get(RunSubtaskCommandsService);
         const first = await commands.startSubtask(parent, task);
         const second = await commands.startSubtask(parent, task);
 
@@ -569,7 +572,7 @@ describe('runs api', () => {
       const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
       const app = await boot(root, pipeline);
       try {
-        await app.get(RunCommandsService).startSubtask(await parentRun(app), task);
+        await app.get(RunSubtaskCommandsService).startSubtask(await parentRun(app), task);
 
         const [key, start] = pipeline.startDetached.mock.calls[0] as [string, { prompt: string; projects: string[] }];
         expect(key).toBe('PROJ-300-t1');
@@ -591,13 +594,59 @@ describe('runs api', () => {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-subtask-list-'));
       const app = await boot(root, { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) });
       try {
-        await app.get(RunCommandsService).startSubtask(await parentRun(app), task);
+        await app.get(RunSubtaskCommandsService).startSubtask(await parentRun(app), task);
 
         const queries = app.get(RunQueriesService);
         const listed = (await queries.list()).runs;
         expect(listed.find((run) => run.key === 'PROJ-300-t1')).toMatchObject({ parentKey: 'PROJ-300', taskId: 't1' });
         expect(listed.find((run) => run.key === 'PROJ-300')).not.toHaveProperty('parentKey');
         expect((await queries.flow('PROJ-300-t1')).parentKey).toBe('PROJ-300');
+      } finally {
+        await app.close();
+      }
+    });
+  });
+
+  describe('Skip task', () => {
+    const taskList = ['a', 'b'].map((id) => ({
+      id,
+      title: id,
+      description: '',
+      depends: [],
+      files: [`src/${id}.ts`],
+      proof: 'p',
+      status: 'running',
+    }));
+
+    it.each([
+      ['failed', 'failed'],
+      ['blocked', 'blocked'],
+      ['running', 'running'],
+    ])('closes a %s child: it shows skipped and every command on it is refused', async (_name, status) => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-skip-'));
+      const app = await boot(root);
+      try {
+        const runs = app.get(RunRepository);
+        const parent = await save(runs, 'proj-skip', 'implement', 'waiting');
+        parent.split = true;
+        await runs.saveRun(parent);
+        await app.get(DocumentRepository).putDocument(parent, 'subtasks', `${JSON.stringify(taskList)}\n`);
+        const child = await save(runs, 'proj-skip-a', 'implement', status);
+        child.parentRunId = parent.id;
+        child.taskId = 'a';
+        await runs.saveRun(child);
+
+        app.get(CommandService).register('stop', async (key) => ({ key, status: 'stopped' }));
+        await app.get(RunSubtaskCommandsService).skipTask('proj-skip', 'a');
+
+        expect(deriveState((await runs.findRun('proj-skip-a'))!).state).toBe('skipped');
+        const commands = app.get(CommandService);
+        for (const type of ['resume', 'replay', 'rebase'] as const) {
+          await expect(commands.submit(type, 'proj-skip-a', { step: 'implement', prompt: 'x' })).rejects.toThrow(
+            'this task was skipped',
+          );
+        }
+        await expect(app.get(RunSubtaskCommandsService).skipTask('proj-skip', 'a')).resolves.toBeDefined();
       } finally {
         await app.close();
       }

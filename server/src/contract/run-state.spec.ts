@@ -58,6 +58,7 @@ describe('the sweep of every reason code', () => {
     REASON.recovering,
     REASON.mergeWatchUnavailable,
     REASON.mergeWatchStopped,
+    REASON.skipped,
     ERROR_CODES.RUN_BUSY,
     ERROR_CODES.REVISION_CONFLICT,
     ERROR_CODES.SESSION_INCOMPATIBLE,
@@ -74,5 +75,11 @@ describe('the sweep of every reason code', () => {
     for (const action of Object.values(NEEDS_PERSON)) {
       expect(['resume', 'replay', 'rebase', 'answer']).toContain(action);
     }
+  });
+});
+
+describe('actionsFor a skipped task', () => {
+  it('offers no Resume, Replay or Rebase', () => {
+    expect(actionsFor('skipped', REASON.skipped)).toEqual([]);
   });
 });
