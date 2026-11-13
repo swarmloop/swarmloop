@@ -31,9 +31,14 @@ export class RunSubtaskCommandsService {
   private async subtaskPlan(parent: RunEntity, task: Subtask): Promise<StartPlan> {
     return this.commands.plan({
       key: `${parent.key}-${task.id}`,
-      prompt: await subtaskPromptOf(this.documents, parent, task),
+      prompt: await this.promptOf(parent, task),
       projects: storedProjects(parent.projects),
     });
+  }
+
+  private async promptOf(parent: RunEntity, task: Subtask): Promise<string> {
+    const tasks = parseSubtasks(await this.documents.latestBody(parent.key, SUBTASKS_KIND));
+    return subtaskPromptOf(this.documents, parent, task, tasks, await this.runs.children(parent));
   }
 
   /** Starts one task of a parent run as a run of its own. A second call for the same task returns that run. */
@@ -65,7 +70,7 @@ export class RunSubtaskCommandsService {
     if (!run || run.status !== 'waiting' || run.currentStep !== 'requirements' || this.runs.held(run)) {
       return;
     }
-    const prompt = await subtaskPromptOf(this.documents, parent, task);
+    const prompt = await this.promptOf(parent, task);
     const result = await this.pipeline.startDetached(run.key, {
       prompt,
       projects: storedProjects(parent.projects),
