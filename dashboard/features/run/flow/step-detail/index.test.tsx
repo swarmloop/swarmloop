@@ -109,17 +109,35 @@ describe('StepDetail', () => {
       }),
     );
     vi.mocked(getStepEvents).mockResolvedValue({
-      events: commandEvents(1, 's', { executable: 'make', exitCode: 2 }),
+      events: commandEvents(1, 's', { executable: 'make', exitCode: 2, actor: 'server' }),
       next: null,
     });
 
     detail();
 
     expect(await screen.findByRole('article', { name: 'Error: exit code 2' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Error/ })).toHaveAttribute('href', '#problem-event-1');
+    expect(screen.getByRole('link', { name: '1 problem' })).toHaveAttribute('href', '#problem-event-1');
     expect(screen.queryByText('boom from the document')).not.toBeInTheDocument();
     expect(screen.queryByText('claude-opus · 2.5s')).not.toBeInTheDocument();
     expect(getStepEvents).toHaveBeenCalledWith('run-1', 'implement', 0);
+  });
+
+  it('shows no problem card, chip or header link for an answer and an agent command with exit 1', async () => {
+    vi.mocked(getStep).mockResolvedValue(stepView({ eventsCursor: 4, visits: [visitView()] }));
+    vi.mocked(getStepEvents).mockResolvedValue({
+      events: [
+        ...commandEvents(1, 'a', { executable: 'git', exitCode: 1, actor: 'server', answer: true }),
+        ...commandEvents(3, 'b', { executable: 'make', exitCode: 1 }),
+      ],
+      next: null,
+    });
+
+    detail();
+
+    expect(await screen.findByText(/make/)).toBeInTheDocument();
+    expect(screen.queryByRole('article', { name: /Error/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /problem/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /problem/ })).not.toBeInTheDocument();
   });
 
   it('reads the events of the run to link a received issue to its source', async () => {

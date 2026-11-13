@@ -29,6 +29,8 @@ interface CommandEnd {
   durationMs: number;
   timedOut: boolean;
   cancelled: boolean;
+  /** Set when the call ended with an exit code that is an answer, not a failure. Events recorded before it have none. */
+  answer?: true;
   /** The last lines of the output, redacted. Null when there is none to show. */
   output: string | null;
 }

@@ -16,7 +16,8 @@ import type { Theme } from '@mui/material/styles';
 import { clock } from '../../../lib/format';
 import { ACCENT, type Accent, BUBBLE_WIDTH, DETAIL, MOTION_MS, RADIUS, SIZE, SPACE, TINT } from './tokens';
 import { problemId } from './problem-card';
-import type { Actor, ActorKind, Problem, Side } from './transcript-model';
+import type { Actor, ActorKind, Side } from './transcript-model';
+import type { Problem } from './transcript-problems';
 
 const ICONS = { server: Dns, agent: SmartToy, person: Person, pipeline: AccountTree, git: CallSplit } satisfies Record<
   ActorKind,

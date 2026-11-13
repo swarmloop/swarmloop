@@ -57,7 +57,7 @@ describe('applyFlow', () => {
     expect(body.phases[0].steps[0].status).toBe(status);
   });
 
-  it.each(['done', 'waiting'])('removes a finished %s reviewer from memory', (status) => {
+  it.each(['done', 'waiting', 'returned'])('removes a finished %s reviewer from memory', (status) => {
     const result = applyFlow(null, review(status), memory({ openReviews: ['code-review-quality'] }));
     expect(result.flow?.phases[0].steps[0].status).toBe(status);
     expect([...result.memory.openReviews]).toEqual([]);
@@ -77,7 +77,7 @@ describe('applyReviewLog', () => {
 
   it.each([
     ['decision: ok\nprocess exited 0', 'done'],
-    ['decision: return\nprocess exited 0', 'waiting'],
+    ['decision: return\nprocess exited 0', 'returned'],
     ['process killed: timeout', 'failed'],
   ])('finishes a chip from %s', (body, status) => {
     const current = review('running');

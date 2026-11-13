@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import { createTheme } from '@mui/material/styles';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -19,6 +20,7 @@ function header(overrides: Partial<ComponentProps<typeof StepHeader>> = {}) {
     shownDuration: 1000,
     shownAttempt: 2,
     problemId: null,
+    problemCount: 0,
     ...overrides,
   };
   render(<StepHeader {...props} />);
@@ -107,7 +109,8 @@ describe('StepHeader', () => {
       }),
     });
 
-    expect(screen.getByText('agent · opus · agent')).toBeInTheDocument();
+    expect(screen.getByText('claude · opus')).toBeInTheDocument();
+    expect(screen.queryByText(/agent/)).not.toBeInTheDocument();
   });
 
   it('shows the reviewers of code-review', () => {
@@ -124,13 +127,38 @@ describe('StepHeader', () => {
       }),
     });
 
-    expect(screen.getByText('agent · reviewers: quality, security')).toBeInTheDocument();
+    expect(screen.getByText('reviewers: quality, security')).toBeInTheDocument();
   });
 
-  it('links to the first problem of the step', () => {
-    header({ problemId: 'event-7' });
+  it('links to the first problem of the step in the error color, with the words of the chip', async () => {
+    header({ problemId: 'event-7', problemCount: 2 });
+    const target = document.createElement('div');
+    target.id = 'problem-event-7';
+    const scroll = vi.fn();
+    target.scrollIntoView = scroll;
+    document.body.append(target);
 
-    expect(screen.getByRole('link', { name: /Error/ })).toHaveAttribute('href', '#problem-event-7');
+    const link = screen.getByRole('link', { name: '2 problems' });
+    await userEvent.click(link);
+
+    expect(link).toHaveAttribute('href', '#problem-event-7');
+    expect(link).toHaveStyle({ color: createTheme().palette.error.main });
+    expect(scroll).toHaveBeenCalledWith({ block: 'center' });
+    target.remove();
+  });
+
+  it('says server for a server step and names no mode next to the kind', () => {
+    header({ view: stepView({ descriptor: { name: 'commit', kind: 'server' } }) });
+
+    expect(screen.getByText('server')).toBeInTheDocument();
+    expect(screen.queryByText(/\bagent\b/)).not.toBeInTheDocument();
+  });
+
+  it('shows returned as the status word of a visit that sent work back', () => {
+    const view = stepView({ visits: [visitView({ attempt: 1, status: 'waiting' })] });
+    header({ step: 'checks', view, visit: view.visits[0], attempt: 0, attempts: 1, label: 'returned' });
+
+    expect(screen.getByText(/returned/)).toBeInTheDocument();
   });
 
   it('has no problem link when the step recorded none', () => {

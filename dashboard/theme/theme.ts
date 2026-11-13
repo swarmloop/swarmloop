@@ -88,6 +88,8 @@ export function statusColor(status: string): string {
     case 'failed':
     case 'blocked':
       return 'error.main';
+    case 'returned':
+      return 'var(--chart-returns)';
     case 'done':
       return 'primary.main';
     default:

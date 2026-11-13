@@ -2,7 +2,10 @@ import { mkdirSync, realpathSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { git, gitDetail, gitRaw, withSafeDirectory } from './git';
+import { FakeClock } from '../core/fake-clock.spec-helpers';
+import { runInStepScope } from '../core/step-event-scope';
+import type { StepEvent } from '../contract/step-events';
+import { authorArgs, git, gitDetail, gitRaw, withSafeDirectory } from './git';
 
 describe('git errors', () => {
   it('preserves the exit code when a reference is missing', async () => {
@@ -23,6 +26,44 @@ describe('git errors', () => {
       code: 1,
       stdout: expect.stringContaining('+<?php'),
     });
+  });
+});
+
+describe('git command spans', () => {
+  async function recorded(run: () => Promise<unknown>): Promise<StepEvent[]> {
+    const events: StepEvent[] = [];
+    const scope = {
+      runId: 1,
+      attemptId: 'a',
+      step: 'commit' as const,
+      root: tmpdir(),
+      clock: new FakeClock(),
+      sink: (event: StepEvent) => {
+        events.push(event);
+        return Promise.resolve();
+      },
+    };
+    await runInStepScope(scope, 0, run);
+    return events.filter((event) => event.kind === 'command.finished');
+  }
+
+  it('records authorArgs in a repo without user.email as an answer, not a failure', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-git-author-'));
+    await git(['init', '-b', 'main', root]);
+
+    const ended = await recorded(() => authorArgs(root));
+
+    expect(ended).toMatchObject([{ exitCode: 1, answer: true }]);
+  });
+
+  it('records a git call that really fails without an answer', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-git-fails-'));
+
+    const ended = await recorded(() => git(['-C', root, 'log']).catch(() => ''));
+
+    expect(ended).toHaveLength(1);
+    expect(ended[0]).not.toHaveProperty('answer');
+    expect(ended[0]).not.toMatchObject({ exitCode: 0 });
   });
 });
 

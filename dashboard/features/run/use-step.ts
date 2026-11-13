@@ -32,8 +32,6 @@ export function useStep(
     body: string;
     samples: StepView['visits'][number]['samples'];
     usage?: LiveUsage;
-    /** The attempt the log opened or updated in the view. */
-    attempt?: number;
   } | null>(null);
 
   useEffect(() => {
@@ -57,11 +55,6 @@ export function useStep(
         }
         const last = body.visits.at(-1);
         const running = last?.status === 'running';
-        // A stored visit that already holds the log's attempt ends it: the log must not open the next attempt.
-        const stale = !running && last !== undefined && last.attempt >= (latestLog.current?.attempt ?? Infinity);
-        if (stale) {
-          latestLog.current = null;
-        }
         const liveLog = latestLog.current;
         const fetched = running ? withFileUsage(body) : body;
         setView(liveLog ? withLog(fetched, liveLog.body, liveLog.samples, liveLog.usage) : fetched);
@@ -108,16 +101,7 @@ export function useStep(
     }
     const samples = entry.samples ?? [];
     latestLog.current = { body: entry.body, samples, usage: entry.usage };
-    setView((current) => {
-      if (!current) {
-        return current;
-      }
-      const next = withLog(current, entry.body, samples, entry.usage);
-      if (latestLog.current) {
-        latestLog.current.attempt = next.visits.at(-1)?.attempt;
-      }
-      return next;
-    });
+    setView((current) => (current ? withLog(current, entry.body, samples, entry.usage) : current));
   }, [logs, runKey, step]);
 
   useEffect(() => {

@@ -37,7 +37,7 @@ export function applyFlow(current: FlowView | null, body: FlowView, memory: Flow
   const phases = keepOpenReviews(body.phases, openReviews);
   for (const phase of phases) {
     for (const step of phase.steps) {
-      if (step.status === 'done' || step.status === 'waiting') {
+      if (step.status === 'done' || step.status === 'waiting' || step.status === 'returned') {
         openReviews.delete(step.name);
       }
     }

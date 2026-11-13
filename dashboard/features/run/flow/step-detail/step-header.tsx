@@ -2,10 +2,12 @@
 
 import type { ReactElement } from 'react';
 import DataUsage from '@mui/icons-material/DataUsage';
+import ErrorOutline from '@mui/icons-material/ErrorOutline';
 import MemoryIcon from '@mui/icons-material/Memory';
 import Paid from '@mui/icons-material/Paid';
 import Schedule from '@mui/icons-material/Schedule';
 import Speed from '@mui/icons-material/Speed';
+import Undo from '@mui/icons-material/Undo';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Link from '@mui/material/Link';
@@ -16,6 +18,7 @@ import { statusColor } from '../../../../theme/theme';
 import { AttemptSelector } from '../../attempt-selector';
 import { stepLabel } from '../../phases';
 import { problemId } from '../../transcript/problem-card';
+import { problemsLabel } from '../../transcript/transcript-feed';
 import type { StepMetricKind } from '../../step-metrics';
 import { stepMetrics } from '../../step-metrics';
 import type { commandSummary } from '../../check-commands';
@@ -34,10 +37,13 @@ const stepMetricIcon: Partial<Record<StepMetricKind, typeof Schedule>> = {
   memory: MemoryIcon,
 };
 
+/** `<runtime> · <model>` for an agent step, `server` for a server step, and the reviewers of code review. */
 function describe({ kind, agent, reviewers }: StepDescriptor): string {
-  const parts: string[] = [kind];
+  const parts: string[] = [];
   if (agent) {
-    parts.push(agent.model, agent.mode);
+    parts.push(agent.runtime, agent.model);
+  } else if (kind === 'server') {
+    parts.push('server');
   }
   if (reviewers) {
     parts.push(`reviewers: ${reviewers.map((item) => item.name).join(', ')}`);
@@ -61,6 +67,7 @@ export function StepHeader({
   shownDuration,
   shownAttempt,
   problemId: problem,
+  problemCount,
   commands,
   preparing = false,
   slowestPrepared = null,
@@ -81,6 +88,8 @@ export function StepHeader({
   shownAttempt: number;
   /** The `eventId` of the first problem the step recorded. */
   problemId: string | null;
+  /** How many problems the step recorded: the number the transcript chip shows. */
+  problemCount: number;
   /** The checks step: how many commands passed, and which one took longest. */
   commands?: ReturnType<typeof commandSummary>;
   /** This step is the one the run works on, and it has not recorded a visit yet. */
@@ -139,8 +148,17 @@ export function StepHeader({
         </Typography>
       ) : null}
       {problem ? (
-        <Link href={`#${problemId(problem)}`} underline="always" sx={{ fontSize: 13 }}>
-          Error: go to the problem
+        <Link
+          href={`#${problemId(problem)}`}
+          underline="always"
+          onClick={(event) => {
+            event.preventDefault();
+            document.getElementById(problemId(problem))?.scrollIntoView({ block: 'center' });
+          }}
+          sx={{ fontSize: 13, color: 'error.main', display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
+        >
+          <ErrorOutline sx={{ fontSize: 16 }} />
+          {problemsLabel(problemCount)}
         </Link>
       ) : null}
       {visit ? (
@@ -175,7 +193,7 @@ export function StepHeader({
             memAvg: visit.memAvg,
             memPeak: visit.memPeak,
           }).map((item) => {
-            const Icon = stepMetricIcon[item.kind];
+            const Icon = item.kind === 'status' && label === 'returned' ? Undo : stepMetricIcon[item.kind];
             return (
               <Tooltip key={item.tip} title={item.tip}>
                 <Box

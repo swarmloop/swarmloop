@@ -82,7 +82,7 @@ describe('runs api', () => {
       await visits.finishVisit(run, visit('pipeline', 'waiting'));
       const flow = await app.get(RunQueriesService).flow('proj-pipe-red');
       expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'pipeline')?.status).toBe(
-        'failed',
+        'returned',
       );
     } finally {
       await app.close();
@@ -102,8 +102,49 @@ describe('runs api', () => {
       });
       const flow = await app.get(RunQueriesService).flow('proj-review-red');
       expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'code-review')?.status).toBe(
-        'failed',
+        'returned',
       );
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('shows a returned checks step as returned, and a failed one as failed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-checks-red-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const visits = app.get(VisitRepository);
+      const returned = await save(runs, 'proj-checks-red', 'implement', 'waiting');
+      await visits.finishVisit(returned, visit('checks', 'waiting'));
+      const failed = await save(runs, 'proj-checks-failed', 'checks', 'failed');
+      await visits.finishVisit(failed, visit('checks', 'failed'));
+      const checks = async (key: string) =>
+        (await app.get(RunQueriesService).flow(key)).phases
+          .flatMap((phase) => phase.steps)
+          .find((step) => step.name === 'checks')?.status;
+      expect(await checks('proj-checks-red')).toBe('returned');
+      expect(await checks('proj-checks-failed')).toBe('failed');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps a step sent back by checks at one running visit while its check is rerun', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rerun-'));
+    const app = await boot(root);
+    try {
+      const run = await save(app.get(RunRepository), 'proj-rerun', 'implement', 'running');
+      await app.get(VisitRepository).finishVisit(run, visit('implement', 'waiting'));
+      await mkdir(join(root, 'data'), { recursive: true });
+      await writeFile(join(root, 'data', 'proj-rerun-implement-launches.txt'), '1\n');
+      const runs = app.get(RunQueriesService);
+      const detail = await runs.step('proj-rerun', 'implement');
+      const chip = (await runs.flow('proj-rerun')).phases
+        .flatMap((phase) => phase.steps)
+        .find((step) => step.name === 'implement');
+      expect(detail.visits.map((item) => item.status)).toEqual(['waiting', 'running']);
+      expect(chip?.attempts).toBe(detail.visits.length);
     } finally {
       await app.close();
     }
@@ -191,7 +232,7 @@ describe('runs api', () => {
       const runs = app.get(RunQueriesService);
       const detail = await runs.step('proj-28', 'code-review-quality');
       expect(detail.visits.map((item) => [item.attempt, item.status, item.decision])).toEqual([
-        [1, 'waiting', 'decision: return'],
+        [1, 'returned', 'decision: return'],
         [2, 'done', 'decision: ok'],
       ]);
       expect(detail.visits[1]?.samples).toEqual([{ at: now, cpu: 40, memory: 2048, source: 'agent' }]);
@@ -259,6 +300,7 @@ describe('runs api', () => {
     const app = await boot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
+      await save(app.get(RunRepository), 'proj-20', 'code-review', 'running');
       await writeFile(
         join(root, 'data', 'proj-20-code-review-quality-output.txt'),
         `${JSON.stringify({ type: 'thinking', text: 'look' })}\n${JSON.stringify({ type: 'result', result: 'notes\ndecision: ok\n', usage: { inputTokens: 8, outputTokens: 2 } })}\nprocess exited 0\n`,
@@ -267,7 +309,6 @@ describe('runs api', () => {
         join(root, 'data', 'proj-20-code-review-security-output.txt'),
         `${JSON.stringify({ type: 'thinking', text: 'still' })}\n`,
       );
-      await save(app.get(RunRepository), 'proj-20', 'code-review', 'running');
       const runs = app.get(RunQueriesService);
       const flow = await runs.flow('proj-20');
       const chips = flow.phases.find((phase) => phase.phase === 'code-review')?.steps ?? [];
@@ -279,12 +320,12 @@ describe('runs api', () => {
         'code-review-performance',
         'code-review',
       ]);
-      expect(chips.find((step) => step.name === 'code-review-requirements')?.status).toBe('idle');
+      expect(chips.find((step) => step.name === 'code-review-requirements')?.status).toBe('running');
       expect(chips.find((step) => step.name === 'code-review-quality')?.status).toBe('done');
-      expect(chips.find((step) => step.name === 'code-review-regressions')?.status).toBe('idle');
+      expect(chips.find((step) => step.name === 'code-review-regressions')?.status).toBe('running');
       expect(chips.find((step) => step.name === 'code-review-security')?.status).toBe('running');
-      expect(chips.find((step) => step.name === 'code-review-performance')?.status).toBe('idle');
-      expect(chips.find((step) => step.name === 'code-review')?.status).toBe('idle');
+      expect(chips.find((step) => step.name === 'code-review-performance')?.status).toBe('running');
+      expect(chips.find((step) => step.name === 'code-review')?.status).toBe('running');
       const quality = await runs.step('proj-20', 'code-review-quality');
       expect(quality.visits.at(-1)?.status).toBe('done');
       expect(quality.visits.at(-1)?.documents.some((item) => item.body.includes('"look"'))).toBe(true);
@@ -300,18 +341,18 @@ describe('runs api', () => {
     const app = await boot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
+      await save(app.get(RunRepository), 'proj-32', 'code-review', 'running');
       await writeFile(join(root, 'data', 'proj-32-code-review-requirements-output.txt'), 'starting\n');
       await writeFile(join(root, 'data', 'proj-32-code-review-report-output.txt'), 'starting\n');
       await writeFile(
         join(root, 'data', 'proj-32-code-review-security-output.txt'),
         `${JSON.stringify({ type: 'thinking', text: 'still' })}\n`,
       );
-      await save(app.get(RunRepository), 'proj-32', 'code-review', 'running');
       const runs = app.get(RunQueriesService);
       const chips = (await runs.flow('proj-32')).phases.find((phase) => phase.phase === 'code-review')?.steps ?? [];
-      expect(chips.find((step) => step.name === 'code-review-requirements')?.status).toBe('idle');
+      expect(chips.find((step) => step.name === 'code-review-requirements')?.status).toBe('running');
       expect(chips.find((step) => step.name === 'code-review-requirements')?.attempts).toBe(0);
-      expect(chips.find((step) => step.name === 'code-review')?.status).toBe('idle');
+      expect(chips.find((step) => step.name === 'code-review')?.status).toBe('running');
       expect(chips.find((step) => step.name === 'code-review-security')?.status).toBe('running');
       const requirements = await runs.step('proj-32', 'code-review-requirements');
       expect(requirements.visits).toEqual([]);
@@ -344,8 +385,8 @@ describe('runs api', () => {
         (await runs.flow(key)).phases
           .find((phase) => phase.phase === 'code-review')
           ?.steps.find((step) => step.name === 'code-review');
-      expect((await chip('proj-33'))?.status).toBe('idle');
-      expect((await chip('proj-34'))?.status).toBe('idle');
+      expect((await chip('proj-33'))?.status).toBe('running');
+      expect((await chip('proj-34'))?.status).toBe('running');
       await writeFile(join(root, 'data', 'proj-33-code-review-report-output.txt'), 'process started\n');
       expect((await chip('proj-33'))?.status).toBe('running');
     } finally {
@@ -358,11 +399,11 @@ describe('runs api', () => {
     const app = await boot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
+      await save(app.get(RunRepository), 'proj-31', 'code-review', 'running');
       await writeFile(
         join(root, 'data', 'proj-31-code-review-quality-output.txt'),
         `${JSON.stringify({ type: 'result', result: 'notes\ndecision: ok\n' })}\nprocess exited 0\n`,
       );
-      await save(app.get(RunRepository), 'proj-31', 'code-review', 'running');
       const now = new Date().toISOString();
       app.get(LiveHub).log({
         key: 'proj-31',
@@ -458,7 +499,7 @@ describe('runs api', () => {
       });
       const detail = await app.get(RunQueriesService).step('proj-27', 'code-review');
       expect(detail.visits.map((item) => [item.attempt, item.status, item.decision])).toEqual([
-        [1, 'waiting', 'decision: return'],
+        [1, 'returned', 'decision: return'],
         [2, 'done', 'decision: ok'],
       ]);
       const chips =
@@ -515,6 +556,41 @@ describe('runs api', () => {
         'checks',
         'code-review',
         'ci',
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps a checks visit that reruns a failed command after the agent ended as one running visit with its own rows', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-checks-rerun-'));
+    const app = await boot(root);
+    try {
+      const runRepository = app.get(RunRepository);
+      const run = await save(runRepository, 'proj-chk-rerun', 'checks', 'running');
+      run.activeAttempt = 'att-2';
+      await runRepository.saveRun(run);
+      const stat = await app.get(VisitRepository).finishVisit(run, visit('checks', 'waiting'));
+      stat.attemptId = 'att-1';
+      await app.get(VisitRepository).saveStat(stat);
+      const commands = app.get(CheckCommandRepository);
+      const failed = await commands.add({
+        runId: run.id,
+        attemptId: 'att-1',
+        repo: 'api',
+        command: 'npm test',
+        commandIndex: 0,
+      });
+      await commands.save({ ...failed, status: 'failed', exitCode: 1 });
+      await commands.add({ runId: run.id, attemptId: 'att-2', repo: 'api', command: 'npm test', commandIndex: 0 });
+      const detail = await app.get(RunQueriesService).step('proj-chk-rerun', 'checks');
+      expect(detail.visits.map((item) => [item.attemptId, item.status])).toEqual([
+        ['att-1', 'waiting'],
+        ['att-2', 'running'],
+      ]);
+      expect(detail.commands?.map((item) => [item.attempt, item.status])).toEqual([
+        ['att-1', 'failed'],
+        ['att-2', 'waiting'],
       ]);
     } finally {
       await app.close();

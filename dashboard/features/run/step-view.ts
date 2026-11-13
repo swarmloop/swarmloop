@@ -3,15 +3,6 @@ import type { LiveUsage } from '@contract/live';
 import type { StepView } from '@contract/api';
 import { liveVisitKey } from '@contract/visit-key';
 
-type Visit = StepView['visits'][number];
-
-/** One visit per attempt, in increasing attempt order. When two visits share an attempt the later one wins. */
-export function mergeVisits(visits: Visit[]): Visit[] {
-  const byAttempt = new Map<number, Visit>();
-  visits.forEach((visit) => byAttempt.set(visit.attempt, visit));
-  return [...byAttempt.values()].sort((a, b) => a.attempt - b.attempt);
-}
-
 export function fileView(step: string, body: string): StepView {
   const done = reviewChipStatus(body);
   return {
@@ -95,37 +86,13 @@ export function withLog(
     return view;
   }
   if (visit.status !== 'running') {
-    if (reviewChipStatus(body)) {
-      if (samples.length === 0 || visit.samples.length > 0) {
-        return view;
-      }
-      const visits = view.visits.slice();
-      visits[index] = { ...visit, samples, ...usage(samples), ...tokenUsage(body, reported) };
-      return { ...view, visits };
+    // A live log only updates the visit the server named as running. It never opens a visit.
+    if (!reviewChipStatus(body) || samples.length === 0 || visit.samples.length > 0) {
+      return view;
     }
-    const attempt = visit.attempt + 1;
-    const counted = tokenUsage(body, reported);
-    const opened: Visit = {
-      ...visit,
-      id: -1,
-      key: liveVisitKey(view.step, attempt),
-      attempt,
-      status: reviewChipStatus(body) ?? 'running',
-      durationMs: 0,
-      killReason: null,
-      decision: null,
-      documents: [{ kind: 'log', attempt, body, createdAt: new Date().toISOString() }],
-      exchanges: [],
-      samples,
-      ...usage(samples),
-      ...counted,
-    };
-    if (!('tokensIn' in counted)) {
-      opened.tokensIn = 0;
-      opened.tokensOut = 0;
-      opened.usd = 0;
-    }
-    return { ...view, visits: mergeVisits([...view.visits, opened]) };
+    const visits = view.visits.slice();
+    visits[index] = { ...visit, samples, ...usage(samples), ...tokenUsage(body, reported) };
+    return { ...view, visits };
   }
   const documents = visit.documents.some((item) => item.kind === 'log')
     ? visit.documents.map((item) => (item.kind === 'log' ? { ...item, body } : item))
@@ -136,7 +103,7 @@ export function withLog(
     documents,
     samples,
     status:
-      visit.decision === 'decision: ok' && reviewChipStatus(body) === 'waiting'
+      visit.decision === 'decision: ok' && reviewChipStatus(body) === 'returned'
         ? 'done'
         : (reviewChipStatus(body) ?? visit.status),
     ...usage(samples),
@@ -177,6 +144,9 @@ export function decisionLine(body: string): string | null {
   );
 }
 
+/** The steps whose visit ends as `waiting` when it sent work back to implement. */
+const SENDS_WORK_BACK = ['checks', 'code-review', 'pipeline'];
+
 export function shownStatus(
   status: string,
   latest: boolean,
@@ -189,11 +159,20 @@ export function shownStatus(
       return 'done';
     }
     if (decision === 'decision: return') {
-      return 'waiting';
+      return 'returned';
     }
   }
   if (step?.startsWith('code-review-') && (status === 'waiting' || status === 'failed')) {
     return status;
+  }
+  // `runStatus` is set only while the step is the run's current step: a latest visit there is a wait, not a return.
+  if (
+    status === 'waiting' &&
+    step !== undefined &&
+    SENDS_WORK_BACK.includes(step) &&
+    !(latest && runStatus === 'waiting')
+  ) {
+    return 'returned';
   }
   if (status === 'waiting' && !(latest && runStatus === 'waiting')) {
     return 'done';

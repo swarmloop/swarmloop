@@ -42,6 +42,11 @@ function statusLine(live: boolean, now: number, lastTime: string | undefined): s
 /** How far from the bottom the reader still counts as being at the bottom. */
 const BOTTOM_SLACK = 48;
 
+/** The words of the problems chip, and of the step header link that goes to the same card. */
+export function problemsLabel(count: number): string {
+  return `${count} ${count === 1 ? 'problem' : 'problems'}`;
+}
+
 function Card({
   runKey,
   item,
@@ -223,7 +228,7 @@ export function TranscriptFeed({
                 size="small"
                 color="error"
                 variant="outlined"
-                label={`${problems.length} ${problems.length === 1 ? 'problem' : 'problems'}`}
+                label={problemsLabel(problems.length)}
                 onClick={() =>
                   document.getElementById(problemId(problems[0].event.eventId))?.scrollIntoView({ block: 'center' })
                 }

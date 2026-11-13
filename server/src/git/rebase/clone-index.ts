@@ -30,7 +30,7 @@ export async function cloneUnmerged(tmp: string, repo: string, hosts: RebaseHost
 
 export async function indexDirty(tmp: string, repo: string, hosts: RebaseHosts): Promise<boolean> {
   try {
-    await git(cloneArgs(tmp, ['diff', '--cached', '--quiet']));
+    await git(cloneArgs(tmp, ['diff', '--cached', '--quiet']), undefined, { answers: [1] });
     return false;
   } catch (error) {
     if (gitMissing(error)) {
@@ -59,7 +59,7 @@ export async function cloneAuthor(cwd: string): Promise<string[]> {
 
 async function localConfig(cwd: string, key: string): Promise<string> {
   try {
-    return await git(['-C', cwd, 'config', '--local', '--get', key]);
+    return await git(['-C', cwd, 'config', '--local', '--get', key], undefined, { answers: [1] });
   } catch {
     return '';
   }

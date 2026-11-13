@@ -9,10 +9,11 @@ import type { RunAction, RunState, StateReason } from '../../contract/run-state'
 import type { FlowItem, FlowView } from '../../contract/api';
 import type { LiveUsage } from '../../contract/live';
 import { isReviewStep, pipelineStepOf } from '../../contract/steps';
+import { stepOutput } from '../../core/attempt-output';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered } from '../../steps/shared/answers';
 import { items } from '../../steps/shared/markdown-section';
-import { activeLog, chipStatus, chipAttempts, reportChip, reviewPreparing, reviewerRound } from './chips';
+import { chipStatus, chipAttempts, reportChip, reviewPreparing, reviewerRound } from './chips';
 import { latest } from './status';
 export { latest } from './status';
 import { PHASES } from './run-view.types';
@@ -56,21 +57,20 @@ export function phases(
   for (const stat of stats) {
     latestStats.set(stat.step, stat);
   }
-  const parentRunning = run.status === 'running' && run.currentStep === 'code-review';
   const preparing = reviewPreparing(root, run);
   return PHASES.map((phase) => {
     const steps = phase.steps.map((name) => {
       const parent = pipelineStepOf(name);
       const own = isReviewStep(name) ? latestStats.get(name) : undefined;
       const stat = own ?? latestStats.get(parent);
-      const round = own ? reviewerRound(name, run, own, documents, root) : null;
-      const log = round ? null : isReviewStep(name) && (!own || parentRunning) ? activeLog(root, run, name) : null;
-      const status = chipStatus(name, run, stat, documents, log, round, preparing);
+      const round = isReviewStep(name) ? reviewerRound(name, run, stats, documents, root, preparing) : null;
+      const log = isReviewStep(name) && !own && !round ? stepOutput(root, run.key, name, run.activeAttempt) : '';
+      const status = chipStatus(name, run, stat, documents, round, log);
       return {
         name,
         status,
         current: isReviewStep(name) ? status === 'running' || status === 'preparing' : parent === run.currentStep,
-        attempts: chipAttempts(name, run, stats, documents, root, log, round),
+        attempts: chipAttempts(name, run, stats, documents, root, round),
       };
     });
     if (phase.phase !== 'code-review') {

@@ -69,7 +69,7 @@ describe('Bubble', () => {
   });
 
   it('shows a problem with the icon, the word and the error border', () => {
-    feed(commandEvents(1, 's', { executable: 'make', exitCode: 2 }));
+    feed(commandEvents(1, 's', { executable: 'make', exitCode: 2, actor: 'server' }));
 
     const bubble = screen.getByRole('article', { name: 'Error: exit code 2' });
     expect(within(bubble).getByTestId('ErrorOutlineIcon')).toBeInTheDocument();
@@ -132,7 +132,7 @@ describe('TranscriptFeed chrome', () => {
   });
 
   it('counts the cards of each filter', () => {
-    feed([input(1, 'plan'), artifact, ...commandEvents(10, 's', { executable: 'make', exitCode: 1 })]);
+    feed([input(1, 'plan'), artifact, ...commandEvents(10, 's', { executable: 'make', exitCode: 1, actor: 'server' })]);
 
     expect(screen.queryByRole('button', { name: /^(all|inputs|actions|problems) \d/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '1 problem' })).toBeInTheDocument();

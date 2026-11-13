@@ -1,5 +1,5 @@
 import type { StepEvent } from '@contract/step-events';
-import { commandLine } from './transcript-model';
+import { commandLine } from './transcript-problems';
 
 /** The server command that took longest in the `gapMs` before the attempt's first event: what the run waited for between two steps. */
 export function slowestBeforeAttempt(

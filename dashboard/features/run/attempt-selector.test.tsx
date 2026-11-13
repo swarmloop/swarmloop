@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
+import { createTheme } from '@mui/material/styles';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { stepView, visitView } from '../../test/fixtures';
@@ -24,6 +25,7 @@ function header(view: StepView, attempt: number) {
       shownDuration={0}
       shownAttempt={attempt + 1}
       problemId={null}
+      problemCount={0}
     />
   );
 }
@@ -34,13 +36,15 @@ describe('AttemptSelector in the step header', () => {
   it('shows each attempt once while live updates arrive between fetches', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const user = userEvent.setup();
-    let view = stepView({ visits: visits(19) });
+    const running = (attempt: number) =>
+      visitView({ id: -1, key: `live-implement-${attempt}`, attempt, status: 'running' });
+    let view = stepView({ visits: [...visits(19), running(20)] });
     const { rerender } = render(header(withLog(view, 'first', []), 19));
     for (const body of ['second', 'third']) {
       view = withLog(view, body, []);
       rerender(header(view, 19));
     }
-    view = stepView({ visits: visits(20) });
+    view = stepView({ visits: [...visits(20), running(21)] });
     rerender(header(withLog(view, 'fourth', []), 20));
     view = withLog(view, 'fifth', []);
     rerender(header(view, 20));
@@ -53,6 +57,47 @@ describe('AttemptSelector in the step header', () => {
     await user.click(screen.getByRole('button', { name: 'Earlier (13)' }));
     expect(within(screen.getByRole('menu')).getAllByRole('menuitem')).toHaveLength(13);
     expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key|unique "key"/);
+  });
+
+  it('lists as many visit buttons as the badge counts for a step sent back by checks, while its check is rerun', () => {
+    const sentBack = visitView({ id: 1, attempt: 1, status: 'waiting' });
+    const rerun = visitView({ id: -1, key: 'live-implement-2', attempt: 2, status: 'running' });
+    const view = withLog(stepView({ visits: [sentBack, rerun] }), 'rerunning the check', []);
+    const badge = 2;
+
+    render(header(view, 1));
+
+    expect(screen.getAllByRole('button', { name: /^\d+$/ })).toHaveLength(badge);
+    expect(view.visits).toHaveLength(badge);
+  });
+
+  it('colors a visit that sent work back as returned and outlines the selected one instead of filling it', () => {
+    const sentBack = visitView({ id: 1, attempt: 1, status: 'waiting' });
+    const passed = visitView({ id: 2, attempt: 2, status: 'done' });
+    const view = stepView({ visits: [sentBack, passed] });
+
+    render(
+      <StepHeader
+        step="checks"
+        view={view}
+        attempt={0}
+        setAttempt={vi.fn()}
+        follow={{ current: true }}
+        attempts={2}
+        visit={view.visits[0]}
+        label="returned"
+        shownDuration={0}
+        shownAttempt={1}
+        problemId={null}
+        problemCount={0}
+      />,
+    );
+
+    const first = screen.getByRole('button', { name: '1' });
+    expect(first).toHaveStyle({ color: 'var(--chart-returns)', fontWeight: '700' });
+    expect(first).toHaveClass('MuiButton-outlined');
+    expect(screen.getByRole('button', { name: '2' })).toHaveClass('MuiButton-text');
+    expect(first).not.toHaveStyle({ color: createTheme().palette.error.main });
   });
 
   it('keeps a selected earlier attempt visible as a button', () => {

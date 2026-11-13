@@ -69,11 +69,12 @@ export function AttemptSelector({
             key={item.key}
             ref={active ? current : undefined}
             size="small"
-            variant={active ? 'contained' : 'text'}
+            variant={active ? 'outlined' : 'text'}
             onClick={() => onSelect(item.key)}
             sx={{
               flexShrink: 0,
-              ...(active ? { bgcolor: item.color, '&:hover': { bgcolor: item.color } } : { color: item.color }),
+              color: item.color,
+              ...(active ? { fontWeight: 700, borderColor: item.color, '&:hover': { borderColor: item.color } } : {}),
             }}
           >
             {item.label}

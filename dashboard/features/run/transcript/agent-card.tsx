@@ -46,7 +46,7 @@ function WorkLine({ work }: { work: AgentWork }): ReactElement {
       sx={{
         fontFamily: 'var(--font-mono)',
         fontSize: DETAIL.fontSize,
-        color: work.status === 'failed' ? 'error.main' : undefined,
+        color: work.status === 'failed' ? 'text.secondary' : undefined,
       }}
     >
       {work.tool} {work.target}

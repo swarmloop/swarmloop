@@ -63,7 +63,7 @@ export class BranchCheckout {
 
 async function isAncestor(worktree: string, older: string, newer: string): Promise<boolean> {
   try {
-    await git(['-C', worktree, 'merge-base', '--is-ancestor', older, newer]);
+    await git(['-C', worktree, 'merge-base', '--is-ancestor', older, newer], undefined, { answers: [1] });
     return true;
   } catch {
     return false;
@@ -72,7 +72,7 @@ async function isAncestor(worktree: string, older: string, newer: string): Promi
 
 async function hasBranch(worktree: string, branch: string): Promise<boolean> {
   try {
-    await git(['-C', worktree, 'show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
+    await git(['-C', worktree, 'show-ref', '--verify', '--quiet', `refs/heads/${branch}`], undefined, { answers: [1] });
     return true;
   } catch (error) {
     if (gitMissing(error)) {

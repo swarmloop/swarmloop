@@ -19,7 +19,7 @@ export function logFinished(raw: string): boolean {
   return line.startsWith('{"type":"result"') || line.startsWith('process exited') || line.startsWith('process killed:');
 }
 
-export function reviewChipStatus(raw: string): 'done' | 'waiting' | 'failed' | null {
+export function reviewChipStatus(raw: string): 'done' | 'returned' | 'failed' | null {
   if (!logFinished(raw)) {
     return null;
   }
@@ -28,7 +28,7 @@ export function reviewChipStatus(raw: string): 'done' | 'waiting' | 'failed' | n
     return 'done';
   }
   if (decision === 'return') {
-    return 'waiting';
+    return 'returned';
   }
   return 'failed';
 }

@@ -3,7 +3,6 @@ import { describe, it } from 'vitest';
 import {
   decisionLine,
   fileView,
-  mergeVisits,
   reportAgrees,
   shownStatus,
   stepText,
@@ -80,7 +79,7 @@ describe('shownStatus', () => {
   it('maps review decisions and folds a waiting step that is not the live wait', () => {
     assert.equal(shownStatus('running', true, 'failed', 'code-review', 'decision: ok'), 'running');
     assert.equal(shownStatus('idle', true, 'failed', 'code-review', 'decision: ok'), 'done');
-    assert.equal(shownStatus('idle', true, 'failed', 'code-review', 'decision: return'), 'waiting');
+    assert.equal(shownStatus('idle', true, 'failed', 'code-review', 'decision: return'), 'returned');
     assert.equal(shownStatus('idle', true, undefined, 'code-review', null), 'idle');
     assert.equal(shownStatus('waiting', true, 'failed', 'code-review-quality', 'decision: ok'), 'done');
     assert.equal(shownStatus('waiting', true, undefined, 'code-review-quality', null), 'waiting');
@@ -89,6 +88,14 @@ describe('shownStatus', () => {
     assert.equal(shownStatus('waiting', false, 'waiting', 'implement', null), 'done');
     assert.equal(shownStatus('waiting', true, 'failed', 'implement', null), 'done');
     assert.equal(shownStatus('blocked', true, 'blocked', 'implement', null), 'blocked');
+  });
+
+  it('shows a loop visit that sent work back as returned, never done', () => {
+    assert.equal(shownStatus('waiting', true, undefined, 'checks', null), 'returned');
+    assert.equal(shownStatus('waiting', false, 'running', 'checks', null), 'returned');
+    assert.equal(shownStatus('waiting', false, 'waiting', 'pipeline', null), 'returned');
+    assert.equal(shownStatus('waiting', true, 'waiting', 'pipeline', null), 'waiting');
+    assert.equal(shownStatus('failed', true, 'failed', 'checks', null), 'failed');
   });
 });
 
@@ -231,37 +238,24 @@ describe('withLog', () => {
     assert.equal(next.visits[0]?.memPeak, 50);
   });
 
-  it('opens the next attempt when a finished visit is still receiving a log', () => {
+  it('adds no visit when a finished visit is still receiving a log', () => {
     const current = visit({
       status: 'done',
       attempt: 4,
-      tokensIn: 3,
-      tokensOut: 2,
-      usd: 1,
       documents: [{ kind: 'log', attempt: 4, body: 'old', createdAt: 't' }],
     });
-    const before = Date.now();
-    const next = withLog({ step: 'implement', checks: [], ...recorded, visits: [current] }, 'still going', [
-      { at: 't', cpu: 2, memory: 10, source: 'agent' },
-    ]);
-    const after = Date.now();
-    const opened = next.visits[1];
-    assert.equal(next.visits[0], current);
-    assert.equal(opened?.id, -1);
-    assert.equal(opened?.attempt, 5);
-    assert.equal(opened?.status, 'running');
-    assert.equal(opened?.durationMs, 0);
-    assert.equal(opened?.killReason, null);
-    assert.equal(opened?.decision, null);
-    assert.deepEqual(opened?.exchanges, []);
-    assert.equal(opened?.tokensIn, 0);
-    assert.equal(opened?.tokensOut, 0);
-    assert.equal(opened?.usd, 0);
-    assert.equal(opened?.cpuAvg, 2);
-    assert.equal(opened?.memAvg, 10);
-    assert.equal(opened?.documents[0]?.body, 'still going');
-    assert.equal(opened?.documents[0]?.attempt, 5);
-    assertNow(opened?.documents[0]?.createdAt ?? '', before, after);
+    const view = { step: 'implement', checks: [], ...recorded, visits: [current] };
+
+    assert.equal(withLog(view, 'still going', [{ at: 't', cpu: 2, memory: 10, source: 'agent' }]), view);
+  });
+
+  it('keeps one visit when the status of the running visit changes', () => {
+    const view = { step: 'implement', checks: [], ...recorded, visits: [visit({ status: 'running', attempt: 2 })] };
+    const finished = withLog(view, doneLog, []);
+
+    assert.equal(finished.visits.length, 1);
+    assert.equal(finished.visits[0]?.status, 'done');
+    assert.equal(withLog(finished, 'late output', []).visits.length, 1);
   });
 
   it('replaces a running log, adds one when missing, and applies a live decision', () => {
@@ -358,7 +352,7 @@ describe('withFileUsage', () => {
   });
 });
 
-describe('merging the live visit with the stored ones', () => {
+describe('the visits of a step', () => {
   const stored = (count: number) =>
     Array.from({ length: count }, (_, index) =>
       visit({ id: index + 1, key: `visit-${index + 1}`, attempt: index + 1, status: 'done' }),
@@ -366,48 +360,23 @@ describe('merging the live visit with the stored ones', () => {
   const live = (attempt: number) => visit({ id: -1, key: `live-implement-${attempt}`, attempt, status: 'running' });
   const view = (visits: StepView['visits']): StepView => ({ step: 'implement', checks: [], ...recorded, visits });
 
-  function assertOrdered(next: StepView): void {
-    const attempts = next.visits.map((item) => item.attempt);
-    assert.deepEqual(
-      attempts,
-      Array.from({ length: attempts.length }, (_, index) => index + 1),
-    );
-    assert.equal(new Set(next.visits.map((item) => item.key)).size, next.visits.length);
-  }
-
-  it('keeps unique, increasing attempts from the server list, a live log and a refetch', () => {
+  it('keeps the visits the server listed when a live log arrives', () => {
     const first = view([...stored(13), live(14)]);
-    assertOrdered(first);
 
     const logged = withLog(first, 'more output', []);
-    assertOrdered(logged);
     assert.equal(logged.visits.length, 14);
     assert.equal(logged.visits.at(-1)?.documents[0]?.body, 'more output');
 
     const refetched = view([...stored(14), live(15)]);
     const again = withLog(refetched, 'more output', []);
-    assertOrdered(again);
     assert.equal(again.visits.length, 15);
     assert.equal(again.visits.at(-1)?.key, 'live-implement-15');
   });
 
-  it('opens the next attempt once after the last visit finished', () => {
-    const opened = withLog(view(stored(13)), 'live', []);
-    assertOrdered(opened);
-    assert.equal(opened.visits.at(-1)?.key, 'live-implement-14');
-    assert.equal(withLog(opened, 'live again', []).visits.length, 14);
-  });
+  it('opens no visit once the last one finished: only the server opens a visit', () => {
+    const closed = view(stored(13));
 
-  it('sorts by attempt and lets the later visit win a shared attempt', () => {
-    const merged = mergeVisits([
-      visit({ key: 'b', attempt: 2 }),
-      visit({ key: 'a', attempt: 1 }),
-      visit({ key: 'c', attempt: 2 }),
-    ]);
-    assert.deepEqual(
-      merged.map((item) => item.key),
-      ['a', 'c'],
-    );
+    assert.equal(withLog(closed, 'live', []).visits.length, 13);
   });
 
   it('gives a file view a live key', () => {

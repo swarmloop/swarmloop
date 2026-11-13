@@ -47,7 +47,7 @@ export function reviewChipName(step: string): string {
   return step === 'code-review-report' ? 'code-review' : step;
 }
 
-/** A torn read can mark an open reviewer idle or failed. Done and waiting are real finishes and stay. */
+/** A torn read can mark an open reviewer idle or failed. Done, returned and waiting are real finishes and stay. */
 export function keepOpenReviews<T extends { steps: { name: string; status: string; current: boolean }[] }>(
   phases: T[],
   open: ReadonlySet<string>,

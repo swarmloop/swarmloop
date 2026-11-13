@@ -1,9 +1,10 @@
-import { withoutTimestamp } from '@contract/event-text';
 import { isReadOnlyGit } from '@contract/git-reads';
 import type { StepEvent } from '@contract/step-events';
 import { withoutLogs } from './old-log-events';
-import { limitSentence } from '../../../lib/runtime-limit';
-import { loopSentence } from '../../../lib/loop-sentence';
+import { attemptOutcome, whyOf } from './attempt-outcome';
+import type { AttemptEnd } from './attempt-outcome';
+import { problemOf } from './transcript-problems';
+import type { Problem } from './transcript-problems';
 
 export type Side = 'left' | 'right';
 export type ActorKind = 'server' | 'agent' | 'person' | 'pipeline' | 'git';
@@ -19,7 +20,6 @@ type AgentEnd = Extract<StepEvent, { kind: 'agent.finished' }>;
 type SessionChange = Extract<StepEvent, { kind: 'session.changed' }>;
 type Manifest = Extract<StepEvent, { kind: 'context.manifest' }>;
 type ActivityEnd = Extract<StepEvent, { kind: 'activity.finished' }>;
-type AttemptEnd = Extract<StepEvent, { kind: 'attempt.finished' | 'attempt.interrupted' }>;
 export type AgentWork = Extract<StepEvent, { kind: 'agent.tool' | 'agent.message' }>;
 
 /** One launch of an agent: what it started with, what it did, and how it ended. */
@@ -36,12 +36,6 @@ export interface ActivityNode {
   finished: ActivityEnd | null;
   commands: TranscriptItem[];
   reads: number;
-}
-
-/** Why an event is an error, and the action it belongs to. */
-export interface Problem {
-  cause: string;
-  action: string;
 }
 
 /** One card of the feed. `event` is the event it shows; a command also carries the event that ended it. */
@@ -168,46 +162,6 @@ export function groupByActor(items: TranscriptItem[]): TranscriptItem[] {
   });
 }
 
-/** A command as a person reads it: `-C <path>` shows the repo name. The event keeps the full args. */
-export function commandLine(event: Extract<StepEvent, { kind: 'command.started' }>): string {
-  const args =
-    event.args[0] === '-C' && event.args.length > 1 ? ['-C', event.repo, ...event.args.slice(2)] : event.args;
-  return [event.executable, ...args].join(' ');
-}
-
-function problemOf(event: StepEvent, end: CommandEnd | null): Problem | null {
-  if (event.kind === 'command.started') {
-    const action = `command: ${commandLine(event)}`;
-    if (end?.timedOut) {
-      return { cause: 'timed out', action };
-    }
-    if (end?.cancelled) {
-      return { cause: 'cancelled', action };
-    }
-    return end && end.exitCode !== null && end.exitCode !== 0 ? { cause: `exit code ${end.exitCode}`, action } : null;
-  }
-  if (event.kind === 'agent.finished') {
-    return event.killReason ? { cause: `killed: ${event.killReason}`, action: `agent: ${event.model}` } : null;
-  }
-  if (event.kind === 'agent.limited') {
-    return { cause: limitSentence(event), action: `agent: ${event.runtime}` };
-  }
-  if (event.kind === 'agent.loop_hint') {
-    return event.ended ? { cause: loopSentence(event), action: 'agent: looping' } : null;
-  }
-  if (event.kind === 'http.call') {
-    const action = `${event.method} ${event.url}`;
-    if (event.statusCode === null) {
-      return { cause: 'no response', action };
-    }
-    return event.statusCode >= 400 ? { cause: `status ${event.statusCode}`, action } : null;
-  }
-  if (event.kind === 'issue.opened') {
-    return { cause: event.title, action: `issue ${event.issueId}` };
-  }
-  return event.kind === 'attempt.interrupted' ? { cause: event.summary, action: 'attempt' } : null;
-}
-
 /** An issue shows once in a window: a repeated event for the same issue adds no card. */
 function repeatedIssue(shown: Set<string>, event: StepEvent): boolean {
   const keys =
@@ -329,7 +283,7 @@ class ItemBuilder {
   private command(event: Extract<StepEvent, { kind: 'command.started' }>): void {
     const end = this.ends.get(event.spanId) ?? null;
     const parent = event.parentSpanId ? this.activities.get(event.parentSpanId)?.activity : undefined;
-    const failed = end !== null && (end.exitCode !== 0 || end.timedOut || end.cancelled);
+    const failed = end !== null && ((end.exitCode !== 0 && !end.answer) || end.timedOut || end.cancelled);
     const read = isReadOnlyGit(event.executable, event.args) && !failed;
     if (parent) {
       if (read) {
@@ -352,57 +306,8 @@ function itemsOf(events: StepEvent[]): TranscriptItem[] {
   return new ItemBuilder(events).items;
 }
 
-/** The first line of a result, as a sentence about what the attempt came to. */
-function outcomeWords(finish: AttemptEnd, target: string | null, issues: number): string {
-  const line = withoutTimestamp(finish.summary).split('\n')[0]?.trim() ?? '';
-  if (finish.kind === 'attempt.interrupted') {
-    return `Stopped: ${line}`;
-  }
-  switch (finish.route) {
-    case 'ok':
-      return target ? `Done, next: ${target}` : 'Done';
-    case 'waiting': {
-      const questions = /(\d+) questions?/.exec(finish.summary)?.[1];
-      return questions ? `Waiting for answers: ${questions} questions` : `Waiting: ${line}`;
-    }
-    case 'blocked':
-      return `Blocked: ${line}`;
-    case 'failed':
-      return `Failed: ${line}`;
-    default:
-      return issues > 0 ? `Returned to ${finish.route}: ${issues} issues` : `Moved to ${finish.route}`;
-  }
-}
-
-/** What the attempt did, besides how it ended: the lines its step added, such as the checks result. */
-function outcomeFacts(finish: AttemptEnd): string[] {
-  return finish.kind === 'attempt.finished' ? (finish.facts?.details ?? []) : [];
-}
-
 function isAttemptEnd(event: StepEvent): event is AttemptEnd {
   return event.kind === 'attempt.finished' || event.kind === 'attempt.interrupted';
-}
-
-/** How an attempt ended as one line, from its own events. */
-function attemptOutcome(own: StepEvent[], finish: AttemptEnd): string {
-  const sent = own.find((event) => event.kind === 'handoff.sent');
-  const target = sent?.kind === 'handoff.sent' ? sent.targetStep : null;
-  const issues = own.filter((event) => event.kind === 'issue.opened').length;
-  return [outcomeWords(finish, target, issues), ...outcomeFacts(finish)].join(' · ');
-}
-
-function whyOf(own: StepEvent[], number: number): string {
-  const received = own.find((event) => event.kind === 'handoff.received');
-  if (received?.kind === 'handoff.received' && received.from) {
-    return `return from ${received.from}`;
-  }
-  if (own.some((event) => event.kind === 'session.changed' && event.reason === 'replay')) {
-    return 'replay';
-  }
-  if (own.some((event) => event.kind === 'agent.launched' && event.resumed)) {
-    return 'resumed';
-  }
-  return number === 1 ? 'first run' : 'run again';
 }
 
 /** The attempts of a step in the order they started, each with its events in `seq` order. */
@@ -431,11 +336,10 @@ export function groupByAttempt(recorded: StepEvent[]): AttemptGroup[] {
   return groups;
 }
 
-/** The `eventId` of the first problem of the step, or null when it had none. */
-export function firstProblemId(events: StepEvent[]): string | null {
-  return (
-    groupByAttempt(events)
-      .flatMap((group) => group.items)
-      .find((item) => item.problem)?.event.eventId ?? null
-  );
+/** The `eventId` of the first problem of the step (null when it had none), and how many problems it recorded. */
+export function problemSummary(events: StepEvent[]): { firstId: string | null; count: number } {
+  const problems = groupByAttempt(events)
+    .flatMap((group) => group.items)
+    .filter((item) => item.problem);
+  return { firstId: problems[0]?.event.eventId ?? null, count: problems.length };
 }

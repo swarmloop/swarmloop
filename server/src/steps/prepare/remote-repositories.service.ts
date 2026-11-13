@@ -197,7 +197,7 @@ export class RemoteRepositories {
     }
     let origin = '';
     if (existsSync(join(path, '.git'))) {
-      origin = await git(['-C', path, 'remote', 'get-url', 'origin']).catch(() => '');
+      origin = await git(['-C', path, 'remote', 'get-url', 'origin'], undefined, { answers: [2] }).catch(() => '');
     }
     if (origin && this.sameRemote(repository, origin)) {
       return { ...repository, cloned: true };

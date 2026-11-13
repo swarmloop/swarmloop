@@ -68,7 +68,7 @@ export async function baseRefFor(cwd: string, prompt: string | null, sha: string
   for (const name of names) {
     const ref = originRef(name);
     try {
-      if ((await git(['-C', cwd, 'rev-parse', '--verify', '--quiet', ref])) === sha) {
+      if ((await git(['-C', cwd, 'rev-parse', '--verify', '--quiet', ref], undefined, { answers: [1] })) === sha) {
         return ref;
       }
     } catch (error) {
@@ -97,7 +97,7 @@ async function tipInBase(
   hosts: RebaseHosts,
 ): Promise<boolean> {
   try {
-    await git(cloneArgs(tmp, ['merge-base', '--is-ancestor', tipSha, baseSha]));
+    await git(cloneArgs(tmp, ['merge-base', '--is-ancestor', tipSha, baseSha]), undefined, { answers: [1] });
     return true;
   } catch (error) {
     if (gitMissing(error)) {
@@ -121,7 +121,7 @@ async function sameSquash(
     const body = await git(cloneArgs(tmp, ['log', '-1', '--format=%B', tipSha]));
     let parent = '';
     try {
-      parent = await git(cloneArgs(tmp, ['rev-parse', '--verify', `${tipSha}^`]));
+      parent = await git(cloneArgs(tmp, ['rev-parse', '--verify', `${tipSha}^`]), undefined, { answers: [128] });
     } catch {
       parent = '';
     }
@@ -133,7 +133,9 @@ async function sameSquash(
 
 export async function publishedTip(cwd: string, branch: string): Promise<string | null> {
   try {
-    const tip = await git(['-C', cwd, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`]);
+    const tip = await git(['-C', cwd, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`], undefined, {
+      answers: [1],
+    });
     return tip || null;
   } catch (error) {
     if (gitMissing(error)) {

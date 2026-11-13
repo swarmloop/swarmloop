@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
+import { createTheme } from '@mui/material/styles';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { FlowView } from '@contract/api';
@@ -33,6 +34,24 @@ describe('FlowBoard', () => {
     const card = screen.getByRole('button', { name: /quality/ });
     expect(within(card).getByText('preparing')).toBeInTheDocument();
     expect(card).toHaveAttribute('aria-current', 'step');
+  });
+
+  it('shows a returned card with the return icon, the place it went to, and neither the error nor the warning color', async () => {
+    const user = userEvent.setup();
+    const board: FlowView['phases'] = [
+      { phase: 'checks', steps: [{ name: 'checks', status: 'returned', current: false, attempts: 1 }] },
+    ];
+    const returns: FlowView['returns'] = [{ counter: 'checks', count: 1, from: 'checks', to: 'implement' }];
+    render(<FlowBoard phases={board} returns={returns} selected={null} onSelect={vi.fn()} />);
+
+    const card = screen.getByRole('button', { name: /checks/ });
+    expect(within(card).getByTestId('UndoIcon')).toBeInTheDocument();
+    expect(within(card).getByText('1')).toHaveStyle({ backgroundColor: 'var(--chart-returns)' });
+    const { palette } = createTheme();
+    expect(card).not.toHaveStyle({ borderColor: palette.error.main });
+    expect(within(card).getByText('1')).not.toHaveStyle({ backgroundColor: palette.warning.main });
+    await user.hover(card);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('returned to implement');
   });
 
   it('reports the clicked step by name', async () => {

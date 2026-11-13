@@ -5,7 +5,7 @@ import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import { useStep } from '../../use-step';
-import { firstProblemId, issueLinks } from '../../transcript/transcript-model';
+import { issueLinks, problemSummary } from '../../transcript/transcript-model';
 import { slowestBeforeAttempt } from '../../transcript/prepared-wait';
 import { useStepEvents } from '../../transcript/use-step-events';
 import { commandSummary, visitCommands } from '../../check-commands';
@@ -46,6 +46,7 @@ export function StepDetail({
   const received = events?.some((event) => event.kind === 'handoff.received') ?? false;
   const waited = (view?.visits[attempt]?.preparedMs ?? 0) > 30_000;
   const run = useStepEvents(runKey, null, received || waited ? (view?.eventsCursor ?? null) : null, running);
+  const problems = useMemo(() => (events ? problemSummary(events) : null), [events]);
   const issues = useMemo(() => issueLinks(run.events ?? []), [run.events]);
 
   useEffect(() => {
@@ -99,7 +100,8 @@ export function StepDetail({
         label={label}
         shownDuration={shownDuration}
         shownAttempt={shownAttempt}
-        problemId={events ? firstProblemId(events) : null}
+        problemId={problems?.firstId ?? null}
+        problemCount={problems?.count ?? 0}
         commands={commands ? commandSummary(commands, now) : undefined}
         preparing={live && !visit}
         slowestPrepared={
