@@ -1,3 +1,4 @@
+import type { EffortFields } from '../../contract/effort';
 import type { ErrorCode } from '../../contract/error-codes';
 import type { LimitState } from '../../contract/run-state';
 import type { AttemptFacts } from '../../contract/step-events';
@@ -82,7 +83,7 @@ export interface StepCapabilities {
   revisesRequirements?: boolean;
 }
 
-export interface AgentProfile {
+export interface AgentProfile extends EffortFields {
   runtime: RuntimeName;
   model: string;
   mode: string;

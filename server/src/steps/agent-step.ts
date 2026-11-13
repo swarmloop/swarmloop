@@ -2,6 +2,7 @@ import { join } from 'path';
 import type { SwarmloopEnv } from '../config/env';
 import { root } from '../history/run-paths';
 import type { RunEntity } from '../history/entities';
+import { effortFields } from '../contract/effort';
 import { CONTRACT_KIND } from '../contract/subtask';
 import type { SampleDraft, VisitDraft } from '../history/visit';
 import type { AgentRunResult } from '../agent/agent-runner';
@@ -210,7 +211,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
 
   /** Before `work` ran, the visit still names the model and mode, with no samples. */
   protected override failureVisit(opened: OpenedStep): Partial<VisitDraft> {
-    const { mode, runtime, model } = this.profile(this.config.env, opened.run);
+    const { mode, runtime, model, effort, effortNote } = this.profile(this.config.env, opened.run);
     return modelVisit({
       opened,
       now: this.clock.now(),
@@ -218,6 +219,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       mode,
       runtime,
       model,
+      ...effortFields({ effort, effortNote }),
       agent: null,
       prompt: '',
       status: 'failed',
@@ -255,6 +257,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       mode: run.profile.mode,
       runtime: run.profile.runtime,
       model: run.profile.model,
+      ...effortFields(run.profile),
       agent: run.agentResult,
       samples: run.samples,
       prompt: run.prompt,
@@ -280,6 +283,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       tools: run.profile.tools,
       runtime: run.profile.runtime,
       model: run.profile.model,
+      ...effortFields(run.profile),
       timeLimitMs: run.profile.timeLimitMs,
       auto: run.auto,
       prompt,
@@ -301,7 +305,8 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     });
     if (result.agent) {
       // The step goes on with the agent that took over, and its visit records that agent.
-      run.profile = { ...run.profile, ...result.agent };
+      const { effort: _effort, effortNote: _effortNote, ...profile } = run.profile;
+      run.profile = { ...profile, ...result.agent };
     }
     run.prompt = run.prompt ? `${run.prompt}\n\n${prompt}` : prompt;
     run.launched.push(result);

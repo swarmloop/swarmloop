@@ -2,8 +2,10 @@ import { decisionLine } from './chips';
 import { latest } from './status';
 import { REVIEW_KINDS } from './run-view.types';
 import type { CheckCommandView, StepView, VisitView } from '../../contract/api';
+import { isEffort } from '../../contract/effort';
 import type {
   DocumentEntity,
+  StepStatEntity,
   AgentExchangeEntity,
   CheckCommandEntity,
   ResourceSampleEntity,
@@ -19,6 +21,14 @@ export function exchangesOf(exchanges: AgentExchangeEntity[], statId: number): V
       request: exchange.requestText,
       response: exchange.responseText,
     }));
+}
+
+/** The effort a stored visit ran with, left out when it ran at its runtime's default. */
+export function effortOf(stat: StepStatEntity): Pick<VisitView, 'effort' | 'effortNote'> {
+  if (!stat.effort || !isEffort(stat.effort)) {
+    return {};
+  }
+  return { effort: stat.effort, ...(stat.effortNote ? { effortNote: stat.effortNote } : {}) };
 }
 
 /** The resource samples of one stored visit. */

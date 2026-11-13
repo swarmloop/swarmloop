@@ -1,3 +1,4 @@
+import type { EffortFields } from '../contract/effort';
 import type { SampleDraft } from '../history/visit';
 import type { LimitHit } from '../integrations/agent-runtime/runtime-limit';
 import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
@@ -20,7 +21,7 @@ export interface AgentRunResult {
   /** A resumed launch whose output was only orphan notifications and an empty result. */
   orphanOnly?: boolean;
   /** Set when the launch ran on another agent than the one asked for, because the first was limited or cooling down. */
-  agent?: { runtime: RuntimeName; model: string };
+  agent?: { runtime: RuntimeName; model: string } & EffortFields;
   /** The launch ended on the provider's usage limit. Nothing was answered, and the launch is not an attempt. */
   limit?: LimitHit;
   calls: number;

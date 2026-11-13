@@ -31,7 +31,7 @@ import { taskRuns } from './run-view/task-runs';
 import { ReviewerSteps } from './run-view/reviewer-steps';
 import { visitKey } from '../contract/visit-key';
 import { launchView, liveVisit, loopView } from './run-view/live';
-import { commandViewsOf, exchangesOf, reviewChecks, samplesOf } from './run-view/visit-parts';
+import { commandViewsOf, effortOf, exchangesOf, reviewChecks, samplesOf } from './run-view/visit-parts';
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
 import { readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
 import { openSpend } from './run-queries-spend';
@@ -199,6 +199,7 @@ export class RunQueriesService {
         attempt: stat.attempt,
         status: decisionStatus(verdict, stat.status),
         model: stat.model,
+        ...effortOf(stat),
         mode: stat.mode,
         durationMs: stat.durationMs,
         preparedMs: stat.preparedMs,
