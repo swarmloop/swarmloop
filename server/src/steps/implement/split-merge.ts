@@ -67,6 +67,7 @@ export class SplitMerge {
       }
       throw error;
     }
+    await this.subtasks.recordMerged(child, merged);
     const branch = await this.subtasks.branchOf(child);
     for (const request of requests) {
       await (await this.hostOf(parent)).deleteBranch(request.project, branch);

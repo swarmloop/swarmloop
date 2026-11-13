@@ -12,7 +12,7 @@ const task = (id: string, extra: Partial<TaskLayer['tasks'][number]> = {}): Task
   proof: `${id}.spec.ts passes`,
   depends: [],
   status: 'merged',
-  run: { key: `run-1-${id}`, currentStep: 'done', usd: 1.5, durationMs: 65000 },
+  run: { key: `run-1-${id}`, state: 'merged', currentStep: 'done', usd: 1.5, durationMs: 65000 },
   ...extra,
 });
 const layers: TaskLayer[] = [
@@ -23,7 +23,7 @@ const layers: TaskLayer[] = [
       task('t3', {
         depends: ['t1'],
         status: 'running',
-        run: { key: 'run-1-t3', currentStep: 'code-review', usd: 0.25, durationMs: 5000 },
+        run: { key: 'run-1-t3', state: 'running', currentStep: 'code-review', usd: 0.25, durationMs: 5000 },
       }),
       task('t4', { depends: ['t1', 't2'] }),
       task('t5', { status: 'blocked', run: undefined }),

@@ -32,6 +32,8 @@ export abstract class SubtaskOps {
   abstract mergeRequests(run: RunEntity): Promise<SubtaskMergeRequest[]>;
   /** The branch of a subtask run. */
   abstract branchOf(run: RunEntity): Promise<string>;
+  /** Records the merge outcome of a done subtask run whose requests the parent merged, so the run reads merged at once. */
+  abstract recordMerged(run: RunEntity, merged: Record<string, string>): Promise<void>;
   /** Moves the worktrees of the parent to the feature branch as it is on origin. */
   abstract fastForward(parent: RunEntity): Promise<void>;
   /** Sends a subtask run the Rebase command, when it has a merge request and is in a state that takes it. */

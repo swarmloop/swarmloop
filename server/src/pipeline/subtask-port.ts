@@ -205,6 +205,22 @@ export class SubtaskPort extends SubtaskOps {
     return branchName(run.key, summaryForBranch(requirements, run.key));
   }
 
+  override async recordMerged(run: RunEntity, merged: Record<string, string>): Promise<void> {
+    try {
+      const fresh = await this.runs.findById(run.id);
+      if (fresh?.status !== 'done' || fresh.mergeOutcome) return;
+      const at = this.clock.iso();
+      const facts = Object.fromEntries(
+        Object.entries(merged).map(([repo, sha]) => [repo, { sha: sha || null, by: null, at, url: null }]),
+      );
+      await this.runs.release(fresh, { status: 'done', doneAt: fresh.doneAt ?? at, merge: { merged: facts } });
+    } catch (error) {
+      this.logger.warn(
+        `The merge of ${run.key} was not recorded on its run: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   override async fastForward(parent: RunEntity): Promise<void> {
     const branch = await this.branchOf(parent);
     const names = repoNames((await this.documents.latestBody(parent.key, ARTIFACTS.repos.kind)) ?? '');
