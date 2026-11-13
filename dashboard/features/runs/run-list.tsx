@@ -180,7 +180,15 @@ function RunRow({
               />
             </Tooltip>
           </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: run.epic ? 'wrap' : 'nowrap', minWidth: 0 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.75,
+              flexWrap: run.epic ? 'wrap' : 'nowrap',
+              minWidth: 0,
+            }}
+          >
             <Typography sx={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 12, flexShrink: 0 }}>
               {run.epic ? `${money(run.epic.usd)} total · ${money(run.usd)} this run` : money(run.usd)}
             </Typography>
@@ -218,7 +226,12 @@ function RunRow({
               <DeleteOutline sx={{ fontSize: 16 }} />
             </IconButton>
           </Box>
-          <RunStateLabel status={run.status} merge={run.merge} />
+          <RunStateLabel
+            status={run.status}
+            merge={run.merge}
+            subtask={Boolean(run.parentKey)}
+            mergeWait={run.mergeWait}
+          />
         </Box>
       </ListItemButton>
     </ListItem>

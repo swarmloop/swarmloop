@@ -1,3 +1,5 @@
+import type { RunState } from './run-state';
+
 /** One task in the `subtasks` document of a parent run. */
 export interface Subtask {
   id: string;
@@ -99,6 +101,38 @@ export function waitNote(task: Subtask, tasks: Subtask[]): string {
   if (unmet.length > 0) return `waiting for ${unmet.join(', ')}`;
   const running = tasks.filter((item) => item.status === 'running').length;
   return `waiting for a free slot: ${running} of SUBTASKS_PARALLEL running`;
+}
+
+/** The task's own run, as far as its shown state needs it. */
+interface TaskRunState {
+  state: RunState;
+  currentStep: string;
+}
+
+/** The state every page shows for a task. A task the parent closed keeps its stored status; any other task with a run shows that run's own state; one without a run waits. */
+export function shownTaskState(task: Subtask, run?: TaskRunState): SubtaskStatus {
+  if (settled(task)) return task.status;
+  if (!run) return 'waiting';
+  switch (run.state) {
+    case 'done':
+      return 'green';
+    case 'merged':
+    case 'skipped':
+      return run.state;
+    case 'blocked':
+    case 'failed':
+    case 'stopped':
+    case 'closed':
+      return 'blocked';
+    case 'waiting':
+      return run.currentStep === 'requirements' ? 'waiting' : 'running';
+    case 'idle':
+    case 'queued':
+    case 'recovering':
+    case 'running':
+    case 'stopping':
+      return 'running';
+  }
 }
 
 /** `4/7 merged · 2 running · 1 waiting`. A count of zero is left out. */

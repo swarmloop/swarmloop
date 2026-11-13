@@ -1,4 +1,5 @@
-import { parseSubtasks, readyTasks, splitLine, statusLine, waitNote, type Subtask } from './subtask';
+import type { RunState } from './run-state';
+import { parseSubtasks, readyTasks, shownTaskState, splitLine, statusLine, waitNote, type Subtask } from './subtask';
 
 describe('parseSubtasks', () => {
   it('parseSubtasks reads depends and status', () => {
@@ -99,5 +100,23 @@ describe('splitLine', () => {
 
   it('leaves the running count out when no task runs', () => {
     expect(splitLine([task('a', 'merged'), task('b', 'green')])).toBe('Split: 2 tasks · 1 merged');
+  });
+});
+
+describe('shownTaskState', () => {
+  const run = (state: RunState, currentStep = 'implement') => ({ state, currentStep });
+
+  it('reads the own run of the task, not the stored status', () => {
+    expect(shownTaskState(task('a', 'blocked'), run('running'))).toBe('running');
+    expect(shownTaskState(task('a', 'running'), run('failed'))).toBe('blocked');
+    expect(shownTaskState(task('a', 'running'), run('done'))).toBe('green');
+    expect(shownTaskState(task('a', 'running'), run('recovering'))).toBe('running');
+    expect(shownTaskState(task('a', 'blocked'), run('waiting', 'requirements'))).toBe('waiting');
+  });
+
+  it('keeps what the parent closed, and waits without a run', () => {
+    expect(shownTaskState(task('a', 'merged'), run('running'))).toBe('merged');
+    expect(shownTaskState(task('a', 'skipped'), run('failed'))).toBe('skipped');
+    expect(shownTaskState(task('a', 'running'))).toBe('waiting');
   });
 });

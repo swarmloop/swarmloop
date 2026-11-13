@@ -166,6 +166,25 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     expect(byId.a?.run?.currentStep).toBe('done');
   });
 
+  it('records the merge on the task run in the same pass that merges it', async () => {
+    const built = await world();
+    app = built.app;
+    await app.pipeline.step('implement', KEY);
+    await finish(app, 'a', 1);
+    await finish(app, 'b', 2);
+
+    await app.pipeline.step('implement', KEY);
+
+    for (const id of ['a', 'b']) {
+      const child = (await app.app.get(RunRepository).findRun(`${KEY}-${id}`))!;
+      expect(deriveState(child).state).toBe('merged');
+      expect(child.mergeOutcome).toContain('"sha"');
+    }
+    const flow = await app.app.get(RunQueriesService).flow(KEY);
+    const byId = Object.fromEntries((flow.tasks ?? []).flatMap((layer) => layer.tasks).map((item) => [item.id, item]));
+    expect(byId.a?.run?.state).toBe('merged');
+  });
+
   it('stops in the middle, and Resume goes on to merge every task', async () => {
     const built = await world();
     app = built.app;

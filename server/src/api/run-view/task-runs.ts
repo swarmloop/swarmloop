@@ -2,6 +2,7 @@ import type { DocumentEntity, RunEntity } from '../../history/entities';
 import type { RunRepository } from '../../history/run.repository';
 import type { LiveHub } from '../../live/live.hub';
 import type { PipelineService } from '../../pipeline/pipeline.service';
+import { deriveState } from '../../history/run-state';
 import { openSpend } from '../run-queries-spend';
 import { taskLayers, type TaskRuns } from './documents';
 
@@ -23,6 +24,7 @@ export async function taskRuns(
     if (child.taskId && tasks.some((task) => task.id === child.taskId)) {
       children.set(child.taskId, {
         key: child.key,
+        state: deriveState(child).state,
         currentStep: child.currentStep,
         usd: child.spentUsd + openSpend(child, pipeline, live).usd,
         durationMs: durations.get(child.id) ?? 0,

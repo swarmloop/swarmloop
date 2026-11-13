@@ -20,14 +20,28 @@ function ended(facts: { by: string | null; at: string }[]): string {
 
 /**
  * How a done run's merge request stands: ready to merge, merged (who, when, and the merge commit) or closed (who,
- * when). Nothing for a run that is not done.
+ * when). A done subtask is merged by its parent, not by a person, so it is queued to merge into the epic, with the
+ * reason when the merge waits. Nothing for a run that is not done.
  */
-export function RunStateLabel({ status, merge }: { status: string; merge?: MergeOutcome }): ReactElement | null {
+export function RunStateLabel({
+  status,
+  merge,
+  subtask = false,
+  mergeWait,
+}: {
+  status: string;
+  merge?: MergeOutcome;
+  subtask?: boolean;
+  mergeWait?: string;
+}): ReactElement | null {
   if (status !== 'done') {
     return null;
   }
   const kind = !merge ? 'ready' : 'merged' in merge ? 'merged' : 'closed';
-  const label = { ready: 'Ready to merge', merged: 'Merged', closed: 'Closed' }[kind];
+  const queued = kind === 'ready' && subtask;
+  const label = queued
+    ? 'Queued to merge into the epic'
+    : { ready: 'Ready to merge', merged: 'Merged', closed: 'Closed' }[kind];
   const facts = !merge ? [] : 'merged' in merge ? Object.values(merge.merged) : [merge.closed];
   const commits = !merge || !('merged' in merge) ? [] : Object.entries(merge.merged).filter(([, fact]) => fact.sha);
   return (
@@ -44,6 +58,11 @@ export function RunStateLabel({ status, merge }: { status: string; merge?: Merge
           '& .MuiChip-label': { fontSize: 12, px: 0.75 },
         }}
       />
+      {queued && mergeWait ? (
+        <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+          {mergeWait}
+        </Typography>
+      ) : null}
       {facts.length > 0 ? (
         <Typography color="text.secondary" sx={{ fontSize: 12 }}>
           {ended(facts)}

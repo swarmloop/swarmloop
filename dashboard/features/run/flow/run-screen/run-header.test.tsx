@@ -51,6 +51,14 @@ describe('RunHeader', () => {
     expect(screen.getByText('Closed')).toBeInTheDocument();
   });
 
+  it('shows Queued to merge into the epic, not Ready to merge, on a done subtask page', () => {
+    header('done', { flow: flowView({ status: 'done', parentKey: 'run-0', mergeWait: 'waiting for a rebase' }) });
+
+    expect(screen.getByText('Queued to merge into the epic')).toBeInTheDocument();
+    expect(screen.getByText('waiting for a rebase')).toBeInTheDocument();
+    expect(screen.queryByText('Ready to merge')).not.toBeInTheDocument();
+  });
+
   it('says when the workspace was removed and stays quiet otherwise', () => {
     header('done', { flow: flowView({ status: 'done', workspace: 'removed' }) });
 
