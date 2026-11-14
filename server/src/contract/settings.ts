@@ -23,6 +23,8 @@ export interface ServerSetting {
   secret: boolean;
   /** The env value, or `set` / `not set` for a secret. */
   value: string;
+  /** What the setting means, when it is worth saying. */
+  description?: string;
 }
 
 /** What `GET /settings` and `PUT /settings` answer. */

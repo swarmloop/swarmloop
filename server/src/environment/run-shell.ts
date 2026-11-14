@@ -180,7 +180,7 @@ export async function runShell(
     : { exitCode, tail };
 }
 
-function liveSamples(samples: readonly SampleDraft[]): LiveSample[] {
+export function liveSamples(samples: readonly SampleDraft[]): LiveSample[] {
   return samples.map((sample) => ({
     at: sample.sampledAt,
     cpu: sample.cpuPercent,

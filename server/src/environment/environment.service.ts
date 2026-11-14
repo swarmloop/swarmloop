@@ -35,6 +35,7 @@ export class EnvironmentService extends ProjectEnvironments {
       live,
       halted: (key) => haltedRuns?.halted(key) ?? false,
     });
+    haltedRuns?.onHalted((key) => this.stopWaiting(key));
   }
 
   /** The check commands the run's repositories list, from the environment the run stored. */
