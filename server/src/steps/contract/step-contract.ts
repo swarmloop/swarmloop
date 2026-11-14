@@ -44,6 +44,8 @@ export interface StepFailure {
   /** Set when the failure was described by `describeFailure`: the id the server log carries. */
   errorId?: string;
   category?: ErrorCategory;
+  /** Set when an agent's answer was not accepted: the next launch of the step tells the agent these. */
+  answerErrors?: string[];
 }
 
 export type Route =

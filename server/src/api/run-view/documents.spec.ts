@@ -1,5 +1,13 @@
 import type { DocumentEntity } from '../../history/entities';
-import { belongsToVisit, decisionsOf, taskLayers, taskLine, taskView, type TaskRuns } from './documents';
+import {
+  belongsToVisit,
+  decisionsOf,
+  taskLayers,
+  taskLine,
+  taskView,
+  withoutServerRecords,
+  type TaskRuns,
+} from './documents';
 
 describe('belongsToVisit', () => {
   const kinds = ['return', 'issues'];
@@ -185,5 +193,15 @@ describe('taskView', () => {
     const view = taskView([approved, doc('subtasks', JSON.stringify(plan))], 'implement', runs);
 
     expect(view.mergeQueue?.map((item) => item.id)).toEqual(['c', 'd']);
+  });
+});
+
+describe('withoutServerRecords', () => {
+  const doc = (kind: string) => ({ kind }) as DocumentEntity;
+
+  it('leaves out the stored result objects and the answer errors, and keeps the rendered documents', () => {
+    const kept = [doc('plan'), doc('review_quality'), doc('implementation')];
+    const records = [doc('plan_result'), doc('review_quality_result'), doc('answer_errors')];
+    expect(withoutServerRecords([...kept, ...records])).toEqual(kept);
   });
 });

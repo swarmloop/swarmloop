@@ -5,6 +5,13 @@ import { STEPS, type StepName } from '../../contract/steps';
 import { readPlan } from '../../steps/plan/plan-record';
 import { composedReturn } from '../../steps/shared/handoff';
 import { latest } from './status';
+import { isResultKind } from '../../agent-result/result-definition';
+import { ARTIFACTS } from '../../steps/contract/artifacts';
+
+/** The documents a person reads: the stored result objects and the answer errors are server records, left out. */
+export function withoutServerRecords<T extends { kind: string }>(documents: T[]): T[] {
+  return documents.filter((document) => !isResultKind(document.kind) && document.kind !== ARTIFACTS.answerErrors.kind);
+}
 
 export function belongsToVisit(
   document: DocumentEntity,

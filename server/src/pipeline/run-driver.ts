@@ -33,6 +33,7 @@ import type { WorkspaceGuard } from './workspace-guard';
 import { workspaceBlock } from './workspace-guard';
 import type { DiskGuard } from './disk-guard';
 import type { SubtaskPort } from './subtask-port';
+import { ARTIFACTS } from '../steps/contract/artifacts';
 
 const HOP_LIMIT = STEPS.length * 3;
 
@@ -212,6 +213,19 @@ export class RunDriver {
     await this.documents.putDocument(run, 'loop_mark', `${mark}\n`);
   }
 
+  /** The errors of the answer the step's latest visit failed on. A later visit that did not fail leaves none. */
+  private async answerErrorsOf(key: string, name: StepName): Promise<string[] | undefined> {
+    const run = await this.runs.findRun(key);
+    const last = run ? (await this.visits.listStats(run.id)).filter((stat) => stat.step === name).at(-1) : undefined;
+    if (!run || last?.status !== 'failed') {
+      return undefined;
+    }
+    const stored = (await this.documents.listDocuments(run.id))
+      .filter((document) => document.stepStatId === last.id && document.kind === ARTIFACTS.answerErrors.kind)
+      .at(-1);
+    return stored ? ARTIFACTS.answerErrors.parse(stored.body) : undefined;
+  }
+
   async execute(name: StepName, key: string, options: StepOptions): Promise<PipelineResult> {
     const pendingError = await this.applyPending(key);
     if (pendingError) {
@@ -219,7 +233,8 @@ export class RunDriver {
     }
     const step = this.registry.get(name);
     if (step) {
-      return step.execute(key, options, (run, completedStep) =>
+      const answerErrors = options.answerErrors ?? (await this.answerErrorsOf(key, name));
+      return step.execute(key, answerErrors ? { ...options, answerErrors } : options, (run, completedStep) =>
         snapshotRun(
           { documents: this.documents, visits: this.visits, root: root(this.config) },
           this.clock,

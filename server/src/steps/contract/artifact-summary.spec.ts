@@ -26,6 +26,9 @@ function goldenBodies(): Map<string, string> {
   return bodies;
 }
 
+/** A kind no golden run stores, whose body is JSON. */
+const JSON_BODIES: Record<string, string> = { answer_errors: '["items: \\"items\\" is required"]\n' };
+
 const bodies = goldenBodies();
 const entries = Object.values<Artifact<unknown>>(ARTIFACTS);
 
@@ -33,7 +36,7 @@ describe('Artifact.summarize', () => {
   it.each(entries.map((entry) => [entry.kind, entry] as const))(
     'tells what a %s document holds in one short line',
     (kind, entry) => {
-      const body = bodies.get(kind) ?? 'first line\nsecond line\n';
+      const body = bodies.get(kind) ?? JSON_BODIES[kind] ?? 'first line\nsecond line\n';
       const line = entry.summarize(entry.parse(body));
       expect(line.length > 0).toBe(body.trim() !== '');
       expect(line.length).toBeLessThanOrEqual(160);
