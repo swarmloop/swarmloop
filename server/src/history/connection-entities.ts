@@ -76,3 +76,36 @@ export class UserSettingEntity {
   @Column({ type: 'text' })
   value!: string;
 }
+
+/** One person's secret for one integration. `secret` is ciphertext of the JSON fields; `last4` is all the card shows. */
+@Entity('integration_secrets')
+export class IntegrationSecretEntity {
+  /** `<connection>:<login>`. */
+  @PrimaryColumn({ type: 'text' })
+  id!: string;
+
+  @Column({ type: 'text' })
+  connection!: string;
+
+  @Column({ type: 'text' })
+  login!: string;
+
+  @Column({ type: 'text' })
+  secret!: string;
+
+  @Column({ type: 'text' })
+  last4!: string;
+
+  /** The account the provider named when the secret was tested. */
+  @Column({ type: 'text', nullable: true })
+  account!: string | null;
+
+  @Column({ type: 'text' })
+  status!: 'ok' | 'broken';
+
+  @Column({ type: 'text', nullable: true })
+  reason!: string | null;
+
+  @Column({ name: 'saved_at', type: 'text' })
+  savedAt!: string;
+}

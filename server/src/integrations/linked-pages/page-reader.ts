@@ -1,3 +1,4 @@
+import type { Connection } from '../connection';
 import type { IssuePage } from '../issue-tracker/issue-bundle';
 import type { Clock } from '../../core/clock';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
@@ -12,6 +13,8 @@ export interface PageReadContext {
 }
 
 export interface PageReader {
+  /** How a person connects this reader's site on the Connections page. */
+  readonly connection?: Connection;
   accepts(url: string): boolean;
   read(url: string, context: PageReadContext): Promise<IssuePage>;
 }
