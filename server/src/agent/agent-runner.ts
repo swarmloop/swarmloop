@@ -7,7 +7,7 @@ import { Clock } from '../core/clock';
 import { AwakeTime, SAMPLE_MS } from '../core/awake-time';
 import type { AgentRuntime, AgentTools } from '../integrations/agent-runtime/agent-runtime';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
-import { modelApiHosts, modelCredential } from '../sandbox/sandbox-launch';
+import { modelApiHosts } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
 import { emptyResult, type AgentRunResult } from './agent-result';
@@ -17,6 +17,7 @@ import { RunStop } from './run-stop';
 import { loadPriceTable } from './prices';
 import { recordLaunch } from './agent-launches';
 import { readOnlyTree } from './agent-args';
+import { AgentLaunchEnv } from './agent-launch-env';
 import { AgentLaunchPrep } from './agent-launch-prep';
 import { AgentProcess } from './agent-process';
 import {
@@ -46,6 +47,7 @@ export type AgentRunInput = BaseAgentRunInput & { tools: AgentTools };
 export class AgentProcessRunner {
   private readonly logger = new Logger(AgentProcessRunner.name);
   private readonly launchPrep: AgentLaunchPrep;
+  private readonly launchEnv: AgentLaunchEnv;
 
   constructor(
     private readonly config: AppConfig,
@@ -54,7 +56,8 @@ export class AgentProcessRunner {
     private readonly runStop: RunStop,
     @Optional() private readonly live?: LiveHub,
   ) {
-    this.launchPrep = new AgentLaunchPrep(config, clock, live);
+    this.launchPrep = new AgentLaunchPrep(config, live);
+    this.launchEnv = new AgentLaunchEnv(clock);
   }
 
   async run(input: AgentRunInput): Promise<AgentRunResult> {
@@ -164,16 +167,7 @@ export class AgentProcessRunner {
       statePath: launch.statePath,
       allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(runtime.name)])],
       manifestHosts: input.manifestHosts,
-      env: [
-        modelCredential(
-          runtime.name,
-          env.CURSOR_API_KEY,
-          env.ANTHROPIC_API_KEY,
-          env.CLAUDE_CODE_OAUTH_TOKEN,
-          await this.launchPrep.codexLogin(runtime.name, env),
-          env.CODEX_API_KEY,
-        ),
-      ],
+      env: [await this.launchEnv.credential(runtime.name, env)],
       command: [runtime.command, ...launch.args],
       unsetEnv: launch.unsetEnv,
       userId: launch.userId,
