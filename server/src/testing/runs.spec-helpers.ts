@@ -243,5 +243,9 @@ export async function save(runs: RunRepository, key: string, step: string, statu
   const run = await runs.begin(key, step);
   writeRunState(run, { status, currentStep: step });
   run.attemptsReview = attemptsReview;
+  if (status === 'running' && step === 'code-review') {
+    // A log counts for the open round only when its file is newer than the round start. The kernel dates files with a coarser clock than the one that dated the claim, so a log written right after it can look older. The round began a minute ago.
+    run.stepStartedAt = new Date(Date.now() - 60_000).toISOString();
+  }
   return runs.saveRun(run);
 }

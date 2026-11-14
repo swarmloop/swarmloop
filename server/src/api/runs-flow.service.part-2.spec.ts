@@ -54,7 +54,10 @@ describe('runs api', () => {
     try {
       await mkdir(join(root, 'data'), { recursive: true });
       const runRepository = app.get(RunRepository);
-      await save(runRepository, 'proj-32', 'code-review', 'running');
+      const run = await save(runRepository, 'proj-32', 'code-review', 'running');
+      // A log counts for the open round only when its file is newer than the round start. The kernel stamps files with a coarser clock than the one that stamped the round, so a log written right after the claim can look older. The round began a minute ago.
+      run.stepStartedAt = new Date(Date.now() - 60_000).toISOString();
+      await runRepository.saveRun(run);
       await writeFile(
         join(root, 'data', 'proj-32-code-review-regressions-output.txt'),
         'thinking\nprocess killed: time\nthinking\n',
