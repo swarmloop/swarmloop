@@ -175,6 +175,30 @@
       "step": "code-review"
     },
     {
+      "kind": "artifact.produced",
+      "step": "code-review"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "code-review"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "code-review"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "code-review"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "code-review"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "code-review"
+    },
+    {
       "kind": "handoff.sent",
       "step": "code-review"
     },
@@ -193,72 +217,100 @@
   ],
   "reads": {
     "code-review": [
+      "implementation_result",
       "implementation",
       "requirements",
       "repos",
       "rebase_conflict",
       "*",
       "handoff",
+      "plan_improve_result",
+      "plan_result",
+      "implementation_improve_result",
       "research_result",
       "impact"
     ],
     "code-review-performance": [
+      "implementation_result",
       "implementation",
       "requirements",
       "repos",
       "rebase_conflict",
       "*",
       "handoff",
+      "plan_improve_result",
+      "plan_result",
+      "implementation_improve_result",
       "research_result",
       "impact"
     ],
     "code-review-quality": [
+      "implementation_result",
       "implementation",
       "requirements",
       "repos",
       "rebase_conflict",
       "*",
       "handoff",
+      "plan_improve_result",
+      "plan_result",
+      "implementation_improve_result",
       "research_result",
       "impact"
     ],
     "code-review-regressions": [
+      "implementation_result",
       "implementation",
       "requirements",
       "repos",
       "rebase_conflict",
       "*",
       "handoff",
+      "plan_improve_result",
+      "plan_result",
+      "implementation_improve_result",
       "research_result",
       "impact"
     ],
     "code-review-report": [
+      "implementation_result",
       "implementation",
       "requirements",
       "repos",
       "rebase_conflict",
       "*",
       "handoff",
+      "plan_improve_result",
+      "plan_result",
+      "implementation_improve_result",
       "research_result",
       "impact"
     ],
     "code-review-requirements": [
+      "implementation_result",
       "implementation",
       "requirements",
       "repos",
       "rebase_conflict",
       "*",
       "handoff",
+      "plan_improve_result",
+      "plan_result",
+      "implementation_improve_result",
       "research_result",
       "impact"
     ],
     "code-review-security": [
+      "implementation_result",
       "implementation",
       "requirements",
       "repos",
       "rebase_conflict",
       "*",
       "handoff",
+      "plan_improve_result",
+      "plan_result",
+      "implementation_improve_result",
       "research_result",
       "impact"
     ]
@@ -281,16 +333,20 @@
     {
       "documents": [
         {
-          "body": "code-review-requirements\n\ndecision: ok\n",
+          "body": "code-review-requirements\ndecision: ok\n",
           "kind": "review_requirements"
+        },
+        {
+          "body": "{\"decision\":\"ok\",\"review\":\"code-review-requirements\",\"summary\":[\"code-review-requirements\"]}\n",
+          "kind": "review_requirements_result"
         }
       ],
       "exchanges": [
         {
           "chatId": "code-review-requirements",
           "model": "opus-5.5-extra-high",
-          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Requirements review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the code they call. Do not infer the change from file modification times. The task is the Work tickets together with the Instructions. The Instructions add to the tickets. They do not replace them. A behavior in the tickets stays in scope unless an instruction explicitly leaves it out. Linked tickets are context. They can change how the task is done. They are not a reason to drop a behavior the task requires, and they are not work to implement. A missing Context item is not a reason for decision: return. A missing behavior the task requires is a return. Order of authority: the input says what must be true, the plan says how, implement's account says why it was done this way. A plan or an account never makes a requirement of the input go away.\n\nBefore anything else, list what the input asks for, numbered in the input's order: every numbered item of the brief's `Do`, every `Check` and `Pipeline` item, every sentence with \"must\", every acceptance criterion and every answered question of a ticket. Then check each one against the code. Read the code that does it, not only that a file exists. For a test, read the cases the input names. The plan says how; it never removes a requirement.\n\nThe Plan section is the approved checklist. A behavior the diff removes or makes unreachable is a return unless the task names it in `Removes` or `Behavior change`, or a person confirmed it in an answer. The approved checklist alone does not authorize a removal. Dead code that nothing relies on (an unused export, file, helper or flag, a branch no data reaches and no person sees) is not a capability and is not a return. The Impact section lists the capabilities the change touches. Extra behavior is judged only against the task. A change that makes a failed job on this branch pass is part of the task only within the task's own files (code that no task owns, or a test that is flaky on the base, is not part of it), except one that loosens or removes an assertion, skips or deletes a test, or widens a tolerance. That is a return unless implement's account says why the old assertion was wrong and what the new one still proves. Check that account against the failing log and the code. Do not take it on trust. A test that expected one of something and now sees two is a behavior to explain. In a subtask of a split run, a change to a file that this task does not list and another task lists is a return, unless one of the two tasks depends on the other, directly or through other tasks. Check that the change does what that task asks and does not add behavior it does not ask for.\n\nAfter the list, check each plan item's `proof:` against the diff. A proof the diff does not meet is a return too.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nEnd with a `summary` list, then the decision. `summary` is the numbered list of the input's items, one line each: `met: <item> (<where>)`, `partial: <item> - <what is missing>` or `missing: <item>`. Any `partial` or `missing` is `decision: return`. On `decision: return`, name one broken behavior in this diff. Do that for each of them: the return names every one of them, not only the first. On a later pass, check again every requirement marked `partial` or `missing` before and every requirement the new changes touch, and write the whole list again with the new marks. When your earlier output has no such list, make the full list now. The later pass of a CI fix reads the failing test's log, not only the changed lines. \"Nothing changed since my last decision\" is never the reason on its own for `decision: ok`. An unchanged tree passes only when the required behavior is already in the tree and the summary says where. \"The plan said to stop\" and \"the plan asks nothing more\" are never a reason. Do not ask for a new subsystem the input does not ask for. Do not return that behavior again once a person or the plan confirmed it.\n\n```\nsummary:\n- met: 1. item (where)\n- partial: 2. item - what is missing\n- missing: 3. item\n\ndecision: return\n```\n\nEnd with `decision: ok` when every item is `met` and the diff does nothing the task does not ask for. End with `decision: return` when an item is `partial` or `missing`, or when it does something extra. A change required by a failed job on this branch is not extra, unless it is one of the test changes named above.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser",
-          "responseText": "code-review-requirements\n\ndecision: ok\n"
+          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Requirements review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the code they call. Do not infer the change from file modification times. The task is the Work tickets together with the Instructions. The Instructions add to the tickets. They do not replace them. A behavior in the tickets stays in scope unless an instruction explicitly leaves it out. Linked tickets are context. They can change how the task is done. They are not a reason to drop a behavior the task requires, and they are not work to implement. A missing Context item is not a reason for decision: return. A missing behavior the task requires is a return. Order of authority: the input says what must be true, the plan says how, implement's account says why it was done this way. A plan or an account never makes a requirement of the input go away.\n\nBefore anything else, list what the input asks for, numbered in the input's order: every numbered item of the brief's `Do`, every `Check` and `Pipeline` item, every sentence with \"must\", every acceptance criterion and every answered question of a ticket. Then check each one against the code. Read the code that does it, not only that a file exists. For a test, read the cases the input names. The plan says how; it never removes a requirement.\n\nThe Plan section is the approved checklist. A behavior the diff removes or makes unreachable is a return unless the task names it in `Removes` or `Behavior change`, or a person confirmed it in an answer. The approved checklist alone does not authorize a removal. Dead code that nothing relies on (an unused export, file, helper or flag, a branch no data reaches and no person sees) is not a capability and is not a return. The Impact section lists the capabilities the change touches. Extra behavior is judged only against the task. A change that makes a failed job on this branch pass is part of the task only within the task's own files (code that no task owns, or a test that is flaky on the base, is not part of it), except one that loosens or removes an assertion, skips or deletes a test, or widens a tolerance. That is a return unless implement's account says why the old assertion was wrong and what the new one still proves. Check that account against the failing log and the code. Do not take it on trust. A test that expected one of something and now sees two is a behavior to explain. In a subtask of a split run, a change to a file that this task does not list and another task lists is a return, unless one of the two tasks depends on the other, directly or through other tasks. Check that the change does what that task asks and does not add behavior it does not ask for.\n\nAfter the list, check each plan item's `proof:` against the diff. A proof the diff does not meet is a return too.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nGive a `summary` list and the decision. `summary` is the numbered list of the input's items, one line each: `met: <item> (<where>)`, `partial: <item> - <what is missing>` or `missing: <item>`. Any `partial` or `missing` is `decision: return`. On `decision: return`, name one broken behavior in this diff. Do that for each of them: the return names every one of them, not only the first. On a later pass, check again every requirement marked `partial` or `missing` before and every requirement the new changes touch, and write the whole list again with the new marks. When your earlier output has no such list, make the full list now. The later pass of a CI fix reads the failing test's log, not only the changed lines. \"Nothing changed since my last decision\" is never the reason on its own for `decision: ok`. An unchanged tree passes only when the required behavior is already in the tree and the summary says where. \"The plan said to stop\" and \"the plan asks nothing more\" are never a reason. Do not ask for a new subsystem the input does not ask for. Do not return that behavior again once a person or the plan confirmed it.\n\nThe decision is ok when every item is `met` and the diff does nothing the task does not ask for. The decision is return when an item is `partial` or `missing`, or when it does something extra. A change required by a failed job on this branch is not extra, unless it is one of the test changes named above.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser\n\nEnd your final message with exactly one result block: a line of three backticks followed by json, one JSON object, then a line of three backticks.\nThe text before the block is for people and is never read. The object has these fields, and no others:\n- decision (one of \"ok\", \"return\", required): ok when this angle passes; return when a broken behavior must be fixed first\n- review (string, required): Your review in Markdown, ending with the summary list; on return it names one broken behavior\n- summary (array of string, required): The summary list, one line per entry; what you checked, or the marks of the input list",
+          "responseText": "code-review-requirements\n\n```json\n{\"decision\":\"ok\",\"review\":\"code-review-requirements\",\"summary\":[\"code-review-requirements\"]}\n```"
         }
       ],
       "exitCode": 0,
@@ -308,16 +364,20 @@
     {
       "documents": [
         {
-          "body": "code-review-quality\n\ndecision: return\n",
+          "body": "code-review-quality\ndecision: return\n",
           "kind": "review_quality"
+        },
+        {
+          "body": "{\"decision\":\"return\",\"review\":\"code-review-quality\",\"summary\":[\"code-review-quality\"]}\n",
+          "kind": "review_quality_result"
         }
       ],
       "exchanges": [
         {
           "chatId": "code-review-quality",
           "model": "opus-5.5-extra-high",
-          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Quality review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files, their tests, and the code they call. Do not infer the change from file modification times. Check clarity, the project's existing practices, and whether the tests cover the change. A component, file, export, import, comment, or commented-out code that this change left with no remaining use is a return. Read implement's `cause:` against the failure and the diff: a cause that only restates the symptom, a fix that silences it, or a special case keyed on the specific name, message text, id or value seen in the failure is a `decision: return` that names the real cause or asks for it.\n\nFor each new or changed test, check that it would fail without the change. A test that cannot fail is a `decision: return` with that test named.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nEnd with a `summary` list, then the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. Order of authority: the input says what must be true, the plan says how, implement's account says why it was done this way. A plan or an account never makes a requirement of the input go away. On a later pass, check again every finding you returned before and everything the new changes touch. `decision: ok` when the behavior is fixed, or when the tree is unchanged and the required behavior is already in it and the summary says where. \"Nothing changed since my last decision\" is never the reason on its own. \"The plan said to stop\" and \"the plan asks nothing more\" are never a reason. Do not ask for a new subsystem.\n\n```\nsummary:\n- item\n\ndecision: ok\n```\n\nEnd with `decision: ok` when the requested behavior is clear, the change left no unused component, file, export, import, comment, or commented-out code, and the last return of this angle is fixed. End with `decision: return` only when that behavior is still broken, that leftover remains, code was squeezed to pass a rule (joined lines, shortened names, branches moved into tables to pass a count), or new logic duplicates existing code. For the last two, name the file in the diff, and for a duplicate also the path of the existing code.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser",
-          "responseText": "code-review-quality\n\ndecision: return\n"
+          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Quality review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files, their tests, and the code they call. Do not infer the change from file modification times. Check clarity, the project's existing practices, and whether the tests cover the change. A component, file, export, import, comment, or commented-out code that this change left with no remaining use is a return. Read implement's `cause:` against the failure and the diff: a cause that only restates the symptom, a fix that silences it, or a special case keyed on the specific name, message text, id or value seen in the failure is a `decision: return` that names the real cause or asks for it.\n\nFor each new or changed test, check that it would fail without the change. A test that cannot fail is a `decision: return` with that test named.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nGive a `summary` list and the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. Order of authority: the input says what must be true, the plan says how, implement's account says why it was done this way. A plan or an account never makes a requirement of the input go away. On a later pass, check again every finding you returned before and everything the new changes touch. `decision: ok` when the behavior is fixed, or when the tree is unchanged and the required behavior is already in it and the summary says where. \"Nothing changed since my last decision\" is never the reason on its own. \"The plan said to stop\" and \"the plan asks nothing more\" are never a reason. Do not ask for a new subsystem.\n\nThe decision is ok when the requested behavior is clear, the change left no unused component, file, export, import, comment, or commented-out code, and the last return of this angle is fixed. The decision is return only when that behavior is still broken, that leftover remains, code was squeezed to pass a rule (joined lines, shortened names, branches moved into tables to pass a count), or new logic duplicates existing code. For the last two, name the file in the diff, and for a duplicate also the path of the existing code.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser\n\nEnd your final message with exactly one result block: a line of three backticks followed by json, one JSON object, then a line of three backticks.\nThe text before the block is for people and is never read. The object has these fields, and no others:\n- decision (one of \"ok\", \"return\", required): ok when this angle passes; return when a broken behavior must be fixed first\n- review (string, required): Your review in Markdown, ending with the summary list; on return it names one broken behavior\n- summary (array of string, required): The summary list, one line per entry; what you checked, or the marks of the input list",
+          "responseText": "code-review-quality\n\n```json\n{\"decision\":\"return\",\"review\":\"code-review-quality\",\"summary\":[\"code-review-quality\"]}\n```"
         }
       ],
       "exitCode": 0,
@@ -335,16 +395,20 @@
     {
       "documents": [
         {
-          "body": "code-review-regressions\n\ndecision: ok\n",
+          "body": "code-review-regressions\ndecision: ok\n",
           "kind": "review_regressions"
+        },
+        {
+          "body": "{\"decision\":\"ok\",\"review\":\"code-review-regressions\",\"summary\":[\"code-review-regressions\"]}\n",
+          "kind": "review_regressions_result"
         }
       ],
       "exchanges": [
         {
           "chatId": "code-review-regressions",
           "model": "opus-5.5-extra-high",
-          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Regressions review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the callers outside that diff. Do not infer the change from file modification times. Look for behavior outside the diff that this change breaks. Read the Impact section too. For every capability whose code the diff touches, check that it is still reachable with the data the system writes now, not only that callers still compile. A condition that the current data makes always true or always false counts as removal. Name the capability in the return. A capability named in `Removes` or `Behavior change`, confirmed by an answer, or dead code that nothing relies on is accepted. Order of authority: the input says what must be true, the plan says how, implement's account says why it was done this way. A plan or an account never makes a requirement of the input go away. A change that makes a failed job pass is part of the task only within the task's own files (code that no task owns, or a test that is flaky on the base, is not part of it), except one that loosens or removes an assertion, skips or deletes a test, or widens a tolerance. That is a return unless implement's account says why the old assertion was wrong and what the new one still proves. Check that account against the failing log and the code. Do not take it on trust. Read implement's `cause:` against the failure and the diff: a cause that only restates the symptom, a fix that silences it, or a special case keyed on the specific name, message text, id or value seen in the failure is a return that names the real cause or asks for it.\n\nIn a subtask of a split run, a change to a file that another task lists, with no dependency path between the two tasks, is a return.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nEnd with a `summary` list, then the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. On a later pass, check again every finding you returned before and everything the new changes touch. The later pass of a CI fix reads the failing test's log, not only the changed lines. `decision: ok` when the behavior is fixed, or when the tree is unchanged and the required behavior is already in it and the summary says where. \"Nothing changed since my last decision\" is never the reason on its own. \"The plan said to stop\" and \"the plan asks nothing more\" are never a reason. Do not ask for a new subsystem.\n\n```\nsummary:\n- item\n\ndecision: ok\n```\n\nEnd with `decision: ok` when existing behavior still holds. End with `decision: return` when a caller or a stored case would break.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser",
-          "responseText": "code-review-regressions\n\ndecision: ok\n"
+          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Regressions review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the callers outside that diff. Do not infer the change from file modification times. Look for behavior outside the diff that this change breaks. Read the Impact section too. For every capability whose code the diff touches, check that it is still reachable with the data the system writes now, not only that callers still compile. A condition that the current data makes always true or always false counts as removal. Name the capability in the return. A capability named in `Removes` or `Behavior change`, confirmed by an answer, or dead code that nothing relies on is accepted. Order of authority: the input says what must be true, the plan says how, implement's account says why it was done this way. A plan or an account never makes a requirement of the input go away. A change that makes a failed job pass is part of the task only within the task's own files (code that no task owns, or a test that is flaky on the base, is not part of it), except one that loosens or removes an assertion, skips or deletes a test, or widens a tolerance. That is a return unless implement's account says why the old assertion was wrong and what the new one still proves. Check that account against the failing log and the code. Do not take it on trust. Read implement's `cause:` against the failure and the diff: a cause that only restates the symptom, a fix that silences it, or a special case keyed on the specific name, message text, id or value seen in the failure is a return that names the real cause or asks for it.\n\nIn a subtask of a split run, a change to a file that another task lists, with no dependency path between the two tasks, is a return.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nGive a `summary` list and the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. On a later pass, check again every finding you returned before and everything the new changes touch. The later pass of a CI fix reads the failing test's log, not only the changed lines. `decision: ok` when the behavior is fixed, or when the tree is unchanged and the required behavior is already in it and the summary says where. \"Nothing changed since my last decision\" is never the reason on its own. \"The plan said to stop\" and \"the plan asks nothing more\" are never a reason. Do not ask for a new subsystem.\n\nThe decision is ok when existing behavior still holds. The decision is return when a caller or a stored case would break.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser\n\nEnd your final message with exactly one result block: a line of three backticks followed by json, one JSON object, then a line of three backticks.\nThe text before the block is for people and is never read. The object has these fields, and no others:\n- decision (one of \"ok\", \"return\", required): ok when this angle passes; return when a broken behavior must be fixed first\n- review (string, required): Your review in Markdown, ending with the summary list; on return it names one broken behavior\n- summary (array of string, required): The summary list, one line per entry; what you checked, or the marks of the input list",
+          "responseText": "code-review-regressions\n\n```json\n{\"decision\":\"ok\",\"review\":\"code-review-regressions\",\"summary\":[\"code-review-regressions\"]}\n```"
         }
       ],
       "exitCode": 0,
@@ -362,16 +426,20 @@
     {
       "documents": [
         {
-          "body": "code-review-security\n\ndecision: ok\n",
+          "body": "code-review-security\ndecision: ok\n",
           "kind": "review_security"
+        },
+        {
+          "body": "{\"decision\":\"ok\",\"review\":\"code-review-security\",\"summary\":[\"code-review-security\"]}\n",
+          "kind": "review_security_result"
         }
       ],
       "exchanges": [
         {
           "chatId": "code-review-security",
           "model": "opus-5.5-extra-high",
-          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Security review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the code they call. Do not infer the change from file modification times. Look for secrets, missing authorization, injection, and data that should not leave the service.\n\nWhen CI configuration or scripts change, check whether workflow triggers, token permissions, secret access, or runner selection allow unreviewed code to run with privileged access. Report concrete exposure in the diff, not hypothetical findings.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nEnd with a `summary` list, then the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. Order of authority: the input says what must be true, the plan says how, implement's account says why it was done this way. A plan or an account never makes a requirement of the input go away. On a later pass, check again every finding you returned before and everything the new changes touch. `decision: ok` when the behavior is fixed, or when the tree is unchanged and the required behavior is already in it and the summary says where. \"Nothing changed since my last decision\" is never the reason on its own. \"The plan said to stop\" and \"the plan asks nothing more\" are never a reason. Do not ask for a new subsystem.\n\n```\nsummary:\n- item\n\ndecision: ok\n```\n\nEnd with `decision: ok` when you find no critical issue. End with `decision: return` when a critical finding needs a fix.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser",
-          "responseText": "code-review-security\n\ndecision: ok\n"
+          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Security review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the code they call. Do not infer the change from file modification times. Look for secrets, missing authorization, injection, and data that should not leave the service.\n\nWhen CI configuration or scripts change, check whether workflow triggers, token permissions, secret access, or runner selection allow unreviewed code to run with privileged access. Report concrete exposure in the diff, not hypothetical findings.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nGive a `summary` list and the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. Order of authority: the input says what must be true, the plan says how, implement's account says why it was done this way. A plan or an account never makes a requirement of the input go away. On a later pass, check again every finding you returned before and everything the new changes touch. `decision: ok` when the behavior is fixed, or when the tree is unchanged and the required behavior is already in it and the summary says where. \"Nothing changed since my last decision\" is never the reason on its own. \"The plan said to stop\" and \"the plan asks nothing more\" are never a reason. Do not ask for a new subsystem.\n\nThe decision is ok when you find no critical issue. The decision is return when a critical finding needs a fix.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser\n\nEnd your final message with exactly one result block: a line of three backticks followed by json, one JSON object, then a line of three backticks.\nThe text before the block is for people and is never read. The object has these fields, and no others:\n- decision (one of \"ok\", \"return\", required): ok when this angle passes; return when a broken behavior must be fixed first\n- review (string, required): Your review in Markdown, ending with the summary list; on return it names one broken behavior\n- summary (array of string, required): The summary list, one line per entry; what you checked, or the marks of the input list",
+          "responseText": "code-review-security\n\n```json\n{\"decision\":\"ok\",\"review\":\"code-review-security\",\"summary\":[\"code-review-security\"]}\n```"
         }
       ],
       "exitCode": 0,
@@ -389,16 +457,20 @@
     {
       "documents": [
         {
-          "body": "code-review-performance\n\ndecision: ok\n",
+          "body": "code-review-performance\ndecision: ok\n",
           "kind": "review_performance"
+        },
+        {
+          "body": "{\"decision\":\"ok\",\"review\":\"code-review-performance\",\"summary\":[\"code-review-performance\"]}\n",
+          "kind": "review_performance_result"
         }
       ],
       "exchanges": [
         {
           "chatId": "code-review-performance",
           "model": "opus-5.5-extra-high",
-          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Performance review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the code they call. Do not infer the change from file modification times. Look for unbounded work, repeated queries, and hot paths that got slower.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nEnd with a `summary` list, then the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. Order of authority: the input says what must be true, the plan says how, implement's account says why it was done this way. A plan or an account never makes a requirement of the input go away. On a later pass, check again every finding you returned before and everything the new changes touch. `decision: ok` when the behavior is fixed, or when the tree is unchanged and the required behavior is already in it and the summary says where. \"Nothing changed since my last decision\" is never the reason on its own. \"The plan said to stop\" and \"the plan asks nothing more\" are never a reason. Do not ask for a new subsystem.\n\n```\nsummary:\n- item\n\ndecision: ok\n```\n\nEnd with `decision: ok` when the change does not add a cost that should be fixed first. End with `decision: return` when it does.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser",
-          "responseText": "code-review-performance\n\ndecision: ok\n"
+          "requestText": "The only working directory is <work>/billing-api (billing-api). It has no source files.\nDo not look outside it. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.\n\nDo not start a service, a database, or the application. Do not run tests on this machine.\n\n# Performance review\n\nThe working directory is named at the top of this prompt. Read only that path. The Diff section names the complete diff. Read that file. It is the whole change. Then read the changed files and the code they call. Do not infer the change from file modification times. Look for unbounded work, repeated queries, and hot paths that got slower.\n\nDo not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.\n\nGive a `summary` list and the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. Order of authority: the input says what must be true, the plan says how, implement's account says why it was done this way. A plan or an account never makes a requirement of the input go away. On a later pass, check again every finding you returned before and everything the new changes touch. `decision: ok` when the behavior is fixed, or when the tree is unchanged and the required behavior is already in it and the summary says where. \"Nothing changed since my last decision\" is never the reason on its own. \"The plan said to stop\" and \"the plan asks nothing more\" are never a reason. Do not ask for a new subsystem.\n\nThe decision is ok when the change does not add a cost that should be fixed first. The decision is return when it does.\n\nRequirements:\n{\"prompt\":\"Ship the field\\n\"}\n\nDiff:\nThe complete diff is <work>/brief/diff.md. Read that file. It is the whole change, including tests. Then read the changed files and the code they call in the working directory. Do not run git. Do not open .git. Do not run tests, a service, a database, or the application.\n\n## billing-api\n\nNot a git checkout. Read the source files in the working directory.\n\nImplementation:\n- changed the field parser\n\nEnd your final message with exactly one result block: a line of three backticks followed by json, one JSON object, then a line of three backticks.\nThe text before the block is for people and is never read. The object has these fields, and no others:\n- decision (one of \"ok\", \"return\", required): ok when this angle passes; return when a broken behavior must be fixed first\n- review (string, required): Your review in Markdown, ending with the summary list; on return it names one broken behavior\n- summary (array of string, required): The summary list, one line per entry; what you checked, or the marks of the input list",
+          "responseText": "code-review-performance\n\n```json\n{\"decision\":\"ok\",\"review\":\"code-review-performance\",\"summary\":[\"code-review-performance\"]}\n```"
         }
       ],
       "exitCode": 0,
@@ -420,15 +492,19 @@
           "kind": "handoff"
         },
         {
-          "body": "The change needs work.\n",
+          "body": "## What changed\n\nchanged the field\n\n## Code review\n\nThe change needs work.\n",
           "kind": "review_report"
         },
         {
-          "body": "The change needs work.\n",
+          "body": "{\"whatChanged\":\"changed the field\",\"codeReview\":\"The change needs work.\"}\n",
+          "kind": "review_report_result"
+        },
+        {
+          "body": "## What changed\n\nchanged the field\n\n## Code review\n\nThe change needs work.\n",
           "kind": "return"
         },
         {
-          "body": "[{\"id\":\"quality-0f46fe0c60\",\"source\":\"quality\",\"title\":\"quality returned the change\",\"body\":\"code-review-quality\\n\\ndecision: return\\n\"}]\n",
+          "body": "[{\"id\":\"quality-a9593e22c1\",\"source\":\"quality\",\"title\":\"quality returned the change\",\"body\":\"code-review-quality\\ndecision: return\\n\"}]\n",
           "kind": "issues"
         }
       ],
@@ -436,8 +512,8 @@
         {
           "chatId": "code-review-report",
           "model": "opus-5.5-extra-high",
-          "requestText": "Write the merge request summary from the implementation and the five decisions copied below.\nThose decisions are the only reviews. Ignore an earlier draft in this chat.\nDo not search again. Do not add a finding none of them wrote. Do not end with a decision line.\nUse these parts, in this order: What changed, Code review, What holds when a check is ok, and What to fix only when a latest decision is return.\nWhat holds is behavior an ok check accepted. What to fix must not undo it.\n\nImplementation:\n- changed the field parser\n\n## Requirements\ndecision: ok\n\ncode-review-requirements\n\ndecision: ok\n\n## Quality\ndecision: return\n\ncode-review-quality\n\ndecision: return\n\n## Regressions\ndecision: ok\n\ncode-review-regressions\n\ndecision: ok\n\n## Security\ndecision: ok\n\ncode-review-security\n\ndecision: ok\n\n## Performance\ndecision: ok\n\ncode-review-performance\n\ndecision: ok",
-          "responseText": "The change needs work.\n"
+          "requestText": "Write the merge request summary from the implementation and the five decisions copied below.\nThose decisions are the only reviews. Ignore an earlier draft in this chat.\nDo not search again. Do not add a finding none of them wrote. Do not end with a decision line.\nUse these parts, in this order: What changed, Code review, What holds when a check is ok, and What to fix only when a latest decision is return.\nWhat holds is behavior an ok check accepted. What to fix must not undo it.\nEnd your final message with exactly one result block: a line of three backticks followed by json, one JSON object, then a line of three backticks.\nThe text before the block is for people and is never read. The object has these fields, and no others:\n- requirements (string, optional): The requirements reviewer's numbered list with its marks, as it wrote it\n- whatChanged (string, required): What was done, from the implementation notes, in Markdown\n- codeReview (string, required): The status of the checks in Markdown; when every decision is ok, what holds\n- whatHolds (string, optional): The behavior a check that is ok accepted and a later fix must not undo; leave out when every decision is return\n- whatToFix (string, optional): One bullet per distinct change that must be fixed; leave out when every decision is ok\n\nImplementation:\n- changed the field parser\n\n## Requirements\ndecision: ok\n\ncode-review-requirements\ndecision: ok\n\n## Quality\ndecision: return\n\ncode-review-quality\ndecision: return\n\n## Regressions\ndecision: ok\n\ncode-review-regressions\ndecision: ok\n\n## Security\ndecision: ok\n\ncode-review-security\ndecision: ok\n\n## Performance\ndecision: ok\n\ncode-review-performance\ndecision: ok",
+          "responseText": "The change needs work.\n\n```json\n{\"whatChanged\":\"changed the field\",\"codeReview\":\"The change needs work.\"}\n```"
         }
       ],
       "exitCode": 0,

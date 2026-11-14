@@ -2,14 +2,14 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { STEPS } from '../../contract/steps';
 import { GOLDEN_DIR } from '../../testing/step-trace.spec-helpers';
-import { ARTIFACTS, INSTRUCTIONS, REVIEWS, SERVICE_KINDS } from './artifacts';
+import { ARTIFACTS, INSTRUCTIONS, REVIEWS, REVIEW_RESULTS, SERVICE_KINDS } from './artifacts';
 
 interface Golden {
   reads?: Record<string, string[]>;
 }
 
 const entries = Object.values(ARTIFACTS);
-const families = [INSTRUCTIONS, REVIEWS];
+const families = [INSTRUCTIONS, REVIEWS, REVIEW_RESULTS];
 const files = readdirSync(GOLDEN_DIR).filter((name) => name.endsWith('.json'));
 const goldens = files.map((name) => ({ name, golden: JSON.parse(readFileSync(join(GOLDEN_DIR, name), 'utf8')) }));
 

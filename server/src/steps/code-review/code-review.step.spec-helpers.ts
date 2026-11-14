@@ -24,6 +24,8 @@ import type { AgentRunResult } from '../../agent/agent-runner';
 
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 
+import { resultAnswer } from '../../testing/result-answer';
+
 import { PipelineModule } from '../../pipeline/pipeline.module';
 
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -35,8 +37,14 @@ export const REFUSED_WRITE = JSON.stringify({
   message: 'Cannot write to /work/billing-api/a.php while in plan mode.',
 });
 
+/** A reviewer's final text: prose, then its result block. */
 export function reply(step: string, decision: 'ok' | 'return'): string {
-  return `${step}\n\ndecision: ${decision}\n`;
+  return resultAnswer(step, { decision, review: step, summary: [step] });
+}
+
+/** The report's final text: prose, then its result block. */
+export function reportReply(text = 'The checks are in.', parts: { whatToFix?: string } = {}): string {
+  return resultAnswer(text, { whatChanged: 'changed the field', codeReview: text, ...parts });
 }
 
 export function result(responseText: string, step = 'code-review'): AgentRunResult {
@@ -56,6 +64,11 @@ export function result(responseText: string, step = 'code-review'): AgentRunResu
     startedAt: now,
     finishedAt: now,
   };
+}
+
+/** The answer of a code-review launch by its step: the report's parts for the report, a decision for a reviewer. */
+export function answerFor(step: string, decision: 'ok' | 'return' = 'ok'): string {
+  return step.endsWith('report') ? reportReply() : reply(step, decision);
 }
 
 export async function boot(root: string, agent: jest.Mock) {
@@ -113,15 +126,15 @@ export function reviewSpawn(succeedOn: number): jest.Mock {
     if (launch.step === 'code-review-security') {
       security += 1;
       if (succeedOn > 0 && security >= succeedOn) {
-        return fakeChild([doneStream('security-finished\n\ndecision: ok\n')], 0);
+        return fakeChild([doneStream(reply('security-finished', 'ok'))], 0);
       }
       return fakeChild([chatStream('security-chat', `security-attempt-${security}`)], 0);
     }
     if (launch.step === 'code-review-report') {
-      return fakeChild([doneStream('The checks are in.\n')], 0);
+      return fakeChild([doneStream(reportReply())], 0);
     }
     const name = launch.step.replace('code-review-', '');
-    return fakeChild([doneStream(`${name}\n\ndecision: ok\n`)], 0);
+    return fakeChild([doneStream(reply(name, 'ok'))], 0);
   });
 }
 

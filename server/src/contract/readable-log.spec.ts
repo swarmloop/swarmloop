@@ -1,4 +1,5 @@
-import { AgentWorkFeed, logFinished, readableLog, reviewChipStatus, usageFromLog } from './readable-log';
+import { AgentWorkFeed, logFinished, readableLog, usageFromLog } from './readable-log';
+import { reviewChipStatus } from './readable-log-review';
 
 describe('readableLog', () => {
   it('separates each message and keeps the type with an indent', () => {
@@ -98,17 +99,20 @@ describe('readableLog', () => {
       '{"type":"tool_call","snippet":"reviewChipStatus(\'decision: return\\\\nprocess exited 0\\\\n\')"}\n';
     expect(logFinished(quoted)).toBe(false);
     expect(reviewChipStatus(quoted)).toBe(null);
-    expect(reviewChipStatus('decision: return\nprocess exited 0\n')).toBe('returned');
-    expect(reviewChipStatus('decision: ok\nprocess exited 0\n')).toBe('done');
-    const prompt = JSON.stringify({
-      type: 'user',
-      message: {
-        content: [{ type: 'text', text: '```\ndecision: ok\n```\nEnd with `decision: return` when it breaks.\n' }],
-      },
-    });
+    const block = (decision: string): string =>
+      `notes\n\n\`\`\`json\n${JSON.stringify({ decision, review: 'notes', summary: [] })}\n\`\`\`\n`;
+    const answered = (decision: string): string => `${JSON.stringify({ type: 'result', result: block(decision) })}\n`;
+    expect(reviewChipStatus(answered('return'))).toBe('returned');
+    expect(reviewChipStatus(answered('ok'))).toBe('done');
+    expect(reviewChipStatus(answered('maybe'))).toBe('failed');
+    // A decision line in prose is not a decision.
+    expect(reviewChipStatus(`${JSON.stringify({ type: 'result', result: 'notes\ndecision: return\n' })}\n`)).toBe(
+      'failed',
+    );
+    // The prompt is not an answer, even when it holds an example block.
+    const prompt = JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: block('ok') }] } });
     expect(reviewChipStatus(`${prompt}\nprocess exited 1\n`)).toBe('failed');
-    const answered = `${prompt}\n${JSON.stringify({ type: 'result', result: 'notes\ndecision: return\n' })}\n`;
-    expect(reviewChipStatus(answered)).toBe('returned');
+    expect(reviewChipStatus(`${prompt}\n${answered('return')}`)).toBe('returned');
   });
 });
 

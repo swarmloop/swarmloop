@@ -1,4 +1,5 @@
-import { reviewChipStatus, usageFromLog } from '@contract/readable-log';
+import { usageFromLog } from '@contract/readable-log';
+import { reviewChipStatus } from '@contract/readable-log-review';
 import type { LiveUsage } from '@contract/live';
 import type { StepView } from '@contract/api';
 import { liveVisitKey } from '@contract/visit-key';

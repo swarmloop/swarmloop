@@ -3,6 +3,7 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { DocumentDraft } from '../../history/visit';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import type { Subtask } from '../../contract/subtask';
+import { storedReview } from '../../agent-result/stored-review';
 import { legacyHandoff, type HandoffEntry } from '../../agent-result/legacy/handoff';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 import type { FailedCommand } from '../../environment/environment-types';
@@ -169,7 +170,7 @@ export function composedReturn(documents: { kind: string; body: string }[]): str
   const parts: { source: string; body: string }[] = [];
   for (const source of CODE_REVIEWERS) {
     const body = latest(REVIEWS.of(source));
-    if (body && hasLine(body, 'decision: return')) {
+    if (body && storedReview(source, documents)?.decision === 'return') {
       parts.push({ source, body });
     }
   }

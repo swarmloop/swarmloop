@@ -125,3 +125,37 @@ describe('a run stored before implement results', () => {
     ).toEqual(['changed the field parser', 'ran unit tests']);
   });
 });
+
+describe('a run stored before review results', () => {
+  const REVIEW_KEY = 'PROJ-472';
+  let flow: Awaited<ReturnType<typeof createFlowHarness>>;
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await flow.close();
+  });
+
+  it('waiting in code-review with the old documents only reviews from them and goes on to done', async () => {
+    const blocks = new BlockAgentRunner();
+    flow = await createFlowHarness(REVIEW_KEY, { blocks, realImplement: 'all', realReview: true });
+    const documents = flow.app.app.get(DocumentRepository);
+    const run = await approvedRun(flow, REVIEW_KEY, 'code-review');
+    await documents.putDocument(run, 'implementation', '- changed the field parser\n');
+    await documents.putDocument(run, 'handoff', '## implement\n- the parser had to match the field\n');
+    await documents.putDocument(run, 'review_quality', 'Old review.\n\nsummary:\n- the parser holds\n\ndecision: ok\n');
+    expect(await documents.latestBody(REVIEW_KEY, 'implementation_result')).toBeNull();
+    expect(await documents.latestBody(REVIEW_KEY, 'review_quality_result')).toBeNull();
+
+    await flow.person('resume');
+
+    expect((await flow.app.app.get(RunRepository).findRun(REVIEW_KEY))?.currentStep).toBe('done');
+    const prompt = blocks.prompts.find((item) => item.step === 'code-review-quality')?.prompt ?? '';
+    expect(prompt).toContain('changed the field parser');
+    expect(prompt).toContain('add the field');
+    expect(prompt).toContain('the parser had to match the field');
+    expect(JSON.parse((await documents.latestBody(REVIEW_KEY, 'review_quality_result')) ?? '{}')).toMatchObject({
+      decision: 'ok',
+    });
+    expect(await documents.latestBody(REVIEW_KEY, 'review_report_result')).toContain('"whatChanged"');
+  });
+});

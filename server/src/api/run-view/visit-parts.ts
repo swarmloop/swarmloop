@@ -1,4 +1,4 @@
-import { decisionLine } from './chips';
+import { storedReview } from '../../agent-result/stored-review';
 import { latest } from './status';
 import { REVIEW_KINDS } from './run-view.types';
 import type { CheckCommandView, StepView, VisitView } from '../../contract/api';
@@ -71,6 +71,8 @@ export function latestCommandViews(rows: CheckCommandEntity[]): CheckCommandView
 export function reviewChecks(documents: DocumentEntity[]): StepView['checks'] {
   return REVIEW_KINDS.map((kind) => {
     const body = latest(documents, kind);
-    return { name: kind.replace('review_', ''), decision: decisionLine(body ?? ''), body: body ?? '' };
+    const name = kind.replace('review_', '');
+    const decision = storedReview(name, documents)?.decision;
+    return { name, decision: decision ? `decision: ${decision}` : null, body: body ?? '' };
   }).filter((check) => check.body !== '');
 }

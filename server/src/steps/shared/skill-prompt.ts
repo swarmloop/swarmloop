@@ -27,32 +27,6 @@ export function summaryOr(text: string, fallback: string): string {
   }
 }
 
-export function plainSummary(text: string): string {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => {
-      const cleaned = line
-        .replace(/^[`*]+/, '')
-        .replace(/[`*]+$/, '')
-        .trim();
-      if (!cleaned) {
-        return false;
-      }
-      if (/^decision:\s*(ok|return|approve|revise)\s*$/.test(cleaned)) {
-        return false;
-      }
-      if (/^result:\s*(pass|fail)\s*$/.test(cleaned)) {
-        return false;
-      }
-      if (/^(implementation|summary|plan|repos|questions):$/.test(cleaned)) {
-        return false;
-      }
-      return true;
-    });
-  return lines.map((line) => (line.startsWith('- ') ? line : `- ${line}`)).join('\n');
-}
-
 /** The name a prompt gives a mounted repository. */
 export function mountLabel(names: string[], mount: SandboxMount, index: number): string {
   return mount.containerPath.startsWith('/work/')

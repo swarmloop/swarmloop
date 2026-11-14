@@ -35,6 +35,7 @@ import { PlanStep } from '../steps/plan/plan.step';
 import { PlanImproveStep } from '../steps/plan-improve/plan-improve.step';
 import { ImplementStep } from '../steps/implement/implement.step';
 import { ImplementImproveStep } from '../steps/implement/implement-improve.step';
+import { CodeReviewStep } from '../steps/code-review/code-review.step';
 import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
 import { PipelineStep } from '../steps/pipeline/pipeline.step';
 import { StepRegistry } from '../steps/step.registry';
@@ -54,12 +55,17 @@ const MACHINE_TOKEN = 'test-machine-token';
 /** The steps whose agent answers in result blocks. */
 const BLOCK_STEPS = ['research', 'plan', 'plan-improve', 'implement', 'implement-improve'];
 
+/** A step whose agent answers in a result block: the ones above, every code reviewer and the report. */
+function answersInBlocks(step: string): boolean {
+  return BLOCK_STEPS.includes(step) || step.startsWith('code-review-');
+}
+
 type FakeSandbox = Record<string, (...args: never[]) => Promise<unknown>>;
 
 interface TestAppOptions {
   root?: string;
   runner?: ScriptedFakeAgentRunner;
-  /** The agent of the real research, plan, plan-improve and implement steps: it answers in result blocks. Without one it answers the defaults of `BlockAgentRunner`. */
+  /** The agent of the real research, plan, plan-improve, implement and code-review steps: it answers in result blocks. Without one it answers the defaults of `BlockAgentRunner`. */
   blocks?: BlockAgentRunner;
   /** Replaces calls of the fake sandbox, for a spec that needs a container. */
   sandbox?: FakeSandbox;
@@ -67,6 +73,8 @@ interface TestAppOptions {
   env?: Record<string, string>;
   /** A split run takes the real implement step, with its passes, in place of the scripted one. `'all'` gives every run the real implement and implement-improve steps. */
   realImplement?: boolean | 'all';
+  /** Every run takes the real code-review step: its five reviewers and the report answer in result blocks. */
+  realReview?: boolean;
   /** The merge-request and pipeline steps are the real ones, on a gitlab host the spec swaps for a fake. The other steps stay scripted. */
   realHost?: boolean;
   /** Starts the reconciler's timer. Off by default: a test drives its passes itself, one awaited pass at a time. */
@@ -81,7 +89,7 @@ export interface TestApp {
   clock: FakeClock;
   codeHost: FakeCodeHost;
   runner: ScriptedFakeAgentRunner;
-  /** The agent of the real research, plan, plan-improve and implement steps. */
+  /** The agent of the real research, plan, plan-improve, implement and code-review steps. */
   blocks: BlockAgentRunner;
   pipeline: PipelineService;
   url: string;
@@ -140,7 +148,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     .useValue({
       run: async (input: { step: string }) => {
         await runner.run(input.step);
-        return BLOCK_STEPS.includes(input.step) ? blocks.run(input) : undefined;
+        return answersInBlocks(input.step) ? blocks.run(input) : undefined;
       },
     })
     .overrideProvider(SandboxService)
@@ -185,6 +193,10 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
         },
       }) as Step,
     );
+  }
+
+  if (options.realReview) {
+    steps.set('code-review', module.get(CodeReviewStep));
   }
 
   if (options.realHost) {

@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { requirementsView } from '../../contract/requirements-view';
-import { ARTIFACTS, summarizePlan, summarizeReview } from './artifacts';
+import { ARTIFACTS, summarizePlan, summarizeReview, summarizeReviewResult } from './artifacts';
 import type { Subtask } from '../../contract/subtask';
 import type { Artifact } from './artifact';
 
@@ -31,6 +31,7 @@ const JSON_BODIES: Record<string, string> = {
   answer_errors: '["items: \\"items\\" is required"]\n',
   implementation_result: '{"implementation":["changed the parser"],"summary":["why"]}\n',
   implementation_improve_result: '{"implementation":["fixed the case"],"summary":["why"]}\n',
+  review_report_result: '{"whatChanged":"fixed the parser","codeReview":"every check is ok"}\n',
   rebase_resolution_result: '{"summary":["kept both sides"]}\n',
   subtask_answer_result: '{"answer":"use the shared helper"}\n',
 };
@@ -80,6 +81,9 @@ describe('Artifact.summarize', () => {
     const plan = JSON.stringify({ prompt: 'x', plan: { name: 'n', overview: 'o', items: ['one', 'two'] } });
     expect(summarizePlan(plan)).toBe('2 checklist items: one');
     expect(summarizeReview('Missing a test\ndecision: return\n')).toBe('decision: return · Missing a test');
+    expect(summarizeReviewResult({ decision: 'ok', review: 'Checked the parser\nsummary:', summary: ['a'] })).toBe(
+      'decision: ok · Checked the parser',
+    );
     expect(ARTIFACTS.pipelineLog.summarize('result: pass\nproject: a\n')).toBe('pass');
     expect(ARTIFACTS.pipelineLog.summarize('result: fail\nproject: a\njob: unit\nstage: test\n')).toBe('fail: unit');
     expect(ARTIFACTS.issues.summarize([{ id: 'a', source: 'pipeline', title: 'unit failed', body: 'log' }])).toBe(

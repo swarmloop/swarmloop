@@ -1,5 +1,6 @@
 import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
+import { resultAnswer } from '../../testing/result-answer';
 
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -499,8 +500,12 @@ describe('requirements step', () => {
     const checkout = join(root, 'worktrees', 'checkout');
     mkdirSync(checkout, { recursive: true });
     const now = new Date().toISOString();
-    const agent = jest.fn().mockResolvedValue({
-      responseText: 'decision: ok\n',
+    const answer = (step: string): string =>
+      step.endsWith('report')
+        ? resultAnswer('Holds.', { whatChanged: 'x', codeReview: 'ok' })
+        : resultAnswer('Fine.', { decision: 'ok', review: 'Fine.', summary: [] });
+    const agent = jest.fn().mockImplementation(async (input: { step: string }) => ({
+      responseText: answer(input.step),
       chatId: null,
       tokensIn: 1,
       tokensOut: 1,
@@ -513,7 +518,7 @@ describe('requirements step', () => {
       durationMs: 1,
       startedAt: now,
       finishedAt: now,
-    });
+    }));
     const app = await boot(root, 'http://127.0.0.1:9', 'direct', jest.fn(), agent, true, {
       assertReady: jest.fn().mockResolvedValue(undefined),
     });

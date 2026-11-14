@@ -9,7 +9,17 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { StepEventLog } from '../../history/step-event.log';
 import type { DocumentDraft } from '../../history/visit';
 import { firstLine } from '../contract/artifact';
-import { ARTIFACTS, LOG_KIND, REVIEWS, artifactOf, summarizePlan, summarizeReview } from '../contract/artifacts';
+import {
+  ARTIFACTS,
+  LOG_KIND,
+  REVIEWS,
+  REVIEW_RESULTS,
+  artifactOf,
+  summarizePlan,
+  summarizeReview,
+  summarizeReviewResult,
+} from '../contract/artifacts';
+import type { ReviewResult } from '../../agent-result/definitions/review';
 import type { InputSpec, Issue } from '../contract/step-contract';
 import { recordStepEvent } from '../../core/step-event-scope';
 
@@ -20,6 +30,13 @@ const RESOLVING_STEPS: StepName[] = ['code-review', 'pipeline'];
 function documentSummary(kind: string, body: string, step: StepName): string {
   if (REVIEWS.matches(kind)) {
     return summarizeReview(body);
+  }
+  if (REVIEW_RESULTS.matches(kind)) {
+    try {
+      return summarizeReviewResult(JSON.parse(body) as ReviewResult);
+    } catch {
+      return firstLine(body);
+    }
   }
   if (kind === ARTIFACTS.requirements.kind && (step === 'plan' || step === 'plan-improve')) {
     const plan = summarizePlan(body);

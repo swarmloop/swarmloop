@@ -16,7 +16,7 @@ import type { AgentRunInput } from '../../agent/agent-runner';
 
 import { PipelineService } from '../../pipeline/pipeline.service';
 
-import { reply, result, boot, seed, writeEnv } from './code-review.step.spec-helpers';
+import { answerFor, reply, reportReply, result, boot, seed, writeEnv } from './code-review.step.spec-helpers';
 
 describe('code-review step', () => {
   it('does not send the same diff back to implement', async () => {
@@ -26,7 +26,7 @@ describe('code-review step', () => {
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(
         input.step.endsWith('report')
-          ? 'The checks are in.\n'
+          ? reportReply('The checks are in.')
           : reply(input.step, input.step.endsWith('requirements') ? 'return' : 'ok'),
       ),
     );
@@ -78,7 +78,7 @@ describe('code-review step', () => {
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(
         input.step.endsWith('report')
-          ? 'The checks are in.\n'
+          ? reportReply('The checks are in.')
           : reply(input.step, input.step.endsWith('requirements') ? 'return' : 'ok'),
       ),
     );
@@ -120,7 +120,7 @@ describe('code-review step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-keep-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-97', 'billing-api'), { recursive: true });
-    const agent = jest.fn(async (input: AgentRunInput) => result(`notes\n\ndecision: ok\n`, input.step));
+    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step), input.step));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-97');

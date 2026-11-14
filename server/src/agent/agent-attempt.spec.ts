@@ -1,3 +1,6 @@
+import { reviewDefinition } from '../agent-result/definitions/review';
+import { readResult } from '../agent-result/read-result';
+import { resultAnswer } from '../testing/result-answer';
 import { priceTokens } from './limits';
 import { AttemptMeter } from './agent-attempt';
 
@@ -63,17 +66,16 @@ describe('AttemptMeter', () => {
     expect(attempt.billed().usd).toBe(0.42);
   });
 
-  it('reports a decision once the model writes one', () => {
+  it('reports a decision once the model sends a result block the step accepts', () => {
     const attempt = meter();
-    expect(attempt.decided()).toBe(false);
-    feed(
-      attempt,
-      JSON.stringify({
-        type: 'assistant',
-        message: { content: [{ type: 'text', text: 'notes\ndecision: return\n' }] },
-      }),
-    );
-    expect(attempt.decided()).toBe(true);
+    const answered = (text: string): boolean => readResult(reviewDefinition('quality'), text).ok;
+    expect(attempt.decided(answered)).toBe(false);
+    const message = (text: string): string =>
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
+    feed(attempt, message('notes\ndecision: return\n'));
+    expect(attempt.decided(answered)).toBe(false);
+    feed(attempt, message(resultAnswer('notes', { decision: 'return', review: 'notes', summary: [] })));
+    expect(attempt.decided(answered)).toBe(true);
   });
 
   it('locks the answer after the final message', () => {

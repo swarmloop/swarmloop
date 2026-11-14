@@ -24,7 +24,7 @@ export class AttemptMeter {
   private readonly guess = emptyUsageGuess();
   private billedFromStream = false;
   private reportedUsd: number | null = null;
-  private decision: DecisionWatch = { text: '', locked: false, stream: false, plain: false };
+  private decision: DecisionWatch = { text: '', locked: false };
   private responseText = '';
   private answerLocked = false;
   private resultSeen = false;
@@ -37,7 +37,7 @@ export class AttemptMeter {
   /** Notes the decision in one complete stream line. Returns the parsed piece, or null when the line is not a stream event. */
   ingest(line: string): StreamPiece | null {
     const piece = readStreamLine(line);
-    this.decision = noteDecision(this.decision, piece, line);
+    this.decision = noteDecision(this.decision, piece);
     return piece;
   }
 
@@ -67,7 +67,7 @@ export class AttemptMeter {
   /** Applies the trailing partial line after the process has exited. */
   flush(buffer: string): void {
     if (buffer !== '') {
-      this.decision = noteDecision(this.decision, readStreamLine(buffer), buffer);
+      this.decision = noteDecision(this.decision, readStreamLine(buffer));
     }
   }
 
@@ -88,8 +88,9 @@ export class AttemptMeter {
     };
   }
 
-  decided(): boolean {
-    return hasModelDecision(this.decision);
+  /** The model already sent a result block that `answered` accepts. */
+  decided(answered: ((text: string) => boolean) | undefined): boolean {
+    return hasModelDecision(this.decision, answered);
   }
 
   /** A background task ended after the result line, and the answer lacks one of the sections the step needs. */

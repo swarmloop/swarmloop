@@ -19,7 +19,7 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { Reconciler } from '../../pipeline/reconciler';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import { reply, result, seed, writeEnv } from './code-review.step.spec-helpers';
+import { reply, reportReply, result, seed, writeEnv } from './code-review.step.spec-helpers';
 
 const START = Date.parse('2026-11-08T18:42:00Z');
 const RESETS_AT = '2026-11-08T21:50:00.000Z';
@@ -55,7 +55,10 @@ function answers(limitedOn: (input: AgentRunInput) => boolean) {
     if (limitedOn(input)) {
       return limited(input.step);
     }
-    return result(input.step.endsWith('report') ? 'The checks are in.\n' : reply(input.step, 'ok'), input.step);
+    return result(
+      input.step.endsWith('report') ? reportReply('The checks are in.') : reply(input.step, 'ok'),
+      input.step,
+    );
   });
 }
 
@@ -268,7 +271,7 @@ describe('code-review step and a provider limit', () => {
     const agent = jest.fn(async (input: AgentRunInput) =>
       input.step === 'code-review-quality'
         ? { ...result('Invalid API key · Please run /login', input.step), exitCode: 1 }
-        : result(input.step.endsWith('report') ? 'ok\n' : reply(input.step, 'ok'), input.step),
+        : result(input.step.endsWith('report') ? reportReply('ok') : reply(input.step, 'ok'), input.step),
     );
     const app = await boot(root, agent, new FakeClock(START));
     try {

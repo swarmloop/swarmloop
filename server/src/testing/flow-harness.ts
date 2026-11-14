@@ -64,6 +64,8 @@ export async function createFlowHarness(
     realHost?: boolean;
     /** Every run takes the real implement and implement-improve steps. */
     realImplement?: boolean | 'all';
+    /** Every run takes the real code-review step. */
+    realReview?: boolean;
     taskWorktrees?: boolean;
     env?: Record<string, string>;
     blocks?: BlockAgentRunner;
@@ -75,6 +77,7 @@ export async function createFlowHarness(
   const first = await createTestApp({
     realImplement: options.realImplement ?? true,
     realHost: options.realHost,
+    realReview: options.realReview,
     blocks: options.blocks,
     env,
     sandbox: sandbox.calls,

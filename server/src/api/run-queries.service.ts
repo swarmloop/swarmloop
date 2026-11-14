@@ -24,7 +24,7 @@ import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contrac
 import type { LiveSample } from '../contract/live';
 import { mergeWaits, parentOf } from './run-view/merge-wait';
 import { childrenByParent, epicTotal, listExtras } from './run-view/status';
-import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
+import { STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
 import {
@@ -200,14 +200,7 @@ export class RunQueriesService {
     const kinds = [...(STEP_KINDS[name] ?? []), 'error'];
     const visits: VisitView[] = stats.map((stat, index) => {
       const owned = documents.filter((document) => document.stepStatId === stat.id);
-      const verdict =
-        name === 'code-review'
-          ? angleVerdict(
-              owned
-                .filter((document) => (REVIEW_KINDS as readonly string[]).includes(document.kind))
-                .map((document) => document.body),
-            )
-          : null;
+      const verdict = name === 'code-review' ? angleVerdict(owned) : null;
       return {
         id: stat.id,
         key: visitKey(stat.id),

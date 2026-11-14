@@ -1,4 +1,5 @@
 import type { StreamPiece } from './stream';
+import { parseResultBlock } from '../contract/result-block';
 import { takeAnswer } from './stream';
 
 export type KillReason = 'time' | 'idle' | 'usd' | 'tokens' | 'calls' | 'loop';
@@ -72,46 +73,26 @@ export function retryCrash(input: {
   return !callsExceeded(input.callsSoFar, input.maxCalls);
 }
 
-/** Model text seen while the process was writing. A user message is the prompt, not a decision. */
+/** The answer text seen while the process was writing. A user message is the prompt, not an answer. */
 export interface DecisionWatch {
   text: string;
   locked: boolean;
-  stream: boolean;
-  plain: boolean;
 }
 
 /** One line already read from the live stream. A user message is the prompt. */
-export function noteDecision(state: DecisionWatch, piece: StreamPiece | null, line: string): DecisionWatch {
-  if (!piece) {
-    return !state.plain && decisionLine(line) ? { ...state, plain: true } : state;
+export function noteDecision(state: DecisionWatch, piece: StreamPiece | null): DecisionWatch {
+  if (!piece || piece.guessKind === 'user' || (!piece.text && !piece.finalMessage)) {
+    return state;
   }
-  if (piece.guessKind === 'user' || (!piece.text && !piece.finalMessage)) {
-    return state.stream ? state : { ...state, stream: true };
-  }
-  const next = takeAnswer(state.text, state.locked, piece);
-  return { text: next.text, locked: next.locked, stream: true, plain: state.plain };
+  return takeAnswer(state.text, state.locked, piece);
 }
 
-/** True when the model already wrote a decision. An echoed prompt does not count. */
-export function hasModelDecision(state: DecisionWatch): boolean {
-  if (decisionLine(state.text)) {
-    return true;
-  }
-  if (state.text.length > 0 || state.stream) {
-    return false;
-  }
-  return state.plain;
-}
-
-function decisionLine(text: string): boolean {
-  return text.split(/\r?\n/).some((line) => {
-    const cleaned = line
-      .trim()
-      .replace(/^[`*]+/, '')
-      .replace(/[`*]+$/, '')
-      .trim();
-    return /^decision:\s*(ok|return|approve|revise)[`*]*(?:\s*[-–—:.,;]\s*\S.*)?\s*$/.test(cleaned);
-  });
+/**
+ * True when the model already sent a result block that the step accepts. `answered` is the launcher's check of the
+ * block against the step's schema. An echoed prompt does not count.
+ */
+export function hasModelDecision(state: DecisionWatch, answered: ((text: string) => boolean) | undefined): boolean {
+  return answered !== undefined && parseResultBlock(state.text).ok && answered(state.text);
 }
 
 export interface SessionState {
