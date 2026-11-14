@@ -1,12 +1,13 @@
 import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { mkdtemp, writeFile } from 'fs/promises';
+import { mkdirSync, writeFileSync } from 'fs';
+import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
+import { writeEnvOverrides } from '../../testing/env.spec-helpers';
 import { DocumentEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
@@ -56,8 +57,11 @@ describe('plan-improve step', () => {
 
   it('asks a runtime without a plan tool for a plan section, and names no plan tool', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-'));
-    await writeEnv(root);
-    writeFileSync(join(root, '.env'), readFileSync(join(root, '.env'), 'utf8').replaceAll('=cursor:', '=claude:'));
+    await writeEnv(root, {
+      AGENTS_PLAN: 'claude:opus-5.5-extra-high',
+      AGENTS_IMPLEMENT: 'claude:grok-4.7',
+      AGENTS_REVIEW: 'claude:opus-5.5-extra-high',
+    });
     mkdirSync(join(root, 'worktrees', 'PROJ-58', 'billing-api'), { recursive: true });
     const agent = jest.fn().mockResolvedValue(result(reply));
     const app = await boot(root, agent);
@@ -231,7 +235,7 @@ describe('plan-improve step with split', () => {
     options: { split?: boolean; tasks?: boolean; stored?: typeof storedTasks; keep?: string } = {},
   ) {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-split-'));
-    await writeEnv(root);
+    await writeEnv(root, { EPIC_EFFORT: '' });
     mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
     const agent = jest.fn().mockResolvedValue(result(answer));
     const app = await boot(root, agent);
@@ -399,43 +403,18 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, key: string): Promise
   await documents.putDocument(seeded, 'repos', 'billing-api\n');
 }
 
-async function writeEnv(root: string): Promise<void> {
-  await writeFile(
-    join(root, '.env'),
-    [
-      'REQUIREMENTS_VIA=direct',
-      'ISSUE_TRACKER=jira',
-      'JIRA_BASE_URL=',
-      'JIRA_EMAIL=',
-      'JIRA_API_TOKEN=',
-      'GITLAB_BASE_URL=',
-      'GITLAB_TOKEN=',
-      'GITHUB_BASE_URL=',
-      'GITHUB_TOKEN=',
-      'CURSOR_API_KEY=',
-      'ANTHROPIC_API_KEY=',
-      'MAX_AGENT_CALLS=20',
-      'MAX_RETURNS=3',
-      'MAX_LAUNCHES=3',
-      'MAX_RUN_USD=25',
-      'IDLE_TIMEOUT_MS=900000',
-      'TICK_MS=15000',
-      'REQUIREMENTS_TIMEOUT_MS=600000',
-      'RESEARCH_TIMEOUT_MS=900000',
-      'PLAN_TIMEOUT_MS=1200000',
-      'IMPLEMENT_TIMEOUT_MS=1800000',
-      'CODE_REVIEW_TIMEOUT_MS=900000',
-      'MERGE_REQUEST_TIMEOUT_MS=600000',
-      'PIPELINE_TIMEOUT_MS=1800000',
-      'PIPELINE_START_TIMEOUT_MS=180000',
-      'AGENTS_PLAN=cursor:opus-5.5-extra-high',
-      'AGENTS_IMPLEMENT=cursor:grok-4.7',
-      'AGENTS_REVIEW=cursor:opus-5.5-extra-high',
-      'EPIC_EFFORT=',
-      'SWARMLOOP_API_PORT=3920',
-      'SWARMLOOP_API_HOST=127.0.0.1',
-      `SWARMLOOP_ROOT=${root}`,
-      '',
-    ].join('\n'),
-  );
+async function writeEnv(root: string, overrides: Record<string, string> = {}): Promise<void> {
+  await writeEnvOverrides(root, {
+    REQUIREMENTS_VIA: 'direct',
+    GITLAB_BASE_URL: '',
+    GITHUB_BASE_URL: '',
+    MAX_AGENT_CALLS: '20',
+    MAX_RETURNS: '3',
+    MAX_RUN_USD: '25',
+    AGENTS_PLAN: 'cursor:opus-5.5-extra-high',
+    AGENTS_IMPLEMENT: 'cursor:grok-4.7',
+    AGENTS_REVIEW: 'cursor:opus-5.5-extra-high',
+    SWARMLOOP_ROOT: root,
+    ...overrides,
+  });
 }

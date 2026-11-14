@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -33,12 +33,12 @@ const planAnswer = ['plan:', '- add the field', '', 'summary:', '- one run'].joi
 /** A split run waiting at `start`, with `EPIC_EFFORT` as given. */
 async function epicApp(key: string, epicEffort: string, answers: string[], start: StepName = 'plan-improve') {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-epic-'));
-  await writeEnv(root);
-  const envFile = join(root, '.env');
-  const env = readFileSync(envFile, 'utf8')
-    .replaceAll('=cursor:', '=claude:')
-    .replace('EPIC_EFFORT=', `EPIC_EFFORT=${epicEffort}`);
-  writeFileSync(envFile, env);
+  await writeEnv(root, undefined, {
+    AGENTS_PLAN: 'claude:opus-5.5-extra-high',
+    AGENTS_IMPLEMENT: 'claude:grok-4.7',
+    AGENTS_REVIEW: 'claude:opus-5.5-extra-high',
+    EPIC_EFFORT: epicEffort,
+  });
   mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
   const agent = jest.fn();
   for (const answer of answers) agent.mockResolvedValueOnce(result(answer, 'plan-improve'));

@@ -8,13 +8,13 @@ import { Test } from '@nestjs/testing';
 
 import { mkdirSync, writeFileSync } from 'fs';
 
-import { writeFile } from 'fs/promises';
-
 import { join } from 'path';
 
 import { PassThrough } from 'stream';
 
 import { SwarmloopConfigModule } from '../../config/config.module';
+
+import { writeEnvOverrides } from '../../testing/env.spec-helpers';
 
 import { RunRepository } from '../../history/run.repository';
 
@@ -163,45 +163,26 @@ export function fakeChild(chunks: string[], code: number): EventEmitter {
   return Object.assign(child, { stdout, stderr, containerName: 'box', kill: () => true });
 }
 
-export async function writeEnv(root: string, implementTimeout = 1800000): Promise<void> {
-  await writeFile(
-    join(root, '.env'),
-    [
-      'REQUIREMENTS_VIA=direct',
-      'ISSUE_TRACKER=jira',
-      'JIRA_BASE_URL=',
-      'JIRA_EMAIL=',
-      'JIRA_API_TOKEN=',
-      'GITLAB_BASE_URL=',
-      'GITLAB_TOKEN=',
-      'GITHUB_BASE_URL=',
-      'GITHUB_TOKEN=',
-      'CURSOR_API_KEY=test-key',
-      'ANTHROPIC_API_KEY=',
-      'MAX_AGENT_CALLS=20',
-      'MAX_RETURNS=3',
-      'MAX_LAUNCHES=3',
-      'MAX_RUN_USD=25',
-      'IDLE_TIMEOUT_MS=900000',
-      'TICK_MS=15000',
-      'REQUIREMENTS_TIMEOUT_MS=600000',
-      'RESEARCH_TIMEOUT_MS=900000',
-      'PLAN_TIMEOUT_MS=1200000',
-      `IMPLEMENT_TIMEOUT_MS=${implementTimeout}`,
-      'CODE_REVIEW_TIMEOUT_MS=900000',
-      'MERGE_REQUEST_TIMEOUT_MS=600000',
-      'PIPELINE_TIMEOUT_MS=1800000',
-      'PIPELINE_START_TIMEOUT_MS=180000',
-      'AGENTS_PLAN=cursor:opus-5.5-extra-high',
-      'AGENTS_IMPLEMENT=cursor:grok-4.7',
-      'AGENTS_REVIEW=cursor:opus-5.5-extra-high',
-      'EPIC_EFFORT=',
-      'SWARMLOOP_API_PORT=3920',
-      'SWARMLOOP_API_HOST=127.0.0.1',
-      `SWARMLOOP_ROOT=${root}`,
-      '',
-    ].join('\n'),
-  );
+export async function writeEnv(
+  root: string,
+  implementTimeout = 1800000,
+  overrides: Record<string, string> = {},
+): Promise<void> {
+  await writeEnvOverrides(root, {
+    REQUIREMENTS_VIA: 'direct',
+    GITLAB_BASE_URL: '',
+    GITHUB_BASE_URL: '',
+    CURSOR_API_KEY: 'test-key',
+    MAX_AGENT_CALLS: '20',
+    MAX_RETURNS: '3',
+    MAX_RUN_USD: '25',
+    IMPLEMENT_TIMEOUT_MS: String(implementTimeout),
+    AGENTS_PLAN: 'cursor:opus-5.5-extra-high',
+    AGENTS_IMPLEMENT: 'cursor:grok-4.7',
+    AGENTS_REVIEW: 'cursor:opus-5.5-extra-high',
+    SWARMLOOP_ROOT: root,
+    ...overrides,
+  });
 }
 
 export function conflictedTree(root: string, key: string, repo: string): string {
