@@ -26,6 +26,7 @@ import { collectEnvMasks } from '../sandbox/env-masks';
 import type { ShellFeature, ShellMatch } from '../contract/api';
 import type { ServerApi } from './server-api';
 import { HttpServerApi } from './server-api';
+import { envFilePath } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
 import { hostCheckout, nestCheckout } from './paths';
 import type { ShellCommand } from './shell-command';
@@ -55,7 +56,7 @@ async function dispatch(argv: string[], cwd: string, root: string, api: ServerAp
     argv,
     listed.runs.map((run) => run.key),
   );
-  const config = readShellConfig(join(root, '.env'));
+  const config = readShellConfig(envFilePath(root));
   if (command.type === 'review') {
     await review(api, command, cwd, root, config.checkoutsRoot);
     return;
