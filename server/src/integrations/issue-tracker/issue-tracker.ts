@@ -1,7 +1,10 @@
+import type { Connection } from '../connection';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
 import type { IssueBundle } from './issue-bundle';
 
 export interface IssueTracker {
+  /** How a person connects this tracker on the Connections page. */
+  readonly connection?: Connection;
   /** The ticket keys this tracker recognizes in plain text. Without a configured tracker, none. */
   ticketKeys(text: string): Promise<string[]>;
   fetch(key: string, runDir: string): Promise<{ bundle: IssueBundle; httpCalls: HttpCallDraft[] }>;
