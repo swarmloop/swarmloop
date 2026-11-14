@@ -21,9 +21,13 @@ export async function warmRuntimeModelLists(
   const root = resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname);
   const mount = { hostPath: join(root, 'worktrees'), containerPath: '/work' };
   mkdirSync(mount.hostPath, { recursive: true });
-  await warmModelLists(env, root, clock.now(), (runtime) =>
-    sandboxModelLister(sandbox, runtime, credentialFor(env, runtime.name), mount),
-  );
+  await warmModelLists(env, root, clock.now(), (runtime) => {
+    try {
+      return sandboxModelLister(sandbox, runtime, credentialFor(env, runtime.name), mount);
+    } catch {
+      return null;
+    }
+  });
 }
 
 /** The CLI process resolves agents too, so it reads the model lists the levels depend on before a command runs. */

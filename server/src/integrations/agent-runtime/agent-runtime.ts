@@ -1,3 +1,4 @@
+import type { Connection } from '../connection';
 import type { Effort } from '../../contract/effort';
 import type { LimitHit, LimitInput } from './runtime-limit';
 import type { RuntimeName } from './runtime-name';
@@ -57,6 +58,8 @@ export interface EffortLaunch {
 
 export interface AgentRuntime {
   readonly name: RuntimeName;
+  /** How a person connects this runtime on the Connections page. Absent for a runtime with no connection. */
+  readonly connection?: Connection;
   readonly command: 'agent' | 'claude' | 'codex';
   /** The image component this CLI runs in. Where the image comes from is the resolver's business. */
   readonly component: `agent-${RuntimeName}`;

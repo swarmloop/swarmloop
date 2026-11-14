@@ -1,7 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { PersonalCredentials } from '../../auth/personal-credentials.service';
+import { atlassianSite } from '../atlassian-site';
+import type { Connection } from '../connection';
 import { IssueBundle, IssueLink } from '../issue-tracker/issue-bundle';
 import { isReadable, request } from '../http';
 import { ConfluencePageReader } from './confluence-page.reader';
+import { confluenceConnection } from './confluence-connection';
 import { DrivePageReader } from './drive-page.reader';
 import { PageReadContext } from './page-reader';
 import { PastePageReader } from './paste-page.reader';
@@ -10,12 +14,21 @@ import { PastePageReader } from './paste-page.reader';
 export class LinkedPagesService {
   private readonly drive = new DrivePageReader();
 
-  constructor(private readonly pastePages: PastePageReader) {}
+  constructor(
+    private readonly pastePages: PastePageReader,
+    @Optional() private readonly personal?: PersonalCredentials,
+  ) {}
+
+  /** How a person connects the readers that offer a connection. */
+  connections(): Connection[] {
+    return [confluenceConnection];
+  }
 
   async take(bundle: IssueBundle, url: string, context: PageReadContext): Promise<boolean> {
-    const confluence = new ConfluencePageReader(context.base);
+    const site = await this.confluenceSite(context);
+    const confluence = new ConfluencePageReader(site.base);
     if (confluence.accepts(url)) {
-      bundle.confluence.push(await confluence.read(url, context));
+      bundle.confluence.push(await confluence.read(url, { ...context, ...site }));
       return true;
     }
     if (this.drive.accepts(url)) {
@@ -23,6 +36,12 @@ export class LinkedPagesService {
       return true;
     }
     return false;
+  }
+
+  /** The person's own Confluence site when they connected one, else the site the Jira fetch used. */
+  private async confluenceSite(context: PageReadContext): Promise<{ base: string; headers: Record<string, string> }> {
+    const own = context.login ? await this.personal?.fields(confluenceConnection.id, context.login) : null;
+    return own ? atlassianSite(own) : { base: context.base, headers: context.headers };
   }
 
   async external(url: string, context: PageReadContext): Promise<IssueLink[]> {

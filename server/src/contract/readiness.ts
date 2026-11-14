@@ -8,6 +8,8 @@ export interface ReadinessItem {
   line: string;
   /** One next step. For an `ok` item it says there is nothing to do. */
   action: string;
+  /** The dashboard page that fixes the item, such as the card of a connection. */
+  link?: string;
 }
 
 export interface ReadinessView {

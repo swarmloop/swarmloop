@@ -12,6 +12,11 @@ import { RunRepository } from '../history/run.repository';
 import { boot, save } from '../testing/runs.spec-helpers';
 import { CommandService } from './command.service';
 import { RunStop } from '../agent/run-stop';
+import { PersonalCredentials } from '../auth/personal-credentials.service';
+import { missingCredential } from '../config/agents';
+import type { StoredAgents } from '../contract/api';
+import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
+import { fakeConnection } from '../testing/fake-connection';
 
 async function app(name: string) {
   return boot(await mkdtemp(join(tmpdir(), `swarmloop-command-${name}-`)));
@@ -297,5 +302,79 @@ describe('CommandService', () => {
     } finally {
       await testApp.close();
     }
+  });
+
+  describe('a new run and the credentials of its agents', () => {
+    const claudeAgents = { main: { plan: [{ runtime: 'claude', model: 'opus' }] } };
+    const claude = fakeConnection({ id: 'claude', fields: ['ANTHROPIC_API_KEY'], envName: 'ANTHROPIC_API_KEY' });
+
+    async function start(
+      testApp: Awaited<ReturnType<typeof app>>,
+      create: { targetPath: null; startedBy?: string | null; agents?: StoredAgents },
+      key = 'proj-1',
+    ) {
+      const commands = testApp.get(CommandService);
+      commands.register('start', jest.fn().mockResolvedValue(started));
+      return commands.submit('start', key, { key }, { create });
+    }
+
+    it('accepts a starter with their own Claude connection', async () => {
+      const testApp = await app('own');
+      try {
+        await testApp.get(PersonalCredentials).store(claude, 'ann', { ANTHROPIC_API_KEY: 'sk-ant-ann-1234' }, null);
+        await start(testApp, { targetPath: null, startedBy: 'ann', agents: claudeAgents });
+        expect(await testApp.get(RunRepository).findRun('proj-1')).not.toBeNull();
+      } finally {
+        await testApp.close();
+      }
+    });
+
+    it('accepts agents that name a level before the model list of their runtime is loaded', async () => {
+      const testApp = await app('level');
+      try {
+        const cursor = fakeConnection({ id: 'cursor', fields: ['CURSOR_API_KEY'] });
+        await testApp.get(PersonalCredentials).store(cursor, 'ann', { CURSOR_API_KEY: 'crsr-ann-1234' }, null);
+        const levels = { main: { plan: [{ runtime: 'cursor', model: 'grok-4.7', effort: 'high' }] } };
+        expect(runtimeFor('cursor').listLoaded()).toBe(false);
+        await start(testApp, { targetPath: null, startedBy: 'ann', agents: levels });
+        expect(await testApp.get(RunRepository).findRun('proj-1')).not.toBeNull();
+      } finally {
+        await testApp.close();
+      }
+    });
+
+    it('refuses a starter without one, names the runtime with the link and stores no run', async () => {
+      const testApp = await app('none');
+      try {
+        const refused = start(testApp, { targetPath: null, startedBy: 'bob', agents: claudeAgents });
+        await expect(refused).rejects.toMatchObject({ status: 422 });
+        await expect(refused).rejects.toThrow(missingCredential('claude'));
+        expect(await testApp.get(RunRepository).findRun('proj-1')).toBeNull();
+        expect(await testApp.get<Repository<CommandEntity>>(getRepositoryToken(CommandEntity)).count()).toBe(0);
+      } finally {
+        await testApp.close();
+      }
+    });
+
+    it('accepts a start with env keys only', async () => {
+      const testApp = await app('env');
+      try {
+        await start(testApp, { targetPath: null, startedBy: 'bob' });
+        expect(await testApp.get(RunRepository).findRun('proj-1')).not.toBeNull();
+      } finally {
+        await testApp.close();
+      }
+    });
+
+    it('does not refuse a replay of a run that already exists', async () => {
+      const testApp = await app('replay');
+      try {
+        await save(testApp.get(RunRepository), 'proj-1', 'implement', 'waiting');
+        await start(testApp, { targetPath: null, startedBy: 'bob', agents: claudeAgents });
+        expect(await testApp.get<Repository<CommandEntity>>(getRepositoryToken(CommandEntity)).count()).toBe(1);
+      } finally {
+        await testApp.close();
+      }
+    });
   });
 });

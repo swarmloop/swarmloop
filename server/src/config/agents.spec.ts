@@ -9,10 +9,12 @@ import {
   assertAgents,
   availableAgent,
   knownModels,
+  namedAgentsFor,
   parseAgent,
   parseAgentList,
   ROLE_OF_STEP,
   roleOf,
+  runAgents,
   runtimesInUse,
   runtimesNamingEffort,
 } from './agents';
@@ -207,7 +209,11 @@ describe('the runtimes in use and the start-up check', () => {
 
   it('names the agent whose runtime has no credential', () => {
     const env = { ...testEnv({ AGENTS_REVIEW: 'claude:claude-opus-5-5' }), ...KEYS, ANTHROPIC_API_KEY: '' };
-    expect(() => assertAgents(env)).toThrow(/claude:claude-opus-5-5 of review.*ANTHROPIC_API_KEY/);
+    expect(() => assertAgents(env)).not.toThrow();
+  });
+
+  it('passes a list that names a level while its runtime list is not loaded', () => {
+    expect(() => assertAgents({ ...testEnv({ AGENTS_PLAN: 'cursor:grok-4.7:high' }), ...KEYS })).not.toThrow();
   });
 
   it('refuses an unknown runtime and an empty model', () => {
@@ -215,6 +221,31 @@ describe('the runtimes in use and the start-up check', () => {
     expect(() => assertAgents({ ...testEnv({ AGENTS_SUBTASK_REVIEW: 'cursor:' }), ...KEYS })).toThrow(
       /AGENTS_SUBTASK_REVIEW.*empty model/,
     );
+  });
+});
+
+describe('the readers that need no model list', () => {
+  const env = testEnv({ AGENTS_PLAN: 'cursor:grok-4.7:high,claude:m:low', AGENTS_SUBTASK_REVIEW: 'codex:n:medium' });
+  const stored = { agents: { main: { plan: [{ runtime: 'cursor', model: 'grok-4.7', effort: 'high' }] } } };
+
+  it('read the runtimes and models of agents that name a level while the list is not loaded', () => {
+    expect(runtimeFor('cursor').listLoaded()).toBe(false);
+    expect(runtimesInUse(env)).toEqual(['cursor', 'claude', 'codex']);
+    expect(knownModels(env)).toEqual({ cursor: ['grok-4.7', 'grok-4.7-high'], claude: ['m'], codex: ['n'] });
+    expect(namedAgentsFor(env, null, 'plan')).toEqual([
+      { runtime: 'cursor', model: 'grok-4.7', effort: 'high' },
+      { runtime: 'claude', model: 'm', effort: 'low' },
+    ]);
+    expect(runAgents(env, stored).map((agent) => agent.runtime)).toContain('cursor');
+  });
+
+  it('give the stored choice of a run before env, and drop a stored runtime that is unknown', () => {
+    const agents = { main: { plan: [{ runtime: 'gemini', model: 'g' }, ...stored.agents.main.plan] } };
+    expect(namedAgentsFor(env, { agents }, 'plan')).toEqual([{ runtime: 'cursor', model: 'grok-4.7', effort: 'high' }]);
+  });
+
+  it('leave a launch strict: its level still needs the list', () => {
+    expect(() => agentFor(env, null, 'plan')).toThrow(/model list of cursor is not loaded/);
   });
 });
 

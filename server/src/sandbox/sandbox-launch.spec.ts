@@ -44,6 +44,17 @@ function launch(patch: Partial<SandboxLaunch> = {}): SandboxLaunch {
 }
 
 describe('sandbox launch', () => {
+  describe('sign-in hosts', () => {
+    it('lets a launch reach the hosts the CLI sign-in of its runtime needs, when it lists them', () => {
+      const hosts = ['claude.ai', 'platform.claude.com', 'console.anthropic.com'];
+      expect(() => sandboxArgs(launch({ runtime: 'claude', allowHosts: hosts }), home, '')).not.toThrow();
+    });
+
+    it('still refuses a host that is neither a registry nor a model or sign-in host', () => {
+      expect(() => sandboxArgs(launch({ allowHosts: ['example.com'] }), home, '')).toThrow('production host');
+    });
+  });
+
   describe('machine limits', () => {
     it('gives every container a lower CPU weight than the default', () => {
       const args = sandboxArgs(launch(), home, '');

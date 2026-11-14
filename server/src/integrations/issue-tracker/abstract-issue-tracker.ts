@@ -4,10 +4,14 @@ import type { IssueBundle } from './issue-bundle';
 import type { IssueTracker } from './issue-tracker';
 
 export abstract class AbstractIssueTracker implements IssueTracker {
-  async fetch(key: string, runDir: string): Promise<{ bundle: IssueBundle; httpCalls: HttpCallDraft[] }> {
+  async fetch(
+    key: string,
+    runDir: string,
+    login?: string | null,
+  ): Promise<{ bundle: IssueBundle; httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];
     try {
-      const bundle = await this.loadIssue(key, runDir, calls);
+      const bundle = await this.loadIssue(key, runDir, calls, login);
       return { bundle, httpCalls: calls };
     } catch (error) {
       if (error instanceof PasteNeeded) {
@@ -24,7 +28,12 @@ export abstract class AbstractIssueTracker implements IssueTracker {
     }
   }
 
-  abstract ticketKeys(text: string): Promise<string[]>;
+  abstract ticketKeys(text: string, login?: string | null): Promise<string[]>;
 
-  protected abstract loadIssue(key: string, runDir: string, calls: HttpCallDraft[]): Promise<IssueBundle>;
+  protected abstract loadIssue(
+    key: string,
+    runDir: string,
+    calls: HttpCallDraft[],
+    login?: string | null,
+  ): Promise<IssueBundle>;
 }

@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { createHash } from 'crypto';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { CodexAuthStore, REFRESH_AFTER_MS } from './codex-auth';
@@ -58,7 +59,7 @@ describe('codex auth store', () => {
     for (const result of results) {
       expect(decode(result).tokens.refresh_token).toBe('rt-2');
     }
-    const saved = JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8')) as { last_refresh: string };
+    const saved = JSON.parse(readFileSync(join(dir, 'env', 'auth.json'), 'utf8')) as { last_refresh: string };
     expect(saved.last_refresh).toBe(new Date(NOW).toISOString());
   });
 
@@ -101,6 +102,61 @@ describe('codex auth store', () => {
     const stale = new Date(NOW - REFRESH_AFTER_MS - 1000).toISOString();
     const { store: s } = store(() => Promise.reject(new Error('offline')));
     expect(decode(await s.current(seed(stale))).tokens.access_token).toBe('at-1');
+  });
+
+  it('keeps one login file per credential and refreshes each on its own', async () => {
+    const stale = new Date(NOW - REFRESH_AFTER_MS - 1000).toISOString();
+    const { store: s, calls } = store(ok);
+    await s.current(seed(stale, 'rt-env'));
+    await s.current(seed(stale, 'rt-ann'), 'ann');
+    expect(calls()).toBe(2);
+    for (const credential of ['env', 'ann']) {
+      const saved = JSON.parse(readFileSync(join(dir, credential, 'auth.json'), 'utf8')) as { last_refresh: string };
+      expect(saved.last_refresh).toBe(new Date(NOW).toISOString());
+    }
+    await s.current(seed(stale, 'rt-ann'), 'ann');
+    expect(calls()).toBe(2);
+  });
+
+  it('seeds a credential again when its stored value changes', async () => {
+    const fresh = new Date(NOW - 60_000).toISOString();
+    const { store: s, calls } = store(ok);
+    await s.current(seed(fresh, 'rt-1'), 'ann');
+    await s.current(seed(fresh, 'rt-9'), 'ann');
+    expect(calls()).toBe(2);
+  });
+
+  it('points a connection to the Codex card and keeps the .env text for env', async () => {
+    const fresh = new Date(NOW - 60_000).toISOString();
+    const { store: s } = store(() => Promise.resolve(new Response('{}', { status: 400 })));
+    await expect(s.current(seed(fresh), 'ann')).rejects.toThrow('Codex card (/connections#codex)');
+    await expect(s.current(seed(fresh))).rejects.toThrow('put the new base64 of ~/.codex/auth.json into CODEX_AUTH');
+  });
+
+  it('keeps using the env login that an earlier version saved straight in the store directory', async () => {
+    const fresh = new Date(NOW - 60_000).toISOString();
+    const first = seed(fresh, 'rt-spent');
+    const rotated = JSON.stringify({
+      tokens: { access_token: 'at-5', refresh_token: 'rt-rotated' },
+      last_refresh: fresh,
+    });
+    writeFileSync(join(dir, 'auth.json'), rotated);
+    writeFileSync(join(dir, 'seed.sha256'), createHash('sha256').update(first).digest('hex'));
+    const { store: s, calls } = store(ok);
+    expect(decode(await s.current(first)).tokens.refresh_token).toBe('rt-rotated');
+    expect(calls()).toBe(0);
+    expect(readFileSync(join(dir, 'env', 'auth.json'), 'utf8')).toBe(rotated);
+    expect(existsSync(join(dir, 'auth.json'))).toBe(false);
+    expect(decode(await s.current(first)).tokens.refresh_token).toBe('rt-rotated');
+  });
+
+  it('seeds the env login again from .env when its value changed since the earlier version saved it', async () => {
+    const fresh = new Date(NOW - 60_000).toISOString();
+    writeFileSync(join(dir, 'auth.json'), JSON.stringify({ tokens: { refresh_token: 'rt-old' }, last_refresh: fresh }));
+    writeFileSync(join(dir, 'seed.sha256'), createHash('sha256').update(seed(fresh, 'rt-old')).digest('hex'));
+    const { store: s, calls } = store(ok);
+    expect(decode(await s.current(seed(fresh, 'rt-new'))).tokens.refresh_token).toBe('rt-2');
+    expect(calls()).toBe(1);
   });
 
   it('rejects a CODEX_AUTH that is not an auth.json', async () => {

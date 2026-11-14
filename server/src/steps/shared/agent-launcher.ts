@@ -21,7 +21,7 @@ import type { RunEntity } from '../../history/entities';
 import { sessionFileName } from '../../history/session-group';
 import { VisitRepository } from '../../history/visit.repository';
 import type { ManifestHosts, ProjectLaunch } from '../../sandbox/sandbox-launch';
-import { assertNotStopped } from './step-stopped';
+import { assertNotStopped } from '../../agent/step-stopped';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
 import { section } from './markdown-section';
 import { promptSections } from './prompt-manifest';

@@ -1,3 +1,4 @@
+import type { ConnectionCard, SignInView } from '@contract/connections';
 import type { FlowView, HistoryView, RunSummary, StatsView, StepView } from '@contract/api';
 import { actionsFor } from '@contract/run-state';
 import type { RunState } from '@contract/run-state';
@@ -226,4 +227,32 @@ export function statsView(overrides: Partial<StatsView> = {}): StatsView {
     ],
     ...overrides,
   };
+}
+
+export function connectionCard(overrides: Partial<ConnectionCard> = {}): ConnectionCard {
+  return {
+    id: 'claude',
+    logo: 'claude',
+    label: 'Claude',
+    purpose: 'Runs coding agents',
+    status: 'not-connected',
+    account: null,
+    last4: null,
+    reason: null,
+    serverDefault: false,
+    flows: [
+      { kind: 'cli-code', label: 'Sign in with Claude', fields: [], helpUrl: null },
+      {
+        kind: 'secret',
+        label: 'Paste an API key',
+        fields: [{ name: 'apiKey', label: 'API key', secret: true }],
+        helpUrl: null,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+export function signInView(overrides: Partial<SignInView> = {}): SignInView {
+  return { id: 'session-1', state: 'waiting', link: null, code: null, message: null, ...overrides };
 }

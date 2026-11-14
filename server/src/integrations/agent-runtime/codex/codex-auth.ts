@@ -11,8 +11,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Codex itself refreshes after about 8 days. The server does it earlier, so no container ever has to. */
 export const REFRESH_AFTER_MS = 3 * DAY_MS;
 const HARD_LIMIT_MS = 8 * DAY_MS;
-const EXPIRED =
+const ENV_CREDENTIAL = 'env';
+const EXPIRED_ENV =
   'Codex login expired. Run `codex login`, put the new base64 of ~/.codex/auth.json into CODEX_AUTH and restart the server';
+const EXPIRED_CONNECTION = 'Codex login expired. Sign in with ChatGPT again from the Codex card (/connections#codex)';
 
 interface AuthFile {
   tokens?: { access_token?: string; refresh_token?: string; id_token?: string; account_id?: string };
@@ -45,24 +47,31 @@ export class CodexAuthStore {
     private readonly deps: CodexAuthDeps,
   ) {}
 
-  /** The base64 of a usable auth.json. `seed` is the CODEX_AUTH value from .env. */
-  current(seed: string): Promise<string> {
-    const previous = queues.get(this.dir) ?? Promise.resolve();
-    const next = previous.then(
-      () => this.load(seed),
-      () => this.load(seed),
-    );
+  /**
+   * The base64 of a usable auth.json. `seed` is the stored login of the credential: the CODEX_AUTH value from .env for
+   * `env`, or the login a person connected. Each credential keeps its own file under `<dir>/<credential>` and is
+   * refreshed on its own.
+   */
+  current(seed: string, credential: string = ENV_CREDENTIAL): Promise<string> {
+    const dir = join(this.dir, credential);
+    const isEnv = credential === ENV_CREDENTIAL;
+    const load = (): Promise<string> => this.load(dir, seed, isEnv ? EXPIRED_ENV : EXPIRED_CONNECTION, isEnv);
+    const previous = queues.get(dir) ?? Promise.resolve();
+    const next = previous.then(load, load);
     queues.set(
-      this.dir,
+      dir,
       next.catch(() => undefined),
     );
     return next;
   }
 
-  private async load(seed: string): Promise<string> {
-    await mkdir(this.dir, { recursive: true, mode: 0o700 });
-    const file = join(this.dir, 'auth.json');
-    const marker = join(this.dir, 'seed.sha256');
+  private async load(dir: string, seed: string, expired: string, isEnv: boolean): Promise<string> {
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    if (isEnv) {
+      await this.adoptSingleLogin(dir);
+    }
+    const file = join(dir, 'auth.json');
+    const marker = join(dir, 'seed.sha256');
     const hash = createHash('sha256').update(seed).digest('hex');
     let stored = await readText(file);
     let isNew = false;
@@ -78,17 +87,37 @@ export class CodexAuthStore {
     // not from five containers that each fail on it.
     if (isNew || this.stale(auth)) {
       try {
-        auth = await this.refresh(auth);
+        auth = await this.refresh(auth, expired);
         await save(file, JSON.stringify(auth, null, 2));
         this.logger.log('codex login refreshed');
       } catch (error) {
         if (error instanceof SwarmloopError || this.age(auth) > HARD_LIMIT_MS) {
-          throw error instanceof SwarmloopError ? error : new SwarmloopError(EXPIRED);
+          throw error instanceof SwarmloopError ? error : new SwarmloopError(expired);
         }
         this.logger.warn(`codex login refresh failed, using the saved one: ${String(error)}`);
       }
     }
     return Buffer.from(JSON.stringify(auth), 'utf8').toString('base64');
+  }
+
+  /**
+   * Before each credential had its own folder, the env login lived straight in the store directory. It moves under
+   * `env` once, with the value it was seeded from: its refreshed tokens are the only ones that still work, because the
+   * CODEX_AUTH value in .env was spent by the first refresh and a refresh token works once.
+   */
+  private async adoptSingleLogin(dir: string): Promise<void> {
+    if ((await readText(join(dir, 'auth.json'))) !== null) {
+      return;
+    }
+    for (const name of ['auth.json', 'seed.sha256']) {
+      try {
+        await rename(join(this.dir, name), join(dir, name));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error;
+        }
+      }
+    }
   }
 
   private age(auth: AuthFile): number {
@@ -104,10 +133,10 @@ export class CodexAuthStore {
     return expires !== null && expires - this.deps.now() < DAY_MS;
   }
 
-  private async refresh(auth: AuthFile): Promise<AuthFile> {
+  private async refresh(auth: AuthFile, expired: string): Promise<AuthFile> {
     const token = auth.tokens?.refresh_token;
     if (!token) {
-      throw new SwarmloopError(EXPIRED);
+      throw new SwarmloopError(expired);
     }
     const response = await this.deps.fetch(TOKEN_URL, {
       method: 'POST',
@@ -115,7 +144,7 @@ export class CodexAuthStore {
       body: JSON.stringify({ client_id: CLIENT_ID, grant_type: 'refresh_token', refresh_token: token }),
     });
     if (response.status === 400 || response.status === 401 || response.status === 403) {
-      throw new SwarmloopError(EXPIRED);
+      throw new SwarmloopError(expired);
     }
     if (!response.ok) {
       throw new Error(`token endpoint answered ${response.status}`);

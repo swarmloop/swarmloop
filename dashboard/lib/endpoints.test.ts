@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, runLog } from './api';
 import {
   createRun,
+  disconnectIntegration,
   getFlow,
+  getIntegrationCards,
+  getSignIn,
+  saveIntegration,
+  sendSignInCode,
+  startSignIn,
+  testIntegration,
   getHistory,
   getProviders,
   getSession,
@@ -107,6 +114,26 @@ describe('endpoints', () => {
       ['/auth/providers'],
       ['/auth/me'],
       ['/auth/logout', { method: 'POST' }],
+    ]);
+  });
+
+  it('calls the integration routes with the id and the session encoded once', async () => {
+    await getIntegrationCards();
+    await saveIntegration('claude', { key: 'k' });
+    await testIntegration('claude');
+    await disconnectIntegration('a b');
+    await startSignIn('claude');
+    await sendSignInCode('claude', 's/1', '123');
+    await getSignIn('claude', 's/1');
+
+    expect(vi.mocked(api).mock.calls).toEqual([
+      ['/connections/integrations'],
+      ['/connections/integrations/claude', { method: 'PUT', body: '{"fields":{"key":"k"}}' }],
+      ['/connections/integrations/claude/test', { method: 'POST' }],
+      ['/connections/integrations/a%20b', { method: 'DELETE' }],
+      ['/connections/integrations/claude/sign-in', { method: 'POST' }],
+      ['/connections/integrations/claude/sign-in/s%2F1/code', { method: 'POST', body: '{"code":"123"}' }],
+      ['/connections/integrations/claude/sign-in/s%2F1'],
     ]);
   });
 

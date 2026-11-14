@@ -7,7 +7,7 @@ import { GitAuthError, SwarmloopError } from '../core/swarmloop-error';
 import { ConnectionEntity } from '../history/connection-entities';
 import { request } from '../integrations/http';
 import { HostAppsService } from './host-apps.service';
-import { githubEndpoints, gitlabEndpoints, type Endpoints, type Grant, type ProviderName } from './oauth-provider';
+import { endpointsOf, githubEndpoints, type Endpoints, type Grant, type ProviderName } from './oauth-provider';
 import { SecretBox } from './secret-box';
 
 /** A token is refreshed this long before it ends. */
@@ -238,7 +238,7 @@ export class ConnectionsService {
   }
 
   private endpoints(host: ProviderName): Endpoints {
-    return host === 'github' ? githubEndpoints(this.config.env) : gitlabEndpoints(this.config.env);
+    return endpointsOf(host, this.config.env);
   }
 
   /** The installation of this app among those the person's token can use. */

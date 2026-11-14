@@ -1,3 +1,5 @@
+import { IntegrationSecrets1796000000000 } from './1796000000000-integration-secrets';
+import { CredentialCooldowns1796000000001 } from './1796000000001-credential-cooldowns';
 import { AgentEffort1795900000000 } from './1795900000000-agent-effort';
 import { InitialSchema1793664000000 } from './1793664000000-initial-schema';
 import { RetireVerifyStep1793800000000 } from './1793800000000-retire-verify-step';
@@ -61,4 +63,6 @@ export const migrations = [
   FlakyTests1795700000000,
   CheckCommandsAttemptIndex1795800000000,
   AgentEffort1795900000000,
+  IntegrationSecrets1796000000000,
+  CredentialCooldowns1796000000001,
 ];

@@ -137,6 +137,8 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     };
     const github = view.connections.find((item) => item.host === 'github');
     expect(github).toMatchObject({
+      appLabel: 'App',
+      installs: true,
       account: 'alice',
       repositories: ['alice/site'],
       selection: 'selected',

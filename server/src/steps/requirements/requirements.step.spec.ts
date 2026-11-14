@@ -32,6 +32,8 @@ import { StepEventLog } from '../../history/step-event.log';
 
 import { requirementsBrief } from '../shared/requirements-brief';
 
+import { save } from '../../testing/runs.spec-helpers';
+
 import { TOKEN, requirementsBody, boot, writeEnv, emptyAgent, listen } from './requirements.step.spec-helpers';
 
 describe('requirements step', () => {
@@ -95,6 +97,24 @@ describe('requirements step', () => {
       const run = await app.get(RunRepository).findRun('PROJ-2');
       expect(run?.status).toBe('waiting');
       expect(run?.currentStep).toBe('prepare');
+    } finally {
+      await app.close();
+      await server.close();
+    }
+  });
+
+  it('fetches the tickets of a run with the login of the person who started it', async () => {
+    const server = await listen();
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-person-'));
+    const app = await boot(root, server.base, 'direct', jest.fn().mockResolvedValue('pasted-body'), jest.fn());
+    try {
+      const fetch = jest.spyOn(app.get<IssueTracker>(ISSUE_TRACKER), 'fetch');
+      const run = await save(app.get(RunRepository), 'PROJ-2', 'requirements', 'waiting');
+      run.startedBy = 'ann';
+      await app.get(RunRepository).saveRun(run);
+      const result = await app.get(PipelineService).run('PROJ-2', { prompt: 'Do the ticket' });
+      expect(result.exitCode).toBe(0);
+      expect(fetch).toHaveBeenCalledWith('PROJ-2', expect.any(String), 'ann');
     } finally {
       await app.close();
       await server.close();

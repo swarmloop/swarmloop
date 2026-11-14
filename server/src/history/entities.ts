@@ -1,4 +1,5 @@
-import { ConnectionEntity, HostAppEntity, UserSettingEntity } from './connection-entities';
+import { ConnectionEntity, HostAppEntity, IntegrationSecretEntity, UserSettingEntity } from './connection-entities';
+import { CredentialCooldownEntity } from './credential-cooldown.entity';
 import { RunEntity } from './run.entity';
 import { FlakyTestEntity } from './flaky-test.entity';
 import { RuntimeCooldownEntity } from './runtime-cooldown.entity';
@@ -348,4 +349,6 @@ export const entities = [
   HostAppEntity,
   ConnectionEntity,
   UserSettingEntity,
+  IntegrationSecretEntity,
+  CredentialCooldownEntity,
 ];

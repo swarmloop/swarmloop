@@ -8,16 +8,16 @@ import type { ReadinessId, ReadinessItem, ReadinessView } from '../contract/read
 import { Clock } from '../core/clock';
 import { FetchFailed } from '../core/swarmloop-error';
 import { root } from '../history/run-paths';
-import { runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
+import { type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { ConnectionsService } from '../auth/connections.service';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
+import { ReadinessModelCredential } from './readiness-model-credential';
+import { missingModelCredential, ok, worst, type Outcome } from './readiness-outcome';
 import { DiskGuard } from '../pipeline/disk-guard';
 import { OwnUseMeter } from '../pipeline/own-use-meter';
 import { imageName } from '../sandbox/image-resolver';
 import { agentImage, sandboxUserId } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
-
-type Outcome = Omit<ReadinessItem, 'id'>;
 
 const GB = 1024 ** 3;
 const DASHBOARD_PORT = 3921;
@@ -28,19 +28,6 @@ const HOST_WAIT_MS = 5000;
 const STALE_MS = 60_000;
 /** How long the first report is waited for. */
 const FIRST_WAIT_MS = 1000;
-const NOTHING = 'nothing to do';
-const RANK: Record<Outcome['status'], number> = { ok: 0, warn: 1, fail: 2 };
-
-function ok(line: string): Outcome {
-  return { status: 'ok', line, action: NOTHING };
-}
-
-/** The most severe of several outcomes, with every line kept. */
-function worst(outcomes: Outcome[]): Outcome {
-  const top = outcomes.reduce((a, b) => (RANK[b.status] > RANK[a.status] ? b : a));
-  return { ...top, line: outcomes.map((outcome) => outcome.line).join('; ') };
-}
-
 /**
  * Says whether a run can start. Every check only reads: no pull, no write to a remote, no model call.
  * The same report serves `GET /readiness` and `swarmloop doctor`.
@@ -59,10 +46,23 @@ export class ReadinessService {
     private readonly clock: Clock,
     private readonly meter: OwnUseMeter,
     @Optional() private readonly connections?: ConnectionsService,
+    @Optional() private readonly person?: ReadinessModelCredential,
   ) {}
 
   /** The last full report at once; one that is stale starts a refresh in the background. The first call waits at most 1 s. */
-  async report(): Promise<ReadinessView> {
+  async report(login: string | null = null): Promise<ReadinessView> {
+    const report = await this.envReport();
+    const own = login && login !== 'machine' ? await this.person?.outcome(login) : undefined;
+    if (!own || !report.items.some((item) => item.id === 'model-credential')) {
+      return report;
+    }
+    return {
+      ...report,
+      items: report.items.map((item) => (item.id === 'model-credential' ? { id: item.id, ...own } : item)),
+    };
+  }
+
+  private async envReport(): Promise<ReadinessView> {
     if (this.cached) {
       if (this.clock.now() - this.cached.at >= STALE_MS) {
         void this.refresh().catch((error) => this.logger.warn(`readiness refresh failed: ${String(error)}`));
@@ -264,11 +264,7 @@ export class ReadinessService {
       const { name } = credentialFor(this.config.env, runtime);
       return ok(`${name} is set for ${runtime}`);
     } catch (error) {
-      return {
-        status: 'fail',
-        line: error instanceof Error ? error.message : String(error),
-        action: `set ${runtimeFor(runtime).credentialNames.join(' or ')} in .env`,
-      };
+      return missingModelCredential(runtime, error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -281,7 +277,8 @@ export class ReadinessService {
       return {
         status: 'warn',
         line: 'no code host token is set',
-        action: 'Connect GitHub or GitLab to publish, or set GITHUB_TOKEN or GITLAB_TOKEN',
+        action: 'Connect GitHub or GitLab in Connections to publish',
+        link: '/connections',
       };
     }
     return worst(await Promise.all(named.map((name) => this.hostToken(name))));

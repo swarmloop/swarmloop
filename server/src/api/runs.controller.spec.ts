@@ -66,8 +66,8 @@ describe('RunsController', () => {
 
   it('answers the keys a prompt would fetch', async () => {
     const runs = { ticketKeys: jest.fn().mockResolvedValue({ keys: ['PROJ-12'] }) };
-    expect(await controllerWith(runs).ticketKeys({ prompt: 'Do PROJ-12' })).toEqual({ keys: ['PROJ-12'] });
-    expect(runs.ticketKeys).toHaveBeenCalledWith({ prompt: 'Do PROJ-12' });
+    expect(await controllerWith(runs).ticketKeys({ prompt: 'Do PROJ-12' }, 'octocat')).toEqual({ keys: ['PROJ-12'] });
+    expect(runs.ticketKeys).toHaveBeenCalledWith({ prompt: 'Do PROJ-12' }, 'octocat');
   });
 
   it('sets 202 when a created run starts', async () => {

@@ -12,6 +12,7 @@ import { ConnectionsController } from './connections.controller';
 import { ConnectionsService } from './connections.service';
 import { GithubAppService } from './github-app.service';
 import { HostAppsService } from './host-apps.service';
+import { PersonalCredentials } from './personal-credentials.service';
 import { LoginStates } from './login-states';
 import { oauthProviders } from './oauth-provider';
 import { SecretBox, secretKey } from './secret-box';
@@ -28,6 +29,7 @@ import { SessionService } from './session.service';
     HostAppsService,
     ConnectionsService,
     GithubAppService,
+    PersonalCredentials,
     {
       provide: SecretBox,
       useFactory: (config: AppConfig) =>
@@ -41,6 +43,6 @@ import { SessionService } from './session.service';
     },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
-  exports: [AuthService, ConnectionsService, HostAppsService],
+  exports: [AuthService, ConnectionsService, HostAppsService, PersonalCredentials],
 })
 export class AuthModule {}

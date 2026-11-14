@@ -1,11 +1,7 @@
-import { join } from 'path';
 import type { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import type { LiveHub } from '../live/live.hub';
-import type { Clock } from '../core/clock';
 import type { AgentRuntime, AgentTools } from '../integrations/agent-runtime/agent-runtime';
-import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
-import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { agentStateDir, prepareStateDir, writeHomeFiles, sandboxUserId } from '../sandbox/sandbox-launch';
 import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
@@ -25,25 +21,12 @@ interface Launch {
 
 type LaunchInput = BaseAgentRunInput & { tools: AgentTools };
 
-/** Everything one agent launch needs before it is spawned: its state directory, prompt delivery and login. */
+/** Everything one agent launch needs before it is spawned: its state directory, and prompt delivery. */
 export class AgentLaunchPrep {
-  private codexAuth: CodexAuthStore | null = null;
-
   constructor(
     private readonly config: AppConfig,
-    private readonly clock: Clock,
     private readonly live?: LiveHub,
   ) {}
-
-  /** The subscription login, refreshed once by the server so parallel containers never race on it. */
-  async codexLogin(runtime: RuntimeName, env: AppConfig['env']): Promise<string> {
-    if (runtime !== 'codex' || env.CODEX_AUTH === '') {
-      return env.CODEX_AUTH;
-    }
-    const dir = join(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), 'data', 'codex');
-    this.codexAuth ??= new CodexAuthStore(dir, codexAuthDeps(this.clock));
-    return this.codexAuth.current(env.CODEX_AUTH);
-  }
 
   /** Prepares the state directory, chat mode, prompt delivery, and arguments for one launch. */
   prepare(input: LaunchInput, runtime: AgentRuntime, resumed: boolean): Launch {

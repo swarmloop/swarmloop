@@ -22,6 +22,7 @@ import type {
   TicketKeysBody,
   TicketKeysView,
 } from '@contract/api';
+import type { ConnectionCard, IntegrationCardsView, SignInView } from '@contract/connections';
 import type { ReadinessView } from '@contract/readiness';
 import type { SettingsView } from '@contract/settings';
 import type { StepEventPage } from '@contract/step-events';
@@ -50,6 +51,22 @@ export const getConnections = (): Promise<ConnectionsView> => api<ConnectionsVie
 export const installMore = (host: string): Promise<{ url: string }> => api(`/connections/${host}/install`, post());
 export const reconnectUrl = (host: string): string => `/auth/${host}/login`;
 export const disconnect = (host: string): Promise<{ ok: true }> => api(`/connections/${host}`, { method: 'DELETE' });
+const integration = (id: string): string => `/connections/integrations/${encodeURIComponent(id)}`;
+const signIn = (id: string, session?: string): string =>
+  `${integration(id)}/sign-in${session === undefined ? '' : `/${encodeURIComponent(session)}`}`;
+/** Every integration of the Connections page, as the person sees it. */
+export const getIntegrationCards = (): Promise<IntegrationCardsView> =>
+  api<IntegrationCardsView>('/connections/integrations');
+/** Tests the fields, stores them when the provider accepts them, and returns the card. */
+export const saveIntegration = (id: string, fields: Record<string, string>): Promise<ConnectionCard> =>
+  api<ConnectionCard>(integration(id), { method: 'PUT', body: JSON.stringify({ fields }) });
+export const testIntegration = (id: string): Promise<ConnectionCard> =>
+  api<ConnectionCard>(`${integration(id)}/test`, post());
+export const disconnectIntegration = (id: string): Promise<unknown> => api(integration(id), { method: 'DELETE' });
+export const startSignIn = (id: string): Promise<SignInView> => api<SignInView>(signIn(id), post());
+export const sendSignInCode = (id: string, session: string, code: string): Promise<SignInView> =>
+  api<SignInView>(`${signIn(id, session)}/code`, post({ code }));
+export const getSignIn = (id: string, session: string): Promise<SignInView> => api<SignInView>(signIn(id, session));
 /** The manifest form for a new GitHub App. The old app and its connections stay until GitHub returns the new one. */
 export const replaceApp = (): Promise<{ action: string; manifest: Record<string, unknown> }> =>
   api('/connections/github/app', post());

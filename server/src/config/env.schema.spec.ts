@@ -267,6 +267,14 @@ describe('env schema', () => {
     expect(config.env.CLAUDE_CODE_OAUTH_TOKEN).toBe('');
   });
 
+  it('takes the model keys and the Jira connection as empty when they are not in .env', () => {
+    const keys = ['CURSOR_API_KEY', 'ANTHROPIC_API_KEY', 'JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN'];
+    const without = Object.fromEntries(Object.entries(complete).filter(([name]) => !keys.includes(name)));
+    const { error, value } = envSchema.validate(without, { abortEarly: false, convert: true });
+    expect(error).toBeUndefined();
+    expect(keys.map((name) => value[name])).toEqual(['', '', '', '', '']);
+  });
+
   it('fails bootstrap when a variable is missing', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'swarmloop-env-'));
     const path = join(dir, '.env');
