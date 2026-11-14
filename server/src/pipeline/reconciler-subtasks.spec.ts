@@ -158,7 +158,7 @@ describe('the agents of an epic parent and of its subtasks', () => {
     });
     const port = new SubtaskPort(
       {} as never,
-      { latestBody: async () => 'app\n' } as never,
+      { latestBody: async (_key: string, kind: string) => (kind === 'research_result' ? null : 'app\n') } as never,
       { submit: async () => undefined } as never,
       { launch } as never,
       { finishVisit: async () => undefined } as never,

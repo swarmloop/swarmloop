@@ -3,6 +3,8 @@ import { REBASE_CONFLICT, REBASE_JOURNAL } from '../../git/rebase';
 import type { Issue } from './step-contract';
 import { CONTRACT_KIND, SUBTASKS_KIND, type Subtask } from '../../contract/subtask';
 import type { KeepLine } from '../shared/keep-lines';
+import { research, type ResearchResult } from '../../agent-result/definitions/research';
+import { resultArtifactCodec } from '../../agent-result/result-codec';
 import { requirementsView } from '../../contract/requirements-view';
 import {
   artifact,
@@ -124,6 +126,12 @@ export const ARTIFACTS = {
     writers: ['research'],
     readers: ['plan', 'plan-improve', 'code-review'],
     summarize: firstLine,
+  }),
+  researchResult: artifact(research.kind, {
+    writers: ['research'],
+    readers: ['plan', 'plan-improve', 'code-review'],
+    codec: resultArtifactCodec<ResearchResult>(research),
+    summarize: (result) => `${listSummary(result.questions.length, 'questions', result.questions[0])}`,
   }),
   subtasks: artifact(SUBTASKS_KIND, {
     writers: ['plan', 'plan-improve', 'implement'],

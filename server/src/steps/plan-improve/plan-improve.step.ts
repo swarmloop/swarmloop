@@ -25,12 +25,14 @@ import { parsePlan, readPlan, reviewedItems, withPlan } from '../plan/plan-recor
 import { parseTasks, planItemsFromTasks, splitAnswer, splitLimits, splitOutputs, unbounded } from '../plan/plan-tasks';
 import { mergeTasks, PLAN_IMPROVE_FOLLOW_UP } from './plan-improve.prompts';
 import { renderKeep } from '../shared/keep-lines';
+import { storedImpact } from '../shared/research-reads';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
   repos: lateInput(ARTIFACTS.repos),
   impact: lateInput(ARTIFACTS.impact),
+  researchResult: lateInput(ARTIFACTS.researchResult),
   addedRepos: lateInput(ARTIFACTS.addedRepos),
   subtasks: lateInput(ARTIFACTS.subtasks),
   contract: lateInput(ARTIFACTS.contract),
@@ -74,7 +76,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     const prior = await ctx.reread(ARTIFACTS.handoff);
     const { runtime } = this.profile(this.config.env, ctx.opened.run);
     const continued = await resumableChat(root(this.config), key, 'plan-improve', runtime);
-    const impact = await ctx.reread(ARTIFACTS.impact);
+    const impact = storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact));
     const limits = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);
     const maySplit = limits.maySplit;
     const tasks = maySplit ? ((await ctx.reread(ARTIFACTS.subtasks)) ?? []) : [];

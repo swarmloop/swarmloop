@@ -56,6 +56,7 @@ import {
   selectReviewers,
   tallyRound,
 } from './review-round';
+import { storedImpact } from '../shared/research-reads';
 import { ARTIFACTS } from '../contract/artifacts';
 import { CODE_REVIEWERS } from '../../contract/steps';
 
@@ -65,6 +66,7 @@ const INPUTS = {
   requirements: lateInput(ARTIFACTS.requirements),
   repos: lateInput(ARTIFACTS.repos),
   impact: lateInput(ARTIFACTS.impact),
+  researchResult: lateInput(ARTIFACTS.researchResult),
   rebaseConflict: lateInput(ARTIFACTS.rebaseConflict),
 } as const satisfies InputSpec;
 
@@ -258,7 +260,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     writeReviewDiff(root(this.config), key, diff.patch);
     const handoff = await ctx.reread(ARTIFACTS.handoff);
     const plan = approvedPlan(requirements);
-    const impact = await ctx.reread(ARTIFACTS.impact);
+    const impact = storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact));
     const split = opened.run.split;
     const contract = split ? await ctx.reread(ARTIFACTS.contract) : null;
     const keep = split ? await ctx.reread(ARTIFACTS.keep) : null;

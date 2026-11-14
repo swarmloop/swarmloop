@@ -46,7 +46,7 @@ export async function exchangeResult(
       return { result: combineAgentResults(results) ?? last, value };
     }
     if (sent === MAX_RESULT_FOLLOW_UPS) {
-      throw new ResultInvalid(errors);
+      throw new ResultInvalid(errors, (combineAgentResults(results) ?? last).output);
     }
     const next = await again(resultFollowUp(errors));
     results.push(next);

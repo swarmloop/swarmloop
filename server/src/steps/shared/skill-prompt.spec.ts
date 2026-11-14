@@ -30,13 +30,13 @@ describe('summaryOr', () => {
 describe('impact skill rules', () => {
   it('research holds the impact section, the question form and the naming rule', () => {
     const text = skill('research');
-    expect(text).toContain('- <capability> | <file> | kept | changed | removed | unreachable');
+    expect(text).toContain('`impact` has one entry per capability');
     expect(text).toContain('This change makes <capability> <unreachable|go away|change>. Is that intended?');
     expect(text).toContain('`Removes` or `Behavior change` section');
     expect(text).toContain('answered `yes`');
     expect(text).toContain('removed (named)');
     expect(text).toContain('Dead code that nothing relies on');
-    expect(text.indexOf('impact:\n- capability')).toBeLessThan(text.indexOf('summary:\n- why'));
+    expect(text).not.toContain('summary:\n- why');
   });
 
   it('plan skills hold the keep: item format and the stop-with-question rule', () => {
@@ -294,8 +294,14 @@ describe('needs: a task that needs a sibling waits for it', () => {
     expect(plan).not.toMatch(/^- .*stop and report/im);
   });
 
-  it.each(['research', 'plan', 'implement'])('%s says when and how to write needs:', (name) => {
+  it.each(['plan', 'implement'])('%s says when and how to write needs:', (name) => {
     expect(skill(name)).toContain('`- <id>: <what it needs from that task>`');
+  });
+
+  it('research says when to send needs, and leaves the format to the result schema', () => {
+    const text = skill('research');
+    expect(text).toContain('Then send `needs` and nothing else');
+    expect(text).not.toContain('`- <id>: <what it needs from that task>`');
   });
 
   it('limits a fix that makes a job pass to the files of the task and leaves a red job of a sibling alone', () => {

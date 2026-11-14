@@ -15,13 +15,15 @@ import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS
 import { AgentLauncher } from '../shared/agent-launcher';
 import { isSubtask } from '../../contract/subtask';
 import { assumptions, withContract, withHandoff } from '../shared/handoff';
-import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
+import { skillPrompt } from '../shared/skill-prompt';
 import { resumableChat } from '../../agent/agent-session';
 import { projectRules } from '../shared/project-rules';
 import { mountsForStep } from '../../git/repo-names';
-import { parseImpact, parseResearch, renderImpact } from './research-record';
-import { needsWait, parseNeeds } from '../shared/needs';
-import { RESEARCH_CONTINUE } from './research.prompts';
+import { renderImpact, renderQuestions } from './research-record';
+import { needsWait } from '../shared/needs';
+import { researchContinue } from './research.prompts';
+import { research, type ResearchResult } from '../../agent-result/definitions/research';
+import { resultPromptFor } from '../../agent-result/result-prompt';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
@@ -37,7 +39,13 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
   readonly name: StepName = 'research';
   override readonly capabilities: StepCapabilities = { revisesRequirements: true };
 
-  readonly outputs = [ARTIFACTS.questions, ARTIFACTS.repos, ARTIFACTS.impact, ARTIFACTS.needs];
+  readonly outputs = [
+    ARTIFACTS.questions,
+    ARTIFACTS.repos,
+    ARTIFACTS.impact,
+    ARTIFACTS.needs,
+    ARTIFACTS.researchResult,
+  ];
 
   constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
     super(kernel, sandbox, launcher);
@@ -70,47 +78,55 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       await this.parentContract(ctx.opened.run),
     );
     const mounts = mountsForStep(root(this.config), ctx.opened.run.key, names, null);
-    const promptFor = (runtime: string, received: boolean): string =>
-      skillPrompt('research', input.requirements, names, sections, mounts, {
-        rules: projectRules(names, mounts, runtime, received),
-      });
+    // Research opens the chat it shares with plan, so a stored chat has had the research result prompt.
+    const promptFor = (runtime: string, received: string | null): string =>
+      [
+        skillPrompt('research', input.requirements, names, sections, mounts, {
+          rules: projectRules(names, mounts, runtime, received !== null),
+        }),
+        resultPromptFor(research, received),
+      ].join('\n\n');
     const { runtime } = this.profile(this.config.env, ctx.opened.run);
     const chat = await resumableChat(root(this.config), ctx.opened.run.key, 'research', runtime);
+    const received = chat?.chatId ? research.name : null;
     const subtask = isSubtask(ctx.opened.run);
     const agentResult = await ctx.launch({
-      prompt: promptFor(runtime, !!chat?.chatId),
-      briefFor: (other) => promptFor(other, false),
+      prompt: promptFor(runtime, received),
+      briefFor: (other) => promptFor(other, null),
       mounts,
-      continuePrompt: RESEARCH_CONTINUE,
-      sections: ['questions'],
-      validate: (text) => {
-        if (!subtask || parseNeeds(text).length === 0) parseResearch(text);
-      },
+      continuePrompt: researchContinue(received),
+      result: research,
     });
-    const needs = subtask ? parseNeeds(agentResult.responseText) : [];
+    const result = agentResult.resultValue as ResearchResult;
+    const needs = subtask ? (result.needs ?? []) : [];
     if (needs.length > 0) {
       await ctx.write(ARTIFACTS.repos, ARTIFACTS.repos.parse(renderProjects(names)));
       const wait = needsWait(ctx.opened.startedAt, needs);
-      return { ...wait, outputs: [{ artifact: ARTIFACTS.questions, value: '' }, ...wait.outputs] };
+      return {
+        ...wait,
+        outputs: [
+          { artifact: ARTIFACTS.questions, value: '' },
+          ...wait.outputs,
+          { artifact: ARTIFACTS.researchResult, value: result },
+        ],
+      };
     }
     if (subtask) await ctx.write(ARTIFACTS.needs, '');
-    const parsed = parseResearch(agentResult.responseText);
-    const impact = parseImpact(agentResult.responseText);
+    const questions = renderQuestions(result.questions);
     const repos = renderProjects(names);
     // A subtask waits once, and only while its parent's planner can answer. Otherwise it decides its questions
     // itself and records them as assumptions: no subtask waits for a person.
     const { run } = ctx.opened;
     const parent = isSubtask(run) ? await this.runs.findById(run.parentRunId as number) : null;
-    const paused = parsed.questions !== '' && (!subtask || (parent?.split === true && !answers.trim()));
-    const assumed = subtask && !paused ? assumptions(parsed.questions) : '';
+    const paused = questions !== '' && (!subtask || (parent?.split === true && !answers.trim()));
+    const assumed = subtask && !paused ? assumptions(questions) : '';
     await ctx.write(ARTIFACTS.repos, ARTIFACTS.repos.parse(repos));
-    const detail = [(paused ? parsed.questions : repos).trimEnd(), ...impact.notes].join('\n');
+    const detail = (paused ? questions : repos).trimEnd();
     const word = paused ? 'waiting' : 'done';
     const summary = [
-      summaryOr(
-        agentResult.responseText,
-        plainSummary(agentResult.responseText) || `- chose ${repos.trim().split('\n').join(', ')}`,
-      ),
+      result.summary.length > 0
+        ? `${result.summary.map((line) => `- ${line}`).join('\n')}\n`
+        : `- chose ${repos.trim().split('\n').join(', ')}`,
       assumed,
     ]
       .filter(Boolean)
@@ -119,8 +135,9 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       route: paused ? { to: 'wait', reason: 'questions are open' } : { to: 'next' },
       summary: `${ctx.opened.startedAt} research ${word}\n${detail}`,
       outputs: [
-        { artifact: ARTIFACTS.questions, value: subtask && !paused ? '' : parsed.questions },
-        { artifact: ARTIFACTS.impact, value: renderImpact(impact.items) },
+        { artifact: ARTIFACTS.questions, value: subtask && !paused ? '' : questions },
+        { artifact: ARTIFACTS.impact, value: renderImpact(result.impact) },
+        { artifact: ARTIFACTS.researchResult, value: result },
       ],
       handoff: summary,
     };

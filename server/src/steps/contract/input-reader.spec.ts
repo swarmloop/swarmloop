@@ -75,4 +75,13 @@ describe('input reader', () => {
     rows.push({ id: 3, kind: 'ci_rerun', body: '2' });
     expect(await reader.newer('K', ARTIFACTS.ciRerun, ARTIFACTS.commit)).toBe(true);
   });
+
+  it('reads a late research result through its codec', async () => {
+    const value = { summary: ['why'], questions: [], impact: [] };
+    const { reader } = store({ research_result: JSON.stringify(value) });
+    expect(await reader.reread('K', ARTIFACTS.researchResult)).toEqual(value);
+    expect(
+      await reader.read('K', { result: { artifact: ARTIFACTS.researchResult, need: 'optional', late: true } }),
+    ).toEqual({});
+  });
 });

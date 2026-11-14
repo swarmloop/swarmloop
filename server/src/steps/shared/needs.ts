@@ -1,27 +1,12 @@
 import { ERROR_CODES } from '../../contract/error-codes';
 import type { StepResult } from '../contract/step-contract';
 import { ARTIFACTS } from '../contract/artifacts';
-import { items, section } from './markdown-section';
+import type { Need, ResearchResult } from '../../agent-result/definitions/research';
+import { parseNeeds } from '../../agent-result/legacy/needs';
 
-/** A sibling task that a task needs before it can go on, and what it needs from it. */
-export interface Need {
-  id: string;
-  what: string;
-}
+export type { Need };
 
-/** The `needs:` section of an answer: one `- <id>: <what>` line per sibling task. A line of another shape is dropped. */
-export function parseNeeds(text: string): Need[] {
-  const found: Need[] = [];
-  for (const line of items(section(text, 'needs') ?? '')) {
-    const match = /^`?([^\s:`]+)`?\s*:\s*(.+)$/.exec(line);
-    if (match) {
-      found.push({ id: match[1], what: match[2].trim() });
-    }
-  }
-  return found;
-}
-
-/** The stored body of the needs. It reads back through `parseNeeds`. An empty list is an empty body. */
+/** The stored body of the needs. An empty list is an empty body. */
 export function renderNeeds(needs: Need[]): string {
   return needs.length === 0 ? '' : `needs:\n${needs.map((need) => `- ${need.id}: ${need.what}`).join('\n')}\n`;
 }
@@ -39,4 +24,14 @@ export function needsWait(startedAt: string, needs: Need[]): StepResult {
     summary: `${startedAt} ${reason}`,
     outputs: [{ artifact: ARTIFACTS.needs, value: renderNeeds(needs) }],
   };
+}
+
+/**
+ * The needs a subtask's run holds. Research and plan both write `needs`, and the server clears it, so the object of
+ * `research_result` counts only while the stored body is what it rendered; any other body is read as it was written.
+ */
+export function storedNeeds(needsBody: string, result: ResearchResult | null): Need[] {
+  if (!needsBody.trim()) return [];
+  if (result?.needs && needsBody === renderNeeds(result.needs)) return result.needs;
+  return parseNeeds(needsBody);
 }

@@ -3,10 +3,13 @@ import { ERROR_CODES } from '../contract/error-codes';
 import { actionsFor, NEEDS_PERSON, REASON } from '../contract/run-state';
 import { deriveState, writeRunState } from '../history/run-state';
 import { CommandService } from '../pipeline/command.service';
+import { DocumentRepository } from '../history/document.repository';
+import { RunQueriesService } from '../api/run-queries.service';
 import { RunRepository } from '../history/run.repository';
 import { createFlowHarness } from './flow-harness';
 import { assertInvariants } from './flow-invariants';
-import { git } from './runs.spec-helpers';
+import { BlockAgentRunner, DEFAULT_RESEARCH, type ScriptedAnswer } from './result-answer';
+import { git, remember } from './runs.spec-helpers';
 
 const KEY = 'PROJ-440';
 const GB = 1024 ** 3;
@@ -133,3 +136,82 @@ describe('a run that needs a person ends in a state the person clears', () => {
     expect((await stateNow()).state).toBe('done');
   });
 });
+
+describe('research answers in result blocks', () => {
+  const IMPACT_BAD = { impact: [{ capability: 'stop button', file: 'stop.tsx', status: 'maybe' }] };
+  const research = (over: Record<string, unknown> = {}) => ({ ...DEFAULT_RESEARCH, ...over });
+  let flow: Awaited<ReturnType<typeof createFlowHarness>>;
+  let blocks: BlockAgentRunner;
+
+  async function start(script: ScriptedAnswer[]): Promise<void> {
+    blocks = new BlockAgentRunner({ research: script }, { research: DEFAULT_RESEARCH });
+    flow = await createFlowHarness(KEY, { blocks });
+    const run = await remember(
+      flow.app.app.get(RunRepository),
+      flow.app.app.get(DocumentRepository),
+      KEY,
+      'research',
+      'waiting',
+    );
+    await flow.app.app.get(RunRepository).saveRun(run);
+  }
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await flow.close();
+  });
+
+  const find = async () => (await flow.app.app.get(RunRepository).findRun(KEY))!;
+  const researchPrompts = () => blocks.prompts.filter((item) => item.step === 'research');
+
+  it('goes on after one invalid block is fixed by the follow-up', async () => {
+    await start([{ block: research(IMPACT_BAD) }, { block: research() }]);
+
+    await flow.app.pipeline.step('research', KEY);
+    await flow.app.pipeline.whenIdle(KEY);
+
+    expect(researchPrompts()).toHaveLength(2);
+    expect(researchPrompts()[1].prompt).toContain('impact.0.status');
+    expect((await find()).currentStep).toBe('plan');
+    expect((await stateOf(flow, KEY)).state).not.toBe('failed');
+  });
+
+  it('shows the errors of three invalid answers, and a person retry gets past them', async () => {
+    await start([{ block: research(IMPACT_BAD) }, { block: research(IMPACT_BAD) }, { block: research(IMPACT_BAD) }]);
+
+    await flow.app.pipeline.step('research', KEY);
+    await flow.app.pipeline.whenIdle(KEY);
+
+    const failed = await stateOf(flow, KEY);
+    expect(failed.state).toBe('failed');
+    expect(failed.reason).toContain('impact.0.status');
+    expect((await find()).currentStep).toBe('research');
+
+    await flow.person('resume');
+
+    expect((await stateOf(flow, KEY)).state).toBe('done');
+  });
+
+  it('waits on research questions, takes the answers of a person and goes on', async () => {
+    await start([{ block: research({ questions: ['Which field is optional?'] }) }]);
+
+    await flow.app.pipeline.step('research', KEY);
+    await flow.app.pipeline.whenIdle(KEY);
+    expect((await stateOf(flow, KEY)).items.map((item) => item.id)).toEqual(['Which field is optional?']);
+    expect((await find()).currentStep).toBe('research');
+
+    await flow.app.app
+      .get(CommandService)
+      .submit('answer', KEY, { answers: [{ kind: 'question', id: 'Which field is optional?', body: 'the column' }] });
+    await flow.app.pipeline.whenIdle(KEY);
+
+    expect(researchPrompts()).toHaveLength(2);
+    expect(researchPrompts()[1].prompt).toContain('the column');
+    expect((await stateOf(flow, KEY)).state).toBe('done');
+  });
+});
+
+/** What the run view shows of the run: its state, the visible reason and the open items. */
+function stateOf(flow: Awaited<ReturnType<typeof createFlowHarness>>, key: string) {
+  return flow.app.app.get(RunQueriesService).flow(key);
+}

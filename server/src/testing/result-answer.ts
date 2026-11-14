@@ -3,6 +3,9 @@ import type { AgentRunResult } from '../agent/agent-result';
 
 const FENCE = '```';
 
+/** The research result of a run with nothing to ask, nothing at stake and no sibling to wait for. */
+export const DEFAULT_RESEARCH = { summary: ['researched the change'], questions: [], impact: [] };
+
 /** The final text of an agent that ends with its result block: prose for people, a blank line, then the block. */
 export function resultAnswer(prose: string, value: unknown): string {
   return `${prose}\n\n${FENCE}json\n${JSON.stringify(value)}\n${FENCE}`;

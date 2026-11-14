@@ -30,7 +30,7 @@
   "flows": [],
   "loopEvents": [],
   "reads": {
-    "plan": ["requirements", "questions", "answers"]
+    "plan": ["requirements", "questions", "answers", "research_result"]
   },
   "run": {
     "agentCalls": 0,

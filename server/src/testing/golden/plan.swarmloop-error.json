@@ -46,7 +46,17 @@
   "flows": [],
   "loopEvents": [],
   "reads": {
-    "plan": ["requirements", "questions", "answers", "repos", "handoff", "impact", "added_repos", "instructions:plan"]
+    "plan": [
+      "requirements",
+      "questions",
+      "answers",
+      "research_result",
+      "repos",
+      "handoff",
+      "impact",
+      "added_repos",
+      "instructions:plan"
+    ]
   },
   "run": {
     "agentCalls": 0,

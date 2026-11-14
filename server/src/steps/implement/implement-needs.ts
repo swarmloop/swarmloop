@@ -1,7 +1,8 @@
 import type { RunEntity } from '../../history/entities';
 import { isSubtask } from '../../contract/subtask';
 import type { StepResult } from '../contract/step-contract';
-import { needsWait, parseNeeds } from '../shared/needs';
+import { parseNeeds } from '../../agent-result/legacy/needs';
+import { needsWait } from '../shared/needs';
 
 /**
  * The result of an implement visit whose answer ends with `needs:`: the subtask waits for a sibling task and nothing is

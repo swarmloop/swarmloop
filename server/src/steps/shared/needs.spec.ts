@@ -1,34 +1,26 @@
 import { ERROR_CODES } from '../../contract/error-codes';
-import { needsWait, parseNeeds, renderNeeds } from './needs';
+import { needsWait, renderNeeds, storedNeeds } from './needs';
 
 describe('needs', () => {
-  it('reads one need per line and drops a malformed line', () => {
-    const text = [
-      'summary:',
-      '- chose x',
-      '',
-      'needs:',
-      '- http-retry: the retry policy',
-      '- no colon here',
-      '- `reasons-core`: codes',
-    ].join('\n');
+  it('takes the needs of the research result while the stored body is what it rendered', () => {
+    const needs = [{ id: 'a', what: 'the policy: with a colon' }];
+    const result = { summary: [], questions: [], impact: [], needs };
 
-    expect(parseNeeds(text)).toEqual([
-      { id: 'http-retry', what: 'the retry policy' },
-      { id: 'reasons-core', what: 'codes' },
-    ]);
-  });
-
-  it('gives none when the section is absent or says none', () => {
-    expect(parseNeeds('summary:\n- done')).toEqual([]);
-    expect(parseNeeds('needs:\n- none')).toEqual([]);
-  });
-
-  it('reads back what it renders', () => {
-    const needs = [{ id: 'a', what: 'the policy' }];
-
-    expect(parseNeeds(renderNeeds(needs))).toEqual(needs);
+    expect(storedNeeds(renderNeeds(needs), result)).toEqual(needs);
     expect(renderNeeds([])).toBe('');
+  });
+
+  it('reads a body that is not the render of the result as it was written', () => {
+    const result = { summary: [], questions: [], impact: [], needs: [{ id: 'a', what: 'old' }] };
+
+    expect(storedNeeds('needs:\n- b: from plan\n', result)).toEqual([{ id: 'b', what: 'from plan' }]);
+    expect(storedNeeds('needs:\n- b: from plan\n', null)).toEqual([{ id: 'b', what: 'from plan' }]);
+  });
+
+  it('gives none for an empty body, whatever the result holds', () => {
+    const result = { summary: [], questions: [], impact: [], needs: [{ id: 'a', what: 'old' }] };
+
+    expect(storedNeeds('', result)).toEqual([]);
   });
 
   it('waits at the step that asked and says what for', () => {
