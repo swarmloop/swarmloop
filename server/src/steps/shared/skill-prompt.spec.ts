@@ -200,7 +200,8 @@ describe('implement skill rules', () => {
     expect(text).toContain('A new responsibility goes in its own file, named for it.');
     expect(text).toContain('is split by responsibility, never squeezed');
     expect(text).toContain('search the tree for one that does the same and use it');
-    expect(text).toContain("also run the project's quick checks that apply to the change");
+    expect(text).toContain('also run every check of `.swarmloop.json` that is not a long test suite');
+    expect(text).toContain('let it fix the files you changed');
   });
 
   it('returns the quality review on squeezed code and on duplicated logic', () => {
