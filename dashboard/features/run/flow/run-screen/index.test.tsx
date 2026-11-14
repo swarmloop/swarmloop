@@ -74,6 +74,7 @@ describe('RunScreen', () => {
         tasks: [
           {
             id: 'a',
+            index: 0,
             title: 'Add the column',
             files: ['a.ts'],
             proof: 'a.spec.ts',
@@ -87,6 +88,7 @@ describe('RunScreen', () => {
         tasks: [
           {
             id: 'b',
+            index: 1,
             title: 'Send it',
             files: ['b.ts', 'c.ts'],
             proof: 'b.spec.ts',
@@ -109,14 +111,17 @@ describe('RunScreen', () => {
     const tasks = [
       {
         layer: 0,
-        tasks: [{ id: 'a', title: 'Add the column', files: [], proof: 'a', depends: [], status: 'merged' as const }],
+        tasks: [
+          { id: 'a', index: 0, title: 'Add the column', files: [], proof: 'a', depends: [], status: 'merged' as const },
+        ],
       },
       {
         layer: 1,
         tasks: [
-          { id: 'b', title: 'Send it', files: [], proof: 'b', depends: [], status: 'blocked' as const },
+          { id: 'b', index: 1, title: 'Send it', files: [], proof: 'b', depends: [], status: 'blocked' as const },
           {
             id: 'c',
+            index: 2,
             title: 'Show it',
             files: [],
             proof: 'c',
@@ -149,6 +154,7 @@ describe('RunScreen', () => {
         tasks: [
           {
             id: 'b',
+            index: 0,
             title: 'Send it',
             files: [],
             proof: 'b',
@@ -182,6 +188,7 @@ describe('RunScreen', () => {
             tasks: [
               {
                 id: 'a',
+                index: 0,
                 title: 'Add the column',
                 files: [],
                 proof: 'a',

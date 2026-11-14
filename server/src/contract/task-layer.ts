@@ -6,6 +6,8 @@ export interface TaskLayer {
   layer: number;
   tasks: {
     id: string;
+    /** The position of the task in the plan, the order the run list shows its tasks in. */
+    index: number;
     title: string;
     files: string[];
     proof: string;

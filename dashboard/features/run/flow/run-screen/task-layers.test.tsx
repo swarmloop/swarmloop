@@ -11,6 +11,7 @@ import { TaskLayers } from './task-layers';
 const manyFiles = Array.from({ length: 16 }, (_, index) => `server/src/file-${index}.ts`);
 const task = (id: string, extra: Partial<TaskLayer['tasks'][number]> = {}): TaskLayer['tasks'][number] => ({
   id,
+  index: Number(id.slice(1)),
   title: `Title ${id}`,
   files: [`${id}.ts`],
   proof: `${id}.spec.ts passes`,
@@ -132,12 +133,8 @@ describe('TaskLayers', () => {
   });
 
   it('gives the same task order in the run list and in the Tasks section', async () => {
-    const parent = {
-      ...runSummary(),
-      key: 'e-1',
-      name: 'Epic parent',
-      taskCounts: { merged: 1, running: 1, blocked: 1 },
-    };
+    // The plan is A, B (needs A), C. By stage the page would see A, C, B; the plan puts B before C.
+    const parent = { ...runSummary(), key: 'e-1', name: 'Epic parent', taskCounts: { merged: 1, running: 2 } };
     const subtask = (id: string, index: number, status: SubtaskStatus, state: RunState) => ({
       ...runSummary(),
       key: `e-1-${id}`,
@@ -148,29 +145,31 @@ describe('TaskLayers', () => {
       task: { index, status },
     });
     const merged = subtask('A', 0, 'merged', 'merged');
-    const running = subtask('B', 1, 'running', 'running');
-    const blocked = {
-      ...subtask('C', 2, 'blocked', 'blocked'),
-      stateReason: { code: 'BLOCKED', message: 'Needs you' },
-    };
-    const runs = [parent, merged, running, blocked];
+    const second = subtask('B', 1, 'running', 'running');
+    const third = subtask('C', 2, 'running', 'running');
     const titles = () => screen.getAllByText(/^Task [ABC]$/).map((node) => node.textContent);
-    renderRunList(runs);
+    renderRunList([parent, merged, second, third]);
+    await userEvent.click(screen.getByRole('button', { name: 'Expand subtasks of Epic parent' }));
     await userEvent.click(screen.getByRole('button', { name: /^✓ 1 merged/ }));
     const inList = titles();
     cleanup();
 
-    const planned = [merged, running, blocked].map((run) => ({
+    const planned = (run: typeof merged, depends: string[] = []) => ({
       id: run.taskId,
+      index: run.task.index,
       title: run.name,
       files: [],
       proof: '',
-      depends: [],
+      depends,
       status: run.task.status,
-    }));
-    render(<TaskLayers layers={[{ layer: 0, tasks: planned }]} onSkip={vi.fn()} />);
+    });
+    const byStage = [
+      { layer: 0, tasks: [planned(merged), planned(third)] },
+      { layer: 1, tasks: [planned(second, ['A'])] },
+    ];
+    render(<TaskLayers layers={byStage} onSkip={vi.fn()} />);
 
-    expect(inList).toEqual(['Task C', 'Task B', 'Task A']);
+    expect(inList).toEqual(['Task B', 'Task C', 'Task A']);
     expect(titles()).toEqual(inList);
   });
 
@@ -198,6 +197,7 @@ describe('TaskLayers', () => {
 
     const planned = subtasks.map((run) => ({
       id: run.taskId,
+      index: run.task.index,
       title: run.name,
       files: [],
       proof: '',

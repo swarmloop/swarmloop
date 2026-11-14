@@ -35,7 +35,8 @@ export function TaskLayers({
   decisions?: string;
   onSkip: (taskId: string) => void;
 }): ReactElement {
-  const tasks = layers.flatMap((layer) => layer.tasks);
+  // Plan order, as the run list gives them to `orderTasks`, not the order of the layers.
+  const tasks = layers.flatMap((layer) => layer.tasks).sort((a, b) => a.index - b.index);
   const merged = tasks.filter((task) => task.status === 'merged').length;
   const { open, settled } = orderTasks(tasks, (task) =>
     taskGroup(task.status, task.run !== undefined && needsPerson(task.run.state, task.run.stateReason)),
