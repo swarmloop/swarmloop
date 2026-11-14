@@ -1,12 +1,10 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { assertAgents } from './config/agents';
 import { AppConfig } from './config/env';
-import { assertEnvFile } from './config/load-env';
-import { resolveRepoRoot } from './config/repo-root';
+import { applySettings, assertSettings, readSettings } from './config/load-env';
 import { secureHttp } from './api/request-guard';
 import { Clock } from './core/clock';
 import { warmRuntimeModelLists } from './pipeline/model-lists.bootstrap';
@@ -18,13 +16,15 @@ import { allowedOrigins } from './live/origins';
 import { SandboxService } from './sandbox/sandbox.service';
 
 async function bootstrap(): Promise<void> {
-  const envError = assertEnvFile(join(resolveRepoRoot(undefined, __dirname), '.env'));
-  if (envError) {
-    fail(envError);
-    return;
-  }
-  const { ApiModule } = await import('./api/api.module');
   try {
+    const settings = readSettings();
+    const envError = assertSettings(settings);
+    if (envError) {
+      fail(envError);
+      return;
+    }
+    applySettings(settings);
+    const { ApiModule } = await import('./api/api.module');
     const app = await NestFactory.create<NestExpressApplication>(ApiModule, {
       logger: ['error', 'warn', 'log'],
       bodyParser: false,

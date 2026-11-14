@@ -6,7 +6,7 @@ import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { git } from '../git/git';
 import { root } from '../history/run-paths';
-import { listGitProjects, resolveCheckoutPath } from '../config/checkout-path';
+import { listGitProjects, resolveCheckoutPath, resolveCheckoutsRoot } from '../config/checkout-path';
 import { CheckoutService } from '../steps/shared/checkout.service';
 import { DiskGuard } from './disk-guard';
 import { OwnUseMeter } from './own-use-meter';
@@ -39,6 +39,7 @@ export class Housekeeping implements OnModuleDestroy {
    */
   async startup(): Promise<void> {
     void this.measureSizes();
+    this.logCheckouts();
     try {
       await this.tidyRegistrations();
     } catch (error) {
@@ -51,6 +52,24 @@ export class Housekeeping implements OnModuleDestroy {
     await this.retention.apply(this.config.env.RETAIN_DONE_DAYS);
     mkdirSync(join(root(this.config), 'data'), { recursive: true });
     writeFileSync(marker, `${this.clock.iso()}\n`);
+  }
+
+  /** Says which folder the checkouts come from and which projects it offers, so a wide default shows at once. Never throws. */
+  private logCheckouts(): void {
+    const { CHECKOUTS_ROOT, SWARMLOOP_REPOS } = this.config.env;
+    let folder: string | null = null;
+    try {
+      const base = root(this.config);
+      folder = resolveCheckoutsRoot(base, CHECKOUTS_ROOT);
+      const names = listGitProjects(base, CHECKOUTS_ROOT, SWARMLOOP_REPOS);
+      this.logger.log(`checkouts in ${folder}: ${names.length > 0 ? names.join(', ') : 'none'}`);
+    } catch (error) {
+      this.logger.warn(
+        folder
+          ? `checkouts folder ${folder} is missing or unreadable: ${String(error)}`
+          : `checkouts not found: ${String(error)}`,
+      );
+    }
   }
 
   /** Every 10 minutes: the sizes for readiness. Once a day: dangling images and old build cache. Every `MERGE_WATCH_MIN` minutes: the workspaces of merged and closed runs. */

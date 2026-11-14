@@ -44,7 +44,7 @@ describe('resume of a limit block', () => {
   });
 
   it('accepts Resume of SPEND_LIMIT, checks the spend again and goes on once MAX_RUN_USD is raised', async () => {
-    const app = await createTestApp();
+    const app = await createTestApp({ env: { MAX_RUN_USD: '25' } });
     try {
       await block(
         app,

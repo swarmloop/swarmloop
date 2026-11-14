@@ -103,11 +103,7 @@ describe('the agents of an epic parent and of its subtasks', () => {
 
   beforeEach(async () => {
     app = await createTestApp({
-      env: {
-        EPIC_EFFORT: 'xhigh',
-        AGENTS_PLAN: 'claude:claude-opus-5-5:high',
-        AGENTS_SUBTASK_PLAN: 'claude:claude-sonnet-5-5:medium',
-      },
+      env: { AGENTS_SUBTASK_PLAN: 'claude:claude-sonnet-5-5:medium' },
     });
   });
 

@@ -31,7 +31,7 @@ interface GoldenOptions {
 /** A fresh root, a pinned clock, and the repositories a real step is built from. `documents` records every kind read. */
 export async function goldenApp(prefix: string, options: GoldenOptions = {}) {
   const root = await mkdtemp(join(tmpdir(), `swarmloop-${prefix}-`));
-  await writeEnv(root);
+  await writeEnv(root, undefined, { EPIC_EFFORT: '' });
   for (const path of options.worktrees ?? []) mkdirSync(join(root, 'worktrees', path), { recursive: true });
   const builder = Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],

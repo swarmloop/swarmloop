@@ -1,10 +1,13 @@
 import 'reflect-metadata';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
 import { mkdir, mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { SwarmloopConfigModule } from '../config/config.module';
 import { testEnv } from '../config/env.spec-helpers';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
+import { SettingSources } from '../config/setting-sources';
 import { SystemClock } from '../core/clock';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import type { SettingsBody } from '../contract/api';
@@ -39,7 +42,7 @@ async function cachePrices(root: string, runtime: string, models: string[]): Pro
   );
 }
 
-async function world(extra: Partial<SwarmloopEnv> = {}) {
+async function world(extra: Partial<SwarmloopEnv> = {}, sources = new SettingSources({})) {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-settings-'));
   const app = await boot(root);
   const env = testEnv({
@@ -56,7 +59,7 @@ async function world(extra: Partial<SwarmloopEnv> = {}) {
   const config = new AppConfig(env);
   const clock = new SystemClock();
   const credentials = new PersonalCredentials(app.get(IntegrationSecretRepository), new SecretBox('k'), clock, config);
-  const controller = new SettingsController(new SettingsService(config, repo, clock, credentials));
+  const controller = new SettingsController(new SettingsService(config, repo, clock, credentials, sources));
   return { app, repo, controller, env, root, credentials };
 }
 
@@ -248,6 +251,55 @@ describe('settings', () => {
       expect(named.MAX_RUN_USD).toBe(String(testEnv().MAX_RUN_USD));
       expect(JSON.stringify(view)).not.toMatch(/sk-secret-anthropic|top-secret-value/);
     } finally {
+      await app.close();
+    }
+  });
+
+  it('shows where each setting comes from, with secrets still masked', async () => {
+    const sources = new SettingSources({
+      MAX_RUN_USD: 'environment',
+      SWARMLOOP_SECRET: '.env',
+      PROJECT_HOSTS_ALLOW: '.env',
+      SANDBOX_EGRESS: 'default',
+    });
+    const { app, controller } = await world({}, sources);
+    try {
+      const server = (await controller.read('alice')).server;
+      const found = (name: string) => server.find((entry) => entry.name === name);
+      expect(found('MAX_RUN_USD')?.source).toBe('environment');
+      expect(found('SANDBOX_EGRESS')?.source).toBe('default');
+      expect(found('PROJECT_HOSTS_ALLOW')?.source).toBe('.env');
+      expect(found('SWARMLOOP_SECRET')).toMatchObject({ source: '.env', value: 'set' });
+      expect(found('SWARMLOOP_TOKEN')).toMatchObject({ source: 'default', value: 'not set' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('shows the source of each boot on its own', async () => {
+    const { app, repo, root, credentials } = await world();
+    const file = join(root, 'sources.env');
+    await writeFile(file, 'MAX_RETURNS=7\n');
+    const first = await Test.createTestingModule({ imports: [SwarmloopConfigModule.forRoot(file, {})] }).compile();
+    const second = await Test.createTestingModule({
+      imports: [SwarmloopConfigModule.forRoot(file, { MAX_RETURNS: '9' })],
+    }).compile();
+    try {
+      const sourceOf = async (module: typeof first) => {
+        const service = new SettingsService(
+          module.get(AppConfig),
+          repo,
+          new SystemClock(),
+          credentials,
+          module.get(SettingSources),
+        );
+        return (await service.view('alice')).server.find((entry) => entry.name === 'MAX_RETURNS');
+      };
+      expect(await sourceOf(first)).toMatchObject({ source: '.env', value: '7' });
+      expect(await sourceOf(second)).toMatchObject({ source: 'environment', value: '9' });
+    } finally {
+      await second.close();
+      await first.close();
       await app.close();
     }
   });

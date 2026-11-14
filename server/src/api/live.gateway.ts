@@ -11,12 +11,13 @@ import { FlowView } from '../contract/api';
 import { ClientToServerEvents, LiveEvents, ServerToClientEvents } from '../contract/live';
 import { RunQueriesService } from '../api/run-queries.service';
 import { LiveHub } from '../live/live.hub';
+import { readDefaultSettings } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
 import { allowedOrigins, originAllowed } from '../live/origins';
 import { AuthService } from '../auth/auth.service';
 import { isAllowedHost } from './allowed-hosts';
 
-const PUBLIC_URL = () => rawEnv().SWARMLOOP_PUBLIC_URL ?? 'http://127.0.0.1:3921';
+const PUBLIC_URL = () => rawEnv().SWARMLOOP_PUBLIC_URL ?? readDefaultSettings().SWARMLOOP_PUBLIC_URL;
 
 /** socket.io handshakes bypass Express middleware, so the Host and Origin rules are applied here. */
 export function allowHandshake(

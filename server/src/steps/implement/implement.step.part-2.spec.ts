@@ -5,7 +5,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 
-import { mkdtemp, readFile, writeFile } from 'fs/promises';
+import { mkdtemp } from 'fs/promises';
 
 import { tmpdir } from 'os';
 
@@ -324,11 +324,7 @@ describe('implement step', () => {
 
   it('launches the conflict resolution of an epic parent at the epic effort', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-epic-effort-'));
-    await writeEnv(root);
-    const env = (await readFile(join(root, '.env'), 'utf8'))
-      .replace('AGENTS_IMPLEMENT=cursor:grok-4.7', 'AGENTS_IMPLEMENT=claude:claude-sonnet-5-5:high')
-      .replace('EPIC_EFFORT=', 'EPIC_EFFORT=xhigh');
-    await writeFile(join(root, '.env'), env);
+    await writeEnv(root, undefined, { AGENTS_IMPLEMENT: 'claude:claude-sonnet-5-5:high', EPIC_EFFORT: 'xhigh' });
     const tree = conflictedTree(root, 'PROJ-69', 'billing-api');
     const agent = jest.fn(async (input: AgentRunInput) => {
       if (input.prompt.includes('The commit being replayed is')) {

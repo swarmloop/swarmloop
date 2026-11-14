@@ -1,16 +1,17 @@
 import 'reflect-metadata';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { Repository } from 'typeorm';
+import { writeEnvOverrides } from '../../testing/env.spec-helpers';
 import { DocumentEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import type { AgentRunInput } from '../../agent/agent-runner';
 import { resultAnswer } from '../../testing/result-answer';
-import { boot, result, seed, storedTasks, writeEnv } from './plan-improve.step.spec-helpers';
+import { boot, result, seed, storedTasks } from './plan-improve.step.spec-helpers';
 import { PipelineService } from '../../pipeline/pipeline.service';
 
 const improved = (items: string[], extra: Record<string, unknown> = {}): string =>
@@ -54,8 +55,11 @@ describe('plan-improve step', () => {
 
   it('asks a runtime without a plan tool for a plan section, and names no plan tool', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-'));
-    await writeEnv(root);
-    writeFileSync(join(root, '.env'), readFileSync(join(root, '.env'), 'utf8').replaceAll('=cursor:', '=claude:'));
+    await writeEnv(root, {
+      AGENTS_PLAN: 'claude:opus-5.5-extra-high',
+      AGENTS_IMPLEMENT: 'claude:grok-4.7',
+      AGENTS_REVIEW: 'claude:opus-5.5-extra-high',
+    });
     mkdirSync(join(root, 'worktrees', 'PROJ-58', 'billing-api'), { recursive: true });
     const agent = jest.fn().mockResolvedValue(result(reply));
     const app = await boot(root, agent);
@@ -200,7 +204,7 @@ describe('plan-improve step with split', () => {
     options: { split?: boolean; tasks?: boolean; stored?: typeof storedTasks; keep?: string } = {},
   ) {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-split-'));
-    await writeEnv(root);
+    await writeEnv(root, { EPIC_EFFORT: '' });
     mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
     const agent = jest.fn().mockResolvedValue(result(answer));
     const app = await boot(root, agent);
@@ -355,3 +359,19 @@ describe('plan-improve step with split', () => {
     expect((out.agent.mock.calls[0]?.[0] as AgentRunInput).prompt).not.toContain('## Split');
   });
 });
+
+async function writeEnv(root: string, overrides: Record<string, string> = {}): Promise<void> {
+  await writeEnvOverrides(root, {
+    REQUIREMENTS_VIA: 'direct',
+    GITLAB_BASE_URL: '',
+    GITHUB_BASE_URL: '',
+    MAX_AGENT_CALLS: '20',
+    MAX_RETURNS: '3',
+    MAX_RUN_USD: '25',
+    AGENTS_PLAN: 'cursor:opus-5.5-extra-high',
+    AGENTS_IMPLEMENT: 'cursor:grok-4.7',
+    AGENTS_REVIEW: 'cursor:opus-5.5-extra-high',
+    SWARMLOOP_ROOT: root,
+    ...overrides,
+  });
+}

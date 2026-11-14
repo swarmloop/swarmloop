@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { readSettings } from '../config/load-env';
 import type { SkillCommand } from './agent';
 
 export function loadSkills(directory: string): SkillCommand[] {
@@ -16,18 +17,8 @@ export function loadSkills(directory: string): SkillCommand[] {
     }));
 }
 
-export function readCheckoutsRoot(envFile: string): string | undefined {
-  if (!existsSync(envFile)) {
-    return undefined;
-  }
-  const line = readFileSync(envFile, 'utf8')
-    .split('\n')
-    .find((item) => item.startsWith('CHECKOUTS_ROOT='));
-  if (!line) {
-    return undefined;
-  }
-  const value = line.slice('CHECKOUTS_ROOT='.length).trim();
-  return value.length > 0 ? value : undefined;
+export function readCheckoutsRoot(envFile: string, launchEnv?: Readonly<NodeJS.ProcessEnv>): string | undefined {
+  return readSettings(envFile, launchEnv).values.CHECKOUTS_ROOT || undefined;
 }
 
 function describe(body: string, name: string): string {

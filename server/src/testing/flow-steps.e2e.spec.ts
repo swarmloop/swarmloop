@@ -200,7 +200,12 @@ describe('the real implement step in a whole flow', () => {
     flow = await createFlowHarness(IMPLEMENT_KEY, {
       blocks,
       realImplement: 'all',
-      env: { AGENTS_IMPLEMENT: 'claude:m-claude,codex:m-codex', ANTHROPIC_API_KEY: 'key', CODEX_API_KEY: 'key' },
+      env: {
+        AGENTS_IMPLEMENT: 'claude:m-claude,codex:m-codex',
+        AGENTS_REVIEW: 'codex:m-codex',
+        ANTHROPIC_API_KEY: 'key',
+        CODEX_API_KEY: 'key',
+      },
     });
     const delegate = blocks.run.bind(blocks);
     const seen: string[] = [];

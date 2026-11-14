@@ -10,7 +10,7 @@ WORKDIR /app/server
 RUN npm ci
 COPY server/tsconfig.json server/tsconfig.build.json ./
 COPY server/src ./src
-COPY .env.example /app/.env.example
+COPY defaults.env /app/defaults.env
 RUN npm run build && npm prune --omit=dev
 
 # The engine stays on the host. This client talks to the mounted socket.

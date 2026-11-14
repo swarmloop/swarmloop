@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AppConfig, splitList } from '../config/env';
+import { readDefaultSettings } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { SystemClock } from '../core/clock';
@@ -63,7 +64,7 @@ export class SandboxService {
   private async containerCap(): Promise<number | undefined> {
     this.memoryCap ??= await containerMemoryCap(
       (args, timeoutMs) => this.docker(args, timeoutMs),
-      (this.config?.env.RESERVE_MEMORY_GB ?? 2) * 1024 ** 3,
+      (this.config?.env.RESERVE_MEMORY_GB ?? Number(readDefaultSettings().RESERVE_MEMORY_GB)) * 1024 ** 3,
     );
     return this.memoryCap;
   }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Starts compose.yml with .env.example in an empty directory and checks the stack answers.
+# Starts compose.yml alone, with no .env, in an empty directory and checks the stack answers.
 # The caller exports SWARMLOOP_REGISTRY and SWARMLOOP_VERSION of images that are already on this host.
 set -eu
 
@@ -9,14 +9,12 @@ mkdir -p "$work/home" "$work/checkouts/fixture" "$work/stack"
 git -C "$work/checkouts/fixture" init -q
 git -C "$work/checkouts/fixture" -c user.name=ci -c user.email=ci@example.com commit -q --allow-empty -m fixture
 cp "$repo/compose.yml" "$work/stack/compose.yml"
-cp "$repo/.env.example" "$work/stack/.env"
 # No model key is set: the server starts without one and readiness names the runtime.
 # Machine clients send this token as a bearer header. /health needs none.
 token=smoke-machine-token
-sed -i "s/^SWARMLOOP_TOKEN=\$/SWARMLOOP_TOKEN=$token/" "$work/stack/.env"
 auth=(-H "Authorization: Bearer $token")
 cd "$work/stack"
-export SWARMLOOP_HOME="$work/home" CHECKOUTS_ROOT="$work/checkouts"
+export SWARMLOOP_HOME="$work/home" CHECKOUTS_ROOT="$work/checkouts" SWARMLOOP_TOKEN="$token"
 trap 'docker compose logs; docker compose down -v' EXIT
 # Under QEMU a service can be up before it answers: retry the first request to each.
 retry=(--retry 20 --retry-all-errors --retry-delay 3)

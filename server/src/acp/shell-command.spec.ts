@@ -55,7 +55,7 @@ describe('shell config', () => {
     const dir = mkdtempSync(join(tmpdir(), 'swarmloop-env-'));
     const file = join(dir, 'env');
     writeFileSync(file, 'AGENTS_IMPLEMENT=cursor:from-env\nCURSOR_API_KEY=dummy\n');
-    const config = readShellConfig(file);
+    const config = readShellConfig(file, {});
     expect(config.runtime).toBe('cursor');
     expect(config.model).toBe('from-env');
     expect(config.cursorKey).toBe('dummy');
@@ -66,7 +66,7 @@ describe('shell config', () => {
     const dir = mkdtempSync(join(tmpdir(), 'swarmloop-env-'));
     const file = join(dir, 'env');
     writeFileSync(file, 'AGENTS_IMPLEMENT=codex:gpt-6.1-sol\nSANDBOX_DOCKER_RUNTIME=runsc\n');
-    expect(readShellConfig(file).engine).toBe('runsc');
+    expect(readShellConfig(file, {}).engine).toBe('runsc');
   });
 });
 
@@ -75,23 +75,23 @@ describe('shell config without the lists', () => {
     const dir = mkdtempSync(join(tmpdir(), 'swarmloop-env-'));
     const file = join(dir, 'env');
     writeFileSync(file, 'AGENTS_IMPLEMENT=codex:gpt-6.1-sol,cursor:grok-4.7\n');
-    expect(readShellConfig(file)).toMatchObject({ runtime: 'codex', model: 'gpt-6.1-sol' });
+    expect(readShellConfig(file, {})).toMatchObject({ runtime: 'codex', model: 'gpt-6.1-sol' });
   });
 
   it('reads a Cursor agent that names an effort without a model list', () => {
     const dir = mkdtempSync(join(tmpdir(), 'swarmloop-env-'));
     const file = join(dir, 'env');
     writeFileSync(file, 'AGENTS_IMPLEMENT=cursor:grok-4.7:high\n');
-    expect(readShellConfig(file)).toMatchObject({ runtime: 'cursor', model: 'grok-4.7' });
+    expect(readShellConfig(file, {})).toMatchObject({ runtime: 'cursor', model: 'grok-4.7' });
   });
 
   it('names AGENTS_IMPLEMENT when it is missing or invalid', () => {
     const dir = mkdtempSync(join(tmpdir(), 'swarmloop-env-'));
     const file = join(dir, 'env');
-    writeFileSync(file, 'CURSOR_API_KEY=dummy\n');
-    expect(() => readShellConfig(file)).toThrow('AGENTS_IMPLEMENT is missing or invalid');
+    writeFileSync(file, 'AGENTS_IMPLEMENT=\n');
+    expect(() => readShellConfig(file, {})).toThrow('AGENTS_IMPLEMENT is missing or invalid');
     writeFileSync(file, 'AGENTS_IMPLEMENT=cursor\n');
-    expect(() => readShellConfig(file)).toThrow('AGENTS_IMPLEMENT is missing or invalid');
+    expect(() => readShellConfig(file, {})).toThrow('AGENTS_IMPLEMENT is missing or invalid');
   });
 });
 

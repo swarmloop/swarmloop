@@ -4,6 +4,7 @@ import { dirname, join, resolve, sep } from 'path';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { readDefaultSettings } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
 import { EGRESS_API, isLeaseIp } from './egress';
 import {
@@ -184,7 +185,7 @@ export function sandboxUserId(
   if (Number.isInteger(parsed) && parsed > 0) {
     return parsed;
   }
-  return 1000;
+  return Number(readDefaultSettings().SWARMLOOP_UID);
 }
 
 /** A Docker runtime such as `runsc` (gVisor), which gives each sandbox its own kernel. Empty is Docker's default. */

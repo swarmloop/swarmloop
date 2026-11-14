@@ -1,12 +1,13 @@
 import 'reflect-metadata';
 import { StepKernel } from '../step-kernel';
 import { mkdirSync, writeFileSync } from 'fs';
-import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
+import { writeEnvOverrides } from '../../testing/env.spec-helpers';
 import { AppConfig } from '../../config/env';
 import { StepEventLog } from '../../history/step-event.log';
 import { Clock } from '../../core/clock';
@@ -97,7 +98,7 @@ describe('branch step golden traces', () => {
 });
 
 async function boot(root: string) {
-  await writeFile(join(root, '.env'), envText(root));
+  await writeEnvOverrides(root, envOverrides(root));
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   }).compile();
@@ -138,39 +139,17 @@ function worktree(root: string, name: string): string {
   return tree;
 }
 
-function envText(root: string): string {
-  return [
-    'REQUIREMENTS_VIA=direct',
-    'ISSUE_TRACKER=jira',
-    'JIRA_BASE_URL=',
-    'JIRA_EMAIL=',
-    'JIRA_API_TOKEN=',
-    'GITLAB_BASE_URL=',
-    'GITLAB_TOKEN=',
-    'GITHUB_BASE_URL=',
-    'GITHUB_TOKEN=',
-    'CURSOR_API_KEY=',
-    'ANTHROPIC_API_KEY=',
-    'MAX_AGENT_CALLS=20',
-    'MAX_RETURNS=3',
-    'MAX_LAUNCHES=3',
-    'MAX_RUN_USD=25',
-    'IDLE_TIMEOUT_MS=900000',
-    'TICK_MS=15000',
-    'REQUIREMENTS_TIMEOUT_MS=600000',
-    'RESEARCH_TIMEOUT_MS=900000',
-    'PLAN_TIMEOUT_MS=1200000',
-    'IMPLEMENT_TIMEOUT_MS=1800000',
-    'CODE_REVIEW_TIMEOUT_MS=900000',
-    'MERGE_REQUEST_TIMEOUT_MS=600000',
-    'PIPELINE_TIMEOUT_MS=1800000',
-    'PIPELINE_START_TIMEOUT_MS=180000',
-    'AGENTS_PLAN=cursor:opus-5.5-extra-high',
-    'AGENTS_IMPLEMENT=cursor:grok-4.7',
-    'AGENTS_REVIEW=cursor:opus-5.5-extra-high',
-    'SWARMLOOP_API_PORT=3920',
-    'SWARMLOOP_API_HOST=127.0.0.1',
-    `SWARMLOOP_ROOT=${root}`,
-    '',
-  ].join('\n');
+function envOverrides(root: string): Record<string, string> {
+  return {
+    REQUIREMENTS_VIA: 'direct',
+    GITLAB_BASE_URL: '',
+    GITHUB_BASE_URL: '',
+    MAX_AGENT_CALLS: '20',
+    MAX_RETURNS: '3',
+    MAX_RUN_USD: '25',
+    AGENTS_PLAN: 'cursor:opus-5.5-extra-high',
+    AGENTS_IMPLEMENT: 'cursor:grok-4.7',
+    AGENTS_REVIEW: 'cursor:opus-5.5-extra-high',
+    SWARMLOOP_ROOT: root,
+  };
 }

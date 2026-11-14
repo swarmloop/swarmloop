@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { mkdirSync } from 'fs';
-import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import type { AddressInfo } from 'net';
 import type { Server } from 'http';
@@ -21,10 +21,12 @@ import { ReadinessController } from '../api/readiness.controller';
 import { RunsController } from '../api/runs.controller';
 import { ReadinessModule } from '../readiness/readiness.module';
 import { ShellService } from '../api/shell.service';
-import { AGENT_RUNNER } from '../agent/agent-runner';
+import { AGENT_RUNNER, type AgentRunInput } from '../agent/agent-runner';
 import { SwarmloopConfigModule } from '../config/config.module';
 import type { SwarmloopEnv } from '../config/env';
 import { Clock } from '../core/clock';
+import { writeEnvOverrides } from './env.spec-helpers';
+import { realStep } from './real-steps';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { STEPS, type StepName } from '../contract/steps';
 import { HistoryModule } from '../history/history.module';
@@ -64,15 +66,28 @@ function answersInBlocks(step: string): boolean {
 
 type FakeSandbox = Record<string, (...args: never[]) => Promise<unknown>>;
 
+/**
+ * What stands for the agent process: it is told the step and the whole launch. A scripted step only has its launch
+ * noted; a real step takes what a launch returns, and one that returns nothing is answered by `blocks`.
+ */
+export interface FakeAgentRunner {
+  readonly steps: string[];
+  run(step: string, input: AgentRunInput): Promise<unknown>;
+}
+
 interface TestAppOptions {
   root?: string;
-  runner?: ScriptedFakeAgentRunner;
+  runner?: FakeAgentRunner;
   /** The agent of the real research, plan, plan-improve, implement and code-review steps: it answers in result blocks. Without one it answers the defaults of `BlockAgentRunner`. */
   blocks?: BlockAgentRunner;
   /** Replaces calls of the fake sandbox, for a spec that needs a container. */
   sandbox?: FakeSandbox;
-  /** Lines of the `.env` that replace the defaults of `testEnv`. */
+  /** Lines of the `.env` on top of the isolation lines; every other setting is the shipped default. */
   env?: Record<string, string>;
+  /** No `.env` is written: the isolation values are the launch environment, and everything else is the shipped default. */
+  envFile?: boolean;
+  /** These steps are the real ones, besides research, plan and plan-improve, which always are. The others stay scripted. */
+  realSteps?: StepName[];
   /** Defaults to 'all': every run takes the real implement steps. True limits that to split parents; false keeps them scripted. */
   realImplement?: boolean | 'all';
   /** Defaults to true: the real reviewers and report answer in result blocks. False keeps code review scripted. */
@@ -90,7 +105,7 @@ export interface TestApp {
   root: string;
   clock: FakeClock;
   codeHost: FakeCodeHost;
-  runner: ScriptedFakeAgentRunner;
+  runner: FakeAgentRunner;
   /** The agent of the real research, plan, plan-improve, implement and code-review steps. */
   blocks: BlockAgentRunner;
   pipeline: PipelineService;
@@ -109,7 +124,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   const hostEnv = options.realHost
     ? { GITLAB_BASE_URL: 'https://gitlab.example', GITLAB_TOKEN: 'token', ...options.env }
     : options.env;
-  await writeFile(join(root, '.env'), testEnv(root, hostEnv));
+  const isolation = isolationEnv(root, hostEnv);
+  const envFile = join(root, '.env');
+  if (options.envFile !== false) await writeEnvOverrides(root, isolation);
   const clock = new FakeClock();
   const runner = options.runner ?? new ScriptedFakeAgentRunner();
   const blocks = options.blocks ?? new BlockAgentRunner();
@@ -121,7 +138,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   };
   const module = await Test.createTestingModule({
     imports: [
-      SwarmloopConfigModule.forRoot(join(root, '.env')),
+      options.envFile === false
+        ? SwarmloopConfigModule.forRoot(envFile, isolation)
+        : SwarmloopConfigModule.forRoot(envFile),
       HistoryModule,
       AuthModule,
       PipelineModule,
@@ -149,9 +168,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     .useValue(registry)
     .overrideProvider(AGENT_RUNNER)
     .useValue({
-      run: async (input: { step: string }) => {
-        await runner.run(input.step);
-        return answersInBlocks(input.step) ? blocks.run(input) : undefined;
+      run: async (input: AgentRunInput) => {
+        const answer = await runner.run(input.step, input);
+        return answer ?? (answersInBlocks(input.step) ? blocks.run(input) : undefined);
       },
     })
     .overrideProvider(SandboxService)
@@ -168,6 +187,8 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     if (name === 'done') continue;
     steps.set(name, new ScriptedStep(name, module.get(StepKernel), module.get(AGENT_RUNNER), codeHost));
   }
+
+  for (const name of options.realSteps ?? []) steps.set(name, realStep(module, name));
 
   // Research, plan and plan-improve are always the real steps, answered in blocks.
   for (const [name, real] of [
@@ -247,43 +268,13 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   };
 }
 
-function testEnv(root: string, overrides: Record<string, string> = {}): string {
-  return [
-    'REQUIREMENTS_VIA=direct',
-    'ISSUE_TRACKER=jira',
-    'JIRA_BASE_URL=',
-    'JIRA_EMAIL=',
-    'JIRA_API_TOKEN=',
-    'GITLAB_BASE_URL=',
-    'GITLAB_TOKEN=',
-    'GITHUB_BASE_URL=',
-    'GITHUB_TOKEN=',
-    'CURSOR_API_KEY=test-cursor-key',
-    'ANTHROPIC_API_KEY=',
-    'MAX_AGENT_CALLS=20',
-    'MAX_RETURNS=3',
-    'MAX_LAUNCHES=3',
-    'MAX_RUN_USD=25',
-    'IDLE_TIMEOUT_MS=900000',
-    'TICK_MS=15000',
-    'REQUIREMENTS_TIMEOUT_MS=600000',
-    'RESEARCH_TIMEOUT_MS=900000',
-    'PLAN_TIMEOUT_MS=1200000',
-    'IMPLEMENT_TIMEOUT_MS=1800000',
-    'CODE_REVIEW_TIMEOUT_MS=900000',
-    'MERGE_REQUEST_TIMEOUT_MS=600000',
-    'PIPELINE_TIMEOUT_MS=1800000',
-    'PIPELINE_START_TIMEOUT_MS=180000',
-    'AGENTS_PLAN=cursor:opus-5.5-extra-high',
-    'AGENTS_IMPLEMENT=cursor:grok-4.7',
-    'AGENTS_REVIEW=cursor:opus-5.5-extra-high',
-    'EPIC_EFFORT=',
-    'SPLIT=off',
-    'SWARMLOOP_API_PORT=0',
-    'SWARMLOOP_API_HOST=127.0.0.1',
-    `SWARMLOOP_ROOT=${root}`,
-    `SWARMLOOP_TOKEN=${MACHINE_TOKEN}`,
-    ...Object.entries(overrides).map(([name, value]) => `${name}=${value}`),
-    '',
-  ].join('\n');
+/** What keeps one app apart from the machine and from other apps: its root, loopback, a free port and the machine token. */
+function isolationEnv(root: string, overrides: Record<string, string> = {}): Record<string, string> {
+  return {
+    SWARMLOOP_API_PORT: '0',
+    SWARMLOOP_API_HOST: '127.0.0.1',
+    SWARMLOOP_ROOT: root,
+    SWARMLOOP_TOKEN: MACHINE_TOKEN,
+    ...overrides,
+  };
 }

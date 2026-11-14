@@ -15,7 +15,6 @@ const KEY = 'PROJ-440';
 const GB = 1024 ** 3;
 
 describe('a run that needs a person ends in a state the person clears', () => {
-  const freeGb = process.env.MIN_FREE_GB ?? '0';
   let flow: Awaited<ReturnType<typeof createFlowHarness>>;
 
   beforeEach(async () => {
@@ -23,7 +22,6 @@ describe('a run that needs a person ends in a state the person clears', () => {
   });
 
   afterEach(async () => {
-    process.env.MIN_FREE_GB = freeGb;
     jest.restoreAllMocks();
     await flow.close();
   });
@@ -67,6 +65,7 @@ describe('a run that needs a person ends in a state the person clears', () => {
   });
 
   it('SPEND_LIMIT blocks before the step starts, and Resume runs it once the limit is raised', async () => {
+    await flow.setEnv('MAX_RUN_USD', '25');
     await flow.begin('pipeline', { spentUsd: 30 });
     flow.host.ci.pass(head());
 
@@ -83,8 +82,6 @@ describe('a run that needs a person ends in a state the person clears', () => {
   it('DISK_LOW blocks the step, waits while the disk stays low, and resumes once when space returns', async () => {
     await flow.begin('pipeline');
     flow.host.ci.pass(head());
-    process.env.MIN_FREE_GB = '10';
-    await flow.restart();
     flow.diskFree(GB);
 
     await flow.app.pipeline.runThrough(KEY);

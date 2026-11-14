@@ -5,6 +5,7 @@ import { knownModels, missingCredential, namedAgentsFor, parseAgent } from '../c
 import { AppConfig, type SwarmloopEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { rawEnv } from '../config/process-env';
+import { SettingSources } from '../config/setting-sources';
 import { PersonalCredentials } from '../auth/personal-credentials.service';
 import { Clock } from '../core/clock';
 import type { SettingsBody, StoredAgents } from '../contract/api';
@@ -84,6 +85,7 @@ export class SettingsService {
     private readonly stored: UserSettingRepository,
     private readonly clock: Clock,
     private readonly credentials: PersonalCredentials,
+    private readonly sources: SettingSources,
   ) {}
 
   async view(actor: string | null): Promise<SettingsView> {
@@ -103,6 +105,7 @@ export class SettingsService {
         return {
           name,
           secret,
+          source: this.sources.get(name) ?? 'default',
           value: secret ? (value === '' ? 'not set' : 'set') : value,
           ...(description ? { description } : {}),
         };

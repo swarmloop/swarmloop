@@ -1,12 +1,14 @@
-import { join } from 'path';
-import { loadEnvFile } from '../config/load-env';
+import { applySettings, assertSettings, readSettings } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { GuardedDataSource } from './guarded-data-source';
 import { historyDatabaseOptions } from './history.module';
 
-// Read by the TypeORM CLI from dist/ (see the migration scripts in package.json). The server loads the same .env itself.
-loadEnvFile(join(resolveRepoRoot(undefined, __dirname), '.env'));
+// Load before migration options read raw settings, just as the server does.
+const settings = readSettings();
+const error = assertSettings(settings);
+if (error) throw new Error(error);
+applySettings(settings);
 
 export const dataSource = new GuardedDataSource(
   historyDatabaseOptions(resolveRepoRoot(rawEnv().SWARMLOOP_ROOT, __dirname)),

@@ -1,4 +1,5 @@
 import { ERROR_CODES } from '../contract/error-codes';
+import { readDefaultSettings } from '../config/load-env';
 import { imageMissing, imageName } from './image-resolver';
 
 describe('imageName', () => {
@@ -13,6 +14,14 @@ describe('imageName', () => {
     );
     expect(imageName('egress', { SWARMLOOP_REGISTRY: 'ghcr.io/swarmloop', SWARMLOOP_VERSION: '0.2.0' })).toBe(
       'ghcr.io/swarmloop/swarmloop-egress:0.2.0',
+    );
+  });
+
+  it('takes the tag from the shipped default when the version is empty', () => {
+    const tag = readDefaultSettings().SWARMLOOP_VERSION;
+    expect(tag).toBe('latest');
+    expect(imageName('egress', { SWARMLOOP_REGISTRY: 'ghcr.io/swarmloop', SWARMLOOP_VERSION: '' })).toBe(
+      `ghcr.io/swarmloop/swarmloop-egress:${tag}`,
     );
   });
 });
