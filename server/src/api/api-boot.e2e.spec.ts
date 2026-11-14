@@ -1,6 +1,5 @@
 import 'reflect-metadata';
 import { mkdtemp, rm } from 'fs/promises';
-import { tmpdir } from 'os';
 import { join } from 'path';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
@@ -17,41 +16,9 @@ import { StepRegistry } from '../steps/step.registry';
 import type { Step } from '../steps/step';
 import { ScriptedStep } from '../testing/test-app';
 
-// A repo-root `.env` must not leak into the boot.
-jest.mock('../config/load-env', () => ({ loadEnvFile: jest.fn(), assertEnvFile: jest.fn() }));
-
 const KEY = 'PROJ-620';
 const SETTINGS = {
   REQUIREMENTS_VIA: 'direct',
-  ISSUE_TRACKER: 'jira',
-  JIRA_BASE_URL: '',
-  JIRA_EMAIL: '',
-  JIRA_API_TOKEN: '',
-  GITLAB_BASE_URL: '',
-  GITLAB_TOKEN: '',
-  GITHUB_BASE_URL: '',
-  GITHUB_TOKEN: '',
-  CURSOR_API_KEY: '',
-  ANTHROPIC_API_KEY: '',
-  IDLE_TIMEOUT_MS: '900000',
-  TICK_MS: '15000',
-  REQUIREMENTS_TIMEOUT_MS: '600000',
-  RESEARCH_TIMEOUT_MS: '900000',
-  PLAN_TIMEOUT_MS: '1200000',
-  IMPLEMENT_TIMEOUT_MS: '1800000',
-  CODE_REVIEW_TIMEOUT_MS: '900000',
-  MERGE_REQUEST_TIMEOUT_MS: '600000',
-  PIPELINE_TIMEOUT_MS: '1800000',
-  PIPELINE_START_TIMEOUT_MS: '180000',
-  MAX_AGENT_CALLS: '20',
-  MAX_RETURNS: '3',
-  MAX_LAUNCHES: '3',
-  MAX_RUN_USD: '25',
-  AGENTS_PLAN: 'cursor:opus-5.5-extra-high',
-  AGENTS_IMPLEMENT: 'cursor:grok-4.7',
-  AGENTS_REVIEW: 'cursor:opus-5.5-extra-high',
-  SWARMLOOP_API_PORT: '0',
-  SWARMLOOP_API_HOST: '127.0.0.1',
   SWARMLOOP_TOKEN: 'boot-token',
 };
 
@@ -60,8 +27,8 @@ describe('the API server boot', () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), 'swarmloop-api-boot-'));
-    Object.assign(process.env, SETTINGS, { SWARMLOOP_ROOT: root });
+    root = await mkdtemp(join(__dirname, '.api-boot-'));
+    process.env = { ...SETTINGS, SWARMLOOP_ROOT: root, CHECKOUTS_ROOT: root, SWARMLOOP_ENV_FILE: join(root, '.env') };
   });
 
   afterEach(async () => {
@@ -86,17 +53,17 @@ describe('the API server boot', () => {
       .overrideProvider(StepRegistry)
       .useValue(registry)
       .compile();
-    for (const name of STEPS) {
-      if (name === 'done') continue;
-      steps.set(
-        name,
-        new ScriptedStep(name, module.get(StepKernel), module.get(AGENT_RUNNER), {
-          open: () => Promise.resolve({ url: '' }),
-        }),
-      );
-    }
     const app = module.createNestApplication();
     try {
+      for (const name of STEPS) {
+        if (name === 'done') continue;
+        steps.set(
+          name,
+          new ScriptedStep(name, module.get(StepKernel), module.get(AGENT_RUNNER), {
+            open: () => Promise.resolve({ url: '' }),
+          }),
+        );
+      }
       const runs = module.get(RunRepository);
       const run = await runs.begin(KEY, 'research');
       const attempt = run.activeAttempt;

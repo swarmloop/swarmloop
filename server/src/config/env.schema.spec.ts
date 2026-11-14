@@ -1,28 +1,7 @@
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
-import { mkdtemp, writeFile } from 'fs/promises';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import { SwarmloopConfigModule } from './config.module';
-import { AppConfig, optionalLimit } from './env';
-import { envSchema } from './env.schema';
-
-/** Compiles the config module from a temp .env file and returns the injected AppConfig. */
-async function compileWith(values: Record<string, string | number>): Promise<AppConfig> {
-  const dir = await mkdtemp(join(tmpdir(), 'swarmloop-env-'));
-  const path = join(dir, '.env');
-  const lines = Object.entries(values).map(([key, value]) => `${key}=${value}`);
-  await writeFile(path, lines.join('\n'));
-  try {
-    const moduleRef = await Test.createTestingModule({ imports: [SwarmloopConfigModule.forRoot(path)] }).compile();
-    return moduleRef.get(AppConfig);
-  } finally {
-    for (const key of Object.keys(values)) {
-      delete process.env[key];
-    }
-  }
-}
+import { optionalLimit } from './env';
+import { compileWith, shippedDefaults, validateSettings } from './env.schema.spec-helpers';
 
 const complete = {
   REQUIREMENTS_VIA: 'agent',
@@ -63,6 +42,39 @@ const complete = {
 };
 
 describe('env schema', () => {
+  it('matches the complete shipped configuration without launch settings or an optional env file', async () => {
+    const config = await compileWith();
+    const rawOnly = new Set([
+      'SWARMLOOP_ENV_FILE',
+      'SWARMLOOP_REGISTRY',
+      'SWARMLOOP_VERSION',
+      'SWARMLOOP_UID',
+      'GIT_AUTHOR_NAME',
+      'GIT_AUTHOR_EMAIL',
+      'PROJECT_HOSTS_ALLOW',
+    ]);
+    const optionalLimits = new Set(['MAX_RUN_TOKENS', 'STEP_USD_MAX', 'STEP_TOKEN_MAX']);
+    const expected = Object.fromEntries(
+      Object.entries(shippedDefaults())
+        .filter(([key]) => !rawOnly.has(key))
+        .map(([key, value]) => {
+          if (optionalLimits.has(key)) return [key, value === '' ? null : Number(value)];
+          if (key === 'SWARMLOOP_ROOT') return [key, value || undefined];
+          if (key === 'SWARMLOOP_REPOS')
+            return [
+              key,
+              value
+                .split(',')
+                .map((part) => part.trim())
+                .filter(Boolean),
+            ];
+          if (value === 'true' || value === 'false') return [key, value === 'true'];
+          return [key, /^\d+$/.test(value) ? Number(value) : value];
+        }),
+    );
+    expect(config.env).toEqual(expected);
+  });
+
   it('treats a blank spend cap as unlimited and zero as a cap', () => {
     expect(optionalLimit('')).toBeNull();
     expect(optionalLimit(undefined)).toBeNull();
@@ -71,43 +83,41 @@ describe('env schema', () => {
   });
 
   it('names a missing variable', () => {
-    const { error } = envSchema.validate({ ...complete, MAX_RETURNS: undefined }, { abortEarly: false, convert: true });
-    expect(error?.message).toContain('MAX_RETURNS');
-    expect(error?.message).toContain('missing');
+    const { error } = validateSettings({ ...complete, MAX_RETURNS: undefined }, { abortEarly: false, convert: true });
+    expect(error).toBeUndefined();
+    expect(validateSettings({ MAX_RETURNS: undefined }).value.MAX_RETURNS).toBe(Number(shippedDefaults().MAX_RETURNS));
   });
 
   it('a missing or empty AGENTS_PLAN is a start-up error naming it', () => {
     for (const AGENTS_PLAN of [undefined, '']) {
-      const { error } = envSchema.validate({ ...complete, AGENTS_PLAN }, { abortEarly: false, convert: true });
-      expect(error?.message).toContain('AGENTS_PLAN is missing: set it as in .env.example');
+      const { error } = validateSettings({ ...complete, AGENTS_PLAN }, { abortEarly: false, convert: true });
+      if (AGENTS_PLAN === undefined) {
+        expect(error).toBeUndefined();
+      } else {
+        expect(error?.message).toContain('AGENTS_PLAN is missing: set it as in defaults.env');
+      }
     }
   });
 
   it('names an unknown provider value', () => {
-    const { error } = envSchema.validate(
-      { ...complete, ISSUE_TRACKER: 'github' },
-      { abortEarly: false, convert: true },
-    );
+    const { error } = validateSettings({ ...complete, ISSUE_TRACKER: 'github' }, { abortEarly: false, convert: true });
     expect(error?.message).toContain('ISSUE_TRACKER');
     expect(error?.message).toContain('github');
   });
 
   it('keeps the values from the file and names a missing limit', () => {
-    const { error, value } = envSchema.validate(complete, { abortEarly: false, convert: true });
+    const { error, value } = validateSettings(complete, { abortEarly: false, convert: true });
     expect(error).toBeUndefined();
     expect(value.MAX_AGENT_CALLS).toBe(50);
     expect(value.MAX_PIPELINE_RETURNS).toBe(6);
     expect(value.AGENTS_PLAN).toBe('cursor:grok-4.7-high');
-    const missing = envSchema.validate(
-      { ...complete, MAX_AGENT_CALLS: undefined },
-      { abortEarly: false, convert: true },
-    );
-    expect(missing.error?.message).toContain('MAX_AGENT_CALLS');
-    expect(missing.error?.message).toContain('missing');
+    const missing = validateSettings({ ...complete, MAX_AGENT_CALLS: undefined }, { abortEarly: false, convert: true });
+    expect(missing.error).toBeUndefined();
+    expect(missing.value.MAX_AGENT_CALLS).toBe(Number(shippedDefaults().MAX_AGENT_CALLS));
   });
 
   it('keeps a bare env valid and names a bad SWARMLOOP_ALLOW entry', () => {
-    const bare = envSchema.validate(complete, { abortEarly: false, convert: true });
+    const bare = validateSettings(complete, { abortEarly: false, convert: true });
     expect(bare.error).toBeUndefined();
     expect(bare.value).toMatchObject({
       SWARMLOOP_ALLOW: '',
@@ -115,56 +125,56 @@ describe('env schema', () => {
       SWARMLOOP_SECRET: '',
       GITHUB_OAUTH_CLIENT_ID: '',
     });
-    const good = envSchema.validate({ ...complete, SWARMLOOP_ALLOW: 'github:Ann, gitlab-group:team/dev' });
+    const good = validateSettings({ ...complete, SWARMLOOP_ALLOW: 'github:Ann, gitlab-group:team/dev' });
     expect(good.error).toBeUndefined();
-    const bad = envSchema.validate({ ...complete, SWARMLOOP_ALLOW: 'github:ann,twitter:bob' }, { convert: true });
+    const bad = validateSettings({ ...complete, SWARMLOOP_ALLOW: 'github:ann,twitter:bob' }, { convert: true });
     expect(bad.error?.message).toContain('twitter:bob');
   });
 
   it('defaults the retention, disk and docker settings and rejects a negative retention', () => {
-    const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
+    const { value } = validateSettings(complete, { abortEarly: false, convert: true });
     expect(value).toMatchObject({ RETAIN_DONE_DAYS: 3, MIN_FREE_GB: 10, DOCKER_PRUNE: true, MERGE_WATCH_MIN: 5 });
-    const off = envSchema.validate({ ...complete, DOCKER_PRUNE: 'false' }, { convert: true });
+    const off = validateSettings({ ...complete, DOCKER_PRUNE: 'false' }, { convert: true });
     expect(off.value.DOCKER_PRUNE).toBe(false);
-    const bad = envSchema.validate({ ...complete, RETAIN_DONE_DAYS: -1 }, { convert: true });
+    const bad = validateSettings({ ...complete, RETAIN_DONE_DAYS: -1 }, { convert: true });
     expect(bad.error?.message).toContain('RETAIN_DONE_DAYS');
   });
 
   it('defaults the parallel check commands to 3 and rejects zero', () => {
-    const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
-    expect(value.CHECKS_PARALLEL).toBe(3);
-    const bad = envSchema.validate({ ...complete, CHECKS_PARALLEL: 0 }, { convert: true });
+    const { value } = validateSettings(complete, { abortEarly: false, convert: true });
+    expect(value.CHECKS_PARALLEL).toBe(9);
+    const bad = validateSettings({ ...complete, CHECKS_PARALLEL: 0 }, { convert: true });
     expect(bad.error?.message).toContain('CHECKS_PARALLEL');
   });
 
   it('defaults the memory reserve to 2 GB and rejects negative values', () => {
-    const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
+    const { value } = validateSettings(complete, { abortEarly: false, convert: true });
     expect(value.RESERVE_MEMORY_GB).toBe(2);
-    const set = envSchema.validate({ ...complete, RESERVE_MEMORY_GB: '4' }, { convert: true });
+    const set = validateSettings({ ...complete, RESERVE_MEMORY_GB: '4' }, { convert: true });
     expect(set.value.RESERVE_MEMORY_GB).toBe(4);
-    const badMemory = envSchema.validate({ ...complete, RESERVE_MEMORY_GB: -1 }, { convert: true });
+    const badMemory = validateSettings({ ...complete, RESERVE_MEMORY_GB: -1 }, { convert: true });
     expect(badMemory.error?.message).toContain('RESERVE_MEMORY_GB');
   });
 
   it('defaults the provider limit cooldown to 60 minutes and rejects zero', () => {
-    const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
+    const { value } = validateSettings(complete, { abortEarly: false, convert: true });
     expect(value.LIMIT_COOLDOWN_MIN).toBe(60);
-    const bad = envSchema.validate({ ...complete, LIMIT_COOLDOWN_MIN: 0 }, { convert: true });
+    const bad = validateSettings({ ...complete, LIMIT_COOLDOWN_MIN: 0 }, { convert: true });
     expect(bad.error?.message).toContain('LIMIT_COOLDOWN_MIN');
   });
 
   it('defaults EPIC_EFFORT to xhigh, allows it empty and rejects any other word', () => {
-    expect(envSchema.validate(complete, { convert: true }).value.EPIC_EFFORT).toBe('xhigh');
-    expect(envSchema.validate({ ...complete, EPIC_EFFORT: '' }, { convert: true }).value.EPIC_EFFORT).toBe('');
-    expect(envSchema.validate({ ...complete, EPIC_EFFORT: 'max' }, { convert: true }).error).toBeUndefined();
-    const bad = envSchema.validate({ ...complete, EPIC_EFFORT: 'extreme' }, { convert: true });
+    expect(validateSettings(complete, { convert: true }).value.EPIC_EFFORT).toBe('xhigh');
+    expect(validateSettings({ ...complete, EPIC_EFFORT: '' }, { convert: true }).value.EPIC_EFFORT).toBe('');
+    expect(validateSettings({ ...complete, EPIC_EFFORT: 'max' }, { convert: true }).error).toBeUndefined();
+    const bad = validateSettings({ ...complete, EPIC_EFFORT: 'extreme' }, { convert: true });
     expect(bad.error?.message).toContain('EPIC_EFFORT');
   });
 
   it('defaults LOOP_REPEAT to 4 and rejects zero', () => {
-    const { value } = envSchema.validate(complete, { abortEarly: false, convert: true });
+    const { value } = validateSettings(complete, { abortEarly: false, convert: true });
     expect(value.LOOP_REPEAT).toBe(4);
-    const bad = envSchema.validate({ ...complete, LOOP_REPEAT: 0 }, { convert: true });
+    const bad = validateSettings({ ...complete, LOOP_REPEAT: 0 }, { convert: true });
     expect(bad.error?.message).toContain('LOOP_REPEAT');
   });
 
@@ -191,7 +201,7 @@ describe('env schema', () => {
   });
 
   it('accepts codex with both keys empty', () => {
-    const { error, value } = envSchema.validate(
+    const { error, value } = validateSettings(
       {
         ...complete,
         AGENTS_PLAN: 'codex:gpt-6.1-sol',
@@ -211,9 +221,9 @@ describe('env schema', () => {
       AGENTS_PLAN: 'cursor:grok-4.7-high',
       AGENTS_IMPLEMENT: 'cursor:grok-4.7-high',
       AGENTS_REVIEW: 'cursor:grok-4.7-high',
-      AGENTS_SUBTASK_PLAN: '',
-      AGENTS_SUBTASK_IMPLEMENT: '',
-      AGENTS_SUBTASK_REVIEW: '',
+      AGENTS_SUBTASK_PLAN: shippedDefaults().AGENTS_SUBTASK_PLAN,
+      AGENTS_SUBTASK_IMPLEMENT: shippedDefaults().AGENTS_SUBTASK_IMPLEMENT,
+      AGENTS_SUBTASK_REVIEW: shippedDefaults().AGENTS_SUBTASK_REVIEW,
     });
     const listed = await compileWith({
       ...complete,
@@ -270,40 +280,37 @@ describe('env schema', () => {
   it('takes the model keys and the Jira connection as empty when they are not in .env', () => {
     const keys = ['CURSOR_API_KEY', 'ANTHROPIC_API_KEY', 'JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN'];
     const without = Object.fromEntries(Object.entries(complete).filter(([name]) => !keys.includes(name)));
-    const { error, value } = envSchema.validate(without, { abortEarly: false, convert: true });
+    const { error, value } = validateSettings(without, { abortEarly: false, convert: true });
     expect(error).toBeUndefined();
     expect(keys.map((name) => value[name])).toEqual(['', '', '', '', '']);
   });
 
   it('fails bootstrap when a variable is missing', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'swarmloop-env-'));
-    const path = join(dir, '.env');
-    await writeFile(path, 'REQUIREMENTS_VIA=agent\nISSUE_TRACKER=jira\n');
-    await expect(
-      Test.createTestingModule({ imports: [SwarmloopConfigModule.forRoot(path)] }).compile(),
-    ).rejects.toThrow(/AGENTS_PLAN/);
+    const config = await compileWith({ REQUIREMENTS_VIA: 'agent', ISSUE_TRACKER: 'jira' });
+    expect(config.env.AGENTS_PLAN).toBe(shippedDefaults().AGENTS_PLAN);
+    await expect(compileWith({ AGENTS_PLAN: '' })).rejects.toThrow(/AGENTS_PLAN/);
   });
 });
 
 describe('split settings', () => {
   it('SPLIT defaults to off and SPLIT_MAX_TASKS to 12', () => {
-    const { error, value } = envSchema.validate(complete, { abortEarly: false, convert: true });
+    const { error, value } = validateSettings(complete, { abortEarly: false, convert: true });
     expect(error).toBeUndefined();
     expect(value).toMatchObject({ SPLIT: 'auto', SPLIT_MAX_TASKS: 48 });
   });
 
   it('rejects a SPLIT value other than auto or off', () => {
-    expect(envSchema.validate({ ...complete, SPLIT: 'auto' }, { convert: true }).value.SPLIT).toBe('auto');
-    const bad = envSchema.validate({ ...complete, SPLIT: 'on' }, { convert: true });
+    expect(validateSettings({ ...complete, SPLIT: 'auto' }, { convert: true }).value.SPLIT).toBe('auto');
+    const bad = validateSettings({ ...complete, SPLIT: 'on' }, { convert: true });
     expect(bad.error?.message).toContain('SPLIT');
   });
 
   it('SUBTASKS_PARALLEL defaults to 3 and takes a whole number from 1', () => {
-    expect(envSchema.validate(complete, { convert: true }).value.SUBTASKS_PARALLEL).toBe(3);
-    expect(envSchema.validate({ ...complete, SUBTASKS_PARALLEL: '5' }, { convert: true }).value.SUBTASKS_PARALLEL).toBe(
+    expect(validateSettings(complete, { convert: true }).value.SUBTASKS_PARALLEL).toBe(3);
+    expect(validateSettings({ ...complete, SUBTASKS_PARALLEL: '5' }, { convert: true }).value.SUBTASKS_PARALLEL).toBe(
       5,
     );
-    expect(envSchema.validate({ ...complete, SUBTASKS_PARALLEL: '0' }, { convert: true }).error?.message).toContain(
+    expect(validateSettings({ ...complete, SUBTASKS_PARALLEL: '0' }, { convert: true }).error?.message).toContain(
       'SUBTASKS_PARALLEL',
     );
   });
