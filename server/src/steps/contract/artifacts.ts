@@ -12,6 +12,9 @@ import {
   type ImplementationImproveResult,
 } from '../../agent-result/definitions/implementation-improve';
 import { rebaseResolution, type RebaseResolutionResult } from '../../agent-result/definitions/rebase-resolution';
+import { reviewReport, type ReviewReportResult } from '../../agent-result/definitions/review-report';
+import { type ReviewResult } from '../../agent-result/definitions/review';
+import { legacyReview } from '../../agent-result/legacy/review';
 import { subtaskAnswer, type SubtaskAnswerResult } from '../../agent-result/definitions/subtask-answer';
 import { resultArtifactCodec } from '../../agent-result/result-codec';
 import { requirementsView } from '../../contract/requirements-view';
@@ -51,15 +54,18 @@ function summarizePipeline(body: string): string {
 }
 
 /** The decision of a review and the first line of what it found. */
+function reviewLine(decision: string | undefined, text: string): string {
+  return [decision ? `decision: ${decision}` : '', firstLine(text)].filter(Boolean).join(' · ');
+}
+
+/** The line of a rendered review, for a run from before results were stored. */
 export function summarizeReview(body: string): string {
-  const decision = /^decision:\s*(ok|return)\b/m.exec(body)?.[1];
-  const first = firstLine(
-    body
-      .split('\n')
-      .filter((line) => !/^decision:/.test(line.trim()))
-      .join('\n'),
-  );
-  return [decision ? `decision: ${decision}` : '', first].filter(Boolean).join(' · ');
+  const review = legacyReview(body);
+  return reviewLine(review?.decision, review?.review ?? body);
+}
+
+export function summarizeReviewResult(result: ReviewResult): string {
+  return reviewLine(result.decision, result.review);
 }
 
 /** The kind of the agent log, which old runs stored as a document. */
@@ -138,7 +144,7 @@ export const ARTIFACTS = {
   // The corrected checklist of this pass is read through `currentPlan` by both implement steps.
   implementationImproveResult: artifact(implementationImprove.kind, {
     writers: ['implement-improve'],
-    readers: ['plan-improve', 'implement', 'implement-improve'],
+    readers: ['plan-improve', 'implement', 'implement-improve', 'code-review'],
     codec: resultArtifactCodec<ImplementationImproveResult>(implementationImprove),
     summarize: (result) => listSummary(result.implementation?.length ?? 0, 'changes', result.implementation?.[0]),
   }),
@@ -165,13 +171,13 @@ export const ARTIFACTS = {
   }),
   planResult: artifact(plan.kind, {
     writers: ['plan'],
-    readers: ['plan', 'plan-improve', 'implement', 'implement-improve'],
+    readers: ['plan', 'plan-improve', 'implement', 'implement-improve', 'code-review'],
     codec: resultArtifactCodec<PlanResult>(plan),
     summarize: (result) => listSummary(result.plan.length || result.tasks.length, 'plan items', result.plan[0]),
   }),
   planImproveResult: artifact(planImprove.kind, {
     writers: ['plan-improve'],
-    readers: ['plan-improve', 'implement', 'implement-improve'],
+    readers: ['plan-improve', 'implement', 'implement-improve', 'code-review'],
     codec: resultArtifactCodec<PlanImproveResult>(planImprove),
     summarize: (result) => listSummary(result.plan.length || result.tasks.length, 'plan items', result.plan[0]),
   }),
@@ -244,6 +250,13 @@ export const ARTIFACTS = {
     readers: ['merge-request'],
     summarize: firstLine,
   }),
+  // The parts of the report the document is rendered from; the merge request reads it.
+  reviewReportResult: artifact(reviewReport.kind, {
+    writers: ['code-review'],
+    readers: ['merge-request'],
+    codec: resultArtifactCodec<ReviewReportResult>(reviewReport),
+    summarize: (result) => firstLine(result.whatChanged),
+  }),
   requirementsProgress: artifact('requirements_progress', {
     writers: ['requirements'],
     readers: ['requirements'],
@@ -272,6 +285,12 @@ export const INSTRUCTIONS: ArtifactFamily = artifactFamily('instructions:', AGEN
 
 /** `review_<reviewer>`, written by the code-review step. */
 export const REVIEWS: ArtifactFamily = artifactFamily('review_', CODE_REVIEWERS);
+
+/** `review_<reviewer>_result`, the validated object of each reviewer; written and read by the code-review step. */
+export const REVIEW_RESULTS: ArtifactFamily = artifactFamily(
+  'review_',
+  CODE_REVIEWERS.map((name) => `${name}_result`),
+);
 
 /** Kinds owned outside `steps`, each with the module that owns it. */
 export const SERVICE_KINDS: Readonly<Record<string, string>> = {

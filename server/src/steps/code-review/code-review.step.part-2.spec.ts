@@ -35,7 +35,9 @@ import { REBASE_CONFLICT } from '../../git/rebase';
 
 import {
   REFUSED_WRITE,
+  answerFor,
   reply,
+  reportReply,
   result,
   boot,
   seed,
@@ -54,7 +56,7 @@ describe('code-review step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-last-ok-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-90', 'billing-api'), { recursive: true });
-    const agent = jest.fn(async (input: AgentRunInput) => result(reply(input.step, 'ok')));
+    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step)));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-90');
@@ -75,7 +77,7 @@ describe('code-review step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-last-return-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-91', 'billing-api'), { recursive: true });
-    const agent = jest.fn(async (input: AgentRunInput) => result(reply(input.step, 'return')));
+    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step, 'return')));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-91');
@@ -98,7 +100,7 @@ describe('code-review step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-issues-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-92', 'billing-api'), { recursive: true });
-    const agent = jest.fn(async (input: AgentRunInput) => result(reply(input.step, 'return')));
+    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step, 'return')));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-92');
@@ -122,7 +124,7 @@ describe('code-review step', () => {
     const checkout = join(root, 'worktrees', 'checkout');
     mkdirSync(checkout, { recursive: true });
     await writeEnv(root);
-    const agent = jest.fn(async (input: AgentRunInput) => result(reply(input.step, 'return')));
+    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step, 'return')));
     const app = await boot(root, agent);
     try {
       const done = await app.get(PipelineService).step('code-review', 'PROJ-85', { path: checkout });
@@ -146,7 +148,7 @@ describe('code-review step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-outside-'));
     const outside = await mkdtemp(join(tmpdir(), 'swarmloop-checkout-outside-'));
     await writeEnv(root);
-    const agent = jest.fn(async (input: AgentRunInput) => result(reply(input.step, 'return')));
+    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step, 'return')));
     const app = await boot(root, agent);
     try {
       const refused = await app.get(PipelineService).step('code-review', 'PROJ-87', { path: outside });
@@ -165,13 +167,13 @@ describe('code-review step', () => {
     await writeEnv(root);
     let quality = 'notes\n';
     const agent = jest.fn(async (input: AgentRunInput) =>
-      result(input.step.endsWith('quality') ? quality : reply(input.step, 'ok')),
+      result(input.step.endsWith('quality') ? quality : answerFor(input.step)),
     );
     const app = await boot(root, agent);
     try {
       const failed = await app.get(PipelineService).step('code-review', 'PROJ-86', { path: checkout });
       expect(failed.exitCode).toBe(1);
-      expect(failed.message).toContain('decision is missing');
+      expect(failed.message).toContain('no result block');
       quality = reply('quality', 'return');
       agent.mockClear();
       const done = await app.get(PipelineService).step('code-review', 'PROJ-86');
@@ -194,7 +196,7 @@ describe('code-review step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-handoff-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-87', 'billing-api'), { recursive: true });
-    const agent = jest.fn(async (input: AgentRunInput) => result(`notes\n\ndecision: ok\n`, input.step));
+    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step), input.step));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-87');
@@ -239,7 +241,7 @@ describe('code-review step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-split-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-91', 'billing-api'), { recursive: true });
-    const agent = jest.fn(async (input: AgentRunInput) => result(`notes\n\ndecision: ok\n`, input.step));
+    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step), input.step));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-91');
@@ -289,7 +291,7 @@ describe('code-review step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-single-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-92', 'billing-api'), { recursive: true });
-    const agent = jest.fn(async (input: AgentRunInput) => result(`notes\n\ndecision: ok\n`, input.step));
+    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step), input.step));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-92');
@@ -312,7 +314,7 @@ describe('code-review step', () => {
       join(root, 'data', 'PROJ-86-code-review-quality-session.json'),
       `${JSON.stringify({ runtime: 'cursor', chatId: 'quality-chat', resumed: true, completed: true, killReason: null, usd: 3 })}\n`,
     );
-    const agent = jest.fn(async (input: AgentRunInput) => result(`notes\n\ndecision: ok\n`, input.step));
+    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step), input.step));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-86');
@@ -355,7 +357,7 @@ describe('code-review step', () => {
       `${JSON.stringify({ runtime: 'cursor', chatId: 'quality-chat', resumed: true, completed: true, killReason: null, usd: 3 })}\n`,
     );
     const agent = jest.fn(async (input: AgentRunInput) =>
-      result(input.step.endsWith('report') ? 'The checks are in.\n' : reply(input.step, 'ok'), input.step),
+      result(input.step.endsWith('report') ? reportReply('The checks are in.') : reply(input.step, 'ok'), input.step),
     );
     const app = await boot(root, agent);
     try {
@@ -395,7 +397,7 @@ describe('code-review step', () => {
     const clone = repoWithBranch(parent, 'app');
     await writeEnv(root, parent);
     const agent = jest.fn(async (input: AgentRunInput) =>
-      result(reply(input.step, input.step.endsWith('quality') ? 'return' : 'ok')),
+      result(answerFor(input.step, input.step.endsWith('quality') ? 'return' : 'ok')),
     );
     const app = await boot(root, agent);
     try {
@@ -444,7 +446,7 @@ describe('code-review step', () => {
     mkdirSync(root);
     const clone = repoWithBranch(parent, 'app');
     await writeEnv(root, parent);
-    const agent = jest.fn(async (input: AgentRunInput) => result(reply(input.step, 'ok')));
+    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step)));
     const app = await boot(root, agent);
     try {
       const runs = app.get(RunRepository);
@@ -542,7 +544,7 @@ describe('code-review step', () => {
     mkdirSync(join(root, 'worktrees', 'PROJ-82', 'billing-api'), { recursive: true });
     const agent = jest.fn(async (input: AgentRunInput) => ({
       ...result(
-        input.step.endsWith('report') ? 'The parser change holds together.\n' : 'notes\n\ndecision: ok\n',
+        input.step.endsWith('report') ? reportReply('The parser change holds together.') : reply('notes', 'ok'),
         input.step,
       ),
       output: input.step.endsWith('quality') ? REFUSED_WRITE : undefined,
@@ -573,7 +575,7 @@ describe('code-review step', () => {
       await seed(app, 'PROJ-83');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-83');
       expect(done.exitCode).toBe(1);
-      expect(done.message).toContain('decision is missing');
+      expect(done.message).toContain('no result block');
       expect(done.message).toContain('a write was refused: Cannot write to /work/billing-api/a.php');
     } finally {
       await app.close();

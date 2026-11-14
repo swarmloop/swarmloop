@@ -4,8 +4,9 @@ import { liveLogFinished, logStillOpen } from '../../agent/live-output';
 import { stepOutput, stepOutputPath } from '../../core/attempt-output';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { launchCount } from '../../agent/agent-launches';
-import { isReviewStep, pipelineStepOf } from '../../contract/steps';
-import { reviewDecision } from '../../steps/code-review/code-review-record';
+import { CODE_REVIEWERS, isReviewStep, pipelineStepOf, reviewerOf } from '../../contract/steps';
+import { reviewLogDecision } from '../../contract/readable-log-review';
+import { storedReview } from '../../agent-result/stored-review';
 import { LIMIT_VISIT } from '../../history/visit.repository';
 import { stepStatus, latest } from './status';
 import type { FlowView } from '../../contract/api';
@@ -33,7 +34,10 @@ function roundOpen(run: RunEntity): boolean {
   return run.status === 'running' && run.currentStep === 'code-review';
 }
 
-const reviewKind = (name: string): string => `review_${name.slice('code-review-'.length)}`;
+/** The latest decision stored for a reviewer: its result, or for an older run its rendered review. */
+function storedDecision(documents: DocumentEntity[], reviewer: string): 'ok' | 'return' | null {
+  return storedReview(reviewer, documents)?.decision ?? null;
+}
 
 /** `ok` is done, `return` is returned, and anything else is what the caller says. */
 export function decisionStatus(decision: 'ok' | 'return' | null, otherwise: string): string {
@@ -55,12 +59,11 @@ export function chipStatus(
   if (round) {
     return round.status;
   }
-  const kind = reviewKind(name);
   if (stat?.step === name) {
-    return storedReviewerStatus(stat, documents, kind);
+    return storedReviewerStatus(stat, documents, reviewerOf(name) ?? '');
   }
-  const saved = reviewDecision(latest(documents, kind) ?? '');
-  const fromLog = reviewDecision(log);
+  const saved = storedDecision(documents, reviewerOf(name) ?? '');
+  const fromLog = reviewLogDecision(log);
   const decision = run.currentStep === 'code-review' && fromLog ? fromLog : (saved ?? fromLog);
   return decisionStatus(decision, hasOutput(log) ? 'failed' : 'idle');
 }
@@ -105,7 +108,7 @@ export function reportChip(
 ): FlowView['phases'][number]['steps'][number] {
   const saved = reportAttempts(stats, documents);
   if (roundOpen(run)) {
-    const standing = roundStanding(roundLog(root, run, 'code-review-report'), saved, preparing, reviewDecision);
+    const standing = roundStanding(roundLog(root, run, 'code-review-report'), saved, preparing, reviewLogDecision);
     return {
       name: 'code-review',
       status: standing.status,
@@ -113,9 +116,7 @@ export function reportChip(
       attempts: standing.attempts,
     };
   }
-  const verdict = angleVerdict(
-    REVIEW_KINDS.map((kind) => latest(documents, kind) ?? '').filter((body) => body.trim() !== ''),
-  );
+  const verdict = angleVerdict(documents);
   const visit = stats.filter((item) => item.step === 'code-review').at(-1);
   const loopStatus = stepStatus('code-review', run, visit);
   const shown = decisionStatus(verdict, (latest(documents, 'review_report') ?? '').trim() ? 'done' : 'idle');
@@ -154,7 +155,9 @@ export function chipAttempts(
 /** The stored visits of a reviewer: its own, or the code-review visits that hold a document of its kind. */
 function reviewerAttempts(name: string, stats: StepStatEntity[], documents: DocumentEntity[]): number {
   const own = stats.filter((stat) => stat.step === name);
-  return own.length > 0 ? (own.at(-1)?.attempt ?? 0) : ownedVisits(stats, documents, reviewKind(name));
+  return own.length > 0
+    ? (own.at(-1)?.attempt ?? 0)
+    : ownedVisits(stats, documents, `review_${reviewerOf(name) ?? ''}`);
 }
 
 function ownedVisits(stats: StepStatEntity[], documents: DocumentEntity[], kind: string): number {
@@ -179,18 +182,17 @@ export function reviewerRound(
   }
   const last = stats.filter((stat) => stat.step === name).at(-1);
   if (last && run.stepStartedAt && last.stepStartedAt === run.stepStartedAt) {
-    return { attempts: last.attempt, status: storedReviewerStatus(last, documents, reviewKind(name)) };
+    return { attempts: last.attempt, status: storedReviewerStatus(last, documents, reviewerOf(name) ?? '') };
   }
   const prior = reviewerAttempts(name, stats, documents);
-  return roundStanding(roundLog(root, run, name), prior, preparing, reviewDecision);
+  return roundStanding(roundLog(root, run, name), prior, preparing, reviewLogDecision);
 }
 
-function storedReviewerStatus(stat: StepStatEntity, documents: DocumentEntity[], kind: string): string {
-  const body = documents
-    .filter((document) => document.stepStatId === stat.id && document.kind === kind)
-    .map((document) => document.body)
-    .join('\n');
-  const decision = reviewDecision(body);
+function storedReviewerStatus(stat: StepStatEntity, documents: DocumentEntity[], reviewer: string): string {
+  const decision = storedDecision(
+    documents.filter((document) => document.stepStatId === stat.id),
+    reviewer,
+  );
   if (decision) {
     return decisionStatus(decision, 'done');
   }
@@ -206,11 +208,14 @@ function reportAttempts(stats: StepStatEntity[], documents: DocumentEntity[]): n
 }
 
 export function reviewerOutcome(text: string, fallback: string): string {
-  return decisionStatus(reviewDecision(text), fallback);
+  return decisionStatus(reviewLogDecision(text), fallback);
 }
 
-export function angleVerdict(bodies: string[]): 'ok' | 'return' | null {
-  const decisions = bodies.map((body) => reviewDecision(body)).filter((item): item is 'ok' | 'return' => item !== null);
+/** The verdict of the angles that decided: return when one of them returned, else ok, else null. */
+export function angleVerdict(documents: DocumentEntity[]): 'ok' | 'return' | null {
+  const decisions = CODE_REVIEWERS.map((reviewer) => storedDecision(documents, reviewer)).filter(
+    (item): item is 'ok' | 'return' => item !== null,
+  );
   if (decisions.length === 0) {
     return null;
   }

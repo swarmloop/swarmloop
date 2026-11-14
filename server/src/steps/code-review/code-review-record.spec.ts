@@ -1,45 +1,58 @@
-import { SwarmloopError } from '../../core/swarmloop-error';
-import { parseReview, reviewDecision } from './code-review-record';
+import {
+  opinionOf,
+  decidedOk,
+  renderReview,
+  reportDocuments,
+  reviewDocuments,
+  summaryNote,
+} from './code-review-record';
 
-describe('parseReview', () => {
-  it('reads a plain decision line', () => {
-    expect(parseReview('notes\ndecision: ok\n').decision).toBe('ok');
-    expect(parseReview('notes\ndecision: return\n').decision).toBe('return');
+const RETURN = {
+  decision: 'return' as const,
+  review: 'summary:\n- The parser drops an empty segment',
+  summary: ['The parser drops an empty segment'],
+};
+
+describe('review documents', () => {
+  it('renders the review followed by the decision line', () => {
+    expect(renderReview(RETURN)).toBe('summary:\n- The parser drops an empty segment\ndecision: return\n');
   });
 
-  it('keeps the last decision when a resumed answer repeats one', () => {
-    expect(parseReview('notes\ndecision: ok\nlater\ndecision: return\n').decision).toBe('return');
+  it('stores the rendered review next to the result it was rendered from', () => {
+    const documents = reviewDocuments(opinionOf('review_quality', RETURN));
+    expect(documents.map((document) => document.kind)).toEqual(['review_quality', 'review_quality_result']);
+    expect(documents[0].body).toBe('summary:\n- The parser drops an empty segment\ndecision: return\n');
+    expect(JSON.parse(documents[1].body)).toEqual(RETURN);
   });
 
-  it('reads a backticked or bold decision line', () => {
-    expect(parseReview('notes\n`decision: ok`\n').decision).toBe('ok');
-    expect(parseReview('notes\n**decision: return**\n').decision).toBe('return');
+  it('accepts a repeated return as ok with the same review text', () => {
+    const accepted = decidedOk(opinionOf('review_quality', RETURN));
+    expect(accepted.decision).toBe('ok');
+    expect(accepted.body).toBe('summary:\n- The parser drops an empty segment\ndecision: ok\n');
+    expect(accepted.result.decision).toBe('ok');
   });
 
-  it('reads a decision line that carries a reason after the verdict', () => {
-    expect(parseReview('notes\ndecision: return — one broken behavior\n').decision).toBe('return');
-    expect(parseReview('notes\n**decision: ok** - nothing left\n').decision).toBe('ok');
-    expect(() => parseReview('notes\ndecision: okay then\n')).toThrow('decision is missing');
+  it('gives the handoff the summary list, or the decision when there is none', () => {
+    expect(summaryNote(RETURN)).toBe('- The parser drops an empty segment\n');
+    expect(summaryNote({ ...RETURN, summary: [] })).toBe('- return\n');
   });
+});
 
-  it('keeps the later stream decision when an earlier attempt wrote a plain one', () => {
-    const stream = `notes\ndecision: return\n${JSON.stringify({ type: 'result', result: 'cleared\ndecision: ok\n' })}\n`;
-    expect(parseReview(stream).decision).toBe('ok');
-    expect(reviewDecision(stream)).toBe('ok');
-  });
-
-  it('reads the decision from a result line in the stream', () => {
-    const stream = `${JSON.stringify({ type: 'assistant', timestamp_ms: 1, message: { content: [{ type: 'text', text: 'look' }] } })}\n${JSON.stringify({ type: 'result', result: 'notes\n`decision: ok`\n' })}\n`;
-    expect(parseReview(stream).decision).toBe('ok');
-    expect(reviewDecision(stream)).toBe('ok');
-  });
-
-  it('does not treat the skill example in the prompt as a decision', () => {
-    const stream = `${JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'Read the diff.\n\ndecision: ok\n' }] } })}\n`;
-    expect(() => parseReview(stream)).toThrow(new SwarmloopError('decision is missing'));
-  });
-
-  it('rejects a missing decision', () => {
-    expect(() => parseReview('notes only\n')).toThrow(new SwarmloopError('decision is missing'));
+describe('report documents', () => {
+  it('renders the parts the report gave as sections and stores its result', () => {
+    const documents = reportDocuments({
+      whatChanged: 'Parser fixed.',
+      codeReview: 'All ok.',
+      whatToFix: '- one thing',
+    });
+    expect(documents.map((document) => document.kind)).toEqual(['review_report', 'review_report_result']);
+    expect(documents[0].body).toBe(
+      '## What changed\n\nParser fixed.\n\n## Code review\n\nAll ok.\n\n## What to fix\n\n- one thing\n',
+    );
+    expect(JSON.parse(documents[1].body)).toEqual({
+      whatChanged: 'Parser fixed.',
+      codeReview: 'All ok.',
+      whatToFix: '- one thing',
+    });
   });
 });

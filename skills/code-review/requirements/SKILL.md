@@ -10,15 +10,6 @@ After the list, check each plan item's `proof:` against the diff. A proof the di
 
 Do not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.
 
-End with a `summary` list, then the decision. `summary` is the numbered list of the input's items, one line each: `met: <item> (<where>)`, `partial: <item> - <what is missing>` or `missing: <item>`. Any `partial` or `missing` is `decision: return`. On `decision: return`, name one broken behavior in this diff. Do that for each of them: the return names every one of them, not only the first. On a later pass, check again every requirement marked `partial` or `missing` before and every requirement the new changes touch, and write the whole list again with the new marks. When your earlier output has no such list, make the full list now. The later pass of a CI fix reads the failing test's log, not only the changed lines. "Nothing changed since my last decision" is never the reason on its own for `decision: ok`. An unchanged tree passes only when the required behavior is already in the tree and the summary says where. "The plan said to stop" and "the plan asks nothing more" are never a reason. Do not ask for a new subsystem the input does not ask for. Do not return that behavior again once a person or the plan confirmed it.
+Give a `summary` list and the decision. `summary` is the numbered list of the input's items, one line each: `met: <item> (<where>)`, `partial: <item> - <what is missing>` or `missing: <item>`. Any `partial` or `missing` is `decision: return`. On `decision: return`, name one broken behavior in this diff. Do that for each of them: the return names every one of them, not only the first. On a later pass, check again every requirement marked `partial` or `missing` before and every requirement the new changes touch, and write the whole list again with the new marks. When your earlier output has no such list, make the full list now. The later pass of a CI fix reads the failing test's log, not only the changed lines. "Nothing changed since my last decision" is never the reason on its own for `decision: ok`. An unchanged tree passes only when the required behavior is already in the tree and the summary says where. "The plan said to stop" and "the plan asks nothing more" are never a reason. Do not ask for a new subsystem the input does not ask for. Do not return that behavior again once a person or the plan confirmed it.
 
-```
-summary:
-- met: 1. item (where)
-- partial: 2. item - what is missing
-- missing: 3. item
-
-decision: return
-```
-
-End with `decision: ok` when every item is `met` and the diff does nothing the task does not ask for. End with `decision: return` when an item is `partial` or `missing`, or when it does something extra. A change required by a failed job on this branch is not extra, unless it is one of the test changes named above.
+The decision is ok when every item is `met` and the diff does nothing the task does not ask for. The decision is return when an item is `partial` or `missing`, or when it does something extra. A change required by a failed job on this branch is not extra, unless it is one of the test changes named above.

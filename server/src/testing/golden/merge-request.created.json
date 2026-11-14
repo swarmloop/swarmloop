@@ -171,7 +171,9 @@
       "ci_skip",
       "requirements",
       "repos",
+      "implementation_result",
       "implementation",
+      "review_report_result",
       "review_report",
       "rebase_merge_skip",
       "handoff"

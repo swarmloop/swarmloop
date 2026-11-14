@@ -329,7 +329,7 @@ export class AgentProcessRunner {
       exitCode: finishedByResult ? 0 : killReason ? 1 : exitCode,
       output,
       resumed,
-      decided: meter.decided(),
+      decided: meter.decided(input.answered),
       backgroundKilled: meter.backgroundKilled(input.answered),
       orphanOnly: meter.orphanOnly(),
       ...(limit ? { limit } : {}),

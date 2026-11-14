@@ -1,3 +1,4 @@
+import { CODE_REVIEWERS } from '../contract/steps';
 import { emptyResult } from '../agent/agent-result';
 import type { AgentRunResult } from '../agent/agent-result';
 
@@ -24,7 +25,15 @@ const DEFAULT_IMPLEMENT_IMPROVE = { summary: ['checked the first pass'] };
 /** An agent that resolved the conflict of a rebase. */
 const DEFAULT_REBASE = { summary: ['resolved the rebase'] };
 
+/** A reviewer that passes the change. */
+const DEFAULT_REVIEW = { decision: 'ok', review: 'reviewed the change', summary: ['reviewed the change'] };
+
+/** The report of five reviews that all passed. */
+const DEFAULT_REPORT = { whatChanged: 'changed the field', codeReview: 'every check is ok' };
+
 const DEFAULT_ANSWERS: Record<string, unknown> = {
+  ...Object.fromEntries(CODE_REVIEWERS.map((name) => [`code-review-${name}`, DEFAULT_REVIEW])),
+  'code-review-report': DEFAULT_REPORT,
   research: DEFAULT_RESEARCH,
   plan: DEFAULT_PLAN,
   'plan-improve': DEFAULT_PLAN_IMPROVE,
@@ -53,7 +62,7 @@ function textOf(answer: ScriptedAnswer): string {
 /**
  * A fake `AGENT_RUNNER` that answers every launch with a result block. It records the steps it ran, like
  * `ScriptedFakeAgentRunner`, and the prompt of each launch. A step's script is answered in order, then the step's
- * default value (every step that has one: research, plan, plan-improve, implement, implement-improve and rebase) is answered for every later launch, so a spec scripts only the answers it cares about.
+ * default value (every step that has one: research, plan, plan-improve, implement, implement-improve, rebase, each code reviewer and the report) is answered for every later launch, so a spec scripts only the answers it cares about.
  */
 export class BlockAgentRunner {
   readonly steps: string[] = [];
@@ -81,4 +90,10 @@ export class BlockAgentRunner {
       responseText: textOf(answer),
     });
   }
+}
+
+/** The stored log of a reviewer that answered with a decision: its final message with the result block, then its exit line. */
+export function reviewLog(decision: 'ok' | 'return', prose = 'notes'): string {
+  const answer = resultAnswer(prose, { decision, review: prose, summary: [prose] });
+  return `${JSON.stringify({ type: 'result', result: answer })}\nprocess exited 0\n`;
 }

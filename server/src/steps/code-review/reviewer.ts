@@ -7,29 +7,27 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { SampleDraft } from '../../history/visit';
 import type { AgentRunResult } from '../../agent/agent-runner';
+import type { LaunchResult } from '../shared/result-exchange';
 import { resumableChat } from '../../agent/agent-session';
 import type { OpenedStep } from '../../steps/step-run';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { reportFailure } from '../shared/step-failure';
-import { RuntimeLimit } from '../../core/swarmloop-error';
+import { RuntimeLimit, SwarmloopError } from '../../core/swarmloop-error';
 import { reviewContinue, reviewResume } from './code-review.prompts';
 import type { AgentLauncher } from '../shared/agent-launcher';
+import { ResultInvalid } from '../shared/answer-errors';
 import { agentFailure, refusedWrite, withRefusal } from '../shared/agent-result';
-import { parseReview } from './code-review-record';
+import { opinionOf } from './code-review-record';
+import type { Opinion } from './code-review-record';
+import { reviewDefinition } from '../../agent-result/definitions/review';
+import type { ReviewResult } from '../../agent-result/definitions/review';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import { REVIEWS } from '../contract/artifacts';
-import { answerEnding } from '../shared/parse-failure-follow-up';
 
 export interface Reviewer {
   name: string;
   kind: string;
-}
-
-export interface Opinion {
-  kind: string;
-  decision: 'ok' | 'return';
-  body: string;
 }
 
 export interface Finished extends EffortFields {
@@ -44,14 +42,14 @@ export interface Finished extends EffortFields {
   limit?: RuntimeLimit;
 }
 
-/** One reviewer launch. `briefFor` is the full prompt for another runtime, set when `prompt` is the full prompt. */
+/** One reviewer launch. `briefFor` is the full prompt for another runtime, whatever `prompt` is. */
 interface ReviewLaunch extends EffortFields {
   reviewer: Reviewer;
   runtime: RuntimeName;
   model: string;
   prompt: string;
   mounts: SandboxMount[];
-  briefFor?: (runtime: RuntimeName) => string;
+  briefFor: (runtime: RuntimeName) => string;
 }
 
 export interface Usage {
@@ -91,7 +89,6 @@ export async function runJob(
     : retry && !job.stale
       ? reviewContinue(job.reviewer.name)
       : reviewResume(job.reviewer.name, fix.implement, fix.reviewed, plan, returned);
-  const prompt = chosen;
   return one(
     deps,
     opened,
@@ -102,18 +99,13 @@ export async function runJob(
       runtime: job.runtime,
       model: job.model,
       ...effortFields(job),
-      prompt,
+      prompt: chosen,
       mounts: job.mounts,
-      briefFor: full ? job.promptFor : undefined,
+      briefFor: job.promptFor,
     },
     auto,
     fresh,
   );
-}
-
-export function decidedOk(body: string): string {
-  const lines = body.split('\n').filter((line) => !/^decision:\s*return\b/.test(line.trim()));
-  return `${lines.join('\n').trimEnd()}\ndecision: ok\n`;
 }
 
 async function one(
@@ -145,9 +137,14 @@ async function one(
     if (failure) {
       return { ...ran, result, error: failure };
     }
-    const parsed = parseReview(result.responseText, result.output ?? '');
-    return { ...ran, result, parsed: { kind: job.reviewer.kind, decision: parsed.decision, body: parsed.body } };
+    if (!result.resultValue) {
+      throw new SwarmloopError('decision is missing');
+    }
+    return { ...ran, result, parsed: opinionOf(job.reviewer.kind, result.resultValue as ReviewResult) };
   } catch (error) {
+    if (error instanceof ResultInvalid) {
+      refused = refusedWrite(error.output);
+    }
     const message = withRefusal(reportFailure('code-review', error, env).message, refused);
     return {
       reviewer: job.reviewer,
@@ -170,7 +167,7 @@ async function launchReview(
   job: ReviewLaunch,
   auto?: boolean,
   fresh = false,
-): Promise<AgentRunResult> {
+): Promise<LaunchResult> {
   return deps.launcher.launch({
     root: deps.root,
     run: opened.run,
@@ -189,9 +186,10 @@ async function launchReview(
     auto,
     resume: fresh ? false : undefined,
     failover: true,
-    brief: job.prompt,
+    brief: job.briefFor(job.runtime),
+    // A resumed chat the CLI no longer has starts again from the whole prompt, with the whole result text.
+    freshPrompt: job.briefFor(job.runtime),
     briefFor: job.briefFor,
-    validate: (text, output) => parseReview(text, output ?? ''),
-    parseFailureEnding: answerEnding('code-review'),
+    result: reviewDefinition(job.reviewer.name),
   });
 }

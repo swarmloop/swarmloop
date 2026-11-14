@@ -318,3 +318,65 @@ describe('stop and resume with the real implement step', () => {
     expect(blocks.steps.filter((step) => step === 'implement')).toHaveLength(1);
   });
 });
+
+describe('the real code-review step in a whole flow', () => {
+  const REVIEW_KEY = 'PROJ-434';
+  let flow: Awaited<ReturnType<typeof createFlowHarness>>;
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await flow.close();
+  });
+
+  it('takes a review return back to implement and on to done', async () => {
+    const blocks = new BlockAgentRunner({
+      'code-review-quality': [
+        {
+          block: {
+            decision: 'return',
+            review: 'The parser drops an empty segment.',
+            summary: ['the parser drops an empty segment'],
+          },
+        },
+      ],
+      'code-review-report': [
+        {
+          block: {
+            whatChanged: 'The field parser changed.',
+            codeReview: 'Quality returned the change.',
+            whatToFix: '- keep the empty segment',
+          },
+        },
+      ],
+    });
+    flow = await createFlowHarness(REVIEW_KEY, { blocks, realImplement: 'all', realReview: true });
+    const documents = flow.app.app.get(DocumentRepository);
+    const run = await approvedRun(flow, REVIEW_KEY, 'code-review');
+    await documents.putDocument(run, 'implementation', '- changed the field parser\n');
+    await documents.putDocument(
+      run,
+      'implementation_result',
+      '{"implementation":["changed the field parser"],"summary":["why"]}\n',
+    );
+
+    await flow.person('resume');
+
+    expect((await flow.app.app.get(RunRepository).findRun(REVIEW_KEY))?.currentStep).toBe('done');
+    const steps = blocks.steps;
+    const firstImplement = steps.indexOf('implement');
+    expect(steps.slice(0, firstImplement).sort()).toEqual([
+      'code-review-performance',
+      'code-review-quality',
+      'code-review-regressions',
+      'code-review-report',
+      'code-review-requirements',
+      'code-review-security',
+    ]);
+    expect(steps.slice(firstImplement, firstImplement + 2)).toEqual(['implement', 'implement-improve']);
+    expect(steps.filter((step) => step === 'code-review-quality').length).toBeGreaterThanOrEqual(2);
+    const implementPrompt = blocks.prompts.find((launch) => launch.step === 'implement')?.prompt ?? '';
+    expect(implementPrompt).toContain('keep the empty segment');
+    expect(JSON.parse((await documents.latestBody(REVIEW_KEY, 'review_quality_result')) ?? '{}').decision).toBe('ok');
+    await assertInvariants(flow.app);
+  });
+});

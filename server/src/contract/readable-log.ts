@@ -1,4 +1,3 @@
-import { agentDecision } from './readable-log-agent';
 import { claudeEvent } from './readable-log-claude';
 import { codexEvent } from './readable-log-codex';
 import { commonEvent } from './readable-log-events';
@@ -17,20 +16,6 @@ export function logFinished(raw: string): boolean {
     .filter((line) => line !== '');
   const line = lines.at(-1) ?? '';
   return line.startsWith('{"type":"result"') || line.startsWith('process exited') || line.startsWith('process killed:');
-}
-
-export function reviewChipStatus(raw: string): 'done' | 'returned' | 'failed' | null {
-  if (!logFinished(raw)) {
-    return null;
-  }
-  const decision = agentDecision(raw);
-  if (decision === 'ok') {
-    return 'done';
-  }
-  if (decision === 'return') {
-    return 'returned';
-  }
-  return 'failed';
 }
 
 /** Turns a stored agent stream into text a person can read. The stored body stays unchanged. */

@@ -179,6 +179,28 @@ describe('commit step on a clean tree', () => {
     }
   });
 
+  it('ends done when the met lines are only in the stored review result', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-delivered-result-'));
+    featureTree(root, 'PROJ-137');
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-137');
+      const run = (await app.get(RunRepository).findRun('PROJ-137'))!;
+      const documents = app.get(DocumentRepository);
+      const result = (summary: string[]) => `${JSON.stringify({ decision: 'ok', review: 'Checked.', summary })}\n`;
+      await documents.putDocument(
+        run,
+        'review_requirements_result',
+        result(['met: 1. Ship the field (src/readme.ts)']),
+      );
+      await documents.putDocument(run, 'review_quality_result', result(['clear']));
+      const done = await app.get(PipelineService).step('commit', 'PROJ-137');
+      expect(done.message).toContain('already delivered: src/readme.ts');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('ends done on a clean tree without CI when the review says where the behavior already is', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-delivered-nociy-'));
     featureTree(root, 'PROJ-136');

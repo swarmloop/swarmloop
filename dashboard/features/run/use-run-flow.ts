@@ -16,7 +16,7 @@ import { inState } from '../../lib/run-actions';
 import { useLiveActions, useLiveBridge } from '../shell';
 import { applyFlow, applyReviewLog, type FlowMemory } from './flow-state';
 import { pipelineStepOf, REVIEW_STEPS, type PhaseName } from '@contract/steps';
-import { reviewChipStatus } from '@contract/readable-log';
+import { reviewChipStatus } from '@contract/readable-log-review';
 import type { FlowView, ReplayBody } from '@contract/api';
 import type { LiveLog } from '@contract/live';
 

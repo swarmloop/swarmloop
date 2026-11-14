@@ -2,25 +2,25 @@
 
 Write the merge request summary. The Implementation section is what was done. The Reviews section is the evidence. Do not open the checkout. Do not run commands. Do not call Jira or GitLab. Do not review the code again.
 
-Use these parts, in this order. Keep each one short. The checks often say the same problem in different words. Merge that into one explanation. Name a check only when the checks disagree.
+Give these parts, one field of the result each, in this order. Write the text of a part, not its heading. Keep each one short. The checks often say the same problem in different words. Merge that into one explanation. Name a check only when the checks disagree.
 
-## Requirements
+### Requirements
 
 The requirements reviewer's numbered list with its marks, one line each: `met`, `partial` or `missing`. Copy it as that reviewer wrote it.
 
-## What changed
+### What changed
 
 What was done, from the implementation notes.
 
-## Code review
+### Code review
 
 The status of the checks. When every decision is ok, say what holds.
 
-## What holds
+### What holds
 
 When a check is ok, the behavior that must stay. A later fix must not undo it. Omit this part when every decision is return.
 
-## What to fix
+### What to fix
 
 Only when a check returned. One bullet per distinct change that must be fixed. Each bullet still has to leave What holds true. Omit this part when every decision is ok.
 

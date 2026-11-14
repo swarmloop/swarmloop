@@ -16,11 +16,13 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { RunRepository } from '../../history/run.repository';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { LiveHub } from '../../live/live.hub';
-import { reviewDecision } from '../../steps/code-review/code-review-record';
+import { reviewerOf } from '../../contract/steps';
+import { reviewLogDecision } from '../../contract/readable-log-review';
+import { storedReview } from '../../agent-result/stored-review';
 import { requireRun } from '../run-queries-run';
 import type { stepMeta } from '../run-queries-run';
 import { visitLogSize } from '../run-queries-log';
-import { decisionLine, decisionStatus, hasOutput, reviewerOutcome, roundLog } from './chips';
+import { decisionStatus, hasOutput, reviewerOutcome, roundLog } from './chips';
 import { belongsToVisit, documentView, legacyLogs } from './documents';
 import { effortOf, exchangesOf, samplesOf } from './visit-parts';
 
@@ -76,8 +78,13 @@ export class ReviewerSteps {
       const latestDone = index === ownedStats.length - 1 && !parentRunning;
       const owned = documents.filter((document) => document.stepStatId === stat.id && document.kind === kind);
       const log = latestDone ? raw : '';
-      const ownedText = owned.map((item) => item.body).join('\n');
-      const verdict = reviewDecision(`${ownedText}\n${log}`);
+      const verdict =
+        reviewLogDecision(log) ??
+        storedReview(
+          reviewerOf(name) ?? '',
+          documents.filter((document) => document.stepStatId === stat.id),
+        )?.decision ??
+        null;
       return {
         id: stat.id,
         key: visitKey(stat.id),
@@ -95,7 +102,7 @@ export class ReviewerSteps {
         memAvg: stat.memAvg,
         memPeak: stat.memPeak,
         killReason: stat.killReason,
-        decision: verdict ? `decision: ${verdict}` : decisionLine(ownedText),
+        decision: verdict ? `decision: ${verdict}` : null,
         ...visitLogSize(config, run, name, stat, documents),
         documents: [...owned, ...legacyLogs(documents, stat)].map(documentView),
         exchanges: [],
@@ -128,8 +135,11 @@ export class ReviewerSteps {
     const samples = await visitRepository.listSamples(stats.map((stat) => stat.id));
     const parentRunning = this.deps.reviewRunning(run);
     const visits = stats.map((stat, index) => {
-      const owned = documents.filter((document) => document.stepStatId === stat.id && document.kind === kind);
-      const verdict = reviewDecision(owned.map((item) => item.body).join('\n'));
+      const verdict =
+        storedReview(
+          reviewerOf(name) ?? '',
+          documents.filter((document) => document.stepStatId === stat.id),
+        )?.decision ?? null;
       return {
         id: stat.id,
         key: visitKey(stat.id),
@@ -147,7 +157,7 @@ export class ReviewerSteps {
         memAvg: stat.memAvg,
         memPeak: stat.memPeak,
         killReason: stat.killReason,
-        decision: verdict ? `decision: ${verdict}` : decisionLine(owned.map((item) => item.body).join('\n')),
+        decision: verdict ? `decision: ${verdict}` : null,
         ...visitLogSize(config, run, name, stat, documents, {
           latest: index === stats.length - 1,
           reviewRunning: parentRunning,

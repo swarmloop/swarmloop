@@ -45,6 +45,17 @@ describe('composedReturn', () => {
     expect(composedReturn([])).toBeNull();
   });
 
+  it('takes the decision of a review from its stored result, not from the text of the document', () => {
+    const result = (decision: string) => JSON.stringify({ decision, review: 'notes', summary: [] });
+    const documents = [
+      { kind: 'review_quality', body: 'notes\ndecision: ok\n' },
+      { kind: 'review_quality_result', body: result('return') },
+      { kind: 'review_security', body: 'notes\ndecision: return\n' },
+      { kind: 'review_security_result', body: result('ok') },
+    ];
+    expect(composedReturn(documents)).toBe('## quality\nnotes\ndecision: ok\n');
+  });
+
   it('holds no reviewer name literal', () => {
     const source = readFileSync(join(__dirname, 'handoff.ts'), 'utf8');
     const body = source.slice(source.indexOf('export function composedReturn'));

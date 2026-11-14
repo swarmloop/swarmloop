@@ -1,4 +1,5 @@
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
+import { reviewLog } from '../../testing/result-answer';
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -35,7 +36,7 @@ describe('return lines', () => {
 });
 
 describe('reviewer chip in a later round', () => {
-  const finished = `${JSON.stringify({ type: 'result', result: 'notes\ndecision: ok\n' })}\nprocess exited 0\n`;
+  const finished = reviewLog('ok');
 
   /** Ids sort opposite to age: 'zzz' is round 1, 'aaa' is round 2. */
   function chipOf(roundTwoOutput: string | null): { status: string; attempts: number } {
@@ -124,8 +125,7 @@ describe('chips of a code-review that is preparing', () => {
 });
 
 describe('chips of a second code-review round', () => {
-  const finished = (decision: string) =>
-    `${JSON.stringify({ type: 'result', result: `notes\ndecision: ${decision}\n` })}\nprocess exited 0\n`;
+  const finished = (decision: 'ok' | 'return') => reviewLog(decision);
   const ANGLES = ['requirements', 'quality', 'regressions', 'security', 'performance'];
   const roundOne = new Date(1000);
   const roundTwo = new Date(5000);

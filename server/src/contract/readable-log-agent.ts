@@ -1,24 +1,14 @@
-/** The skill example lives in the user prompt. Only the agent's own decision line counts. */
+import { parseResultBlock } from './result-block';
+
+/** The skill example lives in the user prompt. Only the decision in the result block of the agent's own answer counts. */
 export function agentDecision(raw: string): 'ok' | 'return' | null {
-  let found: 'ok' | 'return' | null = null;
-  for (const line of raw.split('\n')) {
-    const text = agentText(line);
-    if (!text) {
-      continue;
-    }
-    for (const row of text.split('\n')) {
-      const cleaned = row
-        .trim()
-        .replace(/^[`*]+/, '')
-        .replace(/[`*]+$/, '')
-        .trim();
-      const match = /^decision:\s*(ok|return)[`*]*(?:\s*[-–—:.,;]\s*\S.*)?\s*$/.exec(cleaned);
-      if (match?.[1] === 'ok' || match?.[1] === 'return') {
-        found = match[1];
-      }
-    }
-  }
-  return found;
+  const answer = raw
+    .split('\n')
+    .flatMap((line) => agentText(line) ?? [])
+    .join('\n');
+  const parsed = parseResultBlock(answer);
+  const decision = parsed.ok ? parsed.value.decision : null;
+  return decision === 'ok' || decision === 'return' ? decision : null;
 }
 
 function agentText(line: string): string | null {
