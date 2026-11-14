@@ -1,10 +1,9 @@
 import type { EnvironmentRecord } from './environment-types';
 import { checkRun } from './environment-config';
 
-export function environmentNote(record: EnvironmentRecord, step?: string): string {
+export function environmentNote(record: EnvironmentRecord): string {
   const { config } = record;
   const extra = config.network === 'setup' ? [] : (config.hosts?.agent ?? []);
-  const improving = step === 'implement-improve';
   const lines = [
     `# Project environment`,
     'These are the execution capabilities of the current implementation stage, including resumed sessions.',
@@ -17,20 +16,14 @@ export function environmentNote(record: EnvironmentRecord, step?: string): strin
   ];
   if (config.checks.length > 0) {
     lines.push(
-      improving
-        ? 'The implement agent already ran the full checks in its session. When this pass changes no file, do not run them again. When it changes files, run the narrowest command that covers the change, because the server runs the full checks after this answer, before code review. These are the checks:'
-        : 'Run these checks when a coherent piece of work is done and always before your final summary. When one fails, fix the cause and run it again. Do not run them after every small edit.',
+      'The checks step runs these after your turn:',
       ...config.checks.map((check) => `- \`${checkRun(check)}\``),
     );
   } else {
     lines.push(
-      'The repository names no checks. Find its test, lint and type check commands in the README, the package scripts or the CI config, and run those before your final summary.',
+      'The repository names no checks, so the checks step runs none; CI on the pushed branch is the first full check.',
     );
   }
-  lines.push(
-    'While you work, run the narrowest command that covers your change, such as one test file, and keep the output short: read the failures, not the whole log. Run the full checks once at the end.',
-    'After a pipeline return, run the failing command here first, fix it, and run it again before you finish.',
-  );
   if (config.setup && config.network !== 'setup') {
     lines.push(`If a dependency or a generated file is missing, run the setup again: \`${config.setup}\`.`);
   }

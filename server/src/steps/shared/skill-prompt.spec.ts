@@ -1,6 +1,7 @@
-import { readFileSync } from 'fs';
+import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { implementFollowUp, implementImproveFollowUp } from '../implement/implement.prompts';
+import { checksStillRed, implementFollowUp, implementImproveFollowUp } from '../implement/implement.prompts';
+import { NEAR_TESTS_MARK, NEAR_TESTS_RULE } from './near-tests-rule';
 import { skillPrompt, skillText } from './skill-prompt';
 
 const skill = (name: string): string => readFileSync(join(__dirname, '../../../../skills', name, 'SKILL.md'), 'utf8');
@@ -154,8 +155,7 @@ describe('the split keep: section', () => {
 
 describe('implement skill rules', () => {
   const rules = [
-    'Run the tests closest to the change: the spec files of the changed code and the ones that import it.',
-    "Do not run the project's full check commands.",
+    NEAR_TESTS_RULE,
     "Change files with the runtime's own edit and write tools, and read them with its read tool.",
     'Use the shell to run commands, not to rewrite files.',
     'Rerun each failed command in the sandbox after the change, and end only when it passes.',
@@ -163,8 +163,8 @@ describe('implement skill rules', () => {
   ];
 
   it.each([
-    ['implement skill', skill('implement')],
-    ['implement-improve skill', skill('implement-improve')],
+    ['implement skill', skillPrompt('implement', '{}', ['api'], [], [], { deferExecutionRules: true })],
+    ['implement-improve skill', skillPrompt('implement-improve', '{}', ['api'], [], [], { deferExecutionRules: true })],
     ['implement follow-up', implementFollowUp('- item', null, [], null)],
     ['implement-improve follow-up', implementImproveFollowUp(null, null)],
   ])('%s holds the near-tests, edit-tool and rerun rules', (_name, text) => {
@@ -178,8 +178,37 @@ describe('implement skill rules', () => {
     expect(text).toContain('A new responsibility goes in its own file, named for it.');
     expect(text).toContain('is split by responsibility, never squeezed');
     expect(text).toContain('search the tree for one that does the same and use it');
-    expect(text).toContain('also run every check of `.swarmloop.json` that is not a long test suite');
-    expect(text).toContain('let it fix the files you changed');
+    expect(text).not.toContain('run every check of `.swarmloop.json`');
+    expect(text).not.toContain('Run the tests closest to the change');
+  });
+
+  it('puts the near-tests rule once in the first turn and in each follow-up', () => {
+    const texts = [
+      skillPrompt('implement', '{}', ['api'], [], [], { deferExecutionRules: true }),
+      skillPrompt('implement-improve', '{}', ['api'], [], [], { deferExecutionRules: true }),
+      implementFollowUp('- item', '## checks\nFAIL npm test', [], null),
+      implementImproveFollowUp(null, null),
+    ];
+    for (const text of texts) {
+      expect(text.split(NEAR_TESTS_RULE)).toHaveLength(2);
+    }
+  });
+
+  it('has no prompt or skill that says to run every check of the project', () => {
+    const skillsDir = join(__dirname, '../../../../skills');
+    const files = (readdirSync(skillsDir, { recursive: true }) as string[]).filter((f) => f.endsWith('SKILL.md'));
+    const texts = [
+      ...files.map((file) => readFileSync(join(skillsDir, file), 'utf8')),
+      skillPrompt('implement', '{}', ['api']),
+      skillPrompt('implement-improve', '{}', ['api']),
+      implementFollowUp('- item', '## checks\nFAIL npm test', [], null),
+      implementImproveFollowUp(null, null),
+      checksStillRed([{ repo: 'api', command: 'npm test', tail: 'FAIL' }], null),
+    ];
+    expect(files.length).toBeGreaterThan(5);
+    for (const text of texts) {
+      expect(text).not.toContain('run every check of `.swarmloop.json`');
+    }
   });
 
   it('returns the quality review on squeezed code and on duplicated logic', () => {
@@ -209,6 +238,10 @@ describe('skillText', () => {
 
   it('keeps the lines of the runtime without one', () => {
     expect(skillText(raw, false)).toBe(['common', 'without', 'end'].join('\n'));
+  });
+
+  it('swaps the near-tests mark for the rule', () => {
+    expect(skillText(['a', NEAR_TESTS_MARK, 'b'].join('\n'), true)).toBe(['a', NEAR_TESTS_RULE, 'b'].join('\n'));
   });
 
   it('leaves a text without markers as it is', () => {

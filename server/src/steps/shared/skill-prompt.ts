@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { SwarmloopError } from '../../core/swarmloop-error';
+import { NEAR_TESTS_MARK, NEAR_TESTS_RULE } from './near-tests-rule';
 import { requirementsBrief } from './requirements-brief';
 
 /** The name a prompt gives a mounted repository. */
@@ -64,7 +65,7 @@ export function skillText(raw: string, planTool: boolean): string {
         kept.push(line.slice(NO_PLAN_TOOL_MARK.length));
       }
     } else {
-      kept.push(line);
+      kept.push(line === NEAR_TESTS_MARK ? NEAR_TESTS_RULE : line);
     }
   }
   return kept.join('\n');
