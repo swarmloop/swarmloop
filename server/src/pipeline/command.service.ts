@@ -1,4 +1,7 @@
-import { ConflictException, HttpException, Injectable, Logger } from '@nestjs/common';
+import { ConflictException, HttpException, Injectable, Logger, UnprocessableEntityException } from '@nestjs/common';
+import { PersonalCredentials } from '../auth/personal-credentials.service';
+import { AppConfig } from '../config/env';
+import { missingCredential, runAgents } from '../config/agents';
 import type { StoredAgents } from '../contract/api';
 import type { CommandEntity, RunEntity } from '../history/entities';
 import { CommandRepository, conflict } from '../history/command.repository';
@@ -58,6 +61,8 @@ export class CommandService {
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
     private readonly runStop: RunStop,
+    private readonly config: AppConfig,
+    private readonly credentials: PersonalCredentials,
   ) {}
 
   register(type: CommandType, handler: CommandHandler): void {
@@ -72,6 +77,9 @@ export class CommandService {
     options: SubmitOptions = {},
   ): Promise<{ command: CommandEntity; run: RunEntity; replayed: boolean }> {
     const current = await this.runs.findRun(key);
+    if (!current && options.create) {
+      await this.assertCredentials(options.create);
+    }
     const error = current?.status === 'blocked' ? await this.documents.latestBody(key, 'error') : null;
     const code = current?.status === 'blocked' ? blockCode(current.currentStep, error) : null;
     const accepted = await this.commands.accept({
@@ -89,6 +97,15 @@ export class CommandService {
       this.schedule(accepted.command, key);
     }
     return accepted;
+  }
+
+  /** A new run starts only when every agent it can use has a credential for its starter: theirs, else the server's. */
+  private async assertCredentials(create: NonNullable<SubmitOptions['create']>): Promise<void> {
+    for (const { runtime } of runAgents(this.config.env, { agents: create.agents })) {
+      if (!(await this.credentials.runtimeCredential(runtime, create.startedBy ?? null))) {
+        throw new UnprocessableEntityException(missingCredential(runtime));
+      }
+    }
   }
 
   /** Accepts the command and answers with what the handler returned, as the route did before. */

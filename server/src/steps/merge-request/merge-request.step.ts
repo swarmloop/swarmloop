@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { StepKernel } from '../step-kernel';
 import { RunStop } from '../../agent/run-stop';
-import { assertNotStopped } from '../shared/step-stopped';
+import { assertNotStopped } from '../../agent/step-stopped';
 import { existsSync, statSync } from 'fs';
 import { root } from '../../history/run-paths';
 import { PhaseName, StepName } from '../../contract/steps';

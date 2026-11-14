@@ -9,6 +9,7 @@ import { join } from 'path';
 import type { Repository } from 'typeorm';
 import { DenyPathEntity } from '../history/entities';
 import { SwarmloopConfigModule } from '../config/config.module';
+import { AuthModule } from '../auth/auth.module';
 import { HistoryModule } from '../history/history.module';
 import type { DocumentRepository } from '../history/document.repository';
 import type { RunRepository } from '../history/run.repository';
@@ -60,7 +61,7 @@ export async function boot(
       'GITLAB_TOKEN=token',
       'GITHUB_BASE_URL=',
       'GITHUB_TOKEN=',
-      'CURSOR_API_KEY=',
+      'CURSOR_API_KEY=test-cursor-key',
       'ANTHROPIC_API_KEY=',
       'MAX_AGENT_CALLS=20',
       'MAX_RETURNS=3',
@@ -85,7 +86,7 @@ export async function boot(
     ].join('\n'),
   );
   return Test.createTestingModule({
-    imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), HistoryModule, LiveModule],
+    imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), HistoryModule, LiveModule, AuthModule],
     providers: [
       RunQueriesService,
       RunCommandsService,
