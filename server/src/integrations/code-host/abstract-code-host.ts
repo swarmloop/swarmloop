@@ -1,17 +1,9 @@
 import type { RemoteRepository, RepositoryOwner } from '../../contract/api';
-import type { SwarmloopEnv } from '../../config/env';
 import type { Clock } from '../../core/clock';
-import {
-  FetchFailed,
-  HostUnavailable,
-  MergeConflict,
-  SwarmloopError,
-  type HttpCallDraft,
-} from '../../core/swarmloop-error';
-import { request } from '../http';
-import { configuredHost, providerMessage } from './provider-message';
+import { FetchFailed, MergeConflict, type HttpCallDraft } from '../../core/swarmloop-error';
+import { HostCalls, type CodeHostEnv, type HostCall } from './host-calls';
+import { providerMessage } from './provider-message';
 import { requestState } from './request-state';
-import { remoteProject } from './remote-project';
 import type {
   CodeHost,
   CreateRepositoryDraft,
@@ -24,31 +16,20 @@ import type {
   RepositoryApi,
   RequestStateApi,
   PipelineSnapshot,
+  PipelineDiagnosis,
   SelectedHost,
 } from './code-host';
+
+export type { CodeHostEnv, HostCall };
 
 /** Rows per page of a repository list. A shorter page is the last one. */
 const PAGE_SIZE = 100;
 
-/** The env keys a code host reads. */
-export type CodeHostEnv = Pick<SwarmloopEnv, 'GITHUB_BASE_URL' | 'GITHUB_TOKEN' | 'GITLAB_BASE_URL' | 'GITLAB_TOKEN'>;
-
-/** One call of a host's API. */
-export interface HostCall {
-  url: string;
-  method: string;
-  payload?: string;
-}
-
-export abstract class AbstractCodeHost implements CodeHost {
+export abstract class AbstractCodeHost extends HostCalls implements CodeHost {
   abstract readonly name: SelectedHost['name'];
-
-  constructor(
-    protected readonly env: CodeHostEnv,
-    protected readonly clock: Clock,
-    protected readonly failure: string,
-    private readonly rejectedToken: string,
-  ) {}
+  abstract readonly label: string;
+  abstract readonly ciFiles: readonly string[];
+  abstract pushRejection(lines: string[]): string | undefined;
 
   async findMergeRequest(
     query: MergeRequestQuery,
@@ -102,7 +83,7 @@ export abstract class AbstractCodeHost implements CodeHost {
     try {
       const { root, headers } = this.credentials();
       const { url, method, payload } = this.updateRequest(root, project, iid, summary);
-      const response = await request(this.clock, url, { ...headers, 'Content-Type': 'application/json' }, calls, {
+      const response = await this.hostRequest(url, { ...headers, 'Content-Type': 'application/json' }, calls, {
         method,
         body: payload,
       });
@@ -112,6 +93,8 @@ export abstract class AbstractCodeHost implements CodeHost {
       this.rethrow(error, calls);
     }
   }
+
+  abstract diagnoseMissingPipeline(ref: PipelineRef): Promise<PipelineDiagnosis>;
 
   abstract startPipeline(ref: PipelineRef, reason: string): Promise<{ httpCalls: HttpCallDraft[] }>;
 
@@ -280,18 +263,6 @@ export abstract class AbstractCodeHost implements CodeHost {
     return new Host({ ...this.env, [this.selected().tokenKey]: token }, this.clock, true);
   }
 
-  protected credentials(): { root: string; headers: Record<string, string> } {
-    const missing = this.credentialKeys().find((name) => !this.env[name]);
-    if (missing) {
-      throw new SwarmloopError(`${missing} is missing`);
-    }
-    return this.endpoint(this.env);
-  }
-
-  protected abstract credentialKeys(): readonly (keyof CodeHostEnv)[];
-
-  protected abstract endpoint(env: CodeHostEnv): { root: string; headers: Record<string, string> };
-
   protected abstract userUrl(root: string): string;
 
   protected abstract readonly repositories: RepositoryApi;
@@ -326,22 +297,6 @@ export abstract class AbstractCodeHost implements CodeHost {
 
   protected abstract conflict(error: unknown, calls: HttpCallDraft[]): boolean;
 
-  protected async readJson(
-    url: string,
-    headers: Record<string, string>,
-    calls: HttpCallDraft[],
-    body?: string,
-    failure = this.failure,
-  ): Promise<unknown> {
-    const response = await request(this.clock, url, headers, calls, body === undefined ? {} : { method: 'POST', body });
-    this.assertStatus(response, calls, failure);
-    try {
-      return JSON.parse(response.body.toString('utf8')) as unknown;
-    } catch {
-      throw new FetchFailed(failure, calls);
-    }
-  }
-
   /** A JSON read or POST whose refusal carries the host's message, and the permission needed when the token is rejected. */
   private async hostJson(
     url: string,
@@ -349,7 +304,7 @@ export abstract class AbstractCodeHost implements CodeHost {
     calls: HttpCallDraft[],
     body?: string,
   ): Promise<unknown> {
-    const response = await request(this.clock, url, headers, calls, body === undefined ? {} : { method: 'POST', body });
+    const response = await this.hostRequest(url, headers, calls, body === undefined ? {} : { method: 'POST', body });
     if (response.status < 200 || response.status >= 300) {
       const message = providerMessage(response.body) || `repository request failed: HTTP ${response.status}`;
       const rejected = response.status === 401 || response.status === 403;
@@ -364,52 +319,6 @@ export abstract class AbstractCodeHost implements CodeHost {
     return this.mergeConflicts(response.status, message)
       ? new MergeConflict(message, calls)
       : new FetchFailed(message, calls);
-  }
-
-  protected parse(body: Buffer, calls: HttpCallDraft[]): unknown {
-    try {
-      return JSON.parse(body.toString('utf8')) as unknown;
-    } catch {
-      throw new FetchFailed(this.failure, calls);
-    }
-  }
-
-  private send(call: HostCall, headers: Record<string, string>, calls: HttpCallDraft[]): ReturnType<typeof request> {
-    return request(this.clock, call.url, { ...headers, 'Content-Type': 'application/json' }, calls, {
-      method: call.method,
-      body: call.payload,
-    });
-  }
-
-  protected remoteOnBase(origin: string, baseUrl: string): { host: string; project: string } | null {
-    try {
-      const remote = remoteProject(origin);
-      const host = configuredHost(baseUrl);
-      if (!host || remote.host.toLowerCase() !== host) {
-        return null;
-      }
-      return { host, project: remote.project };
-    } catch {
-      return null;
-    }
-  }
-
-  protected apiHost(): string {
-    return new URL(this.endpoint(this.env).root).hostname;
-  }
-
-  protected assertStatus(response: { status: number; url: string }, calls: HttpCallDraft[], failure: string): void {
-    const { status } = response;
-    if (status === 401 || status === 403) {
-      const host = new URL(response.url).hostname;
-      throw new FetchFailed(
-        host === this.apiHost() ? this.rejectedToken : `job log unavailable: HTTP ${status} from ${host}`,
-        calls,
-      );
-    }
-    if (status < 200 || status >= 300) {
-      throw new FetchFailed(`${failure}: HTTP ${status}`, calls);
-    }
   }
 
   private async reuse(
@@ -436,16 +345,5 @@ export abstract class AbstractCodeHost implements CodeHost {
       }
       throw foundError;
     }
-  }
-
-  protected rethrow(error: unknown, calls: HttpCallDraft[]): never {
-    if (error instanceof FetchFailed || error instanceof HostUnavailable) {
-      throw error;
-    }
-    const message = error instanceof Error ? error.message : this.failure;
-    if (error instanceof SwarmloopError && calls.length === 0) {
-      throw error;
-    }
-    throw new FetchFailed(message, calls);
   }
 }

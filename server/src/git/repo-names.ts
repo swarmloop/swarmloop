@@ -2,6 +2,7 @@ import { existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { ciFilesOfAnyHost } from '../integrations/code-host/code-host-rules';
 
 const REPO_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
@@ -61,12 +62,17 @@ export function hasCi(dir: string): boolean {
   if (!existsSync(dir) || !statSync(dir).isDirectory()) {
     return false;
   }
-  if (existsSync(join(dir, '.gitlab-ci.yml'))) {
-    return true;
+  return ciFilesOfAnyHost().some((path) => hasCiFile(dir, path));
+}
+
+function hasCiFile(dir: string, path: string): boolean {
+  const star = path.lastIndexOf('/*');
+  if (star === -1 || star !== path.lastIndexOf('/')) {
+    return existsSync(join(dir, path));
   }
-  const workflows = join(dir, '.github', 'workflows');
-  if (!existsSync(workflows) || !statSync(workflows).isDirectory()) {
-    return false;
-  }
-  return readdirSync(workflows).some((name) => name.endsWith('.yml') || name.endsWith('.yaml'));
+  const folder = join(dir, path.slice(0, star));
+  const ending = path.slice(star + 2);
+  return (
+    existsSync(folder) && statSync(folder).isDirectory() && readdirSync(folder).some((name) => name.endsWith(ending))
+  );
 }

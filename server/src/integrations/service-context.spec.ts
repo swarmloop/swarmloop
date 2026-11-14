@@ -63,6 +63,21 @@ describe('service context', () => {
     expect(block).not.toContain('token');
   });
 
+  it('tells the agent not to call the issue tracker or the code host, and names a GitHub host as GitHub', async () => {
+    tracker.fetch.mockResolvedValue({ bundle, httpCalls: [] });
+    runs.findRun.mockResolvedValue({ codeHost: 'github' });
+    documents.latestBody.mockImplementation(async (_key: string, kind: string) =>
+      kind === 'pipeline_ref' ? 'project: acme/demo\nref: feature/PROJ-1\n' : null,
+    );
+    host.findMergeRequest.mockResolvedValue({
+      record: { project: 'acme/demo', iid: 4, url: 'https://example.test/4', summary: '' },
+      httpCalls: [],
+    });
+    const block = await service.block('PROJ-1', 'ship the field');
+    expect(block).toContain('Read these notes. Do not call the issue tracker or the code host yourself.');
+    expect(block).toContain('GitHub acme/demo !4 https://example.test/4');
+  });
+
   it('fetches with the login of the person who started the run', async () => {
     tracker.fetch.mockResolvedValue({ bundle, httpCalls: [] });
     documents.latestBody.mockResolvedValue(null);

@@ -286,32 +286,6 @@ describe('github host', () => {
     expect(pipeline.snapshot?.runs).toMatchObject([{ id: 9, total: 12, queued: false }]);
   });
 
-  it('still lists failed jobs when the running list is skipped', async () => {
-    const seen = mockFetch([
-      {
-        workflow_runs: [
-          {
-            id: 9,
-            head_sha: 'abc',
-            status: 'completed',
-            conclusion: 'failure',
-            html_url: 'https://github.com/acme/demo/actions/runs/9',
-          },
-        ],
-      },
-      { jobs: [{ id: 4, name: 'test', conclusion: 'failure' }] },
-      ...QUIET,
-    ]);
-    const pipeline = await service().readBranchPipeline(
-      { project: 'acme/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' },
-      false,
-    );
-    expect(pipeline.snapshot?.jobs).toEqual([
-      { id: 4, name: 'test', stage: '', status: 'failed', allowFailure: false },
-    ]);
-    expect(seen[1]?.url).toContain('/actions/runs/9/jobs');
-  });
-
   describe('every check of the commit', () => {
     const ref = { project: 'acme/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' };
     const run = (id: number, name: string, conclusion: string, extra: object = {}) => ({

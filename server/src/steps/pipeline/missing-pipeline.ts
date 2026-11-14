@@ -35,9 +35,8 @@ export async function missingPipeline(input: {
     seen.some((item) => item.project === ref.project && item.runs.length === 0),
   )) {
     notes.push(`project: ${ref.project}`, `ref: ${ref.ref}`, `sha: ${ref.sha ?? 'unknown'}`);
-    const diagnosis = await host.diagnoseMissingPipeline?.(ref);
-    if (!diagnosis?.code) unexplained.push(ref);
-    if (!diagnosis) continue;
+    const diagnosis = await host.diagnoseMissingPipeline(ref);
+    if (!diagnosis.code) unexplained.push(ref);
     ctx.calls.push(...diagnosis.httpCalls);
     if (diagnosis.reason) notes.push(diagnosis.reason);
     if (diagnosis.code === 'merge-conflict') conflicts.push(ref);
