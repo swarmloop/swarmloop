@@ -60,10 +60,14 @@ export abstract class SubtaskOps {
   abstract asking(run: RunEntity): Promise<boolean>;
   /**
    * Asks the planner of the parent, in the parent's own chat, the open questions of a subtask run, and sends the run
-   * the answer through the Answer command. Returns the answer. When the planner gives none, the run is told to decide
-   * itself and the result is null.
+   * the answer through the Answer command. Returns the answer. Null means the planner gave no answer and nothing was
+   * sent.
    */
   abstract answer(opened: OpenedStep, child: RunEntity, task: Subtask, contract: string): Promise<string | null>;
+  /** True when the planner answered a subtask run and the delivery was refused, so `answer` sends that reply again. */
+  abstract replyPending(child: RunEntity): boolean;
+  /** Sends a subtask run the answer of the person to its open questions through the Answer command. */
+  abstract deliverAnswer(child: RunEntity, text: string): Promise<void>;
   /** The needs a subtask run ended its step with: the sibling tasks it waits for. None when it asked for nothing. */
   abstract needsOf(run: RunEntity): Promise<Need[]>;
   /** The merge request text of a subtask run, or an empty string. */

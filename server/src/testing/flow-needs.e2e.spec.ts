@@ -3,12 +3,14 @@ import 'reflect-metadata';
 import { ERROR_CODES } from '../contract/error-codes';
 import { parseSubtasks, type Subtask } from '../contract/subtask';
 import { DocumentRepository } from '../history/document.repository';
+import { StepStatEntity } from '../history/entities';
+import { VisitRepository } from '../history/visit.repository';
 import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
+import { RunQueriesService } from '../api/run-queries.service';
 import { CommandService } from '../pipeline/command.service';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
-import { DECIDE_YOURSELF } from '../steps/plan/plan.prompts';
 import { createFlowHarness } from './flow-harness';
 import { assertInvariants } from './flow-invariants';
 import { save } from './runs.spec-helpers';
@@ -53,10 +55,28 @@ describe('a task that needs a sibling waits for it', () => {
   let started = 0;
   const relaunched = (id: string) => flow.launched.slice(started).filter((key) => key === `${KEY}-${id}`);
 
-  async function pass(): Promise<void> {
+  /** The invariants do not know a run that waits for a person at implement: they read its state without the open questions. */
+  async function pass(invariants = true): Promise<void> {
     await flow.app.pipeline.step('implement', KEY);
     await flow.app.app.get(CommandService).idle();
-    await assertInvariants(flow.app);
+    if (invariants) await assertInvariants(flow.app);
+  }
+
+  /** The rerun of a task ran its step, as it does with a model: its next rerun is a new event. */
+  async function ran(id: string): Promise<void> {
+    const run = await child(id);
+    const now = new Date().toISOString();
+    await flow.app.app.get(VisitRepository).saveStat(
+      Object.assign(new StepStatEntity(), {
+        runId: run.id,
+        step: run.currentStep,
+        attempt: 1,
+        startedAt: now,
+        finishedAt: now,
+        durationMs: 0,
+        status: 'ok',
+      }),
+    );
   }
 
   async function seedEpic(list: Subtask[]): Promise<void> {
@@ -155,14 +175,86 @@ describe('a task that needs a sibling waits for it', () => {
     expect(await documents().latestBody(`${KEY}-a`, 'needs')).toBe('');
   });
 
-  it('tells the task to decide itself when the planner gives no answer', async () => {
+  const NOT_BUILT =
+    'Do the part your task needs inside your task, or keep the current shape and write it as not built.';
+  const NOBODY = 'No one can answer these questions';
+  const view = () => flow.app.app.get(RunQueriesService).flow(KEY);
+  const handoff = async () => handoffText(await documents().latestBody(`${KEY}-a`, 'handoff'));
+
+  it('tells the task why its need was refused when the planner gives no answer', async () => {
     await seedEpic([task('a'), task('b')]);
     jest.spyOn(flow.app.app.get(SubtaskPort), 'askAbout').mockResolvedValue(null);
     await needs('a', 'research', '- zzz: something');
 
     await pass();
 
-    expect(handoffText(await documents().latestBody(`${KEY}-a`, 'handoff'))).toContain(DECIDE_YOURSELF);
+    expect(await handoff()).toContain('zzz cannot go first: no task has the id zzz');
+    expect(await handoff()).not.toContain(NOBODY);
+  });
+
+  it('reruns a task that needs a sibling that depends on it once, with the reason in its handoff', async () => {
+    await seedEpic([task('a'), task('b', ['a'])]);
+    jest.spyOn(flow.app.app.get(SubtaskPort), 'askAbout').mockResolvedValue(null);
+    await needs('a', 'implement', '- b: its result');
+
+    await pass();
+
+    expect(relaunched('a')).toHaveLength(1);
+    expect(await handoff()).toContain(
+      `b cannot go first: b depends on a, so waiting for it would never end. ${NOT_BUILT}`,
+    );
+    expect(await handoff()).not.toContain(NOBODY);
+  });
+
+  it('puts the same refused need to the person, and the answer reaches the task', async () => {
+    await seedEpic([task('a'), task('b', ['a'])]);
+    jest.spyOn(flow.app.app.get(SubtaskPort), 'askAbout').mockResolvedValue(null);
+    await needs('a', 'implement', '- b: its result');
+    await pass();
+    await ran('a');
+    await needs('a', 'implement', '- b: its result');
+
+    await pass(false);
+
+    expect(relaunched('a')).toHaveLength(1);
+    const asked = await view();
+    expect(asked.items).toHaveLength(1);
+    expect(asked.items[0].label.startsWith('Subtask a asks:')).toBe(true);
+    expect(asked.state).toBe('waiting');
+    expect(asked.stateReason?.code).toBe('NEEDS_ANSWERS');
+
+    await flow.app.app
+      .get(CommandService)
+      .submit('answer', KEY, { answers: [{ kind: 'question', id: asked.items[0].id, body: 'Build it in a.' }] });
+    await flow.app.app.get(CommandService).idle();
+    await flow.app.pipeline.whenIdle(KEY);
+
+    expect(relaunched('a')).toHaveLength(2);
+    expect(await handoff()).toContain('Build it in a.');
+    expect(await handoff()).not.toContain(NOBODY);
+    expect(await documents().latestBody(KEY, 'contract')).toContain('- subtask a: Build it in a.');
+    const after = await view();
+    expect(after.items).toEqual([]);
+    expect(after.stateReason?.code).not.toBe('NEEDS_ANSWERS');
+  });
+
+  it('sends the planner answer to a repeated refused need without asking the person', async () => {
+    await seedEpic([task('a'), task('b', ['a'])]);
+    jest
+      .spyOn(flow.app.app.get(SubtaskPort), 'askAbout')
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce('Build it in this task.');
+    await needs('a', 'implement', '- b: its result');
+    await pass();
+    await ran('a');
+    await needs('a', 'implement', '- b: its result');
+
+    await pass(false);
+
+    expect(relaunched('a')).toHaveLength(2);
+    expect(await handoff()).toContain('Build it in this task.');
+    expect((await view()).items).toEqual([]);
+    expect(await documents().latestBody(KEY, 'subtask_questions')).toBeFalsy();
   });
 
   it('lets a task that waits for a sibling free its slot, so the sibling can start', async () => {

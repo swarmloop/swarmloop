@@ -9,6 +9,7 @@ import { agentFor } from '../../config/agents';
 import { AppConfig } from '../../config/env';
 import { VisitRepository } from '../../history/visit.repository';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
+import { RunQueriesService } from '../../api/run-queries.service';
 import { RunCommandsService } from '../../api/run-commands.service';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { type Subtask } from '../../contract/subtask';
@@ -665,10 +666,42 @@ describe('subtask questions', () => {
 
     await pass(app);
 
-    expect(await documents.latestBody(`${KEY}-a`, 'answers')).toContain('Decide each one yourself');
+    expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBeNull();
     expect(await documents.latestBody(KEY, 'contract')).toBe('- names are camelCase\n');
     const visits = await app.app.get(VisitRepository).listStats(parent.id);
     expect(visits.filter((visit) => visit.step === 'plan').map((visit) => visit.status)).toEqual(['failed']);
+    const view = await app.app.get(RunQueriesService).flow(KEY);
+    expect(view.items).toHaveLength(1);
+    expect(view.items[0].label).toMatch(/^Subtask a asks: - which field\?/);
+    expect(view.state).toBe('waiting');
+    expect(view.stateReason?.code).toBe('NEEDS_ANSWERS');
+  });
+
+  it('sends the answer of the person to a subtask waiting in research and records it under decisions', async () => {
+    const { prompts, documents, parent } = await questionWorld(() => ({ text: '', exitCode: 1 }));
+    await ask('a', '- which field?\n');
+    await pass(app);
+    const [question] = (await app.app.get(RunQueriesService).flow(KEY)).items;
+    await documents.putDocument(parent, 'answers', `question: ${question.id}\nanswer: Use a column.\n`);
+
+    await pass(app);
+
+    expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBe('question: which field?\nanswer: Use a column.\n');
+    expect(await documents.latestBody(KEY, 'contract')).toContain('- subtask a: Use a column.');
+    expect(prompts).toHaveLength(1);
+    expect((await documents.latestBody(KEY, 'subtask_questions'))?.trim()).toBe('');
+  });
+
+  it('asks no one again while the question for the person is open', async () => {
+    const { prompts, documents } = await questionWorld(() => ({ text: '', exitCode: 1 }));
+    await ask('a', '- which field?\n');
+    await pass(app);
+    const asked = await documents.latestBody(KEY, 'subtask_questions');
+
+    await pass(app);
+
+    expect(prompts).toHaveLength(1);
+    expect(await documents.latestBody(KEY, 'subtask_questions')).toBe(asked);
   });
 
   it('asks two questions that wait at once one after the other, in task order', async () => {
