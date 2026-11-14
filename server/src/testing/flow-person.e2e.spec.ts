@@ -211,6 +211,71 @@ describe('research answers in result blocks', () => {
   });
 });
 
+describe('plan answers in result blocks', () => {
+  const QUESTION = 'This change makes the stop button unreachable. Is that intended?';
+  const PLAN = { summary: ['one run'], plan: ['add the field - files: a.ts - proof: a.spec.ts'] };
+  let flow: Awaited<ReturnType<typeof createFlowHarness>>;
+  let blocks: BlockAgentRunner;
+
+  async function start(script: ScriptedAnswer[]): Promise<void> {
+    blocks = new BlockAgentRunner({ plan: script });
+    flow = await createFlowHarness(KEY, { blocks });
+    await remember(flow.app.app.get(RunRepository), flow.app.app.get(DocumentRepository), KEY, 'plan', 'waiting');
+  }
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await flow.close();
+  });
+
+  const planPrompts = () => blocks.prompts.filter((item) => item.step === 'plan');
+  const documents = () => flow.app.app.get(DocumentRepository);
+
+  it('waits on plan questions, takes the answers of a person and goes on', async () => {
+    await start([{ block: { summary: ['stopped'], questions: [QUESTION] } }, { block: PLAN }]);
+
+    await flow.app.pipeline.step('plan', KEY);
+    await flow.app.pipeline.whenIdle(KEY);
+
+    const asking = await stateOf(flow, KEY);
+    expect(asking.items.map((item) => item.id)).toEqual([QUESTION]);
+    expect(await documents().latestBody(KEY, 'questions')).toBe(`- ${QUESTION}\n`);
+    expect(await documents().latestBody(KEY, 'plan_result')).toContain('"questions":["This change makes');
+
+    await flow.app.app
+      .get(CommandService)
+      .submit('answer', KEY, { answers: [{ kind: 'question', id: QUESTION, body: 'yes, remove it' }] });
+    await flow.app.pipeline.whenIdle(KEY);
+
+    expect(planPrompts()).toHaveLength(2);
+    expect(planPrompts()[1].prompt).toContain('yes, remove it');
+    expect((await stateOf(flow, KEY)).state).toBe('done');
+    expect(await documents().latestBody(KEY, 'plan_result')).toContain('"plan":["add the field');
+  });
+
+  it('replays from plan with new instructions and plans again', async () => {
+    await start([
+      { block: PLAN },
+      { block: { summary: ['again'], plan: ['use a column - files: b.ts - proof: b.spec.ts'] } },
+    ]);
+    await flow.app.pipeline.step('plan', KEY);
+    await flow.app.pipeline.whenIdle(KEY);
+    await flow.person('resume');
+    expect((await stateOf(flow, KEY)).state).toBe('done');
+
+    await flow.app.app.get(CommandService).submit('replay', KEY, { step: 'plan', prompt: 'store it in a column' });
+    await flow.app.pipeline.whenIdle(KEY);
+
+    expect(planPrompts()).toHaveLength(2);
+    expect(planPrompts()[1].prompt).toContain('store it in a column');
+    const run = (await flow.app.app.get(RunRepository).findRun(KEY))!;
+    expect(run.currentStep).toBe('done');
+    const plan = JSON.parse((await documents().latestBody(KEY, 'requirements')) ?? '{}').plan;
+    expect(plan.items).toEqual(['use a column - files: b.ts - proof: b.spec.ts']);
+    expect(plan.decision).toBe('approve');
+  });
+});
+
 /** What the run view shows of the run: its state, the visible reason and the open items. */
 function stateOf(flow: Awaited<ReturnType<typeof createFlowHarness>>, key: string) {
   return flow.app.app.get(RunQueriesService).flow(key);

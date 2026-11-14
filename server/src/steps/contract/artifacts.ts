@@ -4,6 +4,9 @@ import type { Issue } from './step-contract';
 import { CONTRACT_KIND, SUBTASKS_KIND, type Subtask } from '../../contract/subtask';
 import type { KeepLine } from '../shared/keep-lines';
 import { research, type ResearchResult } from '../../agent-result/definitions/research';
+import { plan, type PlanResult } from '../../agent-result/definitions/plan';
+import { planImprove, type PlanImproveResult } from '../../agent-result/definitions/plan-improve';
+import { subtaskAnswer, type SubtaskAnswerResult } from '../../agent-result/definitions/subtask-answer';
 import { resultArtifactCodec } from '../../agent-result/result-codec';
 import { requirementsView } from '../../contract/requirements-view';
 import {
@@ -132,6 +135,26 @@ export const ARTIFACTS = {
     readers: ['plan', 'plan-improve', 'code-review'],
     codec: resultArtifactCodec<ResearchResult>(research),
     summarize: (result) => `${listSummary(result.questions.length, 'questions', result.questions[0])}`,
+  }),
+  planResult: artifact(plan.kind, {
+    writers: ['plan'],
+    readers: ['plan', 'plan-improve'],
+    codec: resultArtifactCodec<PlanResult>(plan),
+    summarize: (result) => listSummary(result.plan.length || result.tasks.length, 'plan items', result.plan[0]),
+  }),
+  planImproveResult: artifact(planImprove.kind, {
+    writers: ['plan-improve'],
+    readers: ['plan-improve'],
+    codec: resultArtifactCodec<PlanImproveResult>(planImprove),
+    summarize: (result) => listSummary(result.plan.length || result.tasks.length, 'plan items', result.plan[0]),
+  }),
+  // The parent planner's answer to a subtask, written by the pipeline and not by a step.
+  subtaskAnswerResult: artifact(subtaskAnswer.kind, {
+    writers: [],
+    readers: [],
+    external: true,
+    codec: resultArtifactCodec<SubtaskAnswerResult>(subtaskAnswer),
+    summarize: (result) => firstLine(result.answer),
   }),
   subtasks: artifact(SUBTASKS_KIND, {
     writers: ['plan', 'plan-improve', 'implement'],

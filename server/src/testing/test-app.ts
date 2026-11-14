@@ -30,31 +30,35 @@ import { LiveModule } from '../live/live.module';
 import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { BaseStep, type StepContext } from '../steps/base-step';
 import { ResearchStep } from '../steps/research/research.step';
+import { PlanStep } from '../steps/plan/plan.step';
+import { PlanImproveStep } from '../steps/plan-improve/plan-improve.step';
 import { ImplementStep } from '../steps/implement/implement.step';
 import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
 import { PipelineStep } from '../steps/pipeline/pipeline.step';
 import { StepRegistry } from '../steps/step.registry';
-import type { StepCapabilities, StepResult } from '../steps/contract/step-contract';
 import type { Step, StepSnapshot } from '../steps/step';
 import type { StepOptions } from '../core/pipeline-result';
-import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { StepKernel } from '../steps/step-kernel';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { Reconciler } from '../pipeline/reconciler';
-import { BlockAgentRunner, DEFAULT_RESEARCH } from './result-answer';
+import { BlockAgentRunner } from './result-answer';
+import { FakeCodeHost, ScriptedFakeAgentRunner, ScriptedStep, seededStep } from './test-app-steps';
+
+export { ScriptedFakeAgentRunner };
 
 const MACHINE_TOKEN = 'test-machine-token';
+/** The steps whose agent answers in result blocks. */
+const BLOCK_STEPS = ['research', 'plan', 'plan-improve'];
 
 type FakeSandbox = Record<string, (...args: never[]) => Promise<unknown>>;
 
 interface TestAppOptions {
   root?: string;
   runner?: ScriptedFakeAgentRunner;
-  /** The agent of the real research step: it answers in result blocks. Without one it answers `DEFAULT_RESEARCH` every time. */
+  /** The agent of the real research, plan and plan-improve steps: it answers in result blocks. Without one it answers the defaults of `BlockAgentRunner`. */
   blocks?: BlockAgentRunner;
   /** Replaces calls of the fake sandbox, for a spec that needs a container. */
   sandbox?: FakeSandbox;
@@ -70,55 +74,13 @@ interface TestAppOptions {
   ownsRoot?: boolean;
 }
 
-export class ScriptedFakeAgentRunner {
-  readonly steps: string[] = [];
-
-  run(step: string): Promise<void> {
-    this.steps.push(step);
-    return Promise.resolve();
-  }
-}
-
-class FakeCodeHost {
-  open(): Promise<{ url: string }> {
-    return Promise.resolve({ url: 'https://code.example/test/merge_requests/1' });
-  }
-}
-
-class ScriptedStep extends BaseStep<Record<string, never>> {
-  readonly inputs = {};
-  readonly outputs = [];
-  override readonly usesModel = false;
-  override readonly capabilities: StepCapabilities;
-
-  constructor(
-    readonly name: StepName,
-    kernel: StepKernel,
-    private readonly runner: { run(input: { step: string }): Promise<void> },
-    private readonly codeHost: FakeCodeHost,
-  ) {
-    super(kernel);
-    this.capabilities = { prompt: name === 'requirements', projects: name === 'prepare' };
-  }
-
-  override missingInput(): Promise<null> {
-    return Promise.resolve(null);
-  }
-
-  protected async work(_input: object, context: StepContext): Promise<StepResult> {
-    await this.runner.run({ step: this.name });
-    if (this.name === 'merge-request') await this.codeHost.open();
-    return { route: { to: 'next' }, summary: `${context.opened.startedAt} complete`, outputs: [] };
-  }
-}
-
 export interface TestApp {
   app: INestApplication;
   root: string;
   clock: FakeClock;
   codeHost: FakeCodeHost;
   runner: ScriptedFakeAgentRunner;
-  /** The agent of the real research step. */
+  /** The agent of the real research, plan and plan-improve steps. */
   blocks: BlockAgentRunner;
   pipeline: PipelineService;
   url: string;
@@ -139,7 +101,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   await writeFile(join(root, '.env'), testEnv(root, hostEnv));
   const clock = new FakeClock();
   const runner = options.runner ?? new ScriptedFakeAgentRunner();
-  const blocks = options.blocks ?? new BlockAgentRunner({}, { research: DEFAULT_RESEARCH });
+  const blocks = options.blocks ?? new BlockAgentRunner();
   const codeHost = new FakeCodeHost();
   const steps = new Map<StepName, Step>();
   const registry = {
@@ -177,7 +139,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     .useValue({
       run: async (input: { step: string }) => {
         await runner.run(input.step);
-        return input.step === 'research' ? blocks.run(input) : undefined;
+        return BLOCK_STEPS.includes(input.step) ? blocks.run(input) : undefined;
       },
     })
     .overrideProvider(SandboxService)
@@ -196,37 +158,14 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     steps.set(name, new ScriptedStep(name, module.get(StepKernel), module.get(AGENT_RUNNER), codeHost));
   }
 
-  // Research is always the real step, answered in blocks. Its worktrees are seeded when it is asked for them, and
-  // so are the requirements the scripted requirements step does not write.
-  const research = module.get(ResearchStep);
-  const seeded = (key: string): void => {
-    mkdirSync(join(root, 'worktrees', key), { recursive: true });
-  };
-  const withRequirements = async (key: string): Promise<void> => {
-    const documents = module.get(DocumentRepository);
-    const run = await module.get(RunRepository).findRun(key);
-    if (run && (await documents.latestBody(key, 'requirements')) === null) {
-      await documents.putDocument(run, 'requirements', '{"prompt":"Ship the field"}\n');
-    }
-  };
-  steps.set(
-    'research',
-    Object.create(research, {
-      missingInput: {
-        value: (key: string) => {
-          seeded(key);
-          return research.missingInput(key);
-        },
-      },
-      execute: {
-        value: async (key: string, stepOptions: StepOptions, snapshot?: StepSnapshot) => {
-          seeded(key);
-          await withRequirements(key);
-          return research.execute(key, stepOptions, snapshot);
-        },
-      },
-    }) as Step,
-  );
+  // Research, plan and plan-improve are always the real steps, answered in blocks.
+  for (const [name, real] of [
+    ['research', module.get(ResearchStep)],
+    ['plan', module.get(PlanStep)],
+    ['plan-improve', module.get(PlanImproveStep)],
+  ] as const) {
+    steps.set(name, seededStep(real, module, root));
+  }
 
   if (options.realImplement) {
     // Only a split run takes the real step, so the runs of its subtasks go through the scripted one.

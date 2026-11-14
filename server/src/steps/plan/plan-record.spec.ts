@@ -2,11 +2,12 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import {
   correctedItems,
   correctedPlan,
-  parsePlan,
-  planFromAgent,
-  planQuestions,
-  reviewedItems,
+  planFields,
+  readPlan,
+  renderSummary,
+  requireApprovedPlan,
   withInstructions,
+  withPlan,
 } from './plan-record';
 
 describe('withInstructions', () => {
@@ -20,66 +21,6 @@ describe('withInstructions', () => {
     expect(revised.plan.decision).toBe('revise');
     const kept = JSON.parse(withInstructions(body, 'Prefer the parser', false)) as { plan: { decision: string } };
     expect(kept.plan.decision).toBe('approve');
-  });
-});
-
-describe('parsePlan', () => {
-  it('keeps the checklist items', () => {
-    const text = ['notes', 'plan:', '- add the field', '- cover the empty case', ''].join('\n');
-    expect(parsePlan(text)).toBe('- add the field\n- cover the empty case\n');
-  });
-
-  it('keeps items that end with files and proof', () => {
-    const item = '- add X to Y - files: server/src/a.ts - proof: a.spec.ts "adds X"';
-    expect(parsePlan(`plan:\n${item}\n- old item\n`)).toBe(`${item}\n- old item\n`);
-  });
-
-  it('keeps the last checklist when a resumed answer repeats the section', () => {
-    const text = ['plan:', '- old item', '', 'plan:', '- new item', ''].join('\n');
-    expect(parsePlan(text)).toBe('- new item\n');
-  });
-
-  it('rejects a missing or empty checklist', () => {
-    expect(() => parsePlan('no section')).toThrow(new SwarmloopError('plan is missing'));
-    expect(() => parsePlan('plan:\n- none\n')).toThrow(new SwarmloopError('plan is empty'));
-  });
-});
-
-describe('planFromAgent', () => {
-  it('reads the checklist from a plan tool when the answer has no section', () => {
-    const stream = JSON.stringify({
-      type: 'tool_call',
-      subtype: 'completed',
-      tool_call: {
-        createPlanToolCall: {
-          args: {
-            name: 'Hello',
-            overview: 'Print it.',
-            plan: '# Hello\n\n- Add hello.js\n- Run it\n',
-            todos: [{ content: 'Add hello.js that prints Hello World' }, { content: 'Run node hello.js' }],
-          },
-        },
-      },
-    });
-    expect(planFromAgent('The worktree is empty.', stream)).toEqual({
-      name: 'Hello',
-      overview: 'Print it.',
-      items: ['Add hello.js that prints Hello World', 'Run node hello.js'],
-      decision: null,
-    });
-  });
-
-  it('keeps the answer section ahead of a tool checklist', () => {
-    const stream = JSON.stringify({
-      type: 'tool_call',
-      tool_call: { createPlanToolCall: { args: { todos: [{ content: 'from the tool' }] } } },
-    });
-    expect(planFromAgent('plan:\n- from the answer\n', stream)).toEqual({
-      name: '',
-      overview: '',
-      items: ['from the answer'],
-      decision: null,
-    });
   });
 });
 
@@ -118,12 +59,6 @@ describe('correctedPlan', () => {
     const plan = { name: '', overview: '', items: [item], decision: 'approve' };
     expect(correctedPlan(stored, `plan:\n${JSON.stringify(plan)}\n`)).toBeNull();
     expect(correctedItems(`plan:\n- ${item}\n`)).toEqual([item]);
-    expect(planFromAgent(`plan:\n- ${item}\n`, '').items).toEqual([item]);
-    const stream = JSON.stringify({
-      type: 'tool_call',
-      tool_call: { createPlanToolCall: { args: { todos: [{ content: item }] } } },
-    });
-    expect(planFromAgent('no section', stream).items).toEqual([item]);
   });
 
   it('leaves the plan when the section is not a checklist', () => {
@@ -132,57 +67,38 @@ describe('correctedPlan', () => {
   });
 });
 
-describe('reviewedItems', () => {
-  it('reads the checklist and ignores a decision line', () => {
-    const text = ['plan:', '- add the field', 'decision: revise'].join('\n');
-    expect(reviewedItems(text)).toEqual(['add the field']);
-  });
+describe('the plan in the requirements record', () => {
+  const requirements = '{"prompt":"ship the field"}\n';
 
-  it('returns nothing when the review kept the given plan', () => {
-    expect(reviewedItems('The checklist is already specific.')).toEqual([]);
-  });
-
-  it('reads a replacement from the plan tool', () => {
-    const stream = JSON.stringify({
-      type: 'tool_call',
-      subtype: 'completed',
-      tool_call: {
-        createPlanToolCall: {
-          args: {
-            plan: '# Field\n\nAdd it in the mapper.\n',
-            todos: [{ content: 'Add the field on the offer index' }, { content: 'Backfill null rows' }],
-          },
-        },
-      },
+  it('is written from the checklist the planner sent, as the prose reader wrote it', () => {
+    const body = withPlan(requirements, planFields(['add the field', 'cover the empty case']));
+    expect(JSON.parse(body)).toEqual({
+      prompt: 'ship the field',
+      plan: { name: '', overview: '', items: ['add the field', 'cover the empty case'], decision: null },
     });
-    expect(reviewedItems('I will replace the checklist.', stream)).toEqual([
-      'Add the field on the offer index',
-      'Backfill null rows',
-    ]);
+    expect(readPlan(body)?.items).toEqual(['add the field', 'cover the empty case']);
+  });
+
+  it('keeps the name and overview a planner sent', () => {
+    expect(planFields(['a'], 'Field', 'Ship it.')).toEqual({
+      name: 'Field',
+      overview: 'Ship it.',
+      items: ['a'],
+      decision: null,
+    });
+  });
+
+  it('is approved only by a person: the plan of a plan answer is not', () => {
+    const body = withPlan(requirements, planFields(['a']));
+    expect(() => requireApprovedPlan(body)).toThrow(new SwarmloopError('plan is not approved'));
+    expect(() => requireApprovedPlan(requirements)).toThrow(new SwarmloopError('plan is missing'));
   });
 });
 
-describe('planQuestions', () => {
-  it('reads the questions of an answer with no plan section', () => {
-    expect(planQuestions('questions:\n- Is that intended?\n\nsummary:\n- stopped\n')).toBe('- Is that intended?\n');
-  });
-
-  it('is empty for a plan, for none and for no section', () => {
-    expect(planQuestions('plan:\n- a\n\nquestions:\n- why?\n')).toBe('');
-    expect(planQuestions('questions:\n- none\n')).toBe('');
-    expect(planQuestions('summary:\n- x\n')).toBe('');
-  });
-});
-
-describe('keep items', () => {
-  it('parse like other items, and output without them is unchanged', () => {
-    const keep = '- keep: live agent log - files: step-documents.tsx - proof: step-documents.spec.tsx "shows the log"';
-    expect(reviewedItems(`plan:\n- add X - files: a.ts - proof: a.spec.ts\n${keep}\n`)).toEqual([
-      'add X - files: a.ts - proof: a.spec.ts',
-      keep.slice(2),
-    ]);
-    expect(reviewedItems('plan:\n- add X - files: a.ts - proof: a.spec.ts\n')).toEqual([
-      'add X - files: a.ts - proof: a.spec.ts',
-    ]);
+describe('renderSummary', () => {
+  it('writes one bullet per line the agent sent, and the checklist when it sent none', () => {
+    expect(renderSummary(['covers the empty case', 'one run'], ['item'])).toBe('- covers the empty case\n- one run\n');
+    expect(renderSummary([], ['item', 'other'])).toBe('- item\n- other\n');
+    expect(renderSummary(['none'], ['item'])).toBe('- item\n');
   });
 });

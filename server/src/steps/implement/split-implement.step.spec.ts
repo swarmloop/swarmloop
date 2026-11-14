@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { resultAnswer } from '../../testing/result-answer';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -610,7 +611,7 @@ describe('subtask questions', () => {
         prompts.push(input.prompt);
         const { text, exitCode = 0 } = replies(input.prompt);
         return Promise.resolve({
-          responseText: text,
+          responseText: text ? resultAnswer('Done.', { answer: text }) : text,
           chatId: 'chat-1',
           tokensIn: 10,
           tokensOut: 5,

@@ -16,7 +16,7 @@ import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { storedNeeds, type Need } from '../steps/shared/needs';
-import { storedResearch } from './stored-research';
+import { storedAsks } from './stored-research';
 import { mergeHandoff } from '../steps/shared/handoff';
 import { mergeSummaryOf } from './merge-summary';
 import type { OpenedStep } from '../steps/step-run';
@@ -105,7 +105,7 @@ export class SubtaskPort extends SubtaskOps {
   override async needsOf(run: RunEntity): Promise<Need[]> {
     return storedNeeds(
       (await this.documents.latestBody(run.key, ARTIFACTS.needs.kind)) ?? '',
-      await storedResearch(this.documents, run.key),
+      await storedAsks(this.documents, run.key),
     );
   }
 

@@ -35,7 +35,7 @@ const requirements = `${JSON.stringify({
   plan: { name: 'plan', overview: '', items: ['do it'], decision: 'approve' },
 })}\n`;
 
-async function world() {
+async function world(tasks: Subtask[] = [task('a'), task('b'), task('c', ['a'])]) {
   const flow = await createFlowHarness(KEY);
   const app = flow.app;
   const runs = app.app.get(RunRepository);
@@ -47,7 +47,7 @@ async function world() {
   await documents.putDocument(parent, 'requirements', requirements);
   await documents.putDocument(parent, 'repos', 'demo\n');
   await documents.putDocument(parent, 'contract', 'decisions:\n- subtask a: store UTC\n');
-  await documents.putDocument(parent, 'subtasks', `${JSON.stringify([task('a'), task('b'), task('c', ['a'])])}\n`);
+  await documents.putDocument(parent, 'subtasks', `${JSON.stringify(tasks)}\n`);
   return { app, tree: flow.tree, host: flow.host, launched: flow.launched };
 }
 
@@ -247,5 +247,26 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     expect((await parentRun(app))?.currentStep).toBe('checks');
     const visits = await app.app.get(VisitRepository).listStats((await parentRun(app))!.id);
     expect(visits.filter((visit) => visit.step === 'implement').length).toBeLessThanOrEqual(3 + 1);
+  });
+
+  it('splits into two subtasks, merges both and ends the parent done', async () => {
+    const built = await world([task('a'), task('b', ['a'])]);
+    app = built.app;
+
+    await app.pipeline.step('implement', KEY);
+    await finish(app, 'a', 1);
+    await app.pipeline.step('implement', KEY);
+    expect(await statuses(app)).toEqual({ a: 'merged', b: 'running' });
+    await finish(app, 'b', 2);
+    await app.pipeline.step('implement', KEY);
+
+    expect(await statuses(app)).toEqual({ a: 'merged', b: 'merged' });
+    expect((await parentRun(app))?.currentStep).toBe('checks');
+    expect((await app.app.get(RunQueriesService).flow(KEY)).taskLine).toBe('Split: 2 tasks · 2 merged');
+    for (const step of ['checks', 'code-review', 'commit', 'merge-request', 'pipeline'] as const) {
+      await app.pipeline.step(step, KEY);
+    }
+    expect((await parentRun(app))?.currentStep).toBe('done');
+    await assertInvariants(app);
   });
 });

@@ -27,7 +27,10 @@ function goldenBodies(): Map<string, string> {
 }
 
 /** A kind no golden run stores, whose body is JSON. */
-const JSON_BODIES: Record<string, string> = { answer_errors: '["items: \\"items\\" is required"]\n' };
+const JSON_BODIES: Record<string, string> = {
+  answer_errors: '["items: \\"items\\" is required"]\n',
+  subtask_answer_result: '{"answer":"use the shared helper"}\n',
+};
 
 const bodies = goldenBodies();
 const entries = Object.values<Artifact<unknown>>(ARTIFACTS);

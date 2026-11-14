@@ -51,6 +51,7 @@
       "questions",
       "answers",
       "research_result",
+      "plan_result",
       "repos",
       "handoff",
       "impact",

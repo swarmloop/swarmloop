@@ -13,14 +13,15 @@ import type { RunEntity } from '../history/entities';
 import type { Subtask } from '../contract/subtask';
 import type { DocumentRepository } from '../history/document.repository';
 import type { VisitRepository } from '../history/visit.repository';
-import type { AgentRunResult } from '../agent/agent-runner';
+import type { LaunchResult } from '../steps/shared/result-exchange';
 import type { AgentLauncher } from '../steps/shared/agent-launcher';
 import { agentFailure } from '../steps/shared/agent-result';
 import { openQuestions, unanswered } from '../steps/shared/answers';
-import { storedResearch } from './stored-research';
+import { storedAsks } from './stored-research';
 import { modelVisit } from '../steps/shared/model-visit';
 import { StepStopped } from '../steps/shared/step-stopped';
 import { DECIDE_YOURSELF, subtaskAsks } from '../steps/plan/plan.prompts';
+import { subtaskAnswer, type SubtaskAnswerResult } from '../agent-result/definitions/subtask-answer';
 import type { OpenedStep } from '../steps/step-run';
 import type { CommandService } from './command.service';
 
@@ -29,6 +30,8 @@ export class SubtaskPlannerAnswer {
   private readonly logger = new Logger(SubtaskPlannerAnswer.name);
   /** The planner's reply per subtask run whose delivery was refused, so a retry sends it again and does not ask again. */
   private readonly undelivered = new Map<string, string | null>();
+  /** The plan visits of a parent when its planner last answered a subtask. A new plan visit makes the next prompt full. */
+  private readonly answeredAt = new Map<string, number>();
 
   constructor(
     private readonly documents: DocumentRepository,
@@ -43,7 +46,7 @@ export class SubtaskPlannerAnswer {
     if (run.status !== 'waiting' || run.currentStep !== 'research') return false;
     const questions = (await this.documents.latestBody(run.key, ARTIFACTS.questions.kind)) ?? '';
     const answers = (await this.documents.latestBody(run.key, ARTIFACTS.answers.kind)) ?? '';
-    return unanswered(questions, await storedResearch(this.documents, run.key), answers).length > 0;
+    return unanswered(questions, await storedAsks(this.documents, run.key), answers).length > 0;
   }
 
   async answer(opened: OpenedStep, child: RunEntity, task: Subtask, contract: string): Promise<string | null> {
@@ -52,7 +55,7 @@ export class SubtaskPlannerAnswer {
       ? (this.undelivered.get(child.key) ?? null)
       : await this.askAbout(opened, task, questions, contract);
     const text = answer ?? DECIDE_YOURSELF;
-    const answers = openQuestions(questions, await storedResearch(this.documents, child.key)).map((id) => ({
+    const answers = openQuestions(questions, await storedAsks(this.documents, child.key)).map((id) => ({
       kind: 'question',
       id,
       body: text,
@@ -83,8 +86,11 @@ export class SubtaskPlannerAnswer {
     const { runtime, model, ...effort } = agentFor(env, parent, 'plan');
     const dir = root(this.config);
     if (!(await resumableChat(dir, parent.key, 'plan', runtime))?.chatId) return null;
-    const prompt = subtaskAsks(task, questions, contract);
-    let result: AgentRunResult | null = null;
+    const planVisits = async (): Promise<number> =>
+      (await this.visits.listStats(parent.id)).filter((stat) => stat.step === 'plan').length;
+    const received = this.answeredAt.get(parent.key) === (await planVisits()) ? subtaskAnswer.name : null;
+    const prompt = subtaskAsks(task, questions, contract, received);
+    let result: LaunchResult | null = null;
     let failure: string | null = null;
     try {
       const names = repoNames((await this.documents.latestBody(parent.key, ARTIFACTS.repos.kind)) ?? '');
@@ -100,6 +106,7 @@ export class SubtaskPlannerAnswer {
         ...effort,
         timeLimitMs: env.PLAN_TIMEOUT_MS,
         prompt,
+        result: subtaskAnswer,
         workspace: join(dir, 'worktrees', parent.key),
         mounts: mountsForStep(dir, parent.key, names, parent.targetPath),
       });
@@ -108,7 +115,8 @@ export class SubtaskPlannerAnswer {
       if (error instanceof StepStopped) throw error;
       failure = error instanceof SwarmloopError ? error.message : 'plan failed';
     }
-    const answer = failure ? '' : (result?.responseText ?? '').trim();
+    const given = failure ? null : (result?.resultValue as SubtaskAnswerResult | undefined);
+    const answer = (given?.answer ?? '').trim();
     await this.visits.finishVisit(
       parent,
       modelVisit({
@@ -125,6 +133,16 @@ export class SubtaskPlannerAnswer {
         exitCode: answer ? 0 : 1,
       }),
     );
+    if (result) {
+      this.answeredAt.set(parent.key, await planVisits());
+    }
+    if (given && answer) {
+      await this.documents.putDocument(
+        parent,
+        ARTIFACTS.subtaskAnswerResult.kind,
+        ARTIFACTS.subtaskAnswerResult.format(given),
+      );
+    }
     return answer || null;
   }
 }

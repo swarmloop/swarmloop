@@ -104,4 +104,23 @@ describe('artifact catalog', () => {
     expect(entry.parse(entry.format(value))).toEqual(value);
     expect(() => entry.parse('{"summary":[]}')).toThrow('research_result is not valid');
   });
+
+  it('registers the plan, plan-improve and subtask answer results', () => {
+    expect([ARTIFACTS.planResult.kind, ARTIFACTS.planImproveResult.kind, ARTIFACTS.subtaskAnswerResult.kind]).toEqual([
+      'plan_result',
+      'plan_improve_result',
+      'subtask_answer_result',
+    ]);
+    expect(ARTIFACTS.planResult.writers).toEqual(['plan']);
+    expect(ARTIFACTS.planImproveResult.writers).toEqual(['plan-improve']);
+    expect(ARTIFACTS.subtaskAnswerResult.external).toBe(true);
+    const value = { summary: ['why'], plan: ['a - files: b: c'], questions: [], contract: [], tasks: [], keep: [] };
+    expect(ARTIFACTS.planResult.parse(ARTIFACTS.planResult.format(value))).toEqual(value);
+    expect(() => ARTIFACTS.planResult.parse('{"summary":[],"plan":[],"questions":["a?"]}')).not.toThrow();
+    expect(() => ARTIFACTS.planResult.parse('{"summary":[]}')).toThrow('plan_result is not valid');
+    expect(() => ARTIFACTS.planImproveResult.parse('{"summary":[],"plan":["a"],"tasks":[{"id":"a"}]}')).toThrow(
+      'plan_improve_result is not valid',
+    );
+    expect(ARTIFACTS.subtaskAnswerResult.parse('{"answer":"use it"}')).toEqual({ answer: 'use it' });
+  });
 });

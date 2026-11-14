@@ -14,6 +14,7 @@ import { SubtaskPort } from './subtask-port';
 
 const answered = {
   responseText: 'use the shared helper',
+  resultValue: { answer: 'use the shared helper' },
   chatId: 'chat-1',
   tokensIn: 0,
   tokensOut: 0,
@@ -46,10 +47,14 @@ async function asked(env: Parameters<typeof testEnv>[0], epic: boolean, stored: 
   const launch = jest.fn().mockResolvedValue(answered);
   const submit = jest.fn().mockResolvedValue(undefined);
   const finished: VisitDraft[] = [];
+  /** Plan visits of the parent that the planner did not make as answers. */
+  const earlier: VisitDraft[] = [];
   const port = new SubtaskPort(
     {} as never,
     {
-      latestBody: async (_key: string, kind: string) => stored[kind] ?? (kind === 'research_result' ? null : 'app\n'),
+      latestBody: async (_key: string, kind: string) =>
+        stored[kind] ?? (kind === 'research_result' || kind === 'plan_result' ? null : 'app\n'),
+      putDocument: async () => undefined,
     } as never,
     { submit } as never,
     { launch } as never,
@@ -57,13 +62,16 @@ async function asked(env: Parameters<typeof testEnv>[0], epic: boolean, stored: 
       finishVisit: async (_run: unknown, visit: VisitDraft) => {
         finished.push(visit);
       },
+      listStats: async () => [...earlier, ...finished].map(() => ({ step: 'plan' })),
     } as never,
     new AppConfig(testEnv({ SWARMLOOP_ROOT: dir, AGENTS_PLAN: 'claude:m-plan', ...env })),
     new FakeClock(),
   );
   const opened = { run: parent, startedAt: '2026-01-01T00:00:00.000Z' } as never;
   await port.answer(opened, { key: 'child' } as RunEntity, { id: 't1' } as never, 'contract');
-  return { input: launch.mock.calls[0][0], visit: finished[0], submit };
+  const again = (): Promise<string | null> =>
+    port.answer(opened, { key: 'child-2' } as RunEntity, { id: 't2' } as never, 'contract');
+  return { input: launch.mock.calls[0][0], visit: finished[0], submit, launch, earlier, again };
 }
 
 describe('SubtaskPort planner answer', () => {
@@ -82,6 +90,35 @@ describe('SubtaskPort planner answer', () => {
   });
 });
 
+describe('the result prompt of the planner answer', () => {
+  const prompts = (launch: jest.Mock): string[] =>
+    launch.mock.calls.map((call) => (call[0] as { prompt: string }).prompt);
+
+  it('asks for the result block in full once, and in one line for the next subtask of the same plan chat', async () => {
+    const { launch, again } = await asked({}, false, { questions: '- one?\n' });
+    await again();
+
+    const [first, second] = prompts(launch);
+    expect(first).toContain('- answer (string, required)');
+    expect(second).not.toContain('- answer (string, required)');
+    expect(second).toContain('End with the result block as before.');
+  });
+
+  it('asks in full again once the parent has made a new plan visit', async () => {
+    const { launch, again, earlier } = await asked({}, false, { questions: '- one?\n' });
+    earlier.push({} as VisitDraft);
+    await again();
+
+    expect(prompts(launch)[1]).toContain('- answer (string, required)');
+  });
+
+  it('answers with the whole answer field', async () => {
+    const { submit } = await asked({}, false, { questions: '- one?\n' });
+
+    expect(submit.mock.calls[0][2].answers[0].body).toBe('use the shared helper');
+  });
+});
+
 describe("SubtaskPort answers a subtask's questions", () => {
   it('answers each question of the research result whole, with its own id', async () => {
     const questions = ['Is it ok?\n  - nested: yes\n1. first', 'second?'];
@@ -93,6 +130,18 @@ describe("SubtaskPort answers a subtask's questions", () => {
 
     const [, , { answers }] = submit.mock.calls[0];
     expect(answers.map((item: { id: string }) => item.id)).toEqual(questions);
+  });
+
+  it('answers each question of the plan result whole when the plan wrote the questions', async () => {
+    const questions = ['Is it ok?\n  - nested: yes\n1. first', 'second?'];
+    const stored = {
+      questions: renderQuestions(questions),
+      research_result: ARTIFACTS.researchResult.format({ summary: [], questions: ['from research'], impact: [] }),
+      plan_result: ARTIFACTS.planResult.format({ summary: [], plan: [], questions, contract: [], tasks: [], keep: [] }),
+    };
+    const { submit } = await asked({}, false, stored);
+
+    expect(submit.mock.calls[0][2].answers.map((item: { id: string }) => item.id)).toEqual(questions);
   });
 
   it('reads the questions of a run that has no research result', async () => {
