@@ -43,13 +43,20 @@ describe('TaskLayers', () => {
     for (let id = 1; id <= 7; id += 1) {
       expect(region).toHaveTextContent(`Title t${id}`);
     }
-    expect(region).toHaveTextContent('Stage 3');
-    expect(region).toHaveTextContent('A stage starts when the stages before it are merged.');
     expect(region).toHaveTextContent('running · code review');
     expect(region).toHaveTextContent('after t1');
     expect(region).toHaveTextContent('5s · $0.25');
     expect(within(region).getByRole('link', { name: 'Open run Title t3' })).toHaveAttribute('href', '/runs/run-1-t3');
     expect(within(region).queryByRole('link', { name: 'Open run Title t5' })).not.toBeInTheDocument();
+  });
+
+  it('lists blocked, running, waiting, then settled tasks, in plan order inside a group', () => {
+    render(<TaskLayers layers={layers} onSkip={vi.fn()} />);
+
+    const titles = within(screen.getByRole('region', { name: 'Tasks' }))
+      .getAllByText(/^Title t\d$/)
+      .map((node) => node.textContent);
+    expect(titles).toEqual(['Title t5', 'Title t3', 'Title t6', 'Title t1', 'Title t2', 'Title t4', 'Title t7']);
   });
 
   it('sums the subtasks in one summary line', () => {

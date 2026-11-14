@@ -99,9 +99,12 @@ const RESUMABLE_BLOCKS: readonly string[] = [
   ...IMAGE_ERROR_CODES,
 ];
 
+/** The reason code of a run that waits for answers. */
+export const NEEDS_ANSWERS = 'NEEDS_ANSWERS';
+
 /** The reason codes that need a person, each with the action that clears it. */
 export const NEEDS_PERSON: Readonly<Record<string, RunAction>> = {
-  NEEDS_ANSWERS: 'answer',
+  [NEEDS_ANSWERS]: 'answer',
   [ERROR_CODES.GIT_AUTH]: 'resume',
   [ERROR_CODES.IMAGE_MISSING]: 'resume',
   [ERROR_CODES.WORKSPACE_LOST]: 'resume',
@@ -175,4 +178,159 @@ export function actionsFor(state: RunState, reasonCode: string | null = null): R
     case 'recovering':
       return [];
   }
+}
+
+/** Who acts next: the server (`working`), a person (`person`), nobody (`done`, `neutral`), or a fault (`error`). */
+export type StateTone = 'working' | 'person' | 'error' | 'done' | 'neutral';
+
+export type StateIcon =
+  | 'working'
+  | 'person'
+  | 'paused'
+  | 'retrying'
+  | 'subtasks'
+  | 'queued'
+  | 'blocked'
+  | 'failed'
+  | 'stopped'
+  | 'ready'
+  | 'merged'
+  | 'closed'
+  | 'skipped';
+
+/** What a person reads of a run's state: the word, who acts next, the icon, and the longer text for the tooltip. */
+export interface StateWord {
+  word: string;
+  tone: StateTone;
+  icon: StateIcon;
+  tip: string;
+}
+
+type WordShape = Pick<StateWord, 'word' | 'tone' | 'icon'>;
+
+const WORKING: WordShape = { word: 'Working', tone: 'working', icon: 'working' };
+
+/** The word of each state. A new state gets its entry here. */
+export const STATE_WORDS: Readonly<Record<RunState, WordShape>> = {
+  idle: WORKING,
+  queued: WORKING,
+  running: WORKING,
+  recovering: WORKING,
+  stopping: WORKING,
+  waiting: { word: 'Waiting for you', tone: 'person', icon: 'person' },
+  blocked: { word: 'Blocked', tone: 'error', icon: 'blocked' },
+  failed: { word: 'Failed', tone: 'error', icon: 'failed' },
+  stopped: { word: 'Stopped', tone: 'neutral', icon: 'stopped' },
+  done: { word: 'Ready to merge', tone: 'done', icon: 'ready' },
+  merged: { word: 'Merged', tone: 'done', icon: 'merged' },
+  closed: { word: 'Closed', tone: 'neutral', icon: 'closed' },
+  skipped: { word: 'Skipped', tone: 'neutral', icon: 'skipped' },
+};
+
+/** What a reason does to the word of a waiting run: `state` leaves the state's own word. */
+type ReasonKind = 'paused' | 'retrying' | 'subtasks' | 'state';
+
+type ReasonCode =
+  (typeof ERROR_CODES)[keyof typeof ERROR_CODES] | (typeof REASON)[keyof typeof REASON] | typeof NEEDS_ANSWERS;
+
+/** Every reason code is written out here: a new code fails to compile until someone picks its word. */
+export const REASON_WORDS: Readonly<Record<ReasonCode, ReasonKind>> = {
+  [ERROR_CODES.RUN_BUSY]: 'state',
+  [ERROR_CODES.REVISION_CONFLICT]: 'state',
+  [ERROR_CODES.RESOURCE_UNKNOWN]: 'state',
+  [ERROR_CODES.CHECK_FAILED]: 'state',
+  [ERROR_CODES.SESSION_INCOMPATIBLE]: 'state',
+  [ERROR_CODES.REBASE_CONFLICT]: 'state',
+  [ERROR_CODES.DISK_LOW]: 'state',
+  [ERROR_CODES.WORKSPACE_LOST]: 'state',
+  [ERROR_CODES.RUNTIME_LIMIT]: 'paused',
+  [ERROR_CODES.GIT_AUTH]: 'state',
+  [ERROR_CODES.BRANCH_IN_USE]: 'state',
+  [ERROR_CODES.BRANCH_DIVERGED]: 'state',
+  [ERROR_CODES.AGENT_ENDED_EARLY]: 'state',
+  [ERROR_CODES.AGENT_LOOPING]: 'state',
+  [ERROR_CODES.STEP_FAILED]: 'state',
+  [ERROR_CODES.INPUT_MISSING]: 'state',
+  [ERROR_CODES.DOCKER_UNAVAILABLE]: 'retrying',
+  [ERROR_CODES.IMAGE_MISSING]: 'state',
+  [ERROR_CODES.SUBTASKS_RUNNING]: 'subtasks',
+  [ERROR_CODES.SUBTASK_WAITING]: 'subtasks',
+  [ERROR_CODES.SUBTASK_BLOCKED]: 'state',
+  [ERROR_CODES.HOST_UNAVAILABLE]: 'retrying',
+  [ERROR_CODES.CI_NOT_STARTED]: 'retrying',
+  [ERROR_CODES.CI_NOT_RUN]: 'state',
+  [ERROR_CODES.PIPELINE_UNFIXED]: 'state',
+  [ERROR_CODES.SPEND_LIMIT]: 'state',
+  [ERROR_CODES.TEST_FLAKY]: 'state',
+  [REASON.returned]: 'state',
+  [REASON.stopped]: 'state',
+  [REASON.didNotFit]: 'state',
+  [REASON.loopLimit]: 'state',
+  [REASON.ciLogUnavailable]: 'state',
+  [REASON.ciTimeout]: 'state',
+  [REASON.blocked]: 'state',
+  [REASON.recovering]: 'state',
+  [REASON.mergeWatchUnavailable]: 'state',
+  [REASON.mergeWatchStopped]: 'state',
+  [REASON.skipped]: 'state',
+  [NEEDS_ANSWERS]: 'state',
+};
+
+const QUEUED: WordShape = { word: 'Queued to merge into the epic', tone: 'working', icon: 'queued' };
+
+function kindOf(code: string): ReasonKind {
+  return (REASON_WORDS as Readonly<Record<string, ReasonKind | undefined>>)[code] ?? 'state';
+}
+
+function waitingWord(reason: StateReason | null, time: (iso: string) => string): WordShape {
+  const kind = reason ? kindOf(reason.code) : 'state';
+  const at = kind === 'paused' ? reason?.limit?.resumesAt : reason?.retryAt;
+  switch (kind) {
+    case 'paused':
+      return { word: at ? `Paused until ${time(at)}` : 'Paused', tone: 'working', icon: 'paused' };
+    case 'retrying':
+      return { word: at ? `Retrying at ${time(at)}` : 'Retrying', tone: 'working', icon: 'retrying' };
+    case 'subtasks':
+      return { word: 'Waiting for subtasks', tone: 'working', icon: 'subtasks' };
+    case 'state':
+      return STATE_WORDS.waiting;
+  }
+}
+
+/** Who and when, from the facts of one or more repositories: the latest time wins, each login is listed once. */
+function endedTip(verb: string, facts: { by: string | null; at: string }[], time: (iso: string) => string): string {
+  const logins = [...new Set(facts.flatMap((fact) => fact.by ?? []))];
+  const latest = facts.map((fact) => fact.at).sort()[facts.length - 1];
+  const when = latest ? time(latest) : '';
+  return logins.length > 0 ? `${verb} by ${logins.join(', ')}${when ? `, ${when}` : ''}` : `${verb} ${when}`.trim();
+}
+
+function endedWord(state: RunState, merge: MergeOutcome | undefined, time: (iso: string) => string): StateWord | null {
+  if (merge && 'closed' in merge) {
+    return { ...STATE_WORDS.closed, tip: endedTip('Closed', [merge.closed], time) };
+  }
+  if (merge) {
+    return { ...STATE_WORDS.merged, tip: endedTip('Merged', Object.values(merge.merged), time) };
+  }
+  return state === 'merged' || state === 'closed' ? { ...STATE_WORDS[state], tip: '' } : null;
+}
+
+/** The one place that turns a state into a word. `time` formats an ISO time: `contract/` has no formatter of its own. */
+export function stateWord(
+  state: RunState,
+  reason: StateReason | null,
+  facts: { subtask?: boolean; merge?: MergeOutcome; mergeWait?: string },
+  time: (iso: string) => string,
+): StateWord {
+  const ended =
+    state === 'done' || state === 'merged' || state === 'closed' ? endedWord(state, facts.merge, time) : null;
+  if (ended) {
+    return ended;
+  }
+  if (state === 'done' && facts.subtask) {
+    return { ...QUEUED, tip: facts.mergeWait ?? '' };
+  }
+  const shape = state === 'waiting' ? waitingWord(reason, time) : STATE_WORDS[state];
+  const explains = shape.tone === 'error' || shape.tone === 'person' || state === 'stopped';
+  return { ...shape, tip: explains ? (reason?.message ?? '') : '' };
 }
