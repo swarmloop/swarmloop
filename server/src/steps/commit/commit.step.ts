@@ -12,7 +12,7 @@ import { unchangedOutcome } from './commit-delivered';
 import { gitAt, status, Tree } from './commit-git';
 import { checkedRepoNames } from '../../git/repo-names';
 import { RunStop } from '../../agent/run-stop';
-import { assertNotStopped } from '../shared/step-stopped';
+import { assertNotStopped } from '../../agent/step-stopped';
 import { RebasedPublisher, type PublishedBy } from '../shared/rebased-publisher';
 import { BaseStep, StepContext } from '../base-step';
 import {

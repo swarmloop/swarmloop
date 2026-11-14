@@ -27,7 +27,13 @@ export const REGISTRIES = new Set([
   'services.gradle.org',
   'downloads.gradle.org',
 ]);
-export const MODEL_HOSTS = new Set(RUNTIME_NAMES.flatMap((name) => runtimeFor(name).apiHosts));
+/** The API hosts of every runtime, and the hosts its CLI sign-in needs. */
+export const MODEL_HOSTS = new Set(
+  RUNTIME_NAMES.flatMap((name) => [
+    ...runtimeFor(name).apiHosts,
+    ...(runtimeFor(name).connection?.signIn?.().hosts ?? []),
+  ]),
+);
 
 /** A rule is a host name, or `*.domain` for that domain and every name below it. */
 export function matchesHost(rule: string, name: string): boolean {

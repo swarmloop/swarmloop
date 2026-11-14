@@ -3,6 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { DocumentRepository } from '../history/document.repository';
 import { root } from '../history/run-paths';
+import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { IssueBundle } from '../integrations/issue-tracker/issue-bundle';
@@ -26,18 +27,20 @@ export class ServiceContextService {
    */
   async block(key: string, text: string): Promise<string> {
     const stored = (await this.documents.latestBody(key, 'requirements')) ?? '';
-    const known = new Set(await this.tracker.ticketKeys(stored));
+    const run = await this.runs.findRun(key);
+    const login = run?.startedBy;
+    const known = new Set(await this.tracker.ticketKeys(stored, login));
     const parts: string[] = [];
-    for (const issue of await runKeys(this.tracker, key, text)) {
+    for (const issue of await runKeys(this.tracker, key, text, login)) {
       if (known.has(issue)) {
         continue;
       }
-      const note = await this.issue(key, issue);
+      const note = await this.issue(key, issue, login);
       if (note) {
         parts.push(note);
       }
     }
-    const gitlab = await this.mergeRequest(key);
+    const gitlab = await this.mergeRequest(key, run);
     if (gitlab) {
       parts.push(gitlab);
     }
@@ -47,22 +50,21 @@ export class ServiceContextService {
     return ['Services:', 'Read these host notes. Do not call Jira or GitLab yourself.', ...parts].join('\n');
   }
 
-  private async issue(runKey: string, issue: string): Promise<string | null> {
+  private async issue(runKey: string, issue: string, login?: string | null): Promise<string | null> {
     try {
-      const fetched = await this.tracker.fetch(issue, join(root(this.config), 'worktrees', runKey));
+      const fetched = await this.tracker.fetch(issue, join(root(this.config), 'worktrees', runKey), login);
       return renderIssue(fetched.bundle);
     } catch {
       return null;
     }
   }
 
-  private async mergeRequest(key: string): Promise<string | null> {
+  private async mergeRequest(key: string, run: RunEntity | null): Promise<string | null> {
     const saved = await this.documents.latestBody(key, 'merge_request');
     const stored = saved ? storedMerge(saved) : null;
     if (stored) {
       return stored;
     }
-    const run = await this.runs.findRun(key);
     if (!run?.codeHost) {
       return null;
     }

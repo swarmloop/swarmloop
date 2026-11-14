@@ -9,6 +9,8 @@ import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { FlowRepository } from '../history/flow.repository';
+import type { IssueTracker } from '../integrations/issue-tracker/issue-tracker';
+import { ISSUE_TRACKER } from '../integrations/issue-tracker/tokens';
 import { PHASES } from '../contract/steps';
 import { RunCommandsService } from './run-commands.service';
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
@@ -35,6 +37,22 @@ describe('runs api', () => {
       expect(flow.sentence).toBe('The next continuation returns to implementation.');
       expect(flow.returns).toEqual([{ counter: 'review', count: 2, from: 'code-review', to: 'implement' }]);
       expect(second.attemptsReview).toBe(2);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('asks the tracker for the keys of the person who plans a run', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-actor-'));
+    const app = await boot(root);
+    try {
+      const tracker = app.get<IssueTracker>(ISSUE_TRACKER);
+      const keys = jest.spyOn(tracker, 'ticketKeys').mockResolvedValue(['PROJ-9']);
+      const runs = app.get(RunCommandsService);
+      expect(await runs.ticketKeys({ prompt: 'Do PROJ-9' }, 'ann')).toEqual({ keys: ['PROJ-9'] });
+      expect(keys).toHaveBeenLastCalledWith('Do PROJ-9', 'ann');
+      expect((await runs.plan({ prompt: 'Do PROJ-9', projects: ['demo'] }, 'bob')).key).toBe('PROJ-9');
+      expect(keys).toHaveBeenLastCalledWith('Do PROJ-9', 'bob');
     } finally {
       await app.close();
     }

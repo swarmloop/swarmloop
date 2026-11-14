@@ -17,7 +17,9 @@ import { RunCommandsService } from '../api/run-commands.service';
 import { RunSubtaskCommandsService } from '../api/run-subtask-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
 import { RunRebaseService } from '../api/run-rebase.service';
+import { ReadinessController } from '../api/readiness.controller';
 import { RunsController } from '../api/runs.controller';
+import { ReadinessModule } from '../readiness/readiness.module';
 import { ShellService } from '../api/shell.service';
 import { AGENT_RUNNER } from '../agent/agent-runner';
 import { SwarmloopConfigModule } from '../config/config.module';
@@ -147,8 +149,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
       LiveModule,
       ProvidersModule,
       SandboxModule,
+      ReadinessModule,
     ],
-    controllers: [HealthController, RunsController],
+    controllers: [HealthController, RunsController, ReadinessController],
     providers: [
       RunQueriesService,
       RunCommandsService,
@@ -254,7 +257,7 @@ function testEnv(root: string, overrides: Record<string, string> = {}): string {
     'GITLAB_TOKEN=',
     'GITHUB_BASE_URL=',
     'GITHUB_TOKEN=',
-    'CURSOR_API_KEY=',
+    'CURSOR_API_KEY=test-cursor-key',
     'ANTHROPIC_API_KEY=',
     'MAX_AGENT_CALLS=20',
     'MAX_RETURNS=3',

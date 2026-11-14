@@ -54,17 +54,7 @@ You need Docker and one model key. No Jira, no git token, no CI.
 
    Set `CHECKOUTS_ROOT` in `.env` to a folder that holds only the repositories swarmloop works on. It is mounted into the server, so keep other projects out of it. `SWARMLOOP_REPOS` (comma-separated folder names) narrows it further.
 
-2. In `.env`, set the key of the runtime your `AGENTS_*` name (Claude by default): `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` to use your Claude subscription, or `ANTHROPIC_API_KEY` from [Claude Console](https://platform.claude.com/settings/keys). A subscription token is for your own use on your own server, not one plan shared by a team. Leave every other secret empty.
-
-   For Cursor: set `CURSOR_API_KEY` from the [Cursor dashboard](https://cursor.com/dashboard), **API Keys** (it uses your Cursor plan, so there is no separate API bill), and switch `AGENTS_PLAN`, `AGENTS_IMPLEMENT` and `AGENTS_REVIEW` to `cursor:<model>`.
-
-   For Codex: switch `AGENTS_PLAN`, `AGENTS_IMPLEMENT` and `AGENTS_REVIEW` to `codex:<model>`, then:
-
-   - Subscription (ChatGPT Plus or Pro, no API bill): on your own machine run `codex login`. On a server without a browser run `codex login --device-auth`. Then put the file in `.env` as one line: `CODEX_AUTH=$(base64 -w0 ~/.codex/auth.json)` (macOS: `base64 -i ~/.codex/auth.json | tr -d '\n'`), pasted as the value, not as a command. The file is a password: never commit it, never share it. It is for your own use on your own server, not one plan shared by a team. Use this login only for swarmloop: a ChatGPT login can be refreshed from one place at a time, so also running `codex` with it on your laptop would log the server out. On a team server, log in once on that server.
-   - API key instead: `CODEX_API_KEY` from the [OpenAI platform dashboard](https://platform.openai.com/api-keys) (API keys); it is billed per token. If both are set, `CODEX_AUTH` wins.
-   - The server keeps the login in `data/codex/` (it survives restarts) and refreshes it itself every few days, so parallel reviewers and steps never fight over it. `CODEX_AUTH` in `.env` is only the starting point: it is used again only when you change its value. Nothing to do by hand, unless the log says `Codex login expired`: then run `codex login`, paste the new value into `CODEX_AUTH` and restart the server.
-   - **Subscriptions and automated use.** A subscription (Claude, ChatGPT or Cursor plan) has usage windows, and swarmloop stops using a runtime for the rest of a window when its CLI reports the limit (see `LIMIT_COOLDOWN_MIN`). Whether a plan may drive a CLI unattended is the provider's rule, not swarmloop's: read [Anthropic's consumer and commercial terms](https://www.anthropic.com/legal), [OpenAI's terms of use](https://openai.com/policies/terms-of-use/) and [Cursor's terms of service](https://cursor.com/terms-of-service) before you run a subscription login unattended. The API-key settings (`ANTHROPIC_API_KEY`, `CODEX_API_KEY`) are the metered, automation-friendly path. This note was written without opening those pages, so check the current wording yourself.
-   - A quick check: start a run with the three lists on `codex:<model>`; the first step answers if the login works.
+2. Open the dashboard, go to **Settings → Connections** and connect the runtime your `AGENTS_*` name (Claude by default): sign in with your Claude account or paste an API key. Codex signs in with ChatGPT or takes an API key; Cursor takes an API key. Each connection is tested before it is saved and belongs to the person who made it. The server starts without a key, and **Readiness** shows which runtime still needs one. To use Cursor or Codex, switch `AGENTS_PLAN`, `AGENTS_IMPLEMENT` and `AGENTS_REVIEW` to `cursor:<model>` or `codex:<model>`. A subscription login is for your own use on your own server, not one plan shared by a team. Scripts, CI and servers without a browser: see [Headless setup](#-headless-setup).
 
 3. Start it. The release images are pulled, nothing is built here:
 
@@ -165,13 +155,25 @@ How it runs:
 
 CI configuration is committed like other project files when the task requires it; explicit deny paths still apply. CI can execute changed workflows and scripts on push or PR/MR creation, before human review. Keep privileged secrets and deployment credentials behind protected branches/environments and required approvals; restrict job-token permissions and isolate runners used for unreviewed code. Human review before merge does not by itself protect earlier CI execution. The legacy `ALLOW_CI_CHANGES` setting is no longer used.
 
+### 🔑 Headless setup
+
+For scripts, CI and servers without a browser, put the tokens in `.env` instead of Connections. They stay the server fallback: a person's own connection is used first, and readiness does not ask for an env token when the connection exists. Uncomment them in `.env.example`.
+
+- Claude: `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` to use your Claude subscription, or `ANTHROPIC_API_KEY` from [Claude Console](https://platform.claude.com/settings/keys).
+- Cursor: set `CURSOR_API_KEY` from the [Cursor dashboard](https://cursor.com/dashboard), **API Keys** (it uses your Cursor plan, so there is no separate API bill), and switch `AGENTS_PLAN`, `AGENTS_IMPLEMENT` and `AGENTS_REVIEW` to `cursor:<model>`.
+- Codex, with the three lists on `codex:<model>`:
+  - Subscription (ChatGPT Plus or Pro, no API bill): on your own machine run `codex login`. On a server without a browser run `codex login --device-auth`. Then put the file in `.env` as one line: `CODEX_AUTH=$(base64 -w0 ~/.codex/auth.json)` (macOS: `base64 -i ~/.codex/auth.json | tr -d '\n'`), pasted as the value, not as a command. The file is a password: never commit it, never share it. It is for your own use on your own server, not one plan shared by a team. Use this login only for swarmloop: a ChatGPT login can be refreshed from one place at a time, so also running `codex` with it on your laptop would log the server out. On a team server, log in once on that server.
+  - API key instead: `CODEX_API_KEY` from the [OpenAI platform dashboard](https://platform.openai.com/api-keys) (API keys); it is billed per token. If both are set, `CODEX_AUTH` wins.
+  - The server keeps the login in `data/codex/` (it survives restarts) and refreshes it itself every few days, so parallel reviewers and steps never fight over it. `CODEX_AUTH` in `.env` is only the starting point: it is used again only when you change its value. Nothing to do by hand, unless the log says `Codex login expired`: then run `codex login`, paste the new value into `CODEX_AUTH` and restart the server.
+  - **Subscriptions and automated use.** A subscription (Claude, ChatGPT or Cursor plan) has usage windows, and swarmloop stops using a runtime for the rest of a window when its CLI reports the limit (see `LIMIT_COOLDOWN_MIN`). Whether a plan may drive a CLI unattended is the provider's rule, not swarmloop's: read [Anthropic's consumer and commercial terms](https://www.anthropic.com/legal), [OpenAI's terms of use](https://openai.com/policies/terms-of-use/) and [Cursor's terms of service](https://cursor.com/terms-of-service) before you run a subscription login unattended. The API-key settings (`ANTHROPIC_API_KEY`, `CODEX_API_KEY`) are the metered, automation-friendly path. This note was written without opening those pages, so check the current wording yourself.
+  - A quick check: start a run with the three lists on `codex:<model>`; the first step answers if the login works.
+- Jira: `JIRA_BASE_URL` is your site, such as `https://your-team.atlassian.net`; `JIRA_EMAIL` is the email you sign in to Atlassian with; `JIRA_API_TOKEN` comes from [Atlassian API tokens](https://id.atlassian.com/manage-profile/security/api-tokens): **Create API token**.
+
 ### 🎫 Jira (optional)
 
 Only for prompts that name a ticket. A prompt without one never calls Jira.
 
-- `JIRA_BASE_URL` is your site, such as `https://your-team.atlassian.net`.
-- `JIRA_EMAIL` is the email you sign in to Atlassian with.
-- `JIRA_API_TOKEN` comes from [Atlassian API tokens](https://id.atlassian.com/manage-profile/security/api-tokens): **Create API token**.
+- Connect Jira in **Settings → Connections**: site URL, email and API token from [Atlassian API tokens](https://id.atlassian.com/manage-profile/security/api-tokens). Env values are in [Headless setup](#-headless-setup).
 - `JIRA_PROJECTS` is a comma-separated list of project keys, such as `PROJ,OPS`. Only keys of these projects count as tickets in a prompt. Empty means every project that exists on the site.
 
 Run `docker compose up -d` again after saving.
@@ -396,7 +398,7 @@ When the API is on another machine, set the URL in `env`:
 | `SWARMLOOP_ALLOW` | Who may log in: `github:<user>`, `github-org:<org>`, `gitlab:<user>`, `gitlab-group:<group>`. Empty: a person who can push to a repository this server works on, or the first person to log in on the server's own machine while nobody is connected; a plain GitHub OAuth App from `.env` keeps the owner of `GITHUB_TOKEN`. |
 | `SWARMLOOP_TOKEN` | Bearer token for the CLI, ACP and scripts. Empty: made in `data/token`. |
 
-Spend, tokens, retries, and timeouts are in [Limits](#-limits-on-money-tokens-and-time). A missing key stops bootstrap and names the variable. Copy `.env.example` and change what you want.
+Spend, tokens, retries, and timeouts are in [Limits](#-limits-on-money-tokens-and-time). A missing model key does not stop the start: readiness names the runtime and links to its card. Copy `.env.example` and change what you want.
 
 ## 👥 For a team
 

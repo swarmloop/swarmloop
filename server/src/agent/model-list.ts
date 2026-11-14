@@ -31,12 +31,18 @@ export async function loadModelList(
     if (output.trim() === '') {
       return cached?.output ?? '';
     }
-    await mkdir(dirname(file), { recursive: true });
-    await writeFile(file, `${JSON.stringify({ fetchedAt: new Date(now).toISOString(), output })}\n`);
+    await saveModelList(root, runtime, now, output);
     return output;
   } catch {
     return cached?.output ?? '';
   }
+}
+
+/** Stores the raw output of a runtime's model list as the cache `loadModelList` reads. */
+export async function saveModelList(root: string, runtime: AgentRuntime, now: number, output: string): Promise<void> {
+  const file = join(root, 'data', `model-list-${runtime.name}.json`);
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, `${JSON.stringify({ fetchedAt: new Date(now).toISOString(), output })}\n`);
 }
 
 /** Runs the model list of a runtime in its own image through the sandbox, and returns what it prints. */

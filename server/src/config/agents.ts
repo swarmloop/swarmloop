@@ -141,18 +141,25 @@ const LISTS: Record<Tier, Record<Role, keyof AgentEnv>> = {
   subtask: { plan: 'AGENTS_SUBTASK_PLAN', implement: 'AGENTS_SUBTASK_IMPLEMENT', review: 'AGENTS_SUBTASK_REVIEW' },
 };
 
+/** The run's stored entries for one role and tier, as written. An entry whose runtime is unknown is dropped. */
+function knownStored(
+  run: AgentRun | null | undefined,
+  role: Role,
+  tier: Tier,
+): { runtime: RuntimeName; model: string; effort?: string }[] {
+  return (run?.agents?.[tier]?.[role] ?? []).flatMap(({ runtime, model, effort }) => {
+    const known = RUNTIME_NAMES.find((candidate) => candidate === runtime);
+    return known ? [{ runtime: known, model, effort }] : [];
+  });
+}
+
 /**
- * The run's stored choice for one role and tier. An entry whose runtime is unknown is dropped. A stored level that
- * its runtime no longer declares is dropped too: it was checked when saved, and a changed model list must not stop a
- * running run.
+ * The run's stored choice for one role and tier. A stored level that its runtime no longer declares is dropped: it
+ * was checked when saved, and a changed model list must not stop a running run.
  */
 function storedAgents(run: AgentRun | null | undefined, role: Role, tier: Tier): Agent[] {
   const agents: Agent[] = [];
-  for (const { runtime, model, effort } of run?.agents?.[tier]?.[role] ?? []) {
-    const known = RUNTIME_NAMES.find((candidate) => candidate === runtime);
-    if (!known) {
-      continue;
-    }
+  for (const { runtime: known, model, effort } of knownStored(run, role, tier)) {
     if (effort) {
       assertListLoaded(role, { runtime: known, model, effort: effort as Effort });
     }
@@ -195,6 +202,12 @@ function resolveEffort(agent: Agent, run: AgentRun | null | undefined, env: Agen
   return { ...base, ...(level ? { effort: level } : {}), ...(note ? { effortNote: note } : {}) };
 }
 
+/** The env name of the list a role and tier read: an unset subtask list falls back to the main role. */
+function listName(env: AgentEnv, role: Role, tier: Tier): keyof AgentEnv {
+  const own = LISTS[tier][role];
+  return env[own] === '' ? LISTS.main[role] : own;
+}
+
 /**
  * The agents of one role in one tier, in fallback order. The run's stored choice comes first; else an unset list
  * falls back to the main role, whose list is required.
@@ -204,9 +217,23 @@ function agentsOf(env: AgentEnv, role: Role, tier: Tier = 'main', run?: AgentRun
   if (stored.length > 0) {
     return stored.map((agent) => resolveEffort(agent, run, env));
   }
-  const own = LISTS[tier][role];
-  const name = env[own] === '' ? LISTS.main[role] : own;
+  const name = listName(env, role, tier);
   return parseAgentList(name, env[name]).map((agent) => resolveEffort(agent, run, env));
+}
+
+/**
+ * The agents of one role and tier as written: the run's stored choice, else the env list. A level is read but not
+ * checked, so no model list is needed. It serves what only shows or counts agents; a launch uses `agentsOf`.
+ */
+function namedAgents(env: AgentEnv, role: Role, tier: Tier, run?: AgentRun | null): Agent[] {
+  const stored = knownStored(run, role, tier).map(({ runtime, model, effort }) =>
+    effort && isEffort(effort) ? { runtime, model, effort } : { runtime, model },
+  );
+  if (stored.length > 0) {
+    return stored;
+  }
+  const name = listName(env, role, tier);
+  return env[name].split(',').map((item) => splitAgent(name, item));
 }
 
 /** The agent a step runs on, or null when the step has none. The only place that maps a step to a role and an agent. */
@@ -246,9 +273,15 @@ export function roleOf(run: AgentRun | null, step: string): { role: Role; tier: 
   return role ? { role, tier: tierOf(run) } : null;
 }
 
+/** The agents the server defaults (env) name for a step's role and tier, as written. Empty for a step without an agent. */
+export function namedAgentsFor(env: AgentEnv, run: AgentRun | null, step: string): Agent[] {
+  const role = roleFor(step);
+  return role ? namedAgents(env, role, tierOf(run), run) : [];
+}
+
 /** Every distinct runtime named in any role of any tier of the server defaults (env). */
 export function runtimesInUse(env: AgentEnv): RuntimeName[] {
-  const all = TIERS.flatMap((tier) => ROLES.flatMap((role) => agentsOf(env, role, tier)));
+  const all = TIERS.flatMap((tier) => ROLES.flatMap((role) => namedAgents(env, role, tier)));
   return [...new Set(all.map((agent) => agent.runtime))];
 }
 
@@ -262,13 +295,26 @@ export function runtimesNamingEffort(env: AgentEnv): RuntimeName[] {
 /** The models env names for each runtime, once each, in env order: the role lists. */
 export function knownModels(env: AgentEnv): Partial<Record<RuntimeName, string[]>> {
   const models: Partial<Record<RuntimeName, string[]>> = {};
-  for (const { runtime, model } of TIERS.flatMap((tier) => ROLES.flatMap((role) => agentsOf(env, role, tier)))) {
+  for (const { runtime, model } of TIERS.flatMap((tier) => ROLES.flatMap((role) => namedAgents(env, role, tier)))) {
     const list = (models[runtime] ??= []);
     if (!list.includes(model)) {
       list.push(model);
     }
   }
   return models;
+}
+
+/**
+ * Every agent of every role and tier of a run, as written, in role order: the run's stored choice first, else env.
+ * It tells which runtimes a run can use, so it needs no model list.
+ */
+export function runAgents(env: AgentEnv, run: AgentRun | null): Agent[] {
+  return TIERS.flatMap((tier) => ROLES.flatMap((role) => namedAgents(env, role, tier, run)));
+}
+
+/** What a person hears when a runtime of their run has no credential for them. */
+export function missingCredential(runtime: RuntimeName): string {
+  return `${runtime} has no credential for you: connect it in Connections (/connections#${runtime})`;
 }
 
 interface CredentialEnv {
@@ -279,27 +325,32 @@ interface CredentialEnv {
   CODEX_API_KEY: string;
 }
 
-/** The credential a runtime launches with. Throws when none is set. */
-export function credentialFor(env: CredentialEnv, runtime: RuntimeName): { name: string; value: string } {
+/**
+ * The credential a runtime launches with, read from env names: the server's env, or the fields a person stored for a
+ * connection, which use the same names. A name that is absent counts as empty. Throws when none is set.
+ */
+export function credentialFor(env: Partial<CredentialEnv>, runtime: RuntimeName): { name: string; value: string } {
   return runtimeFor(runtime).credential({
-    cursorKey: env.CURSOR_API_KEY,
-    anthropicKey: env.ANTHROPIC_API_KEY,
-    oauthToken: env.CLAUDE_CODE_OAUTH_TOKEN,
-    codexAuth: env.CODEX_AUTH,
-    codexApiKey: env.CODEX_API_KEY,
+    cursorKey: env.CURSOR_API_KEY ?? '',
+    anthropicKey: env.ANTHROPIC_API_KEY ?? '',
+    oauthToken: env.CLAUDE_CODE_OAUTH_TOKEN ?? '',
+    codexAuth: env.CODEX_AUTH ?? '',
+    codexApiKey: env.CODEX_API_KEY ?? '',
   });
 }
 
-/** Start-up check: every list parses and every runtime in it has a credential. Names the agent that fails. */
-export function assertAgents(env: AgentEnv & CredentialEnv): void {
+/**
+ * Start-up check: every list parses. A missing credential is a readiness item, not a refusal to start. The level of
+ * an agent is checked only when its runtime's model list is loaded: without a key the list cannot be read.
+ */
+export function assertAgents(env: AgentEnv): void {
   for (const tier of TIERS) {
     for (const role of ROLES) {
-      for (const agent of agentsOf(env, role, tier)) {
-        try {
-          credentialFor(env, agent.runtime);
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
-          throw new SwarmloopError(`agent ${agent.runtime}:${agent.model} of ${role} has no credential: ${reason}`);
+      const name = listName(env, role, tier);
+      for (const entry of env[name].split(',')) {
+        const { runtime, effort } = splitAgent(name, entry);
+        if (!effort || runtimeFor(runtime).listLoaded()) {
+          parseAgent(name, entry);
         }
       }
     }

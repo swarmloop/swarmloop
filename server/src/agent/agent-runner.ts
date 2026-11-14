@@ -1,5 +1,10 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
+import { credentialFor, missingCredential } from '../config/agents';
+import { PersonalCredentials } from '../auth/personal-credentials.service';
+import { RunRepository } from '../history/run.repository';
+import { starterOf } from '../history/run-starter';
+import { StepStopped } from './step-stopped';
 import { resolveRepoRoot } from '../config/repo-root';
 import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -7,7 +12,8 @@ import { Clock } from '../core/clock';
 import { AwakeTime, SAMPLE_MS } from '../core/awake-time';
 import type { AgentRuntime, AgentTools } from '../integrations/agent-runtime/agent-runtime';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
-import { modelApiHosts, modelCredential } from '../sandbox/sandbox-launch';
+import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
+import { modelApiHosts } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
 import { emptyResult, type AgentRunResult } from './agent-result';
@@ -17,6 +23,7 @@ import { RunStop } from './run-stop';
 import { loadPriceTable } from './prices';
 import { recordLaunch } from './agent-launches';
 import { readOnlyTree } from './agent-args';
+import { AgentLaunchEnv } from './agent-launch-env';
 import { AgentLaunchPrep } from './agent-launch-prep';
 import { AgentProcess } from './agent-process';
 import {
@@ -46,6 +53,7 @@ export type AgentRunInput = BaseAgentRunInput & { tools: AgentTools };
 export class AgentProcessRunner {
   private readonly logger = new Logger(AgentProcessRunner.name);
   private readonly launchPrep: AgentLaunchPrep;
+  private readonly launchEnv: AgentLaunchEnv;
 
   constructor(
     private readonly config: AppConfig,
@@ -53,8 +61,11 @@ export class AgentProcessRunner {
     private readonly sandbox: SandboxService,
     private readonly runStop: RunStop,
     @Optional() private readonly live?: LiveHub,
+    @Optional() private readonly credentials?: PersonalCredentials,
+    @Optional() private readonly runs?: RunRepository,
   ) {
-    this.launchPrep = new AgentLaunchPrep(config, clock, live);
+    this.launchPrep = new AgentLaunchPrep(config, live);
+    this.launchEnv = new AgentLaunchEnv(clock);
   }
 
   async run(input: AgentRunInput): Promise<AgentRunResult> {
@@ -140,6 +151,27 @@ export class AgentProcessRunner {
     }
   }
 
+  /**
+   * The credential this launch runs with: the starter's own, else the server's env. With none the run stops, as a
+   * Stop does, and says which runtime is missing: the person may have disconnected after the run was created.
+   */
+  private async credentialOf(
+    key: string,
+    runtime: RuntimeName,
+  ): Promise<{ name: string; value: string; owner: string | null }> {
+    if (!this.credentials || !this.runs) {
+      return { ...credentialFor(this.config.env, runtime), owner: null };
+    }
+    const run = await this.runs.findRun(key);
+    const starter = run ? await starterOf(this.runs, run) : null;
+    const found = await this.credentials.runtimeCredential(runtime, starter);
+    if (!found) {
+      this.runStop.halt(key);
+      throw new StepStopped([], missingCredential(runtime));
+    }
+    return found;
+  }
+
   /** One launch of the process: spawn it, read its stream until it exits, and return what it did. */
   private async once(
     input: AgentRunInput,
@@ -148,6 +180,7 @@ export class AgentProcessRunner {
     priorOutput: string,
   ): Promise<AgentRunResult> {
     const env = this.config.env;
+    const credential = await this.credentialOf(input.runKey, runtime.name);
     const launch = this.launchPrep.prepare(input, runtime, resumed);
     const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime.name, this.clock.now());
     const started = this.clock.now();
@@ -164,16 +197,7 @@ export class AgentProcessRunner {
       statePath: launch.statePath,
       allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(runtime.name)])],
       manifestHosts: input.manifestHosts,
-      env: [
-        modelCredential(
-          runtime.name,
-          env.CURSOR_API_KEY,
-          env.ANTHROPIC_API_KEY,
-          env.CLAUDE_CODE_OAUTH_TOKEN,
-          await this.launchPrep.codexLogin(runtime.name, env),
-          env.CODEX_API_KEY,
-        ),
-      ],
+      env: [await this.launchEnv.credential(runtime.name, credential, env)],
       command: [runtime.command, ...launch.args],
       unsetEnv: launch.unsetEnv,
       userId: launch.userId,

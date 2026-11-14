@@ -29,7 +29,7 @@ import { parseNeeds, type Need } from '../steps/shared/needs';
 import { mergeHandoff } from '../steps/shared/handoff';
 import { mergeSummaryOf } from './merge-summary';
 import { modelVisit } from '../steps/shared/model-visit';
-import { StepStopped } from '../steps/shared/step-stopped';
+import { StepStopped } from '../agent/step-stopped';
 import { DECIDE_YOURSELF, subtaskAsks } from '../steps/plan/plan.prompts';
 import type { OpenedStep } from '../steps/step-run';
 import { DELIVERED_PREFIX } from '../steps/commit/commit-result';

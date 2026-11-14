@@ -7,6 +7,7 @@ import ErrorIcon from '@mui/icons-material/Error';
 import WarningAmber from '@mui/icons-material/WarningAmber';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
+import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Skeleton from '@mui/material/Skeleton';
 import Tooltip from '@mui/material/Tooltip';
@@ -193,6 +194,12 @@ export function ReadinessPanel(): ReactElement {
           {problems.map((item) => (
             <Alert key={item.id} severity={item.status === 'fail' ? 'error' : 'warning'} sx={{ py: 0 }}>
               <strong>{NAMES[item.id]}</strong>: {item.line} — {item.action}
+              {item.link ? (
+                <>
+                  {' '}
+                  <Link href={item.link}>Open Connections</Link>
+                </>
+              ) : null}
             </Alert>
           ))}
         </Box>

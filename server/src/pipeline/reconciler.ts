@@ -2,6 +2,7 @@ import type { OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConnectionsService } from '../auth/connections.service';
 import { AppConfig } from '../config/env';
+import { PersonalCredentials } from '../auth/personal-credentials.service';
 import { agentsFor } from '../config/agents';
 import { ERROR_CODES } from '../contract/error-codes';
 import { RunStop } from '../agent/run-stop';
@@ -18,6 +19,7 @@ import { VisitRepository } from '../history/visit.repository';
 import { RuntimeCooldownRepository } from '../history/runtime-cooldown.repository';
 import { DiskGuard } from './disk-guard';
 import { dockerWait } from '../steps/step-error-end';
+import { cooldownKeys } from '../steps/shared/limit-failover';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CHAT_LOCK, chatResume, readChatLock } from './chat-lock';
 import { CommandService } from './command.service';
@@ -63,6 +65,7 @@ export class Reconciler implements OnModuleDestroy {
     private readonly visits: VisitRepository,
     private readonly runStop: RunStop,
     @Optional() private readonly connections?: ConnectionsService,
+    @Optional() private readonly credentials?: PersonalCredentials,
   ) {}
 
   /** The startup pass over the runs. `claimed` says which runs a step of this process holds. */
@@ -159,7 +162,8 @@ export class Reconciler implements OnModuleDestroy {
       if (run.status !== 'waiting' || deriveState(run).reason?.code !== ERROR_CODES.RUNTIME_LIMIT) continue;
       try {
         const runtimes = agentsFor(this.config.env, run, run.currentStep).map((agent) => agent.runtime);
-        if (this.clock.now() < (await this.cooldowns.earliest(runtimes)).resumeAt) continue;
+        const keys = await cooldownKeys(run, runtimes, this.runs, this.credentials);
+        if (this.clock.now() < (await this.cooldowns.earliest(keys)).resumeAt) continue;
         await this.commands.accept('resume', run.key, {}, { idempotencyKey: `limit-${run.revision}` });
       } catch (error) {
         this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);

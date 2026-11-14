@@ -89,19 +89,20 @@ export class RunCommandsService {
   }
 
   /** The keys a run with this prompt and run id would fetch from the tracker. */
-  async ticketKeys(body: TicketKeysBody): Promise<TicketKeysView> {
-    return { keys: await runKeys(this.tracker, body.key?.trim() ?? '', body.prompt ?? '') };
+  async ticketKeys(body: TicketKeysBody, actor?: string | null): Promise<TicketKeysView> {
+    return { keys: await runKeys(this.tracker, body.key?.trim() ?? '', body.prompt ?? '', actor) };
   }
 
   /** The checks of a new run, and the session it opens. Nothing is written. */
-  async plan(body: CreateRunBody): Promise<StartPlan> {
+  async plan(body: CreateRunBody, actor?: string | null): Promise<StartPlan> {
     const prompt = body.prompt?.trim() || undefined;
     const given = body.key?.trim() ?? '';
     if (!given && !prompt) {
       throw new BadRequestException('prompt is missing');
     }
     const phases = phaseNames(body.phases);
-    let key = given || (await this.tracker.ticketKeys(prompt ?? ''))[0] || `run-${this.clock.now().toString(36)}`;
+    let key =
+      given || (await this.tracker.ticketKeys(prompt ?? '', actor))[0] || `run-${this.clock.now().toString(36)}`;
     assertRunId(key);
     const path = body.path?.trim() || undefined;
     if (path) {

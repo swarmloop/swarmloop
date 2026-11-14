@@ -9,11 +9,19 @@ import { testEnv } from '../config/env.spec-helpers';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { ReadinessId, ReadinessItem } from '../contract/readiness';
 import { instantBackoff } from '../integrations/instant-backoff.spec-helpers';
+import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { DiskGuard } from '../pipeline/disk-guard';
 import { OwnUseMeter } from '../pipeline/own-use-meter';
 import { imageName } from '../sandbox/image-resolver';
 import { SandboxService } from '../sandbox/sandbox.service';
+import { PersonalCredentials } from '../auth/personal-credentials.service';
+import { SecretBox } from '../auth/secret-box';
+import { IntegrationSecretRepository } from '../history/integration-secret.repository';
+import { repositoryDatabase } from '../history/repository.spec-helpers';
+import { UserSettingRepository } from '../history/user-setting.repository';
+import { fakeConnection } from '../testing/fake-connection';
+import { ReadinessModelCredential } from './readiness-model-credential';
 import { ReadinessService } from './readiness.service';
 
 const GB = 1024 ** 3;
@@ -49,7 +57,11 @@ describe('ReadinessService', () => {
   });
 
   /** A server whose `data/` and `worktrees/` live in a temp directory, with every check green unless a case changes it. */
-  function setup(env: Partial<SwarmloopEnv> = {}, free = 50 * GB): ReadinessService {
+  function setup(
+    env: Partial<SwarmloopEnv> = {},
+    free = 50 * GB,
+    person?: (config: AppConfig) => ReadinessModelCredential,
+  ): ReadinessService {
     const home = mkdtempSync(join(tmpdir(), 'readiness-'));
     dirs.push(home);
     mkdirSync(join(home, 'data'));
@@ -72,7 +84,8 @@ describe('ReadinessService', () => {
     }) as unknown as typeof fetch;
     clock = new FakeClock();
     meter = new OwnUseMeter(config, clock);
-    return new ReadinessService(config, sandbox, disk, CodeHostRegistry.create(config.env, clock), clock, meter);
+    const hosts = CodeHostRegistry.create(config.env, clock);
+    return new ReadinessService(config, sandbox, disk, hosts, clock, meter, undefined, person?.(config));
   }
 
   /** The calls that left for a code host. The port probes stay on this machine. */
@@ -259,7 +272,7 @@ describe('ReadinessService', () => {
       setup({ AGENTS_PLAN: 'claude:m', AGENTS_IMPLEMENT: 'claude:m', AGENTS_REVIEW: 'claude:m' }),
       'model-credential',
     );
-    expect(missing).toMatchObject({ status: 'fail', action: expect.stringContaining('ANTHROPIC_API_KEY') });
+    expect(missing).toMatchObject({ status: 'fail', action: 'connect claude in Connections' });
     expect(
       (
         await itemOf(
@@ -287,13 +300,121 @@ describe('ReadinessService', () => {
       line: expect.stringContaining(
         'CURSOR_API_KEY is set for cursor; ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is missing',
       ),
-      action: expect.stringContaining('ANTHROPIC_API_KEY'),
+      action: 'connect claude in Connections',
     });
     const set = await itemOf(setup({ AGENTS_SUBTASK_REVIEW: 'claude:m', ANTHROPIC_API_KEY: 'k' }), 'model-credential');
     expect(set).toMatchObject({
       status: 'ok',
       line: 'CURSOR_API_KEY is set for cursor; ANTHROPIC_API_KEY is set for claude',
     });
+  });
+
+  describe('model credential of a person', () => {
+    const CLAUDE = {
+      AGENTS_PLAN: 'claude:m',
+      AGENTS_IMPLEMENT: 'claude:m',
+      AGENTS_REVIEW: 'claude:m',
+      CURSOR_API_KEY: '',
+    };
+
+    /** A service whose person view reads a real store on the same config as the service. */
+    async function withPerson(
+      env: Partial<SwarmloopEnv>,
+      body: (service: ReadinessService, store: PersonalCredentials, settings: UserSettingRepository) => Promise<void>,
+    ): Promise<void> {
+      const db = await repositoryDatabase();
+      try {
+        let store!: PersonalCredentials;
+        const settings = db.app.get(UserSettingRepository);
+        const service = setup(env, 50 * GB, (own) => {
+          store = new PersonalCredentials(db.app.get(IntegrationSecretRepository), new SecretBox('k'), clock, own);
+          return new ReadinessModelCredential(own, store, settings);
+        });
+        await body(service, store, settings);
+      } finally {
+        await db.close();
+      }
+    }
+
+    const credentialOf = async (service: ReadinessService, login: string | null) =>
+      (await service.report(login)).items.find((item) => item.id === 'model-credential');
+
+    it('links a missing runtime to its card', async () => {
+      expect(await itemOf(setup(CLAUDE), 'model-credential')).toMatchObject({
+        status: 'fail',
+        link: '/connections#claude',
+      });
+    });
+
+    it('is ok with nothing to do when the person connected the runtime', () =>
+      withPerson(CLAUDE, async (service, store) => {
+        const claude = fakeConnection({ id: 'claude', fields: ['ANTHROPIC_API_KEY'] });
+        await store.store(claude, 'alice', { ANTHROPIC_API_KEY: 'sk-ant-alice-1234' }, null);
+        expect(await credentialOf(service, 'alice')).toMatchObject({ status: 'ok', action: 'nothing to do' });
+      }));
+
+    describe('when the agents name a level and the model list of their runtime is not loaded', () => {
+      const LEVELS = {
+        AGENTS_PLAN: 'cursor:grok-4.7:high',
+        AGENTS_IMPLEMENT: 'cursor:grok-4.7:high',
+        AGENTS_REVIEW: 'cursor:grok-4.7:high',
+        CURSOR_API_KEY: '',
+      };
+
+      it('names the missing runtime and links its card, for a person and for the server', () =>
+        withPerson(LEVELS, async (service) => {
+          expect(runtimeFor('cursor').listLoaded()).toBe(false);
+          expect(await credentialOf(service, 'alice')).toMatchObject({
+            status: 'fail',
+            line: expect.stringContaining('cursor has no credential for you'),
+            link: '/connections#cursor',
+          });
+          expect(await credentialOf(service, null)).toMatchObject({
+            status: 'fail',
+            line: 'CURSOR_API_KEY is missing',
+            link: '/connections#cursor',
+          });
+        }));
+
+      it('is ok once the person connected the runtime', () =>
+        withPerson(LEVELS, async (service, store) => {
+          const cursor = fakeConnection({ id: 'cursor', fields: ['CURSOR_API_KEY'] });
+          await store.store(cursor, 'alice', { CURSOR_API_KEY: 'crsr-alice-1234' }, null);
+          expect(await credentialOf(service, 'alice')).toMatchObject({ status: 'ok' });
+        }));
+    });
+
+    it('tells a person with no connection which runtime is missing, and keeps env views env-only', () =>
+      withPerson(CLAUDE, async (service, store) => {
+        const claude = fakeConnection({ id: 'claude', fields: ['ANTHROPIC_API_KEY'] });
+        await store.store(claude, 'alice', { ANTHROPIC_API_KEY: 'sk-ant-alice-1234' }, null);
+        expect(await credentialOf(service, 'bob')).toMatchObject({
+          status: 'fail',
+          line: expect.stringContaining('claude has no credential for you'),
+          link: '/connections#claude',
+        });
+        expect(await credentialOf(service, 'machine')).toMatchObject({ status: 'fail' });
+        expect(await credentialOf(service, null)).toMatchObject({ status: 'fail' });
+        expect((await itemOf(service, 'model-credential')).status).toBe('fail');
+      }));
+
+    it("checks the runtimes of the person's saved agents, else the env lists", () =>
+      withPerson({ ...CLAUDE, CURSOR_API_KEY: 'key' }, async (service, _store, settings) => {
+        expect(await credentialOf(service, 'carol')).toMatchObject({ status: 'fail' });
+        await settings.save('carol', { agents: { main: { plan: [{ runtime: 'cursor', model: 'm' }] } } });
+        expect(await credentialOf(service, 'carol')).toMatchObject({ status: 'fail' });
+        const all = { plan: [{ runtime: 'cursor', model: 'm' }], implement: [{ runtime: 'cursor', model: 'm' }] };
+        await settings.save('dana', {
+          agents: {
+            main: { ...all, review: [{ runtime: 'cursor', model: 'm' }] },
+            subtask: { ...all, review: [{ runtime: 'cursor', model: 'm' }] },
+          },
+        });
+        expect(await credentialOf(service, 'dana')).toMatchObject({
+          status: 'ok',
+          line: 'CURSOR_API_KEY is set for cursor',
+        });
+      }));
   });
 
   describe('code host token', () => {
@@ -316,7 +437,8 @@ describe('ReadinessService', () => {
       const item = await itemOf(setup(), 'code-host-token');
       expect(item).toMatchObject({
         status: 'warn',
-        action: 'Connect GitHub or GitLab to publish, or set GITHUB_TOKEN or GITLAB_TOKEN',
+        action: 'Connect GitHub or GitLab in Connections to publish',
+        link: '/connections',
       });
       expect(remote()).toEqual([]);
     });

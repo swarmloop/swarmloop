@@ -109,8 +109,8 @@ export class RunsController {
   }
 
   @Post('runs/ticket-keys')
-  ticketKeys(@Body() body: TicketKeysBody): Promise<TicketKeysView> {
-    return this.runs.ticketKeys(body);
+  ticketKeys(@Body() body: TicketKeysBody, @Actor() actor: string | null): Promise<TicketKeysView> {
+    return this.runs.ticketKeys(body, actor);
   }
 
   @Post('runs/shell')
@@ -174,7 +174,7 @@ export class RunsController {
     @Actor() actor: string | null,
   ): Promise<RunRef & CommandReceipt> {
     const settings = actor ? await this.settings.read(actor) : null;
-    const plan = await this.runs.plan(body);
+    const plan = await this.runs.plan(body, actor);
     const result = await this.dispatch<RunRef>('start', plan.key, { ...plan }, undefined, {
       create: { targetPath: null, startedBy: actor, agents: settings?.agents ?? null },
       expectedRevision: body.expectedRevision,

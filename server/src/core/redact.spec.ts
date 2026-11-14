@@ -1,4 +1,4 @@
-import { redact } from './redact';
+import { redact, rememberSecret } from './redact';
 
 const ENV = {
   JIRA_API_TOKEN: 'jira-secret-value',
@@ -47,5 +47,15 @@ describe('redact', () => {
 
   it('works without an env', () => {
     expect(redact('ghp_abc123')).toBe('***');
+  });
+
+  it('masks a remembered secret in a log line, with no env', () => {
+    rememberSecret('stored-key-4f9a2c');
+    expect(redact('call failed for stored-key-4f9a2c today')).toBe('call failed for *** today');
+  });
+
+  it('does not remember a value shorter than four characters', () => {
+    rememberSecret('zq7');
+    expect(redact('see zq7 here')).toBe('see zq7 here');
   });
 });

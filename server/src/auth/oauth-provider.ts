@@ -64,6 +64,10 @@ type OAuthEnv = Pick<
 >;
 
 export interface Endpoints {
+  /** What the host calls the app of its login. */
+  appLabel: string;
+  /** True when the host has installations that choose repositories. */
+  installs: boolean;
   authorize: string;
   token: string;
   api: string;
@@ -214,6 +218,8 @@ export function githubEndpoints(env: Pick<OAuthEnv, 'GITHUB_BASE_URL'>): Endpoin
   const base = new URL(env.GITHUB_BASE_URL || 'https://github.com');
   const hosted = base.hostname === 'github.com' || base.hostname === 'www.github.com';
   return {
+    appLabel: 'App',
+    installs: true,
     authorize: `${base.origin}/login/oauth/authorize`,
     token: `${base.origin}/login/oauth/access_token`,
     api: hosted ? 'https://api.github.com' : `${base.origin}/api/v3`,
@@ -234,6 +240,8 @@ export function gitlabEndpoints(env: Pick<OAuthEnv, 'GITLAB_BASE_URL'>): Endpoin
   const base = new URL(env.GITLAB_BASE_URL || 'https://gitlab.com');
   const root = base.toString().replace(/\/$/, '');
   return {
+    appLabel: 'Application',
+    installs: false,
     authorize: `${root}/oauth/authorize`,
     token: `${root}/oauth/token`,
     api: `${root}/api/v4`,
@@ -250,6 +258,11 @@ export function gitlabEndpoints(env: Pick<OAuthEnv, 'GITLAB_BASE_URL'>): Endpoin
       return Math.max(project_access?.access_level ?? 0, group_access?.access_level ?? 0) >= 30;
     },
   };
+}
+
+/** The login setup of a host. */
+export function endpointsOf(host: ProviderName, env: OAuthEnv): Endpoints {
+  return host === 'github' ? githubEndpoints(env) : gitlabEndpoints(env);
 }
 
 /** Where a provider finds its app: the one Connect stored, else the OAuth app of the environment. */

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AppConfig } from '../../config/env';
 import { effortFields } from '../../contract/effort';
 import type { EffortFields } from '../../contract/effort';
@@ -12,6 +12,10 @@ import { recordStepEvent } from '../../core/step-event-scope';
 import type { VisitDraft } from '../../history/visit';
 import type { RunEntity } from '../../history/entities';
 import { RuntimeCooldownRepository } from '../../history/runtime-cooldown.repository';
+import type { CooldownKey } from '../../history/runtime-cooldown.repository';
+import { RunRepository } from '../../history/run.repository';
+import { starterOf } from '../../history/run-starter';
+import { PersonalCredentials } from '../../auth/personal-credentials.service';
 import { VisitRepository } from '../../history/visit.repository';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import type { Route } from '../contract/step-contract';
@@ -48,6 +52,22 @@ function limitText(runtime: RuntimeName, resetsAt: string | undefined): string {
   return `${NAMES[runtime]} hit its usage limit${resetsAt ? ` (resets ${clock(resetsAt)})` : ''}.`;
 }
 
+/** The cooldown keys of `runtimes` for the credentials of the run's starter. Without a store they are the server's own, `env`. */
+export async function cooldownKeys(
+  run: RunEntity,
+  runtimes: readonly RuntimeName[],
+  runs?: RunRepository,
+  credentials?: PersonalCredentials,
+): Promise<CooldownKey[]> {
+  const starter = runs && credentials ? await starterOf(runs, run) : null;
+  return Promise.all(
+    runtimes.map(async (runtime) => ({
+      runtime,
+      credential: credentials ? await credentials.credentialKey(runtime, starter) : 'env',
+    })),
+  );
+}
+
 /**
  * What a provider limit does to a launch: the runtime cools down, the limited launch is recorded and not counted as an
  * attempt, and the launch goes on at once with the next agent of the role, or the run waits when none is left.
@@ -59,11 +79,13 @@ export class LimitFailover {
     private readonly clock: Clock,
     private readonly cooldowns: RuntimeCooldownRepository,
     private readonly visits: VisitRepository,
+    @Optional() private readonly runs?: RunRepository,
+    @Optional() private readonly credentials?: PersonalCredentials,
   ) {}
 
   /** A new launch skips a cooling runtime. A person's Resume goes ahead on the agent it has even then. */
   async start<T extends FailoverTarget>(request: T): Promise<T> {
-    const cooling = await this.cooldowns.cooling(this.clock.now());
+    const cooling = await this.cooldowns.cooling(this.clock.now(), await this.keys(request));
     if (!cooling.has(request.runtime)) {
       return request;
     }
@@ -89,9 +111,15 @@ export class LimitFailover {
     const known = named > now && named <= now + MAX_RESET_MS;
     const resetsAt = known ? new Date(named).toISOString() : undefined;
     const end = known ? named : now + this.config.env.LIMIT_COOLDOWN_MIN * 60_000;
-    await this.cooldowns.set(request.runtime, end, known);
+    const keys = await this.keys(request);
+    await this.cooldowns.set(keys[0], end, known);
     await this.visits.finishVisit(request.run, this.visit(request, result));
-    const next = availableAgent(this.config.env, request.run, this.use(request), await this.cooldowns.cooling(now));
+    const next = availableAgent(
+      this.config.env,
+      request.run,
+      this.use(request),
+      await this.cooldowns.cooling(now, keys),
+    );
     if (!next) {
       throw await this.waiting(request, request.runtime, window, resetsAt);
     }
@@ -126,13 +154,18 @@ export class LimitFailover {
     window: string | undefined,
     resetsAt?: string,
   ): Promise<RuntimeLimit> {
-    const runtimes = agentsFor(this.config.env, request.run, this.use(request)).map((agent) => agent.runtime);
-    const { until, resumeAt } = await this.cooldowns.earliest(runtimes);
+    const { until, resumeAt } = await this.cooldowns.earliest(await this.keys(request));
     const resumesAt = new Date(resumeAt).toISOString();
     const reset = resetsAt ?? (until > 0 ? new Date(until).toISOString() : undefined);
     const text = `${limitText(runtime, reset)} Every agent of the role is limited. The run goes on at ${clock(resumesAt)}.`;
     recordStepEvent({ kind: 'agent.limited', runtime, window, resetsAt: reset, resumesAt, text });
     return new RuntimeLimit(text, runtime, resumesAt, window, reset);
+  }
+
+  /** The keys of the request's runtime and the runtimes of its role, for the run's credentials. */
+  private keys(request: FailoverTarget): Promise<CooldownKey[]> {
+    const role = agentsFor(this.config.env, request.run, this.use(request)).map((agent) => agent.runtime);
+    return cooldownKeys(request.run, [...new Set([request.runtime, ...role])], this.runs, this.credentials);
   }
 
   private use(request: FailoverTarget): string {

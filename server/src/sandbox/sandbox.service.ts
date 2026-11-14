@@ -180,7 +180,8 @@ export class SandboxService {
 
   /** Starts a docker command that streams its output. The caller builds and checks the args. */
   spawnDocker(args: string[]): SandboxChild {
-    const child = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'] }) as SandboxChild;
+    const stdin = args.slice(0, args.indexOf('--name')).includes('-i') ? 'pipe' : 'ignore';
+    const child = spawn('docker', args, { stdio: [stdin, 'pipe', 'pipe'] }) as SandboxChild;
     child.containerName = args[args.indexOf('--name') + 1] ?? '';
     return child;
   }

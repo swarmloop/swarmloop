@@ -18,7 +18,7 @@ import { startState, type CookieResponse } from './cookies';
 import { GithubAppService, type ManifestForm } from './github-app.service';
 import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
-import type { ProviderName } from './oauth-provider';
+import { endpointsOf, type ProviderName } from './oauth-provider';
 
 const HOSTS: readonly ProviderName[] = ['github', 'gitlab'];
 
@@ -92,7 +92,7 @@ export class ConnectionsController {
   }
 
   private settingsUrl(host: ProviderName, slug: string | undefined): string | null {
-    return host === 'github' && slug
+    return endpointsOf(host, this.config.env).installs && slug
       ? `${new URL(this.config.env.GITHUB_BASE_URL || 'https://github.com').origin}/settings/apps/${encodeURIComponent(slug)}`
       : null;
   }
@@ -112,14 +112,16 @@ export class ConnectionsController {
     const stored = this.apps.find(host);
     const credentials = this.apps.credentials(host);
     const health = actor && actor !== 'machine' ? await this.connections.health(host, actor) : null;
-    const mayReplace = host === 'github' && stored && (actor === 'machine' || actor === stored.madeBy);
-    const repositories =
-      host === 'github' && health ? await this.connections.repositories(actor as string).catch(() => []) : [];
+    const { appLabel, installs } = endpointsOf(host, this.config.env);
+    const mayReplace = installs && stored && (actor === 'machine' || actor === stored.madeBy);
+    const repositories = installs && health ? await this.connections.repositories(actor as string).catch(() => []) : [];
     return {
       host,
+      appLabel,
+      installs,
       app: credentials
         ? {
-            name: stored?.slug || (host === 'github' ? 'OAuth app' : 'OAuth application'),
+            name: stored?.slug || `OAuth ${appLabel.toLowerCase()}`,
             clientId: credentials.clientId,
             madeBy: stored?.madeBy ?? null,
             settingsUrl: this.settingsUrl(host, stored?.slug),
@@ -127,7 +129,7 @@ export class ConnectionsController {
         : null,
       account: health?.login ?? null,
       repositories,
-      missingOwners: host === 'github' && health ? await this.missingOwners(repositories) : [],
+      missingOwners: installs && health ? await this.missingOwners(repositories) : [],
       selection: health?.selection === 'selected' ? 'selected' : health?.selection === 'all' ? 'all' : null,
       health: health && { status: health.status, expiresAt: health.expiresAt, refreshedAt: health.refreshedAt },
       connected: mayReplace ? await this.connections.loginsOn(host) : [],

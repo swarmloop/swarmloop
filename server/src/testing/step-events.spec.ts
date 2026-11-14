@@ -1,5 +1,5 @@
 import { AGENT_RUNNER } from '../agent/agent-runner';
-import { StepStopped } from '../steps/shared/step-stopped';
+import { StepStopped } from '../agent/step-stopped';
 import { execFileSync } from 'child_process';
 import { mkdirSync } from 'fs';
 import { join } from 'path';

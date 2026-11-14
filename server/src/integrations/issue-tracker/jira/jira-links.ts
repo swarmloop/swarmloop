@@ -1,0 +1,238 @@
+import { FetchFailed, type HttpCallDraft } from '../../../core/swarmloop-error';
+import type { Clock } from '../../../core/clock';
+import type { LinkedPagesService } from '../../linked-pages/linked-pages';
+import type { PageReadContext } from '../../linked-pages/page-reader';
+import type { IssueBundle, IssueNote } from '../issue-bundle';
+import { adfToMarkdown } from './adf';
+import { sameSiteIssueKey } from './jira-url';
+
+const ISSUE_KEY = /^[A-Z][A-Z0-9]+-\d+$/;
+
+export interface JiraIssue {
+  key: string;
+  fields: {
+    summary?: string;
+    description?: unknown;
+    status?: { name?: string; statusCategory?: { key?: string } };
+    issuetype?: { name?: string };
+    parent?: { key?: string };
+    attachment?: { filename?: string; content?: string }[];
+    comment?: { comments?: JiraComment[] };
+    [key: string]: unknown;
+  };
+}
+
+export interface JiraComment {
+  author?: { displayName?: string };
+  created?: string;
+  body?: unknown;
+}
+
+type ReadIssue = (
+  base: string,
+  headers: Record<string, string>,
+  key: string,
+  calls: HttpCallDraft[],
+) => Promise<JiraIssue>;
+
+type ReadComments = (
+  base: string,
+  headers: Record<string, string>,
+  key: string,
+  calls: HttpCallDraft[],
+  urls: Set<string>,
+) => Promise<JiraComment[]>;
+
+/** Follows the links of an issue: related issues, subtasks and the pages its text points to. */
+export class JiraLinks {
+  constructor(
+    private readonly readIssue: ReadIssue,
+    private readonly readComments: ReadComments,
+    private readonly linkedPages: LinkedPagesService,
+    private readonly clock: Clock,
+  ) {}
+
+  async links(
+    bundle: IssueBundle,
+    urls: Set<string>,
+    issue: JiraIssue,
+    base: string,
+    headers: Record<string, string>,
+    runKey: string,
+    calls: HttpCallDraft[],
+    acceptanceId: string | null,
+    login?: string | null,
+  ): Promise<void> {
+    const attachmentUrls = new Set(
+      (issue.fields.attachment ?? []).map((item) => item.content).filter((url): url is string => Boolean(url)),
+    );
+    const context: PageReadContext = { runKey, calls, headers, base, clock: this.clock, login };
+    const seen = new Set<string>([issue.key, bundle.epic?.key].filter((key): key is string => Boolean(key)));
+    const direct: string[] = [];
+    const remember = (key: string): void => {
+      if (!seen.has(key) && !direct.includes(key)) {
+        direct.push(key);
+      }
+    };
+    for (const key of issueLinkKeys(issue)) {
+      remember(key);
+    }
+    for (const url of urls) {
+      if (attachmentUrls.has(url) || !/^https?:\/\//.test(url)) {
+        continue;
+      }
+      if (await this.linkedPages.take(bundle, url, context)) {
+        continue;
+      }
+      const linked = sameSiteIssueKey(url, base);
+      if (linked) {
+        remember(linked);
+        continue;
+      }
+      bundle.links.push(...(await this.linkedPages.external(url, context)));
+    }
+    for (const key of direct) {
+      const loaded = await this.relatedIssue(bundle, key, base, headers, calls, acceptanceId, seen);
+      if (!loaded) {
+        continue;
+      }
+      for (const child of subtaskKeys(loaded)) {
+        await this.relatedIssue(bundle, child, base, headers, calls, acceptanceId, seen);
+      }
+    }
+  }
+
+  private async relatedIssue(
+    bundle: IssueBundle,
+    key: string,
+    base: string,
+    headers: Record<string, string>,
+    calls: HttpCallDraft[],
+    acceptanceId: string | null,
+    seen: Set<string>,
+  ): Promise<JiraIssue | null> {
+    if (seen.has(key)) {
+      return null;
+    }
+    seen.add(key);
+    try {
+      const linked = await this.readIssue(base, headers, key, calls);
+      const body = await this.relatedText(linked, base, headers, calls, acceptanceId);
+      bundle.links.push({
+        url: `${base}/browse/${linked.key}`,
+        path: '',
+        source: 'link',
+        body,
+        encoding: 'utf8',
+      });
+      return linked;
+    } catch (error) {
+      if (error instanceof FetchFailed) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private async relatedText(
+    linked: JiraIssue,
+    base: string,
+    headers: Record<string, string>,
+    calls: HttpCallDraft[],
+    acceptanceId: string | null,
+  ): Promise<string> {
+    const comments = await this.readComments(base, headers, linked.key, calls, new Set());
+    const lines = [linked.key];
+    const summary = (linked.fields.summary ?? '').trim();
+    if (summary) {
+      lines.push(summary);
+    }
+    const status = statusText(linked);
+    if (status) {
+      lines.push('', `Status: ${status}`);
+    }
+    const description = adfToMarkdown(linked.fields.description).trim();
+    if (description) {
+      lines.push('', description);
+    }
+    const acceptance = acceptanceId ? textValue(linked.fields[acceptanceId]).trim() : '';
+    if (acceptance) {
+      lines.push('', 'Acceptance criteria:', acceptance);
+    }
+    if (comments.length > 0) {
+      lines.push('', 'Comments:');
+      for (const comment of comments) {
+        const note = toNote(comment);
+        if (note.bodyMarkdown.trim()) {
+          lines.push(`- ${note.author}: ${note.bodyMarkdown.trim()}`);
+        }
+      }
+    }
+    return lines.join('\n');
+  }
+}
+
+/** Jira's status category keys. Status names are localized; these are not. */
+const STATUS_CATEGORIES: Record<string, string> = { new: 'to do', indeterminate: 'in progress', done: 'done' };
+
+function statusText(issue: JiraIssue): string {
+  const name = issue.fields.status?.name?.trim() ?? '';
+  const category = STATUS_CATEGORIES[issue.fields.status?.statusCategory?.key ?? ''] ?? '';
+  if (name && category) {
+    return `${name} (${category})`;
+  }
+  return name || category;
+}
+
+function issueLinkKeys(issue: JiraIssue): string[] {
+  return nestedKeys(issue.fields.issuelinks, ['outwardIssue', 'inwardIssue']);
+}
+
+function subtaskKeys(issue: JiraIssue): string[] {
+  return nestedKeys(issue.fields.subtasks, []);
+}
+
+function nestedKeys(value: unknown, nested: string[]): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const keys: string[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+    const record = item as Record<string, unknown>;
+    pushKey(keys, record.key);
+    for (const name of nested) {
+      const child = record[name];
+      if (child && typeof child === 'object') {
+        pushKey(keys, (child as { key?: unknown }).key);
+      }
+    }
+  }
+  return keys;
+}
+
+function pushKey(keys: string[], value: unknown): void {
+  if (typeof value === 'string' && ISSUE_KEY.test(value) && !keys.includes(value)) {
+    keys.push(value);
+  }
+}
+
+export function toNote(comment: JiraComment): IssueNote {
+  return {
+    author: comment.author?.displayName ?? 'unknown',
+    created: comment.created ?? '',
+    bodyMarkdown: adfToMarkdown(comment.body),
+  };
+}
+
+export function textValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (value && typeof value === 'object') {
+    return adfToMarkdown(value);
+  }
+  return '';
+}

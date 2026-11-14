@@ -10,9 +10,7 @@ git -C "$work/checkouts/fixture" init -q
 git -C "$work/checkouts/fixture" -c user.name=ci -c user.email=ci@example.com commit -q --allow-empty -m fixture
 cp "$repo/compose.yml" "$work/stack/compose.yml"
 cp "$repo/.env.example" "$work/stack/.env"
-# The server refuses to start when a role names a runtime without a key. The fixture never calls a model.
-sed -i 's/^CURSOR_API_KEY=$/CURSOR_API_KEY=fixture-key/' "$work/stack/.env"
-sed -i 's/^ANTHROPIC_API_KEY=$/ANTHROPIC_API_KEY=fixture-key/' "$work/stack/.env"
+# No model key is set: the server starts without one and readiness names the runtime.
 # Machine clients send this token as a bearer header. /health needs none.
 token=smoke-machine-token
 sed -i "s/^SWARMLOOP_TOKEN=\$/SWARMLOOP_TOKEN=$token/" "$work/stack/.env"

@@ -5,7 +5,7 @@ import type { RunEntity } from '../history/entities';
 import { RunStop } from '../agent/run-stop';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
-import { StepStopped } from '../steps/shared/step-stopped';
+import { StepStopped } from '../agent/step-stopped';
 import { RunDriver } from './run-driver';
 import { RunLifecycle } from './run-lifecycle';
 

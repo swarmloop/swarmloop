@@ -8,6 +8,7 @@ import type {
   EgressCredential,
   RuntimeKeys,
 } from '../agent-runtime';
+import { CodexConnection } from './codex-connection';
 import { CODEX_LIMITS } from './codex-limit';
 
 export const CODEX_KEY_PLACEHOLDER = 'sk-swarmloop-egress-placeholder';
@@ -21,6 +22,7 @@ export class CodexRuntime extends AbstractAgentRuntime {
   readonly planModeHasPlanTool = false;
   readonly priceSource = 'https://platform.openai.com/docs/pricing';
   readonly apiHosts = ['api.openai.com', 'auth.openai.com', '*.chatgpt.com'];
+  readonly connection = new CodexConnection();
   readonly credentialNames = ['CODEX_AUTH', 'CODEX_API_KEY'];
   protected readonly limits = CODEX_LIMITS;
 
