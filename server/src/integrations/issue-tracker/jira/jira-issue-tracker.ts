@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { basename } from 'path';
+import { PersonalCredentials } from '../../../auth/personal-credentials.service';
 import { AppConfig } from '../../../config/env';
 import { Clock } from '../../../core/clock';
 import { request } from '../../http';
@@ -11,11 +12,13 @@ import {
   IssueNotFound,
   SwarmloopError,
 } from '../../../core/swarmloop-error';
+import { atlassianSite } from '../../atlassian-site';
 import { encodedBody, headersFor, LinkedPagesService } from '../../linked-pages/linked-pages';
 import { AbstractIssueTracker } from '../abstract-issue-tracker';
 import { IssueBundle } from '../issue-bundle';
 import { adfToMarkdown, collectUrls } from './adf';
-import { jiraConfigured, JiraTicketKeys } from './jira-ticket-keys';
+import { jiraConnection } from './jira-connection';
+import { jiraConfigured, JiraSite, JiraTicketKeys } from './jira-ticket-keys';
 import { JiraComment, JiraIssue, JiraLinks, textValue, toNote } from './jira-links';
 
 interface JiraField {
@@ -25,6 +28,7 @@ interface JiraField {
 
 @Injectable()
 export class JiraIssueTracker extends AbstractIssueTracker {
+  readonly connection = jiraConnection;
   private readonly keys: JiraTicketKeys;
   private readonly linkFollower: JiraLinks;
 
@@ -32,9 +36,10 @@ export class JiraIssueTracker extends AbstractIssueTracker {
     private readonly config: AppConfig,
     private readonly linkedPages: LinkedPagesService,
     private readonly clock: Clock,
+    @Optional() private readonly personal?: PersonalCredentials,
   ) {
     super();
-    this.keys = new JiraTicketKeys(config, clock, () => this.credentials());
+    this.keys = new JiraTicketKeys(config, clock, (login) => this.resolve(login));
     this.linkFollower = new JiraLinks(
       (base, headers, key, calls) => this.issue(base, headers, key, calls),
       (base, headers, key, calls, urls) => this.comments(base, headers, key, calls, urls),
@@ -43,12 +48,17 @@ export class JiraIssueTracker extends AbstractIssueTracker {
     );
   }
 
-  ticketKeys(text: string): Promise<string[]> {
-    return this.keys.find(text);
+  ticketKeys(text: string, login?: string | null): Promise<string[]> {
+    return this.keys.find(text, login);
   }
 
-  protected async loadIssue(key: string, runDir: string, calls: HttpCallDraft[]): Promise<IssueBundle> {
-    const { base, headers } = this.credentials();
+  protected async loadIssue(
+    key: string,
+    runDir: string,
+    calls: HttpCallDraft[],
+    login?: string | null,
+  ): Promise<IssueBundle> {
+    const { base, headers } = await this.credentials(login);
     const fields = await this.fieldList(base, headers, calls);
     const acceptanceId = fields.find((field) => /acceptance criteria/i.test(field.name))?.id ?? null;
     const issue = await this.issue(base, headers, key, calls);
@@ -70,23 +80,29 @@ export class JiraIssueTracker extends AbstractIssueTracker {
       confluence: [],
       pages: [],
     };
-    await this.linkFollower.links(bundle, urls, issue, base, headers, basename(runDir), calls, acceptanceId);
+    await this.linkFollower.links(bundle, urls, issue, base, headers, basename(runDir), calls, acceptanceId, login);
     return bundle;
   }
 
-  private credentials(): { base: string; headers: Record<string, string> } {
+  /** The login's own Jira connection, else the server's env; null when neither exists. */
+  private async resolve(login?: string | null): Promise<JiraSite | null> {
+    const own = login ? await this.personal?.fields(jiraConnection.id, login) : null;
+    if (own) {
+      return { owner: login ?? 'env', ...atlassianSite(own) };
+    }
     const env = this.config.env;
-    if (!jiraConfigured(env)) {
+    return jiraConfigured(env) ? { owner: 'env', ...atlassianSite(env) } : null;
+  }
+
+  private async credentials(login?: string | null): Promise<JiraSite> {
+    const found = await this.resolve(login);
+    if (!found) {
       throw new SwarmloopError(
-        'this run id is a Jira key, but JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN are not set',
+        'this run id is a Jira key, but JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN are not set. Connect Jira at /connections#jira',
         { code: ERROR_CODES.INPUT_MISSING, category: 'user' },
       );
     }
-    const token = Buffer.from(`${env.JIRA_EMAIL}:${env.JIRA_API_TOKEN}`).toString('base64');
-    return {
-      base: env.JIRA_BASE_URL.replace(/\/$/, ''),
-      headers: { Authorization: `Basic ${token}`, Accept: 'application/json' },
-    };
+    return found;
   }
 
   private async fieldList(base: string, headers: Record<string, string>, calls: HttpCallDraft[]): Promise<JiraField[]> {

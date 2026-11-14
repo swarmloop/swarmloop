@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AppConfig } from '../../config/env';
+import { AuthModule } from '../../auth/auth.module';
 import { HistoryModule } from '../../history/history.module';
 import { ISSUE_TRACKER } from './tokens';
 import { LinkedPagesService } from '../linked-pages/linked-pages';
@@ -8,7 +9,7 @@ import { JiraIssueTracker } from './jira/jira-issue-tracker';
 import { IssueTrackerRegistry } from './issue-tracker.registry';
 
 @Module({
-  imports: [HistoryModule],
+  imports: [HistoryModule, AuthModule],
   providers: [
     JiraIssueTracker,
     IssueTrackerRegistry,

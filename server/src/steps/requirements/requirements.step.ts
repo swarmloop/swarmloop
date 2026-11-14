@@ -34,6 +34,7 @@ import {
   stopReason,
 } from './requirements-visit';
 import { assertRepoAllowed, storedProjects } from '../../config/checkout-path';
+import { starterOf } from '../../history/run-starter';
 import { RemoteRepositories } from '../prepare/remote-repositories.service';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, Route, StepInput, StepResult } from '../contract/step-contract';
@@ -98,8 +99,13 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
   protected async work(_input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const { prompt } = ctx.options;
     const { run } = ctx.opened;
-    const keys = !isSubtask(run) ? await runKeys(this.tracker, run.key, prompt ?? '') : [];
+    const keys = !isSubtask(run) ? await runKeys(this.tracker, run.key, prompt ?? '', await this.starter(run)) : [];
     return this.produce(ctx, prompt, keys);
+  }
+
+  /** The person whose connections this run's tickets are read with: the starter, or for a subtask its parent's. */
+  private starter(run: RunEntity): Promise<string | null> {
+    return starterOf(this.runs, run);
   }
 
   private async produce(ctx: StepContext, prompt: string | undefined, issueKeys: string[]): Promise<StepResult> {
@@ -140,6 +146,7 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
         effectivePrompt,
         issueKeys,
         resuming(opened.prior),
+        await this.starter(opened.run),
       );
       const loadedKeys = issueKeys.filter((issueKey) => !fetched.missing.includes(issueKey));
       const written = await this.source.write({
@@ -237,6 +244,7 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
     prompt: string | undefined,
     issueKeys: string[],
     resume: boolean,
+    login: string | null,
   ): Promise<{ bundle: IssueBundle; bundles: IssueBundle[]; httpCalls: HttpCallDraft[]; missing: string[] }> {
     const progress = resume ? parseProgress(await ctx.reread(ARTIFACTS.requirementsProgress)) : { issues: {} };
     const bundles: IssueBundle[] = [];
@@ -250,7 +258,7 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
       }
       let fetched: Awaited<ReturnType<IssueTracker['fetch']>>;
       try {
-        fetched = await this.tracker.fetch(issueKey, runDir);
+        fetched = await this.tracker.fetch(issueKey, runDir, login);
       } catch (error) {
         if (error instanceof IssueNotFound) {
           httpCalls.push(...error.httpCalls);

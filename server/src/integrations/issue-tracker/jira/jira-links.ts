@@ -61,11 +61,12 @@ export class JiraLinks {
     runKey: string,
     calls: HttpCallDraft[],
     acceptanceId: string | null,
+    login?: string | null,
   ): Promise<void> {
     const attachmentUrls = new Set(
       (issue.fields.attachment ?? []).map((item) => item.content).filter((url): url is string => Boolean(url)),
     );
-    const context: PageReadContext = { runKey, calls, headers, base, clock: this.clock };
+    const context: PageReadContext = { runKey, calls, headers, base, clock: this.clock, login };
     const seen = new Set<string>([issue.key, bundle.epic?.key].filter((key): key is string => Boolean(key)));
     const direct: string[] = [];
     const remember = (key: string): void => {

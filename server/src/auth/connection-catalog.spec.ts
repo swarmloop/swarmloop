@@ -145,8 +145,11 @@ describe('the probe', () => {
 describe('the GitHub and GitLab cards', () => {
   let started: Started;
   let fake: FakeHost;
+  /** The code host cards; the tracker and page cards of the default list are not what this group is about. */
   const cards = async (actor = 'alice') =>
-    ((await (await call(started.url, actor)).json()) as IntegrationCardsView).cards;
+    ((await (await call(started.url, actor)).json()) as IntegrationCardsView).cards.filter((item) =>
+      ['github', 'gitlab'].includes(item.id),
+    );
   const github = async () => (await cards()).find((item) => item.id === 'github') as ConnectionCard;
   const connect = (host: 'github' | 'gitlab', login: string) =>
     started.app

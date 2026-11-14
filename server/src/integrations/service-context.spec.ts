@@ -56,11 +56,19 @@ describe('service context', () => {
       httpCalls: [],
     });
     const block = await service.block('PROJ-1', 'ship the field');
-    expect(tracker.fetch).toHaveBeenCalledWith('PROJ-1', '/tmp/swarmloop/worktrees/PROJ-1');
+    expect(tracker.fetch).toHaveBeenCalledWith('PROJ-1', '/tmp/swarmloop/worktrees/PROJ-1', undefined);
     expect(block).toContain('Jira PROJ-1: Ship the field');
     expect(block).toContain('GitLab group/demo !9 https://example.test/9');
     expect(block).not.toContain('Authorization');
     expect(block).not.toContain('token');
+  });
+
+  it('fetches with the login of the person who started the run', async () => {
+    tracker.fetch.mockResolvedValue({ bundle, httpCalls: [] });
+    documents.latestBody.mockResolvedValue(null);
+    runs.findRun.mockResolvedValue({ startedBy: 'ann' } as never);
+    await service.block('PROJ-1', 'ship the field');
+    expect(tracker.fetch).toHaveBeenCalledWith('PROJ-1', '/tmp/swarmloop/worktrees/PROJ-1', 'ann');
   });
 
   it('skips a ticket that is already in the requirements', async () => {

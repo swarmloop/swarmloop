@@ -10,6 +10,8 @@ export interface PageReadContext {
   headers: Record<string, string>;
   base: string;
   pastes?: Record<string, string>;
+  /** The person whose connections read the page, when the run has one. */
+  login?: string | null;
 }
 
 export interface PageReader {
