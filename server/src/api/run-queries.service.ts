@@ -27,7 +27,15 @@ import { childrenByParent, epicTotal, listExtras } from './run-view/status';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
-import { belongsToVisit, documentView, filesOf, legacyLogs, taskView, withReturnNotes } from './run-view/documents';
+import {
+  belongsToVisit,
+  documentView,
+  filesOf,
+  legacyLogs,
+  taskView,
+  withReturnNotes,
+  withoutServerRecords,
+} from './run-view/documents';
 import { taskRuns } from './run-view/task-runs';
 import { ReviewerSteps } from './run-view/reviewer-steps';
 import { visitKey } from '../contract/visit-key';
@@ -242,7 +250,7 @@ export class RunQueriesService {
 
   async readHistory(key: string): Promise<HistoryView> {
     const run = await requireRun(this.runs, key);
-    const documents = await this.documents.listDocuments(run.id);
+    const documents = withoutServerRecords(await this.documents.listDocuments(run.id));
     const stats = await this.visits.listStats(run.id);
     const legacy = stats.flatMap((stat) => legacyLogs(documents, stat));
     const exchanges = await this.visits.listExchanges(stats.map((stat) => stat.id));

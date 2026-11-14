@@ -192,6 +192,14 @@ export const ARTIFACTS = {
     summarize: firstLine,
   }),
   pending: artifact('pending', { writers: ['requirements'], readers: [], summarize: firstLine }),
+  // A failed visit's answer errors are a server record the next launch of the step reads back. No step writes or reads it.
+  answerErrors: artifact('answer_errors', {
+    writers: [],
+    readers: [],
+    external: true,
+    codec: jsonArrayCodec<string>(),
+    summarize: (errors) => (errors.length === 0 ? '' : `${errors.length} errors in the agent's answer`),
+  }),
   error: artifact('error', { writers: [], readers: [], external: true, summarize: firstLine }),
   log: artifact(LOG_KIND, { writers: [], readers: [], external: true, summarize: firstLine }),
 } as const satisfies Record<string, Artifact<unknown>>;
