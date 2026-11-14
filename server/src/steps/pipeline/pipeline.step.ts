@@ -16,7 +16,7 @@ import type { StepName } from '../../contract/steps';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import { SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { CI_INFRA_SOURCE, issueOf } from '../shared/handoff';
-import { assertNotStopped } from '../shared/step-stopped';
+import { assertNotStopped } from '../../agent/step-stopped';
 import { BaseStep, type StepContext } from '../base-step';
 import {
   ciResult,

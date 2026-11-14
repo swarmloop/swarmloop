@@ -271,6 +271,16 @@ export function knownModels(env: AgentEnv): Partial<Record<RuntimeName, string[]
   return models;
 }
 
+/** Every agent of every role and tier of a run, in role order: the run's stored choice first, else env. */
+export function runAgents(env: AgentEnv, run: AgentRun | null): Agent[] {
+  return TIERS.flatMap((tier) => ROLES.flatMap((role) => agentsOf(env, role, tier, run)));
+}
+
+/** What a person hears when a runtime of their run has no credential for them. */
+export function missingCredential(runtime: RuntimeName): string {
+  return `${runtime} has no credential for you: connect it in Connections (/connections#${runtime})`;
+}
+
 interface CredentialEnv {
   CURSOR_API_KEY: string;
   ANTHROPIC_API_KEY: string;

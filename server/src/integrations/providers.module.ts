@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { HistoryModule } from '../history/history.module';
 import { CodeHostModule } from './code-host/code-host.module';
 import { IssueTrackerModule } from './issue-tracker/issue-tracker.module';
@@ -9,7 +10,7 @@ import { RunStop } from '../agent/run-stop';
 import { ServiceContextService } from '../integrations/service-context';
 
 @Module({
-  imports: [HistoryModule, SandboxModule, CodeHostModule, IssueTrackerModule, RequirementsSourceModule],
+  imports: [AuthModule, HistoryModule, SandboxModule, CodeHostModule, IssueTrackerModule, RequirementsSourceModule],
   providers: [
     ServiceContextService,
     AgentProcessRunner,

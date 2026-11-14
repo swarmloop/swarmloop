@@ -3,7 +3,7 @@ import type { Clock } from '../core/clock';
 import { ERROR_CODES, IMAGE_ERROR_CODES } from '../contract/error-codes';
 import { GitAuthError, HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { ChecksStopped } from '../environment/check-pool';
-import { StepStopped } from './shared/step-stopped';
+import { StepStopped } from '../agent/step-stopped';
 
 /** How a step that threw ends without failing: the run is blocked or waits, as the error says. */
 interface ErrorEnd {
