@@ -9,10 +9,3 @@ export function openElapsed(startedAt: string | null, now: number): number {
   const started = Date.parse(startedAt);
   return Number.isFinite(started) ? Math.max(0, now - started) : 0;
 }
-
-export function openRunMs(run: { status: string; stepStartedAt: string | null }, now: number): number {
-  if (run.status !== 'running') {
-    return 0;
-  }
-  return openElapsed(run.stepStartedAt, now);
-}

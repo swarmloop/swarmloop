@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { openElapsed, openRunMs, visitStored } from './elapsed.ts';
+import { openElapsed, visitStored } from './elapsed.ts';
 
 const start = '2020-01-01T00:00:00.000Z';
 const now = Date.parse(start) + 1500;
@@ -12,15 +12,6 @@ describe('openElapsed', () => {
     assert.equal(openElapsed('', now), 0);
     assert.equal(openElapsed('nope', now), 0);
     assert.equal(openElapsed(new Date(now + 5000).toISOString(), now), 0);
-  });
-});
-
-describe('openRunMs', () => {
-  it('counts only a running step', () => {
-    assert.equal(openRunMs({ status: 'running', stepStartedAt: start }, now), 1500);
-    assert.equal(openRunMs({ status: 'running', stepStartedAt: null }, now), 0);
-    assert.equal(openRunMs({ status: 'failed', stepStartedAt: start }, now), 0);
-    assert.equal(openRunMs({ status: 'running', stepStartedAt: 'nope' }, now), 0);
   });
 });
 

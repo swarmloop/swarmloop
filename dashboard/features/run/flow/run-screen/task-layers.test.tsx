@@ -1,7 +1,11 @@
-import { render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { TaskLayer } from '@contract/api';
+import type { RunState } from '@contract/run-state';
+import type { SubtaskStatus } from '@contract/subtask';
+import { RunList } from '../../../runs';
+import { runSummary } from '../../../../test/fixtures';
 import { TaskLayers } from './task-layers';
 
 const manyFiles = Array.from({ length: 16 }, (_, index) => `server/src/file-${index}.ts`);
@@ -106,5 +110,60 @@ describe('TaskLayers', () => {
 
     expect(screen.queryByRole('region', { name: 'Merge queue' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Decisions' })).not.toBeInTheDocument();
+  });
+
+  it('gives the same task order in the run list and in the Tasks section', async () => {
+    const parent = {
+      ...runSummary(),
+      key: 'e-1',
+      name: 'Epic parent',
+      taskCounts: { merged: 1, running: 1, blocked: 1 },
+    };
+    const subtask = (id: string, index: number, status: SubtaskStatus, state: RunState) => ({
+      ...runSummary(),
+      key: `e-1-${id}`,
+      name: `Task ${id}`,
+      parentKey: 'e-1',
+      taskId: id,
+      state,
+      task: { index, status },
+    });
+    const merged = subtask('A', 0, 'merged', 'merged');
+    const running = subtask('B', 1, 'running', 'running');
+    const blocked = {
+      ...subtask('C', 2, 'blocked', 'blocked'),
+      stateReason: { code: 'BLOCKED', message: 'Needs you' },
+    };
+    const runs = [parent, merged, running, blocked];
+    const titles = () => screen.getAllByText(/^Task [ABC]$/).map((node) => node.textContent);
+    render(
+      <RunList
+        query=""
+        onQuery={vi.fn()}
+        runs={runs}
+        visible={runs}
+        selected=""
+        now={0}
+        error={null}
+        onOpen={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^✓ 1 merged/ }));
+    const inList = titles();
+    cleanup();
+
+    const planned = [merged, running, blocked].map((run) => ({
+      id: run.taskId,
+      title: run.name,
+      files: [],
+      proof: '',
+      depends: [],
+      status: run.task.status,
+    }));
+    render(<TaskLayers layers={[{ layer: 0, tasks: planned }]} onSkip={vi.fn()} />);
+
+    expect(inList).toEqual(['Task C', 'Task B', 'Task A']);
+    expect(titles()).toEqual(inList);
   });
 });
