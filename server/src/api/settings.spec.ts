@@ -7,7 +7,11 @@ import { testEnv } from '../config/env.spec-helpers';
 import { AppConfig } from '../config/env';
 import { SystemClock } from '../core/clock';
 import type { SettingsBody } from '../contract/api';
+import { PersonalCredentials } from '../auth/personal-credentials.service';
+import { SecretBox } from '../auth/secret-box';
+import { IntegrationSecretRepository } from '../history/integration-secret.repository';
 import { UserSettingRepository } from '../history/user-setting.repository';
+import { fakeConnection } from '../testing/fake-connection';
 import { boot } from '../testing/runs.spec-helpers';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
@@ -47,8 +51,11 @@ async function world() {
     AGENTS_REVIEW: 'cursor:grok',
   });
   const repo = app.get(UserSettingRepository);
-  const controller = new SettingsController(new SettingsService(new AppConfig(env), repo, new SystemClock()));
-  return { app, repo, controller, env, root };
+  const config = new AppConfig(env);
+  const clock = new SystemClock();
+  const credentials = new PersonalCredentials(app.get(IntegrationSecretRepository), new SecretBox('k'), clock, config);
+  const controller = new SettingsController(new SettingsService(config, repo, clock, credentials));
+  return { app, repo, controller, env, root, credentials };
 }
 
 describe('settings', () => {
@@ -78,6 +85,24 @@ describe('settings', () => {
       const body = { agents: { main: { plan: [{ runtime: 'codex', model: 'gpt' }] } } };
       await expect(controller.save('alice', body)).rejects.toThrow(/codex:gpt of plan has no credential: .+/);
       expect(await repo.read('alice')).toEqual(MINE);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('lists and accepts a runtime only the person connected, and refuses it for another person', async () => {
+    const { app, repo, controller, credentials } = await world();
+    try {
+      const codex = fakeConnection({ id: 'codex', fields: ['codexApiKey'] });
+      await credentials.store(codex, 'alice', { codexApiKey: 'sk-codex-alice-1234' }, null);
+      const body = { agents: { main: { plan: [{ runtime: 'codex', model: 'gpt' }] } } };
+      expect((await controller.read('alice')).runtimes.map((entry) => entry.runtime)).toContain('codex');
+      expect((await controller.read('bob')).runtimes.map((entry) => entry.runtime)).not.toContain('codex');
+      expect((await controller.save('alice', body)).settings).toEqual(body);
+      await expect(controller.save('bob', body)).rejects.toThrow(
+        /codex has no credential for you.*\/connections#codex/,
+      );
+      expect(await repo.read('bob')).toBeNull();
     } finally {
       await app.close();
     }

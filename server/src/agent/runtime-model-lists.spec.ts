@@ -37,6 +37,13 @@ describe('runtime model lists', () => {
     await expect(warmModelLists(testEnv({ AGENTS_PLAN: 'claude:m:high' }), root, NOW, lister)).resolves.toBeUndefined();
   });
 
+  it('reads nothing for a runtime that has no lister, because it has no credential', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'runtime-lists-'));
+    await expect(
+      warmModelLists(testEnv({ AGENTS_PLAN: 'cursor:grok-4.7:high' }), root, NOW, () => null),
+    ).resolves.toBeUndefined();
+  });
+
   it('lets an env agent with a level pass once its list is loaded', async () => {
     const root = await mkdtemp(join(tmpdir(), 'runtime-lists-'));
     await warmModelLists(

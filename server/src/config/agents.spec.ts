@@ -207,7 +207,11 @@ describe('the runtimes in use and the start-up check', () => {
 
   it('names the agent whose runtime has no credential', () => {
     const env = { ...testEnv({ AGENTS_REVIEW: 'claude:claude-opus-5-5' }), ...KEYS, ANTHROPIC_API_KEY: '' };
-    expect(() => assertAgents(env)).toThrow(/claude:claude-opus-5-5 of review.*ANTHROPIC_API_KEY/);
+    expect(() => assertAgents(env)).not.toThrow();
+  });
+
+  it('passes a list that names a level while its runtime list is not loaded', () => {
+    expect(() => assertAgents({ ...testEnv({ AGENTS_PLAN: 'cursor:grok-4.7:high' }), ...KEYS })).not.toThrow();
   });
 
   it('refuses an unknown runtime and an empty model', () => {

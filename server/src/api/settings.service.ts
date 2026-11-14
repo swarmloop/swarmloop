@@ -1,10 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { loadPriceTable } from '../agent/prices';
 import { useCachedModelList } from '../agent/runtime-model-lists';
-import { agentsFor, credentialFor, knownModels, parseAgent } from '../config/agents';
+import { agentsFor, knownModels, missingCredential, parseAgent } from '../config/agents';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { rawEnv } from '../config/process-env';
+import { PersonalCredentials } from '../auth/personal-credentials.service';
 import { Clock } from '../core/clock';
 import type { SettingsBody, StoredAgents } from '../contract/api';
 import type { SettingsView } from '../contract/settings';
@@ -65,6 +66,11 @@ const SERVER_DESCRIPTIONS: Record<string, string> = {
 /** Server settings the sandbox reads straight from the process env; `SwarmloopEnv` does not carry them. */
 const PROCESS_ENV_NAMES = ['PROJECT_HOSTS_ALLOW'] as const;
 
+/** The login of a signed-in person; no actor and the machine token have none. */
+function personOf(actor: string | null): string | null {
+  return actor && actor !== 'machine' ? actor : null;
+}
+
 const SECRET = /TOKEN$|SECRET$|API_KEY$/;
 
 function refuse(reason: string): never {
@@ -77,12 +83,14 @@ export class SettingsService {
     private readonly config: AppConfig,
     private readonly stored: UserSettingRepository,
     private readonly clock: Clock,
+    private readonly credentials: PersonalCredentials,
   ) {}
 
   async view(actor: string | null): Promise<SettingsView> {
     const env = this.config.env;
-    const { runtimes, limited } = await this.models();
-    const settings = actor && actor !== 'machine' ? ((await this.stored.read(actor)) ?? {}) : {};
+    const login = personOf(actor);
+    const { runtimes, limited } = await this.models(login);
+    const settings = login ? ((await this.stored.read(login)) ?? {}) : {};
     return {
       settings,
       defaults: { agents: this.defaultAgents() },
@@ -104,7 +112,7 @@ export class SettingsService {
 
   /** Checks the whole body, then replaces the person's settings. A refused body changes nothing. */
   async save(login: string, body: unknown): Promise<SettingsView> {
-    const settings = await this.validate(body);
+    const settings = await this.validate(body, login);
     await this.stored.save(login, settings);
     return this.view(login);
   }
@@ -124,13 +132,13 @@ export class SettingsService {
   }
 
   /** Per connected runtime: the models env names, then its priced models, and the levels of each. Limited when a table could not be read. */
-  private async models(): Promise<{ runtimes: SettingsView['runtimes']; limited: boolean }> {
+  private async models(login: string | null): Promise<{ runtimes: SettingsView['runtimes']; limited: boolean }> {
     const env = this.config.env;
     const named = knownModels(env);
     const root = resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname);
     let limited = false;
     const runtimes = await Promise.all(
-      this.connected().map(async (runtime) => {
+      (await this.connected(login)).map(async (runtime) => {
         const priced = Object.keys(await loadPriceTable(root, runtime, this.clock.now()));
         limited ||= priced.length === 0;
         await useCachedModelList(root, runtimeFor(runtime), this.clock.now());
@@ -142,32 +150,31 @@ export class SettingsService {
     return { runtimes, limited };
   }
 
-  private connected(): RuntimeName[] {
-    return RUNTIME_NAMES.filter((runtime) => {
-      try {
-        credentialFor(this.config.env, runtime);
-        return true;
-      } catch {
-        return false;
-      }
-    });
+  /** The runtimes the person has a credential for: their own connection, else the server's env. */
+  private async connected(login: string | null): Promise<RuntimeName[]> {
+    const found = await Promise.all(
+      RUNTIME_NAMES.map(async (runtime) =>
+        (await this.credentials.runtimeCredential(runtime, login)) ? runtime : null,
+      ),
+    );
+    return found.filter((runtime) => runtime !== null);
   }
 
-  private async validate(body: unknown): Promise<SettingsBody> {
+  private async validate(body: unknown, login: string): Promise<SettingsBody> {
     const given = this.record(body, 'settings');
     this.onlyKeys(given, ['agents'], 'settings');
     const settings: SettingsBody = {};
     if (given.agents !== undefined) {
-      settings.agents = await this.validateAgents(given.agents);
+      settings.agents = await this.validateAgents(given.agents, login);
     }
     return settings;
   }
 
-  private async validateAgents(value: unknown): Promise<StoredAgents> {
+  private async validateAgents(value: unknown, login: string): Promise<StoredAgents> {
     const tiers = this.record(value, 'agents');
     this.onlyKeys(tiers, TIERS, 'agents');
     const agents: StoredAgents = {};
-    const { runtimes } = await this.models();
+    const { runtimes } = await this.models(login);
     for (const tier of TIERS) {
       if (tiers[tier] === undefined) {
         continue;
@@ -199,13 +206,11 @@ export class SettingsService {
       if (!name || typeof model !== 'string') {
         refuse(`an agent of ${role} needs a known runtime and a model`);
       }
-      try {
-        credentialFor(this.config.env, name);
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        refuse(`agent ${name}:${model} of ${role} has no credential: ${reason}`);
+      const offered = runtimes.find((candidate) => candidate.runtime === name);
+      if (!offered) {
+        refuse(`agent ${name}:${model} of ${role} has no credential: ${missingCredential(name)}`);
       }
-      if (!runtimes.find((offered) => offered.runtime === name)?.models.includes(model)) {
+      if (!offered.models.includes(model)) {
         refuse(`agent ${name}:${model} of ${role} has an unknown model for ${name}`);
       }
       if (effort === undefined) {

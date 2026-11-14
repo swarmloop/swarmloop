@@ -195,6 +195,12 @@ function resolveEffort(agent: Agent, run: AgentRun | null | undefined, env: Agen
   return { ...base, ...(level ? { effort: level } : {}), ...(note ? { effortNote: note } : {}) };
 }
 
+/** The env name of the list a role and tier read: an unset subtask list falls back to the main role. */
+function listName(env: AgentEnv, role: Role, tier: Tier): keyof AgentEnv {
+  const own = LISTS[tier][role];
+  return env[own] === '' ? LISTS.main[role] : own;
+}
+
 /**
  * The agents of one role in one tier, in fallback order. The run's stored choice comes first; else an unset list
  * falls back to the main role, whose list is required.
@@ -204,8 +210,7 @@ function agentsOf(env: AgentEnv, role: Role, tier: Tier = 'main', run?: AgentRun
   if (stored.length > 0) {
     return stored.map((agent) => resolveEffort(agent, run, env));
   }
-  const own = LISTS[tier][role];
-  const name = env[own] === '' ? LISTS.main[role] : own;
+  const name = listName(env, role, tier);
   return parseAgentList(name, env[name]).map((agent) => resolveEffort(agent, run, env));
 }
 
@@ -300,16 +305,18 @@ export function credentialFor(env: CredentialEnv, runtime: RuntimeName): { name:
   });
 }
 
-/** Start-up check: every list parses and every runtime in it has a credential. Names the agent that fails. */
-export function assertAgents(env: AgentEnv & CredentialEnv): void {
+/**
+ * Start-up check: every list parses. A missing credential is a readiness item, not a refusal to start. The level of
+ * an agent is checked only when its runtime's model list is loaded: without a key the list cannot be read.
+ */
+export function assertAgents(env: AgentEnv): void {
   for (const tier of TIERS) {
     for (const role of ROLES) {
-      for (const agent of agentsOf(env, role, tier)) {
-        try {
-          credentialFor(env, agent.runtime);
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
-          throw new SwarmloopError(`agent ${agent.runtime}:${agent.model} of ${role} has no credential: ${reason}`);
+      const name = listName(env, role, tier);
+      for (const entry of env[name].split(',')) {
+        const { runtime, effort } = splitAgent(name, entry);
+        if (!effort || runtimeFor(runtime).listLoaded()) {
+          parseAgent(name, entry);
         }
       }
     }
