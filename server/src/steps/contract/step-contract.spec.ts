@@ -41,4 +41,12 @@ describe('step contract', () => {
     };
     expect([result.route.to, error.code, profile.session]).toEqual(['return', 'x', 'resume']);
   });
+
+  it('types the research result as an output of its own kind', () => {
+    const output: ArtifactValue = {
+      artifact: ARTIFACTS.researchResult,
+      value: { summary: ['why'], questions: [], impact: [] },
+    };
+    expect(output.artifact.kind).toBe('research_result');
+  });
 });

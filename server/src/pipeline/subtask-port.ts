@@ -1,14 +1,8 @@
 import { RebasedPublisher } from '../steps/shared/rebased-publisher';
-import { join } from 'path';
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { agentFor } from '../config/agents';
 import { AppConfig } from '../config/env';
-import { resumableChat } from '../agent/agent-session';
-import { visitStatus } from '../core/pipeline-result';
-import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
-import { mountsForStep, repoNames } from '../git/repo-names';
-import { root } from '../history/run-paths';
+import { repoNames } from '../git/repo-names';
 import { parseMergeRequests } from '../steps/merge-request/merge-request-record';
 import { branchName, summaryForBranch } from '../steps/branch/branch-name';
 import { ARTIFACTS } from '../steps/contract/artifacts';
@@ -20,22 +14,17 @@ import { isSubtask, parseSubtasks, settled, SUBTASKS_KIND, type Subtask } from '
 import { SubtaskOps, type RebaseEvent, type SubtaskMergeRequest } from '../steps/shared/subtask-ops';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
-import type { AgentRunResult } from '../agent/agent-runner';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
-import { agentFailure } from '../steps/shared/agent-result';
-import { unanswered } from '../steps/shared/answers';
-import { items } from '../steps/shared/markdown-section';
-import { parseNeeds, type Need } from '../steps/shared/needs';
+import { storedNeeds, type Need } from '../steps/shared/needs';
+import { storedAsks } from './stored-research';
 import { mergeHandoff } from '../steps/shared/handoff';
 import { mergeSummaryOf } from './merge-summary';
-import { modelVisit } from '../steps/shared/model-visit';
-import { StepStopped } from '../agent/step-stopped';
-import { DECIDE_YOURSELF, subtaskAsks } from '../steps/plan/plan.prompts';
 import type { OpenedStep } from '../steps/step-run';
 import { DELIVERED_PREFIX } from '../steps/commit/commit-result';
 import { RunRebase } from '../steps/run-rebase';
 import { CommandService } from './command.service';
 import { SubtaskWorktrees } from './subtask-worktrees';
+import { SubtaskPlannerAnswer } from './subtask-planner-answer';
 
 /** What the api layer does for the subtasks of a parent. It registers itself at init, so `pipeline` never imports `api`. */
 interface SubtaskStarter {
@@ -49,10 +38,9 @@ interface SubtaskStarter {
 @Injectable()
 export class SubtaskPort extends SubtaskOps {
   private readonly logger = new Logger(SubtaskPort.name);
-  /** The planner's reply per subtask run whose delivery was refused, so a retry sends it again and does not ask again. */
-  private readonly undelivered = new Map<string, string | null>();
   private starter: SubtaskStarter | null = null;
   private readonly worktrees: SubtaskWorktrees;
+  private readonly planner: SubtaskPlannerAnswer;
 
   constructor(
     private readonly runs: RunRepository,
@@ -67,6 +55,7 @@ export class SubtaskPort extends SubtaskOps {
   ) {
     super();
     this.worktrees = new SubtaskWorktrees(config, clock, publisher);
+    this.planner = new SubtaskPlannerAnswer(documents, commands, launcher, visits, config, clock);
   }
 
   register(starter: SubtaskStarter): void {
@@ -92,94 +81,16 @@ export class SubtaskPort extends SubtaskOps {
     await this.runs.saveRun(run);
   }
 
-  override async asking(run: RunEntity): Promise<boolean> {
-    if (run.status !== 'waiting' || run.currentStep !== 'research') return false;
-    const questions = (await this.documents.latestBody(run.key, ARTIFACTS.questions.kind)) ?? '';
-    const answers = (await this.documents.latestBody(run.key, ARTIFACTS.answers.kind)) ?? '';
-    return unanswered(questions, answers).length > 0;
+  override asking(run: RunEntity): Promise<boolean> {
+    return this.planner.asking(run);
   }
 
-  override async answer(opened: OpenedStep, child: RunEntity, task: Subtask, contract: string): Promise<string | null> {
-    const questions = (await this.documents.latestBody(child.key, ARTIFACTS.questions.kind)) ?? '';
-    const answer = this.undelivered.has(child.key)
-      ? (this.undelivered.get(child.key) ?? null)
-      : await this.askAbout(opened, task, questions, contract);
-    const text = answer ?? DECIDE_YOURSELF;
-    const answers = items(questions).map((id) => ({ kind: 'question', id, body: text }));
-    try {
-      await this.commands.submit(
-        'answer',
-        child.key,
-        { answers },
-        { idempotencyKey: `subtask-answer-${child.key}-${child.revision}` },
-      );
-    } catch (error) {
-      this.undelivered.set(child.key, answer);
-      this.logger.warn(`${child.key} was not answered: ${error instanceof Error ? error.message : String(error)}`);
-      return null;
-    }
-    this.undelivered.delete(child.key);
-    return answer;
+  override answer(opened: OpenedStep, child: RunEntity, task: Subtask, contract: string): Promise<string | null> {
+    return this.planner.answer(opened, child, task, contract);
   }
 
-  /**
-   * A follow-up visit of the plan step in the chat of the parent, recorded like any visit of that step. The pass
-   * already holds the parent, so nothing else uses the chat meanwhile. Null when the planner gave no usable answer.
-   */
-  override async askAbout(
-    opened: OpenedStep,
-    task: Subtask,
-    questions: string,
-    contract: string,
-  ): Promise<string | null> {
-    const parent = opened.run;
-    const env = this.config.env;
-    const { runtime, model, ...effort } = agentFor(env, parent, 'plan');
-    const dir = root(this.config);
-    if (!(await resumableChat(dir, parent.key, 'plan', runtime))?.chatId) return null;
-    const prompt = subtaskAsks(task, questions, contract);
-    let result: AgentRunResult | null = null;
-    let failure: string | null = null;
-    try {
-      const names = repoNames((await this.documents.latestBody(parent.key, ARTIFACTS.repos.kind)) ?? '');
-      result = await this.launcher.launch({
-        root: dir,
-        run: parent,
-        key: parent.key,
-        step: 'plan',
-        mode: 'plan',
-        tools: 'plan',
-        runtime,
-        model,
-        ...effort,
-        timeLimitMs: env.PLAN_TIMEOUT_MS,
-        prompt,
-        workspace: join(dir, 'worktrees', parent.key),
-        mounts: mountsForStep(dir, parent.key, names, parent.targetPath),
-      });
-      failure = agentFailure(result, 'plan', 'plan');
-    } catch (error) {
-      if (error instanceof StepStopped) throw error;
-      failure = error instanceof SwarmloopError ? error.message : 'plan failed';
-    }
-    const answer = failure ? '' : (result?.responseText ?? '').trim();
-    await this.visits.finishVisit(
-      parent,
-      modelVisit({
-        opened,
-        now: this.clock.now(),
-        step: 'plan',
-        mode: 'plan',
-        runtime,
-        model,
-        ...effort,
-        agent: result,
-        prompt,
-        status: visitStatus(answer ? 'ok' : 'failed'),
-        exitCode: answer ? 0 : 1,
-      }),
-    );
-    return answer || null;
+  override askAbout(opened: OpenedStep, task: Subtask, questions: string, contract: string): Promise<string | null> {
+    return this.planner.askAbout(opened, task, questions, contract);
   }
 
   override async withoutCi(run: RunEntity): Promise<boolean> {
@@ -192,7 +103,10 @@ export class SubtaskPort extends SubtaskOps {
   }
 
   override async needsOf(run: RunEntity): Promise<Need[]> {
-    return parseNeeds((await this.documents.latestBody(run.key, ARTIFACTS.needs.kind)) ?? '');
+    return storedNeeds(
+      (await this.documents.latestBody(run.key, ARTIFACTS.needs.kind)) ?? '',
+      await storedAsks(this.documents, run.key),
+    );
   }
 
   override mergeSummary(run: RunEntity): Promise<string> {

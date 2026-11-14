@@ -42,7 +42,19 @@
   "flows": [],
   "loopEvents": [],
   "reads": {
-    "plan-improve": ["requirements", "repos", "handoff", "impact", "added_repos", "instructions:plan-improve"]
+    "plan-improve": [
+      "requirements",
+      "plan_improve_result",
+      "plan_result",
+      "implementation_result",
+      "implementation_improve_result",
+      "repos",
+      "handoff",
+      "research_result",
+      "impact",
+      "added_repos",
+      "instructions:plan-improve"
+    ]
   },
   "run": {
     "agentCalls": 0,

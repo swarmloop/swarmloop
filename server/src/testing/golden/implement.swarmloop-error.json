@@ -56,7 +56,18 @@
   },
   "loopEvents": [],
   "reads": {
-    "implement": ["requirements", "repos", "*", "handoff", "rebase_conflict", "added_repos"]
+    "implement": [
+      "requirements",
+      "plan_improve_result",
+      "plan_result",
+      "implementation_result",
+      "implementation_improve_result",
+      "repos",
+      "*",
+      "handoff",
+      "rebase_conflict",
+      "added_repos"
+    ]
   },
   "result": {
     "exitCode": 1,

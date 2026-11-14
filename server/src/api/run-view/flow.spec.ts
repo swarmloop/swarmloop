@@ -1,8 +1,10 @@
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
+import { reviewLog } from '../../testing/result-answer';
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { phases, reason, returns, sentence } from './flow';
+import { openItems, phases, reason, returns, sentence } from './flow';
+import { renderQuestions } from '../../steps/research/research-record';
 
 describe('failure reason', () => {
   it('shows the current pipeline error instead of an older failing test', () => {
@@ -34,7 +36,7 @@ describe('return lines', () => {
 });
 
 describe('reviewer chip in a later round', () => {
-  const finished = `${JSON.stringify({ type: 'result', result: 'notes\ndecision: ok\n' })}\nprocess exited 0\n`;
+  const finished = reviewLog('ok');
 
   /** Ids sort opposite to age: 'zzz' is round 1, 'aaa' is round 2. */
   function chipOf(roundTwoOutput: string | null): { status: string; attempts: number } {
@@ -123,8 +125,7 @@ describe('chips of a code-review that is preparing', () => {
 });
 
 describe('chips of a second code-review round', () => {
-  const finished = (decision: string) =>
-    `${JSON.stringify({ type: 'result', result: `notes\ndecision: ${decision}\n` })}\nprocess exited 0\n`;
+  const finished = (decision: 'ok' | 'return') => reviewLog(decision);
   const ANGLES = ['requirements', 'quality', 'regressions', 'security', 'performance'];
   const roundOne = new Date(1000);
   const roundTwo = new Date(5000);
@@ -267,5 +268,28 @@ describe('implement-improve of a split parent', () => {
   it('has no note when it is not skipped', () => {
     const step = chip([{ id: 1, step: 'implement-improve', status: 'ok', attempt: 1 }], 'implement-improve');
     expect(step?.note).toBeUndefined();
+  });
+});
+
+describe('open questions of the run view', () => {
+  const run = { currentStep: 'research' } as RunEntity;
+  const doc = (kind: string, body: string) => ({ kind, body }) as DocumentEntity;
+  const result = (questions: string[]) =>
+    doc('research_result', JSON.stringify({ summary: [], questions, impact: [] }));
+  const ids = (documents: DocumentEntity[]) => openItems(run, documents, []).map((item) => item.id);
+
+  it('lists a multi-line question of the research result whole', () => {
+    const questions = ['Is it ok?\n  - nested: yes\n1. first', 'second?'];
+
+    expect(ids([doc('questions', renderQuestions(questions)), result(questions)])).toEqual(questions);
+  });
+
+  it('lists the questions plan wrote, not the older result of research', () => {
+    expect(ids([result(['from research']), doc('questions', '- from plan\n')])).toEqual(['from plan']);
+  });
+
+  it('lists the questions of a run stored before results, and none for an empty document', () => {
+    expect(ids([doc('questions', '- one?\n- none\n')])).toEqual(['one?']);
+    expect(ids([result(['cleared']), doc('questions', '')])).toEqual([]);
   });
 });

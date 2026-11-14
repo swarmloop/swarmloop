@@ -4,6 +4,7 @@ import { ApiError } from '../../lib/api';
 import { getFlow, getRunLog } from '../../lib/endpoints';
 import { emitted, receive } from '../../test/fake-socket';
 import { flowView } from '../../test/fixtures';
+import { reviewLog } from '../../test/review-log';
 import { LiveBridgeProvider } from '../shell';
 import { useRunFlow } from './use-run-flow';
 
@@ -52,7 +53,7 @@ describe('useRunFlow', () => {
     await screen.findByText('Fresh review: running');
 
     await act(async () => {
-      finish?.('decision: return\nprocess exited 0');
+      finish?.(reviewLog('return'));
       await pending;
     });
 

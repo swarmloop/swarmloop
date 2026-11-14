@@ -2,8 +2,6 @@ import { agentFor } from '../../config/agents';
 import { readFileSync } from 'fs';
 import { basename, join } from 'path';
 import type { SwarmloopEnv } from '../../config/env';
-import { stepOutput } from '../../core/attempt-output';
-import type { DocumentRepository } from '../../history/document.repository';
 import type { EventRepository } from '../../history/event.repository';
 import type { DocumentDraft, ExchangeDraft } from '../../history/visit';
 import type { PipelineResult } from '../../core/pipeline-result';
@@ -21,37 +19,21 @@ import {
   withImpact,
   withSubtasks,
 } from '../shared/handoff';
+import { reviewDefinition } from '../../agent-result/definitions/review';
+import { resultPromptFor } from '../../agent-result/result-prompt';
 import { skillPrompt } from '../shared/skill-prompt';
 import type { Subtask } from '../../contract/subtask';
 import type { KeepLine } from '../shared/keep-lines';
 import { SUBTASK_PROOF_CHECK } from './code-review.prompts';
-import { parseReview } from './code-review-record';
+import { opinionSummary } from './code-review-round-result';
+import { decidedOk, reviewDocuments } from './code-review-record';
+import type { Opinion } from './code-review-record';
 import { fixNotes, withKeep } from './review-input';
 import { closeReview, recordAngle } from './review-report';
-import type { Finished, Opinion, Reviewer, ReviewDeps, Usage } from './reviewer';
+import type { Finished, Reviewer, ReviewDeps, Usage } from './reviewer';
 import { projectRules } from '../shared/project-rules';
-import { decidedOk, REVIEWERS, runJob } from './reviewer';
+import { REVIEWERS, runJob } from './reviewer';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
-
-interface Selection {
-  kept: Opinion[];
-  pending: Reviewer[];
-  recovered: DocumentDraft[];
-  stale: Set<string>;
-}
-
-interface SelectInput {
-  key: string;
-  only: string | undefined;
-  fresh: boolean;
-  retry: boolean;
-  /** The attempt of the code-review visit that was interrupted. Set when `retry`. */
-  attemptId: string | null;
-  same: boolean;
-  repeated: boolean;
-  /** Whether the stored review `kind` counts for this generation and these files. */
-  counts: (kind: string) => Promise<boolean>;
-}
 
 interface RoundInput {
   opened: OpenedStep;
@@ -74,65 +56,6 @@ interface RoundInput {
   fresh: boolean;
   retry: boolean;
   repeated: boolean;
-}
-
-export async function selectReviewers(
-  documents: DocumentRepository,
-  root: string,
-  input: SelectInput,
-): Promise<Selection> {
-  const { key, only, fresh, retry, attemptId, same, repeated, counts } = input;
-  const kept: Opinion[] = [];
-  const pending: Reviewer[] = [];
-  const recovered: DocumentDraft[] = [];
-  const stale = new Set<string>();
-  for (const reviewer of REVIEWERS) {
-    if (fresh) {
-      if (!only || only === reviewer.name) {
-        pending.push(reviewer);
-      }
-      continue;
-    }
-    if (only === reviewer.name) {
-      pending.push(reviewer);
-      continue;
-    }
-    const stored =
-      !fresh && (Boolean(only) || retry || same) && (await counts(reviewer.kind))
-        ? await documents.latestBody(key, reviewer.kind)
-        : null;
-    if (stored) {
-      try {
-        const parsed = parseReview(stored);
-        if (staleReturn(repeated, parsed.decision)) {
-          stale.add(reviewer.name);
-        } else if (only || retry || parsed.decision === 'ok') {
-          kept.push({ kind: reviewer.kind, decision: parsed.decision, body: stored });
-          continue;
-        }
-      } catch {
-        // launch or leave open
-      }
-    }
-    if (retry && !only) {
-      try {
-        const parsed = parseReview(stepOutput(root, key, `code-review-${reviewer.name}`, attemptId));
-        if (staleReturn(repeated, parsed.decision)) {
-          stale.add(reviewer.name);
-        } else {
-          kept.push({ kind: reviewer.kind, decision: parsed.decision, body: parsed.body });
-          recovered.push(textDocument(reviewer.kind, parsed.body));
-          continue;
-        }
-      } catch {
-        // launch this reviewer again
-      }
-    }
-    if (!only) {
-      pending.push(reviewer);
-    }
-  }
-  return { kept, pending, recovered, stale };
 }
 
 /** Runs every pending angle together, then stores their visits once all of them have finished. */
@@ -186,13 +109,6 @@ export function sameReviewedDiff(root: string, key: string, patch: string): bool
   }
 }
 
-function acceptRepeated(documents: DocumentDraft[], opinions: Opinion[]): DocumentDraft[] {
-  const kinds = new Set(opinions.filter((item) => item.decision === 'return').map((item) => item.kind));
-  return documents.map((document) =>
-    kinds.has(document.kind) ? { ...document, body: decidedOk(document.body) } : document,
-  );
-}
-
 /** Sorts the round's opinions into reviewer order and drafts the documents they are stored with. */
 export function tallyRound(
   kept: Opinion[],
@@ -201,17 +117,11 @@ export function tallyRound(
   repeated: boolean,
 ): { reportContinued: boolean; opinions: Opinion[]; stored: DocumentDraft[]; errors: string[] } {
   const reportContinued = finished.some((item) => Boolean(item.result?.chatId));
-  const drafted = [
-    ...recovered,
-    ...finished.flatMap((item) => (item.parsed ? [textDocument(item.reviewer.kind, item.parsed.body)] : [])),
-  ];
-  const found = ordered([...kept, ...finished.flatMap((item) => (item.parsed ? [item.parsed] : []))]);
-  const opinions = repeated
-    ? found.map((item) =>
-        item.decision === 'return' ? { ...item, decision: 'ok' as const, body: decidedOk(item.body) } : item,
-      )
-    : found;
-  const stored = repeated ? acceptRepeated(drafted, found) : drafted;
+  const accepted = (opinion: Opinion): Opinion =>
+    repeated && opinion.decision === 'return' ? decidedOk(opinion) : opinion;
+  const fresh = finished.flatMap((item) => (item.parsed ? [accepted(item.parsed)] : []));
+  const stored = [...recovered, ...fresh.flatMap(reviewDocuments)];
+  const opinions = ordered([...kept.map(accepted), ...fresh]);
   const errors = finished.flatMap((item) => (item.error ? [item.error] : []));
   return { reportContinued, opinions, stored, errors };
 }
@@ -246,7 +156,7 @@ export async function routeReview(
   usage: Usage,
 ): Promise<PipelineResult> {
   const { opened } = ctx;
-  const summary = opinions.map((item) => `${item.kind} ${item.decision}`).join('\n');
+  const summary = opinionSummary(opinions);
   const line = `${opened.startedAt} code-review waiting\n${summary}`;
   const returning = opinions.filter((item) => item.decision === 'return');
   if (returning.length === 0 || thirdParty) {
@@ -285,10 +195,6 @@ export async function routeReview(
   );
 }
 
-function staleReturn(repeated: boolean, decision: 'ok' | 'return'): boolean {
-  return repeated && decision === 'return';
-}
-
 function reviewJob(reviewer: Reviewer, input: RoundInput) {
   const names = input.mounts.map((mount) => basename(mount.hostPath));
   const notesSection = input.notes?.trim() ? [{ heading: 'Implementation', body: input.notes }] : [];
@@ -305,10 +211,14 @@ function reviewJob(reviewer: Reviewer, input: RoundInput) {
     reviewer.name === 'requirements' ? SUBTASK_PROOF_CHECK : undefined,
   );
   const sections = reviewer.name === 'regressions' ? withKeep(listed, input.keep) : listed;
+  // The first prompt of a reviewer's chat carries the whole result text; a resumed chat gets one line in `runJob`.
   const promptFor = (runtime: string): string =>
-    skillPrompt(`code-review/${reviewer.name}`, input.requirements, names, sections, input.mounts, {
-      rules: projectRules(names, input.mounts, runtime, false),
-    });
+    [
+      skillPrompt(`code-review/${reviewer.name}`, input.requirements, names, sections, input.mounts, {
+        rules: projectRules(names, input.mounts, runtime, false),
+      }),
+      resultPromptFor(reviewDefinition(reviewer.name), null),
+    ].join('\n\n');
   const agent = agentFor(input.env, input.opened.run, 'code-review');
   return { reviewer, ...agent, prompt: promptFor(agent.runtime), promptFor, mounts: input.mounts };
 }

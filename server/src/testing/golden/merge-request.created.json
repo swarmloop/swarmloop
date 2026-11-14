@@ -171,7 +171,9 @@
       "ci_skip",
       "requirements",
       "repos",
+      "implementation_result",
       "implementation",
+      "review_report_result",
       "review_report",
       "rebase_merge_skip",
       "handoff"
@@ -199,7 +201,7 @@
           "kind": "merge_request"
         },
         {
-          "body": "## merge-request\n- opened the merge request\n",
+          "body": "[{\"step\":\"merge-request\",\"body\":\"- opened the merge request\"}]",
           "kind": "handoff"
         }
       ],

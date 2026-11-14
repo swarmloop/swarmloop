@@ -1,9 +1,10 @@
+import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
 import { EventEmitter } from 'events';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, writeFileSync } from 'fs';
-import { mkdtemp, writeFile } from 'fs/promises';
+import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
@@ -14,10 +15,11 @@ import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
-import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
+import { resultAnswer } from '../../testing/result-answer';
+import { answer, boot, research, result, seed, writeEnv } from './research.step.spec-helpers';
 
 const REFUSED_WRITE = JSON.stringify({
   type: 'system',
@@ -32,9 +34,7 @@ describe('research step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-20', 'billing-api'), { recursive: true });
     mkdirSync(join(root, 'worktrees', 'PROJ-20', 'catalog-api'), { recursive: true });
-    const agent = jest
-      .fn()
-      .mockResolvedValue(result(['summary:', '- looking', 'questions:', '- which field is optional?'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(answer({ questions: ['which field is optional?'] }));
     const app = await boot(root, agent);
     const runs = app.get(RunRepository);
     const documentRepository = app.get(DocumentRepository);
@@ -71,7 +71,7 @@ describe('research step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-22', 'app'), { recursive: true });
     mkdirSync(join(root, 'worktrees', 'PROJ-22', 'other'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result(['summary:', '- looking', 'questions:', '- none'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(answer());
     const app = await boot(root, agent);
     const runs = app.get(RunRepository);
     const documentRepository = app.get(DocumentRepository);
@@ -100,7 +100,7 @@ describe('research step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-clear-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-21', 'billing-api'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result(['summary:', '- looking', 'questions:', '- none'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(answer());
     const app = await boot(root, agent);
     const runs = app.get(RunRepository);
     const documents = app.get(DocumentRepository);
@@ -126,9 +126,7 @@ describe('research step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-subtask-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-23-t1', 'billing-api'), { recursive: true });
-    const agent = jest
-      .fn()
-      .mockResolvedValue(result(['summary:', '- looking', 'questions:', '- which field is optional?'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(answer({ questions: ['which field is optional?'] }));
     const app = await boot(root, agent);
     const runs = app.get(RunRepository);
     const documents = app.get(DocumentRepository);
@@ -149,7 +147,9 @@ describe('research step', () => {
       expect(run?.currentStep).toBe('plan');
       expect(run?.status).toBe('waiting');
       expect(await documents.latestBody('PROJ-23-t1', 'questions')).toBe('');
-      expect(await documents.latestBody('PROJ-23-t1', 'handoff')).toContain('- assumed: which field is optional?');
+      expect(handoffText(await documents.latestBody('PROJ-23-t1', 'handoff'))).toContain(
+        '- assumed: which field is optional?',
+      );
     } finally {
       await app.close();
     }
@@ -160,9 +160,8 @@ describe('research step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-24-t1', 'billing-api'), { recursive: true });
     mkdirSync(join(root, 'worktrees', 'PROJ-25', 'billing-api'), { recursive: true });
-    const answer = ['needs:', '- t0: the retry policy'].join('\n');
-    const alone = ['summary:', '- looking', 'questions:', '- none', answer].join('\n');
-    const agent = jest.fn().mockResolvedValueOnce(result(answer)).mockResolvedValueOnce(result(alone));
+    const needs = [{ id: 't0', what: 'the retry policy' }];
+    const agent = jest.fn().mockResolvedValueOnce(answer({ needs })).mockResolvedValueOnce(answer({ needs }));
     const app = await boot(root, agent);
     const runs = app.get(RunRepository);
     const documents = app.get(DocumentRepository);
@@ -198,7 +197,7 @@ describe('research step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-stale-needs-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-26-t1', 'billing-api'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result(['summary:', '- looking', 'questions:', '- none'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(answer());
     const app = await boot(root, agent);
     const runs = app.get(RunRepository);
     const documents = app.get(DocumentRepository);
@@ -224,9 +223,7 @@ describe('research step', () => {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-split-'));
       await writeEnv(root);
       mkdirSync(join(root, 'worktrees', 'PROJ-25-t1', 'billing-api'), { recursive: true });
-      const agent = jest
-        .fn()
-        .mockResolvedValue(result(['summary:', '- looking', 'questions:', '- which field is optional?'].join('\n')));
+      const agent = jest.fn().mockResolvedValue(answer({ questions: ['which field is optional?'] }));
       const app = await boot(root, agent);
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -269,7 +266,9 @@ describe('research step', () => {
         await app.get(PipelineService).step('research', 'PROJ-25-t1');
         expect((await runs.findRun('PROJ-25-t1'))?.currentStep).toBe('plan');
         expect(await documents.latestBody('PROJ-25-t1', 'questions')).toBe('');
-        expect(await documents.latestBody('PROJ-25-t1', 'handoff')).toContain('- assumed: which field is optional?');
+        expect(handoffText(await documents.latestBody('PROJ-25-t1', 'handoff'))).toContain(
+          '- assumed: which field is optional?',
+        );
       } finally {
         await app.close();
       }
@@ -280,7 +279,7 @@ describe('research step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-nocontract-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-24', 'billing-api'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result(['summary:', '- looking', 'questions:', '- none'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(answer());
     const app = await boot(root, agent);
     const runs = app.get(RunRepository);
     const seeded = await runs.begin('PROJ-24', 'prepare');
@@ -296,7 +295,7 @@ describe('research step', () => {
     }
   });
 
-  it('writes the impact document with and without the section, and notes malformed lines', async () => {
+  it('writes the impact document with and without impact lines', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-impact-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-23', 'billing-api'), { recursive: true });
@@ -305,21 +304,13 @@ describe('research step', () => {
     const agent = jest
       .fn()
       .mockResolvedValueOnce(
-        result(
-          [
-            'impact:',
-            '- live agent log | step-documents.tsx | unreachable',
-            '- broken line',
-            '',
-            'summary:',
-            '- looked',
-            '',
-            'questions:',
-            `- ${ask}`,
-          ].join('\n'),
-        ),
+        answer({
+          summary: ['looked'],
+          questions: [ask],
+          impact: [{ capability: 'live agent log', file: 'step-documents.tsx', status: 'unreachable' }],
+        }),
       )
-      .mockResolvedValue(result(['summary:', '- looked', 'questions:', '- none'].join('\n')));
+      .mockResolvedValue(answer({ summary: ['looked'] }));
     const app = await boot(root, agent);
     const runs = app.get(RunRepository);
     const documents = app.get(DocumentRepository);
@@ -333,7 +324,6 @@ describe('research step', () => {
       }
       const asked = await app.get(PipelineService).step('research', 'PROJ-23');
       expect(asked.message).toContain(ask);
-      expect(asked.message).toContain('ignored impact line: broken line');
       expect((await runs.findRun('PROJ-23'))?.status).toBe('waiting');
       expect((await runs.findRun('PROJ-23'))?.currentStep).toBe('research');
       expect(await documents.latestBody('PROJ-23', 'impact')).toBe(
@@ -486,15 +476,15 @@ describe('research step', () => {
     expect(refused.documents).toEqual(clean.documents);
   });
 
-  it('names the refused write when a write was refused and the answer has no questions', async () => {
+  it('fails with the result error when a write was refused and the answer has no result block', async () => {
     const outcome = await researchOutcome({ ...result('summary:\n- looking\n'), output: REFUSED_WRITE });
     expect(outcome.exitCode).toBe(1);
-    expect(outcome.message).toContain('questions is missing');
+    expect(outcome.message).toContain('the answer has no result block');
     expect(outcome.message).toContain('a write was refused: Cannot write to /work/billing-api/a.php');
   });
 });
 
-const FINISHED = ['summary:', '- looking', 'questions:', '- none'].join('\n');
+const FINISHED = resultAnswer('Done.', research());
 
 async function researchOutcome(answer: AgentRunResult) {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-refusal-'));
@@ -517,48 +507,6 @@ async function researchOutcome(answer: AgentRunResult) {
 
 function killed(reason: 'time' | 'idle', chatId: string | null = 'research-chat'): AgentRunResult {
   return { ...result('partial'), chatId, killReason: reason, exitCode: 1 };
-}
-
-async function seed(app: Awaited<ReturnType<typeof boot>>, root: string, key: string, agentCalls = 0): Promise<void> {
-  mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
-  const runs = app.get(RunRepository);
-  const documents = app.get(DocumentRepository);
-  const seeded = await runs.begin(key, 'prepare');
-  seeded.status = 'waiting';
-  seeded.currentStep = 'research';
-  seeded.agentCalls = agentCalls;
-  await runs.saveRun(seeded);
-  await documents.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
-}
-
-function result(responseText: string): AgentRunResult {
-  const now = new Date().toISOString();
-  return {
-    responseText,
-    chatId: 'chat-1',
-    tokensIn: 10,
-    tokensOut: 4,
-    usd: 0.01,
-    killReason: null,
-    exitCode: 0,
-    resumed: false,
-    calls: 1,
-    samples: [],
-    durationMs: 5,
-    startedAt: now,
-    finishedAt: now,
-  };
-}
-
-async function boot(root: string, agent: jest.Mock) {
-  return Test.createTestingModule({
-    imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
-  })
-    .overrideProvider(AGENT_RUNNER)
-    .useValue({ run: agent })
-    .overrideProvider(SandboxService)
-    .useValue({ assertReady: jest.fn().mockResolvedValue(undefined) })
-    .compile();
 }
 
 async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeof boot> {
@@ -628,47 +576,4 @@ function fakeChild(chunks: string[], code: number): EventEmitter {
     return returned;
   }) as typeof child.on;
   return Object.assign(child, { stdout, stderr, containerName: 'box', kill: () => true });
-}
-
-async function writeEnv(root: string, overrides: Record<string, string> = {}): Promise<void> {
-  const values: Record<string, string> = {
-    REQUIREMENTS_VIA: 'direct',
-    ISSUE_TRACKER: 'jira',
-    JIRA_BASE_URL: '',
-    JIRA_EMAIL: '',
-    JIRA_API_TOKEN: '',
-    GITLAB_BASE_URL: '',
-    GITLAB_TOKEN: '',
-    GITHUB_BASE_URL: '',
-    GITHUB_TOKEN: '',
-    CURSOR_API_KEY: 'test-key',
-    ANTHROPIC_API_KEY: '',
-    MAX_AGENT_CALLS: '20',
-    MAX_RETURNS: '3',
-    MAX_LAUNCHES: '3',
-    MAX_RUN_USD: '25',
-    IDLE_TIMEOUT_MS: '900000',
-    TICK_MS: '15000',
-    REQUIREMENTS_TIMEOUT_MS: '600000',
-    RESEARCH_TIMEOUT_MS: '900000',
-    PLAN_TIMEOUT_MS: '1200000',
-    IMPLEMENT_TIMEOUT_MS: '1800000',
-    CODE_REVIEW_TIMEOUT_MS: '900000',
-    MERGE_REQUEST_TIMEOUT_MS: '600000',
-    PIPELINE_TIMEOUT_MS: '1800000',
-    PIPELINE_START_TIMEOUT_MS: '180000',
-    AGENTS_PLAN: 'cursor:opus-5.5-extra-high',
-    AGENTS_IMPLEMENT: 'cursor:grok-4.7',
-    AGENTS_REVIEW: 'cursor:opus-5.5-extra-high',
-    SWARMLOOP_API_PORT: '3920',
-    SWARMLOOP_API_HOST: '127.0.0.1',
-    ...overrides,
-    SWARMLOOP_ROOT: root,
-  };
-  await writeFile(
-    join(root, '.env'),
-    `${Object.entries(values)
-      .map(([key, value]) => `${key}=${value}`)
-      .join('\n')}\n`,
-  );
 }

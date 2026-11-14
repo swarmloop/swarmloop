@@ -1,3 +1,5 @@
+import { resultAnswer } from '../../testing/result-answer';
+import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
 
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -33,6 +35,8 @@ import { RequiredCheckFailed } from '../../environment/project-environments';
 import { RebasedPublisher } from '../shared/rebased-publisher';
 
 import {
+  implAnswer,
+  rebaseReply,
   reply,
   REFUSED_WRITE,
   result,
@@ -56,9 +60,9 @@ describe('implement step', () => {
       const agent = jest.fn(async (input: AgentRunInput) => {
         if (input.prompt.includes('The commit being replayed is')) {
           writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 3;\n');
-        } else {
-          writeFileSync(join(tree, 'src', 'fixed.ts'), 'export const fixed = true;\n');
+          return result(rebaseReply);
         }
+        writeFileSync(join(tree, 'src', 'fixed.ts'), 'export const fixed = true;\n');
         return result(reply);
       });
       const app = await boot(root, agent);
@@ -136,8 +140,8 @@ describe('implement step', () => {
       expect(notes).toHaveLength(1);
       expect(notes[0]?.body).toBe('- changed the field parser\n- ran unit tests\n');
       const handoff = await documents.find({ where: { kind: 'handoff' } });
-      expect(handoff[0]?.body).toContain('## implement');
-      expect(handoff[0]?.body).toContain('empty fields stay');
+      expect(handoffText(handoff[0]?.body ?? null)).toContain('## implement');
+      expect(handoffText(handoff[0]?.body ?? null)).toContain('empty fields stay');
       const run = await app.get(RunRepository).findRun('PROJ-60');
       expect(run?.currentStep).toBe('implement-improve');
       expect(run?.status).toBe('waiting');
@@ -372,7 +376,7 @@ describe('implement step', () => {
     featureTree(root, 'PROJ-67', 'web');
     const agent = jest
       .fn()
-      .mockResolvedValue(result('implementation:\n- api field\n- web button\n\nsummary:\n- both follow the plan\n'));
+      .mockResolvedValue(result(implAnswer(['api field', 'web button'], ['both follow the plan'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-67', 'approve', 'api\nweb\n');
@@ -418,13 +422,15 @@ describe('implement step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-summary-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-69', 'billing-api');
-    const agent = jest.fn().mockResolvedValue(result('implementation:\n- changed the field parser\n'));
+    const agent = jest
+      .fn()
+      .mockResolvedValue(result(resultAnswer('Done.', { implementation: ['changed the field parser'] })));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-69', 'approve');
       const done = await app.get(PipelineService).step('implement', 'PROJ-69');
       expect(done.exitCode).toBe(1);
-      expect(done.message).toContain('summary is missing');
+      expect(done.message).toContain('summary: "summary" is required');
     } finally {
       await app.close();
     }
@@ -450,13 +456,13 @@ describe('implement step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-empty-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-63', 'billing-api');
-    const agent = jest.fn().mockResolvedValue(result('implementation:\n- none\n'));
+    const agent = jest.fn().mockResolvedValue(result(implAnswer([], ['nothing to change'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-63', 'approve');
       const done = await app.get(PipelineService).step('implement', 'PROJ-63');
       expect(done.exitCode).toBe(1);
-      expect(done.message).toContain('implementation is empty');
+      expect(done.message).toContain('implementation: must list what you changed');
       const run = await app.get(RunRepository).findRun('PROJ-63');
       expect(run?.currentStep).toBe('implement');
       expect(run?.status).toBe('failed');
@@ -540,7 +546,7 @@ describe('implement step', () => {
       if (input.prompt.includes('The commit being replayed is')) {
         expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
         marked = readFileSync(join(tree, 'src', 'field.ts'), 'utf8');
-        return result('edited the conflict\n');
+        return result(rebaseReply);
       }
       return result(reply);
     });

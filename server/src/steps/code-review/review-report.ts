@@ -18,12 +18,19 @@ import type { Route } from '../contract/step-contract';
 import { agentFailure } from '../shared/agent-result';
 import { projectRules } from '../shared/project-rules';
 import { appendImpact, mergeHandoff, textDocument, withImpact } from '../shared/handoff';
-import { plainSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
+import { skillPrompt } from '../shared/skill-prompt';
+import { agentExchange } from '../shared/model-visit';
 import { REPORT_CONTINUE, reportFollowUp } from './code-review.prompts';
-import { decidedOk } from './reviewer';
-import type { Finished, Opinion, ReviewDeps, Usage } from './reviewer';
+import { decidedOk, reportDocuments, reviewDocuments, summaryNote } from './code-review-record';
+import type { Opinion } from './code-review-record';
+import type { Finished, ReviewDeps, Usage } from './reviewer';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
-import { answerEnding } from '../shared/parse-failure-follow-up';
+import { reviewReport } from '../../agent-result/definitions/review-report';
+import type { ReviewReportResult } from '../../agent-result/definitions/review-report';
+import { resultPromptFor } from '../../agent-result/result-prompt';
+import { storedReview } from '../../agent-result/stored-review';
+import { ResultInvalid } from '../shared/answer-errors';
+import { answerErrorsDocument } from '../shared/stored-answer-errors';
 
 const LABELS: Record<string, string> = {
   [REVIEWS.of('requirements')]: 'Requirements',
@@ -54,9 +61,10 @@ export async function writeReport(
   impact: string | null,
   continued: boolean,
   auto?: boolean,
+  answerErrors?: string[],
 ): Promise<
-  | { document: DocumentDraft; exchange: ExchangeDraft; usage: Usage }
-  | { error: string; exchange: ExchangeDraft | null; usage: Usage }
+  | { documents: DocumentDraft[]; exchange: ExchangeDraft; usage: Usage }
+  | { error: string; exchange: ExchangeDraft | null; usage: Usage; documents: DocumentDraft[] }
 > {
   const names = mounts.map((mount) => basename(mount.hostPath));
   const brief = reviewBrief(opinions);
@@ -67,10 +75,14 @@ export async function writeReport(
     ],
     impact,
   );
+  // The report never resumes a chat, so every prompt of it gets the full result text.
   const fullFor = (runtime: string): string =>
-    skillPrompt('code-review/report', requirements, names, sections, mounts, {
-      rules: projectRules(names, mounts, runtime, false),
-    });
+    [
+      skillPrompt('code-review/report', requirements, names, sections, mounts, {
+        rules: projectRules(names, mounts, runtime, false),
+      }),
+      resultPromptFor(reviewReport, null),
+    ].join('\n\n');
   const asked = agentFor(env, opened.run, 'code-review-report');
   const full = fullFor(asked.runtime);
   const prompt = continued ? appendImpact(reportFollowUp(brief, implementation), impact) : full;
@@ -97,27 +109,11 @@ export async function writeReport(
       auto,
       resume: false,
       continuePrompt: REPORT_CONTINUE,
-      validate: (text) => {
-        if (!text.trim()) {
-          throw new SwarmloopError('review report is empty');
-        }
-      },
-      parseFailureEnding: answerEnding('code-review/report'),
+      result: reviewReport,
+      answerErrors,
     });
     const { runtime, model, ...effort } = result.agent ?? asked;
-    const exchange: ExchangeDraft = {
-      runtime,
-      model,
-      ...effortFields(effort),
-      startedAt: result.startedAt,
-      finishedAt: result.finishedAt,
-      durationMs: result.durationMs,
-      requestText: prompt,
-      responseText: result.responseText,
-      chatId: result.chatId,
-      resumed: result.resumed,
-      killReason: result.killReason,
-    };
+    const exchange: ExchangeDraft = { runtime, ...effortFields(effort), ...agentExchange(result, model, prompt) };
     const spent: Usage = {
       tokensIn: result.tokensIn,
       tokensOut: result.tokensOut,
@@ -126,19 +122,23 @@ export async function writeReport(
     };
     const failure = agentFailure(result, 'code-review', 'ask');
     if (failure) {
-      return { error: failure, exchange, usage: spent };
+      return { error: failure, exchange, usage: spent, documents: [] };
     }
-    const text = result.responseText.trim();
-    if (!text) {
-      return { error: 'code-review report is empty', exchange, usage: spent };
+    if (!result.resultValue) {
+      return { error: 'code-review report is empty', exchange, usage: spent, documents: [] };
     }
-    return { document: textDocument(ARTIFACTS.reviewReport.kind, `${text}\n`), exchange, usage: spent };
+    return { documents: reportDocuments(result.resultValue as ReviewReportResult), exchange, usage: spent };
   } catch (error) {
     if (error instanceof RuntimeLimit) {
       throw error;
     }
     const message = reportFailure('code-review', error, env).message;
-    return { error: message, exchange: null, usage: empty };
+    return {
+      error: message,
+      exchange: null,
+      usage: empty,
+      documents: error instanceof ResultInvalid ? [answerErrorsDocument(error.errors)] : [],
+    };
   }
 }
 
@@ -153,10 +153,7 @@ export async function recordAngle(
   if (!result) {
     return;
   }
-  const parsed =
-    item.parsed && repeated && item.parsed.decision === 'return'
-      ? { ...item.parsed, decision: 'ok' as const, body: decidedOk(item.parsed.body) }
-      : item.parsed;
+  const parsed = item.parsed && repeated && item.parsed.decision === 'return' ? decidedOk(item.parsed) : item.parsed;
   const status = item.error ? 'failed' : parsed?.decision === 'return' ? 'waiting' : parsed ? 'done' : 'failed';
   const exchange = exchangeOf(item);
   await deps.visits.finishVisit(opened.run, {
@@ -179,8 +176,9 @@ export async function recordAngle(
     httpCalls: [],
     document: null,
     documents: [
-      ...(parsed ? [textDocument(item.reviewer.kind, parsed.body)] : []),
+      ...(parsed ? reviewDocuments(parsed) : []),
       ...(item.error ? [{ kind: ARTIFACTS.error.kind, fileName: '', body: `${item.error}\n` }] : []),
+      ...(item.answerErrors ? [answerErrorsDocument(item.answerErrors)] : []),
     ],
     resumed: result.resumed,
   });
@@ -199,7 +197,7 @@ export async function noteHandoff(
   let text = (await documents.latestBody(key, ARTIFACTS.handoff.kind)) ?? '';
   for (const opinion of opinions) {
     const step = opinion.kind.slice(REVIEWS.prefix.length);
-    text = mergeHandoff(text, step, summaryOr(opinion.body, plainSummary(opinion.body) || `- ${opinion.decision}`));
+    text = mergeHandoff(text, step, summaryNote(opinion.result));
   }
   return [...drafts, textDocument(ARTIFACTS.handoff.kind, text)];
 }
@@ -222,10 +220,10 @@ export function closeReview(
   const { outcome, exitCode, moveTo } = routeToEnd(route);
   const decisions = documents
     .filter((document) => REVIEWS.matches(document.kind))
-    .map(
-      (document) =>
-        `${document.kind.slice(REVIEWS.prefix.length)}: ${/^decision:\s*(\w+)/m.exec(document.body)?.[1] ?? 'none'}`,
-    );
+    .map((document) => {
+      const name = document.kind.slice(REVIEWS.prefix.length);
+      return `${name}: ${storedReview(name, documents)?.decision ?? 'none'}`;
+    });
   return ctx.end({
     outcome,
     ...(decisions.length > 0 ? { facts: { details: decisions } } : {}),
@@ -264,17 +262,5 @@ function exchangeOf(item: Finished): ExchangeDraft {
   if (!result) {
     throw new SwarmloopError('code-review failed');
   }
-  return {
-    runtime: item.runtime,
-    model: item.model,
-    ...effortFields(item),
-    startedAt: result.startedAt,
-    finishedAt: result.finishedAt,
-    durationMs: result.durationMs,
-    requestText: item.prompt,
-    responseText: result.responseText,
-    chatId: result.chatId,
-    resumed: result.resumed,
-    killReason: result.killReason,
-  };
+  return { runtime: item.runtime, ...effortFields(item), ...agentExchange(result, item.model, item.prompt) };
 }

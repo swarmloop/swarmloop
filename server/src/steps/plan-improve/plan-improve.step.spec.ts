@@ -1,23 +1,21 @@
 import 'reflect-metadata';
-import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { mkdtemp, writeFile } from 'fs/promises';
+import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { Repository } from 'typeorm';
-import { SwarmloopConfigModule } from '../../config/config.module';
 import { DocumentEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
-import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
-import { AGENT_RUNNER } from '../../agent/agent-runner';
-import { PipelineModule } from '../../pipeline/pipeline.module';
-import { withPlan } from '../plan/plan-record';
+import type { AgentRunInput } from '../../agent/agent-runner';
+import { resultAnswer } from '../../testing/result-answer';
+import { boot, result, seed, storedTasks, writeEnv } from './plan-improve.step.spec-helpers';
 import { PipelineService } from '../../pipeline/pipeline.service';
-import { SandboxService } from '../../sandbox/sandbox.service';
 
-const reply = ['plan:', '- add the field', '', 'decision: approve'].join('\n');
+const improved = (items: string[], extra: Record<string, unknown> = {}): string =>
+  resultAnswer('Done.', { summary: ['why'], plan: items, ...extra });
+const reply = improved(['add the field']);
 
 describe('plan-improve step', () => {
   it('stores a second plan and waits before implementation when approved', async () => {
@@ -65,7 +63,8 @@ describe('plan-improve step', () => {
       await seed(app, 'PROJ-58');
       await app.get(PipelineService).step('plan-improve', 'PROJ-58');
       const prompt = (agent.mock.calls[0]?.[0] as AgentRunInput).prompt;
-      expect(prompt).toContain('Write a `plan` section. It replaces the checklist.');
+      expect(prompt).toContain('End your final message with exactly one result block');
+      expect(prompt).toContain('- plan (array of string, optional)');
       expect(prompt).not.toContain('plan tool');
     } finally {
       await app.close();
@@ -98,9 +97,7 @@ describe('plan-improve step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-fix-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-51', 'billing-api'), { recursive: true });
-    const agent = jest
-      .fn()
-      .mockResolvedValue(result(['plan:', '- add the field', '- cover the empty case'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(result(improved(['add the field', 'cover the empty case'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-51');
@@ -127,7 +124,7 @@ describe('plan-improve step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-keep-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-52', 'billing-api'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result('The checklist is already specific.'));
+    const agent = jest.fn().mockResolvedValue(result(improved([])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-52');
@@ -174,55 +171,27 @@ describe('plan-improve step', () => {
   });
 });
 
-function result(responseText: string): AgentRunResult {
-  const now = new Date().toISOString();
-  return {
-    responseText,
-    chatId: 'chat-1',
-    tokensIn: 10,
-    tokensOut: 4,
-    usd: 0.01,
-    killReason: null,
-    exitCode: 0,
-    resumed: false,
-    calls: 1,
-    samples: [],
-    durationMs: 5,
-    startedAt: now,
-    finishedAt: now,
-  };
-}
+const correctedTasks = [
+  { id: 'column', title: 'Add the column', depends: [], files: ['a.ts'], proof: 'a.spec.ts', description: 'Adds it.' },
+  {
+    id: 'api',
+    title: 'Send it, and read it',
+    depends: ['column'],
+    files: ['b.ts'],
+    proof: 'b.spec.ts',
+    description: 'Sends it.',
+  },
+];
 
-async function boot(root: string, agent: jest.Mock) {
-  const assertReady = jest.fn().mockResolvedValue(undefined);
-  return Test.createTestingModule({
-    imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
-  })
-    .overrideProvider(AGENT_RUNNER)
-    .useValue({ run: agent })
-    .overrideProvider(SandboxService)
-    .useValue({ assertReady })
-    .compile();
-}
+const splitAnswer = (extra: Record<string, unknown> = {}, tasks = correctedTasks): string =>
+  resultAnswer('Done.', {
+    summary: ['fixed the contract'],
+    contract: ['the column is called `split_on`'],
+    tasks,
+    ...extra,
+  });
 
-const storedTasks = [
-  { id: 'column', title: 'Add the column', description: 'Adds it.', depends: [], files: ['a.ts'], proof: 'a.spec.ts' },
-  { id: 'api', title: 'Send it', description: 'Sends it.', depends: ['column'], files: ['b.ts'], proof: 'b.spec.ts' },
-].map((task) => ({ ...task, status: 'pending' }));
-
-const correctedReply = [
-  'contract:',
-  '- the column is called `split_on`',
-  '',
-  'tasks:',
-  '- column | Add the column | depends: none | files: a.ts | proof: a.spec.ts',
-  '  Adds it.',
-  '- api | Send it, and read it | depends: column | files: b.ts | proof: b.spec.ts',
-  '  Sends it.',
-  '',
-  'summary:',
-  '- fixed the contract',
-].join('\n');
+const correctedReply = splitAnswer();
 
 describe('plan-improve step with split', () => {
   async function improveSplit(
@@ -281,14 +250,17 @@ describe('plan-improve step with split', () => {
   });
 
   it('a split turned back into one plan writes an empty subtasks', async () => {
-    const out = await improveSplit('PROJ-91', ['plan:', '- add the field', '', 'summary:', '- one run'].join('\n'));
+    const out = await improveSplit('PROJ-91', improved(['add the field']));
     expect(out.done.exitCode).toBe(0);
     expect(JSON.parse(out.subtasks ?? 'null')).toEqual([]);
     expect(JSON.parse(out.requirements ?? '{}').plan.items).toEqual(['add the field']);
   });
 
   it('an invalid graph is a plan error and never reaches implement', async () => {
-    const out = await improveSplit('PROJ-92', correctedReply.replace('depends: none', 'depends: nope'));
+    const out = await improveSplit(
+      'PROJ-92',
+      splitAnswer({}, [{ ...correctedTasks[0], depends: ['nope'] }, correctedTasks[1]]),
+    );
     expect(out.done.exitCode).toBe(1);
     expect(out.done.message).toContain('task column depends on unknown task nope');
     expect(out.run?.currentStep).toBe('plan-improve');
@@ -296,8 +268,8 @@ describe('plan-improve step with split', () => {
   });
 
   describe('the keep: section', () => {
-    const keepLine = '- login works | proof: login.spec.ts | tasks: column';
-    const withKeep = (line: string): string => correctedReply.replace('tasks:\n', `keep:\n${line}\n\ntasks:\n`);
+    const keepLine = { capability: 'login works', proof: 'login.spec.ts', tasks: ['column'] };
+    const withKeep = (line: typeof keepLine): string => splitAnswer({ keep: [line] });
     const prompts = (agent: jest.Mock) => agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt);
 
     it('stores a valid section as the keep document', async () => {
@@ -318,15 +290,15 @@ describe('plan-improve step with split', () => {
     });
 
     it('asks once in the same chat when a line names an unknown task', async () => {
-      const out = await improveSplit('PROJ-100', withKeep('- login works | proof: login.spec.ts | tasks: ghost'));
+      const out = await improveSplit('PROJ-100', withKeep({ ...keepLine, tasks: ['ghost'] }));
       expect(out.done.exitCode).toBe(1);
-      expect(prompts(out.agent)).toHaveLength(2);
+      expect(prompts(out.agent)).toHaveLength(3);
       expect(prompts(out.agent)[1]).toContain('unknown task ghost');
     });
 
     it('clears the lines when the split turns back into one plan', async () => {
       const stored = JSON.stringify([{ capability: 'login works', proof: 'login.spec.ts', tasks: ['column'] }]);
-      const out = await improveSplit('PROJ-101', ['plan:', '- add the field', '', 'summary:', '- one'].join('\n'), {
+      const out = await improveSplit('PROJ-101', improved(['add the field']), {
         keep: stored,
       });
       expect(JSON.parse(out.keep ?? 'null')).toEqual([]);
@@ -337,19 +309,18 @@ describe('plan-improve step with split', () => {
     const many = (count: number) =>
       Array.from({ length: count }, (_, n) => ({ ...storedTasks[0], id: `t${n}`, title: `Task ${n}` }));
     const answerOf = (count: number) =>
-      [
-        'contract:',
-        '- one field',
-        '',
-        'tasks:',
-        ...Array.from({ length: count }, (_, n) => [
-          `- t${n} | Task ${n} | depends: none | files: a.ts | proof: a.spec.ts`,
-          '  Adds it.',
-        ]).flat(),
-        '',
-        'summary:',
-        '- merged',
-      ].join('\n');
+      resultAnswer('Done.', {
+        summary: ['merged'],
+        contract: ['one field'],
+        tasks: Array.from({ length: count }, (_, n) => ({
+          id: `t${n}`,
+          title: `Task ${n}`,
+          depends: [],
+          files: ['a.ts'],
+          proof: 'a.spec.ts',
+          description: 'Adds it.',
+        })),
+      });
     const prompts = (agent: jest.Mock) => agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt);
 
     it('does not ask for a merge when the plan is at the limit', async () => {
@@ -371,7 +342,8 @@ describe('plan-improve step with split', () => {
       const out = await improveSplit('PROJ-96', answerOf(49), { stored: many(49) });
       expect(out.done.exitCode).toBe(1);
       expect(out.done.message).toContain('too many tasks: 49, the limit is 48');
-      expect(prompts(out.agent)).toHaveLength(1);
+      expect(prompts(out.agent)).toHaveLength(3);
+      expect(prompts(out.agent)[1]).toContain('too many tasks: 49, the limit is 48');
       expect(out.run?.currentStep).toBe('plan-improve');
     });
   });
@@ -383,59 +355,3 @@ describe('plan-improve step with split', () => {
     expect((out.agent.mock.calls[0]?.[0] as AgentRunInput).prompt).not.toContain('## Split');
   });
 });
-
-async function seed(app: Awaited<ReturnType<typeof boot>>, key: string): Promise<void> {
-  const runs = app.get(RunRepository);
-  const documents = app.get(DocumentRepository);
-  const seeded = await runs.begin(key, 'plan-improve');
-  seeded.status = 'waiting';
-  seeded.currentStep = 'plan-improve';
-  await runs.saveRun(seeded);
-  await documents.putDocument(
-    seeded,
-    'requirements',
-    withPlan('{"prompt":"ship the field"}\n', { name: '', overview: '', items: ['add the field'], decision: null }),
-  );
-  await documents.putDocument(seeded, 'repos', 'billing-api\n');
-}
-
-async function writeEnv(root: string): Promise<void> {
-  await writeFile(
-    join(root, '.env'),
-    [
-      'REQUIREMENTS_VIA=direct',
-      'ISSUE_TRACKER=jira',
-      'JIRA_BASE_URL=',
-      'JIRA_EMAIL=',
-      'JIRA_API_TOKEN=',
-      'GITLAB_BASE_URL=',
-      'GITLAB_TOKEN=',
-      'GITHUB_BASE_URL=',
-      'GITHUB_TOKEN=',
-      'CURSOR_API_KEY=',
-      'ANTHROPIC_API_KEY=',
-      'MAX_AGENT_CALLS=20',
-      'MAX_RETURNS=3',
-      'MAX_LAUNCHES=3',
-      'MAX_RUN_USD=25',
-      'IDLE_TIMEOUT_MS=900000',
-      'TICK_MS=15000',
-      'REQUIREMENTS_TIMEOUT_MS=600000',
-      'RESEARCH_TIMEOUT_MS=900000',
-      'PLAN_TIMEOUT_MS=1200000',
-      'IMPLEMENT_TIMEOUT_MS=1800000',
-      'CODE_REVIEW_TIMEOUT_MS=900000',
-      'MERGE_REQUEST_TIMEOUT_MS=600000',
-      'PIPELINE_TIMEOUT_MS=1800000',
-      'PIPELINE_START_TIMEOUT_MS=180000',
-      'AGENTS_PLAN=cursor:opus-5.5-extra-high',
-      'AGENTS_IMPLEMENT=cursor:grok-4.7',
-      'AGENTS_REVIEW=cursor:opus-5.5-extra-high',
-      'EPIC_EFFORT=',
-      'SWARMLOOP_API_PORT=3920',
-      'SWARMLOOP_API_HOST=127.0.0.1',
-      `SWARMLOOP_ROOT=${root}`,
-      '',
-    ].join('\n'),
-  );
-}

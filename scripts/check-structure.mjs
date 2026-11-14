@@ -72,9 +72,10 @@ export function findViolations({ root, rules, files, isIgnored = gitIgnores(root
     const outsidePattern = new RegExp(outside);
     const excluded = exclude ? new RegExp(exclude) : null;
     const allowed = allowLine ? new RegExp(allowLine) : null;
+    const prefixes = [include].flat();
     for (const rel of files) {
       if (
-        !rel.startsWith(include) ||
+        !prefixes.some((prefix) => rel.startsWith(prefix)) ||
         allowFiles.some((prefix) => rel.startsWith(prefix)) ||
         excluded?.test(rel) ||
         !existsSync(join(root, rel))

@@ -29,4 +29,11 @@ describe('output writer', () => {
       'branch may not write commit',
     );
   });
+
+  it('writes the research result of the research step as JSON', () => {
+    const value = { summary: ['why'], questions: [], impact: [] };
+    expect(
+      outputDrafts('research', [ARTIFACTS.researchResult], [{ artifact: ARTIFACTS.researchResult, value }]),
+    ).toEqual([{ kind: 'research_result', fileName: '', body: `${JSON.stringify(value)}\n` }]);
+  });
 });

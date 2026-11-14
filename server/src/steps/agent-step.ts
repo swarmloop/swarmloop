@@ -9,9 +9,6 @@ import type { AgentRunResult } from '../agent/agent-runner';
 import { visitStatus } from '../core/pipeline-result';
 import type { StepOptions } from '../core/pipeline-result';
 import type { OpenedStep } from '../steps/step-run';
-import type { SandboxMount } from '../core/sandbox-mount';
-import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
-import type { ManifestHosts, ProjectLaunch } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { GitAuthError, RuntimeLimit, SwarmloopError } from '../core/swarmloop-error';
 import type { StepKernel } from './step-kernel';
@@ -32,7 +29,12 @@ import type { StepName } from '../contract/steps';
 import { artifact, firstLine } from './contract/artifact';
 import type { Artifact } from './contract/artifact';
 import { ARTIFACTS, INSTRUCTIONS } from './contract/artifacts';
-import { answerEnding } from './shared/parse-failure-follow-up';
+import { ResultInvalid } from './shared/answer-errors';
+import type { ModelStepContext } from './model-step-context';
+import { answerErrorsDocument } from './shared/stored-answer-errors';
+import type { LaunchResult } from './shared/result-exchange';
+
+export type { ModelStepContext } from './model-step-context';
 
 /** The requirements, which no agent step starts without. Every agent step declares it first. */
 export const REQUIREMENTS_INPUT = { artifact: ARTIFACTS.requirements, need: 'run' } as const;
@@ -49,42 +51,14 @@ export function instructionsInput(step: StepName): { artifact: Artifact; need: '
   );
 }
 
-export interface ModelStepContext {
-  opened: OpenedStep;
-  workspace: string;
-  /** Where the samples of other containers of the step go: the visit shows them next to the agent's. */
-  samples: SampleDraft[];
-  reread: StepContext['reread'];
-  write: StepContext['write'];
-  activity: StepContext['activity'];
-  launch: (input: {
-    prompt: string;
-    mounts: SandboxMount[];
-    allowHosts?: string[];
-    manifestHosts?: ManifestHosts;
-    label?: string;
-    continuePrompt?: string;
-    /** The full prompt, for the fresh chat that starts when the CLI no longer has the stored one. */
-    freshPrompt?: string;
-    resume?: boolean;
-    /** The sections the answer must hold. A kill of background work that leaves one out fails the step as ended early. */
-    sections?: string[];
-    /** Checks the final answer before returning it, so a malformed answer can be corrected in the same chat. */
-    validate?: (text: string, output: string | undefined) => void;
-    project?: ProjectLaunch;
-    /** The full prompt for a new chat on the given runtime, when the launch moves to another agent after a provider limit. */
-    briefFor?: (runtime: RuntimeName) => string;
-    /** The project launch for the runtime of another agent, when the launch moves to one after a provider limit. */
-    projectFor?: (runtime: RuntimeName) => Promise<ProjectLaunch | undefined>;
-  }) => Promise<AgentRunResult>;
-}
-
 /** Per-run state of one model step. It lives in one run call, not on the service, which is a singleton. */
 interface ModelRun {
   key: string;
   opened: OpenedStep;
   profile: AgentProfile;
   auto?: boolean;
+  /** The errors of the answer the step's last visit failed on, told to the agent on the first launch. */
+  answerErrors?: string[];
   workspace: string;
   prompt: string;
   agentResult: AgentRunResult | null;
@@ -148,6 +122,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       opened,
       profile: this.profile(env, opened.run),
       auto: options.auto,
+      answerErrors: options.answerErrors,
       workspace: join(root(this.config), 'worktrees', opened.run.key),
       prompt: '',
       agentResult: null,
@@ -194,7 +169,12 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
         route: { to: 'fail', error: failure },
         summary: `${opened.startedAt} ${withRefusal(failure.message, refusal)}`,
         outputs: [],
-        visit: this.modelVisitOf(run, 'failed', 1),
+        visit: this.modelVisitOf(
+          run,
+          'failed',
+          1,
+          failure.answerErrors && [answerErrorsDocument(failure.answerErrors)],
+        ),
       };
     }
   }
@@ -267,42 +247,50 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     });
   }
 
-  private async launch(run: ModelRun, launch: Parameters<ModelStepContext['launch']>[0]): Promise<AgentRunResult> {
+  private async launch(run: ModelRun, launch: Parameters<ModelStepContext['launch']>[0]): Promise<LaunchResult> {
     const instructions =
       launch.resume === false ? null : await this.documents.latestBody(run.key, INSTRUCTIONS.of(this.name));
     const withInstructions = (text: string): string =>
       instructions?.trim() ? `${text}\n\nLatest user instructions:\n${instructions}` : text;
     const prompt = withInstructions(launch.prompt);
-    const result = await this.launcher.launch({
-      root: root(this.config),
-      run: run.opened.run,
-      key: run.key,
-      step: launch.label ? `${this.name}-${launch.label}` : this.name,
-      liveStep: this.name,
-      mode: run.profile.mode,
-      tools: run.profile.tools,
-      runtime: run.profile.runtime,
-      model: run.profile.model,
-      ...effortFields(run.profile),
-      timeLimitMs: run.profile.timeLimitMs,
-      auto: run.auto,
-      prompt,
-      workspace: run.workspace,
-      mounts: launch.mounts,
-      allowHosts: launch.allowHosts,
-      manifestHosts: launch.manifestHosts,
-      resume: launch.resume,
-      continuePrompt: launch.continuePrompt,
-      freshPrompt: launch.freshPrompt === undefined ? undefined : withInstructions(launch.freshPrompt),
-      failover: true,
-      brief: launch.freshPrompt === undefined ? prompt : withInstructions(launch.freshPrompt),
-      briefFor: launch.briefFor && ((runtime) => withInstructions(launch.briefFor?.(runtime) ?? prompt)),
-      sections: launch.sections,
-      validate: launch.validate,
-      parseFailureEnding: answerEnding(this.name),
-      project: launch.project,
-      projectFor: launch.projectFor,
-    });
+    // Only the first launch of the visit is told: later launches of the step are other chats.
+    const answerErrors = run.answerErrors;
+    run.answerErrors = undefined;
+    const result = await this.launcher
+      .launch({
+        root: root(this.config),
+        run: run.opened.run,
+        key: run.key,
+        step: launch.label ? `${this.name}-${launch.label}` : this.name,
+        liveStep: this.name,
+        mode: run.profile.mode,
+        tools: run.profile.tools,
+        runtime: run.profile.runtime,
+        model: run.profile.model,
+        ...effortFields(run.profile),
+        timeLimitMs: run.profile.timeLimitMs,
+        auto: run.auto,
+        prompt,
+        workspace: run.workspace,
+        mounts: launch.mounts,
+        allowHosts: launch.allowHosts,
+        manifestHosts: launch.manifestHosts,
+        resume: launch.resume,
+        continuePrompt: launch.continuePrompt,
+        freshPrompt: launch.freshPrompt === undefined ? undefined : withInstructions(launch.freshPrompt),
+        failover: true,
+        brief: launch.freshPrompt === undefined ? prompt : withInstructions(launch.freshPrompt),
+        briefFor: launch.briefFor && ((runtime) => withInstructions(launch.briefFor?.(runtime) ?? prompt)),
+        result: launch.result,
+        check: launch.check,
+        answerErrors,
+        project: launch.project,
+        projectFor: launch.projectFor,
+      })
+      .catch((error: unknown) => {
+        if (error instanceof ResultInvalid) run.refusal = refusedWrite(error.output) ?? run.refusal;
+        throw error;
+      });
     if (result.agent) {
       // The step goes on with the agent that took over, and its visit records that agent.
       const { effort: _effort, effortNote: _effortNote, ...profile } = run.profile;

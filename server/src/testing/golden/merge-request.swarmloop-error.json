@@ -104,7 +104,7 @@
   },
   "loopEvents": [],
   "reads": {
-    "merge-request": ["ci_skip", "requirements", "repos", "implementation"]
+    "merge-request": ["ci_skip", "requirements", "repos", "implementation_result", "implementation"]
   },
   "result": {
     "exitCode": 1,

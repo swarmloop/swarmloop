@@ -1,6 +1,6 @@
 import type { FlowView } from '@contract/api';
 import type { LiveLog } from '@contract/live';
-import { reviewChipStatus } from '@contract/readable-log';
+import { reviewChipStatus } from '@contract/readable-log-review';
 import { visitStored } from '../../lib/elapsed';
 import { keepOpenReviews, markReviewFinished, markReviewLive, reviewChipName } from './phases';
 

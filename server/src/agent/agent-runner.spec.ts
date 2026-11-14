@@ -22,6 +22,16 @@ import { RunStop } from './run-stop';
 const PREVIOUS = 'previous-visit-transcript\n';
 
 describe('AgentProcessRunner brief directory', () => {
+  it('records the result definition the prompt sent to the chat', async () => {
+    const { root } = await start('result-definition', [{ chunks: [chatStream('chat-9')] }], {
+      resumeChatId: null,
+      resultName: 'rebase_resolution',
+    });
+    expect((await readSession(join(root, 'data', 'run1-plan-session.json'), 'cursor'))?.resultName).toBe(
+      'rebase_resolution',
+    );
+  });
+
   it('keeps the prompt last so a variadic --add-dir cannot swallow it', async () => {
     const { spawn } = await start('brief', [{ chunks: [chatStream('chat-9')] }], { resumeChatId: null });
     const command = (spawn.mock.calls[0]?.[0] as { command?: string[] } | undefined)?.command ?? [];

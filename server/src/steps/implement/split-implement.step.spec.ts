@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { resultAnswer } from '../../testing/result-answer';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -292,6 +293,7 @@ describe('split implement', () => {
     const parent = (await app.app.get(RunRepository).findRun(KEY))!;
     expect(parent).toMatchObject({ currentStep: 'checks', status: 'waiting' });
     expect(await app.app.get(DocumentRepository).latestBody(KEY, 'implementation')).toContain('Task a (merged)');
+    expect(await app.app.get(DocumentRepository).latestBody(KEY, 'implementation_result')).toContain('Task a (merged)');
   });
 
   it('leaves a settled parent with a rebase conflict to the agent path, not the passes', async () => {
@@ -610,7 +612,7 @@ describe('subtask questions', () => {
         prompts.push(input.prompt);
         const { text, exitCode = 0 } = replies(input.prompt);
         return Promise.resolve({
-          responseText: text,
+          responseText: text ? resultAnswer('Done.', { answer: text }) : text,
           chatId: 'chat-1',
           tokensIn: 10,
           tokensOut: 5,

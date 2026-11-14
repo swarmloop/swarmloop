@@ -2,6 +2,7 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { StepKernel } from '../step-kernel';
 import { result } from '../implement/implement.step.spec-helpers';
 import { expectGolden } from '../../testing/step-trace.spec-helpers';
+import { resultAnswer } from '../../testing/result-answer';
 import { goldenApp } from '../shared/model-golden.spec-helpers';
 import { ResearchStep } from './research.step';
 
@@ -32,12 +33,17 @@ async function research(agent: jest.Mock) {
 
 describe('research step golden traces', () => {
   const scenarios: [string, jest.Mock][] = [
-    ['ok', jest.fn().mockResolvedValue(result(['summary:', '- looked', 'questions:', '- none'].join('\n')))],
+    [
+      'ok',
+      jest.fn().mockResolvedValue(result(resultAnswer('Done.', { summary: ['looked'], questions: [], impact: [] }))),
+    ],
     [
       'questions-open',
       jest
         .fn()
-        .mockResolvedValue(result(['summary:', '- looking', 'questions:', '- which field is optional?'].join('\n'))),
+        .mockResolvedValue(
+          result(resultAnswer('Done.', { summary: ['looking'], questions: ['which field is optional?'], impact: [] })),
+        ),
     ],
     ['swarmloop-error', jest.fn().mockRejectedValue(new SwarmloopError('agent refused the task'))],
     ['plain-error', jest.fn().mockRejectedValue(new Error('agent crashed'))],

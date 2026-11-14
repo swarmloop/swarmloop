@@ -1,5 +1,3 @@
-import { SwarmloopError } from '../../core/swarmloop-error';
-
 /** One capability of a split plan that must keep working, and the tasks that touch it. */
 export interface KeepLine {
   capability: string;
@@ -8,36 +6,16 @@ export interface KeepLine {
   tasks: string[];
 }
 
-/** The lines of a split answer's `keep:` section. A missing section or `none` is no line. */
-export function parseKeep(block: string | null, taskIds: string[]): KeepLine[] {
-  const lines = (block ?? '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && line !== '-' && !/^-?\s*none$/i.test(line));
-  return lines.map((line) => keepLineOf(line, taskIds));
-}
-
-function keepLineOf(line: string, taskIds: string[]): KeepLine {
-  const [capability = '', proof = '', named = ''] = line
-    .replace(/^-\s*/, '')
-    .split('|')
-    .map((part) => part.trim());
-  if (!capability || !proof.startsWith('proof:') || !named.startsWith('tasks:')) {
-    throw new SwarmloopError(`keep line is malformed: ${line}`);
-  }
-  const tasks = named
-    .slice('tasks:'.length)
-    .split(',')
-    .map((id) => id.trim())
-    .filter((id) => id && id !== 'none');
-  if (tasks.length === 0) {
-    throw new SwarmloopError(`keep line names no task: ${capability}`);
-  }
-  const unknown = tasks.find((id) => !taskIds.includes(id));
-  if (unknown) {
-    throw new SwarmloopError(`keep line names unknown task ${unknown}: ${capability}`);
-  }
-  return { capability, proof: proof.slice('proof:'.length).trim(), tasks };
+/** Every defect of the keep lines of a split answer: a line that names no task, or a task that is not in the list. */
+export function keepErrors(lines: KeepLine[], taskIds: string[]): string[] {
+  return lines.flatMap((line) => {
+    if (line.tasks.length === 0) {
+      return [`keep line names no task: ${line.capability}`];
+    }
+    return line.tasks
+      .filter((id) => !taskIds.includes(id))
+      .map((id) => `keep line names unknown task ${id}: ${line.capability}`);
+  });
 }
 
 /** The lines that name one task. */

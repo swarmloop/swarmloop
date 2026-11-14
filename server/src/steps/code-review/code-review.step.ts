@@ -53,18 +53,27 @@ import {
   routeReview,
   runRound,
   sameReviewedDiff,
-  selectReviewers,
   tallyRound,
 } from './review-round';
-import { ARTIFACTS } from '../contract/artifacts';
+import { selectReviewers } from './review-select';
+import { opinionSummary } from './code-review-round-result';
+import { renderImplementation } from '../implement/implement-record';
+import { isResultKind } from '../../agent-result/result-definition';
+import { storedImpact } from '../shared/research-reads';
+import { ARTIFACTS, REVIEW_RESULTS } from '../contract/artifacts';
 import { CODE_REVIEWERS } from '../../contract/steps';
 
 const INPUTS = {
-  implementation: { artifact: ARTIFACTS.implementation, need: 'optional' },
+  implementationResult: { artifact: ARTIFACTS.implementationResult, need: 'optional' },
+  implementation: lateInput(ARTIFACTS.implementation),
+  planResult: lateInput(ARTIFACTS.planResult),
+  planImproveResult: lateInput(ARTIFACTS.planImproveResult),
+  implementationImproveResult: lateInput(ARTIFACTS.implementationImproveResult),
   // Without requirements the review falls back to the run prompt, and a third-party review has none.
   requirements: lateInput(ARTIFACTS.requirements),
   repos: lateInput(ARTIFACTS.repos),
   impact: lateInput(ARTIFACTS.impact),
+  researchResult: lateInput(ARTIFACTS.researchResult),
   rebaseConflict: lateInput(ARTIFACTS.rebaseConflict),
 } as const satisfies InputSpec;
 
@@ -74,6 +83,8 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   readonly inputs = INPUTS;
   readonly outputs = [
     ARTIFACTS.reviewReport,
+    ARTIFACTS.reviewReportResult,
+    ...Object.values(REVIEW_RESULTS),
     ARTIFACTS.return,
     ARTIFACTS.issues,
     ARTIFACTS.repos,
@@ -158,7 +169,9 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       ctx.opened.run.targetPath = realpathSync(ctx.options.path);
     }
     await this.sandbox.assertReady(agentFor(env, ctx.opened.run, 'code-review').runtime);
-    throw new VisitLeftOpen(await this.review(input.implementation, ctx, env));
+    const result = input.implementationResult;
+    const notes = result ? renderImplementation(result.implementation) : await ctx.reread(ARTIFACTS.implementation);
+    throw new VisitLeftOpen(await this.review(notes, ctx, env));
   }
 
   /** Everything before the first reviewer or report launches: the worktrees, the diff, and which reviewers run. */
@@ -257,8 +270,8 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     }
     writeReviewDiff(root(this.config), key, diff.patch);
     const handoff = await ctx.reread(ARTIFACTS.handoff);
-    const plan = approvedPlan(requirements);
-    const impact = await ctx.reread(ARTIFACTS.impact);
+    const plan = await approvedPlan(this.documents, key);
+    const impact = storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact));
     const split = opened.run.split;
     const contract = split ? await ctx.reread(ARTIFACTS.contract) : null;
     const keep = split ? await ctx.reread(ARTIFACTS.keep) : null;
@@ -300,7 +313,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     }
     const noted = await noteHandoff(this.documents, key, opinions, stored);
     if (only && othersOpen(only, opinions)) {
-      const summary = opinions.map((item) => `${item.kind} ${item.decision}`).join('\n');
+      const summary = opinionSummary(opinions);
       const waiting = await closeReview(
         ctx,
         { to: 'wait', reason: 'other reviewers are open' },
@@ -325,6 +338,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
         impact,
         reportContinued,
         options.auto,
+        options.answerErrors,
       );
     } catch (error) {
       if (!(error instanceof RuntimeLimit)) {
@@ -340,12 +354,12 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
         ctx,
         failed(written.error),
         `${opened.startedAt} ${written.error}`,
-        noted,
+        [...noted, ...written.documents],
         reportExchanges,
         written.usage,
       );
     }
-    const recorded = [...noted, written.document];
+    const recorded = [...noted, ...written.documents];
     if (fresh) {
       recorded.push(textDocument(ARTIFACTS.rebaseConflict.kind, 'clear\n'));
     }
@@ -358,13 +372,13 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       thirdParty,
       written.usage,
     );
-    await this.stamp(opened.run, [...stored, written.document], fingerprint);
+    await this.stamp(opened.run, [...stored, ...written.documents], fingerprint);
     return routed;
   }
 
   /** The reviews this round stored count for the generation and the files they judged, once their visit is closed. */
   private async stamp(run: RunEntity, stored: DocumentDraft[], fingerprint: string): Promise<void> {
-    for (const document of stored) {
+    for (const document of stored.filter((item) => !isResultKind(item.kind))) {
       await stampGate(this.documents, run, document.kind, fingerprint);
     }
   }

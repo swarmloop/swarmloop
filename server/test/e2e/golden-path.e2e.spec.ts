@@ -1,6 +1,9 @@
 import { existsSync } from 'fs';
 import type { FlowView, RunsView, RunRef, StepView } from '../../src/contract/api';
 import { createTestApp, ScriptedFakeAgentRunner } from '../../src/testing/test-app';
+import { featureWorktree } from '../../src/testing/runs.spec-helpers';
+import { RunRepository } from '../../src/history/run.repository';
+import { VisitRepository } from '../../src/history/visit.repository';
 
 describe('HTTP API golden path', () => {
   it('creates a run and reads its completed state', async () => {
@@ -8,6 +11,7 @@ describe('HTTP API golden path', () => {
     const testApp = await createTestApp({ runner });
     const root = testApp.root;
     try {
+      featureWorktree(root, 'TEST-1');
       const createdResponse = await fetch(`${testApp.url}/runs`, {
         method: 'POST',
         headers: { ...testApp.auth, 'content-type': 'application/json' },
@@ -23,7 +27,12 @@ describe('HTTP API golden path', () => {
         state: 'idle',
       });
       await testApp.pipeline.whenIdle(created.key);
-      expect(runner.steps).toEqual([
+      const run = await testApp.app.get(RunRepository).findRun(created.key);
+      if (!run) {
+        throw new Error('the created run is missing');
+      }
+      const visits = await testApp.app.get(VisitRepository).listStats(run.id);
+      expect(visits.filter((visit) => !visit.step.startsWith('code-review-')).map((visit) => visit.step)).toEqual([
         'requirements',
         'prepare',
         'research',

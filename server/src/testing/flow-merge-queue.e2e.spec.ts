@@ -1,3 +1,4 @@
+import { handoffText } from '../steps/shared/handoff';
 import 'reflect-metadata';
 import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -261,7 +262,7 @@ describe('the feature branch stays green: every merge is of a task tested on top
     expect([...flow.host.merged.keys()]).toEqual([first.iid]);
     expect(rebases.map((sent) => sent.key)).toEqual([second.run.key]);
     expect(await noteOf('b')).toBe(note);
-    expect(await documents().latestBody(second.run.key, 'handoff')).toContain(note);
+    expect(handoffText(await documents().latestBody(second.run.key, 'handoff'))).toContain(note);
   });
 
   it('rebases a working task when its step ends, never by sending it a command', async () => {
@@ -280,7 +281,7 @@ describe('the feature branch stays green: every merge is of a task tested on top
 
     expect(rebase).toHaveBeenCalledWith(second.run.key, false, true);
     expect(await documents().latestBody(second.run.key, 'pending_rebase')).toBe('');
-    expect(await documents().latestBody(second.run.key, 'handoff')).toContain(note);
+    expect(handoffText(await documents().latestBody(second.run.key, 'handoff'))).toContain(note);
   });
 
   it('sends a rebase again on the next pass when the command that carried it died', async () => {

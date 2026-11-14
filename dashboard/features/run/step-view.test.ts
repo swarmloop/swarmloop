@@ -13,9 +13,10 @@ import {
   withLog,
 } from './step-view.ts';
 import type { StepView } from '@contract/api';
+import { reviewLog } from '../../test/review-log.ts';
 
-const doneLog = 'decision: ok\n{"type":"result"}\n';
-const waitingLog = 'decision: return\n{"type":"result"}\n';
+const doneLog = `${reviewLog('ok')}\n`;
+const waitingLog = `${reviewLog('return')}\n`;
 const failedLog = '{"type":"result"}\n';
 const usageLog = '{"usage":{"inputTokens":10,"outputTokens":4}}';
 

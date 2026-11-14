@@ -21,6 +21,7 @@ import { REBASED_PREFIX } from './split-rebase';
 import { SplitNeeds } from './split-needs';
 import { earliestRetry } from './subtask-retry';
 import { BaseStep, StepContext } from '../base-step';
+import { renderImplementation } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 import type { PipelineResult, StepOptions } from '../../core/pipeline-result';
@@ -49,7 +50,7 @@ export const NO_CI_NOTE = 'no CI on the feature branch';
 export class SplitImplementStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'implement';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.subtasks, ARTIFACTS.implementation, ARTIFACTS.contract];
+  readonly outputs = [ARTIFACTS.subtasks, ARTIFACTS.implementation, ARTIFACTS.implementationResult, ARTIFACTS.contract];
 
   private readonly needs: SplitNeeds;
 
@@ -261,11 +262,16 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       next,
     );
     await this.skipImprove(ctx);
-    const body = `${tasks.map((task) => `- ${task.title} (${task.status})`).join('\n')}\n`;
+    const lines = tasks.map((task) => `${task.title} (${task.status})`);
+    const body = renderImplementation(lines);
     return {
       route: { to: 'jump', step: next },
       summary: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}`,
-      outputs: [...outputs, { artifact: ARTIFACTS.implementation, value: body }],
+      outputs: [
+        ...outputs,
+        { artifact: ARTIFACTS.implementation, value: body },
+        { artifact: ARTIFACTS.implementationResult, value: { implementation: lines, summary: [] } },
+      ],
       handoff: `- ${statusLine(tasks)}\n`,
     };
   }

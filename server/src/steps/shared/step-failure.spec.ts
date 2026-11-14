@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { describeFailure, failureStack, newErrorId, reportFailure } from './step-failure';
 import { SwarmloopError } from '../../core/swarmloop-error';
+import { ResultInvalid } from './answer-errors';
 
 const ENV = { GITHUB_TOKEN: 'tok-value-1' };
 
@@ -35,6 +36,21 @@ describe('step failure', () => {
     expect(failure).toMatchObject({ code: 'STEP_FAILED', category: 'internal' });
   });
 
+  it('carries every error of an answer that was not accepted', () => {
+    const failure = describeFailure('plan', new ResultInvalid(['items: "items" is required', 'name: bad']));
+    expect(failure).toMatchObject({
+      code: 'STEP_FAILED',
+      category: 'model',
+      answerErrors: ['items: "items" is required', 'name: bad'],
+    });
+    expect(failure.message).toContain('items: "items" is required; name: bad');
+  });
+
+  it('carries no answer errors for any other failure', () => {
+    expect(describeFailure('plan', new SwarmloopError('x')).answerErrors).toBeUndefined();
+    expect(describeFailure('plan', new Error('x')).answerErrors).toBeUndefined();
+  });
+
   it('stringifies a value that is not an Error', () => {
     expect(describeFailure('plan', 'oops').message).toMatch(/^plan failed: oops \(E-[0-9a-z]{8}\)$/);
   });
@@ -54,6 +70,15 @@ describe('step failure', () => {
   it('takes the cause the caller names, redacted, over the message', () => {
     const failure = describeFailure('prepare', new Error('Command failed: git'), ENV, 'fatal: tok-value-1 rejected');
     expect(failure.message).toBe(`prepare failed: fatal: *** rejected (${failure.errorId})`);
+  });
+
+  it('reports the answer errors of a failure it logs', () => {
+    const logged = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      expect(reportFailure('plan', new ResultInvalid(['a: b'])).answerErrors).toEqual(['a: b']);
+    } finally {
+      logged.mockRestore();
+    }
   });
 
   it('logs the id of the failure it returns', () => {

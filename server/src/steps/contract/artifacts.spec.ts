@@ -2,7 +2,8 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { STEPS } from '../../contract/steps';
 import { GOLDEN_DIR } from '../../testing/step-trace.spec-helpers';
-import { ARTIFACTS, INSTRUCTIONS, REVIEWS, SERVICE_KINDS } from './artifacts';
+import { ARTIFACTS, INSTRUCTIONS, REVIEWS, REVIEW_RESULTS, SERVICE_KINDS } from './artifacts';
+import { CODE_REVIEWERS } from '../../contract/steps';
 
 interface Golden {
   reads?: Record<string, string[]>;
@@ -93,5 +94,47 @@ describe('artifact catalog', () => {
     expect(ARTIFACTS.subtasks.writers).toEqual(['plan', 'plan-improve', 'implement']);
     expect(ARTIFACTS.contract.kind).toBe('contract');
     expect(ARTIFACTS.contract.readers).toContain('implement');
+  });
+
+  it('registers the research result for the steps that read it', () => {
+    const entry = ARTIFACTS.researchResult;
+    expect(entry.kind).toBe('research_result');
+    expect(entry.writers).toEqual(['research']);
+    expect(entry.readers).toEqual(['plan', 'plan-improve', 'code-review']);
+    const value = { summary: ['why'], questions: ['a: b?'], impact: [], needs: [{ id: 't', what: 'x' }] };
+    expect(entry.parse(entry.format(value))).toEqual(value);
+    expect(() => entry.parse('{"summary":[]}')).toThrow('research_result is not valid');
+  });
+
+  it.each(CODE_REVIEWERS)('registers the %s review result with a codec that checks it', (reviewer) => {
+    const entry = REVIEW_RESULTS[reviewer];
+    expect(entry.kind).toBe(`review_${reviewer}_result`);
+    expect(Object.values(ARTIFACTS)).toContain(entry);
+    expect(entry.writers).toEqual(['code-review']);
+    const value = { decision: 'return' as const, review: 'The parser drops a segment.', summary: ['one'] };
+    expect(entry.parse(entry.format(value))).toEqual(value);
+    expect(() => entry.parse('{"decision":"approve","review":"x","summary":[]}')).toThrow(
+      `review_${reviewer}_result is not valid`,
+    );
+    expect(() => entry.parse('{"decision":"ok","summary":[]}')).toThrow('review');
+  });
+
+  it('registers the plan, plan-improve and subtask answer results', () => {
+    expect([ARTIFACTS.planResult.kind, ARTIFACTS.planImproveResult.kind, ARTIFACTS.subtaskAnswerResult.kind]).toEqual([
+      'plan_result',
+      'plan_improve_result',
+      'subtask_answer_result',
+    ]);
+    expect(ARTIFACTS.planResult.writers).toEqual(['plan']);
+    expect(ARTIFACTS.planImproveResult.writers).toEqual(['plan-improve']);
+    expect(ARTIFACTS.subtaskAnswerResult.external).toBe(true);
+    const value = { summary: ['why'], plan: ['a - files: b: c'], questions: [], contract: [], tasks: [], keep: [] };
+    expect(ARTIFACTS.planResult.parse(ARTIFACTS.planResult.format(value))).toEqual(value);
+    expect(() => ARTIFACTS.planResult.parse('{"summary":[],"plan":[],"questions":["a?"]}')).not.toThrow();
+    expect(() => ARTIFACTS.planResult.parse('{"summary":[]}')).toThrow('plan_result is not valid');
+    expect(() => ARTIFACTS.planImproveResult.parse('{"summary":[],"plan":["a"],"tasks":[{"id":"a"}]}')).toThrow(
+      'plan_improve_result is not valid',
+    );
+    expect(ARTIFACTS.subtaskAnswerResult.parse('{"answer":"use it"}')).toEqual({ answer: 'use it' });
   });
 });

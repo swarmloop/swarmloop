@@ -29,6 +29,7 @@ export const requirements = `${JSON.stringify({
 export async function world(env: Record<string, string> = {}) {
   const app = await createTestApp({
     realImplement: true,
+    realReview: false,
     env,
     sandbox: { stopRun: () => Promise.resolve('gone') },
   });

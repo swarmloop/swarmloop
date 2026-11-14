@@ -12,23 +12,18 @@ import { PipelineService } from '../../pipeline/pipeline.service';
 import { boot, result } from '../code-review/code-review.step.spec-helpers';
 import { writeEnv } from '../implement/implement.step.spec-helpers';
 import { BranchStep } from '../branch/branch.step';
+import { resultAnswer } from '../../testing/result-answer';
 import { withPlan } from '../plan/plan-record';
 
 const task = { title: 'Add the column', description: 'Adds it.', depends: [], files: ['a.ts'], proof: 'a.spec.ts' };
 const stored = [{ ...task, id: 'column', status: 'pending' }];
-const tasksAnswer = (title: string, depends = 'none'): string =>
-  [
-    'contract:',
-    '- the column is called `split_on`',
-    '',
-    'tasks:',
-    `- column | ${title} | depends: ${depends} | files: a.ts | proof: a.spec.ts`,
-    '  Adds it.',
-    '',
-    'summary:',
-    '- checked',
-  ].join('\n');
-const planAnswer = ['plan:', '- add the field', '', 'summary:', '- one run'].join('\n');
+const tasksAnswer = (title: string, depends: string[] = []): string =>
+  resultAnswer('Done.', {
+    summary: ['checked'],
+    contract: ['the column is called `split_on`'],
+    tasks: [{ ...task, id: 'column', title, depends }],
+  });
+const planAnswer = resultAnswer('Done.', { summary: ['one run'], plan: ['add the field'] });
 
 /** A split run waiting at `start`, with `EPIC_EFFORT` as given. */
 async function epicApp(key: string, epicEffort: string, answers: string[], start: StepName = 'plan-improve') {
@@ -94,7 +89,7 @@ describe('plan-improve step of an epic', () => {
   it('runs the same checks on the extra visit', async () => {
     const { app, visit, state } = await epicApp('PROJ-71', 'xhigh', [
       tasksAnswer('First graph'),
-      tasksAnswer('Broken', 'nope'),
+      ...Array.from({ length: 3 }, () => tasksAnswer('Broken', ['nope'])),
     ]);
     try {
       await visit();

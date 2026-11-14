@@ -15,6 +15,7 @@ import { SubtaskOps } from '../steps/shared/subtask-ops';
 import { FakeCodeHost } from './fake-code-host';
 import { FakeSandbox, holdDetachedStarts } from './fake-runtime';
 import { featureWorktree, git, remember } from './runs.spec-helpers';
+import type { BlockAgentRunner } from './result-answer';
 import { createTestApp, type TestApp } from './test-app';
 
 const REPO = 'demo';
@@ -59,12 +60,28 @@ interface FlowHarness {
  */
 export async function createFlowHarness(
   key: string,
-  options: { realHost?: boolean; taskWorktrees?: boolean; env?: Record<string, string> } = {},
+  options: {
+    realHost?: boolean;
+    /** Every run takes the real implement and implement-improve steps. */
+    realImplement?: boolean | 'all';
+    /** Every run takes the real code-review step. */
+    realReview?: boolean;
+    taskWorktrees?: boolean;
+    env?: Record<string, string>;
+    blocks?: BlockAgentRunner;
+  } = {},
 ): Promise<FlowHarness> {
   const sandbox = new FakeSandbox();
   const env = { ...options.env };
   const feature = `feature/${key}-ship-the-field`;
-  const first = await createTestApp({ realImplement: true, realHost: options.realHost, env, sandbox: sandbox.calls });
+  const first = await createTestApp({
+    realImplement: options.realImplement ?? 'all',
+    realHost: options.realHost,
+    realReview: options.realReview,
+    blocks: options.blocks,
+    env,
+    sandbox: sandbox.calls,
+  });
   const { tree, clone } = featureWorktree(first.root, key, REPO);
   git(tree, ['push', 'origin', feature]);
   const host = new FakeCodeHost(clone, feature, () => harness.app.clock.now());
@@ -157,7 +174,7 @@ function wire(harness: FlowHarness, key: string, taskWorktrees = false): void {
  * The origin becomes a gitlab url, which `remoteProject` parses. A push still reaches the local bare repository through
  * `pushInsteadOf`; `insteadOf` on the plain url would show the bare path in `remote get-url`, so it names only the url with the token.
  */
-function useGitlabOrigin(root: string, tree: string): void {
+export function useGitlabOrigin(root: string, tree: string): void {
   const bare = join(root, `${REPO}.git`);
   git(tree, ['remote', 'set-url', 'origin', ORIGIN]);
   git(tree, ['config', '--add', `url.${bare}.pushInsteadOf`, ORIGIN]);

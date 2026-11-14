@@ -179,6 +179,38 @@ describe('commit step on a clean tree', () => {
     }
   });
 
+  it('ends done when the met lines are only in the stored review result', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-delivered-result-'));
+    featureTree(root, 'PROJ-137');
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-137');
+      await putResults(app, 'PROJ-137', {
+        summary: ['met: 1. Ship the field — in src/readme.ts'],
+        met: ['src/readme.ts'],
+      });
+      const done = await app.get(PipelineService).step('commit', 'PROJ-137');
+      expect(done.message).toContain('already delivered: src/readme.ts');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('does not read a location out of the summary lines of a stored review result', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-delivered-prose-'));
+    featureTree(root, 'PROJ-138');
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-138');
+      await putResults(app, 'PROJ-138', { summary: ['met: 1. Ship the field (src/readme.ts)'] });
+      await app.get(PipelineService).step('commit', 'PROJ-138');
+      expect((await app.get(RunRepository).findRun('PROJ-138'))?.currentStep).toBe('implement');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-138', 'issues')).toContain(NOT_DELIVERED);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('ends done on a clean tree without CI when the review says where the behavior already is', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-delivered-nociy-'));
     featureTree(root, 'PROJ-136');
@@ -196,6 +228,19 @@ describe('commit step on a clean tree', () => {
     }
   });
 });
+
+/** A passing requirements review and a passing quality review, stored as results only. */
+async function putResults(
+  app: Awaited<ReturnType<typeof boot>>,
+  key: string,
+  requirements: { summary: string[]; met?: string[] },
+): Promise<void> {
+  const run = (await app.get(RunRepository).findRun(key))!;
+  const documents = app.get(DocumentRepository);
+  const result = (value: object) => `${JSON.stringify({ decision: 'ok', review: 'Checked.', ...value })}\n`;
+  await documents.putDocument(run, 'review_requirements_result', result(requirements));
+  await documents.putDocument(run, 'review_quality_result', result({ summary: ['clear'] }));
+}
 
 async function putReviews(
   app: Awaited<ReturnType<typeof boot>>,

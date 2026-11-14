@@ -15,7 +15,10 @@ import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { mergeRequestDetails, remoteProject, renderMergeRequest } from './merge-request-record';
 import { ARTIFACTS } from '../contract/artifacts';
+import { lateInput } from '../agent-step';
+import { renderImplementation } from '../implement/implement-record';
 import { worktreesFingerprint } from '../shared/gate';
+import { renderReport } from '../shared/report-text';
 import type { AttemptFacts } from '../../contract/step-events';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
@@ -34,8 +37,10 @@ const INPUTS = {
   ciSkip: { artifact: ARTIFACTS.ciSkip, need: 'optional' },
   requirements: { artifact: ARTIFACTS.requirements, need: 'start' },
   repos: { artifact: ARTIFACTS.repos, need: 'run' },
-  implementation: { artifact: ARTIFACTS.implementation, need: 'optional', late: true },
-  reviewReport: { artifact: ARTIFACTS.reviewReport, need: 'optional', late: true },
+  implementationResult: lateInput(ARTIFACTS.implementationResult),
+  implementation: lateInput(ARTIFACTS.implementation),
+  reviewReportResult: lateInput(ARTIFACTS.reviewReportResult),
+  reviewReport: lateInput(ARTIFACTS.reviewReport),
   rebaseMergeSkip: { artifact: ARTIFACTS.rebaseMergeSkip, need: 'optional', late: true },
 } as const satisfies InputSpec;
 
@@ -153,7 +158,10 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
   }
 
   private async summary(ctx: StepContext, phases: readonly PhaseName[], trees: Tree[]): Promise<string> {
-    const implementation = (await ctx.reread(ARTIFACTS.implementation))?.trim() ?? '';
+    const result = await ctx.reread(ARTIFACTS.implementationResult);
+    const implementation = result
+      ? renderImplementation(result.implementation).trim()
+      : ((await ctx.reread(ARTIFACTS.implementation))?.trim() ?? '');
     if (!implementation) {
       throw new SwarmloopError('implementation is missing');
     }
@@ -162,7 +170,9 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     }
     const fingerprint = await worktreesFingerprint(trees.map((tree) => tree.path));
     const counted = await ctx.gate(ARTIFACTS.reviewReport, fingerprint);
-    const summary = counted ? ((await ctx.reread(ARTIFACTS.reviewReport))?.trim() ?? '') : '';
+    const report = counted ? await ctx.reread(ARTIFACTS.reviewReportResult) : null;
+    const rendered = report ? renderReport(report) : counted ? await ctx.reread(ARTIFACTS.reviewReport) : null;
+    const summary = rendered?.trim() ?? '';
     if (!summary) {
       throw new SwarmloopError('review report is missing');
     }

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { resultAnswer, reviewLog } from '../testing/result-answer';
 
 import { mkdir, mkdtemp, writeFile } from 'fs/promises';
 
@@ -262,7 +263,7 @@ describe('runs api', () => {
       await mkdir(join(root, 'data'), { recursive: true });
       await writeFile(
         join(root, 'data', 'proj-30-code-review-requirements-output.txt'),
-        `old\ndecision: return\n${JSON.stringify({ type: 'result', result: 'cleared\ndecision: ok\n' })}\nprocess exited 0\n`,
+        `old\n${reviewLog('ok', 'cleared')}`,
       );
       const runs = app.get(RunQueriesService);
       const detail = await runs.step('proj-30', 'code-review-requirements');
@@ -303,7 +304,11 @@ describe('runs api', () => {
       await save(app.get(RunRepository), 'proj-20', 'code-review', 'running');
       await writeFile(
         join(root, 'data', 'proj-20-code-review-quality-output.txt'),
-        `${JSON.stringify({ type: 'thinking', text: 'look' })}\n${JSON.stringify({ type: 'result', result: 'notes\ndecision: ok\n', usage: { inputTokens: 8, outputTokens: 2 } })}\nprocess exited 0\n`,
+        `${JSON.stringify({ type: 'thinking', text: 'look' })}\n${JSON.stringify({
+          type: 'result',
+          result: resultAnswer('notes', { decision: 'ok', review: 'notes', summary: [] }),
+          usage: { inputTokens: 8, outputTokens: 2 },
+        })}\nprocess exited 0\n`,
       );
       await writeFile(
         join(root, 'data', 'proj-20-code-review-security-output.txt'),
@@ -400,10 +405,7 @@ describe('runs api', () => {
     try {
       await mkdir(join(root, 'data'), { recursive: true });
       await save(app.get(RunRepository), 'proj-31', 'code-review', 'running');
-      await writeFile(
-        join(root, 'data', 'proj-31-code-review-quality-output.txt'),
-        `${JSON.stringify({ type: 'result', result: 'notes\ndecision: ok\n' })}\nprocess exited 0\n`,
-      );
+      await writeFile(join(root, 'data', 'proj-31-code-review-quality-output.txt'), reviewLog('ok'));
       const now = new Date().toISOString();
       app.get(LiveHub).log({
         key: 'proj-31',
@@ -424,10 +426,7 @@ describe('runs api', () => {
     const app = await boot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
-      await writeFile(
-        join(root, 'data', 'proj-22-code-review-quality-output.txt'),
-        `${JSON.stringify({ type: 'result', result: 'notes\ndecision: ok\n' })}\nprocess exited 0\n`,
-      );
+      await writeFile(join(root, 'data', 'proj-22-code-review-quality-output.txt'), reviewLog('ok'));
       await writeFile(
         join(root, 'data', 'proj-22-code-review-performance-output.txt'),
         `${JSON.stringify({ type: 'thinking', text: 'nope' })}\nprocess exited 0\n`,

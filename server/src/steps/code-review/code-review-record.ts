@@ -1,60 +1,48 @@
-import { readStreamLine, takeAnswer } from '../../agent/stream';
-import { SwarmloopError } from '../../core/swarmloop-error';
-import { lastSectionValue } from '../shared/markdown-section';
+import type { ReviewResult } from '../../agent-result/definitions/review';
+import type { ReviewReportResult } from '../../agent-result/definitions/review-report';
+import type { DocumentDraft } from '../../history/visit';
+import { ARTIFACTS, REVIEWS, reviewResultOf } from '../contract/artifacts';
+import { textDocument } from '../shared/handoff';
+import { renderReport } from '../shared/report-text';
 
-interface ReviewDecision {
+/** What one reviewer decided: its stored result, and the document text a person and the next prompts read. */
+export interface Opinion {
+  kind: string;
   decision: 'ok' | 'return';
   body: string;
+  result: ReviewResult;
 }
 
-export function parseReview(text: string, fallback = ''): ReviewDecision {
-  for (const source of [...sources(text), ...sources(fallback)]) {
-    const decision = lastDecision(source);
-    if (decision) {
-      return { decision, body: `${source.trimEnd()}\n` };
-    }
-  }
-  throw new SwarmloopError('decision is missing');
+/** The `review_<name>` document: the review, then the decision line. */
+export function renderReview(result: ReviewResult): string {
+  return `${result.review.trimEnd()}\ndecision: ${result.decision}\n`;
 }
 
-export function reviewDecision(text: string): 'ok' | 'return' | null {
-  for (const source of sources(text)) {
-    const decision = lastDecision(source);
-    if (decision) {
-      return decision;
-    }
-  }
-  return null;
+export function opinionOf(kind: string, result: ReviewResult): Opinion {
+  return { kind, decision: result.decision, body: renderReview(result), result };
 }
 
-function sources(text: string): string[] {
-  if (!text) {
-    return [];
-  }
-  const stream = streamText(text);
-  if (!stream || stream === text) {
-    return [text];
-  }
-  // A later attempt is appended to the same file. The agent's stream is that attempt.
-  return lastDecision(stream) ? [stream, text] : [text, stream];
+/** A repeated return is accepted: the same review, decided ok. */
+export function decidedOk(opinion: Opinion): Opinion {
+  return opinionOf(opinion.kind, { ...opinion.result, decision: 'ok' });
 }
 
-function lastDecision(text: string): 'ok' | 'return' | null {
-  const value = lastSectionValue(text, 'decision', ['ok', 'return'] as const);
-  return value === 'ok' || value === 'return' ? value : null;
+/** The documents a reviewer's round stores: the rendered review and the result it was rendered from. */
+export function reviewDocuments(opinion: Opinion): DocumentDraft[] {
+  const stored = reviewResultOf(opinion.kind.slice(REVIEWS.prefix.length));
+  return [textDocument(opinion.kind, opinion.body), textDocument(stored.kind, stored.format(opinion.result))];
 }
 
-function streamText(raw: string): string {
-  let acc = '';
-  let locked = false;
-  for (const line of raw.split(/\r?\n/)) {
-    const piece = readStreamLine(line);
-    if (!piece || piece.guessKind === 'user') {
-      continue;
-    }
-    const next = takeAnswer(acc, locked, piece);
-    acc = next.text;
-    locked = next.locked;
-  }
-  return acc;
+/** The documents the report stores: the rendered report and the result it was rendered from. */
+export function reportDocuments(result: ReviewReportResult): DocumentDraft[] {
+  return [
+    textDocument(ARTIFACTS.reviewReport.kind, renderReport(result)),
+    textDocument(ARTIFACTS.reviewReportResult.kind, ARTIFACTS.reviewReportResult.format(result)),
+  ];
+}
+
+/** The handoff note of a review: its summary list, or its decision when it gave none. */
+export function summaryNote(result: ReviewResult): string {
+  const lines = result.summary.length > 0 ? result.summary : [result.decision];
+  return `${lines.map((line) => `- ${line}`).join('\n')}\n`;
 }

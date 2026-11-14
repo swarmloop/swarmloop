@@ -4,6 +4,7 @@ import { ERROR_CODES } from '../../contract/error-codes';
 import type { StepFailure } from '../contract/step-contract';
 import { redact } from '../../core/redact';
 import { SwarmloopError } from '../../core/swarmloop-error';
+import { ResultInvalid } from './answer-errors';
 
 /** `E-` plus 8 base36 characters. */
 export function newErrorId(): string {
@@ -18,7 +19,8 @@ export function newErrorId(): string {
 export function describeFailure(step: string, error: unknown, env?: object, cause?: string): StepFailure {
   const errorId = newErrorId();
   if (error instanceof SwarmloopError) {
-    return { errorId, code: error.code, category: error.category, message: error.message };
+    const answerErrors = error instanceof ResultInvalid ? { answerErrors: error.errors } : {};
+    return { errorId, code: error.code, category: error.category, message: error.message, ...answerErrors };
   }
   const raw = cause ?? (error instanceof Error ? error.message : String(error));
   const line = redact(raw.split('\n')[0].trim(), env);

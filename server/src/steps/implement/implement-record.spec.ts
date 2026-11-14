@@ -1,25 +1,25 @@
-import { parseImplementation, reviewedImplementation } from './implement-record';
+import { renderCause, renderImplementation } from './implement-record';
+import { legacyImplementation } from '../../agent-result/legacy/implementation';
 
-const old = ['implementation:', '- changed A', '- changed B', '', 'summary:', '- why', ''].join('\n');
-const withCause = ['cause:', '- the parser dropped the suffix', '', old].join('\n');
-
-describe('parseImplementation', () => {
-  it('reads an implement answer without a cause section', () => {
-    expect(parseImplementation(old)).toBe('- changed A\n- changed B\n');
+describe('renderImplementation', () => {
+  it('writes one line per item and indents the later lines of an item', () => {
+    expect(renderImplementation(['changed A', 'changed B: with a colon\n  nested\n\ncode'])).toBe(
+      '- changed A\n- changed B: with a colon\n    nested\n  \n  code\n',
+    );
   });
 
-  it('reads an implement answer with a cause section', () => {
-    expect(parseImplementation(withCause)).toBe('- changed A\n- changed B\n');
+  it('writes nothing for no items', () => {
+    expect(renderImplementation([])).toBe('');
+  });
+
+  it('is read back whole by the legacy reader', () => {
+    const items = ['changed A', 'changed B: with a colon\n  nested\n\ncode'];
+    expect(legacyImplementation(renderImplementation(items)).implementation).toEqual(items);
   });
 });
 
-describe('reviewedImplementation', () => {
-  it('returns the notes of an old answer and of one with a cause', () => {
-    expect(reviewedImplementation(old)).toBe('- changed A\n- changed B\n');
-    expect(reviewedImplementation(withCause)).toBe('- changed A\n- changed B\n');
-  });
-
-  it('returns nothing when the first pass stands', () => {
-    expect(reviewedImplementation('cause:\n- none\n\nimplementation:\n- The first pass stands.\n')).toBe('');
+describe('renderCause', () => {
+  it('writes the cause lines as a section', () => {
+    expect(renderCause(['the parser dropped the suffix'])).toBe('cause:\n- the parser dropped the suffix\n\n');
   });
 });

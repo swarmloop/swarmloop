@@ -36,6 +36,8 @@ export interface DocumentDraft {
   kind: string;
   fileName: string;
   body: string;
+  /** Keep this record attached to its visit even when its body equals the previous record of the same kind. */
+  perVisit?: boolean;
 }
 
 export interface VisitDraft {
