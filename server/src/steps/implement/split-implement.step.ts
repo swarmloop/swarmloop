@@ -15,10 +15,13 @@ import {
 import type { StepName } from '../../contract/steps';
 import { sampleSelf } from '../../history/visit';
 import { withDecision } from '../shared/handoff';
+import { openQuestions } from '../shared/answers';
+import { renderQuestions } from '../research/research-record';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { SplitMerge } from './split-merge';
 import { REBASED_PREFIX } from './split-rebase';
 import { SplitNeeds } from './split-needs';
+import { questionFor, SplitQuestions } from './split-questions';
 import { earliestRetry } from './subtask-retry';
 import { BaseStep, StepContext } from '../base-step';
 import { renderImplementation } from './implement-record';
@@ -50,9 +53,16 @@ export const NO_CI_NOTE = 'no CI on the feature branch';
 export class SplitImplementStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'implement';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.subtasks, ARTIFACTS.implementation, ARTIFACTS.implementationResult, ARTIFACTS.contract];
+  readonly outputs = [
+    ARTIFACTS.subtasks,
+    ARTIFACTS.implementation,
+    ARTIFACTS.implementationResult,
+    ARTIFACTS.contract,
+    ARTIFACTS.subtaskQuestions,
+  ];
 
   private readonly needs: SplitNeeds;
+  private readonly questions: SplitQuestions;
 
   constructor(
     kernel: StepKernel,
@@ -61,6 +71,7 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
   ) {
     super(kernel);
     this.needs = new SplitNeeds(subtasks);
+    this.questions = new SplitQuestions(subtasks);
   }
 
   override async execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
@@ -99,16 +110,22 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const { run, startedAt } = ctx.opened;
     const before = JSON.stringify(withStatuses(input.subtasks));
-    const answered = await this.answer(ctx, withStatuses(input.subtasks));
-    const base = answered ?? (await ctx.reread(ARTIFACTS.contract)) ?? '';
-    const needed = await this.needs.run(ctx.opened, withStatuses(input.subtasks), base);
-    const contract = needed.contract === base ? answered : needed.contract;
+    const read = (await ctx.reread(ARTIFACTS.contract)) ?? '';
+    const asked = (await ctx.reread(ARTIFACTS.subtaskQuestions)) ?? '';
+    const answers = (await ctx.reread(ARTIFACTS.answers)) ?? '';
+    const delivered = await this.questions.deliver(run, read, asked, answers);
+    const held = this.questions.pending(delivered.body, answers);
+    const answered = await this.answer(ctx, withStatuses(input.subtasks), delivered.contract, held);
+    const needed = await this.needs.run(ctx.opened, withStatuses(input.subtasks), answered.contract, held);
+    const open = [...openQuestions(delivered.body, []), ...answered.asks, ...needed.asks];
+    const questions = renderQuestions(open);
     const followed = await this.refresh(run, needed.tasks);
     const { tasks: merged, refusal, unfetched } = await this.merges.run(run, followed);
     const tasks = await this.explain(run, await this.start(run, merged));
     const outputs: StepResult['outputs'] = [
       ...(JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }]),
-      ...(contract === null ? [] : [{ artifact: ARTIFACTS.contract, value: contract }]),
+      ...(needed.contract === read ? [] : [{ artifact: ARTIFACTS.contract, value: needed.contract }]),
+      ...(questions === asked ? [] : [{ artifact: ARTIFACTS.subtaskQuestions, value: questions }]),
     ];
     const line = statusLine(tasks);
     const blocked = tasks.filter((task) => task.status === 'blocked');
@@ -128,6 +145,10 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     }
     if (tasks.every(settled)) {
       return this.finish(run, tasks, ctx, outputs);
+    }
+    if (open.length > 0) {
+      const text = `questions are open: ${open[0]}`;
+      return { route: { to: 'wait', reason: 'questions are open' }, summary: `${startedAt} ${text}`, outputs };
     }
     const retryAt = earliestRetry(await this.openChildren(run, tasks));
     if (retryAt) {
@@ -161,18 +182,26 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
 
   /**
    * Asks the planner the questions of the first subtask that waits in research, one subtask per pass: the next
-   * one is asked by the pass its answered run starts. Returns the contract with the decision, or null when none.
+   * one is asked by the pass its answered run starts. The answer is a decision in the contract. When the planner gives
+   * none, the question goes to the person who started the run. A task with a question open for the person is left alone.
    */
-  private async answer(ctx: StepContext, tasks: Subtask[]): Promise<string | null> {
-    const { run } = ctx.opened;
-    for (const task of tasks.filter((item) => !settled(item))) {
+  private async answer(
+    ctx: StepContext,
+    tasks: Subtask[],
+    contract: string,
+    waiting: string[],
+  ): Promise<{ contract: string; asks: string[] }> {
+    const { run, startedAt } = ctx.opened;
+    for (const task of tasks.filter((item) => !settled(item) && !waiting.includes(item.id))) {
       const child = await this.subtasks.find(run, task.id);
       if (!child || !(await this.subtasks.asking(child))) continue;
-      const contract = (await ctx.reread(ARTIFACTS.contract)) ?? '';
       const answer = await this.subtasks.answer(ctx.opened, child, task, contract);
-      return answer === null ? null : withDecision(contract, task.id, answer);
+      if (answer !== null) return { contract: withDecision(contract, task.id, answer), asks: [] };
+      if (this.subtasks.replyPending(child)) return { contract, asks: [] };
+      const questions = (await this.reader.reread(child.key, ARTIFACTS.questions)) ?? '';
+      return { contract, asks: [questionFor(task.id, questions, startedAt)] };
     }
-    return null;
+    return { contract, asks: [] };
   }
 
   /** Every task has a run, and its status follows that run. A settled task keeps the status it has. */

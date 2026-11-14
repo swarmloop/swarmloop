@@ -89,6 +89,14 @@ export class SubtaskPort extends SubtaskOps {
     return this.planner.answer(opened, child, task, contract);
   }
 
+  override replyPending(child: RunEntity): boolean {
+    return this.planner.replyPending(child);
+  }
+
+  override deliverAnswer(child: RunEntity, text: string): Promise<void> {
+    return this.planner.deliver(child, text);
+  }
+
   override askAbout(opened: OpenedStep, task: Subtask, questions: string, contract: string): Promise<string | null> {
     return this.planner.askAbout(opened, task, questions, contract);
   }

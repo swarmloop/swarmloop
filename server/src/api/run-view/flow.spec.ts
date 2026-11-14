@@ -292,4 +292,16 @@ describe('open questions of the run view', () => {
     expect(ids([doc('questions', '- one?\n- none\n')])).toEqual(['one?']);
     expect(ids([result(['cleared']), doc('questions', '')])).toEqual([]);
   });
+
+  it('lists the subtask questions of a split parent at implement, and not its old research questions', () => {
+    const split = { currentStep: 'implement', split: true } as RunEntity;
+    const items = (documents: DocumentEntity[]) => openItems(split, documents, []);
+
+    const [item] = items([
+      doc('questions', '- from research\n'),
+      doc('subtask_questions', '- Subtask a asks: which?\n'),
+    ]);
+    expect(item).toMatchObject({ kind: 'question', id: 'Subtask a asks: which?', answer: '' });
+    expect(items([doc('questions', '- from research\n')])).toEqual([]);
+  });
 });

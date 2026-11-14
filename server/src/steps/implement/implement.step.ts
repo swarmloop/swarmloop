@@ -82,6 +82,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.rebaseMergeSkip,
     ARTIFACTS.subtasks,
     ARTIFACTS.contract,
+    ARTIFACTS.subtaskQuestions,
     ARTIFACTS.needs,
   ];
 

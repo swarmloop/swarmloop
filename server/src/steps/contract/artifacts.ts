@@ -166,8 +166,18 @@ export const ARTIFACTS = {
     codec: resultArtifactCodec<RebaseResolutionResult>(rebaseResolution),
     summarize: (result) => firstLine(result.summary[0] ?? ''),
   }),
-  answers: artifact('answers', { writers: [], readers: ['research', 'plan'], external: true, summarize: firstLine }),
+  answers: artifact('answers', {
+    writers: [],
+    readers: ['research', 'plan', 'implement'],
+    external: true,
+    summarize: firstLine,
+  }),
   questions: artifact('questions', { writers: ['research', 'plan'], readers: ['plan'], summarize: firstLine }),
+  subtaskQuestions: artifact('subtask_questions', {
+    writers: ['implement'],
+    readers: ['implement'],
+    summarize: firstLine,
+  }),
   needs: artifact('needs', { writers: ['research', 'plan', 'implement'], readers: [], summarize: firstLine }),
   impact: artifact('impact', {
     writers: ['research'],

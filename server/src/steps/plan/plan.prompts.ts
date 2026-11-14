@@ -51,7 +51,3 @@ export function subtaskAsks(task: Subtask, questions: string, contract: string, 
     resultPromptFor(subtaskAnswer, received),
   ].join('\n');
 }
-
-/** The answer a subtask gets when its parent's planner gave none. */
-export const DECIDE_YOURSELF =
-  'No one can answer these questions. Decide each one yourself from the task, the contract and the tree, and record it as an assumption.';

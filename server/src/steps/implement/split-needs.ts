@@ -1,11 +1,11 @@
 import type { RunEntity } from '../../history/entities';
 import { settled, type Subtask } from '../../contract/subtask';
-import { DECIDE_YOURSELF } from '../plan/plan.prompts';
 import { reaches, withDecisions } from '../plan/plan-tasks';
 import { withDecision } from '../shared/handoff';
 import type { Need } from '../shared/needs';
 import type { SubtaskOps } from '../shared/subtask-ops';
 import type { OpenedStep } from '../step-run';
+import { questionFor } from './split-questions';
 
 /** What a pass does for the needs of one task. */
 type Action = 'wait' | 'ask' | 'edge' | 'rerun';
@@ -16,6 +16,10 @@ function refusal(task: Subtask, need: Need, tasks: Subtask[]): string | null {
   if (!tasks.some((item) => item.id === need.id)) return `no task has the id ${need.id}`;
   if (reaches(tasks, need.id, task.id)) return `${need.id} depends on ${task.id}, so waiting for it would never end`;
   return null;
+}
+
+function refusalLine(need: Need, reason: string): string {
+  return `${need.id} cannot go first: ${reason}. Do the part your task needs inside your task, or keep the current shape and write it as not built.`;
 }
 
 function actionFor(task: Subtask, needs: Need[], tasks: Subtask[]): Action {
@@ -29,6 +33,8 @@ interface NeedsPass {
   tasks: Subtask[];
   /** The contract with the decisions this pass added, or the contract it was given. */
   contract: string;
+  /** The questions this pass puts to the person who started the run. */
+  asks: string[];
 }
 
 /**
@@ -52,9 +58,11 @@ export class SplitNeeds {
     return asking.filter(({ task, needs }) => actionFor(task, needs, tasks) === 'wait').length;
   }
 
-  async run(opened: OpenedStep, tasks: Subtask[], contract: string): Promise<NeedsPass> {
-    let current = { tasks, contract };
+  /** Tasks in `waiting` have a question open for the person, so they are left alone. */
+  async run(opened: OpenedStep, tasks: Subtask[], contract: string, waiting: string[]): Promise<NeedsPass> {
+    let current: NeedsPass = { tasks, contract, asks: [] };
     for (const { task, child, needs } of await this.asking(opened.run, tasks)) {
+      if (waiting.includes(task.id)) continue;
       const live = current.tasks.find((item) => item.id === task.id) ?? task;
       const action = actionFor(live, needs, current.tasks);
       if (action === 'ask') current = await this.ask(opened, current, live, child, needs);
@@ -74,7 +82,11 @@ export class SplitNeeds {
     return found;
   }
 
-  /** A need that cannot be waited for goes to the planner as a question. The answer is a decision and ends the wait. */
+  /**
+   * A need that cannot be waited for goes to the planner as a question. The first refusal of a task reruns it with the
+   * reason, and with the planner's answer when there is one. The same task asking again goes up the chain: a usable
+   * answer of the planner goes down as a decision, and with none the question is put to the person who started the run.
+   */
   private async ask(
     opened: OpenedStep,
     pass: NeedsPass,
@@ -82,15 +94,22 @@ export class SplitNeeds {
     child: RunEntity,
     needs: Need[],
   ): Promise<NeedsPass> {
-    const question = needs
-      .map(
-        (need) =>
-          `${task.id} needs ${need.id}: ${need.what}. ${refusal(task, need, pass.tasks) ?? 'It can be waited for.'}`,
-      )
+    const reasons = needs.map((need) => ({ need, reason: refusal(task, need, pass.tasks) }));
+    const question = reasons
+      .map(({ need, reason }) => `${task.id} needs ${need.id}: ${need.what}. ${reason ?? 'It can be waited for.'}`)
       .join('\n');
     const answer = await this.subtasks.askAbout(opened, task, question, pass.contract);
-    await this.subtasks.rerun(child, [answer ?? DECIDE_YOURSELF]);
-    return { ...pass, contract: answer === null ? pass.contract : withDecision(pass.contract, task.id, answer) };
+    const refused = reasons.flatMap(({ need, reason }) =>
+      reason === null ? [] : [{ need, line: refusalLine(need, reason) }],
+    );
+    const before = refused.some(({ need }) =>
+      pass.contract.includes(`- subtask ${task.id}: ${need.id} cannot go first:`),
+    );
+    if (before && answer === null)
+      return { ...pass, asks: [...pass.asks, questionFor(task.id, question, opened.startedAt)] };
+    const lines = [...(before ? [] : refused.map(({ line }) => line)), ...(answer === null ? [] : [answer])];
+    await this.subtasks.rerun(child, lines);
+    return { ...pass, contract: lines.reduce((text, line) => withDecision(text, task.id, line), pass.contract) };
   }
 
   /** Adds the edges of a valid need, with one decision line each. When every sibling is settled the task catches up and goes on. */
@@ -112,7 +131,7 @@ export class SplitNeeds {
       await this.subtasks.catchUp(parent, child);
       await this.subtasks.rerun(child, await this.lines(parent, tasks, needs));
     }
-    return { tasks, contract };
+    return { ...pass, tasks, contract };
   }
 
   private async lines(parent: RunEntity, tasks: Subtask[], needs: Need[]): Promise<string[]> {
