@@ -287,7 +287,7 @@ describe('a server restart in the middle of the real implement step', () => {
     await flow.close();
   });
 
-  it('records the dead step after the restart, and a resume runs the real step on a block to done', async () => {
+  it('records the dead step after the restart, and the relaunch runs the real step on a block to done', async () => {
     const blocks = new BlockAgentRunner();
     flow = await createFlowHarness(RESTART_KEY, { blocks, realImplement: 'all' });
     await approvedRun(flow, RESTART_KEY, 'implement');
@@ -299,16 +299,16 @@ describe('a server restart in the middle of the real implement step', () => {
     for (let pass = 0; pass < 6; pass++) await flow.tick();
     await flow.app.pipeline.whenIdle(RESTART_KEY);
 
-    const visits = await flow.app.app
-      .get(VisitRepository)
-      .listStats((await flow.app.app.get(RunRepository).findRun(RESTART_KEY))!.id);
-    expect(visits.map((visit) => [visit.step, visit.status, visit.killReason])).toEqual([
-      ['implement', 'failed', 'process died'],
-    ]);
-
-    await flow.person('resume');
-
     const run = await flow.app.app.get(RunRepository).findRun(RESTART_KEY);
+    const visits = await flow.app.app.get(VisitRepository).listStats(run!.id);
+    // No person resumes: the server relaunches a step that a restart cut.
+    expect(
+      visits.filter((visit) => visit.step === 'implement').map((visit) => [visit.status, visit.killReason]),
+    ).toEqual([
+      ['failed', 'process died'],
+      ['done', null],
+    ]);
+    expect(blocks.steps.filter((step) => step === 'implement')).toHaveLength(1);
     expect(run?.currentStep).toBe('done');
   });
 });

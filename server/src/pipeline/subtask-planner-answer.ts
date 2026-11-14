@@ -19,7 +19,7 @@ import { agentFailure } from '../steps/shared/agent-result';
 import { openQuestions, unanswered } from '../steps/shared/answers';
 import { storedAsks } from './stored-research';
 import { modelVisit } from '../steps/shared/model-visit';
-import { StepStopped } from '../steps/shared/step-stopped';
+import { StepStopped } from '../agent/step-stopped';
 import { DECIDE_YOURSELF, subtaskAsks } from '../steps/plan/plan.prompts';
 import { subtaskAnswer, type SubtaskAnswerResult } from '../agent-result/definitions/subtask-answer';
 import type { OpenedStep } from '../steps/step-run';
