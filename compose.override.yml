@@ -1,5 +1,5 @@
 # Builds every image from this checkout instead of pulling the release.
-# Put `COMPOSE_FILE=compose.yml:compose.build.yml` in .env, then `docker compose up -d --build`.
+# Compose reads this file next to compose.yml by itself; a release folder has no such file and pulls.
 
 services:
   agent-cursor:
