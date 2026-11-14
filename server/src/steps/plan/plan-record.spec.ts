@@ -1,6 +1,5 @@
 import { SwarmloopError } from '../../core/swarmloop-error';
 import {
-  correctedItems,
   correctedPlan,
   planFields,
   readPlan,
@@ -27,14 +26,8 @@ describe('withInstructions', () => {
 describe('correctedPlan', () => {
   const body = `${JSON.stringify({ prompt: 'Ship the field', plan: { name: 'Field', overview: 'Ship it.', items: ['add the field'], decision: 'approve' } }, null, 2)}\n`;
 
-  it('replaces the checklist with the stored plan object', () => {
-    const plan = {
-      name: 'Replacement',
-      overview: 'From the log.',
-      items: ['fix the failing test'],
-      decision: 'approve',
-    };
-    const corrected = correctedPlan(body, ['plan:', JSON.stringify(plan, null, 2), ''].join('\n'));
+  it('replaces the checklist and names what changed, keeping the name and overview', () => {
+    const corrected = correctedPlan(body, ['fix the failing test'], ['add the field']);
     const record = JSON.parse(corrected?.requirements ?? '{}') as {
       plan?: { name?: string; overview?: string; items?: string[]; decision?: string };
     };
@@ -46,24 +39,14 @@ describe('correctedPlan', () => {
     expect(corrected?.handoff).toContain('added "fix the failing test"');
   });
 
-  it('still reads a bullet checklist', () => {
-    const corrected = correctedPlan(body, 'plan:\n- fix the failing test\n');
-    const record = JSON.parse(corrected?.requirements ?? '{}') as { plan?: { items?: string[] } };
-    expect(record.plan?.items).toEqual(['fix the failing test']);
-  });
-
-  it('does not report a change for items with a files and proof suffix', () => {
+  it('does not report a change for an equal checklist', () => {
     const item = 'add the field - files: a.ts - proof: a.spec.ts "adds it"';
-    const stored = `${JSON.stringify({ prompt: 'p', plan: { name: 'F', overview: '', items: [item], decision: 'approve' } })}\n`;
-    expect(correctedPlan(stored, `plan:\n- ${item}\n`)).toBeNull();
-    const plan = { name: '', overview: '', items: [item], decision: 'approve' };
-    expect(correctedPlan(stored, `plan:\n${JSON.stringify(plan)}\n`)).toBeNull();
-    expect(correctedItems(`plan:\n- ${item}\n`)).toEqual([item]);
+    expect(correctedPlan(body, [item], [item])).toBeNull();
   });
 
-  it('leaves the plan when the section is not a checklist', () => {
-    expect(correctedPlan(body, 'plan:\nThe checklist stays.\n')).toBeNull();
-    expect(correctedPlan(body, 'No plan section.\n')).toBeNull();
+  it('leaves the plan when the answer sent no checklist', () => {
+    expect(correctedPlan(body, undefined, ['add the field'])).toBeNull();
+    expect(correctedPlan(body, [], ['add the field'])).toBeNull();
   });
 });
 
@@ -90,8 +73,8 @@ describe('the plan in the requirements record', () => {
 
   it('is approved only by a person: the plan of a plan answer is not', () => {
     const body = withPlan(requirements, planFields(['a']));
-    expect(() => requireApprovedPlan(body)).toThrow(new SwarmloopError('plan is not approved'));
-    expect(() => requireApprovedPlan(requirements)).toThrow(new SwarmloopError('plan is missing'));
+    expect(() => requireApprovedPlan(readPlan(body))).toThrow(new SwarmloopError('plan is not approved'));
+    expect(() => requireApprovedPlan(readPlan(requirements))).toThrow(new SwarmloopError('plan is missing'));
   });
 });
 

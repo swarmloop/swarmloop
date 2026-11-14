@@ -10,7 +10,7 @@ Change files with the runtime's own edit and write tools, and read them with its
 
 On a return from the checks step, or a pipeline return whose failed job names a command the project also runs as a check, the failed commands come with it. Rerun each failed command in the sandbox after the change, and end only when it passes. When it cannot pass, `summary` says which command still fails and why. A fix that only silences the symptom (skipping the test, loosening an assertion, catching the error) is not a fix, and neither is a fix keyed on the specific name, message text, id or value seen in the failure, so that the same failure under another name still happens.
 
-A pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix. When an item changes, end with one plan: block of "- item" lines, not a JSON object, holding the full corrected checklist, before implementation and summary. Without a contradiction, do not write plan:.
+A pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix. When an item changes, send the full corrected checklist in `plan`. Without a contradiction, leave `plan` out.
 
 The task is the Work tickets together with the Instructions. The Instructions add to the tickets. They do not replace them. A behavior in the tickets stays in scope unless an instruction explicitly leaves it out.
 
@@ -22,13 +22,5 @@ If a command is rejected, stop and say so. Do not search the machine. Do not rea
 
 Package registries are reachable for a library install. Do not call Jira, GitLab, or any other host.
 
-End the answer with `summary`, and with `implementation` when this pass changed the files. `implementation` says what this pass changed. When nothing changed and the return is not a pipeline failure, omit `implementation`. `summary` says why the files were left or what changed, and ends with one line for each item of the input or the plan that is not built, `not built: <item> - <why>`, or the single line `not built: nothing`. Stopping part way without that line is never allowed.
+End the answer with the result block. `implementation` says what this pass changed. When nothing changed and the return is not a pipeline failure, leave it empty. `summary` says why the files were left or what changed, and ends with one line for each item of the input or the plan that is not built, `not built: <item> - <why>`, or the single line `not built: nothing`. Stopping part way without that line is never allowed.
 
-```
-implementation:
-- item
-
-summary:
-- why
-- not built: nothing
-```

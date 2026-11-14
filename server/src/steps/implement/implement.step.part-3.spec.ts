@@ -25,7 +25,7 @@ import { handoffText, issueOf } from '../shared/handoff';
 import { DataSource } from 'typeorm';
 import { StepStatEntity } from '../../history/entities';
 import type { FailedCommand } from '../../environment/environment-types';
-import { reply, result, boot, seed, writeEnv, featureTree, git } from './implement.step.spec-helpers';
+import { implAnswer, reply, result, boot, seed, writeEnv, featureTree, git } from './implement.step.spec-helpers';
 
 describe('implement step', () => {
   it('keeps the approved plan when the plan section has no checklist', async () => {
@@ -34,7 +34,7 @@ describe('implement step', () => {
     const worktree = featureTree(root, 'PROJ-146', 'billing-api');
     const agent = jest.fn(async () => {
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
-      return result(['plan:', 'The checklist stays.', '', reply].join('\n'));
+      return result(reply);
     });
     const app = await boot(root, agent);
     try {
@@ -61,8 +61,8 @@ describe('implement step', () => {
     await writeEnv(root);
     const subtaskTree = featureTree(root, 'PROJ-147-t1', 'billing-api');
     const plainTree = featureTree(root, 'PROJ-148', 'other');
-    const needs = ['needs:', '- t0: the retry policy'].join('\n');
-    const agent = jest.fn(async () => result(['implementation:', '- nothing yet', needs].join('\n')));
+    const needs = [{ id: 't0', what: 'the retry policy' }];
+    const agent = jest.fn(async () => result(implAnswer([], [], { needs })));
     const app = await boot(root, agent);
     try {
       const runs = app.get(RunRepository);
@@ -127,21 +127,10 @@ describe('implement step', () => {
     const agent = jest.fn(async () => {
       calls += 1;
       if (calls === 1) {
-        return result(['implementation:', '- not yet', '', 'summary:', '- the log requires it'].join('\n'));
+        return result(implAnswer(['not yet'], ['the log requires it']));
       }
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
-      return result(
-        [
-          'plan:',
-          JSON.stringify(plan, null, 2),
-          '',
-          'implementation:',
-          '- fixed the test',
-          '',
-          'summary:',
-          '- the files now match the log',
-        ].join('\n'),
-      );
+      return result(implAnswer(['fixed the test'], ['the files now match the log'], { plan: plan.items }));
     });
     const app = await boot(root, agent);
     try {
@@ -442,12 +431,7 @@ describe('implement step', () => {
     });
 
     it('jumps with a fallback explanation when the follow-up answer has no summary section', async () => {
-      const { app, done } = await unchanged(
-        'PROJ-165',
-        (head) => head,
-        false,
-        'implementation:\n- nothing to change\n',
-      );
+      const { app, done } = await unchanged('PROJ-165', (head) => head, false, implAnswer(['nothing to change'], []));
       try {
         expect(done.exitCode).toBe(0);
         expect(done.message).toContain('CI rerun: the agent gave no explanation');
@@ -477,23 +461,10 @@ describe('implement step', () => {
     const agent = jest.fn(async () => {
       calls += 1;
       if (calls === 1) {
-        return result(
-          [
-            'plan:',
-            '- fix the failing test',
-            '',
-            'implementation:',
-            '- not yet',
-            '',
-            'summary:',
-            '- the log requires it',
-          ].join('\n'),
-        );
+        return result(implAnswer(['not yet'], ['the log requires it'], { plan: ['fix the failing test'] }));
       }
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
-      return result(
-        ['implementation:', '- fixed the test', '', 'summary:', '- the files now match the log'].join('\n'),
-      );
+      return result(implAnswer(['fixed the test'], ['the files now match the log']));
     });
     const app = await boot(root, agent);
     try {
@@ -522,20 +493,7 @@ describe('implement step', () => {
     featureTree(root, 'PROJ-144', 'billing-api');
     const agent = jest
       .fn()
-      .mockResolvedValue(
-        result(
-          [
-            'plan:',
-            '- fix the failing test',
-            '',
-            'implementation:',
-            '- not yet',
-            '',
-            'summary:',
-            '- the log requires it',
-          ].join('\n'),
-        ),
-      );
+      .mockResolvedValue(result(implAnswer(['not yet'], ['the log requires it'], { plan: ['fix the failing test'] })));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-144', 'approve');

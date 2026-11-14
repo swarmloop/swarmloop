@@ -19,25 +19,23 @@ import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { EnvironmentService } from '../../environment/environment.service';
 import { RequiredCheckFailed, RequiredCheckRepeated } from '../../environment/project-environments';
+import { resultAnswer } from '../../testing/result-answer';
 import { implementImproveFollowUp } from './implement.prompts';
 import { REBASE_CONFLICT } from '../../git/rebase';
 
-const reply = [
-  'implementation:',
-  '- fixed the empty case',
-  '',
-  'summary:',
-  '- fixed the empty case because the return was right',
-].join('\n');
+const improvedAnswer = (implementation: string[], summary: string[], extra: Record<string, unknown> = {}): string =>
+  resultAnswer('Done.', { implementation, summary, ...extra });
+
+const reply = improvedAnswer(['fixed the empty case'], ['fixed the empty case because the return was right']);
 
 describe('implement-improve step', () => {
-  it('retries an empty implementation section in the same chat', async () => {
+  it('retries an answer with no result block in the same chat', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-parse-retry-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-69', 'billing-api');
     const agent = jest
       .fn()
-      .mockResolvedValueOnce(result('implementation:\n\nsummary:\n- done\n'))
+      .mockResolvedValueOnce(result('All done, nothing to report.'))
       .mockResolvedValue(result(reply));
     const app = await boot(root, agent);
     try {
@@ -46,7 +44,7 @@ describe('implement-improve step', () => {
 
       expect(done.exitCode).toBe(0);
       expect(agent).toHaveBeenCalledTimes(2);
-      expect((agent.mock.calls[1]?.[0] as AgentRunInput).prompt).toContain('missing the implementation section');
+      expect((agent.mock.calls[1]?.[0] as AgentRunInput).prompt).toContain('End with the result block as before.');
     } finally {
       await app.close();
     }
@@ -125,9 +123,7 @@ describe('implement-improve step', () => {
     await writeEnv(root);
     featureTree(root, 'PROJ-73', 'api');
     featureTree(root, 'PROJ-73', 'web');
-    const agent = jest
-      .fn()
-      .mockResolvedValue(result('implementation:\n- api fix\n- web fix\n\nsummary:\n- both match the plan\n'));
+    const agent = jest.fn().mockResolvedValue(result(improvedAnswer(['api fix', 'web fix'], ['both match the plan'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-73', 'api\nweb\n');
@@ -145,15 +141,11 @@ describe('implement-improve step', () => {
     }
   });
 
-  it('keeps the first pass notes when the review says the first pass stands', async () => {
+  it('keeps the first pass notes when the review sends no implementation', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-stands-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-76', 'billing-api');
-    const agent = jest
-      .fn()
-      .mockResolvedValue(
-        result('implementation:\n- The first pass stands.\n\nsummary:\n- the files already match the plan\n'),
-      );
+    const agent = jest.fn().mockResolvedValue(result(improvedAnswer([], ['the files already match the plan'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-76');
@@ -172,7 +164,9 @@ describe('implement-improve step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-same-commit-'));
     await writeEnv(root);
     const worktree = featureTree(root, 'PROJ-77', 'billing-api');
-    const agent = jest.fn().mockResolvedValue(result('summary:\n- the files already match the plan\n'));
+    const agent = jest
+      .fn()
+      .mockResolvedValue(result(resultAnswer('Done.', { summary: ['the files already match the plan'] })));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-77');
@@ -218,7 +212,9 @@ describe('implement-improve step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-other-commit-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-79', 'billing-api');
-    const agent = jest.fn().mockResolvedValue(result('summary:\n- the files already match the plan\n'));
+    const agent = jest
+      .fn()
+      .mockResolvedValue(result(resultAnswer('Done.', { summary: ['the files already match the plan'] })));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-79');
@@ -235,7 +231,13 @@ describe('implement-improve step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-empty-'));
     await writeEnv(root);
     featureTree(root, 'PROJ-71', 'billing-api');
-    const agent = jest.fn().mockResolvedValue(result('The first pass already matches the plan.'));
+    const agent = jest
+      .fn()
+      .mockResolvedValue(
+        result(
+          resultAnswer('The first pass already matches the plan.', { summary: ['the first pass matches the plan'] }),
+        ),
+      );
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-71');
@@ -369,7 +371,7 @@ describe('implement-improve step', () => {
         expect((agent.mock.calls[0]?.[0] as AgentRunInput).resumeChatId).toBe('implement-chat');
         expect(prompt).toContain('Why this returned:');
         expect(prompt).toContain(`${FIX_LINE}\n## checks\n${checksBody}`);
-        expect(prompt).toContain(implementImproveFollowUp(`## checks\n${checksBody}\n`));
+        expect(prompt).toContain(implementImproveFollowUp(`## checks\n${checksBody}\n`, null));
       } finally {
         await app.close();
       }
@@ -385,7 +387,7 @@ describe('implement-improve step', () => {
       try {
         await seed(app, 'PROJ-91');
         await app.get(PipelineService).step('implement-improve', 'PROJ-91');
-        expect((agent.mock.calls[0]?.[0] as AgentRunInput).prompt).toContain(implementImproveFollowUp(null));
+        expect((agent.mock.calls[0]?.[0] as AgentRunInput).prompt).toContain(implementImproveFollowUp(null, null));
       } finally {
         await app.close();
       }
@@ -496,16 +498,7 @@ describe('implement-improve step', () => {
     const agent = jest.fn(async () => {
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
       return result(
-        [
-          'plan:',
-          '- fix the failing test',
-          '',
-          'implementation:',
-          '- fixed the test',
-          '',
-          'summary:',
-          '- the pipeline log required it',
-        ].join('\n'),
+        improvedAnswer(['fixed the test'], ['the pipeline log required it'], { plan: ['fix the failing test'] }),
       );
     });
     const app = await boot(root, agent);

@@ -28,14 +28,20 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 
 import { SandboxService } from '../../sandbox/sandbox.service';
 
-export const reply = [
-  'implementation:',
-  '- changed the field parser',
-  '- ran unit tests',
-  '',
-  'summary:',
-  '- changed the parser so empty fields stay',
-].join('\n');
+import { resultAnswer } from '../../testing/result-answer';
+
+/** The final message of an implement answer: prose for people, then the result block. */
+export function implAnswer(implementation: string[], summary: string[], extra: Record<string, unknown> = {}): string {
+  return resultAnswer('Done.', { implementation, summary, ...extra });
+}
+
+export const reply = implAnswer(
+  ['changed the field parser', 'ran unit tests'],
+  ['changed the parser so empty fields stay'],
+);
+
+/** The final message of an agent that resolved a rebase conflict. */
+export const rebaseReply = resultAnswer('Done.', { summary: ['resolved the rebase'] });
 
 export const REFUSED_WRITE = JSON.stringify({
   type: 'system',

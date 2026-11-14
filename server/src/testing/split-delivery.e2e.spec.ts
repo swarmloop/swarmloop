@@ -1,7 +1,4 @@
 import 'reflect-metadata';
-import { writeFileSync } from 'fs';
-import { join } from 'path';
-import type { AgentRunResult } from '../agent/agent-runner';
 import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
 import { parseSubtasks, type Subtask } from '../contract/subtask';
@@ -9,11 +6,11 @@ import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { deriveState, writeRunState } from '../history/run-state';
-import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { RunQueriesService } from '../api/run-queries.service';
 import { save } from './runs.spec-helpers';
 import { createFlowHarness } from './flow-harness';
+import { BlockAgentRunner } from './result-answer';
 import { assertInvariants } from './flow-invariants';
 import type { TestApp } from './test-app';
 
@@ -35,8 +32,8 @@ const requirements = `${JSON.stringify({
   plan: { name: 'plan', overview: '', items: ['do it'], decision: 'approve' },
 })}\n`;
 
-async function world(tasks: Subtask[] = [task('a'), task('b'), task('c', ['a'])]) {
-  const flow = await createFlowHarness(KEY);
+async function world(tasks: Subtask[] = [task('a'), task('b'), task('c', ['a'])], blocks?: BlockAgentRunner) {
+  const flow = await createFlowHarness(KEY, { blocks });
   const app = flow.app;
   const runs = app.app.get(RunRepository);
   const documents = app.app.get(DocumentRepository);
@@ -96,7 +93,10 @@ describe('a split run is reviewed and delivered as one merge request', () => {
   });
 
   it('merges 3 tasks, goes through review, takes a return to the agent on the feature branch, and ends done', async () => {
-    const built = await world();
+    const blocks = new BlockAgentRunner({
+      implement: [{ block: { implementation: ['added the field'], summary: ['the field is there'] } }],
+    });
+    const built = await world(undefined, blocks);
     app = built.app;
 
     await mergeAll(app);
@@ -116,31 +116,10 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     await app.app.get(DocumentRepository).putDocument(run, 'return', '## requirements\nthe field is missing\n');
     run.currentStep = 'implement';
     await app.app.get(RunRepository).saveRun(run);
-    const prompts: string[] = [];
-    jest.spyOn(app.app.get(AgentLauncher), 'launch').mockImplementation((request) => {
-      prompts.push(request.prompt);
-      writeFileSync(join(built.tree, 'field.ts'), 'export const field = 2;\n');
-      const now = new Date().toISOString();
-      return Promise.resolve({
-        responseText: 'implementation:\n- added the field\n\nsummary:\n- the field is there',
-        chatId: 'chat-1',
-        tokensIn: 1,
-        tokensOut: 1,
-        usd: 0,
-        killReason: null,
-        exitCode: 0,
-        resumed: false,
-        calls: 1,
-        samples: [],
-        durationMs: 1,
-        startedAt: now,
-        finishedAt: now,
-      } satisfies AgentRunResult);
-    });
-
     await app.pipeline.step('implement', KEY);
 
     expect((await parentRun(app))?.currentStep).toBe('implement-improve');
+    const prompts = blocks.prompts.map((launch) => launch.prompt);
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain('the field is missing');
     expect(prompts[0]).toContain('decisions:\n- subtask a: store UTC');

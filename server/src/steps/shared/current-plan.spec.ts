@@ -35,7 +35,38 @@ const improved = (items: string[]): [string, string] => [
   ARTIFACTS.planImproveResult.format({ summary: [], plan: items, contract: [], tasks: [], keep: [] }),
 ];
 
+const implemented = (plan?: string[]): [string, string] => [
+  ARTIFACTS.implementationResult.kind,
+  ARTIFACTS.implementationResult.format({ implementation: ['did it'], summary: [], plan }),
+];
+const implementImproved = (plan?: string[]): [string, string] => [
+  ARTIFACTS.implementationImproveResult.kind,
+  ARTIFACTS.implementationImproveResult.format({ summary: [], plan }),
+];
+
 describe('currentPlan', () => {
+  it('reads the checklist an implement step corrected, newest of the four results first', async () => {
+    const first = documentsOf(
+      planned(['plan']),
+      improved(['improved']),
+      implemented(['implemented']),
+      requirements(['r']),
+    );
+    expect((await currentPlan(first, 'K'))?.items).toEqual(['implemented']);
+    const second = documentsOf(planned(['plan']), implemented(['implemented']), implementImproved(['reviewed']));
+    expect((await currentPlan(second, 'K'))?.items).toEqual(['reviewed']);
+  });
+
+  it('keeps a correction when the later results carry the checklist in force', async () => {
+    const documents = documentsOf(planned(['plan']), implemented(['corrected']), implementImproved(['corrected']));
+    expect((await currentPlan(documents, 'K'))?.items).toEqual(['corrected']);
+  });
+
+  it('skips an implement result with no corrected checklist', async () => {
+    const documents = documentsOf(planned(['plan']), implemented(['x']), implementImproved(), implemented([]));
+    expect((await currentPlan(documents, 'K'))?.items).toEqual(['plan']);
+  });
+
   it('reads the plan inside the requirements record for a run with no result', async () => {
     expect(await currentPlan(documentsOf(requirements(['old item'])), 'K')).toEqual({
       name: 'Field',

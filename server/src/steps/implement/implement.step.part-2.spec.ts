@@ -33,6 +33,8 @@ import { memoryJournal } from '../../git/rebase/journal.spec-helpers';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 
 import {
+  implAnswer,
+  rebaseReply,
   reply,
   result,
   boot,
@@ -94,7 +96,7 @@ describe('implement step', () => {
     expect(existsSync(isAbsolute(marker) ? marker : join(tree, marker))).toBe(true);
     const agent = jest.fn(async () => {
       expect(git(tree, ['ls-files', '-u'])).toContain('src/overlap.ts');
-      return result(reply);
+      return result(rebaseReply);
     });
     const app = await boot(root, agent);
     try {
@@ -121,7 +123,7 @@ describe('implement step', () => {
     const tree = conflictedTree(root, 'PROJ-65', 'billing-api');
     const agent = jest.fn(async (_input: AgentRunInput) => {
       writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 3;\n');
-      return result('implementation:\n- something else\n\nsummary:\n- resolved the rebase\n');
+      return result(rebaseReply);
     });
     const app = await boot(root, agent);
     try {
@@ -165,7 +167,7 @@ describe('implement step', () => {
       expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
       writeFileSync(join(tree, 'src', 'field.ts'), marked);
       expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
-      return result('implementation:\n- something else\n\nsummary:\n- resolved the rebase\n');
+      return result(rebaseReply);
     });
     const app = await boot(root, agent);
     try {
@@ -225,7 +227,7 @@ describe('implement step', () => {
         expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
         writeFileSync(join(tree, 'src', 'field.ts'), marked);
         expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
-        return result('edited the conflict\n');
+        return result(rebaseReply);
       }
       return result(reply);
     });
@@ -289,7 +291,7 @@ describe('implement step', () => {
     const agent = jest.fn(async (input: AgentRunInput) => {
       if (input.prompt.includes('The commit being replayed is')) {
         writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 3;\n');
-        return result('edited the conflict\n');
+        return result(rebaseReply);
       }
       return result(reply);
     });
@@ -330,7 +332,7 @@ describe('implement step', () => {
     const agent = jest.fn(async (input: AgentRunInput) => {
       if (input.prompt.includes('The commit being replayed is')) {
         writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 3;\n');
-        return result('edited the conflict\n');
+        return result(rebaseReply);
       }
       return result(reply);
     });
@@ -370,7 +372,7 @@ describe('implement step', () => {
     const base = git(clone, ['rev-parse', 'main']);
     const agent = jest.fn(async () => {
       writeFileSync(join(first, 'src', 'field.ts'), 'export const field = 3;\n');
-      return result('edited the conflict\n');
+      return result(rebaseReply);
     });
     const app = await boot(root, agent);
     try {
@@ -429,16 +431,7 @@ describe('implement step', () => {
     const agent = jest.fn(async () => {
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
       return result(
-        [
-          'plan:',
-          '- fix the failing test',
-          '',
-          'implementation:',
-          '- fixed the test',
-          '',
-          'summary:',
-          '- the pipeline log required it',
-        ].join('\n'),
+        implAnswer(['fixed the test'], ['the pipeline log required it'], { plan: ['fix the failing test'] }),
       );
     });
     const app = await boot(root, agent);
@@ -503,7 +496,12 @@ describe('implement step', () => {
       }
     };
     const plain = await handoffFor('PROJ-150', reply);
-    const withCause = await handoffFor('PROJ-151', `cause:\n- the parser dropped the suffix\n\n${reply}`);
+    const withCause = await handoffFor(
+      'PROJ-151',
+      implAnswer(['changed the field parser', 'ran unit tests'], ['changed the parser so empty fields stay'], {
+        cause: ['the parser dropped the suffix'],
+      }),
+    );
     expect(plain).not.toContain('cause:');
     expect(withCause).toBe(
       plain?.replace('## implement\n', '## implement\ncause:\n- the parser dropped the suffix\n\n'),
@@ -522,18 +520,7 @@ describe('implement step', () => {
     };
     const agent = jest.fn(async () => {
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
-      return result(
-        [
-          'plan:',
-          JSON.stringify(plan, null, 2),
-          '',
-          'implementation:',
-          '- fixed the test',
-          '',
-          'summary:',
-          '- the pipeline log required it',
-        ].join('\n'),
-      );
+      return result(implAnswer(['fixed the test'], ['the pipeline log required it'], { plan: plan.items }));
     });
     const app = await boot(root, agent);
     try {

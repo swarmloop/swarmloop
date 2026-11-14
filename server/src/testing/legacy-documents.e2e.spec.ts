@@ -7,6 +7,7 @@ import { SubtaskOps } from '../steps/shared/subtask-ops';
 import { createFlowHarness } from './flow-harness';
 import { BlockAgentRunner, DEFAULT_RESEARCH } from './result-answer';
 import { withPlan } from '../steps/plan/plan-record';
+import { approvedRun } from './implement-flow.spec-helpers';
 import { remember } from './runs.spec-helpers';
 
 const KEY = 'PROJ-470';
@@ -89,5 +90,38 @@ describe('a run stored before results', () => {
     const plan = JSON.parse((await documents.latestBody(KEY, 'requirements')) ?? '{}').plan;
     expect(plan).toMatchObject({ items: old.items, decision: 'approve' });
     expect(await documents.latestBody(KEY, 'plan_improve_result')).toContain('"plan":[]');
+  });
+});
+
+describe('a run stored before implement results', () => {
+  const IMPLEMENT_KEY = 'PROJ-471';
+  let flow: Awaited<ReturnType<typeof createFlowHarness>>;
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await flow.close();
+  });
+
+  it('waiting in implement-improve with the implementation document only keeps its items and goes on to done', async () => {
+    const blocks = new BlockAgentRunner({
+      'implement-improve': [{ block: { implementation: [], summary: ['it holds'] } }],
+    });
+    flow = await createFlowHarness(IMPLEMENT_KEY, { blocks, realImplement: 'all' });
+    const documents = flow.app.app.get(DocumentRepository);
+    const run = await approvedRun(flow, IMPLEMENT_KEY, 'implement-improve');
+    await documents.putDocument(run, 'implementation', '- changed the field parser\n- ran unit tests\n');
+    expect(await documents.latestBody(IMPLEMENT_KEY, 'implementation_result')).toBeNull();
+
+    await flow.person('resume');
+
+    expect((await flow.app.app.get(RunRepository).findRun(IMPLEMENT_KEY))?.currentStep).toBe('done');
+    const prompt = blocks.prompts.find((item) => item.step === 'implement-improve')?.prompt ?? '';
+    expect(prompt).toContain('Implementation:\n- changed the field parser\n- ran unit tests');
+    expect(await documents.latestBody(IMPLEMENT_KEY, 'implementation')).toBe(
+      '- changed the field parser\n- ran unit tests\n',
+    );
+    expect(
+      JSON.parse((await documents.latestBody(IMPLEMENT_KEY, 'implementation_result')) ?? '{}').implementation,
+    ).toEqual(['changed the field parser', 'ran unit tests']);
   });
 });

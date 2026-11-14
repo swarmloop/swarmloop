@@ -187,8 +187,8 @@ describe('implement skill rules', () => {
   it.each([
     ['implement skill', skill('implement')],
     ['implement-improve skill', skill('implement-improve')],
-    ['implement follow-up', implementFollowUp('- item', null)],
-    ['implement-improve follow-up', implementImproveFollowUp(null)],
+    ['implement follow-up', implementFollowUp('- item', null, [], null)],
+    ['implement-improve follow-up', implementImproveFollowUp(null, null)],
   ])('%s holds the near-tests, edit-tool and rerun rules', (_name, text) => {
     for (const rule of rules) {
       expect(text).toContain(rule);
@@ -290,8 +290,9 @@ describe('needs: a task that needs a sibling waits for it', () => {
     expect(skill('plan')).toContain('sends `needs`, one entry per sibling task id with what it needs from that task');
   });
 
-  it('implement says when and how to write needs:', () => {
-    expect(skill('implement')).toContain('`- <id>: <what it needs from that task>`');
+  it('implement says when to send needs, and leaves the format to the result schema', () => {
+    expect(skill('implement')).toContain('fill `needs` with one entry per sibling task');
+    expect(skill('implement')).not.toContain('`- <id>: <what it needs from that task>`');
   });
 
   it('research says when to send needs, and leaves the format to the result schema', () => {
@@ -304,7 +305,7 @@ describe('needs: a task that needs a sibling waits for it', () => {
     const text = skill('implement');
 
     expect(text).toContain("part of the task only within the task's own files");
-    expect(text).toContain('named as the cause in `cause:` and left alone');
+    expect(text).toContain('named as the cause in `cause` and left alone');
   });
 
   it.each(['code-review/requirements', 'code-review/regressions'])(

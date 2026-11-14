@@ -40,7 +40,14 @@
   },
   "loopEvents": [],
   "reads": {
-    "implement": ["requirements", "repos"]
+    "implement": [
+      "requirements",
+      "plan_improve_result",
+      "plan_result",
+      "implementation_result",
+      "implementation_improve_result",
+      "repos"
+    ]
   },
   "result": {
     "exitCode": 1,

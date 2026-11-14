@@ -161,7 +161,7 @@ describe('the agents of an epic parent and of its subtasks', () => {
       {} as never,
       {
         latestBody: async (_key: string, kind: string) =>
-          kind === 'research_result' || kind === 'plan_result' ? null : 'app\n',
+          ['research_result', 'plan_result', 'implementation_result'].includes(kind) ? null : 'app\n',
         putDocument: async () => undefined,
       } as never,
       { submit: async () => undefined } as never,

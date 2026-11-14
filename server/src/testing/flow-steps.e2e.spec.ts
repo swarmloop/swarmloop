@@ -2,12 +2,17 @@ import 'reflect-metadata';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { DocumentRepository } from '../history/document.repository';
+import { CommandService } from '../pipeline/command.service';
 import { actionsFor, NEEDS_PERSON } from '../contract/run-state';
 import { deriveState } from '../history/run-state';
 import { RunRepository } from '../history/run.repository';
 import { putStamped } from '../steps/shared/gate.spec-helpers';
 import { createFlowHarness } from './flow-harness';
 import { assertInvariants } from './flow-invariants';
+import { approvedRun, returnedTo } from './implement-flow.spec-helpers';
+import { BlockAgentRunner } from './result-answer';
+import { VisitRepository } from '../history/visit.repository';
+import { REBASE_CONFLICT } from '../git/rebase';
 import { git } from './runs.spec-helpers';
 
 const KEY = 'PROJ-430';
@@ -139,5 +144,177 @@ describe('the real merge-request and pipeline steps on the fake host', () => {
     expect(reason?.message).toContain('automatic rebase was already attempted for this SHA');
     expect(actionsFor(state, reason?.code ?? null)).toContain(NEEDS_PERSON[reason?.code ?? '']);
     expect((await find()).attemptsPipeline).toBe(1);
+  });
+});
+
+describe('the real implement step in a whole flow', () => {
+  const IMPLEMENT_KEY = 'PROJ-431';
+  let flow: Awaited<ReturnType<typeof createFlowHarness>>;
+  let blocks: BlockAgentRunner;
+
+  const start = async (scripts: ConstructorParameters<typeof BlockAgentRunner>[0] = {}) => {
+    blocks = new BlockAgentRunner(scripts);
+    flow = await createFlowHarness(IMPLEMENT_KEY, { blocks, realImplement: 'all' });
+  };
+  const documents = () => flow.app.app.get(DocumentRepository);
+  const runOf = () => flow.app.app.get(RunRepository).findRun(IMPLEMENT_KEY);
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await flow.close();
+  });
+
+  it('takes a checks return back to implement and goes on to done', async () => {
+    await start({ implement: [{ block: { implementation: ['fixed the lint'], summary: ['the check now passes'] } }] });
+    const run = await approvedRun(flow, IMPLEMENT_KEY, 'implement');
+    await returnedTo(flow, run, '## checks\nFAIL npm run lint\n');
+
+    await flow.person('resume');
+
+    expect((await runOf())?.currentStep).toBe('done');
+    expect(blocks.prompts.filter((launch) => launch.step === 'implement')).toHaveLength(1);
+    expect(blocks.prompts[0]?.prompt).toContain('## checks\nFAIL npm run lint');
+    expect(await documents().latestBody(IMPLEMENT_KEY, 'implementation')).toBe('- fixed the lint\n');
+    await assertInvariants(flow.app);
+  });
+
+  it('takes a pipeline return that left the files unchanged to a CI rerun and on to done', async () => {
+    await start();
+    const run = await approvedRun(flow, IMPLEMENT_KEY, 'implement');
+    await returnedTo(flow, run, '## pipeline\nresult: fail\njob: test\n\nAssertion failed\n');
+
+    await flow.person('resume');
+
+    expect((await runOf())?.currentStep).toBe('done');
+    const prompts = blocks.prompts.filter((launch) => launch.step === 'implement').map((launch) => launch.prompt);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain('The pipeline failure still stands and the files are unchanged.');
+    expect(prompts[1]).toContain('End with the result block as before.');
+    expect(prompts[1]).not.toContain('The object has these fields, and no others:');
+    expect(await documents().latestBody(IMPLEMENT_KEY, 'ci_rerun')).not.toBeNull();
+    await assertInvariants(flow.app);
+  });
+
+  it('moves a limit hit to the next runtime in a new chat with the full result text, and goes on to done', async () => {
+    blocks = new BlockAgentRunner();
+    flow = await createFlowHarness(IMPLEMENT_KEY, {
+      blocks,
+      realImplement: 'all',
+      env: { AGENTS_IMPLEMENT: 'claude:m-claude,codex:m-codex', ANTHROPIC_API_KEY: 'key', CODEX_API_KEY: 'key' },
+    });
+    const delegate = blocks.run.bind(blocks);
+    const seen: string[] = [];
+    jest.spyOn(blocks, 'run').mockImplementation(async (input: { step: string; prompt?: string; runtime?: string }) => {
+      seen.push(`${input.step}:${input.runtime}`);
+      const answered = await delegate(input);
+      return input.runtime === 'claude'
+        ? {
+            ...answered,
+            responseText: "You've hit your 5-hour limit",
+            limit: { window: '5-hour', resetsAt: new Date(flow.app.clock.now() + 3_600_000).toISOString() },
+          }
+        : answered;
+    });
+    await approvedRun(flow, IMPLEMENT_KEY, 'implement');
+
+    await flow.person('resume');
+
+    expect(seen).toEqual(['implement:claude', 'implement:codex', 'implement-improve:codex']);
+    expect((await runOf())?.currentStep).toBe('done');
+    expect(blocks.prompts[1]?.prompt).toContain('The object has these fields, and no others:');
+    await assertInvariants(flow.app);
+  });
+
+  it('resolves a rebase conflict with the agent, keeps the first pass and goes on to done', async () => {
+    await start({ rebase: [{ block: { summary: ['kept both sides of the field'] } }] });
+    const run = await approvedRun(flow, IMPLEMENT_KEY, 'implement');
+    await documents().putDocument(run, 'implementation', '- changed the field parser\n');
+    const clone = join(flow.app.root, 'demo');
+    writeFileSync(join(flow.tree, 'src', 'readme.ts'), 'export const readme = 2;\n');
+    git(flow.tree, ['commit', '-am', 'feature change']);
+    git(clone, ['switch', 'main']);
+    writeFileSync(join(clone, 'src', 'readme.ts'), 'export const readme = 3;\n');
+    git(clone, ['commit', '-am', 'base change']);
+    git(clone, ['push', 'origin', 'main']);
+    git(clone, ['switch', 'holder']);
+    git(flow.tree, ['fetch', 'origin', 'main']);
+    expect(() => git(flow.tree, ['rebase', 'origin/main'])).toThrow();
+    await documents().putDocument(run, REBASE_CONFLICT, 'pending\n');
+    const delegate = blocks.run.bind(blocks);
+    jest.spyOn(blocks, 'run').mockImplementation(async (input) => {
+      if (input.prompt?.includes('The commit being replayed is')) {
+        writeFileSync(join(flow.tree, 'src', 'readme.ts'), 'export const readme = 4;\n');
+      }
+      return delegate(input);
+    });
+
+    await flow.person('resume');
+
+    expect(blocks.steps.filter((name) => name === 'rebase')).toHaveLength(1);
+    expect(await documents().latestBody(IMPLEMENT_KEY, 'rebase_resolution_result')).toContain('kept both sides');
+    expect(await documents().latestBody(IMPLEMENT_KEY, 'implementation')).toBe('- changed the field parser\n');
+    expect(git(flow.tree, ['show', 'HEAD:src/readme.ts'])).toBe('export const readme = 4;');
+    expect((await runOf())?.currentStep).toBe('done');
+    await assertInvariants(flow.app);
+  });
+});
+
+describe('a server restart in the middle of the real implement step', () => {
+  const RESTART_KEY = 'PROJ-432';
+  let flow: Awaited<ReturnType<typeof createFlowHarness>>;
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await flow.close();
+  });
+
+  it('records the dead step after the restart, and a resume runs the real step on a block to done', async () => {
+    const blocks = new BlockAgentRunner();
+    flow = await createFlowHarness(RESTART_KEY, { blocks, realImplement: 'all' });
+    await approvedRun(flow, RESTART_KEY, 'implement');
+    // The process died while the step ran: the run is `running` with an attempt nobody owns.
+    const dead = await flow.app.app.get(RunRepository).begin(RESTART_KEY, 'implement');
+    expect(dead.activeAttempt).not.toBeNull();
+
+    await flow.restart();
+    for (let pass = 0; pass < 6; pass++) await flow.tick();
+    await flow.app.pipeline.whenIdle(RESTART_KEY);
+
+    const visits = await flow.app.app
+      .get(VisitRepository)
+      .listStats((await flow.app.app.get(RunRepository).findRun(RESTART_KEY))!.id);
+    expect(visits.map((visit) => [visit.step, visit.status, visit.killReason])).toEqual([
+      ['implement', 'failed', 'process died'],
+    ]);
+
+    await flow.person('resume');
+
+    const run = await flow.app.app.get(RunRepository).findRun(RESTART_KEY);
+    expect(run?.currentStep).toBe('done');
+  });
+});
+
+describe('stop and resume with the real implement step', () => {
+  const STOP_KEY = 'PROJ-433';
+  let flow: Awaited<ReturnType<typeof createFlowHarness>>;
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await flow.close();
+  });
+
+  it('a stopped run takes no agent, and its resume runs the step on a block to done', async () => {
+    const blocks = new BlockAgentRunner();
+    flow = await createFlowHarness(STOP_KEY, { blocks, realImplement: 'all' });
+    await approvedRun(flow, STOP_KEY, 'implement');
+
+    await flow.app.app.get(CommandService).submit('stop', STOP_KEY, {});
+    await flow.app.pipeline.whenIdle(STOP_KEY);
+    expect(blocks.steps).toEqual([]);
+
+    await flow.person('resume');
+
+    expect((await flow.app.app.get(RunRepository).findRun(STOP_KEY))?.currentStep).toBe('done');
+    expect(blocks.steps.filter((step) => step === 'implement')).toHaveLength(1);
   });
 });

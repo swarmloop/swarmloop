@@ -6,6 +6,12 @@ import type { KeepLine } from '../shared/keep-lines';
 import { research, type ResearchResult } from '../../agent-result/definitions/research';
 import { plan, type PlanResult } from '../../agent-result/definitions/plan';
 import { planImprove, type PlanImproveResult } from '../../agent-result/definitions/plan-improve';
+import { implementation, type ImplementationResult } from '../../agent-result/definitions/implementation';
+import {
+  implementationImprove,
+  type ImplementationImproveResult,
+} from '../../agent-result/definitions/implementation-improve';
+import { rebaseResolution, type RebaseResolutionResult } from '../../agent-result/definitions/rebase-resolution';
 import { subtaskAnswer, type SubtaskAnswerResult } from '../../agent-result/definitions/subtask-answer';
 import { resultArtifactCodec } from '../../agent-result/result-codec';
 import { requirementsView } from '../../contract/requirements-view';
@@ -122,6 +128,27 @@ export const ARTIFACTS = {
     readers: ['implement', 'implement-improve', 'code-review', 'merge-request'],
     summarize: firstLine,
   }),
+  // `plan-improve` and the implement steps read the corrected checklist through `currentPlan`; `implement` reads it to settle a rebase and for `currentPlan`; the split parent writes it with its task lines.
+  implementationResult: artifact(implementation.kind, {
+    writers: ['implement', 'implement-improve'],
+    readers: ['plan-improve', 'implement', 'implement-improve', 'code-review', 'merge-request'],
+    codec: resultArtifactCodec<ImplementationResult>(implementation),
+    summarize: (result) => listSummary(result.implementation.length, 'changes', result.implementation[0]),
+  }),
+  // The corrected checklist of this pass is read through `currentPlan` by both implement steps.
+  implementationImproveResult: artifact(implementationImprove.kind, {
+    writers: ['implement-improve'],
+    readers: ['plan-improve', 'implement', 'implement-improve'],
+    codec: resultArtifactCodec<ImplementationImproveResult>(implementationImprove),
+    summarize: (result) => listSummary(result.implementation?.length ?? 0, 'changes', result.implementation?.[0]),
+  }),
+  // What the agent said of a rebase conflict; kept for the record, no step reads it.
+  rebaseResolutionResult: artifact(rebaseResolution.kind, {
+    writers: ['implement'],
+    readers: [],
+    codec: resultArtifactCodec<RebaseResolutionResult>(rebaseResolution),
+    summarize: (result) => firstLine(result.summary[0] ?? ''),
+  }),
   answers: artifact('answers', { writers: [], readers: ['research', 'plan'], external: true, summarize: firstLine }),
   questions: artifact('questions', { writers: ['research', 'plan'], readers: ['plan'], summarize: firstLine }),
   needs: artifact('needs', { writers: ['research', 'plan', 'implement'], readers: [], summarize: firstLine }),
@@ -138,13 +165,13 @@ export const ARTIFACTS = {
   }),
   planResult: artifact(plan.kind, {
     writers: ['plan'],
-    readers: ['plan', 'plan-improve'],
+    readers: ['plan', 'plan-improve', 'implement', 'implement-improve'],
     codec: resultArtifactCodec<PlanResult>(plan),
     summarize: (result) => listSummary(result.plan.length || result.tasks.length, 'plan items', result.plan[0]),
   }),
   planImproveResult: artifact(planImprove.kind, {
     writers: ['plan-improve'],
-    readers: ['plan-improve'],
+    readers: ['plan-improve', 'implement', 'implement-improve'],
     codec: resultArtifactCodec<PlanImproveResult>(planImprove),
     summarize: (result) => listSummary(result.plan.length || result.tasks.length, 'plan items', result.plan[0]),
   }),
