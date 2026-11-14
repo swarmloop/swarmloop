@@ -68,7 +68,12 @@ export interface Started {
 }
 
 /** The catalog over HTTP. The actor is the `x-actor` header, in place of a session: no header is nobody. */
-export async function start(env: Record<string, string>, connections?: Connection[], models = ''): Promise<Started> {
+export async function start(
+  env: Record<string, string>,
+  connections?: Connection[],
+  models = '',
+  cli?: object,
+): Promise<Started> {
   const root = await mkdtemp(join(tmpdir(), 'connection-catalog-'));
   await writeFile(join(root, '.env'), envFile(root, env));
   const clock = new FakeClock();
@@ -88,7 +93,7 @@ export async function start(env: Record<string, string>, connections?: Connectio
     .overrideProvider(Clock)
     .useValue(clock)
     .overrideProvider(SandboxService)
-    .useValue(sandbox)
+    .useValue(cli ?? sandbox)
     .overrideProvider(AuthService)
     .useValue({
       check: (headers: Record<string, string>) => ({ allowed: true, actor: headers['x-actor'] ?? null }),

@@ -46,4 +46,44 @@ describe('the Claude connection', () => {
     const view = (await (await call(started.url, 'alice')).json()) as { cards: ConnectionCard[] };
     expect(view.cards[0]).toMatchObject({ serverDefault: true });
   });
+
+  it('stores the token that a sign-in made, tested as a bearer token with the OAuth header', async () => {
+    const token = 'sk-ant-oat01-signed-in-5555';
+    await api.close();
+    api = await startFakeModelApi(token);
+    await started.close();
+    started = await start({}, [new ClaudeConnection(api.url)]);
+    const response = await call(`${started.url}/claude`, 'alice', 'PUT', {
+      fields: { CLAUDE_CODE_OAUTH_TOKEN: token },
+    });
+    expect(await response.json()).toMatchObject({ status: 'connected', last4: '5555' });
+    expect(api.seen[0]).toMatchObject({ authorization: `Bearer ${token}`, 'anthropic-beta': expect.any(String) });
+    expect(api.seen[0]['x-api-key']).toBeUndefined();
+  });
+
+  it('rejects a token with the provider text and stores nothing', async () => {
+    const response = await call(`${started.url}/claude`, 'alice', 'PUT', {
+      fields: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-other' },
+    });
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { message: string }).message).toBe('The key was rejected by the fake model API');
+    expect(await rows()).toEqual([]);
+  });
+});
+
+describe('the Claude sign-in', () => {
+  const flow = new ClaudeConnection().signIn();
+
+  it("runs the CLI's own token command", () => {
+    expect(flow.command()).toEqual(['claude', 'setup-token']);
+    expect(flow.hosts).toContain('claude.ai');
+  });
+
+  it('shows the link and asks for the code until the token has printed', () => {
+    expect(flow.parse('Starting\n')).toEqual({ link: null, code: null, asksForCode: false, fields: null });
+    const asking = flow.parse('Open https://claude.ai/oauth/authorize?x=1\nPaste code here if prompted >');
+    expect(asking).toMatchObject({ link: 'https://claude.ai/oauth/authorize?x=1', asksForCode: true, fields: null });
+    const done = flow.parse('Open https://claude.ai/oauth/authorize?x=1\nYour token:\nsk-ant-oat01-abc_DEF-123\n');
+    expect(done).toMatchObject({ asksForCode: false, fields: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-abc_DEF-123' } });
+  });
 });

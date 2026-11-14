@@ -97,12 +97,17 @@ export class ConnectionCatalog {
   }
 
   private person(actor: string | null): string {
-    const login = personOf(actor);
-    if (login === null) {
-      throw new ForbiddenException('Sign in as a person to change a connection');
-    }
-    return login;
+    return requirePerson(actor);
   }
+}
+
+/** The login of a person, or a 403 for the machine and for nobody. */
+export function requirePerson(actor: string | null): string {
+  const login = personOf(actor);
+  if (login === null) {
+    throw new ForbiddenException('Sign in as a person to change a connection');
+  }
+  return login;
 }
 
 function personOf(actor: string | null): string | null {
