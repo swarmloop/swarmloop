@@ -1,11 +1,4 @@
-import {
-  opinionOf,
-  decidedOk,
-  renderReview,
-  reportDocuments,
-  reviewDocuments,
-  summaryNote,
-} from './code-review-record';
+import { opinionOf, renderReview, reportDocuments, reviewDocuments, summaryNote } from './code-review-record';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import { storedReview } from '../../agent-result/stored-review';
 
@@ -40,11 +33,10 @@ describe('review documents', () => {
     expect(JSON.parse(documents[1].body)).toEqual(RETURN);
   });
 
-  it('accepts a repeated return as ok with the same review text', () => {
-    const accepted = decidedOk(opinionOf('review_quality', RETURN));
-    expect(accepted.decision).toBe('ok');
-    expect(accepted.body).toBe('summary:\n- The parser drops an empty segment\ndecision: ok\n');
-    expect(accepted.result.decision).toBe('ok');
+  it('renders the reviewer reason after the decision line, and nothing without one', () => {
+    const answered = renderReview({ ...RETURN, decision: 'ok', reason: 'The answer holds.' });
+    expect(answered).toBe('summary:\n- The parser drops an empty segment\ndecision: ok\nreason: The answer holds.\n');
+    expect(renderReview(RETURN)).toBe('summary:\n- The parser drops an empty segment\ndecision: return\n');
   });
 
   it('gives the handoff the summary list, or the decision when there is none', () => {

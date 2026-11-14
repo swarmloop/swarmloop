@@ -20,16 +20,13 @@ import { currentPlan } from '../shared/current-plan';
 import { projectRules } from '../shared/project-rules';
 import { skillPrompt } from '../shared/skill-prompt';
 import { correctedPlan, renderSummary, requireApprovedPlan } from '../plan/plan-record';
-import {
-  implementationImprove,
-  type ImplementationImproveResult,
-} from '../../agent-result/definitions/implementation-improve';
+import { type ImplementationImproveResult } from '../../agent-result/definitions/implementation-improve';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
 import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
-import { implementImproveFollowUp } from './implement.prompts';
+import { implementImproveAsk, implementImproveFollowUp } from './implement.prompts';
 import { firstPass, renderCause, renderImplementation, withReturnNotes } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 
@@ -116,13 +113,15 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const { runtime } = this.profile(this.config.env, ctx.opened.run);
     const continued = await resumableChat(root(this.config), key, 'implement-improve', runtime);
     const received = continued?.chatId ? (continued.resultName ?? null) : null;
+    const ask = implementImproveAsk(returned);
     const fullFor = (target: string): string =>
       [
         skillPrompt('implement-improve', input.requirements, names, sections, mounts, {
           deferExecutionRules: true,
           rules: projectRules(names, mounts, target, false),
         }),
-        resultPromptFor(implementationImprove, null),
+        ...ask.lines,
+        resultPromptFor(ask.definition, null),
       ].join('\n\n');
     const full = fullFor(runtime);
     const chosen = continued?.chatId ? implementImproveFollowUp(returned, received) : full;
@@ -142,7 +141,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       project,
       projectFor: reproject,
       briefFor: (other) => withEnvironment(withAddedRepos(fullFor(other), added), executionRules),
-      result: implementationImprove,
+      result: ask.definition,
       freshPrompt: continued?.chatId ? withEnvironment(withAddedRepos(full, added), executionRules) : undefined,
     });
     await assertUncommitted(mounts, branch, heads);

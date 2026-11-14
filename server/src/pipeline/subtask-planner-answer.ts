@@ -25,6 +25,8 @@ import { subtaskAnswer, type SubtaskAnswerResult } from '../agent-result/definit
 import type { OpenedStep } from '../steps/step-run';
 import type { CommandService } from './command.service';
 
+const ASKING_STEPS: string[] = ['research', 'code-review'];
+
 /** The parent planner's answer to the questions of a subtask's research. */
 export class SubtaskPlannerAnswer {
   private readonly logger = new Logger(SubtaskPlannerAnswer.name);
@@ -41,8 +43,8 @@ export class SubtaskPlannerAnswer {
   ) {}
 
   async asking(run: RunEntity): Promise<boolean> {
-    if (run.status !== 'waiting' || run.currentStep !== 'research') return false;
-    const questions = (await this.documents.latestBody(run.key, ARTIFACTS.questions.kind)) ?? '';
+    if (run.status !== 'waiting' || !ASKING_STEPS.includes(run.currentStep)) return false;
+    const questions = await this.askedBody(run);
     const answers = (await this.documents.latestBody(run.key, ARTIFACTS.answers.kind)) ?? '';
     return unanswered(questions, await storedAsks(this.documents, run.key), answers).length > 0;
   }
@@ -54,7 +56,7 @@ export class SubtaskPlannerAnswer {
 
   /** Asks the planner and sends the child its answer. Null, with nothing sent, when the planner gave none. */
   async answer(opened: OpenedStep, child: RunEntity, task: Subtask, contract: string): Promise<string | null> {
-    const questions = (await this.documents.latestBody(child.key, ARTIFACTS.questions.kind)) ?? '';
+    const questions = await this.askedBody(child);
     const answer = this.undelivered.get(child.key) ?? (await this.askAbout(opened, task, questions, contract));
     if (answer === null) return null;
     try {
@@ -80,11 +82,16 @@ export class SubtaskPlannerAnswer {
   }
 
   private async send(child: RunEntity, text: string, idempotencyKey: string): Promise<void> {
-    const answers = openQuestions(
-      (await this.documents.latestBody(child.key, ARTIFACTS.questions.kind)) ?? '',
-      await storedAsks(this.documents, child.key),
-    ).map((id) => ({ kind: 'question', id, body: text }));
+    const answers = openQuestions(await this.askedBody(child), await storedAsks(this.documents, child.key)).map(
+      (id) => ({ kind: 'question', id, body: text }),
+    );
     await this.commands.submit('answer', child.key, { answers }, { idempotencyKey });
+  }
+
+  /** The questions a child waits on: those of its research, or the one of its code review. */
+  private async askedBody(run: RunEntity): Promise<string> {
+    const asked = run.currentStep === 'code-review' ? ARTIFACTS.reviewQuestions : ARTIFACTS.questions;
+    return (await this.documents.latestBody(run.key, asked.kind)) ?? '';
   }
 
   /**

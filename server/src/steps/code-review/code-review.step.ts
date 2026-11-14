@@ -23,39 +23,21 @@ import { ModelPrice } from '../../agent/limits';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import { RuntimeLimit, SwarmloopError } from '../../core/swarmloop-error';
+import { RuntimeLimit } from '../../core/swarmloop-error';
 import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import { lateInput } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
-import { returnedNotes, textDocument } from '../shared/handoff';
-import { gateCounts, stampGate, worktreesFingerprint } from '../shared/gate';
+import { textDocument } from '../shared/handoff';
+import { stampGate } from '../shared/gate';
 import type { RunEntity } from '../../history/entities';
 import { CheckoutService } from '../shared/checkout.service';
 import { requiredDocument } from '../step';
-import { reviewDiffSection, writeReviewDiff } from './review-diff';
-import { REVIEWERS } from './reviewer';
-import {
-  approvedPlan,
-  detachForeign,
-  foreignReview,
-  foreignReviewOf,
-  interruptedAttempt,
-  pathMount,
-  repoMounts,
-  retrying,
-  storedCheckout,
-} from './review-input';
+import { writeReviewDiff } from './review-diff';
+import { approvedPlan, foreignReviewOf, storedCheckout } from './review-input';
 import { closeReview, failed, noteHandoff, writeReport } from './review-report';
-import {
-  othersOpen,
-  reportDue,
-  reviewReturn,
-  routeReview,
-  runRound,
-  sameReviewedDiff,
-  tallyRound,
-} from './review-round';
-import { selectReviewers } from './review-select';
+import { othersOpen, reportDue, routeReview, runRound, tallyRound } from './review-round';
+import { askPerson, reviewQuestions, settleAsked } from './review-ask';
+import { prepareReview, type PrepareDeps } from './review-prepare';
 import { opinionSummary } from './code-review-round-result';
 import { renderImplementation } from '../implement/implement-record';
 import { isResultKind } from '../../agent-result/result-definition';
@@ -89,6 +71,8 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     ARTIFACTS.issues,
     ARTIFACTS.repos,
     ARTIFACTS.rebaseConflict,
+    ARTIFACTS.reviewQuestions,
+    ARTIFACTS.requirements,
   ];
   override readonly usesModel = true;
   override readonly capabilities: StepCapabilities = { path: true };
@@ -102,6 +86,18 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     private readonly launcher: AgentLauncher,
   ) {
     super(kernel);
+  }
+
+  private prepareDeps(): PrepareDeps {
+    return {
+      runs: this.runs,
+      flows: this.flows,
+      documents: this.documents,
+      visits: this.visits,
+      checkouts: this.checkouts,
+      worktrees: this.worktrees,
+      config: this.config,
+    };
   }
 
   override describe(env: SwarmloopEnv): StepDescriptor {
@@ -174,65 +170,6 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     throw new VisitLeftOpen(await this.review(notes, ctx, env));
   }
 
-  /** Everything before the first reviewer or report launches: the worktrees, the diff, and which reviewers run. */
-  private async prepare(notes: string | null, ctx: StepContext) {
-    const { opened, options } = ctx;
-    const { key } = opened.run;
-    const checkout = options.path ?? (notes?.trim() ? null : opened.run.targetPath);
-    let thirdParty = Boolean(checkout);
-    if (!thirdParty && !notes?.trim()) {
-      if (!(await foreignReview(this.flows, opened.run.id))) {
-        throw new SwarmloopError('implementation is missing');
-      }
-      await detachForeign(this.documents, this.worktrees, opened);
-      thirdParty = true;
-    }
-    if (checkout) {
-      assertInsideWork(checkout, workRoots(this.config));
-      opened.run.targetPath = realpathSync(checkout);
-    }
-    const requirements = ((await ctx.reread(ARTIFACTS.requirements)) ?? '').trim() || opened.run.prompt || '';
-    if (!thirdParty && !requirements.trim()) {
-      throw new SwarmloopError('requirements is missing');
-    }
-    const mounts = checkout ? pathMount(checkout) : await repoMounts(this.runs, this.documents, root(this.config), key);
-    const only = REVIEWERS.some((item) => item.name === options.reviewer) ? options.reviewer : undefined;
-    const fresh = ((await ctx.reread(ARTIFACTS.rebaseConflict)) ?? '').trim() === 'review';
-    const retry = fresh ? false : await retrying(this.visits, opened);
-    const attemptId = retry ? await interruptedAttempt(this.visits, opened) : null;
-    const returned = await returnedNotes(this.documents, opened.run.id);
-    const diff = await reviewDiffSection(mounts, await this.checkouts.listDenyPaths(), opened.run.prompt);
-    const same = sameReviewedDiff(root(this.config), key, diff.patch);
-    const repeated = reviewReturn(returned) && same;
-    const fingerprint = await worktreesFingerprint(mounts.map((mount) => mount.hostPath));
-    const { kept, pending, recovered, stale } = await selectReviewers(this.documents, root(this.config), {
-      key,
-      only,
-      fresh,
-      retry,
-      attemptId,
-      same,
-      repeated,
-      counts: (kind) => gateCounts(this.documents, opened.run, kind, fingerprint),
-    });
-    return {
-      requirements,
-      thirdParty,
-      mounts,
-      only,
-      fresh,
-      retry,
-      repeated,
-      returned,
-      diff,
-      fingerprint,
-      kept,
-      pending,
-      recovered,
-      stale,
-    };
-  }
-
   private async review(notes: string | null, ctx: StepContext, env: SwarmloopEnv): Promise<PipelineResult> {
     const { opened, options } = ctx;
     const { key } = opened.run;
@@ -249,15 +186,19 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       only,
       fresh,
       retry,
-      repeated,
+      same,
+      exchanges,
       returned,
       diff,
       fingerprint,
       kept,
       pending,
       recovered,
-      stale,
-    } = await ctx.activity('Preparing', () => this.prepare(notes, ctx));
+    } = await ctx.activity('Preparing', () => prepareReview(this.prepareDeps(), notes, ctx));
+    const settled = await settleAsked(ctx, this.documents);
+    if (settled) {
+      return settled;
+    }
     const calls = pending.length + (reportDue(only, kept, pending) ? 1 : 0);
     if (options.auto && calls > 0 && opened.run.agentCalls + calls > env.MAX_AGENT_CALLS) {
       return closeReview(
@@ -281,7 +222,6 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       key,
       env,
       pending,
-      stale,
       requirements,
       notes,
       mounts,
@@ -296,9 +236,9 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       auto: options.auto,
       fresh,
       retry,
-      repeated,
+      exchanges,
     });
-    const { reportContinued, opinions, stored, errors } = tallyRound(kept, recovered, finished, repeated);
+    const { reportContinued, opinions, stored, errors } = tallyRound(kept, recovered, finished);
     const limited = finished.find((item) => item.limit)?.limit;
     if (limited) {
       // The reviewers that answered keep their answers; the ones the limit stopped run again when the run goes on.
@@ -339,6 +279,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
         reportContinued,
         options.auto,
         options.answerErrors,
+        exchanges,
       );
     } catch (error) {
       if (!(error instanceof RuntimeLimit)) {
@@ -362,6 +303,12 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     const recorded = [...noted, ...written.documents];
     if (fresh) {
       recorded.push(textDocument(ARTIFACTS.rebaseConflict.kind, 'clear\n'));
+    }
+    const questions = thirdParty ? [] : reviewQuestions(exchanges, finished, same, opened.startedAt);
+    if (questions.length > 0) {
+      const asked = await askPerson(ctx, questions, recorded, reportExchanges, written.usage);
+      await this.stamp(opened.run, [...stored, ...written.documents], fingerprint);
+      return asked;
     }
     const routed = await routeReview(
       this.events,

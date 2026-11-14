@@ -3,7 +3,7 @@ import { reviewLog } from '../../testing/result-answer';
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { openItems, phases, reason, returns, sentence } from './flow';
+import { openItems, phases, reason, resumeState, returns, sentence, stateView } from './flow';
 import { renderQuestions } from '../../steps/research/research-record';
 
 describe('failure reason', () => {
@@ -303,5 +303,23 @@ describe('open questions of the run view', () => {
     ]);
     expect(item).toMatchObject({ kind: 'question', id: 'Subtask a asks: which?', answer: '' });
     expect(items([doc('questions', '- from research\n')])).toEqual([]);
+  });
+
+  it('lists the question of a code review waiting for the person, and is ready once it is answered', () => {
+    const waiting = { currentStep: 'code-review', status: 'waiting' } as RunEntity;
+    const asked = doc(
+      'review_questions',
+      '- quality still returns: x Implement answered: nothing. Which holds? (asked t)\n',
+    );
+    const items = openItems(waiting, [asked], []);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: 'question', answer: '' });
+    expect(stateView(waiting, items, [asked]).reason?.code).toBe('NEEDS_ANSWERS');
+    expect(resumeState(waiting, items, [asked])).toBe('need-answers');
+    const answers = doc('answers', `question: ${items[0].id}\nanswer: keep it\n`);
+    const answered = openItems(waiting, [asked, answers], []);
+    expect(answered[0].answer).toBe('keep it');
+    expect(resumeState(waiting, answered, [asked, answers])).toBe('ready');
+    expect(openItems(waiting, [asked, doc('review_questions', '')], [])).toEqual([]);
   });
 });

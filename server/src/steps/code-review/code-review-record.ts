@@ -15,16 +15,12 @@ export interface Opinion {
 
 /** The `review_<name>` document: the review, then the decision line. */
 export function renderReview(result: ReviewResult): string {
-  return `${result.review.trimEnd()}\ndecision: ${result.decision}\n`;
+  const reason = result.reason ? `reason: ${result.reason}\n` : '';
+  return `${result.review.trimEnd()}\ndecision: ${result.decision}\n${reason}`;
 }
 
 export function opinionOf(kind: string, result: ReviewResult): Opinion {
   return { kind, decision: result.decision, body: renderReview(result), result };
-}
-
-/** A repeated return is accepted: the same review, decided ok. */
-export function decidedOk(opinion: Opinion): Opinion {
-  return opinionOf(opinion.kind, { ...opinion.result, decision: 'ok' });
 }
 
 /** The documents a reviewer's round stores: the rendered review and the result it was rendered from. */

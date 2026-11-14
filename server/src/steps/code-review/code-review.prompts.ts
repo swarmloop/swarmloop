@@ -1,4 +1,4 @@
-import { reviewDefinition } from '../../agent-result/definitions/review';
+import { reviewAnswerDefinition, reviewDefinition } from '../../agent-result/definitions/review';
 import { reviewReport } from '../../agent-result/definitions/review-report';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 
@@ -20,6 +20,20 @@ export function reportFollowUp(brief: string, implementation?: string | null): s
   return lines.join('\n');
 }
 
+/** What a reviewer sees on the next round: its last finding, the answer of implement, and what to decide. */
+export function exchangeSection(finding: string, answer: string | null): { heading: string; body: string } {
+  return {
+    heading: 'Your last finding and the answer of implement',
+    body: [
+      finding.trim(),
+      '',
+      answer?.trim() ? `Implement answered: ${answer.trim()}` : 'Implement gave no answer to this finding.',
+      '',
+      'Decide again. decision: ok when the answer holds; decision: return when your finding still holds, and say why. Give that one line in `reason`.',
+    ].join('\n'),
+  };
+}
+
 export function reviewResume(
   name: string,
   implement: string,
@@ -27,6 +41,7 @@ export function reviewResume(
   plan?: string,
   returned?: string | null,
   received: string | null = reviewDefinition(name).name,
+  exchange?: { heading: string; body: string },
 ): string {
   const note = (body: string): string => body.trim() || '- nothing recorded';
   const lines = [
@@ -50,11 +65,13 @@ export function reviewResume(
     'A change that makes the failed job pass, or that the latest pipeline note requires, is required and is never returned.',
     'Do not return a finding that brings back what the failing pipeline log shows as the cause.',
     'On `decision: return`, name one broken behavior. Do not ask for a new subsystem.',
-    resultPromptFor(reviewDefinition(name), received),
+    ...(exchange ? ['', `${exchange.heading}:`, exchange.body, ''] : []),
+    resultPromptFor(exchange ? reviewAnswerDefinition(name) : reviewDefinition(name), exchange ? null : received),
   ];
   if (plan?.trim()) {
     lines.push('', plan.trim());
   }
+
   return lines.join('\n');
 }
 

@@ -1,8 +1,13 @@
-import { isPipelineReturn } from '../follow-up';
+import { isChecksReturn, isPipelineReturn } from '../follow-up';
+import { reviewReturn } from '../shared/handoff';
 import type { FailedCommand } from '../../environment/environment-types';
 import { TASK_SCOPE } from '../shared/requirements-brief';
-import { implementation } from '../../agent-result/definitions/implementation';
-import { implementationImprove } from '../../agent-result/definitions/implementation-improve';
+import { implementation, implementationAfterReview } from '../../agent-result/definitions/implementation';
+import {
+  implementationImprove,
+  implementationImproveAfterReview,
+} from '../../agent-result/definitions/implementation-improve';
+import type { ResultDefinition } from '../../agent-result/result-definition';
 import { rebaseResolution } from '../../agent-result/definitions/rebase-resolution';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 
@@ -34,6 +39,33 @@ const EDIT_TOOLS_RULE =
   "Change files with the runtime's own edit and write tools, and read them with its read tool. Use the shell to run commands, not to rewrite files.";
 const RERUN_RULE =
   'On a return from the checks step, or a pipeline return whose failed job names a command the project also runs as a check, the failed commands come with it. Rerun each failed command in the sandbox after the change, and end only when it passes. When it cannot pass, `summary` says which command still fails and why.';
+
+const REJECTED_LINE =
+  'For each finding of this code review you do not fix, add an entry to `rejected`: the reviewer name the return gives, the finding, and why it does not hold here. A finding you fix gets no entry.';
+
+/** True when the return notes are a code review return, which the step may answer with `rejected`. */
+function answersReview(notes: string | null): boolean {
+  return reviewReturn(notes) && !isChecksReturn(notes);
+}
+
+/** The result an implement pass sends, and the lines that ask for it. Only a code review return asks for `rejected`. */
+export function implementAsk(notes: string | null): { definition: ResultDefinition; lines: string[] } {
+  return answersReview(notes)
+    ? { definition: implementationAfterReview, lines: [REJECTED_LINE] }
+    : { definition: implementation, lines: [] };
+}
+
+/** The same for an implement-improve pass. */
+export function implementImproveAsk(notes: string | null): { definition: ResultDefinition; lines: string[] } {
+  return answersReview(notes)
+    ? { definition: implementationImproveAfterReview, lines: [REJECTED_LINE] }
+    : { definition: implementationImprove, lines: [] };
+}
+
+/** The result text of a chat: full when the pass asks for `rejected`, which the chat's earlier result text lacks. */
+function resultTextFor(ask: { definition: ResultDefinition; lines: string[] }, received: string | null): string {
+  return resultPromptFor(ask.definition, ask.lines.length > 0 ? null : received);
+}
 
 /** Sent after a turn that answered a checks return while the server's rerun of the failed commands is still red. */
 export function checksStillRed(red: FailedCommand[], received: string | null): string {
@@ -78,7 +110,8 @@ export function implementFollowUp(
   for (const { heading, body } of context) {
     lines.push('', `${heading}:`, body.trim());
   }
-  lines.push('', resultPromptFor(implementation, received));
+  const ask = implementAsk(notes);
+  lines.push(...(ask.lines.length > 0 ? ['', ...ask.lines] : []), '', resultTextFor(ask, received));
   return lines.join('\n');
 }
 
@@ -104,6 +137,7 @@ export function implementImproveFollowUp(notes: string | null, received: string 
     }
     lines.push(returned, '');
   }
-  lines.push(resultPromptFor(implementationImprove, received));
+  const ask = implementImproveAsk(returned ?? null);
+  lines.push(...ask.lines, resultTextFor(ask, received));
   return lines.join('\n');
 }

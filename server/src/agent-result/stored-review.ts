@@ -1,5 +1,5 @@
 import { legacyRequirementsReview, legacyReview } from './legacy/review';
-import { reviewDefinition } from './definitions/review';
+import { reviewDefinition, reviewStoredDefinition } from './definitions/review';
 import type { ReviewResult } from './definitions/review';
 import { storedResult } from './stored-result';
 
@@ -15,7 +15,7 @@ function reviewKindOf(name: string): string {
 
 /** The latest review of a reviewer: its stored result, or for a run from before results the rendered document. */
 export function storedReview(name: string, documents: StoredDocument[]): ReviewResult | null {
-  const result = storedResult<ReviewResult>(reviewDefinition(name), documents);
+  const result = storedResult<ReviewResult>(reviewStoredDefinition(name), documents);
   if (result) {
     return result;
   }

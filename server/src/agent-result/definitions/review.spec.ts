@@ -2,7 +2,7 @@ import { CODE_REVIEWERS } from '../../contract/steps';
 import { readResult } from '../read-result';
 import { resultPrompt } from '../result-prompt';
 import { block } from '../result.spec-helpers';
-import { reviewDefinition } from './review';
+import { reviewAnswerDefinition, reviewDefinition } from './review';
 import { reviewReport } from './review-report';
 
 const REVIEW = {
@@ -20,6 +20,16 @@ describe('review result', () => {
 
   it('reads a valid block', () => {
     expect(readResult(reviewDefinition('quality'), block(REVIEW))).toEqual({ ok: true, value: REVIEW });
+  });
+
+  it('asks for a reason only in the answer definition, under the same result name', () => {
+    expect(reviewAnswerDefinition('quality').name).toBe(reviewDefinition('quality').name);
+    expect(resultPrompt(reviewDefinition('quality'))).not.toContain('reason');
+    expect(resultPrompt(reviewAnswerDefinition('quality'))).toContain('- reason (string, required)');
+    const without = readResult(reviewAnswerDefinition('quality'), block(REVIEW));
+    expect(without.ok === false && without.errors[0]).toContain('reason');
+    expect(readResult(reviewAnswerDefinition('quality'), block({ ...REVIEW, reason: 'It holds.' })).ok).toBe(true);
+    expect(readResult(reviewDefinition('quality'), block({ ...REVIEW, reason: 'It holds.' })).ok).toBe(false);
   });
 
   it('names a decision that is neither ok nor return', () => {

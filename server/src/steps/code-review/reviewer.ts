@@ -20,7 +20,7 @@ import { ResultInvalid } from '../shared/answer-errors';
 import { agentFailure, refusedWrite, withRefusal } from '../shared/agent-result';
 import { opinionOf } from './code-review-record';
 import type { Opinion } from './code-review-record';
-import { reviewDefinition } from '../../agent-result/definitions/review';
+import { reviewAnswerDefinition, reviewDefinition } from '../../agent-result/definitions/review';
 import type { ReviewResult } from '../../agent-result/definitions/review';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import { REVIEWS } from '../contract/artifacts';
@@ -52,6 +52,8 @@ interface ReviewLaunch extends EffortFields {
   prompt: string;
   mounts: SandboxMount[];
   briefFor: (runtime: RuntimeName) => string;
+  /** The reviewer saw implement's answer to its last finding, so its result carries a `reason`. */
+  answering: boolean;
   answerErrors?: string[];
 }
 
@@ -76,7 +78,10 @@ export async function runJob(
   opened: OpenedStep,
   key: string,
   env: SwarmloopEnv,
-  job: Omit<ReviewLaunch, 'briefFor'> & { promptFor: (runtime: RuntimeName) => string; stale: boolean },
+  job: Omit<ReviewLaunch, 'briefFor' | 'answering'> & {
+    promptFor: (runtime: RuntimeName) => string;
+    exchange: { heading: string; body: string } | null;
+  },
   fix: { implement: string; reviewed: string },
   plan: string,
   returned: string | null,
@@ -90,9 +95,17 @@ export async function runJob(
   const received = session?.resultName ?? null;
   const chosen = full
     ? job.prompt
-    : retry && !job.stale
+    : retry
       ? reviewContinue(job.reviewer.name, received)
-      : reviewResume(job.reviewer.name, fix.implement, fix.reviewed, plan, returned, received);
+      : reviewResume(
+          job.reviewer.name,
+          fix.implement,
+          fix.reviewed,
+          plan,
+          returned,
+          received,
+          job.exchange ?? undefined,
+        );
   return one(
     deps,
     opened,
@@ -106,6 +119,7 @@ export async function runJob(
       prompt: chosen,
       mounts: job.mounts,
       briefFor: job.promptFor,
+      answering: job.exchange !== null,
       answerErrors: await storedAnswerErrors(deps, opened.run.id, step),
     },
     auto,
@@ -196,7 +210,7 @@ async function launchReview(
     // A resumed chat the CLI no longer has starts again from the whole prompt, with the whole result text.
     freshPrompt: job.briefFor(job.runtime),
     briefFor: job.briefFor,
-    result: reviewDefinition(job.reviewer.name),
+    result: job.answering ? reviewAnswerDefinition(job.reviewer.name) : reviewDefinition(job.reviewer.name),
     answerErrors: job.answerErrors,
   });
 }

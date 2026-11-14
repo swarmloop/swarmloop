@@ -198,7 +198,8 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       const answer = await this.subtasks.answer(ctx.opened, child, task, contract);
       if (answer !== null) return { contract: withDecision(contract, task.id, answer), asks: [] };
       if (this.subtasks.replyPending(child)) return { contract, asks: [] };
-      const questions = (await this.reader.reread(child.key, ARTIFACTS.questions)) ?? '';
+      const asked = child.currentStep === 'code-review' ? ARTIFACTS.reviewQuestions : ARTIFACTS.questions;
+      const questions = (await this.reader.reread(child.key, asked)) ?? '';
       return { contract, asks: [questionFor(task.id, questions, startedAt)] };
     }
     return { contract, asks: [] };

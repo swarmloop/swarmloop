@@ -9,6 +9,7 @@ import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
 import { RunQueriesService } from '../api/run-queries.service';
 import { CommandService } from '../pipeline/command.service';
+import { SubtaskPlannerAnswer } from '../pipeline/subtask-planner-answer';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { createFlowHarness } from './flow-harness';
@@ -267,5 +268,53 @@ describe('a task that needs a sibling waits for it', () => {
     await pass();
 
     expect((await statuses()).b).toBe('running');
+  });
+
+  /** The subtask run waits in code review for the person, as its step leaves it. */
+  async function askedByReview(id: string, question: string): Promise<void> {
+    const run = await child(id);
+    await documents().putDocument(run, 'repos', 'demo\n');
+    await documents().putDocument(run, 'review_questions', `- ${question}\n`);
+    writeRunState(run, { status: 'waiting', currentStep: 'code-review' });
+    await runs().saveRun(run);
+  }
+
+  const REVIEW_QUESTION = 'quality still returns: x Implement answered: nothing. Which holds? (asked t)';
+
+  it('sends the planner answer to the question of a subtask waiting in code review', async () => {
+    await seedEpic([task('a'), task('b')]);
+    jest.spyOn(SubtaskPlannerAnswer.prototype, 'askAbout').mockResolvedValue('Keep the catch-up.');
+    await askedByReview('a', REVIEW_QUESTION);
+
+    await pass(false);
+
+    expect(await documents().latestBody(`${KEY}-a`, 'answers')).toBe(
+      `question: ${REVIEW_QUESTION}\nanswer: Keep the catch-up.\n`,
+    );
+    expect(await documents().latestBody(KEY, 'contract')).toContain('- subtask a: Keep the catch-up.');
+  });
+
+  it('puts the question of a subtask waiting in code review to the person when the planner gives none', async () => {
+    await seedEpic([task('a'), task('b')]);
+    jest.spyOn(SubtaskPlannerAnswer.prototype, 'askAbout').mockResolvedValue(null);
+    await askedByReview('a', REVIEW_QUESTION);
+
+    await pass(false);
+
+    const asked = await view();
+    expect(asked.items).toHaveLength(1);
+    expect(asked.items[0].label).toContain(`Subtask a asks: - ${REVIEW_QUESTION}`);
+    expect(asked.stateReason?.code).toBe('NEEDS_ANSWERS');
+
+    await flow.app.app
+      .get(CommandService)
+      .submit('answer', KEY, { answers: [{ kind: 'question', id: asked.items[0].id, body: 'Keep it.' }] });
+    await flow.app.app.get(CommandService).idle();
+    await flow.app.pipeline.whenIdle(KEY);
+
+    expect(await documents().latestBody(`${KEY}-a`, 'answers')).toBe(
+      `question: ${REVIEW_QUESTION}\nanswer: Keep it.\n`,
+    );
+    expect((await view()).items).toEqual([]);
   });
 });

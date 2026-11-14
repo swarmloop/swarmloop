@@ -10,6 +10,8 @@ export interface ReviewResult {
   summary: string[];
   /** Only the requirements review has it: where each required behavior already is in the tree. */
   met?: string[];
+  /** Only a reviewer that saw implement's answer to its last finding gives it. */
+  reason?: string;
 }
 
 function reviewSchema(name: string): Joi.ObjectSchema {
@@ -37,6 +39,22 @@ function reviewSchema(name: string): Joi.ObjectSchema {
 const REVIEW_DEFINITIONS: ReadonlyMap<string, ResultDefinition> = new Map(
   CODE_REVIEWERS.map((name) => [name, defineResult(`review_${name}`, reviewSchema(name))]),
 );
+
+const REASON = Joi.string()
+  .required()
+  .description('One line: why the answer of implement holds (ok) or why your finding still holds (return)');
+
+/** The result of a reviewer that decides again after implement's answer: the same result with its reason. */
+export function reviewAnswerDefinition(name: string): ResultDefinition {
+  const base = reviewDefinition(name);
+  return { ...base, schema: base.schema.keys({ reason: REASON }) };
+}
+
+/** The result as stored: the reason is there only when the reviewer saw an answer. */
+export function reviewStoredDefinition(name: string): ResultDefinition {
+  const base = reviewDefinition(name);
+  return { ...base, schema: base.schema.keys({ reason: Joi.string() }) };
+}
 
 export function reviewDefinition(name: string): ResultDefinition {
   const found = REVIEW_DEFINITIONS.get(name);

@@ -357,6 +357,14 @@ describe('the real code-review step in a whole flow', () => {
             summary: ['the parser drops an empty segment'],
           },
         },
+        {
+          block: {
+            decision: 'ok',
+            review: 'The empty segment stays.',
+            summary: ['the empty segment stays'],
+            reason: 'The return is fixed.',
+          },
+        },
       ],
       'code-review-report': [
         {
