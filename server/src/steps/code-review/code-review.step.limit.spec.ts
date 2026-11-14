@@ -23,6 +23,7 @@ import { reply, result, seed, writeEnv } from './code-review.step.spec-helpers';
 
 const START = Date.parse('2026-11-08T18:42:00Z');
 const RESETS_AT = '2026-11-08T21:50:00.000Z';
+const ENV_CLAUDE = [{ runtime: 'claude', credential: 'env' }];
 /** The recorded text of run-mw85iykj: what the answer of a limited reviewer says. */
 const LIMIT_TEXT = "You've hit your 5-hour limit · resets 9:50pm (UTC)";
 
@@ -96,7 +97,7 @@ describe('code-review step and a provider limit', () => {
         ['done', 'codex', 'm-codex', 1],
       ]);
       expect(quality[0]?.killReason).toBe('RUNTIME_LIMIT');
-      expect([...(await app.get(RuntimeCooldownRepository).cooling(START))]).toEqual(['claude']);
+      expect([...(await app.get(RuntimeCooldownRepository).cooling(START, ENV_CLAUDE))]).toEqual(['claude']);
     } finally {
       await app.close();
     }
@@ -208,7 +209,7 @@ describe('code-review step and a provider limit', () => {
 
       expect(limit?.resetsAt).toBe(new Date(START + 60 * 60_000).toISOString());
       expect(limit?.resumesAt).toBe(new Date(START + 60 * 60_000).toISOString());
-      expect((await app.get(RuntimeCooldownRepository).cooling(START + 61 * 60_000)).size).toBe(0);
+      expect((await app.get(RuntimeCooldownRepository).cooling(START + 61 * 60_000, ENV_CLAUDE)).size).toBe(0);
     } finally {
       await app.close();
     }
@@ -247,7 +248,7 @@ describe('code-review step and a provider limit', () => {
     const agent = answers(() => false);
     const app = await boot(root, agent, clock);
     try {
-      await app.get(RuntimeCooldownRepository).set('claude', Date.parse(RESETS_AT), true);
+      await app.get(RuntimeCooldownRepository).set(ENV_CLAUDE[0], Date.parse(RESETS_AT), true);
       await seed(app, 'PROJ-304');
       await app.get(PipelineService).step('code-review', 'PROJ-304');
       expect(new Set(agent.mock.calls.map((call) => call[0].runtime))).toEqual(new Set(['codex']));
@@ -279,7 +280,7 @@ describe('code-review step and a provider limit', () => {
       expect(done.exitCode).toBe(1);
       expect(deriveState(run).reason?.code).not.toBe('RUNTIME_LIMIT');
       expect(agent.mock.calls.filter((call) => call[0].step === 'code-review-quality')).toHaveLength(1);
-      expect((await app.get(RuntimeCooldownRepository).cooling(START)).size).toBe(0);
+      expect((await app.get(RuntimeCooldownRepository).cooling(START, ENV_CLAUDE)).size).toBe(0);
     } finally {
       await app.close();
     }
