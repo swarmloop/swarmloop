@@ -1,6 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, Repository } from 'typeorm';
+import { In, LessThan, Repository } from 'typeorm';
 import { Clock } from '../core/clock';
 import { LiveHub } from '../live/live.hub';
 import { RunEntity, DocumentEntity } from './entities';
@@ -95,6 +95,23 @@ export class DocumentRepository {
       .groupBy('document.kind')
       .getRawMany();
     return new Map(found.map(({ kind, id }) => [kind, Number(id)]));
+  }
+
+  /** The latest document of each of `kinds` for each of the runs, in two reads whatever the number of runs. */
+  async latestDocuments(runIds: number[], kinds: string[]): Promise<DocumentEntity[]> {
+    if (runIds.length === 0 || kinds.length === 0) {
+      return [];
+    }
+    const newest: { id: number }[] = await this.documents
+      .createQueryBuilder('document')
+      .select('MAX(document.id)', 'id')
+      .where('document.runId IN (:...runIds) AND document.kind IN (:...kinds)', { runIds, kinds })
+      .groupBy('document.runId')
+      .addGroupBy('document.kind')
+      .getRawMany();
+    return newest.length === 0
+      ? []
+      : this.documents.find({ where: { id: In(newest.map(({ id }) => Number(id))) }, order: { id: 'ASC' } });
   }
 
   async hasDocument(key: string, kind: string): Promise<boolean> {

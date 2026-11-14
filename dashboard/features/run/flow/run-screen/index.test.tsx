@@ -100,7 +100,6 @@ describe('RunScreen', () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
-    expect(region).toHaveTextContent('Stage 1');
     expect(region).toHaveTextContent('Add the column');
     expect(region).not.toHaveTextContent('b.spec.ts');
     expect(region).toHaveTextContent('2 files · proof');

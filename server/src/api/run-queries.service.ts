@@ -23,6 +23,7 @@ import type { StepEventPage } from '../contract/step-events';
 import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
 import type { LiveSample } from '../contract/live';
 import { mergeWaits, parentOf } from './run-view/merge-wait';
+import { listPlans, listStates } from './run-view/list-state';
 import { childrenByParent, epicTotal, listExtras } from './run-view/status';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
@@ -83,7 +84,11 @@ export class RunQueriesService {
     const durations = await this.runs.durationByRun();
     const keys = new Map(runs.map((run) => [run.id, run.key]));
     const childrenOf = childrenByParent(runs);
-    const waits = await mergeWaits(this.documents, runs, keys);
+    const plans = await listPlans(this.documents, runs, childrenOf);
+    const waits = mergeWaits(plans, runs, keys);
+    const states = await listStates(this.documents, this.checkouts, runs, { keys, childrenOf, plans }, (key) =>
+      this.pipeline.claimed(key),
+    );
     return {
       runs: runs.map((run) => ({
         key: run.key,
@@ -97,6 +102,7 @@ export class RunQueriesService {
         usd: this.usdOf(run),
         ...listExtras(run, keys),
         ...waits.get(run.key),
+        ...states[run.key],
         ...epicTotal(run, childrenOf.get(run.id) ?? [], this.usdOf, this.clock.now()),
       })),
     };
@@ -130,7 +136,18 @@ export class RunQueriesService {
       stepStartedAt: run.stepStartedAt,
       ...(await parentOf(this.runs, this.documents, run)),
       ...(run.startedBy ? { startedBy: run.startedBy } : {}),
-      ...taskView(documents, run.currentStep, await taskRuns(this.runs, children, documents, this.pipeline, this.live)),
+      ...taskView(
+        documents,
+        run.currentStep,
+        await taskRuns(
+          this.runs,
+          children,
+          documents,
+          this.pipeline,
+          { documents: this.documents, checkouts: this.checkouts },
+          this.live,
+        ),
+      ),
       ...epicTotal(shown, children, this.usdOf, this.clock.now()),
       ...state,
       sentence: withSkip(

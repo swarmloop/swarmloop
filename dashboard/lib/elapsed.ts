@@ -10,9 +10,7 @@ export function openElapsed(startedAt: string | null, now: number): number {
   return Number.isFinite(started) ? Math.max(0, now - started) : 0;
 }
 
+/** The time a run has spent in the step it is running now: nothing while it does not run. */
 export function openRunMs(run: { status: string; stepStartedAt: string | null }, now: number): number {
-  if (run.status !== 'running') {
-    return 0;
-  }
-  return openElapsed(run.stepStartedAt, now);
+  return run.status === 'running' ? openElapsed(run.stepStartedAt, now) : 0;
 }

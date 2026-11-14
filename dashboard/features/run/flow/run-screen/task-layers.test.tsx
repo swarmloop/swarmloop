@@ -1,7 +1,11 @@
-import { render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { TaskLayer } from '@contract/api';
+import type { RunSummary, TaskLayer } from '@contract/api';
+import type { RunState } from '@contract/run-state';
+import type { SubtaskStatus } from '@contract/subtask';
+import { RunList } from '../../../runs';
+import { runSummary } from '../../../../test/fixtures';
 import { TaskLayers } from './task-layers';
 
 const manyFiles = Array.from({ length: 16 }, (_, index) => `server/src/file-${index}.ts`);
@@ -35,6 +39,25 @@ const layers: TaskLayer[] = [
   },
 ];
 
+function renderRunList(runs: RunSummary[]): void {
+  render(
+    <RunList
+      query=""
+      onQuery={vi.fn()}
+      runs={runs}
+      visible={runs}
+      part="active"
+      otherMatches={0}
+      onPart={vi.fn()}
+      selected=""
+      now={0}
+      error={null}
+      onOpen={vi.fn()}
+      onRemove={vi.fn()}
+    />,
+  );
+}
+
 describe('TaskLayers', () => {
   it('shows per task its step, own cost, time and a link to its run', () => {
     render(<TaskLayers layers={layers} onSkip={vi.fn()} />);
@@ -43,13 +66,20 @@ describe('TaskLayers', () => {
     for (let id = 1; id <= 7; id += 1) {
       expect(region).toHaveTextContent(`Title t${id}`);
     }
-    expect(region).toHaveTextContent('Stage 3');
-    expect(region).toHaveTextContent('A stage starts when the stages before it are merged.');
     expect(region).toHaveTextContent('running · code review');
     expect(region).toHaveTextContent('after t1');
     expect(region).toHaveTextContent('5s · $0.25');
     expect(within(region).getByRole('link', { name: 'Open run Title t3' })).toHaveAttribute('href', '/runs/run-1-t3');
     expect(within(region).queryByRole('link', { name: 'Open run Title t5' })).not.toBeInTheDocument();
+  });
+
+  it('lists blocked, running, waiting, then settled tasks, in plan order inside a group', () => {
+    render(<TaskLayers layers={layers} onSkip={vi.fn()} />);
+
+    const titles = within(screen.getByRole('region', { name: 'Tasks' }))
+      .getAllByText(/^Title t\d$/)
+      .map((node) => node.textContent);
+    expect(titles).toEqual(['Title t5', 'Title t3', 'Title t6', 'Title t1', 'Title t2', 'Title t4', 'Title t7']);
   });
 
   it('sums the subtasks in one summary line', () => {
@@ -99,5 +129,92 @@ describe('TaskLayers', () => {
 
     expect(screen.queryByRole('region', { name: 'Merge queue' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Decisions' })).not.toBeInTheDocument();
+  });
+
+  it('gives the same task order in the run list and in the Tasks section', async () => {
+    const parent = {
+      ...runSummary(),
+      key: 'e-1',
+      name: 'Epic parent',
+      taskCounts: { merged: 1, running: 1, blocked: 1 },
+    };
+    const subtask = (id: string, index: number, status: SubtaskStatus, state: RunState) => ({
+      ...runSummary(),
+      key: `e-1-${id}`,
+      name: `Task ${id}`,
+      parentKey: 'e-1',
+      taskId: id,
+      state,
+      task: { index, status },
+    });
+    const merged = subtask('A', 0, 'merged', 'merged');
+    const running = subtask('B', 1, 'running', 'running');
+    const blocked = {
+      ...subtask('C', 2, 'blocked', 'blocked'),
+      stateReason: { code: 'BLOCKED', message: 'Needs you' },
+    };
+    const runs = [parent, merged, running, blocked];
+    const titles = () => screen.getAllByText(/^Task [ABC]$/).map((node) => node.textContent);
+    renderRunList(runs);
+    await userEvent.click(screen.getByRole('button', { name: /^✓ 1 merged/ }));
+    const inList = titles();
+    cleanup();
+
+    const planned = [merged, running, blocked].map((run) => ({
+      id: run.taskId,
+      title: run.name,
+      files: [],
+      proof: '',
+      depends: [],
+      status: run.task.status,
+    }));
+    render(<TaskLayers layers={[{ layer: 0, tasks: planned }]} onSkip={vi.fn()} />);
+
+    expect(inList).toEqual(['Task C', 'Task B', 'Task A']);
+    expect(titles()).toEqual(inList);
+  });
+
+  it('gives the same task order when a task waits for a person, and none to one that waits for a limit', () => {
+    const parent = { ...runSummary(), key: 'e-1', name: 'Epic parent', taskCounts: { running: 3 } };
+    const subtask = (id: string, index: number, state: RunState, stateReason: RunSummary['stateReason'] = null) => ({
+      ...runSummary(),
+      key: `e-1-${id}`,
+      name: `Task ${id}`,
+      parentKey: 'e-1',
+      taskId: id,
+      state,
+      stateReason,
+      task: { index, status: 'running' as SubtaskStatus },
+    });
+    const subtasks = [
+      subtask('A', 0, 'running'),
+      subtask('B', 1, 'waiting', { code: 'RUNTIME_LIMIT', message: 'Usage limit' }),
+      subtask('C', 2, 'waiting', { code: 'NEEDS_ANSWERS', message: 'Questions are open' }),
+    ];
+    const titles = () => screen.getAllByText(/^Task [ABC]$/).map((node) => node.textContent);
+    renderRunList([parent, ...subtasks]);
+    const inList = titles();
+    cleanup();
+
+    const planned = subtasks.map((run) => ({
+      id: run.taskId,
+      title: run.name,
+      files: [],
+      proof: '',
+      depends: [],
+      status: run.task.status,
+      run: {
+        key: run.key,
+        state: run.state,
+        stateReason: run.stateReason,
+        currentStep: 'implement',
+        usd: 0,
+        durationMs: 0,
+      },
+    }));
+    render(<TaskLayers layers={[{ layer: 0, tasks: planned }]} onSkip={vi.fn()} />);
+
+    expect(inList).toEqual(['Task C', 'Task A', 'Task B']);
+    expect(titles()).toEqual(inList);
   });
 });
