@@ -19,6 +19,8 @@ const connected: ConnectionsView = {
   connections: [
     {
       host: 'github',
+      appLabel: 'App',
+      installs: true,
       app: {
         name: 'swarmloop-app',
         clientId: 'Iv.fake',
@@ -31,7 +33,16 @@ const connected: ConnectionsView = {
       selection: 'selected',
       health: { status: 'ok', expiresAt: '2026-11-08T21:50:00.000Z', refreshedAt: '2026-11-08T13:50:00.000Z' },
     },
-    { host: 'gitlab', app: null, account: null, repositories: [], selection: null, health: null },
+    {
+      host: 'gitlab',
+      appLabel: 'Application',
+      installs: false,
+      app: null,
+      account: null,
+      repositories: [],
+      selection: null,
+      health: null,
+    },
   ],
 };
 

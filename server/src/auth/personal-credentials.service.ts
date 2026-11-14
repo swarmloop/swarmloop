@@ -11,7 +11,7 @@ import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry
 import { SecretBox } from './secret-box';
 
 const LAST_CHARACTERS = 4;
-const NO_KEYS: RuntimeKeys = { cursorKey: '', anthropicKey: '', oauthToken: '', codexAuth: '', codexApiKey: '' };
+export const NO_KEYS: RuntimeKeys = { cursorKey: '', anthropicKey: '', oauthToken: '', codexAuth: '', codexApiKey: '' };
 
 interface RuntimeCredential {
   name: string;
@@ -69,6 +69,10 @@ export class PersonalCredentials {
 
   markBroken(id: string, login: string, reason: string): Promise<void> {
     return this.rows.update(rowId(id, login), { status: 'broken', reason });
+  }
+
+  markWorking(id: string, login: string): Promise<void> {
+    return this.rows.update(rowId(id, login), { status: 'ok', reason: null });
   }
 
   /** The card of a connection for a person; it holds the last four characters and never the secret. */
