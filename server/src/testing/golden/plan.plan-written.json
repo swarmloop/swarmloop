@@ -84,7 +84,7 @@
           "kind": "requirements"
         },
         {
-          "body": "## plan\n- add the field\n- cover the empty case\n",
+          "body": "[{\"step\":\"plan\",\"body\":\"- add the field\\n- cover the empty case\"}]",
           "kind": "handoff"
         }
       ],

@@ -3,6 +3,7 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { DocumentDraft } from '../../history/visit';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import type { Subtask } from '../../contract/subtask';
+import { legacyHandoff, type HandoffEntry } from '../../agent-result/legacy/handoff';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 import type { FailedCommand } from '../../environment/environment-types';
 import type { Issue } from '../contract/step-contract';
@@ -27,24 +28,51 @@ export function returnNotes(parts: Pick<Issue, 'source' | 'body'>[]): DocumentDr
   );
 }
 
-export function mergeHandoff(previous: string | null, step: string, body: string): string {
-  const chunk = `## ${step}\n${body.trimEnd()}\n`;
-  const sections = splitHandoff(previous ?? '');
-  const next = { step, body: chunk };
-  const index = sections.findIndex((item) => item.step === step);
-  if (index >= 0) {
-    sections[index] = next;
-  } else {
-    sections.push(next);
+function isEntry(item: unknown): item is HandoffEntry {
+  const { step, body } = (item ?? {}) as Partial<Record<keyof HandoffEntry, unknown>>;
+  return typeof step === 'string' && typeof body === 'string';
+}
+
+/** The stored handoff: JSON `[{step, body}]`, or the `## <step>` text of a run from before. */
+function readHandoff(stored: string | null): HandoffEntry[] {
+  if (!stored?.trim()) {
+    return [];
   }
-  return `${sections.map((item) => item.body.trimEnd()).join('\n\n')}\n`;
+  try {
+    const parsed: unknown = JSON.parse(stored);
+    if (Array.isArray(parsed) && parsed.every(isEntry)) {
+      return parsed;
+    }
+  } catch {
+    // not JSON: a handoff written before
+  }
+  return legacyHandoff(stored);
+}
+
+/** The handoff as the `## <step>` blocks a prompt and the dashboard show. Empty when there is none. */
+export function handoffText(stored: string | null): string {
+  const entries = readHandoff(stored);
+  return entries.map((item) => `## ${item.step}\n${item.body}\n`).join('\n');
+}
+
+export function mergeHandoff(previous: string | null, step: string, body: string): string {
+  const entries = readHandoff(previous);
+  const next = { step, body: body.trim() };
+  const index = entries.findIndex((item) => item.step === step);
+  if (index >= 0) {
+    entries[index] = next;
+  } else {
+    entries.push(next);
+  }
+  return JSON.stringify(entries);
 }
 
 export function withHandoff(
   sections: { heading: string; body: string }[],
   handoff: string | null,
 ): { heading: string; body: string }[] {
-  return handoff?.trim() ? [...sections, { heading: 'What previous steps did', body: handoff }] : sections;
+  const text = handoffText(handoff);
+  return text.trim() ? [...sections, { heading: 'What previous steps did', body: text }] : sections;
 }
 
 /** The open questions of a subtask, as the assumptions it records in its summary. */
@@ -117,22 +145,11 @@ export async function recordHandoff(
 }
 
 export function handoffSection(text: string | null, step: string): string {
-  const found = splitHandoff(text ?? '').find((item) => item.step === step);
-  if (!found) {
-    return '';
-  }
-  return found.body.replace(/^## [^\n]*\n/, '').trim();
-}
-
-function splitHandoff(text: string): { step: string; body: string }[] {
-  return text
-    .split(/^## /m)
-    .filter((part) => part.trim())
-    .map((part) => {
-      const newline = part.indexOf('\n');
-      const step = (newline === -1 ? part : part.slice(0, newline)).trim();
-      return { step, body: `## ${part.trimEnd()}\n` };
-    });
+  return (
+    readHandoff(text)
+      .find((item) => item.step === step)
+      ?.body.trim() ?? ''
+  );
 }
 
 /** The return notes: the stored ones, else the latest issues, else the ones the latest reviews and pipeline result call for. */

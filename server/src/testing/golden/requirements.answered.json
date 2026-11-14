@@ -82,7 +82,7 @@
           "kind": "requirements"
         },
         {
-          "body": "## requirements\n- requirements done\n",
+          "body": "[{\"step\":\"requirements\",\"body\":\"- requirements done\"}]",
           "kind": "handoff"
         }
       ],

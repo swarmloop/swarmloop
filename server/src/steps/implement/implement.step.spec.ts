@@ -1,3 +1,4 @@
+import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
 
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -136,8 +137,8 @@ describe('implement step', () => {
       expect(notes).toHaveLength(1);
       expect(notes[0]?.body).toBe('- changed the field parser\n- ran unit tests\n');
       const handoff = await documents.find({ where: { kind: 'handoff' } });
-      expect(handoff[0]?.body).toContain('## implement');
-      expect(handoff[0]?.body).toContain('empty fields stay');
+      expect(handoffText(handoff[0]?.body ?? null)).toContain('## implement');
+      expect(handoffText(handoff[0]?.body ?? null)).toContain('empty fields stay');
       const run = await app.get(RunRepository).findRun('PROJ-60');
       expect(run?.currentStep).toBe('implement-improve');
       expect(run?.status).toBe('waiting');

@@ -172,7 +172,7 @@
           "kind": "implementation"
         },
         {
-          "body": "## implement-improve\n- fixed the empty case\n",
+          "body": "[{\"step\":\"implement-improve\",\"body\":\"- fixed the empty case\"}]",
           "kind": "handoff"
         }
       ],

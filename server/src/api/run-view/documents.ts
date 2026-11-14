@@ -3,7 +3,7 @@ import type { FlowView, TaskLayer } from '../../contract/api';
 import { parseSubtasks, shownTaskState, splitLine, type Subtask } from '../../contract/subtask';
 import { STEPS, type StepName } from '../../contract/steps';
 import { readPlan } from '../../steps/plan/plan-record';
-import { composedReturn } from '../../steps/shared/handoff';
+import { composedReturn, handoffText } from '../../steps/shared/handoff';
 import { latest } from './status';
 import { isResultKind } from '../../agent-result/result-definition';
 import { ARTIFACTS } from '../../steps/contract/artifacts';
@@ -68,7 +68,8 @@ export function documentView(document: DocumentEntity): {
   body: string;
   createdAt: string;
 } {
-  return { kind: document.kind, attempt: document.attempt, body: document.body, createdAt: document.createdAt };
+  const body = document.kind === ARTIFACTS.handoff.kind ? handoffText(document.body) : document.body;
+  return { kind: document.kind, attempt: document.attempt, body, createdAt: document.createdAt };
 }
 
 export function filesOf(documents: DocumentEntity[]): { name: string; path: string; body: string | null }[] {

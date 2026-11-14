@@ -78,7 +78,7 @@
           "kind": "requirements"
         },
         {
-          "body": "## plan-improve\n- add the field\n- cover the empty case\n",
+          "body": "[{\"step\":\"plan-improve\",\"body\":\"- add the field\\n- cover the empty case\"}]",
           "kind": "handoff"
         }
       ],

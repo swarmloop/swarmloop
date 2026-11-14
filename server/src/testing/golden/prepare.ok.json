@@ -103,7 +103,7 @@
     {
       "documents": [
         {
-          "body": "## prepare\n- prepared app\n",
+          "body": "[{\"step\":\"prepare\",\"body\":\"- prepared app\"}]",
           "kind": "handoff"
         }
       ],

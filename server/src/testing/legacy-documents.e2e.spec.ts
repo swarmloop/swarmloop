@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { RunQueriesService } from '../api/run-queries.service';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
+import { handoffText } from '../steps/shared/handoff';
 import { SubtaskOps } from '../steps/shared/subtask-ops';
 import { createFlowHarness } from './flow-harness';
 import { BlockAgentRunner, DEFAULT_RESEARCH } from './result-answer';
@@ -44,5 +45,28 @@ describe('a run stored before results', () => {
     expect((await runs.findRun(KEY))?.status).toBe('done');
     expect(blocks.prompts.find((item) => item.step === 'research')?.prompt).toContain('the column');
     expect(await documents.latestBody(KEY, 'research_result')).toContain('"questions":[]');
+  });
+
+  it('waiting in research with a Markdown handoff keeps its sections as JSON and goes on to done', async () => {
+    const runs = flow.app.app.get(RunRepository);
+    const documents = flow.app.app.get(DocumentRepository);
+    const run = await remember(runs, documents, KEY, 'research', 'waiting');
+    const old = '## requirements\n- the form saves\n\n## prepare\n- prepared the repository\n';
+    await documents.putDocument(run, 'handoff', old);
+
+    const view = await flow.app.app.get(RunQueriesService).flow(KEY);
+    expect(JSON.stringify(view)).not.toContain('"step":"requirements"');
+
+    await flow.person('resume');
+
+    expect((await runs.findRun(KEY))?.status).toBe('done');
+    const stored = (await documents.latestBody(KEY, 'handoff')) ?? '';
+    expect(JSON.parse(stored).slice(0, 2)).toEqual([
+      { step: 'requirements', body: '- the form saves' },
+      { step: 'prepare', body: '- prepared the repository' },
+    ]);
+    expect(handoffText(stored)).toContain(old.trimEnd());
+    const prompt = blocks.prompts.find((item) => item.step === 'research')?.prompt ?? '';
+    expect(prompt).toContain('## requirements\n- the form saves\n\n## prepare\n- prepared the repository\n');
   });
 });

@@ -1,3 +1,4 @@
+import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
 import { EventEmitter } from 'events';
 import { Test } from '@nestjs/testing';
@@ -146,7 +147,9 @@ describe('research step', () => {
       expect(run?.currentStep).toBe('plan');
       expect(run?.status).toBe('waiting');
       expect(await documents.latestBody('PROJ-23-t1', 'questions')).toBe('');
-      expect(await documents.latestBody('PROJ-23-t1', 'handoff')).toContain('- assumed: which field is optional?');
+      expect(handoffText(await documents.latestBody('PROJ-23-t1', 'handoff'))).toContain(
+        '- assumed: which field is optional?',
+      );
     } finally {
       await app.close();
     }
@@ -263,7 +266,9 @@ describe('research step', () => {
         await app.get(PipelineService).step('research', 'PROJ-25-t1');
         expect((await runs.findRun('PROJ-25-t1'))?.currentStep).toBe('plan');
         expect(await documents.latestBody('PROJ-25-t1', 'questions')).toBe('');
-        expect(await documents.latestBody('PROJ-25-t1', 'handoff')).toContain('- assumed: which field is optional?');
+        expect(handoffText(await documents.latestBody('PROJ-25-t1', 'handoff'))).toContain(
+          '- assumed: which field is optional?',
+        );
       } finally {
         await app.close();
       }
