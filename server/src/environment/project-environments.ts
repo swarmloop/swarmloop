@@ -3,7 +3,7 @@ import type { SwarmloopEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import type { Clock } from '../core/clock';
 import { runProbe } from './image-probe';
-import { CheckPool, outOfMemoryError, runOnceMore } from './check-pool';
+import { CheckPool, ChecksStopped, outOfMemoryError, runOnceMore, waitingText } from './check-pool';
 import { runShell, type ShellDeps } from './run-shell';
 import { startCommandSpan } from '../core/step-event-scope';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -81,9 +81,15 @@ export class ProjectEnvironments {
       documents: deps.documents,
       commands: deps.commands,
       live: deps.live,
+      halted: deps.halted,
       shell: () => this.shellDeps(),
     });
     this.bundles = new CliBundles((args, timeoutMs) => this.sandbox.run(args, timeoutMs));
+  }
+
+  /** Takes the waiting check commands of a run out of the line. */
+  protected stopWaiting(key: string): void {
+    this.pool.stopWaiting(key);
   }
 
   /** Null when no repository of the run describes an environment: the agent then works as before. */
@@ -221,7 +227,14 @@ export class ProjectEnvironments {
       const repo = prepared.record.repo;
       const listed = (prepared.record.config.checks ?? []).map(checkRun);
       for (const { command } of failed.filter((item) => item.repo === repo && listed.includes(item.command))) {
-        const result = await runOnceMore(this.shellDeps(), input, prepared.launch, command, mount);
+        const result = await this.pool.withPlace(
+          input,
+          (ahead) => this.live?.log({ key: input.key, step: input.step, body: `${waitingText(ahead)}\n` }),
+          () => runOnceMore(this.shellDeps(), input, prepared.launch, command, mount),
+        );
+        if (!result) {
+          throw new ChecksStopped();
+        }
         if (result.outOfMemoryBytes !== undefined) {
           throw outOfMemoryError(repo, command, result.outOfMemoryBytes);
         }

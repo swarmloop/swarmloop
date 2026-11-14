@@ -5,9 +5,15 @@ import { HaltedRuns } from '../core/halted-runs';
 @Injectable()
 export class RunStop extends HaltedRuns {
   private readonly keys = new Set<string>();
+  private readonly listeners: ((key: string) => void)[] = [];
 
   halt(key: string): void {
     this.keys.add(key);
+    this.listeners.forEach((listener) => listener(key));
+  }
+
+  onHalted(listener: (key: string) => void): void {
+    this.listeners.push(listener);
   }
 
   clear(key: string): void {

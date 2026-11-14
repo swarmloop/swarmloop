@@ -1,12 +1,14 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { useEffect } from 'react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createTheme } from '@mui/material/styles';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CheckCommandView } from '@contract/api';
 import { getRunLog } from '../../../../lib/endpoints';
+import { receive } from '../../../../test/fake-socket';
 import { visitView } from '../../../../test/fixtures';
 import { QueryWrapper } from '../../../../test/query-wrapper';
-import { LiveBridgeProvider } from '../../../shell';
+import { LiveBridgeProvider, useLiveActions } from '../../../shell';
 import { CheckCommands } from './check-commands';
 
 vi.mock('../../../../lib/endpoints', () => ({ getRunLog: vi.fn() }));
@@ -34,9 +36,16 @@ const visit = visitView({
   ],
 });
 
+function Watching(): null {
+  const { watchRun } = useLiveActions();
+  useEffect(() => watchRun('run-1'), [watchRun]);
+  return null;
+}
+
 function list(commands: CheckCommandView[]) {
   render(
     <LiveBridgeProvider>
+      <Watching />
       <CheckCommands runKey="run-1" commands={commands} visit={visit} now={0} />
     </LiveBridgeProvider>,
     { wrapper: QueryWrapper },
@@ -68,6 +77,25 @@ describe('CheckCommands', () => {
 
     expect(screen.getByText('queued')).toHaveStyle({ color: createTheme().palette.text.secondary });
     expect(screen.getByText('queued')).not.toHaveStyle({ color: createTheme().palette.warning.main });
+  });
+
+  it('shows the place in the line of a waiting command when its line is opened', async () => {
+    const user = userEvent.setup();
+    list([row({ status: 'waiting', startedAt: null, endedAt: null, exitCode: null })]);
+    act(() =>
+      receive('log', {
+        key: 'run-1',
+        step: 'checks',
+        command: 0,
+        body: 'waiting for a free check slot (1 ahead)\n',
+      }),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Show unit tests' }));
+
+    expect(await screen.findByLabelText('Output of npm run test:unit -- --coverage')).toHaveTextContent(
+      'waiting for a free check slot (1 ahead)',
+    );
   });
 
   it('opens a line in place to its full command, output and own chart', async () => {

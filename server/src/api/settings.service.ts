@@ -57,6 +57,11 @@ const SERVER_NAMES = [
   'GITLAB_OAUTH_CLIENT_SECRET',
 ] as const satisfies readonly (keyof SwarmloopEnv)[];
 
+/** What a server setting means, for the settings it is worth saying for. */
+const SERVER_DESCRIPTIONS: Record<string, string> = {
+  CHECKS_PARALLEL: 'Check commands that run at once on the whole server',
+};
+
 /** Server settings the sandbox reads straight from the process env; `SwarmloopEnv` does not carry them. */
 const PROCESS_ENV_NAMES = ['PROJECT_HOSTS_ALLOW'] as const;
 
@@ -86,7 +91,13 @@ export class SettingsService {
       server: [...SERVER_NAMES, ...PROCESS_ENV_NAMES].map((name) => {
         const value = String((name in env ? env[name as keyof SwarmloopEnv] : rawEnv()[name]) ?? '');
         const secret = SECRET.test(name);
-        return { name, secret, value: secret ? (value === '' ? 'not set' : 'set') : value };
+        const description = SERVER_DESCRIPTIONS[name];
+        return {
+          name,
+          secret,
+          value: secret ? (value === '' ? 'not set' : 'set') : value,
+          ...(description ? { description } : {}),
+        };
       }),
     };
   }

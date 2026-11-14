@@ -3,6 +3,7 @@ import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { returns } from '../../api/run-view/flow';
+import { ChecksStopped } from '../../environment/check-pool';
 import { EnvironmentService } from '../../environment/environment.service';
 import { RequiredCheckFailed, RequiredCheckRepeated } from '../../environment/project-environments';
 import { DocumentRepository } from '../../history/document.repository';
@@ -127,6 +128,21 @@ describe('checks step', () => {
       expect(run?.status).toBe('blocked');
       expect(run?.currentStep).toBe('checks');
       expect(run?.attemptsChecks).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('ends blocked with the stop note and stores no pass or return when a Stop took the commands out of the line', async () => {
+    const { app, runs } = await booted('PROJ-205');
+    try {
+      jest.spyOn(app.get(EnvironmentService), 'check').mockRejectedValue(new ChecksStopped());
+      await app.get(PipelineService).step('checks', 'PROJ-205');
+      const run = (await runs.findRun('PROJ-205')) as RunEntity;
+      expect([run.status, run.currentStep, run.attemptsChecks]).toEqual(['blocked', 'checks', 0]);
+      const documents = app.get(DocumentRepository);
+      expect(await documents.latestBody('PROJ-205', 'return')).toBeNull();
+      expect(await documents.latestBody('PROJ-205', 'checks_pass:billing-api')).toBeNull();
     } finally {
       await app.close();
     }

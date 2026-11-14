@@ -30,7 +30,7 @@ function CommandOutput({ runKey, command }: { runKey: string; command: CheckComm
     snapshot.logs.find((entry) => entry.key === runKey && entry.step === 'checks' && entry.command === command.index),
   );
   const stored = useCommandLog(runKey, command, true);
-  const text = command.status === 'running' ? (live?.body ?? stored) : stored;
+  const text = command.status === 'running' || command.status === 'waiting' ? (live?.body ?? stored) : stored;
   return (
     <Box
       component="pre"

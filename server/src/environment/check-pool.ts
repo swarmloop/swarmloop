@@ -1,12 +1,14 @@
 import type { Clock } from '../core/clock';
 import { checkOutputPath } from '../core/check-output';
+import { STOP_NOTE } from '../contract/run-state';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { CheckCommandRepository } from '../history/check-command.repository';
 import type { DocumentRepository } from '../history/document.repository';
 import type { CheckCommandEntity } from '../history/entities';
 import type { LiveHub } from '../live/live.hub';
 import type { CheckedRepo, EnvironmentInput } from './environment-types';
-import { runShell, type ShellDeps } from './run-shell';
+import { CheckSlots } from './check-slots';
+import { liveSamples, runShell, type ShellDeps } from './run-shell';
 
 const GB = 1024 ** 3;
 
@@ -15,11 +17,17 @@ interface CheckPoolDeps {
   clock: Clock;
   documents: Pick<DocumentRepository, 'putDocument'>;
   commands: Pick<CheckCommandRepository, 'save'>;
-  live?: Pick<LiveHub, 'changed'>;
+  live?: Pick<LiveHub, 'changed' | 'log'>;
+  halted?: (key: string) => boolean;
   shell: () => ShellDeps;
 }
 
 type CheckResult = { exitCode: number; tail: string };
+
+/** What a command that waits for a free place shows. */
+export function waitingText(ahead: number): string {
+  return `waiting for a free check slot (${ahead} ahead)`;
+}
 
 /** Gigabytes with at most one decimal and no trailing `.0`. */
 function gigabytes(bytes: number): string {
@@ -52,32 +60,97 @@ export async function runOnceMore(
   return runShell(deps, input, launch, command, mount, 'checks', check);
 }
 
-/** Runs the check commands of every repository in a pool, and runs a command that ran out of memory once more. */
-export class CheckPool {
-  constructor(private readonly deps: CheckPoolDeps) {}
+/** A Stop took check commands out of the line before they started: the checks did not run. */
+export class ChecksStopped extends SwarmloopError {
+  constructor() {
+    super(STOP_NOTE);
+  }
+}
 
-  /** Runs the commands of every repository in a pool of CHECKS_PARALLEL. Waits for all of them, then throws the first error. */
+/** Runs the check commands of every repository, and runs a command that ran out of memory once more. */
+export class CheckPool {
+  private readonly slots: CheckSlots;
+
+  constructor(private readonly deps: CheckPoolDeps) {
+    this.slots = new CheckSlots(deps.checksParallel, deps.halted);
+  }
+
+  /** Takes the waiting commands of a run out of the line, so they never start. */
+  stopWaiting(key: string): void {
+    this.slots.drop(key);
+  }
+
+  /** Runs `fn` in a place of the line. Null when a Stop took the command out of the line. */
+  async withPlace<T>(
+    input: EnvironmentInput,
+    onAhead: (ahead: number) => void,
+    fn: () => Promise<T>,
+  ): Promise<T | null> {
+    const release = await this.slots.take(input.key, onAhead);
+    if (!release) {
+      return null;
+    }
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+
+  /**
+   * Runs the commands of every repository in the one line of CHECKS_PARALLEL places of the whole server. Waits for all
+   * of them, then throws the first error, or ChecksStopped when a Stop took a command out of the line.
+   */
   async runAll(input: EnvironmentInput, attemptId: string, repos: CheckedRepo[]): Promise<void> {
     const jobs = repos.flatMap((repo) => repo.rows.map((row) => ({ repo, row })));
     const errors: unknown[] = [];
     this.deps.live?.changed(input.key);
-    let next = 0;
-    const worker = async (): Promise<void> => {
-      for (let job = jobs[next++]; job; job = jobs[next++]) {
-        try {
-          job.repo.results[job.repo.rows.indexOf(job.row)] = await this.runCommand(input, attemptId, job.repo, job.row);
-        } catch (error) {
-          errors.push(error);
+    let stopped = false;
+    const run = async (job: (typeof jobs)[number]): Promise<void> => {
+      try {
+        const result = await this.runCommand(input, attemptId, job.repo, job.row);
+        if (result) {
+          job.repo.results[job.repo.rows.indexOf(job.row)] = result;
+        } else {
+          stopped = true;
         }
+      } catch (error) {
+        errors.push(error);
       }
     };
-    await Promise.all(Array.from({ length: Math.min(this.deps.checksParallel(), jobs.length) }, worker));
+    await Promise.all(jobs.map(run));
+    if (stopped) {
+      throw new ChecksStopped();
+    }
     if (errors.length > 0) {
       throw errors[0];
     }
   }
 
   private async runCommand(
+    input: EnvironmentInput,
+    attemptId: string,
+    repo: CheckedRepo,
+    row: CheckCommandEntity,
+  ): Promise<CheckResult | null> {
+    return this.withPlace(
+      input,
+      (ahead) => this.waiting(input, row, ahead),
+      () => this.runInPlace(input, attemptId, repo, row),
+    );
+  }
+
+  private waiting(input: EnvironmentInput, row: CheckCommandEntity, ahead: number): void {
+    this.deps.live?.log({
+      key: input.key,
+      step: input.step,
+      command: row.commandIndex,
+      samples: liveSamples(input.samples ?? []),
+      body: `${waitingText(ahead)}\n`,
+    });
+  }
+
+  private async runInPlace(
     input: EnvironmentInput,
     attemptId: string,
     repo: CheckedRepo,

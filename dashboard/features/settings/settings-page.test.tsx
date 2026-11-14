@@ -191,6 +191,26 @@ describe('SettingsPage', () => {
     expect(vi.mocked(saveSettings).mock.lastCall![0]).not.toHaveProperty('split');
   });
 
+  it('shows what a server setting means under its value', async () => {
+    const user = userEvent.setup();
+    const described = view();
+    described.server = [
+      {
+        name: 'CHECKS_PARALLEL',
+        secret: false,
+        value: '3',
+        description: 'Check commands that run at once on the whole server',
+      },
+    ];
+    vi.mocked(getSettings).mockResolvedValue(described);
+    render(<SettingsPage />);
+    await screen.findByRole('button', { name: 'Save' });
+
+    await user.click(screen.getByRole('button', { name: 'Server' }));
+
+    expect(screen.getByText('Check commands that run at once on the whole server')).toBeInTheDocument();
+  });
+
   it('switches sections and shows secrets as set', async () => {
     const user = userEvent.setup();
     render(<SettingsPage />);
