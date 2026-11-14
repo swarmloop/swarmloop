@@ -2,6 +2,7 @@ import { SwarmloopError } from '../../../core/swarmloop-error';
 import type { Effort } from '../../../contract/effort';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
 import type { AgentPrintInput, EffortLaunch, RuntimeKeys } from '../agent-runtime';
+import { CursorConnection } from './cursor-connection';
 import { CURSOR_LIMITS } from './cursor-limit';
 import { effortsOf, idWithEffort, parseModelIds } from './cursor-models';
 
@@ -12,6 +13,7 @@ export class CursorRuntime extends AbstractAgentRuntime {
   readonly planModeHasPlanTool = true;
   readonly priceSource = 'https://cursor.com/docs/models-and-pricing.md';
   readonly apiHosts = ['*.cursor.sh', '*.cursor.com'];
+  readonly connection = new CursorConnection();
   readonly credentialNames = ['CURSOR_API_KEY'];
   protected readonly limits = CURSOR_LIMITS;
   private modelIds: readonly string[] = [];

@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
-import { sandboxModelLister } from '../agent/model-list';
+import { sandboxModelLister, saveModelList } from '../agent/model-list';
 import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
+import { Clock } from '../core/clock';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { ConnectionProbe } from '../integrations/connection';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
@@ -19,9 +20,10 @@ export class SandboxConnectionProbe implements ConnectionProbe {
   constructor(
     private readonly config: AppConfig,
     private readonly sandbox: SandboxService,
+    private readonly clock: Clock,
   ) {}
 
-  /** Lists the models a key can use, without touching the list the server's runtimes use. */
+  /** Lists the models a key can use. A list that came back is cached for the Settings menu, as the boot warm-up does. */
   async listModels(runtimeName: string, fields: Record<string, string>): Promise<string[]> {
     const runtime = runtimeFor(runtimeName);
     if (runtime.modelListArgs() === null) {
@@ -32,6 +34,9 @@ export class SandboxConnectionProbe implements ConnectionProbe {
     mkdirSync(mount.hostPath, { recursive: true });
     const credential = runtime.credential({ ...NO_KEYS, ...fields });
     const output = await sandboxModelLister(this.sandbox, runtime, credential, mount)();
+    if (output.trim() !== '') {
+      await saveModelList(root, runtime, this.clock.now(), output);
+    }
     return output
       .split('\n')
       .map((line) => line.trim())
