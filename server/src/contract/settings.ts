@@ -21,9 +21,10 @@ export interface SettingsBody {
 export type SettingSource = 'default' | '.env' | 'environment';
 
 export interface ServerSetting {
-  source?: SettingSource;
   name: string;
   secret: boolean;
+  /** Where the value comes from. */
+  source: SettingSource;
   /** The env value, or `set` / `not set` for a secret. */
   value: string;
   /** What the setting means, when it is worth saying. */
