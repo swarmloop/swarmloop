@@ -18,7 +18,7 @@ import Tooltip from '@mui/material/Tooltip';
 import type { StateIcon, StateTone, StateWord } from '@contract/run-state';
 
 /** One color rule for every state: who acts next. */
-function toneColor(tone: StateTone): string {
+export function toneColor(tone: StateTone): string {
   return {
     working: 'info.main',
     person: 'warning.main',

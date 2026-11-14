@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { usePathname, useRouter } from 'next/navigation';
@@ -94,6 +94,7 @@ describe('Shell', () => {
     vi.mocked(usePathname).mockReturnValue('/runs/run-1');
     renderShell();
 
+    fireEvent.mouseEnter(await screen.findByText('Run one'));
     await user.click(await screen.findByRole('button', { name: 'Remove Run one' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('heading', { name: 'Remove Run one?' })).toBeInTheDocument();
