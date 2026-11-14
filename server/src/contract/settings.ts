@@ -18,7 +18,10 @@ export interface SettingsBody {
   agents?: StoredAgents;
 }
 
+export type SettingSource = 'default' | '.env' | 'environment';
+
 export interface ServerSetting {
+  source?: SettingSource;
   name: string;
   secret: boolean;
   /** The env value, or `set` / `not set` for a secret. */

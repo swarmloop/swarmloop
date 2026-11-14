@@ -1,17 +1,17 @@
 import 'reflect-metadata';
 import { CommandFactory } from 'nest-commander';
-import { join } from 'path';
-import { assertEnvFile } from './config/load-env';
-import { resolveRepoRoot } from './config/repo-root';
+import { applySettings, assertSettings, readSettings } from './config/load-env';
 
 async function bootstrap(): Promise<void> {
-  const envError = assertEnvFile(join(resolveRepoRoot(undefined, __dirname), '.env'));
-  if (envError) {
-    fail(envError);
-    return;
-  }
-  const { AppModule } = await import('./app.module');
   try {
+    const settings = readSettings();
+    const envError = assertSettings(settings);
+    if (envError) {
+      fail(envError);
+      return;
+    }
+    applySettings(settings);
+    const { AppModule } = await import('./app.module');
     await CommandFactory.run(AppModule, {
       logger: ['error', 'warn', 'log'],
       serviceErrorHandler: (error) => {
