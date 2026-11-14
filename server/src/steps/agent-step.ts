@@ -29,6 +29,7 @@ import type { StepName } from '../contract/steps';
 import { artifact, firstLine } from './contract/artifact';
 import type { Artifact } from './contract/artifact';
 import { ARTIFACTS, INSTRUCTIONS } from './contract/artifacts';
+import { ResultInvalid } from './shared/answer-errors';
 import { answerEnding } from './shared/parse-failure-follow-up';
 import type { ModelStepContext } from './model-step-context';
 import { textDocument } from './shared/handoff';
@@ -261,39 +262,44 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     // Only the first launch of the visit is told: later launches of the step are other chats.
     const answerErrors = run.answerErrors;
     run.answerErrors = undefined;
-    const result = await this.launcher.launch({
-      root: root(this.config),
-      run: run.opened.run,
-      key: run.key,
-      step: launch.label ? `${this.name}-${launch.label}` : this.name,
-      liveStep: this.name,
-      mode: run.profile.mode,
-      tools: run.profile.tools,
-      runtime: run.profile.runtime,
-      model: run.profile.model,
-      ...effortFields(run.profile),
-      timeLimitMs: run.profile.timeLimitMs,
-      auto: run.auto,
-      prompt,
-      workspace: run.workspace,
-      mounts: launch.mounts,
-      allowHosts: launch.allowHosts,
-      manifestHosts: launch.manifestHosts,
-      resume: launch.resume,
-      continuePrompt: launch.continuePrompt,
-      freshPrompt: launch.freshPrompt === undefined ? undefined : withInstructions(launch.freshPrompt),
-      failover: true,
-      brief: launch.freshPrompt === undefined ? prompt : withInstructions(launch.freshPrompt),
-      briefFor: launch.briefFor && ((runtime) => withInstructions(launch.briefFor?.(runtime) ?? prompt)),
-      sections: launch.sections,
-      validate: launch.validate,
-      parseFailureEnding: answerEnding(this.name),
-      result: launch.result,
-      check: launch.check,
-      answerErrors,
-      project: launch.project,
-      projectFor: launch.projectFor,
-    });
+    const result = await this.launcher
+      .launch({
+        root: root(this.config),
+        run: run.opened.run,
+        key: run.key,
+        step: launch.label ? `${this.name}-${launch.label}` : this.name,
+        liveStep: this.name,
+        mode: run.profile.mode,
+        tools: run.profile.tools,
+        runtime: run.profile.runtime,
+        model: run.profile.model,
+        ...effortFields(run.profile),
+        timeLimitMs: run.profile.timeLimitMs,
+        auto: run.auto,
+        prompt,
+        workspace: run.workspace,
+        mounts: launch.mounts,
+        allowHosts: launch.allowHosts,
+        manifestHosts: launch.manifestHosts,
+        resume: launch.resume,
+        continuePrompt: launch.continuePrompt,
+        freshPrompt: launch.freshPrompt === undefined ? undefined : withInstructions(launch.freshPrompt),
+        failover: true,
+        brief: launch.freshPrompt === undefined ? prompt : withInstructions(launch.freshPrompt),
+        briefFor: launch.briefFor && ((runtime) => withInstructions(launch.briefFor?.(runtime) ?? prompt)),
+        sections: launch.sections,
+        validate: launch.validate,
+        parseFailureEnding: answerEnding(this.name),
+        result: launch.result,
+        check: launch.check,
+        answerErrors,
+        project: launch.project,
+        projectFor: launch.projectFor,
+      })
+      .catch((error: unknown) => {
+        if (error instanceof ResultInvalid) run.refusal = refusedWrite(error.output) ?? run.refusal;
+        throw error;
+      });
     if (result.agent) {
       // The step goes on with the agent that took over, and its visit records that agent.
       const { effort: _effort, effortNote: _effortNote, ...profile } = run.profile;

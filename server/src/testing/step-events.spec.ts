@@ -17,6 +17,7 @@ import { lateInput } from '../steps/agent-step';
 import type { InputSpec, StepResult } from '../steps/contract/step-contract';
 import { ResearchStep } from '../steps/research/research.step';
 import { StepKernel } from '../steps/step-kernel';
+import { resultAnswer } from './result-answer';
 import { goldenApp } from '../steps/shared/model-golden.spec-helpers';
 import { recordStepEvent } from '../core/step-event-scope';
 
@@ -135,7 +136,7 @@ describe('step events', () => {
 
   beforeEach(async () => {
     golden = await goldenApp('step-events', {
-      agent: jest.fn().mockResolvedValue(result('summary:\n- ok\nquestions:\n- none')),
+      agent: jest.fn().mockResolvedValue(result(resultAnswer('Done.', { summary: ['ok'], questions: [], impact: [] }))),
       worktrees: ['E-1/demo'],
     });
     repo = join(golden.root, 'worktrees', 'E-1', 'demo');
@@ -282,7 +283,7 @@ describe('step events', () => {
       .get<{ run: jest.Mock }>(AGENT_RUNNER)
       .run.mockImplementationOnce((input: { onOutput: (chunk: string) => void }) => {
         input.onOutput(`${stream}\n`);
-        return Promise.resolve(result('summary:\n- ok\nquestions:\n- none'));
+        return Promise.resolve(result(resultAnswer('Done.', { summary: ['ok'], questions: [], impact: [] })));
       });
     const step = new ResearchStep(
       new StepKernel(

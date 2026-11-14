@@ -192,11 +192,56 @@
     }
   ],
   "reads": {
-    "code-review": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff", "impact"],
-    "code-review-performance": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff", "impact"],
-    "code-review-quality": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff", "impact"],
-    "code-review-regressions": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff", "impact"],
-    "code-review-report": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff", "impact"],
+    "code-review": [
+      "implementation",
+      "requirements",
+      "repos",
+      "rebase_conflict",
+      "*",
+      "handoff",
+      "research_result",
+      "impact"
+    ],
+    "code-review-performance": [
+      "implementation",
+      "requirements",
+      "repos",
+      "rebase_conflict",
+      "*",
+      "handoff",
+      "research_result",
+      "impact"
+    ],
+    "code-review-quality": [
+      "implementation",
+      "requirements",
+      "repos",
+      "rebase_conflict",
+      "*",
+      "handoff",
+      "research_result",
+      "impact"
+    ],
+    "code-review-regressions": [
+      "implementation",
+      "requirements",
+      "repos",
+      "rebase_conflict",
+      "*",
+      "handoff",
+      "research_result",
+      "impact"
+    ],
+    "code-review-report": [
+      "implementation",
+      "requirements",
+      "repos",
+      "rebase_conflict",
+      "*",
+      "handoff",
+      "research_result",
+      "impact"
+    ],
     "code-review-requirements": [
       "implementation",
       "requirements",
@@ -204,9 +249,19 @@
       "rebase_conflict",
       "*",
       "handoff",
+      "research_result",
       "impact"
     ],
-    "code-review-security": ["implementation", "requirements", "repos", "rebase_conflict", "*", "handoff", "impact"]
+    "code-review-security": [
+      "implementation",
+      "requirements",
+      "repos",
+      "rebase_conflict",
+      "*",
+      "handoff",
+      "research_result",
+      "impact"
+    ]
   },
   "result": {
     "exitCode": 0,

@@ -94,4 +94,14 @@ describe('artifact catalog', () => {
     expect(ARTIFACTS.contract.kind).toBe('contract');
     expect(ARTIFACTS.contract.readers).toContain('implement');
   });
+
+  it('registers the research result for the steps that read it', () => {
+    const entry = ARTIFACTS.researchResult;
+    expect(entry.kind).toBe('research_result');
+    expect(entry.writers).toEqual(['research']);
+    expect(entry.readers).toEqual(['plan', 'plan-improve', 'code-review']);
+    const value = { summary: ['why'], questions: ['a: b?'], impact: [], needs: [{ id: 't', what: 'x' }] };
+    expect(entry.parse(entry.format(value))).toEqual(value);
+    expect(() => entry.parse('{"summary":[]}')).toThrow('research_result is not valid');
+  });
 });

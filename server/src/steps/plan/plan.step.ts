@@ -17,6 +17,7 @@ import { AgentLauncher } from '../shared/agent-launcher';
 import { appendImpact, assumptions, withContract, withHandoff, withImpact } from '../shared/handoff';
 import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../shared/skill-prompt';
 import { unanswered } from '../shared/answers';
+import { storedImpact } from '../shared/research-reads';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { planFromAgent, planQuestions, readPlan, withPlan } from './plan-record';
 import {
@@ -29,7 +30,8 @@ import {
   type TaskLimits,
 } from './plan-tasks';
 import { withNamedFileLines } from './named-file-lines';
-import { needsWait, parseNeeds } from '../shared/needs';
+import { parseNeeds } from '../../agent-result/legacy/needs';
+import { needsWait } from '../shared/needs';
 import { planFollowUp, SUBTASK_DECIDES } from './plan.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 
@@ -38,6 +40,7 @@ const INPUTS = {
   questions: lateInput(ARTIFACTS.questions),
   answers: lateInput(ARTIFACTS.answers),
   impact: lateInput(ARTIFACTS.impact),
+  researchResult: lateInput(ARTIFACTS.researchResult),
   repos: { ...lateInput(ARTIFACTS.repos), need: 'start' },
   addedRepos: lateInput(ARTIFACTS.addedRepos),
   instructions: instructionsInput('plan'),
@@ -76,7 +79,8 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     const { key } = ctx.opened.run;
     const questions = (await ctx.reread(ARTIFACTS.questions)) ?? '';
     const answers = (await ctx.reread(ARTIFACTS.answers)) ?? '';
-    if (unanswered(questions, answers).length > 0) {
+    const research = await ctx.reread(ARTIFACTS.researchResult);
+    if (unanswered(questions, research, answers).length > 0) {
       return {
         route: { to: 'wait', reason: 'questions are open' },
         summary: `${ctx.opened.startedAt} questions are open`,
@@ -96,7 +100,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     const names = checkedRepoNames((await ctx.reread(ARTIFACTS.repos)) ?? []);
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     const prior = await ctx.reread(ARTIFACTS.handoff);
-    const impact = await ctx.reread(ARTIFACTS.impact);
+    const impact = storedImpact(research, await ctx.reread(ARTIFACTS.impact));
     const sections = withNamedFileLines(
       withContract(
         withImpact(withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior), impact),

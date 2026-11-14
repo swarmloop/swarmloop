@@ -31,6 +31,7 @@ import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { BaseStep, type StepContext } from '../steps/base-step';
+import { ResearchStep } from '../steps/research/research.step';
 import { ImplementStep } from '../steps/implement/implement.step';
 import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
 import { PipelineStep } from '../steps/pipeline/pipeline.step';
@@ -38,11 +39,13 @@ import { StepRegistry } from '../steps/step.registry';
 import type { StepCapabilities, StepResult } from '../steps/contract/step-contract';
 import type { Step, StepSnapshot } from '../steps/step';
 import type { StepOptions } from '../core/pipeline-result';
+import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { StepKernel } from '../steps/step-kernel';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { Reconciler } from '../pipeline/reconciler';
+import { BlockAgentRunner, DEFAULT_RESEARCH } from './result-answer';
 
 const MACHINE_TOKEN = 'test-machine-token';
 
@@ -51,6 +54,8 @@ type FakeSandbox = Record<string, (...args: never[]) => Promise<unknown>>;
 interface TestAppOptions {
   root?: string;
   runner?: ScriptedFakeAgentRunner;
+  /** The agent of the real research step: it answers in result blocks. Without one it answers `DEFAULT_RESEARCH` every time. */
+  blocks?: BlockAgentRunner;
   /** Replaces calls of the fake sandbox, for a spec that needs a container. */
   sandbox?: FakeSandbox;
   /** Lines of the `.env` that replace the defaults of `testEnv`. */
@@ -113,6 +118,8 @@ export interface TestApp {
   clock: FakeClock;
   codeHost: FakeCodeHost;
   runner: ScriptedFakeAgentRunner;
+  /** The agent of the real research step. */
+  blocks: BlockAgentRunner;
   pipeline: PipelineService;
   url: string;
   /** The machine token as a bearer: the API takes no request without a session or this. */
@@ -132,6 +139,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   await writeFile(join(root, '.env'), testEnv(root, hostEnv));
   const clock = new FakeClock();
   const runner = options.runner ?? new ScriptedFakeAgentRunner();
+  const blocks = options.blocks ?? new BlockAgentRunner({}, { research: DEFAULT_RESEARCH });
   const codeHost = new FakeCodeHost();
   const steps = new Map<StepName, Step>();
   const registry = {
@@ -166,7 +174,12 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     .overrideProvider(StepRegistry)
     .useValue(registry)
     .overrideProvider(AGENT_RUNNER)
-    .useValue({ run: (input: { step: string }) => runner.run(input.step) })
+    .useValue({
+      run: async (input: { step: string }) => {
+        await runner.run(input.step);
+        return input.step === 'research' ? blocks.run(input) : undefined;
+      },
+    })
     .overrideProvider(SandboxService)
     .useValue({
       assertReady: () => Promise.resolve(),
@@ -182,6 +195,38 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     if (name === 'done') continue;
     steps.set(name, new ScriptedStep(name, module.get(StepKernel), module.get(AGENT_RUNNER), codeHost));
   }
+
+  // Research is always the real step, answered in blocks. Its worktrees are seeded when it is asked for them, and
+  // so are the requirements the scripted requirements step does not write.
+  const research = module.get(ResearchStep);
+  const seeded = (key: string): void => {
+    mkdirSync(join(root, 'worktrees', key), { recursive: true });
+  };
+  const withRequirements = async (key: string): Promise<void> => {
+    const documents = module.get(DocumentRepository);
+    const run = await module.get(RunRepository).findRun(key);
+    if (run && (await documents.latestBody(key, 'requirements')) === null) {
+      await documents.putDocument(run, 'requirements', '{"prompt":"Ship the field"}\n');
+    }
+  };
+  steps.set(
+    'research',
+    Object.create(research, {
+      missingInput: {
+        value: (key: string) => {
+          seeded(key);
+          return research.missingInput(key);
+        },
+      },
+      execute: {
+        value: async (key: string, stepOptions: StepOptions, snapshot?: StepSnapshot) => {
+          seeded(key);
+          await withRequirements(key);
+          return research.execute(key, stepOptions, snapshot);
+        },
+      },
+    }) as Step,
+  );
 
   if (options.realImplement) {
     // Only a split run takes the real step, so the runs of its subtasks go through the scripted one.
@@ -227,6 +272,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     clock,
     codeHost,
     runner,
+    blocks,
     pipeline: app.get(PipelineService),
     url: `http://127.0.0.1:${address.port}`,
     auth: { authorization: `Bearer ${options.env?.SWARMLOOP_TOKEN ?? MACHINE_TOKEN}` },
@@ -239,7 +285,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     },
     restart: async () => {
       await app.close();
-      return createTestApp({ ...options, root, runner, ownsRoot });
+      return createTestApp({ ...options, root, runner, blocks, ownsRoot });
     },
   };
 }

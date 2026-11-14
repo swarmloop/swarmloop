@@ -78,6 +78,7 @@ describe('crash matrix', () => {
     const waiting = await runs.openWaiting(KEY, '');
     waiting.currentStep = 'research';
     await runs.saveRun(waiting);
+    await app.app.get(DocumentRepository).putDocument(waiting, 'requirements', '{"prompt":"Ship the field"}\n');
     const crashed = crashAt('after-accept');
     void app.app.get(CommandService).accept('resume', KEY, {});
     await crashed;
