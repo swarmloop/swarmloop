@@ -16,28 +16,42 @@ describe('environmentNote', () => {
     expect(note).not.toContain('the commit refuses it');
     expect(note).not.toContain('setup `npm ci` failed');
     expect(note).toContain('run the setup again: `npm ci`');
-    expect(note).toContain('narrowest command');
   });
 
   it('tells implement-improve that the checks already ran and the server gate comes after it', () => {
-    const note = environmentNote(record, 'implement-improve');
-    expect(note).toContain('The implement agent already ran the full checks in its session.');
-    expect(note).toContain('When this pass changes no file, do not run them again.');
-    expect(note).not.toContain('always before your final summary');
-    expect(note).toContain('- `npm test`\n- `npm run lint`');
+    const note = environmentNote(record);
+    expect(note).toContain('The checks step runs these after your turn:\n- `npm test`\n- `npm run lint`');
   });
 
   it('keeps the implement note except for the server sentence', () => {
-    const note = environmentNote(record, 'implement');
-    expect(note).toBe(environmentNote(record));
-    expect(note).toContain('always before your final summary');
+    const note = environmentNote(record);
     expect(note).toContain(
       'The server runs every declared check after the implement-improve pass, before code review;',
     );
   });
 
   it('asks the agent to find the checks when the repository names none', () => {
-    expect(environmentNote({ ...record, config: { ...record.config, checks: [] } })).toContain('names no checks');
+    expect(environmentNote({ ...record, config: { ...record.config, checks: [] } })).toContain(
+      'The repository names no checks, so the checks step runs none; CI on the pushed branch is the first full check.',
+    );
+  });
+
+  it('tells the agent nothing about when to run checks, with checks and with none', () => {
+    const none = { ...record, config: { ...record.config, checks: [] } };
+    for (const note of [environmentNote(record), environmentNote(none)]) {
+      for (const phrase of [
+        'Run these checks',
+        'before your final summary',
+        'Run the full checks',
+        'narrowest command',
+        'run them again',
+        'run the failing command',
+        'already ran',
+        'Run the tests closest',
+      ]) {
+        expect(note).not.toContain(phrase);
+      }
+    }
   });
 
   it('passes on a failed setup with its last lines', () => {

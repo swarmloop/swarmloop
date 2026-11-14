@@ -1,6 +1,7 @@
 import { isChecksReturn, isPipelineReturn } from '../follow-up';
 import { reviewReturn } from '../shared/handoff';
 import type { FailedCommand } from '../../environment/environment-types';
+import { NEAR_TESTS_RULE } from '../shared/near-tests-rule';
 import { TASK_SCOPE } from '../shared/requirements-brief';
 import { implementation, implementationAfterReview } from '../../agent-result/definitions/implementation';
 import {
@@ -33,8 +34,6 @@ export function rebaseConflictPrompt(input: {
   ].join('\n');
 }
 
-const NEAR_TESTS_RULE =
-  "Run the tests closest to the change: the spec files of the changed code and the ones that import it. Do not run the project's full check commands. The checks step runs them right after. The one exception is a command that came back red.";
 const EDIT_TOOLS_RULE =
   "Change files with the runtime's own edit and write tools, and read them with its read tool. Use the shell to run commands, not to rewrite files.";
 const RERUN_RULE =

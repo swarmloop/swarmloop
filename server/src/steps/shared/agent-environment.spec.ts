@@ -91,7 +91,9 @@ describe('agentWorkplace', () => {
     expect(place.prompt).toContain(
       'A sandbox test ban copied from those stages into a checklist does not restrict this project environment.',
     );
-    expect(place.prompt).toContain('After a pipeline return, run the failing command here first');
+    expect(place.prompt).toContain(
+      'The repository names no checks, so the checks step runs none; CI on the pushed branch is the first full check.',
+    );
   });
 
   it('lets an agent without a project environment reach the registries', async () => {
