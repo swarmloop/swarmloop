@@ -20,8 +20,8 @@ const view = (settings: SettingsView['settings'] = {}): SettingsView => ({
   ],
   modelsLimited: false,
   server: [
-    { name: 'MAX_RUN_USD', secret: false, value: '5' },
-    { name: 'SWARMLOOP_SECRET', secret: true, value: 'set' },
+    { name: 'MAX_RUN_USD', secret: false, source: 'default', value: '5' },
+    { name: 'SWARMLOOP_SECRET', secret: true, source: 'default', value: 'set' },
   ],
 });
 const own = (...entries: [string, string][]): SettingsView['settings'] => ({
@@ -198,6 +198,7 @@ describe('SettingsPage', () => {
       {
         name: 'CHECKS_PARALLEL',
         secret: false,
+        source: 'default',
         value: '3',
         description: 'Check commands that run at once on the whole server',
       },
@@ -223,5 +224,25 @@ describe('SettingsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Server' }));
     expect(screen.getByText('MAX_RUN_USD')).toBeInTheDocument();
     expect(screen.getByText('set')).toBeInTheDocument();
+  });
+
+  it('shows where each server setting comes from, secrets included', async () => {
+    const user = userEvent.setup();
+    const sourced = view();
+    sourced.server = [
+      { name: 'MAX_RUN_USD', secret: false, source: 'default', value: '5' },
+      { name: 'MAX_RETURNS', secret: false, source: '.env', value: '7' },
+      { name: 'SWARMLOOP_SECRET', secret: true, source: 'environment', value: 'set' },
+    ];
+    vi.mocked(getSettings).mockResolvedValue(sourced);
+    render(<SettingsPage />);
+    await screen.findByRole('button', { name: 'Save' });
+
+    await user.click(screen.getByRole('button', { name: 'Server' }));
+
+    expect(screen.getByText('default')).toBeInTheDocument();
+    expect(screen.getByText('.env')).toBeInTheDocument();
+    expect(screen.getByText('environment')).toBeInTheDocument();
+    expect(screen.getByText('SWARMLOOP_SECRET').nextElementSibling).toHaveTextContent('setenvironment');
   });
 });

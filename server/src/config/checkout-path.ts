@@ -15,10 +15,10 @@ export function resolveCheckoutPath(
   if (stored.length > 0 && isAbsolute(stored)) {
     return stored;
   }
-  return resolve(checkoutsRootPath(repoRoot, checkoutsRoot), stored.length > 0 ? stored : name);
+  return resolve(resolveCheckoutsRoot(repoRoot, checkoutsRoot), stored.length > 0 ? stored : name);
 }
 
-function checkoutsRootPath(repoRoot: string, checkoutsRoot: string | undefined): string {
+export function resolveCheckoutsRoot(repoRoot: string, checkoutsRoot: string | undefined): string {
   const configured = checkoutsRoot?.trim() ?? '';
   if (configured.length === 0) {
     throw new SwarmloopError('CHECKOUTS_ROOT is missing');
@@ -38,7 +38,7 @@ export function assertRepoAllowed(repos: string[], name: string): void {
 }
 
 export function listGitProjects(repoRoot: string, checkoutsRoot: string | undefined, repos: string[]): string[] {
-  const root = checkoutsRootPath(repoRoot, checkoutsRoot);
+  const root = resolveCheckoutsRoot(repoRoot, checkoutsRoot);
   if (!existsSync(root) || !statSync(root).isDirectory()) {
     throw new SwarmloopError('CHECKOUTS_ROOT is missing');
   }
