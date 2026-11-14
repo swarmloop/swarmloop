@@ -2,6 +2,7 @@ import type { Effort } from './effort';
 import type { CommandInput } from './command';
 import type { MergeOutcome, RunAction, RunState, StateReason } from './run-state';
 import type { TaskLayer } from './task-layer';
+import type { SubtaskStatus } from './subtask';
 
 export type { SettingsBody, StoredAgents } from './settings';
 export type {
@@ -35,6 +36,14 @@ export interface RunSummary {
   mergeWait?: string;
   /** Set on a run with subtask runs only: its own cost plus its subtasks', and the wall clock from its start to its end. */
   epic?: { usd: number; durationMs: number };
+  /** The honest state of the run, the same word the run page shows. */
+  state: RunState;
+  /** Why the run is in that state: the limit, the outage or the block. Null when there is nothing to add. */
+  stateReason: StateReason | null;
+  /** Set on a subtask whose task is in its parent's plan: its place in the plan and its live status. */
+  task?: { index: number; status: SubtaskStatus };
+  /** Set on a run whose plan has tasks: how many tasks of the whole plan show each status. */
+  taskCounts?: Partial<Record<SubtaskStatus, number>>;
 }
 
 export interface RunsView {

@@ -16,6 +16,8 @@ export function runSummary(): RunSummary {
     stepStartedAt: null,
     durationMs: 0,
     usd: 0,
+    state: 'running',
+    stateReason: null,
   };
 }
 
