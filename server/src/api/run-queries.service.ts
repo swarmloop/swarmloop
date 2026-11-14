@@ -23,6 +23,7 @@ import type { StepEventPage } from '../contract/step-events';
 import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
 import type { LiveSample } from '../contract/live';
 import { mergeWaits, parentOf } from './run-view/merge-wait';
+import { listStates } from './run-view/list-state';
 import { childrenByParent, epicTotal, listExtras } from './run-view/status';
 import { REVIEW_KINDS, STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
@@ -84,6 +85,7 @@ export class RunQueriesService {
     const keys = new Map(runs.map((run) => [run.id, run.key]));
     const childrenOf = childrenByParent(runs);
     const waits = await mergeWaits(this.documents, runs, keys);
+    const states = await listStates(this.documents, this.checkouts, runs, keys, (key) => this.pipeline.claimed(key));
     return {
       runs: runs.map((run) => ({
         key: run.key,
@@ -97,6 +99,7 @@ export class RunQueriesService {
         usd: this.usdOf(run),
         ...listExtras(run, keys),
         ...waits.get(run.key),
+        ...states[run.key],
         ...epicTotal(run, childrenOf.get(run.id) ?? [], this.usdOf, this.clock.now()),
       })),
     };
