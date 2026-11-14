@@ -39,8 +39,8 @@ function setup(env: Record<string, string>, epic: boolean) {
     new FakeClock(),
     {
       cooling: async () => new Set(cooling),
-      set: async (runtime: string) => {
-        cooling.push(runtime);
+      set: async (key: { runtime: string }) => {
+        cooling.push(key.runtime);
       },
       earliest: async () => ({ until: 0, resumeAt: 1 }),
     } as never,
