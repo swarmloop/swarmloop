@@ -4,7 +4,7 @@ import type { ReactElement } from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { Suspense, useState } from 'react';
 import AddIcon from '@mui/icons-material/Add';
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
@@ -15,7 +15,7 @@ import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
 import { NewRunDialog } from '../features/new-run';
 import { ReadinessStatus, useReadiness } from '../features/readiness';
-import { RemoveRunDialog, RunList, useRuns } from '../features/runs';
+import { RemoveRunDialog, RunColumn, useRuns } from '../features/runs';
 import { Account, Shell, useNewRun } from '../features/shell';
 
 const DrawerWidth = 280;
@@ -49,8 +49,7 @@ function DashboardFrame({
   const { runs, now, error, connected, removeRun } = useRuns();
   const openNewRun = useNewRun();
   const { blocker } = useReadiness();
-  const [query, setQuery] = useState('');
-  const [pendingRemove, setPendingRemove] = useState<RunSummary | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<{ run: RunSummary; search: string } | null>(null);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const matched = pathname.match(/^\/runs\/([^/]+)/)?.[1] ?? '';
@@ -60,10 +59,6 @@ function DashboardFrame({
   } catch {
     selected = matched;
   }
-  const visible = useMemo(
-    () => runs.filter((run) => run.key.toLowerCase().includes(query.trim().toLowerCase())),
-    [runs, query],
-  );
 
   function closeRemove(): void {
     if (removing) {
@@ -77,14 +72,15 @@ function DashboardFrame({
     if (!pendingRemove) {
       return;
     }
-    const key = pendingRemove.key;
+    const { run, search } = pendingRemove;
+    const key = run.key;
     setRemoving(true);
     setRemoveError(null);
     try {
       await removeRun(key);
       setPendingRemove(null);
       if (selected === key) {
-        router.push('/');
+        router.push(`/${search}` as Route);
       }
     } catch (cause: unknown) {
       setRemoveError(cause instanceof Error ? cause.message : 'remove failed');
@@ -167,20 +163,19 @@ function DashboardFrame({
       >
         <Toolbar />
         <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          <RunList
-            query={query}
-            onQuery={setQuery}
-            runs={runs}
-            visible={visible}
-            selected={selected}
-            now={now}
-            error={error}
-            onOpen={(key) => router.push(`/runs/${key}` as Route)}
-            onRemove={(run) => {
-              setRemoveError(null);
-              setPendingRemove(run);
-            }}
-          />
+          <Suspense fallback={null}>
+            <RunColumn
+              runs={runs}
+              selected={selected}
+              now={now}
+              error={error}
+              onOpen={(key, search) => router.push(`/runs/${key}${search}` as Route)}
+              onRemove={(run, search) => {
+                setRemoveError(null);
+                setPendingRemove({ run, search });
+              }}
+            />
+          </Suspense>
         </Box>
         <Box sx={{ borderTop: 1, borderColor: 'divider' }}>
           <Account />
@@ -191,7 +186,7 @@ function DashboardFrame({
         <Box sx={{ px: { xs: 2, md: 4 }, py: 3, maxWidth: 1180, minWidth: 0 }}>{children}</Box>
       </Box>
       <RemoveRunDialog
-        run={pendingRemove}
+        run={pendingRemove?.run ?? null}
         removing={removing}
         error={removeError}
         onClose={closeRemove}

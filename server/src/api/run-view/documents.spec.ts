@@ -35,17 +35,29 @@ describe('taskLayers', () => {
       {
         layer: 0,
         tasks: [
-          { id: 'a', title: 'A', files: ['a.ts'], proof: 'a.spec.ts', depends: [], status: 'waiting' },
-          { id: 'c', title: 'C', files: ['c.ts'], proof: 'c.spec.ts', depends: [], status: 'waiting' },
+          { id: 'a', index: 0, title: 'A', files: ['a.ts'], proof: 'a.spec.ts', depends: [], status: 'waiting' },
+          { id: 'c', index: 2, title: 'C', files: ['c.ts'], proof: 'c.spec.ts', depends: [], status: 'waiting' },
         ],
       },
       {
         layer: 1,
-        tasks: [{ id: 'b', title: 'B', files: ['b.ts'], proof: 'b.spec.ts', depends: ['a'], status: 'waiting' }],
+        tasks: [
+          { id: 'b', index: 1, title: 'B', files: ['b.ts'], proof: 'b.spec.ts', depends: ['a'], status: 'waiting' },
+        ],
       },
       {
         layer: 2,
-        tasks: [{ id: 'd', title: 'D', files: ['d.ts'], proof: 'd.spec.ts', depends: ['b', 'c'], status: 'waiting' }],
+        tasks: [
+          {
+            id: 'd',
+            index: 3,
+            title: 'D',
+            files: ['d.ts'],
+            proof: 'd.spec.ts',
+            depends: ['b', 'c'],
+            status: 'waiting',
+          },
+        ],
       },
     ]);
   });

@@ -1,13 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReadinessProvider } from '../features/readiness';
 import { getReadiness, getSession, listProjects, listRuns } from '../lib/endpoints';
 import { QueryWrapper } from '../test/query-wrapper';
 import { DashboardShell } from './dashboard-shell';
 
-vi.mock('next/navigation', () => ({ usePathname: vi.fn(), useRouter: vi.fn() }));
+vi.mock('next/navigation', () => ({ usePathname: vi.fn(), useRouter: vi.fn(), useSearchParams: vi.fn() }));
 vi.mock('../lib/endpoints', () => ({
   getReadiness: vi.fn(),
   listRuns: vi.fn(),
@@ -38,6 +38,7 @@ function renderShell(): void {
 beforeEach(() => {
   vi.mocked(getSession).mockResolvedValue({ user: null });
   vi.mocked(usePathname).mockReturnValue('/');
+  vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams() as unknown as ReturnType<typeof useSearchParams>);
   vi.mocked(useRouter).mockReturnValue({ push: vi.fn() } as unknown as ReturnType<typeof useRouter>);
   vi.mocked(listRuns).mockResolvedValue({ runs: [] });
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });

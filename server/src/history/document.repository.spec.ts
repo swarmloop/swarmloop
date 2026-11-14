@@ -26,4 +26,36 @@ describe('DocumentRepository', () => {
       await db.close();
     }
   });
+
+  it('reads only the latest document of the asked kinds for each of the asked runs', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const documents = db.app.get(DocumentRepository);
+      const runs = db.app.get(RunRepository);
+      const first = await runs.openWaiting('run-1', '/target');
+      const second = await runs.openWaiting('run-2', '/target');
+      const other = await runs.openWaiting('run-3', '/target');
+      await documents.putDocument(first, 'subtasks', 'old plan');
+      await documents.putDocument(first, 'subtasks', 'new plan');
+      await documents.putDocument(first, 'error', 'first error');
+      await documents.putDocument(first, 'contract', 'not asked for');
+      await documents.putDocument(second, 'error', 'second error');
+      await documents.putDocument(other, 'subtasks', 'not asked run');
+
+      const found = await documents.latestDocuments([first.id, second.id], ['subtasks', 'error']);
+
+      expect(found.map(({ runId, kind, body }) => [runId, kind, body])).toEqual([
+        [first.id, 'subtasks', 'new plan'],
+        [first.id, 'error', 'first error'],
+        [second.id, 'error', 'second error'],
+      ]);
+      // More runs than the 999 variables an older SQLite takes in one statement.
+      const many = [first.id, ...Array.from({ length: 1500 }, (_, n) => 10_000 + n)];
+      expect((await documents.latestDocuments(many, ['subtasks'])).map(({ body }) => body)).toEqual(['new plan']);
+      expect(await documents.latestDocuments([], ['subtasks'])).toEqual([]);
+      expect(await documents.latestDocuments([other.id], ['error'])).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  });
 });

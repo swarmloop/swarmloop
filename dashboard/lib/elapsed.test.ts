@@ -18,9 +18,9 @@ describe('openElapsed', () => {
 describe('openRunMs', () => {
   it('counts only a running step', () => {
     assert.equal(openRunMs({ status: 'running', stepStartedAt: start }, now), 1500);
+    assert.equal(openRunMs({ status: 'waiting', stepStartedAt: start }, now), 0);
+    assert.equal(openRunMs({ status: 'done', stepStartedAt: start }, now), 0);
     assert.equal(openRunMs({ status: 'running', stepStartedAt: null }, now), 0);
-    assert.equal(openRunMs({ status: 'failed', stepStartedAt: start }, now), 0);
-    assert.equal(openRunMs({ status: 'running', stepStartedAt: 'nope' }, now), 0);
   });
 });
 

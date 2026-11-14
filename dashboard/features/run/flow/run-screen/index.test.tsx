@@ -74,6 +74,7 @@ describe('RunScreen', () => {
         tasks: [
           {
             id: 'a',
+            index: 0,
             title: 'Add the column',
             files: ['a.ts'],
             proof: 'a.spec.ts',
@@ -87,6 +88,7 @@ describe('RunScreen', () => {
         tasks: [
           {
             id: 'b',
+            index: 1,
             title: 'Send it',
             files: ['b.ts', 'c.ts'],
             proof: 'b.spec.ts',
@@ -100,7 +102,6 @@ describe('RunScreen', () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
-    expect(region).toHaveTextContent('Stage 1');
     expect(region).toHaveTextContent('Add the column');
     expect(region).not.toHaveTextContent('b.spec.ts');
     expect(region).toHaveTextContent('2 files · proof');
@@ -110,14 +111,17 @@ describe('RunScreen', () => {
     const tasks = [
       {
         layer: 0,
-        tasks: [{ id: 'a', title: 'Add the column', files: [], proof: 'a', depends: [], status: 'merged' as const }],
+        tasks: [
+          { id: 'a', index: 0, title: 'Add the column', files: [], proof: 'a', depends: [], status: 'merged' as const },
+        ],
       },
       {
         layer: 1,
         tasks: [
-          { id: 'b', title: 'Send it', files: [], proof: 'b', depends: [], status: 'blocked' as const },
+          { id: 'b', index: 1, title: 'Send it', files: [], proof: 'b', depends: [], status: 'blocked' as const },
           {
             id: 'c',
+            index: 2,
             title: 'Show it',
             files: [],
             proof: 'c',
@@ -150,6 +154,7 @@ describe('RunScreen', () => {
         tasks: [
           {
             id: 'b',
+            index: 0,
             title: 'Send it',
             files: [],
             proof: 'b',
@@ -183,6 +188,7 @@ describe('RunScreen', () => {
             tasks: [
               {
                 id: 'a',
+                index: 0,
                 title: 'Add the column',
                 files: [],
                 proof: 'a',

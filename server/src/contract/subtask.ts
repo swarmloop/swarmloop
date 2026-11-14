@@ -109,10 +109,8 @@ interface TaskRunState {
   currentStep: string;
 }
 
-/** The state every page shows for a task. A task the parent closed keeps its stored status; any other task with a run shows that run's own state; one without a run waits. */
-export function shownTaskState(task: Subtask, run?: TaskRunState): SubtaskStatus {
-  if (settled(task)) return task.status;
-  if (!run) return 'waiting';
+/** The status a task's own run gives it: its state, and for a waiting run its step. */
+export function runTaskStatus(run: TaskRunState): SubtaskStatus {
   switch (run.state) {
     case 'done':
       return 'green';
@@ -133,6 +131,12 @@ export function shownTaskState(task: Subtask, run?: TaskRunState): SubtaskStatus
     case 'stopping':
       return 'running';
   }
+}
+
+/** The state every page shows for a task. A task the parent closed keeps its stored status; any other task with a run shows that run's own state; one without a run waits. */
+export function shownTaskState(task: Subtask, run?: TaskRunState): SubtaskStatus {
+  if (settled(task)) return task.status;
+  return run ? runTaskStatus(run) : 'waiting';
 }
 
 /** `4/7 merged · 2 running · 1 waiting`. A count of zero is left out. */

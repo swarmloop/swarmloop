@@ -193,6 +193,98 @@ describe('runs api', () => {
     }
   });
 
+  it('gives a task run the reason of its wait, so a limit wait is told from a wait for a person', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-task-wait-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const parent = await runs.begin('proj-wait-task', 'implement');
+      await documents.putDocument(
+        parent,
+        'requirements',
+        JSON.stringify({ prompt: 'x', plan: { items: ['x'], decision: 'approve' } }),
+      );
+      const task = (id: string) => ({
+        id,
+        title: id,
+        description: '',
+        depends: [],
+        files: [],
+        proof: '',
+        status: 'waiting',
+      });
+      await documents.putDocument(parent, 'subtasks', JSON.stringify([task('a')]));
+      const child = await runs.openSubtask('proj-wait-task-a', parent.id, 'a');
+      child.status = 'waiting';
+      child.currentStep = 'implement';
+      child.stateReason = JSON.stringify({
+        code: 'RUNTIME_LIMIT',
+        message: 'limit',
+        limit: { runtime: 'x', resumesAt: '2026-11-13T10:00:00Z' },
+      });
+      await runs.saveRun(child);
+
+      const shown = (await app.get(RunQueriesService).flow('proj-wait-task')).tasks?.[0]?.tasks[0];
+
+      expect(shown?.run).toMatchObject({ state: 'waiting', stateReason: { code: 'RUNTIME_LIMIT' } });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('reads a task that waits on open questions the way the run list does, so both pages put it first', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-task-ask-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const parent = await runs.begin('proj-ask', 'implement');
+      await documents.putDocument(
+        parent,
+        'requirements',
+        JSON.stringify({ prompt: 'x', plan: { items: ['x'], decision: 'approve' } }),
+      );
+      const task = (id: string) => ({
+        id,
+        title: id,
+        description: '',
+        depends: [],
+        files: [],
+        proof: '',
+        status: 'waiting',
+      });
+      await documents.putDocument(parent, 'subtasks', JSON.stringify([task('a'), task('b')]));
+      const working = await runs.openSubtask('proj-ask-a', parent.id, 'a');
+      working.status = 'running';
+      working.currentStep = 'implement';
+      await runs.saveRun(working);
+      const asking = await runs.openSubtask('proj-ask-b', parent.id, 'b');
+      asking.status = 'waiting';
+      asking.currentStep = 'research';
+      await runs.saveRun(asking);
+      await documents.putDocument(asking, 'questions', '- Which branch?\n');
+
+      const queries = app.get(RunQueriesService);
+      const shown = (await queries.flow('proj-ask')).tasks?.[0]?.tasks ?? [];
+      const listed = (await queries.list()).runs;
+
+      const reading = (state: string | undefined, code: string | undefined) => [state, code];
+      expect(shown.map((item) => reading(item.run?.state, item.run?.stateReason?.code))).toEqual([
+        reading('running', undefined),
+        reading('waiting', 'NEEDS_ANSWERS'),
+      ]);
+      for (const item of shown) {
+        const row = listed.find((run) => run.key === item.run?.key);
+        expect(reading(row?.state, row?.stateReason?.code)).toEqual(
+          reading(item.run?.state, item.run?.stateReason?.code),
+        );
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
   it('gives the parent its epic totals and depends on each task', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-epic-'));
     const app = await boot(root);

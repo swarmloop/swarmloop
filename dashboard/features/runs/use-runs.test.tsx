@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { listRuns, removeRun } from '../../lib/endpoints';
 import { receive } from '../../test/fake-socket';
 import { runSummary } from '../../test/fixtures';
@@ -108,5 +108,42 @@ describe('useRuns', () => {
 
     await waitFor(() => expect(screen.queryByText('Run one')).not.toBeInTheDocument());
     expect(screen.getByText('Run two')).toBeInTheDocument();
+  });
+});
+
+describe('useRuns clock', () => {
+  function NowProbe() {
+    const { now } = useRuns();
+    return <p data-testid="now">{now}</p>;
+  }
+  const shown = () => Number(screen.getByTestId('now').textContent);
+
+  async function renderAt(status: string): Promise<void> {
+    vi.useFakeTimers();
+    vi.mocked(listRuns).mockResolvedValue({ runs: [{ ...runSummary(), status }] });
+    render(<NowProbe />, { wrapper: LiveBridgeProvider });
+    await act(async () => {});
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('moves the time on every second while a run works', async () => {
+    await renderAt('running');
+    const start = shown();
+
+    act(() => vi.advanceTimersByTime(1000));
+
+    expect(shown() - start).toBe(1000);
+  });
+
+  it('keeps moving the time on when no run works, so relative times and day headers do not freeze', async () => {
+    await renderAt('waiting');
+    const start = shown();
+
+    act(() => vi.advanceTimersByTime(2 * 60_000));
+
+    expect(shown() - start).toBeGreaterThanOrEqual(60_000);
   });
 });

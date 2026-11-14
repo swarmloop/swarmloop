@@ -202,10 +202,16 @@ describe('ReadinessService', () => {
     const infoCalls = (): number => docker.mock.calls.filter(([args]) => (args as string[])[0] === 'info').length;
     expect(infoCalls()).toBe(1);
 
+    // The refresh ends with the time it stamps the report with, after its real file and socket checks: wait for that, not for a number of turns.
+    const stamped = new Promise<void>((done) => {
+      const iso = clock.iso.bind(clock);
+      jest.spyOn(clock, 'iso').mockImplementation(() => {
+        done();
+        return iso();
+      });
+    });
     release.splice(0).forEach((done) => done());
-    for (let turns = 0; turns < 50 && (await service.report()) === first; turns++) {
-      await new Promise((flushed) => setImmediate(flushed));
-    }
+    await stamped;
     await new Promise((flushed) => setImmediate(flushed));
     expect(infoCalls()).toBe(1);
     expect((await service.report()).checkedAt).toBe(clock.iso());

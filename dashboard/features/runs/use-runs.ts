@@ -5,6 +5,9 @@ import { listRuns, removeRun as deleteRun } from '../../lib/endpoints';
 import { useLiveActions, useLiveBridge } from '../shell';
 import type { RunSummary } from '@contract/api';
 
+const WORKING_TICK_MS = 1000;
+const IDLE_TICK_MS = 30_000;
+
 export function useRuns(): {
   runs: RunSummary[];
   now: number;
@@ -40,13 +43,11 @@ export function useRuns(): {
     setError(null);
   }, [runs]);
 
+  // The time of a working step counts in seconds. With nothing working, the relative times and day headers still move on.
   const running = runs.some((run) => run.status === 'running');
   useEffect(() => {
-    if (!running) {
-      return;
-    }
     setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    const timer = setInterval(() => setNow(Date.now()), running ? WORKING_TICK_MS : IDLE_TICK_MS);
     return () => clearInterval(timer);
   }, [running]);
 

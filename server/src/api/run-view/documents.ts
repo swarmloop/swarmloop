@@ -118,12 +118,13 @@ export function taskLayers(documents: DocumentEntity[], children: TaskRuns = new
     return known.length === 0 ? 0 : 1 + Math.max(...known.map((id) => depth(byId.get(id)!, [...seen, task.id])));
   };
   const layers = new Map<number, TaskLayer['tasks']>();
-  for (const task of tasks) {
+  for (const [index, task] of tasks.entries()) {
     const layer = depth(task);
     layers.set(layer, [
       ...(layers.get(layer) ?? []),
       {
         id: task.id,
+        index,
         title: task.title,
         files: task.files,
         proof: task.proof,
