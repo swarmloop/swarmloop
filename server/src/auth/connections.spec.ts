@@ -8,6 +8,7 @@ import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { RemoteRepositories } from '../steps/prepare/remote-repositories.service';
+import { FAKE_MODEL_KEY } from '../testing/env.spec-helpers';
 import { createTestApp, type TestApp } from '../testing/test-app';
 import { redirectOf } from './login-problem.spec-helpers';
 import { GithubAppService } from './github-app.service';
@@ -431,6 +432,7 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     let failing = true;
     app = await createTestApp({
       env: {
+        ...FAKE_MODEL_KEY,
         GITHUB_BASE_URL: fake.url,
         SWARMLOOP_ALLOW: 'github:alice',
         SWARMLOOP_TOKEN: TOKEN,

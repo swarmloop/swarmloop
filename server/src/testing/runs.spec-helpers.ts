@@ -4,10 +4,10 @@ import { Test } from '@nestjs/testing';
 import { EnvironmentService } from '../environment/environment.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, writeFileSync } from 'fs';
-import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import type { Repository } from 'typeorm';
 import { DenyPathEntity } from '../history/entities';
+import { writeEnvOverrides } from './env.spec-helpers';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { AuthModule } from '../auth/auth.module';
 import { HistoryModule } from '../history/history.module';
@@ -48,46 +48,14 @@ export async function boot(
     startDetached: jest.fn(),
   },
   prepare: { removeWorktrees: jest.Mock } = { removeWorktrees: jest.fn().mockResolvedValue(undefined) },
+  env: Record<string, string> = {},
 ) {
-  await writeFile(
-    join(root, '.env'),
-    [
-      'REQUIREMENTS_VIA=direct',
-      'ISSUE_TRACKER=jira',
-      'JIRA_BASE_URL=',
-      'JIRA_EMAIL=',
-      'JIRA_API_TOKEN=',
-      'GITLAB_BASE_URL=https://gitlab.example',
-      'GITLAB_TOKEN=token',
-      'GITHUB_BASE_URL=',
-      'GITHUB_TOKEN=',
-      'CURSOR_API_KEY=test-cursor-key',
-      'ANTHROPIC_API_KEY=',
-      'MAX_AGENT_CALLS=20',
-      'MAX_RETURNS=3',
-      'MAX_LAUNCHES=3',
-      'MAX_RUN_USD=25',
-      'IDLE_TIMEOUT_MS=900000',
-      'TICK_MS=15000',
-      'REQUIREMENTS_TIMEOUT_MS=600000',
-      'RESEARCH_TIMEOUT_MS=900000',
-      'PLAN_TIMEOUT_MS=1200000',
-      'IMPLEMENT_TIMEOUT_MS=1800000',
-      'CODE_REVIEW_TIMEOUT_MS=900000',
-      'MERGE_REQUEST_TIMEOUT_MS=600000',
-      'PIPELINE_TIMEOUT_MS=1800000',
-      'PIPELINE_START_TIMEOUT_MS=180000',
-      'AGENTS_PLAN=cursor:opus-5.5-extra-high',
-      'AGENTS_IMPLEMENT=cursor:grok-4.7',
-      'AGENTS_REVIEW=cursor:opus-5.5-extra-high',
-      'AGENTS_SUBTASK_PLAN=cursor:opus-5.5-extra-high',
-      'AGENTS_SUBTASK_IMPLEMENT=cursor:grok-4.7',
-      'AGENTS_SUBTASK_REVIEW=cursor:opus-5.5-extra-high',
-      'SWARMLOOP_API_PORT=3920',
-      'SWARMLOOP_API_HOST=127.0.0.1',
-      `SWARMLOOP_ROOT=${root}`,
-    ].join('\n'),
-  );
+  await writeEnvOverrides(root, {
+    GITLAB_BASE_URL: 'https://gitlab.example',
+    GITLAB_TOKEN: 'token',
+    SWARMLOOP_ROOT: root,
+    ...env,
+  });
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), HistoryModule, LiveModule, AuthModule],
     providers: [

@@ -19,6 +19,8 @@ describe('run driver blocks', () => {
     const { state, reason, actions } = await drive(
       { 'code-review': () => ({ outcome: 'waiting', exitCode: 0, moveTo: 'implement' }) },
       { auto: true },
+      undefined,
+      { MAX_RETURNS: '3' },
     );
     expect(state).toBe('blocked');
     expect(reason?.code).toBe('LOOP_LIMIT');
@@ -35,6 +37,8 @@ describe('run driver blocks', () => {
         },
       },
       { auto: true },
+      undefined,
+      { MAX_RUN_USD: '25' },
     );
     expect(state).toBe('blocked');
     expect(reason?.code).toBe('SPEND_LIMIT');
@@ -53,6 +57,8 @@ describe('run driver blocks', () => {
         },
       },
       { auto: true },
+      undefined,
+      { MAX_LAUNCHES: '3' },
     );
     expect(state).toBe('failed');
     expect(launches).toBe(3);

@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { mkdirSync } from 'fs';
-import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import type { AddressInfo } from 'net';
 import type { Server } from 'http';
@@ -21,10 +21,12 @@ import { ReadinessController } from '../api/readiness.controller';
 import { RunsController } from '../api/runs.controller';
 import { ReadinessModule } from '../readiness/readiness.module';
 import { ShellService } from '../api/shell.service';
-import { AGENT_RUNNER } from '../agent/agent-runner';
+import { AGENT_RUNNER, type AgentRunInput } from '../agent/agent-runner';
 import { SwarmloopConfigModule } from '../config/config.module';
 import type { SwarmloopEnv } from '../config/env';
 import { Clock } from '../core/clock';
+import { writeEnvOverrides } from './env.spec-helpers';
+import { realStep } from './real-steps';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { STEPS, type StepName } from '../contract/steps';
 import { HistoryModule } from '../history/history.module';
@@ -52,11 +54,15 @@ type FakeSandbox = Record<string, (...args: never[]) => Promise<unknown>>;
 
 interface TestAppOptions {
   root?: string;
-  runner?: ScriptedFakeAgentRunner;
+  runner?: FakeAgentRunner;
   /** Replaces calls of the fake sandbox, for a spec that needs a container. */
   sandbox?: FakeSandbox;
-  /** Lines of the `.env` that replace the defaults of `testEnv`. */
+  /** Lines of the `.env` on top of the isolation lines; every other setting is the shipped default. */
   env?: Record<string, string>;
+  /** No `.env` is written: the isolation values are the launch environment, and everything else is the shipped default. */
+  envFile?: boolean;
+  /** These steps are the real ones. The others stay scripted. */
+  realSteps?: StepName[];
   /** A split run takes the real implement step, with its passes, in place of the scripted one. */
   realImplement?: boolean;
   /** The merge-request and pipeline steps are the real ones, on a gitlab host the spec swaps for a fake. The other steps stay scripted. */
@@ -67,7 +73,13 @@ interface TestAppOptions {
   ownsRoot?: boolean;
 }
 
-export class ScriptedFakeAgentRunner {
+/** What stands for the agent process: it is told the step and the whole launch, and answers a real step's launch. */
+export interface FakeAgentRunner {
+  readonly steps: string[];
+  run(step: string, input: AgentRunInput): Promise<unknown>;
+}
+
+export class ScriptedFakeAgentRunner implements FakeAgentRunner {
   readonly steps: string[] = [];
 
   run(step: string): Promise<void> {
@@ -114,7 +126,7 @@ export interface TestApp {
   root: string;
   clock: FakeClock;
   codeHost: FakeCodeHost;
-  runner: ScriptedFakeAgentRunner;
+  runner: FakeAgentRunner;
   pipeline: PipelineService;
   url: string;
   /** The machine token as a bearer: the API takes no request without a session or this. */
@@ -131,7 +143,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   const hostEnv = options.realHost
     ? { GITLAB_BASE_URL: 'https://gitlab.example', GITLAB_TOKEN: 'token', ...options.env }
     : options.env;
-  await writeFile(join(root, '.env'), testEnv(root, hostEnv));
+  const isolation = isolationEnv(root, hostEnv);
+  const envFile = join(root, '.env');
+  if (options.envFile !== false) await writeEnvOverrides(root, isolation);
   const clock = new FakeClock();
   const runner = options.runner ?? new ScriptedFakeAgentRunner();
   const codeHost = new FakeCodeHost();
@@ -142,7 +156,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   };
   const module = await Test.createTestingModule({
     imports: [
-      SwarmloopConfigModule.forRoot(join(root, '.env')),
+      options.envFile === false
+        ? SwarmloopConfigModule.forRoot(envFile, isolation)
+        : SwarmloopConfigModule.forRoot(envFile),
       HistoryModule,
       AuthModule,
       PipelineModule,
@@ -169,7 +185,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     .overrideProvider(StepRegistry)
     .useValue(registry)
     .overrideProvider(AGENT_RUNNER)
-    .useValue({ run: (input: { step: string }) => runner.run(input.step) })
+    .useValue({ run: (input: AgentRunInput) => runner.run(input.step, input) })
     .overrideProvider(SandboxService)
     .useValue({
       assertReady: () => Promise.resolve(),
@@ -200,6 +216,8 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
       }) as Step,
     );
   }
+
+  for (const name of options.realSteps ?? []) steps.set(name, realStep(module, name));
 
   if (options.realHost) {
     steps.set('merge-request', module.get(MergeRequestStep));
@@ -246,46 +264,13 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   };
 }
 
-function testEnv(root: string, overrides: Record<string, string> = {}): string {
-  return [
-    'REQUIREMENTS_VIA=direct',
-    'ISSUE_TRACKER=jira',
-    'JIRA_BASE_URL=',
-    'JIRA_EMAIL=',
-    'JIRA_API_TOKEN=',
-    'GITLAB_BASE_URL=',
-    'GITLAB_TOKEN=',
-    'GITHUB_BASE_URL=',
-    'GITHUB_TOKEN=',
-    'CURSOR_API_KEY=test-cursor-key',
-    'ANTHROPIC_API_KEY=',
-    'MAX_AGENT_CALLS=20',
-    'MAX_RETURNS=3',
-    'MAX_LAUNCHES=3',
-    'MAX_RUN_USD=25',
-    'IDLE_TIMEOUT_MS=900000',
-    'TICK_MS=15000',
-    'REQUIREMENTS_TIMEOUT_MS=600000',
-    'RESEARCH_TIMEOUT_MS=900000',
-    'PLAN_TIMEOUT_MS=1200000',
-    'IMPLEMENT_TIMEOUT_MS=1800000',
-    'CODE_REVIEW_TIMEOUT_MS=900000',
-    'MERGE_REQUEST_TIMEOUT_MS=600000',
-    'PIPELINE_TIMEOUT_MS=1800000',
-    'PIPELINE_START_TIMEOUT_MS=180000',
-    'AGENTS_PLAN=cursor:opus-5.5-extra-high',
-    'AGENTS_IMPLEMENT=cursor:grok-4.7',
-    'AGENTS_REVIEW=cursor:opus-5.5-extra-high',
-    'AGENTS_SUBTASK_PLAN=cursor:opus-5.5-extra-high',
-    'AGENTS_SUBTASK_IMPLEMENT=cursor:grok-4.7',
-    'AGENTS_SUBTASK_REVIEW=cursor:opus-5.5-extra-high',
-    'EPIC_EFFORT=',
-    'SPLIT=off',
-    'SWARMLOOP_API_PORT=0',
-    'SWARMLOOP_API_HOST=127.0.0.1',
-    `SWARMLOOP_ROOT=${root}`,
-    `SWARMLOOP_TOKEN=${MACHINE_TOKEN}`,
-    ...Object.entries(overrides).map(([name, value]) => `${name}=${value}`),
-    '',
-  ].join('\n');
+/** What keeps one app apart from the machine and from other apps: its root, loopback, a free port and the machine token. */
+function isolationEnv(root: string, overrides: Record<string, string> = {}): Record<string, string> {
+  return {
+    SWARMLOOP_API_PORT: '0',
+    SWARMLOOP_API_HOST: '127.0.0.1',
+    SWARMLOOP_ROOT: root,
+    SWARMLOOP_TOKEN: MACHINE_TOKEN,
+    ...overrides,
+  };
 }

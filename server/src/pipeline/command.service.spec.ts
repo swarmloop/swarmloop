@@ -16,10 +16,11 @@ import { PersonalCredentials } from '../auth/personal-credentials.service';
 import { missingCredential } from '../config/agents';
 import type { StoredAgents } from '../contract/api';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
+import { FAKE_MODEL_KEY } from '../testing/env.spec-helpers';
 import { fakeConnection } from '../testing/fake-connection';
 
-async function app(name: string) {
-  return boot(await mkdtemp(join(tmpdir(), `swarmloop-command-${name}-`)));
+async function app(name: string, env: Record<string, string> = {}) {
+  return boot(await mkdtemp(join(tmpdir(), `swarmloop-command-${name}-`)), undefined, undefined, env);
 }
 
 const started = { key: 'proj-1', status: 'started' };
@@ -273,7 +274,7 @@ describe('CommandService', () => {
   });
 
   it('creates the run of a start command in the same transaction and says so to the handler', async () => {
-    const testApp = await app('create');
+    const testApp = await app('create', FAKE_MODEL_KEY);
     try {
       const commands = testApp.get(CommandService);
       const handler = jest.fn().mockResolvedValue(started);
@@ -330,7 +331,7 @@ describe('CommandService', () => {
     });
 
     it('accepts agents that name a level before the model list of their runtime is loaded', async () => {
-      const testApp = await app('level');
+      const testApp = await app('level', FAKE_MODEL_KEY);
       try {
         const cursor = fakeConnection({ id: 'cursor', fields: ['CURSOR_API_KEY'] });
         await testApp.get(PersonalCredentials).store(cursor, 'ann', { CURSOR_API_KEY: 'crsr-ann-1234' }, null);
@@ -357,7 +358,7 @@ describe('CommandService', () => {
     });
 
     it('accepts a start with env keys only', async () => {
-      const testApp = await app('env');
+      const testApp = await app('env', FAKE_MODEL_KEY);
       try {
         await start(testApp, { targetPath: null, startedBy: 'bob' });
         expect(await testApp.get(RunRepository).findRun('proj-1')).not.toBeNull();

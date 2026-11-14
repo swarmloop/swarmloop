@@ -1,11 +1,12 @@
 import { existsSync } from 'fs';
 import type { FlowView, RunsView, RunRef, StepView } from '../../src/contract/api';
+import { FAKE_MODEL_KEY } from '../../src/testing/env.spec-helpers';
 import { createTestApp, ScriptedFakeAgentRunner } from '../../src/testing/test-app';
 
 describe('HTTP API golden path', () => {
   it('creates a run and reads its completed state', async () => {
     const runner = new ScriptedFakeAgentRunner();
-    const testApp = await createTestApp({ runner });
+    const testApp = await createTestApp({ runner, env: FAKE_MODEL_KEY });
     const root = testApp.root;
     try {
       const createdResponse = await fetch(`${testApp.url}/runs`, {
