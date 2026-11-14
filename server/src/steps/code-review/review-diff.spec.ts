@@ -207,7 +207,96 @@ describe('review diff', () => {
     expect(stored).toContain('bravo-marker');
     expect(stored).toContain('charlie-marker');
   });
+
+  it('reviews the commits, the uncommitted edits and the new files together', async () => {
+    const repo = featureRepo('swarmloop-review-diff-whole-');
+    writeFileSync(join(repo, 'security.ts'), 'export const SECURITY = 1;\n');
+    commit(repo, 'security');
+    writeFileSync(join(repo, 'README'), 'changed\n');
+    writeFileSync(join(repo, 'Extra.php'), '<?php // extra\n');
+
+    const section = await reviewDiffSection([{ hostPath: repo, containerPath: '/work/app', readonly: true }]);
+
+    expect(section.body).toContain('origin/main');
+    expect(section.body).toContain('security.ts');
+    expect(section.body).toContain('README');
+    expect(section.body).toContain('Extra.php');
+    expect(section.body).not.toContain('SECURITY = 1');
+    expect(section.body).not.toContain('+changed');
+    expect(section.patch).toContain('SECURITY = 1');
+    expect(section.patch).toContain('+changed');
+    expect(section.patch).toContain('// extra');
+  });
+
+  it('reviews an epic parent with its merged subtasks and its own edit', async () => {
+    const repo = featureRepo('swarmloop-review-diff-epic-', 'feature/epic');
+    for (const [branch, file] of [
+      ['feature/epic-t1', 'One.php'],
+      ['feature/epic-t2', 'Two.php'],
+    ]) {
+      git(repo, ['checkout', '-b', branch, 'feature/epic']);
+      writeFileSync(join(repo, file), `<?php // ${file}\n`);
+      commit(repo, file);
+      git(repo, ['checkout', 'feature/epic']);
+      git(repo, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'merge', '--no-ff', branch, '-m', branch]);
+    }
+    writeFileSync(join(repo, 'README'), 'parent edit\n');
+
+    const section = await reviewDiffSection([{ hostPath: repo, containerPath: '/work/app', readonly: true }]);
+
+    for (const name of ['One.php', 'Two.php', 'README']) {
+      expect(section.body).toContain(name);
+    }
+    expect(section.patch).toContain('// One.php');
+    expect(section.patch).toContain('// Two.php');
+    expect(section.patch).toContain('+parent edit');
+  });
+
+  it('gives a clean worktree the same diff as the branch diff', async () => {
+    const repo = featureRepo('swarmloop-review-diff-same-');
+    writeFileSync(join(repo, 'Field.php'), '<?php\n');
+    commit(repo, 'field');
+    const log = execFileSync('git', ['log', '--oneline', 'origin/main...HEAD'], { cwd: repo, encoding: 'utf8' });
+    const diff = execFileSync('git', ['diff', 'origin/main...HEAD'], { cwd: repo, encoding: 'utf8' });
+
+    const section = await reviewDiffSection([{ hostPath: repo, containerPath: '/work/app', readonly: true }]);
+
+    expect(section.patch).toBe(
+      `## app\nClean worktree. Commits on HEAD that are not in origin/main.\n${log.trim()}\n\n${diff.trimEnd()}\n`,
+    );
+  });
+
+  it('changes the review patch when only a commit of the branch changes', async () => {
+    const repo = featureRepo('swarmloop-review-diff-amend-');
+    writeFileSync(join(repo, 'security.ts'), 'export const SECURITY = 1;\n');
+    commit(repo, 'security');
+    writeFileSync(join(repo, 'README'), 'changed\n');
+    const mounts = [{ hostPath: repo, containerPath: '/work/app', readonly: true }];
+    const first = await reviewDiffSection(mounts);
+
+    writeFileSync(join(repo, 'security.ts'), 'export const SECURITY = 2;\n');
+    git(repo, ['add', 'security.ts']);
+    git(repo, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '--amend', '--no-edit']);
+    const second = await reviewDiffSection(mounts);
+
+    expect(second.patch).not.toBe(first.patch);
+    expect(second.patch).toContain('SECURITY = 2');
+  });
 });
+
+/** A checkout on a feature branch off a pushed main. */
+function featureRepo(prefix: string, branch = 'feature/field'): string {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  const repo = join(root, 'app');
+  git(root, ['init', '-b', 'main', repo]);
+  writeFileSync(join(repo, 'README'), 'base\n');
+  commit(repo, 'base');
+  git(root, ['init', '--bare', join(root, 'app.git')]);
+  git(repo, ['remote', 'add', 'origin', join(root, 'app.git')]);
+  git(repo, ['push', '-u', 'origin', 'main']);
+  git(repo, ['checkout', '-b', branch]);
+  return repo;
+}
 
 function commit(repo: string, message: string): void {
   git(repo, ['add', '-A']);
