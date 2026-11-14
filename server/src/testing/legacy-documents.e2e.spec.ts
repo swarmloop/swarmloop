@@ -6,6 +6,7 @@ import { handoffText } from '../steps/shared/handoff';
 import { SubtaskOps } from '../steps/shared/subtask-ops';
 import { createFlowHarness } from './flow-harness';
 import { BlockAgentRunner, DEFAULT_RESEARCH } from './result-answer';
+import { withPlan } from '../steps/plan/plan-record';
 import { remember } from './runs.spec-helpers';
 
 const KEY = 'PROJ-470';
@@ -68,5 +69,25 @@ describe('a run stored before results', () => {
     expect(handoffText(stored)).toContain(old.trimEnd());
     const prompt = blocks.prompts.find((item) => item.step === 'research')?.prompt ?? '';
     expect(prompt).toContain('## requirements\n- the form saves\n\n## prepare\n- prepared the repository\n');
+  });
+
+  it('waiting in plan-improve with the plan in the requirements record only keeps it and goes on to done', async () => {
+    const runs = flow.app.app.get(RunRepository);
+    const documents = flow.app.app.get(DocumentRepository);
+    const run = await remember(runs, documents, KEY, 'plan-improve', 'waiting');
+    const old = { name: '', overview: '', items: ['add the field - files: a.ts - proof: a.spec.ts'], decision: null };
+    const body = (await documents.latestBody(KEY, 'requirements')) ?? '';
+    await documents.putDocument(run, 'requirements', withPlan(body, old));
+    await documents.putDocument(run, 'questions', '');
+    expect(await documents.latestBody(KEY, 'plan_result')).toBeNull();
+
+    await flow.person('resume');
+
+    expect((await runs.findRun(KEY))?.status).toBe('done');
+    const prompt = blocks.prompts.find((item) => item.step === 'plan-improve')?.prompt ?? '';
+    expect(prompt).toContain('add the field - files: a.ts - proof: a.spec.ts');
+    const plan = JSON.parse((await documents.latestBody(KEY, 'requirements')) ?? '{}').plan;
+    expect(plan).toMatchObject({ items: old.items, decision: 'approve' });
+    expect(await documents.latestBody(KEY, 'plan_improve_result')).toContain('"plan":[]');
   });
 });

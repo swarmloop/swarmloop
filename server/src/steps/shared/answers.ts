@@ -1,6 +1,10 @@
-import type { ResearchResult } from '../../agent-result/definitions/research';
 import { legacyQuestions } from '../../agent-result/legacy/research';
 import { renderQuestions } from '../research/research-record';
+
+/** A stored result that may have asked: the questions it rendered into the `questions` document. */
+interface Asked {
+  questions: string[];
+}
 
 /**
  * The answers of a person by question. A question may span lines: its text runs from `question: ` to the `answer: `
@@ -34,17 +38,17 @@ export function answered(body: string): Map<string, string> {
 }
 
 /**
- * The open questions of a stored `questions` document. Research and plan both write it, so the object of
- * `research_result` counts only while the stored body is what it rendered; it keeps a multi-line question whole.
+ * The open questions of a stored `questions` document. Research and plan both write it, so the object of a stored
+ * result counts only while the stored body is what it rendered; it keeps a multi-line question whole.
  * Any other body is read as it was written.
  */
-export function openQuestions(questionsBody: string, result: ResearchResult | null): string[] {
+export function openQuestions(questionsBody: string, results: (Asked | null)[]): string[] {
   if (!questionsBody.trim()) return [];
-  if (result && questionsBody === renderQuestions(result.questions)) return result.questions;
-  return legacyQuestions(questionsBody);
+  const own = results.find((result) => result && questionsBody === renderQuestions(result.questions));
+  return own ? own.questions : legacyQuestions(questionsBody);
 }
 
-export function unanswered(questionsBody: string, result: ResearchResult | null, answersBody: string): string[] {
+export function unanswered(questionsBody: string, results: (Asked | null)[], answersBody: string): string[] {
   const stored = answered(answersBody);
-  return openQuestions(questionsBody, result).filter((question) => !(stored.get(question) ?? '').trim());
+  return openQuestions(questionsBody, results).filter((question) => !(stored.get(question) ?? '').trim());
 }

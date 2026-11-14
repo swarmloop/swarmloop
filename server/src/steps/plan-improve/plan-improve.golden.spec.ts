@@ -1,6 +1,7 @@
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { StepKernel } from '../step-kernel';
 import { result } from '../implement/implement.step.spec-helpers';
+import { resultAnswer } from '../../testing/result-answer';
 import { expectGolden } from '../../testing/step-trace.spec-helpers';
 import type { Subtask } from '../../contract/subtask';
 import { withPlan } from '../plan/plan-record';
@@ -26,13 +27,12 @@ function taskOf(id: string, title: string, depends: string, file: string): Subta
   };
 }
 
-const line = (task: Subtask): string =>
-  `- ${task.id} | ${task.title} | depends: ${task.depends.join(', ') || 'none'} | files: ${task.files.join(', ')} | proof: ${task.proof}\n  ${task.description}`;
-
 const splitAnswer = (tasks: Subtask[]): string =>
-  ['contract:', '- the column is called `split`', '', 'tasks:', ...tasks.map(line), '', 'summary:', '- checked'].join(
-    '\n',
-  );
+  resultAnswer('Done.', {
+    summary: ['checked'],
+    contract: ['the column is called `split`'],
+    tasks: tasks.map(({ status: _status, ...task }) => task),
+  });
 
 async function improve(agent: jest.Mock, tasks: Subtask[] = []) {
   const golden = await goldenApp('plan-improve-golden', { agent, worktrees: [`${KEY}/billing-api`] });
@@ -66,7 +66,14 @@ async function improve(agent: jest.Mock, tasks: Subtask[] = []) {
 
 describe('plan-improve step golden traces', () => {
   const scenarios: [string, jest.Mock][] = [
-    ['ok', jest.fn().mockResolvedValue(result(['plan:', '- add the field', '- cover the empty case'].join('\n')))],
+    [
+      'ok',
+      jest
+        .fn()
+        .mockResolvedValue(
+          result(resultAnswer('Done.', { summary: ['why'], plan: ['add the field', 'cover the empty case'] })),
+        ),
+    ],
     ['swarmloop-error', jest.fn().mockRejectedValue(new SwarmloopError('agent refused the task'))],
     ['plain-error', jest.fn().mockRejectedValue(new Error('agent crashed'))],
   ];

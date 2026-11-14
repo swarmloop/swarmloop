@@ -1,5 +1,4 @@
 import { agentFor } from '../../config/agents';
-import { runtimeFor } from '../../integrations/agent-runtime/agent-runtime.registry';
 import type { RunEntity } from '../../history/entities';
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, Route, StepInput, StepResult } from '../contract/step-contract';
@@ -18,12 +17,28 @@ import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS
 import { projectRules } from '../shared/project-rules';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { appendImpact, withHandoff, withImpact } from '../shared/handoff';
-import { plainSummary, PLAN_EXECUTION_RULE, skillPrompt, summaryOr } from '../shared/skill-prompt';
+import { PLAN_EXECUTION_RULE, skillPrompt } from '../shared/skill-prompt';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { storedPlan } from '../step';
-import { parsePlan, readPlan, reviewedItems, withPlan } from '../plan/plan-record';
-import { parseTasks, planItemsFromTasks, splitAnswer, splitLimits, splitOutputs, unbounded } from '../plan/plan-tasks';
-import { mergeTasks, PLAN_IMPROVE_FOLLOW_UP } from './plan-improve.prompts';
+import { renderSummary, withPlan } from '../plan/plan-record';
+import {
+  buildGraph,
+  isSplit,
+  planItemsFromTasks,
+  splitLimits,
+  splitOutputs,
+  taskErrors,
+  type TaskLimits,
+} from '../plan/plan-tasks';
+import { mergeTasks, planImproveContinue, planImproveFollowUp } from './plan-improve.prompts';
+import {
+  completePlanImprove,
+  planImprove,
+  planImproveFor,
+  type PlanImproveResult,
+} from '../../agent-result/definitions/plan-improve';
+import { resultPromptFor } from '../../agent-result/result-prompt';
+import { currentPlan } from '../shared/current-plan';
 import { renderKeep } from '../shared/keep-lines';
 import { storedImpact } from '../shared/research-reads';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -36,6 +51,8 @@ const INPUTS = {
   addedRepos: lateInput(ARTIFACTS.addedRepos),
   subtasks: lateInput(ARTIFACTS.subtasks),
   contract: lateInput(ARTIFACTS.contract),
+  planResult: lateInput(ARTIFACTS.planResult),
+  planImproveResult: lateInput(ARTIFACTS.planImproveResult),
   keep: lateInput(ARTIFACTS.keep),
   instructions: instructionsInput('plan-improve'),
 } as const satisfies InputSpec;
@@ -44,7 +61,13 @@ const INPUTS = {
 export class PlanImproveStep extends AgentStep<typeof INPUTS> {
   readonly inputs = INPUTS;
   readonly name: StepName = 'plan-improve';
-  readonly outputs = [ARTIFACTS.requirements, ARTIFACTS.subtasks, ARTIFACTS.keep, ARTIFACTS.contract];
+  readonly outputs = [
+    ARTIFACTS.requirements,
+    ARTIFACTS.subtasks,
+    ARTIFACTS.keep,
+    ARTIFACTS.contract,
+    ARTIFACTS.planImproveResult,
+  ];
 
   constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
     super(kernel, sandbox, launcher);
@@ -67,7 +90,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
   protected async produce(input: StepInput<typeof INPUTS>, ctx: ModelStepContext): Promise<StepResult> {
     const { key } = ctx.opened.run;
     const { requirements } = input;
-    const plan = readPlan(requirements);
+    const plan = await currentPlan(this.documents, key);
     if (!plan) {
       throw new SwarmloopError('plan is missing');
     }
@@ -82,7 +105,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     const tasks = maySplit ? ((await ctx.reread(ARTIFACTS.subtasks)) ?? []) : [];
     const contract = tasks.length > 0 ? ((await ctx.reread(ARTIFACTS.contract)) ?? '') : '';
     const keep = tasks.length > 0 ? ((await ctx.reread(ARTIFACTS.keep)) ?? []) : [];
-    // A plan over the limit is merged once; the final parse below ends it as a plan error when it still does not fit.
+    // A plan over the limit is merged once; a merge that still does not fit goes back to the agent like any other error.
     const oversized = tasks.length > limits.maxTasks;
     const splitSections =
       tasks.length > 0
@@ -93,54 +116,51 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
             ...(oversized ? [{ heading: 'Merge', body: mergeTasks(tasks.length, limits.maxTasks) }] : []),
           ]
         : [];
-    const answerLimits = oversized ? unbounded(limits) : limits;
-    const fullFor = (target: string, received: boolean): string =>
-      skillPrompt(
-        'plan-improve',
-        input.requirements,
-        names,
-        withImpact(
-          withHandoff([{ heading: 'Plan', body: JSON.stringify(plan, null, 2) }, ...splitSections], prior),
-          impact,
+    const asked = planImproveFor(maySplit);
+    const fullFor = (target: string, received: string | null): string =>
+      [
+        skillPrompt(
+          'plan-improve',
+          input.requirements,
+          names,
+          withImpact(
+            withHandoff([{ heading: 'Plan', body: JSON.stringify(plan, null, 2) }, ...splitSections], prior),
+            impact,
+          ),
+          mounts,
+          { split: maySplit, rules: projectRules(names, mounts, target, received !== null) },
         ),
-        mounts,
-        {
-          split: maySplit,
-          planTool: runtimeFor(target).planModeHasPlanTool,
-          rules: projectRules(names, mounts, target, received),
-        },
-      );
+        resultPromptFor(asked, received),
+      ].join('\n\n');
     const added = await ctx.reread(ARTIFACTS.addedRepos);
     const finish = (prompt: string): string => `${withAddedRepos(prompt, added)}\n\n${PLAN_EXECUTION_RULE}`;
+    const received = continued?.chatId ? planImprove.name : null;
     const chosen =
-      continued?.chatId && !maySplit
-        ? appendImpact(PLAN_IMPROVE_FOLLOW_UP, impact)
-        : fullFor(runtime, !!continued?.chatId);
+      received && !maySplit
+        ? appendImpact(planImproveFollowUp(resultPromptFor(asked, received)), impact)
+        : fullFor(runtime, received);
     const agentResult = await ctx.launch({
       prompt: finish(chosen),
-      briefFor: (other) => finish(fullFor(other, false)),
+      briefFor: (other) => finish(fullFor(other, null)),
       mounts,
-      sections: ['plan'],
-      validate: (text) => (splitAnswer(text) ? parseTasks(text, answerLimits) : parsePlan(text)),
+      continuePrompt: planImproveContinue(),
+      result: asked,
+      check: (value) => improveErrors(completePlanImprove(value as Partial<PlanImproveResult>), limits),
     });
-    // A split answer is written back as tasks. A plan answer turns a split back into one plan.
-    const graph = splitAnswer(agentResult.responseText) ? parseTasks(agentResult.responseText, limits) : null;
-    const items = graph
-      ? planItemsFromTasks(graph.tasks)
-      : reviewedItems(agentResult.responseText, agentResult.output ?? '');
+    const value = completePlanImprove(agentResult.resultValue as Partial<PlanImproveResult>);
+    // A split answer is written back as tasks. A plan answer turns a split back into one plan, and an empty one keeps it.
+    const graph = isSplit(value) ? buildGraph(value) : null;
+    const items = graph ? planItemsFromTasks(graph.tasks) : value.plan;
     const next = { ...plan, items: items.length > 0 ? items : plan.items, decision: 'approve' as const };
-    const summary = summaryOr(
-      agentResult.responseText,
-      plainSummary(agentResult.responseText) || next.items.map((item) => `- ${item}`).join('\n'),
-    );
     return {
       route: this.epicRoute(ctx.opened.run, !!graph),
       summary: `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`,
       outputs: [
         { artifact: ARTIFACTS.requirements, value: withPlan(requirements, next) },
+        { artifact: ARTIFACTS.planImproveResult, value },
         ...(tasks.length > 0 || graph ? splitOutputs(graph) : []),
       ],
-      handoff: summary,
+      handoff: renderSummary(value.summary, next.items),
     };
   }
 
@@ -156,4 +176,9 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     }
     return { to: 'next' };
   }
+}
+
+/** What the server checks on a plan-improve answer after its schema: the split. */
+function improveErrors(value: PlanImproveResult, limits: TaskLimits): string[] {
+  return isSplit(value) ? taskErrors(value, limits) : [];
 }

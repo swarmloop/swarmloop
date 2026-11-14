@@ -6,21 +6,30 @@ describe('needs', () => {
     const needs = [{ id: 'a', what: 'the policy: with a colon' }];
     const result = { summary: [], questions: [], impact: [], needs };
 
-    expect(storedNeeds(renderNeeds(needs), result)).toEqual(needs);
+    expect(storedNeeds(renderNeeds(needs), [result])).toEqual(needs);
     expect(renderNeeds([])).toBe('');
   });
 
   it('reads a body that is not the render of the result as it was written', () => {
     const result = { summary: [], questions: [], impact: [], needs: [{ id: 'a', what: 'old' }] };
 
-    expect(storedNeeds('needs:\n- b: from plan\n', result)).toEqual([{ id: 'b', what: 'from plan' }]);
-    expect(storedNeeds('needs:\n- b: from plan\n', null)).toEqual([{ id: 'b', what: 'from plan' }]);
+    expect(storedNeeds('needs:\n- b: from plan\n', [result])).toEqual([{ id: 'b', what: 'from plan' }]);
+    expect(storedNeeds('needs:\n- b: from plan\n', [])).toEqual([{ id: 'b', what: 'from plan' }]);
+  });
+
+  it('takes the needs of the plan result when it, and not research, wrote the stored body', () => {
+    const research = { summary: [], questions: [], impact: [], needs: [{ id: 'a', what: 'old' }] };
+    const needs = [{ id: 'b', what: 'the policy: with a colon' }];
+
+    const planned = { questions: [], needs };
+
+    expect(storedNeeds(renderNeeds(needs), [research, planned])).toEqual(needs);
   });
 
   it('gives none for an empty body, whatever the result holds', () => {
     const result = { summary: [], questions: [], impact: [], needs: [{ id: 'a', what: 'old' }] };
 
-    expect(storedNeeds('', result)).toEqual([]);
+    expect(storedNeeds('', [result])).toEqual([]);
   });
 
   it('waits at the step that asked and says what for', () => {

@@ -6,7 +6,7 @@ import { join } from 'path';
 import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
-import { boot, result, seed, writeEnv } from './plan.step.spec-helpers';
+import { boot, planBlock, result, seed, writeEnv } from './plan.step.spec-helpers';
 
 describe('plan step with needs', () => {
   it('waits with the needs of a subtask whose plan ends with needs:, stores no plan, and ignores the section in any other run', async () => {
@@ -14,7 +14,7 @@ describe('plan step with needs', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-49-t1', 'billing-api'), { recursive: true });
     mkdirSync(join(root, 'worktrees', 'PROJ-50', 'billing-api'), { recursive: true });
-    const answer = ['plan:', '- use the retry policy', 'needs:', '- t0: the retry policy'].join('\n');
+    const answer = planBlock(['use the retry policy'], { needs: [{ id: 't0', what: 'the retry policy' }] });
     const agent = jest.fn().mockResolvedValue(result(answer));
     const app = await boot(root, agent);
     try {

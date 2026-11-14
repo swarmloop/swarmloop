@@ -3,7 +3,9 @@ import { join } from 'path';
 import { implementImproveFollowUp, implementFollowUp } from './implement/implement.prompts';
 import { REPORT_CONTINUE, reviewContinue, reviewResume } from './code-review/code-review.prompts';
 import { withAddedRepos } from './follow-up';
-import { PLAN_IMPROVE_FOLLOW_UP } from './plan-improve/plan-improve.prompts';
+import { planImproveFor } from '../agent-result/definitions/plan-improve';
+import { resultPromptFor } from '../agent-result/result-prompt';
+import { planImproveFollowUp } from './plan-improve/plan-improve.prompts';
 import { planFollowUp } from './plan/plan.prompts';
 import { LINKED_CONTEXT, TASK_SCOPE } from './shared/requirements-brief';
 
@@ -20,8 +22,8 @@ const CODE_STANDARD =
   'Cover the change with tests in the style the tree already uses.';
 
 const STEP_PAIRS = [
-  { name: 'plan', skill: skillText('plan'), followUp: planFollowUp('') },
-  { name: 'plan-improve', skill: skillText('plan-improve'), followUp: PLAN_IMPROVE_FOLLOW_UP },
+  { name: 'plan', skill: skillText('plan'), followUp: planFollowUp('', '') },
+  { name: 'plan-improve', skill: skillText('plan-improve'), followUp: planImproveFollowUp('') },
   { name: 'implement', skill: skillText('implement'), followUp: implementFollowUp('plan:\n- add the field\n', null) },
   { name: 'implement-improve', skill: skillText('implement-improve'), followUp: implementImproveFollowUp(null) },
 ];
@@ -49,7 +51,7 @@ describe('step prompt invariants', () => {
     for (const pair of STEP_PAIRS) {
       expect(pair.skill).toContain(TASK_SCOPE);
     }
-    for (const followUp of [planFollowUp(''), PLAN_IMPROVE_FOLLOW_UP, implementImproveFollowUp(null)]) {
+    for (const followUp of [planFollowUp('', ''), planImproveFollowUp(''), implementImproveFollowUp(null)]) {
       expect(followUp).toContain(TASK_SCOPE);
     }
     for (const name of ['research', 'plan', 'plan-improve', 'implement', 'code-review/requirements']) {
@@ -57,7 +59,7 @@ describe('step prompt invariants', () => {
     }
     expect(skillText('code-review/requirements')).toContain(TASK_SCOPE);
     expect(skillText('research')).toContain(TASK_SCOPE);
-    for (const text of [skillText('plan-improve'), PLAN_IMPROVE_FOLLOW_UP]) {
+    for (const text of [skillText('plan-improve'), planImproveFollowUp('')]) {
       expect(text).toContain('Check that the checklist covers every behavior the task requires');
     }
     for (const name of [
@@ -81,9 +83,11 @@ describe('step prompt invariants', () => {
     expect(skillText('plan')).not.toContain('belongs only to Context');
   });
 
-  it('asks plan-improve for the same sections on the first turn and the resume', () => {
-    expect(skillText('plan-improve')).toContain('summary:');
-    expect(PLAN_IMPROVE_FOLLOW_UP).toContain('summary:');
+  it('asks plan-improve for the same result on the first turn and the resume, from the schema and not the skill', () => {
+    expect(skillText('plan-improve')).not.toContain('summary:');
+    expect(planImproveFollowUp(resultPromptFor(planImproveFor(false), null))).toContain(
+      '- summary (array of string, required)',
+    );
   });
 
   it('tells implement to correct a checklist as one plan block of - item lines', () => {

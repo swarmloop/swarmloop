@@ -1,7 +1,7 @@
 import { ERROR_CODES } from '../../contract/error-codes';
 import type { StepResult } from '../contract/step-contract';
 import { ARTIFACTS } from '../contract/artifacts';
-import type { Need, ResearchResult } from '../../agent-result/definitions/research';
+import type { Need } from '../../agent-result/definitions/research';
 import { parseNeeds } from '../../agent-result/legacy/needs';
 
 export type { Need };
@@ -27,11 +27,11 @@ export function needsWait(startedAt: string, needs: Need[]): StepResult {
 }
 
 /**
- * The needs a subtask's run holds. Research and plan both write `needs`, and the server clears it, so the object of
- * `research_result` counts only while the stored body is what it rendered; any other body is read as it was written.
+ * The needs a subtask's run holds. Research and plan both write `needs`, and the server clears it, so the object of a
+ * stored result counts only while the stored body is what it rendered; any other body is read as it was written.
  */
-export function storedNeeds(needsBody: string, result: ResearchResult | null): Need[] {
+export function storedNeeds(needsBody: string, results: ({ needs?: Need[] } | null)[]): Need[] {
   if (!needsBody.trim()) return [];
-  if (result?.needs && needsBody === renderNeeds(result.needs)) return result.needs;
-  return parseNeeds(needsBody);
+  const own = results.find((result) => result?.needs && needsBody === renderNeeds(result.needs));
+  return own?.needs ?? parseNeeds(needsBody);
 }

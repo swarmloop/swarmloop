@@ -40,11 +40,11 @@ describe('impact skill rules', () => {
   });
 
   it('plan skills hold the keep: item format and the stop-with-question rule', () => {
-    const keep = '- keep: <capability> - files: <paths> - proof: <test>';
+    const keep = 'keep: <capability> - files: <paths> - proof: <test>';
     expect(skill('plan')).toContain(keep);
-    expect(skill('plan')).toContain('Stop and end with a `questions:` section');
+    expect(skill('plan')).toContain('Stop and send `questions` in place of the plan');
     expect(skill('plan-improve')).toContain(keep);
-    expect(skill('plan-improve')).toContain('- unnamed removal: <capability>');
+    expect(skill('plan-improve')).toContain('unnamed removal: <capability>');
     expect(skill('plan')).toContain('`files:` (the paths it changes) and `proof:`');
   });
 
@@ -52,7 +52,7 @@ describe('impact skill rules', () => {
     for (const name of ['plan', 'plan-improve']) {
       const text = skill(name);
       expect(text).toContain(
-        '`files:` lists every file the task will change, including its tests and the shared test helpers and fixtures they need',
+        '`files` lists every file the task will change, including its tests and the shared test helpers and fixtures they need',
       );
       expect(text).toContain('a task that changes a file another task lists depends on that task');
     }
@@ -137,8 +137,8 @@ describe('plan-improve and implement answer to the input', () => {
   it('plan-improve checks the coverage of the input before anything else', () => {
     const text = skill('plan-improve');
     expect(text).toContain('Before anything else, list every item the input asks for');
-    expect(text).toContain('`- added: <item> - <why>`');
-    expect(text.indexOf('Before anything else')).toBeLessThan(text.indexOf('[plan tool]'));
+    expect(text).toContain('`added: <item> - <why>`');
+    expect(text.indexOf('Before anything else')).toBeLessThan(text.indexOf('The plan is already in the prompt'));
   });
 
   it.each(['implement', 'implement-improve'])('%s ends the account with a not built line', (name) => {
@@ -166,11 +166,11 @@ describe('split skill text', () => {
 });
 
 describe('the split keep: section', () => {
-  it.each(['plan', 'plan-improve'])('%s says keep: lines, tasks that change the tree and proof: new', (name) => {
+  it.each(['plan', 'plan-improve'])('%s says keep entries, tasks that change the tree and new proofs', (name) => {
     const text = skillPrompt(name, '{}', ['api'], [], [], { split: true });
-    expect(text).toContain('- <capability> | proof: <test or new <test>> | tasks: <ids');
+    expect(text).toContain('`keep` entry');
     expect(text).toMatch(/tasks are only work that changes the tree/i);
-    expect(text).toContain('proof: new <test>');
+    expect(text).toContain('`new <test>`');
   });
 });
 
@@ -237,20 +237,12 @@ describe('skillText', () => {
   });
 });
 
-describe('the plan skills for a runtime without a plan tool', () => {
-  const names = ['api'];
-
-  it.each(['plan', 'plan-improve'])('the %s prompt names no plan tool', (name) => {
-    expect(skillPrompt(name, '{}', names, [], [], { split: true, planTool: false })).not.toContain('plan tool');
-  });
-
-  it.each([
-    ['plan', 'Write the checklist with the plan tool. That is how a later pass replaces the plan.'],
-    ['plan-improve', 'Use the plan tool or a `plan` section. Either one replaces the checklist.'],
-  ])('the %s prompt with a plan tool keeps its sentence and no marker', (name, sentence) => {
-    const prompt = skillPrompt(name, '{}', names, [], [], { split: true });
-    expect(prompt).toContain(sentence);
+describe('the plan skills', () => {
+  it.each(['plan', 'plan-improve'])('the %s prompt is the same for every runtime and names no answer label', (name) => {
+    const prompt = skillPrompt(name, '{}', ['api'], [], [], { split: true });
+    expect(skillPrompt(name, '{}', ['api'], [], [], { split: true, planTool: false })).toBe(prompt);
     expect(prompt).not.toMatch(/\[(no )?plan tool\]/);
+    expect(prompt).not.toMatch(/^(plan|summary|tasks|contract|keep|questions):$/m);
   });
 });
 
@@ -289,13 +281,17 @@ describe('needs: a task that needs a sibling waits for it', () => {
   it('has the plan skill name needs: and never ask for a stop-and-report item', () => {
     const plan = skill('plan');
 
-    expect(plan).toContain('`needs:`');
+    expect(plan).toContain('sends `needs`');
     expect(plan).toContain('A checklist never has an item like "stop and report if X is missing"');
     expect(plan).not.toMatch(/^- .*stop and report/im);
   });
 
-  it.each(['plan', 'implement'])('%s says when and how to write needs:', (name) => {
-    expect(skill(name)).toContain('`- <id>: <what it needs from that task>`');
+  it('plan says when and how to send needs', () => {
+    expect(skill('plan')).toContain('sends `needs`, one entry per sibling task id with what it needs from that task');
+  });
+
+  it('implement says when and how to write needs:', () => {
+    expect(skill('implement')).toContain('`- <id>: <what it needs from that task>`');
   });
 
   it('research says when to send needs, and leaves the format to the result schema', () => {

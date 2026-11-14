@@ -44,6 +44,8 @@
   "reads": {
     "plan-improve": [
       "requirements",
+      "plan_improve_result",
+      "plan_result",
       "repos",
       "handoff",
       "research_result",

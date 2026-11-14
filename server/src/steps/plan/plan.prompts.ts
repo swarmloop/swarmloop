@@ -1,11 +1,26 @@
 import type { Subtask } from '../../contract/subtask';
+import { plan } from '../../agent-result/definitions/plan';
+import { subtaskAnswer } from '../../agent-result/definitions/subtask-answer';
+import { resultPromptFor } from '../../agent-result/result-prompt';
 import { LINKED_CONTEXT, TASK_SCOPE } from '../shared/requirements-brief';
 
 /** A subtask has no one to ask: it decides its own questions, states them as assumptions and gives the plan. */
-export const SUBTASK_DECIDES =
-  'No one can answer these questions. Decide each one yourself from the task, the contract and the tree, then give the plan now. Do not ask again.\n\nEnd with these sections:\nplan:\n- item\n\nsummary:\n- why';
+export function subtaskDecides(resultText: string): string {
+  return [
+    'No one can answer these questions. Decide each one yourself from the task, the contract and the tree, then give the plan now. Do not ask again.',
+    resultText,
+  ].join('\n\n');
+}
 
-export function planFollowUp(answers: string): string {
+/** The prompt that finishes an interrupted plan in the same chat, which already holds the plan result prompt. */
+export function planContinue(): string {
+  return [
+    'You were interrupted before the plan was done. Finish it. Do not start over.',
+    resultPromptFor(plan, plan.name),
+  ].join('\n');
+}
+
+export function planFollowUp(answers: string, resultText: string): string {
   const lines = [
     'The requirements in this message are the whole task. Read the working directory when it has source files.',
     TASK_SCOPE,
@@ -15,12 +30,12 @@ export function planFollowUp(answers: string): string {
   if (answers.trim()) {
     lines.push('', 'Answers:', answers.trim());
   }
-  lines.push('', 'End with these sections:', 'plan:', '- item', '', 'summary:', '- why');
+  lines.push('', resultText);
   return lines.join('\n');
 }
 
 /** What the parent's planner is asked in its own chat when a subtask has questions. */
-export function subtaskAsks(task: Subtask, questions: string, contract: string): string {
+export function subtaskAsks(task: Subtask, questions: string, contract: string, received: string | null): string {
   return [
     `Subtask ${task.id} asks:`,
     questions.trim(),
@@ -31,7 +46,9 @@ export function subtaskAsks(task: Subtask, questions: string, contract: string):
     'The contract now:',
     contract.trim() || '(empty)',
     '',
-    'Answer each question as a decision the subtask follows. Do not change the task list. Reply with the decisions only.',
+    'Answer each question as a decision the subtask follows. Do not change the task list. Send the decisions only.',
+    '',
+    resultPromptFor(subtaskAnswer, received),
   ].join('\n');
 }
 
