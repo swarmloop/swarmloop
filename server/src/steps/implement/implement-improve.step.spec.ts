@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, writeFileSync } from 'fs';
-import { mkdtemp, writeFile } from 'fs/promises';
+import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { Repository } from 'typeorm';
@@ -20,6 +20,7 @@ import { EnvironmentService } from '../../environment/environment.service';
 import { RequiredCheckFailed, RequiredCheckRepeated } from '../../environment/project-environments';
 import { implementImproveFollowUp } from './implement.prompts';
 import { REBASE_CONFLICT } from '../../git/rebase';
+import { writeEnv } from './implement.step.spec-helpers';
 
 const reply = [
   'implementation:',
@@ -633,46 +634,6 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, repos = 
   );
   await documents.putDocument(seeded, 'repos', repos);
   await documents.putDocument(seeded, 'implementation', '- changed the field parser\n');
-}
-
-async function writeEnv(root: string): Promise<void> {
-  await writeFile(
-    join(root, '.env'),
-    [
-      'REQUIREMENTS_VIA=direct',
-      'ISSUE_TRACKER=jira',
-      'JIRA_BASE_URL=',
-      'JIRA_EMAIL=',
-      'JIRA_API_TOKEN=',
-      'GITLAB_BASE_URL=',
-      'GITLAB_TOKEN=',
-      'GITHUB_BASE_URL=',
-      'GITHUB_TOKEN=',
-      'CURSOR_API_KEY=',
-      'ANTHROPIC_API_KEY=',
-      'MAX_AGENT_CALLS=20',
-      'MAX_RETURNS=3',
-      'MAX_LAUNCHES=3',
-      'MAX_RUN_USD=25',
-      'IDLE_TIMEOUT_MS=900000',
-      'TICK_MS=15000',
-      'REQUIREMENTS_TIMEOUT_MS=600000',
-      'RESEARCH_TIMEOUT_MS=900000',
-      'PLAN_TIMEOUT_MS=1200000',
-      'IMPLEMENT_TIMEOUT_MS=1800000',
-      'CODE_REVIEW_TIMEOUT_MS=900000',
-      'MERGE_REQUEST_TIMEOUT_MS=600000',
-      'PIPELINE_TIMEOUT_MS=1800000',
-      'PIPELINE_START_TIMEOUT_MS=180000',
-      'AGENTS_PLAN=cursor:opus-5.5-extra-high',
-      'AGENTS_IMPLEMENT=cursor:grok-4.7',
-      'AGENTS_REVIEW=cursor:opus-5.5-extra-high',
-      'SWARMLOOP_API_PORT=3920',
-      'SWARMLOOP_API_HOST=127.0.0.1',
-      `SWARMLOOP_ROOT=${root}`,
-      '',
-    ].join('\n'),
-  );
 }
 
 function featureTree(root: string, key: string, repo: string): string {
