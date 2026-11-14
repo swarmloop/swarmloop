@@ -3,9 +3,10 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { EnvironmentService } from '../../environment/environment.service';
 import { RunRepository } from '../../history/run.repository';
 import { goldenRun } from './implement.golden.spec-helpers';
+import { resultAnswer } from '../../testing/result-answer';
 import { result } from './implement.step.spec-helpers';
 
-const improved = ['implementation:', '- fixed the empty case', '', 'summary:', '- fixed the empty case'].join('\n');
+const improved = resultAnswer('Done.', { implementation: ['fixed the empty case'], summary: ['fixed the empty case'] });
 const agent = () => jest.fn().mockResolvedValue(result(improved));
 
 describe('implement-improve step golden traces', () => {

@@ -1,6 +1,5 @@
 import type { PlanFields } from '../../integrations/requirements-source/requirements-record';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { legacyPlanItems, legacyPlanObjectItems } from '../../agent-result/legacy/plan';
 
 /** The plan inside the requirements record, written from what the planner sent. The decision is the person's. */
 export function planFields(items: string[], name = '', overview = ''): PlanFields {
@@ -69,27 +68,19 @@ export function readPlan(body: string | null): PlanFields | null {
   }
 }
 
-/** Bullets or the stored plan object in an answer's `plan:` section. Null when that answer has no corrected checklist. */
-export function correctedItems(text: string, _output = ''): string[] | null {
-  const items = legacyPlanItems(text);
-  return items.length > 0 ? items : legacyPlanObjectItems(text);
-}
-
-/** Checklist the implement answer corrected. Null when the answer leaves the approved plan. */
+/** Checklist the implement answer corrected. Null when the answer sent none or left the plan as it is. */
 export function correctedPlan(
   requirementsBody: string,
-  text: string,
-  output = '',
+  items: string[] | undefined,
+  previous: string[],
 ): { requirements: string; handoff: string } | null {
-  const items = correctedItems(text, output);
-  if (!items) {
+  if (!items?.length) {
     return null;
   }
-  const current = readPlan(requirementsBody);
-  const previous = current?.items ?? [];
   if (previous.length === items.length && previous.every((item, index) => item === items[index])) {
     return null;
   }
+  const current = readPlan(requirementsBody);
   const dropped = previous.filter((item) => !items.includes(item));
   const added = items.filter((item) => !previous.includes(item));
   const named = [...dropped.map((item) => `dropped "${item}"`), ...added.map((item) => `added "${item}"`)].join('; ');
@@ -105,8 +96,8 @@ export function correctedPlan(
   };
 }
 
-export function requireApprovedPlan(requirements: string | null): string {
-  const plan = readPlan(requirements);
+/** The approved plan as the prompt shows it. Throws when the run has none or a person has not approved it. */
+export function requireApprovedPlan(plan: PlanFields | null): string {
   if (!plan?.items.length) {
     throw new SwarmloopError('plan is missing');
   }

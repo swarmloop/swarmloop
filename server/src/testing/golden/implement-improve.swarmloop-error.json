@@ -60,7 +60,18 @@
   },
   "loopEvents": [],
   "reads": {
-    "implement-improve": ["requirements", "implementation", "repos", "*", "handoff", "added_repos"]
+    "implement-improve": [
+      "requirements",
+      "plan_improve_result",
+      "plan_result",
+      "implementation_result",
+      "implementation_improve_result",
+      "implementation",
+      "repos",
+      "*",
+      "handoff",
+      "added_repos"
+    ]
   },
   "result": {
     "exitCode": 1,

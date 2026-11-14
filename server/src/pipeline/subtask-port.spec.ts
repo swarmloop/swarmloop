@@ -53,7 +53,7 @@ async function asked(env: Parameters<typeof testEnv>[0], epic: boolean, stored: 
     {} as never,
     {
       latestBody: async (_key: string, kind: string) =>
-        stored[kind] ?? (kind === 'research_result' || kind === 'plan_result' ? null : 'app\n'),
+        stored[kind] ?? (['research_result', 'plan_result', 'implementation_result'].includes(kind) ? null : 'app\n'),
       putDocument: async () => undefined,
     } as never,
     { submit } as never,

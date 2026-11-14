@@ -62,6 +62,8 @@ export async function createFlowHarness(
   key: string,
   options: {
     realHost?: boolean;
+    /** Every run takes the real implement and implement-improve steps. */
+    realImplement?: boolean | 'all';
     taskWorktrees?: boolean;
     env?: Record<string, string>;
     blocks?: BlockAgentRunner;
@@ -71,7 +73,7 @@ export async function createFlowHarness(
   const env = { ...options.env };
   const feature = `feature/${key}-ship-the-field`;
   const first = await createTestApp({
-    realImplement: true,
+    realImplement: options.realImplement ?? true,
     realHost: options.realHost,
     blocks: options.blocks,
     env,

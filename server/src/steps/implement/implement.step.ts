@@ -1,7 +1,7 @@
 import { agentFor } from '../../config/agents';
 import type { RunEntity } from '../../history/entities';
 import { Injectable } from '@nestjs/common';
-import type { AgentProfile, InputSpec, Issue, StepInput, StepResult } from '../contract/step-contract';
+import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
 import { SwarmloopEnv } from '../../config/env';
 import { CheckoutRepository } from '../../history/checkout.repository';
@@ -10,7 +10,6 @@ import { resumableChat } from '../../agent/agent-session';
 import { isSubtask, settled, withStatuses } from '../../contract/subtask';
 import { StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
-import { ERROR_CODES } from '../../contract/error-codes';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { branchName, summaryForBranch } from '../branch/branch-name';
 import { isChecksReturn, isPipelineReturn, withAddedRepos } from '../follow-up';
@@ -26,9 +25,11 @@ import {
   withSubtasks,
 } from '../shared/handoff';
 import { projectRules } from '../shared/project-rules';
-import { parseSummary, skillPrompt, summaryOr } from '../shared/skill-prompt';
-import { bulletList, items, section } from '../shared/markdown-section';
-import { correctedItems, correctedPlan, requireApprovedPlan } from '../plan/plan-record';
+import { skillPrompt } from '../shared/skill-prompt';
+import { currentPlan } from '../shared/current-plan';
+import { correctedPlan, renderSummary, requireApprovedPlan } from '../plan/plan-record';
+import { implementation, type ImplementationResult } from '../../agent-result/definitions/implementation';
+import { resultPromptFor } from '../../agent-result/result-prompt';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
 import { withEnvironment } from '../../environment/environment-note';
@@ -37,12 +38,13 @@ import { storedPlan } from '../step';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import { settleRebase, type RebaseDeps } from './implement-rebase';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
-import { staleRepos, unchangedSincePipeline } from '../pipeline/pipeline-report';
-import { pipelineRefRepos } from '../pipeline/pipeline-ref-repos';
+import { unchangedSincePipeline } from '../pipeline/pipeline-report';
 import { rerunFailed } from './failed-commands';
 import { checksStillRed, implementFollowUp } from './implement.prompts';
 import { implementNeedsWait } from './implement-needs';
-import { parseImplementation, withReturnNotes } from './implement-record';
+import { renderCause, renderImplementation, withReturnNotes } from './implement-record';
+import { lastReceived } from './implement-chat';
+import { retryUnchangedPipeline } from './implement-pipeline-return';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { StepSnapshot } from '../step';
 import type { PipelineResult } from '../../core/pipeline-result';
@@ -51,12 +53,12 @@ import { SplitImplementStep } from './split-implement.step';
 /** The follow-ups a checks return gets in one visit while its failed commands are still red. */
 const MAX_CHECK_FOLLOW_UPS = 2;
 
-/** The visit summary of a CI rerun after an unchanged pipeline failure; the agent's own explanation follows it. */
-const UNFIXED_RERUN = 'pipeline failure left unchanged, CI rerun: ';
-const NO_EXPLANATION = 'the agent gave no explanation';
-
 const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
+  planResult: lateInput(ARTIFACTS.planResult),
+  planImproveResult: lateInput(ARTIFACTS.planImproveResult),
+  implementationResult: lateInput(ARTIFACTS.implementationResult),
+  implementationImproveResult: lateInput(ARTIFACTS.implementationImproveResult),
   returns: lateInput(ARTIFACTS.issues),
   repos: lateInput(ARTIFACTS.repos),
   rebaseConflict: lateInput(ARTIFACTS.rebaseConflict),
@@ -71,6 +73,8 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
   readonly name: StepName = 'implement';
   readonly outputs = [
     ARTIFACTS.implementation,
+    ARTIFACTS.implementationResult,
+    ARTIFACTS.rebaseResolutionResult,
     ARTIFACTS.requirements,
     ARTIFACTS.pipelineRef,
     ARTIFACTS.ciRerun,
@@ -133,7 +137,8 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const env = this.config.env;
     const { key } = ctx.opened.run;
     const auto = options.auto;
-    const plan = requireApprovedPlan(input.requirements);
+    const current = await currentPlan(this.documents, key);
+    const plan = requireApprovedPlan(current);
     const names = checkedRepoNames((await ctx.reread(ARTIFACTS.repos)) ?? []);
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
@@ -156,15 +161,19 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const marker = markerBody.split('\n')[0]?.trim() ?? '';
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
     const { runtime } = this.profile(env, ctx.opened.run);
+    const continued = await resumableChat(root(this.config), key, 'implement', runtime);
+    const received = continued?.chatId ? await lastReceived(this.documents, key) : null;
     const fullFor = (target: string): string =>
-      skillPrompt('implement', input.requirements, names, sections, mounts, {
-        deferExecutionRules: true,
-        rules: projectRules(names, mounts, target, false),
-      });
+      [
+        skillPrompt('implement', input.requirements, names, sections, mounts, {
+          deferExecutionRules: true,
+          rules: projectRules(names, mounts, target, false),
+        }),
+        resultPromptFor(implementation, null),
+      ].join('\n\n');
     const full = fullFor(runtime);
     const added = await ctx.reread(ARTIFACTS.addedRepos);
-    const continued = await resumableChat(root(this.config), key, 'implement', runtime);
-    const basePrompt = withAddedRepos(continued?.chatId ? implementFollowUp(plan, notes, merged) : full, added);
+    const basePrompt = withAddedRepos(received ? implementFollowUp(plan, notes, merged, received) : full, added);
     const settled = await settleRebase(
       this.rebaseDeps(runtime),
       input.requirements,
@@ -186,7 +195,8 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       basePrompt,
     );
     const before = await worktreeSnapshot(mounts);
-    let agentResult = await ctx.launch({
+    const asked = (value: unknown): string[] => implementErrors(ctx.opened.run, value as ImplementationResult);
+    const first = await ctx.launch({
       prompt,
       mounts,
       allowHosts,
@@ -194,110 +204,84 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       project,
       projectFor: reproject,
       briefFor: (other) => withEnvironment(withAddedRepos(fullFor(other), added), executionRules),
-      sections: ['implementation'],
-      validate: (text) => {
-        if (!implementNeedsWait(ctx.opened.run, '', text)) parseImplementation(text);
-      },
+      result: implementation,
+      check: asked,
       freshPrompt: continued?.chatId ? withEnvironment(withAddedRepos(full, added), executionRules) : undefined,
     });
     await assertUncommitted(mounts, branch, heads);
-    const waiting = implementNeedsWait(ctx.opened.run, ctx.opened.startedAt, agentResult.responseText);
+    let value = first.resultValue as ImplementationResult;
+    const waiting = implementNeedsWait(ctx.opened.run, ctx.opened.startedAt, value);
     if (waiting) {
-      return waiting;
+      return { ...waiting, outputs: [...waiting.outputs, { artifact: ARTIFACTS.implementationResult, value }] };
     }
     if (isSubtask(ctx.opened.run)) await ctx.write(ARTIFACTS.needs, '');
-    let planText = agentResult.responseText;
-    let planOutput = agentResult.output ?? '';
+    // The newest checklist an answer of this visit corrected.
+    let corrected = value.plan?.length ? value.plan : undefined;
     const unchanged = async (): Promise<boolean> =>
       (await unchangedSincePipeline(await ctx.reread(ARTIFACTS.pipelineRef), mounts)) ??
       (await worktreeSnapshot(mounts)) === before;
+    const sameWorkplace = { mounts, allowHosts, manifestHosts, project, projectFor: reproject };
     const pipelineReturn = isPipelineReturn(notes);
-    const { issues: pipelineIssues, unfixed } = pipelineReturn
+    const { issues, unfixed } = pipelineReturn
       ? await pipelineAnswers(this.documents, ctx.opened.run.id)
       : { issues: [], unfixed: new Set<string>() };
     if (pipelineReturn && (await unchanged())) {
-      const repeated = pipelineIssues.find((issue) => unfixed.has(issue.id));
-      if (repeated) {
-        const explanation = await this.previousExplanation(ctx.opened.run.id);
-        const line = `${ctx.opened.startedAt} ${repeated.title} failed twice on the same commit and the agent changed nothing: ${explanation}`;
-        return {
-          route: { to: 'block', code: ERROR_CODES.PIPELINE_UNFIXED, reason: line },
-          summary: line,
-          outputs: [],
-        };
-      }
-      agentResult = await ctx.launch({
-        prompt: withEnvironment(
-          `The pipeline failure still stands and the files are unchanged.\n\n${notes?.trim() ?? ''}`,
-          executionRules,
-        ),
-        mounts,
-        allowHosts,
-        manifestHosts,
-        project,
-        projectFor: reproject,
-      });
-      await assertUncommitted(mounts, branch, heads);
-      const againOutput = agentResult.output ?? '';
-      if (answerHasPlan(agentResult.responseText, againOutput)) {
-        planText = agentResult.responseText;
-        planOutput = againOutput;
-      }
-      if (await unchanged()) {
-        const stale = await staleRepos(await ctx.reread(ARTIFACTS.pipelineRef), mounts);
-        if (stale.length > 0) {
-          return {
-            route: { to: 'jump', step: 'commit' },
-            summary: `${ctx.opened.startedAt} no change needed: the failed pipeline ran on an older commit`,
-            outputs: [],
-            visit: { documents: [textDocument(ARTIFACTS.ciRerun.kind, `${stale.join('\n')}\n`)] },
-          };
-        }
-        const refRepos = await pipelineRefRepos(await ctx.reread(ARTIFACTS.pipelineRef), mounts);
-        return this.rerunResult(
-          input.requirements,
+      const outcome = await retryUnchangedPipeline(
+        {
           ctx,
-          planText,
-          planOutput,
-          summaryOr(agentResult.responseText, NO_EXPLANATION).trim(),
-          pipelineIssues,
-          refRepos,
-        );
+          events: this.kernel.stepEvents,
+          step: this.name,
+          requirements: input.requirements,
+          items: current?.items ?? [],
+          plan: corrected,
+          notes,
+          issues,
+          unfixed,
+          mounts,
+          workplace: sameWorkplace,
+          executionRules,
+          unchanged,
+          assertUncommitted: () => assertUncommitted(mounts, branch, heads),
+        },
+        value,
+      );
+      if ('stop' in outcome) {
+        return outcome.stop;
       }
+      ({ value, plan: corrected } = outcome);
     }
-    const sameWorkplace = { mounts, allowHosts, manifestHosts, project, projectFor: reproject };
     let red =
       isChecksReturn(notes) || pipelineReturn
         ? await rerunFailed(this.environments, await ctx.reread(ARTIFACTS.issues), place)
         : [];
     for (let sent = 0; red.length > 0 && sent < MAX_CHECK_FOLLOW_UPS; sent++) {
-      agentResult = await ctx.launch({
+      const again = await ctx.launch({
         ...sameWorkplace,
-        prompt: withEnvironment(checksStillRed(red), executionRules),
-        sections: ['implementation'],
-        validate: (answer) => parseImplementation(answer),
+        prompt: withEnvironment(checksStillRed(red, implementation.name), executionRules),
+        result: implementation,
+        check: asked,
       });
       await assertUncommitted(mounts, branch, heads);
-      const againOutput = agentResult.output ?? '';
-      if (answerHasPlan(agentResult.responseText, againOutput)) {
-        planText = agentResult.responseText;
-        planOutput = againOutput;
-      }
+      value = again.resultValue as ImplementationResult;
+      corrected = value.plan?.length ? value.plan : corrected;
       red = await this.environments.rerun(place, red);
     }
-    const text = agentResult.responseText;
-    const body = parseImplementation(text);
-    const corrected = correctedPlan(input.requirements, planText, planOutput);
-    const reasons = corrected ? `${parseSummary(text).trimEnd()}\n${corrected.handoff}` : parseSummary(text);
-    const cause = items(section(text, 'cause') ?? '');
-    const summary = cause.length > 0 ? `cause:\n${bulletList(cause)}\n${reasons}` : reasons;
+    const body = renderImplementation(value.implementation);
+    const change = correctedPlan(input.requirements, corrected, current?.items ?? []);
+    const reasons = renderSummary(value.summary, value.implementation);
+    const why = change ? `${reasons.trimEnd()}\n${change.handoff}` : reasons;
+    const summary = value.cause?.length ? `${renderCause(value.cause)}${why}` : why;
     const status = await worktreeStatus(mounts);
     return {
       route: { to: 'next' },
       summary: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
-      outputs: [{ artifact: ARTIFACTS.implementation, value: body }],
+      outputs: [
+        { artifact: ARTIFACTS.implementation, value: body },
+        // The checklist in force goes with the result, so a later result without a correction keeps it for `currentPlan`.
+        { artifact: ARTIFACTS.implementationResult, value: { ...value, plan: corrected ?? current?.items } },
+      ],
       handoff: summary,
-      visit: corrected ? { documents: [textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] } : undefined,
+      visit: change ? { documents: [textDocument(ARTIFACTS.requirements.kind, change.requirements)] } : undefined,
     };
   }
 
@@ -313,53 +297,13 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       runtime,
     };
   }
-
-  /** The explanation the agent gave on the CI rerun the last implement visit asked for. */
-  private async previousExplanation(runId: number): Promise<string> {
-    let last = '';
-    let after = 0;
-    for (;;) {
-      const page = await this.kernel.stepEvents.page(runId, { step: this.name, after });
-      for (const event of page.events) {
-        if (event.kind === 'attempt.finished' && event.summary.startsWith(UNFIXED_RERUN)) {
-          last = event.summary.slice(UNFIXED_RERUN.length).trim();
-        }
-      }
-      if (page.next === null) {
-        return last || NO_EXPLANATION;
-      }
-      after = page.next;
-    }
-  }
-
-  /** A pipeline failure the retry left unchanged on disk: CI runs the failed jobs again on the same commit. */
-  private rerunResult(
-    requirements: string,
-    ctx: ModelStepContext,
-    planText: string,
-    planOutput: string,
-    explanation: string,
-    issues: Issue[],
-    repos: string[],
-  ): StepResult {
-    const corrected = correctedPlan(requirements, planText, planOutput);
-    const documents = [
-      ...(issues.length > 0
-        ? [textDocument(ARTIFACTS.unfixedIssue.kind, issues.map((issue) => issue.id).join('\n'))]
-        : []),
-      textDocument(ARTIFACTS.ciRerun.kind, `${repos.join('\n')}\n`),
-      ...(corrected ? [textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] : []),
-    ];
-    return {
-      route: { to: 'jump', step: 'commit' },
-      summary: `${ctx.opened.startedAt} ${UNFIXED_RERUN}${explanation}`,
-      outputs: [],
-      handoff: corrected?.handoff,
-      visit: { documents },
-    };
-  }
 }
 
-function answerHasPlan(text: string, output: string): boolean {
-  return correctedItems(text, output) !== null;
+/** What the server checks on an implement answer after its schema: it changed something, or a subtask waits for a sibling. */
+function implementErrors(run: RunEntity, value: ImplementationResult): string[] {
+  const errors: string[] = [];
+  if (value.implementation.length === 0 && !(isSubtask(run) && value.needs?.length)) {
+    errors.push('implementation: must list what you changed');
+  }
+  return errors;
 }

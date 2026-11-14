@@ -1,6 +1,10 @@
 import { isPipelineReturn } from '../follow-up';
 import type { FailedCommand } from '../../environment/environment-types';
 import { TASK_SCOPE } from '../shared/requirements-brief';
+import { implementation } from '../../agent-result/definitions/implementation';
+import { implementationImprove } from '../../agent-result/definitions/implementation-improve';
+import { rebaseResolution } from '../../agent-result/definitions/rebase-resolution';
+import { resultPromptFor } from '../../agent-result/result-prompt';
 
 export function rebaseConflictPrompt(input: {
   repo: string;
@@ -20,6 +24,7 @@ export function rebaseConflictPrompt(input: {
     input.requirements.trim(),
     'Do not run git.',
     'Do not push. Do not create a branch.',
+    resultPromptFor(rebaseResolution, null),
   ].join('\n');
 }
 
@@ -31,31 +36,28 @@ const RERUN_RULE =
   'On a return from the checks step, or a pipeline return whose failed job names a command the project also runs as a check, the failed commands come with it. Rerun each failed command in the sandbox after the change, and end only when it passes. When it cannot pass, `summary` says which command still fails and why.';
 
 /** Sent after a turn that answered a checks return while the server's rerun of the failed commands is still red. */
-export function checksStillRed(red: FailedCommand[]): string {
+export function checksStillRed(red: FailedCommand[], received: string | null): string {
   return [
     'The server ran the failed checks again after your turn, and they still fail:',
     ...red.map(({ repo, command, tail }) => `\n${repo}: ${command}\n${tail.trim()}`),
     '',
     'Fix the cause, run each failed command again in the sandbox, and end only when it passes. When it cannot pass, say in the summary which command still fails and why.',
-    'End with these sections:',
-    'implementation:',
-    '- item',
     '',
-    'summary:',
-    '- why',
+    resultPromptFor(implementation, received),
   ].join('\n');
 }
 
 export function implementFollowUp(
   plan: string,
   notes: string | null,
-  context: { heading: string; body: string }[] = [],
+  context: { heading: string; body: string }[],
+  received: string | null,
 ): string {
   const lines = [
     'Implement this approved checklist in the mounted worktree. Read a file before editing it.',
     'Do only that checklist. Context from earlier may change how an item is done. Do not start work that belongs to another ticket.',
     'A pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix.',
-    'When an item changes, end with one plan: block of "- item" lines, not a JSON object, holding the full corrected checklist, before implementation and summary. Without a contradiction, do not write plan:.',
+    'When an item changes, send the full corrected checklist in `plan`. Without a contradiction, leave `plan` out.',
     'Do not start a service. Do not commit. Do not create a branch.',
     NEAR_TESTS_RULE,
     EDIT_TOOLS_RULE,
@@ -76,13 +78,13 @@ export function implementFollowUp(
   for (const { heading, body } of context) {
     lines.push('', `${heading}:`, body.trim());
   }
-  lines.push('', 'End with these sections:', 'implementation:', '- item', '', 'summary:', '- why');
+  lines.push('', resultPromptFor(implementation, received));
   return lines.join('\n');
 }
 
 const CHECK_FAILED_LINE = 'The server check below failed on your files. Run it, fix the cause, run it again.';
 
-export function implementImproveFollowUp(notes: string | null): string {
+export function implementImproveFollowUp(notes: string | null, received: string | null): string {
   const lines = [
     'Check the change for logical and technical gaps and fix only those. Start from the files this change touched. Open another file only to follow a call from the change or a test the return names. Do not sweep the tree with grep. When there is no gap and no command came back red, leave the files. A pipeline return changes the code or the failed test. Do not leave them. Do not widen the change. Do not implement a linked ticket.',
     TASK_SCOPE,
@@ -91,8 +93,8 @@ export function implementImproveFollowUp(notes: string | null): string {
     RERUN_RULE,
     'Do not start a service, a database, or the application. Do not run `git commit`, `git push`, or `git add -A`. Do not create a branch.',
     'A pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix.',
-    'When an item changes, end with one plan: block of "- item" lines, not a JSON object, holding the full corrected checklist, before implementation and summary. Without a contradiction, do not write plan:.',
-    'When this pass changed the files, end with implementation and summary. When nothing changed and the return is not a pipeline failure, end with summary only.',
+    'When an item changes, send the full corrected checklist in `plan`. Without a contradiction, leave `plan` out.',
+    'When this pass changed the files, fill `implementation`. When nothing changed and the return is not a pipeline failure, leave `implementation` empty.',
   ];
   const returned = notes?.trim();
   if (returned) {
@@ -102,6 +104,6 @@ export function implementImproveFollowUp(notes: string | null): string {
     }
     lines.push(returned, '');
   }
-  lines.push('implementation:', '- item', '', 'summary:', '- why');
+  lines.push(resultPromptFor(implementationImprove, received));
   return lines.join('\n');
 }

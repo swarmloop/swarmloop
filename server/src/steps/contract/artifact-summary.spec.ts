@@ -29,6 +29,9 @@ function goldenBodies(): Map<string, string> {
 /** A kind no golden run stores, whose body is JSON. */
 const JSON_BODIES: Record<string, string> = {
   answer_errors: '["items: \\"items\\" is required"]\n',
+  implementation_result: '{"implementation":["changed the parser"],"summary":["why"]}\n',
+  implementation_improve_result: '{"implementation":["fixed the case"],"summary":["why"]}\n',
+  rebase_resolution_result: '{"summary":["kept both sides"]}\n',
   subtask_answer_result: '{"answer":"use the shared helper"}\n',
 };
 

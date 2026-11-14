@@ -11,7 +11,7 @@ function itemsOf(result: Pick<SplitFields, 'tasks'> & { plan: string[] }): strin
 }
 
 /**
- * The plan of a run: the checklist of the newest plan or plan-improve result that holds one, and the name, overview and
+ * The plan of a run: the checklist of the newest plan, plan-improve or implement result that holds one, and the name, overview and
  * decision of the plan in the requirements record. A run without results reads the plan in the requirements record.
  */
 export async function currentPlan(documents: DocumentRepository, key: string): Promise<PlanFields | null> {
@@ -24,7 +24,28 @@ export async function currentPlan(documents: DocumentRepository, key: string): P
     { doc: await documents.latestDocument(key, ARTIFACTS.planResult.kind), artifact: ARTIFACTS.planResult },
   ]
     .flatMap(({ doc, artifact }) => (doc ? [{ id: doc.id, items: itemsOf(artifact.parse(doc.body)) }] : []))
+    .concat(await correctedByImplement(documents, key))
     .sort((a, b) => b.id - a.id);
   const items = results.find((result) => result.items.length > 0)?.items;
   return items ? { ...(stored ?? planFields([])), items } : stored;
+}
+
+/** The corrected checklists the implement steps sent, newest first with the others; a result without one is skipped. */
+async function correctedByImplement(
+  documents: DocumentRepository,
+  key: string,
+): Promise<{ id: number; items: string[] }[]> {
+  const found = [
+    {
+      doc: await documents.latestDocument(key, ARTIFACTS.implementationResult.kind),
+      artifact: ARTIFACTS.implementationResult,
+    },
+    {
+      doc: await documents.latestDocument(key, ARTIFACTS.implementationImproveResult.kind),
+      artifact: ARTIFACTS.implementationImproveResult,
+    },
+  ];
+  return found.flatMap(({ doc, artifact }) =>
+    doc ? [{ id: doc.id, items: artifact.parse(doc.body).plan ?? [] }] : [],
+  );
 }

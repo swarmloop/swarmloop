@@ -92,14 +92,14 @@ function heading(line: string): string {
   return text.toLowerCase();
 }
 
-export function bulletList(lines: string[]): string {
+function bulletList(lines: string[]): string {
   if (lines.length === 0) {
     return '';
   }
   return `${lines.map((line) => `- ${line}`).join('\n')}\n`;
 }
 
-export function items(block: string): string[] {
+function items(block: string): string[] {
   return block
     .split(/\r?\n/)
     .map((line) => line.trim())

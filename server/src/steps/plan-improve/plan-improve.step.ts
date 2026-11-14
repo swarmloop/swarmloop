@@ -53,6 +53,8 @@ const INPUTS = {
   contract: lateInput(ARTIFACTS.contract),
   planResult: lateInput(ARTIFACTS.planResult),
   planImproveResult: lateInput(ARTIFACTS.planImproveResult),
+  implementationResult: lateInput(ARTIFACTS.implementationResult),
+  implementationImproveResult: lateInput(ARTIFACTS.implementationImproveResult),
   keep: lateInput(ARTIFACTS.keep),
   instructions: instructionsInput('plan-improve'),
 } as const satisfies InputSpec;
