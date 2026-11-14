@@ -2,7 +2,17 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConnectionsView } from '@contract/api';
-import { disconnect, getConnections, getOwner, getSession, replaceApp } from '../../lib/endpoints';
+import type { ConnectionCard } from '@contract/connections';
+import {
+  disconnect,
+  disconnectIntegration,
+  getConnections,
+  getIntegrationCards,
+  getOwner,
+  getSession,
+  replaceApp,
+} from '../../lib/endpoints';
+import { connectionCard } from '../../test/fixtures';
 import { ConnectionsPage } from './connections-page';
 
 vi.mock('../../lib/endpoints', () => ({
@@ -11,6 +21,13 @@ vi.mock('../../lib/endpoints', () => ({
   getSession: vi.fn(),
   replaceApp: vi.fn(),
   getOwner: vi.fn(),
+  getIntegrationCards: vi.fn(),
+  disconnectIntegration: vi.fn(),
+  saveIntegration: vi.fn(),
+  testIntegration: vi.fn(),
+  startSignIn: vi.fn(),
+  getSignIn: vi.fn(),
+  sendSignInCode: vi.fn(),
   installMore: vi.fn(),
   reconnectUrl: (host: string) => `/auth/${host}/login`,
 }));
@@ -46,7 +63,27 @@ const connected: ConnectionsView = {
   ],
 };
 
+const redirect = { kind: 'redirect' as const, label: 'Connect', fields: [], helpUrl: null };
+const cards: ConnectionCard[] = [
+  connectionCard({
+    id: 'github',
+    logo: 'github',
+    label: 'GitHub',
+    flows: [{ ...redirect, url: '/auth/github/login' }],
+  }),
+  connectionCard({
+    id: 'gitlab',
+    logo: 'gitlab',
+    label: 'GitLab',
+    flows: [{ ...redirect, url: '/auth/gitlab/login' }],
+  }),
+  connectionCard(),
+];
+
 beforeEach(() => {
+  vi.mocked(getIntegrationCards).mockReset().mockResolvedValue({ cards });
+  vi.mocked(disconnectIntegration).mockReset();
+  window.location.hash = '';
   vi.mocked(getConnections).mockReset();
   vi.mocked(disconnect).mockReset();
   vi.mocked(replaceApp).mockReset();
@@ -150,5 +187,41 @@ describe('ConnectionsPage', () => {
     render(<ConnectionsPage />);
     await screen.findByRole('region', { name: 'GitHub' });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('the Claude card draws from the card list and Disconnect clears it after the reload', async () => {
+    vi.mocked(getConnections).mockResolvedValue(connected);
+    vi.mocked(getIntegrationCards).mockResolvedValue({
+      cards: cards.map((card) =>
+        card.id === 'claude' ? connectionCard({ status: 'connected', account: 'alice@acme.test' }) : card,
+      ),
+    });
+    vi.mocked(disconnectIntegration).mockResolvedValue({ ok: true });
+    render(<ConnectionsPage />);
+    const claude = await screen.findByRole('region', { name: 'Claude' });
+    expect(claude).toHaveTextContent('Connected as alice@acme.test');
+
+    vi.mocked(getIntegrationCards).mockResolvedValue({ cards });
+    await userEvent.click(within(claude).getByRole('button', { name: 'Disconnect' }));
+
+    expect(disconnectIntegration).toHaveBeenCalledWith('claude');
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Claude' })).toHaveTextContent('Not connected'));
+  });
+
+  it('the hash #claude focuses the Claude card', async () => {
+    vi.mocked(getConnections).mockResolvedValue(connected);
+    window.location.hash = '#claude';
+    render(<ConnectionsPage />);
+
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Claude' })).toHaveFocus());
+  });
+
+  it('GitHub and GitLab appear once', async () => {
+    vi.mocked(getConnections).mockResolvedValue(connected);
+    render(<ConnectionsPage />);
+    await screen.findByRole('region', { name: 'Claude' });
+
+    expect(screen.getAllByRole('region', { name: 'GitHub' })).toHaveLength(1);
+    expect(screen.getAllByRole('region', { name: 'GitLab' })).toHaveLength(1);
   });
 });

@@ -37,6 +37,27 @@ describe('ReadinessPanel', () => {
     expect(screen.queryByText(/nothing to do/)).not.toBeInTheDocument();
   });
 
+  it('a readiness link opens its card', async () => {
+    vi.mocked(getReadiness).mockResolvedValue({
+      items: [
+        {
+          id: 'model-credential',
+          status: 'fail',
+          line: 'no key for claude',
+          action: 'connect it',
+          link: '/connections#claude',
+        },
+      ],
+      checkedAt: CHECKED_AT,
+    });
+    renderPanel();
+
+    expect(await screen.findByRole('link', { name: 'Open Connections' })).toHaveAttribute(
+      'href',
+      '/connections#claude',
+    );
+  });
+
   it("lists the four parts of swarmloop's own disk use with sizes on the Disk tile", async () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [
