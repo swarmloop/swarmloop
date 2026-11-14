@@ -1,13 +1,15 @@
 'use client';
 
-import type { KeyboardEvent, ReactElement } from 'react';
+import type { KeyboardEvent, ReactElement, ReactNode } from 'react';
 import Box from '@mui/material/Box';
+import Link from '@mui/material/Link';
 import List from '@mui/material/List';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
 import { EpicGroup } from './epic-group';
 import { byDay, nested } from './run-days';
+import type { Part } from './run-filter';
 import { RunRow } from './run-row';
 
 /** Moves focus to the previous or next row, task line or fold button in the list. */
@@ -25,11 +27,58 @@ function moveFocus(event: KeyboardEvent<HTMLElement>): void {
   }
 }
 
+const OTHER: Record<'active' | 'done', { part: Part; word: string; label: string }> = {
+  active: { part: 'done', word: 'active', label: 'Done' },
+  done: { part: 'active', word: 'done', label: 'Active' },
+};
+
+/** What the list says when no run is shown: nothing in the part, or no match for the search. */
+function EmptyText({
+  part,
+  searching,
+  otherMatches,
+  onPart,
+}: {
+  part: Part;
+  searching: boolean;
+  otherMatches: number;
+  onPart: (part: Part) => void;
+}): ReactElement {
+  if (part === 'all') {
+    return <>No run matches</>;
+  }
+  const other = OTHER[part];
+  if (!searching) {
+    return part === 'active' ? (
+      <>
+        Nothing in progress{' '}
+        <Link component="button" type="button" variant="body2" onClick={() => onPart('done')}>
+          Show done runs
+        </Link>
+      </>
+    ) : (
+      <>Nothing done yet</>
+    );
+  }
+  const line = `No ${part} run matches`;
+  return otherMatches > 0 ? (
+    <Link component="button" type="button" variant="body2" onClick={() => onPart(other.part)}>
+      {`${line} · ${otherMatches} in ${other.label}`}
+    </Link>
+  ) : (
+    <>{line}</>
+  );
+}
+
 export function RunList({
   query,
   onQuery,
   runs,
   visible,
+  part,
+  otherMatches,
+  onPart,
+  control,
   selected,
   now,
   error,
@@ -40,6 +89,10 @@ export function RunList({
   onQuery: (query: string) => void;
   runs: RunSummary[];
   visible: RunSummary[];
+  part: Part;
+  otherMatches: number;
+  onPart: (part: Part) => void;
+  control?: ReactNode;
   selected: string;
   now: number;
   error: string | null;
@@ -53,14 +106,19 @@ export function RunList({
         <TextField
           value={query}
           onChange={(event) => onQuery(event.target.value)}
-          placeholder="Filter by key"
+          placeholder="Filter runs"
           size="small"
           fullWidth
         />
+        {control ? <Box sx={{ pt: 1 }}>{control}</Box> : null}
       </Box>
       {visible.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{ px: 2, pt: 2 }}>
-          {runs.length === 0 ? 'No runs yet.' : 'No key matches.'}
+        <Typography variant="body2" color="text.secondary" component="div" sx={{ px: 2, pt: 2 }}>
+          {runs.length === 0 ? (
+            'No runs yet.'
+          ) : (
+            <EmptyText part={part} searching={query.trim() !== ''} otherMatches={otherMatches} onPart={onPart} />
+          )}
         </Typography>
       ) : null}
       <Box onKeyDown={moveFocus} sx={{ px: 0.5, py: 0.5 }}>

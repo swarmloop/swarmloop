@@ -15,6 +15,9 @@ function list(overrides: Partial<ComponentProps<typeof RunList>> = {}) {
     onQuery: vi.fn(),
     runs: [run],
     visible: [run],
+    part: 'active' as const,
+    otherMatches: 0,
+    onPart: vi.fn(),
     selected: '',
     now: 0,
     error: null,
@@ -126,7 +129,33 @@ describe('RunList', () => {
   it('says No key matches. when the filter matches nothing', () => {
     list({ query: 'zzz', visible: [] });
 
-    expect(screen.getByText('No key matches.')).toBeInTheDocument();
+    expect(screen.getByText('No active run matches')).toBeInTheDocument();
+  });
+
+  it('says Nothing in progress with a link to the done runs', async () => {
+    const props = list({ visible: [] });
+
+    expect(screen.getByText(/Nothing in progress/)).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Show done runs' }));
+
+    expect(props.onPart).toHaveBeenCalledWith('done');
+  });
+
+  it('offers the matches of the other part when the search finds none', async () => {
+    const props = list({ query: 'zzz', visible: [], otherMatches: 2 });
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'No active run matches · 2 in Done' }));
+
+    expect(props.onPart).toHaveBeenCalledWith('done');
+  });
+
+  it('puts the control under the search box', () => {
+    list({ control: <p>the control</p> });
+
+    const box = screen.getByRole('textbox');
+    expect(
+      box.compareDocumentPosition(screen.getByText('the control')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('opens a run by its key when its row is clicked', async () => {
