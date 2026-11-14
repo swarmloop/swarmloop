@@ -24,7 +24,7 @@ import { SandboxService } from '../sandbox/sandbox.service';
 import { CHAT_LOCK, chatResume, readChatLock } from './chat-lock';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
-import { RunSettler } from './run-settler';
+import { RunSettler, type RelaunchDecision } from './run-settler';
 import { SubtaskPort } from './subtask-port';
 import { settleShell } from './shell-lock';
 
@@ -321,25 +321,28 @@ export class Reconciler implements OnModuleDestroy {
       return;
     }
     if (await this.settler.settleRebase(run)) return;
-    const stopping = (await this.commandLog.pending(run.id)).some((command) => command.type === 'stop');
     const deadAttempt = run.activeAttempt;
-    await this.settler.settleAttempt(run, this.slept);
-    if (!stopping) await this.relaunchInterrupted(run.key, deadAttempt);
+    const decision = await this.settler.settleAttempt(run, this.slept, () => this.relaunchDecision(run, deadAttempt));
+    if (decision?.relaunch) await this.commands.runAccepted(run.key);
   }
 
   /**
-   * A step cut by a restart has its `process died` visit stored and its run `failed`. It is relaunched through the
-   * resume a person would press, under the same `MAX_LAUNCHES` rule as the driver. A stopped run is not relaunched.
-   * The key names the dead attempt, so two passes over it make one command and two attempts never share one.
+   * Whether the attempt a restart cut is started again, under the same `MAX_LAUNCHES` rule as the driver. A run with
+   * a Stop pending or halted is not. The key names the dead attempt, so two passes over it make one command and two
+   * attempts never share one.
    */
-  private async relaunchInterrupted(key: string, deadAttempt: string | null): Promise<void> {
-    if (deadAttempt === null) return;
-    const run = await this.runs.findRun(key);
-    if (run?.status !== 'failed' || run.currentStep === 'done' || this.runStop.halted(key)) return;
-    const mark = loopMark(await this.documents.latestBody(key, 'loop_mark'));
+  private async relaunchDecision(run: RunEntity, deadAttempt: string | null): Promise<RelaunchDecision> {
+    const stopped =
+      (await this.commandLog.pending(run.id)).some((command) => command.type === 'stop') ||
+      this.runStop.halted(run.key);
+    if (stopped) return { relaunch: false, cause: 'stop' };
+    if (deadAttempt === null || run.currentStep === 'done') return { relaunch: false, cause: null };
+    const mark = loopMark(await this.documents.latestBody(run.key, 'loop_mark'));
     const stats = await this.visits.listStats(run.id);
-    if (failedAttemptLaunches(stats, run.currentStep, mark, deadAttempt) >= this.config.env.MAX_LAUNCHES) return;
-    await this.resumeOnce(run, `relaunch-${deadAttempt}`, () => Promise.resolve(true));
+    if (failedAttemptLaunches(stats, run.currentStep, mark, deadAttempt) >= this.config.env.MAX_LAUNCHES) {
+      return { relaunch: false, cause: 'limit' };
+    }
+    return { relaunch: true, idempotencyKey: `relaunch-${deadAttempt}` };
   }
 
   /** The owner is this process and its step is in flight, or a chat of this process holds the run. */

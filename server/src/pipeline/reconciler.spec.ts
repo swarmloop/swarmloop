@@ -6,6 +6,9 @@ import { RunStop } from '../agent/run-stop';
 import { CommandRepository } from '../history/command.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
+import { DataSource } from 'typeorm';
+import { StepEventLog } from '../history/step-event.log';
+import { recordRunWrites } from '../testing/run-writes.spec-helpers';
 import { createTestApp } from '../testing/test-app';
 import type { TestApp } from '../testing/test-app';
 import { save } from '../testing/runs.spec-helpers';
@@ -29,6 +32,8 @@ describe('reconciler waits and automatic tries', () => {
   async function boot(sandbox: NonNullable<Parameters<typeof createTestApp>[0]>['sandbox'] = {}): Promise<TestApp> {
     app = await createTestApp({ sandbox });
     accept = jest.spyOn(app.app.get(CommandService), 'accept').mockImplementation(() => Promise.resolve({} as never));
+    // A relaunch is stored with the visit and held here: the resume handler does nothing, so no step starts.
+    app.app.get(CommandService).register('resume', () => Promise.resolve(undefined));
     return app;
   }
 
@@ -125,7 +130,10 @@ describe('reconciler waits and automatic tries', () => {
 
       await world.app.get(Reconciler).resumeDocker();
 
-      expect(await world.app.get(RunRepository).findRun(KEY)).toMatchObject({ status: 'failed' });
+      const stored = (await world.app.get(RunRepository).findRun(KEY))!;
+      expect(stored.status).toBe('waiting');
+      const [visit] = await world.app.get(VisitRepository).listStats(stored.id);
+      expect(visit).toMatchObject({ status: 'failed', killReason: 'process died' });
     });
 
     it('waits for a container that still runs once docker answers', async () => {
@@ -204,15 +212,41 @@ describe('reconciler waits and automatic tries', () => {
       return { run: (await world.app.get(RunRepository).findRun(KEY))!, attempt: begun.activeAttempt };
     }
 
+    /** The relaunch commands stored for the run, once the executor has taken what it was given. */
+    async function relaunches(world: TestApp, runId: number) {
+      await world.app.get(CommandService).idle();
+      return (await world.app.get(CommandRepository).listForRun(runId)).filter((command) =>
+        command.idempotencyKey?.startsWith('relaunch-'),
+      );
+    }
+
     it('is relaunched once while failed launches are below MAX_LAUNCHES', async () => {
       const world = await boot();
       const { run, attempt } = await cut(world);
 
-      expect(run.status).toBe('failed');
-      expect(accept).toHaveBeenCalledTimes(1);
-      expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `relaunch-${attempt}` });
+      expect(run.status).toBe('waiting');
+      expect((await relaunches(world, run.id)).map((command) => [command.type, command.idempotencyKey])).toEqual([
+        ['resume', `relaunch-${attempt}`],
+      ]);
       await world.app.get(Reconciler).reconcileRuns();
-      expect(accept).toHaveBeenCalledTimes(1);
+      expect(await relaunches(world, run.id)).toHaveLength(1);
+    });
+
+    it('records every saved state between the cut attempt and the relaunch, none failed', async () => {
+      const world = await boot();
+      const begun = await world.app.get(RunRepository).begin(KEY, 'implement');
+      const writes = recordRunWrites(world.app.get(DataSource));
+      try {
+        await world.app.get(Reconciler).reconcile(begun);
+      } finally {
+        writes.stop();
+      }
+
+      const run = (await world.app.get(RunRepository).findRun(KEY))!;
+      expect(writes.statuses.at(-1)).toBe('waiting');
+      expect(writes.statuses).not.toContain('failed');
+      const [command] = await relaunches(world, run.id);
+      expect(command).toMatchObject({ type: 'resume', idempotencyKey: `relaunch-${begun.activeAttempt}` });
     });
 
     it('stays failed at MAX_LAUNCHES', async () => {
@@ -222,7 +256,7 @@ describe('reconciler waits and automatic tries', () => {
       const { run } = await cut(world);
 
       expect(run.status).toBe('failed');
-      expect(accept).not.toHaveBeenCalled();
+      expect(await relaunches(world, run.id)).toHaveLength(0);
     });
 
     it('is not relaunched when a Stop is pending', async () => {
@@ -232,25 +266,46 @@ describe('reconciler waits and automatic tries', () => {
 
       await world.app.get(Reconciler).reconcile(run);
 
-      expect(accept).not.toHaveBeenCalled();
+      const stored = (await world.app.get(RunRepository).findRun(KEY))!;
+      expect(stored.status).toBe('failed');
+      expect(await relaunches(world, stored.id)).toHaveLength(0);
+    });
+
+    it('does not relaunch when a Stop arrives while the dead attempt is settled', async () => {
+      const world = await boot();
+      const run = await world.app.get(RunRepository).begin(KEY, 'implement');
+      const events = world.app.get(StepEventLog);
+      const lastOfAttempt = events.lastOfAttempt.bind(events);
+      jest.spyOn(events, 'lastOfAttempt').mockImplementation(async (...args) => {
+        await world.app.get(CommandRepository).accept({ type: 'stop', key: KEY, payload: {}, admit: () => undefined });
+        return lastOfAttempt(...args);
+      });
+
+      await world.app.get(Reconciler).reconcile(run);
+
+      const stored = (await world.app.get(RunRepository).findRun(KEY))!;
+      expect(stored.status).toBe('failed');
+      expect(await relaunches(world, stored.id)).toHaveLength(0);
     });
 
     it('is not relaunched when its run is halted', async () => {
       const world = await boot();
       world.app.get(RunStop).halt(KEY);
 
-      await cut(world);
+      const { run } = await cut(world);
 
-      expect(accept).not.toHaveBeenCalled();
+      expect(run.status).toBe('failed');
+      expect(await relaunches(world, run.id)).toHaveLength(0);
     });
 
     it('is not relaunched while docker is silent and no visit was stored', async () => {
       const world = await boot();
-      await park(world, 'waiting', ERROR_CODES.DOCKER_UNAVAILABLE);
+      const parked = await park(world, 'waiting', ERROR_CODES.DOCKER_UNAVAILABLE);
 
       await world.app.get(Reconciler).reconcileRuns();
 
-      expect(accept).not.toHaveBeenCalled();
+      expect(await relaunches(world, parked.id)).toHaveLength(0);
+      expect((await world.app.get(RunRepository).findRun(KEY))!.status).toBe('waiting');
     });
   });
 

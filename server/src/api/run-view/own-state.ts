@@ -1,5 +1,6 @@
 import type { DocumentEntity, RunEntity } from '../../history/entities';
 import type { DocumentRepository } from '../../history/document.repository';
+import type { CommandRepository } from '../../history/command.repository';
 import type { CheckoutRepository } from '../../history/checkout.repository';
 import type { RunSummary } from '../../contract/api';
 import { openItems, stateView } from './flow';
@@ -10,6 +11,7 @@ export type OwnState = Pick<RunSummary, 'state' | 'stateReason'>;
 export interface StateSources {
   documents: Pick<DocumentRepository, 'latestDocuments'>;
   checkouts: Pick<CheckoutRepository, 'listPastes'>;
+  commands: Pick<CommandRepository, 'acceptedRunIds'>;
 }
 
 /** The documents `stateView` and `openItems` read: the open questions and answers, the pending paste and the error. */
@@ -44,6 +46,7 @@ async function ownState(
   run: RunEntity,
   claimed: (key: string) => boolean,
   docs: DocumentEntity[],
+  queued: boolean,
 ): Promise<OwnState> {
   const shown = shownRun(run, claimed);
   // The paste urls only matter where a run asks for a paste: at requirements, with a pending one.
@@ -54,20 +57,23 @@ async function ownState(
     docs,
     pastes.map((paste) => paste.url),
   );
-  const view = stateView(shown, open, docs);
+  const view = stateView(shown, open, docs, { queued });
   return { state: view.state, stateReason: view.reason };
 }
 
 /** The state of each of the runs as the run page shows it, by run key. The list and the tasks of a run page read it the same way. */
 export async function ownStates(
-  { documents, checkouts }: StateSources,
+  { documents, checkouts, commands }: StateSources,
   runs: RunEntity[],
   claimed: (key: string) => boolean,
 ): Promise<Map<string, OwnState>> {
-  const facts = await factsOf(documents, runs, claimed);
+  const [facts, accepted] = await Promise.all([
+    factsOf(documents, runs, claimed),
+    commands.acceptedRunIds(runs.map((run) => run.id)),
+  ]);
   const states = new Map<string, OwnState>();
   for (const run of runs) {
-    states.set(run.key, await ownState(checkouts, run, claimed, facts.get(run.id) ?? []));
+    states.set(run.key, await ownState(checkouts, run, claimed, facts.get(run.id) ?? [], accepted.has(run.id)));
   }
   return states;
 }

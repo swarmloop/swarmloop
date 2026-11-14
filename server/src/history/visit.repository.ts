@@ -2,7 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import type { EntityManager } from 'typeorm';
+import type { CommandType } from '../contract/command';
 import { ERROR_CODES } from '../contract/error-codes';
+import { insertAcceptedCommand } from './accepted-command';
 import { releasedColumns } from './run-state';
 import { transaction } from './transaction';
 import { summarizeSamples } from './visit';
@@ -37,6 +39,14 @@ function tablesOf(manager: EntityManager): VisitTables {
 /** How a visit that ended on a provider limit is recorded. */
 export const LIMIT_VISIT = { status: 'interrupted', killReason: ERROR_CODES.RUNTIME_LIMIT } as const;
 
+/** A command that is accepted in the transaction that stores the visit. */
+interface FinalizeCommand {
+  type: CommandType;
+  payload: Record<string, unknown>;
+  idempotencyKey: string;
+  now: string;
+}
+
 const DUPLICATE_ATTEMPT = 'UNIQUE constraint failed: step_stats.attempt_id';
 
 @Injectable()
@@ -61,7 +71,12 @@ export class VisitRepository {
    * A repeat of an attempt returns its stored visit. A stale attempt stores nothing and returns null.
    * Either way `run` ends up as the row in the database.
    */
-  async finalize(attemptId: string | null, run: RunEntity, visit: VisitDraft): Promise<StepStatEntity | null> {
+  async finalize(
+    attemptId: string | null,
+    run: RunEntity,
+    visit: VisitDraft,
+    command?: FinalizeCommand,
+  ): Promise<StepStatEntity | null> {
     const stat = await transaction(this.dataSource, async (manager) => {
       const stored = attemptId ? await manager.getRepository(StepStatEntity).findOneBy({ attemptId }) : null;
       if (stored) {
@@ -81,7 +96,17 @@ export class VisitRepository {
         })
         .where('id = :id AND active_attempt IS :attemptId', { id, attemptId })
         .execute();
-      return moved.affected ? this.insertVisit(tablesOf(manager), run, visit, attemptId) : null;
+      if (!moved.affected) return null;
+      if (command) {
+        await insertAcceptedCommand(manager, {
+          runId: id,
+          type: command.type,
+          payload: JSON.stringify(command.payload),
+          idempotencyKey: command.idempotencyKey,
+          now: command.now,
+        });
+      }
+      return this.insertVisit(tablesOf(manager), run, visit, attemptId);
     }).catch(async (error: unknown) => {
       if (attemptId && String(error).includes(DUPLICATE_ATTEMPT)) {
         return this.stepStats.findOneBy({ attemptId });

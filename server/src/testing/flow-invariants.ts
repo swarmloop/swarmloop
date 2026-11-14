@@ -8,6 +8,7 @@ import {
 } from '../contract/run-state';
 import type { StepStatEntity } from '../history/entities';
 import { deriveState } from '../history/run-state';
+import { CommandRepository } from '../history/command.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import type { TestApp } from './test-app';
@@ -19,12 +20,14 @@ import type { TestApp } from './test-app';
 export async function assertInvariants(app: TestApp): Promise<void> {
   const runs = app.app.get(RunRepository);
   const visits = app.app.get(VisitRepository);
+  const commands = app.app.get(CommandRepository);
   const broken: string[] = [];
   for (const run of await runs.listRuns()) {
     const { state, reason } = deriveState(run);
+    const starting = (await commands.pending(run.id)).some((command) => command.type !== 'stop');
     broken.push(
       ...stateRules(run.key, state, reason),
-      ...visitRules(run.key, state, reason, await visits.listStats(run.id)),
+      ...visitRules(run.key, state, reason, await visits.listStats(run.id), starting),
     );
   }
   if (broken.length > 0) throw new Error(broken.join('\n'));
@@ -43,10 +46,20 @@ function stateRules(key: string, state: RunState, reason: StateReason | null): s
   return broken;
 }
 
-/** A started run is not idle without a reason, and every visit that ended has its result. */
-function visitRules(key: string, state: RunState, reason: StateReason | null, stats: StepStatEntity[]): string[] {
+/**
+ * A started run is not idle without a reason unless a command of it is about to start it, and every visit that
+ * ended has its result.
+ */
+function visitRules(
+  key: string,
+  state: RunState,
+  reason: StateReason | null,
+  stats: StepStatEntity[],
+  starting: boolean,
+): string[] {
   const broken: string[] = [];
-  if (state === 'idle' && !reason && stats.length > 0) broken.push(`${key} started and is idle with no reason`);
+  if (state === 'idle' && !reason && !starting && stats.length > 0)
+    broken.push(`${key} started and is idle with no reason`);
   for (const stat of stats) {
     if (!stat.status || !stat.finishedAt) broken.push(`${key} visit ${stat.id} of ${stat.step} has no result`);
   }

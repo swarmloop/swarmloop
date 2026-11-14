@@ -17,6 +17,7 @@ import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { FetchFailed } from '../core/swarmloop-error';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { PipelineModule } from './pipeline.module';
+import { CommandService } from './command.service';
 import { PipelineService } from './pipeline.service';
 
 describe('pipeline service', () => {
@@ -169,9 +170,10 @@ describe('pipeline service', () => {
       seeded.currentStep = 'code-review';
       await runs.saveRun(seeded);
       const charge = jest.spyOn(app.get(CodeReviewStep), 'charge').mockResolvedValue(null);
+      app.get(CommandService).register('resume', () => Promise.resolve(undefined));
       await app.get(PipelineService).onApplicationBootstrap();
       expect(charge).toHaveBeenCalledWith('PROJ-63', expect.anything(), expect.anything(), expect.anything());
-      expect((await runs.findRun('PROJ-63'))?.status).toBe('failed');
+      expect((await runs.findRun('PROJ-63'))?.status).toBe('waiting');
     } finally {
       await app.close();
     }
