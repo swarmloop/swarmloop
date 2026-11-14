@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { flowView } from '../../test/fixtures';
+import { reviewLog } from '../../test/review-log';
 import { applyFlow, applyReviewLog, type FlowMemory } from './flow-state';
 
 function memory(overrides: Partial<FlowMemory> = {}): FlowMemory {
@@ -65,19 +66,16 @@ describe('applyFlow', () => {
 });
 
 describe('applyReviewLog', () => {
-  it.each(['decision: return\nprocess exited 0', 'process killed: timeout'])(
-    'keeps done chips finished for %s',
-    (body) => {
-      const current = review('done');
-      const result = applyReviewLog(current, memory(), { key: current.key, step: 'code-review-quality', body });
-      expect(result.flow?.phases[0].steps[0]).toEqual(current.phases[0].steps[0]);
-      expect([...result.memory.openReviews]).toEqual([]);
-    },
-  );
+  it.each([reviewLog('return'), 'process killed: timeout'])('keeps done chips finished for %s', (body) => {
+    const current = review('done');
+    const result = applyReviewLog(current, memory(), { key: current.key, step: 'code-review-quality', body });
+    expect(result.flow?.phases[0].steps[0]).toEqual(current.phases[0].steps[0]);
+    expect([...result.memory.openReviews]).toEqual([]);
+  });
 
   it.each([
-    ['decision: ok\nprocess exited 0', 'done'],
-    ['decision: return\nprocess exited 0', 'returned'],
+    [reviewLog('ok'), 'done'],
+    [reviewLog('return'), 'returned'],
     ['process killed: timeout', 'failed'],
   ])('finishes a chip from %s', (body, status) => {
     const current = review('running');

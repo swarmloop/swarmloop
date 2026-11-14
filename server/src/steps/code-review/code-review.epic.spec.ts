@@ -6,7 +6,7 @@ import { join } from 'path';
 import type { AgentRunInput } from '../../agent/agent-runner';
 import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
-import { boot, result, seed, writeEnv } from './code-review.step.spec-helpers';
+import { boot, reply, reportReply, result, seed, writeEnv } from './code-review.step.spec-helpers';
 
 /** The code review of an epic's parent, with `EPIC_EFFORT=xhigh` and the review agent as given. */
 async function parentReview(key: string, reviewAgent: string) {
@@ -19,7 +19,7 @@ async function parentReview(key: string, reviewAgent: string) {
   writeFileSync(envFile, env);
   mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
   const agent = jest.fn(async (input: AgentRunInput) =>
-    result(input.step.endsWith('report') ? 'It holds.\n' : 'notes\n\ndecision: ok\n', input.step),
+    result(input.step.endsWith('report') ? reportReply('It holds.') : reply('notes', 'ok'), input.step),
   );
   const app = await boot(root, agent);
   try {

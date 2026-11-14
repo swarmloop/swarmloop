@@ -109,7 +109,7 @@
     {
       "documents": [
         {
-          "body": "## branch\n- checked out feature/PROJ-30-ship-the-field\n",
+          "body": "[{\"step\":\"branch\",\"body\":\"- checked out feature/PROJ-30-ship-the-field\"}]",
           "kind": "handoff"
         }
       ],

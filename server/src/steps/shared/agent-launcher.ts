@@ -1,131 +1,30 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import type { AgentTools } from '../../integrations/agent-runtime/agent-runtime';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { effortFields } from '../../contract/effort';
-import type { EffortFields } from '../../contract/effort';
 import { AppConfig } from '../../config/env';
 import { redact } from '../../core/redact';
 import { AGENT_RUNNER, readSession } from '../../agent/agent-runner';
-import { chatStateRemoved, loopHint } from '../../agent/agent-session';
+import { chatStateRemoved } from '../../agent/agent-session';
 import { LoopDetector } from '../../agent/loop-detector';
-import type { AgentProcessRunner, AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
+import type { AgentProcessRunner, AgentRunResult } from '../../agent/agent-runner';
 import { RunStop } from '../../agent/run-stop';
 import { AgentWorkFeed } from '../../contract/readable-log';
 import type { AgentWork } from '../../contract/readable-log';
 import { outputFileFor } from '../../core/attempt-output';
 import { bindToStepScope, recordStepEvent } from '../../core/step-event-scope';
-import type { SandboxMount } from '../../core/sandbox-mount';
-import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
-import type { RunEntity } from '../../history/entities';
 import { sessionFileName } from '../../history/session-group';
 import { VisitRepository } from '../../history/visit.repository';
-import type { ManifestHosts, ProjectLaunch } from '../../sandbox/sandbox-launch';
 import { assertNotStopped } from '../../agent/step-stopped';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
-import { section } from './markdown-section';
 import { promptSections } from './prompt-manifest';
-import { combineAgentResults } from './agent-result';
-import { parseFailureFollowUp } from './parse-failure-follow-up';
 import { LimitFailover } from './limit-failover';
-
-interface AgentLaunchRequest extends EffortFields {
-  root: string;
-  run: RunEntity;
-  key: string;
-  step: string;
-  mode: string;
-  tools: AgentTools;
-  runtime: RuntimeName;
-  model: string;
-  timeLimitMs: number;
-  prompt: string;
-  workspace: string;
-  mounts: SandboxMount[];
-  liveStep?: string;
-  allowHosts?: string[];
-  manifestHosts?: ManifestHosts;
-  approveMcps?: boolean;
-  auto?: boolean;
-  resume?: boolean;
-  continuePrompt?: string | null;
-  /** The full prompt for a fresh chat when `prompt` is a follow-up and the CLI no longer has the chat. */
-  freshPrompt?: string;
-  sections?: string[];
-  /** Validates the completed answer before returning it. A missing or empty named section gets one focused retry. */
-  validate?: (text: string, output: string | undefined) => void;
-  parseFailureEnding?: string | null;
-  project?: ProjectLaunch;
-  /** The project launch for another runtime. A launch that moves to another agent mounts that agent's CLI. */
-  projectFor?: (runtime: RuntimeName) => Promise<ProjectLaunch | undefined>;
-  /** The launch may move to the next agent of its role when its runtime hits a provider limit. */
-  failover?: boolean;
-  /** The full prompt for a new chat on another agent, when `prompt` is a follow-up. Defaults to `prompt`. */
-  brief?: string;
-  /** The full prompt for a new chat on the given runtime. Defaults to `brief`. */
-  briefFor?: (runtime: RuntimeName) => string;
-}
-
-/**
- * Why a launch starts a new chat. A session file that exists but gave no chat belongs to another runtime.
- * `replay` is not told apart here: `PipelineService.replay` starts a run through the instructions document, and no flag reaches the launch.
- */
-function newChatReason(
-  resume: boolean | undefined,
-  hasFile: boolean,
-  removed: boolean,
-): 'fresh by step policy' | 'runtime changed' | 'no stored chat' | 'chat state removed' {
-  if (resume === false) {
-    return 'fresh by step policy';
-  }
-  if (removed) {
-    return 'chat state removed';
-  }
-  return hasFile ? 'runtime changed' : 'no stored chat';
-}
-
-/** An answer is complete when every named section is in it. */
-function hasSections(names: string[]): (text: string) => boolean {
-  return (text) => names.every((name) => section(text, name) !== null);
-}
-
-const MESSAGE_CHARS = 600;
-
-/** Records what the agent did: a tool call, or its own text cut to 600 characters. */
-function recordWork(work: AgentWork): void {
-  if (work.kind === 'message') {
-    recordStepEvent({ kind: 'agent.message', text: work.text.slice(0, MESSAGE_CHARS), chars: work.text.length });
-    return;
-  }
-  const { kind: _kind, ...tool } = work;
-  recordStepEvent({ kind: 'agent.tool', ...tool });
-}
-
-/** Feeds the tool work of a launch to the loop detector and records what it finds. */
-function loopWatch(detector: LoopDetector): NonNullable<AgentRunInput['loop']> & { note(work: AgentWork): void } {
-  let repeated = { command: '', errorLine: '' };
-  return {
-    note(work) {
-      if (work.kind !== 'tool') {
-        return;
-      }
-      const { state, command, errorLine, count } = detector.note(work);
-      if (state === 'watching') {
-        return;
-      }
-      repeated = { command, errorLine };
-      recordStepEvent({
-        kind: 'agent.loop_hint',
-        command,
-        errorLine,
-        count,
-        ...(state === 'end' ? { ended: true } : {}),
-      });
-    },
-    pending: () => detector.pending(),
-    resumePrompt: () => (detector.resolveHint() ? loopHint(repeated.command, repeated.errorLine) : null),
-  };
-}
+import type { AgentLaunchRequest } from './agent-launch-request';
+import { loopWatch, newChatReason, recordWork } from './launch-work';
+import { answerIsReadable, exchangeResult, resultFollowUpRequest, withAnswerErrors } from './result-exchange';
+import type { LaunchResult } from './result-exchange';
+import { readResult } from '../../agent-result/read-result';
+import { RESULT_AS_BEFORE } from '../../agent-result/result-prompt';
 
 function withRules(prompt: string): string {
   return `${AGENT_LANGUAGE_RULE}\n${AGENT_FOREGROUND_RULE}\n\n${prompt}`;
@@ -146,7 +45,8 @@ export class AgentLauncher {
    * Launches the agent. A launch that may fail over starts on an agent whose runtime is not cooling down and moves to
    * the next agent of its role on a provider limit. The result names the agent when it is not the one asked for.
    */
-  async launch(request: AgentLaunchRequest): Promise<AgentRunResult> {
+  async launch(asked: AgentLaunchRequest): Promise<LaunchResult> {
+    const request = withAnswerErrors(asked);
     const failover = request.failover ? this.failover : undefined;
     if (!failover) {
       return this.launchOn(request);
@@ -170,7 +70,18 @@ export class AgentLauncher {
     return from.runtime === to.runtime || !to.projectFor ? to : { ...to, project: await to.projectFor(to.runtime) };
   }
 
-  private async launchOn(request: AgentLaunchRequest): Promise<AgentRunResult> {
+  private async launchOn(request: AgentLaunchRequest): Promise<LaunchResult> {
+    const result = await this.runOnce(request);
+    if (request.result && answerIsReadable(request, result)) {
+      const exchange = await exchangeResult(request, result, (followUp) =>
+        this.runOnce(resultFollowUpRequest(request, followUp)),
+      );
+      return { ...exchange.result, resultValue: exchange.value };
+    }
+    return result;
+  }
+
+  private async runOnce(request: AgentLaunchRequest): Promise<AgentRunResult> {
     assertNotStopped(this.runStop, request.key);
     const directory = join(request.root, 'data');
     mkdirSync(directory, { recursive: true });
@@ -203,7 +114,8 @@ export class AgentLauncher {
     const feed = new AgentWorkFeed([request.workspace, ...request.mounts.map((mount) => mount.containerPath)], () =>
       performance.now(),
     );
-    const loop = this.config ? loopWatch(new LoopDetector(this.config.env.LOOP_REPEAT)) : undefined;
+    const ending = request.result ? RESULT_AS_BEFORE : undefined;
+    const loop = this.config ? loopWatch(new LoopDetector(this.config.env.LOOP_REPEAT), ending) : undefined;
     const work = (item: AgentWork): void => {
       const safe = item.kind === 'tool' && item.errorLine ? { ...item, errorLine: redact(item.errorLine) } : item;
       recordWork(safe);
@@ -241,7 +153,9 @@ export class AgentLauncher {
       approveMcps: request.approveMcps,
       auto: request.auto,
       continuePrompt: request.continuePrompt,
-      answered: request.sections && hasSections(request.sections),
+      answerEnding: ending,
+      resultName: request.result?.name,
+      answered: this.answered(request),
       project: request.project,
     });
     feed.finish().forEach(work);
@@ -257,27 +171,13 @@ export class AgentLauncher {
     });
     request.run.agentCalls += result.calls;
     request.run.spentUsd += result.usd;
-    const followUp =
-      result.exitCode === 0 &&
-      !result.limit &&
-      !result.backgroundKilled &&
-      result.responseText !== undefined &&
-      request.validate
-        ? this.parseFailureFollowUp(request, result)
-        : null;
-    if (!followUp) {
-      return result;
-    }
-    const retried = await this.launchOn({
-      ...request,
-      prompt: followUp,
-      freshPrompt: request.freshPrompt ?? request.prompt,
-      continuePrompt: null,
-      resume: undefined,
-      validate: undefined,
-      parseFailureEnding: null,
-    });
-    return combineAgentResults([result, retried]) ?? retried;
+    return result;
+  }
+
+  /** The answer is complete when its result block is valid. */
+  private answered(request: AgentLaunchRequest): ((text: string) => boolean) | undefined {
+    const definition = request.result;
+    return definition && ((text) => readResult(definition, text).ok);
   }
 
   /** An effort the runtime could not give is said once per launch: what the model supports and what ran instead. */
@@ -291,15 +191,6 @@ export class AgentLauncher {
         wanted,
         text: `${request.model} supports up to ${request.effort}; ran at ${request.effort} instead of ${wanted}.`,
       });
-    }
-  }
-
-  private parseFailureFollowUp(request: AgentLaunchRequest, result: AgentRunResult): string | null {
-    try {
-      request.validate?.(result.responseText, result.output);
-      return null;
-    } catch (error) {
-      return parseFailureFollowUp(error, request.parseFailureEnding ?? null);
     }
   }
 }

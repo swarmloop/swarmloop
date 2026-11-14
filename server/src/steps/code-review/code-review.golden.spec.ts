@@ -21,7 +21,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
 import { CheckoutService } from '../shared/checkout.service';
 import { CodeReviewStep } from './code-review.step';
-import { boot, reply, result, seed, writeEnv } from './code-review.step.spec-helpers';
+import { boot, reply, reportReply, result, seed, writeEnv } from './code-review.step.spec-helpers';
 
 const KEY = 'PROJ-80';
 
@@ -81,7 +81,10 @@ describe('code-review step golden traces', () => {
     await golden(
       'all-ok',
       jest.fn(async (input: AgentRunInput) =>
-        result(input.step.endsWith('report') ? 'The change holds together.\n' : reply(input.step, 'ok'), input.step),
+        result(
+          input.step.endsWith('report') ? reportReply('The change holds together.') : reply(input.step, 'ok'),
+          input.step,
+        ),
       ),
     );
   });
@@ -92,7 +95,7 @@ describe('code-review step golden traces', () => {
       jest.fn(async (input: AgentRunInput) =>
         result(
           input.step.endsWith('report')
-            ? 'The change needs work.\n'
+            ? reportReply('The change needs work.')
             : reply(input.step, input.step.endsWith('quality') ? 'return' : 'ok'),
           input.step,
         ),

@@ -32,12 +32,15 @@ import { LiveModule } from '../live/live.module';
 import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { BaseStep, type StepContext } from '../steps/base-step';
+import { ResearchStep } from '../steps/research/research.step';
+import { PlanStep } from '../steps/plan/plan.step';
+import { PlanImproveStep } from '../steps/plan-improve/plan-improve.step';
 import { ImplementStep } from '../steps/implement/implement.step';
+import { ImplementImproveStep } from '../steps/implement/implement-improve.step';
+import { CodeReviewStep } from '../steps/code-review/code-review.step';
 import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
 import { PipelineStep } from '../steps/pipeline/pipeline.step';
 import { StepRegistry } from '../steps/step.registry';
-import type { StepCapabilities, StepResult } from '../steps/contract/step-contract';
 import type { Step, StepSnapshot } from '../steps/step';
 import type { StepOptions } from '../core/pipeline-result';
 import { RunRepository } from '../history/run.repository';
@@ -45,68 +48,41 @@ import { StepKernel } from '../steps/step-kernel';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { Reconciler } from '../pipeline/reconciler';
+import { BlockAgentRunner } from './result-answer';
+import { FakeCodeHost, ScriptedFakeAgentRunner, ScriptedStep, seededStep } from './test-app-steps';
+
+export { ScriptedFakeAgentRunner, ScriptedStep };
 
 const MACHINE_TOKEN = 'test-machine-token';
+/** The steps whose agent answers in result blocks. */
+const BLOCK_STEPS = ['research', 'plan', 'plan-improve', 'implement', 'implement-improve'];
+
+/** A step whose agent answers in a result block: the ones above, every code reviewer and the report. */
+function answersInBlocks(step: string): boolean {
+  return BLOCK_STEPS.includes(step) || step.startsWith('code-review-');
+}
 
 type FakeSandbox = Record<string, (...args: never[]) => Promise<unknown>>;
 
 interface TestAppOptions {
   root?: string;
   runner?: ScriptedFakeAgentRunner;
+  /** The agent of the real research, plan, plan-improve, implement and code-review steps: it answers in result blocks. Without one it answers the defaults of `BlockAgentRunner`. */
+  blocks?: BlockAgentRunner;
   /** Replaces calls of the fake sandbox, for a spec that needs a container. */
   sandbox?: FakeSandbox;
   /** Lines of the `.env` that replace the defaults of `testEnv`. */
   env?: Record<string, string>;
-  /** A split run takes the real implement step, with its passes, in place of the scripted one. */
-  realImplement?: boolean;
-  /** The merge-request and pipeline steps are the real ones, on a gitlab host the spec swaps for a fake. The other steps stay scripted. */
+  /** Defaults to 'all': every run takes the real implement steps. True limits that to split parents; false keeps them scripted. */
+  realImplement?: boolean | 'all';
+  /** Defaults to true: the real reviewers and report answer in result blocks. False keeps code review scripted. */
+  realReview?: boolean;
+  /** The merge-request and pipeline steps use a gitlab host the spec swaps for a fake. */
   realHost?: boolean;
   /** Starts the reconciler's timer. Off by default: a test drives its passes itself, one awaited pass at a time. */
   reconcilerTimer?: boolean;
   /** The app removes the root when it closes. Defaults to true for a root it made. */
   ownsRoot?: boolean;
-}
-
-export class ScriptedFakeAgentRunner {
-  readonly steps: string[] = [];
-
-  run(step: string): Promise<void> {
-    this.steps.push(step);
-    return Promise.resolve();
-  }
-}
-
-class FakeCodeHost {
-  open(): Promise<{ url: string }> {
-    return Promise.resolve({ url: 'https://code.example/test/merge_requests/1' });
-  }
-}
-
-export class ScriptedStep extends BaseStep<Record<string, never>> {
-  readonly inputs = {};
-  readonly outputs = [];
-  override readonly usesModel = false;
-  override readonly capabilities: StepCapabilities;
-
-  constructor(
-    readonly name: StepName,
-    kernel: StepKernel,
-    private readonly runner: { run(input: { step: string }): Promise<void> },
-    private readonly codeHost: FakeCodeHost,
-  ) {
-    super(kernel);
-    this.capabilities = { prompt: name === 'requirements', projects: name === 'prepare' };
-  }
-
-  override missingInput(): Promise<null> {
-    return Promise.resolve(null);
-  }
-
-  protected async work(_input: object, context: StepContext): Promise<StepResult> {
-    await this.runner.run({ step: this.name });
-    if (this.name === 'merge-request') await this.codeHost.open();
-    return { route: { to: 'next' }, summary: `${context.opened.startedAt} complete`, outputs: [] };
-  }
 }
 
 export interface TestApp {
@@ -115,6 +91,8 @@ export interface TestApp {
   clock: FakeClock;
   codeHost: FakeCodeHost;
   runner: ScriptedFakeAgentRunner;
+  /** The agent of the real research, plan, plan-improve, implement and code-review steps. */
+  blocks: BlockAgentRunner;
   pipeline: PipelineService;
   url: string;
   /** The machine token as a bearer: the API takes no request without a session or this. */
@@ -134,6 +112,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   await writeFile(join(root, '.env'), testEnv(root, hostEnv));
   const clock = new FakeClock();
   const runner = options.runner ?? new ScriptedFakeAgentRunner();
+  const blocks = options.blocks ?? new BlockAgentRunner();
   const codeHost = new FakeCodeHost();
   const steps = new Map<StepName, Step>();
   const registry = {
@@ -169,7 +148,12 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     .overrideProvider(StepRegistry)
     .useValue(registry)
     .overrideProvider(AGENT_RUNNER)
-    .useValue({ run: (input: { step: string }) => runner.run(input.step) })
+    .useValue({
+      run: async (input: { step: string }) => {
+        await runner.run(input.step);
+        return answersInBlocks(input.step) ? blocks.run(input) : undefined;
+      },
+    })
     .overrideProvider(SandboxService)
     .useValue({
       assertReady: () => Promise.resolve(),
@@ -185,7 +169,19 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     steps.set(name, new ScriptedStep(name, module.get(StepKernel), module.get(AGENT_RUNNER), codeHost));
   }
 
-  if (options.realImplement) {
+  // Research, plan and plan-improve are always the real steps, answered in blocks.
+  for (const [name, real] of [
+    ['research', module.get(ResearchStep)],
+    ['plan', module.get(PlanStep)],
+    ['plan-improve', module.get(PlanImproveStep)],
+  ] as const) {
+    steps.set(name, seededStep(real, module, root));
+  }
+
+  if ((options.realImplement ?? 'all') === 'all') {
+    steps.set('implement', module.get(ImplementStep));
+    steps.set('implement-improve', module.get(ImplementImproveStep));
+  } else if (options.realImplement) {
     // Only a split run takes the real step, so the runs of its subtasks go through the scripted one.
     const real = module.get(ImplementStep);
     const scripted = steps.get('implement') as Step;
@@ -199,6 +195,10 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
         },
       }) as Step,
     );
+  }
+
+  if (options.realReview ?? true) {
+    steps.set('code-review', module.get(CodeReviewStep));
   }
 
   if (options.realHost) {
@@ -229,6 +229,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     clock,
     codeHost,
     runner,
+    blocks,
     pipeline: app.get(PipelineService),
     url: `http://127.0.0.1:${address.port}`,
     auth: { authorization: `Bearer ${options.env?.SWARMLOOP_TOKEN ?? MACHINE_TOKEN}` },
@@ -241,7 +242,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     },
     restart: async () => {
       await app.close();
-      return createTestApp({ ...options, root, runner, ownsRoot });
+      return createTestApp({ ...options, root, runner, blocks, ownsRoot });
     },
   };
 }

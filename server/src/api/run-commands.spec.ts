@@ -30,6 +30,9 @@ describe('resume of a limit block', () => {
         'LOOP_LIMIT',
         'code-review ran 3 times (MAX_RETURNS); Resume starts another round',
       );
+      const run = (await app.app.get(RunRepository).findRun(KEY))!;
+      await app.app.get(DocumentRepository).putDocument(run, 'implementation', '- changed the field\n');
+      await app.app.get(DocumentRepository).putDocument(run, 'requirements', '{"prompt":"Ship the field"}\n');
       expect((await app.app.get(RunQueriesService).flow(KEY)).resume).toBe('ready');
       const before = await loopMark(app);
       await app.app.get(RunCommandsService).resume(KEY);

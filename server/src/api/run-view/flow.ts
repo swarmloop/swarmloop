@@ -18,7 +18,11 @@ import {
 import { stepOutput } from '../../core/attempt-output';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered } from '../../steps/shared/answers';
-import { items } from '../../steps/shared/markdown-section';
+import { research } from '../../agent-result/definitions/research';
+import { storedResult } from '../../agent-result/stored-result';
+import type { ResearchResult } from '../../agent-result/definitions/research';
+import { plan, type PlanResult } from '../../agent-result/definitions/plan';
+import { openQuestions } from '../../steps/shared/answers';
 import { chipStatus, chipAttempts, reportChip, reviewPreparing, reviewerRound } from './chips';
 import { latest } from './status';
 export { latest } from './status';
@@ -114,7 +118,10 @@ export function openItems(run: RunEntity, documents: DocumentEntity[], pasteUrls
   const itemsOut: FlowItem[] = [];
   if (run.currentStep === 'research' || run.currentStep === 'plan') {
     const stored = answered(latest(documents, 'answers') ?? '');
-    for (const question of items(latest(documents, 'questions') ?? '')) {
+    for (const question of openQuestions(latest(documents, 'questions') ?? '', [
+      storedResult<ResearchResult>(research, documents),
+      storedResult<PlanResult>(plan, documents),
+    ])) {
       itemsOut.push({ kind: 'question', id: question, label: question, answer: stored.get(question) ?? '' });
     }
   }

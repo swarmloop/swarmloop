@@ -27,6 +27,19 @@ describe('agentFailure', () => {
       expect(agentFailure(agent({ exitCode: 1, output: 'boom\n' }), 'implement', mode)).toBe('implement failed: boom');
     });
 
+    it(`reads the first non-empty line of a short failed output in ${mode} mode`, () => {
+      expect(agentFailure(agent({ exitCode: 2, output: '\n\n  first line  \nsecond\n' }), 'implement', mode)).toBe(
+        'implement failed: first line',
+      );
+    });
+
+    it(`gives no detail when a failed output is empty or over 500 characters in ${mode} mode`, () => {
+      expect(agentFailure(agent({ exitCode: 2, output: '' }), 'implement', mode)).toBe('implement failed');
+      expect(agentFailure(agent({ exitCode: 2, output: `boom\n${'x'.repeat(500)}` }), 'implement', mode)).toBe(
+        'implement failed',
+      );
+    });
+
     it(`ignores a refused non-write tool in ${mode} mode`, () => {
       expect(agentFailure(agent({ output: refused('Bash') }), 'implement', mode)).toBeNull();
     });
@@ -41,6 +54,34 @@ describe('refusedWrite', () => {
   it('returns null when nothing was refused', () => {
     expect(refusedWrite('{"type":"result"}\n')).toBeNull();
     expect(refusedWrite(undefined)).toBeNull();
+  });
+
+  it('names a refusal with an empty message', () => {
+    expect(refusedWrite(refused('Write', '   '))).toBe('write permission denied');
+  });
+
+  it('cuts a message over 180 characters at 180', () => {
+    expect(refusedWrite(refused('Write', 'x'.repeat(300)))).toBe('x'.repeat(180));
+  });
+
+  it('skips a line that holds permission_denied text but is not JSON', () => {
+    expect(refusedWrite('{ "subtype": "permission_denied" and a broken line')).toBeNull();
+  });
+
+  it('ignores permission_denied text inside another event subtype', () => {
+    const other = JSON.stringify({
+      type: 'system',
+      subtype: 'tool_result',
+      tool_name: 'Write',
+      message: 'permission_denied',
+    });
+    expect(refusedWrite(other)).toBeNull();
+  });
+
+  it('skips a malformed line between two refusals and keeps the last valid one', () => {
+    const broken = '{"subtype":"permission_denied", broken';
+    expect(refusedWrite([refused('Write', 'first'), broken, refused('Edit', 'second')].join('\n'))).toBe('second');
+    expect(refusedWrite([refused('Write', 'first'), broken].join('\n'))).toBe('first');
   });
 });
 

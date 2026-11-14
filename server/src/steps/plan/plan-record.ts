@@ -1,36 +1,15 @@
 import type { PlanFields } from '../../integrations/requirements-source/requirements-record';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { bulletList, bulletSection, items, section } from '../shared/markdown-section';
 
-export function parsePlan(text: string): string {
-  return bulletSection(text, 'plan');
+/** The plan inside the requirements record, written from what the planner sent. The decision is the person's. */
+export function planFields(items: string[], name = '', overview = ''): PlanFields {
+  return { name, overview, items, decision: null };
 }
 
-/** The questions an answer with no `plan:` section stops on. Empty when it holds a plan or `none`. */
-export function planQuestions(text: string): string {
-  if (section(text, 'plan') !== null) {
-    return '';
-  }
-  return bulletList(items(section(text, 'questions') ?? '').filter((item) => item !== 'none'));
-}
-
-/** Checklist from the answer, or from the plan tool in the stream. */
-export function planFromAgent(responseText: string, output = ''): PlanFields {
-  try {
-    const written = fieldsFromSection(responseText);
-    if (written) {
-      return written;
-    }
-  } catch (error) {
-    if (!(error instanceof SwarmloopError) || error.message !== 'plan is missing') {
-      throw error;
-    }
-  }
-  const recovered = fieldsFromStream(output);
-  if (!recovered) {
-    throw new SwarmloopError('plan is missing');
-  }
-  return recovered;
+/** The handoff text of an answer's summary lines, or of the checklist when the agent sent none. */
+export function renderSummary(summary: string[], items: string[]): string {
+  const lines = summary.filter((line) => line.trim() && line.trim() !== 'none');
+  return `${(lines.length > 0 ? lines : items).map((line) => `- ${line}`).join('\n')}\n`;
 }
 
 export function joinPrompt(prior: string | null | undefined, text: string): string {
@@ -89,46 +68,19 @@ export function readPlan(body: string | null): PlanFields | null {
   }
 }
 
-/** Checklist the review returned. Empty when the review kept the plan it was given. */
-export function reviewedItems(text: string, output = ''): string[] {
-  try {
-    return planFromAgent(text, output).items;
-  } catch (error) {
-    if (error instanceof SwarmloopError && error.message === 'plan is missing') {
-      return [];
-    }
-    throw error;
-  }
-}
-
-/** Bullets or the stored plan object in an answer. Null when that answer has no corrected checklist. */
-export function correctedItems(text: string, output = ''): string[] | null {
-  try {
-    const items = reviewedItems(text, output);
-    return items.length > 0 ? items : null;
-  } catch (error) {
-    if (!(error instanceof SwarmloopError) || error.message !== 'plan is empty') {
-      throw error;
-    }
-  }
-  return planObjectItems(text);
-}
-
-/** Checklist the implement answer corrected. Null when the answer leaves the approved plan. */
+/** Checklist the implement answer corrected. Null when the answer sent none or left the plan as it is. */
 export function correctedPlan(
   requirementsBody: string,
-  text: string,
-  output = '',
+  items: string[] | undefined,
+  previous: string[],
 ): { requirements: string; handoff: string } | null {
-  const items = correctedItems(text, output);
-  if (!items) {
+  if (!items?.length) {
     return null;
   }
-  const current = readPlan(requirementsBody);
-  const previous = current?.items ?? [];
   if (previous.length === items.length && previous.every((item, index) => item === items[index])) {
     return null;
   }
+  const current = readPlan(requirementsBody);
   const dropped = previous.filter((item) => !items.includes(item));
   const added = items.filter((item) => !previous.includes(item));
   const named = [...dropped.map((item) => `dropped "${item}"`), ...added.map((item) => `added "${item}"`)].join('; ');
@@ -144,8 +96,8 @@ export function correctedPlan(
   };
 }
 
-export function requireApprovedPlan(requirements: string | null): string {
-  const plan = readPlan(requirements);
+/** The approved plan as the prompt shows it. Throws when the run has none or a person has not approved it. */
+export function requireApprovedPlan(plan: PlanFields | null): string {
   if (!plan?.items.length) {
     throw new SwarmloopError('plan is missing');
   }
@@ -153,107 +105,6 @@ export function requireApprovedPlan(requirements: string | null): string {
     throw new SwarmloopError('plan is not approved');
   }
   return `${JSON.stringify(plan, null, 2)}\n`;
-}
-
-function planObjectItems(text: string): string[] | null {
-  const block = section(text, 'plan');
-  if (block === null) {
-    return null;
-  }
-  const start = block.indexOf('{');
-  const end = block.lastIndexOf('}');
-  if (start < 0 || end <= start) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(block.slice(start, end + 1)) as unknown;
-    if (!isRecord(parsed) || typeof parsed.name !== 'string' || typeof parsed.overview !== 'string') {
-      return null;
-    }
-    return asPlan(parsed)?.items ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function fieldsFromSection(text: string): PlanFields | null {
-  const items = parsePlan(text)
-    .split('\n')
-    .map((line) => line.replace(/^- /, '').trim())
-    .filter((line) => line !== '');
-  return items.length > 0 ? { name: '', overview: '', items, decision: null } : null;
-}
-
-function fieldsFromStream(raw: string): PlanFields | null {
-  let found: PlanFields | null = null;
-  for (const line of raw.split('\n')) {
-    const record = jsonRecord(line);
-    if (!record) {
-      continue;
-    }
-    const spoken = textOf(record);
-    if (spoken) {
-      try {
-        const fields = fieldsFromSection(spoken);
-        if (fields) {
-          found = fields;
-        }
-      } catch (error) {
-        if (!(error instanceof SwarmloopError)) {
-          throw error;
-        }
-      }
-    }
-    const tool = toolPlan(record);
-    if (tool) {
-      found = tool;
-    }
-  }
-  return found;
-}
-
-function toolPlan(record: Record<string, unknown>): PlanFields | null {
-  const call = record.tool_call;
-  if (!isRecord(call)) {
-    return null;
-  }
-  for (const [name, body] of Object.entries(call)) {
-    if (!/createplan/i.test(name) || !isRecord(body)) {
-      continue;
-    }
-    const args = isRecord(body.args) ? body.args : body;
-    const items = todoItems(args.todos) ?? markdownItems(typeof args.plan === 'string' ? args.plan : '');
-    if (!items) {
-      continue;
-    }
-    return {
-      name: typeof args.name === 'string' ? args.name.trim() : '',
-      overview: typeof args.overview === 'string' ? args.overview.trim() : '',
-      items,
-      decision: null,
-    };
-  }
-  return null;
-}
-
-function todoItems(value: unknown): string[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-  const lines = value
-    .map((item) => (isRecord(item) && typeof item.content === 'string' ? item.content.trim() : ''))
-    .filter((line) => line !== '' && line !== 'none');
-  return lines.length > 0 ? lines : null;
-}
-
-function markdownItems(plan: string): string[] | null {
-  const lines = plan
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('- '))
-    .map((line) => line.slice(2).trim())
-    .filter((line) => line !== '' && line !== 'none');
-  return lines.length > 0 ? lines : null;
 }
 
 function asPlan(value: unknown): PlanFields | null {
@@ -273,38 +124,6 @@ function asPlan(value: unknown): PlanFields | null {
     items,
     decision,
   };
-}
-
-function textOf(record: Record<string, unknown>): string | null {
-  if (typeof record.result === 'string') {
-    return record.result;
-  }
-  const message = record.message;
-  if (!isRecord(message)) {
-    return null;
-  }
-  const content = message.content;
-  if (typeof content === 'string') {
-    return content;
-  }
-  if (!Array.isArray(content)) {
-    return null;
-  }
-  const text = content.map((part) => (isRecord(part) && typeof part.text === 'string' ? part.text : '')).join('');
-  return text === '' ? null : text;
-}
-
-function jsonRecord(line: string): Record<string, unknown> | null {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith('{')) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    return isRecord(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

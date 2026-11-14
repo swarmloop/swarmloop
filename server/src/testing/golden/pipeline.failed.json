@@ -92,7 +92,7 @@
           "kind": "issues"
         },
         {
-          "body": "## pipeline\n- Pipeline failed and returned to implement.\n",
+          "body": "[{\"step\":\"pipeline\",\"body\":\"- Pipeline failed and returned to implement.\"}]",
           "kind": "handoff"
         }
       ],

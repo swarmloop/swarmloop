@@ -253,6 +253,8 @@ With **ci** ticked there is no click between the plan and the merge request. You
 
 The instructions for every step are Markdown files in `skills/`. Edit one, rebuild the server, and every run after that follows it, for everyone on the server. The rules live in the repo and get reviewed like code. They are not a setting in someone's IDE.
 
+Every agent step ends its answer with one JSON block, and that block is all the server reads from it. The server checks the block against the step's schema. A missing or wrong block gets up to two follow-ups in the same chat, each listing every error, and then the step fails with those errors. The prose before the block is for people and is never read.
+
 A project tailors swarmloop with `.swarmloop.json` and `skills/`, and puts its own rules in `AGENTS.md` at the repository root. Every step of every runtime gets that file, for every repository of a run.
 
 ### 🔍 Five reviewers, and they can say no

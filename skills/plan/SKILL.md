@@ -8,51 +8,24 @@ Each item is the smallest change that does the work. Keep to the structure and p
 
 Before writing the checklist, find the size and complexity limits the project sets (its rules, its lint config). For each file the checklist changes, compare its current size with the limit. When the change would take a file past the limit or within about 15% of it, the first item that touches the file splits it by responsibility in a move-only change (no logic change), and later items add the new code to the file that now owns it.
 
-A checklist never has an item like "stop and report if X is missing". A result that a sibling task makes and that is not merged yet is not missing: a subtask of a split run ends its answer with a `needs:` section, one line per sibling task id, `- <id>: <what it needs from that task>`, and nothing else. The server makes the task wait and runs this step again when that sibling is merged. A run that is not a subtask writes no `needs:`.
+A checklist never has an item like "stop and report if X is missing". A result that a sibling task makes and that is not merged yet is not missing: a subtask of a split run sends `needs`, one entry per sibling task id with what it needs from that task, and no plan. The server makes the task wait and runs this step again when that sibling is merged. A run that is not a subtask sends no `needs`.
 
-Each checklist item stays one `- item` line and ends with `files:` (the paths it changes) and `proof:` (the test or check that shows it is done), for example `- add X to Y - files: src/billing/invoice - proof: the invoice total test`.
+Each checklist item is one entry of the plan and ends with `files:` (the paths it changes) and `proof:` (the test or check that shows it is done), for example `add X to Y - files: src/billing/invoice - proof: the invoice total test`.
 
-The prompt may hold an `Impact` section: the capabilities the task touches, one `- <capability> | <file> | <status>` line each. Every `kept` capability that the checklist touches gets an item `- keep: <capability> - files: <paths> - proof: <test>`.
+The prompt may hold an `Impact` section: the capabilities the task touches, one `- <capability> | <file> | <status>` line each. Every `kept` capability that the checklist touches gets an item `keep: <capability> - files: <paths> - proof: <test>`.
 
-A capability marked `removed` or `unreachable` that the requirements do not name in a `Removes` or `Behavior change` section, and that no answer confirmed, is not planned around silently. Stop and end with a `questions:` section in place of `plan:`, one line `- This change makes <capability> <unreachable|go away>. Is that intended?` per capability, then `summary:`. Dead code that nothing relies on is not a capability and raises no question.
+A capability marked `removed` or `unreachable` that the requirements do not name in a `Removes` or `Behavior change` section, and that no answer confirmed, is not planned around silently. Stop and send `questions` in place of the plan, one entry `This change makes <capability> <unreachable|go away>. Is that intended?` per capability. Dead code that nothing relies on is not a capability and raises no question.
 
-[plan tool] Write the checklist with the plan tool. That is how a later pass replaces the plan. Do not edit source files. Do not run git. Do not implement the items.
-[no plan tool] Write the checklist in the `plan:` section of your answer. That is what the server reads, and a later pass replaces the plan with its own `plan:` section. Do not edit source files. Do not run git. Do not implement the items.
-
-[plan tool] End the answer with these two sections and nothing after them. One item per line. The plan items match the plan tool. `summary` says why this checklist.
-[no plan tool] End the answer with these two sections and nothing after them. One item per line. `summary` says why this checklist.
-
-```
-plan:
-- item
-
-summary:
-- why
-```
+The checklist goes in the result block, and only there. A later pass replaces the plan with its own. Do not edit source files. Do not run git. Do not implement the items. `summary` says why this checklist.
 
 ## Split
 
 This section applies only because this run may split into subtasks.
 
-Split by the amount of work, not by a count of tasks. Split only when the whole change is clearly more than one normal run of work, so that one implement pass would not finish it well, and it has parts that can each be built, reviewed and tested on their own. Each task is about one normal run of work. Do not split a change that one run can do, and do not cut a task so small that it is only one step of another. When you do not split, answer with `plan:` as above.
+Split by the amount of work, not by a count of tasks. Split only when the whole change is clearly more than one normal run of work, so that one implement pass would not finish it well, and it has parts that can each be built, reviewed and tested on their own. Each task is about one normal run of work. Do not split a change that one run can do, and do not cut a task so small that it is only one step of another. When you do not split, send a plan as above.
 
-When you split, do not write `plan:`. The server writes it from `tasks:`. End the answer with these sections and nothing after them (`keep:` may be `none`):
+When you split, leave the plan empty and fill in `contract`, `keep` and `tasks`. The server writes the plan from `tasks`.
 
-```
-contract:
-- a decision every subtask follows: names, interfaces, data shapes, files that one task creates and others use
+An id is a short slug. `depends` lists the ids of the tasks that must be done first. A task has at least one proof. Do not make a cycle and do not name a task that is not in the list. `files` lists every file the task will change, including its tests and the shared test helpers and fixtures they need; a task that changes a file another task lists depends on that task (the server adds the dependency when the planner forgets). Two tasks that can run at the same time must not change the same file unless one depends on the other. A file where tasks each add an entry (a registry or list such as module imports, the migrations index, route or step lists, `.env.example`, a README table) is shared: the first task that needs it makes every change the plan needs in it, and the other tasks do not touch it, so they can run side by side; only when that is not possible do the tasks that touch it get a dependency between them. A task that adds to a file the plan splits depends on the task that splits it.
 
-keep:
-- <capability> | proof: <test or new <test>> | tasks: <ids that touch it>
-
-tasks:
-- <id> | <title> | depends: <ids or none> | files: <paths> | proof: <test or check>
-  what the task does, on an indented line
-
-summary:
-- why
-```
-
-An id is a short slug. `depends:` lists the ids of the tasks that must be done first, separated by commas, or `none`. A task has at least one proof. Do not make a cycle and do not name a task that is not in the list. `files:` lists every file the task will change, including its tests and the shared test helpers and fixtures they need; a task that changes a file another task lists depends on that task (the server adds the dependency when the planner forgets). Two tasks that can run at the same time must not change the same file unless one depends on the other. A file where tasks each add an entry (a registry or list such as module imports, the migrations index, route or step lists, `.env.example`, a README table) is shared: the first task that needs it makes every change the plan needs in it, and the other tasks do not touch it, so they can run side by side; only when that is not possible do the tasks that touch it get a dependency between them. A task that adds to a file the plan splits depends on the task that splits it.
-
-Tasks are only work that changes the tree. A capability that only needs its existing test rerun is a `keep:` line, never a task: one line per kept capability, `- <capability> | proof: <test> | tasks: <ids that touch it>`, or `keep: none`. The server puts each line into the prompt of every task it names and into the final review, and never makes a run from it. Every task has at least one file to change. When the proof test of a `keep:` line does not exist yet, the line says `proof: new <test>`, and writing that test goes into the `proof:` of the first task the line names.
+Tasks are only work that changes the tree. A capability that only needs its existing test rerun is a `keep` entry, never a task: one entry per kept capability. The server puts each entry into the prompt of every task it names and into the final review, and never makes a run from it. Every task has at least one file to change. When the proof test of a `keep` entry does not exist yet, its proof says `new <test>`, and writing that test goes into the `proof` of the first task the entry names.

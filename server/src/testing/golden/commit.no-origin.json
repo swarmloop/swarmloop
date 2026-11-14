@@ -146,7 +146,7 @@
           "kind": "commit"
         },
         {
-          "body": "## commit\ndemo\tsrc/field.ts\n",
+          "body": "[{\"step\":\"commit\",\"body\":\"demo\\tsrc/field.ts\"}]",
           "kind": "handoff"
         }
       ],

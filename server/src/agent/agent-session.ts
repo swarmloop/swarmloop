@@ -8,18 +8,33 @@ import { callsExceeded, retryCrash } from './limits';
 import type { KillReason, SessionState } from './limits';
 import type { AgentRunResult } from './agent-result';
 
+/**
+ * A message the runner sends into the same chat, closed by the line that says how the answer ends. The line comes from
+ * the result module through the launch; a launch that asks for no result block has none.
+ */
+function withEnding(message: string, ending: string | undefined): string {
+  return ending ? `${message} ${ending}` : message;
+}
+
 /** Used when a pipeline step does not pass its own continue prompt. */
 export const AGENT_CONTINUE =
-  'You were stopped by the time limit before you finished. Continue this same task from where you stopped. Do not start over and do not redo edits already made. End with the sections the first message asked for.';
+  'You were stopped by the time limit before you finished. Continue this same task from where you stopped. Do not start over and do not redo edits already made.';
 
 /** The message that goes into the same chat when the agent repeats a failing command. */
-export function loopHint(command: string, errorLine: string): string {
-  return `You ran the same command again and again and it failed the same way: \`${command}\`${errorLine ? ` (${errorLine})` : ''}. Try a different approach or explain why it cannot pass. Do not start over and do not redo edits already made. End with the sections the first message asked for.`;
+export function loopHint(command: string, errorLine: string, ending?: string): string {
+  return withEnding(
+    `You ran the same command again and again and it failed the same way: \`${command}\`${errorLine ? ` (${errorLine})` : ''}. Try a different approach or explain why it cannot pass. Do not start over and do not redo edits already made.`,
+    ending,
+  );
 }
 
 /** Sent when the agent's background work was killed with its answer, or a resumed chat only reported orphaned tasks. */
 export const AGENT_BACKGROUND_KILLED_CONTINUE =
-  'Your background work was killed when your last answer ended the process. Run the commands in the foreground and wait for them. End with the sections the first message asked for.';
+  'Your background work was killed when your last answer ended the process. Run the commands in the foreground and wait for them.';
+
+export function backgroundKilledContinue(ending: string | undefined): string {
+  return withEnding(AGENT_BACKGROUND_KILLED_CONTINUE, ending);
+}
 
 export async function readSession(path: string, runtime: string): Promise<SessionState | null> {
   try {
@@ -141,6 +156,8 @@ export function relaunchPlan(input: {
   /** The one relaunch after an early end was already used. */
   endedEarlyUsed: boolean;
   budget: LaunchBudget;
+  /** The line that closes the messages the runner sends itself; see `withEnding`. */
+  ending?: string;
 }): Relaunch | null {
   const { attempt, budget } = input;
   if (chatMissingAnswer(attempt)) {
@@ -172,7 +189,8 @@ export function relaunchPlan(input: {
     return {
       chatId: attempt.chatId,
       resumed: true,
-      prompt: typeof input.continuePrompt === 'string' ? input.continuePrompt : AGENT_CONTINUE,
+      prompt:
+        typeof input.continuePrompt === 'string' ? input.continuePrompt : withEnding(AGENT_CONTINUE, input.ending),
     };
   }
   if (
@@ -182,7 +200,7 @@ export function relaunchPlan(input: {
     !input.endedEarlyUsed &&
     withinBudget(budget)
   ) {
-    return { chatId: attempt.chatId, resumed: true, prompt: AGENT_BACKGROUND_KILLED_CONTINUE };
+    return { chatId: attempt.chatId, resumed: true, prompt: backgroundKilledContinue(input.ending) };
   }
   return null;
 }

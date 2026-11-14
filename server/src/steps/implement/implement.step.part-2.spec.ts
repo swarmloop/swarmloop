@@ -1,3 +1,4 @@
+import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
 
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -23,6 +24,7 @@ import { VisitRepository } from '../../history/visit.repository';
 import type { AgentRunInput } from '../../agent/agent-runner';
 
 import { AGENT_CONTINUE } from '../../agent/agent-runner';
+import { RESULT_AS_BEFORE } from '../../agent-result/result-prompt';
 
 import { PipelineService } from '../../pipeline/pipeline.service';
 
@@ -32,6 +34,8 @@ import { memoryJournal } from '../../git/rebase/journal.spec-helpers';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 
 import {
+  implAnswer,
+  rebaseReply,
   reply,
   result,
   boot,
@@ -93,7 +97,7 @@ describe('implement step', () => {
     expect(existsSync(isAbsolute(marker) ? marker : join(tree, marker))).toBe(true);
     const agent = jest.fn(async () => {
       expect(git(tree, ['ls-files', '-u'])).toContain('src/overlap.ts');
-      return result(reply);
+      return result(rebaseReply);
     });
     const app = await boot(root, agent);
     try {
@@ -120,7 +124,7 @@ describe('implement step', () => {
     const tree = conflictedTree(root, 'PROJ-65', 'billing-api');
     const agent = jest.fn(async (_input: AgentRunInput) => {
       writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 3;\n');
-      return result('implementation:\n- something else\n\nsummary:\n- resolved the rebase\n');
+      return result(rebaseReply);
     });
     const app = await boot(root, agent);
     try {
@@ -164,7 +168,7 @@ describe('implement step', () => {
       expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
       writeFileSync(join(tree, 'src', 'field.ts'), marked);
       expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
-      return result('implementation:\n- something else\n\nsummary:\n- resolved the rebase\n');
+      return result(rebaseReply);
     });
     const app = await boot(root, agent);
     try {
@@ -224,7 +228,7 @@ describe('implement step', () => {
         expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
         writeFileSync(join(tree, 'src', 'field.ts'), marked);
         expect(git(tree, ['ls-files', '-u'])).toContain('src/field.ts');
-        return result('edited the conflict\n');
+        return result(rebaseReply);
       }
       return result(reply);
     });
@@ -288,7 +292,7 @@ describe('implement step', () => {
     const agent = jest.fn(async (input: AgentRunInput) => {
       if (input.prompt.includes('The commit being replayed is')) {
         writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 3;\n');
-        return result('edited the conflict\n');
+        return result(rebaseReply);
       }
       return result(reply);
     });
@@ -329,7 +333,7 @@ describe('implement step', () => {
     const agent = jest.fn(async (input: AgentRunInput) => {
       if (input.prompt.includes('The commit being replayed is')) {
         writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 3;\n');
-        return result('edited the conflict\n');
+        return result(rebaseReply);
       }
       return result(reply);
     });
@@ -369,7 +373,7 @@ describe('implement step', () => {
     const base = git(clone, ['rev-parse', 'main']);
     const agent = jest.fn(async () => {
       writeFileSync(join(first, 'src', 'field.ts'), 'export const field = 3;\n');
-      return result('edited the conflict\n');
+      return result(rebaseReply);
     });
     const app = await boot(root, agent);
     try {
@@ -401,7 +405,7 @@ describe('implement step', () => {
       const done = await app.get(PipelineService).step('implement', 'PROJ-131');
       expect(done.exitCode).toBe(0);
       expect(spawn).toHaveBeenCalledTimes(2);
-      expect(launchedPrompt(spawn.mock.calls[1])).toBe(AGENT_CONTINUE);
+      expect(launchedPrompt(spawn.mock.calls[1])).toBe(`${AGENT_CONTINUE} ${RESULT_AS_BEFORE}`);
       expect(resumeArg(spawn.mock.calls[1])).toBe('impl-chat');
       const runs = app.get(RunRepository);
       const visitRepository = app.get(VisitRepository);
@@ -428,16 +432,7 @@ describe('implement step', () => {
     const agent = jest.fn(async () => {
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
       return result(
-        [
-          'plan:',
-          '- fix the failing test',
-          '',
-          'implementation:',
-          '- fixed the test',
-          '',
-          'summary:',
-          '- the pipeline log required it',
-        ].join('\n'),
+        implAnswer(['fixed the test'], ['the pipeline log required it'], { plan: ['fix the failing test'] }),
       );
     });
     const app = await boot(root, agent);
@@ -457,7 +452,7 @@ describe('implement step', () => {
       expect(record.plan?.items).toEqual(['fix the failing test']);
       expect(record.plan?.decision).toBe('approve');
       expect(record.prompt).toContain('Ship the field');
-      const handoff = await documents.latestBody('PROJ-140', 'handoff');
+      const handoff = handoffText(await documents.latestBody('PROJ-140', 'handoff'));
       expect(handoff).toContain('dropped "add the field"');
       expect(handoff).toContain('added "fix the failing test"');
       expect(handoff).toContain('outranks the checklist');
@@ -481,7 +476,7 @@ describe('implement step', () => {
         plan?: { items?: string[] };
       };
       expect(record.plan?.items).toEqual(['add the field']);
-      expect(await documents.latestBody('PROJ-141', 'handoff')).not.toContain('outranks the checklist');
+      expect(handoffText(await documents.latestBody('PROJ-141', 'handoff'))).not.toContain('outranks the checklist');
     } finally {
       await app.close();
     }
@@ -496,13 +491,18 @@ describe('implement step', () => {
       try {
         await seed(app, ticket, 'approve');
         await app.get(PipelineService).step('implement', ticket);
-        return await app.get(DocumentRepository).latestBody(ticket, 'handoff');
+        return handoffText(await app.get(DocumentRepository).latestBody(ticket, 'handoff'));
       } finally {
         await app.close();
       }
     };
     const plain = await handoffFor('PROJ-150', reply);
-    const withCause = await handoffFor('PROJ-151', `cause:\n- the parser dropped the suffix\n\n${reply}`);
+    const withCause = await handoffFor(
+      'PROJ-151',
+      implAnswer(['changed the field parser', 'ran unit tests'], ['changed the parser so empty fields stay'], {
+        cause: ['the parser dropped the suffix'],
+      }),
+    );
     expect(plain).not.toContain('cause:');
     expect(withCause).toBe(
       plain?.replace('## implement\n', '## implement\ncause:\n- the parser dropped the suffix\n\n'),
@@ -521,18 +521,7 @@ describe('implement step', () => {
     };
     const agent = jest.fn(async () => {
       writeFileSync(join(worktree, 'field.ts'), 'export const field = 2;\n');
-      return result(
-        [
-          'plan:',
-          JSON.stringify(plan, null, 2),
-          '',
-          'implementation:',
-          '- fixed the test',
-          '',
-          'summary:',
-          '- the pipeline log required it',
-        ].join('\n'),
-      );
+      return result(implAnswer(['fixed the test'], ['the pipeline log required it'], { plan: plan.items }));
     });
     const app = await boot(root, agent);
     try {
@@ -553,7 +542,7 @@ describe('implement step', () => {
       expect(record.plan?.name).toBe('');
       expect(record.plan?.decision).toBe('approve');
       expect(record.prompt).toContain('Ship the field');
-      const handoff = await documents.latestBody('PROJ-145', 'handoff');
+      const handoff = handoffText(await documents.latestBody('PROJ-145', 'handoff'));
       expect(handoff).toContain('dropped "add the field"');
       expect(handoff).toContain('added "fix the failing test"');
       expect(handoff).toContain('outranks the checklist');

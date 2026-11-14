@@ -3,6 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import type { AgentRunResult } from './agent-result';
 import { chatMissingAnswer, loopHint, relaunchPlan, resumableChat } from './agent-session';
+import { RESULT_AS_BEFORE } from '../agent-result/result-prompt';
 
 const budget = { halted: false, callsSoFar: 1, maxCalls: 50, attempts: 1, maxLaunches: 3 };
 
@@ -72,5 +73,30 @@ describe('relaunch after a loop kill', () => {
   it('does not relaunch when the loop ends the step, or when the budget is used', () => {
     expect(relaunchPlan({ ...base, loopPrompt: null })).toBeNull();
     expect(relaunchPlan({ ...base, loopPrompt: 'hint', budget: { ...budget, attempts: 3 } })).toBeNull();
+  });
+});
+
+describe('result endings of runner continuations', () => {
+  it.each(['time', 'idle', null] as const)('uses the supplied result ending after a %s stop', (killReason) => {
+    const attempt = {
+      ...crashed('', true),
+      exitCode: killReason === null ? 0 : 1,
+      killReason,
+      backgroundKilled: killReason === null,
+    };
+    const next = relaunchPlan({
+      attempt,
+      chatId: 'c1',
+      continuePrompt: undefined,
+      endedEarlyUsed: false,
+      budget,
+      ending: RESULT_AS_BEFORE,
+    });
+    expect(next?.prompt?.endsWith(RESULT_AS_BEFORE)).toBe(true);
+    expect(next?.prompt).not.toContain('sections');
+  });
+
+  it('ends a loop hint with the same result reminder', () => {
+    expect(loopHint('npm test', 'error', RESULT_AS_BEFORE).endsWith(RESULT_AS_BEFORE)).toBe(true);
   });
 });

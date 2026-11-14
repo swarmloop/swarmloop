@@ -36,6 +36,10 @@ export interface AgentRunInput {
   continuePrompt?: string | null;
   /** The full prompt for a fresh chat, when `prompt` is a follow-up that only a resumed chat can use. */
   freshPrompt?: string;
+  /** The line that closes every message the runner sends into the chat itself (continue, loop hint, background restart). */
+  answerEnding?: string;
+  /** The definition this prompt teaches the chat, persisted with its session metadata. */
+  resultName?: string;
   /** Tells whether an answer holds what the step needs. Without it an answer is never treated as ended early. */
   answered?: (text: string) => boolean;
   /**

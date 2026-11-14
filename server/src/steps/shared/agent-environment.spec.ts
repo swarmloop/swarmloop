@@ -61,7 +61,9 @@ describe('agentWorkplace', () => {
     async (step) => {
       const first = skillPrompt(step, '{"prompt":"Update the field"}', ['shop'], [], [], { deferExecutionRules: true });
       const resumed =
-        step === 'implement' ? implementFollowUp('- update the field', null) : implementImproveFollowUp(null);
+        step === 'implement'
+          ? implementFollowUp('- update the field', null, [], null)
+          : implementImproveFollowUp(null, null);
       for (const prompt of [first, resumed]) {
         const project = prepared();
         project.record.config.checks = ['npm test'];
@@ -82,7 +84,7 @@ describe('agentWorkplace', () => {
     const place = await agentWorkplace(
       environments(prepared()),
       input,
-      implementFollowUp(plan, '## checks\nFAIL npm test'),
+      implementFollowUp(plan, '## checks\nFAIL npm test', [], null),
     );
     expect(place.prompt).toContain(plan);
     expect(place.prompt).toContain('including resumed sessions');

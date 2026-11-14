@@ -1,8 +1,9 @@
+import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
 import { EventEmitter } from 'events';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -13,12 +14,13 @@ import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
-import { AGENT_CONTINUE } from '../../agent/agent-runner';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import { boot, result, seed, writeEnv } from './plan.step.spec-helpers';
+import { planContinue } from './plan.prompts';
+import { RULES, runSplit, writeChat, type SplitOptions } from './plan.step.spec-helpers';
+import { boot, planBlock, questionsBlock, result, seed, writeEnv } from './plan.step.spec-helpers';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { imageMissing, imageName } from '../../sandbox/image-resolver';
 
@@ -35,9 +37,7 @@ describe('plan step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-40', 'billing-api'), { recursive: true });
     mkdirSync(join(root, 'worktrees', 'PROJ-40', 'other'), { recursive: true });
-    const agent = jest
-      .fn()
-      .mockResolvedValue(result(['plan:', '- add the field', '- cover the empty case'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(result(planBlock(['add the field', 'cover the empty case'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-40', '');
@@ -76,7 +76,7 @@ describe('plan step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-45-t1', 'billing-api'), { recursive: true });
     mkdirSync(join(root, 'worktrees', 'PROJ-46', 'billing-api'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(result(planBlock(['add the field'])));
     const app = await boot(root, agent);
     try {
       const runs = app.get(RunRepository);
@@ -104,9 +104,9 @@ describe('plan step', () => {
     mkdirSync(join(root, 'worktrees', 'PROJ-48', 'billing-api'), { recursive: true });
     const agent = jest
       .fn()
-      .mockResolvedValueOnce(result(['questions:', '- which column type?'].join('\n')))
-      .mockResolvedValueOnce(result(['plan:', '- add the field'].join('\n')))
-      .mockResolvedValueOnce(result(['questions:', '- which column type?'].join('\n')));
+      .mockResolvedValueOnce(result(questionsBlock(['which column type?'])))
+      .mockResolvedValueOnce(result(planBlock(['add the field'])))
+      .mockResolvedValueOnce(result(questionsBlock(['which column type?'])));
     const app = await boot(root, agent);
     try {
       const runs = app.get(RunRepository);
@@ -119,7 +119,7 @@ describe('plan step', () => {
       const child = await runs.findRun('PROJ-47-t1');
       expect(child?.currentStep).toBe('plan-improve');
       expect(await app.get(DocumentRepository).latestBody('PROJ-47-t1', 'questions')).toBeFalsy();
-      expect(await app.get(DocumentRepository).latestBody('PROJ-47-t1', 'handoff')).toContain(
+      expect(handoffText(await app.get(DocumentRepository).latestBody('PROJ-47-t1', 'handoff'))).toContain(
         '- assumed: which column type?',
       );
 
@@ -143,7 +143,7 @@ describe('plan step', () => {
       join(root, 'data', 'PROJ-45-plan-session.json'),
       `${JSON.stringify({ runtime: 'cursor', chatId: 'chat-1', resumed: true, completed: true, killReason: null, usd: 2 })}\n`,
     );
-    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(result(planBlock(['add the field'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-45', '');
@@ -166,7 +166,7 @@ describe('plan step', () => {
 
   describe('first visit in the research chat', () => {
     const stepFirst = async (key: string, options: SplitOptions = {}) =>
-      (await runSplit(key, ['plan:', '- add the field'].join('\n'), { ...options, chat: true })).input;
+      (await runSplit(key, planBlock(['add the field']), { ...options, chat: true })).input;
 
     it('sends the plan skill with Split on the first visit in the research chat', async () => {
       const input = await stepFirst('PROJ-60');
@@ -185,18 +185,18 @@ describe('plan step', () => {
 
     it('asks a runtime without a plan tool for the checklist in the answer', async () => {
       const input = await stepFirst('PROJ-63', { runtime: 'claude' });
-      expect(input.prompt).toContain('Write the checklist in the `plan:` section of your answer.');
+      expect(input.prompt).toContain('End your final message with exactly one result block');
       expect(input.prompt).not.toContain('plan tool');
     });
 
     it('adds no project rules to the research chat of the same runtime', async () => {
-      const input = (await runSplit('PROJ-63', 'plan:\n- x', { chat: true, rules: RULES('claude') })).input;
+      const input = (await runSplit('PROJ-63', planBlock(['x']), { chat: true, rules: RULES('claude') })).input;
       expect(input.resumeChatId).toBe('chat-1');
       expect(input.prompt).not.toContain('Project rules');
     });
 
     it('opens a new chat with the project rules when the stored chat belongs to another runtime', async () => {
-      const input = (await runSplit('PROJ-64', 'plan:\n- x', { chat: true, rules: RULES('cursor') })).input;
+      const input = (await runSplit('PROJ-64', planBlock(['x']), { chat: true, rules: RULES('cursor') })).input;
       expect(input.resumeChatId).toBeNull();
       expect(input.prompt).toContain('Project rules (billing-api):\nKeep it small.\n\nRequirements:');
     });
@@ -215,8 +215,8 @@ describe('plan step', () => {
     writeChat(root, 'PROJ-63');
     const agent = jest
       .fn()
-      .mockResolvedValueOnce(result(['questions:', '- which column type?'].join('\n')))
-      .mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+      .mockResolvedValueOnce(result(questionsBlock(['which column type?'])))
+      .mockResolvedValue(result(planBlock(['add the field'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-63', '');
@@ -239,7 +239,7 @@ describe('plan step', () => {
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-64', 'billing-api'), { recursive: true });
     writeChat(root, 'PROJ-64');
-    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(result(planBlock(['add the field'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-64', '');
@@ -257,7 +257,7 @@ describe('plan step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-stored-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-44', 'app'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(result(planBlock(['add the field'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-44', '');
@@ -287,7 +287,7 @@ describe('plan step', () => {
     mkdirSync(join(root, 'worktrees', 'PROJ-49', 'billing-api'), { recursive: true });
     writeFileSync(join(root, 'worktrees', 'PROJ-49', 'billing-api', 'core.ts'), 'a\nb\nc\n');
     mkdirSync(join(root, 'worktrees', 'PROJ-50', 'billing-api'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(result(planBlock(['add the field'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-49', '');
@@ -333,7 +333,7 @@ describe('plan step', () => {
       join(root, 'data', 'PROJ-47-plan-session.json'),
       `${JSON.stringify({ runtime: 'cursor', chatId: 'chat-1', resumed: true, completed: true, killReason: null, usd: 0 })}\n`,
     );
-    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(result(planBlock(['add the field'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-46', '');
@@ -355,7 +355,7 @@ describe('plan step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-impact-full-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-48', 'billing-api'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+    const agent = jest.fn().mockResolvedValue(result(planBlock(['add the field'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-48', '');
@@ -376,8 +376,8 @@ describe('plan step', () => {
     const ask = 'This change makes the live agent log unreachable. Is that intended?';
     const agent = jest
       .fn()
-      .mockResolvedValueOnce(result(['questions:', `- ${ask}`, '', 'summary:', '- stopped'].join('\n')))
-      .mockResolvedValue(result(['plan:', '- add the field'].join('\n')));
+      .mockResolvedValueOnce(result(questionsBlock([ask])))
+      .mockResolvedValue(result(planBlock(['add the field'])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-49', '');
@@ -402,13 +402,13 @@ describe('plan step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-empty-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-42', 'billing-api'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(result('plan:\n- none\n'));
+    const agent = jest.fn().mockResolvedValue(result(planBlock([])));
     const app = await boot(root, agent);
     try {
       await seed(app, 'PROJ-42', '');
       const result = await app.get(PipelineService).step('plan', 'PROJ-42');
       expect(result.exitCode).toBe(1);
-      expect(result.message).toContain('plan is empty');
+      expect(result.message).toContain('exactly one of plan, questions and tasks must be filled in');
       expect((await app.get(RunRepository).findRun('PROJ-42'))?.currentStep).toBe('plan');
       expect((await app.get(RunRepository).findRun('PROJ-42'))?.status).toBe('failed');
     } finally {
@@ -417,7 +417,7 @@ describe('plan step', () => {
   });
 
   it('keeps a valid plan after a write was refused in plan mode', async () => {
-    const answer = ['plan:', '- add the field', '- cover the empty case'].join('\n');
+    const answer = planBlock(['add the field', 'cover the empty case']);
     const clean = await planOutcome(result(answer));
     const refused = await planOutcome({ ...result(answer), output: REFUSED_WRITE });
     expect(clean.exitCode).toBe(0);
@@ -428,7 +428,7 @@ describe('plan step', () => {
   it('names the refused write when a write was refused and the answer has no plan', async () => {
     const outcome = await planOutcome({ ...result('the file is written'), output: REFUSED_WRITE });
     expect(outcome.exitCode).toBe(1);
-    expect(outcome.message).toContain('plan is missing');
+    expect(outcome.message).toContain('the answer has no result block');
     expect(outcome.message).toContain('a write was refused: Cannot write to /work/billing-api/a.php');
   });
 
@@ -472,7 +472,7 @@ describe('plan step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-time-'));
     await writeEnv(root, 0);
     mkdirSync(join(root, 'worktrees', 'PROJ-146', 'billing-api'), { recursive: true });
-    const answer = ['plan:', '- add the field', '', 'summary:', '- covers the empty case'].join('\n');
+    const answer = planBlock(['add the field'], { summary: ['covers the empty case'] });
     const spawn = scripted([chatStream('plan-chat', 'partial'), doneStream(answer)]);
     const app = await bootLive(root, spawn);
     try {
@@ -480,7 +480,7 @@ describe('plan step', () => {
       const done = await app.get(PipelineService).step('plan', 'PROJ-146');
       expect(done.exitCode).toBe(0);
       expect(spawn).toHaveBeenCalledTimes(2);
-      expect(launchedPrompt(spawn.mock.calls[1])).toBe(AGENT_CONTINUE);
+      expect(launchedPrompt(spawn.mock.calls[1])).toBe(planContinue());
       expect(resumeArg(spawn.mock.calls[1])).toBe('plan-chat');
       const runs = app.get(RunRepository);
       const visitRepository = app.get(VisitRepository);
@@ -498,136 +498,6 @@ describe('plan step', () => {
     } finally {
       await app.close();
     }
-  });
-});
-
-const splitReply = [
-  'contract:',
-  '- the column is called `split`',
-  '',
-  'tasks:',
-  '- column | Add the column | depends: none | files: a.ts | proof: a.spec.ts',
-  '  Adds it.',
-  '- api | Send it | depends: column | files: b.ts | proof: b.spec.ts',
-  '  Sends it.',
-  '',
-  'summary:',
-  '- two parts',
-].join('\n');
-
-const RULES = (chatRuntime: string) => ({ text: 'Keep it small.\n', chatRuntime });
-
-interface SplitOptions {
-  split?: boolean;
-  subtask?: boolean;
-  /** Leaves the chat research shares with the plan step. */
-  chat?: boolean;
-  runtime?: string;
-  /** The plan agent is Claude, the repository has this `AGENTS.md`, and the stored chat belongs to `chatRuntime`. */
-  rules?: { text: string; chatRuntime: string };
-}
-
-async function runSplit(key: string, answer: string, options: SplitOptions = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-split-'));
-  await writeEnv(root);
-  if (options.runtime) {
-    const env = join(root, '.env');
-    writeFileSync(env, readFileSync(env, 'utf8').replaceAll('=cursor:', `=${options.runtime}:`));
-  }
-  mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
-  if (options.rules) {
-    writeFileSync(join(root, 'worktrees', key, 'billing-api', 'AGENTS.md'), options.rules.text);
-  }
-  if (options.chat) {
-    writeChat(root, key, options.rules?.chatRuntime);
-  }
-  const agent = jest.fn().mockResolvedValue(result(answer));
-  const app = await boot(root, agent);
-  try {
-    const runs = app.get(RunRepository);
-    await seed(app, key, '');
-    const seeded = (await runs.findRun(key))!;
-    const parent = options.subtask ? await runs.openWaiting(`${key}-parent`, '/target') : null;
-    await runs.saveRun({
-      ...seeded,
-      split: options.split ?? true,
-      ...(options.rules ? { agents: { main: { plan: [{ runtime: 'claude', model: 'm-claude' }] } } } : {}),
-      ...(parent ? { parentRunId: parent.id, taskId: 't1' } : {}),
-    });
-    const done = await app.get(PipelineService).step('plan', key);
-    const documents = app.get(DocumentRepository);
-    return {
-      done,
-      input: agent.mock.calls[0]?.[0] as AgentRunInput,
-      run: await runs.findRun(key),
-      subtasks: await documents.latestBody(key, 'subtasks'),
-      contract: await documents.latestBody(key, 'contract'),
-      requirements: await documents.latestBody(key, 'requirements'),
-    };
-  } finally {
-    await app.close();
-  }
-}
-
-describe('plan step with split', () => {
-  it('split answer writes plan items, subtasks and contract', async () => {
-    const out = await runSplit('PROJ-80', splitReply);
-    expect(out.done.exitCode).toBe(0);
-    expect(out.run?.currentStep).toBe('plan-improve');
-    expect(JSON.parse(out.requirements ?? '{}').plan.items).toEqual([
-      'Add the column - files: a.ts - proof: a.spec.ts',
-      'Send it - files: b.ts - proof: b.spec.ts',
-    ]);
-    expect(JSON.parse(out.subtasks ?? '[]')).toMatchObject([
-      { id: 'column', depends: [], status: 'pending' },
-      { id: 'api', depends: ['column'], status: 'pending' },
-    ]);
-    expect(out.contract).toContain('the column is called `split`');
-  });
-
-  it('stores a plan of 49 tasks at the default task limit, for plan-improve to merge', async () => {
-    const tasks = Array.from({ length: 49 }, (_, n) => [
-      `- t${n} | Task ${n} | depends: none | files: a.ts | proof: a.spec.ts`,
-      '  Does it.',
-    ]).flat();
-    const answer = ['contract:', '- one field', '', 'tasks:', ...tasks, '', 'summary:', '- why'].join('\n');
-    const out = await runSplit('PROJ-83', answer);
-    expect(out.done.exitCode).toBe(0);
-    expect(out.run?.currentStep).toBe('plan-improve');
-    expect(JSON.parse(out.subtasks ?? '[]')).toHaveLength(49);
-  });
-
-  it('a bad graph is a plan error', async () => {
-    const out = await runSplit('PROJ-81', splitReply.replace('depends: none', 'depends: api'));
-    expect(out.done.exitCode).toBe(1);
-    expect(out.done.message).toContain('tasks have a dependency cycle: column -> api -> column');
-    expect(out.subtasks).toBeFalsy();
-  });
-
-  it('tasks refused for a subtask', async () => {
-    const out = await runSplit('PROJ-82-t1', splitReply, { subtask: true });
-    expect(out.done.exitCode).toBe(1);
-    expect(out.done.message).toContain('tasks are not allowed');
-    expect(out.subtasks).toBeFalsy();
-  });
-
-  it('tasks refused when split is off', async () => {
-    const out = await runSplit('PROJ-83', splitReply, { split: false });
-    expect(out.done.exitCode).toBe(1);
-    expect(out.done.message).toContain('tasks are not allowed');
-  });
-
-  it('a plain plan clears subtasks', async () => {
-    const out = await runSplit('PROJ-84', ['plan:', '- add the field'].join('\n'));
-    expect(out.done.exitCode).toBe(0);
-    expect(JSON.parse(out.subtasks ?? 'null')).toEqual([]);
-    expect(out.contract).toBeFalsy();
-  });
-
-  it('a plain plan writes no subtasks for a run that does not split', async () => {
-    const out = await runSplit('PROJ-85', ['plan:', '- add the field'].join('\n'), { split: false });
-    expect(out.done.exitCode).toBe(0);
-    expect(out.subtasks).toBeFalsy();
   });
 });
 
@@ -649,14 +519,6 @@ async function planOutcome(answer: AgentRunResult) {
   } finally {
     await app.close();
   }
-}
-
-function writeChat(root: string, key: string, runtime = 'cursor'): void {
-  mkdirSync(join(root, 'data', 'agent-state', key, 'plan'), { recursive: true });
-  writeFileSync(
-    join(root, 'data', `${key}-plan-session.json`),
-    `${JSON.stringify({ runtime, chatId: 'chat-1', resumed: true, completed: true, killReason: null, usd: 0 })}\n`,
-  );
 }
 
 /** One finished plan visit with an agent exchange, as an earlier plan visit of the run leaves it. */
@@ -684,7 +546,7 @@ async function storePlanVisit(app: Awaited<ReturnType<typeof boot>>, key: string
       finishedAt: at,
       durationMs: 5,
       requestText: 'plan',
-      responseText: 'plan:\n- add the field',
+      responseText: planBlock(['add the field']),
       chatId: 'chat-1',
       resumed: false,
       killReason: null,

@@ -2,56 +2,7 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { bulletSection } from './markdown-section';
 import { requirementsBrief } from './requirements-brief';
-
-export function parseSummary(text: string): string {
-  return bulletSection(text, 'summary');
-}
-
-export function summaryOr(text: string, fallback: string): string {
-  try {
-    return parseSummary(text);
-  } catch (error) {
-    if (
-      !(error instanceof SwarmloopError) ||
-      (error.message !== 'summary is missing' && error.message !== 'summary is empty')
-    ) {
-      throw error;
-    }
-    const body = fallback.trim();
-    if (!body) {
-      throw new SwarmloopError('summary is missing');
-    }
-    return body.endsWith('\n') ? body : `${body}\n`;
-  }
-}
-
-export function plainSummary(text: string): string {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => {
-      const cleaned = line
-        .replace(/^[`*]+/, '')
-        .replace(/[`*]+$/, '')
-        .trim();
-      if (!cleaned) {
-        return false;
-      }
-      if (/^decision:\s*(ok|return|approve|revise)\s*$/.test(cleaned)) {
-        return false;
-      }
-      if (/^result:\s*(pass|fail)\s*$/.test(cleaned)) {
-        return false;
-      }
-      if (/^(implementation|summary|plan|repos|questions):$/.test(cleaned)) {
-        return false;
-      }
-      return true;
-    });
-  return lines.map((line) => (line.startsWith('- ') ? line : `- ${line}`)).join('\n');
-}
 
 /** The name a prompt gives a mounted repository. */
 export function mountLabel(names: string[], mount: SandboxMount, index: number): string {

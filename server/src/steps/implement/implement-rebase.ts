@@ -18,7 +18,9 @@ import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { textDocument } from '../shared/handoff';
 import { runJournal } from '../shared/rebase-journal';
 import type { RebasedPublisher } from '../shared/rebased-publisher';
+import { rebaseResolution, type RebaseResolutionResult } from '../../agent-result/definitions/rebase-resolution';
 import { rebaseConflictPrompt } from './implement.prompts';
+import { firstPass, renderImplementation } from './implement-record';
 
 /** What finishing an open rebase needs from the implement step. */
 export interface RebaseDeps {
@@ -102,12 +104,14 @@ export async function settleRebase(
         commit: outcome.commit,
       })}\n`,
     );
-    await ctx.launch({
+    const resolved = await ctx.launch({
       ...workplace,
       projectFor: projectFor(deps.environments, place),
       mounts,
       resume: false,
+      result: rebaseResolution,
     });
+    await ctx.write(ARTIFACTS.rebaseResolutionResult, resolved.resultValue as RebaseResolutionResult);
     const cwd = worktreePath(root(deps.config), key, outcome.repo);
     const still = await unmergedPaths(cwd);
     if (still.length > 0) {
@@ -129,16 +133,19 @@ export async function settleRebase(
   // The rebased code is checked again before it is reviewed, when the run has the checks phase.
   const next = (await deps.flows.activePhases(ctx.opened.run.id)).includes('checks') ? 'checks' : 'code-review';
   await deps.flows.noteFlow(key, next === 'checks' ? ['checks', 'code-review', 'ci'] : ['code-review', 'ci'], next);
-  const existing = (await ctx.reread(ARTIFACTS.implementation)) ?? '';
-  if (!existing.trim()) {
+  const existing = await firstPass(ctx);
+  if (!existing?.implementation.length) {
     throw new SwarmloopError('implementation is missing');
   }
-  const body = existing.endsWith('\n') ? existing : `${existing}\n`;
+  const body = renderImplementation(existing.implementation);
   const status = await worktreeStatus(mounts);
   return {
     route: { to: 'jump', step: next },
     summary: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
-    outputs: [{ artifact: ARTIFACTS.implementation, value: body }],
+    outputs: [
+      { artifact: ARTIFACTS.implementation, value: body },
+      { artifact: ARTIFACTS.implementationResult, value: existing },
+    ],
     handoff: '- resolved the rebase\n',
     visit: {
       documents: [

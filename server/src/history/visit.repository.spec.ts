@@ -4,6 +4,24 @@ import { RunRepository } from './run.repository';
 import { VisitRepository } from './visit.repository';
 
 describe('VisitRepository', () => {
+  it('keeps a per-visit record on each visit when their contents are identical', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const run = await db.app.get(RunRepository).begin('run-errors', 'code-review');
+      const visit = {
+        ...repositoryVisit(),
+        documents: [{ kind: 'answer_errors', fileName: '', body: '["decision: invalid"]\n', perVisit: true }],
+      };
+      const first = await visits.finishVisit(run, visit);
+      const second = await visits.finishVisit(run, visit);
+      const documents = await db.app.get(DocumentRepository).listDocuments(run.id);
+      expect(documents.map((document) => document.stepStatId)).toEqual([first.id, second.id]);
+    } finally {
+      await db.close();
+    }
+  });
+
   it('creates a visit with related rows, reads it and updates its stat', async () => {
     const db = await repositoryDatabase();
     try {

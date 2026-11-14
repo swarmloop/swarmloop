@@ -74,6 +74,67 @@
       "include": "docker/",
       "exclude": "\\.spec(-helpers)?\\.ts$|/fixtures?/|package-lock\\.json$|tsconfig[^/]*\\.json$|vitest\\.config\\.ts$|/golden/",
       "pattern": "node_modules|\\.venv|['\"`/](vendor|target)['\"`/]"
+    },
+    {
+      "include": ["server/src/steps/", "server/src/pipeline/", "server/src/api/"],
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": [
+        "server/src/steps/shared/agent-launcher.ts",
+        "server/src/steps/shared/model-visit.ts",
+        "server/src/steps/shared/agent-result.ts",
+        "server/src/steps/shared/result-exchange.ts",
+        "server/src/steps/code-review/review-select.ts",
+        "server/src/api/run-view/live.ts",
+        "server/src/api/run-queries-log.ts",
+        "server/src/api/run-queries.service.ts",
+        "server/src/api/run-view/visit-parts.ts",
+        "server/src/api/run-view/flow.ts",
+        "server/src/api/run-view/chips.ts",
+        "server/src/api/run-view/reviewer-steps.ts",
+        "server/src/api/chat.service.ts",
+        "server/src/pipeline/run-settler.ts"
+      ],
+      "pattern": "\\.responseText\\b|\\bstepOutput\\("
+    },
+    {
+      "include": ["server/src/steps/", "server/src/pipeline/", "server/src/api/"],
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": [
+        "server/src/steps/shared/answers.ts",
+        "server/src/steps/merge-request/merge-request-record.ts",
+        "server/src/steps/plan/plan-tasks.ts",
+        "server/src/steps/shared/handoff.ts"
+      ],
+      "pattern": "(^|[^.\\w])(section|items)\\(|split\\('\\|'\\)"
+    },
+    {
+      "include": ["server/src/steps/", "server/src/pipeline/", "server/src/api/"],
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": [
+        "server/src/steps/shared/answers.ts",
+        "server/src/steps/merge-request/merge-request-record.ts",
+        "server/src/steps/plan/plan-tasks.ts",
+        "server/src/steps/shared/handoff.ts",
+        "server/src/steps/contract/artifacts.ts"
+      ],
+      "pattern": "/\\^[^/]*:[^/]*\\/[gimsuy]*m"
+    },
+    {
+      "include": ["server/src/steps/", "server/src/pipeline/", "server/src/api/"],
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": [
+        "server/src/steps/shared/answers.ts",
+        "server/src/steps/merge-request/merge-request-record.ts",
+        "server/src/steps/plan/plan-tasks.ts",
+        "server/src/steps/shared/handoff.ts"
+      ],
+      "pattern": "End with these sections|\\bdecision: (ok\\|return|ok or return|return or ok)"
+    },
+    {
+      "include": "dashboard/",
+      "exclude": "\\.test\\.tsx?$|^dashboard/test/",
+      "allowLine": "=== 'decision: (ok|return)'|replace\\('decision: '|startsWith\\('decision:'",
+      "pattern": "['\"`/]\\s*\\^?decision:"
     }
   ],
   "forbidInFile": [

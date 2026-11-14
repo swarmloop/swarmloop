@@ -14,6 +14,7 @@ import { CommandRepository } from '../history/command.repository';
 import { RunRepository } from '../history/run.repository';
 import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
+import { BlockAgentRunner } from './result-answer';
 import { createTestApp } from './test-app';
 import type { TestApp } from './test-app';
 
@@ -78,6 +79,7 @@ describe('crash matrix', () => {
     const waiting = await runs.openWaiting(KEY, '');
     waiting.currentStep = 'research';
     await runs.saveRun(waiting);
+    await app.app.get(DocumentRepository).putDocument(waiting, 'requirements', '{"prompt":"Ship the field"}\n');
     const crashed = crashAt('after-accept');
     void app.app.get(CommandService).accept('resume', KEY, {});
     await crashed;
@@ -398,5 +400,46 @@ describe('crash matrix', () => {
     const [dead] = await visits(app);
     const keys = accepted.mock.calls.map((call) => call[3]?.idempotencyKey);
     expect(keys.filter((key) => key === `relaunch-${dead.attemptId}`)).toHaveLength(1);
+  });
+
+  it('a reviewer killed after it sent a valid block still counts, and the next pass runs no reviewer again', async () => {
+    const blocks = new BlockAgentRunner();
+    app = await createTestApp({ realReview: true, blocks });
+    const runs = app.app.get(RunRepository);
+    const documents = app.app.get(DocumentRepository);
+    mkdirSync(join(app.root, 'worktrees', KEY, 'billing-api'), { recursive: true });
+    const seeded = await runs.begin(KEY, 'code-review');
+    seeded.status = 'waiting';
+    seeded.currentStep = 'implement-improve';
+    await runs.saveRun(seeded);
+    await documents.putDocument(seeded, 'requirements', `${JSON.stringify({ prompt: 'Ship the field\n' })}\n`);
+    await documents.putDocument(seeded, 'repos', 'billing-api\n');
+    await documents.putDocument(seeded, 'implementation', '- changed the field parser\n');
+    const delegate = blocks.run.bind(blocks);
+    jest.spyOn(blocks, 'run').mockImplementation(async (input: { step: string; outputFile?: string }) => {
+      const answered = await delegate(input);
+      if (input.step !== 'code-review-quality' || !input.outputFile) return answered;
+      // The process sent its block and was killed before it exited.
+      mkdirSync(join(app.root, 'data'), { recursive: true });
+      writeFileSync(
+        input.outputFile,
+        `${JSON.stringify({ type: 'result', result: answered.responseText })}\nprocess killed: time\n`,
+      );
+      return { ...answered, killReason: 'time', exitCode: 1 };
+    });
+
+    const killed = await app.pipeline.step('code-review', KEY);
+    expect(killed.exitCode).toBe(1);
+    expect(killed.message).toContain('process killed');
+    expect(await documents.latestBody(KEY, 'review_quality')).toBeNull();
+
+    jest.restoreAllMocks();
+    blocks.steps.length = 0;
+    const done = await app.pipeline.step('code-review', KEY);
+
+    expect(done.exitCode).toBe(0);
+    expect(blocks.steps).toEqual(['code-review-report']);
+    expect(JSON.parse((await documents.latestBody(KEY, 'review_quality_result')) ?? '{}').decision).toBe('ok');
+    expect((await runs.findRun(KEY))?.currentStep).toBe('commit');
   });
 });

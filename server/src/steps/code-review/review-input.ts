@@ -8,7 +8,8 @@ import type { SandboxMount } from '../../core/sandbox-mount';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { deriveState } from '../../history/run-state';
-import { readPlan } from '../plan/plan-record';
+import { currentPlan } from '../shared/current-plan';
+import { renderImplementation } from '../implement/implement-record';
 import { storedProjects } from '../../config/checkout-path';
 import type { CheckoutService } from '../shared/checkout.service';
 import { handoffSection } from '../shared/handoff';
@@ -90,21 +91,29 @@ export async function interruptedAttempt(visits: VisitRepository, opened: Opened
   return last?.attemptId ?? null;
 }
 
-export function approvedPlan(requirements: string): string {
-  const plan = readPlan(requirements);
+export async function approvedPlan(documents: DocumentRepository, key: string): Promise<string> {
+  const plan = await currentPlan(documents, key);
   if (!plan || plan.decision !== 'approve' || plan.items.length === 0) {
     return '';
   }
   return approvedChecklist(plan.items);
 }
 
+/** What each implement pass did, oldest first: from its stored result, or for a run from before results its `implementation` document. */
+function passes(documents: { kind: string; body: string }[]): string[] {
+  const results = documents.filter((item) => item.kind === ARTIFACTS.implementationResult.kind);
+  const written =
+    results.length > 0
+      ? results.map((item) => renderImplementation(ARTIFACTS.implementationResult.parse(item.body).implementation))
+      : documents.filter((item) => item.kind === ARTIFACTS.implementation.kind).map((item) => item.body);
+  return written.map((body) => body.trim()).filter((body) => body !== '');
+}
+
 export function fixNotes(
   documents: { kind: string; body: string }[],
   handoff: string | null,
 ): { implement: string; reviewed: string } {
-  const written = documents
-    .filter((item) => item.kind === ARTIFACTS.implementation.kind && item.body.trim())
-    .map((item) => item.body.trim());
+  const written = passes(documents);
   const implementWhat = written.length >= 2 ? written[written.length - 2] : (written.at(-1) ?? '');
   const reviewWhat = written.length >= 2 ? (written.at(-1) ?? '') : '';
   const same = reviewWhat.length > 0 && reviewWhat === implementWhat;

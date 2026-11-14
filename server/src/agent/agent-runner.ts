@@ -27,7 +27,7 @@ import { AgentLaunchEnv } from './agent-launch-env';
 import { AgentLaunchPrep } from './agent-launch-prep';
 import { AgentProcess } from './agent-process';
 import {
-  AGENT_BACKGROUND_KILLED_CONTINUE,
+  backgroundKilledContinue,
   foldAttempt,
   relaunchPlan,
   resendAfterOrphans,
@@ -113,7 +113,7 @@ export class AgentProcessRunner {
         if (resendAfterOrphans({ attempt, resumed, resent, budget })) {
           resent = true;
           chatId = attempt.chatId ?? chatId;
-          prompt = AGENT_BACKGROUND_KILLED_CONTINUE;
+          prompt = backgroundKilledContinue(input.answerEnding);
           continue;
         }
         const fresh = chatMissingAnswer(attempt) ? await dropMissingChat(input, freshPrompt) : null;
@@ -134,6 +134,7 @@ export class AgentProcessRunner {
           loopPrompt: attempt.killReason === 'loop' ? input.loop?.resumePrompt() : null,
           endedEarlyUsed,
           budget,
+          ending: input.answerEnding,
         });
         if (!relaunch) {
           if (!merged) {
@@ -141,7 +142,7 @@ export class AgentProcessRunner {
           }
           return merged;
         }
-        endedEarlyUsed ||= relaunch.prompt === AGENT_BACKGROUND_KILLED_CONTINUE;
+        endedEarlyUsed ||= relaunch.prompt === backgroundKilledContinue(input.answerEnding);
         chatId = relaunch.chatId;
         resumed = relaunch.resumed;
         prompt = relaunch.prompt ?? prompt;
@@ -232,6 +233,7 @@ export class AgentProcessRunner {
         completed: false,
         killReason,
         usd: sessionUsd(),
+        resultName: input.resultName,
       });
       process.kill();
     };
@@ -279,6 +281,7 @@ export class AgentProcessRunner {
             completed: false,
             killReason: null,
             usd: sessionUsd(),
+            resultName: input.resultName,
           });
         }
         meter.count(piece);
@@ -327,6 +330,7 @@ export class AgentProcessRunner {
       completed: finishedByResult || (killReason === null && exitCode === 0),
       killReason: finishedByResult ? null : killReason,
       usd: sessionUsd(),
+      resultName: input.resultName,
     });
     meter.flush(buffer);
     const limit = tail.limit(runtime, buffer, this.clock.now());
@@ -345,7 +349,7 @@ export class AgentProcessRunner {
       exitCode: finishedByResult ? 0 : killReason ? 1 : exitCode,
       output,
       resumed,
-      decided: meter.decided(),
+      decided: meter.decided(input.answered),
       backgroundKilled: meter.backgroundKilled(input.answered),
       orphanOnly: meter.orphanOnly(),
       ...(limit ? { limit } : {}),

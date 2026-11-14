@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { reviewLog } from '../testing/result-answer';
 
 import { utimesSync } from 'fs';
 
@@ -118,10 +119,7 @@ describe('runs api', () => {
       );
       const again = (await app.get(RunQueriesService).flow('proj-29')).phases.flatMap((phase) => phase.steps);
       expect(again.find((step) => step.name === 'code-review-requirements')?.status).toBe('running');
-      await writeFile(
-        join(root, 'data', 'proj-29-code-review-requirements-output.txt'),
-        'notes\ndecision: ok\nprocess exited 0\n',
-      );
+      await writeFile(join(root, 'data', 'proj-29-code-review-requirements-output.txt'), reviewLog('ok'));
       await writeFile(join(root, 'data', 'proj-29-code-review-requirements-launches.txt'), '1\n1\n1\n');
       const decided = (await app.get(RunQueriesService).flow('proj-29')).phases.flatMap((phase) => phase.steps);
       expect(decided.find((step) => step.name === 'code-review-requirements')?.attempts).toBe(1);
@@ -162,12 +160,12 @@ describe('runs api', () => {
       run.stepStartedAt = round2;
       await runRepository.saveRun(run);
       const file = (name: string) => join(root, 'data', `proj-round-code-review-${name}-output.txt`);
-      await writeFile(file('quality'), 'notes\ndecision: ok\nprocess exited 0\n');
+      await writeFile(file('quality'), reviewLog('ok'));
       const older = new Date(Date.parse(round2) - 60_000);
       utimesSync(file('quality'), older, older);
-      await writeFile(file('requirements'), 'notes\ndecision: ok\nprocess exited 0\n');
+      await writeFile(file('requirements'), reviewLog('ok'));
       await writeFile(file('regressions'), 'thinking\n');
-      await writeFile(file('performance'), 'notes\ndecision: return\nprocess exited 0\n');
+      await writeFile(file('performance'), reviewLog('return'));
       await writeFile(file('security'), 'starting\n');
       const runs = app.get(RunQueriesService);
       const chips = async () =>
@@ -273,10 +271,7 @@ describe('runs api', () => {
     const app = await boot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
-      await writeFile(
-        join(root, 'data', 'proj-23-code-review-quality-output.txt'),
-        `${JSON.stringify({ type: 'result', result: 'notes\ndecision: return\n' })}\nprocess exited 0\n`,
-      );
+      await writeFile(join(root, 'data', 'proj-23-code-review-quality-output.txt'), reviewLog('return'));
       await save(app.get(RunRepository), 'proj-23', 'code-review', 'failed');
       const chips =
         (await app.get(RunQueriesService).flow('proj-23')).phases.find((phase) => phase.phase === 'code-review')

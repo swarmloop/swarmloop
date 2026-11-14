@@ -47,3 +47,12 @@ export function pipelineStepOf(value: string): string {
 export function reviewerOf(value: string): string | undefined {
   return isReviewStep(value) ? value.slice('code-review-'.length) : undefined;
 }
+
+/** The reviewer of a step the caller already knows is a review step. Throws for any other name. */
+export function requireReviewer(step: string): string {
+  const reviewer = reviewerOf(step);
+  if (reviewer === undefined) {
+    throw new Error(`${step} is not a code review step`);
+  }
+  return reviewer;
+}

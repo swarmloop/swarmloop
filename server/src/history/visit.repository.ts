@@ -185,7 +185,7 @@ export class VisitRepository {
         where: { runId: run.id, kind: document.kind },
         order: { id: 'DESC' },
       });
-      if (latest?.body !== document.body) {
+      if (document.perVisit || latest?.body !== document.body) {
         await documents.save(
           documents.create({
             runId: run.id,

@@ -12,13 +12,20 @@ import {
 } from './limits';
 import { withRetries } from '../integrations/http';
 import { readStreamLine } from './stream';
+import { reviewDefinition } from '../agent-result/definitions/review';
+import { readResult } from '../agent-result/read-result';
+import { resultAnswer } from '../testing/result-answer';
 
-function watched(output: string): boolean {
-  let state: DecisionWatch = { text: '', locked: false, stream: false, plain: false };
+const quality = reviewDefinition('quality');
+const accepted = (text: string): boolean => readResult(quality, text).ok;
+const BLOCK = resultAnswer('notes', { decision: 'return', review: 'notes', summary: ['notes'] });
+
+function watched(output: string, answered: ((text: string) => boolean) | undefined = accepted): boolean {
+  let state: DecisionWatch = { text: '', locked: false };
   for (const line of output.split(/\r?\n/)) {
-    state = noteDecision(state, readStreamLine(line), line);
+    state = noteDecision(state, readStreamLine(line));
   }
-  return hasModelDecision(state);
+  return hasModelDecision(state, answered);
 }
 
 function snapshot(patch: Partial<LimitSnapshot> = {}): LimitSnapshot {
@@ -58,16 +65,9 @@ describe('limits', () => {
     expect(overSpend(100, 0)).toBe(false);
   });
 
-  it('retries a non-empty crash until the launch cap and leaves a decision down', () => {
+  it('retries a non-empty crash until the launch cap and leaves a valid result block down', () => {
     const prompt = [
-      JSON.stringify({
-        type: 'user',
-        message: { content: [{ type: 'text', text: 'Read the diff.\n\ndecision: ok\n' }] },
-      }),
-      JSON.stringify({
-        type: 'user',
-        message: { content: [{ type: 'text', text: 'use theme.alpha\ndecision: return\n' }] },
-      }),
+      JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: BLOCK }] } }),
       'Error: [unavailable] Error',
     ].join('\n');
     const under = {
@@ -92,12 +92,17 @@ describe('limits', () => {
     expect(retryCrash({ ...under, killReason: 'idle' })).toBe(false);
     expect(retryCrash({ ...under, halted: true })).toBe(false);
     expect(retryCrash({ ...under, callsSoFar: 20 })).toBe(false);
-    expect(retryCrash({ ...under, decided: watched(`${prompt}\n${answer('notes\ndecision: return\n')}\n`) })).toBe(
-      false,
-    );
-    expect(retryCrash({ ...under, decided: watched(`${answer('**decision: return**')}\n`) })).toBe(false);
-    expect(retryCrash({ ...under, decided: watched('notes\ndecision: return\n') })).toBe(false);
+    expect(retryCrash({ ...under, decided: watched(`${prompt}\n${answer(BLOCK)}\n`) })).toBe(false);
     expect(callsExceeded(20, 20)).toBe(true);
+  });
+
+  it('counts only a result block the step accepts', () => {
+    const answer = (text: string) =>
+      JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
+    expect(watched(`${answer('notes\ndecision: return\n')}\n`)).toBe(false);
+    expect(watched(`${answer(resultAnswer('notes', { decision: 'maybe', review: 'x', summary: [] }))}\n`)).toBe(false);
+    expect(watched(`${answer(BLOCK)}\n`)).toBe(true);
+    expect(hasModelDecision({ text: BLOCK, locked: true }, undefined)).toBe(false);
   });
 
   it('counts tokens when the model has no price', () => {

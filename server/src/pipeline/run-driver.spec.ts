@@ -13,6 +13,8 @@ import {
 } from '../steps/implement/split-implement.spec-helpers';
 import { CommandService } from './command.service';
 import { drive, installScripts } from './run-driver.spec-helpers';
+import { ARTIFACTS } from '../steps/contract/artifacts';
+import { textDocument } from '../steps/shared/handoff';
 
 describe('run driver blocks', () => {
   it('blocks a review return loop at MAX_RETURNS with LOOP_LIMIT and offers Resume', async () => {
@@ -88,6 +90,53 @@ describe('run driver jumps to the step that just finished', () => {
     );
     expect(visits).toBe(1);
     expect(state).toBe('idle');
+  });
+});
+
+describe('run driver relaunch after an answer error', () => {
+  const errors = [
+    'items: "items" is required',
+    'the result block is not valid JSON: Unexpected token \'n\', "{\nnope\n" is not valid JSON',
+    '  indented: kept as written',
+  ];
+  const failedOn = (answerErrors?: string[]) => ({
+    outcome: 'failed' as const,
+    exitCode: 1,
+    ...(answerErrors
+      ? {
+          visit: {
+            documents: [textDocument(ARTIFACTS.answerErrors.kind, ARTIFACTS.answerErrors.format(answerErrors))],
+          },
+        }
+      : {}),
+  });
+
+  it('gives the relaunch the errors of the answer the visit failed on, and none after a failure that was not one', async () => {
+    const seen: (string[] | undefined)[] = [];
+    await drive(
+      {
+        research: (visit, ctx) => {
+          seen.push(ctx.options.answerErrors);
+          return visit === 1 ? failedOn(errors) : failedOn();
+        },
+      },
+      { auto: true },
+    );
+    expect(seen).toEqual([undefined, errors, undefined]);
+  });
+
+  it('gives a visit that follows a successful one no errors', async () => {
+    const seen: (string[] | undefined)[] = [];
+    await drive(
+      {
+        research: (visit, ctx) => {
+          seen.push(ctx.options.answerErrors);
+          return visit === 1 ? failedOn(errors) : { outcome: 'ok', exitCode: 0 };
+        },
+      },
+      { auto: true },
+    );
+    expect(seen).toEqual([undefined, errors]);
   });
 });
 

@@ -6,8 +6,7 @@ import type { SwarmloopEnv } from '../config/env';
 import type { Charge } from '../agent/spend';
 import type { ModelPrice } from '../agent/limits';
 import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
-import { readPlan } from './plan/plan-record';
-import { ARTIFACTS } from './contract/artifacts';
+import { currentPlan } from './shared/current-plan';
 import type { StepCapabilities, StepDescriptor } from './contract/step-contract';
 
 export type StepSnapshot = (run: RunEntity, step: StepName) => Promise<void>;
@@ -37,8 +36,7 @@ export async function requiredDocument(
   return (await documents.hasDocument(key, kind)) ? null : kind;
 }
 
-/** `plan` when the requirements record holds no plan, or null when it does. */
+/** `plan` when the run holds no plan, or null when it does. */
 export async function storedPlan(documents: DocumentRepository, key: string): Promise<string | null> {
-  const plan = readPlan(await documents.latestBody(key, ARTIFACTS.requirements.kind));
-  return plan ? null : 'plan';
+  return (await currentPlan(documents, key)) ? null : 'plan';
 }
