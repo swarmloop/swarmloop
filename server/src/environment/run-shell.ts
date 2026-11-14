@@ -1,7 +1,9 @@
+import { createHash } from 'crypto';
 import { createWriteStream, mkdirSync, writeFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { SAMPLE_MS } from '../core/awake-time';
 import type { Clock } from '../core/clock';
+import { markedTail, runLogPath } from '../core/run-logs';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { startCommandSpan } from '../core/step-event-scope';
 import type { LiveSample } from '../contract/live';
@@ -41,8 +43,9 @@ export interface ShellDeps {
 }
 
 /**
- * The setup and each check command run in the project image with no model key. The output goes to the step log; a
- * check command also streams its full output to its own file. Its container is sampled like the agent's.
+ * The setup and each check command run in the project image with no model key. The output goes to the step log; every
+ * command also streams its full output to its own file in the run's log folder, and the returned tail marks the lines
+ * it leaves out. Its container is sampled like the agent's.
  */
 export async function runShell(
   deps: ShellDeps,
@@ -59,17 +62,23 @@ export async function runShell(
   const userId = sandboxUserId();
   const unit = check ? `${basename(mount.hostPath)}-${check.index}` : basename(mount.hostPath);
   const statePath = agentStateDir(root, input.key, `${phase}-${unit}`);
-  // A check command streams to its file, so memory keeps only the window the live view and the tail read.
+  // Every command streams to its file, so memory keeps only the window the live view and the tail read.
   const keep = check ? LIVE_LINES : 2000;
   const lines: string[] = [`$ ${command}`];
+  let total = 1;
+  const digest = createHash('sha1').update(command).digest('hex').slice(0, 8);
+  const logFile =
+    check?.file ??
+    runLogPath(root, input.key, `${input.step}-${input.run.activeAttempt ?? ''}-${phase}-${unit}-${digest}`);
   if (check) {
     mkdirSync(dirname(check.file), { recursive: true });
   }
-  const file = check ? createWriteStream(check.file, { flags: 'w' }) : null;
-  file?.write(`${lines[0]}\n`);
+  const file = createWriteStream(logFile, { flags: 'w' });
+  file.write(`${lines[0]}\n`);
   const add = (...added: string[]) => {
     lines.push(...added);
-    file?.write(added.map((line) => `${line}\n`).join(''));
+    total += added.length;
+    file.write(added.map((line) => `${line}\n`).join(''));
     if (lines.length > keep) {
       lines.splice(1, lines.length - keep);
     }
@@ -113,7 +122,7 @@ export async function runShell(
     })
     .catch((error: unknown) => {
       finish({ exitCode: null });
-      file?.end();
+      file.end();
       throw error;
     });
   const take = containerSampler(
@@ -167,13 +176,12 @@ export async function runShell(
   add(`exit ${exitCode}`);
   show(true);
   finish({ exitCode, timedOut, output: lines.join('\n') });
-  if (file) {
-    await new Promise<void>((done) => file.end(done));
-  } else {
+  await new Promise<void>((done) => file.end(done));
+  if (!check) {
     mkdirSync(dirname(outputFile), { recursive: true });
     writeFileSync(outputFile, `${lines.join('\n')}\n`);
   }
-  const tail = lines.slice(-TAIL_LINES).join('\n').slice(-TAIL_CHARS);
+  const tail = markedTail(lines, total, TAIL_LINES, TAIL_CHARS, logFile);
   // 137 is a kill by the container's memory cap unless swarmloop killed it: the timeout or a Stop.
   return exitCode === 137 && !timedOut && !deps.halted?.(input.key) && child.memoryCapBytes !== undefined
     ? { exitCode, tail, outOfMemoryBytes: child.memoryCapBytes }

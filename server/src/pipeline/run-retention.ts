@@ -5,6 +5,7 @@ import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { isOutputFileOf } from '../core/attempt-output';
 import { isCheckOutputOf } from '../core/check-output';
+import { runLogDir } from '../core/run-logs';
 import type { RunEntity } from '../history/entities';
 import { removeTreeAsync, root } from '../history/run-paths';
 import { RunRepository } from '../history/run.repository';
@@ -114,7 +115,7 @@ export class RunRetention {
     await removeTreeAsync(join(base, 'data', 'agent-state', run.key));
   }
 
-  /** The output files and check outputs of a run. True when any was removed. */
+  /** The output files, check outputs and log folder of a run. True when any was removed. */
   private async removeHistoryFiles(run: RunEntity): Promise<boolean> {
     const data = join(root(this.config), 'data');
     let removed = false;
@@ -123,6 +124,11 @@ export class RunRetention {
         await removeTreeAsync(join(data, name));
         removed = true;
       }
+    }
+    const logs = runLogDir(root(this.config), run.key);
+    if (await exists(logs)) {
+      await removeTreeAsync(logs);
+      removed = true;
     }
     return removed;
   }

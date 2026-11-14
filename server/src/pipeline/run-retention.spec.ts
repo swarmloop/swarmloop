@@ -56,6 +56,34 @@ describe('RunRetention', () => {
     expect(existsSync(other)).toBe(true);
   });
 
+  it('removes the log folder of a run with it, and not the folder of another run', async () => {
+    world = await makeWorld('PROJ-1');
+    const mine = join(world.swarm, 'data', 'run-logs', 'PROJ-1');
+    const other = join(world.swarm, 'data', 'run-logs', 'PROJ-2');
+    mkdirSync(mine, { recursive: true });
+    mkdirSync(other, { recursive: true });
+    writeFileSync(join(mine, 'x-log.txt'), 'out\n');
+    writeFileSync(join(other, 'x-log.txt'), 'out\n');
+    await age(world, 10);
+
+    expect(await world.app.get(RunRetention).apply(3)).toEqual(['PROJ-1']);
+
+    expect(existsSync(mine)).toBe(false);
+    expect(existsSync(other)).toBe(true);
+  });
+
+  it('removes a flat check output file of a run written before the log folder', async () => {
+    world = await makeWorld('PROJ-1');
+    const flat = join(world.swarm, 'data', 'PROJ-1-checks-attempt1-command-0-log.txt');
+    mkdirSync(join(world.swarm, 'data'), { recursive: true });
+    writeFileSync(flat, 'out\n');
+    await age(world, 10);
+
+    await world.app.get(RunRetention).apply(3);
+
+    expect(existsSync(flat)).toBe(false);
+  });
+
   it('leaves a done run younger than the threshold, and everything when the threshold is 0', async () => {
     world = await makeWorld('PROJ-2');
     await age(world, 1);
