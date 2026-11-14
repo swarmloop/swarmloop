@@ -86,7 +86,7 @@
           "kind": "research_result"
         },
         {
-          "body": "## research\n- looking\n",
+          "body": "[{\"step\":\"research\",\"body\":\"- looking\"}]",
           "kind": "handoff"
         }
       ],

@@ -1,3 +1,4 @@
+import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
 
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -361,7 +362,7 @@ describe('requirements step', () => {
       const record = JSON.parse(await requirementsBody(app, 'widget')) as { prompt: string; tickets: unknown[] };
       expect(record.prompt).toBe('Do PROJ-1 today\n');
       expect(record.tickets).toEqual([]);
-      const handoff = await app.get(DocumentRepository).latestBody('widget', 'handoff');
+      const handoff = handoffText(await app.get(DocumentRepository).latestBody('widget', 'handoff'));
       expect(handoff).toContain('- requirements done');
       expect(handoff).toContain('- PROJ-1 was not found in Jira');
       expect((await app.get(RunRepository).findRun('widget'))?.status).not.toBe('failed');

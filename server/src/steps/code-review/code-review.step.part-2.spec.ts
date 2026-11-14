@@ -1,3 +1,4 @@
+import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
 
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -224,7 +225,7 @@ describe('code-review step', () => {
       expect(quality?.prompt).toContain('kept the parser');
       expect(quality?.prompt).toContain('/work/brief/diff.md');
       expect(quality?.mode).toBe('ask');
-      const handoff = await app.get(DocumentRepository).latestBody('PROJ-87', 'handoff');
+      const handoff = handoffText(await app.get(DocumentRepository).latestBody('PROJ-87', 'handoff'));
       expect(handoff).toContain('## implement');
       expect(handoff).toContain('## implement-improve');
       expect(handoff).toContain('## quality');

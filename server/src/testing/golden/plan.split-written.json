@@ -108,7 +108,7 @@
           "kind": "contract"
         },
         {
-          "body": "## plan\n- two parts\n",
+          "body": "[{\"step\":\"plan\",\"body\":\"- two parts\"}]",
           "kind": "handoff"
         }
       ],

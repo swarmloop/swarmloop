@@ -5,6 +5,7 @@ import {
   taskLayers,
   taskLine,
   taskView,
+  documentView,
   withoutServerRecords,
   type TaskRuns,
 } from './documents';
@@ -203,5 +204,19 @@ describe('withoutServerRecords', () => {
     const kept = [doc('plan'), doc('review_quality'), doc('implementation')];
     const records = [doc('plan_result'), doc('review_quality_result'), doc('answer_errors')];
     expect(withoutServerRecords([...kept, ...records])).toEqual(kept);
+  });
+});
+
+describe('documentView', () => {
+  const doc = (kind: string, body: string) => ({ kind, body, attempt: 1, createdAt: 'now' }) as DocumentEntity;
+
+  it('shows a JSON handoff as ## <step> text', () => {
+    const body = JSON.stringify([{ step: 'plan', body: '- a' }]);
+    expect(documentView(doc('handoff', body)).body).toBe('## plan\n- a\n');
+  });
+
+  it('shows a Markdown handoff as stored and leaves other kinds untouched', () => {
+    expect(documentView(doc('handoff', '## plan\n- a\n')).body).toBe('## plan\n- a\n');
+    expect(documentView(doc('plan', '[{"step":"x","body":"y"}]')).body).toBe('[{"step":"x","body":"y"}]');
   });
 });

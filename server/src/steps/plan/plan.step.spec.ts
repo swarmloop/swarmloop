@@ -1,3 +1,4 @@
+import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
 import { EventEmitter } from 'events';
@@ -119,7 +120,7 @@ describe('plan step', () => {
       const child = await runs.findRun('PROJ-47-t1');
       expect(child?.currentStep).toBe('plan-improve');
       expect(await app.get(DocumentRepository).latestBody('PROJ-47-t1', 'questions')).toBeFalsy();
-      expect(await app.get(DocumentRepository).latestBody('PROJ-47-t1', 'handoff')).toContain(
+      expect(handoffText(await app.get(DocumentRepository).latestBody('PROJ-47-t1', 'handoff'))).toContain(
         '- assumed: which column type?',
       );
 

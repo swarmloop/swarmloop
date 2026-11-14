@@ -66,7 +66,7 @@
           "kind": "pipeline_log"
         },
         {
-          "body": "## pipeline\n- Pipeline passed.\n",
+          "body": "[{\"step\":\"pipeline\",\"body\":\"- Pipeline passed.\"}]",
           "kind": "handoff"
         }
       ],

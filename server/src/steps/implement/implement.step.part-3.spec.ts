@@ -21,7 +21,7 @@ import { PipelineService } from '../../pipeline/pipeline.service';
 import { EnvironmentService } from '../../environment/environment.service';
 
 import { ARTIFACTS } from '../contract/artifacts';
-import { issueOf } from '../shared/handoff';
+import { handoffText, issueOf } from '../shared/handoff';
 import { DataSource } from 'typeorm';
 import { StepStatEntity } from '../../history/entities';
 import type { FailedCommand } from '../../environment/environment-types';
@@ -50,7 +50,7 @@ describe('implement step', () => {
         plan?: { items?: string[] };
       };
       expect(record.plan?.items).toEqual(['add the field']);
-      expect(await documents.latestBody('PROJ-146', 'handoff')).not.toContain('outranks the checklist');
+      expect(handoffText(await documents.latestBody('PROJ-146', 'handoff'))).not.toContain('outranks the checklist');
     } finally {
       await app.close();
     }
@@ -158,7 +158,7 @@ describe('implement step', () => {
       };
       expect(record.plan?.items).toEqual(['fix the failing test']);
       expect(await documents.latestBody('PROJ-147', 'implementation')).toContain('fixed the test');
-      expect(await documents.latestBody('PROJ-147', 'handoff')).toContain('added "fix the failing test"');
+      expect(handoffText(await documents.latestBody('PROJ-147', 'handoff'))).toContain('added "fix the failing test"');
     } finally {
       await app.close();
     }
@@ -510,7 +510,7 @@ describe('implement step', () => {
       };
       expect(record.plan?.items).toEqual(['fix the failing test']);
       expect(await documents.latestBody('PROJ-143', 'implementation')).toContain('fixed the test');
-      expect(await documents.latestBody('PROJ-143', 'handoff')).toContain('dropped "add the field"');
+      expect(handoffText(await documents.latestBody('PROJ-143', 'handoff'))).toContain('dropped "add the field"');
     } finally {
       await app.close();
     }

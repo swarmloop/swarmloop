@@ -109,7 +109,7 @@
           "kind": "contract"
         },
         {
-          "body": "## plan-improve\n- checked\n",
+          "body": "[{\"step\":\"plan-improve\",\"body\":\"- checked\"}]",
           "kind": "handoff"
         }
       ],

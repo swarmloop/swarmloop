@@ -192,7 +192,7 @@
           "kind": "implementation"
         },
         {
-          "body": "## implement\n- changed the parser so empty fields stay\n",
+          "body": "[{\"step\":\"implement\",\"body\":\"- changed the parser so empty fields stay\"}]",
           "kind": "handoff"
         }
       ],

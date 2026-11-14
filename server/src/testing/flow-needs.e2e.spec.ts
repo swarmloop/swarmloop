@@ -1,3 +1,4 @@
+import { handoffText } from '../steps/shared/handoff';
 import 'reflect-metadata';
 import { ERROR_CODES } from '../contract/error-codes';
 import { parseSubtasks, type Subtask } from '../contract/subtask';
@@ -113,7 +114,7 @@ describe('a task that needs a sibling waits for it', () => {
 
       expect(relaunched('a')).toEqual([`${KEY}-a`]);
       expect(await documents().latestBody(`${KEY}-a`, 'needs')).toBe('');
-      expect(await documents().latestBody(`${KEY}-a`, 'handoff')).toContain(
+      expect(handoffText(await documents().latestBody(`${KEY}-a`, 'handoff'))).toContain(
         `## ${step}\nb merged: adds the retry policy`,
       );
 
@@ -150,7 +151,7 @@ describe('a task that needs a sibling waits for it', () => {
     expect((await tasks()).find((item) => item.id === 'a')?.depends).toEqual([]);
     expect(await documents().latestBody(KEY, 'contract')).toContain('- subtask a: Build it in this task.');
     expect(relaunched('a')).toEqual([`${KEY}-a`]);
-    expect(await documents().latestBody(`${KEY}-a`, 'handoff')).toContain('Build it in this task.');
+    expect(handoffText(await documents().latestBody(`${KEY}-a`, 'handoff'))).toContain('Build it in this task.');
     expect(await documents().latestBody(`${KEY}-a`, 'needs')).toBe('');
   });
 
@@ -161,7 +162,7 @@ describe('a task that needs a sibling waits for it', () => {
 
     await pass();
 
-    expect(await documents().latestBody(`${KEY}-a`, 'handoff')).toContain(DECIDE_YOURSELF);
+    expect(handoffText(await documents().latestBody(`${KEY}-a`, 'handoff'))).toContain(DECIDE_YOURSELF);
   });
 
   it('lets a task that waits for a sibling free its slot, so the sibling can start', async () => {

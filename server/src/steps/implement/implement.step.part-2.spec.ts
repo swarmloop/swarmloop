@@ -1,3 +1,4 @@
+import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
 
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -457,7 +458,7 @@ describe('implement step', () => {
       expect(record.plan?.items).toEqual(['fix the failing test']);
       expect(record.plan?.decision).toBe('approve');
       expect(record.prompt).toContain('Ship the field');
-      const handoff = await documents.latestBody('PROJ-140', 'handoff');
+      const handoff = handoffText(await documents.latestBody('PROJ-140', 'handoff'));
       expect(handoff).toContain('dropped "add the field"');
       expect(handoff).toContain('added "fix the failing test"');
       expect(handoff).toContain('outranks the checklist');
@@ -481,7 +482,7 @@ describe('implement step', () => {
         plan?: { items?: string[] };
       };
       expect(record.plan?.items).toEqual(['add the field']);
-      expect(await documents.latestBody('PROJ-141', 'handoff')).not.toContain('outranks the checklist');
+      expect(handoffText(await documents.latestBody('PROJ-141', 'handoff'))).not.toContain('outranks the checklist');
     } finally {
       await app.close();
     }
@@ -496,7 +497,7 @@ describe('implement step', () => {
       try {
         await seed(app, ticket, 'approve');
         await app.get(PipelineService).step('implement', ticket);
-        return await app.get(DocumentRepository).latestBody(ticket, 'handoff');
+        return handoffText(await app.get(DocumentRepository).latestBody(ticket, 'handoff'));
       } finally {
         await app.close();
       }
@@ -553,7 +554,7 @@ describe('implement step', () => {
       expect(record.plan?.name).toBe('');
       expect(record.plan?.decision).toBe('approve');
       expect(record.prompt).toContain('Ship the field');
-      const handoff = await documents.latestBody('PROJ-145', 'handoff');
+      const handoff = handoffText(await documents.latestBody('PROJ-145', 'handoff'));
       expect(handoff).toContain('dropped "add the field"');
       expect(handoff).toContain('added "fix the failing test"');
       expect(handoff).toContain('outranks the checklist');

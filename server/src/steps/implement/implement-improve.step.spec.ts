@@ -1,3 +1,4 @@
+import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
 import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
@@ -109,7 +110,7 @@ describe('implement-improve step', () => {
       expect(input.prompt).toContain('use theme.alpha');
       expect(input.prompt).toContain('What previous steps did:');
       expect(input.prompt).toContain('## implement');
-      const handoff = await app.get(DocumentRepository).latestBody('PROJ-74', 'handoff');
+      const handoff = handoffText(await app.get(DocumentRepository).latestBody('PROJ-74', 'handoff'));
       expect(handoff).toContain('## implement');
       expect(handoff).toContain('empty fields stay');
       expect(handoff).toContain('## implement-improve');
@@ -523,7 +524,7 @@ describe('implement-improve step', () => {
       expect(record.plan?.items).toEqual(['fix the failing test']);
       expect(record.plan?.decision).toBe('approve');
       expect(record.prompt).toContain('Ship the field');
-      const handoff = await documents.latestBody('PROJ-180', 'handoff');
+      const handoff = handoffText(await documents.latestBody('PROJ-180', 'handoff'));
       expect(handoff).toContain('dropped "add the field"');
       expect(handoff).toContain('added "fix the failing test"');
       expect(handoff).toContain('outranks the checklist');
@@ -547,7 +548,7 @@ describe('implement-improve step', () => {
         plan?: { items?: string[] };
       };
       expect(record.plan?.items).toEqual(['add the field']);
-      expect(await documents.latestBody('PROJ-181', 'handoff')).not.toContain('outranks the checklist');
+      expect(handoffText(await documents.latestBody('PROJ-181', 'handoff'))).not.toContain('outranks the checklist');
     } finally {
       await app.close();
     }

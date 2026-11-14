@@ -416,7 +416,7 @@
     {
       "documents": [
         {
-          "body": "## requirements\n- code-review-requirements\n\n## quality\n- code-review-quality\n\n## regressions\n- code-review-regressions\n\n## security\n- code-review-security\n\n## performance\n- code-review-performance\n",
+          "body": "[{\"step\":\"requirements\",\"body\":\"- code-review-requirements\"},{\"step\":\"quality\",\"body\":\"- code-review-quality\"},{\"step\":\"regressions\",\"body\":\"- code-review-regressions\"},{\"step\":\"security\",\"body\":\"- code-review-security\"},{\"step\":\"performance\",\"body\":\"- code-review-performance\"}]",
           "kind": "handoff"
         },
         {
