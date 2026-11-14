@@ -2,6 +2,7 @@ import type { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
 import { optionalLimit, splitList, type SwarmloopEnv } from '../config/env';
 import { shippedDefaults, validateSettings } from '../config/env.schema.spec-helpers';
 import { result } from '../steps/plan/plan.step.spec-helpers';
+import { resultAnswer } from './result-answer';
 import type { FakeAgentRunner } from './test-app';
 
 /** What a default-only app takes from the harness and not from `defaults.env`: its own root, a free port and the machine token. */
@@ -37,25 +38,30 @@ export function expectedEnv(isolation: Pick<SwarmloopEnv, (typeof ISOLATION_KEYS
   };
 }
 
-/** A split answer: one `id | title | depends | files | proof` line and a description for each task. */
-export function tasksAnswer(tasks: { id: string; depends?: string }[]): string {
-  const lines = tasks.flatMap(({ id, depends = 'none' }) => [
-    `- ${id} | Task ${id} | depends: ${depends} | files: ${id}.ts | proof: ${id}.spec.ts`,
-    `  Does ${id}.`,
-  ]);
-  return ['contract:', '- the field is called `split_on`', '', 'tasks:', ...lines, '', 'summary:', '- checked'].join(
-    '\n',
-  );
+/** A split answer: a result block with the contract and, for each task, its files, proof and description. */
+export function tasksAnswer(tasks: { id: string; depends?: string[] }[]): string {
+  return resultAnswer('Done.', {
+    summary: ['checked'],
+    contract: ['the field is called `split_on`'],
+    tasks: tasks.map(({ id, depends = [] }) => ({
+      id,
+      title: `Task ${id}`,
+      depends,
+      files: [`${id}.ts`],
+      proof: `${id}.spec.ts`,
+      description: `Does ${id}.`,
+    })),
+  });
 }
 
 const COLUMN = { id: 'column' };
-const API = { id: 'api', depends: 'column' };
+const API = { id: 'api', depends: ['column'] };
 
 /** The answers of the planning agent in order: the plan, the first check, and the check at the epic effort. */
 const PLANNING_ANSWERS = [
   tasksAnswer([COLUMN, API]),
-  tasksAnswer([COLUMN, API, { id: 'ui', depends: 'api' }]),
-  tasksAnswer([COLUMN, API, { id: 'ui', depends: 'column' }]),
+  tasksAnswer([COLUMN, API, { id: 'ui', depends: ['api'] }]),
+  tasksAnswer([COLUMN, API, { id: 'ui', depends: ['column'] }]),
 ];
 
 /** The agent of a split plan: each planning launch gets the next answer and is kept. The scripted steps get nothing. */
