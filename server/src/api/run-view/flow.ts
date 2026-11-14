@@ -131,6 +131,12 @@ export function openItems(run: RunEntity, documents: DocumentEntity[], pasteUrls
       itemsOut.push({ kind: 'question', id: question, label: question, answer: stored.get(question) ?? '' });
     }
   }
+  if (run.currentStep === 'code-review') {
+    const stored = answered(latest(documents, 'answers') ?? '');
+    for (const question of openQuestions(latest(documents, 'review_questions') ?? '', [])) {
+      itemsOut.push({ kind: 'question', id: question, label: question, answer: stored.get(question) ?? '' });
+    }
+  }
   if (run.currentStep === 'requirements') {
     const pending = pendingUrl(latest(documents, 'pending'));
     if (pending && !pasteUrls.includes(pending) && !jiraIssueKey(pending)) {

@@ -40,7 +40,7 @@ import { settleRebase, type RebaseDeps } from './implement-rebase';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { unchangedSincePipeline } from '../pipeline/pipeline-report';
 import { rerunFailed } from './failed-commands';
-import { checksStillRed, implementFollowUp } from './implement.prompts';
+import { checksStillRed, implementAsk, implementFollowUp } from './implement.prompts';
 import { implementNeedsWait } from './implement-needs';
 import { renderCause, renderImplementation, withReturnNotes } from './implement-record';
 import { retryUnchangedPipeline } from './implement-pipeline-return';
@@ -161,13 +161,15 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const marker = markerBody.split('\n')[0]?.trim() ?? '';
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
     const { runtime } = this.profile(env, ctx.opened.run);
+    const ask = implementAsk(notes);
     const fullFor = (target: string): string =>
       [
         skillPrompt('implement', input.requirements, names, sections, mounts, {
           deferExecutionRules: true,
           rules: projectRules(names, mounts, target, false),
         }),
-        resultPromptFor(implementation, null),
+        ...ask.lines,
+        resultPromptFor(ask.definition, null),
       ].join('\n\n');
     const full = fullFor(runtime);
     const added = await ctx.reread(ARTIFACTS.addedRepos);
@@ -207,7 +209,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       project,
       projectFor: reproject,
       briefFor: (other) => withEnvironment(withAddedRepos(fullFor(other), added), executionRules),
-      result: implementation,
+      result: ask.definition,
       check: asked,
       freshPrompt: continued?.chatId ? withEnvironment(withAddedRepos(full, added), executionRules) : undefined,
     });

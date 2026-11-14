@@ -19,15 +19,16 @@ import {
   withImpact,
   withSubtasks,
 } from '../shared/handoff';
-import { reviewDefinition } from '../../agent-result/definitions/review';
+import { reviewAnswerDefinition, reviewDefinition } from '../../agent-result/definitions/review';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 import { skillPrompt } from '../shared/skill-prompt';
 import type { Subtask } from '../../contract/subtask';
 import type { KeepLine } from '../shared/keep-lines';
-import { SUBTASK_PROOF_CHECK } from './code-review.prompts';
+import { SUBTASK_PROOF_CHECK, exchangeSection } from './code-review.prompts';
 import { opinionSummary } from './code-review-round-result';
-import { decidedOk, reviewDocuments } from './code-review-record';
+import { reviewDocuments } from './code-review-record';
 import type { Opinion } from './code-review-record';
+import type { Exchange } from './review-exchange';
 import { fixNotes, withKeep } from './review-input';
 import { closeReview, recordAngle } from './review-report';
 import type { Finished, Reviewer, ReviewDeps, Usage } from './reviewer';
@@ -40,7 +41,6 @@ interface RoundInput {
   key: string;
   env: SwarmloopEnv;
   pending: Reviewer[];
-  stale: Set<string>;
   requirements: string;
   notes: string | null;
   mounts: SandboxMount[];
@@ -55,16 +55,13 @@ interface RoundInput {
   auto: boolean | undefined;
   fresh: boolean;
   retry: boolean;
-  repeated: boolean;
+  exchanges: Map<string, Exchange>;
 }
 
 /** Runs every pending angle together, then stores their visits once all of them have finished. */
 export async function runRound(deps: ReviewDeps, input: RoundInput): Promise<Finished[]> {
   const documents = await deps.documents.listDocuments(input.opened.run.id);
-  const jobs = input.pending.map((reviewer) => ({
-    ...reviewJob(reviewer, input),
-    stale: input.stale.has(reviewer.name),
-  }));
+  const jobs = input.pending.map((reviewer) => reviewJob(reviewer, input));
   const fix = fixNotes(documents, input.handoff);
   const finished = await Promise.all(
     jobs.map((job) =>
@@ -84,17 +81,9 @@ export async function runRound(deps: ReviewDeps, input: RoundInput): Promise<Fin
     ),
   );
   for (const item of finished) {
-    await recordAngle(deps, input.opened, item, input.repeated);
+    await recordAngle(deps, input.opened, item);
   }
   return finished;
-}
-
-export function reviewReturn(returned: string | null): boolean {
-  if (!returned?.trim()) {
-    return false;
-  }
-  const lines = returned.split(/\r?\n/).map((line) => line.trim());
-  return !(lines.includes('## pipeline') && lines.includes('result: fail'));
 }
 
 export function sameReviewedDiff(root: string, key: string, patch: string): boolean {
@@ -114,14 +103,11 @@ export function tallyRound(
   kept: Opinion[],
   recovered: DocumentDraft[],
   finished: Finished[],
-  repeated: boolean,
 ): { reportContinued: boolean; opinions: Opinion[]; stored: DocumentDraft[]; errors: string[] } {
   const reportContinued = finished.some((item) => Boolean(item.result?.chatId));
-  const accepted = (opinion: Opinion): Opinion =>
-    repeated && opinion.decision === 'return' ? decidedOk(opinion) : opinion;
-  const fresh = finished.flatMap((item) => (item.parsed ? [accepted(item.parsed)] : []));
+  const fresh = finished.flatMap((item) => (item.parsed ? [item.parsed] : []));
   const stored = [...recovered, ...fresh.flatMap(reviewDocuments)];
-  const opinions = ordered([...kept.map(accepted), ...fresh]);
+  const opinions = ordered([...kept, ...fresh]);
   const errors = finished.flatMap((item) => (item.error ? [item.error] : []));
   return { reportContinued, opinions, stored, errors };
 }
@@ -210,15 +196,18 @@ function reviewJob(reviewer: Reviewer, input: RoundInput) {
     input.subtasks,
     reviewer.name === 'requirements' ? SUBTASK_PROOF_CHECK : undefined,
   );
-  const sections = reviewer.name === 'regressions' ? withKeep(listed, input.keep) : listed;
+  const kept = reviewer.name === 'regressions' ? withKeep(listed, input.keep) : listed;
+  const exchange = input.exchanges.get(reviewer.name);
+  const answered = exchange ? exchangeSection(exchange.finding, exchange.answer) : null;
+  const sections = answered ? [...kept, answered] : kept;
   // The first prompt of a reviewer's chat carries the whole result text; a resumed chat gets one line in `runJob`.
   const promptFor = (runtime: string): string =>
     [
       skillPrompt(`code-review/${reviewer.name}`, input.requirements, names, sections, input.mounts, {
         rules: projectRules(names, input.mounts, runtime, false),
       }),
-      resultPromptFor(reviewDefinition(reviewer.name), null),
+      resultPromptFor(answered ? reviewAnswerDefinition(reviewer.name) : reviewDefinition(reviewer.name), null),
     ].join('\n\n');
   const agent = agentFor(input.env, input.opened.run, 'code-review');
-  return { reviewer, ...agent, prompt: promptFor(agent.runtime), promptFor, mounts: input.mounts };
+  return { reviewer, ...agent, prompt: promptFor(agent.runtime), promptFor, mounts: input.mounts, exchange: answered };
 }

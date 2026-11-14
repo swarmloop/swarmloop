@@ -562,7 +562,7 @@ describe('code-review step', () => {
     utimesSync(older, new Date(1000), new Date(1000));
     utimesSync(newer, new Date(2000), new Date(2000));
     const documents = { latestBody: async () => null } as unknown as DocumentRepository;
-    const input = { key: 'PROJ-88', only: undefined, fresh: false, retry: true, same: false, repeated: false };
+    const input = { key: 'PROJ-88', only: undefined, fresh: false, retry: true, same: false };
     const counts = async (): Promise<boolean> => false;
     const second = await selectReviewers(documents, root, { ...input, attemptId: 'aaa', counts });
     expect(second.kept.find((item) => item.kind === 'review_quality')?.decision).toBe('return');

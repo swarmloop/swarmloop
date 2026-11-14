@@ -8,6 +8,7 @@ import { legacyHandoff, type HandoffEntry } from '../../agent-result/legacy/hand
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 import type { FailedCommand } from '../../environment/environment-types';
 import type { Issue } from '../contract/step-contract';
+import { isPipelineReturn } from '../follow-up';
 
 export function textDocument(kind: string, body: string): DocumentDraft {
   return { kind, fileName: '', body };
@@ -184,6 +185,11 @@ export function composedReturn(documents: { kind: string; body: string }[]): str
 /** The return notes of the run: the stored ones, or the ones its latest reviews and pipeline result call for. */
 export async function returnedNotes(documents: DocumentRepository, runId: number): Promise<string | null> {
   return composedReturn(await documents.listDocuments(runId));
+}
+
+/** True when the notes are a return of the reviewers or the checks, not a failed pipeline. */
+export function reviewReturn(returned: string | null): boolean {
+  return Boolean(returned?.trim()) && !isPipelineReturn(returned);
 }
 
 /** The pipeline issues sent back to implement, and the ids of those it already answered without a change. */

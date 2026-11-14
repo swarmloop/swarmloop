@@ -38,8 +38,8 @@ export const REFUSED_WRITE = JSON.stringify({
 });
 
 /** A reviewer's final text: prose, then its result block. */
-export function reply(step: string, decision: 'ok' | 'return'): string {
-  return resultAnswer(step, { decision, review: step, summary: [step] });
+export function reply(step: string, decision: 'ok' | 'return', reason?: string): string {
+  return resultAnswer(step, { decision, review: step, summary: [step], ...(reason ? { reason } : {}) });
 }
 
 /** The report's final text: prose, then its result block. */

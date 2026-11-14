@@ -21,8 +21,9 @@ import { appendImpact, mergeHandoff, textDocument, withImpact } from '../shared/
 import { skillPrompt } from '../shared/skill-prompt';
 import { agentExchange } from '../shared/model-visit';
 import { REPORT_CONTINUE, reportFollowUp } from './code-review.prompts';
-import { decidedOk, reportDocuments, reviewDocuments, summaryNote } from './code-review-record';
+import { reportDocuments, reviewDocuments, summaryNote } from './code-review-record';
 import type { Opinion } from './code-review-record';
+import type { Exchange } from './review-exchange';
 import type { Finished, ReviewDeps, Usage } from './reviewer';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 import { reviewReport } from '../../agent-result/definitions/review-report';
@@ -40,11 +41,21 @@ const LABELS: Record<string, string> = {
   [REVIEWS.of('performance')]: 'Performance',
 };
 
-export function reviewBrief(opinions: { kind: string; decision: 'ok' | 'return'; body: string }[]): string {
+export function reviewBrief(
+  opinions: { kind: string; decision: 'ok' | 'return'; body: string }[],
+  exchanges: ReadonlyMap<string, Exchange> = new Map(),
+): string {
   return opinions
     .map((opinion) => {
       const name = LABELS[opinion.kind] ?? opinion.kind.slice(REVIEWS.prefix.length);
-      return [`## ${name}`, `decision: ${opinion.decision}`, '', opinion.body.trimEnd()].join('\n');
+      const answer = exchanges.get(opinion.kind.slice(REVIEWS.prefix.length))?.answer?.trim();
+      return [
+        `## ${name}`,
+        `decision: ${opinion.decision}`,
+        '',
+        opinion.body.trimEnd(),
+        ...(answer ? ['', `Implement answered: ${answer}`] : []),
+      ].join('\n');
     })
     .join('\n\n');
 }
@@ -62,12 +73,13 @@ export async function writeReport(
   continued: boolean,
   auto?: boolean,
   answerErrors?: string[],
+  exchanges?: ReadonlyMap<string, Exchange>,
 ): Promise<
   | { documents: DocumentDraft[]; exchange: ExchangeDraft; usage: Usage }
   | { error: string; exchange: ExchangeDraft | null; usage: Usage; documents: DocumentDraft[] }
 > {
   const names = mounts.map((mount) => basename(mount.hostPath));
-  const brief = reviewBrief(opinions);
+  const brief = reviewBrief(opinions, exchanges);
   const sections = withImpact(
     [
       ...(implementation?.trim() ? [{ heading: 'Implementation', body: implementation }] : []),
@@ -143,17 +155,12 @@ export async function writeReport(
 }
 
 /** One reviewer visit, with its own chart and exchange, the same shape as any other step. */
-export async function recordAngle(
-  deps: ReviewDeps,
-  opened: OpenedStep,
-  item: Finished,
-  repeated = false,
-): Promise<void> {
+export async function recordAngle(deps: ReviewDeps, opened: OpenedStep, item: Finished): Promise<void> {
   const result = item.result;
   if (!result) {
     return;
   }
-  const parsed = item.parsed && repeated && item.parsed.decision === 'return' ? decidedOk(item.parsed) : item.parsed;
+  const parsed = item.parsed;
   const status = item.error ? 'failed' : parsed?.decision === 'return' ? 'waiting' : parsed ? 'done' : 'failed';
   const exchange = exchangeOf(item);
   await deps.visits.finishVisit(opened.run, {

@@ -6,14 +6,14 @@ import type { KeepLine } from '../shared/keep-lines';
 import { research, type ResearchResult } from '../../agent-result/definitions/research';
 import { plan, type PlanResult } from '../../agent-result/definitions/plan';
 import { planImprove, type PlanImproveResult } from '../../agent-result/definitions/plan-improve';
-import { implementation, type ImplementationResult } from '../../agent-result/definitions/implementation';
+import { implementationAfterReview, type ImplementationResult } from '../../agent-result/definitions/implementation';
 import {
-  implementationImprove,
+  implementationImproveAfterReview,
   type ImplementationImproveResult,
 } from '../../agent-result/definitions/implementation-improve';
 import { rebaseResolution, type RebaseResolutionResult } from '../../agent-result/definitions/rebase-resolution';
 import { reviewReport, type ReviewReportResult } from '../../agent-result/definitions/review-report';
-import { reviewDefinition, type ReviewResult } from '../../agent-result/definitions/review';
+import { reviewDefinition, reviewStoredDefinition, type ReviewResult } from '../../agent-result/definitions/review';
 import { legacyReview } from '../../agent-result/legacy/review';
 import { subtaskAnswer, type SubtaskAnswerResult } from '../../agent-result/definitions/subtask-answer';
 import { resultArtifactCodec } from '../../agent-result/result-codec';
@@ -74,7 +74,7 @@ function reviewResultArtifact(reviewer: (typeof CODE_REVIEWERS)[number]): Artifa
   return artifact(definition.kind, {
     writers: ['code-review'],
     readers: ['code-review', 'commit'],
-    codec: resultArtifactCodec<ReviewResult>(definition),
+    codec: resultArtifactCodec<ReviewResult>(reviewStoredDefinition(reviewer)),
     summarize: summarizeReviewResult,
   });
 }
@@ -85,7 +85,7 @@ export const LOG_KIND = 'log';
 /** Every kind a step reads or writes. */
 export const ARTIFACTS = {
   requirements: artifact('requirements', {
-    writers: ['requirements', 'plan', 'plan-improve', 'implement', 'implement-improve'],
+    writers: ['requirements', 'plan', 'plan-improve', 'implement', 'implement-improve', 'code-review'],
     readers: [
       'requirements',
       'prepare',
@@ -146,17 +146,17 @@ export const ARTIFACTS = {
     summarize: firstLine,
   }),
   // `plan-improve` and the implement steps read the corrected checklist through `currentPlan`; `implement` reads it to settle a rebase and for `currentPlan`; the split parent writes it with its task lines.
-  implementationResult: artifact(implementation.kind, {
+  implementationResult: artifact(implementationAfterReview.kind, {
     writers: ['implement', 'implement-improve'],
     readers: ['plan-improve', 'implement', 'implement-improve', 'code-review', 'merge-request'],
-    codec: resultArtifactCodec<ImplementationResult>(implementation),
+    codec: resultArtifactCodec<ImplementationResult>(implementationAfterReview),
     summarize: (result) => listSummary(result.implementation.length, 'changes', result.implementation[0]),
   }),
   // The corrected checklist of this pass is read through `currentPlan` by both implement steps.
-  implementationImproveResult: artifact(implementationImprove.kind, {
+  implementationImproveResult: artifact(implementationImproveAfterReview.kind, {
     writers: ['implement-improve'],
     readers: ['plan-improve', 'implement', 'implement-improve', 'code-review'],
-    codec: resultArtifactCodec<ImplementationImproveResult>(implementationImprove),
+    codec: resultArtifactCodec<ImplementationImproveResult>(implementationImproveAfterReview),
     summarize: (result) => listSummary(result.implementation?.length ?? 0, 'changes', result.implementation?.[0]),
   }),
   // What the agent said of a rebase conflict; kept for the record, no step reads it.
@@ -173,6 +173,12 @@ export const ARTIFACTS = {
     summarize: firstLine,
   }),
   questions: artifact('questions', { writers: ['research', 'plan'], readers: ['plan'], summarize: firstLine }),
+  // What the code review asks the person when a reviewer returns the same diff again; `answers` closes it.
+  reviewQuestions: artifact('review_questions', {
+    writers: ['code-review'],
+    readers: ['implement'],
+    summarize: firstLine,
+  }),
   subtaskQuestions: artifact('subtask_questions', {
     writers: ['implement'],
     readers: ['implement'],

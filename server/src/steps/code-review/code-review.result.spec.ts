@@ -9,6 +9,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { resultAnswer, reviewLog } from '../../testing/result-answer';
 import { reviewDocuments, opinionOf } from './code-review-record';
+import { tallyRound } from './review-round';
 import { selectReviewers } from './review-select';
 import { answerFor, boot, reportReply, result, seed, writeEnv } from './code-review.step.spec-helpers';
 
@@ -131,6 +132,32 @@ describe('code-review step result blocks', () => {
 });
 
 describe('a reviewer killed after its block', () => {
+  it('recovers a block that carries the reason of a reviewer answering implement', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-killed-reason-'));
+    mkdirSync(join(root, 'data'), { recursive: true });
+    const answer = resultAnswer('Still so.', {
+      decision: 'return',
+      review: 'Still so.',
+      summary: [],
+      reason: 'The finding still holds.',
+    });
+    const log = `${JSON.stringify({ type: 'result', result: answer })}\nprocess exited 0\n`;
+    writeFileSync(join(root, 'data', 'PROJ-412-code-review-quality-aaa-output.txt'), log);
+    const documents = { latestBody: async () => null } as unknown as DocumentRepository;
+    const selection = await selectReviewers(documents, root, {
+      key: 'PROJ-412',
+      only: undefined,
+      fresh: false,
+      retry: true,
+      same: false,
+      attemptId: 'aaa',
+      counts: async () => false,
+    });
+    const kept = selection.kept.find((item) => item.kind === 'review_quality');
+    expect(kept?.decision).toBe('return');
+    expect(kept?.body).toBe('Still so.\ndecision: return\nreason: The finding still holds.\n');
+  });
+
   it('counts the block of the interrupted attempt and stores its result', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-killed-'));
     mkdirSync(join(root, 'data'), { recursive: true });
@@ -142,7 +169,6 @@ describe('a reviewer killed after its block', () => {
       fresh: false,
       retry: true,
       same: false,
-      repeated: false,
       attemptId: 'aaa',
       counts: async () => false,
     });
@@ -151,5 +177,34 @@ describe('a reviewer killed after its block', () => {
     expect(selection.pending.map((reviewer) => reviewer.name)).not.toContain('quality');
     expect(selection.recovered.map((document) => document.kind)).toEqual(['review_quality', 'review_quality_result']);
     expect(selection.recovered).toEqual(reviewDocuments(opinionOf('review_quality', kept!.result)));
+  });
+});
+
+describe('a stored return on an unchanged diff', () => {
+  const returned = { decision: 'return' as const, review: 'Authentication is missing.', summary: [] };
+
+  it('is not kept, so its reviewer decides again', async () => {
+    const stored = JSON.stringify(returned);
+    const documents = {
+      latestBody: async (_key: string, kind: string) => (kind === 'review_quality_result' ? stored : null),
+    } as unknown as DocumentRepository;
+    const selection = await selectReviewers(documents, '/none', {
+      key: 'PROJ-411',
+      only: undefined,
+      fresh: false,
+      retry: false,
+      same: true,
+      attemptId: null,
+      counts: async () => true,
+    });
+    expect(selection.kept.map((item) => item.kind)).not.toContain('review_quality');
+    expect(selection.pending.map((reviewer) => reviewer.name)).toContain('quality');
+  });
+
+  it('is counted, stored and reported with the decision the reviewer gave', () => {
+    const kept = opinionOf('review_quality', returned);
+    const tally = tallyRound([kept], [], []);
+    expect(tally.opinions.map((item) => item.decision)).toEqual(['return']);
+    expect(tally.opinions[0].body).toBe('Authentication is missing.\ndecision: return\n');
   });
 });

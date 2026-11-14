@@ -269,6 +269,8 @@ export default tseslint.config(
       'server/src/steps/commit/commit-delivered.ts', // reads the stored reviews an unchanged tree is judged from
       'server/src/steps/code-review/review-input.ts', // reads the run's repos and records the ones it detaches
       'server/src/steps/code-review/review-round.ts', // reads the stored reviews a round continues from
+      'server/src/steps/code-review/review-ask.ts', // reads the questions it asked and the answers a person gave
+      'server/src/steps/code-review/review-exchange.ts', // reads the stored reviews and results an exchange is made from
       'server/src/steps/code-review/review-select.ts', // reads the stored reviews a round continues from
       'server/src/steps/code-review/review-report.ts', // reads the handoff the report is written from
       'server/src/steps/shared/rebase-journal.ts', // keeps the rebase journal as a document of the run
