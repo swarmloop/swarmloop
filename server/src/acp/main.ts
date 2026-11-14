@@ -1,4 +1,5 @@
 import { join, resolve } from 'path';
+import { applySettings, envFilePath, readSettings } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
 import { machineToken } from '../auth/machine-token';
 import { SystemClock } from '../core/clock';
@@ -8,6 +9,13 @@ import { runShell } from './shell';
 import { loadSkills, readCheckoutsRoot } from './skills';
 
 async function main(): Promise<void> {
+  try {
+    applySettings(readSettings());
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : 'sloop failed'}\n`);
+    process.exitCode = 1;
+    return;
+  }
   if (process.argv[2] === 'acp') {
     const root = resolve(__dirname, '../../..');
     const agent = new Sloop({
@@ -17,7 +25,7 @@ async function main(): Promise<void> {
       ),
       skills: loadSkills(join(root, 'skills')),
       repoRoot: root,
-      checkoutsRoot: readCheckoutsRoot(join(root, '.env')),
+      checkoutsRoot: readCheckoutsRoot(envFilePath(root)),
       clock: new SystemClock(),
     });
     await serve(process.stdin, process.stdout, agent);
