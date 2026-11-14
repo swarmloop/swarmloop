@@ -1,0 +1,137 @@
+'use client';
+
+import type { ReactElement } from 'react';
+import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Chip from '@mui/material/Chip';
+import Link from '@mui/material/Link';
+import Paper from '@mui/material/Paper';
+import Typography from '@mui/material/Typography';
+import type { ConnectionView } from '@contract/api';
+import { reconnectUrl } from '../../lib/endpoints';
+import { localTime } from '../../lib/format';
+
+export const NAMES = { github: 'GitHub', gitlab: 'GitLab' } as const;
+
+type Handlers = { onReplace: () => void; onInstall: () => void; onDisconnect: () => void };
+
+function HealthChip({ health }: { health: ConnectionView['health'] }): ReactElement {
+  if (!health) {
+    return <Chip size="small" label="not connected" />;
+  }
+  return (
+    <Chip
+      size="small"
+      color={health.status === 'ok' ? 'success' : 'error'}
+      label={health.status === 'ok' ? 'connected' : 'needs reconnect'}
+    />
+  );
+}
+
+function RepositoryList({ connection }: { connection: ConnectionView }): ReactElement {
+  return (
+    <Box component="section" aria-label="Repositories">
+      <Typography variant="subtitle2">
+        Repositories ({connection.selection === 'all' ? 'all of them' : 'selected'})
+      </Typography>
+      {connection.repositories.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          None yet.
+        </Typography>
+      ) : (
+        <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+          {connection.repositories.map((repository) => (
+            <li key={repository}>{repository}</li>
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function HostActions({
+  connection,
+  maker,
+  onReplace,
+  onInstall,
+  onDisconnect,
+}: Handlers & { connection: ConnectionView; maker: boolean }): ReactElement {
+  const name = NAMES[connection.host];
+  return (
+    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 0.5 }}>
+      {connection.host === 'github' && connection.account ? (
+        <Button variant="outlined" size="small" onClick={onInstall}>
+          Install on more repositories
+        </Button>
+      ) : null}
+      {connection.app ? (
+        <Button variant="outlined" size="small" component={Link} href={reconnectUrl(connection.host)}>
+          {connection.account ? 'Reconnect' : `Connect ${name}`}
+        </Button>
+      ) : null}
+      {connection.host === 'github' && connection.app ? (
+        <Button variant="outlined" size="small" disabled={!maker} onClick={onReplace}>
+          Replace app
+        </Button>
+      ) : null}
+      {connection.account ? (
+        <Button variant="outlined" size="small" color="error" onClick={onDisconnect}>
+          Disconnect
+        </Button>
+      ) : null}
+    </Box>
+  );
+}
+
+export function HostCard({
+  connection,
+  login,
+  ...handlers
+}: Handlers & { connection: ConnectionView; login: string | null }): ReactElement {
+  const name = NAMES[connection.host];
+  const { health } = connection;
+  const maker = login !== null && connection.app?.madeBy === login;
+  return (
+    <Paper
+      variant="outlined"
+      component="section"
+      aria-label={name}
+      sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 1.5 }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+        <Typography variant="h6" component="h2" sx={{ flexGrow: 1 }}>
+          {name}
+        </Typography>
+        <HealthChip health={health} />
+      </Box>
+      <Typography variant="body2" color="text.secondary">
+        {connection.app
+          ? `${connection.host === 'github' ? 'App' : 'Application'} ${connection.app.name} · ${connection.app.clientId}`
+          : 'No app or application is set up yet.'}
+      </Typography>
+      {connection.missingOwners?.length ? (
+        <Alert severity="warning">
+          The installation covers none of this server's repositories. Missing owners:{' '}
+          {connection.missingOwners.join(', ')}. Use Install on more repositories.
+        </Alert>
+      ) : null}
+      {connection.account ? <Typography>Signed in as {connection.account}</Typography> : null}
+      {health ? (
+        <Typography variant="body2" color="text.secondary">
+          {health.expiresAt ? `Token expires ${localTime(health.expiresAt)}` : 'Token does not expire'}
+          {health.refreshedAt ? ` · refreshed ${localTime(health.refreshedAt)}` : ''}
+        </Typography>
+      ) : null}
+      {connection.host === 'github' && connection.app && !maker ? (
+        <Typography variant="body2" color="text.secondary">
+          {connection.app.madeBy
+            ? `Only ${connection.app.madeBy} can replace this app`
+            : 'Only the person who made this app can replace it, and it has no recorded maker'}
+        </Typography>
+      ) : null}
+      {connection.host === 'github' && connection.account ? <RepositoryList connection={connection} /> : null}
+      <HostActions connection={connection} maker={maker} {...handlers} />
+    </Paper>
+  );
+}
