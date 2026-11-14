@@ -77,29 +77,58 @@ async function one(
   const dirtyNames = splitLines(await optional(mount.hostPath, ['diff', '--name-only', 'HEAD']));
   const allowedUntracked = untracked.filter((path) => !isDenied(path, denied));
   const allowedDirty = dirtyNames.filter((path) => !isDenied(path, denied));
-  if (allowedDirty.length > 0 || allowedUntracked.length > 0) {
-    const dirty =
-      allowedDirty.length > 0 ? withoutDenied(await optional(mount.hostPath, ['diff', 'HEAD']), denied) : '';
-    const names = [...allowedDirty, ...allowedUntracked];
-    const extra = await untrackedBodies(mount.hostPath, allowedUntracked);
-    const status = 'Uncommitted changes against HEAD.';
-    return {
-      list: block(name, status, fileList(names)),
-      patch: block(name, status, [dirty?.trimEnd() ?? '', extra].filter((part) => part.length > 0).join('\n\n')),
-    };
-  }
+  const dirty = allowedDirty.length > 0 || allowedUntracked.length > 0;
   const base = await baseRef(mount.hostPath, baseBranch(prompt));
-  if (!base) {
-    const text = `## ${name}\n\nThe worktree is clean and neither origin/main nor origin/master exists.`;
-    return { list: text, patch: text };
+  const mergeBase = base ? ((await optional(mount.hostPath, ['merge-base', base, 'HEAD']))?.trim() ?? '') : '';
+  if (base && mergeBase) {
+    return wholeChange(mount.hostPath, name, { base, mergeBase, dirty }, allowedUntracked, denied);
   }
-  const log = (await optional(mount.hostPath, ['log', '--oneline', `${base}...HEAD`])) ?? '';
-  const names = splitLines(await optional(mount.hostPath, ['diff', '--name-only', `${base}...HEAD`]));
-  const committed = (await optional(mount.hostPath, ['diff', `${base}...HEAD`])) ?? '';
-  const status = `Clean worktree. Commits on HEAD that are not in ${base}.`;
+  if (dirty) {
+    return uncommittedOnly(mount.hostPath, name, allowedDirty, allowedUntracked, denied);
+  }
+  const text = `## ${name}\n\nThe worktree is clean and neither origin/main nor origin/master exists.`;
+  return { list: text, patch: text };
+}
+
+/** The branch against its base, working tree included: commits, uncommitted edits and new files in one patch. */
+async function wholeChange(
+  cwd: string,
+  name: string,
+  from: { base: string; mergeBase: string; dirty: boolean },
+  allowedUntracked: string[],
+  denied: string[],
+): Promise<{ list: string; patch: string }> {
+  const log = (await optional(cwd, ['log', '--oneline', `${from.base}...HEAD`])) ?? '';
+  const tracked = splitLines(await optional(cwd, ['diff', '--name-only', from.mergeBase])).filter(
+    (path) => !isDenied(path, denied),
+  );
+  const patch = withoutDenied(await optional(cwd, ['diff', from.mergeBase]), denied);
+  const status = from.dirty
+    ? `Uncommitted changes against HEAD. Commits on HEAD that are not in ${from.base}.`
+    : `Clean worktree. Commits on HEAD that are not in ${from.base}.`;
+  const text = [log.trim(), patch.trimEnd(), await untrackedBodies(cwd, allowedUntracked)]
+    .filter((part) => part.length > 0)
+    .join('\n\n');
+  return {
+    list: block(name, status, fileList([...tracked, ...allowedUntracked])),
+    patch: block(name, status, text),
+  };
+}
+
+async function uncommittedOnly(
+  cwd: string,
+  name: string,
+  allowedDirty: string[],
+  allowedUntracked: string[],
+  denied: string[],
+): Promise<{ list: string; patch: string }> {
+  const dirty = allowedDirty.length > 0 ? withoutDenied(await optional(cwd, ['diff', 'HEAD']), denied) : '';
+  const names = [...allowedDirty, ...allowedUntracked];
+  const extra = await untrackedBodies(cwd, allowedUntracked);
+  const status = 'Uncommitted changes against HEAD.';
   return {
     list: block(name, status, fileList(names)),
-    patch: block(name, status, [log.trim(), committed.trimEnd()].filter((part) => part.length > 0).join('\n\n')),
+    patch: block(name, status, [dirty.trimEnd(), extra].filter((part) => part.length > 0).join('\n\n')),
   };
 }
 
