@@ -1,10 +1,10 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { randomUUID } from 'crypto';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, Not, Repository } from 'typeorm';
 import { Clock } from '../core/clock';
 import type { CommandState, CommandType } from '../contract/command';
 import type { RunState } from '../contract/run-state';
+import { insertAcceptedCommand } from './accepted-command';
 import { CommandEntity, RunEntity } from './entities';
 import { RunRepository } from './run.repository';
 import { transaction } from './transaction';
@@ -74,20 +74,14 @@ export class CommandRepository {
           { state: 'superseded' satisfies CommandState, updatedAt: now },
         );
       }
-      const command = await commandTable.save(
-        commandTable.create({
-          id: randomUUID(),
-          runId: run.id,
-          type: input.type,
-          payload: JSON.stringify(created ? { ...input.payload, created } : input.payload),
-          idempotencyKey: input.idempotencyKey ?? null,
-          expectedRevision: input.expectedRevision ?? null,
-          state: 'accepted',
-          result: null,
-          createdAt: now,
-          updatedAt: now,
-        }),
-      );
+      const command = await insertAcceptedCommand(manager, {
+        runId: run.id,
+        type: input.type,
+        payload: JSON.stringify(created ? { ...input.payload, created } : input.payload),
+        idempotencyKey: input.idempotencyKey ?? null,
+        expectedRevision: input.expectedRevision,
+        now,
+      });
       await runTable.update({ id: run.id }, { revision: () => 'revision + 1' });
       return { command, run: await runTable.findOneByOrFail({ id: run.id }), replayed: false };
     });
@@ -141,6 +135,16 @@ export class CommandRepository {
   /** Every command of a run, oldest first, whatever its state. */
   listForRun(runId: number): Promise<CommandEntity[]> {
     return this.commands.find({ where: { runId }, order: { createdAt: 'ASC' } });
+  }
+
+  /** The ids among `runIds` that have an accepted command other than a stop. One query. */
+  async acceptedRunIds(runIds: number[]): Promise<Set<number>> {
+    if (runIds.length === 0) return new Set();
+    const rows = await this.commands.find({
+      select: { runId: true },
+      where: { runId: In(runIds), state: 'accepted', type: Not('stop') },
+    });
+    return new Set(rows.map((row) => row.runId));
   }
 
   /** The commands of a run that are accepted or executing. */

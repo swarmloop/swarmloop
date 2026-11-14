@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { ERROR_CODES } from '../contract/error-codes';
 import { deriveState, writeRunState } from '../history/run-state';
+import { CommandRepository } from '../history/command.repository';
 import { RunRepository } from '../history/run.repository';
 import { CommandService } from '../pipeline/command.service';
 import { createFlowHarness } from './flow-harness';
@@ -40,6 +41,16 @@ describe('a passing outage or a restart heals on the reconciler ticks', () => {
     }
   }
 
+  /** A resume that never ends: the relaunch of a cut step is taken by its executor and no step starts. */
+  const held = () => new Promise<undefined>(() => undefined);
+
+  function holdRelaunches(): void {
+    const register = Reflect.get<CommandService, 'register'>(CommandService.prototype, 'register');
+    jest.spyOn(CommandService.prototype, 'register').mockImplementation(function (this: CommandService, type, handler) {
+      register.call(this, type, type === 'resume' ? held : handler);
+    });
+  }
+
   it('tries a host that was down for 10 minutes again by itself, and only after its next try', async () => {
     const run = await flow.app.app.get(RunRepository).begin(KEY, 'merge-request');
     const retryAt = new Date(flow.app.clock.now() + 10 * MINUTE).toISOString();
@@ -73,30 +84,28 @@ describe('a passing outage or a restart heals on the reconciler ticks', () => {
     expect(deriveState(await find()).reason?.code).toBe(ERROR_CODES.DOCKER_UNAVAILABLE);
     expect(accept).not.toHaveBeenCalled();
 
+    // Once docker answers the cut step is settled and relaunched; the held relaunch leaves the run as the cut left it.
+    flow.app.app.get(CommandService).register('resume', held);
     await tickFor(6);
-    expect(accept).toHaveBeenCalledWith(
-      'resume',
-      KEY,
-      {},
-      expect.objectContaining({ idempotencyKey: expect.any(String) }),
-    );
+    const [relaunch] = await flow.app.app.get(CommandRepository).listForRun(run.id);
+    expect(relaunch).toMatchObject({ type: 'resume', idempotencyKey: expect.stringMatching(/^relaunch-/) });
     expect((await find()).id).toBe(run.id);
   });
 
   it('relaunches a step that a server restart cut, once', async () => {
     jest.restoreAllMocks();
-    const accepted = jest
-      .spyOn(CommandService.prototype, 'accept')
-      .mockImplementation(() => Promise.resolve({} as never));
     const begun = await flow.app.app.get(RunRepository).begin(KEY, 'implement');
 
+    holdRelaunches();
     await flow.restart();
     await flow.tick();
     await assertInvariants(flow.app);
 
     const cut = await find();
-    expect(cut.status).toBe('failed');
-    expect(accepted).toHaveBeenCalledTimes(1);
-    expect(accepted).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `relaunch-${begun.activeAttempt}` });
+    expect(cut.status).toBe('waiting');
+    const stored = await flow.app.app.get(CommandRepository).listForRun(cut.id);
+    expect(stored.map((command) => [command.type, command.idempotencyKey])).toEqual([
+      ['resume', `relaunch-${begun.activeAttempt}`],
+    ]);
   });
 });

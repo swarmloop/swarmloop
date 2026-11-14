@@ -94,8 +94,13 @@ export class RunQueriesService {
     const childrenOf = childrenByParent(runs);
     const plans = await listPlans(this.documents, runs, childrenOf);
     const waits = mergeWaits(plans, runs, keys);
-    const states = await listStates(this.documents, this.checkouts, runs, { keys, childrenOf, plans }, (key) =>
-      this.pipeline.claimed(key),
+    const states = await listStates(
+      this.documents,
+      this.checkouts,
+      this.commands,
+      runs,
+      { keys, childrenOf, plans },
+      (key) => this.pipeline.claimed(key),
     );
     return {
       runs: runs.map((run) => ({
@@ -152,7 +157,7 @@ export class RunQueriesService {
           children,
           documents,
           this.pipeline,
-          { documents: this.documents, checkouts: this.checkouts },
+          { documents: this.documents, checkouts: this.checkouts, commands: this.commands },
           this.live,
         ),
       ),

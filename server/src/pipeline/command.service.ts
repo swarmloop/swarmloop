@@ -171,6 +171,15 @@ export class CommandService {
     }
   }
 
+  /** Runs the accepted commands of one run, such as a relaunch stored with a visit. A command this process holds is left alone. */
+  async runAccepted(key: string): Promise<void> {
+    const run = await this.runs.findRun(key);
+    if (!run) return;
+    for (const command of await this.commands.pending(run.id)) {
+      if (command.state === 'accepted') this.schedule(command, key);
+    }
+  }
+
   /**
    * A command a dead process took: a Stop and a Remove run again (both can be repeated), a command whose run
    * is done is confirmed, any other is failed.

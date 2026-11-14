@@ -129,7 +129,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     }
     const stats = await this.visits.listStats(opened.run.id);
     const last = [...stats].reverse().find((item) => item.step === 'commit');
-    return last?.status === 'waiting';
+    return last?.status === 'waiting' || last?.status === 'failed';
   }
 
   private async assertBranch(trees: Tree[], branch: string): Promise<void> {

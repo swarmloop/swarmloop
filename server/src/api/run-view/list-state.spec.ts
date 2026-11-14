@@ -24,6 +24,8 @@ interface Setup {
   documents?: Partial<DocumentEntity>[];
   pasteUrls?: string[];
   claimed?: string[];
+  /** The run ids with an accepted command that is not a stop. */
+  accepted?: number[];
 }
 
 /** The documents repository as the list reads it: the latest document of each asked kind of each asked run. */
@@ -40,13 +42,14 @@ function storedDocuments(runs: RunEntity[], plans: Record<string, string>, docum
   };
 }
 
-async function states({ runs, plans = {}, documents = [], pasteUrls = [], claimed = [] }: Setup) {
+async function states({ runs, plans = {}, documents = [], pasteUrls = [], claimed = [], accepted = [] }: Setup) {
   const keys = new Map(runs.map((item) => [item.id, item.key]));
   const childrenOf = childrenByParent(runs);
   const stored = storedDocuments(runs, plans, documents);
   return listStates(
     stored,
     { listPastes: async () => pasteUrls.map((url) => ({ url }) as PasteEntity) },
+    { acceptedRunIds: async (runIds: number[]) => new Set(runIds.filter((id) => accepted.includes(id))) },
     runs,
     { keys, childrenOf, plans: await listPlans(stored, runs, childrenOf) },
     (key) => claimed.includes(key),
@@ -105,6 +108,19 @@ describe('listStates', () => {
   it('reads a claimed run that is not done as running', async () => {
     const result = await states({ runs: [run(1, 'A-1')], claimed: ['A-1'] });
     expect(result['A-1']?.state).toBe('running');
+  });
+
+  it('a run with an accepted relaunch reads queued, and its task reads running', async () => {
+    const parent = run(1, 'A-1', { stateReason: reason(ERROR_CODES.SUBTASKS_RUNNING) });
+    const child = run(2, 'A-2', { parentRunId: 1, taskId: 't1' });
+    const other = run(3, 'A-3', { parentRunId: 1, taskId: 't2' });
+    const result = await states({
+      runs: [parent, child, other],
+      plans: { 'A-1': plan('waiting', 'waiting') },
+      accepted: [2],
+    });
+    expect(result['A-2']).toMatchObject({ state: 'queued', stateReason: null, task: { index: 0, status: 'running' } });
+    expect(result['A-3']?.state).not.toBe('queued');
   });
 
   it('counts every task of the plan for a parent waiting for its subtasks, a task with no run as waiting', async () => {
