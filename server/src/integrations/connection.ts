@@ -1,4 +1,4 @@
-import type { ConnectionCard, ConnectionFlow, SignInView } from '../contract/connections';
+import type { ConnectionCard, ConnectionFlow } from '../contract/connections';
 
 /** What a provider answered to a test: the account it read, or its own message. */
 export type ConnectionTestResult = { ok: true; account: string | null } | { ok: false; message: string };
@@ -9,14 +9,33 @@ export interface ConnectionProbe {
   listModels(runtime: string, fields: Record<string, string>): Promise<string[]>;
   /** One HTTP request with the given headers; the answer is the status and the body text. */
   request(url: string, headers: Record<string, string>): Promise<{ status: number; body: string }>;
+  /** Runs one command once in the runtime's agent image with the given credential env; `ok` is a zero exit. */
+  check(
+    runtime: string,
+    env: { name: string; value: string }[],
+    command: string[],
+  ): Promise<{ ok: boolean; output: string }>;
 }
 
-/** A sign-in that runs outside the page and shows a link and a code. */
+/** What a CLI sign-in has printed so far, read from its output. */
+export interface SignInParse {
+  /** The link the person opens, or null until the CLI prints one. */
+  link: string | null;
+  /** The device code to show, or null. */
+  code: string | null;
+  /** True while the CLI waits for a code the person types. */
+  asksForCode: boolean;
+  /** The credential the CLI printed, by field name, or null until it has. */
+  fields: Record<string, string> | null;
+}
+
+/** A sign-in that a CLI runs in the agent image: the command and how to read its output. It runs nothing itself. */
 export interface SignInFlow {
-  start(login: string): Promise<SignInView>;
-  poll(id: string): Promise<SignInView>;
-  /** Hands the code the person typed to a CLI that asked for one. */
-  submit(id: string, code: string): Promise<SignInView>;
+  command(): string[];
+  /** The hosts the CLI needs beyond the runtime's API hosts. */
+  hosts: string[];
+  timeoutMs: number;
+  parse(output: string): SignInParse;
 }
 
 /** For an integration that keeps its credential in a store of its own, not in the per-person secret store. */

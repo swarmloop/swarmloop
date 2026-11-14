@@ -6,11 +6,13 @@ import { LinkedPagesService } from '../integrations/linked-pages/linked-pages';
 import { PastePageReader } from '../integrations/linked-pages/paste-page.reader';
 import { HistoryModule } from '../history/history.module';
 import { ProvidersModule } from '../integrations/providers.module';
+import { CliSignIn } from '../sandbox/cli-sign-in';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { AuthModule } from './auth.module';
 import { ConnectionCatalog, CONNECTIONS } from './connection-catalog';
 import { SandboxConnectionProbe } from './connection-probe';
 import { IntegrationConnectionsController } from './integration-connections.controller';
+import { SignInSessions } from './sign-in-sessions.service';
 
 @Module({
   imports: [AuthModule, HistoryModule, ProvidersModule, SandboxModule],
@@ -20,6 +22,8 @@ import { IntegrationConnectionsController } from './integration-connections.cont
     PastePageReader,
     LinkedPagesService,
     SandboxConnectionProbe,
+    CliSignIn,
+    SignInSessions,
     {
       provide: CONNECTIONS,
       useFactory: (trackers: IssueTrackerRegistry, pages: LinkedPagesService, hosts: CodeHostRegistry) => [
