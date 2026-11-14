@@ -83,11 +83,6 @@ export function optionalLimit(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** A setting that may be absent: an empty string then. */
-function optionalText(config: ConfigService, name: string): string {
-  return config.get<string>(name) ?? '';
-}
-
 export function splitList(value: string | undefined): string[] {
   return (value ?? '')
     .split(',')
@@ -125,16 +120,16 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     JIRA_BASE_URL: config.getOrThrow<string>('JIRA_BASE_URL'),
     JIRA_EMAIL: config.getOrThrow<string>('JIRA_EMAIL'),
     JIRA_API_TOKEN: config.getOrThrow<string>('JIRA_API_TOKEN'),
-    JIRA_PROJECTS: config.get<string>('JIRA_PROJECTS') ?? '',
+    JIRA_PROJECTS: config.getOrThrow<string>('JIRA_PROJECTS'),
     GITLAB_BASE_URL: config.getOrThrow<string>('GITLAB_BASE_URL'),
     GITLAB_TOKEN: config.getOrThrow<string>('GITLAB_TOKEN'),
     GITHUB_BASE_URL: config.getOrThrow<string>('GITHUB_BASE_URL'),
     GITHUB_TOKEN: config.getOrThrow<string>('GITHUB_TOKEN'),
     CURSOR_API_KEY: config.getOrThrow<string>('CURSOR_API_KEY'),
     ANTHROPIC_API_KEY: config.getOrThrow<string>('ANTHROPIC_API_KEY'),
-    CLAUDE_CODE_OAUTH_TOKEN: config.get<string>('CLAUDE_CODE_OAUTH_TOKEN') ?? '',
-    CODEX_AUTH: config.get<string>('CODEX_AUTH') ?? '',
-    CODEX_API_KEY: config.get<string>('CODEX_API_KEY') ?? '',
+    CLAUDE_CODE_OAUTH_TOKEN: config.getOrThrow<string>('CLAUDE_CODE_OAUTH_TOKEN'),
+    CODEX_AUTH: config.getOrThrow<string>('CODEX_AUTH'),
+    CODEX_API_KEY: config.getOrThrow<string>('CODEX_API_KEY'),
     MAX_AGENT_CALLS: config.getOrThrow<number>('MAX_AGENT_CALLS'),
     MAX_RETURNS: config.getOrThrow<number>('MAX_RETURNS'),
     MAX_PIPELINE_RETURNS: config.getOrThrow<number>('MAX_PIPELINE_RETURNS'),
@@ -155,8 +150,8 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     STEP_TOKEN_MAX: optionalLimit(config.get('STEP_TOKEN_MAX')),
     IDLE_TIMEOUT_MS: config.getOrThrow<number>('IDLE_TIMEOUT_MS'),
     LOOP_REPEAT: config.getOrThrow<number>('LOOP_REPEAT'),
-    SANDBOX_EGRESS: config.get<string>('SANDBOX_EGRESS') === 'open' ? 'open' : 'proxy',
-    SANDBOX_DOCKER_RUNTIME: config.get<string>('SANDBOX_DOCKER_RUNTIME') ?? '',
+    SANDBOX_EGRESS: config.getOrThrow<'proxy' | 'open'>('SANDBOX_EGRESS'),
+    SANDBOX_DOCKER_RUNTIME: config.getOrThrow<string>('SANDBOX_DOCKER_RUNTIME'),
     TICK_MS: config.getOrThrow<number>('TICK_MS'),
     REQUIREMENTS_TIMEOUT_MS: config.getOrThrow<number>('REQUIREMENTS_TIMEOUT_MS'),
     RESEARCH_TIMEOUT_MS: config.getOrThrow<number>('RESEARCH_TIMEOUT_MS'),
@@ -169,25 +164,25 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     AGENTS_PLAN: config.getOrThrow<string>('AGENTS_PLAN'),
     AGENTS_IMPLEMENT: config.getOrThrow<string>('AGENTS_IMPLEMENT'),
     AGENTS_REVIEW: config.getOrThrow<string>('AGENTS_REVIEW'),
-    AGENTS_SUBTASK_PLAN: config.get<string>('AGENTS_SUBTASK_PLAN') ?? '',
-    AGENTS_SUBTASK_IMPLEMENT: config.get<string>('AGENTS_SUBTASK_IMPLEMENT') ?? '',
-    AGENTS_SUBTASK_REVIEW: config.get<string>('AGENTS_SUBTASK_REVIEW') ?? '',
-    EPIC_EFFORT: config.get<string>('EPIC_EFFORT') ?? '',
-    SPLIT: config.get<'auto' | 'off'>('SPLIT') ?? 'off',
-    SPLIT_MAX_TASKS: config.get<number>('SPLIT_MAX_TASKS') ?? 48,
-    SUBTASKS_PARALLEL: config.get<number>('SUBTASKS_PARALLEL') ?? 3,
+    AGENTS_SUBTASK_PLAN: config.getOrThrow<string>('AGENTS_SUBTASK_PLAN'),
+    AGENTS_SUBTASK_IMPLEMENT: config.getOrThrow<string>('AGENTS_SUBTASK_IMPLEMENT'),
+    AGENTS_SUBTASK_REVIEW: config.getOrThrow<string>('AGENTS_SUBTASK_REVIEW'),
+    EPIC_EFFORT: config.getOrThrow<string>('EPIC_EFFORT'),
+    SPLIT: config.getOrThrow<'auto' | 'off'>('SPLIT'),
+    SPLIT_MAX_TASKS: config.getOrThrow<number>('SPLIT_MAX_TASKS'),
+    SUBTASKS_PARALLEL: config.getOrThrow<number>('SUBTASKS_PARALLEL'),
     SWARMLOOP_ROOT: root ? root : undefined,
     CHECKOUTS_ROOT: checkoutsRoot ? checkoutsRoot : undefined,
     SWARMLOOP_API_PORT: config.getOrThrow<number>('SWARMLOOP_API_PORT'),
     SWARMLOOP_API_HOST: config.getOrThrow<string>('SWARMLOOP_API_HOST'),
     SWARMLOOP_PUBLIC_URL: config.getOrThrow<string>('SWARMLOOP_PUBLIC_URL'),
     SWARMLOOP_REPOS: splitList(config.get<string>('SWARMLOOP_REPOS')),
-    GITHUB_OAUTH_CLIENT_ID: optionalText(config, 'GITHUB_OAUTH_CLIENT_ID'),
-    GITHUB_OAUTH_CLIENT_SECRET: optionalText(config, 'GITHUB_OAUTH_CLIENT_SECRET'),
-    GITLAB_OAUTH_CLIENT_ID: optionalText(config, 'GITLAB_OAUTH_CLIENT_ID'),
-    GITLAB_OAUTH_CLIENT_SECRET: optionalText(config, 'GITLAB_OAUTH_CLIENT_SECRET'),
-    SWARMLOOP_ALLOW: optionalText(config, 'SWARMLOOP_ALLOW'),
-    SWARMLOOP_TOKEN: optionalText(config, 'SWARMLOOP_TOKEN'),
-    SWARMLOOP_SECRET: optionalText(config, 'SWARMLOOP_SECRET'),
+    GITHUB_OAUTH_CLIENT_ID: config.getOrThrow<string>('GITHUB_OAUTH_CLIENT_ID'),
+    GITHUB_OAUTH_CLIENT_SECRET: config.getOrThrow<string>('GITHUB_OAUTH_CLIENT_SECRET'),
+    GITLAB_OAUTH_CLIENT_ID: config.getOrThrow<string>('GITLAB_OAUTH_CLIENT_ID'),
+    GITLAB_OAUTH_CLIENT_SECRET: config.getOrThrow<string>('GITLAB_OAUTH_CLIENT_SECRET'),
+    SWARMLOOP_ALLOW: config.getOrThrow<string>('SWARMLOOP_ALLOW'),
+    SWARMLOOP_TOKEN: config.getOrThrow<string>('SWARMLOOP_TOKEN'),
+    SWARMLOOP_SECRET: config.getOrThrow<string>('SWARMLOOP_SECRET'),
   };
 }

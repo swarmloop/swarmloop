@@ -517,6 +517,8 @@ describe('sandbox launch', () => {
     expect(sandboxUserId(502)).toBe(502);
     expect(sandboxUserId(0, '502')).toBe(502);
     expect(sandboxUserId(0, '')).toBe(1000);
+    expect(sandboxUserId(0, 'abc')).toBe(1000);
+    expect(sandboxUserId(0, '0')).toBe(1000);
   });
 
   it('passes only the model key and allows that provider', () => {

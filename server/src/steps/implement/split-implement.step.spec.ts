@@ -20,6 +20,7 @@ import { deriveState, writeRunState } from '../../history/run-state';
 import { CommandService } from '../../pipeline/command.service';
 import { Reconciler } from '../../pipeline/reconciler';
 import { SubtaskPort } from '../../pipeline/subtask-port';
+import { FAKE_MODEL_KEY } from '../../testing/env.spec-helpers';
 import { createTestApp, type TestApp } from '../../testing/test-app';
 import { NO_CI_NOTE } from './split-implement.step';
 import { FetchFailed, MergeConflict } from '../../core/swarmloop-error';
@@ -421,7 +422,7 @@ async function seedMergeParent(app: TestApp, tasks: Subtask[]) {
 
 describe('a new run', () => {
   it('splits through the command door when SPLIT is left at its default', async () => {
-    const app = await createTestApp({ env: { SPLIT: 'auto' } });
+    const app = await createTestApp({ env: FAKE_MODEL_KEY });
     try {
       const response = await fetch(`${app.url}/runs`, {
         method: 'POST',

@@ -78,13 +78,16 @@ export function SettingsPage(): ReactElement {
               component="dl"
               sx={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: 1, columnGap: 3, m: 0 }}
             >
-              {view.server.map(({ name, value, description }) => (
+              {view.server.map(({ name, value, source, description }) => (
                 <Box key={name} sx={{ display: 'contents' }}>
                   <Typography component="dt" variant="body2" sx={{ fontFamily: 'monospace' }}>
                     {name}
                   </Typography>
                   <Typography component="dd" variant="body2" color="text.secondary" sx={{ m: 0 }}>
                     {value || '—'}
+                    <Typography component="span" variant="caption" sx={{ display: 'block' }}>
+                      {source}
+                    </Typography>
                     {description ? (
                       <Typography component="span" variant="caption" sx={{ display: 'block' }}>
                         {description}

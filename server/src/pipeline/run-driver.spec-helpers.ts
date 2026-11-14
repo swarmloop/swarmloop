@@ -91,8 +91,13 @@ export function installScripts(app: TestApp, scripts: Partial<Record<StepName, S
   return steps;
 }
 
-export async function drive(scripts: Partial<Record<StepName, Script>>, options: StepOptions, key = KEY) {
-  const app = await createTestApp();
+export async function drive(
+  scripts: Partial<Record<StepName, Script>>,
+  options: StepOptions,
+  key = KEY,
+  env: Record<string, string> = {},
+) {
+  const app = await createTestApp({ env });
   try {
     const steps = installScripts(
       app,

@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -8,15 +8,10 @@ import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { boot, reply, reportReply, result, seed, writeEnv } from './code-review.step.spec-helpers';
 
-/** The code review of an epic's parent, with `EPIC_EFFORT=xhigh` and the review agent as given. */
+/** The code review of an epic's parent, with the shipped `EPIC_EFFORT` and the review agent as given. */
 async function parentReview(key: string, reviewAgent: string) {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-epic-'));
-  await writeEnv(root);
-  const envFile = join(root, '.env');
-  const env = readFileSync(envFile, 'utf8')
-    .replace(/AGENTS_REVIEW=.*/, `AGENTS_REVIEW=${reviewAgent}`)
-    .concat('EPIC_EFFORT=xhigh\n');
-  writeFileSync(envFile, env);
+  await writeEnv(root, undefined, undefined, undefined, { AGENTS_REVIEW: reviewAgent });
   mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
   const agent = jest.fn(async (input: AgentRunInput) =>
     result(input.step.endsWith('report') ? reportReply('It holds.') : reply('notes', 'ok'), input.step),

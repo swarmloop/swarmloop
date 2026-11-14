@@ -1,7 +1,10 @@
 import 'reflect-metadata';
-import { existsSync, renameSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, renameSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
-import { git } from '../steps/prepare/prepare.step.spec-helpers';
+import { Logger } from '@nestjs/common';
+import type { TestingModule } from '@nestjs/testing';
+import { boot, git, repoWithMain } from '../steps/prepare/prepare.step.spec-helpers';
 import { Housekeeping } from './housekeeping';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
@@ -70,6 +73,69 @@ describe('Housekeeping startup', () => {
     await measure.mock.results[0].value;
 
     expect(meter.last()?.line).toContain('swarmloop uses worktrees');
+  });
+});
+
+describe('Housekeeping startup checkouts log', () => {
+  let app: TestingModule | undefined;
+  let parent: string;
+  let swarm: string;
+  let lines: string[];
+  let warnings: string[];
+
+  beforeEach(() => {
+    parent = mkdtempSync(join(tmpdir(), 'swarmloop-checkouts-'));
+    swarm = join(parent, 'swarm');
+    mkdirSync(swarm);
+    lines = [];
+    warnings = [];
+    jest.spyOn(Logger.prototype, 'log').mockImplementation((message: unknown) => void lines.push(String(message)));
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation((message: unknown) => void warnings.push(String(message)));
+  });
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await app?.close();
+    app = undefined;
+  });
+
+  async function start(checkoutsRoot: string, repos = ''): Promise<void> {
+    app = await boot(swarm, checkoutsRoot, {}, repos);
+    await app.get(Housekeeping).startup();
+  }
+
+  it('logs the folder and the allowed projects, sorted', async () => {
+    repoWithMain(parent, 'zeta');
+    repoWithMain(parent, 'alpha');
+    await start('..');
+    expect(lines).toContain(`checkouts in ${parent}: alpha, zeta`);
+  });
+
+  it('logs only the projects SWARMLOOP_REPOS allows', async () => {
+    repoWithMain(parent, 'alpha');
+    repoWithMain(parent, 'zeta');
+    await start('..', 'zeta');
+    expect(lines).toContain(`checkouts in ${parent}: zeta`);
+  });
+
+  it('logs none when the folder holds no git project', async () => {
+    await start('..');
+    expect(lines).toContain(`checkouts in ${parent}: none`);
+  });
+
+  it('warns naming a missing folder and still goes on to the tidy of registrations', async () => {
+    const missing = join(parent, 'nowhere');
+    await start(missing);
+    expect(warnings.some((warning) => warning.includes(missing))).toBe(true);
+    expect(warnings.some((warning) => warning.startsWith('worktree registrations were not tidied'))).toBe(true);
+  });
+
+  it('logs also when the retention catch-up marker exists', async () => {
+    mkdirSync(join(swarm, 'data'));
+    writeFileSync(join(swarm, 'data', 'retention-catch-up'), 'done\n');
+    repoWithMain(parent, 'alpha');
+    await start('..');
+    expect(lines).toContain(`checkouts in ${parent}: alpha`);
   });
 });
 

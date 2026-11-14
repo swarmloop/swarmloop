@@ -1,7 +1,7 @@
 name: release
 
 # `git tag v0.2.0 && git push origin v0.2.0` releases: the images are built and pushed as :0.2.0, the stack is started
-# from them, then they also become :latest and a GitHub release is created with compose.yml and env.example.
+# from them, then they also become :latest and a GitHub release is created with compose.yml only.
 # A tag with a suffix (v0.2.0-rc1) is a prerelease: it never moves :latest.
 on:
   push:
@@ -110,7 +110,7 @@ jobs:
           DOCKER_DEFAULT_PLATFORM: linux/${{ matrix.arch }}
         run: |
           set -eu
-          docker compose --env-file .env.example pull
+          docker compose -f compose.yml pull
           bash scripts/smoke-stack.sh
 
   publish:
@@ -137,19 +137,17 @@ jobs:
           for name in swarmloop-server swarmloop-dashboard swarmloop-agent-claude swarmloop-agent-codex swarmloop-agent-cursor swarmloop-egress; do
             docker buildx imagetools create -t "$REPO/$name:latest" "$REPO/$name:$VERSION"
           done
-      # GitHub renames an asset whose name starts with a dot, so .env.example ships as env.example.
-      - name: Create the GitHub release with compose.yml and env.example
+      - name: Create the GitHub release with compose.yml
         env:
           TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ github.token }}
           PRERELEASE: ${{ needs.version.outputs.prerelease }}
         run: |
           set -eu
-          cp .env.example env.example
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" compose.yml env.example --clobber
+            gh release upload "$TAG" compose.yml --clobber
           elif [ "$PRERELEASE" = true ]; then
-            gh release create "$TAG" compose.yml env.example --verify-tag --title "$TAG" --generate-notes --prerelease
+            gh release create "$TAG" compose.yml --verify-tag --title "$TAG" --generate-notes --prerelease
           else
-            gh release create "$TAG" compose.yml env.example --verify-tag --title "$TAG" --generate-notes
+            gh release create "$TAG" compose.yml --verify-tag --title "$TAG" --generate-notes
           fi

@@ -26,21 +26,19 @@ import { collectEnvMasks } from '../sandbox/env-masks';
 import type { ShellFeature, ShellMatch } from '../contract/api';
 import type { ServerApi } from './server-api';
 import { HttpServerApi } from './server-api';
+import { envFilePath } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
 import { hostCheckout, nestCheckout } from './paths';
 import type { ShellCommand } from './shell-command';
 import { parseShell, pickSnapshot } from './shell-command';
 import type { ShellConfig } from './shell-env';
-import { readShellConfig } from './shell-env';
+import { readApiUrl, readShellConfig } from './shell-env';
 import { Egress, egressMode } from '../sandbox/egress';
 import { withEgress } from '../sandbox/egress-launch';
 
 export async function runShell(argv: string[], cwd = process.cwd()): Promise<void> {
   const root = resolve(__dirname, '../../..');
-  const api = new HttpServerApi(
-    rawEnv().SWARMLOOP_API_URL ?? 'http://127.0.0.1:3920',
-    machineToken(root, rawEnv().SWARMLOOP_TOKEN),
-  );
+  const api = new HttpServerApi(readApiUrl(envFilePath(root)), machineToken(root, rawEnv().SWARMLOOP_TOKEN));
   try {
     await dispatch(argv, cwd, root, api);
   } catch (error) {
@@ -55,7 +53,7 @@ async function dispatch(argv: string[], cwd: string, root: string, api: ServerAp
     argv,
     listed.runs.map((run) => run.key),
   );
-  const config = readShellConfig(join(root, '.env'));
+  const config = readShellConfig(envFilePath(root));
   if (command.type === 'review') {
     await review(api, command, cwd, root, config.checkoutsRoot);
     return;

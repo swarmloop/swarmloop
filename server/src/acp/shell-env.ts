@@ -1,6 +1,6 @@
-import { readFileSync } from 'fs';
 import { splitAgent } from '../config/agents';
 import { splitList } from '../config/env';
+import { readDefaultSettings, readSettings } from '../config/load-env';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 
 export interface ShellConfig {
@@ -23,44 +23,33 @@ export interface ShellConfig {
 }
 
 /** Reads the model key for the sandbox env only. Callers must not print the result. */
-export function readShellConfig(file: string): ShellConfig {
-  const values = new Map<string, string>();
-  let body = '';
-  try {
-    body = readFileSync(file, 'utf8');
-  } catch {
-    body = '';
-  }
-  for (const line of body.split('\n')) {
-    const match =
-      /^(?:export\s+)?(AGENTS_IMPLEMENT|CURSOR_API_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CODEX_AUTH|CODEX_API_KEY|CHECKOUTS_ROOT|SWARMLOOP_REPOS|SANDBOX_EGRESS|SANDBOX_DOCKER_RUNTIME|RESERVE_MEMORY_GB)=(.*)$/.exec(
-        line.trim(),
-      );
-    if (!match) {
-      continue;
-    }
-    values.set(match[1], unquote(match[2].trim()));
-  }
-  const implement = firstImplementAgent(values.get('AGENTS_IMPLEMENT') ?? '');
+export function readShellConfig(file: string, launchEnv?: Readonly<NodeJS.ProcessEnv>): ShellConfig {
+  const { values } = readSettings(file, launchEnv);
+  const implement = firstImplementAgent(values.AGENTS_IMPLEMENT ?? '');
   return {
     runtime: implement.runtime,
     model: implement.model,
-    cursorKey: values.get('CURSOR_API_KEY') ?? '',
-    anthropicKey: values.get('ANTHROPIC_API_KEY') ?? '',
-    oauthToken: values.get('CLAUDE_CODE_OAUTH_TOKEN') ?? '',
-    codexAuth: values.get('CODEX_AUTH') ?? '',
-    codexApiKey: values.get('CODEX_API_KEY') ?? '',
-    checkoutsRoot: values.get('CHECKOUTS_ROOT'),
-    repos: splitList(values.get('SWARMLOOP_REPOS')),
-    egress: values.get('SANDBOX_EGRESS'),
-    engine: values.get('SANDBOX_DOCKER_RUNTIME') ?? '',
-    reserveMemoryGb: reserveGigabytes(values.get('RESERVE_MEMORY_GB')),
+    cursorKey: values.CURSOR_API_KEY ?? '',
+    anthropicKey: values.ANTHROPIC_API_KEY ?? '',
+    oauthToken: values.CLAUDE_CODE_OAUTH_TOKEN ?? '',
+    codexAuth: values.CODEX_AUTH ?? '',
+    codexApiKey: values.CODEX_API_KEY ?? '',
+    checkoutsRoot: values.CHECKOUTS_ROOT,
+    repos: splitList(values.SWARMLOOP_REPOS),
+    egress: values.SANDBOX_EGRESS,
+    engine: values.SANDBOX_DOCKER_RUNTIME ?? '',
+    reserveMemoryGb: reserveGigabytes(values.RESERVE_MEMORY_GB),
   };
+}
+
+/** The API address, read in the same order as every other setting. */
+export function readApiUrl(file: string, launchEnv?: Readonly<NodeJS.ProcessEnv>): string {
+  return readSettings(file, launchEnv).values.SWARMLOOP_API_URL;
 }
 
 function reserveGigabytes(value: string | undefined): number {
   const given = value === undefined || value === '' ? Number.NaN : Number(value);
-  return Number.isFinite(given) && given >= 0 ? given : 2;
+  return Number.isFinite(given) && given >= 0 ? given : Number(readDefaultSettings().RESERVE_MEMORY_GB);
 }
 
 function firstImplementAgent(listed: string): { runtime: RuntimeName; model: string } {
@@ -74,11 +63,4 @@ function firstImplementAgent(listed: string): { runtime: RuntimeName; model: str
     // An unparsable list is reported the same way as a missing one.
   }
   throw new Error('AGENTS_IMPLEMENT is missing or invalid');
-}
-
-function unquote(value: string): string {
-  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1);
-  }
-  return value;
 }

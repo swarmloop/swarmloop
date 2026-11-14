@@ -6,6 +6,7 @@ import { join } from 'path';
 import { ConnectionsService } from './connections.service';
 import { HostAppsService } from './host-apps.service';
 import { CommandService } from '../pipeline/command.service';
+import { FAKE_MODEL_KEY } from '../testing/env.spec-helpers';
 import { createTestApp, type TestApp } from '../testing/test-app';
 import { startFakeHosts, type FakeHost } from './fake-hosts.spec-helpers';
 import { startFakeGithub } from './fake-provider.spec-helpers';
@@ -20,6 +21,7 @@ describe('login and the auth guard', () => {
   async function start(allow: string): Promise<void> {
     app = await createTestApp({
       env: {
+        ...FAKE_MODEL_KEY,
         GITHUB_BASE_URL: github.url,
         GITHUB_OAUTH_CLIENT_ID: 'client',
         GITHUB_OAUTH_CLIENT_SECRET: 'secret',
