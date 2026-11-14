@@ -1,8 +1,14 @@
 name: swarmloop
 
-# Start: copy .env.example to .env, fill it in, then `docker compose up -d` and open http://127.0.0.1:3921.
-# Update: `docker compose pull && docker compose up -d`. SWARMLOOP_VERSION in .env pins a release (default: latest).
-# From source: add `COMPOSE_FILE=compose.yml:compose.build.yml` to .env, then `docker compose up -d --build`.
+# Install: no .env is needed.
+# A release folder holds this file alone: `docker compose up -d` pulls the published images.
+# A clone of the repository builds from source: Compose reads compose.override.yml next to this file by itself.
+# To change a setting, copy its line from defaults.env into .env next to this file, or set it in the shell. The shell wins.
+# Compose control variables keep their Compose meaning:
+#   SWARMLOOP_HOME is where data/ and worktrees/ live (default: next to this file).
+#   SWARMLOOP_VERSION pins a release (default: latest) and SWARMLOOP_REGISTRY names the registry of the images.
+#   UID is the sandbox user. COMPOSE_FILE, if set, selects the files Compose reads.
+# An old `COMPOSE_FILE=compose.yml:compose.build.yml` line in .env names a file that is gone: delete it.
 
 x-image: &image
   restart: 'no'
@@ -33,24 +39,90 @@ services:
     restart: unless-stopped
     ports:
       - '127.0.0.1:3920:3920'
-    env_file:
-      - path: .env
-        required: false
     environment:
-      SWARMLOOP_ROOT: /app
-      CHECKOUTS_ROOT: /checkouts
-      SWARMLOOP_REPOS: ${SWARMLOOP_REPOS:-}
-      SWARMLOOP_PUBLIC_URL: ${SWARMLOOP_PUBLIC_URL:-http://127.0.0.1:3921}
-      SWARMLOOP_API_HOST: 0.0.0.0
-      SWARMLOOP_API_PORT: 3920
-      SWARMLOOP_UID: ${UID:-1000}
+      - SWARMLOOP_ROOT=/app
+      - CHECKOUTS_ROOT=/checkouts
+      - SWARMLOOP_API_HOST=0.0.0.0
+      - SWARMLOOP_API_PORT=3920
+      - SWARMLOOP_UID=${UID:-1000}
+      - SWARMLOOP_PUBLIC_URL=${SWARMLOOP_PUBLIC_URL:-http://127.0.0.1:3921}
       # The server names the sandbox images the same way, so it runs the ones compose pulled.
-      SWARMLOOP_REGISTRY: ${SWARMLOOP_REGISTRY:-ghcr.io/swarmloop}
-      SWARMLOOP_VERSION: ${SWARMLOOP_VERSION:-latest}
+      - SWARMLOOP_REGISTRY=${SWARMLOOP_REGISTRY:-ghcr.io/swarmloop}
+      - SWARMLOOP_VERSION=${SWARMLOOP_VERSION:-latest}
+      - SWARMLOOP_ENV_FILE=/app/stack/.env
+      # Every other setting passes through only when it is set; otherwise defaults.env applies.
+      - REQUIREMENTS_VIA
+      - ISSUE_TRACKER
+      - JIRA_PROJECTS
+      - GITLAB_BASE_URL
+      - GITHUB_BASE_URL
+      - GITHUB_TOKEN
+      - GITLAB_TOKEN
+      - CURSOR_API_KEY
+      - ANTHROPIC_API_KEY
+      - CLAUDE_CODE_OAUTH_TOKEN
+      - CODEX_AUTH
+      - CODEX_API_KEY
+      - JIRA_BASE_URL
+      - JIRA_EMAIL
+      - JIRA_API_TOKEN
+      - MAX_AGENT_CALLS
+      - MAX_RETURNS
+      - MAX_PIPELINE_RETURNS
+      - MAX_LAUNCHES
+      - CHECKS_PARALLEL
+      - RESERVE_MEMORY_GB
+      - LIMIT_COOLDOWN_MIN
+      - STOP_GRACE_S
+      - RECONCILE_MS
+      - MERGE_WATCH_MIN
+      - RECOVER_WAIT_MS
+      - RETAIN_DONE_DAYS
+      - MIN_FREE_GB
+      - DOCKER_PRUNE
+      - MAX_RUN_USD
+      - MAX_RUN_TOKENS
+      - STEP_USD_MAX
+      - STEP_TOKEN_MAX
+      - IDLE_TIMEOUT_MS
+      - LOOP_REPEAT
+      - SANDBOX_EGRESS
+      - SANDBOX_DOCKER_RUNTIME
+      - PROJECT_HOSTS_ALLOW
+      - TICK_MS
+      - REQUIREMENTS_TIMEOUT_MS
+      - RESEARCH_TIMEOUT_MS
+      - PLAN_TIMEOUT_MS
+      - IMPLEMENT_TIMEOUT_MS
+      - CODE_REVIEW_TIMEOUT_MS
+      - MERGE_REQUEST_TIMEOUT_MS
+      - PIPELINE_TIMEOUT_MS
+      - PIPELINE_START_TIMEOUT_MS
+      - AGENTS_PLAN
+      - AGENTS_IMPLEMENT
+      - AGENTS_REVIEW
+      - AGENTS_SUBTASK_PLAN
+      - AGENTS_SUBTASK_IMPLEMENT
+      - AGENTS_SUBTASK_REVIEW
+      - EPIC_EFFORT
+      - SPLIT
+      - SPLIT_MAX_TASKS
+      - SUBTASKS_PARALLEL
+      - SWARMLOOP_REPOS
+      - GIT_AUTHOR_NAME
+      - GIT_AUTHOR_EMAIL
+      - GITHUB_OAUTH_CLIENT_ID
+      - GITHUB_OAUTH_CLIENT_SECRET
+      - GITLAB_OAUTH_CLIENT_ID
+      - GITLAB_OAUTH_CLIENT_SECRET
+      - SWARMLOOP_ALLOW
+      - SWARMLOOP_TOKEN
+      - SWARMLOOP_SECRET
     volumes:
       - ${SWARMLOOP_HOME:-.}/data:/app/data
       - ${SWARMLOOP_HOME:-.}/worktrees:/app/worktrees
-      - ${CHECKOUTS_ROOT:?set CHECKOUTS_ROOT to a folder with only the repos swarmloop works on}:/checkouts
+      - .:/app/stack:ro
+      - ${CHECKOUTS_ROOT:-..}:/checkouts
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       agent-cursor:
