@@ -7,6 +7,9 @@ import type { CodeHostEnv } from './abstract-code-host';
 import type { Clock } from '../../core/clock';
 import { GithubCodeHost } from './github/github-code-host';
 import { GitlabCodeHost } from './gitlab/gitlab-code-host';
+import type { Connection } from '../connection';
+import { githubConnection } from './github/github-connection';
+import { gitlabConnection } from './gitlab/gitlab-connection';
 
 const HOST_NAMES = ['github', 'gitlab'] as const;
 
@@ -19,7 +22,7 @@ export class CodeHostRegistry {
   constructor(
     private readonly github: GithubCodeHost,
     private readonly gitlab: GitlabCodeHost,
-    @Optional() private readonly connections?: ConnectionsService,
+    @Optional() private readonly connectionStore?: ConnectionsService,
   ) {
     this.hosts = [github, gitlab];
   }
@@ -30,7 +33,7 @@ export class CodeHostRegistry {
    * be used any more is a `GitAuthError`: the run waits for the person to reconnect.
    */
   async forRun(startedBy: string | null | undefined, codeHost?: string): Promise<CodeHostRegistry> {
-    const connections = this.connections;
+    const connections = this.connectionStore;
     if (!connections || !startedBy || startedBy === 'machine') {
       return this;
     }
@@ -69,6 +72,14 @@ export class CodeHostRegistry {
 
   static create(hosts: CodeHostEnv, clock: Clock): CodeHostRegistry {
     return new CodeHostRegistry(new GithubCodeHost(hosts, clock), new GitlabCodeHost(hosts, clock));
+  }
+
+  /** How a person connects each host; none when the store of connections is absent. */
+  connections(): Connection[] {
+    const store = this.connectionStore;
+    return store
+      ? [githubConnection(this.github.selected(), store), gitlabConnection(this.gitlab.selected(), store)]
+      : [];
   }
 
   has(name: string): boolean {

@@ -203,7 +203,7 @@ describe('ReadinessService', () => {
     expect(infoCalls()).toBe(1);
 
     release.splice(0).forEach((done) => done());
-    for (let turns = 0; turns < 50 && (await service.report()) === first; turns++) {
+    while ((await service.report()) === first) {
       await new Promise((flushed) => setImmediate(flushed));
     }
     await new Promise((flushed) => setImmediate(flushed));

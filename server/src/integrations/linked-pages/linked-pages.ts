@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import type { Connection } from '../connection';
 import { IssueBundle, IssueLink } from '../issue-tracker/issue-bundle';
 import { isReadable, request } from '../http';
 import { ConfluencePageReader } from './confluence-page.reader';
 import { DrivePageReader } from './drive-page.reader';
-import { PageReadContext } from './page-reader';
+import { PageReadContext, PageReader } from './page-reader';
 import { PastePageReader } from './paste-page.reader';
 
 @Injectable()
@@ -11,6 +12,12 @@ export class LinkedPagesService {
   private readonly drive = new DrivePageReader();
 
   constructor(private readonly pastePages: PastePageReader) {}
+
+  /** How a person connects each reader that offers a connection. */
+  connections(): Connection[] {
+    const readers: PageReader[] = [this.drive];
+    return readers.flatMap((reader) => (reader.connection ? [reader.connection] : []));
+  }
 
   async take(bundle: IssueBundle, url: string, context: PageReadContext): Promise<boolean> {
     const confluence = new ConfluencePageReader(context.base);

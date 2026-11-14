@@ -370,6 +370,10 @@ export interface RemoteListView {
 /** One host on the Connections page. It never holds a token or a secret. */
 export interface ConnectionView {
   host: 'github' | 'gitlab';
+  /** What the host calls the app of its login: `App` or `Application`. */
+  appLabel: string;
+  /** True when the host has installations that choose repositories. */
+  installs: boolean;
   /** The GitHub App or the OAuth application, by name and client id. Null when none is set up. */
   app: { name: string; clientId: string; madeBy?: string | null; settingsUrl?: string | null } | null;
   /** The login of the person, or null when they are not connected on this host. */

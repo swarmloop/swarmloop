@@ -1,5 +1,5 @@
-/** The kinds of flow a card offers: paste a secret, a CLI sign-in that asks for a code, a device code, a form of named fields. */
-export type ConnectionFlowKind = 'secret' | 'cli-code' | 'device-code' | 'form';
+/** The kinds of flow a card offers: paste a secret, a CLI sign-in that asks for a code, a device code, a form of named fields, a sign-in on the provider's own page. */
+export type ConnectionFlowKind = 'secret' | 'cli-code' | 'device-code' | 'form' | 'redirect';
 
 export interface ConnectionFlowField {
   name: string;
@@ -15,6 +15,8 @@ export interface ConnectionFlow {
   fields: ConnectionFlowField[];
   /** A page that helps with the flow, such as the page where a token is made. */
   helpUrl: string | null;
+  /** Where a `redirect` flow sends the person. */
+  url?: string;
 }
 
 /** One integration on the Connections page, as the dashboard draws it. It never holds a secret. */
