@@ -9,7 +9,7 @@ Install dependencies from the repository root:
 (cd dashboard && npm ci)
 ```
 
-Start the application with Docker, built from this checkout. Put `COMPOSE_FILE=compose.yml:compose.build.yml` in `.env` once, then:
+Start the application with Docker, built from this checkout: Compose reads `compose.override.yml` next to `compose.yml`, so no `.env` and no `COMPOSE_FILE` is needed. If your `.env` still has an old `COMPOSE_FILE=compose.yml:compose.build.yml` line, delete it: that file is gone and Compose refuses to start.
 
 ```sh
 docker compose up -d --build
@@ -31,7 +31,7 @@ Keep pull requests small, tested, and CI green. In the description, explain what
 
 ## Releases
 
-A release is a tag on `main`: `git tag v0.2.0 && git push origin v0.2.0`. The release workflow builds the images, starts the stack from them, moves `:latest` to them and creates the GitHub release with `compose.yml` and `env.example` (a copy of `.env.example`: GitHub renames an asset that starts with a dot). A tag with a suffix (`v0.2.0-rc1`) is a prerelease and leaves `:latest` alone. Add the version to `CHANGELOG.md` before tagging.
+A release is a tag on `main`: `git tag v0.2.0 && git push origin v0.2.0`. The release workflow builds the images, starts the stack from them, moves `:latest` to them and creates the GitHub release with `compose.yml` only, and pulls the images with `docker compose -f compose.yml pull`. A tag with a suffix (`v0.2.0-rc1`) is a prerelease and leaves `:latest` alone. Add the version to `CHANGELOG.md` before tagging.
 
 ## Briefs
 

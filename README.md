@@ -43,36 +43,37 @@ Every step runs in a locked container. Every prompt, diff, review, token, and do
 
 ## 🚀 Quick start
 
-You need Docker and one model key. No Jira, no git token, no CI.
+You need Docker. No `.env`, no Jira, no CI. Install the latest release, which pulls the images:
 
-1. Download `compose.yml` and the settings of the latest release into an empty directory:
+```sh
+mkdir swarmloop && cd swarmloop && curl -fsSLO https://github.com/swarmloop/swarmloop/releases/latest/download/compose.yml && docker compose up -d
+```
 
-   ```sh
-   curl -fsSLO https://github.com/swarmloop/swarmloop/releases/latest/download/compose.yml
-   curl -fsSL https://github.com/swarmloop/swarmloop/releases/latest/download/env.example -o .env
-   ```
+Or build from source:
 
-   Set `CHECKOUTS_ROOT` in `.env` to a folder that holds only the repositories swarmloop works on. It is mounted into the server, so keep other projects out of it. `SWARMLOOP_REPOS` (comma-separated folder names) narrows it further.
+```sh
+git clone https://github.com/swarmloop/swarmloop && cd swarmloop && docker compose up -d
+```
 
-2. Open the dashboard, go to **Settings → Connections** and connect the runtime your `AGENTS_*` name (Claude by default): sign in with your Claude account or paste an API key. Codex signs in with ChatGPT or takes an API key; Cursor takes an API key. Each connection is tested before it is saved and belongs to the person who made it. The server starts without a key, and **Readiness** shows which runtime still needs one. To use Cursor or Codex, switch `AGENTS_PLAN`, `AGENTS_IMPLEMENT` and `AGENTS_REVIEW` to `cursor:<model>` or `codex:<model>`. A subscription login is for your own use on your own server, not one plan shared by a team. Scripts, CI and servers without a browser: see [Headless setup](#-headless-setup).
+Then open [http://127.0.0.1:3921](http://127.0.0.1:3921) and, in the browser:
 
-3. Start it. The release images are pulled, nothing is built here:
+1. **Connect GitHub** (or **Connect GitLab**).
+2. Go to **Settings → Connections** and connect a model for the runtime your `AGENTS_*` name (Claude by default): sign in with your Claude account or paste an API key. Codex signs in with ChatGPT or takes an API key; Cursor takes an API key. Each connection is tested before it is saved and belongs to the person who made it. The server starts without a key, and **Readiness** shows which runtime still needs one. To use Cursor or Codex, switch `AGENTS_PLAN`, `AGENTS_IMPLEMENT` and `AGENTS_REVIEW` to `cursor:<model>` or `codex:<model>`. A subscription login is for your own use on your own server, not one plan shared by a team. Scripts, CI and servers without a browser: see [Headless setup](#-headless-setup).
+3. The start page shows what a run needs: Docker, images, disk, paths, ports, and your keys. **New run** stays off while an item says `fail`, and the item says what to do. `docker compose exec server node dist/main.js doctor` prints the same list. Then click **New run**, pick a repository, untick **ci**, and describe the change. Leave ticket numbers out.
 
-   ```sh
-   docker compose up -d --wait
-   ```
+Create the installation folder next to the repositories swarmloop works on: the checkouts default to its parent folder (`CHECKOUTS_ROOT=..`), and `SWARMLOOP_REPOS` (comma-separated folder names) narrows them.
 
-4. Open [http://127.0.0.1:3921](http://127.0.0.1:3921). The start page shows what a run needs: Docker, images, disk, paths, ports, and your keys. **New run** stays off while an item says `fail`, and the item says what to do. `docker compose exec server node dist/main.js doctor` prints the same list. Then click **New run**, pick a repository, untick **ci**, and describe the change. Leave ticket numbers out.
+To change a setting, copy its line from [`defaults.env`](https://github.com/swarmloop/swarmloop/blob/main/defaults.env) into a `.env` next to `compose.yml`, or set it in the shell. A variable set in the shell wins over `.env`, and `.env` wins over `defaults.env`.
 
-The repository list is every git clone in `CHECKOUTS_ROOT`, the folder you set in `.env`, or only the ones named in `SWARMLOOP_REPOS`. The server only resolves, fetches and works in those; a run that names another repository is refused. `POST /runs/shell` and a run `path` must lie inside one of them or inside `worktrees/`. The agent edits its own worktree, not your working copy. Nothing is pushed, and Jira is not called.
+The repository list is every git clone in `CHECKOUTS_ROOT`, or only the ones named in `SWARMLOOP_REPOS`. The server only resolves, fetches and works in those; a run that names another repository is refused. `POST /runs/shell` and a run `path` must lie inside one of them or inside `worktrees/`. The agent edits its own worktree, not your working copy. Nothing is pushed, and Jira is not called.
 
-**Update:** `docker compose pull && docker compose up -d`. To stay on one release, set `SWARMLOOP_VERSION` in `.env`, for example `0.2.0`. Before it migrates the database, the server copies it to `data/backups/` (the last 3 are kept). An older version refuses a database a newer one migrated and names the backup. To go back: `docker compose down`, copy that backup over `data/swarmloop.sqlite`, delete `data/swarmloop.sqlite-wal` and `-shm`, copy the session files from its `.sessions` folder into `data/`, set the older `SWARMLOOP_VERSION` and `docker compose up -d`.
+**Update:** from a release folder, `docker compose pull && docker compose up -d`; from a clone, `git pull && docker compose up -d --build`. To stay on one release, set `SWARMLOOP_VERSION` in `.env`, for example `0.2.0`. `SWARMLOOP_HOME`, `UID` and `COMPOSE_FILE` are Compose controls, not server settings. **If your `.env` still has a `COMPOSE_FILE=compose.yml:compose.build.yml` line, delete it:** that file is gone, and Compose refuses to start while the line is there. Before it migrates the database, the server copies it to `data/backups/` (the last 3 are kept). An older version refuses a database a newer one migrated and names the backup. To go back: `docker compose down`, copy that backup over `data/swarmloop.sqlite`, delete `data/swarmloop.sqlite-wal` and `-shm`, copy the session files from its `.sessions` folder into `data/`, set the older `SWARMLOOP_VERSION` and `docker compose up -d`.
 
 ### 🚢 Commit, merge request, and CI
 
 Start: `docker compose up -d`, open the dashboard, then **Connect GitHub** (a private GitHub App made from a manifest, on the account that owns your repositories) or **Connect GitLab**. After the app is made, the page asks you to install it on the repositories, and the login comes after the install. Every run then uses the access of the person who started it, and a run whose token was revoked waits with `GIT_AUTH` until that person reconnects. The browser always needs a session; the CLI, ACP and scripts keep using the machine token (`SWARMLOOP_TOKEN` bearer). Secrets are stored encrypted with `SWARMLOOP_SECRET` (or a key made in `data/secret`).
 
-For a headless setup, or for runs started by the CLI or a script, add a git token to `.env` instead and run `docker compose up -d` again. This time leave **ci** ticked. When the reviewers pass, the server pushes a feature branch, opens a merge request, and watches the pipeline. Nobody has to click in between.
+For a headless setup, or for runs started by the CLI or a script, copy the empty `GITHUB_TOKEN` or `GITLAB_TOKEN` line from `defaults.env` into `.env` (or set it in the shell) and set a git token instead and run `docker compose up -d` again. This time leave **ci** ticked. When the reviewers pass, the server pushes a feature branch, opens a merge request, and watches the pipeline. Nobody has to click in between.
 
 - GitHub needs `GITHUB_TOKEN`. GitLab needs `GITLAB_TOKEN`, and `GITLAB_BASE_URL` when it is self-hosted. Both may be set. The server picks the host whose hostname equals the checkout `origin`.
 - The same token is also used to fetch the base branch, and a run on an SSH origin stops at prepare without it.
@@ -157,7 +158,7 @@ CI configuration is committed like other project files when the task requires it
 
 ### 🔑 Headless setup
 
-For scripts, CI and servers without a browser, put the tokens in `.env` instead of Connections. They stay the server fallback: a person's own connection is used first, and readiness does not ask for an env token when the connection exists. Uncomment them in `.env.example`.
+For scripts, CI and servers without a browser, set the tokens instead of using Connections: copy their empty lines from `defaults.env` into `.env`, or set them in the shell. They stay the server fallback: a person's own connection is used first, and readiness does not ask for an env token when the connection exists.
 
 - Claude: `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` to use your Claude subscription, or `ANTHROPIC_API_KEY` from [Claude Console](https://platform.claude.com/settings/keys).
 - Cursor: set `CURSOR_API_KEY` from the [Cursor dashboard](https://cursor.com/dashboard), **API Keys** (it uses your Cursor plan, so there is no separate API bill), and switch `AGENTS_PLAN`, `AGENTS_IMPLEMENT` and `AGENTS_REVIEW` to `cursor:<model>`.
@@ -209,7 +210,7 @@ The `data/` folder holds secrets: the Codex login, the session files and the his
 - When a plan splits into subtasks, the parent run's agents go up to `EPIC_EFFORT` by themselves (never down), and the step header says so.
 - Dollars come from the vendor's published price list, cached for a day.
 - Another agent is the same three pieces: a sandbox image under `docker/sandbox`, its API hosts and key, and the code that reads its output. The pipeline, the history, and the panel stay as they are.
-- For contributors building from a checkout, `docker/sandbox/build.sh` builds the three agent images and the `swarmloop-egress` proxy image (`compose.build.yml` builds them too). Run it again after you update swarmloop. Docker reuses its cache, so to get newer CLIs and certificates run `docker/sandbox/build.sh --fresh`, every few months is enough. Each image keeps its whole CLI under `/opt/swarmloop`, together with a CA certificate bundle (the public root list of Debian's `ca-certificates` package) and, for Codex, `rg`. swarmloop can therefore mount the CLI into another image.
+- For contributors building from a checkout, `docker/sandbox/build.sh` builds the three agent images and the `swarmloop-egress` proxy image (`compose.override.yml` builds them too). Run it again after you update swarmloop. Docker reuses its cache, so to get newer CLIs and certificates run `docker/sandbox/build.sh --fresh`, every few months is enough. Each image keeps its whole CLI under `/opt/swarmloop`, together with a CA certificate bundle (the public root list of Debian's `ca-certificates` package) and, for Codex, `rg`. swarmloop can therefore mount the CLI into another image.
 - `scripts/agent-env-probe.sh <image>...` shows whether each CLI starts in a given image, for example `scripts/agent-env-probe.sh node:22-bookworm-slim php:8.3-cli`. Claude and Cursor need a glibc image with `bash`, so Debian or Ubuntu based. Alpine images do not work for them. Codex is one static binary and starts anywhere.
 
 ### 🎫 Jira, Confluence, and Google Drive
@@ -257,7 +258,7 @@ A project tailors swarmloop with `.swarmloop.json` and `skills/`, and puts its o
 
 ### 🔍 Five reviewers, and they can say no
 
-Requirements, quality, regressions, security, and performance review the diff at the same time, on a read-only mount. A report sums them up. Each reviewer ends with `decision: ok` or `decision: return`. A return sends the run back to implementation with the finding. A red pipeline does the same, on its own counter. `.env.example` allows 10 review returns and 6 pipeline returns.
+Requirements, quality, regressions, security, and performance review the diff at the same time, on a read-only mount. A report sums them up. Each reviewer ends with `decision: ok` or `decision: return`. A return sends the run back to implementation with the finding. A red pipeline does the same, on its own counter. `defaults.env` allows 10 review returns and 6 pipeline returns.
 
 A diff that was already reviewed is not returned a second time.
 
@@ -279,7 +280,7 @@ When CI does not start and GitHub or GitLab confirms a merge conflict for the pu
 
 ### 💰 Limits on money, tokens, and time
 
-| Setting | What it limits | `.env.example` |
+| Setting | What it limits | `defaults.env` |
 | --- | --- | --- |
 | `MAX_RUN_USD` | Dollars per run. Once reached, the next step does not start. | `100` |
 | `RETAIN_DONE_DAYS` | Days a done run keeps worktrees, agent state and outputs. `0` keeps all. | `3` |
@@ -290,7 +291,7 @@ When CI does not start and GitHub or GitLab confirms a merge conflict for the pu
 | `MAX_AGENT_CALLS` | Model processes per run | `100` |
 | `MAX_RETURNS` | Review returns to implementation | `10` |
 | `MAX_PIPELINE_RETURNS` | Red pipelines sent back | `6` |
-| `CHECKS_PARALLEL` | Check commands that run at once on the whole server | `3` |
+| `CHECKS_PARALLEL` | Check commands that run at once on the whole server | `9` |
 | `RESERVE_MEMORY_GB` | Memory in GB of the Docker host kept free for the server and the dashboard; every sandbox container may take at most the memory Docker has minus this reserve | `2` |
 | `MAX_LAUNCHES` | Relaunches of a step that crashed before it decided | `3` |
 | `LIMIT_COOLDOWN_MIN` | Minutes a runtime stays out of use after a provider usage limit whose text names no reset time | `60` |
@@ -336,7 +337,7 @@ bin/swarmloop run PROJ-123 --prompt "what this ticket is"
 
 JetBrains IDEs do not have a swarmloop plugin. From 2025.3 on, AI Assistant starts `bin/sloop` as a custom ACP agent and talks to it in AI Chat. The chat then reads and writes the same runs as the CLI. An older version shows only the built-in models in that chat, and **Add Custom Agent** is not in the menu.
 
-The swarmloop API has to be up on `127.0.0.1:3920`. Started from source (`compose.build.yml`), `docker compose up` also copies the built client to `server/dist`, which is what `bin/sloop` runs. The IDE does not need a separate `npm run build`.
+The swarmloop API has to be up on `127.0.0.1:3920`. Started from a clone (`compose.override.yml`), `docker compose up` also copies the built client to `server/dist`, which is what `bin/sloop` runs. The IDE does not need a separate `npm run build`.
 
 Then, in the IDE:
 
@@ -381,24 +382,24 @@ When the API is on another machine, set the URL in `env`:
 
 | Variable | Values |
 | --- | --- |
-| `AGENTS_PLAN` | Agents of the `plan` role (research, plan, plan improve, the merge request text), `runtime:model[:effort]`, comma-separated. The first is used, the rest are the fallback order. Required; `.env.example` sets `claude:…`. Each person can override it in Settings. |
-| `AGENTS_IMPLEMENT` | Agents of the `implement` role (implement, implement improve, rebase conflicts, chat and shell). Required; `.env.example` sets `claude:…`. Each person can override it in Settings. |
-| `AGENTS_REVIEW` | Agents of the `review` role (every code reviewer and the review report). Required; `.env.example` sets `claude:…`. Each person can override it in Settings. |
+| `AGENTS_PLAN` | Agents of the `plan` role (research, plan, plan improve, the merge request text), `runtime:model[:effort]`, comma-separated. The first is used, the rest are the fallback order. The default is in `defaults.env`. Each person can override it in Settings. |
+| `AGENTS_IMPLEMENT` | Agents of the `implement` role (implement, implement improve, rebase conflicts, chat and shell). The default is in `defaults.env`. Each person can override it in Settings. |
+| `AGENTS_REVIEW` | Agents of the `review` role (every code reviewer and the review report). The default is in `defaults.env`. Each person can override it in Settings. |
 | `AGENTS_SUBTASK_PLAN`, `AGENTS_SUBTASK_IMPLEMENT`, `AGENTS_SUBTASK_REVIEW` | The same for a run with a parent. Empty: the main role. Each person can override it in Settings. |
 | `EPIC_EFFORT` | The effort the parent of a split run works at: `low`, `medium`, `high`, `xhigh` or `max`. It only raises an agent's own effort. Default `xhigh`; empty turns it off. |
 | `SPLIT` | `auto`: the planner may split a big task into subtasks, `off`: it never does; set per server, not per run in the dashboard. Default `auto`. |
 | `ISSUE_TRACKER` | `jira` |
 | `REQUIREMENTS_VIA` | `agent` or `direct`. Both build the requirements record in the server. The model does not rewrite it. |
-| `CHECKOUTS_ROOT` | Folder of git clones listed in **New run**. It must hold only the repositories swarmloop works on. |
+| `CHECKOUTS_ROOT` | Folder of git clones listed in **New run**. Default `..`, the folder above the one that holds `compose.yml`. It must hold only the repositories swarmloop works on. |
 | `SWARMLOOP_REPOS` | Repository folder names under `CHECKOUTS_ROOT`, comma-separated. Empty: every repository there. |
 | `SWARMLOOP_PUBLIC_URL` | The address of the dashboard. The API and the dashboard answer only to `127.0.0.1`, `localhost`, this host and the compose names (anything else gets 421). Default `http://127.0.0.1:3921`. |
-| `TICK_MS` | How often a running pipeline is polled. `.env.example` uses `15000`. |
-| `SWARMLOOP_API_HOST`, `SWARMLOOP_API_PORT` | Where the API listens. `.env.example` uses `127.0.0.1:3920`. Without a login provider the server refuses to start on another address. |
+| `TICK_MS` | How often a running pipeline is polled. `defaults.env` uses `15000`. |
+| `SWARMLOOP_API_HOST`, `SWARMLOOP_API_PORT` | Where the API listens. `defaults.env` uses `127.0.0.1:3920`. Without a login provider the server refuses to start on another address. |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, `GITLAB_OAUTH_CLIENT_ID`, `GITLAB_OAUTH_CLIENT_SECRET` | Login with GitHub or GitLab. See [Login](#login). |
 | `SWARMLOOP_ALLOW` | Who may log in: `github:<user>`, `github-org:<org>`, `gitlab:<user>`, `gitlab-group:<group>`. Empty: a person who can push to a repository this server works on, or the first person to log in on the server's own machine while nobody is connected; a plain GitHub OAuth App from `.env` keeps the owner of `GITHUB_TOKEN`. |
 | `SWARMLOOP_TOKEN` | Bearer token for the CLI, ACP and scripts. Empty: made in `data/token`. |
 
-Spend, tokens, retries, and timeouts are in [Limits](#-limits-on-money-tokens-and-time). A missing model key does not stop the start: readiness names the runtime and links to its card. Copy `.env.example` and change what you want.
+Spend, tokens, retries, and timeouts are in [Limits](#-limits-on-money-tokens-and-time). A missing model key does not stop the start: readiness names the runtime and links to its card. To change a setting, copy its line from `defaults.env` into `.env` next to `compose.yml`, or set it in the shell.
 
 ## 👥 For a team
 
@@ -416,7 +417,7 @@ The panel has a login with GitHub and with GitLab. Nothing acts without a sessio
 
 The GitHub App made from the dashboard is private and belongs to the account that owns the repositories. A private app can be installed only on its owner, and only that account or the members of the owning organization can sign in to it. People outside the organization (outside collaborators) cannot sign in to a private organization app: add them to the organization instead. An install started on GitHub's own page returns to swarmloop with `Installed on <account>` and a Log in button. Connections has **Replace app** for the person who made the app, with a confirm that names who gets disconnected. It starts the same manifest flow as first run, and the old app keeps working until GitHub returns the new one; only then are the connections made through the old app removed, and their runs wait with `GIT_AUTH` until those people log in again. Cancelling on GitHub changes nothing. The app on GitHub stays, and Connections links to its settings for deleting it.
 
-The Settings page lets each person choose the agents per role and tier for their own runs. The `AGENTS_*` values in `.env` are the server default. The choice is read when a run starts and kept on the run.
+The Settings page lets each person choose the agents per role and tier for their own runs. The `AGENTS_*` values (set in `defaults.env`, overridden by `.env` or the shell) are the server default. The choice is read when a run starts and kept on the run.
 
 A session lasts 14 days, or until Logout. Every run records who started it, and the run page shows it. The CLI, ACP, smoke and scripts send `SWARMLOOP_TOKEN` as `Authorization: Bearer <token>`. When it is empty the server makes one in `data/token`, and `docker compose exec server node dist/main.js doctor` prints it.
 
