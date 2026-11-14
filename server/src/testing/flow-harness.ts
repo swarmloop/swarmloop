@@ -174,7 +174,7 @@ function wire(harness: FlowHarness, key: string, taskWorktrees = false): void {
  * The origin becomes a gitlab url, which `remoteProject` parses. A push still reaches the local bare repository through
  * `pushInsteadOf`; `insteadOf` on the plain url would show the bare path in `remote get-url`, so it names only the url with the token.
  */
-function useGitlabOrigin(root: string, tree: string): void {
+export function useGitlabOrigin(root: string, tree: string): void {
   const bare = join(root, `${REPO}.git`);
   git(tree, ['remote', 'set-url', 'origin', ORIGIN]);
   git(tree, ['config', '--add', `url.${bare}.pushInsteadOf`, ORIGIN]);

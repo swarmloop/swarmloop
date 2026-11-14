@@ -28,10 +28,6 @@ export interface AgentLaunchRequest extends EffortFields {
   continuePrompt?: string | null;
   /** The full prompt for a fresh chat when `prompt` is a follow-up and the CLI no longer has the chat. */
   freshPrompt?: string;
-  sections?: string[];
-  /** Validates the completed answer before returning it. A missing or empty named section gets one focused retry. */
-  validate?: (text: string, output: string | undefined) => void;
-  parseFailureEnding?: string | null;
   /** The result block the answer must end with. A missing or invalid block gets up to two follow-ups in the same chat. */
   result?: ResultDefinition;
   /** Checks a validated result. Each message it returns goes into the follow-up like a schema error. */

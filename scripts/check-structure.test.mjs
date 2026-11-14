@@ -280,3 +280,87 @@ test('forbidOutside reports a host name in the login page and lets the host map 
   assert.equal(violations.length, 1);
   assert.match(violations[0], /^dashboard\/app\/login\/page\.tsx:1:/);
 });
+
+function check(files) {
+  return findViolations({ root: makeRoot(files), rules, files: Object.keys(files) });
+}
+
+test('agent answer rules report a section( call on an answer in steps/', () => {
+  const violations = check({ 'server/src/steps/x/x.step.ts': "const body = section(answer, 'plan');\n" });
+
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], /^server\/src\/steps\/x\/x\.step\.ts:1:/);
+});
+
+test('agent answer rules report each prose read in its directory', () => {
+  const cases = {
+    'server/src/steps/x/a.ts': 'const text = run.agentResult.responseText;\n',
+    'server/src/pipeline/b.ts': "const raw = stepOutput(root, key, 'plan', attempt);\n",
+    'server/src/api/c.ts': 'const list = items(body);\n',
+    'server/src/api/d.ts': "const cells = line.split('|');\n",
+    'server/src/steps/x/e.ts': 'const label = /^questions:/m.exec(body);\n',
+    'server/src/steps/x/f.ts': "const text = 'End with these sections: plan, summary.';\n",
+    'server/src/steps/x/g.ts': "const text = 'Finish with a line decision: ok or return.';\n",
+  };
+
+  for (const [file, text] of Object.entries(cases)) {
+    const violations = check({ [file]: text });
+    assert.equal(violations.length, 1, file);
+    assert.match(violations[0], new RegExp(`^${file.replaceAll('.', '\\.')}:1:`));
+  }
+});
+
+test('agent answer rules let the allowed files keep the same lines', () => {
+  const cases = {
+    'server/src/steps/shared/agent-launcher.ts': 'const text = result.responseText;\n',
+    'server/src/steps/shared/model-visit.ts': 'const text = agent.responseText;\n',
+    'server/src/steps/shared/answers.ts': 'const label = /^answer:/m.exec(body);\nconst list = items(body);\n',
+  };
+
+  for (const [file, text] of Object.entries(cases)) {
+    assert.deepEqual(check({ [file]: text }), [], file);
+  }
+});
+
+test('agent answer rules skip spec files and files outside the three directories', () => {
+  assert.deepEqual(
+    check({
+      'server/src/steps/x/x.step.spec.ts': "const body = section(answer, 'plan');\n",
+      'server/src/steps/x/x.spec-helpers.ts': 'const text = run.responseText;\n',
+      'server/src/agent-result/read.ts': "const raw = stepOutput(root, key, 'plan', attempt);\n",
+      'server/src/contract/readable-log.ts': 'const list = items(body);\n',
+    }),
+    [],
+  );
+});
+
+test('agent answer rules do not match helper names or an object key that only look alike', () => {
+  assert.deepEqual(
+    check({
+      'server/src/steps/x/x.step.ts':
+        "const view = withSections(items.map(sectionOf));\nconst record = { decision: 'ok' };\nconst text = 'decision: ok when it is fixed.';\n",
+    }),
+    [],
+  );
+});
+
+test('a forbidOutside include may be a list of prefixes', () => {
+  const listRules = { ...rules, forbidOutside: [{ include: ['a/', 'b/'], pattern: 'bad' }] };
+  const files = { 'a/x.ts': 'bad\n', 'b/y.ts': 'bad\n', 'c/z.ts': 'bad\n' };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules: listRules, files: Object.keys(files) });
+
+  assert.deepEqual(violations, ['a/x.ts:1: bad', 'b/y.ts:1: bad']);
+});
+
+test('the dashboard rule reports a decision read out of a log and lets a stored decision field be read', () => {
+  const violations = check({
+    'dashboard/features/run/live-chip.ts': 'const decision = /^decision: (ok|return)/m.exec(log);\n',
+  });
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], /^dashboard\/features\/run\/live-chip\.ts:1:/);
+
+  assert.deepEqual(check({ 'dashboard/features/run/chip.ts': "const ok = visit.decision === 'decision: ok';\n" }), []);
+  assert.deepEqual(check({ 'dashboard/features/run/chip.test.ts': 'const line = log.match(/^decision: ok/m);\n' }), []);
+});

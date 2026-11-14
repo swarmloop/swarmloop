@@ -13,6 +13,7 @@ swarmloop runs coding agents through a fixed flow: requirements, research, plan,
 - What the dashboard shows of a run comes from that run's own state, live; never from a copy that another run wrote.
 - Never log a secret, put it in a URL, or send it to the browser.
 - Text the dashboard shows is plain words for a person: no raw JSON, no internal ids or class names, each document shown by its kind.
+- An agent hands data to the server only as the JSON block of its step's result, declared with defineResult in server/src/agent-result/; never read structured data out of an agent's prose.
 
 ## Code structure
 

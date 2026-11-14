@@ -17,21 +17,13 @@ import { sessionFileName } from '../../history/session-group';
 import { VisitRepository } from '../../history/visit.repository';
 import { assertNotStopped } from './step-stopped';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
-import { section } from './markdown-section';
 import { promptSections } from './prompt-manifest';
-import { combineAgentResults } from './agent-result';
-import { parseFailureFollowUp } from './parse-failure-follow-up';
 import { LimitFailover } from './limit-failover';
 import type { AgentLaunchRequest } from './agent-launch-request';
 import { loopWatch, newChatReason, recordWork } from './launch-work';
 import { answerIsReadable, exchangeResult, resultFollowUpRequest, withAnswerErrors } from './result-exchange';
 import type { LaunchResult } from './result-exchange';
 import { readResult } from '../../agent-result/read-result';
-
-/** An answer is complete when every named section is in it. */
-function hasSections(names: string[]): (text: string) => boolean {
-  return (text) => names.every((name) => section(text, name) !== null);
-}
 
 function withRules(prompt: string): string {
   return `${AGENT_LANGUAGE_RULE}\n${AGENT_FOREGROUND_RULE}\n\n${prompt}`;
@@ -85,7 +77,7 @@ export class AgentLauncher {
       );
       return { ...exchange.result, resultValue: exchange.value };
     }
-    return this.parseFollowUpRun(request, result);
+    return result;
   }
 
   private async runOnce(request: AgentLaunchRequest): Promise<AgentRunResult> {
@@ -178,37 +170,10 @@ export class AgentLauncher {
     return result;
   }
 
-  /** The answer is complete when its result block is valid, or when every named section is in it. */
+  /** The answer is complete when its result block is valid. */
   private answered(request: AgentLaunchRequest): ((text: string) => boolean) | undefined {
     const definition = request.result;
-    if (definition) {
-      return (text) => readResult(definition, text).ok;
-    }
-    return request.sections && hasSections(request.sections);
-  }
-
-  private async parseFollowUpRun(request: AgentLaunchRequest, result: AgentRunResult): Promise<AgentRunResult> {
-    const followUp =
-      result.exitCode === 0 &&
-      !result.limit &&
-      !result.backgroundKilled &&
-      result.responseText !== undefined &&
-      request.validate
-        ? this.parseFailureFollowUp(request, result)
-        : null;
-    if (!followUp) {
-      return result;
-    }
-    const retried = await this.launchOn({
-      ...request,
-      prompt: followUp,
-      freshPrompt: request.freshPrompt ?? request.prompt,
-      continuePrompt: null,
-      resume: undefined,
-      validate: undefined,
-      parseFailureEnding: null,
-    });
-    return combineAgentResults([result, retried]) ?? retried;
+    return definition && ((text) => readResult(definition, text).ok);
   }
 
   /** An effort the runtime could not give is said once per launch: what the model supports and what ran instead. */
@@ -222,15 +187,6 @@ export class AgentLauncher {
         wanted,
         text: `${request.model} supports up to ${request.effort}; ran at ${request.effort} instead of ${wanted}.`,
       });
-    }
-  }
-
-  private parseFailureFollowUp(request: AgentLaunchRequest, result: AgentRunResult): string | null {
-    try {
-      request.validate?.(result.responseText, result.output);
-      return null;
-    } catch (error) {
-      return parseFailureFollowUp(error, request.parseFailureEnding ?? null);
     }
   }
 }

@@ -25,10 +25,6 @@ export interface ModelStepContext {
     /** The full prompt, for the fresh chat that starts when the CLI no longer has the stored one. */
     freshPrompt?: string;
     resume?: boolean;
-    /** The sections the answer must hold. A kill of background work that leaves one out fails the step as ended early. */
-    sections?: string[];
-    /** Checks the final answer before returning it, so a malformed answer can be corrected in the same chat. */
-    validate?: (text: string, output: string | undefined) => void;
     project?: ProjectLaunch;
     /** The full prompt for a new chat on the given runtime, when the launch moves to another agent after a provider limit. */
     briefFor?: (runtime: RuntimeName) => string;

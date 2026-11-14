@@ -2,30 +2,7 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { bulletSection } from './markdown-section';
 import { requirementsBrief } from './requirements-brief';
-
-export function parseSummary(text: string): string {
-  return bulletSection(text, 'summary');
-}
-
-export function summaryOr(text: string, fallback: string): string {
-  try {
-    return parseSummary(text);
-  } catch (error) {
-    if (
-      !(error instanceof SwarmloopError) ||
-      (error.message !== 'summary is missing' && error.message !== 'summary is empty')
-    ) {
-      throw error;
-    }
-    const body = fallback.trim();
-    if (!body) {
-      throw new SwarmloopError('summary is missing');
-    }
-    return body.endsWith('\n') ? body : `${body}\n`;
-  }
-}
 
 /** The name a prompt gives a mounted repository. */
 export function mountLabel(names: string[], mount: SandboxMount, index: number): string {

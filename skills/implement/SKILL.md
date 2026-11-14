@@ -16,9 +16,11 @@ For a pipeline return, or a review return that names a failing test: first run t
 
 A change that makes a failed job pass is part of the task only within the task's own files. A red check or CI job in code or tests that a sibling task owns (the task map says who owns what), or in code that no task owns, such as a test that is flaky on the base, is named as the cause in `cause` and left alone: change nothing for it, and do not do a sibling's work to make a job green. When the task needs something a sibling task makes that is not merged yet, or its failed job is in a sibling's code, fill `needs` with one entry per sibling task, its `id` and `what` it needs from that task, and leave `implementation` empty: nothing is committed, the task waits, and this step runs again when that sibling is merged. A run that is not a subtask sends no `needs`.
 
+Send data only in the result block; code never reads it from prose.
+
 Tests: a test must fail when the change is reverted. It checks behavior through the public interface the tree already tests, not private calls or mock call counts. It does not restate the implementation. It does not snapshot a large output where one value is what matters.
 
-Package registries are reachable for a library install. Do not call Jira, GitLab, or any other host.
+Package registries are reachable for a library install. Call no other host.
 
 End the answer with the result block. `implementation` says what changed. `summary` says why this way, and ends with one line for each item of the input or the plan that is not built, `not built: <item> - <why>`, or the single line `not built: nothing`. Stopping part way without that line is never allowed. After a return, fix the broken behavior named in the note. Do not add a mechanism it did not name. `summary` says that behavior now holds. If a finding was wrong for this codebase or version, say that in one line. A pipeline return is a test that failed on this commit. Change the code or that test. Do not leave those files as they are. A pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix. When an item changes, send the full corrected checklist in `plan`. Without a contradiction, leave `plan` out.
 

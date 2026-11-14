@@ -93,7 +93,7 @@ export class AttemptMeter {
     return hasModelDecision(this.decision, answered);
   }
 
-  /** A background task ended after the result line, and the answer lacks one of the sections the step needs. */
+  /** A background task ended after the result line, and the answer has no valid result block. */
   backgroundKilled(answered: ((text: string) => boolean) | undefined): boolean {
     return this.endedAfterResult && answered !== undefined && !answered(this.responseText);
   }

@@ -1,31 +1,9 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { implementFollowUp, implementImproveFollowUp } from '../implement/implement.prompts';
-import { parseSummary, skillPrompt, skillText, summaryOr } from './skill-prompt';
+import { skillPrompt, skillText } from './skill-prompt';
 
 const skill = (name: string): string => readFileSync(join(__dirname, '../../../../skills', name, 'SKILL.md'), 'utf8');
-
-const old = ['implementation:', '- changed A', '', 'summary:', '- why', ''].join('\n');
-const withCause = ['cause:', '- the parser dropped the suffix', '', old].join('\n');
-const causeAfter = `${old}\ncause:\n- late cause\n`;
-
-describe('parseSummary', () => {
-  it('reads the summary of an old answer', () => {
-    expect(parseSummary(old)).toBe('- why\n');
-  });
-
-  it('keeps a cause section out of the summary', () => {
-    expect(parseSummary(withCause)).toBe('- why\n');
-    expect(parseSummary(causeAfter)).toBe('- why\n');
-  });
-});
-
-describe('summaryOr', () => {
-  it('reads the summary and falls back when it is missing', () => {
-    expect(summaryOr(withCause, 'fallback')).toBe('- why\n');
-    expect(summaryOr('cause:\n- only a cause\n', 'fallback')).toBe('fallback\n');
-  });
-});
 
 describe('impact skill rules', () => {
   it('research holds the impact section, the question form and the naming rule', () => {

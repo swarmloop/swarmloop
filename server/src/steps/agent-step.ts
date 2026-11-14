@@ -30,7 +30,6 @@ import { artifact, firstLine } from './contract/artifact';
 import type { Artifact } from './contract/artifact';
 import { ARTIFACTS, INSTRUCTIONS } from './contract/artifacts';
 import { ResultInvalid } from './shared/answer-errors';
-import { answerEnding } from './shared/parse-failure-follow-up';
 import type { ModelStepContext } from './model-step-context';
 import { textDocument } from './shared/handoff';
 import type { LaunchResult } from './shared/result-exchange';
@@ -287,9 +286,6 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
         failover: true,
         brief: launch.freshPrompt === undefined ? prompt : withInstructions(launch.freshPrompt),
         briefFor: launch.briefFor && ((runtime) => withInstructions(launch.briefFor?.(runtime) ?? prompt)),
-        sections: launch.sections,
-        validate: launch.validate,
-        parseFailureEnding: answerEnding(this.name),
         result: launch.result,
         check: launch.check,
         answerErrors,
