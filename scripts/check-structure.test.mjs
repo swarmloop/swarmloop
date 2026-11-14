@@ -116,6 +116,35 @@ test('no compose file mounts data/ into the dashboard', () => {
   assert.deepEqual(check('services:\n  dashboard:\n    image: x\n'), []);
 });
 
+test('compose.yml permits the stack folder mount and the parent checkouts interpolation', () => {
+  const composeRules = {
+    ...rules,
+    forbidInFile: rules.forbidInFile.filter(({ file }) => file === 'compose.yml'),
+  };
+  const check = (text) => findViolations({ root: makeRoot({ 'compose.yml': text }), rules: composeRules, files: [] });
+  const stack =
+    'services:\n  server:\n    image: x\n    environment:\n      - SWARMLOOP_ENV_FILE=/app/stack/.env\n    volumes:\n      - .:/app/stack:ro\n      - ${CHECKOUTS_ROOT:-..}:/checkouts\n';
+
+  assert.deepEqual(check(stack), []);
+  assert.equal(check(`${stack}      - ./server:/app\n`).length, 1);
+  assert.equal(check(`${stack}      - ../repo:/x\n`).length, 1);
+});
+
+test('compose.override.yml may not mount data/ into the dashboard', () => {
+  const composeRules = {
+    ...rules,
+    forbidInFile: rules.forbidInFile.filter(({ file }) => file.startsWith('compose')),
+  };
+  const check = (text) =>
+    findViolations({ root: makeRoot({ 'compose.override.yml': text }), rules: composeRules, files: [] });
+
+  assert.equal(
+    check('services:\n  dashboard:\n    volumes:\n      - ./data:/app/dashboard/public/run-logs:ro\n').length,
+    1,
+  );
+  assert.deepEqual(check('services:\n  dashboard:\n    build:\n      context: .\n'), []);
+});
+
 test('release.yml reacts to tags only', () => {
   const workflowRules = {
     ...rules,

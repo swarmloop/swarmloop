@@ -10,13 +10,12 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { writeFileSync } from 'fs';
 
-import { writeFile } from 'fs/promises';
-
 import { join } from 'path';
 
 import type { Repository } from 'typeorm';
 
 import { SwarmloopConfigModule } from '../../config/config.module';
+import { writeEnvOverrides } from '../../testing/env.spec-helpers';
 
 import { DocumentEntity } from '../../history/entities';
 
@@ -34,45 +33,25 @@ export async function boot(
   bases: { gitlab?: string; github?: string; gitlabToken?: string; githubToken?: string } = {},
   repos = '',
 ): Promise<TestingModule> {
-  await writeFile(
-    join(root, '.env'),
-    [
-      'REQUIREMENTS_VIA=direct',
-      'ISSUE_TRACKER=jira',
-      'JIRA_BASE_URL=http://127.0.0.1:9',
-      'JIRA_EMAIL=dev@example.com',
-      'JIRA_API_TOKEN=token',
-      `GITLAB_BASE_URL=${bases.gitlab ?? ''}`,
-      `GITLAB_TOKEN=${bases.gitlabToken ?? ''}`,
-      `GITHUB_BASE_URL=${bases.github ?? ''}`,
-      `GITHUB_TOKEN=${bases.githubToken ?? ''}`,
-      'CURSOR_API_KEY=',
-      'ANTHROPIC_API_KEY=',
-      'MAX_AGENT_CALLS=20',
-      'MAX_RETURNS=3',
-      'MAX_LAUNCHES=3',
-      'MAX_RUN_USD=25',
-      'IDLE_TIMEOUT_MS=900000',
-      'TICK_MS=15000',
-      'REQUIREMENTS_TIMEOUT_MS=600000',
-      'RESEARCH_TIMEOUT_MS=900000',
-      'PLAN_TIMEOUT_MS=1200000',
-      'IMPLEMENT_TIMEOUT_MS=1800000',
-      'CODE_REVIEW_TIMEOUT_MS=900000',
-      'MERGE_REQUEST_TIMEOUT_MS=600000',
-      'PIPELINE_TIMEOUT_MS=1800000',
-      'PIPELINE_START_TIMEOUT_MS=180000',
-      'AGENTS_PLAN=cursor:opus-5.5-extra-high',
-      'AGENTS_IMPLEMENT=cursor:grok-4.7',
-      'AGENTS_REVIEW=cursor:opus-5.5-extra-high',
-      'SWARMLOOP_API_PORT=3920',
-      'SWARMLOOP_API_HOST=127.0.0.1',
-      `SWARMLOOP_ROOT=${root}`,
-      checkoutsRoot === undefined ? '' : `CHECKOUTS_ROOT=${checkoutsRoot}`,
-      `SWARMLOOP_REPOS=${repos}`,
-      '',
-    ].join('\n'),
-  );
+  await writeEnvOverrides(root, {
+    REQUIREMENTS_VIA: 'direct',
+    JIRA_BASE_URL: 'http://127.0.0.1:9',
+    JIRA_EMAIL: 'dev@example.com',
+    JIRA_API_TOKEN: 'token',
+    GITLAB_BASE_URL: bases.gitlab ?? '',
+    GITLAB_TOKEN: bases.gitlabToken ?? '',
+    GITHUB_BASE_URL: bases.github ?? '',
+    GITHUB_TOKEN: bases.githubToken ?? '',
+    MAX_AGENT_CALLS: '20',
+    MAX_RETURNS: '3',
+    MAX_RUN_USD: '25',
+    AGENTS_PLAN: 'cursor:opus-5.5-extra-high',
+    AGENTS_IMPLEMENT: 'cursor:grok-4.7',
+    AGENTS_REVIEW: 'cursor:opus-5.5-extra-high',
+    SWARMLOOP_ROOT: root,
+    ...(checkoutsRoot === undefined ? {} : { CHECKOUTS_ROOT: checkoutsRoot }),
+    SWARMLOOP_REPOS: repos,
+  });
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })

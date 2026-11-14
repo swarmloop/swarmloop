@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
+import { readDefaultSettings } from '../config/load-env';
 import { DiskGuard } from '../pipeline/disk-guard';
 import { CommandService } from '../pipeline/command.service';
 import * as delays from '../core/delay';
@@ -21,8 +22,8 @@ import { createTestApp, type TestApp } from './test-app';
 const REPO = 'demo';
 const PROJECT = 'group/demo';
 const ORIGIN = `https://gitlab.example/${PROJECT}.git`;
-/** The default of `RECONCILE_MS`, which the test env keeps. */
-const RECONCILE_MS = 60_000;
+/** The shipped `RECONCILE_MS`, which the test env keeps. */
+const RECONCILE_MS = Number(readDefaultSettings().RECONCILE_MS);
 
 /** One whole-flow world: the real pipeline driver and reconciler on a fake code host, a fake sandbox and a fake clock. */
 interface FlowHarness {

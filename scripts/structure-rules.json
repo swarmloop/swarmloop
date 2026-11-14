@@ -194,7 +194,7 @@
       "pattern": "data[^\\n]*:/app/dashboard"
     },
     {
-      "file": "compose.build.yml",
+      "file": "compose.override.yml",
       "pattern": "data[^\\n]*:/app/dashboard"
     }
   ]

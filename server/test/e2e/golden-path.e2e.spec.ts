@@ -1,5 +1,6 @@
 import { existsSync } from 'fs';
 import type { FlowView, RunsView, RunRef, StepView } from '../../src/contract/api';
+import { FAKE_MODEL_KEY } from '../../src/testing/env.spec-helpers';
 import { createTestApp, ScriptedFakeAgentRunner } from '../../src/testing/test-app';
 import { featureWorktree } from '../../src/testing/runs.spec-helpers';
 import { RunRepository } from '../../src/history/run.repository';
@@ -8,7 +9,7 @@ import { VisitRepository } from '../../src/history/visit.repository';
 describe('HTTP API golden path', () => {
   it('creates a run and reads its completed state', async () => {
     const runner = new ScriptedFakeAgentRunner();
-    const testApp = await createTestApp({ runner });
+    const testApp = await createTestApp({ runner, env: FAKE_MODEL_KEY });
     const root = testApp.root;
     try {
       featureWorktree(root, 'TEST-1');

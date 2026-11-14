@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import type { ReadinessView } from '../contract/readiness';
-import type { ReadinessService } from '../readiness/readiness.service';
+import { RunRepository } from '../history/run.repository';
+import { ReadinessService } from '../readiness/readiness.service';
 import { createTestApp } from '../testing/test-app';
 import { ReadinessController } from './readiness.controller';
 
@@ -49,6 +50,30 @@ describe('ReadinessController', () => {
         status: 'fail',
         link: '/connections#claude',
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('starts with no .env and no model key, answers health, names the runtime and refuses a new run', async () => {
+    const app = await createTestApp({ envFile: false });
+    try {
+      // The first pass is started and awaited here; the request below reads its report, which the fake clock keeps fresh.
+      await app.app.get(ReadinessService).report();
+      expect((await fetch(`${app.url}/health`)).status).toBe(200);
+      const view = (await (await fetch(`${app.url}/readiness`, { headers: app.auth })).json()) as ReadinessView;
+      const credential = view.items.find((item) => item.id === 'model-credential');
+      expect(credential).toMatchObject({ status: 'fail', link: '/connections#claude' });
+      expect(credential?.action).toBe('connect claude in Connections');
+
+      const refused = await fetch(`${app.url}/runs`, {
+        method: 'POST',
+        headers: { ...app.auth, 'content-type': 'application/json' },
+        body: JSON.stringify({ key: 'PROJ-600', prompt: 'Ship it', projects: ['demo'] }),
+      });
+      expect(refused.status).toBe(422);
+      expect(await refused.text()).toContain('claude');
+      expect(await app.app.get(RunRepository).findRun('PROJ-600')).toBeNull();
     } finally {
       await app.close();
     }

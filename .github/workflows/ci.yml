@@ -183,6 +183,74 @@ jobs:
           SWARMLOOP_REGISTRY: local
           SWARMLOOP_VERSION: ci
         run: bash scripts/smoke-stack.sh
+      - name: Configure compose.yml with and without a .env
+        run: |
+          set -eu
+          if [ -e .env ]; then echo "fail: .env exists in the repository root"; exit 1; fi
+          node - <<'NODE'
+          const { spawnSync } = require('node:child_process');
+          const fs = require('node:fs');
+          const os = require('node:os');
+          const path = require('node:path');
+          const root = fs.realpathSync(process.cwd());
+          const selectors = ['COMPOSE_FILE', 'COMPOSE_PATH_SEPARATOR', 'COMPOSE_PROJECT_NAME', 'COMPOSE_PROFILES', 'COMPOSE_ENV_FILES', 'CHECKOUTS_ROOT', 'SWARMLOOP_HOME', 'SWARMLOOP_REPOS'];
+          const fixed = ['SWARMLOOP_ROOT', 'CHECKOUTS_ROOT', 'SWARMLOOP_API_HOST', 'SWARMLOOP_API_PORT', 'SWARMLOOP_UID', 'SWARMLOOP_REGISTRY', 'SWARMLOOP_VERSION', 'SWARMLOOP_PUBLIC_URL', 'SWARMLOOP_ENV_FILE'];
+          const keys = fs.readFileSync('defaults.env', 'utf8').split('\n').map((line) => /^([A-Z][A-Z0-9_]*)=/.exec(line)?.[1]).filter(Boolean);
+          const configurable = keys.filter((key) => !fixed.includes(key) && key !== 'SWARMLOOP_ENV_FILE');
+          const problems = [];
+          const check = (ok, message) => {
+            if (!ok) problems.push(message);
+          };
+          const resolve = (extra, cwd = root) => {
+            const env = { ...process.env, ...extra };
+            for (const name of [...selectors, ...keys]) if (!(name in extra)) delete env[name];
+            const result = spawnSync('docker', ['compose', 'config', '--format', 'json'], { cwd, env, encoding: 'utf8', maxBuffer: 1 << 26 });
+            if (result.status !== 0) {
+              console.log('fail: docker compose config exited with ' + result.status);
+              process.exit(1);
+            }
+            return JSON.parse(result.stdout);
+          };
+          const sentinels = Object.fromEntries(configurable.map((key) => [key, 'sentinel-' + key.toLowerCase()]));
+          const bind = (config, target) => config.services.server.volumes.find((volume) => volume.target === target);
+          const serverEnv = (config) => config.services.server.environment;
+          const fixedValues = { SWARMLOOP_ROOT: '/app', CHECKOUTS_ROOT: '/checkouts', SWARMLOOP_API_HOST: '0.0.0.0', SWARMLOOP_API_PORT: '3920', SWARMLOOP_ENV_FILE: '/app/stack/.env' };
+
+          const plain = resolve({});
+          const contexts = { 'agent-cursor': 'docker/sandbox', 'agent-claude': 'docker/sandbox', 'agent-codex': 'docker/sandbox', egress: 'docker/egress', server: '', dashboard: '' };
+          for (const [service, folder] of Object.entries(contexts)) {
+            check(plain.services[service]?.build?.context === path.join(root, folder).replace(/\/$/, ''), service + ' does not build from its folder');
+          }
+          check(Boolean(plain.services.sloop), 'the sloop service is missing');
+          check(bind(plain, '/checkouts')?.source === path.dirname(root), 'the checkouts mount is not the parent folder');
+          const stack = bind(plain, '/app/stack');
+          check(stack?.source === root && stack.read_only === true, 'the stack folder is not mounted read-only');
+          for (const [key, value] of Object.entries(fixedValues)) {
+            check(serverEnv(plain)[key] === value, 'fixed setting ' + key + ' changed');
+          }
+          for (const key of configurable) check((serverEnv(plain)[key] ?? null) === null, 'unset ' + key + ' reached the server');
+
+          const custom = resolve({ CHECKOUTS_ROOT: '/srv/checkouts', ...sentinels });
+          check(bind(custom, '/checkouts')?.source === '/srv/checkouts', 'CHECKOUTS_ROOT does not set the checkouts mount');
+          for (const key of configurable) check(serverEnv(custom)[key] === sentinels[key], key + ' does not reach the server');
+          for (const [key, value] of Object.entries(fixedValues)) check(serverEnv(custom)[key] === value, 'fixed setting ' + key + ' changed');
+
+          // A release folder with a .env: the server reads that file from the stack folder. Compose may also hand a .env
+          // value over as an environment value; it is never a different value, and a shell value wins over the file.
+          const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'stack-')));
+          fs.copyFileSync(path.join(root, 'compose.yml'), path.join(home, 'compose.yml'));
+          fs.writeFileSync(path.join(home, '.env'), 'MAX_RETURNS=7\n');
+          const withFile = resolve({}, home);
+          check(bind(withFile, '/app/stack')?.source === home, 'the stack folder is not the folder that holds .env');
+          check((serverEnv(withFile).MAX_RETURNS ?? '7') === '7', 'Compose changed a .env value on its way to the server');
+          for (const key of configurable.filter((name) => name !== 'MAX_RETURNS')) check((serverEnv(withFile)[key] ?? null) === null, 'unset ' + key + ' reached the server with a .env');
+          check(serverEnv(resolve({ MAX_RETURNS: '8' }, home)).MAX_RETURNS === '8', 'a shell value does not win over .env');
+          fs.rmSync(home, { recursive: true, force: true });
+
+          for (const message of problems) console.log('fail: ' + message);
+          if (problems.length > 0) process.exit(1);
+          console.log('pass: compose.yml resolves with and without a .env, ' + configurable.length + ' settings pass through');
+          NODE
 
   structure-check:
     runs-on: ubuntu-latest
