@@ -92,7 +92,7 @@ export class PasteNeeded extends SwarmloopError {
 }
 
 export interface HttpCallDraft {
-  provider: 'jira' | 'confluence' | 'gitlab' | 'github' | 'other';
+  provider: string;
   method: string;
   url: string;
   statusCode: number | null;

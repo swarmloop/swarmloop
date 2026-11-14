@@ -4,6 +4,7 @@ import { basename, isAbsolute, join, resolve, sep } from 'path';
 import { rawEnv } from '../config/process-env';
 import { startCommandSpan } from '../core/step-event-scope';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { pushRejectionOfAnyHost } from '../integrations/code-host/code-host-rules';
 
 /** What a git call may take. Calls made between steps pass one of these; a call that passes nothing keeps `DEFAULT`. */
 export const GIT_LIMITS = {
@@ -194,7 +195,7 @@ export function gitDetail(error: unknown): string {
   if (timedOut) {
     return timedOut.slice(0, 400);
   }
-  const remote = lines.find((line) => line.includes('remote rejected') || line.startsWith('remote: GitLab'));
+  const remote = pushRejectionOfAnyHost(lines);
   const fatal = lines.find(
     (line) => (line.startsWith('fatal:') || line.startsWith('error:')) && !line.includes('failed to push some refs'),
   );

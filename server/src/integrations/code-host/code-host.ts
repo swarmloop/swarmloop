@@ -130,15 +130,23 @@ export interface CreateRepositoryDraft {
 }
 
 export interface SelectedHost {
-  name: 'github' | 'gitlab';
+  name: string;
   baseUrl: string;
   token: string;
-  baseKey: 'GITLAB_BASE_URL' | 'GITHUB_BASE_URL';
-  tokenKey: 'GITLAB_TOKEN' | 'GITHUB_TOKEN';
+  baseKey: string;
+  tokenKey: string;
 }
 
 export interface CodeHost {
-  readonly name: SelectedHost['name'];
+  readonly name: string;
+  /** The display name of the host. */
+  readonly label: string;
+  /** The CI config paths the host recognizes. */
+  readonly ciFiles: readonly string[];
+  /** The line of a git error that explains a refused push, when there is one. */
+  pushRejection(lines: string[]): string | undefined;
+  /** The provider label of a call to this host's API, or null for any other url. */
+  classifyCall(url: string): string | null;
   matchesOrigin(origin: string): boolean;
   pushUrl(origin: string): string | null;
   selected(): SelectedHost;
@@ -165,7 +173,7 @@ export interface CodeHost {
     ref: PipelineRef,
     jobs?: boolean,
   ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
-  diagnoseMissingPipeline?(ref: PipelineRef): Promise<PipelineDiagnosis>;
+  diagnoseMissingPipeline(ref: PipelineRef): Promise<PipelineDiagnosis>;
   /**
    * Nudges the host to start the CI of a request's head that never started, and puts `reason` on the request's
    * timeline as a comment. Nothing is sent when the host has no open request for the ref.

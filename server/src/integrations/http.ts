@@ -46,23 +46,15 @@ export function isReadable(contentType: string | null, body: Buffer): boolean {
   );
 }
 
-function providerFor(url: string): HttpCallDraft['provider'] {
-  const parsed = new URL(url);
-  const path = parsed.pathname;
-  const host = parsed.hostname.toLowerCase();
+function providerFor(url: string, classify?: (url: string) => string | null): string {
+  const path = new URL(url).pathname;
   if (path.includes('/wiki/')) {
     return 'confluence';
   }
   if (path.startsWith('/rest/api/')) {
     return 'jira';
   }
-  if (path.startsWith('/api/v4/')) {
-    return 'gitlab';
-  }
-  if (host === 'api.github.com' || path.startsWith('/api/v3/')) {
-    return 'github';
-  }
-  return 'other';
+  return classify?.(url) ?? 'other';
 }
 
 export async function withRetries<T>(
@@ -137,7 +129,7 @@ export async function request(
   url: string,
   headers: Record<string, string>,
   calls: HttpCallDraft[],
-  init: { method?: string; body?: string } = {},
+  init: { method?: string; body?: string; classify?: (url: string) => string | null } = {},
   timing: HostRetryTiming = {},
 ): Promise<{
   status: number;
@@ -163,7 +155,7 @@ export async function request(
     );
     const body = Buffer.from(await response.arrayBuffer());
     calls.push({
-      provider: providerFor(response.url || url),
+      provider: providerFor(response.url || url, init.classify),
       method,
       url: safeUrl(response.url || url),
       statusCode: response.status,
@@ -188,7 +180,7 @@ export async function request(
     const status = error instanceof HttpStatusError ? error.status : null;
     const message = error instanceof Error ? error.message : 'request failed';
     calls.push({
-      provider: providerFor(url),
+      provider: providerFor(url, init.classify),
       method,
       url: safe,
       statusCode: status,

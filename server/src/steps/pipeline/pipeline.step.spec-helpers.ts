@@ -181,6 +181,7 @@ export async function boot(
           readBranchPipeline: read,
           readJobTrace: trace,
           cancelPipeline: cancel,
+          diagnoseMissingPipeline: () => Promise.resolve({ reason: null, httpCalls: [] }),
           ...infra,
         } as never);
         return registry;

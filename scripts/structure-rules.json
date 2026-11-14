@@ -29,6 +29,17 @@
       "pattern": "kind: 'log'|ARTIFACTS\\.log\\b"
     },
     {
+      "include": "server/src/git/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "pattern": "[Gg]it[Hh]ub|[Gg]it[Ll]ab"
+    },
+    {
+      "include": "server/src/integrations/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": ["server/src/integrations/code-host/"],
+      "pattern": "[Gg]it[Hh]ub|[Gg]it[Ll]ab"
+    },
+    {
       "include": "server/src/steps/",
       "pattern": "env\\.(RUNTIME|MODEL_\\w+)"
     },

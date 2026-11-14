@@ -5,6 +5,7 @@ import { DocumentRepository } from '../history/document.repository';
 import { root } from '../history/run-paths';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
+import { codeHostLabel } from './code-host/code-host-rules';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { IssueBundle } from '../integrations/issue-tracker/issue-bundle';
 import { IssueTracker, runKeys } from '../integrations/issue-tracker/issue-tracker';
@@ -40,14 +41,16 @@ export class ServiceContextService {
         parts.push(note);
       }
     }
-    const gitlab = await this.mergeRequest(key, run);
-    if (gitlab) {
-      parts.push(gitlab);
+    const mergeRequest = await this.mergeRequest(key, run);
+    if (mergeRequest) {
+      parts.push(mergeRequest);
     }
     if (parts.length === 0) {
       return '';
     }
-    return ['Services:', 'Read these host notes. Do not call Jira or GitLab yourself.', ...parts].join('\n');
+    return ['Services:', 'Read these notes. Do not call the issue tracker or the code host yourself.', ...parts].join(
+      '\n',
+    );
   }
 
   private async issue(runKey: string, issue: string, login?: string | null): Promise<string | null> {
@@ -69,15 +72,14 @@ export class ServiceContextService {
       return null;
     }
     const host = (await this.registry.forRun(run.startedBy, run.codeHost)).byName(run.codeHost);
+    const label = codeHostLabel(run.codeHost) ?? run.codeHost;
     const body = await this.documents.latestBody(key, 'pipeline_ref');
     const lines: string[] = [];
     for (const ref of body ? pipelineRefs(body) : []) {
       try {
         const found = await host.findMergeRequest({ project: ref.project, source: ref.ref });
         if (found.record) {
-          lines.push(
-            `${codeHostLabel(found.record.url)} ${found.record.project} !${found.record.iid} ${found.record.url}`,
-          );
+          lines.push(`${label} ${found.record.project} !${found.record.iid} ${found.record.url}`);
         }
       } catch {
         break;
@@ -122,18 +124,6 @@ export function pipelineRefs(body: string): { project: string; ref: string }[] {
 
 export function pipelineRef(body: string): { project: string; ref: string } | null {
   return pipelineRefs(body)[0] ?? null;
-}
-
-function codeHostLabel(url: string): string {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    if (host === 'github.com' || host.endsWith('.github.com') || host.endsWith('.ghe.com') || host.includes('github')) {
-      return 'GitHub';
-    }
-  } catch {
-    return 'GitLab';
-  }
-  return 'GitLab';
 }
 
 function storedMerge(body: string): string | null {

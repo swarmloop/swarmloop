@@ -1,7 +1,7 @@
 import type { Clock } from '../../../core/clock';
 import type { HttpCallDraft } from '../../../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
-import { request } from '../../http';
+import { gitlabRules } from './gitlab-rules';
 import { remoteProject } from '../remote-project';
 import { newestPerWorkflow, snapshotOf } from '../check-status';
 import {
@@ -40,7 +40,17 @@ interface GitlabPipeline {
 const QUEUED = ['pending', 'created', 'waiting_for_resource'];
 
 export class GitlabCodeHost extends GitlabMergeRequests {
-  readonly name = 'gitlab' as const;
+  readonly name = gitlabRules.name;
+  readonly label = gitlabRules.label;
+  readonly ciFiles = gitlabRules.ciFiles;
+
+  pushRejection(lines: string[]): string | undefined {
+    return gitlabRules.pushRejection(lines);
+  }
+
+  classifyCall(url: string): string | null {
+    return gitlabRules.classifyCall(url);
+  }
 
   /** `bearer` is true for the OAuth token of a connected person: GitLab takes it as a Bearer header, not as `PRIVATE-TOKEN`. */
   constructor(
@@ -187,7 +197,7 @@ export class GitlabCodeHost extends GitlabMergeRequests {
     try {
       const { root: base, headers } = this.credentials();
       const url = `${base}/api/v4/projects/${encodeURIComponent(project)}/pipelines/${id}/cancel`;
-      const response = await request(this.clock, url, headers, calls, { method: 'POST' });
+      const response = await this.hostRequest(url, headers, calls, { method: 'POST' });
       this.assertStatus(response, calls, 'gitlab pipeline failed');
       return { httpCalls: calls };
     } catch (error) {
@@ -200,7 +210,7 @@ export class GitlabCodeHost extends GitlabMergeRequests {
     try {
       const { root: base, headers } = this.credentials();
       const url = `${base}/api/v4/projects/${encodeURIComponent(project)}/pipelines/${id}/retry`;
-      const response = await request(this.clock, url, headers, calls, { method: 'POST' });
+      const response = await this.hostRequest(url, headers, calls, { method: 'POST' });
       this.assertStatus(response, calls, 'gitlab pipeline failed');
       return { httpCalls: calls };
     } catch (error) {
@@ -259,7 +269,7 @@ export class GitlabCodeHost extends GitlabMergeRequests {
     calls: HttpCallDraft[],
     failure: string,
   ): Promise<string> {
-    const response = await request(this.clock, url, headers, calls);
+    const response = await this.hostRequest(url, headers, calls);
     this.assertStatus(response, calls, failure);
     return response.body.toString('utf8');
   }
@@ -277,7 +287,7 @@ export class GitlabCodeHost extends GitlabMergeRequests {
     const rows: unknown[] = [];
     for (let page = 1; page <= 10; page += 1) {
       const joiner = url.includes('?') ? '&' : '?';
-      const response = await request(this.clock, `${url}${joiner}per_page=100&page=${page}`, headers, calls);
+      const response = await this.hostRequest(`${url}${joiner}per_page=100&page=${page}`, headers, calls);
       this.assertStatus(response, calls, 'gitlab pipeline failed');
       const body = this.parseJson(response.body, calls);
       if (!Array.isArray(body)) {

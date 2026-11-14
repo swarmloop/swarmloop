@@ -1,7 +1,9 @@
 import type { Clock } from '../../../core/clock';
 import type { HttpCallDraft } from '../../../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
-import { request, withRetries } from '../../http';
+import type { request } from '../../http';
+import { withRetries } from '../../http';
+import { githubRules } from './github-rules';
 import { remoteProject } from '../remote-project';
 import type { CodeHostEnv } from '../abstract-code-host';
 import { GithubMergeRequests, repoPath } from './github-merge-requests';
@@ -26,7 +28,17 @@ class LogLagging extends Error {
 }
 
 export class GithubCodeHost extends GithubMergeRequests {
-  readonly name = 'github' as const;
+  readonly name = githubRules.name;
+  readonly label = githubRules.label;
+  readonly ciFiles = githubRules.ciFiles;
+
+  pushRejection(lines: string[]): string | undefined {
+    return githubRules.pushRejection(lines);
+  }
+
+  classifyCall(url: string): string | null {
+    return githubRules.classifyCall(url);
+  }
 
   constructor(env: CodeHostEnv, clock: Clock) {
     super(env, clock, 'github pull request failed', 'GITHUB_TOKEN was rejected');
@@ -113,7 +125,7 @@ export class GithubCodeHost extends GithubMergeRequests {
     try {
       const { root: api, headers } = this.credentials();
       const url = `${api}/repos/${repoPath(project)}/actions/runs/${id}/cancel`;
-      const response = await request(this.clock, url, headers, calls, { method: 'POST' });
+      const response = await this.hostRequest(url, headers, calls, { method: 'POST' });
       this.assertStatus(response, calls, 'github pipeline failed');
       return { httpCalls: calls };
     } catch (error) {
@@ -126,7 +138,7 @@ export class GithubCodeHost extends GithubMergeRequests {
     try {
       const { root: api, headers } = this.credentials();
       const url = `${api}/repos/${repoPath(project)}/actions/runs/${id}/rerun-failed-jobs`;
-      const response = await request(this.clock, url, headers, calls, { method: 'POST' });
+      const response = await this.hostRequest(url, headers, calls, { method: 'POST' });
       this.assertStatus(response, calls, 'github pipeline failed');
       return { httpCalls: calls };
     } catch (error) {
@@ -225,7 +237,7 @@ export class GithubCodeHost extends GithubMergeRequests {
       const apiHost = this.apiHost();
       const response = await withRetries(
         async () => {
-          const result = await request(this.clock, url, headers, calls);
+          const result = await this.hostRequest(url, headers, calls);
           if ((result.status === 403 || result.status === 404) && new URL(result.url).hostname !== apiHost) {
             throw new LogLagging(result);
           }
@@ -280,8 +292,7 @@ export class GithubCodeHost extends GithubMergeRequests {
     runId: number,
     calls: HttpCallDraft[],
   ): Promise<{ listed: PipelineJob[]; total: number }> {
-    const response = await request(
-      this.clock,
+    const response = await this.hostRequest(
       `${api}/repos/${project}/actions/runs/${runId}/jobs?per_page=100`,
       headers,
       calls,

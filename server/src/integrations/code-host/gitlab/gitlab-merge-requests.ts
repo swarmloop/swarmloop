@@ -1,6 +1,5 @@
 import type { HttpCallDraft } from '../../../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
-import { request } from '../../http';
 import { AbstractCodeHost, type HostCall } from '../abstract-code-host';
 import { gitlabStates, type GitlabMergeRequest } from './gitlab-merge-request';
 import type {
@@ -30,7 +29,7 @@ export abstract class GitlabMergeRequests extends AbstractCodeHost {
         return { httpCalls: calls };
       }
       const bare = (merge.title ?? '').replace(/^\s*(?:\[draft\]|\(draft\)|draft:)\s*/i, '');
-      const response = await request(this.clock, url, { ...headers, 'Content-Type': 'application/json' }, calls, {
+      const response = await this.hostRequest(url, { ...headers, 'Content-Type': 'application/json' }, calls, {
         method: 'PUT',
         body: JSON.stringify({ title: draft ? `${DRAFT_PREFIX}${bare}` : bare }),
       });
@@ -52,7 +51,7 @@ export abstract class GitlabMergeRequests extends AbstractCodeHost {
       const { root, headers } = this.credentials();
       const base = this.mergeRequestUrl(root, ref.project, found.record.iid);
       this.assertStatus(
-        await request(this.clock, `${base}/notes`, { ...headers, 'Content-Type': 'application/json' }, calls, {
+        await this.hostRequest(`${base}/notes`, { ...headers, 'Content-Type': 'application/json' }, calls, {
           method: 'POST',
           body: JSON.stringify({ body: reason }),
         }),
@@ -60,7 +59,7 @@ export abstract class GitlabMergeRequests extends AbstractCodeHost {
         this.failure,
       );
       this.assertStatus(
-        await request(this.clock, `${base}/pipelines`, headers, calls, { method: 'POST' }),
+        await this.hostRequest(`${base}/pipelines`, headers, calls, { method: 'POST' }),
         calls,
         this.failure,
       );

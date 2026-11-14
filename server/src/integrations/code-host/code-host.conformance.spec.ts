@@ -3,6 +3,12 @@ import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import type { CodeHost, MergeRequestDraft } from './code-host';
 import { GithubCodeHost } from './github/github-code-host';
 import { GitlabCodeHost } from './gitlab/gitlab-code-host';
+import { instantBackoff } from '../instant-backoff.spec-helpers';
+import { mockFetch as githubFetch, service as githubService } from './github/github-code-host.spec-helpers';
+import { mockFetch as gitlabFetch, service as gitlabService } from './gitlab/gitlab-code-host.spec-helpers';
+
+/** The check runs and commit statuses of a commit that has none. */
+const QUIET = [{ check_runs: [] }, { statuses: [] }];
 
 const PROJECT = 'acme/demo';
 const SOURCE = 'feature/PROJ-1-ship';
@@ -204,7 +210,115 @@ describe.each([
   });
 });
 
+describe.each([
+  {
+    name: 'github',
+    make: github,
+    label: 'GitHub',
+    ciFiles: ['.github/workflows/*.yml', '.github/workflows/*.yaml'],
+    api: 'https://github.example/api/v3/repos/acme/demo',
+    rejection: ['! [remote rejected] main -> main (protected branch hook declined)'],
+  },
+  {
+    name: 'gitlab',
+    make: gitlab,
+    label: 'GitLab',
+    ciFiles: ['.gitlab-ci.yml'],
+    api: 'https://gitlab.example/api/v4/projects/1',
+    rejection: ['remote: GitLab: You are not allowed to push code to protected branches'],
+  },
+])('code host identity: $name', ({ name, make, label, ciFiles, api, rejection }) => {
+  it('declares its name, label and CI files', () => {
+    const { host } = make(false);
+    expect(host.name).toBe(name);
+    expect(host.label).toBe(label);
+    expect(host.ciFiles).toEqual(ciFiles);
+  });
+
+  it('labels a call of its API with its name and leaves a redirect to another host unlabeled', () => {
+    const { host } = make(false);
+    expect(host.classifyCall(api)).toBe(name);
+    expect(host.classifyCall('https://objects.example/log.zip')).toBeNull();
+  });
+
+  it('picks the line that explains a refused push', () => {
+    const { host } = make(false);
+    expect(host.pushRejection(['fatal: unable to access', ...rejection])).toBe(rejection[0]);
+    expect(host.pushRejection(['fatal: unable to access'])).toBeUndefined();
+  });
+});
+
+describe('github host', () => {
+  const original = global.fetch;
+
+  beforeEach(() => {
+    instantBackoff();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    global.fetch = original;
+  });
+
+  it('still lists failed jobs when the running list is skipped', async () => {
+    const seen = githubFetch([
+      {
+        workflow_runs: [
+          {
+            id: 9,
+            head_sha: 'abc',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: 'https://github.com/acme/demo/actions/runs/9',
+          },
+        ],
+      },
+      { jobs: [{ id: 4, name: 'test', conclusion: 'failure' }] },
+      ...QUIET,
+    ]);
+    const pipeline = await githubService().readBranchPipeline(
+      { project: 'acme/demo', ref: 'feature/PROJ-1-ship', sha: 'abc' },
+      false,
+    );
+    expect(pipeline.snapshot?.jobs).toEqual([
+      { id: 4, name: 'test', stage: '', status: 'failed', allowFailure: false },
+    ]);
+    expect(seen[1]?.url).toContain('/actions/runs/9/jobs');
+  });
+});
+
+describe('gitlab host', () => {
+  const original = global.fetch;
+
+  beforeEach(() => {
+    instantBackoff();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    global.fetch = original;
+  });
+
+  it('still lists failed jobs when the running list is skipped', async () => {
+    const seen = gitlabFetch([
+      [{ id: 9, status: 'failed' }],
+      { id: 9, status: 'failed', web_url: 'https://gitlab.example/group/demo/-/pipelines/9' },
+      [{ id: 7, name: 'unit', stage: 'test', status: 'failed', allow_failure: false }],
+    ]);
+    const result = await gitlabService().readBranchPipeline({ project: 'group/demo', ref: 'feature/PROJ-1' }, false);
+    expect(result.snapshot?.jobs.map((job) => job.name)).toEqual(['unit']);
+    expect(seen[2]?.url).toContain('/pipelines/9/jobs');
+  });
+});
+
 describe('code host interface', () => {
+  it('requires diagnoseMissingPipeline of an adapter', () => {
+    const withoutDiagnosis = {} as Omit<GithubCodeHost, 'diagnoseMissingPipeline'>;
+    // @ts-expect-error an adapter without diagnoseMissingPipeline is not a CodeHost
+    const host: CodeHost = withoutDiagnosis;
+    expect(host).toBeDefined();
+  });
+
   it('requires setDraft of an adapter', () => {
     const withoutDraft = {} as Omit<GithubCodeHost, 'setDraft'>;
     // @ts-expect-error an adapter without setDraft is not a CodeHost

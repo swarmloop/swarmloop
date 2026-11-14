@@ -2,7 +2,6 @@ import type { HttpCallDraft } from '../../../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
 import { AbstractCodeHost, type HostCall } from '../abstract-code-host';
 import { githubStates, graphqlUrl, pullView, type GithubPull } from './github-pull';
-import { request } from '../../http';
 import type {
   MergeRequestDraft,
   MergeRequestQuery,
@@ -57,7 +56,7 @@ export abstract class GithubMergeRequests extends AbstractCodeHost {
       const url = this.mergeRequestUrl(root, ref.project, found.record.iid);
       const comment = `${root}/repos/${repoPath(ref.project)}/issues/${found.record.iid}/comments`;
       this.assertStatus(
-        await request(this.clock, comment, { ...headers, 'Content-Type': 'application/json' }, calls, {
+        await this.hostRequest(comment, { ...headers, 'Content-Type': 'application/json' }, calls, {
           method: 'POST',
           body: JSON.stringify({ body: reason }),
         }),
@@ -65,7 +64,7 @@ export abstract class GithubMergeRequests extends AbstractCodeHost {
         this.failure,
       );
       for (const state of ['closed', 'open']) {
-        const response = await request(this.clock, url, { ...headers, 'Content-Type': 'application/json' }, calls, {
+        const response = await this.hostRequest(url, { ...headers, 'Content-Type': 'application/json' }, calls, {
           method: 'PATCH',
           body: JSON.stringify({ state }),
         });
