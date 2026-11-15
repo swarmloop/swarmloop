@@ -1,4 +1,3 @@
-import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -9,12 +8,13 @@ import { FetchFailed, HostUnavailable } from '../../core/swarmloop-error';
 import * as gitModule from '../../git/git';
 import type { CodeHost } from '../../integrations/code-host/code-host';
 import type { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { git } from '../../testing/git-fixture';
 import { RemoteRepositories } from './remote-repositories.service';
 
 const TOKEN = 'super-secret-token';
 
 function sh(cwd: string, ...args: string[]): void {
-  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd, stdio: 'ignore' });
+  git(cwd, ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args]);
 }
 
 /** A fake host. Its repositories are bare repositories on disk, so a clone reads a real one. */
@@ -209,13 +209,14 @@ describe('RemoteRepositories', () => {
   });
 
   it('serves the list from the cache for a minute', async () => {
-    const { service, clock, github } = harness({ github: [repo('github', 'acme', 'demo')] });
-    await service.list();
-    await service.list();
-    expect(github.list).toHaveBeenCalledTimes(1);
+    const hosted = [repo('github', 'acme', 'demo')];
+    const { service, clock } = harness({ github: hosted });
+    const names = async (): Promise<string[]> => (await service.list()).repositories.map((entry) => entry.name);
+    expect(await names()).toEqual(['demo']);
+    hosted.push(repo('github', 'acme', 'later'));
+    expect(await names()).toEqual(['demo']);
     clock.advance(61_000);
-    await service.list();
-    expect(github.list).toHaveBeenCalledTimes(2);
+    expect(await names()).toEqual(['demo', 'later']);
   });
 
   it('lists, clones and creates only the names of SWARMLOOP_REPOS', async () => {
@@ -293,11 +294,11 @@ describe('RemoteRepositories', () => {
     });
 
     it('says the clone failed and does not retry a refusal', async () => {
-      const { service, github } = harness({ github: [repo('github', 'acme', 'demo')] });
+      const { service, github, checkouts } = harness({ github: [repo('github', 'acme', 'demo')] });
       github.seed('acme/demo');
-      const spy = failClone('fatal: Authentication failed for https://github.example/acme/demo.git', 99);
+      failClone('fatal: Authentication failed for https://github.example/acme/demo.git', 1);
       await expect(service.clone('demo', null)).rejects.toThrow('clone of acme/demo failed: ');
-      expect(spy.mock.calls.filter(([args]) => args[0] === 'clone')).toHaveLength(1);
+      expect(existsSync(join(checkouts, 'demo'))).toBe(false);
     });
   });
 });

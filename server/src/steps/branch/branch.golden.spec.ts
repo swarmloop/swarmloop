@@ -17,6 +17,7 @@ import { FlowRepository } from '../../history/flow.repository';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { PipelineModule } from '../../pipeline/pipeline.module';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
 import { BranchCheckout } from '../shared/branch-checkout';
 import { RebasedPublisher } from '../shared/rebased-publisher';
@@ -99,6 +100,7 @@ describe('branch step golden traces', () => {
 
 async function boot(root: string) {
   await writeEnvOverrides(root, envOverrides(root));
+  seedMigratedDatabase(root);
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   }).compile();
