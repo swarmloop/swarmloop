@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { AppConfig } from '../config/env';
 import { testEnv } from '../config/env.spec-helpers';
+import { ContainerDropped, ContainerGate } from './container-gate';
 import { SandboxService } from './sandbox.service';
 import type { SandboxChild } from './sandbox.service';
 import type { SandboxLaunch } from './sandbox-types';
@@ -134,5 +135,101 @@ describe('SandboxService memory cap', () => {
       return child;
     };
     await expect(sandbox.spawn(launch('plan'))).resolves.toBeDefined();
+  });
+
+  describe('while the server is paused', () => {
+    function gated(): { sandbox: SandboxService; gate: ContainerGate; dockerCalls: string[][] } {
+      const gate = new ContainerGate();
+      const sandbox = new SandboxService(new AppConfig(testEnv({ RESERVE_MEMORY_GB: 1 })), gate);
+      const dockerCalls: string[][] = [];
+      sandbox.useDocker(async (args) => {
+        dockerCalls.push(args);
+        return args[0] === 'info' ? `${3 * GB}` : '';
+      });
+      sandbox.spawnDocker = (args) => {
+        runs.push(args);
+        const child = new EventEmitter() as SandboxChild;
+        child.containerName = args[args.indexOf('--name') + 1] ?? '';
+        children.push(child);
+        return child;
+      };
+      return { sandbox, gate, dockerCalls };
+    }
+
+    it('holds a held spawn without a docker call, says so, and starts it after resume', async () => {
+      const { sandbox, gate, dockerCalls } = gated();
+      gate.pause();
+      const told = jest.fn();
+      const started = sandbox.spawn(launch('plan'), { onPaused: told });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(told).toHaveBeenCalledTimes(1);
+      expect(dockerCalls).toEqual([]);
+      expect(runs).toEqual([]);
+      gate.resume();
+      await started;
+      expect(runs).toHaveLength(1);
+    });
+
+    it('starts held spawns in the order they came', async () => {
+      const { sandbox, gate } = gated();
+      gate.pause();
+      const first = sandbox.spawn(launch('first'), { onPaused: () => undefined });
+      const second = sandbox.spawn(launch('second'), { onPaused: () => undefined });
+      gate.resume();
+      await Promise.all([first, second]);
+      expect(children.map((child) => child.containerName)).toEqual([
+        expect.stringContaining('first'),
+        expect.stringContaining('second'),
+      ]);
+    });
+
+    it('starts a spawn that is not held, as sign-in does', async () => {
+      const { sandbox, gate } = gated();
+      gate.pause();
+      await sandbox.spawn(launch('sign-in'));
+      expect(runs).toHaveLength(1);
+      expect(gate.running()).toBe(0);
+    });
+
+    it('takes a held spawn out of the wait when its run is stopped, and starts nothing after resume', async () => {
+      const { sandbox, gate } = gated();
+      gate.pause();
+      const held = sandbox.spawn(launch('plan'), { onPaused: () => undefined });
+      const outcome = held.catch((error: unknown) => error);
+      await sandbox.stopRun('k', 'plan', 1);
+      expect(await outcome).toBeInstanceOf(ContainerDropped);
+      gate.resume();
+      expect(runs).toEqual([]);
+      expect(gate.running()).toBe(0);
+    });
+
+    it('counts a held container while it is being prepared, and not after the spawn fails', async () => {
+      const { sandbox, gate } = gated();
+      let answer!: (value: string) => void;
+      sandbox.useDocker((args) =>
+        args[0] === 'info' ? new Promise<string>((resolve) => (answer = resolve)) : Promise.resolve(''),
+      );
+      const starting = sandbox.spawn(launch('plan'), { onPaused: () => undefined });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(gate.running()).toBe(1);
+      sandbox.spawnDocker = () => {
+        throw new Error('docker run failed');
+      };
+      answer(`${3 * GB}`);
+      await expect(starting).rejects.toThrow('docker run failed');
+      expect(gate.running()).toBe(0);
+    });
+
+    it('counts a held container until it closes, and a pause never stops it', async () => {
+      const { sandbox, gate, dockerCalls } = gated();
+      await sandbox.spawn(launch('plan'), { onPaused: () => undefined });
+      expect(gate.running()).toBe(1);
+      const before = dockerCalls.length;
+      gate.pause();
+      expect(gate.running()).toBe(1);
+      expect(dockerCalls).toHaveLength(before);
+      children[0]?.emit('close', 0);
+      expect(gate.running()).toBe(0);
+    });
   });
 });

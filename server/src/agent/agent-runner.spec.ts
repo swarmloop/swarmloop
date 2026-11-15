@@ -6,11 +6,15 @@ import { join } from 'path';
 import { Logger } from '@nestjs/common';
 import { parseAgentList } from '../config/agents';
 import type { SwarmloopEnv } from '../config/env';
+import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { SystemClock } from '../core/clock';
 import type { LiveHub } from '../live/live.hub';
 import type { AgentRunInput } from './agent-runner';
 import { AGENT_CONTINUE, AgentProcessRunner, readSession } from './agent-runner';
 import { AGENT_BACKGROUND_KILLED_CONTINUE } from './agent-session';
+import { ContainerGate } from '../sandbox/container-gate';
+import { heldSpawn } from '../sandbox/container-gate.spec-helpers';
+import { SERVER_PAUSE_NOTE } from '../contract/server-pause';
 import { agentStateDir } from '../sandbox/sandbox-launch';
 import { sessionHome } from '../history/session-group';
 import * as limits from './limits';
@@ -170,6 +174,52 @@ describe('AgentProcessRunner wait line', () => {
     await runner.run(input(root, outputFile, { resumeChatId: null }));
     const bodies = live.log.mock.calls.map(([entry]: [{ body: string }]) => entry.body);
     expect(bodies.some((body) => body.startsWith('waiting for machine resources'))).toBe(false);
+  });
+});
+
+describe('AgentProcessRunner while the server is paused', () => {
+  it('starts no container and says so in the live log until the pause ends, then returns its result', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-agent-paused-'));
+    const outputFile = join(root, 'data', 'run1-implement-output.txt');
+    mkdirSync(join(root, 'data'), { recursive: true });
+    writePriceCache(root);
+    const gate = new ContainerGate();
+    gate.pause();
+    const reached = jest.fn();
+    const spawn = jest.fn(
+      heldSpawn(gate, () => {
+        reached();
+        return Promise.resolve(fakeChild(['agent-output\n'], 0));
+      }),
+    );
+    let said!: () => void;
+    const noted = new Promise<void>((resolve) => (said = resolve));
+    const live = {
+      log: jest.fn(({ body }: { body: string }) => body === `${SERVER_PAUSE_NOTE}\n` && said()),
+      dropSpend: jest.fn(),
+      changed: jest.fn(),
+    };
+    const clock = new FakeClock();
+    const suspended: number[] = [];
+    const runner = new AgentProcessRunner(
+      config(root),
+      clock,
+      sandbox(spawn),
+      new RunStop(),
+      live as unknown as LiveHub,
+    );
+    const running = runner.run({
+      ...input(root, outputFile, { resumeChatId: null }),
+      onSuspended: (ms) => suspended.push(ms),
+    });
+    await noted;
+    expect(reached).not.toHaveBeenCalled();
+    clock.advance(10 * 60_000);
+    gate.resume();
+    const result = await running;
+    expect(suspended).toEqual([]);
+    expect(reached).toHaveBeenCalledTimes(1);
+    expect(result.output).toContain('agent-output');
   });
 });
 

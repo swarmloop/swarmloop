@@ -1,4 +1,5 @@
 import type { FlowView, RunsView } from './api';
+import type { ServerState } from './server-pause';
 
 export interface LiveUsage {
   tokensIn: number;
@@ -36,6 +37,7 @@ export type ServerToClientEvents = {
   flow: (view: FlowView) => void;
   log: (entry: LiveLog) => void;
   events: (entry: LiveEvents) => void;
+  server: (state: ServerState) => void;
 };
 
 export type ClientToServerEvents = {

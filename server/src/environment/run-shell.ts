@@ -7,6 +7,7 @@ import { markedTail, runLogPath } from '../core/run-logs';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { startCommandSpan } from '../core/step-event-scope';
 import type { LiveSample } from '../contract/live';
+import { SERVER_PAUSE_NOTE } from '../contract/server-pause';
 import type { RunEntity } from '../history/entities';
 import type { SampleDraft } from '../history/visit';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime';
@@ -106,20 +107,31 @@ export async function runShell(
     args: [command],
   });
   let timedOut = false;
+  const onPaused = () => {
+    live?.log({
+      key: input.key,
+      step: input.step,
+      body: `${SERVER_PAUSE_NOTE}\n`,
+      ...(check ? { command: check.index, samples: liveSamples(input.samples ?? []) } : {}),
+    });
+  };
   const child = await sandbox
-    .spawn({
-      runtime: input.runtime,
-      runKey: input.key,
-      step: check ? `${input.step}-${check.index}` : input.step,
-      attemptId: input.run.activeAttempt ?? '',
-      mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
-      statePath,
-      allowHosts: phase === 'setup' ? setupHosts(manifest?.hosts) : [],
-      ...(phase === 'setup' && manifest?.hosts.length ? { manifestHosts: manifest } : {}),
-      command: [],
-      userId,
-      project: { ...launch, shell: command },
-    })
+    .spawn(
+      {
+        runtime: input.runtime,
+        runKey: input.key,
+        step: check ? `${input.step}-${check.index}` : input.step,
+        attemptId: input.run.activeAttempt ?? '',
+        mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
+        statePath,
+        allowHosts: phase === 'setup' ? setupHosts(manifest?.hosts) : [],
+        ...(phase === 'setup' && manifest?.hosts.length ? { manifestHosts: manifest } : {}),
+        command: [],
+        userId,
+        project: { ...launch, shell: command },
+      },
+      { onPaused },
+    )
     .catch(async (error: unknown) => {
       finish({ exitCode: null });
       await new Promise<void>((done) => file.end(done));

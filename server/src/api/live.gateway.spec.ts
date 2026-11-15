@@ -4,6 +4,7 @@ import type { RunQueriesService } from '../api/run-queries.service';
 import { allowHandshake, LiveGateway } from './live.gateway';
 import type { AuthService } from '../auth/auth.service';
 import { LiveHub } from '../live/live.hub';
+import { ContainerGate } from '../sandbox/container-gate';
 
 const auth = {} as AuthService;
 
@@ -14,7 +15,7 @@ describe('LiveGateway', () => {
     try {
       const hub = new LiveHub();
       const runs = { list: jest.fn().mockRejectedValue(new Error('boom')), flow: jest.fn() };
-      const gateway = new LiveGateway(hub, runs as unknown as RunQueriesService, auth);
+      const gateway = new LiveGateway(hub, runs as unknown as RunQueriesService, auth, new ContainerGate());
       gateway.onModuleInit();
       hub.changed('run-1');
       await jest.advanceTimersByTimeAsync(60);
@@ -39,7 +40,7 @@ describe('LiveGateway', () => {
           list: jest.fn().mockResolvedValue({ runs: [] }),
           flow: jest.fn(async (key: string) => flows[key]),
         };
-        const gateway = new LiveGateway(hub, runs as unknown as RunQueriesService, auth);
+        const gateway = new LiveGateway(hub, runs as unknown as RunQueriesService, auth, new ContainerGate());
         const sent: Array<{ room: string; entry: unknown }> = [];
         gateway.server = {
           emit: jest.fn(),
@@ -70,12 +71,56 @@ describe('LiveGateway', () => {
     });
   });
 
+  describe('server pause', () => {
+    function gatewayOn(gate: ContainerGate) {
+      const gateway = new LiveGateway(
+        new LiveHub(),
+        { list: jest.fn().mockResolvedValue({ runs: [] }) } as unknown as RunQueriesService,
+        auth,
+        gate,
+      );
+      const sent: unknown[] = [];
+      gateway.server = {
+        emit: (name: string, state: unknown) => sent.push([name, state]),
+      } as unknown as LiveGateway['server'];
+      return { gateway, sent };
+    }
+
+    it('tells a connecting client whether the server is paused', async () => {
+      const gate = new ContainerGate();
+      const { gateway } = gatewayOn(gate);
+      const told: unknown[] = [];
+      const client = { emit: (name: string, state: unknown) => told.push([name, state]) };
+      await gateway.handleConnection(client as never);
+      gate.pause();
+      await gateway.handleConnection(client as never);
+      expect(told.filter((entry) => (entry as string[])[0] === 'server')).toEqual([
+        ['server', { paused: false }],
+        ['server', { paused: true }],
+      ]);
+    });
+
+    it('tells every client when the pause changes, and stops after destroy', () => {
+      const gate = new ContainerGate();
+      const { gateway, sent } = gatewayOn(gate);
+      gateway.onModuleInit();
+      gate.pause();
+      gate.resume();
+      gateway.onModuleDestroy();
+      gate.pause();
+      expect(sent).toEqual([
+        ['server', { paused: true }],
+        ['server', { paused: false }],
+      ]);
+    });
+  });
+
   it('drops a pending update when it is destroyed', async () => {
     jest.useFakeTimers();
     try {
       const hub = new LiveHub();
       const runs = { list: jest.fn(), flow: jest.fn() };
-      const gateway = new LiveGateway(hub, runs as unknown as RunQueriesService, auth);
+      const gateway = new LiveGateway(hub, runs as unknown as RunQueriesService, auth, new ContainerGate());
       gateway.onModuleInit();
       hub.changed('run-1');
       gateway.onModuleDestroy();
@@ -89,7 +134,12 @@ describe('LiveGateway', () => {
   describe('events', () => {
     function setup() {
       const hub = new LiveHub();
-      const gateway = new LiveGateway(hub, { list: jest.fn(), flow: jest.fn() } as unknown as RunQueriesService, auth);
+      const gateway = new LiveGateway(
+        hub,
+        { list: jest.fn(), flow: jest.fn() } as unknown as RunQueriesService,
+        auth,
+        new ContainerGate(),
+      );
       const sent: Array<{ room: string; entry: unknown }> = [];
       gateway.server = {
         to: (room: string) => ({ emit: (_name: string, entry: unknown) => sent.push({ room, entry }) }),
@@ -164,7 +214,12 @@ describe('LiveGateway', () => {
 
   describe('login', () => {
     function connect(check: AuthService['check'], headers: Record<string, string>) {
-      const gateway = new LiveGateway(new LiveHub(), {} as RunQueriesService, { check } as unknown as AuthService);
+      const gateway = new LiveGateway(
+        new LiveHub(),
+        {} as RunQueriesService,
+        { check } as unknown as AuthService,
+        new ContainerGate(),
+      );
       let middleware!: (socket: unknown, next: (error?: Error) => void) => void;
       gateway.afterInit({ use: (fn: typeof middleware) => (middleware = fn) } as never);
       return new Promise<Error | undefined>((resolve) => middleware({ handshake: { headers } }, resolve));
