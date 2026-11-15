@@ -38,6 +38,40 @@ export interface AppSource {
   connects(host: ProviderName): boolean;
 }
 
+/** A stored app: all fields for an app with a private key, else the client id and secret. */
+export interface StoredApp {
+  host: ProviderName;
+  appId: string;
+  slug: string;
+  clientId: string;
+  clientSecret: string;
+  privateKey: string;
+  /** The login of the person who made the app, or `machine`. Null for an app made earlier. */
+  madeBy: string | null;
+}
+
+/** Where the apps of the hosts are stored. */
+export interface HostAppStore {
+  find(host: ProviderName): StoredApp | null;
+  save(app: StoredApp): Promise<void>;
+}
+
+export const HOST_APP_STORE = 'HOST_APP_STORE';
+
+export interface ManifestForm {
+  /** Where the browser posts the manifest. */
+  action: string;
+  manifest: Record<string, unknown>;
+}
+
+/** The app a host makes from a manifest, and the install of it. */
+export interface AppFlow {
+  manifest(owner: string | undefined, state: string): Promise<ManifestForm>;
+  installUrl(slug: string, state: string): string;
+  convert(code: string, madeBy: string): Promise<string>;
+  installedAccount(installationId: string): Promise<string | null>;
+}
+
 export interface LoginProvider {
   readonly name: ProviderName;
   /** The display name of the host. */
@@ -51,6 +85,8 @@ export interface LoginProvider {
     clientId: (typeof CODE_HOST_LOGIN_ENV_KEYS)[number];
     clientSecret: (typeof CODE_HOST_LOGIN_ENV_KEYS)[number];
   };
+  /** The host's optional app flow. */
+  readonly appFlow?: AppFlow;
   /** Both the client id and the secret are set. */
   configured(): boolean;
   /** True when the login also keeps the person's tokens. */

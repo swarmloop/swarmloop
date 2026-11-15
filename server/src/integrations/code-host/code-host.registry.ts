@@ -3,11 +3,12 @@ import { remoteProject } from './remote-project';
 import { GitAuthError, SwarmloopError } from '../../core/swarmloop-error';
 import type { CodeHost, SelectedHost } from './code-host';
 import type { AbstractCodeHost, CodeHostEnv } from './abstract-code-host';
+import type { Type } from '@nestjs/common';
 import type { Clock } from '../../core/clock';
 import type { Connection } from '../connection';
 import type { CodeHostAdapter } from './code-host-adapter';
 import { codeHostAdapters } from './code-host-adapters';
-import type { AppSource, LoginProvider } from './login-provider';
+import type { AppFlow, AppSource, LoginProvider } from './login-provider';
 
 interface Entry {
   readonly adapter: CodeHostAdapter;
@@ -72,8 +73,16 @@ export class CodeHostRegistry {
   }
 
   /** The login of each host, in the order of the adapters. */
-  static loginProviders(env: CodeHostEnv, clock: Clock, apps: AppSource): LoginProvider[] {
-    return codeHostAdapters().map((adapter) => adapter.login(env, clock, apps));
+  static loginProviders(
+    env: CodeHostEnv,
+    clock: Clock,
+    apps: AppSource,
+    resolveFlow?: (flow: Type<AppFlow>) => AppFlow,
+  ): LoginProvider[] {
+    return codeHostAdapters().map((adapter) => {
+      const flow = adapter.appFlow;
+      return adapter.login(env, clock, apps, flow && resolveFlow ? () => resolveFlow(flow) : undefined);
+    });
   }
 
   /** How a person connects each host; none when the store of connections is absent. */
