@@ -27,6 +27,7 @@ import type { SwarmloopEnv } from '../config/env';
 import { Clock } from '../core/clock';
 import { writeEnvOverrides } from './env.spec-helpers';
 import { realStep } from './real-steps';
+import { seedMigratedDatabase } from './migrated-database.spec-helpers';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { STEPS, type StepName } from '../contract/steps';
 import { HistoryModule } from '../history/history.module';
@@ -121,6 +122,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   const ownsRoot = options.ownsRoot ?? options.root === undefined;
   const root = options.root ?? (await mkdtemp(join(tmpdir(), 'swarmloop-test-app-')));
   mkdirSync(root, { recursive: true });
+  seedMigratedDatabase(root);
   const hostEnv = options.realHost
     ? { GITLAB_BASE_URL: 'https://gitlab.example', GITLAB_TOKEN: 'token', ...options.env }
     : options.env;
