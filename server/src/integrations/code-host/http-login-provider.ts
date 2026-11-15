@@ -7,6 +7,7 @@ import { githubEndpoints } from './github/github-login';
 import { gitlabEndpoints } from './gitlab/gitlab-login';
 import type {
   AppCredentials,
+  AppFlow,
   AppSource,
   Endpoints,
   Identity,
@@ -33,12 +34,17 @@ export class HttpOAuthProvider implements LoginProvider {
     private readonly serverToken: string,
     private readonly clock: Clock,
     private readonly apps: AppSource,
+    private readonly appFlowOf?: () => AppFlow,
   ) {
     this.name = facts.name;
     this.label = facts.label;
     this.appLabel = facts.appLabel;
     this.allowPrefixes = facts.allowPrefixes;
     this.clientEnvKeys = facts.clientEnvKeys;
+  }
+
+  get appFlow(): AppFlow | undefined {
+    return this.appFlowOf?.();
   }
 
   configured(): boolean {

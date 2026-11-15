@@ -28,6 +28,11 @@ export class AuthService {
     this.token = machineToken(resolveRepoRoot(config.env.SWARMLOOP_ROOT, __dirname), config.env.SWARMLOOP_TOKEN);
   }
 
+  /** Every provider, configured or not. */
+  all(): LoginProvider[] {
+    return this.providers;
+  }
+
   configured(): LoginProvider[] {
     return this.providers.filter((provider) => provider.configured());
   }

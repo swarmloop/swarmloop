@@ -3,26 +3,20 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
 import { HostAppEntity } from '../history/connection-entities';
-import type { AppCredentials, AppSource, ProviderName } from '../integrations/code-host/login-provider';
+import {
+  type AppCredentials,
+  type AppSource,
+  type HostAppStore,
+  type ProviderName,
+  type StoredApp,
+} from '../integrations/code-host/login-provider';
 import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { SecretBox } from './secret-box';
 
-/** A stored app: all fields for an app with a private key, else the client id and secret. */
-interface HostApp {
-  host: ProviderName;
-  appId: string;
-  slug: string;
-  clientId: string;
-  clientSecret: string;
-  privateKey: string;
-  /** The login of the person who made the app, or `machine`. Null for an app made earlier. */
-  madeBy: string | null;
-}
-
 /** The app of each host: the one Connect stored, encrypted, else the OAuth app of the environment. */
 @Injectable()
-export class HostAppsService implements AppSource, OnModuleInit {
-  private readonly apps = new Map<string, HostApp>();
+export class HostAppsService implements AppSource, HostAppStore, OnModuleInit {
+  private readonly apps = new Map<string, StoredApp>();
 
   constructor(
     private readonly config: AppConfig,
@@ -45,11 +39,11 @@ export class HostAppsService implements AppSource, OnModuleInit {
   }
 
   /** The stored app, or null. The secret leaves this service only for the login and the token refresh. */
-  find(host: ProviderName): HostApp | null {
+  find(host: ProviderName): StoredApp | null {
     return this.apps.get(host) ?? null;
   }
 
-  async save(app: HostApp): Promise<void> {
+  async save(app: StoredApp): Promise<void> {
     await this.rows.save({
       host: app.host,
       appId: app.appId,

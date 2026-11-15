@@ -2,6 +2,7 @@ import type { CodeHostAdapter } from '../code-host-adapter';
 import { HttpOAuthProvider } from '../http-login-provider';
 import { GithubCodeHost } from './github-code-host';
 import { githubConnection } from './github-connection';
+import { GithubAppService } from './github-app.service';
 import { GITHUB_APP_LABEL, githubEndpoints } from './github-login';
 import { githubRules } from './github-rules';
 
@@ -25,6 +26,8 @@ export const adapter: CodeHostAdapter = {
   clientEnvKeys: { clientId: 'GITHUB_OAUTH_CLIENT_ID', clientSecret: 'GITHUB_OAUTH_CLIENT_SECRET' },
   keepsTokensWithoutApp: false,
   storesApplication: false,
-  login: (env, clock, apps) => new HttpOAuthProvider(adapter, githubEndpoints(env), env[adapter.tokenKey], clock, apps),
+  appFlow: GithubAppService,
+  login: (env, clock, apps, appFlow) =>
+    new HttpOAuthProvider(adapter, githubEndpoints(env), env[adapter.tokenKey], clock, apps, appFlow),
   ownerFromActor: true,
 };

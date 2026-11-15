@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Res,
 } from '@nestjs/common';
 import { AppConfig } from '../config/env';
@@ -15,13 +16,15 @@ import { Actor } from './actor.decorator';
 import { CheckoutRepos } from './checkout-repos';
 import { ConnectionsService } from './connections.service';
 import { startState, type CookieResponse } from './cookies';
-import { GithubAppService, type ManifestForm } from './github-app.service';
+import { AuthService } from './auth.service';
+import { appFlowApps, appFlowRoutes, routeHost } from './host-routes';
 import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
+import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { endpointsOf } from '../integrations/code-host/http-login-provider';
-import type { ProviderName } from '../integrations/code-host/login-provider';
+import type { AppFlow, LoginProvider, ManifestForm, ProviderName } from '../integrations/code-host/login-provider';
 
-const HOSTS: readonly ProviderName[] = ['github', 'gitlab'];
+const HOSTS: readonly ProviderName[] = codeHostAdapters().map((adapter) => adapter.name);
 
 /** The Connections page: what each host is set up with, and the signed-in person's own connection to it. */
 @Controller('connections')
@@ -30,7 +33,7 @@ export class ConnectionsController {
     private readonly config: AppConfig,
     private readonly apps: HostAppsService,
     private readonly connections: ConnectionsService,
-    private readonly githubApp: GithubAppService,
+    private readonly auth: AuthService,
     private readonly states: LoginStates,
     private readonly repos: CheckoutRepos,
   ) {}
@@ -46,34 +49,38 @@ export class ConnectionsController {
     return { url: `/auth/${this.host(host)}/login` };
   }
 
-  /** The GitHub page where the person adds repositories to the installation. */
+  /** The host page where the person adds repositories to the installation. */
   @Post(':host/install')
   install(@Param('host') host: string, @Res({ passthrough: true }) response: CookieResponse): { url: string } {
-    const app = this.host(host) === 'github' ? this.apps.find('github') : null;
-    if (!app) {
-      throw new BadRequestException('there is no GitHub App to install');
+    const provider = this.auth.all().find((candidate) => candidate.name === this.host(host));
+    const flow = provider?.appFlow;
+    const app = provider && flow ? this.apps.find(provider.name) : null;
+    if (!provider || !flow || !app) {
+      throw new BadRequestException(`there is no ${appFlowApps()} to install`);
     }
     return {
-      url: this.githubApp.installUrl(app.slug, startState(this.states, this.config, 'github', response, false).state),
+      url: flow.installUrl(app.slug, startState(this.states, this.config, provider.name, response, false).state),
     };
   }
 
-  /** Starts the manifest flow for a new GitHub App. The old app and its connections stay until GitHub returns the new one. Only its maker, or the machine token. */
-  @Post('github/app')
+  /** Starts the manifest flow for a new app of the host. The old app and its connections stay until the host returns the new one. Only its maker, or the machine token. */
+  @Post(appFlowRoutes('app'))
   async replaceApp(
     @Query('org') org: string | undefined,
     @Actor() actor: string | null,
+    @Req() request: { route?: { path?: string } },
     @Res({ passthrough: true }) response: CookieResponse,
   ): Promise<ManifestForm> {
-    const app = this.apps.find('github');
+    const provider = this.flowProvider(routeHost(request));
+    const app = this.apps.find(provider.name);
     if (!app) {
-      throw new BadRequestException('there is no GitHub App to replace');
+      throw new BadRequestException(`there is no ${provider.label} ${provider.appLabel} to replace`);
     }
     if (actor !== 'machine' && actor !== app.madeBy) {
       throw new ForbiddenException(`Only ${app.madeBy ?? 'the machine token'} can replace this app`);
     }
-    const { state } = startState(this.states, this.config, 'github', response, true, actor as string);
-    return this.githubApp.manifest(org?.trim() || (await this.repos.owners('github').catch(() => []))[0], state);
+    const { state } = startState(this.states, this.config, provider.name, response, true, actor as string);
+    return provider.appFlow.manifest(org?.trim() || (await this.repos.owners(provider.name).catch(() => []))[0], state);
   }
 
   @Delete(':host')
@@ -92,16 +99,25 @@ export class ConnectionsController {
     return host;
   }
 
+  private flowProvider(host: string): LoginProvider & { appFlow: AppFlow } {
+    const provider = this.auth.all().find((candidate) => candidate.name === host);
+    if (!provider?.appFlow) {
+      throw new BadRequestException(`${host} is not a code host`);
+    }
+    return provider as LoginProvider & { appFlow: AppFlow };
+  }
+
   private settingsUrl(host: ProviderName, slug: string | undefined): string | null {
-    return endpointsOf(host, this.config.env).installs && slug
-      ? `${new URL(this.config.env.GITHUB_BASE_URL || 'https://github.com').origin}/settings/apps/${encodeURIComponent(slug)}`
+    const adapter = codeHostAdapters().find((candidate) => candidate.name === host);
+    return adapter && endpointsOf(host, this.config.env).installs && slug
+      ? `${new URL(this.config.env[adapter.baseKey] || `https://${adapter.publicHost}`).origin}/settings/apps/${encodeURIComponent(slug)}`
       : null;
   }
 
   /** The owners of the checkouts, when the installation covers none of them. */
-  private async missingOwners(installed: string[]): Promise<string[]> {
+  private async missingOwners(host: ProviderName, installed: string[]): Promise<string[]> {
     const have = new Set(installed.map((name) => name.toLowerCase()));
-    const checkouts = (await this.repos.list().catch(() => [])).filter((repo) => repo.host === 'github');
+    const checkouts = (await this.repos.list().catch(() => [])).filter((repo) => repo.host === host);
     if (checkouts.some((repo) => have.has(`${repo.owner}/${repo.name}`.toLowerCase()))) {
       return [];
     }
@@ -130,7 +146,7 @@ export class ConnectionsController {
         : null,
       account: health?.login ?? null,
       repositories,
-      missingOwners: installs && health ? await this.missingOwners(repositories) : [],
+      missingOwners: installs && health ? await this.missingOwners(host, repositories) : [],
       selection: health?.selection === 'selected' ? 'selected' : health?.selection === 'all' ? 'all' : null,
       health: health && { status: health.status, expiresAt: health.expiresAt, refreshedAt: health.refreshedAt },
       connected: mayReplace ? await this.connections.loginsOn(host) : [],
