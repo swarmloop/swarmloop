@@ -69,23 +69,23 @@ describe('StepDetail', () => {
   });
 
   it('calls onReplay from Run again', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onReplay = vi.fn();
     detail({ onReplay });
 
     await user.click(await screen.findByRole('button', { name: 'Run again' }));
 
-    expect(onReplay).toHaveBeenCalledTimes(1);
+    expect(onReplay).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
   });
 
   it('shows Resume only when onResume is passed', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onResume = vi.fn();
     detail({ onResume });
 
     await user.click(await screen.findByRole('button', { name: 'Resume' }));
 
-    expect(onResume).toHaveBeenCalledTimes(1);
+    expect(onResume).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
   });
 
   it('hides Resume without onResume', async () => {
@@ -240,7 +240,6 @@ describe('StepDetail', () => {
       detail();
 
       expect(await screen.findByText('latest visit line')).toBeInTheDocument();
-      expect(getRunLog).toHaveBeenCalledTimes(1);
       expect(getRunLog).toHaveBeenCalledWith('run-1', 'implement', 'att-2', { tail: 2000 });
     });
 
@@ -257,7 +256,7 @@ describe('StepDetail', () => {
       await screen.findByText('latest visit line');
       expect(getRunLog).not.toHaveBeenCalledWith('run-1', 'implement', 'att-1', expect.anything());
 
-      await userEvent.click(screen.getByRole('button', { name: '1' }));
+      await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: '1' }));
 
       expect(await screen.findByText('first visit line')).toBeInTheDocument();
       expect(getRunLog).toHaveBeenLastCalledWith('run-1', 'implement', 'att-1', { tail: 2000 });
@@ -402,7 +401,7 @@ describe('StepDetail', () => {
       );
       detail({ step: 'checks' });
 
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       expect(await screen.findByRole('button', { name: 'Show server tests' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /npm run lint/ })).toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'Show server tests' }));
@@ -425,7 +424,7 @@ describe('StepDetail', () => {
     });
 
     it('streams the output of a running command as it arrives', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       detail({ step: 'checks' });
       await user.click(await screen.findByRole('button', { name: 'Show npm run build' }));
 

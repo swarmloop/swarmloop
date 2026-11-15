@@ -35,7 +35,7 @@ afterEach(() => vi.restoreAllMocks());
 describe('AttemptSelector in the step header', () => {
   it('shows each attempt once while live updates arrive between fetches', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const running = (attempt: number) =>
       visitView({ id: -1, key: `live-implement-${attempt}`, attempt, status: 'running' });
     let view = stepView({ visits: [...visits(19), running(20)] });

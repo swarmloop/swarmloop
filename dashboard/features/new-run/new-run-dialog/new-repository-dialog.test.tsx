@@ -25,7 +25,7 @@ beforeEach(() => {
 
 describe('NewRepositoryDialog', () => {
   it('validates the name as you type', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     open(['demo']);
     const name = screen.getByRole('textbox', { name: 'Name' });
     const create = screen.getByRole('button', { name: 'Create' });
@@ -48,7 +48,7 @@ describe('NewRepositoryDialog', () => {
   });
 
   it('is private by default, sends Public only when it is checked, and selects the new repository', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const created = {
       host: 'github',
       owner: 'me',
@@ -70,7 +70,7 @@ describe('NewRepositoryDialog', () => {
   });
 
   it('passes the host of the chosen owner and Public along', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(createRepository).mockResolvedValue({} as never);
     open();
 
@@ -84,7 +84,7 @@ describe('NewRepositoryDialog', () => {
   });
 
   it('shows the spinner while it creates and the host error inline when it fails', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     let fail: (error: Error) => void = () => undefined;
     vi.mocked(createRepository).mockReturnValue(new Promise((_done, reject) => (fail = reject)));
     const { onCreated } = open();

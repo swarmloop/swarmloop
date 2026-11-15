@@ -52,8 +52,8 @@ describe('flow dialogs', () => {
     const { onSaved, onClose } = open(secretFlow);
     const input = screen.getByLabelText('API key');
     expect(input).toHaveAttribute('type', 'password');
-    await userEvent.type(input, 'sk-123');
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await userEvent.setup({ delay: null }).type(input, 'sk-123');
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Save' }));
 
     expect(saveIntegration).toHaveBeenCalledWith('claude', { apiKey: 'sk-123' });
     expect(onSaved).toHaveBeenCalled();
@@ -67,9 +67,9 @@ describe('flow dialogs', () => {
       'href',
       'https://id.atlassian.com/tokens',
     );
-    await userEvent.type(screen.getByLabelText('Site URL'), 'https://acme.atlassian.net');
-    await userEvent.type(screen.getByLabelText('API token'), 'tok');
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await userEvent.setup({ delay: null }).type(screen.getByLabelText('Site URL'), 'https://acme.atlassian.net');
+    await userEvent.setup({ delay: null }).type(screen.getByLabelText('API token'), 'tok');
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Save' }));
 
     expect(saveIntegration).toHaveBeenCalledWith('claude', { url: 'https://acme.atlassian.net', token: 'tok' });
   });
@@ -77,8 +77,8 @@ describe('flow dialogs', () => {
   it("a failed save shows the provider's message and stays open", async () => {
     vi.mocked(saveIntegration).mockRejectedValue(new Error('Anthropic answered 401'));
     const { onClose } = open(secretFlow);
-    await userEvent.type(screen.getByLabelText('API key'), 'bad');
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await userEvent.setup({ delay: null }).type(screen.getByLabelText('API key'), 'bad');
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Save' }));
 
     expect(await screen.findByText('Anthropic answered 401')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
@@ -94,8 +94,8 @@ describe('flow dialogs', () => {
       'href',
       'https://claude.test/auth',
     );
-    await userEvent.type(screen.getByLabelText('Code'), 'abc');
-    await userEvent.click(screen.getByRole('button', { name: 'Send code' }));
+    await userEvent.setup({ delay: null }).type(screen.getByLabelText('Code'), 'abc');
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Send code' }));
 
     expect(sendSignInCode).toHaveBeenCalledWith('claude', 'session-1', 'abc');
     expect(onSaved).toHaveBeenCalled();
@@ -161,10 +161,10 @@ describe('flow dialogs', () => {
 
   it('Tab reaches Connect and Enter opens the dialog', async () => {
     render(<ConnectionCard card={connectionCard({ flows: [secretFlow] })} onChanged={() => undefined} />);
-    await userEvent.tab();
+    await userEvent.setup({ delay: null }).tab();
 
     expect(screen.getByRole('button', { name: 'Connect' })).toHaveFocus();
-    await userEvent.keyboard('{Enter}');
+    await userEvent.setup({ delay: null }).keyboard('{Enter}');
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

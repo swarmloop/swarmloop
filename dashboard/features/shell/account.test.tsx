@@ -20,11 +20,11 @@ describe('Account', () => {
     vi.mocked(getSession).mockResolvedValue({ user: 'octocat', provider: 'github' });
 
     render(<Account />);
-    await userEvent.setup().click(await screen.findByRole('button', { name: /octocat/ }));
+    await userEvent.setup({ delay: null }).click(await screen.findByRole('button', { name: /octocat/ }));
 
     expect(screen.getAllByText('octocat').length).toBeGreaterThan(0);
     expect(screen.getAllByText('github').length).toBeGreaterThan(0);
-    await userEvent.setup().click(screen.getByRole('menuitem', { name: 'Log out' }));
+    await userEvent.setup({ delay: null }).click(screen.getByRole('menuitem', { name: 'Log out' }));
     expect(logout).toHaveBeenCalled();
     await vi.waitFor(() => expect(assign).toHaveBeenCalledWith('/login'));
   });
@@ -33,7 +33,7 @@ describe('Account', () => {
     vi.mocked(getSession).mockResolvedValue({ user: 'octocat', provider: 'github' });
 
     render(<Account />);
-    await userEvent.setup().click(await screen.findByRole('button', { name: /octocat/ }));
+    await userEvent.setup({ delay: null }).click(await screen.findByRole('button', { name: /octocat/ }));
 
     expect(screen.getByRole('menuitem', { name: 'Settings' })).toHaveAttribute('href', '/settings');
     expect(screen.getByRole('menuitem', { name: 'Connections' })).toHaveAttribute('href', '/connections');

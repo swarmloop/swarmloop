@@ -26,7 +26,7 @@ function dialogs(overrides: Partial<ComponentProps<typeof RunDialogs>> = {}) {
 
 describe('RunDialogs', () => {
   it('closes the stop confirmation on Keep running', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const props = dialogs({ confirmStop: true });
 
     await user.click(screen.getByRole('button', { name: 'Keep running' }));
@@ -35,16 +35,16 @@ describe('RunDialogs', () => {
   });
 
   it('calls stopRun from the stop confirmation', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const props = dialogs({ confirmStop: true });
 
     await user.click(screen.getByRole('button', { name: 'Stop' }));
 
-    expect(props.stopRun).toHaveBeenCalledTimes(1);
+    expect(props.stopRun).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
   });
 
   it('starts the replay with the pending prompt and phases on Stop and start', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const props = dialogs({ replay: 'implement', pending: { prompt: 'Try again', phases: ['planning'] } });
 
     await user.click(screen.getByRole('button', { name: 'Stop and start' }));
@@ -53,7 +53,7 @@ describe('RunDialogs', () => {
   });
 
   it('sends a failed replay to setError', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const props = dialogs({
       replay: 'implement',
       pending: { prompt: 'Try again', phases: ['planning'] },

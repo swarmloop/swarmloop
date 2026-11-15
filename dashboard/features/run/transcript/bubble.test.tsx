@@ -84,7 +84,7 @@ describe('Bubble', () => {
   });
 
   it('is a polite log, and every detail toggle says whether it is open', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     feed([...commandEvents(1, 's', { executable: 'ls', output: 'a\nb' }), artifact]);
 
     const log = screen.getByRole('log');

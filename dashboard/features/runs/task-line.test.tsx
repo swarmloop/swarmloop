@@ -9,7 +9,7 @@ describe('TaskLine', () => {
     const name = 'a long run name '.repeat(10).trim();
     render(<TaskLine run={{ ...runSummary(), name }} selected={false} onOpen={vi.fn()} onRemove={vi.fn()} />);
 
-    await userEvent.hover(screen.getByText(name));
+    await userEvent.setup({ delay: null }).hover(screen.getByText(name));
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent(name);
   });

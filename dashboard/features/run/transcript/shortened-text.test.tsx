@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { QueryWrapper } from '../../../test/query-wrapper';
@@ -46,21 +46,21 @@ describe('shortened text', () => {
 
     const button = screen.getByRole('button', { name: `${'x'.repeat(300)}…` });
     expect(button).toHaveAttribute('aria-expanded', 'false');
-    await userEvent.click(button);
+    await userEvent.setup({ delay: null }).click(button);
     expect(screen.getByRole('button', { name: target })).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('shows the last 40 of 100 lines under a mark and all of them after Show whole output', async () => {
     feed(commandEvents(1, 's', { executable: 'make', output: numbered(1, 100) }));
 
-    await userEvent.click(screen.getByRole('button', { name: /Show output/ }));
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: /Show output/ }));
     expect(screen.getByText(/… 60 earlier lines not shown/)).toBeInTheDocument();
     expect(screen.getByText(/line 100/)).toBeInTheDocument();
     expect(screen.getByText(/line 61 /)).toBeInTheDocument();
     expect(screen.queryByText(/line 1 /)).not.toBeInTheDocument();
 
     const whole = screen.getByRole('button', { name: 'Show whole output' });
-    await userEvent.click(whole);
+    await userEvent.setup({ delay: null }).click(whole);
     expect(whole).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText(/line 1 /)).toBeInTheDocument();
     expect(screen.queryByText(/earlier lines not shown/)).not.toBeInTheDocument();
@@ -69,9 +69,9 @@ describe('shortened text', () => {
   it('says the omitted lines are in the step log when the server dropped them', async () => {
     feed(commandEvents(1, 's', { executable: 'make', output: numbered(1, 30), omittedLines: 500 }));
 
-    await userEvent.click(screen.getByRole('button', { name: /Show output/ }));
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: /Show output/ }));
     expect(screen.getByText(/^… 500 earlier lines not shown /)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Show whole output' }));
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Show whole output' }));
     expect(
       screen.getByText(/^… 500 earlier lines not shown; the whole output is in the step's log /),
     ).toBeInTheDocument();
@@ -92,10 +92,12 @@ describe('shortened text', () => {
       </>,
     );
 
+    const user = userEvent.setup({ delay: null });
     for (const text of [title, summary]) {
-      await userEvent.hover(screen.getAllByText(text)[0]);
+      await user.hover(screen.getAllByText(text)[0]);
       expect(await screen.findByRole('tooltip')).toHaveTextContent(text);
-      await userEvent.unhover(screen.getAllByText(text)[0]);
+      await user.unhover(screen.getAllByText(text)[0]);
+      await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
     }
   });
 });

@@ -35,7 +35,7 @@ beforeEach(() => {
 
 describe('NewRunDialog', () => {
   it('keeps Start disabled until a prompt and a project are set', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<NewRunDialog open onClose={vi.fn()} />);
     const start = screen.getByRole('button', { name: 'Start' });
     expect(start).toBeDisabled();
@@ -48,7 +48,7 @@ describe('NewRunDialog', () => {
   });
 
   it('lists the Jira keys that will be fetched, or says there are none', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(ticketKeys).mockResolvedValueOnce({ keys: ['PROJ-12', 'PROJ-13'] });
     render(<NewRunDialog open onClose={vi.fn()} />);
 
@@ -69,7 +69,7 @@ describe('NewRunDialog', () => {
   });
 
   it('posts the prompt, phases and projects to /runs without ci once ci is unchecked', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onCreated = vi.fn();
     render(<NewRunDialog open onClose={vi.fn()} onCreated={onCreated} />);
 
@@ -87,7 +87,7 @@ describe('NewRunDialog', () => {
   });
 
   it('renders no split control and sends no split', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<NewRunDialog open onClose={vi.fn()} />);
     expect(screen.queryByRole('checkbox', { name: /split/i })).not.toBeInTheDocument();
     await pastePrompt(user, 'Ship it');
@@ -99,7 +99,7 @@ describe('NewRunDialog', () => {
   });
 
   it('hands the prompt and phases to onSubmit instead of posting', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
     render(<NewRunDialog open onClose={onClose} onSubmit={onSubmit} />);
@@ -108,12 +108,12 @@ describe('NewRunDialog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Start' }));
 
-    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onClose).toHaveBeenCalledWith());
     expect(onSubmit).toHaveBeenCalledWith('Ship it', allPhases);
   });
 
   it('shows the error when the POST to /runs fails', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(listProjects).mockResolvedValue({ projects: ['swarmloop'] });
     vi.mocked(createRun).mockRejectedValue(new Error('run refused'));
     render(<NewRunDialog open onClose={vi.fn()} />);
@@ -125,7 +125,7 @@ describe('NewRunDialog', () => {
     expect(await screen.findByText('run refused')).toBeInTheDocument();
   });
   it('keeps local folders working when the remote list fails', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(listRemote).mockRejectedValue(new Error('GitHub is down'));
     render(<NewRunDialog open onClose={vi.fn()} />);
 
@@ -136,7 +136,7 @@ describe('NewRunDialog', () => {
   });
 
   it('creates two repositories in a row without closing the dialog and picks both', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onClose = vi.fn();
     vi.mocked(listRemote).mockResolvedValue({
       repositories: [],
@@ -162,7 +162,8 @@ describe('NewRunDialog', () => {
       await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Name' })).not.toBeInTheDocument());
     }
 
-    expect(createRepository).toHaveBeenCalledTimes(2);
+    expect(createRepository).toHaveBeenNthCalledWith(1, expect.objectContaining({ owner: 'acme', name: 'first' }));
+    expect(createRepository).toHaveBeenNthCalledWith(2, expect.objectContaining({ owner: 'acme', name: 'second' }));
     expect(onClose).not.toHaveBeenCalled();
     await pastePrompt(user, 'Ship it');
     await user.click(screen.getByRole('button', { name: 'Start' }));

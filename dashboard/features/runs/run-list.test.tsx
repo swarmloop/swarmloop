@@ -33,7 +33,7 @@ function list(overrides: Partial<ComponentProps<typeof RunList>> = {}) {
 
 describe('RunList', () => {
   it('reports the filter text through onQuery', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const props = list();
 
     await user.type(screen.getByRole('textbox'), 'r');
@@ -98,7 +98,7 @@ describe('RunList', () => {
   });
 
   it('labels a merged subtask Merged', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const parent = { ...runSummary(), key: 'run-0', name: 'Parent run' };
     const merged = {
       ...runSummary(),
@@ -138,7 +138,7 @@ describe('RunList', () => {
     const props = list({ visible: [] });
 
     expect(screen.getByText(/Nothing in progress/)).toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Show done runs' }));
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Show done runs' }));
 
     expect(props.onPart).toHaveBeenCalledWith('done');
   });
@@ -146,7 +146,9 @@ describe('RunList', () => {
   it('offers the matches of the other part when the search finds none', async () => {
     const props = list({ query: 'zzz', visible: [], otherMatches: 2 });
 
-    await userEvent.setup().click(screen.getByRole('button', { name: 'No active run matches · 2 in Done' }));
+    await userEvent
+      .setup({ delay: null })
+      .click(screen.getByRole('button', { name: 'No active run matches · 2 in Done' }));
 
     expect(props.onPart).toHaveBeenCalledWith('done');
   });
@@ -161,7 +163,7 @@ describe('RunList', () => {
   });
 
   it('opens a run by its key when its row is clicked', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const props = list();
 
     await user.click(screen.getByText('Run one'));
@@ -170,7 +172,7 @@ describe('RunList', () => {
   });
 
   it('removes a run from its remove icon without opening it', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const props = list();
 
     fireEvent.mouseEnter(screen.getByText('Run one'));
@@ -193,7 +195,7 @@ describe('RunList', () => {
     };
 
     it('lists a subtask under its parent, indented, with its own cost', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       list({ runs: [parent, child], visible: [parent, child] });
 
       await user.click(screen.getByRole('button', { name: 'Expand subtasks of Parent run' }));
@@ -222,7 +224,7 @@ describe('RunList', () => {
     });
 
     it('toggles the subtasks from the arrow, over the default', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       list({ runs: [parent, child], visible: [parent, child] });
       expect(screen.queryByText('Child one')).not.toBeInTheDocument();
 
@@ -234,7 +236,7 @@ describe('RunList', () => {
     });
 
     it('opens a collapsed done parent from the arrow', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       const done = { ...parent, status: 'done' };
       list({ runs: [done, child], visible: [done, child] });
 
@@ -313,7 +315,7 @@ describe('RunList', () => {
     });
 
     it('keeps the delete out of the accessible tree until the row is hovered or focused', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       renderList([STATE_RUNS[0].run]);
       expect(screen.queryByRole('button', { name: 'Remove Working run' })).not.toBeInTheDocument();
 
@@ -332,7 +334,7 @@ describe('RunList', () => {
     });
 
     it('offers a ⋯ menu with Remove where there is no hover', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       const touch = vi.spyOn(window, 'matchMedia').mockImplementation(
         (query: string) =>
           ({
@@ -371,7 +373,7 @@ describe('RunList', () => {
     });
 
     it('moves focus with the arrow keys across rows and opens the focused one with Enter', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       const { parent, running, blocked, merged } = epicOfThree();
       const other = listRun({ key: 'x-1', name: 'Other run', updatedAt: YESTERDAY });
       const props = renderList([parent, blocked, running, merged, other]);
@@ -424,7 +426,7 @@ describe('RunList', () => {
     });
 
     it('hangs the open tasks under the parent, indented, along a guide line that closes with them', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       renderList(epic);
 
       const tasks = screen.getByRole('list', { name: 'Tasks of Epic parent' });
@@ -467,7 +469,7 @@ describe('RunList', () => {
     });
 
     it('shows the delete of a task only on hover', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       renderList(epic);
       expect(screen.queryByRole('button', { name: 'Remove Task C' })).not.toBeInTheDocument();
 
@@ -485,7 +487,7 @@ describe('RunList', () => {
     });
 
     it('opens the merged tasks from the ✓ line', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       renderList(epic);
       expect(screen.queryByText('Task A')).not.toBeInTheDocument();
 
@@ -496,7 +498,7 @@ describe('RunList', () => {
     });
 
     it('never styles an open parent as selected, and gives a selected task the accent', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       renderList(epic, { selected: 'e-1' });
       const row = () => screen.getByText('Epic parent').closest('[data-nav]');
       expect(row()).not.toHaveClass('Mui-selected');
@@ -513,7 +515,7 @@ describe('RunList', () => {
     });
 
     it('points the toggle right when closed and down when open', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       renderList([parent, running]);
 
       const toggle = screen.getByRole('button', { name: 'Expand subtasks of Epic parent' });
