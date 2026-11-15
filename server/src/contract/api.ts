@@ -1,6 +1,7 @@
 import type { Effort } from './effort';
 import type { CommandInput } from './command';
 import type { MergeOutcome, RunAction, RunState, StateReason } from './run-state';
+import type { InterruptionNote } from './interruption';
 import type { TaskLayer } from './task-layer';
 import type { SubtaskStatus } from './subtask';
 
@@ -152,6 +153,8 @@ export interface VisitView {
   memAvg: number;
   memPeak: number;
   killReason: string | null;
+  /** What was decided for a visit cut by a server restart. Absent for any other visit. */
+  interruption?: InterruptionNote;
   decision: string | null;
   /** The attempt whose log this visit wrote, for `GET /runs/:key/steps/:step/log?attempt=`. Null when it has none. */
   attemptId: string | null;

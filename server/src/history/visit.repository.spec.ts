@@ -22,6 +22,27 @@ describe('VisitRepository', () => {
     }
   });
 
+  it('reads the latest visit of each run with its id and kill reason', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const runs = db.app.get(RunRepository);
+      const first = await runs.begin('run-latest-1', 'code-review');
+      const second = await runs.begin('run-latest-2', 'code-review');
+      await visits.finishVisit(first, { ...repositoryVisit(), killReason: 'timeout' });
+      const last = await visits.finishVisit(first, { ...repositoryVisit(), killReason: 'process died' });
+      const other = await visits.finishVisit(second, repositoryVisit());
+
+      const latest = await visits.latestVisits([first.id, second.id]);
+
+      expect(latest.get(first.id)).toMatchObject({ id: last.id, killReason: 'process died' });
+      expect(latest.get(second.id)).toMatchObject({ id: other.id });
+      expect(await visits.latestVisits([])).toEqual(new Map());
+    } finally {
+      await db.close();
+    }
+  });
+
   it('creates a visit with related rows, reads it and updates its stat', async () => {
     const db = await repositoryDatabase();
     try {

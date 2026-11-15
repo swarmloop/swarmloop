@@ -32,6 +32,7 @@ import {
   belongsToVisit,
   documentView,
   filesOf,
+  interruptionOf,
   legacyLogs,
   taskView,
   withReturnNotes,
@@ -154,6 +155,7 @@ export class RunQueriesService {
         run.currentStep,
         await taskRuns(
           this.runs,
+          this.visits,
           children,
           documents,
           this.pipeline,
@@ -223,6 +225,7 @@ export class RunQueriesService {
     const visits: VisitView[] = stats.map((stat, index) => {
       const owned = documents.filter((document) => document.stepStatId === stat.id);
       const verdict = name === 'code-review' ? angleVerdict(owned) : null;
+      const interruption = interruptionOf(documents, stat.id);
       return {
         id: stat.id,
         key: visitKey(stat.id),
@@ -241,6 +244,7 @@ export class RunQueriesService {
         memAvg: stat.memAvg,
         memPeak: stat.memPeak,
         killReason: stat.killReason,
+        ...(interruption ? { interruption } : {}),
         decision: verdict ? `decision: ${verdict}` : decisionLine(owned.map((document) => document.body).join('\n')),
         ...visitLogSize(this.config, run, name, stat, documents),
         documents: [

@@ -5,6 +5,7 @@ import { chargeStream } from '../agent/spend';
 import { loadPriceTable } from '../agent/prices';
 import { resolveRepoRoot } from '../config/repo-root';
 import { ERROR_CODES } from '../contract/error-codes';
+import type { InterruptionNote } from '../contract/interruption';
 import { REASON, type StateReason } from '../contract/run-state';
 import type { StepName } from '../contract/steps';
 import { hasFinalResult, stepOutput } from '../core/attempt-output';
@@ -242,6 +243,7 @@ export class RunSettler {
       run,
       decision.relaunch ? { status: 'waiting', ownerPid: null } : { status: 'failed', ownerPid: null },
     );
+    const note = this.noteOf(decision, now);
     const visit: VisitDraft = {
       step: run.currentStep,
       runtime: agent?.runtime ?? null,
@@ -260,7 +262,10 @@ export class RunSettler {
       exchange: null,
       httpCalls: [],
       document: null,
-      documents: [{ kind: 'error', fileName: '', body: 'process died\n' }],
+      documents: [
+        { kind: 'error', fileName: '', body: 'process died\n' },
+        ...(note ? [{ kind: 'interruption', fileName: '', body: JSON.stringify(note) }] : []),
+      ],
       resumed: false,
     };
     await barrier('before-finalize');
@@ -270,6 +275,15 @@ export class RunSettler {
     await this.visits.finalize(run.activeAttempt, run, visit, command);
     await barrier('after-finalize');
     return decision;
+  }
+
+  /** The note that says what the decision does with the cut attempt. Null when there is no decision to tell. */
+  private noteOf(decision: RelaunchDecision, at: string): InterruptionNote | null {
+    if (decision.relaunch) return { at, relaunched: true };
+    if (decision.cause === 'limit') {
+      return { at, relaunched: false, cause: 'limit', limit: this.config.env.MAX_LAUNCHES };
+    }
+    return decision.cause === 'stop' ? { at, relaunched: false, cause: 'stop' } : null;
   }
 
   /** What the attempt cost, from its step or from what its output file holds. */

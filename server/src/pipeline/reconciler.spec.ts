@@ -4,6 +4,8 @@ import { AppConfig } from '../config/env';
 import { deriveState, writeRunState } from '../history/run-state';
 import { RunStop } from '../agent/run-stop';
 import { CommandRepository } from '../history/command.repository';
+import { readInterruption } from '../contract/interruption';
+import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { DataSource } from 'typeorm';
@@ -247,6 +249,52 @@ describe('reconciler waits and automatic tries', () => {
       expect(writes.statuses).not.toContain('failed');
       const [command] = await relaunches(world, run.id);
       expect(command).toMatchObject({ type: 'resume', idempotencyKey: `relaunch-${begun.activeAttempt}` });
+    });
+
+    it('stores the interruption note with the decision in the visit', async () => {
+      const world = await boot();
+      const runs = world.app.get(RunRepository);
+      const lastVisit = async () => {
+        const run = (await runs.findRun(KEY))!;
+        const visit = (await world.app.get(VisitRepository).listStats(run.id)).at(-1)!;
+        const notes = (await world.app.get(DocumentRepository).listDocuments(run.id)).filter(
+          (document) => document.kind === 'interruption' && document.stepStatId === visit.id,
+        );
+        return { run, visit, note: notes.length ? readInterruption(notes[0].body) : null };
+      };
+
+      await cut(world);
+      let seen = await lastVisit();
+      expect(seen.note).toEqual({ at: seen.visit.finishedAt, relaunched: true });
+
+      await cut(world);
+      await cut(world);
+      seen = await lastVisit();
+      expect(seen.run.status).toBe('failed');
+      expect(seen.note).toEqual({ at: seen.visit.finishedAt, relaunched: false, cause: 'limit', limit: 3 });
+    });
+
+    it('stores a stop note when a Stop is pending, and none for a visit with no dead attempt', async () => {
+      const world = await boot();
+      const runs = world.app.get(RunRepository);
+      const run = await runs.begin(KEY, 'implement');
+      await world.app.get(CommandRepository).accept({ type: 'stop', key: KEY, payload: {}, admit: () => undefined });
+      await world.app.get(Reconciler).reconcile(run);
+
+      const stopped = (await runs.findRun(KEY))!;
+      const visit = (await world.app.get(VisitRepository).listStats(stopped.id)).at(-1)!;
+      const stored = await world.app.get(DocumentRepository).listDocuments(stopped.id);
+      const note = stored.find((document) => document.kind === 'interruption' && document.stepStatId === visit.id);
+      expect(readInterruption(note!.body)).toEqual({ at: visit.finishedAt, relaunched: false, cause: 'stop' });
+
+      const other = await save(runs, 'PROJ-701', 'implement', 'running');
+      writeRunState(other, { status: 'running', activeAttempt: null });
+      await runs.saveRun(other);
+      await world.app.get(Reconciler).reconcile(other);
+      const bare = (await runs.findRun('PROJ-701'))!;
+      const documents = await world.app.get(DocumentRepository).listDocuments(bare.id);
+      expect(documents.some((document) => document.kind === 'error')).toBe(true);
+      expect(documents.some((document) => document.kind === 'interruption')).toBe(false);
     });
 
     it('stays failed at MAX_LAUNCHES', async () => {
