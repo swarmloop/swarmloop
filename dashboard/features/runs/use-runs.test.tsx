@@ -78,7 +78,7 @@ describe('useRuns', () => {
   });
 
   it('sends DELETE for a removed run and drops its row', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
     vi.mocked(removeRun).mockResolvedValue({ key: 'run-1' });
     render(<Probe />, { wrapper: LiveBridgeProvider });
@@ -89,7 +89,7 @@ describe('useRuns', () => {
   });
 
   it('keeps a run that arrives while the DELETE is pending', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     let finish: (() => void) | undefined;
     vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
     vi.mocked(removeRun).mockReturnValue(

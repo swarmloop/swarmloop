@@ -33,7 +33,7 @@ function documents(overrides: Partial<ComponentProps<typeof StepDocuments>> = {}
 
 describe('StepDocuments', () => {
   it('selects a check by its name when its button is clicked', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const props = documents();
 
     await user.click(screen.getByRole('button', { name: 'requirements ok' }));

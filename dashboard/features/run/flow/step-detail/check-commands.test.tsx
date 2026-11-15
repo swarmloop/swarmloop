@@ -80,7 +80,7 @@ describe('CheckCommands', () => {
   });
 
   it('shows the place in the line of a waiting command when its line is opened', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     list([row({ status: 'waiting', startedAt: null, endedAt: null, exitCode: null })]);
     act(() =>
       receive('log', {
@@ -99,7 +99,7 @@ describe('CheckCommands', () => {
   });
 
   it('opens a line in place to its full command, output and own chart', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     list([row({}), row({ index: 1, name: 'lint', command: 'npm run lint' })]);
     expect(screen.queryByText('npm run test:unit -- --coverage')).toBeNull();
 

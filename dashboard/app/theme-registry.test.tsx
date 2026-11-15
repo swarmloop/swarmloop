@@ -9,8 +9,11 @@ function Probe({ queryFn }: { queryFn: () => Promise<never> }): React.ReactEleme
   return <p>{status}</p>;
 }
 
-function failWith(error: Error): ReturnType<typeof vi.fn<() => Promise<never>>> {
-  return vi.fn<() => Promise<never>>().mockRejectedValue(error);
+function failWith(error: Error, attemptTimes: number[]): () => Promise<never> {
+  return () => {
+    attemptTimes.push(Date.now());
+    return Promise.reject(error);
+  };
 }
 
 async function renderProbe(queryFn: () => Promise<never>): Promise<void> {
@@ -32,26 +35,24 @@ afterEach(() => {
 
 describe('ThemeRegistry query defaults', () => {
   it('retries a busy query with a delay that doubles from 1 s up to 30 s', async () => {
-    const queryFn = failWith(new ApiError(503, 'The server is busy, retrying', true));
-    await renderProbe(queryFn);
-    expect(queryFn).toHaveBeenCalledTimes(1);
+    const started = Date.now();
+    const attemptTimes: number[] = [];
+    await renderProbe(failWith(new ApiError(503, 'The server is busy, retrying', true), attemptTimes));
 
-    for (const [index, seconds] of [1, 2, 4, 8, 16, 30, 30].entries()) {
-      await act(() => vi.advanceTimersByTimeAsync(seconds * 1000 - 1));
-      expect(queryFn).toHaveBeenCalledTimes(index + 1);
-      await act(() => vi.advanceTimersByTimeAsync(1));
-      expect(queryFn).toHaveBeenCalledTimes(index + 2);
-    }
+    await act(() => vi.advanceTimersByTimeAsync(91_000));
+
+    expect(attemptTimes.map((time) => time - started)).toEqual([0, 1000, 3000, 7000, 15000, 31000, 61000, 91000]);
     expect(screen.getByText('pending')).toBeTruthy();
   });
 
   it('gives another error three retries and then shows it', async () => {
-    const queryFn = failWith(new ApiError(500, 'HTTP 500'));
-    await renderProbe(queryFn);
+    const started = Date.now();
+    const attemptTimes: number[] = [];
+    await renderProbe(failWith(new ApiError(500, 'HTTP 500'), attemptTimes));
 
     await act(() => vi.advanceTimersByTimeAsync(60_000));
 
-    expect(queryFn).toHaveBeenCalledTimes(4);
+    expect(attemptTimes.map((time) => time - started)).toEqual([0, 1000, 3000, 7000]);
     expect(screen.getByText('error')).toBeTruthy();
   });
 });

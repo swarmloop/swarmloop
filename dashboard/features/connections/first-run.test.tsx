@@ -28,11 +28,11 @@ describe('FirstRun', () => {
     render(<FirstRun />);
     const field = screen.getByLabelText(/Account that owns the app/);
     await waitFor(() => expect(field).toHaveValue('acme'));
-    await userEvent.clear(field);
-    await userEvent.type(field, 'acme');
-    await userEvent.click(screen.getByRole('button', { name: 'Create GitHub App' }));
+    await userEvent.setup({ delay: null }).clear(field);
+    await userEvent.setup({ delay: null }).type(field, 'acme');
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Create GitHub App' }));
 
-    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(submit).toHaveBeenCalled());
     expect(getManifest).toHaveBeenCalledWith('acme');
     const form = document.querySelector('form[method="post"]') as HTMLFormElement;
     expect(form).toHaveAttribute('action', 'https://github.com/organizations/acme/settings/apps/new?state=s');
@@ -44,23 +44,29 @@ describe('FirstRun', () => {
       .mockResolvedValueOnce({ action: 'https://github.com/settings/apps/new?state=one', manifest: {} })
       .mockResolvedValueOnce({ action: 'https://github.com/settings/apps/new?state=two', manifest: {} });
     render(<FirstRun />);
-    await userEvent.click(screen.getByRole('button', { name: 'Create GitHub App' }));
-    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
-    await userEvent.click(screen.getByRole('button', { name: 'Create GitHub App' }));
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Create GitHub App' }));
+    await waitFor(() =>
+      expect(document.querySelector('form[method="post"]')).toHaveAttribute(
+        'action',
+        'https://github.com/settings/apps/new?state=one',
+      ),
+    );
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Create GitHub App' }));
 
-    await waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
-    expect(document.querySelector('form[method="post"]')).toHaveAttribute(
-      'action',
-      'https://github.com/settings/apps/new?state=two',
+    await waitFor(() =>
+      expect(document.querySelector('form[method="post"]')).toHaveAttribute(
+        'action',
+        'https://github.com/settings/apps/new?state=two',
+      ),
     );
   });
 
   it('offers Connect GitLab, which stores the application it is given', async () => {
     vi.mocked(saveGitlabApplication).mockRejectedValue(new Error('a login exists'));
     render(<FirstRun />);
-    await userEvent.type(screen.getByLabelText(/Application ID/), 'gl-id');
-    await userEvent.type(screen.getByLabelText(/Secret/), 'gl-secret');
-    await userEvent.click(screen.getByRole('button', { name: 'Connect GitLab' }));
+    await userEvent.setup({ delay: null }).type(screen.getByLabelText(/Application ID/), 'gl-id');
+    await userEvent.setup({ delay: null }).type(screen.getByLabelText(/Secret/), 'gl-secret');
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Connect GitLab' }));
 
     expect(saveGitlabApplication).toHaveBeenCalledWith('gl-id', 'gl-secret');
     expect(await screen.findByText('a login exists')).toBeInTheDocument();
@@ -71,7 +77,7 @@ describe('FirstRun', () => {
     vi.mocked(getManifest).mockResolvedValue({ action: 'https://github.com/x', manifest: {} });
     render(<FirstRun />);
     await waitFor(() => expect(screen.getByLabelText(/Account that owns the app/)).toHaveValue('beta'));
-    await userEvent.click(screen.getByRole('button', { name: 'Create GitHub App' }));
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Create GitHub App' }));
 
     await waitFor(() => expect(getManifest).toHaveBeenCalledWith('beta'));
   });

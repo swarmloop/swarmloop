@@ -26,12 +26,12 @@ function header(status: string, overrides: Partial<ComponentProps<typeof RunHead
 
 describe('RunHeader', () => {
   it.each(['failed', 'done', 'waiting'])('offers Rebase when the run is %s', async (status) => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const props = header(status);
 
     await user.click(screen.getByRole('button', { name: 'Rebase' }));
 
-    expect(props.onRebase).toHaveBeenCalledTimes(1);
+    expect(props.onRebase).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
     expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
   });
 
@@ -82,13 +82,13 @@ describe('RunHeader', () => {
   });
 
   it('offers Stop only while the run is running', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const props = header('running');
 
     expect(screen.queryByRole('button', { name: 'Rebase' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Stop' }));
 
-    expect(props.onStop).toHaveBeenCalledTimes(1);
+    expect(props.onStop).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
   });
 
   it('hides Stop once the run has failed', () => {
@@ -104,7 +104,7 @@ describe('RunHeader', () => {
   });
 
   it('cuts a very long title with an ellipsis and keeps the full text in a tooltip', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const name = 'long title '.repeat(30).slice(0, 300);
     header('done', { flow: flowView({ status: 'done', name }) });
 

@@ -38,7 +38,7 @@ describe('StatsSection', () => {
   it('loads another range when one is picked', async () => {
     renderSection();
     await screen.findByLabelText('Runs: 4');
-    await userEvent.setup().click(screen.getByRole('button', { name: 'All time' }));
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'All time' }));
     expect(vi.mocked(getStats)).toHaveBeenLastCalledWith(0, expect.any(Number));
   });
 
@@ -57,7 +57,7 @@ describe('StatsSection', () => {
     const money = await screen.findByRole('region', { name: 'Where the money goes' });
     expect(within(money).getAllByText('implement').length).toBeGreaterThan(0);
     expect(within(money).queryByText('model-a')).not.toBeInTheDocument();
-    await userEvent.setup().click(within(money).getByRole('button', { name: 'Model' }));
+    await userEvent.setup({ delay: null }).click(within(money).getByRole('button', { name: 'Model' }));
     expect(within(money).getAllByText('model-a').length).toBeGreaterThan(0);
   });
 
@@ -73,7 +73,7 @@ describe('StatsSection', () => {
     renderSection();
     const money = await screen.findByRole('region', { name: 'Where the money goes' });
     expect(within(money).queryByText('high')).not.toBeInTheDocument();
-    await userEvent.setup().click(within(money).getByRole('button', { name: 'Effort' }));
+    await userEvent.setup({ delay: null }).click(within(money).getByRole('button', { name: 'Effort' }));
     expect(within(money).getAllByText('high').length).toBeGreaterThan(0);
     expect(within(money).getByText('runtime default')).toBeInTheDocument();
     expect(within(money).queryByText('implement')).not.toBeInTheDocument();
@@ -114,7 +114,7 @@ describe('StatsSection', () => {
 
   it('lists the runs by spend, sorts them by a column, and opens one', async () => {
     renderSection();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const table = await screen.findByRole('region', { name: 'Runs' });
     const names = (): string[] =>
       within(table)
@@ -130,7 +130,7 @@ describe('StatsSection', () => {
 
   it('shows the edits each run made through the shell, sortable', async () => {
     renderSection();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const table = await screen.findByRole('region', { name: 'Runs' });
     await user.click(within(table).getByRole('button', { name: 'Edits through the shell' }));
     const first = within(table).getAllByRole<HTMLTableRowElement>('row')[1];
@@ -140,7 +140,7 @@ describe('StatsSection', () => {
 
   it('shows only the runs of a day picked on the chart, until it is cleared', async () => {
     renderSection();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await screen.findByLabelText('Runs: 4');
     await user.click(screen.getByTestId('day-2026-11-08'));
     const table = screen.getByRole('region', { name: 'Runs started Sun, Nov 8' });

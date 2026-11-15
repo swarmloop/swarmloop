@@ -29,7 +29,7 @@ describe('HistoryScreen', () => {
   });
 
   it('shows the documents by kind: the requirements structured, JSON as a table, the log as a transcript', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const at = { attempt: 1, createdAt: 't' };
     vi.mocked(getHistory).mockResolvedValue(
       historyView({
