@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { RunSummary, TaskLayer } from '@contract/api';
 import type { RunState } from '@contract/run-state';
 import type { SubtaskStatus } from '@contract/subtask';
+import { localTime } from '../../../../lib/format';
 import { RunList } from '../../../runs';
 import { runSummary } from '../../../../test/fixtures';
 import { TaskLayers } from './task-layers';
@@ -72,6 +73,28 @@ describe('TaskLayers', () => {
     expect(region).toHaveTextContent('5s · $0.25');
     expect(within(region).getByRole('link', { name: 'Open run Title t3' })).toHaveAttribute('href', '/runs/run-1-t3');
     expect(within(region).queryByRole('link', { name: 'Open run Title t5' })).not.toBeInTheDocument();
+  });
+
+  it('shows the sentence of a subtask a server restart cut, and none for the others', () => {
+    const at = '2026-01-01T10:00:00.000Z';
+    const cut = task('t3', {
+      status: 'running',
+      run: {
+        key: 'run-1-t3',
+        state: 'running',
+        currentStep: 'checks',
+        usd: 0,
+        durationMs: 0,
+        interruption: { at, relaunched: true },
+      },
+    });
+    render(<TaskLayers layers={[{ layer: 0, tasks: [cut, task('t4')] }]} onSkip={vi.fn()} />);
+
+    const region = screen.getByRole('region', { name: 'Tasks' });
+    expect(region).toHaveTextContent(
+      `Interrupted at ${localTime(at)} by a server restart. The server starts this step again by itself. Nothing to do.`,
+    );
+    expect(region.textContent?.match(/Interrupted at/g)).toHaveLength(1);
   });
 
   it('lists blocked, running, waiting, then settled tasks, in plan order inside a group', () => {

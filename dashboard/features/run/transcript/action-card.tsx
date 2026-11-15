@@ -21,6 +21,16 @@ type Activity = Extract<
   }
 >;
 
+/** A cut by a server restart is not a warning: the server starts the step again. */
+function attemptType(
+  event: Extract<Activity, { kind: 'attempt.finished' | 'attempt.interrupted' }>,
+): 'warning' | 'success' | 'activity' {
+  if (event.kind === 'attempt.interrupted') {
+    return event.route === 'process died' ? 'activity' : 'warning';
+  }
+  return event.route === 'ok' ? 'success' : 'activity';
+}
+
 export function ActionCard({ event, outcome }: { event: Activity; outcome?: string }): ReactElement {
   if (event.kind === 'http.call') {
     return (
@@ -67,11 +77,7 @@ export function ActionCard({ event, outcome }: { event: Activity; outcome?: stri
     );
   }
   return (
-    <Bubble
-      side="left"
-      title="Attempt ended"
-      type={event.kind === 'attempt.interrupted' ? 'warning' : event.route === 'ok' ? 'success' : 'activity'}
-    >
+    <Bubble side="left" title="Attempt ended" type={attemptType(event)}>
       {outcome ?? `${event.route}: ${event.summary}`}
       {event.kind === 'attempt.finished' && event.facts?.checks ? <CheckList checks={event.facts.checks} /> : null}
     </Bubble>

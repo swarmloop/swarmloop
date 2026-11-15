@@ -1,3 +1,4 @@
+import { writeRunState } from './run-state';
 import { DocumentRepository } from './document.repository';
 import { repositoryDatabase, repositoryVisit } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
@@ -17,6 +18,66 @@ describe('VisitRepository', () => {
       const second = await visits.finishVisit(run, visit);
       const documents = await db.app.get(DocumentRepository).listDocuments(run.id);
       expect(documents.map((document) => document.stepStatId)).toEqual([first.id, second.id]);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('reads the latest visit of each run with its id, kill reason, attempt and end time', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const runs = db.app.get(RunRepository);
+      const first = await runs.begin('run-latest-1', 'code-review');
+      const second = await runs.begin('run-latest-2', 'code-review');
+      const attempt = first.activeAttempt;
+      await visits.finishVisit(first, { ...repositoryVisit(), killReason: 'timeout' });
+      const last = (await visits.finalize(attempt, first, { ...repositoryVisit(), killReason: 'process died' }))!;
+      const other = await visits.finishVisit(second, repositoryVisit());
+
+      const latest = await visits.latestVisits([first.id, second.id]);
+
+      expect(latest.get(first.id)).toMatchObject({
+        id: last.id,
+        killReason: 'process died',
+        attemptId: attempt,
+        finishedAt: last.finishedAt,
+      });
+      expect(latest.get(second.id)).toMatchObject({ id: other.id });
+      expect(await visits.latestVisits([])).toEqual(new Map());
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('ends the relaunch of a cut visit with the run and the note in one write, and not when the run moved', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const runs = db.app.get(RunRepository);
+      const begun = await runs.begin('run-ended', 'code-review');
+      const note = { at: '2026-11-14T20:29:00.000Z', relaunched: true };
+      const cut = await visits.finalize(begun.activeAttempt, begun, {
+        ...repositoryVisit(),
+        killReason: 'process died',
+        documents: [{ kind: 'interruption', fileName: '', body: JSON.stringify(note) }],
+      });
+      const ended = { ...note, relaunched: false, cause: 'start' as const };
+      const noteOf = async () =>
+        (await db.app.get(DocumentRepository).listDocuments(begun.id)).find(
+          (document) => document.kind === 'interruption' && document.stepStatId === cut!.id,
+        )?.body;
+
+      const stale = { ...begun, revision: begun.revision - 1 };
+      writeRunState(stale, { status: 'failed', ownerPid: null });
+      expect(await visits.endRelaunch(stale, cut!, ended, note.at)).toBe(false);
+      expect(JSON.parse((await noteOf())!)).toEqual(note);
+
+      const fresh = (await runs.findRun('run-ended'))!;
+      writeRunState(fresh, { status: 'failed', ownerPid: null });
+      expect(await visits.endRelaunch(fresh, cut!, ended, note.at)).toBe(true);
+      expect((await runs.findRun('run-ended'))!.status).toBe('failed');
+      expect(JSON.parse((await noteOf())!)).toEqual(ended);
     } finally {
       await db.close();
     }

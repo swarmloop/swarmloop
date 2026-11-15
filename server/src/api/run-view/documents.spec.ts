@@ -2,6 +2,7 @@ import type { DocumentEntity } from '../../history/entities';
 import {
   belongsToVisit,
   decisionsOf,
+  interruptionOf,
   taskLayers,
   taskLine,
   taskView,
@@ -216,6 +217,25 @@ describe('withoutServerRecords', () => {
     const kept = [doc('plan'), doc('review_quality'), doc('implementation')];
     const records = [doc('plan_result'), doc('review_quality_result'), doc('answer_errors')];
     expect(withoutServerRecords([...kept, ...records])).toEqual(kept);
+  });
+
+  it('leaves out an interruption note and keeps an error document', () => {
+    expect(withoutServerRecords([doc('interruption'), doc('error')])).toEqual([doc('error')]);
+  });
+});
+
+describe('interruptionOf', () => {
+  const note = (stepStatId: number, kind: string, at: string) =>
+    ({ kind, stepStatId, body: JSON.stringify({ at, relaunched: true }) }) as DocumentEntity;
+
+  it('returns the note of the given visit only', () => {
+    const documents = [
+      note(2, 'interruption', 'two'),
+      note(2, 'error', 'other kind'),
+      note(3, 'interruption', 'three'),
+    ];
+    expect(interruptionOf(documents, 2)).toEqual({ at: 'two', relaunched: true });
+    expect(interruptionOf(documents, 4)).toBeNull();
   });
 });
 

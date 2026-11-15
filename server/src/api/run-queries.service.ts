@@ -32,6 +32,7 @@ import {
   belongsToVisit,
   documentView,
   filesOf,
+  interruptionOf,
   legacyLogs,
   taskView,
   withReturnNotes,
@@ -94,8 +95,13 @@ export class RunQueriesService {
     const childrenOf = childrenByParent(runs);
     const plans = await listPlans(this.documents, runs, childrenOf);
     const waits = mergeWaits(plans, runs, keys);
-    const states = await listStates(this.documents, this.checkouts, runs, { keys, childrenOf, plans }, (key) =>
-      this.pipeline.claimed(key),
+    const states = await listStates(
+      this.documents,
+      this.checkouts,
+      this.commands,
+      runs,
+      { keys, childrenOf, plans },
+      (key) => this.pipeline.claimed(key),
     );
     return {
       runs: runs.map((run) => ({
@@ -149,10 +155,11 @@ export class RunQueriesService {
         run.currentStep,
         await taskRuns(
           this.runs,
+          this.visits,
           children,
           documents,
           this.pipeline,
-          { documents: this.documents, checkouts: this.checkouts },
+          { documents: this.documents, checkouts: this.checkouts, commands: this.commands },
           this.live,
         ),
       ),
@@ -218,6 +225,7 @@ export class RunQueriesService {
     const visits: VisitView[] = stats.map((stat, index) => {
       const owned = documents.filter((document) => document.stepStatId === stat.id);
       const verdict = name === 'code-review' ? angleVerdict(owned) : null;
+      const interruption = interruptionOf(owned, stat.id);
       return {
         id: stat.id,
         key: visitKey(stat.id),
@@ -236,6 +244,7 @@ export class RunQueriesService {
         memAvg: stat.memAvg,
         memPeak: stat.memPeak,
         killReason: stat.killReason,
+        ...(interruption ? { interruption } : {}),
         decision: verdict ? `decision: ${verdict}` : decisionLine(owned.map((document) => document.body).join('\n')),
         ...visitLogSize(this.config, run, name, stat, documents),
         documents: [

@@ -9,6 +9,8 @@ import { getRunLog, getStep, getStepEvents } from '../../../../lib/endpoints';
 import type { CheckCommandView } from '@contract/api';
 import { stepView, visitView } from '../../../../test/fixtures';
 import { commandEvents, stepEvent } from '../../../../test/step-events';
+import { statusColor } from '../../../../theme/theme';
+import { localTime } from '../../../../lib/format';
 import { StepDetail } from './index';
 
 vi.mock('../../../../lib/endpoints', () => ({ getStep: vi.fn(), getStepEvents: vi.fn(), getRunLog: vi.fn() }));
@@ -54,6 +56,38 @@ beforeEach(() => {
 afterEach(resetFakeSocket);
 
 describe('StepDetail', () => {
+  it('shows a cut attempt as interrupted in the neutral color with its sentence', async () => {
+    const at = '2026-01-01T10:00:00.000Z';
+    vi.mocked(getStep).mockResolvedValue(
+      stepView({
+        visits: [
+          visitView({
+            id: 1,
+            attempt: 1,
+            status: 'failed',
+            killReason: 'process died',
+            attemptId: 'att-1',
+            interruption: { at, relaunched: true },
+          }),
+          visitView({ id: 2, attempt: 2, status: 'running' }),
+        ],
+      }),
+    );
+    detail({ runStatus: 'running' });
+
+    const button = await screen.findByRole('button', { name: '1' });
+    expect(button).toHaveStyle({ color: statusColor('interrupted') });
+    expect(button).not.toHaveStyle({ color: statusColor('failed') });
+    await userEvent.click(button);
+
+    expect(
+      await screen.findByText(
+        `Interrupted at ${localTime(at)} by a server restart. The server starts this step again by itself. Nothing to do.`,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/"relaunched"/)).not.toBeInTheDocument();
+  });
+
   it('shows the step label once the step loads', async () => {
     detail();
 

@@ -1,12 +1,13 @@
 'use client';
 
-import type { ReactElement } from 'react';
+import { useRef, type ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import { statusColor } from '../../../../theme/theme';
 import { MarkdownBody } from '../../../../components/ui/markdown-body';
 import type { CheckCommandView, StepView } from '@contract/api';
+import type { InterruptionNote } from '@contract/interruption';
 import type { StepEvent } from '@contract/step-events';
 import { LogTranscript } from '../../log-transcript';
 import type { AgentRole } from '../../transcript/agent-card';
@@ -31,6 +32,24 @@ function legacyDocuments(
   return [...latest.values()];
 }
 
+/** The note of each interrupted attempt. The map keeps its identity while the notes are the same, as the visits are copied on every live update. */
+function useStableNotes(visits: StepView['visits'] | undefined): ReadonlyMap<string, InterruptionNote> {
+  const previous = useRef(new Map<string, InterruptionNote>());
+  const notes = new Map<string, InterruptionNote>();
+  for (const item of visits ?? []) {
+    if (item.attemptId && item.interruption) {
+      notes.set(item.attemptId, item.interruption);
+    }
+  }
+  const same =
+    notes.size === previous.current.size &&
+    [...notes].every(([attemptId, note]) => previous.current.get(attemptId) === note);
+  if (!same) {
+    previous.current = notes;
+  }
+  return previous.current;
+}
+
 export function StepDocuments({
   runKey,
   events,
@@ -39,6 +58,7 @@ export function StepDocuments({
   check,
   setCheck,
   visit,
+  visits,
   logs,
   document,
   role,
@@ -54,6 +74,8 @@ export function StepDocuments({
   check: string | null;
   setCheck: (name: string) => void;
   visit: StepView['visits'][number] | undefined;
+  /** The visits of the step, for the notes of the attempts that were interrupted. */
+  visits?: StepView['visits'];
   logs: string;
   document: string;
   /** The role and tier of the step's agent, from its descriptor. */
@@ -62,6 +84,7 @@ export function StepDocuments({
   commands?: CheckCommandView[];
   now?: number;
 }): ReactElement {
+  const interruptions = useStableNotes(visits);
   const recorded = events !== null && events.length > 0;
   const agentStep = Boolean(visit?.model) || (visit?.exchanges.length ?? 0) > 0;
   const launched = events?.some((event) => event.kind === 'agent.launched') ?? false;
@@ -100,6 +123,7 @@ export function StepDocuments({
           runKey={runKey}
           events={events}
           issues={issues}
+          interruptions={interruptions}
           agent={agentStep ? agent : null}
           role={role}
           live={visit?.status === 'running'}

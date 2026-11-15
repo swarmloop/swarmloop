@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import type { EntityManager } from 'typeorm';
+import type { CommandType } from '../contract/command';
 import { ERROR_CODES } from '../contract/error-codes';
+import type { InterruptionNote } from '../contract/interruption';
+import { insertAcceptedCommand } from './accepted-command';
 import { releasedColumns } from './run-state';
 import { transaction } from './transaction';
 import { summarizeSamples } from './visit';
@@ -37,6 +40,14 @@ function tablesOf(manager: EntityManager): VisitTables {
 /** How a visit that ended on a provider limit is recorded. */
 export const LIMIT_VISIT = { status: 'interrupted', killReason: ERROR_CODES.RUNTIME_LIMIT } as const;
 
+/** A command that is accepted in the transaction that stores the visit. */
+interface FinalizeCommand {
+  type: CommandType;
+  payload: Record<string, unknown>;
+  idempotencyKey: string;
+  now: string;
+}
+
 const DUPLICATE_ATTEMPT = 'UNIQUE constraint failed: step_stats.attempt_id';
 
 @Injectable()
@@ -61,7 +72,12 @@ export class VisitRepository {
    * A repeat of an attempt returns its stored visit. A stale attempt stores nothing and returns null.
    * Either way `run` ends up as the row in the database.
    */
-  async finalize(attemptId: string | null, run: RunEntity, visit: VisitDraft): Promise<StepStatEntity | null> {
+  async finalize(
+    attemptId: string | null,
+    run: RunEntity,
+    visit: VisitDraft,
+    command?: FinalizeCommand,
+  ): Promise<StepStatEntity | null> {
     const stat = await transaction(this.dataSource, async (manager) => {
       const stored = attemptId ? await manager.getRepository(StepStatEntity).findOneBy({ attemptId }) : null;
       if (stored) {
@@ -81,7 +97,17 @@ export class VisitRepository {
         })
         .where('id = :id AND active_attempt IS :attemptId', { id, attemptId })
         .execute();
-      return moved.affected ? this.insertVisit(tablesOf(manager), run, visit, attemptId) : null;
+      if (!moved.affected) return null;
+      if (command) {
+        await insertAcceptedCommand(manager, {
+          runId: id,
+          type: command.type,
+          payload: JSON.stringify(command.payload),
+          idempotencyKey: command.idempotencyKey,
+          now: command.now,
+        });
+      }
+      return this.insertVisit(tablesOf(manager), run, visit, attemptId);
     }).catch(async (error: unknown) => {
       if (attemptId && String(error).includes(DUPLICATE_ATTEMPT)) {
         return this.stepStats.findOneBy({ attemptId });
@@ -93,6 +119,36 @@ export class VisitRepository {
     }
     Object.assign(run, await this.dataSource.getRepository(RunEntity).findOneByOrFail({ id: run.id }));
     return stat;
+  }
+
+  /**
+   * The relaunch of a cut visit ended before its step took the run: `run`, as the caller changed it, is saved and the
+   * interruption note of the visit is replaced, in one transaction. Nothing is written when the run moved since it
+   * was read. Either way `run` ends up as the row in the database.
+   */
+  async endRelaunch(
+    run: RunEntity,
+    stat: Pick<StepStatEntity, 'id'>,
+    note: InterruptionNote,
+    at: string,
+  ): Promise<boolean> {
+    const ended = await transaction(this.dataSource, async (manager) => {
+      const { id, ...fields } = run;
+      const moved = await manager
+        .getRepository(RunEntity)
+        .createQueryBuilder()
+        .update()
+        .set({ ...fields, updatedAt: at, revision: () => 'revision + 1' })
+        .where('id = :id AND revision = :revision', { id, revision: run.revision })
+        .execute();
+      if (!moved.affected) return false;
+      await manager
+        .getRepository(DocumentEntity)
+        .update({ stepStatId: stat.id, kind: 'interruption' }, { body: JSON.stringify(note) });
+      return true;
+    });
+    Object.assign(run, await this.dataSource.getRepository(RunEntity).findOneByOrFail({ id: run.id }));
+    return ended;
   }
 
   private async insertVisit(
@@ -224,6 +280,29 @@ export class VisitRepository {
 
   async listStats(runId: number): Promise<StepStatEntity[]> {
     return this.stepStats.find({ where: { runId }, order: { id: 'ASC' } });
+  }
+
+  /**
+   * The latest visit of each of the runs, with only its id, kill reason, attempt and end time, in two reads whatever
+   * the number of runs.
+   */
+  async latestVisits(
+    runIds: number[],
+  ): Promise<Map<number, Pick<StepStatEntity, 'id' | 'killReason' | 'attemptId' | 'finishedAt'>>> {
+    if (runIds.length === 0) {
+      return new Map();
+    }
+    const newest: { id: number }[] = await this.stepStats
+      .createQueryBuilder('stat')
+      .select('MAX(stat.id)', 'id')
+      .where('stat.runId IN (:...runIds)', { runIds })
+      .groupBy('stat.runId')
+      .getRawMany();
+    const found = await this.stepStats.find({
+      where: { id: In(newest.map(({ id }) => Number(id))) },
+      select: { id: true, runId: true, killReason: true, attemptId: true, finishedAt: true },
+    });
+    return new Map(found.map((stat) => [stat.runId, stat]));
   }
 
   /** Whether an agent ran in a finished (done or waiting) visit of this step: a visit with a stored exchange. */

@@ -197,6 +197,38 @@ describe('commit step', () => {
     }
   });
 
+  it('retries its own path list when a restart cut it and the run was relaunched from waiting', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-relaunch-'));
+    const tree = featureTree(root, 'PROJ-107');
+    writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-107');
+      const remote = git(tree, ['remote', 'get-url', 'origin']);
+      git(tree, ['remote', 'set-url', 'origin', join(root, 'missing.git')]);
+      const failed = await app.get(PipelineService).step('commit', 'PROJ-107');
+      expect(failed.exitCode).toBe(1);
+      git(tree, ['remote', 'set-url', 'origin', remote]);
+      const runs = app.get(RunRepository);
+      const run = await runs.findRun('PROJ-107');
+      if (!run) {
+        throw new Error('run is missing');
+      }
+      run.status = 'waiting';
+      await runs.saveRun(run);
+      await app.get(DocumentRepository).putDocument(run, 'commit', 'demo\tsrc/field.ts\n');
+      writeFileSync(join(tree, 'src', 'extra.ts'), 'export const extra = 1;\n');
+
+      const again = await app.get(PipelineService).step('commit', 'PROJ-107');
+
+      expect(again.exitCode).toBe(0);
+      expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
+      expect(git(tree, ['rev-parse', 'HEAD'])).toBe(git(tree, ['rev-parse', 'origin/feature/PROJ-107-ship-the-field']));
+    } finally {
+      await app.close();
+    }
+  });
+
   it('pushes a commit that already exists and does not add another', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-ahead-'));
     const tree = featureTree(root, 'PROJ-105');

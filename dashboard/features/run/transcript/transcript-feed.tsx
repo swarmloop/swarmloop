@@ -25,6 +25,7 @@ import { InputCard } from './input-card';
 import { IssueCard } from './issue-card';
 import { problemId } from './problem-card';
 import { RADIUS, SIZE, SPACE, useBubbleWidth, useMotionMs } from './tokens';
+import type { InterruptionNote } from '@contract/interruption';
 import { actorOf, groupByActor, groupByAttempt, type IssueLinks, type TranscriptItem } from './transcript-model';
 
 /** A running step that has been silent for longer than this is said to have no output. */
@@ -136,6 +137,7 @@ export function TranscriptFeed({
   runKey,
   events,
   issues = new Map(),
+  interruptions,
   agent = null,
   role = null,
   live = false,
@@ -145,6 +147,8 @@ export function TranscriptFeed({
   runKey: string;
   /** What the step recorded. Null while it is read: the feed shows placeholders. */
   events: StepEvent[] | null;
+  /** The note of each attempt a server restart cut, by attempt id. */
+  interruptions?: ReadonlyMap<string, InterruptionNote>;
   /** The log and the exchanges of the visit shown. They go into the card of its last agent launch. */
   agent?: AgentLog | null;
   /** The role and tier of the step's agent, which its card names. */
@@ -166,7 +170,7 @@ export function TranscriptFeed({
   const stick = useRef(true);
   const seen = useRef(0);
   const total = events?.length ?? 0;
-  const attempts = useMemo(() => groupByAttempt(events ?? []), [events]);
+  const attempts = useMemo(() => groupByAttempt(events ?? [], interruptions), [events, interruptions]);
   const all = useMemo(() => attempts.flatMap((group) => group.items), [attempts]);
   const groups = useMemo(
     () =>

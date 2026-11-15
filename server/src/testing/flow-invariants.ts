@@ -8,6 +8,7 @@ import {
 } from '../contract/run-state';
 import type { StepStatEntity } from '../history/entities';
 import { deriveState } from '../history/run-state';
+import { CommandRepository } from '../history/command.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import type { TestApp } from './test-app';
@@ -15,13 +16,16 @@ import type { TestApp } from './test-app';
 /**
  * What must hold for every run after a reconciler tick. It throws one error that lists each run and rule that broke.
  * The codes that need a person and the codes that end by themselves come from `contract/run-state.ts`.
+ * A run is read as the run page reads it: one with a command about to start it is `queued`, not idle.
  */
 export async function assertInvariants(app: TestApp): Promise<void> {
   const runs = app.app.get(RunRepository);
   const visits = app.app.get(VisitRepository);
+  const commands = app.app.get(CommandRepository);
   const broken: string[] = [];
   for (const run of await runs.listRuns()) {
-    const { state, reason } = deriveState(run);
+    const queued = (await commands.pending(run.id)).some((command) => command.type !== 'stop');
+    const { state, reason } = deriveState(run, { queued });
     broken.push(
       ...stateRules(run.key, state, reason),
       ...visitRules(run.key, state, reason, await visits.listStats(run.id)),

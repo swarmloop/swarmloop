@@ -15,6 +15,7 @@ import { RunRepository } from '../history/run.repository';
 import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
 import { BlockAgentRunner } from './result-answer';
+import { holdRelaunches } from './relaunch-hold.spec-helpers';
 import { createTestApp } from './test-app';
 import type { TestApp } from './test-app';
 
@@ -51,17 +52,24 @@ function writeOutput(app: TestApp, run: RunEntity, body: string): void {
   writeFileSync(join(app.root, 'data', `${KEY}-${run.currentStep}-${run.activeAttempt}-output.txt`), body);
 }
 
-/** The relaunch after `process died` is recorded and not run, so a case reads the run as `interrupted` left it. */
-function holdRelaunches(): string[] {
-  const keys: string[] = [];
-  const accept = Reflect.get<CommandService, 'accept'>(CommandService.prototype, 'accept');
-  jest.spyOn(CommandService.prototype, 'accept').mockImplementation(function (this: CommandService, ...args) {
-    const key = args[3]?.idempotencyKey;
-    if (!key?.startsWith('relaunch-')) return accept.apply(this, args);
-    keys.push(key);
-    return Promise.resolve({} as never);
-  });
-  return keys;
+/** The relaunch is stored with the visit and its command ends at once, so a case reads the run as the cut left it. */
+const endsAtOnce = () => Promise.resolve(undefined);
+
+/**
+ * The relaunch command stays executing, as a start does until its step takes the run. A case where the reconciler
+ * timer runs holds it so, because a timer pass ends a relaunch whose command ended without a step.
+ */
+const neverEnds = () => new Promise<undefined>(() => undefined);
+
+/** The keys of the relaunch commands stored for the run, once the executor has taken what it was given. */
+async function relaunchKeys(app: TestApp): Promise<string[]> {
+  await app.app.get(CommandService).idle();
+  const run = await app.app.get(RunRepository).findRun(KEY);
+  const stored = await app.app.get(CommandRepository).listForRun(run!.id);
+  const keys = stored.flatMap((command) =>
+    command.idempotencyKey?.startsWith('relaunch-') ? [command.idempotencyKey] : [],
+  );
+  return keys.sort();
 }
 
 describe('crash matrix', () => {
@@ -98,7 +106,7 @@ describe('crash matrix', () => {
   });
 
   it('before-finalize: a step that died before its visit is stored gets an interrupted visit', async () => {
-    const relaunched = holdRelaunches();
+    holdRelaunches(endsAtOnce);
     app = await createTestApp();
     const crashed = crashAt('before-finalize');
     await app.pipeline.startDetached(KEY, {}, 'research');
@@ -111,8 +119,8 @@ describe('crash matrix', () => {
     expect(stored).toMatchObject({ step: 'research', status: 'failed', killReason: 'process died' });
     expect(stored.attemptId).toBeTruthy();
     const run = await app.app.get(RunRepository).findRun(KEY);
-    expect(run).toMatchObject({ status: 'failed', activeAttempt: null });
-    expect(relaunched).toEqual([`relaunch-${stored.attemptId}`]);
+    expect(run).toMatchObject({ status: 'waiting', activeAttempt: null });
+    expect(await relaunchKeys(app)).toEqual([`relaunch-${stored.attemptId}`]);
   });
 
   it('after-finalize: a visit that is stored is left as it is', async () => {
@@ -131,6 +139,7 @@ describe('crash matrix', () => {
   });
 
   it('after-container-create: a container that runs without a result puts the run in recovering, then it is killed', async () => {
+    holdRelaunches(endsAtOnce);
     const killAttempt = jest.fn().mockResolvedValue(true);
     app = await createTestApp({ sandbox: { attemptRunning: () => Promise.resolve(true), killAttempt } });
     const run = await orphan(app);
@@ -148,13 +157,14 @@ describe('crash matrix', () => {
     app.clock.advance(1_000);
     await reconciler.reconcile(run);
     expect(killAttempt).toHaveBeenCalledWith(run.activeAttempt);
-    expect(await app.app.get(RunRepository).findRun(KEY)).toMatchObject({ status: 'failed', activeAttempt: null });
+    expect(await app.app.get(RunRepository).findRun(KEY)).toMatchObject({ status: 'waiting', activeAttempt: null });
     expect(await visits(app)).toMatchObject([
       { status: 'failed', killReason: 'process died', attemptId: run.activeAttempt },
     ]);
   });
 
   it('after-container-create: a container that exited without a result gives an interrupted visit', async () => {
+    holdRelaunches(endsAtOnce);
     app = await createTestApp();
     const run = await orphan(app);
 
@@ -163,7 +173,7 @@ describe('crash matrix', () => {
     expect(await visits(app)).toMatchObject([
       { status: 'failed', killReason: 'process died', attemptId: run.activeAttempt },
     ]);
-    expect((await app.app.get(RunRepository).findRun(KEY))?.status).toBe('failed');
+    expect((await app.app.get(RunRepository).findRun(KEY))?.status).toBe('waiting');
   });
 
   it('a final result in the output file is finalized while the container still runs', async () => {
@@ -228,18 +238,18 @@ describe('crash matrix', () => {
   });
 
   it('startup reconciles each running run through reconcile', async () => {
-    holdRelaunches();
+    holdRelaunches(endsAtOnce);
     const reconcile = jest.spyOn(Reconciler.prototype, 'reconcile');
     app = await createTestApp();
     await orphan(app);
     app = await app.restart();
 
     expect(reconcile).toHaveBeenCalledTimes(1);
-    expect((await app.app.get(RunRepository).findRun(KEY))?.status).toBe('failed');
+    expect((await app.app.get(RunRepository).findRun(KEY))?.status).toBe('waiting');
   });
 
   it('the timer reaches the same reconcile and finds a dead owner without a restart', async () => {
-    const relaunched = holdRelaunches();
+    holdRelaunches(neverEnds);
     app = await createTestApp({ env: { RECONCILE_MS: '50' }, reconcilerTimer: true });
     const reconciler = app.app.get(Reconciler);
     const original = reconciler.reconcile.bind(reconciler);
@@ -254,8 +264,9 @@ describe('crash matrix', () => {
     await ticked;
 
     const run = await runs.findRun(KEY);
-    expect(run?.status).toBe('failed');
-    expect(relaunched).toEqual([`relaunch-${begun.activeAttempt}`]);
+    expect(run?.status).toBe('waiting');
+    const stored = await app.app.get(CommandRepository).listForRun(run!.id);
+    expect(stored.map((command) => command.idempotencyKey)).toEqual([`relaunch-${begun.activeAttempt}`]);
   });
 
   it('the recovery wait does not count the time the host slept between two timer ticks', async () => {
@@ -334,7 +345,7 @@ describe('crash matrix', () => {
   });
 
   it('a dead step keeps its process died visit, its command ends server restarted and the relaunch is a new command', async () => {
-    const relaunched = holdRelaunches();
+    holdRelaunches(endsAtOnce);
     app = await createTestApp();
     const commands = app.app.get(CommandRepository);
     const dead = await orphan(app);
@@ -350,7 +361,7 @@ describe('crash matrix', () => {
       state: 'failed',
       result: expect.stringContaining('server restarted'),
     });
-    expect(relaunched).toEqual([`relaunch-${dead.activeAttempt}`]);
+    expect(await relaunchKeys(app)).toEqual([`relaunch-${dead.activeAttempt}`]);
   });
 
   it('a merge request step that died after the push has its merge request stored before the relaunch', async () => {
@@ -360,9 +371,8 @@ describe('crash matrix', () => {
     app = await createTestApp();
     const documents = app.app.get(DocumentRepository);
     const stored: (string | null)[] = [];
-    jest.spyOn(CommandService.prototype, 'accept').mockImplementation(async () => {
+    app.app.get(CommandService).register('resume', async () => {
       stored.push(await documents.latestBody(KEY, 'merge_request'));
-      return {} as never;
     });
     const run = await orphan(app, 'merge-request');
     run.codeHost = 'gitlab';
@@ -370,12 +380,13 @@ describe('crash matrix', () => {
     await documents.putDocument(run, 'pipeline_ref', 'project: group/app\nref: feature/x\nsha: abc\n');
 
     await app.app.get(Reconciler).reconcile(run);
+    await app.app.get(CommandService).idle();
 
     expect(stored).toEqual([expect.stringContaining('iid: 7')]);
   });
 
   it('a step that kills the server on every launch is relaunched until MAX_LAUNCHES, then stays failed', async () => {
-    const relaunched = holdRelaunches();
+    holdRelaunches(endsAtOnce);
     app = await createTestApp({ env: { MAX_LAUNCHES: '3' } });
     const runs = app.app.get(RunRepository);
     const reconciler = app.app.get(Reconciler);
@@ -385,21 +396,19 @@ describe('crash matrix', () => {
       await reconciler.reconcileRuns();
     }
 
-    expect(relaunched).toEqual([`relaunch-${attempts[0]}`, `relaunch-${attempts[1]}`]);
+    expect(await relaunchKeys(app)).toEqual([`relaunch-${attempts[0]}`, `relaunch-${attempts[1]}`].sort());
     expect((await runs.findRun(KEY))?.status).toBe('failed');
   });
 
   it('two passes started together over one dead attempt make one relaunch command', async () => {
     app = await createTestApp();
-    const accepted = jest.spyOn(CommandService.prototype, 'accept');
     await app.app.get(RunRepository).begin(KEY, 'implement');
     const reconciler = app.app.get(Reconciler);
 
     await Promise.all([reconciler.reconcileRuns(), reconciler.reconcileRuns()]);
 
     const [dead] = await visits(app);
-    const keys = accepted.mock.calls.map((call) => call[3]?.idempotencyKey);
-    expect(keys.filter((key) => key === `relaunch-${dead.attemptId}`)).toHaveLength(1);
+    expect((await relaunchKeys(app)).filter((key) => key === `relaunch-${dead.attemptId}`)).toHaveLength(1);
   });
 
   it('a reviewer killed after it sent a valid block still counts, and the next pass runs no reviewer again', async () => {

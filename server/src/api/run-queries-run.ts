@@ -77,7 +77,7 @@ export async function runState(
   const pending = await commands.pending(run.id);
   const { state, reason, actions } = stateView(run, open, documents, {
     stopping: pending.some((command) => command.type === 'stop'),
-    queued: pending.some((command) => command.state === 'accepted' && command.type !== 'stop'),
+    queued: pending.some((command) => command.type !== 'stop'),
   });
   return {
     resume: resumeState(run, open, documents),

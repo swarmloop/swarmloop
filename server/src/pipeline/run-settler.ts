@@ -5,6 +5,7 @@ import { chargeStream } from '../agent/spend';
 import { loadPriceTable } from '../agent/prices';
 import { resolveRepoRoot } from '../config/repo-root';
 import { ERROR_CODES } from '../contract/error-codes';
+import type { InterruptionNote } from '../contract/interruption';
 import { REASON, type StateReason } from '../contract/run-state';
 import type { StepName } from '../contract/steps';
 import { hasFinalResult, stepOutput } from '../core/attempt-output';
@@ -14,7 +15,7 @@ import { delay } from '../core/delay';
 import { HostUnavailable } from '../core/swarmloop-error';
 import { isStep } from '../core/pipeline-result';
 import { recordStepEvent, runInStepScope } from '../core/step-event-scope';
-import type { RunEntity } from '../history/entities';
+import type { CommandEntity, RunEntity, StepStatEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
@@ -34,6 +35,15 @@ const PROBE_BACKOFF_MS = [1_000, 2_000];
 
 export function silentMessage(key: string): string {
   return `${key} is blocked: docker did not answer`;
+}
+
+/** Whether a cut attempt is started again. The one decision, made by the reconciler. */
+export type RelaunchDecision =
+  { relaunch: true; idempotencyKey: string } | { relaunch: false; cause: 'limit' | 'stop' | null };
+
+/** The key of the relaunch command of a cut attempt. It names the attempt, so two passes over it store one command. */
+export function relaunchKey(attemptId: string): string {
+  return `relaunch-${attemptId}`;
 }
 
 /** Settles what a dead process left in a run: an unfinished rebase journal or an attempt without its visit. */
@@ -123,18 +133,28 @@ export class RunSettler {
     }
   }
 
-  /** `slept` holds the host suspensions the reconciler's timer saw, taken off the wait for a container. */
-  async settleAttempt(run: RunEntity, slept: readonly { at: number; ms: number }[]): Promise<void> {
+  /**
+   * `slept` holds the host suspensions the reconciler's timer saw, taken off the wait for a container. `decide` is
+   * called once, after everything that takes time (the probes, the kill, the charge) and right before the visit is
+   * written, so a Stop that came while the attempt was settled is seen. Its answer is applied in the same
+   * transaction: a relaunch leaves the run `waiting` with the `resume` command stored, anything else leaves it
+   * `failed`. Returns the decision it applied, or null when it stored no visit.
+   */
+  async settleAttempt(
+    run: RunEntity,
+    slept: readonly { at: number; ms: number }[],
+    decide: () => Promise<RelaunchDecision>,
+  ): Promise<RelaunchDecision | null> {
     const output = stepOutput(this.root, run.key, run.currentStep, run.activeAttempt);
     if (hasFinalResult(output)) {
-      await this.interrupted(run, output);
-      return;
+      await this.recordInterrupted(run);
+      return this.interrupted(run, output, decide);
     }
     const attemptId = run.activeAttempt;
     const container = attemptId === null ? false : await this.probe(attemptId);
     if (container === null) {
       await this.blocked(run);
-      return;
+      return null;
     }
     if (container) {
       const since = recoveringSince(run);
@@ -146,18 +166,35 @@ export class RunSettler {
           facts: { recovering: true },
         });
         await this.runs.saveRun(run);
-        return;
+        return null;
       }
       const asleep = slept.filter((gap) => gap.at > since).reduce((sum, gap) => sum + gap.ms, 0);
-      if (this.clock.now() - since - asleep < this.config.env.RECOVER_WAIT_MS) return;
+      if (this.clock.now() - since - asleep < this.config.env.RECOVER_WAIT_MS) return null;
       if (!(await this.sandbox.killAttempt(attemptId!))) {
         await this.blocked(run);
-        return;
+        return null;
       }
     }
     if (run.currentStep === 'merge-request') await this.confirmMergeRequest(run);
     await this.recordInterrupted(run);
-    await this.interrupted(run, output);
+    return this.interrupted(run, output, decide);
+  }
+
+  /**
+   * The relaunch stored with a cut visit ended before its step took the run. The run is saved as one nobody
+   * relaunches, `failed`, and the note of the visit says so: a Stop took the place of the command, or the start
+   * did not go through. A run that moved since it was read is left as it is.
+   */
+  async endRelaunch(
+    run: RunEntity,
+    cut: Pick<StepStatEntity, 'id' | 'finishedAt'>,
+    relaunch: CommandEntity,
+  ): Promise<void> {
+    const cause = relaunch.state === 'superseded' ? 'stop' : 'start';
+    writeRunState(run, { status: 'failed', ownerPid: null });
+    const note: InterruptionNote = { at: cut.finishedAt, relaunched: false, cause };
+    // The write bypassed `saveRun`: the dashboard is told that the run left `queued`.
+    if (await this.visits.endRelaunch(run, cut, note, this.clock.iso())) this.runs.notify(run.key);
   }
 
   /**
@@ -216,22 +253,27 @@ export class RunSettler {
     });
   }
 
-  /** The visit of an attempt whose process died, priced from what its output file holds. */
-  private async interrupted(run: RunEntity, saved: string): Promise<void> {
+  /**
+   * The visit of an attempt whose process died, priced from what its output file holds. The run is saved with it:
+   * `waiting` with the relaunch command when the decision says so, else `failed`. The decision is taken after the
+   * charge, the last thing that takes time here.
+   */
+  private async interrupted(
+    run: RunEntity,
+    saved: string,
+    decide: () => Promise<RelaunchDecision>,
+  ): Promise<RelaunchDecision> {
     const now = this.clock.iso();
-    const env = this.config.env;
-    const agent = agentFor(env, run, run.currentStep);
+    const agent = agentFor(this.config.env, run, run.currentStep);
     const model = agent?.model ?? null;
-    const pricesOf = (runtime: Parameters<typeof loadPriceTable>[1]) =>
-      loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime, this.clock.now());
-    const step = isStep(run.currentStep) ? this.registry.get(run.currentStep) : null;
-    const charge = step?.charge
-      ? await step.charge(run.key, env, pricesOf, run.activeAttempt)
-      : model
-        ? chargeStream(model, saved, await pricesOf(agent?.runtime ?? agentFor(env, run, 'implement').runtime))
-        : null;
+    const charge = await this.chargeOf(run, saved, agent);
     run.spentUsd += charge?.usd ?? 0;
-    writeRunState(run, { status: 'failed', ownerPid: null });
+    const decision = await decide();
+    writeRunState(
+      run,
+      decision.relaunch ? { status: 'waiting', ownerPid: null } : { status: 'failed', ownerPid: null },
+    );
+    const note = this.noteOf(decision, now);
     const visit: VisitDraft = {
       step: run.currentStep,
       runtime: agent?.runtime ?? null,
@@ -250,12 +292,40 @@ export class RunSettler {
       exchange: null,
       httpCalls: [],
       document: null,
-      documents: [{ kind: 'error', fileName: '', body: 'process died\n' }],
+      documents: [
+        { kind: 'error', fileName: '', body: 'process died\n' },
+        ...(note ? [{ kind: 'interruption', fileName: '', body: JSON.stringify(note) }] : []),
+      ],
       resumed: false,
     };
     await barrier('before-finalize');
-    await this.visits.finalize(run.activeAttempt, run, visit);
+    const command = decision.relaunch
+      ? { type: 'resume' as const, payload: {}, idempotencyKey: decision.idempotencyKey, now }
+      : undefined;
+    await this.visits.finalize(run.activeAttempt, run, visit, command);
     await barrier('after-finalize');
+    return decision;
+  }
+
+  /** The note that says what the decision does with the cut attempt. Null when there is no decision to tell. */
+  private noteOf(decision: RelaunchDecision, at: string): InterruptionNote | null {
+    if (decision.relaunch) return { at, relaunched: true };
+    if (decision.cause === 'limit') {
+      return { at, relaunched: false, cause: 'limit', limit: this.config.env.MAX_LAUNCHES };
+    }
+    return decision.cause === 'stop' ? { at, relaunched: false, cause: 'stop' } : null;
+  }
+
+  /** What the attempt cost, from its step or from what its output file holds. */
+  private async chargeOf(run: RunEntity, saved: string, agent: ReturnType<typeof agentFor> | undefined) {
+    const env = this.config.env;
+    const model = agent?.model ?? null;
+    const pricesOf = (runtime: Parameters<typeof loadPriceTable>[1]) =>
+      loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime, this.clock.now());
+    const step = isStep(run.currentStep) ? this.registry.get(run.currentStep) : null;
+    if (step?.charge) return step.charge(run.key, env, pricesOf, run.activeAttempt);
+    if (!model) return null;
+    return chargeStream(model, saved, await pricesOf(agent?.runtime ?? agentFor(env, run, 'implement').runtime));
   }
 
   private get root(): string {
