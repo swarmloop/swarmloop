@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
+import { dirname, join, relative } from 'path';
 import { AppConfig } from '../config/env';
 import { testEnv } from '../config/env.spec-helpers';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
@@ -39,11 +39,50 @@ describe('copySkillBriefs', () => {
     copySkillBriefs(skills, briefs);
     expect(readFileSync(join(out, 'a/extra.md'), 'utf8')).toBe('changed');
   });
+
+  it.each([
+    'state',
+    'state/briefs',
+    'state/briefs/skills',
+    'state/briefs/skills/a',
+    'state/briefs/skills/a/b',
+    'state/briefs/skills/a/b/extra.md',
+  ])('refuses a destination symlink at %s without changing its target', (path) => {
+    const root = mkdtempSync(join(tmpdir(), 'skill-links-'));
+    const skills = join(root, 'source');
+    const briefs = join(root, 'state/briefs');
+    put(skills, 'a/b/extra.md', 'skill content');
+    const link = join(root, path);
+    const target = join(root, 'service');
+    const outside = join(target, relative(link, join(briefs, 'skills/a/b/extra.md')));
+    put(root, relative(root, outside), 'service content');
+    mkdirSync(dirname(link), { recursive: true });
+    symlinkSync(target, link);
+
+    expect(() => copySkillBriefs(skills, briefs)).toThrow();
+    expect(readFileSync(outside, 'utf8')).toBe('service content');
+  });
+
+  it('copies when a folder above the state folder is a symlink', () => {
+    const root = mkdtempSync(join(tmpdir(), 'skill-above-'));
+    const skills = join(root, 'source');
+    put(skills, 'a/extra.md', 'extra');
+    mkdirSync(join(root, 'real/state'), { recursive: true });
+    symlinkSync(join(root, 'real'), join(root, 'data'));
+
+    copySkillBriefs(skills, join(root, 'data/state/briefs'));
+
+    expect(readFileSync(join(root, 'real/state/briefs/skills/a/extra.md'), 'utf8')).toBe('extra');
+  });
 });
 
 describe('AgentLaunchPrep skill briefs', () => {
-  function launch(step: string): string {
-    const root = mkdtempSync(join(tmpdir(), 'swarmloop-root-'));
+  function launch(step: string, linkedRoot = false): string {
+    const real = mkdtempSync(join(tmpdir(), 'swarmloop-root-'));
+    const root = linkedRoot ? join(mkdtempSync(join(tmpdir(), 'swarmloop-link-')), 'root') : real;
+    if (linkedRoot) {
+      symlinkSync(real, root);
+    }
     const config = new AppConfig(
       testEnv({
         SWARMLOOP_ROOT: root,
@@ -84,7 +123,17 @@ describe('AgentLaunchPrep skill briefs', () => {
     );
   });
 
+  it('leaves the project base text in the brief folder when the repository root is a symlink', () => {
+    const briefs = launch('plan', true);
+    expect(readFileSync(join(briefs, 'skills/implement/project-base.md'), 'utf8')).toBe(
+      readFileSync(join(SKILLS_DIR, 'implement/project-base.md'), 'utf8'),
+    );
+  });
+
   it('leaves no brief folder for a step without a brief mount', () => {
     expect(existsSync(launch('requirements'))).toBe(false);
+    expect(readFileSync(join(launch('plan'), 'skills/implement/project-base.md'), 'utf8')).toBe(
+      readFileSync(join(SKILLS_DIR, 'implement/project-base.md'), 'utf8'),
+    );
   });
 });
