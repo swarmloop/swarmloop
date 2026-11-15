@@ -276,6 +276,10 @@ describe('one blocked task holds only its dependents', () => {
     expect(after[1]?.killReason).not.toBe('process died');
 
     // The scripted steps leave no merge request: the subtask ends green as a real one does.
+    // Any parent pass the subtask's end woke has settled before the test writes and runs its own.
+    await flow.app.app.get(CommandService).idle();
+    await flow.app.pipeline.whenIdle(`${KEY}-a`);
+    await flow.app.pipeline.whenIdle(KEY);
     await end(flow.app, 'a', 'done', 2);
     await flow.app.pipeline.step('implement', KEY);
     await expectNotBlocked();
