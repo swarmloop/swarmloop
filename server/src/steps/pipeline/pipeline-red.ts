@@ -16,7 +16,9 @@ import { pipelineReturn } from './ci-only';
 import { finish } from './pipeline-result';
 import { noteSkippedByPaths } from './pipeline-skipped';
 import { defaultBranchTests, type DefaultBranchDeps } from './default-branch-tests';
-import { failureIssues, renderFail, renderUnreadable, type Seen } from './pipeline-report';
+import { saveJobTrace } from './job-trace-log';
+import { failureIssues, renderFail, renderUnreadable } from './pipeline-failure-report';
+import type { Seen } from './pipeline-report';
 
 export interface RedDeps {
   environments: EnvironmentService;
@@ -44,6 +46,11 @@ export async function red(
   if (unreadable) {
     return finish('blocked', report(opened, 'pipeline log unavailable', unreadable), 'blocked', unreadable);
   }
+  failures.forEach((failure, index) => {
+    if (!failure.check && failure.trace) {
+      failure.log = saveJobTrace(root(deps.config), opened.run.key, opened.run.activeAttempt ?? '', index, failure);
+    }
+  });
   const rebased = note ? null : await defaultBranchTests(deps.defaultBranch, ctx, failures);
   if (rebased) {
     return rebased;
