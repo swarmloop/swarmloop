@@ -9,4 +9,5 @@ module.exports = {
   testEnvironment: 'node',
   setupFiles: ['<rootDir>/jest.setup.js'],
   testTimeout: 20000,
+  reporters: ['default', '<rootDir>/../scripts/jest-slowest-files.mjs'],
 };
