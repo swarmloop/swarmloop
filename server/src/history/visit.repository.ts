@@ -251,6 +251,24 @@ export class VisitRepository {
     return this.stepStats.find({ where: { runId }, order: { id: 'ASC' } });
   }
 
+  /** The latest visit of each of the runs, with only its id and kill reason, in two reads whatever the number of runs. */
+  async latestVisits(runIds: number[]): Promise<Map<number, Pick<StepStatEntity, 'id' | 'killReason'>>> {
+    if (runIds.length === 0) {
+      return new Map();
+    }
+    const newest: { id: number }[] = await this.stepStats
+      .createQueryBuilder('stat')
+      .select('MAX(stat.id)', 'id')
+      .where('stat.runId IN (:...runIds)', { runIds })
+      .groupBy('stat.runId')
+      .getRawMany();
+    const found = await this.stepStats.find({
+      where: { id: In(newest.map(({ id }) => Number(id))) },
+      select: { id: true, runId: true, killReason: true },
+    });
+    return new Map(found.map((stat) => [stat.runId, stat]));
+  }
+
   /** Whether an agent ran in a finished (done or waiting) visit of this step: a visit with a stored exchange. */
   async hasAgentVisit(runId: number, step: string): Promise<boolean> {
     const stats = await this.stepStats.find({ where: { runId, step, status: In(['done', 'waiting']) } });

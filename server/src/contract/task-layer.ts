@@ -1,3 +1,4 @@
+import type { InterruptionNote } from './interruption';
 import type { RunState, StateReason } from './run-state';
 import type { SubtaskStatus } from './subtask';
 
@@ -22,6 +23,8 @@ export interface TaskLayer {
       currentStep: string;
       usd: number;
       durationMs: number;
+      /** Set when the run's latest visit was cut by a server restart. */
+      interruption?: InterruptionNote;
     };
   }[];
 }

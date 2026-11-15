@@ -1,5 +1,6 @@
 import type { DocumentEntity } from '../../history/entities';
 import type { FlowView, TaskLayer } from '../../contract/api';
+import { readInterruption, type InterruptionNote } from '../../contract/interruption';
 import { parseSubtasks, shownTaskState, splitLine, type Subtask } from '../../contract/subtask';
 import { STEPS, type StepName } from '../../contract/steps';
 import { readPlan } from '../../steps/plan/plan-record';
@@ -8,9 +9,20 @@ import { latest } from './status';
 import { isResultKind } from '../../agent-result/result-definition';
 import { ARTIFACTS } from '../../steps/contract/artifacts';
 
-/** The documents a person reads: the stored result objects and the answer errors are server records, left out. */
+/** The documents a person reads: the stored result objects, the answer errors and the interruption notes are server records, left out. */
 export function withoutServerRecords<T extends { kind: string }>(documents: T[]): T[] {
-  return documents.filter((document) => !isResultKind(document.kind) && document.kind !== ARTIFACTS.answerErrors.kind);
+  return documents.filter(
+    (document) =>
+      !isResultKind(document.kind) && document.kind !== ARTIFACTS.answerErrors.kind && document.kind !== 'interruption',
+  );
+}
+
+/** The interruption note stored with the visit `statId`, or null when that visit has none. */
+export function interruptionOf(documents: DocumentEntity[], statId: number): InterruptionNote | null {
+  const found = documents
+    .filter((document) => document.kind === 'interruption' && document.stepStatId === statId)
+    .at(-1);
+  return found ? readInterruption(found.body) : null;
 }
 
 export function belongsToVisit(
