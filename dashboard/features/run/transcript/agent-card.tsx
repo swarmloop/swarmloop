@@ -6,12 +6,14 @@ import type { StepEvent } from '@contract/step-events';
 import { duration, money, tokens } from '../../../lib/format';
 import { AgentLogPanel, type AgentLog } from './agent-log';
 import { Bubble } from './bubble';
+import { ShortText } from './short-text';
 import { DETAIL, SPACE } from './tokens';
 import type { AgentBubble, AgentWork } from './transcript-model';
 
 /** How many tool calls and messages show before `show all`. */
 const SHOWN_WORK = 8;
-const MESSAGE_CHARS = 600;
+/** How many characters of a tool target or line show before the text opens on click. */
+const SHOWN_CHARS = 300;
 
 function size(chars: number): string {
   return `${(chars / 1000).toFixed(1)}k`;
@@ -29,10 +31,11 @@ function contextText(context: NonNullable<AgentBubble['context']>): string {
 
 function WorkLine({ work }: { work: AgentWork }): ReactElement {
   if (work.kind === 'agent.message') {
+    // A message recorded before events kept it whole holds only its first characters, and `chars` is its full length.
     return (
       <Box>
         {work.text}
-        {work.chars > MESSAGE_CHARS ? (
+        {work.chars > work.text.length ? (
           <>
             {'… '}
             <Link href="#exchanges">full exchange</Link>
@@ -49,8 +52,13 @@ function WorkLine({ work }: { work: AgentWork }): ReactElement {
         color: work.status === 'failed' ? 'text.secondary' : undefined,
       }}
     >
-      {work.tool} {work.target}
-      {work.resultLine ? ` → ${work.resultLine}` : ''}
+      {work.tool} <ShortText text={work.target} max={SHOWN_CHARS} />
+      {work.resultLine ? (
+        <>
+          {' → '}
+          <ShortText text={work.resultLine} max={SHOWN_CHARS} />
+        </>
+      ) : null}
       {work.status === 'unfinished' ? ' → no result' : ''} · {duration(work.durationMs)}
     </Box>
   );

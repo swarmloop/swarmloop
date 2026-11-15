@@ -5,12 +5,12 @@ import {
   checkTrace,
   classify,
   parsePipelineRefs,
-  renderFail,
   renderNone,
   renderPass,
   verdictOf,
   type Seen,
 } from './pipeline-report';
+import { renderFail } from './pipeline-failure-report';
 
 function item(overrides: Partial<Seen> = {}): Seen {
   const seen = {

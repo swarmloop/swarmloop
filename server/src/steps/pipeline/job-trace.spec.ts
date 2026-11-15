@@ -1,4 +1,4 @@
-import { readableJobTrace } from './job-trace';
+import { readableJobTrace, wholeJobTrace } from './job-trace';
 
 describe('readable job trace', () => {
   it('keeps elixir failures and the summary, and drops the compile log', () => {
@@ -80,5 +80,21 @@ describe('readable job trace', () => {
     expect(body).toHaveLength(20000);
     expect(body.endsWith('tail')).toBe(true);
     expect(body.startsWith('x')).toBe(true);
+  });
+
+  it('gives the last 200 cleaned lines and no mark without a log path', () => {
+    const lines = Array.from({ length: 500 }, (_, index) => `line ${index}`);
+    const body = readableJobTrace(lines.join('\n'));
+    expect(body.split('\n')).toEqual(lines.slice(-200));
+  });
+
+  it('gives the same text with a log path when nothing is cut', () => {
+    const trace = ['one', 'two', 'three'].join('\n');
+    expect(readableJobTrace(trace, '/work/logs/pipeline-1-job-0-log.txt')).toBe(readableJobTrace(trace));
+  });
+
+  it('returns every cleaned line up to the end of the script and nothing after it', () => {
+    const trace = ['section_start:1:step_script', 'a', 'b', 'section_end:2:step_script', 'after'].join('\n');
+    expect(wholeJobTrace(trace)).toEqual(['a', 'b']);
   });
 });

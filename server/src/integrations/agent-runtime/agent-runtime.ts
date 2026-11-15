@@ -75,6 +75,8 @@ export interface AgentRuntime {
   /** The rule file names the CLI loads by itself from its working directory. */
   ownRuleFiles(): readonly string[];
   briefArgs(): string[];
+  /** The CLI args that let the agent read one more directory. */
+  readDirArgs(dir: string): string[];
   printArgs(input: AgentPrintInput): string[];
   terminalArgs(input: AgentTerminalInput): string[];
   /** Files written into the CLI home before every print launch. */

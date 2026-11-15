@@ -1,7 +1,10 @@
+import { markedTail } from '../../core/run-logs';
+
 const READABLE_LINES = 200;
 const READABLE_CHARS = 20000;
 
-export function readableJobTrace(raw: string): string {
+/** The cleaned lines of a job trace up to the end of its script, or to its last error. */
+export function wholeJobTrace(raw: string): string[] {
   const rawLines = raw.split(/\r?\n/);
   const section = rawLines.findIndex((line) => line.includes('section_end:') && line.includes('step_script'));
   let end = rawLines.length;
@@ -15,7 +18,16 @@ export function readableJobTrace(raw: string): string {
       }
     }
   }
-  return cleanTrace(rawLines.slice(0, end).join('\n')).slice(-READABLE_LINES).join('\n').slice(-READABLE_CHARS);
+  return cleanTrace(rawLines.slice(0, end).join('\n'));
+}
+
+/** The end of a job trace; with `log` (where the whole trace is saved) a cut end starts with a mark. */
+export function readableJobTrace(raw: string, log?: string): string {
+  const lines = wholeJobTrace(raw);
+  if (log === undefined) {
+    return lines.slice(-READABLE_LINES).join('\n').slice(-READABLE_CHARS);
+  }
+  return markedTail(lines, lines.length, READABLE_LINES, READABLE_CHARS, log);
 }
 
 function cleanTrace(raw: string): string[] {

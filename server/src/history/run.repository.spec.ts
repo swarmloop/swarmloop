@@ -55,6 +55,25 @@ describe('RunRepository', () => {
     }
   });
 
+  it('removes the log folder of the run with it, so a later run with the same key starts with none', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      const run = await runs.openWaiting('run-1', '/target');
+      const own = join(db.root, 'data', 'run-logs', 'run-1');
+      const other = join(db.root, 'data', 'run-logs', 'run-10');
+      mkdirSync(own, { recursive: true });
+      mkdirSync(other, { recursive: true });
+      writeFileSync(join(own, 'implement-a-command-0-log.txt'), 'out\n');
+      writeFileSync(join(other, 'implement-a-command-0-log.txt'), 'out\n');
+      await runs.remove(run);
+      expect(existsSync(own)).toBe(false);
+      expect(existsSync(other)).toBe(true);
+    } finally {
+      await db.close();
+    }
+  });
+
   it('lists the subtasks of a run in the task order of its subtasks document and finds one by task id', async () => {
     const db = await repositoryDatabase();
     try {

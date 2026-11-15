@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import ListItem from '@mui/material/ListItem';
 import ListItemButton from '@mui/material/ListItemButton';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
 import { money } from '../../lib/format';
@@ -39,13 +40,15 @@ export function TaskLine({
         <Box sx={{ display: 'flex' }}>
           <RunStateIcon view={view} size={14} />
         </Box>
-        <Typography
-          variant="caption"
-          noWrap
-          sx={{ flex: 1, minWidth: 0, color: loud ? toneColor(view.tone) : 'text.secondary' }}
-        >
-          {run.name}
-        </Typography>
+        <Tooltip title={run.name}>
+          <Typography
+            variant="caption"
+            noWrap
+            sx={{ flex: 1, minWidth: 0, color: loud ? toneColor(view.tone) : 'text.secondary' }}
+          >
+            {run.name}
+          </Typography>
+        </Tooltip>
         <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
           {money(run.usd)}
         </Typography>

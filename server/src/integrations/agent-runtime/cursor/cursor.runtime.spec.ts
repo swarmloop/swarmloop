@@ -8,6 +8,10 @@ describe('CursorRuntime', () => {
     expect(runtime.planModeHasPlanTool).toBe(true);
   });
 
+  it('opens one more directory for reading', () => {
+    expect(runtime.readDirArgs('/work/logs')).toEqual(['--add-dir', '/work/logs']);
+  });
+
   it('loads AGENTS.md and CLAUDE.md by itself', () => {
     expect(runtime.ownRuleFiles()).toEqual(['AGENTS.md', 'CLAUDE.md']);
   });

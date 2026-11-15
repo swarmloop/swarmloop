@@ -7,6 +7,7 @@ import { agentStateDir, prepareStateDir, writeHomeFiles, sandboxUserId } from '.
 import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
 import { syncChatMode } from './chat-mode';
 import { sessionHome } from '../history/session-group';
+import { RUN_LOGS_PATH, runLogMount } from '../core/run-logs';
 import { briefMounts, spillPrompt } from './agent-args';
 
 /** What one launch needs before it is spawned. */
@@ -16,7 +17,8 @@ interface Launch {
   args: string[];
   /** Env names the container gets empty, so an inherited value never reaches the CLI. */
   unsetEnv: string[];
-  briefs: SandboxMount[];
+  /** The launch's own mounts: its briefs and this run's read-only log folder. */
+  mounts: SandboxMount[];
 }
 
 type LaunchInput = BaseAgentRunInput & { tools: AgentTools };
@@ -31,11 +33,8 @@ export class AgentLaunchPrep {
   /** Prepares the state directory, chat mode, prompt delivery, and arguments for one launch. */
   prepare(input: LaunchInput, runtime: AgentRuntime, resumed: boolean): Launch {
     const userId = sandboxUserId();
-    const statePath = agentStateDir(
-      resolveRepoRoot(this.config.env.SWARMLOOP_ROOT, __dirname),
-      input.runKey,
-      sessionHome(input.step),
-    );
+    const root = resolveRepoRoot(this.config.env.SWARMLOOP_ROOT, __dirname);
+    const statePath = agentStateDir(root, input.runKey, sessionHome(input.step));
     prepareStateDir(statePath, userId);
     writeHomeFiles(runtime.homeFiles(), statePath, userId);
     if (runtime.syncsChatMode && input.resumeChatId) {
@@ -43,10 +42,11 @@ export class AgentLaunchPrep {
     }
     const delivered = spillPrompt(input.prompt, statePath, input.step);
     const briefs = briefMounts(statePath, input.step, delivered.mounts);
-    let args = runtime.printArgs({ ...input, prompt: delivered.text });
-    if (briefs.length > 0) {
-      args.unshift(...runtime.briefArgs());
-    }
+    let args = [
+      ...(briefs.length > 0 ? runtime.briefArgs() : []),
+      ...runtime.readDirArgs(RUN_LOGS_PATH),
+      ...runtime.printArgs({ ...input, prompt: delivered.text }),
+    ];
     let unsetEnv: string[] = [];
     if (input.effort) {
       ({ args, unsetEnv } = runtime.withEffort({ model: input.model, args, unsetEnv }, input.effort));
@@ -60,6 +60,7 @@ export class AgentLaunchPrep {
         usage: { tokensIn: 0, tokensOut: 0, usd: 0 },
       });
     }
-    return { userId, statePath, args, unsetEnv, briefs };
+    const mounts = [...briefs, runLogMount(root, input.runKey)];
+    return { userId, statePath, args, unsetEnv, mounts };
   }
 }

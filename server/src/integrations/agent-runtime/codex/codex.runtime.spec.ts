@@ -118,6 +118,7 @@ describe('CodexRuntime', () => {
     withBrief.unshift(...runtime.briefArgs());
     expect(withBrief.slice(0, 2)).toEqual(['--add-dir', '/work/brief']);
     expect(withBrief.at(-1)).toBe('read the worktrees');
+    expect(runtime.readDirArgs('/work/logs')).toEqual(['--add-dir', '/work/logs']);
   });
 
   describe('effort', () => {

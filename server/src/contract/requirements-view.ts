@@ -1,3 +1,5 @@
+import { shortLine } from './short-text';
+
 interface Linked {
   key?: string;
   summary?: string;
@@ -44,12 +46,12 @@ function text(value: unknown): string {
 /** The first line of a markdown text, without its marks. */
 function plainFirstLine(markdown: string): string {
   const line = markdown.split('\n').find((item) => item.replace(/[#>*`\-_\s]/g, '') !== '') ?? '';
-  return line
+  const plain = line
     .replace(/^[\s#>*\-+]+/, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/[*`_]/g, '')
-    .trim()
-    .slice(0, TITLE_CHARS);
+    .trim();
+  return shortLine(plain, TITLE_CHARS);
 }
 
 function ticketTitle(ticket: Linked): string {

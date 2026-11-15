@@ -95,6 +95,10 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
     return ['--add-dir', '/work/brief'];
   }
 
+  readDirArgs(dir: string): string[] {
+    return ['--add-dir', dir];
+  }
+
   override efforts(_model: string): readonly Effort[] {
     return EFFORTS;
   }

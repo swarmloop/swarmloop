@@ -43,6 +43,8 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
 
   abstract briefArgs(): string[];
 
+  abstract readDirArgs(dir: string): string[];
+
   printArgs(input: AgentPrintInput): string[] {
     const workspace = input.mounts[0]?.containerPath;
     if (!workspace) {

@@ -77,6 +77,51 @@ describe('step event scope', () => {
     expect(events[1]).toMatchObject({ spanId: (events[0] as { spanId: string }).spanId });
   });
 
+  it('keeps a whole output and names no omitted lines when the command printed no more', async () => {
+    const events: StepEvent[] = [];
+    const output = Array.from({ length: 100 }, (_, index) => `line ${index}`).join('\n');
+    await runInStepScope(scope(1, events), 0, () => {
+      startCommandSpan({ actor: 'server', repo: 'demo', cwd: '/srv/root', executable: 'npm', args: ['test'] })({
+        exitCode: 1,
+        output,
+        outputLines: 100,
+      });
+      return Promise.resolve();
+    });
+    const finished = events[1] as { output: string };
+    expect(finished.output.split('\n')).toHaveLength(100);
+    expect(events[1]).not.toHaveProperty('omittedLines');
+  });
+
+  it('names the lines a command printed that its output does not hold', async () => {
+    const events: StepEvent[] = [];
+    const output = Array.from({ length: 200 }, (_, index) => `line ${index}`).join('\n');
+    await runInStepScope(scope(1, events), 0, () => {
+      startCommandSpan({ actor: 'server', repo: 'demo', cwd: '/srv/root', executable: 'npm', args: ['test'] })({
+        exitCode: 1,
+        output,
+        outputLines: 500,
+      });
+      return Promise.resolve();
+    });
+    expect((events[1] as { output: string }).output.split('\n')).toHaveLength(200);
+    expect(events[1]).toMatchObject({ omittedLines: 300 });
+  });
+
+  it('keeps no output of a successful read-only git command', async () => {
+    const events: StepEvent[] = [];
+    await runInStepScope(scope(1, events), 0, () => {
+      startCommandSpan({ actor: 'server', repo: 'demo', cwd: '/srv/root', executable: 'git', args: ['status'] })({
+        exitCode: 0,
+        output: 'M a.ts\nM b.ts',
+        outputLines: 2,
+      });
+      return Promise.resolve();
+    });
+    expect(events[1]).toMatchObject({ output: null });
+    expect(events[1]).not.toHaveProperty('omittedLines');
+  });
+
   it('marks an exit that the call declared as an answer, and no other', async () => {
     const events: StepEvent[] = [];
     await runInStepScope(scope(1, events), 0, () => {
