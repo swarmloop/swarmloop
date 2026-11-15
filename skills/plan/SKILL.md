@@ -16,6 +16,8 @@ The prompt may hold an `Impact` section: the capabilities the task touches, one 
 
 A capability marked `removed` or `unreachable` that the requirements do not name in a `Removes` or `Behavior change` section, and that no answer confirmed, is not planned around silently. Stop and send `questions` in place of the plan, one entry `This change makes <capability> <unreachable|go away>. Is that intended?` per capability. Dead code that nothing relies on is not a capability and raises no question.
 
+A repository with no CI config starts with its base (read /work/brief/skills/implement/project-base.md); its other tasks depend on it.
+
 The checklist goes in the result block, and only there. A later pass replaces the plan with its own. Do not edit source files. Do not run git. Do not implement the items. `summary` says why this checklist.
 
 ## Split

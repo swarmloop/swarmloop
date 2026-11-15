@@ -8,6 +8,8 @@ The requirements record, the approved plan, any return notes, and what previous 
 
 Write the smallest change that does the checklist. Keep to the structure and patterns already in the tree, and keep it clean, simple, and straightforward: DRY, KISS, SOLID. Favor clear, well-factored code over clever or cramped code: each function, module, and layer has one clear responsibility. Reach for an abstraction when it makes the code clearer and matches how the tree is already organized; do not add a file, helper, or layer that does not earn its place or that the task does not need. When a change leaves a component, file, export, import, comment, or commented-out code with no remaining use, remove that leftover in the same change. Keep the behavior complete and reliable: the cases the requirement names work, and errors are handled the way the tree already handles them. Cover the change with tests in the style the tree already uses. A new responsibility goes in its own file, named for it. A file that would break a size or complexity rule of the project is split by responsibility, never squeezed: no joined lines, no shortened names, no branches moved into tables just to pass a count. Before writing a helper, search the tree for one that does the same and use it.
 
+A project base task follows /work/brief/skills/implement/project-base.md.
+
 [near tests rule]
 
 Change files with the runtime's own edit and write tools, and read them with its read tool. Use the shell to run commands, not to rewrite files.
@@ -17,8 +19,6 @@ For a pipeline return, or a review return that names a failing test: first run t
 When a log was shortened and the failure is not in the part shown, search the whole file it names for the failure and read the lines around it; do not print the whole file.
 
 A change that makes a failed job pass is part of the task only within the task's own files. A red check or CI job in code or tests that a sibling task owns (the task map says who owns what), or in code that no task owns, such as a test that is flaky on the base, is named as the cause in `cause` and left alone: change nothing for it, and do not do a sibling's work to make a job green. When the task needs something a sibling task makes that is not merged yet, or its failed job is in a sibling's code, fill `needs` with one entry per sibling task, its `id` and `what` it needs from that task, and leave `implementation` empty: nothing is committed, the task waits, and this step runs again when that sibling is merged. A run that is not a subtask sends no `needs`.
-
-Send data only in the result block; code never reads it from prose.
 
 Tests: a test must fail when the change is reverted. It checks behavior through the public interface the tree already tests, not private calls or mock call counts. It does not restate the implementation. It does not snapshot a large output where one value is what matters.
 

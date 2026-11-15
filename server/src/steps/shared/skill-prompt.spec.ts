@@ -327,3 +327,29 @@ describe('needs: a task that needs a sibling waits for it', () => {
     },
   );
 });
+
+describe('the project base pointer', () => {
+  const base = '/work/brief/skills/implement/project-base.md';
+
+  it.each(['plan', 'implement', 'code-review/requirements'])(
+    '%s names the project base file and holds none of its list',
+    (name) => {
+      const text = skill(name);
+      expect(text).toContain(base);
+      for (const point of ['400 counted lines', 'CHANGELOG.md', 'Unreleased', 'at most 12']) {
+        expect(text).not.toContain(point);
+      }
+    },
+  );
+
+  it('requirements reads every base point against the diff and returns missing points by name', () => {
+    const text = skill('code-review/requirements');
+    expect(text).toContain(`For a base task, read ${base}`);
+    expect(text).toContain('check every point against the diff');
+    expect(text).toContain('naming each missing point in a return');
+  });
+
+  it('plan names the project base file for a run that does not split', () => {
+    expect(skillPrompt('plan', '{}', ['api'])).toContain(base);
+  });
+});
