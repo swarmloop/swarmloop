@@ -1,5 +1,4 @@
 import 'reflect-metadata';
-import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
@@ -9,6 +8,8 @@ import { join } from 'path';
 import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { writeEnvOverrides } from '../../testing/env.spec-helpers';
+import { copyMainWithOrigin, git } from '../../testing/git-fixture';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { AppConfig } from '../../config/env';
 import { Clock } from '../../core/clock';
 import { HttpCallEntity } from '../../history/entities';
@@ -51,7 +52,7 @@ describe('merge-request step', () => {
       await seed(app, 'PROJ-200');
       const opened = await app.get(PipelineService).step('merge-request', 'PROJ-200');
       expect(opened.exitCode).toBe(0);
-      expect(open).toHaveBeenCalledTimes(1);
+      expect(open.mock.calls.map((entry) => entry[0].project)).toEqual(['group/demo']);
       expect(open.mock.calls[0]?.[0]).toMatchObject({
         project: 'group/demo',
         source: 'feature/PROJ-200-ship-the-field',
@@ -222,10 +223,9 @@ describe('merge-request step', () => {
       await seed(app, 'PROJ-202', { repos: 'demo\nweb\n' });
       const opened = await app.get(PipelineService).step('merge-request', 'PROJ-202');
       expect(opened.exitCode).toBe(0);
-      expect(find).toHaveBeenCalledTimes(2);
+      expect(find.mock.calls.map((entry) => entry[0].project).sort()).toEqual(['group/demo', 'group/web']);
       expect(agent).not.toHaveBeenCalled();
-      expect(open).toHaveBeenCalledTimes(1);
-      expect(open.mock.calls[0]?.[0]?.project).toBe('group/demo');
+      expect(open.mock.calls.map((entry) => entry[0].project)).toEqual(['group/demo']);
       expect(open.mock.calls[0]?.[0]?.summary).toBe('Ships the field.');
       expect(update).toHaveBeenCalledWith('group/web', 4, 'Ships the field.');
       const body = await app.get(DocumentRepository).latestBody('PROJ-202', 'merge_request');
@@ -475,6 +475,7 @@ async function boot(
     AGENTS_REVIEW: 'cursor:opus-5.5-extra-high',
     SWARMLOOP_ROOT: root,
   });
+  seedMigratedDatabase(root);
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })
@@ -534,22 +535,10 @@ async function seed(
 }
 
 function featureTree(root: string, key: string, repo = 'demo', pushed = true): string {
-  const clone = join(root, repo);
-  const remote = join(root, `${repo}.git`);
+  const { clone } = copyMainWithOrigin(root, repo);
   const tree = join(root, 'worktrees', key, repo);
   const branch = `feature/${key}-ship-the-field`;
-  git(root, ['init', '-b', 'main', clone]);
-  git(clone, ['config', 'user.email', 'dev@example.com']);
-  git(clone, ['config', 'user.name', 'Dev']);
-  mkdirSync(join(clone, 'src'), { recursive: true });
-  writeFileSync(join(clone, 'src', 'readme.ts'), 'export const readme = 1;\n');
-  git(clone, ['add', 'src/readme.ts']);
-  git(clone, ['commit', '-m', 'init']);
-  git(root, ['init', '--bare', remote]);
-  git(clone, ['remote', 'add', 'origin', remote]);
-  git(clone, ['push', '-u', 'origin', 'main']);
   git(clone, ['remote', 'set-head', 'origin', 'main']);
-  git(clone, ['switch', '-c', 'holder']);
   mkdirSync(join(tree, '..'), { recursive: true });
   git(clone, ['worktree', 'add', '-b', branch, tree, 'main']);
   if (pushed) {
@@ -557,8 +546,4 @@ function featureTree(root: string, key: string, repo = 'demo', pushed = true): s
   }
   git(tree, ['remote', 'set-url', 'origin', `git@gitlab.example:group/${repo}.git`]);
   return tree;
-}
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 }

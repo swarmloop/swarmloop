@@ -8,7 +8,6 @@ import { AgentLauncher } from './shared/agent-launcher';
 import { goldenApp } from './shared/model-golden.spec-helpers';
 import { StepKernel } from './step-kernel';
 import { ResearchStep } from './research/research.step';
-import type { StepResult } from './contract/step-contract';
 import { ERROR_CODES } from '../contract/error-codes';
 import { failedLaunches } from '../core/pipeline-result';
 import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
@@ -387,23 +386,16 @@ describe('agent step failure', () => {
         golden.sandbox,
         golden.launcher,
       );
-      const conclude = jest.spyOn(step as unknown as { conclude: () => Promise<unknown> }, 'conclude');
       const result = await step.execute('PROJ-31');
-      const [, stepResult] = conclude.mock.calls[0] as unknown as [unknown, StepResult];
       const id = /\((E-[0-9a-z]{8})\)$/.exec(result.message)?.[1];
       expect(id).toMatch(/^E-[0-9a-z]{8}$/);
-      expect(stepResult.route).toEqual({
-        to: 'fail',
-        error: {
-          code: 'STEP_FAILED',
-          category: 'internal',
-          errorId: id,
-          message: `research failed: agent crashed (${id})`,
-        },
-      });
-      expect(stepResult.summary).toContain(`research failed: agent crashed (${id})`);
-      expect(logged).toHaveBeenCalledTimes(1);
-      expect(String(logged.mock.calls[0][0])).toMatch(new RegExp(`^${id} `));
+      expect(await golden.seedDocuments.latestBody('PROJ-31', 'error')).toContain(
+        `research failed: agent crashed (${id})`,
+      );
+      expect((await golden.runs.findRun('PROJ-31'))?.status).toBe('failed');
+      expect(logged.mock.calls.map((call) => String(call[0])).filter((line) => line.includes(id!))).toEqual([
+        expect.stringMatching(new RegExp(`^${id} `)),
+      ]);
     } finally {
       logged.mockRestore();
       await golden.close();

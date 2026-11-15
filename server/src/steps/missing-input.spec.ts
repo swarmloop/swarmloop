@@ -7,6 +7,7 @@ import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { boot } from './prepare/prepare.step.spec-helpers';
 import { StepRegistry } from './step.registry';
+import { seedMigratedDatabase } from '../testing/migrated-database.spec-helpers';
 
 const KEY = 'PROJ-60';
 
@@ -42,6 +43,7 @@ describe('missing input of every step', () => {
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'swarmloop-missing-input-'));
+    seedMigratedDatabase(root);
     app = await boot(root);
     const runs = app.get(RunRepository);
     const run = await runs.begin(KEY, 'requirements');

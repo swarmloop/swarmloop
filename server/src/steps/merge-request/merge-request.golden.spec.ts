@@ -9,6 +9,7 @@ import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { writeEnvOverrides } from '../../testing/env.spec-helpers';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { AppConfig } from '../../config/env';
 import { StepEventLog } from '../../history/step-event.log';
 import { Clock } from '../../core/clock';
@@ -128,6 +129,7 @@ describe('merge-request step golden traces', () => {
 
 async function boot(root: string) {
   await writeEnvOverrides(root, envOverrides(root));
+  seedMigratedDatabase(root);
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   }).compile();

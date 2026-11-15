@@ -1,6 +1,5 @@
 import 'reflect-metadata';
 
-import { execFileSync } from 'child_process';
 import { writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -11,7 +10,7 @@ import { FlakyTestRepository } from '../../history/flaky-test.repository';
 import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { renderMergeRequest } from '../merge-request/merge-request-record';
-import { boot, call, gitRepo, job, one, seed, shot, stampSettled } from './pipeline.step.spec-helpers';
+import { boot, call, commitAll, gitRepo, job, one, seed, shot, stampSettled } from './pipeline.step.spec-helpers';
 import { FlakyTestEntity } from '../../history/flaky-test.entity';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
@@ -146,16 +145,11 @@ describe('pipeline step and flaky tests', () => {
     try {
       const cwd = join(root, 'worktrees', KEY, 'demo');
       gitRepo(cwd, 'https://gitlab.example/group/demo.git');
-      const commit = (message: string): string => {
-        execFileSync('git', ['add', '.'], { cwd });
-        execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-m', message], { cwd });
-        return execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
-      };
       writeFileSync(join(cwd, 'unit.test.ts'), 'expect(1).toBe(1);\n');
       writeFileSync(join(cwd, 'code.ts'), 'export const a = 1;\n');
-      const failedSha = commit('base');
+      const failedSha = commitAll(cwd, 'base');
       writeFileSync(join(cwd, 'unit.test.ts'), 'expect(1).toBeGreaterThan(0);\n');
-      const passedSha = commit('loosen the assertion');
+      const passedSha = commitAll(cwd, 'loosen the assertion');
       await failedOnce(app, failedSha);
       const run = (await app.get(RunRepository).findRun(KEY))!;
       const documents = app.get(DocumentRepository);

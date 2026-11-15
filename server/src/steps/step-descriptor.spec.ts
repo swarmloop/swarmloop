@@ -8,6 +8,7 @@ import type { StepName } from '../contract/steps';
 import { GOLDEN_DIR } from '../testing/step-trace.spec-helpers';
 import { boot } from './prepare/prepare.step.spec-helpers';
 import { StepRegistry } from './step.registry';
+import { seedMigratedDatabase } from '../testing/migrated-database.spec-helpers';
 
 const MIGRATED = [
   'requirements',
@@ -45,12 +46,13 @@ describe('step descriptors', () => {
   let root: string;
   let app: Awaited<ReturnType<typeof boot>>;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     root = await mkdtemp(join(tmpdir(), 'swarmloop-descriptor-'));
+    seedMigratedDatabase(root);
     app = await boot(root);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await app.close();
     await rm(root, { recursive: true, force: true });
   });
