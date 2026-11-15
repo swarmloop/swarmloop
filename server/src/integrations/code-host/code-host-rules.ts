@@ -1,8 +1,6 @@
-import type { CodeHostRules } from './host-rules';
-import { githubRules } from './github/github-rules';
-import { gitlabRules } from './gitlab/gitlab-rules';
+import { codeHostAdapters } from './code-host-adapters';
 
-const HOST_RULES: readonly CodeHostRules[] = [githubRules, gitlabRules];
+const HOST_RULES = codeHostAdapters().map((adapter) => adapter.rules);
 
 export function ciFilesOfAnyHost(): string[] {
   return HOST_RULES.flatMap((rules) => rules.ciFiles);

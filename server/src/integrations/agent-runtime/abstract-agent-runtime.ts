@@ -38,6 +38,7 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
   }
 
   abstract credential(keys: RuntimeKeys): { name: string; value: string };
+  abstract secrets(keys: RuntimeKeys): string[];
 
   abstract ownRuleFiles(): readonly string[];
 

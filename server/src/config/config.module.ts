@@ -1,7 +1,8 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { SystemClock, Clock } from '../core/clock';
-import { AppConfig, readEnv } from './env';
+import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
+import { AppConfig, readEnv, type HostEnvKeys } from './env';
 import { envSchema } from './env.schema';
 import { applySettings, envFilePath, readSettings } from './load-env';
 import { resolveRepoRoot } from './repo-root';
@@ -36,7 +37,7 @@ export class SwarmloopConfigModule {
         { provide: SettingSources, useValue: new SettingSources(settings.sources) },
         {
           provide: AppConfig,
-          useFactory: (config: ConfigService) => new AppConfig(readEnv(config)),
+          useFactory: (config: ConfigService) => new AppConfig(readEnv(config, hostEnvKeys())),
           inject: [ConfigService],
         },
         { provide: Clock, useClass: SystemClock },
@@ -44,4 +45,14 @@ export class SwarmloopConfigModule {
       exports: [AppConfig, Clock, SettingSources],
     };
   }
+}
+
+/** The keys of the code hosts: base urls and tokens in the order the hosts build a push url, then the login apps by name. */
+function hostEnvKeys(): HostEnvKeys {
+  return {
+    server: [...codeHostAdapters()]
+      .sort((a, b) => a.pushOrder - b.pushOrder)
+      .flatMap((adapter) => [adapter.baseKey, adapter.tokenKey]),
+    login: codeHostAdapters().flatMap(({ clientEnvKeys }) => [clientEnvKeys.clientId, clientEnvKeys.clientSecret]),
+  };
 }

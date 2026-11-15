@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { registerSecretSource } from '../../core/secret-sources';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { JiraIssueTracker } from './jira/jira-issue-tracker';
 import type { Connection } from '../connection';
@@ -12,10 +13,22 @@ export function createIssueTracker(value: string, jira: IssueTracker): IssueTrac
 }
 
 @Injectable()
-export class IssueTrackerRegistry {
+export class IssueTrackerRegistry implements OnModuleInit, OnModuleDestroy {
   static readonly names = ['jira'] as const;
 
+  private unregisterSecrets: (() => void) | undefined;
+
   constructor(private readonly jira: JiraIssueTracker) {}
+
+  onModuleInit(): void {
+    this.unregisterSecrets = registerSecretSource(() =>
+      this.trackers().flatMap((tracker) => tracker.secrets?.() ?? []),
+    );
+  }
+
+  onModuleDestroy(): void {
+    this.unregisterSecrets?.();
+  }
 
   byName(name: string): IssueTracker {
     return createIssueTracker(name, this.jira);
@@ -23,7 +36,10 @@ export class IssueTrackerRegistry {
 
   /** How a person connects each tracker that offers a connection. */
   connections(): Connection[] {
-    const trackers: IssueTracker[] = [this.jira];
-    return trackers.flatMap((tracker) => (tracker.connection ? [tracker.connection] : []));
+    return this.trackers().flatMap((tracker) => (tracker.connection ? [tracker.connection] : []));
+  }
+
+  private trackers(): IssueTracker[] {
+    return [this.jira];
   }
 }

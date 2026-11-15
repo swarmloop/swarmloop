@@ -188,7 +188,7 @@ export default tseslint.config(
           patterns: [
             {
               regex:
-                '^(?!.*integrations/(agent-runtime/agent-runtime[.]registry|issue-tracker/issue-tracker[.]registry|requirements-source/requirements-source[.]registry)$).*integrations/',
+                '^(?!.*integrations/(agent-runtime/agent-runtime[.]registry|code-host/code-host-adapters|issue-tracker/issue-tracker[.]registry|requirements-source/requirements-source[.]registry)$).*integrations/',
               message: 'Config may import only registries that list allowed names.',
             },
           ],
@@ -455,6 +455,11 @@ export default tseslint.config(
   {
     ...jsxA11y.flatConfigs.recommended,
     files: dashboardFiles,
+  },
+  {
+    // The loader finds the code-host adapters by folder, so it requires them by path, not by a static import.
+    files: ['server/src/integrations/code-host/code-host-adapters.ts'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
   {
     // Next.js writes this file, and its reference line is not ours to change.

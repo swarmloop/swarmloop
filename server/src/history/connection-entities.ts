@@ -1,9 +1,9 @@
 import { Column, Entity, PrimaryColumn } from 'typeorm';
 
-/** The GitHub App or GitLab application of one host. Every secret column is ciphertext. */
+/** The app or application of one host. Every secret column is ciphertext. */
 @Entity('host_apps')
 export class HostAppEntity {
-  /** The host name, `github` or `gitlab`. */
+  /** The host name, as its adapter names it. */
   @PrimaryColumn({ name: 'id', type: 'text' })
   host!: string;
 
@@ -59,7 +59,7 @@ export class ConnectionEntity {
   @Column({ name: 'installation_id', type: 'text', nullable: true })
   installationId!: string | null;
 
-  /** `all` or `selected` repositories of the GitHub installation. */
+  /** `all` or `selected` repositories of the app installation. */
   @Column({ type: 'text', nullable: true })
   selection!: string | null;
 }

@@ -84,6 +84,10 @@ export class JiraIssueTracker extends AbstractIssueTracker {
     return bundle;
   }
 
+  secrets(): string[] {
+    return [this.config.env.JIRA_API_TOKEN].filter(Boolean);
+  }
+
   /** The login's own Jira connection, else the server's env; null when neither exists. */
   private async resolve(login?: string | null): Promise<JiraSite | null> {
     const own = login ? await this.personal?.fields(jiraConnection.id, login) : null;

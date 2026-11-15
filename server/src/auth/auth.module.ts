@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, ModuleRef } from '@nestjs/core';
 import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { Clock } from '../core/clock';
@@ -10,11 +10,12 @@ import { AuthService, OAUTH_PROVIDERS } from './auth.service';
 import { CheckoutRepos } from './checkout-repos';
 import { ConnectionsController } from './connections.controller';
 import { ConnectionsService } from './connections.service';
-import { GithubAppService } from './github-app.service';
 import { HostAppsService } from './host-apps.service';
 import { PersonalCredentials } from './personal-credentials.service';
 import { LoginStates } from './login-states';
-import { oauthProviders } from './oauth-provider';
+import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
+import { HOST_APP_STORE } from '../integrations/code-host/login-provider';
+import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { SecretBox, secretKey } from './secret-box';
 import { SessionService } from './session.service';
 
@@ -28,7 +29,8 @@ import { SessionService } from './session.service';
     AuthService,
     HostAppsService,
     ConnectionsService,
-    GithubAppService,
+    ...codeHostAdapters().flatMap((adapter) => (adapter.appFlow ? [adapter.appFlow] : [])),
+    { provide: HOST_APP_STORE, useExisting: HostAppsService },
     PersonalCredentials,
     {
       provide: SecretBox,
@@ -38,8 +40,9 @@ import { SessionService } from './session.service';
     },
     {
       provide: OAUTH_PROVIDERS,
-      useFactory: (config: AppConfig, clock: Clock, apps: HostAppsService) => oauthProviders(config.env, clock, apps),
-      inject: [AppConfig, Clock, HostAppsService],
+      useFactory: (config: AppConfig, clock: Clock, apps: HostAppsService, modules: ModuleRef) =>
+        CodeHostRegistry.loginProviders(config.env, clock, apps, (flow) => modules.get(flow, { strict: false })),
+      inject: [AppConfig, Clock, HostAppsService, ModuleRef],
     },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

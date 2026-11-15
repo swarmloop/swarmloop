@@ -1,4 +1,4 @@
-import type { SwarmloopEnv } from '../../config/env';
+import type { CodeHostServerEnv } from '../../config/env';
 import type { Clock } from '../../core/clock';
 import { FetchFailed, HostUnavailable, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { request } from '../http';
@@ -6,7 +6,7 @@ import { configuredHost } from './provider-message';
 import { remoteProject } from './remote-project';
 
 /** The env keys a code host reads. */
-export type CodeHostEnv = Pick<SwarmloopEnv, 'GITHUB_BASE_URL' | 'GITHUB_TOKEN' | 'GITLAB_BASE_URL' | 'GITLAB_TOKEN'>;
+export type CodeHostEnv = CodeHostServerEnv;
 
 /** One call of a host's API. */
 export interface HostCall {

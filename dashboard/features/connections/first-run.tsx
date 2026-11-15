@@ -9,13 +9,14 @@ import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { getManifest, getOwner, saveGitlabApplication } from '../../lib/endpoints';
+import { HOST_TEXTS } from './logos';
 
 export interface ManifestForm {
   action: string;
   manifest: Record<string, unknown>;
 }
 
-/** GitHub takes the manifest as a form post, so the page builds the form and sends it. */
+/** The host takes the manifest as a form post, so the page builds the form and sends it. */
 export function ManifestPost({ form }: { form: ManifestForm }): ReactElement {
   const ref = useRef<HTMLFormElement>(null);
   useEffect(() => ref.current?.submit(), []);
@@ -26,7 +27,7 @@ export function ManifestPost({ form }: { form: ManifestForm }): ReactElement {
   );
 }
 
-/** The first screen of a server with no login yet: make the GitHub App, or hand over the GitLab application. */
+/** The first screen of a server with no login yet: make the host app, or hand over the host application. */
 export function FirstRun(): ReactElement {
   const [org, setOrg] = useState('');
   const [others, setOthers] = useState<string[]>([]);
@@ -50,7 +51,7 @@ export function FirstRun(): ReactElement {
     );
   }, []);
 
-  async function createGithubApp(event: FormEvent): Promise<void> {
+  async function createApp(event: FormEvent): Promise<void> {
     event.preventDefault();
     setError(null);
     try {
@@ -60,13 +61,13 @@ export function FirstRun(): ReactElement {
     }
   }
 
-  async function connectGitlab(event: FormEvent): Promise<void> {
+  async function saveApplication(event: FormEvent, key: string): Promise<void> {
     event.preventDefault();
     setError(null);
     setBusy(true);
     try {
       await saveGitlabApplication(clientId.trim(), clientSecret.trim());
-      window.location.assign('/auth/gitlab/login');
+      window.location.assign(`/auth/${key}/login`);
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : 'the application was not saved');
       setBusy(false);
@@ -84,74 +85,72 @@ export function FirstRun(): ReactElement {
         </Typography>
       </Box>
       {error ? <Alert severity="error">{error}</Alert> : null}
-      {/* A new key per manifest: a second click (after coming back from GitHub) posts again. */}
+      {/* A new key per manifest: a second click (after coming back from the host) posts again. */}
       {form ? <ManifestPost key={form.action} form={form} /> : null}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, justifyContent: 'center', width: '100%', maxWidth: 900 }}>
-        <Paper
-          variant="outlined"
-          component="form"
-          aria-label="Connect GitHub"
-          onSubmit={(event) => void createGithubApp(event)}
-          sx={{ p: 3, flex: '1 1 340px', display: 'flex', flexDirection: 'column', gap: 2 }}
-        >
-          <Typography variant="h6" component="h2">
-            Connect GitHub
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Creates a GitHub App for you, from a manifest. You then install it on the repositories you choose.
-          </Typography>
-          <TextField
-            label="Account that owns the app"
-            size="small"
-            required
-            value={org}
-            onChange={(event) => {
-              typed.current = true;
-              setOrg(event.target.value);
-            }}
-          />
-          {others.length > 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              The other owners ({others.join(', ')}) get their own app later.
+        {HOST_TEXTS.map((entry) => (
+          <Paper
+            key={entry.key}
+            variant="outlined"
+            component="form"
+            aria-label={entry.firstRun.title}
+            onSubmit={(event) =>
+              void (entry.firstRun.kind === 'manifest' ? createApp(event) : saveApplication(event, entry.key))
+            }
+            sx={{ p: 3, flex: '1 1 340px', display: 'flex', flexDirection: 'column', gap: 2 }}
+          >
+            <Typography variant="h6" component="h2">
+              {entry.firstRun.title}
             </Typography>
-          ) : null}
-          <Button type="submit" variant="contained">
-            Create GitHub App
-          </Button>
-        </Paper>
-        <Paper
-          variant="outlined"
-          component="form"
-          aria-label="Connect GitLab"
-          onSubmit={(event) => void connectGitlab(event)}
-          sx={{ p: 3, flex: '1 1 340px', display: 'flex', flexDirection: 'column', gap: 2 }}
-        >
-          <Typography variant="h6" component="h2">
-            Connect GitLab
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            The OAuth application of your GitLab, with scopes read_user, api and write_repository.
-          </Typography>
-          <TextField
-            label="Application ID"
-            size="small"
-            required
-            value={clientId}
-            onChange={(event) => setClientId(event.target.value)}
-          />
-          <TextField
-            label="Secret"
-            size="small"
-            type="password"
-            required
-            autoComplete="off"
-            value={clientSecret}
-            onChange={(event) => setClientSecret(event.target.value)}
-          />
-          <Button type="submit" variant="contained" disabled={busy}>
-            Connect GitLab
-          </Button>
-        </Paper>
+            <Typography variant="body2" color="text.secondary">
+              {entry.firstRun.description}
+            </Typography>
+            {entry.firstRun.kind === 'manifest' ? (
+              <>
+                <TextField
+                  label="Account that owns the app"
+                  size="small"
+                  required
+                  value={org}
+                  onChange={(event) => {
+                    typed.current = true;
+                    setOrg(event.target.value);
+                  }}
+                />
+                {others.length > 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    The other owners ({others.join(', ')}) get their own app later.
+                  </Typography>
+                ) : null}
+                <Button type="submit" variant="contained">
+                  {entry.firstRun.submit}
+                </Button>
+              </>
+            ) : (
+              <>
+                <TextField
+                  label="Application ID"
+                  size="small"
+                  required
+                  value={clientId}
+                  onChange={(event) => setClientId(event.target.value)}
+                />
+                <TextField
+                  label="Secret"
+                  size="small"
+                  type="password"
+                  required
+                  autoComplete="off"
+                  value={clientSecret}
+                  onChange={(event) => setClientSecret(event.target.value)}
+                />
+                <Button type="submit" variant="contained" disabled={busy}>
+                  {entry.firstRun.submit}
+                </Button>
+              </>
+            )}
+          </Paper>
+        ))}
       </Box>
     </Box>
   );

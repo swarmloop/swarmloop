@@ -102,7 +102,7 @@ export class MergeWatch {
     const released = await this.runs.release(run, { status: 'done', doneAt: this.clock.iso(), merge });
     if (released.status !== 'done') return false;
     const ended = 'merged' in merge ? 'merged' : 'closed';
-    const host = run.codeHost === 'github' ? 'GitHub' : 'GitLab';
+    const host = this.lookup.label(run.codeHost);
     await this.events.recordLoop(
       run,
       MERGE_WATCH_COUNTER,

@@ -2,7 +2,7 @@ import { randomBytes } from 'crypto';
 import { Logger } from '@nestjs/common';
 import { ERROR_CODES } from '../../contract/error-codes';
 import type { StepFailure } from '../contract/step-contract';
-import { redact } from '../../core/redact';
+import { redact } from '../../config/redact';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { ResultInvalid } from './answer-errors';
 
@@ -16,14 +16,14 @@ export function newErrorId(): string {
  * The failure of a step. A `SwarmloopError` keeps its text; any other error shows its redacted first line, or `cause`
  * when the caller knows a better one, and an id.
  */
-export function describeFailure(step: string, error: unknown, env?: object, cause?: string): StepFailure {
+export function describeFailure(step: string, error: unknown, extra?: object, cause?: string): StepFailure {
   const errorId = newErrorId();
   if (error instanceof SwarmloopError) {
     const answerErrors = error instanceof ResultInvalid ? { answerErrors: error.errors } : {};
     return { errorId, code: error.code, category: error.category, message: error.message, ...answerErrors };
   }
   const raw = cause ?? (error instanceof Error ? error.message : String(error));
-  const line = redact(raw.split('\n')[0].trim(), env);
+  const line = redact(raw.split('\n')[0].trim(), extra);
   return {
     errorId,
     code: ERROR_CODES.STEP_FAILED,
@@ -33,15 +33,15 @@ export function describeFailure(step: string, error: unknown, env?: object, caus
 }
 
 /** The redacted stack of an error, or its message when it has none, for the server log. */
-export function failureStack(error: unknown, env?: object): string {
+export function failureStack(error: unknown, extra?: object): string {
   const text = error instanceof Error ? (error.stack ?? error.message) : String(error);
-  return redact(text, env);
+  return redact(text, extra);
 }
 
 /** Describes a failure and writes its id with the redacted stack to the server log, so the text and the log match. */
-export function reportFailure(step: string, error: unknown, env?: object, cause?: string): StepFailure {
-  const failure = describeFailure(step, error, env, cause);
-  const detail = error instanceof SwarmloopError ? `code ${failure.code}` : `\n${failureStack(error, env)}`;
+export function reportFailure(step: string, error: unknown, extra?: object, cause?: string): StepFailure {
+  const failure = describeFailure(step, error, extra, cause);
+  const detail = error instanceof SwarmloopError ? `code ${failure.code}` : `\n${failureStack(error, extra)}`;
   new Logger(step).error(`${failure.errorId} ${step} failed: ${detail}`);
   return failure;
 }

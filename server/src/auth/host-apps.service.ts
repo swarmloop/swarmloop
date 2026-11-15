@@ -1,27 +1,24 @@
-import { Injectable, type OnModuleInit } from '@nestjs/common';
+import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
+import { registerSecretSource } from '../core/secret-sources';
 import { HostAppEntity } from '../history/connection-entities';
-import type { AppCredentials, AppSource, ProviderName } from './oauth-provider';
+import {
+  type AppCredentials,
+  type AppSource,
+  type HostAppStore,
+  type ProviderName,
+  type StoredApp,
+} from '../integrations/code-host/login-provider';
+import { codeHostAdapter, codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { SecretBox } from './secret-box';
-
-/** A GitHub App (all fields) or a GitLab application (client id and secret). */
-interface HostApp {
-  host: ProviderName;
-  appId: string;
-  slug: string;
-  clientId: string;
-  clientSecret: string;
-  privateKey: string;
-  /** The login of the person who made the app, or `machine`. Null for an app made earlier. */
-  madeBy: string | null;
-}
 
 /** The app of each host: the one Connect stored, encrypted, else the OAuth app of the environment. */
 @Injectable()
-export class HostAppsService implements AppSource, OnModuleInit {
-  private readonly apps = new Map<string, HostApp>();
+export class HostAppsService implements AppSource, HostAppStore, OnModuleInit, OnModuleDestroy {
+  private readonly apps = new Map<string, StoredApp>();
+  private unregisterSecrets: (() => void) | undefined;
 
   constructor(
     private readonly config: AppConfig,
@@ -32,7 +29,7 @@ export class HostAppsService implements AppSource, OnModuleInit {
   async onModuleInit(): Promise<void> {
     for (const row of await this.rows.find()) {
       this.apps.set(row.host, {
-        host: row.host as ProviderName,
+        host: row.host,
         appId: row.appId,
         slug: row.slug,
         clientId: row.clientId,
@@ -41,14 +38,26 @@ export class HostAppsService implements AppSource, OnModuleInit {
         madeBy: row.madeBy,
       });
     }
+    this.unregisterSecrets = registerSecretSource(() => this.secrets());
+  }
+
+  onModuleDestroy(): void {
+    this.unregisterSecrets?.();
+  }
+
+  /** The client secrets and private keys of the stored apps, and the client secrets of the environment. */
+  secrets(): string[] {
+    const stored = [...this.apps.values()].flatMap((app) => [app.clientSecret, app.privateKey]);
+    const env = codeHostAdapters().map((adapter) => this.config.env[adapter.clientEnvKeys.clientSecret]);
+    return [...stored, ...env].filter(Boolean);
   }
 
   /** The stored app, or null. The secret leaves this service only for the login and the token refresh. */
-  find(host: ProviderName): HostApp | null {
+  find(host: ProviderName): StoredApp | null {
     return this.apps.get(host) ?? null;
   }
 
-  async save(app: HostApp): Promise<void> {
+  async save(app: StoredApp): Promise<void> {
     await this.rows.save({
       host: app.host,
       appId: app.appId,
@@ -67,15 +76,15 @@ export class HostAppsService implements AppSource, OnModuleInit {
       return { clientId: stored.clientId, clientSecret: stored.clientSecret };
     }
     const { env } = this.config;
-    const [clientId, clientSecret] =
-      host === 'github'
-        ? [env.GITHUB_OAUTH_CLIENT_ID, env.GITHUB_OAUTH_CLIENT_SECRET]
-        : [env.GITLAB_OAUTH_CLIENT_ID, env.GITLAB_OAUTH_CLIENT_SECRET];
+    const keys = codeHostAdapter(host)?.clientEnvKeys;
+    const clientId = keys ? env[keys.clientId] : '';
+    const clientSecret = keys ? env[keys.clientSecret] : '';
     return clientId !== '' && clientSecret !== '' ? { clientId, clientSecret } : null;
   }
 
-  /** One authorization signs in and connects for a stored GitHub App and for GitLab. A plain GitHub OAuth app keeps nothing. */
+  /** One authorization signs in and connects for a stored app and for a host that always keeps the tokens. A plain OAuth app keeps nothing. */
   connects(host: ProviderName): boolean {
-    return host === 'gitlab' || this.find(host) !== null;
+    const adapter = codeHostAdapter(host);
+    return (adapter?.keepsTokensWithoutApp ?? false) || this.find(host) !== null;
   }
 }

@@ -40,6 +40,11 @@
       "pattern": "[Gg]it[Hh]ub|[Gg]it[Ll]ab"
     },
     {
+      "include": "server/src/",
+      "exclude": "^server/src/integrations/code-host/[^/]+/|^server/src/config/env\\.schema\\.ts$|^server/src/history/migrations/|^server/src/testing/|\\.spec(-helpers)?\\.ts$",
+      "pattern": "[Gg][Ii][Tt][Hh][Uu][Bb]|[Gg][Ii][Tt][Ll][Aa][Bb]|[Bb][Ii][Tt][Bb][Uu][Cc][Kk][Ee][Tt]"
+    },
+    {
       "include": "server/src/steps/",
       "pattern": "env\\.(RUNTIME|MODEL_\\w+)"
     },

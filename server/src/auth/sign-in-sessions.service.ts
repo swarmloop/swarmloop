@@ -7,9 +7,9 @@ import {
   NotFoundException,
   OnModuleDestroy,
 } from '@nestjs/common';
-import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
-import { redact, rememberSecret } from '../core/redact';
+import { redact } from '../config/redact';
+import { rememberSecret } from '../core/secret-sources';
 import type { SignInView } from '../contract/connections';
 import type { Connection, SignInFlow } from '../integrations/connection';
 import { CliSignIn, type CliSignInRun } from '../sandbox/cli-sign-in';
@@ -47,7 +47,6 @@ export class SignInSessions implements OnModuleDestroy {
     private readonly cli: CliSignIn,
     private readonly catalog: ConnectionCatalog,
     private readonly clock: Clock,
-    private readonly config: AppConfig,
   ) {}
 
   async start(id: string, actor: string | null): Promise<SignInView> {
@@ -189,7 +188,7 @@ export class SignInSessions implements OnModuleDestroy {
   }
 
   private masked(text: string): string {
-    return redact(text, this.config.env);
+    return redact(text);
   }
 
   private view(session: Session): SignInView {

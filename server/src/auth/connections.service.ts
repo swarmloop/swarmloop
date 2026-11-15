@@ -7,7 +7,9 @@ import { GitAuthError, SwarmloopError } from '../core/swarmloop-error';
 import { ConnectionEntity } from '../history/connection-entities';
 import { request } from '../integrations/http';
 import { HostAppsService } from './host-apps.service';
-import { endpointsOf, githubEndpoints, type Endpoints, type Grant, type ProviderName } from './oauth-provider';
+import { codeHostAdapter, codeHostAdapters } from '../integrations/code-host/code-host-adapters';
+import { codeHostLabel } from '../integrations/code-host/code-host-rules';
+import type { Endpoints, Grant, ProviderName } from '../integrations/code-host/login-provider';
 import { SecretBox } from './secret-box';
 
 /** A token is refreshed this long before it ends. */
@@ -43,9 +45,9 @@ export class ConnectionsService {
     @InjectRepository(ConnectionEntity) private readonly rows: Repository<ConnectionEntity>,
   ) {}
 
-  /** Keeps the grant of a person, and on GitHub the installation of the app they can use. Marks the connection ok. */
+  /** Keeps the grant of a person, and on a host with installations the installation of the app they can use. Marks the connection ok. */
   async connect(host: ProviderName, login: string, grant: Grant): Promise<void> {
-    const found = host === 'github' ? await this.installationOf(grant.accessToken) : null;
+    const found = this.endpoints(host).installs ? await this.installationOf(host, grant.accessToken) : null;
     await this.rows.save(this.row(host, login, grant, found));
   }
 
@@ -117,16 +119,18 @@ export class ConnectionsService {
 
   /** The `owner/name` of the repositories of the installation the person's token can see. */
   async repositories(login: string): Promise<string[]> {
-    const found = await this.installation('github', login);
-    const token = found ? await this.tokenFor('github', login) : null;
-    if (!found || !token) {
+    const host = this.installHost();
+    const found = host ? await this.installation(host, login) : null;
+    const token = host && found ? await this.tokenFor(host, login) : null;
+    if (!host || !found || !token) {
       return [];
     }
-    const api = githubEndpoints(this.config.env).api;
+    const api = this.endpoints(host).api;
     const names: string[] = [];
     for (let page = 1; ; page++) {
       const body = await this.send(
         `${api}/user/installations/${found.id}/repositories?per_page=100&page=${page}`,
+        host,
         token,
       );
       const rows = (body as { repositories?: { full_name?: string }[] }).repositories ?? [];
@@ -139,22 +143,23 @@ export class ConnectionsService {
 
   /** Adds a new repository (`owner/name`) to the person's installation when it covers selected repositories only. */
   async addRepository(login: string, fullName: string): Promise<void> {
-    const found = await this.installation('github', login);
-    const token = found?.selection === 'selected' ? await this.tokenFor('github', login) : null;
-    if (!found || !token) {
+    const host = this.installHost();
+    const found = host ? await this.installation(host, login) : null;
+    const token = host && found?.selection === 'selected' ? await this.tokenFor(host, login) : null;
+    if (!host || !found || !token) {
       return;
     }
-    const api = githubEndpoints(this.config.env).api;
-    const { id } = (await this.send(`${api}/repos/${fullName}`, token)) as { id?: number };
+    const api = this.endpoints(host).api;
+    const { id } = (await this.send(`${api}/repos/${fullName}`, host, token)) as { id?: number };
     const response = await request(
       this.clock,
       `${api}/user/installations/${found.id}/repositories/${id}`,
-      this.headers(token),
+      this.headers(host, token),
       [],
       { method: 'PUT', body: '' },
     );
     if (!id || response.status >= 400) {
-      throw new SwarmloopError(`github did not add ${fullName} to the installation: HTTP ${response.status}`);
+      throw new SwarmloopError(`${host} did not add ${fullName} to the installation: HTTP ${response.status}`);
     }
   }
 
@@ -169,7 +174,7 @@ export class ConnectionsService {
   }
 
   private async refreshNow(row: ConnectionEntity): Promise<string> {
-    const host = row.host as ProviderName;
+    const host = row.host;
     const app = this.apps.credentials(host);
     if (!app || !row.refreshToken) {
       return this.broken(row);
@@ -207,7 +212,7 @@ export class ConnectionsService {
   }
 
   private authError(host: string): GitAuthError {
-    return new GitAuthError(`Reconnect ${host === 'gitlab' ? 'GitLab' : 'GitHub'}`);
+    return new GitAuthError(`Reconnect ${codeHostLabel(host) ?? host}`);
   }
 
   private row(host: ProviderName, login: string, grant: Grant, installation: Installation | null): ConnectionEntity {
@@ -237,28 +242,37 @@ export class ConnectionsService {
     };
   }
 
-  private endpoints(host: ProviderName): Endpoints {
-    return endpointsOf(host, this.config.env);
+  endpoints(host: ProviderName): Endpoints {
+    const adapter = codeHostAdapter(host);
+    if (!adapter) {
+      throw new SwarmloopError(`${host} is not a code host`);
+    }
+    return adapter.endpoints(this.config.env);
+  }
+
+  /** The host whose app is installed on the repositories a person chooses: the first one with installations. */
+  private installHost(): ProviderName | null {
+    return codeHostAdapters().find((adapter) => this.endpoints(adapter.name).installs)?.name ?? null;
   }
 
   /** The installation of this app among those the person's token can use. */
-  private async installationOf(token: string): Promise<Installation | null> {
-    const app = this.apps.find('github');
-    const body = await this.send(`${githubEndpoints(this.config.env).api}/user/installations?per_page=100`, token);
+  private async installationOf(host: ProviderName, token: string): Promise<Installation | null> {
+    const app = this.apps.find(host);
+    const body = await this.send(`${this.endpoints(host).api}/user/installations?per_page=100`, host, token);
     const rows = (body as { installations?: { id?: number; app_id?: number; repository_selection?: string }[] })
       .installations;
     const mine = (rows ?? []).find((row) => !app || String(row.app_id) === app.appId);
     return mine?.id ? { id: String(mine.id), selection: mine.repository_selection ?? 'all' } : null;
   }
 
-  private headers(token: string): Record<string, string> {
-    return { ...this.endpoints('github').userHeaders(token), 'Content-Type': 'application/json' };
+  private headers(host: ProviderName, token: string): Record<string, string> {
+    return { ...this.endpoints(host).userHeaders(token), 'Content-Type': 'application/json' };
   }
 
-  private async send(url: string, token: string): Promise<unknown> {
-    const response = await request(this.clock, url, this.headers(token), []);
+  private async send(url: string, host: ProviderName, token: string): Promise<unknown> {
+    const response = await request(this.clock, url, this.headers(host, token), []);
     if (response.status >= 400) {
-      throw new SwarmloopError(`github answered ${response.status}`);
+      throw new SwarmloopError(`${host} answered ${response.status}`);
     }
     return parse(response.body);
   }

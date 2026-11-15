@@ -57,6 +57,10 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
   readonly credentialNames = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'];
   protected readonly limits = CLAUDE_LIMITS;
 
+  secrets(keys: RuntimeKeys): string[] {
+    return [keys.oauthToken, keys.anthropicKey].filter(Boolean);
+  }
+
   credential(keys: RuntimeKeys): { name: string; value: string } {
     if (keys.oauthToken !== '') {
       return { name: 'CLAUDE_CODE_OAUTH_TOKEN', value: keys.oauthToken };

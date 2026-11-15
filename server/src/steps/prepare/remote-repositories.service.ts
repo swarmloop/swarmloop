@@ -17,6 +17,7 @@ import { git, gitDetail } from '../../git/git';
 import { withGitHostRetries } from '../../git/host-retry';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
+import { codeHostAdapter, codeHostAdapters } from '../../integrations/code-host/code-host-adapters';
 import { CodeHostRegistry, type CodeHostName } from '../../integrations/code-host/code-host.registry';
 import { remoteProject } from '../../integrations/code-host/remote-project';
 
@@ -87,7 +88,11 @@ export class RemoteRepositories {
     assertRepoAllowed(this.config.env.SWARMLOOP_REPOS, name);
     const listed = await this.list(actor);
     if (listed.reason) {
-      throw new SwarmloopError(`${listed.reason}: Connect GitHub or GitLab, or set a token in .env`);
+      throw new SwarmloopError(
+        `${listed.reason}: Connect ${codeHostAdapters()
+          .map((adapter) => adapter.label)
+          .join(' or ')}, or set a token in .env`,
+      );
     }
     const matches = listed.repositories.filter((repository) => repository.name === name);
     if (matches.some((repository) => repository.cloned)) {
@@ -130,7 +135,7 @@ export class RemoteRepositories {
       .byName(body.host)
       .createRepository({ owner, name, isPublic: body.public === true });
     this.cache.delete(`${actor ?? ''}:${body.host}`);
-    if (repository.host === 'github' && actor) {
+    if (actor && codeHostAdapter(repository.host)?.ownerFromActor === true) {
       await this.connections?.addRepository(actor, `${repository.owner}/${repository.name}`);
     }
     this.logger.log(`${actor ?? 'nobody'} created ${repository.owner}/${repository.name} on ${repository.host}`);
@@ -178,7 +183,7 @@ export class RemoteRepositories {
   }
 
   /** The repositories and owners of one host, kept for a minute. */
-  private async snapshot(hosts: CodeHostRegistry, name: CodeHostName, actor: string | null): Promise<HostSnapshot> {
+  private async snapshot(hosts: CodeHostRegistry, name: string, actor: string | null): Promise<HostSnapshot> {
     const slot = `${actor ?? ''}:${name}`;
     const cached = this.cache.get(slot);
     if (cached && this.clock.now() - cached.at < CACHE_MS) {
