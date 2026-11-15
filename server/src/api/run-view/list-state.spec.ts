@@ -24,8 +24,8 @@ interface Setup {
   documents?: Partial<DocumentEntity>[];
   pasteUrls?: string[];
   claimed?: string[];
-  /** The run ids with an accepted command that is not a stop. */
-  accepted?: number[];
+  /** The run ids with a command that is accepted or executing and is not a stop. */
+  queued?: number[];
 }
 
 /** The documents repository as the list reads it: the latest document of each asked kind of each asked run. */
@@ -42,14 +42,14 @@ function storedDocuments(runs: RunEntity[], plans: Record<string, string>, docum
   };
 }
 
-async function states({ runs, plans = {}, documents = [], pasteUrls = [], claimed = [], accepted = [] }: Setup) {
+async function states({ runs, plans = {}, documents = [], pasteUrls = [], claimed = [], queued = [] }: Setup) {
   const keys = new Map(runs.map((item) => [item.id, item.key]));
   const childrenOf = childrenByParent(runs);
   const stored = storedDocuments(runs, plans, documents);
   return listStates(
     stored,
     { listPastes: async () => pasteUrls.map((url) => ({ url }) as PasteEntity) },
-    { acceptedRunIds: async (runIds: number[]) => new Set(runIds.filter((id) => accepted.includes(id))) },
+    { queuedRunIds: async (runIds: number[]) => new Set(runIds.filter((id) => queued.includes(id))) },
     runs,
     { keys, childrenOf, plans: await listPlans(stored, runs, childrenOf) },
     (key) => claimed.includes(key),
@@ -117,7 +117,7 @@ describe('listStates', () => {
     const result = await states({
       runs: [parent, child, other],
       plans: { 'A-1': plan('waiting', 'waiting') },
-      accepted: [2],
+      queued: [2],
     });
     expect(result['A-2']).toMatchObject({ state: 'queued', stateReason: null, task: { index: 0, status: 'running' } });
     expect(result['A-3']?.state).not.toBe('queued');

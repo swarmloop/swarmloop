@@ -118,6 +118,7 @@ export async function createFlowHarness(
       sandbox.elapse(RECONCILE_MS);
       const reconciler = harness.app.app.get(Reconciler);
       await reconciler.reconcileRuns();
+      await reconciler.settleEndedRelaunches();
       await reconciler.resumeLimited();
       await reconciler.resumeHostUnavailable();
       await reconciler.resumeCiNotStarted();

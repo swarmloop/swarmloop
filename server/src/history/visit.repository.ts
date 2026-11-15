@@ -4,6 +4,7 @@ import { DataSource, In, Repository } from 'typeorm';
 import type { EntityManager } from 'typeorm';
 import type { CommandType } from '../contract/command';
 import { ERROR_CODES } from '../contract/error-codes';
+import type { InterruptionNote } from '../contract/interruption';
 import { insertAcceptedCommand } from './accepted-command';
 import { releasedColumns } from './run-state';
 import { transaction } from './transaction';
@@ -118,6 +119,36 @@ export class VisitRepository {
     }
     Object.assign(run, await this.dataSource.getRepository(RunEntity).findOneByOrFail({ id: run.id }));
     return stat;
+  }
+
+  /**
+   * The relaunch of a cut visit ended before its step took the run: `run`, as the caller changed it, is saved and the
+   * interruption note of the visit is replaced, in one transaction. Nothing is written when the run moved since it
+   * was read. Either way `run` ends up as the row in the database.
+   */
+  async endRelaunch(
+    run: RunEntity,
+    stat: Pick<StepStatEntity, 'id'>,
+    note: InterruptionNote,
+    at: string,
+  ): Promise<boolean> {
+    const ended = await transaction(this.dataSource, async (manager) => {
+      const { id, ...fields } = run;
+      const moved = await manager
+        .getRepository(RunEntity)
+        .createQueryBuilder()
+        .update()
+        .set({ ...fields, updatedAt: at, revision: () => 'revision + 1' })
+        .where('id = :id AND revision = :revision', { id, revision: run.revision })
+        .execute();
+      if (!moved.affected) return false;
+      await manager
+        .getRepository(DocumentEntity)
+        .update({ stepStatId: stat.id, kind: 'interruption' }, { body: JSON.stringify(note) });
+      return true;
+    });
+    Object.assign(run, await this.dataSource.getRepository(RunEntity).findOneByOrFail({ id: run.id }));
+    return ended;
   }
 
   private async insertVisit(
@@ -251,8 +282,13 @@ export class VisitRepository {
     return this.stepStats.find({ where: { runId }, order: { id: 'ASC' } });
   }
 
-  /** The latest visit of each of the runs, with only its id and kill reason, in two reads whatever the number of runs. */
-  async latestVisits(runIds: number[]): Promise<Map<number, Pick<StepStatEntity, 'id' | 'killReason'>>> {
+  /**
+   * The latest visit of each of the runs, with only its id, kill reason, attempt and end time, in two reads whatever
+   * the number of runs.
+   */
+  async latestVisits(
+    runIds: number[],
+  ): Promise<Map<number, Pick<StepStatEntity, 'id' | 'killReason' | 'attemptId' | 'finishedAt'>>> {
     if (runIds.length === 0) {
       return new Map();
     }
@@ -264,7 +300,7 @@ export class VisitRepository {
       .getRawMany();
     const found = await this.stepStats.find({
       where: { id: In(newest.map(({ id }) => Number(id))) },
-      select: { id: true, runId: true, killReason: true },
+      select: { id: true, runId: true, killReason: true, attemptId: true, finishedAt: true },
     });
     return new Map(found.map((stat) => [stat.runId, stat]));
   }

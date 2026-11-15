@@ -254,6 +254,17 @@ describe('one blocked task holds only its dependents', () => {
       },
       ['checks', 'code-review', 'merge-request', 'pipeline'],
     );
+
+    // The relaunch is held behind the gate: its command executes and no step has taken the run. Every parent pass and
+    // every reconciler tick reads the subtask as queued, with nothing to press, and never as blocked.
+    for (const pass of [() => flow.tick(), () => flow.app.pipeline.step('implement', KEY), () => flow.tick()]) {
+      await pass();
+      await expectNotBlocked();
+      expect(await subtaskView('a')).toMatchObject({ state: 'queued', actions: [] });
+      expect(await layerRun('a')).toMatchObject({ state: 'queued', interruption: { relaunched: true } });
+    }
+    expect(launches('a')).toBe(before + 1);
+
     open();
     await flow.tick();
     await flow.app.app.get(CommandService).idle();
@@ -288,6 +299,43 @@ describe('one blocked task holds only its dependents', () => {
 
     expect(await statuses(flow.app)).toEqual({ a: 'merged', c: 'merged' });
     expect((await flow.app.app.get(RunRepository).findRun(KEY))?.currentStep).toBe('done');
+    await assertInvariants(flow.app);
+  });
+
+  it('a relaunch the server cannot start leaves the subtask failed with its note, and the parent shows it blocked', async () => {
+    await startTasks();
+    const cut = await cutInChecks('a');
+    const start = Reflect.get<PipelineService, 'startDetached'>(PipelineService.prototype, 'startDetached');
+    const refused = function (
+      this: PipelineService,
+      key: string,
+      ...rest: Parameters<PipelineService['startDetached']> extends [string, ...infer R] ? R : never
+    ) {
+      if (key === KEY) return start.call(this, key, ...rest);
+      return Promise.resolve({ exitCode: 1, message: `${key} is missing` });
+    };
+    jest.spyOn(PipelineService.prototype, 'startDetached').mockImplementation(refused);
+
+    await flow.restart();
+    jest.spyOn(flow.app.pipeline, 'startDetached').mockImplementation(refused);
+    await flow.app.app.get(CommandService).idle();
+    await flow.tick();
+    await flow.app.app.get(CommandService).idle();
+    await flow.app.pipeline.whenIdle(KEY);
+
+    const child = (await flow.app.app.get(RunRepository).findRun(`${KEY}-a`))!;
+    expect(child.status).toBe('failed');
+    expect((await subtaskView('a')).actions).toContain('resume');
+    const dead = (await checksVisits('a')).find((item) => item.attemptId === cut);
+    expect(dead).toMatchObject({ killReason: 'process died', interruption: { relaunched: false, cause: 'start' } });
+    expect(interruptionSentence(dead!.interruption!, clock)).toBe(
+      `Interrupted at ${clock(dead!.interruption!.at)} by a server restart. Not started again: the server could not start it. Resume, Replay or Skip.`,
+    );
+
+    expect((await statuses(flow.app)).a).toBe('blocked');
+    const parent = deriveState((await flow.app.app.get(RunRepository).findRun(KEY))!);
+    expect(parent.reason?.message).toContain('subtask a is blocked');
+    expect(parent.reason?.message).toContain('Resume, Replay or Skip task clears it');
     await assertInvariants(flow.app);
   });
 

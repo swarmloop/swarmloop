@@ -12,7 +12,7 @@ export interface StateFacts {
   stopping?: boolean;
   /** The owner is gone and its container still runs: the run waits for it. */
   recovering?: boolean;
-  /** A command is accepted and the run is not claimed yet. */
+  /** A command is accepted or executing and the run is not claimed yet. */
   queued?: boolean;
   /** An open question or a link still waits for a person. */
   needsAnswers?: boolean;

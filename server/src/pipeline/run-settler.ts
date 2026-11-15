@@ -15,7 +15,7 @@ import { delay } from '../core/delay';
 import { HostUnavailable } from '../core/swarmloop-error';
 import { isStep } from '../core/pipeline-result';
 import { recordStepEvent, runInStepScope } from '../core/step-event-scope';
-import type { RunEntity } from '../history/entities';
+import type { CommandEntity, RunEntity, StepStatEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
@@ -40,6 +40,11 @@ export function silentMessage(key: string): string {
 /** Whether a cut attempt is started again. The one decision, made by the reconciler. */
 export type RelaunchDecision =
   { relaunch: true; idempotencyKey: string } | { relaunch: false; cause: 'limit' | 'stop' | null };
+
+/** The key of the relaunch command of a cut attempt. It names the attempt, so two passes over it store one command. */
+export function relaunchKey(attemptId: string): string {
+  return `relaunch-${attemptId}`;
+}
 
 /** Settles what a dead process left in a run: an unfinished rebase journal or an attempt without its visit. */
 @Injectable()
@@ -130,9 +135,10 @@ export class RunSettler {
 
   /**
    * `slept` holds the host suspensions the reconciler's timer saw, taken off the wait for a container. `decide` is
-   * called once, right before the visit is written, and its answer is applied in the same transaction: a relaunch
-   * leaves the run `waiting` with the `resume` command stored, anything else leaves it `failed`. Returns the decision
-   * it applied, or null when it stored no visit.
+   * called once, after everything that takes time (the probes, the kill, the charge) and right before the visit is
+   * written, so a Stop that came while the attempt was settled is seen. Its answer is applied in the same
+   * transaction: a relaunch leaves the run `waiting` with the `resume` command stored, anything else leaves it
+   * `failed`. Returns the decision it applied, or null when it stored no visit.
    */
   async settleAttempt(
     run: RunEntity,
@@ -141,7 +147,8 @@ export class RunSettler {
   ): Promise<RelaunchDecision | null> {
     const output = stepOutput(this.root, run.key, run.currentStep, run.activeAttempt);
     if (hasFinalResult(output)) {
-      return this.interrupted(run, output, await decide());
+      await this.recordInterrupted(run);
+      return this.interrupted(run, output, decide);
     }
     const attemptId = run.activeAttempt;
     const container = attemptId === null ? false : await this.probe(attemptId);
@@ -170,7 +177,24 @@ export class RunSettler {
     }
     if (run.currentStep === 'merge-request') await this.confirmMergeRequest(run);
     await this.recordInterrupted(run);
-    return this.interrupted(run, output, await decide());
+    return this.interrupted(run, output, decide);
+  }
+
+  /**
+   * The relaunch stored with a cut visit ended before its step took the run. The run is saved as one nobody
+   * relaunches, `failed`, and the note of the visit says so: a Stop took the place of the command, or the start
+   * did not go through. A run that moved since it was read is left as it is.
+   */
+  async endRelaunch(
+    run: RunEntity,
+    cut: Pick<StepStatEntity, 'id' | 'finishedAt'>,
+    relaunch: CommandEntity,
+  ): Promise<void> {
+    const cause = relaunch.state === 'superseded' ? 'stop' : 'start';
+    writeRunState(run, { status: 'failed', ownerPid: null });
+    const note: InterruptionNote = { at: cut.finishedAt, relaunched: false, cause };
+    // The write bypassed `saveRun`: the dashboard is told that the run left `queued`.
+    if (await this.visits.endRelaunch(run, cut, note, this.clock.iso())) this.runs.notify(run.key);
   }
 
   /**
@@ -231,14 +255,20 @@ export class RunSettler {
 
   /**
    * The visit of an attempt whose process died, priced from what its output file holds. The run is saved with it:
-   * `waiting` with the relaunch command when `decision` says so, else `failed`.
+   * `waiting` with the relaunch command when the decision says so, else `failed`. The decision is taken after the
+   * charge, the last thing that takes time here.
    */
-  private async interrupted(run: RunEntity, saved: string, decision: RelaunchDecision): Promise<RelaunchDecision> {
+  private async interrupted(
+    run: RunEntity,
+    saved: string,
+    decide: () => Promise<RelaunchDecision>,
+  ): Promise<RelaunchDecision> {
     const now = this.clock.iso();
     const agent = agentFor(this.config.env, run, run.currentStep);
     const model = agent?.model ?? null;
     const charge = await this.chargeOf(run, saved, agent);
     run.spentUsd += charge?.usd ?? 0;
+    const decision = await decide();
     writeRunState(
       run,
       decision.relaunch ? { status: 'waiting', ownerPid: null } : { status: 'failed', ownerPid: null },

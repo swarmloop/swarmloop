@@ -10,7 +10,7 @@ import { Clock } from '../core/clock';
 import { failedAttemptLaunches, loopMark } from '../core/pipeline-result';
 import { AwakeTime } from '../core/awake-time';
 import { SERVER_INSTANCE } from '../core/server-instance';
-import type { RunEntity } from '../history/entities';
+import type { RunEntity, StepStatEntity } from '../history/entities';
 import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
@@ -24,7 +24,7 @@ import { SandboxService } from '../sandbox/sandbox.service';
 import { CHAT_LOCK, chatResume, readChatLock } from './chat-lock';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
-import { RunSettler, type RelaunchDecision } from './run-settler';
+import { RunSettler, relaunchKey, type RelaunchDecision } from './run-settler';
 import { SubtaskPort } from './subtask-port';
 import { settleShell } from './shell-lock';
 
@@ -125,6 +125,7 @@ export class Reconciler implements OnModuleDestroy {
   reconcileAll(): Promise<void> {
     return this.exclusive(async () => {
       await this.reconcileRunsNow();
+      await this.settleEndedRelaunches();
       await this.resumeLimited();
       await this.resumeHostUnavailable();
       await this.resumeCiNotStarted();
@@ -342,7 +343,45 @@ export class Reconciler implements OnModuleDestroy {
     if (failedAttemptLaunches(stats, run.currentStep, mark, deadAttempt) >= this.config.env.MAX_LAUNCHES) {
       return { relaunch: false, cause: 'limit' };
     }
-    return { relaunch: true, idempotencyKey: `relaunch-${deadAttempt}` };
+    return { relaunch: true, idempotencyKey: relaunchKey(deadAttempt) };
+  }
+
+  /**
+   * A relaunch stored with a cut visit can end before its step takes the run: it failed, a Stop took its place, or
+   * the server stopped again. Nothing would start such a run, so it is saved as a run nobody relaunches. A run is
+   * left alone while a command of it is pending or a step of this process holds it, and when it moved since it was read.
+   */
+  async settleEndedRelaunches(): Promise<void> {
+    const idle = (await this.runs.listRuns()).filter(
+      (run) => run.status === 'waiting' && run.stateReason === null && run.activeAttempt === null,
+    );
+    const latest = await this.visits.latestVisits(idle.map((run) => run.id));
+    for (const run of idle) {
+      const cut = latest.get(run.id);
+      if (cut?.killReason !== 'process died') continue;
+      try {
+        await this.settleEndedRelaunch(run, cut);
+      } catch (error) {
+        this.logger.warn(
+          `relaunch of ${run.key} was not settled: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+
+  private async settleEndedRelaunch(
+    run: RunEntity,
+    cut: Pick<StepStatEntity, 'id' | 'attemptId' | 'finishedAt'>,
+  ): Promise<void> {
+    if (cut.attemptId === null) return;
+    const stored = await this.commandLog.listForRun(run.id);
+    const relaunch = stored.find((command) => command.idempotencyKey === relaunchKey(cut.attemptId!));
+    const pending = stored.some(
+      (command) => command.type !== 'stop' && ['accepted', 'executing'].includes(command.state),
+    );
+    // The claim is read after the commands: a start that finished in between is still held by this process.
+    if (!relaunch || pending || this.claimed(run.key)) return;
+    await this.settler.endRelaunch(run, cut, relaunch);
   }
 
   /** The owner is this process and its step is in flight, or a chat of this process holds the run. */

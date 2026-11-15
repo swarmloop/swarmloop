@@ -11,7 +11,7 @@ export type OwnState = Pick<RunSummary, 'state' | 'stateReason'>;
 export interface StateSources {
   documents: Pick<DocumentRepository, 'latestDocuments'>;
   checkouts: Pick<CheckoutRepository, 'listPastes'>;
-  commands: Pick<CommandRepository, 'acceptedRunIds'>;
+  commands: Pick<CommandRepository, 'queuedRunIds'>;
 }
 
 /** The documents `stateView` and `openItems` read: the open questions and answers, the pending paste and the error. */
@@ -40,7 +40,7 @@ async function factsOf(
   return byRun;
 }
 
-/** The state of one run as the run page shows it, without the facts of pending commands. */
+/** The state of one run as the run page shows it. Of the pending commands it reads only whether one is about to start the run. */
 async function ownState(
   checkouts: StateSources['checkouts'],
   run: RunEntity,
@@ -67,13 +67,13 @@ export async function ownStates(
   runs: RunEntity[],
   claimed: (key: string) => boolean,
 ): Promise<Map<string, OwnState>> {
-  const [facts, accepted] = await Promise.all([
+  const [facts, queued] = await Promise.all([
     factsOf(documents, runs, claimed),
-    commands.acceptedRunIds(runs.map((run) => run.id)),
+    commands.queuedRunIds(runs.map((run) => run.id)),
   ]);
   const states = new Map<string, OwnState>();
   for (const run of runs) {
-    states.set(run.key, await ownState(checkouts, run, claimed, facts.get(run.id) ?? [], accepted.has(run.id)));
+    states.set(run.key, await ownState(checkouts, run, claimed, facts.get(run.id) ?? [], queued.has(run.id)));
   }
   return states;
 }

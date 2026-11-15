@@ -15,6 +15,7 @@ import { RunRepository } from '../history/run.repository';
 import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
 import { BlockAgentRunner } from './result-answer';
+import { holdRelaunches } from './relaunch-hold.spec-helpers';
 import { createTestApp } from './test-app';
 import type { TestApp } from './test-app';
 
@@ -51,16 +52,14 @@ function writeOutput(app: TestApp, run: RunEntity, body: string): void {
   writeFileSync(join(app.root, 'data', `${KEY}-${run.currentStep}-${run.activeAttempt}-output.txt`), body);
 }
 
+/** The relaunch is stored with the visit and its command ends at once, so a case reads the run as the cut left it. */
+const endsAtOnce = () => Promise.resolve(undefined);
+
 /**
- * The relaunch after `process died` is stored with the visit and not run, so a case reads the run as `interrupted`
- * left it: every CommandService, also the one of a restarted app, gets a `resume` handler that does nothing.
+ * The relaunch command stays executing, as a start does until its step takes the run. A case where the reconciler
+ * timer runs holds it so, because a timer pass ends a relaunch whose command ended without a step.
  */
-function holdRelaunches(): void {
-  const register = Reflect.get<CommandService, 'register'>(CommandService.prototype, 'register');
-  jest.spyOn(CommandService.prototype, 'register').mockImplementation(function (this: CommandService, type, handler) {
-    register.call(this, type, type === 'resume' ? () => Promise.resolve(undefined) : handler);
-  });
-}
+const neverEnds = () => new Promise<undefined>(() => undefined);
 
 /** The keys of the relaunch commands stored for the run, once the executor has taken what it was given. */
 async function relaunchKeys(app: TestApp): Promise<string[]> {
@@ -107,7 +106,7 @@ describe('crash matrix', () => {
   });
 
   it('before-finalize: a step that died before its visit is stored gets an interrupted visit', async () => {
-    holdRelaunches();
+    holdRelaunches(endsAtOnce);
     app = await createTestApp();
     const crashed = crashAt('before-finalize');
     await app.pipeline.startDetached(KEY, {}, 'research');
@@ -140,7 +139,7 @@ describe('crash matrix', () => {
   });
 
   it('after-container-create: a container that runs without a result puts the run in recovering, then it is killed', async () => {
-    holdRelaunches();
+    holdRelaunches(endsAtOnce);
     const killAttempt = jest.fn().mockResolvedValue(true);
     app = await createTestApp({ sandbox: { attemptRunning: () => Promise.resolve(true), killAttempt } });
     const run = await orphan(app);
@@ -165,7 +164,7 @@ describe('crash matrix', () => {
   });
 
   it('after-container-create: a container that exited without a result gives an interrupted visit', async () => {
-    holdRelaunches();
+    holdRelaunches(endsAtOnce);
     app = await createTestApp();
     const run = await orphan(app);
 
@@ -239,7 +238,7 @@ describe('crash matrix', () => {
   });
 
   it('startup reconciles each running run through reconcile', async () => {
-    holdRelaunches();
+    holdRelaunches(endsAtOnce);
     const reconcile = jest.spyOn(Reconciler.prototype, 'reconcile');
     app = await createTestApp();
     await orphan(app);
@@ -250,7 +249,7 @@ describe('crash matrix', () => {
   });
 
   it('the timer reaches the same reconcile and finds a dead owner without a restart', async () => {
-    holdRelaunches();
+    holdRelaunches(neverEnds);
     app = await createTestApp({ env: { RECONCILE_MS: '50' }, reconcilerTimer: true });
     const reconciler = app.app.get(Reconciler);
     const original = reconciler.reconcile.bind(reconciler);
@@ -266,7 +265,8 @@ describe('crash matrix', () => {
 
     const run = await runs.findRun(KEY);
     expect(run?.status).toBe('waiting');
-    expect(await relaunchKeys(app)).toEqual([`relaunch-${begun.activeAttempt}`]);
+    const stored = await app.app.get(CommandRepository).listForRun(run!.id);
+    expect(stored.map((command) => command.idempotencyKey)).toEqual([`relaunch-${begun.activeAttempt}`]);
   });
 
   it('the recovery wait does not count the time the host slept between two timer ticks', async () => {
@@ -345,7 +345,7 @@ describe('crash matrix', () => {
   });
 
   it('a dead step keeps its process died visit, its command ends server restarted and the relaunch is a new command', async () => {
-    holdRelaunches();
+    holdRelaunches(endsAtOnce);
     app = await createTestApp();
     const commands = app.app.get(CommandRepository);
     const dead = await orphan(app);
@@ -386,7 +386,7 @@ describe('crash matrix', () => {
   });
 
   it('a step that kills the server on every launch is relaunched until MAX_LAUNCHES, then stays failed', async () => {
-    holdRelaunches();
+    holdRelaunches(endsAtOnce);
     app = await createTestApp({ env: { MAX_LAUNCHES: '3' } });
     const runs = app.app.get(RunRepository);
     const reconciler = app.app.get(Reconciler);

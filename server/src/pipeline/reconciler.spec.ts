@@ -1,15 +1,22 @@
 import 'reflect-metadata';
+import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
+import type { StepEvent } from '../contract/step-events';
 import { AppConfig } from '../config/env';
+import { attemptOutputPath } from '../core/attempt-output';
+import { StepRegistry } from '../steps/step.registry';
 import { deriveState, writeRunState } from '../history/run-state';
 import { RunStop } from '../agent/run-stop';
 import { CommandRepository } from '../history/command.repository';
-import { readInterruption } from '../contract/interruption';
+import { interruptionSentence, readInterruption } from '../contract/interruption';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { DataSource } from 'typeorm';
 import { StepEventLog } from '../history/step-event.log';
+import { RunQueriesService } from '../api/run-queries.service';
+import { LiveHub } from '../live/live.hub';
 import { recordRunWrites } from '../testing/run-writes.spec-helpers';
 import { createTestApp } from '../testing/test-app';
 import type { TestApp } from '../testing/test-app';
@@ -336,6 +343,85 @@ describe('reconciler waits and automatic tries', () => {
       expect(await relaunches(world, stored.id)).toHaveLength(0);
     });
 
+    it('does not relaunch when a Stop arrives while the dead attempt is charged', async () => {
+      const world = await boot();
+      const run = await world.app.get(RunRepository).begin(KEY, 'implement');
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let charging: () => void = () => undefined;
+      const began = new Promise<void>((resolve) => {
+        charging = resolve;
+      });
+      world.app.get(StepRegistry).get('implement')!.charge = async () => {
+        charging();
+        await gate;
+        return null;
+      };
+
+      const settled = world.app.get(Reconciler).reconcile(run);
+      await began;
+      await world.app.get(CommandRepository).accept({ type: 'stop', key: KEY, payload: {}, admit: () => undefined });
+      release();
+      await settled;
+
+      const stored = (await world.app.get(RunRepository).findRun(KEY))!;
+      expect(stored.status).toBe('failed');
+      expect(await relaunches(world, stored.id)).toHaveLength(0);
+      const visit = (await world.app.get(RunQueriesService).step(KEY, 'implement')).visits.at(-1);
+      expect(visit?.interruption).toMatchObject({ relaunched: false, cause: 'stop' });
+    });
+
+    it('records the interruption of an attempt that left its final result, so its transcript shows the note', async () => {
+      const world = await boot();
+      const begun = await world.app.get(RunRepository).begin(KEY, 'implement');
+      const attemptId = begun.activeAttempt!;
+      await mkdir(join(world.root, 'data'), { recursive: true });
+      await writeFile(
+        attemptOutputPath(world.root, KEY, 'implement', attemptId),
+        '{"type":"result","subtype":"success"}\n',
+      );
+      // What its step stored before the server died: it started and its agent returned, but it recorded no end.
+      const stored = (seq: number, rest: object) =>
+        ({
+          payloadVersion: 1,
+          eventId: `event-${seq}`,
+          runId: begun.id,
+          attemptId,
+          step: 'implement',
+          seq,
+          occurredAt: world.clock.iso(),
+          parentSpanId: null,
+          ...rest,
+        }) as StepEvent;
+      const log = world.app.get(StepEventLog);
+      await log.append([
+        stored(1, { kind: 'attempt.started', stepKind: 'agent', agent: null }),
+        stored(2, {
+          kind: 'agent.finished',
+          runtime: 'fake',
+          model: 'model',
+          tools: 'write',
+          chatId: null,
+          resumed: false,
+          killReason: null,
+          tokensIn: 0,
+          tokensOut: 0,
+          usd: 0,
+        }),
+      ]);
+
+      await world.app.get(Reconciler).reconcile(begun);
+
+      const own = (await log.page(begun.id, { step: 'implement' })).events.filter(
+        (event) => event.attemptId === attemptId,
+      );
+      expect(own.at(-1)).toMatchObject({ kind: 'attempt.interrupted', route: 'process died' });
+      const visit = (await world.app.get(RunQueriesService).step(KEY, 'implement')).visits.at(-1);
+      expect(visit).toMatchObject({ killReason: 'process died', interruption: { relaunched: true } });
+    });
+
     it('is not relaunched when its run is halted', async () => {
       const world = await boot();
       world.app.get(RunStop).halt(KEY);
@@ -354,6 +440,113 @@ describe('reconciler waits and automatic tries', () => {
 
       expect(await relaunches(world, parked.id)).toHaveLength(0);
       expect((await world.app.get(RunRepository).findRun(KEY))!.status).toBe('waiting');
+    });
+  });
+
+  describe('a relaunch that ends before its step takes the run', () => {
+    async function cutRun(world: TestApp) {
+      const begun = await world.app.get(RunRepository).begin(KEY, 'implement');
+      await world.app.get(Reconciler).reconcile(begun);
+      return (await world.app.get(RunRepository).findRun(KEY))!;
+    }
+
+    /** The note of the run's latest visit, as its page serves it. */
+    async function noteOf(world: TestApp) {
+      const visits = (await world.app.get(RunQueriesService).step(KEY, 'implement')).visits;
+      return visits.at(-1)?.interruption;
+    }
+
+    /** A resume handler that never ends: its command stays executing and no step starts. Resolves when it began. */
+    function holdResume(world: TestApp): Promise<void> {
+      return new Promise((began) => {
+        world.app.get(CommandService).register('resume', () => {
+          began();
+          return new Promise<undefined>(() => undefined);
+        });
+      });
+    }
+
+    it('reads queued with no action while the relaunch executes, on the page and in the list', async () => {
+      const world = await boot();
+      const began = holdResume(world);
+      await cutRun(world);
+      await began;
+
+      const queries = world.app.get(RunQueriesService);
+      expect(await queries.flow(KEY)).toMatchObject({ state: 'queued', actions: [] });
+      expect((await queries.list()).runs.find((item) => item.key === KEY)).toMatchObject({ state: 'queued' });
+    });
+
+    it('is left alone while its command executes', async () => {
+      const world = await boot();
+      const began = holdResume(world);
+      await cutRun(world);
+      await began;
+
+      await world.app.get(Reconciler).reconcileAll();
+
+      expect((await world.app.get(RunRepository).findRun(KEY))!.status).toBe('waiting');
+      expect(await noteOf(world)).toMatchObject({ relaunched: true });
+    });
+
+    it('is left alone while a step of this process holds the run, then ends when none does', async () => {
+      const world = await boot();
+      await cutRun(world);
+      await world.app.get(CommandService).idle();
+
+      await world.app.get(Reconciler).start(() => true);
+      await world.app.get(Reconciler).reconcileAll();
+      expect((await world.app.get(RunRepository).findRun(KEY))!.status).toBe('waiting');
+
+      await world.app.get(Reconciler).start(() => false);
+      await world.app.get(Reconciler).reconcileAll();
+      expect((await world.app.get(RunRepository).findRun(KEY))!.status).toBe('failed');
+    });
+
+    it('ends failed, waiting for a person, with a note that says so, when its command fails', async () => {
+      const world = await boot();
+      world.app.get(CommandService).register('resume', () => Promise.reject(new Error('prompt is missing')));
+      await cutRun(world);
+      await world.app.get(CommandService).idle();
+
+      await world.app.get(Reconciler).reconcileAll();
+
+      const queries = world.app.get(RunQueriesService);
+      expect(await queries.flow(KEY)).toMatchObject({ state: 'failed', actions: expect.arrayContaining(['resume']) });
+      const note = await noteOf(world);
+      expect(note).toMatchObject({ relaunched: false, cause: 'start' });
+      expect(interruptionSentence(note!, (iso) => iso.slice(11, 16))).toContain(
+        'Not started again: the server could not start it. Resume, Replay or Skip.',
+      );
+      const again = (await world.app.get(RunRepository).findRun(KEY))!.revision;
+      await world.app.get(Reconciler).reconcileAll();
+      expect((await world.app.get(RunRepository).findRun(KEY))!.revision).toBe(again);
+    });
+
+    it('tells the dashboard when it ends a relaunch, so the run does not stay on Working', async () => {
+      const world = await boot();
+      world.app.get(CommandService).register('resume', () => Promise.reject(new Error('prompt is missing')));
+      await cutRun(world);
+      await world.app.get(CommandService).idle();
+      const changed: string[] = [];
+      const stop = world.app.get(LiveHub).onChanged((key) => changed.push(key));
+
+      await world.app.get(Reconciler).reconcileAll();
+      stop();
+
+      expect(changed).toContain(KEY);
+    });
+
+    it('ends failed with the stop note when a Stop took the place of its command', async () => {
+      const world = await boot();
+      jest.spyOn(CommandService.prototype, 'runAccepted').mockResolvedValue();
+      await cutRun(world);
+      await world.app.get(CommandRepository).accept({ type: 'stop', key: KEY, payload: {}, admit: () => undefined });
+
+      await world.app.get(Reconciler).reconcileAll();
+
+      expect((await world.app.get(RunRepository).findRun(KEY))!.status).toBe('failed');
+      expect(await noteOf(world)).toMatchObject({ relaunched: false, cause: 'stop' });
     });
   });
 

@@ -23,10 +23,27 @@ describe('interruptionSentence', () => {
   });
 });
 
+describe('interruptionSentence for a start that did not go through', () => {
+  it('says the server could not start the step', () => {
+    expect(interruptionSentence({ at, relaunched: false, cause: 'start' }, time)).toBe(
+      'Interrupted at 21:29 by a server restart. Not started again: the server could not start it. Resume, Replay or Skip.',
+    );
+  });
+});
+
 describe('readInterruption', () => {
   it('reads a stored body', () => {
     const note: InterruptionNote = { at, relaunched: false, cause: 'limit', limit: 3 };
     expect(readInterruption(JSON.stringify(note))).toEqual(note);
+  });
+
+  it('reads the start cause and refuses an unknown one', () => {
+    expect(readInterruption(JSON.stringify({ at, relaunched: false, cause: 'start' }))).toEqual({
+      at,
+      relaunched: false,
+      cause: 'start',
+    });
+    expect(readInterruption(JSON.stringify({ at, relaunched: false, cause: 'other' }))).toBeNull();
   });
 
   it('returns null for a damaged body', () => {

@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { getHistory } from '../../../lib/endpoints';
+import { createTheme } from '@mui/material/styles';
+import { stripeColor } from '../../../test/card-stripe';
 import { historyView } from '../../../test/fixtures';
 import { QueryWrapper } from '../../../test/query-wrapper';
 import { commandEvents, stepEvent } from '../../../test/step-events';
@@ -313,6 +315,7 @@ describe('TranscriptFeed', () => {
 
     const card = screen.getByRole('article', { name: /Attempt ended/ });
     expect(within(card).getByText(interruptionSentence(note, localTime))).toBeInTheDocument();
+    expect(stripeColor(card)).toBe(createTheme().palette.text.secondary);
     expect(screen.queryByRole('article', { name: /^Error:/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/\d+ problems?/)).not.toBeInTheDocument();
   });
@@ -330,6 +333,7 @@ describe('TranscriptFeed', () => {
 
     const card = screen.getByRole('article', { name: 'Error: stopped by a person' });
     expect(within(card).getByText('Stopped: stopped by a person')).toBeInTheDocument();
+    expect(stripeColor(card)).toBe(createTheme().palette.error.main);
     expect(screen.getByText('1 problem')).toBeInTheDocument();
   });
 });

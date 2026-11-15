@@ -137,12 +137,12 @@ export class CommandRepository {
     return this.commands.find({ where: { runId }, order: { createdAt: 'ASC' } });
   }
 
-  /** The ids among `runIds` that have an accepted command other than a stop. One query. */
-  async acceptedRunIds(runIds: number[]): Promise<Set<number>> {
+  /** The ids among `runIds` that have a command other than a stop that is accepted or executing. One query. */
+  async queuedRunIds(runIds: number[]): Promise<Set<number>> {
     if (runIds.length === 0) return new Set();
     const rows = await this.commands.find({
       select: { runId: true },
-      where: { runId: In(runIds), state: 'accepted', type: Not('stop') },
+      where: { runId: In(runIds), state: In(['accepted', 'executing']), type: Not('stop') },
     });
     return new Set(rows.map((row) => row.runId));
   }

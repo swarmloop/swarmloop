@@ -5,6 +5,7 @@ import { CommandRepository } from '../history/command.repository';
 import { RunRepository } from '../history/run.repository';
 import { CommandService } from '../pipeline/command.service';
 import { createFlowHarness } from './flow-harness';
+import { holdRelaunches } from './relaunch-hold.spec-helpers';
 import { assertInvariants } from './flow-invariants';
 
 const KEY = 'PROJ-410';
@@ -43,13 +44,6 @@ describe('a passing outage or a restart heals on the reconciler ticks', () => {
 
   /** A resume that never ends: the relaunch of a cut step is taken by its executor and no step starts. */
   const held = () => new Promise<undefined>(() => undefined);
-
-  function holdRelaunches(): void {
-    const register = Reflect.get<CommandService, 'register'>(CommandService.prototype, 'register');
-    jest.spyOn(CommandService.prototype, 'register').mockImplementation(function (this: CommandService, type, handler) {
-      register.call(this, type, type === 'resume' ? held : handler);
-    });
-  }
 
   it('tries a host that was down for 10 minutes again by itself, and only after its next try', async () => {
     const run = await flow.app.app.get(RunRepository).begin(KEY, 'merge-request');
@@ -96,7 +90,7 @@ describe('a passing outage or a restart heals on the reconciler ticks', () => {
     jest.restoreAllMocks();
     const begun = await flow.app.app.get(RunRepository).begin(KEY, 'implement');
 
-    holdRelaunches();
+    holdRelaunches(held);
     await flow.restart();
     await flow.tick();
     await assertInvariants(flow.app);

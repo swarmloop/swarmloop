@@ -225,7 +225,7 @@ export class RunQueriesService {
     const visits: VisitView[] = stats.map((stat, index) => {
       const owned = documents.filter((document) => document.stepStatId === stat.id);
       const verdict = name === 'code-review' ? angleVerdict(owned) : null;
-      const interruption = interruptionOf(documents, stat.id);
+      const interruption = interruptionOf(owned, stat.id);
       return {
         id: stat.id,
         key: visitKey(stat.id),
