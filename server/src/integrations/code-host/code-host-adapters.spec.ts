@@ -1,5 +1,7 @@
 import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { CODE_HOST_ENV_KEYS, CODE_HOST_LOGIN_ENV_KEYS } from '../../config/env.schema';
+import type { CodeHostEnv } from './abstract-code-host';
 import { codeHostAdapters } from './code-host-adapters';
 
 describe('code host adapters', () => {
@@ -28,5 +30,22 @@ describe('code host adapters', () => {
 
   it('keeps the list it found', () => {
     expect(codeHostAdapters()).toBe(codeHostAdapters());
+  });
+
+  it('builds the api url of each host under its own base', () => {
+    for (const adapter of codeHostAdapters()) {
+      const env = { [adapter.baseKey]: 'https://forge.example' } as unknown as CodeHostEnv;
+      expect(adapter.endpoints(env).api.startsWith('https://forge.example')).toBe(true);
+    }
+  });
+
+  it('lists the env keys of the hosts in the order the env has always read them', () => {
+    const adapters = codeHostAdapters();
+    expect(
+      [...adapters].sort((a, b) => a.pushOrder - b.pushOrder).flatMap((adapter) => [adapter.baseKey, adapter.tokenKey]),
+    ).toEqual([...CODE_HOST_ENV_KEYS]);
+    expect(adapters.flatMap(({ clientEnvKeys }) => [clientEnvKeys.clientId, clientEnvKeys.clientSecret])).toEqual([
+      ...CODE_HOST_LOGIN_ENV_KEYS,
+    ]);
   });
 });

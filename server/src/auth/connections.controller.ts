@@ -21,8 +21,13 @@ import { appFlowApps, appFlowRoutes, routeHost } from './host-routes';
 import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
 import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
-import { endpointsOf } from '../integrations/code-host/http-login-provider';
-import type { AppFlow, LoginProvider, ManifestForm, ProviderName } from '../integrations/code-host/login-provider';
+import type {
+  AppFlow,
+  Endpoints,
+  LoginProvider,
+  ManifestForm,
+  ProviderName,
+} from '../integrations/code-host/login-provider';
 
 const HOSTS: readonly ProviderName[] = codeHostAdapters().map((adapter) => adapter.name);
 
@@ -107,9 +112,17 @@ export class ConnectionsController {
     return provider as LoginProvider & { appFlow: AppFlow };
   }
 
+  private endpoints(host: ProviderName): Endpoints {
+    const adapter = codeHostAdapters().find((candidate) => candidate.name === host);
+    if (!adapter) {
+      throw new BadRequestException(`${host} is not a code host`);
+    }
+    return adapter.endpoints(this.config.env);
+  }
+
   private settingsUrl(host: ProviderName, slug: string | undefined): string | null {
     const adapter = codeHostAdapters().find((candidate) => candidate.name === host);
-    return adapter && endpointsOf(host, this.config.env).installs && slug
+    return adapter && this.endpoints(host).installs && slug
       ? `${new URL(this.config.env[adapter.baseKey] || `https://${adapter.publicHost}`).origin}/settings/apps/${encodeURIComponent(slug)}`
       : null;
   }
@@ -129,7 +142,7 @@ export class ConnectionsController {
     const stored = this.apps.find(host);
     const credentials = this.apps.credentials(host);
     const health = actor && actor !== 'machine' ? await this.connections.health(host, actor) : null;
-    const { appLabel, installs } = endpointsOf(host, this.config.env);
+    const { appLabel, installs } = this.endpoints(host);
     const mayReplace = installs && stored && (actor === 'machine' || actor === stored.madeBy);
     const repositories = installs && health ? await this.connections.repositories(actor as string).catch(() => []) : [];
     return {

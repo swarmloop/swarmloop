@@ -4,7 +4,7 @@ import type { Connection } from '../connection';
 import type { AbstractCodeHost, CodeHostEnv } from './abstract-code-host';
 import type { ConnectionStore } from './code-host-connection';
 import type { CodeHostRules } from './host-rules';
-import type { AppFlow, AppSource, LoginFacts, LoginProvider, ProviderName } from './login-provider';
+import type { AppFlow, AppSource, Endpoints, LoginFacts, LoginProvider, ProviderName } from './login-provider';
 
 /** Everything the core knows of one code host. A host is one folder with an index module that exports it as `adapter`. */
 export interface CodeHostAdapter {
@@ -45,6 +45,8 @@ export interface CodeHostAdapter {
   readonly storesApplication: boolean;
   /** The Nest class of the host's app flow, when it has one. */
   readonly appFlow?: Type<AppFlow>;
+  /** The urls and words of the host's login and api, built from the env. */
+  endpoints(env: CodeHostEnv): Endpoints;
   /** The login of the host. `appFlow` resolves the instance of the host's app flow. */
   login(env: CodeHostEnv, clock: Clock, apps: AppSource, appFlow?: () => AppFlow): LoginProvider;
 }

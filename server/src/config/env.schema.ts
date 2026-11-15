@@ -4,9 +4,23 @@ import { EFFORTS } from '../contract/effort';
 import { IssueTrackerRegistry } from '../integrations/issue-tracker/issue-tracker.registry';
 import { names } from '../integrations/requirements-source/requirements-source.registry';
 
-// The key lists live in a leaf file: env.ts reads them at runtime, and importing this schema from env.ts would close an import cycle.
-/** @public The env names of the code hosts, part of this module's contract. */
-export { CODE_HOST_ENV_KEYS, CODE_HOST_LOGIN_ENV_KEYS } from './code-host-env-keys';
+/** The env keys of the code hosts' base urls and server tokens. */
+export const CODE_HOST_ENV_KEYS = ['GITLAB_BASE_URL', 'GITLAB_TOKEN', 'GITHUB_BASE_URL', 'GITHUB_TOKEN'] as const;
+
+/** The env keys of the code hosts' login applications. */
+export const CODE_HOST_LOGIN_ENV_KEYS = [
+  'GITHUB_OAUTH_CLIENT_ID',
+  'GITHUB_OAUTH_CLIENT_SECRET',
+  'GITLAB_OAUTH_CLIENT_ID',
+  'GITLAB_OAUTH_CLIENT_SECRET',
+] as const;
+
+declare module './env' {
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- declaration merging: this adds the keys to the interface env.ts declares
+  interface CodeHostServerEnv extends Record<(typeof CODE_HOST_ENV_KEYS)[number], string> {}
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- declaration merging: this adds the keys to the interface env.ts declares
+  interface CodeHostLoginEnv extends Record<(typeof CODE_HOST_LOGIN_ENV_KEYS)[number], string> {}
+}
 
 const MAIN_AGENTS_MISSING = '{{#key}} is missing: set it as in defaults.env';
 

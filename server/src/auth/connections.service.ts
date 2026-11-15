@@ -7,7 +7,6 @@ import { GitAuthError, SwarmloopError } from '../core/swarmloop-error';
 import { ConnectionEntity } from '../history/connection-entities';
 import { request } from '../integrations/http';
 import { HostAppsService } from './host-apps.service';
-import { endpointsOf } from '../integrations/code-host/http-login-provider';
 import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import type { Endpoints, Grant, ProviderName } from '../integrations/code-host/login-provider';
 import { SecretBox } from './secret-box';
@@ -243,7 +242,11 @@ export class ConnectionsService {
   }
 
   private endpoints(host: ProviderName): Endpoints {
-    return endpointsOf(host, this.config.env);
+    const adapter = codeHostAdapters().find((candidate) => candidate.name === host);
+    if (!adapter) {
+      throw new SwarmloopError(`${host} is not a code host`);
+    }
+    return adapter.endpoints(this.config.env);
   }
 
   /** The host whose app is installed on the repositories a person chooses: the first one with installations. */

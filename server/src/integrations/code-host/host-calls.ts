@@ -1,5 +1,4 @@
-import type { SwarmloopEnv } from '../../config/env';
-import type { CODE_HOST_ENV_KEYS } from '../../config/code-host-env-keys';
+import type { CodeHostServerEnv } from '../../config/env';
 import type { Clock } from '../../core/clock';
 import { FetchFailed, HostUnavailable, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { request } from '../http';
@@ -7,7 +6,7 @@ import { configuredHost } from './provider-message';
 import { remoteProject } from './remote-project';
 
 /** The env keys a code host reads. */
-export type CodeHostEnv = Pick<SwarmloopEnv, (typeof CODE_HOST_ENV_KEYS)[number]>;
+export type CodeHostEnv = CodeHostServerEnv;
 
 /** One call of a host's API. */
 export interface HostCall {

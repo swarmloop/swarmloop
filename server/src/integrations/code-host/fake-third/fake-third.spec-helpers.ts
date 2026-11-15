@@ -1,4 +1,4 @@
-import { CODE_HOST_ENV_KEYS } from '../../../config/code-host-env-keys';
+import { CODE_HOST_ENV_KEYS } from '../../../config/env.schema';
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import { AbstractCodeHost, type CodeHostEnv } from '../abstract-code-host';
 import type { CodeHostAdapter } from '../code-host-adapter';
@@ -194,8 +194,9 @@ export const fakeThirdAdapter: CodeHostAdapter = {
   keepsTokensWithoutApp: false,
   storesApplication: false,
   ownerFromActor: false,
+  endpoints: (env) => endpointsOf(env[BASE_KEY]),
   login: (env, clock, apps, appFlow) =>
-    new HttpOAuthProvider(fakeThirdAdapter, endpointsOf(env[BASE_KEY]), env[TOKEN_KEY], clock, apps, appFlow),
+    new HttpOAuthProvider(fakeThirdAdapter, fakeThirdAdapter.endpoints(env), env[TOKEN_KEY], clock, apps, appFlow),
 };
 
 /** What a host's fake HTTP says: where each call goes and what it answers. A script serves one adapter. */

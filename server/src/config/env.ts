@@ -1,12 +1,16 @@
 import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
-import { CODE_HOST_ENV_KEYS, CODE_HOST_LOGIN_ENV_KEYS } from './code-host-env-keys';
 import type { RequirementsVia } from '../integrations/requirements-source/requirements-source.registry';
 
-export interface SwarmloopEnv
-  extends
-    Record<(typeof CODE_HOST_ENV_KEYS)[number], string>,
-    Record<(typeof CODE_HOST_LOGIN_ENV_KEYS)[number], string> {
+/** The base urls and server tokens of the code hosts. `env.schema.ts` declares the keys, next to their list. */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- declaration merging: the keys are added in env.schema.ts
+export interface CodeHostServerEnv {}
+
+/** The client ids and secrets of the code hosts' login apps. `env.schema.ts` declares the keys, next to their list. */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- declaration merging: the keys are added in env.schema.ts
+export interface CodeHostLoginEnv {}
+
+export interface SwarmloopEnv extends CodeHostServerEnv, CodeHostLoginEnv {
   REQUIREMENTS_VIA: RequirementsVia;
   ISSUE_TRACKER: string;
   JIRA_BASE_URL: string;
@@ -107,21 +111,27 @@ function readStrings<Key extends string>(config: ConfigService, keys: readonly K
   return Object.fromEntries(keys.map((key) => [key, config.getOrThrow<string>(key)])) as Record<Key, string>;
 }
 
-export function readEnv(config: ConfigService): SwarmloopEnv {
+/** The env keys the code hosts own: their base urls and tokens, then their login apps. */
+export interface HostEnvKeys {
+  readonly server: readonly string[];
+  readonly login: readonly string[];
+}
+
+export function readEnv(config: ConfigService, hostKeys: HostEnvKeys): SwarmloopEnv {
   if (config.get('MODEL_RESEARCH') !== undefined) {
     new Logger('Config').warn('MODEL_RESEARCH is set but was never read: research runs on AGENTS_PLAN');
   }
   warnIgnoredAgentEnv(config);
   const root = config.get<string>('SWARMLOOP_ROOT');
   const checkoutsRoot = config.get<string>('CHECKOUTS_ROOT');
-  return {
+  const env = {
     REQUIREMENTS_VIA: config.getOrThrow<RequirementsVia>('REQUIREMENTS_VIA'),
     ISSUE_TRACKER: config.getOrThrow<string>('ISSUE_TRACKER'),
     JIRA_BASE_URL: config.getOrThrow<string>('JIRA_BASE_URL'),
     JIRA_EMAIL: config.getOrThrow<string>('JIRA_EMAIL'),
     JIRA_API_TOKEN: config.getOrThrow<string>('JIRA_API_TOKEN'),
     JIRA_PROJECTS: config.getOrThrow<string>('JIRA_PROJECTS'),
-    ...readStrings(config, CODE_HOST_ENV_KEYS),
+    ...readStrings(config, hostKeys.server),
     CURSOR_API_KEY: config.getOrThrow<string>('CURSOR_API_KEY'),
     ANTHROPIC_API_KEY: config.getOrThrow<string>('ANTHROPIC_API_KEY'),
     CLAUDE_CODE_OAUTH_TOKEN: config.getOrThrow<string>('CLAUDE_CODE_OAUTH_TOKEN'),
@@ -174,9 +184,10 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     SWARMLOOP_API_HOST: config.getOrThrow<string>('SWARMLOOP_API_HOST'),
     SWARMLOOP_PUBLIC_URL: config.getOrThrow<string>('SWARMLOOP_PUBLIC_URL'),
     SWARMLOOP_REPOS: splitList(config.get<string>('SWARMLOOP_REPOS')),
-    ...readStrings(config, CODE_HOST_LOGIN_ENV_KEYS),
+    ...readStrings(config, hostKeys.login),
     SWARMLOOP_ALLOW: config.getOrThrow<string>('SWARMLOOP_ALLOW'),
     SWARMLOOP_TOKEN: config.getOrThrow<string>('SWARMLOOP_TOKEN'),
     SWARMLOOP_SECRET: config.getOrThrow<string>('SWARMLOOP_SECRET'),
   };
+  return env as SwarmloopEnv;
 }

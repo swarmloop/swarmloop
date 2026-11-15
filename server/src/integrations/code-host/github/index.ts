@@ -28,7 +28,8 @@ export const adapter: CodeHostAdapter = {
   keepsTokensWithoutApp: false,
   storesApplication: false,
   appFlow: GithubAppService,
+  endpoints: githubEndpoints,
   login: (env, clock, apps, appFlow) =>
-    new HttpOAuthProvider(adapter, githubEndpoints(env), env[adapter.tokenKey], clock, apps, appFlow),
+    new HttpOAuthProvider(adapter, adapter.endpoints(env), env[adapter.tokenKey], clock, apps, appFlow),
   ownerFromActor: true,
 };

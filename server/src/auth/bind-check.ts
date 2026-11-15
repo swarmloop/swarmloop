@@ -1,5 +1,4 @@
-import type { SwarmloopEnv } from '../config/env';
-import type { CODE_HOST_LOGIN_ENV_KEYS } from '../config/code-host-env-keys';
+import type { CodeHostLoginEnv, SwarmloopEnv } from '../config/env';
 import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 
 const LOOPBACK = ['127.0.0.1', 'localhost', '::1', '[::1]'];
@@ -14,10 +13,7 @@ export function isLoopback(host: string): boolean {
   }
 }
 
-type BindEnv = Pick<
-  SwarmloopEnv,
-  'SWARMLOOP_API_HOST' | 'SWARMLOOP_PUBLIC_URL' | (typeof CODE_HOST_LOGIN_ENV_KEYS)[number]
->;
+type BindEnv = Pick<SwarmloopEnv, 'SWARMLOOP_API_HOST' | 'SWARMLOOP_PUBLIC_URL' | keyof CodeHostLoginEnv>;
 
 /**
  * Why the server must not start, or null. Without a login provider it may listen on loopback only. Compose listens

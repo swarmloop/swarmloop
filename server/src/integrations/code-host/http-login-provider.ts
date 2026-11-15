@@ -1,10 +1,7 @@
 import { createHash } from 'crypto';
-import type { SwarmloopEnv } from '../../config/env';
 import type { Clock } from '../../core/clock';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { request } from '../http';
-import { githubEndpoints } from './github/github-login';
-import { gitlabEndpoints } from './gitlab/gitlab-login';
 import type {
   AppCredentials,
   AppFlow,
@@ -163,11 +160,3 @@ const text = (value: unknown): string => (typeof value === 'string' ? value : ''
 
 const names = (rows: unknown, field: string): string[] =>
   (Array.isArray(rows) ? rows : []).map((row) => text((row as Record<string, unknown>)[field]));
-
-/** The login setup of a host. */
-export function endpointsOf(
-  host: ProviderName,
-  env: Pick<SwarmloopEnv, 'GITHUB_BASE_URL' | 'GITLAB_BASE_URL'>,
-): Endpoints {
-  return host === 'github' ? githubEndpoints(env) : gitlabEndpoints(env);
-}

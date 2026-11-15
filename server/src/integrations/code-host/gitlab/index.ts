@@ -24,7 +24,8 @@ export const adapter: CodeHostAdapter = {
   clientEnvKeys: { clientId: 'GITLAB_OAUTH_CLIENT_ID', clientSecret: 'GITLAB_OAUTH_CLIENT_SECRET' },
   keepsTokensWithoutApp: true,
   storesApplication: true,
+  endpoints: gitlabEndpoints,
   login: (env, clock, apps, appFlow) =>
-    new HttpOAuthProvider(adapter, gitlabEndpoints(env), env[adapter.tokenKey], clock, apps, appFlow),
+    new HttpOAuthProvider(adapter, adapter.endpoints(env), env[adapter.tokenKey], clock, apps, appFlow),
   ownerFromActor: false,
 };

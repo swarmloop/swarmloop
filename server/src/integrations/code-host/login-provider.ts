@@ -1,4 +1,4 @@
-import type { CODE_HOST_LOGIN_ENV_KEYS } from '../../config/code-host-env-keys';
+import type { CodeHostLoginEnv } from '../../config/env';
 
 export type ProviderName = string;
 
@@ -82,8 +82,8 @@ export interface LoginProvider {
   readonly allowPrefixes: { user: string; group: string };
   /** The env keys of the OAuth app of the environment. */
   readonly clientEnvKeys: {
-    clientId: (typeof CODE_HOST_LOGIN_ENV_KEYS)[number];
-    clientSecret: (typeof CODE_HOST_LOGIN_ENV_KEYS)[number];
+    clientId: keyof CodeHostLoginEnv;
+    clientSecret: keyof CodeHostLoginEnv;
   };
   /** The host's optional app flow. */
   readonly appFlow?: AppFlow;

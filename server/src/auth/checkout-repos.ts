@@ -21,7 +21,7 @@ export class CheckoutRepos {
     private readonly clock: Clock,
   ) {}
 
-  /** A checkout with no readable origin, or on another host than GitHub or GitLab, is left out. */
+  /** A checkout with no readable origin, or on another host than a code host, is left out. */
   list(): Promise<RepoRef[]> {
     if (!this.cached || this.clock.now() - this.cached.at > CACHE_MS) {
       this.cached = { at: this.clock.now(), refs: this.read() };
