@@ -85,9 +85,11 @@ describe('a passing outage or a restart heals on the reconciler ticks', () => {
 
   it('relaunches a step that a server restart cut, once', async () => {
     jest.restoreAllMocks();
-    const accepted = jest
-      .spyOn(CommandService.prototype, 'accept')
-      .mockImplementation(() => Promise.resolve({} as never));
+    const accepted: unknown[][] = [];
+    jest.spyOn(CommandService.prototype, 'accept').mockImplementation((...args) => {
+      accepted.push(args);
+      return Promise.resolve({} as never);
+    });
     const begun = await flow.app.app.get(RunRepository).begin(KEY, 'implement');
 
     await flow.restart();
@@ -96,7 +98,6 @@ describe('a passing outage or a restart heals on the reconciler ticks', () => {
 
     const cut = await find();
     expect(cut.status).toBe('failed');
-    expect(accepted).toHaveBeenCalledTimes(1);
-    expect(accepted).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `relaunch-${begun.activeAttempt}` });
+    expect(accepted).toEqual([['resume', KEY, {}, { idempotencyKey: `relaunch-${begun.activeAttempt}` }]]);
   });
 });

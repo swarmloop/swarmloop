@@ -64,6 +64,39 @@ function holdRelaunches(): string[] {
   return keys;
 }
 
+/** Fake timers for the reconciler's setInterval only: the rest of the app keeps real time. */
+function fakeIntervalOnly(): void {
+  jest.useFakeTimers({
+    doNotFake: [
+      'Date',
+      'hrtime',
+      'nextTick',
+      'performance',
+      'queueMicrotask',
+      'setImmediate',
+      'clearImmediate',
+      'setTimeout',
+      'clearTimeout',
+      'requestAnimationFrame',
+      'cancelAnimationFrame',
+      'requestIdleCallback',
+      'cancelIdleCallback',
+    ],
+  });
+}
+
+/** Fires the fake interval every `everyMs` until the promise settles; a tick that meets a running pass is skipped, so it repeats. */
+async function tickUntil(settling: Promise<void>, everyMs: number): Promise<void> {
+  let settled = false;
+  void settling.then(() => {
+    settled = true;
+  });
+  while (!settled) {
+    jest.advanceTimersByTime(everyMs);
+    await new Promise<void>((turn) => setImmediate(turn));
+  }
+}
+
 describe('crash matrix', () => {
   let app: TestApp;
 
@@ -71,6 +104,7 @@ describe('crash matrix', () => {
     setBarrierHook(null);
     jest.restoreAllMocks();
     await app.close();
+    jest.useRealTimers();
   });
 
   it('after-accept: an accepted command that no process started runs once, by its id', async () => {
@@ -179,7 +213,11 @@ describe('crash matrix', () => {
   });
 
   it('docker silent: read-only probes with backoff, then waiting with DOCKER_UNAVAILABLE, its attempt kept and no visit', async () => {
-    const attemptRunning = jest.fn().mockResolvedValue(null);
+    const probes: boolean[] = [];
+    const attemptRunning = jest.fn(() => {
+      probes.push(true);
+      return Promise.resolve(null);
+    });
     const waited: number[] = [];
     jest.spyOn(delays, 'delay').mockImplementation((ms) => {
       waited.push(ms);
@@ -190,7 +228,7 @@ describe('crash matrix', () => {
 
     await app.app.get(Reconciler).reconcile(run);
 
-    expect(attemptRunning).toHaveBeenCalledTimes(3);
+    expect(probes).toHaveLength(3);
     expect(waited).toEqual([1_000, 2_000]);
     const stored = await app.app.get(RunRepository).findRun(KEY);
     expect(stored).toMatchObject({ status: 'waiting', activeAttempt: run.activeAttempt });
@@ -229,17 +267,23 @@ describe('crash matrix', () => {
 
   it('startup reconciles each running run through reconcile', async () => {
     holdRelaunches();
-    const reconcile = jest.spyOn(Reconciler.prototype, 'reconcile');
+    const reconciled: string[] = [];
+    const reconcile = Reflect.get<Reconciler, 'reconcile'>(Reconciler.prototype, 'reconcile');
+    jest.spyOn(Reconciler.prototype, 'reconcile').mockImplementation(function (this: Reconciler, ...args) {
+      reconciled.push(args[0].key);
+      return reconcile.apply(this, args);
+    });
     app = await createTestApp();
     await orphan(app);
     app = await app.restart();
 
-    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconciled).toEqual([KEY]);
     expect((await app.app.get(RunRepository).findRun(KEY))?.status).toBe('failed');
   });
 
   it('the timer reaches the same reconcile and finds a dead owner without a restart', async () => {
     const relaunched = holdRelaunches();
+    fakeIntervalOnly();
     app = await createTestApp({ env: { RECONCILE_MS: '50' }, reconcilerTimer: true });
     const reconciler = app.app.get(Reconciler);
     const original = reconciler.reconcile.bind(reconciler);
@@ -251,7 +295,7 @@ describe('crash matrix', () => {
     });
     const runs = app.app.get(RunRepository);
     const begun = await runs.begin(KEY, 'implement');
-    await ticked;
+    await tickUntil(ticked, 50);
 
     const run = await runs.findRun(KEY);
     expect(run?.status).toBe('failed');
@@ -260,6 +304,7 @@ describe('crash matrix', () => {
 
   it('the recovery wait does not count the time the host slept between two timer ticks', async () => {
     const killAttempt = jest.fn().mockResolvedValue(true);
+    fakeIntervalOnly();
     app = await createTestApp({
       env: { RECONCILE_MS: '100' },
       reconcilerTimer: true,
@@ -283,11 +328,11 @@ describe('crash matrix', () => {
     const runs = app.app.get(RunRepository);
     const entering = nextTicks(1);
     await orphan(app);
-    await entering;
+    await tickUntil(entering, 100);
     expect((await runs.findRun(KEY))?.state).toBe('recovering');
 
     app.clock.advance(600_000);
-    await nextTicks(2);
+    await tickUntil(nextTicks(2), 100);
 
     expect(killAttempt).not.toHaveBeenCalled();
     expect((await runs.findRun(KEY))?.state).toBe('recovering');
@@ -296,7 +341,11 @@ describe('crash matrix', () => {
   it('after-push: a merge request the host already has is stored and never opened again', async () => {
     const found = { project: 'group/app', iid: 7, url: 'https://code.example/group/app/-/merge_requests/7' };
     const openMergeRequest = jest.fn();
-    const findMergeRequest = jest.fn().mockResolvedValue({ record: found, httpCalls: [] });
+    const lookups: unknown[] = [];
+    const findMergeRequest = jest.fn((query: unknown) => {
+      lookups.push(query);
+      return Promise.resolve({ record: found, httpCalls: [] });
+    });
     jest.spyOn(CodeHostRegistry.prototype, 'byName').mockReturnValue({ findMergeRequest, openMergeRequest } as never);
     app = await createTestApp();
     const runs = app.app.get(RunRepository);
@@ -309,13 +358,13 @@ describe('crash matrix', () => {
 
     await reconciler.reconcile(run);
 
-    expect(findMergeRequest).toHaveBeenCalledWith({ project: 'group/app', source: 'feature/x' });
+    expect(lookups).toEqual([{ project: 'group/app', source: 'feature/x' }]);
     expect(await documents.latestBody(KEY, 'merge_request')).toContain('iid: 7');
     expect(openMergeRequest).not.toHaveBeenCalled();
     const stored = await documents.latestBody(KEY, 'merge_request');
     await reconciler.reconcileRuns();
     expect(await documents.latestBody(KEY, 'merge_request')).toBe(stored);
-    expect(findMergeRequest).toHaveBeenCalledTimes(1);
+    expect(lookups).toEqual([{ project: 'group/app', source: 'feature/x' }]);
   });
 
   it('a command that was executing when its run finished is confirmed, not failed', async () => {
