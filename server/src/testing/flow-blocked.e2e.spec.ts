@@ -332,6 +332,9 @@ describe('one blocked task holds only its dependents', () => {
       `Interrupted at ${clock(dead!.interruption!.at)} by a server restart. Not started again: the server could not start it. Resume, Replay or Skip.`,
     );
 
+    // The restart woke a pass of the parent that read the subtask before it failed, and a parent that runs is not woken
+    // again by the tick. The statuses read below come from a pass that sees the failed subtask: the test runs it.
+    await flow.app.pipeline.step('implement', KEY);
     expect((await statuses(flow.app)).a).toBe('blocked');
     const parent = deriveState((await flow.app.app.get(RunRepository).findRun(KEY))!);
     expect(parent.reason?.message).toContain('subtask a is blocked');
