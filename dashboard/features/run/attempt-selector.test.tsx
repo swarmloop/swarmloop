@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { createTheme } from '@mui/material/styles';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -30,7 +30,10 @@ function header(view: StepView, attempt: number) {
   );
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe('AttemptSelector in the step header', () => {
   it('shows each attempt once while live updates arrive between fetches', async () => {

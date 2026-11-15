@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getManifest, getOwner, saveGitlabApplication } from '../../lib/endpoints';
@@ -17,7 +17,10 @@ beforeEach(() => {
   vi.mocked(getOwner).mockReset().mockResolvedValue({ owner: 'acme', others: [] });
   vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(submit);
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe('FirstRun', () => {
   it('posts the manifest to the page GitHub gave, for the organization typed', async () => {

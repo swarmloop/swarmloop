@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSignIn, saveIntegration, sendSignInCode, startSignIn } from '../../../lib/endpoints';
@@ -44,7 +44,10 @@ beforeEach(() => {
   vi.mocked(getSignIn).mockReset();
   vi.mocked(sendSignInCode).mockReset();
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe('flow dialogs', () => {
   it('secret flow saves the pasted key and closes', async () => {

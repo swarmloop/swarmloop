@@ -1,8 +1,8 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getStepEvents } from '../../../lib/endpoints';
-import { receive, resetFakeSocket } from '../../../test/fake-socket';
+import { receive } from '../../../test/fake-socket';
 import { QueryWrapper } from '../../../test/query-wrapper';
 import { LiveBridgeProvider, useLiveActions } from '../../shell';
 import { stepEvent } from '../../../test/step-events';
@@ -20,7 +20,7 @@ function Wrapper({ children }: { children: ReactNode }) {
 }
 
 afterEach(() => {
-  resetFakeSocket();
+  cleanup();
   vi.useRealTimers();
 });
 

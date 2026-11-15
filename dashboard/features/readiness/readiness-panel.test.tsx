@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReadinessItem } from '@contract/readiness';
 import { ApiError } from '../../lib/api';
@@ -107,6 +107,7 @@ describe('shortLine', () => {
 
 describe('ReadinessPanel refresh', () => {
   afterEach(() => {
+    cleanup();
     vi.useRealTimers();
   });
 
