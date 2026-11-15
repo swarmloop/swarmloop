@@ -1,31 +1,25 @@
-import { Injectable, Optional } from '@nestjs/common';
-import { ConnectionsService } from '../../auth/connections.service';
+import type { ConnectionsService } from '../../auth/connections.service';
 import { remoteProject } from './remote-project';
 import { GitAuthError, SwarmloopError } from '../../core/swarmloop-error';
-import { CodeHost, SelectedHost } from './code-host';
-import type { CodeHostEnv } from './abstract-code-host';
+import type { CodeHost, SelectedHost } from './code-host';
+import type { AbstractCodeHost, CodeHostEnv } from './abstract-code-host';
 import type { Clock } from '../../core/clock';
-import { GithubCodeHost } from './github/github-code-host';
-import { GitlabCodeHost } from './gitlab/gitlab-code-host';
 import type { Connection } from '../connection';
-import { githubConnection } from './github/github-connection';
-import { gitlabConnection } from './gitlab/gitlab-connection';
+import type { CodeHostAdapter } from './code-host-adapter';
+import { codeHostAdapters } from './code-host-adapters';
 
-const HOST_NAMES = ['github', 'gitlab'] as const;
+interface Entry {
+  readonly adapter: CodeHostAdapter;
+  readonly host: AbstractCodeHost;
+}
 
-@Injectable()
 export class CodeHostRegistry {
-  readonly names: typeof HOST_NAMES = HOST_NAMES;
+  readonly names: readonly CodeHostName[] = codeHostAdapters().map((adapter) => adapter.name);
 
-  private readonly hosts: readonly [GithubCodeHost, GitlabCodeHost];
-
-  constructor(
-    private readonly github: GithubCodeHost,
-    private readonly gitlab: GitlabCodeHost,
-    @Optional() private readonly connectionStore?: ConnectionsService,
-  ) {
-    this.hosts = [github, gitlab];
-  }
+  private constructor(
+    private readonly entries: readonly Entry[],
+    private readonly connectionStore?: ConnectionsService,
+  ) {}
 
   /**
    * The registry of one run: each host calls with the token of the person who started it. A person without a
@@ -47,10 +41,12 @@ export class CodeHostRegistry {
             if (error instanceof GitAuthError) return null;
             throw error;
           });
-    const [github, gitlab] = await Promise.all([tokenOf('github'), tokenOf('gitlab')]);
+    const tokens = await Promise.all(this.entries.map(({ adapter }) => tokenOf(adapter.name)));
     return new CodeHostRegistry(
-      github === null ? this.github : this.github.withToken(github),
-      gitlab === null ? this.gitlab : this.gitlab.withToken(gitlab),
+      this.entries.map(({ adapter, host }, index) => {
+        const token = tokens[index];
+        return { adapter, host: token === null || token === undefined ? host : host.withToken(token) };
+      }),
     );
   }
 
@@ -62,28 +58,26 @@ export class CodeHostRegistry {
   }
 
   /** The tokens a git process of the server reads, those of the person of a run. */
-  async tokensFor(
-    startedBy: string | null | undefined,
-    codeHost?: string,
-  ): Promise<Pick<CodeHostEnv, 'GITHUB_TOKEN' | 'GITLAB_TOKEN'>> {
+  async tokensFor(startedBy: string | null | undefined, codeHost?: string): Promise<Partial<CodeHostEnv>> {
     const run = await this.forRun(startedBy, codeHost);
-    return { GITHUB_TOKEN: run.github.selected().token, GITLAB_TOKEN: run.gitlab.selected().token };
+    return Object.fromEntries(run.entries.map(({ adapter, host }) => [adapter.tokenKey, host.selected().token]));
   }
 
-  static create(hosts: CodeHostEnv, clock: Clock): CodeHostRegistry {
-    return new CodeHostRegistry(new GithubCodeHost(hosts, clock), new GitlabCodeHost(hosts, clock));
+  static create(env: CodeHostEnv, clock: Clock, connectionStore?: ConnectionsService): CodeHostRegistry {
+    return new CodeHostRegistry(
+      codeHostAdapters().map((adapter) => ({ adapter, host: adapter.create(env, clock) })),
+      connectionStore,
+    );
   }
 
   /** How a person connects each host; none when the store of connections is absent. */
   connections(): Connection[] {
     const store = this.connectionStore;
-    return store
-      ? [githubConnection(this.github.selected(), store), gitlabConnection(this.gitlab.selected(), store)]
-      : [];
+    return store ? this.entries.map(({ adapter, host }) => adapter.connection(host.selected(), store)) : [];
   }
 
   has(name: string): boolean {
-    return this.hosts.some((host) => host.name === name);
+    return this.entries.some(({ host }) => host.name === name);
   }
 
   byName(name: string): CodeHost {
@@ -91,12 +85,12 @@ export class CodeHostRegistry {
   }
 
   forOrigin(origin: string): CodeHostName | null {
-    const matched = this.hosts.filter((host) => host.matchesOrigin(origin));
+    const matched = this.entries.map(({ host }) => host).filter((host) => host.matchesOrigin(origin));
     if (matched.length > 1) {
       throw new SwarmloopError(`${remoteProject(origin).host.toLowerCase()} matches both code hosts`);
     }
     const found = matched[0];
-    return found ? found.name : null;
+    return found ? (found.name as CodeHostName) : null;
   }
 
   credentials(name: string): SelectedHost {
@@ -119,17 +113,21 @@ export class CodeHostRegistry {
     return host;
   }
 
-  /** GitLab's push URL when it can be built, otherwise GitHub's. The token is the one that built the URL, or GitHub's when neither did. */
+  /** The first host, in push order, that can build a push URL; the token is the one of that host. When none can, the last host's. */
   pushAuth(origin: string): { url: string | null; token: string } {
-    const gitlabUrl = this.gitlab.pushUrl(origin);
-    if (gitlabUrl) {
-      return { url: gitlabUrl, token: this.gitlab.selected().token };
+    const ordered = [...this.entries].sort((a, b) => a.adapter.pushOrder - b.adapter.pushOrder);
+    for (const { host } of ordered) {
+      const url = host.pushUrl(origin);
+      if (url) {
+        return { url, token: host.selected().token };
+      }
     }
-    return { url: this.github.pushUrl(origin), token: this.github.selected().token };
+    const last = ordered[ordered.length - 1];
+    return { url: null, token: last ? last.host.selected().token : '' };
   }
 
   private take(name: string): CodeHost {
-    const host = this.hosts.find((item) => item.name === name);
+    const host = this.entries.find((item) => item.host.name === name)?.host;
     if (!host) {
       throw new SwarmloopError('code host is missing');
     }
@@ -137,7 +135,7 @@ export class CodeHostRegistry {
   }
 }
 
-export type CodeHostName = CodeHostRegistry['names'][number];
+export type CodeHostName = CodeHostAdapter['name'];
 
 /** One host for this call. An empty list leaves the stored name alone. */
 export function assignCodeHost(

@@ -14,7 +14,8 @@
         "src/**/*.spec.ts",
         "src/**/*.spec-helpers.ts",
         "test/**/*.ts",
-        "src/history/data-source.ts"
+        "src/history/data-source.ts",
+        "src/integrations/code-host/*/index.ts"
       ],
       "project": ["src/**/*.ts", "test/**/*.ts"]
     },

@@ -1,18 +1,18 @@
 import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
+import { CODE_HOST_ENV_KEYS, CODE_HOST_LOGIN_ENV_KEYS } from './code-host-env-keys';
 import type { RequirementsVia } from '../integrations/requirements-source/requirements-source.registry';
 
-export interface SwarmloopEnv {
+export interface SwarmloopEnv
+  extends
+    Record<(typeof CODE_HOST_ENV_KEYS)[number], string>,
+    Record<(typeof CODE_HOST_LOGIN_ENV_KEYS)[number], string> {
   REQUIREMENTS_VIA: RequirementsVia;
   ISSUE_TRACKER: string;
   JIRA_BASE_URL: string;
   JIRA_EMAIL: string;
   JIRA_API_TOKEN: string;
   JIRA_PROJECTS: string;
-  GITLAB_BASE_URL: string;
-  GITLAB_TOKEN: string;
-  GITHUB_BASE_URL: string;
-  GITHUB_TOKEN: string;
   CURSOR_API_KEY: string;
   ANTHROPIC_API_KEY: string;
   CLAUDE_CODE_OAUTH_TOKEN: string;
@@ -65,10 +65,6 @@ export interface SwarmloopEnv {
   SWARMLOOP_API_HOST: string;
   SWARMLOOP_PUBLIC_URL: string;
   SWARMLOOP_REPOS: string[];
-  GITHUB_OAUTH_CLIENT_ID: string;
-  GITHUB_OAUTH_CLIENT_SECRET: string;
-  GITLAB_OAUTH_CLIENT_ID: string;
-  GITLAB_OAUTH_CLIENT_SECRET: string;
   SWARMLOOP_ALLOW: string;
   SWARMLOOP_TOKEN: string;
   SWARMLOOP_SECRET: string;
@@ -107,6 +103,10 @@ function warnIgnoredAgentEnv(config: ConfigService): void {
   );
 }
 
+function readStrings<Key extends string>(config: ConfigService, keys: readonly Key[]): Record<Key, string> {
+  return Object.fromEntries(keys.map((key) => [key, config.getOrThrow<string>(key)])) as Record<Key, string>;
+}
+
 export function readEnv(config: ConfigService): SwarmloopEnv {
   if (config.get('MODEL_RESEARCH') !== undefined) {
     new Logger('Config').warn('MODEL_RESEARCH is set but was never read: research runs on AGENTS_PLAN');
@@ -121,10 +121,7 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     JIRA_EMAIL: config.getOrThrow<string>('JIRA_EMAIL'),
     JIRA_API_TOKEN: config.getOrThrow<string>('JIRA_API_TOKEN'),
     JIRA_PROJECTS: config.getOrThrow<string>('JIRA_PROJECTS'),
-    GITLAB_BASE_URL: config.getOrThrow<string>('GITLAB_BASE_URL'),
-    GITLAB_TOKEN: config.getOrThrow<string>('GITLAB_TOKEN'),
-    GITHUB_BASE_URL: config.getOrThrow<string>('GITHUB_BASE_URL'),
-    GITHUB_TOKEN: config.getOrThrow<string>('GITHUB_TOKEN'),
+    ...readStrings(config, CODE_HOST_ENV_KEYS),
     CURSOR_API_KEY: config.getOrThrow<string>('CURSOR_API_KEY'),
     ANTHROPIC_API_KEY: config.getOrThrow<string>('ANTHROPIC_API_KEY'),
     CLAUDE_CODE_OAUTH_TOKEN: config.getOrThrow<string>('CLAUDE_CODE_OAUTH_TOKEN'),
@@ -177,10 +174,7 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     SWARMLOOP_API_HOST: config.getOrThrow<string>('SWARMLOOP_API_HOST'),
     SWARMLOOP_PUBLIC_URL: config.getOrThrow<string>('SWARMLOOP_PUBLIC_URL'),
     SWARMLOOP_REPOS: splitList(config.get<string>('SWARMLOOP_REPOS')),
-    GITHUB_OAUTH_CLIENT_ID: config.getOrThrow<string>('GITHUB_OAUTH_CLIENT_ID'),
-    GITHUB_OAUTH_CLIENT_SECRET: config.getOrThrow<string>('GITHUB_OAUTH_CLIENT_SECRET'),
-    GITLAB_OAUTH_CLIENT_ID: config.getOrThrow<string>('GITLAB_OAUTH_CLIENT_ID'),
-    GITLAB_OAUTH_CLIENT_SECRET: config.getOrThrow<string>('GITLAB_OAUTH_CLIENT_SECRET'),
+    ...readStrings(config, CODE_HOST_LOGIN_ENV_KEYS),
     SWARMLOOP_ALLOW: config.getOrThrow<string>('SWARMLOOP_ALLOW'),
     SWARMLOOP_TOKEN: config.getOrThrow<string>('SWARMLOOP_TOKEN'),
     SWARMLOOP_SECRET: config.getOrThrow<string>('SWARMLOOP_SECRET'),

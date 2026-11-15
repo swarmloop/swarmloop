@@ -18,7 +18,7 @@ export function branchName(key: string, summary: string): string {
   return `feature/${key}-${kebab}`;
 }
 
-/** GitLab rejects a subject that is only the ticket title. Scope is the Jira key, not the run id. */
+/** A code host rejects a subject that is only the ticket title. Scope is the Jira key, not the run id. */
 export function commitMessage(key: string, summary: string): string {
   const ticket = /^([A-Z][A-Z0-9]*-\d+)/.exec(key)?.[1] ?? key;
   const subject = summary.trim().replace(/\.+$/, '');

@@ -10,6 +10,7 @@ import { FetchFailed } from '../core/swarmloop-error';
 import { root } from '../history/run-paths';
 import { type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { ConnectionsService } from '../auth/connections.service';
+import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { ReadinessModelCredential } from './readiness-model-credential';
 import { missingModelCredential, ok, worst, type Outcome } from './readiness-outcome';
@@ -277,7 +278,9 @@ export class ReadinessService {
       return {
         status: 'warn',
         line: 'no code host token is set',
-        action: 'Connect GitHub or GitLab in Connections to publish',
+        action: `Connect ${codeHostAdapters()
+          .map((adapter) => adapter.label)
+          .join(' or ')} in Connections to publish`,
         link: '/connections',
       };
     }

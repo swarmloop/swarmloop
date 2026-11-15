@@ -71,6 +71,11 @@ export default tseslint.config(
     },
   },
   {
+    // The loader finds the code-host adapters by folder, so it requires them by path (the base config says the same).
+    files: ['server/src/integrations/code-host/code-host-adapters.ts'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
     // Next.js writes this file, and its reference line is not ours to change (the base config says the same).
     files: ['dashboard/next-env.d.ts'],
     rules: { '@typescript-eslint/triple-slash-reference': 'off' },

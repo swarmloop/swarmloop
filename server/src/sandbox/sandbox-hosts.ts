@@ -1,5 +1,6 @@
 import { isIP } from 'net';
 import { rawEnv } from '../config/process-env';
+import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
@@ -16,9 +17,7 @@ export const REGISTRIES = new Set([
   'repo1.maven.org',
   'repo.packagist.org',
   'packagist.org',
-  // Composer downloads the archives of GitHub packages from these two.
-  'api.github.com',
-  'codeload.github.com',
+  ...codeHostAdapters().flatMap((adapter) => adapter.packageHosts),
   'sum.golang.org',
   'static.crates.io',
   'index.rubygems.org',
@@ -48,14 +47,12 @@ export function matchesHost(rule: string, name: string): boolean {
 }
 
 /**
- * Packages with native code fetch a prebuilt binary from GitHub releases at install time (better-sqlite3, esbuild,
- * sharp), and node-gyp falls back to the headers from nodejs.org. Only the setup gets these: github.com also takes
- * pushes, so the agent, which holds the model key and writes the code, does not.
+ * Packages with native code fetch a prebuilt binary from the release downloads of the code hosts at install time
+ * (better-sqlite3, esbuild, sharp), and node-gyp falls back to the headers from nodejs.org. Only the setup gets these:
+ * a code host also takes pushes, so the agent, which holds the model key and writes the code, does not.
  */
 export const SETUP_DOWNLOADS = new Set([
-  'github.com',
-  'objects.githubusercontent.com',
-  'release-assets.githubusercontent.com',
+  ...codeHostAdapters().flatMap((adapter) => adapter.setupDownloads),
   'nodejs.org',
 ]);
 
@@ -95,8 +92,10 @@ export function hostRefusal(host: string, kind: 'setup' | 'agent', origins: read
   if ([...MODEL_HOSTS].some((rule) => matchesHost(rule, host))) {
     return 'is a model API host';
   }
-  const trusted = [env.GITHUB_BASE_URL, env.GITLAB_BASE_URL, env.JIRA_BASE_URL].map((url) => remoteHost(url ?? ''));
-  if (['github.com', 'gitlab.com', ...trusted, ...origins].includes(host)) {
+  const trusted = [...codeHostAdapters().map((adapter) => env[adapter.baseKey]), env.JIRA_BASE_URL].map((url) =>
+    remoteHost(url ?? ''),
+  );
+  if ([...codeHostAdapters().map((adapter) => adapter.publicHost), ...trusted, ...origins].includes(host)) {
     return 'is a code host';
   }
   if (kind === 'agent' && SETUP_DOWNLOADS.has(host)) {
