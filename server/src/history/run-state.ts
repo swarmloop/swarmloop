@@ -218,3 +218,10 @@ export function claimedColumns(step: string, activeAttempt: string): StateColumn
 export function releasedColumns(): Pick<StateColumns, 'ownerPid' | 'activeAttempt'> {
   return { ownerPid: null, activeAttempt: null };
 }
+
+/** When the run started to wait for the container of a dead owner. Null when it does not wait. */
+export function recoveringSince(run: RunEntity): number | null {
+  if (run.state !== 'recovering' || !run.stateReason) return null;
+  const since = Date.parse((JSON.parse(run.stateReason) as { message?: string }).message ?? '');
+  return Number.isFinite(since) ? since : null;
+}
