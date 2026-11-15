@@ -169,6 +169,21 @@ describe('reconciler waits and automatic tries', () => {
     });
   });
 
+  describe('Stop on a usage-limit wait', () => {
+    it('never resumes a stopped run', async () => {
+      const world = await boot();
+      await park(world, 'waiting', ERROR_CODES.RUNTIME_LIMIT);
+
+      await expect(world.app.get(PipelineService).stop(KEY)).resolves.toMatchObject({ exitCode: 0 });
+      world.clock.advance(600_000);
+      await world.app.get(Reconciler).resumeLimited();
+
+      expect(accept).not.toHaveBeenCalled();
+      expect(await reasonOf(world)).toMatchObject({ code: 'STOPPED' });
+      expect(await world.app.get(RunRepository).findRun(KEY)).toMatchObject({ status: 'blocked' });
+    });
+  });
+
   describe('resumeDiskLow', () => {
     it('resumes once the free space is above MIN_FREE_GB and not before', async () => {
       const world = await boot();

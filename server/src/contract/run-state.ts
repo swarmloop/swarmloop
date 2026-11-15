@@ -144,6 +144,7 @@ export const TIMED_RETRY_CODES: readonly string[] = [
   ERROR_CODES.HOST_UNAVAILABLE,
   ERROR_CODES.CI_NOT_STARTED,
   ERROR_CODES.DOCKER_UNAVAILABLE,
+  ERROR_CODES.RUNTIME_LIMIT,
 ];
 
 /** The one place that says which actions a state allows. Availability follows what the dashboard offered before. */

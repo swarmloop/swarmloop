@@ -20,6 +20,7 @@ import { RunDriver } from './run-driver';
 import { RunInstructions } from './run-instructions';
 import { Reconciler } from './reconciler';
 import { RunLifecycle } from './run-lifecycle';
+import { LimitRelease } from '../steps/shared/limit-release';
 import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 
 @Injectable()
@@ -44,6 +45,7 @@ export class PipelineService implements OnApplicationBootstrap {
     disk: DiskGuard,
     subtasks: SubtaskPort,
     private readonly drafts: MergeRequestDrafts,
+    limits: LimitRelease,
   ) {
     this.instructions = new RunInstructions(runs, documents, registry);
     this.driver = new RunDriver(
@@ -58,6 +60,7 @@ export class PipelineService implements OnApplicationBootstrap {
       workspace,
       disk,
       subtasks,
+      limits,
     );
     this.lifecycle = new RunLifecycle(
       runs,

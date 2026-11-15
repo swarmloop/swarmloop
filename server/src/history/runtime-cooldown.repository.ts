@@ -33,6 +33,13 @@ export class RuntimeCooldownRepository {
     });
   }
 
+  /** A person says the limit is over: the rows of `keys` go, and every run that waited on them may go on. */
+  async release(keys: readonly CooldownKey[]): Promise<void> {
+    for (const key of keys) {
+      await this.rows.delete({ runtime: key.runtime, credential: key.credential });
+    }
+  }
+
   /** The runtimes among `keys` whose credential is still cooling down at `now`. Other credentials of a runtime do not count. */
   async cooling(now: number, keys: readonly CooldownKey[]): Promise<Set<string>> {
     const rows = await this.rows.find();

@@ -30,6 +30,7 @@ import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { ResearchStep } from '../steps/research/research.step';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { LimitFailover } from '../steps/shared/limit-failover';
+import { LimitRelease } from '../steps/shared/limit-release';
 import { StepKernel } from '../steps/step-kernel';
 import { StepRegistry } from '../steps/step.registry';
 import { EnvironmentService } from '../environment/environment.service';
@@ -81,6 +82,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     CodeReviewStep,
     AgentLauncher,
     LimitFailover,
+    LimitRelease,
     StepKernel,
     StepRegistry,
     PipelineService,
