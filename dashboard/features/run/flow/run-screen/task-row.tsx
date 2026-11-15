@@ -6,7 +6,8 @@ import Button from '@mui/material/Button';
 import Collapse from '@mui/material/Collapse';
 import Typography from '@mui/material/Typography';
 import type { TaskLayer } from '@contract/api';
-import { duration, money } from '../../../../lib/format';
+import { interruptionSentence } from '@contract/interruption';
+import { duration, localTime, money } from '../../../../lib/format';
 import { TaskDetails } from './task-details';
 import { TASK_STATUS } from './task-status';
 
@@ -39,6 +40,11 @@ export function TaskRow({ task, onSkip }: { task: Task; onSkip: (taskId: string)
       {task.note ? (
         <Typography component="span" variant="caption" color="text.secondary">
           {task.note}
+        </Typography>
+      ) : null}
+      {task.run?.interruption ? (
+        <Typography component="span" variant="caption" color="text.secondary">
+          {interruptionSentence(task.run.interruption, localTime)}
         </Typography>
       ) : null}
       {task.run ? (

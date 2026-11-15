@@ -98,6 +98,12 @@ describe('shownStatus', () => {
     assert.equal(shownStatus('waiting', true, 'waiting', 'pipeline', null), 'waiting');
     assert.equal(shownStatus('failed', true, 'failed', 'checks', null), 'failed');
   });
+
+  it('shows a visit a server restart cut as interrupted, and another failed visit as failed', () => {
+    assert.equal(shownStatus('failed', true, 'waiting', 'checks', null, 'process died'), 'interrupted');
+    assert.equal(shownStatus('failed', true, 'failed', 'checks', null, null), 'failed');
+    assert.equal(shownStatus('failed', true, 'failed', 'checks', null, 'time limit'), 'failed');
+  });
 });
 
 describe('visitChecks', () => {

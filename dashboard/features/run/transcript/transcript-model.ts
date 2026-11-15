@@ -1,6 +1,7 @@
 import { isReadOnlyGit } from '@contract/git-reads';
 import type { StepEvent } from '@contract/step-events';
 import { withoutLogs } from './old-log-events';
+import type { InterruptionNote } from '@contract/interruption';
 import { attemptOutcome, whyOf } from './attempt-outcome';
 import type { AttemptEnd } from './attempt-outcome';
 import { problemOf } from './transcript-problems';
@@ -313,13 +314,14 @@ function isAttemptEnd(event: StepEvent): event is AttemptEnd {
 }
 
 /** The attempts of a step in the order they started, each with its events in `seq` order. */
-export function groupByAttempt(recorded: StepEvent[]): AttemptGroup[] {
+export function groupByAttempt(recorded: StepEvent[], notes?: ReadonlyMap<string, InterruptionNote>): AttemptGroup[] {
   const ordered = withoutLogs(recorded).sort((a, b) => a.seq - b.seq);
   const ids = [...new Set(ordered.map((event) => event.attemptId))];
   const groups: AttemptGroup[] = [];
   for (const attemptId of ids) {
     const own = ordered.filter((event) => event.attemptId === attemptId);
     const ended = own.filter(isAttemptEnd);
+    const note = notes?.get(attemptId);
     const agent = own.reduce<AgentStart>(
       (found, event) => (event.kind === 'attempt.started' ? event.agent : found),
       null,
@@ -329,9 +331,9 @@ export function groupByAttempt(recorded: StepEvent[]): AttemptGroup[] {
       number: groups.length + 1,
       why: whyOf(own, groups.length + 1),
       modelName: agent?.model ?? null,
-      outcome: ended.length > 0 ? attemptOutcome(own, ended[ended.length - 1]) : null,
+      outcome: ended.length > 0 ? attemptOutcome(own, ended[ended.length - 1], note) : null,
       items: itemsOf(own).map((item) =>
-        isAttemptEnd(item.event) ? { ...item, outcome: attemptOutcome(own, item.event) } : item,
+        isAttemptEnd(item.event) ? { ...item, outcome: attemptOutcome(own, item.event, note) } : item,
       ),
     });
   }
