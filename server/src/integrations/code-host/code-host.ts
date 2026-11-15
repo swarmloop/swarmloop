@@ -93,7 +93,7 @@ export interface PipelineCheck {
   workflow: boolean;
 }
 
-/** One GitHub workflow run, or one GitLab pipeline. */
+/** One CI run of a host: a workflow run or a pipeline. */
 export interface PipelineRun {
   id: number;
   status: string;
