@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Collapse from '@mui/material/Collapse';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import type { TaskLayer } from '@contract/api';
 import { duration, money } from '../../../../lib/format';
@@ -28,9 +29,11 @@ export function TaskRow({ task, onSkip }: { task: Task; onSkip: (taskId: string)
           {step}
         </Typography>
       </Box>
-      <Typography variant="body2" noWrap sx={{ minWidth: 0, flex: '1 1 8rem' }}>
-        {task.title}
-      </Typography>
+      <Tooltip title={task.title}>
+        <Typography variant="body2" noWrap sx={{ minWidth: 0, flex: '1 1 8rem' }}>
+          {task.title}
+        </Typography>
+      </Tooltip>
       {task.depends.length > 0 ? (
         <Typography component="span" variant="caption" color="text.secondary">
           after {task.depends.join(', ')}

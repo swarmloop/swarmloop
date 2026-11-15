@@ -1,5 +1,6 @@
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import type { StepEvent } from '@contract/step-events';
 import { duration } from '../../../lib/format';
 import { Bubble, Code, Detail } from './bubble';
@@ -41,6 +42,34 @@ function CommandLine({ event, end }: { event: Started; end: Finished | null }): 
 
 const lineCount = (output: string): number => output.split('\n').length;
 
+/** How many of the last lines of an output show before `Show whole output`. */
+const SHOWN_LINES = 40;
+
+/** The last lines of a command's output, the count of the lines before them, and a button for the whole output. */
+function CommandOutput({ end, output }: { end: Finished; output: string }): ReactElement {
+  const [whole, setWhole] = useState(false);
+  const lines = output.split('\n');
+  const omitted = end.omittedLines ?? 0;
+  const hidden = Math.max(0, lines.length - SHOWN_LINES) + omitted;
+  if (hidden === 0) {
+    return <Code>{output}</Code>;
+  }
+  const mark = whole
+    ? omitted > 0
+      ? `… ${omitted} earlier lines not shown; the whole output is in the step's log\n`
+      : ''
+    : `… ${hidden} earlier lines not shown\n`;
+  const text = whole ? output : lines.slice(-SHOWN_LINES).join('\n');
+  return (
+    <>
+      <Code>{`${mark}${text}`}</Code>
+      <Button size="small" aria-expanded={whole} onClick={() => setWhole(!whole)}>
+        Show whole output
+      </Button>
+    </>
+  );
+}
+
 /** One command inside an activity bubble: the line, and its output behind the shared detail button. */
 export function CommandBody({ event, end }: { event: Started; end: Finished | null }): ReactElement {
   return (
@@ -48,7 +77,7 @@ export function CommandBody({ event, end }: { event: Started; end: Finished | nu
       <CommandLine event={event} end={end} />
       {end?.output ? (
         <Detail label="output" lines={lineCount(end.output)}>
-          <Code>{end.output}</Code>
+          <CommandOutput end={end} output={end.output} />
         </Detail>
       ) : null}
     </>
@@ -62,7 +91,7 @@ export function CommandCard({ event, end }: { event: Started; end: Finished | nu
       title="Command"
       type="command"
       running={end === null}
-      detail={end?.output ? <Code>{end.output}</Code> : undefined}
+      detail={end?.output ? <CommandOutput end={end} output={end.output} /> : undefined}
       detailLabel="output"
       detailLines={end?.output ? lineCount(end.output) : undefined}
     >

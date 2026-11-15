@@ -32,6 +32,8 @@ export function commandEvents(
     /** Who ran it. A server call may declare its exit an `answer`. Defaults to the agent. */
     actor?: 'server' | 'agent';
     answer?: true;
+    /** Lines the server dropped before `output`. */
+    omittedLines?: number;
   },
   overrides: Partial<Pick<StepEvent, 'attemptId' | 'step'>> = {},
 ): StepEvent[] {
@@ -61,6 +63,7 @@ export function commandEvents(
         cancelled: false,
         ...(command.answer ? { answer: command.answer } : {}),
         output: command.output ?? null,
+        ...(command.omittedLines ? { omittedLines: command.omittedLines } : {}),
       },
       overrides,
     ),
