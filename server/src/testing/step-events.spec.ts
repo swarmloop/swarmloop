@@ -1,6 +1,5 @@
 import { AGENT_RUNNER } from '../agent/agent-runner';
 import { StepStopped } from '../agent/step-stopped';
-import { execFileSync } from 'child_process';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import { Logger } from '@nestjs/common';
@@ -18,6 +17,7 @@ import type { InputSpec, StepResult } from '../steps/contract/step-contract';
 import { ResearchStep } from '../steps/research/research.step';
 import { StepKernel } from '../steps/step-kernel';
 import { resultAnswer } from './result-answer';
+import { git as setupGit } from './git-fixture';
 import { goldenApp } from '../steps/shared/model-golden.spec-helpers';
 import { recordStepEvent } from '../core/step-event-scope';
 
@@ -141,7 +141,7 @@ describe('step events', () => {
     });
     repo = join(golden.root, 'worktrees', 'E-1', 'demo');
     mkdirSync(repo, { recursive: true });
-    execFileSync('git', ['init', '-q', repo]);
+    setupGit(golden.root, ['init', '-q', repo]);
   });
 
   // The scenarios run in any order, so the kinds are compared once all of them have run.

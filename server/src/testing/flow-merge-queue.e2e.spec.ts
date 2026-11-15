@@ -76,13 +76,21 @@ describe('the feature branch stays green: every merge is of a task tested on top
   const statuses = async () => Object.fromEntries((await tasks()).map((item) => [item.id, item.status]));
   const noteOf = async (id: string) => (await tasks()).find((item) => item.id === id)?.note;
 
+  /** The parent and every task run have no step or rebase left, so closing the app removes no repository in use. */
+  async function idleAll(): Promise<void> {
+    await flow.app.app.get(CommandService).idle();
+    for (const key of [KEY, ...(await tasks()).map((item) => `${KEY}-${item.id}`)]) {
+      await flow.app.pipeline.whenIdle(key);
+    }
+  }
+
   async function pass(): Promise<void> {
     await flow.app.app.get(CommandService).idle();
     await flow.app.pipeline.whenIdle(KEY);
     await flow.app.pipeline.step('implement', KEY);
     await flow.app.app.get(CommandService).idle();
     await flow.tick();
-    await flow.app.pipeline.whenIdle(KEY);
+    await idleAll();
     await assertInvariants(flow.app);
   }
 
@@ -290,17 +298,19 @@ describe('the feature branch stays green: every merge is of a task tested on top
     await deliver('a', 'src/a.ts', 'export const a = 1;\n');
     await deliver('b', 'src/b.ts', 'export const b = 1;\n');
     const service = flow.app.app.get(RunRebaseService);
-    const rebase = jest
-      .spyOn(service, 'rebase')
-      .mockRejectedValueOnce(new ConflictException('the host did not answer'))
-      .mockResolvedValue({ key: `${KEY}-b`, status: 'started' });
+    const sent: unknown[][] = [];
+    jest.spyOn(service, 'rebase').mockImplementation((...args) => {
+      sent.push(args);
+      if (sent.length === 1) return Promise.reject(new ConflictException('the host did not answer'));
+      return Promise.resolve({ key: `${KEY}-b`, status: 'started' });
+    });
 
     await pass();
     // The first command died; the next pass sent the rebase again, once.
-    expect(rebase).toHaveBeenCalledTimes(2);
-    expect(rebase).toHaveBeenLastCalledWith(`${KEY}-b`, true);
+    expect(sent).toHaveLength(2);
+    expect(sent.at(-1)).toEqual([`${KEY}-b`, true]);
 
     await pass();
-    expect(rebase).toHaveBeenCalledTimes(2);
+    expect(sent).toHaveLength(2);
   });
 });
