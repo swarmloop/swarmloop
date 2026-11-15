@@ -14,6 +14,7 @@ import { writeEnv } from '../implement/implement.step.spec-helpers';
 import { BranchStep } from '../branch/branch.step';
 import { resultAnswer } from '../../testing/result-answer';
 import { withPlan } from '../plan/plan-record';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 
 const task = { title: 'Add the column', description: 'Adds it.', depends: [], files: ['a.ts'], proof: 'a.spec.ts' };
 const stored = [{ ...task, id: 'column', status: 'pending' }];
@@ -37,6 +38,7 @@ async function epicApp(key: string, epicEffort: string, answers: string[], start
   mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
   const agent = jest.fn();
   for (const answer of answers) agent.mockResolvedValueOnce(result(answer, 'plan-improve'));
+  seedMigratedDatabase(root);
   const app = await boot(root, agent);
   const runs = app.get(RunRepository);
   const documents = app.get(DocumentRepository);

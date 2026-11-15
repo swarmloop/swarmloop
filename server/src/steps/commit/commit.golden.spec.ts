@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { RunStop } from '../../agent/run-stop';
 import { StepKernel } from '../step-kernel';
-import { mkdirSync, writeFileSync } from 'fs';
+import { writeFileSync } from 'fs';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -20,6 +20,8 @@ import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { RebasedPublisher } from '../shared/rebased-publisher';
 import { PipelineModule } from '../../pipeline/pipeline.module';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
+import { featureWorktree } from '../../testing/runs.spec-helpers';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
 import { CommitStep } from './commit.step';
 
@@ -73,20 +75,20 @@ describe('commit step golden traces', () => {
   }
 
   it('commits and pushes', async () => {
-    const tree = featureTree(root);
+    const tree = featureWorktree(root, KEY).tree;
     writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
     await trace('ok', tree);
   });
 
   it('commits locally and skips CI when origin is missing', async () => {
-    const tree = featureTree(root);
+    const tree = featureWorktree(root, KEY).tree;
     writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
     runGit(tree, ['remote', 'remove', 'origin']);
     await trace('no-origin', tree);
   });
 
   it('fails with a SwarmloopError when a re-run of CI cannot be pushed', async () => {
-    const tree = featureTree(root);
+    const tree = featureWorktree(root, KEY).tree;
     runGit(tree, ['push', '-q', '-u', 'origin', `feature/${KEY}-ship-the-field`]);
     runGit(tree, ['remote', 'set-url', 'origin', join(root, 'gone.git')]);
     await trace('swarmloop-error', tree, async () => {
@@ -96,7 +98,7 @@ describe('commit step golden traces', () => {
   });
 
   it('fails with the generic text when a dependency throws a plain Error', async () => {
-    const tree = featureTree(root);
+    const tree = featureWorktree(root, KEY).tree;
     writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
     await trace('plain-error', tree, () => {
       jest.spyOn(app.get(CheckoutRepository), 'listDenyPaths').mockRejectedValueOnce(new Error('disk gone'));
@@ -106,6 +108,7 @@ describe('commit step golden traces', () => {
 
 async function boot(root: string) {
   await writeEnvOverrides(root, envOverrides(root));
+  seedMigratedDatabase(root);
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   }).compile();
@@ -124,27 +127,6 @@ async function seed(app: Awaited<ReturnType<typeof boot>>): Promise<void> {
     `${JSON.stringify({ prompt: 'Ship the field\n', tickets: [{ key: KEY, summary: 'Ship the field' }] })}\n`,
   );
   await documents.putDocument(seeded, 'repos', 'demo\n');
-}
-
-/** A clone with a bare origin and the run's feature worktree on its branch. */
-function featureTree(root: string): string {
-  const clone = join(root, 'demo');
-  const remote = join(root, 'demo.git');
-  const tree = join(root, 'worktrees', KEY, 'demo');
-  runGit(root, ['init', '-q', '-b', 'main', clone]);
-  runGit(clone, ['config', 'user.email', 'dev@example.com']);
-  runGit(clone, ['config', 'user.name', 'Dev']);
-  mkdirSync(join(clone, 'src'), { recursive: true });
-  writeFileSync(join(clone, 'src', 'readme.ts'), 'export const readme = 1;\n');
-  runGit(clone, ['add', 'src/readme.ts']);
-  runGit(clone, ['commit', '-q', '-m', 'init']);
-  runGit(root, ['init', '-q', '--bare', remote]);
-  runGit(clone, ['remote', 'add', 'origin', remote]);
-  runGit(clone, ['push', '-q', '-u', 'origin', 'main']);
-  runGit(clone, ['switch', '-q', '-c', 'holder']);
-  mkdirSync(join(tree, '..'), { recursive: true });
-  runGit(clone, ['worktree', 'add', '-q', '-b', `feature/${KEY}-ship-the-field`, tree, 'main']);
-  return tree;
 }
 
 function envOverrides(root: string): Record<string, string> {

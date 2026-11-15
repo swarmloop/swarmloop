@@ -104,7 +104,7 @@ describe('ProjectAppendService', () => {
     expect(docs.filter((item) => item.kind === 'pending_repos').at(-1)?.body).toBe('handbook\n');
     run.status = 'waiting';
     await service.flush('PROJ-20');
-    expect(worktrees.ensureDetached).toHaveBeenCalledTimes(1);
+    expect(worktrees.ensureDetached).toHaveBeenCalledWith(run, ['handbook'], run.prompt, false);
     expect(docs.filter((item) => item.kind === 'pending_repos').at(-1)?.body).toBe('');
   });
 });

@@ -65,7 +65,7 @@ describe('research result', () => {
     try {
       const done = await app.get(PipelineService).step('research', 'PROJ-62');
       expect(done.exitCode).toBe(0);
-      expect(agent).toHaveBeenCalledTimes(2);
+      expect((await app.get(RunRepository).findRun('PROJ-62'))?.agentCalls).toBe(2);
       expect((agent.mock.calls[1]?.[0] as AgentRunInput).prompt).toContain('impact.0.status');
       const stored = await app.get(DocumentRepository).latestBody('PROJ-62', ARTIFACTS.researchResult.kind);
       expect(stored).toContain('fixed');
@@ -83,8 +83,9 @@ describe('research result', () => {
       const done = await app.get(PipelineService).step('research', 'PROJ-63');
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('the answer has no result block');
-      expect(agent).toHaveBeenCalledTimes(3);
-      expect((await app.get(RunRepository).findRun('PROJ-63'))?.currentStep).toBe('research');
+      const run = await app.get(RunRepository).findRun('PROJ-63');
+      expect(run?.agentCalls).toBe(3);
+      expect(run?.currentStep).toBe('research');
     } finally {
       await app.close();
     }

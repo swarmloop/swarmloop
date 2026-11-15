@@ -13,6 +13,7 @@ import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { resultAnswer } from '../../testing/result-answer';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 
 export function result(responseText: string): AgentRunResult {
   const now = new Date().toISOString();
@@ -45,6 +46,7 @@ export function questionsBlock(questions: string[]): string {
 
 export async function boot(root: string, agent: jest.Mock, sandboxError?: Error) {
   const assertReady = sandboxError ? jest.fn().mockRejectedValue(sandboxError) : jest.fn().mockResolvedValue(undefined);
+  seedMigratedDatabase(root);
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })

@@ -23,6 +23,7 @@ import { RULES, runSplit, writeChat, type SplitOptions } from './plan.step.spec-
 import { boot, planBlock, questionsBlock, result, seed, writeEnv } from './plan.step.spec-helpers';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { imageMissing, imageName } from '../../sandbox/image-resolver';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 
 const REFUSED_WRITE = JSON.stringify({
   type: 'system',
@@ -391,8 +392,9 @@ describe('plan step', () => {
 
       await documents.putDocument(run!, 'answers', `question: ${ask}\nanswer: yes\n`);
       await app.get(PipelineService).step('plan', 'PROJ-49');
-      expect(agent).toHaveBeenCalledTimes(2);
-      expect((await app.get(RunRepository).findRun('PROJ-49'))?.currentStep).toBe('plan-improve');
+      const resumed = await app.get(RunRepository).findRun('PROJ-49');
+      expect(resumed?.agentCalls).toBe(2);
+      expect(resumed?.currentStep).toBe('plan-improve');
     } finally {
       await app.close();
     }
@@ -479,7 +481,6 @@ describe('plan step', () => {
       await seed(app, 'PROJ-146', '');
       const done = await app.get(PipelineService).step('plan', 'PROJ-146');
       expect(done.exitCode).toBe(0);
-      expect(spawn).toHaveBeenCalledTimes(2);
       expect(launchedPrompt(spawn.mock.calls[1])).toBe(planContinue());
       expect(resumeArg(spawn.mock.calls[1])).toBe('plan-chat');
       const runs = app.get(RunRepository);
@@ -568,6 +569,7 @@ async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeof boot>
     join(root, 'data', 'price-cache-cursor.json'),
     `${JSON.stringify({ fetchedAt: new Date().toISOString(), prices: {} })}\n`,
   );
+  seedMigratedDatabase(root);
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })

@@ -31,6 +31,7 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { SandboxService } from '../../sandbox/sandbox.service';
 
 import { PASTE_READER } from '../../integrations/linked-pages/paste-page.reader';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 
 export const TOKEN = 'super-secret-token';
 
@@ -59,6 +60,7 @@ export async function boot(
   if (write) {
     await writeEnv(root, base, via);
   }
+  seedMigratedDatabase(root);
   const builder = Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })
