@@ -56,6 +56,15 @@ describe('git command spans', () => {
     expect(ended).toMatchObject([{ exitCode: 1, answer: true }]);
   });
 
+  it('keeps the last lines of a long output and says how many lines it left out', async () => {
+    const ended = await recorded(() => git(['-c', 'alias.many=!seq 1 100', 'many']));
+
+    const output = (ended[0] as { output: string }).output;
+    expect(output.split('\n')).toHaveLength(40);
+    expect(output.endsWith('100')).toBe(true);
+    expect(ended[0]).toMatchObject({ omittedLines: 60 });
+  });
+
   it('records a git call that really fails without an answer', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-git-fails-'));
 

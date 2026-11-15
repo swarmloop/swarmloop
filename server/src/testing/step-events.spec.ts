@@ -308,7 +308,7 @@ describe('step events', () => {
       'agent.tool',
       'agent.finished',
     ]);
-    expect(events[launched + 1]).toMatchObject({ chars: 700, text: 'x'.repeat(600) });
+    expect(events[launched + 1]).toMatchObject({ chars: 700, text: 'x'.repeat(700) });
     expect(events[launched + 2]).toMatchObject({ tool: 'shell', target: 'ls', status: 'ok', resultLine: 'exit 0' });
   });
 
