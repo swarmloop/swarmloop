@@ -193,7 +193,7 @@ Every model step runs in a fresh container. The server starts it for the step an
 - **Process.** Never root: a launch as root is refused. All Linux capabilities are dropped, `no-new-privileges` is set, the root filesystem is read-only, and the container gets at most 256 processes. There is no Docker socket, so it cannot start another container. The sandboxes share the host kernel: with gVisor installed on the Docker host, `SANDBOX_DOCKER_RUNTIME=runsc` gives each one a kernel of its own, so a kernel bug does not reach the host.
 - **Secrets.** Jira, GitLab, and GitHub tokens stay in the server process. The model key is covered above.
 - **Lifetime.** The step time limit, silence longer than `IDLE_TIMEOUT_MS`, or a token ceiling kills the container. It never outlives its step.
-- **Git.** The agent does not commit and does not push. The server does, after the reviewers pass, and only for paths outside `deny_paths`.
+- **Git.** The agent does not commit and does not push. The server does, after the reviewers pass.
 
 ### 🗂 One history, nothing lost
 
@@ -223,7 +223,7 @@ A prompt without a ticket number never calls Jira. Jira is the tracker that ship
 
 - One run can span several repositories. Research decides which ones get a feature branch.
 - The server matches each checkout's `origin` with `GITHUB_BASE_URL` or `GITLAB_BASE_URL`. Point `GITLAB_BASE_URL` at a self-hosted GitLab and it works the same way.
-- With **ci** ticked, the server commits by itself once the reviewers pass. It commits only paths outside `deny_paths` and refuses `main` and `master`. With **ci** unticked, the run stops at commit and shows the file list, and nothing is committed or pushed.
+- With **ci** ticked, the server commits by itself once the reviewers pass. It refuses `main` and `master`. With **ci** unticked, the run stops at commit and shows the file list, and nothing is committed or pushed.
 - A pull request or merge request is opened, or the existing one is updated.
 - The server watches the pipeline on that branch. A red job's log goes back to implementation.
 - A checkout with no `origin` still gets the full review. CI is skipped, and the panel says why.

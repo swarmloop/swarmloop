@@ -14,9 +14,12 @@ interface StoredLog {
 
 /**
  * An agent log lives in its attempt file. The stored copy of a log whose file exists is emptied. A log with no
- * attempt id or no file stays: no other file may stand in for it.
+ * attempt id or no file stays: no other file may stand in for it. It deletes data, so the server compacts the
+ * database once after it.
  */
 export class EmptyLogBodies1794900000000 implements MigrationInterface {
+  readonly deletesData = true;
+
   async up(queryRunner: QueryRunner): Promise<void> {
     const database = queryRunner.connection.options.database;
     if (typeof database !== 'string' || database === ':memory:') {

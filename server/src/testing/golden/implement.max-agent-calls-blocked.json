@@ -56,7 +56,6 @@
   "run": {
     "agentCalls": 20,
     "attemptsPipeline": 0,
-    "attemptsQa": 0,
     "attemptsReview": 0,
     "currentStep": "implement",
     "runtime": "cursor",

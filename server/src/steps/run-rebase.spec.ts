@@ -41,7 +41,6 @@ function rebaseOf(run: RunEntity, backToDraft: () => Promise<void> = async () =>
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
     drafts as never,
     {} as never,
   );

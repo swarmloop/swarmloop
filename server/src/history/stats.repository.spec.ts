@@ -9,8 +9,6 @@ function run(key: string, createdAt: string): Partial<RunEntity> {
     status: 'done',
     currentStep: 'done',
     runtime: 'claude',
-    requirementsVia: 'agent',
-    issueTracker: 'jira',
     codeHost: '',
     createdAt,
     updatedAt: createdAt,

@@ -132,20 +132,6 @@ describe('step log api', () => {
     });
   });
 
-  it('serves the stored log document of an attempt that has no file', async () => {
-    await withApp(async (queries, app) => {
-      const run = await save(app.get(RunRepository), 'proj-7', 'implement', 'waiting');
-      const stat = await app.get(VisitRepository).finishVisit(run, {
-        ...repositoryVisit(),
-        step: 'implement',
-        documents: [{ kind: 'log', fileName: '', body: 'old one\nold two\n' }],
-      });
-      stat.attemptId = 'att-1';
-      await app.get(VisitRepository).saveStat(stat);
-      expect(await queries.stepLog('proj-7', 'implement', 'att-1', { tail: '1' })).toBe('old two\n');
-    });
-  });
-
   describe('the log of a check command', () => {
     async function checksRun(app: Awaited<ReturnType<typeof boot>>, root: string, key: string, body: string) {
       const run = await save(app.get(RunRepository), key, 'checks', 'waiting');

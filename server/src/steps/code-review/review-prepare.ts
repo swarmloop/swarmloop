@@ -1,6 +1,5 @@
 import { realpathSync } from 'fs';
 import type { AppConfig } from '../../config/env';
-import type { CheckoutRepository } from '../../history/checkout.repository';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { FlowRepository } from '../../history/flow.repository';
 import type { RunRepository } from '../../history/run.repository';
@@ -29,7 +28,6 @@ export interface PrepareDeps {
   flows: FlowRepository;
   documents: DocumentRepository;
   visits: VisitRepository;
-  checkouts: CheckoutRepository;
   worktrees: CheckoutService;
   config: AppConfig;
 }
@@ -80,7 +78,7 @@ export async function prepareReview(deps: PrepareDeps, notes: string | null, ctx
   const retry = fresh ? false : await retrying(deps.visits, opened);
   const attemptId = retry ? await interruptedAttempt(deps.visits, opened) : null;
   const returned = await returnedNotes(deps.documents, opened.run.id);
-  const diff = await reviewDiffSection(mounts, await deps.checkouts.listDenyPaths(), opened.run.prompt);
+  const diff = await reviewDiffSection(mounts, [], opened.run.prompt);
   const same = sameReviewedDiff(root(deps.config), key, diff.patch);
   const fingerprint = await worktreesFingerprint(mounts.map((mount) => mount.hostPath));
   const { kept, pending, recovered } = await selectReviewers(deps.documents, root(deps.config), {

@@ -6,7 +6,6 @@ import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { FlowRepository } from '../history/flow.repository';
-import { CheckoutRepository } from '../history/checkout.repository';
 import { root } from '../history/run-paths';
 import { branchName, commitMessage, summaryForBranch } from './branch/branch-name';
 import { completeRebase, rebaseFeatureRepos } from '../git/rebase';
@@ -41,7 +40,6 @@ export class RunRebase {
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
     private readonly flows: FlowRepository,
-    private readonly checkouts: CheckoutRepository,
     private readonly config: AppConfig,
     private readonly clock: Clock,
     private readonly environments: RunRebaseEnvironment,
@@ -192,7 +190,7 @@ export class RunRebase {
       repos: names,
       branch: branchName(run.key, summary),
       prompt: run.prompt,
-      denied: await this.checkouts.listDenyPaths(),
+      denied: [],
       message: commitMessage(run.key, summary),
       hosts: { ...this.config.env, ...(await this.registry.tokensFor(run.startedBy, run.codeHost)), clock: this.clock },
       journal,

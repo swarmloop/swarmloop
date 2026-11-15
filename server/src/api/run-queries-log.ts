@@ -5,10 +5,9 @@ import { pipelineStepOf } from '../contract/steps';
 import { attemptIdsOf, OUTPUT_STEPS, stepOutput, stepOutputPath } from '../core/attempt-output';
 import { readCheckOutput } from '../core/check-output';
 import { redact } from '../core/redact';
-import type { DocumentEntity, RunEntity, StepStatEntity } from '../history/entities';
+import type { RunEntity, StepStatEntity } from '../history/entities';
 import type { CheckCommandRepository } from '../history/check-command.repository';
 import type { RunRepository } from '../history/run.repository';
-import type { DocumentRepository } from '../history/document.repository';
 import type { VisitRepository } from '../history/visit.repository';
 import { root } from '../history/run-paths';
 import { logPaging, requireRun } from './run-queries-run';
@@ -82,20 +81,16 @@ function fileLog(path: string): FileLog | null {
   }
 }
 
-/** The size of a visit's log: its attempt file, else the body of a stored `log` document that has no file. */
+/** The size of a visit's log: its attempt file, or 0 bytes and 0 lines when there is none. */
 export function logSize(
   dir: string,
   key: string,
   step: string,
   attemptId: string | null,
-  stored = '',
 ): { attemptId: string | null; logBytes: number; logLines: number } {
   const path = attemptId ? stepOutputPath(dir, key, step, attemptId) : null;
   const file = path ? fileLog(path) : null;
-  if (file && file.logBytes > 0) {
-    return { attemptId, logBytes: file.logBytes, logLines: file.logLines };
-  }
-  return { attemptId, ...textSize(stored) };
+  return { attemptId, logBytes: file?.logBytes ?? 0, logLines: file?.logLines ?? 0 };
 }
 
 /**
@@ -115,18 +110,16 @@ function visitAttempt(
   return reviewRunning ? run.activeAttempt : (attemptIdsOf(dir, run.key, stat.step)[0] ?? null);
 }
 
-/** The size of a stored visit's log, from its file, else from the `log` document a visit with no file kept. */
+/** The size of a stored visit's log, from its file. */
 export function visitLogSize(
   config: AppConfig,
   run: RunEntity,
   step: string,
   stat: StepStatEntity,
-  documents: DocumentEntity[],
   { latest = false, reviewRunning = false } = {},
 ): ReturnType<typeof logSize> {
   const dir = root(config);
-  const stored = documents.filter((document) => document.stepStatId === stat.id && document.kind === 'log');
-  return logSize(dir, run.key, step, visitAttempt(dir, run, stat, latest, reviewRunning), stored.at(-1)?.body ?? '');
+  return logSize(dir, run.key, step, visitAttempt(dir, run, stat, latest, reviewRunning));
 }
 
 /** `from` is the first line (1-based). `tail` is how many lines: the last ones, or the ones from `from`. */
@@ -147,7 +140,6 @@ function sliceLog(text: string, { tail, from }: { tail?: number; from?: number }
 export async function readStepLog(
   runs: RunRepository,
   visits: VisitRepository,
-  documents: DocumentRepository,
   config: AppConfig,
   key: string,
   step: string,
@@ -163,9 +155,7 @@ export async function readStepLog(
   if (attempt && !knownAttempt(dir, run, stats, step, attempt)) {
     throw new NotFoundException(`${attempt} is not an attempt of ${step}`);
   }
-  const text = stepOutputPath(dir, run.key, step, attempt)
-    ? stepOutput(dir, run.key, step, attempt)
-    : await storedLog(documents, run, stats, attempt);
+  const text = stepOutputPath(dir, run.key, step, attempt) ? stepOutput(dir, run.key, step, attempt) : null;
   if (text === null) {
     throw new NotFoundException(`${step} has no log`);
   }
@@ -198,21 +188,4 @@ export async function readCheckLog(
     throw new NotFoundException(`check command ${command} has no log yet`);
   }
   return sliceLog(redact(text, config.env), logPaging(query));
-}
-
-/** The `log` document a visit kept when it had no file. Null when there is none. */
-async function storedLog(
-  documents: DocumentRepository,
-  run: RunEntity,
-  stats: StepStatEntity[],
-  attempt: string | null,
-): Promise<string | null> {
-  const stat = attempt ? stats.find((item) => item.attemptId === attempt) : undefined;
-  if (!stat) {
-    return null;
-  }
-  const stored = (await documents.listDocuments(run.id)).filter(
-    (document) => document.stepStatId === stat.id && document.kind === 'log' && document.body !== '',
-  );
-  return stored.length > 0 ? stored[stored.length - 1].body : null;
 }

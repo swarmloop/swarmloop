@@ -16,13 +16,13 @@ import { mkdtemp, rm } from 'fs/promises';
 
 import { tmpdir } from 'os';
 
-import { isAbsolute, join } from 'path';
+import { join } from 'path';
 
 import { RunRepository } from '../history/run.repository';
 
 import { DocumentRepository } from '../history/document.repository';
 
-import { REBASE_CONFLICT, rebaseFeatureRepos, storedBase } from '../git/rebase';
+import { rebaseFeatureRepos, storedBase } from '../git/rebase';
 import { memoryJournal } from '../git/rebase/journal.spec-helpers';
 
 import { FakeClock } from '../core/fake-clock.spec-helpers';
@@ -31,7 +31,7 @@ import { RunRebaseService } from './run-rebase.service';
 
 import { httpStatus } from './runs.controller';
 
-import { boot, remember, featureWorktree, denyEnv, git } from '../testing/runs.spec-helpers';
+import { boot, remember, featureWorktree, git } from '../testing/runs.spec-helpers';
 
 // These specs diff the temp folder, so they use a folder of their own: jest workers share the real one.
 jest.mock('os', () => {
@@ -151,59 +151,6 @@ describe('runs api', () => {
       expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);
       expect(readFileSync(join(tree, 'src', 'readme.ts'), 'utf8')).toBe('export const readme = 1;\n');
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-63-ship-the-field');
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('returns a conflict when a tracked denied edit is hidden', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-denied-stash-'));
-    const { tree, clone } = featureWorktree(root, 'proj-66');
-    const branch = 'feature/proj-66-ship-the-field';
-    writeFileSync(join(tree, '.env'), 'TOKEN=1\n');
-    git(tree, ['add', '.env']);
-    git(tree, ['commit', '-m', 'env']);
-    writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
-    git(tree, ['add', 'src/field.ts']);
-    git(tree, ['commit', '-m', 'field']);
-    git(clone, ['switch', 'main']);
-    writeFileSync(join(clone, 'src', 'field.ts'), 'export const field = 2;\n');
-    git(clone, ['add', 'src/field.ts']);
-    git(clone, ['commit', '-m', 'base']);
-    git(clone, ['push', 'origin', 'main']);
-    writeFileSync(join(tree, '.env'), 'TOKEN=2\n');
-    writeFileSync(join(tree, 'src', 'extra.ts'), 'export const extra = 1;\n');
-    const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-66 started' }) };
-    const app = await boot(root, pipeline);
-    try {
-      await denyEnv(app);
-      const runs = app.get(RunRepository);
-      const documents = app.get(DocumentRepository);
-      const run = await remember(runs, documents, 'proj-66', 'done', 'done');
-      await documents.putDocument(run, 'implementation', '- changed the field\n');
-      const result = await app.get(RunRebaseService).rebase('proj-66');
-      expect(result).toEqual({ key: 'proj-66', status: 'started' });
-      expect(httpStatus(result)).toBe(202);
-      expect(pipeline.startDetached).toHaveBeenCalledWith('proj-66');
-      const fresh = await runs.findRun('proj-66');
-      expect(fresh?.status).toBe('waiting');
-      expect(fresh?.currentStep).toBe('implement');
-      expect((await documents.latestBody('proj-66', REBASE_CONFLICT))?.trim()).toBe('pending');
-      expect(readFileSync(join(tree, 'src', 'field.ts'), 'utf8')).toContain('<<<<<<<');
-      expect(git(tree, ['branch', '--show-current'])).toBe(branch);
-      const state = git(tree, ['rev-parse', '--git-path', 'swarmloop-rebase']);
-      expect(existsSync(isAbsolute(state) ? state : join(tree, state))).toBe(true);
-      const saved = git(tree, ['rev-parse', `refs/swarmloop/pre-rebase/${branch}`]);
-      expect(git(tree, ['show', '--name-only', '--format=', saved])).toContain('src/extra.ts');
-      let hidden = false;
-      try {
-        git(tree, ['rev-parse', '--verify', '--quiet', 'refs/worktree/swarmloop-rebase']);
-        hidden = true;
-      } catch {
-        hidden = false;
-      }
-      const env = existsSync(join(tree, '.env')) ? readFileSync(join(tree, '.env'), 'utf8') : '';
-      expect(hidden || env.includes('TOKEN=2')).toBe(true);
     } finally {
       await app.close();
     }

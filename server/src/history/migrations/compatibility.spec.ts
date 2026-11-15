@@ -6,7 +6,6 @@ import { DataSource } from 'typeorm';
 import {
   AgentExchangeEntity,
   CheckoutEntity,
-  DenyPathEntity,
   DocumentEntity,
   FlowEntity,
   HttpCallEntity,
@@ -37,8 +36,6 @@ async function insertOneRowPerTable(dataSource: DataSource): Promise<void> {
     status: 'running',
     currentStep: 'research',
     runtime: 'cursor',
-    requirementsVia: 'direct',
-    issueTracker: 'jira',
     codeHost: 'gitlab',
     agents: { main: { plan: [{ runtime: 'claude', model: 'opus' }] } },
     createdAt: at,
@@ -95,7 +92,6 @@ async function insertOneRowPerTable(dataSource: DataSource): Promise<void> {
   });
   await dataSource.getRepository(PasteEntity).insert({ runKey: 'run-1', url: 'https://paste.example', body: 'body' });
   await dataSource.getRepository(CheckoutEntity).insert({ name: 'main', path: '/work/main' });
-  await dataSource.getRepository(DenyPathEntity).insert({ pattern: '*.secret' });
   await dataSource.getRepository(FlowEntity).insert({ runId: 1, phases: '[]', createdAt: at });
   await dataSource.getRepository(StepEventEntity).insert({
     runId: 1,

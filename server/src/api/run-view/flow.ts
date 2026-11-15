@@ -43,7 +43,6 @@ export function metrics(
     tokens: stats.reduce((sum, stat) => sum + stat.tokensIn + stat.tokensOut, 0) + live.tokensIn + live.tokensOut,
     usd: run.spentUsd + live.usd,
     attemptsReview: run.attemptsReview,
-    attemptsQa: run.attemptsQa,
     attemptsPipeline: run.attemptsPipeline,
     attemptsChecks: run.attemptsChecks,
     cpuPeak: Math.max(

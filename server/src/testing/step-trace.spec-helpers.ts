@@ -83,7 +83,6 @@ export async function traceRun(dataSource: DataSource, key: string, reads: Recor
       status: run.status,
       currentStep: run.currentStep,
       attemptsReview: run.attemptsReview,
-      attemptsQa: run.attemptsQa,
       attemptsPipeline: run.attemptsPipeline,
       agentCalls: run.agentCalls,
       spentUsd: run.spentUsd,

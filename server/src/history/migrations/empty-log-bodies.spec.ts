@@ -69,7 +69,10 @@ describe('EmptyLogBodies migration', () => {
 });
 
 describe('compactAfterLogMigration', () => {
-  const migrated = { name: 'EmptyLogBodies1794900000000' } as Migration;
+  const migrated = {
+    name: 'EmptyLogBodies1794900000000',
+    instance: new EmptyLogBodies1794900000000(),
+  } as unknown as Migration;
 
   afterEach(() => {
     jest.restoreAllMocks();

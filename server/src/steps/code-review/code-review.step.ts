@@ -13,7 +13,6 @@ import type {
 import { StepKernel } from '../step-kernel';
 import { realpathSync } from 'fs';
 import { SwarmloopEnv } from '../../config/env';
-import { CheckoutRepository } from '../../history/checkout.repository';
 import { EventRepository } from '../../history/event.repository';
 import { assertInsideWork, workRoots } from '../../sandbox/allowed-path';
 import { root } from '../../history/run-paths';
@@ -79,7 +78,6 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
 
   constructor(
     kernel: StepKernel,
-    private readonly checkouts: CheckoutRepository,
     private readonly events: EventRepository,
     private readonly worktrees: CheckoutService,
     private readonly sandbox: SandboxService,
@@ -94,7 +92,6 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       flows: this.flows,
       documents: this.documents,
       visits: this.visits,
-      checkouts: this.checkouts,
       worktrees: this.worktrees,
       config: this.config,
     };

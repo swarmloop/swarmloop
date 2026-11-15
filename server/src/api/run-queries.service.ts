@@ -33,7 +33,6 @@ import {
   documentView,
   filesOf,
   interruptionOf,
-  legacyLogs,
   taskView,
   withReturnNotes,
   withoutServerRecords,
@@ -205,7 +204,7 @@ export class RunQueriesService {
   ): Promise<string> {
     const at = attempt || null;
     return query.command === undefined
-      ? readStepLog(this.runs, this.visits, this.documents, this.config, key, step, at, query)
+      ? readStepLog(this.runs, this.visits, this.config, key, step, at, query)
       : readCheckLog(this.runs, this.checkCommands, this.config, key, at, query.command, query);
   }
 
@@ -246,11 +245,10 @@ export class RunQueriesService {
         killReason: stat.killReason,
         ...(interruption ? { interruption } : {}),
         decision: verdict ? `decision: ${verdict}` : decisionLine(owned.map((document) => document.body).join('\n')),
-        ...visitLogSize(this.config, run, name, stat, documents),
-        documents: [
-          ...documents.filter((document) => belongsToVisit(document, stat.id, kinds, index === stats.length - 1)),
-          ...legacyLogs(documents, stat),
-        ].map(documentView),
+        ...visitLogSize(this.config, run, name, stat),
+        documents: documents
+          .filter((document) => belongsToVisit(document, stat.id, kinds, index === stats.length - 1))
+          .map(documentView),
         exchanges: exchangesOf(exchanges, stat.id),
         samples: samplesOf(samples, stat.id),
       };
@@ -271,7 +269,6 @@ export class RunQueriesService {
     const run = await requireRun(this.runs, key);
     const documents = withoutServerRecords(await this.documents.listDocuments(run.id));
     const stats = await this.visits.listStats(run.id);
-    const legacy = stats.flatMap((stat) => legacyLogs(documents, stat));
     const exchanges = await this.visits.listExchanges(stats.map((stat) => stat.id));
     const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
     const loops = await this.events.listLoops(run.id);
@@ -280,7 +277,7 @@ export class RunQueriesService {
     const reviewRunning = this.reviewRunning(run);
     return {
       launches: launches.map(launchView),
-      documents: documents.filter((document) => document.kind !== 'log' || legacy.includes(document)).map(documentView),
+      documents: documents.filter((document) => document.kind !== 'log').map(documentView),
       files: filesOf(documents),
       exchanges: exchanges.map((exchange) => ({
         stepStatId: exchange.stepStatId,
@@ -305,7 +302,7 @@ export class RunQueriesService {
         source: sample.source ?? 'agent',
       })),
       stats: stats.map((stat) => ({
-        ...visitLogSize(this.config, run, stat.step, stat, documents, {
+        ...visitLogSize(this.config, run, stat.step, stat, {
           latest: stats.filter((item) => item.step === stat.step).at(-1) === stat,
           reviewRunning,
         }),

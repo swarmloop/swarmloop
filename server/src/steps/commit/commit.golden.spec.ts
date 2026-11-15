@@ -13,7 +13,6 @@ import { AppConfig } from '../../config/env';
 import { StepEventLog } from '../../history/step-event.log';
 import { Clock } from '../../core/clock';
 import { runGit } from '../../git/git-repo.spec-helpers';
-import { CheckoutRepository } from '../../history/checkout.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { FlowRepository } from '../../history/flow.repository';
 import { RunRepository } from '../../history/run.repository';
@@ -53,7 +52,6 @@ describe('commit step golden traces', () => {
         app.get(AppConfig),
         app.get(StepEventLog),
       ),
-      app.get(CheckoutRepository),
       app.get(RebasedPublisher),
       new RunStop(),
     );
@@ -99,7 +97,7 @@ describe('commit step golden traces', () => {
     const tree = featureTree(root);
     writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
     await trace('plain-error', tree, () => {
-      jest.spyOn(app.get(CheckoutRepository), 'listDenyPaths').mockRejectedValueOnce(new Error('disk gone'));
+      jest.spyOn(app.get(FlowRepository), 'activePhases').mockRejectedValueOnce(new Error('disk gone'));
     });
   });
 });

@@ -2,13 +2,12 @@ import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LiveHub } from '../live/live.hub';
-import { CheckoutEntity, DenyPathEntity, PasteEntity } from './entities';
+import { CheckoutEntity, PasteEntity } from './entities';
 
 @Injectable()
 export class CheckoutRepository {
   constructor(
     @InjectRepository(CheckoutEntity) private readonly checkouts: Repository<CheckoutEntity>,
-    @InjectRepository(DenyPathEntity) private readonly denyPaths: Repository<DenyPathEntity>,
     @InjectRepository(PasteEntity) private readonly pastes: Repository<PasteEntity>,
     @Optional() private readonly live?: LiveHub,
   ) {}
@@ -25,11 +24,6 @@ export class CheckoutRepository {
       return;
     }
     await this.checkouts.save(this.checkouts.create({ name, path }));
-  }
-
-  async listDenyPaths(): Promise<string[]> {
-    const rows = await this.denyPaths.find({ order: { pattern: 'ASC' } });
-    return rows.map((row) => row.pattern);
   }
 
   async listPastes(runKey: string): Promise<PasteEntity[]> {

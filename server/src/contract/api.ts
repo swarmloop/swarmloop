@@ -108,7 +108,6 @@ export interface FlowView {
     tokens: number;
     usd: number;
     attemptsReview: number;
-    attemptsQa: number;
     attemptsPipeline: number;
     attemptsChecks: number;
     cpuPeak: number;

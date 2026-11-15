@@ -53,7 +53,6 @@ describe('the defaults the server ships, in a whole flow that sets nothing', () 
     const runs = app.app.get(RunRepository);
     const documents = app.app.get(DocumentRepository);
     const run = await runs.openSplit(KEY);
-    expect(run.requirementsVia).toBe('agent');
     mkdirSync(join(app.root, 'worktrees', KEY, 'billing-api'), { recursive: true });
     run.currentStep = 'plan';
     await runs.saveRun(run);

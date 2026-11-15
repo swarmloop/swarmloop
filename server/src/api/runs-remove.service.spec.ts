@@ -12,7 +12,7 @@ import { EventRepository } from '../history/event.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { LiveHub } from '../live/live.hub';
 import { RunCommandsService } from './run-commands.service';
-import { boot, save, visit, denyEnv } from '../testing/runs.spec-helpers';
+import { boot, save, visit } from '../testing/runs.spec-helpers';
 
 describe('runs api', () => {
   it('removes the rows and files of one run and leaves the shared store', async () => {
@@ -50,7 +50,6 @@ describe('runs api', () => {
       await events.recordLoop(run, 'review', 1, 'again');
       await checkouts.savePaste('PROJ-20', 'http://paste', 'pasted');
       await checkouts.saveCheckout('demo', join(root, 'demo'));
-      await denyEnv(app);
       const kept = await save(runs, 'keep', 'plan', 'waiting');
       await documents.putDocument(kept, 'requirements', 'stay\n');
       const data = join(root, 'data');
@@ -89,7 +88,6 @@ describe('runs api', () => {
       expect(await runs.findRun('keep')).not.toBeNull();
       expect(await documents.listDocuments(kept.id)).toHaveLength(1);
       expect((await checkouts.listCheckouts()).map((row) => row.name)).toEqual(['demo']);
-      expect(await checkouts.listDenyPaths()).toEqual(['.env']);
       expect(existsSync(join(data, 'PROJ-20-plan-output.txt'))).toBe(false);
       expect(existsSync(join(data, 'PROJ-20-plan-launches.txt'))).toBe(false);
       expect(existsSync(join(data, 'PROJ-20-plan-session.json'))).toBe(false);
