@@ -93,7 +93,7 @@ export interface PipelineCheck {
   workflow: boolean;
 }
 
-/** One GitHub workflow run, or one GitLab pipeline. */
+/** One CI run of a host: a workflow run or a pipeline. */
 export interface PipelineRun {
   id: number;
   status: string;
@@ -150,6 +150,8 @@ export interface CodeHost {
   matchesOrigin(origin: string): boolean;
   pushUrl(origin: string): string | null;
   selected(): SelectedHost;
+  /** The secrets this host holds: its token. */
+  secrets(): string[];
   findMergeRequest(
     query: MergeRequestQuery,
   ): Promise<{ record: MergeRequestRecord | null; httpCalls: HttpCallDraft[] }>;

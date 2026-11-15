@@ -12,6 +12,7 @@ import { Housekeeping } from './pipeline/housekeeping';
 import { Reconciler } from './pipeline/reconciler';
 import { bindRefusal } from './auth/bind-check';
 import { HostAppsService } from './auth/host-apps.service';
+import { codeHostAdapters } from './integrations/code-host/code-host-adapters';
 import { allowedOrigins } from './live/origins';
 import { SandboxService } from './sandbox/sandbox.service';
 
@@ -31,7 +32,10 @@ async function bootstrap(): Promise<void> {
     });
     const env = app.get(AppConfig).env;
     const apps = app.get(HostAppsService);
-    const refusal = bindRefusal(env, apps.find('github') !== null || apps.find('gitlab') !== null);
+    const refusal = bindRefusal(
+      env,
+      codeHostAdapters().some((adapter) => apps.find(adapter.name) !== null),
+    );
     if (refusal) {
       await app.close();
       fail(refusal);

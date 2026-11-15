@@ -18,18 +18,20 @@ import { AuthService, type Credentials } from './auth.service';
 import { CheckoutRepos } from './checkout-repos';
 import { ConnectionsService } from './connections.service';
 import { cookieOptions, startState, STATE_COOKIE, type CookieResponse } from './cookies';
-import { GithubAppService, type ManifestForm } from './github-app.service';
+import { appFlowRoutes, applicationRoutes, routeHost } from './host-routes';
 import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
 import { problemOf, problemUrl, safeNext, type ProblemBase } from './login-problem';
 import type { MeView } from '../contract/api';
-import type { OAuthProvider, ProviderName } from './oauth-provider';
+import type { AppFlow, LoginProvider, ManifestForm, ProviderName } from '../integrations/code-host/login-provider';
 import { Public } from './public.decorator';
 import { cookieValue, SESSION_COOKIE, SESSION_DAYS, SessionService, sessionIdOf } from './session.service';
 
 type Headers = Credentials & { host?: string };
+type FlowProvider = LoginProvider & { appFlow: AppFlow };
+type RoutedRequest = { headers: Headers; route?: { path?: string } };
 
-/** Login with GitHub or GitLab, and the first-run routes that make the app. The session cookie is the only thing that outlives the login call. */
+/** Login with a code host, and the first-run routes that make the app. The session cookie is the only thing that outlives the login call. */
 @Public()
 @Controller('auth')
 export class AuthController {
@@ -40,7 +42,6 @@ export class AuthController {
     private readonly sessions: SessionService,
     private readonly connections: ConnectionsService,
     private readonly apps: HostAppsService,
-    private readonly githubApp: GithubAppService,
     private readonly repos: CheckoutRepos,
   ) {}
 
@@ -50,30 +51,31 @@ export class AuthController {
     return { login: this.auth.configured().length > 0 };
   }
 
-  /** First run only: the manifest of the GitHub App, and the GitHub page it is posted to. */
-  @Get('github/manifest')
+  /** First run only: the manifest of the host's app, and the host page it is posted to. */
+  @Get(appFlowRoutes('manifest'))
   async manifest(
     @Query('org') org: string | undefined,
-    @Req() request: { headers: Headers },
+    @Req() request: RoutedRequest,
     @Res({ passthrough: true }) response: CookieResponse,
   ): Promise<ManifestForm> {
     await this.assertFirstRun(request.headers);
-    const { state } = this.startState('github', response);
-    return this.githubApp.manifest(org?.trim() || undefined, state);
+    const provider = this.flowProvider(request);
+    const { state } = this.startState(provider.name, response);
+    return provider.appFlow.manifest(org?.trim() || undefined, state);
   }
 
   /** First run only: who owns the repositories this server works on, to fill in the owner of the app. */
-  @Get('github/owner')
-  async owner(@Req() request: { headers: Headers }): Promise<{ owner: string; others: string[] }> {
+  @Get(appFlowRoutes('owner'))
+  async owner(@Req() request: RoutedRequest): Promise<{ owner: string; others: string[] }> {
     await this.assertFirstRun(request.headers);
-    const [owner = '', ...others] = await this.repos.owners('github');
+    const [owner = '', ...others] = await this.repos.owners(this.flowProvider(request).name);
     return { owner, others };
   }
 
-  /** The GitHub page where the person installs the app they just made, until the first person has logged in. */
-  @Get('github/install')
+  /** The host page where the person installs the app they just made, until the first person has logged in. */
+  @Get(appFlowRoutes('install'))
   async install(
-    @Req() request: { headers: Headers },
+    @Req() request: RoutedRequest,
     @Res({ passthrough: true }) response: CookieResponse,
   ): Promise<{ url: string }> {
     const onMachine =
@@ -81,21 +83,23 @@ export class AuthController {
     if (!onMachine || (await this.connections.anyConnected())) {
       throw new ForbiddenException('a login exists, or this is not the machine the server runs on');
     }
-    const app = this.apps.find('github');
+    const provider = this.flowProvider(request);
+    const app = this.apps.find(provider.name);
     if (!app) {
-      throw new BadRequestException('there is no GitHub App to install');
+      throw new BadRequestException(`there is no ${provider.label} ${provider.appLabel} to install`);
     }
-    return { url: this.githubApp.installUrl(app.slug, this.startState('github', response, false).state) };
+    return { url: provider.appFlow.installUrl(app.slug, this.startState(provider.name, response, false).state) };
   }
 
-  /** Where GitHub redirects after the manifest, on first run or when the maker replaces the app. The app is stored, then the person installs and authorizes it. */
-  @Get('github/created')
+  /** Where the host redirects after the manifest, on first run or when the maker replaces the app. The app is stored, then the person installs and authorizes it. */
+  @Get(appFlowRoutes('created'))
   async created(
     @Query('code') code: string | undefined,
     @Query('state') state: string | undefined,
-    @Req() request: { headers: Headers },
+    @Req() request: RoutedRequest,
     @Res() response: CookieResponse,
   ): Promise<void> {
+    const host = routeHost(request);
     const firstRun = await this.auth.firstRunOpen(request.headers);
     const pending = this.takeState(request.headers, state, response);
     // First run opens only on this machine or with the machine token, so there is no person to name yet.
@@ -105,16 +109,17 @@ export class AuthController {
       if (!code || madeBy === undefined) {
         throw new BadRequestException('the app was not made from here or the link has expired: try again');
       }
-      const slug = await this.convertApp(code, madeBy);
+      const provider = this.flowProvider(request);
+      const slug = await this.convertApp(provider, code, madeBy);
       if (firstRun) {
         response.redirect('/login?install=1');
         return;
       }
       // Their tokens belong to the old app: the new one cannot refresh them.
-      await this.connections.disconnectAll('github');
-      response.redirect(this.githubApp.installUrl(slug, this.startState('github', response, false).state));
+      await this.connections.disconnectAll(provider.name);
+      response.redirect(provider.appFlow.installUrl(slug, this.startState(provider.name, response, false).state));
     } catch (error) {
-      response.redirect(this.problemOrThrow(error, base, 'github'));
+      response.redirect(this.problemOrThrow(error, base, host));
     }
   }
 
@@ -132,26 +137,27 @@ export class AuthController {
     return url;
   }
 
-  private convertApp(code: string, madeBy: string): Promise<string> {
-    return this.githubApp.convert(code, madeBy).catch((error: unknown) => {
-      throw new BadGatewayException(error instanceof Error ? error.message : 'github did not make the app');
+  private convertApp(provider: FlowProvider, code: string, madeBy: string): Promise<string> {
+    return provider.appFlow.convert(code, madeBy).catch((error: unknown) => {
+      throw new BadGatewayException(error instanceof Error ? error.message : `${provider.name} did not make the app`);
     });
   }
 
-  /** First run only: the OAuth application of a GitLab instance, stored encrypted. */
-  @Post('gitlab/application')
-  async gitlabApplication(
+  /** First run only: the OAuth application of a host instance, stored encrypted. */
+  @Post(applicationRoutes('application'))
+  async storeApplication(
     @Body() body: { clientId?: string; clientSecret?: string },
-    @Req() request: { headers: Headers },
+    @Req() request: RoutedRequest,
   ): Promise<{ ok: true }> {
     await this.assertFirstRun(request.headers);
+    const provider = this.anyProvider(routeHost(request));
     const clientId = body.clientId?.trim() ?? '';
     const clientSecret = body.clientSecret?.trim() ?? '';
     if (!clientId || !clientSecret) {
       throw new BadRequestException('clientId and clientSecret are required');
     }
     await this.apps.save({
-      host: 'gitlab',
+      host: provider.name,
       appId: '',
       slug: '',
       clientId,
@@ -214,9 +220,9 @@ export class AuthController {
     response: CookieResponse,
   ): Promise<void> {
     const provider = this.provider(name);
-    if (provider.name === 'github' && setupAction === 'install' && installationId && !state && !code) {
-      // An install started on GitHub's own page: nobody is signed in by it, the person logs in next.
-      const account = (await this.githubApp.installedAccount(installationId)) ?? '';
+    if (provider.appFlow && setupAction === 'install' && installationId && !state && !code) {
+      // An install started on the host's own page: nobody is signed in by it, the person logs in next.
+      const account = (await provider.appFlow.installedAccount(installationId)) ?? '';
       response.redirect(`/login?installed=${encodeURIComponent(account)}`);
       return;
     }
@@ -310,7 +316,7 @@ export class AuthController {
     return pending;
   }
 
-  private provider(name: string): OAuthProvider {
+  private provider(name: string): LoginProvider {
     const provider = this.auth.configured().find((candidate) => candidate.name === name);
     if (!provider) {
       throw new NotFoundException(`${name} login is not configured`);
@@ -318,7 +324,24 @@ export class AuthController {
     return provider;
   }
 
-  private redirectUri(provider: OAuthProvider): string {
+  private anyProvider(name: string): LoginProvider {
+    const provider = this.auth.all().find((candidate) => candidate.name === name);
+    if (!provider) {
+      throw new NotFoundException(`${name} login is not configured`);
+    }
+    return provider;
+  }
+
+  /** The provider the matched route names, which must have an app flow. Looked up among all providers: first run has none configured. */
+  private flowProvider(request: RoutedRequest): FlowProvider {
+    const provider = this.anyProvider(routeHost(request));
+    if (!provider.appFlow) {
+      throw new NotFoundException(`${provider.name} login is not configured`);
+    }
+    return provider as FlowProvider;
+  }
+
+  private redirectUri(provider: LoginProvider): string {
     return `${this.config.env.SWARMLOOP_PUBLIC_URL.replace(/\/$/, '')}/auth/${provider.name}/callback`;
   }
 }

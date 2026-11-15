@@ -1,11 +1,11 @@
 import { createSign } from 'crypto';
-import { Injectable } from '@nestjs/common';
-import { AppConfig } from '../config/env';
-import { Clock } from '../core/clock';
-import { SwarmloopError } from '../core/swarmloop-error';
-import { request } from '../integrations/http';
-import { HostAppsService } from './host-apps.service';
-import { githubEndpoints } from './oauth-provider';
+import { Inject, Injectable } from '@nestjs/common';
+import { AppConfig } from '../../../config/env';
+import { Clock } from '../../../core/clock';
+import { SwarmloopError } from '../../../core/swarmloop-error';
+import { request } from '../../http';
+import { HOST_APP_STORE, type AppFlow, type HostAppStore, type ManifestForm } from '../login-provider';
+import { githubEndpoints } from './github-login';
 
 /** The longest name GitHub accepts for an app. */
 const NAME_LIMIT = 34;
@@ -23,19 +23,13 @@ const PERMISSIONS = {
   metadata: 'read',
 };
 
-export interface ManifestForm {
-  /** Where the browser posts the manifest. */
-  action: string;
-  manifest: Record<string, unknown>;
-}
-
 /** The GitHub App made from a manifest: the form GitHub takes, and the exchange of its redirect. */
 @Injectable()
-export class GithubAppService {
+export class GithubAppService implements AppFlow {
   constructor(
     private readonly config: AppConfig,
     private readonly clock: Clock,
-    private readonly apps: HostAppsService,
+    @Inject(HOST_APP_STORE) private readonly apps: HostAppStore,
   ) {}
 
   /** The manifest and the GitHub page it goes to: the organization's page when the owner is one, else the account's. */

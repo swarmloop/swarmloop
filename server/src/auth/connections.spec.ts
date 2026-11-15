@@ -11,7 +11,7 @@ import { FAKE_MODEL_KEY } from '../testing/env.spec-helpers';
 import { git } from '../testing/git-fixture';
 import { createTestApp, type TestApp } from '../testing/test-app';
 import { redirectOf } from './login-problem.spec-helpers';
-import { GithubAppService } from './github-app.service';
+import { GithubAppService } from '../integrations/code-host/github/github-app.service';
 import { HostAppsService } from './host-apps.service';
 import { ConnectionsService } from './connections.service';
 import { startFakeHosts, type FakeHost } from './fake-hosts.spec-helpers';

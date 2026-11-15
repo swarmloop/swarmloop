@@ -144,7 +144,7 @@ export async function writeReport(
     if (error instanceof RuntimeLimit) {
       throw error;
     }
-    const message = reportFailure('code-review', error, env).message;
+    const message = reportFailure('code-review', error).message;
     return {
       error: message,
       exchange: null,

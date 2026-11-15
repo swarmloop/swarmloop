@@ -26,6 +26,7 @@ import {
 import { ConnectionCard } from './connection-card';
 import { FirstRun, ManifestPost, type ManifestForm } from './first-run';
 import { HostCard } from './host-card';
+import { hostTexts } from './logos';
 
 const NAMED_MAX = 5;
 
@@ -44,6 +45,7 @@ export function ConnectionsPage(): ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [asking, setAsking] = useState<{ connection: ConnectionView; label: string } | null>(null);
   const [replacing, setReplacing] = useState<ConnectionView | null>(null);
+  const words = replacing ? hostTexts(replacing.host)?.replace : undefined;
   const [form, setForm] = useState<ManifestForm | null>(null);
   const [login, setLogin] = useState<string | null>(null);
 
@@ -138,13 +140,13 @@ export function ConnectionsPage(): ReactElement {
         <DialogContent>
           <DialogContentText>
             {disconnected(replacing?.connected ?? [])} will be disconnected. Their runs wait with GIT_AUTH until they
-            log in again. The app on GitHub stays
+            log in again. {words?.stays}
             {replacing?.app?.settingsUrl ? (
               <>
                 {' '}
                 (delete it in its{' '}
                 <Link href={replacing.app.settingsUrl} target="_blank" rel="noopener noreferrer">
-                  GitHub settings
+                  {words?.settings}
                 </Link>
                 )
               </>

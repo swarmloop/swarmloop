@@ -310,6 +310,27 @@ test('forbidOutside reports a host name in the login page and lets the host map 
   assert.match(violations[0], /^dashboard\/app\/login\/page\.tsx:1:/);
 });
 
+test('forbidOutside reports a host name in the server outside the places that may keep it', () => {
+  const line = `const host = '${['git', 'lab'].join('')}';\n`;
+  const allowed = [
+    'server/src/integrations/code-host/some-host/index.ts',
+    'server/src/config/env.schema.ts',
+    'server/src/history/migrations/1-x.ts',
+    'server/src/testing/x.ts',
+    'server/src/steps/x/x.spec.ts',
+    'server/src/steps/x/x.spec-helpers.ts',
+  ];
+
+  const violations = check({ 'server/src/steps/x/x.step.ts': line });
+
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], /^server\/src\/steps\/x\/x\.step\.ts:1:/);
+  for (const file of allowed) {
+    assert.deepEqual(check({ [file]: line }), [], file);
+  }
+  assert.equal(check({ 'server/src/steps/x/x.step.ts': `// ${['BIT', 'BUCKET'].join('')}\n` }).length, 1);
+});
+
 function check(files) {
   return findViolations({ root: makeRoot(files), rules, files: Object.keys(files) });
 }

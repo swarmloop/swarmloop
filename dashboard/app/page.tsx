@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { ReadinessPanel } from '../features/readiness';
 import { useLiveBridge } from '../features/shell';
 import { StatsSection } from '../features/stats';
+import { HOSTS } from './login/hosts';
 
 export default function HomePage(): React.ReactElement {
   const runs = useLiveBridge((snapshot) => snapshot.runs);
@@ -29,7 +30,9 @@ export default function HomePage(): React.ReactElement {
         </Typography>
         {runs.length === 0 ? (
           <Button component={Link} href="/connections" variant="outlined" size="small" sx={{ mt: 1.5 }}>
-            Connect GitHub or GitLab
+            {`Connect ${Object.values(HOSTS)
+              .map((host) => host.label)
+              .join(' or ')}`}
           </Button>
         ) : null}
       </Box>

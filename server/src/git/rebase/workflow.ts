@@ -1,11 +1,14 @@
 import { SwarmloopError } from '../../core/swarmloop-error';
 import type { RebaseHosts } from './types';
-import { git, gitDetail, gitRaw, gitStderr, redact } from '../git';
+import { redact } from '../../config/redact';
+import { codeHostAdapters } from '../../integrations/code-host/code-host-adapters';
+import { git, gitDetail, gitRaw, gitStderr } from '../git';
 
-/** Full git stderr for a rebase failure, with both host tokens removed. A captured rebase stderr wins over a later command. */
+/** Full git stderr for a rebase failure, with every host token removed. A captured rebase stderr wins over a later command. */
 export function rebaseStderr(text: string, hosts: RebaseHosts, captured = ''): string {
   const body = captured.trim() ? captured : text;
-  return redact(redact(body, hosts.GITLAB_TOKEN.trim()), hosts.GITHUB_TOKEN.trim());
+  const tokens = codeHostAdapters().map((adapter) => hosts[adapter.tokenKey].trim());
+  return redact(body, tokens);
 }
 
 export async function gitAt(

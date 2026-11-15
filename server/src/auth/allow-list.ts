@@ -1,5 +1,6 @@
 import { SwarmloopError } from '../core/swarmloop-error';
-import type { ProviderName } from './oauth-provider';
+import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
+import type { ProviderName } from '../integrations/code-host/login-provider';
 
 type Kind = 'user' | 'group';
 interface Entry {
@@ -8,28 +9,40 @@ interface Entry {
   name: string;
 }
 
-const PREFIXES: Record<string, Pick<Entry, 'provider' | 'kind'>> = {
-  'github:': { provider: 'github', kind: 'user' },
-  'github-org:': { provider: 'github', kind: 'group' },
-  'gitlab:': { provider: 'gitlab', kind: 'user' },
-  'gitlab-group:': { provider: 'gitlab', kind: 'group' },
-};
+/** Built when called: the config schema imports this file before the adapters can load. */
+function prefixes(): { table: Record<string, Pick<Entry, 'provider' | 'kind'>>; shapes: string[] } {
+  const table: Record<string, Pick<Entry, 'provider' | 'kind'>> = {};
+  const shapes: string[] = [];
+  for (const { name, allowPrefixes } of codeHostAdapters()) {
+    table[allowPrefixes.user] = { provider: name, kind: 'user' };
+    table[allowPrefixes.group] = { provider: name, kind: 'group' };
+    shapes.push(
+      `${allowPrefixes.user}<user>`,
+      `${allowPrefixes.group}<${allowPrefixes.group.slice(name.length + 1, -1)}>`,
+    );
+  }
+  return { table, shapes };
+}
+
+/** The entry shapes as a sentence list: `a, b or c`. */
+function shapesText(shapes: string[]): string {
+  return `${shapes.slice(0, -1).join(', ')} or ${shapes[shapes.length - 1]}`;
+}
 
 /** The entries of `SWARMLOOP_ALLOW`, comma-separated. A bad entry is an error naming it. */
 export function parseAllow(raw: string): Entry[] {
+  const { table, shapes } = prefixes();
   return raw
     .split(',')
     .map((item) => item.trim())
     .filter((item) => item !== '')
     .map((item) => {
-      const prefix = Object.keys(PREFIXES).find((candidate) => item.toLowerCase().startsWith(candidate));
+      const prefix = Object.keys(table).find((candidate) => item.toLowerCase().startsWith(candidate));
       const name = prefix ? item.slice(prefix.length).trim().toLowerCase() : '';
       if (!prefix || name === '') {
-        throw new SwarmloopError(
-          `SWARMLOOP_ALLOW entry "${item}" is not github:<user>, github-org:<org>, gitlab:<user> or gitlab-group:<group>`,
-        );
+        throw new SwarmloopError(`SWARMLOOP_ALLOW entry "${item}" is not ${shapesText(shapes)}`);
       }
-      return { ...PREFIXES[prefix], name };
+      return { ...table[prefix], name };
     });
 }
 

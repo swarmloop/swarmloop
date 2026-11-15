@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { credentialFor } from '../config/agents';
 import { Clock } from '../core/clock';
-import { rememberSecret } from '../core/redact';
+import { rememberSecret } from '../core/secret-sources';
 import type { ConnectionCard } from '../contract/connections';
 import { IntegrationSecretRepository } from '../history/integration-secret.repository';
 import type { Connection } from '../integrations/connection';

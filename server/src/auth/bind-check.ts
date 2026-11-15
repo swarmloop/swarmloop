@@ -1,4 +1,5 @@
-import type { SwarmloopEnv } from '../config/env';
+import type { CodeHostLoginEnv, SwarmloopEnv } from '../config/env';
+import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 
 const LOOPBACK = ['127.0.0.1', 'localhost', '::1', '[::1]'];
 const ANY = ['0.0.0.0', '::'];
@@ -12,15 +13,7 @@ export function isLoopback(host: string): boolean {
   }
 }
 
-type BindEnv = Pick<
-  SwarmloopEnv,
-  | 'SWARMLOOP_API_HOST'
-  | 'SWARMLOOP_PUBLIC_URL'
-  | 'GITHUB_OAUTH_CLIENT_ID'
-  | 'GITHUB_OAUTH_CLIENT_SECRET'
-  | 'GITLAB_OAUTH_CLIENT_ID'
-  | 'GITLAB_OAUTH_CLIENT_SECRET'
->;
+type BindEnv = Pick<SwarmloopEnv, 'SWARMLOOP_API_HOST' | 'SWARMLOOP_PUBLIC_URL' | keyof CodeHostLoginEnv>;
 
 /**
  * Why the server must not start, or null. Without a login provider it may listen on loopback only. Compose listens
@@ -28,14 +21,15 @@ type BindEnv = Pick<
  * on loopback.
  */
 export function bindRefusal(env: BindEnv, storedApp = false): string | null {
+  const adapters = codeHostAdapters();
   const hasProvider =
-    storedApp ||
-    (env.GITHUB_OAUTH_CLIENT_ID && env.GITHUB_OAUTH_CLIENT_SECRET) ||
-    (env.GITLAB_OAUTH_CLIENT_ID && env.GITLAB_OAUTH_CLIENT_SECRET);
+    storedApp || adapters.some(({ clientEnvKeys }) => env[clientEnvKeys.clientId] && env[clientEnvKeys.clientSecret]);
   const host = env.SWARMLOOP_API_HOST.toLowerCase();
   const publicHost = new URL(env.SWARMLOOP_PUBLIC_URL).hostname.toLowerCase();
   if (hasProvider || LOOPBACK.includes(host) || (ANY.includes(host) && LOOPBACK.includes(publicHost))) {
     return null;
   }
-  return `SWARMLOOP_API_HOST=${env.SWARMLOOP_API_HOST} is not loopback and no login is configured: set GITHUB_OAUTH_CLIENT_ID and GITHUB_OAUTH_CLIENT_SECRET or GITLAB_OAUTH_CLIENT_ID and GITLAB_OAUTH_CLIENT_SECRET, connect GitHub or GitLab from the dashboard on this machine first, or listen on 127.0.0.1`;
+  const keys = adapters.map(({ clientEnvKeys }) => `${clientEnvKeys.clientId} and ${clientEnvKeys.clientSecret}`);
+  const labels = adapters.map(({ label }) => label);
+  return `SWARMLOOP_API_HOST=${env.SWARMLOOP_API_HOST} is not loopback and no login is configured: set ${keys.join(' or ')}, connect ${labels.join(' or ')} from the dashboard on this machine first, or listen on 127.0.0.1`;
 }

@@ -3,6 +3,7 @@ import type { CreateRepositoryBody, ProjectListView, RemoteEntry, RemoteListView
 import { Actor } from '../auth/actor.decorator';
 import { RemoteRepositories } from '../steps/prepare/remote-repositories.service';
 import { PrepareStep } from '../steps/prepare/prepare.step';
+import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { SwarmloopError } from '../core/swarmloop-error';
 
 @Controller('checkouts')
@@ -50,7 +51,12 @@ export class CheckoutsController {
   createRepository(@Body() body: Partial<CreateRepositoryBody>, @Actor() actor: string | null): Promise<RemoteEntry> {
     return this.badRequest(() =>
       this.remote.create(
-        { host: body.host ?? 'github', owner: body.owner ?? '', name: body.name ?? '', public: body.public },
+        {
+          host: body.host ?? codeHostAdapters().find((adapter) => adapter.createsByDefault)?.name ?? '',
+          owner: body.owner ?? '',
+          name: body.name ?? '',
+          public: body.public,
+        },
         actor,
       ),
     );

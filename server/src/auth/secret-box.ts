@@ -1,6 +1,8 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import type { OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { registerSecretSource } from '../core/secret-sources';
 
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
@@ -21,11 +23,25 @@ export function secretKey(root: string, configured: string | undefined): string 
 }
 
 /** AES-256-GCM. A sealed value is base64 of `iv | tag | ciphertext`. */
-export class SecretBox {
+export class SecretBox implements OnModuleInit, OnModuleDestroy {
   private readonly key: Buffer;
+  private unregisterSecrets: (() => void) | undefined;
 
-  constructor(secret: string) {
+  constructor(private readonly secret: string) {
     this.key = createHash('sha256').update(secret).digest();
+  }
+
+  onModuleInit(): void {
+    this.unregisterSecrets = registerSecretSource(() => this.secrets());
+  }
+
+  onModuleDestroy(): void {
+    this.unregisterSecrets?.();
+  }
+
+  /** The secret this box was built with. */
+  secrets(): string[] {
+    return [this.secret];
   }
 
   seal(plain: string): string {

@@ -319,18 +319,25 @@ interface CredentialEnv {
   CODEX_API_KEY: string;
 }
 
-/**
- * The credential a runtime launches with, read from env names: the server's env, or the fields a person stored for a
- * connection, which use the same names. A name that is absent counts as empty. Throws when none is set.
- */
-export function credentialFor(env: Partial<CredentialEnv>, runtime: RuntimeName): { name: string; value: string } {
-  return runtimeFor(runtime).credential({
+type RuntimeKeys = Parameters<ReturnType<typeof runtimeFor>['credential']>[0];
+
+/** The keys of every runtime, read from env names. A name that is absent counts as empty. */
+export function runtimeKeysOf(env: Partial<CredentialEnv>): RuntimeKeys {
+  return {
     cursorKey: env.CURSOR_API_KEY ?? '',
     anthropicKey: env.ANTHROPIC_API_KEY ?? '',
     oauthToken: env.CLAUDE_CODE_OAUTH_TOKEN ?? '',
     codexAuth: env.CODEX_AUTH ?? '',
     codexApiKey: env.CODEX_API_KEY ?? '',
-  });
+  };
+}
+
+/**
+ * The credential a runtime launches with, read from env names: the server's env, or the fields a person stored for a
+ * connection, which use the same names. A name that is absent counts as empty. Throws when none is set.
+ */
+export function credentialFor(env: Partial<CredentialEnv>, runtime: RuntimeName): { name: string; value: string } {
+  return runtimeFor(runtime).credential(runtimeKeysOf(env));
 }
 
 /**

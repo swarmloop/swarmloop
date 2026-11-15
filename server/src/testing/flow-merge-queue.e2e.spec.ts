@@ -65,6 +65,8 @@ describe('the feature branch stays green: every merge is of a task tested on top
 
   afterEach(async () => {
     jest.restoreAllMocks();
+    // A rebase the last pass accepted still runs git in the clone; the root goes only after it ends.
+    await flow.app.app.get(CommandService).idle();
     await flow.close();
   });
 

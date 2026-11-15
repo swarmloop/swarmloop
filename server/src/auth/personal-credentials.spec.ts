@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { AppConfig } from '../config/env';
 import { testEnv } from '../config/env.spec-helpers';
-import { redact } from '../core/redact';
+import { redact } from '../config/redact';
 import { IntegrationSecretRepository } from '../history/integration-secret.repository';
 import { repositoryDatabase } from '../history/repository.spec-helpers';
 import { fakeConnection } from '../testing/fake-connection';
