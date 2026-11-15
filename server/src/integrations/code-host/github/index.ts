@@ -1,6 +1,8 @@
 import type { CodeHostAdapter } from '../code-host-adapter';
+import { HttpOAuthProvider } from '../http-login-provider';
 import { GithubCodeHost } from './github-code-host';
 import { githubConnection } from './github-connection';
+import { GITHUB_APP_LABEL, githubEndpoints } from './github-login';
 import { githubRules } from './github-rules';
 
 export const adapter: CodeHostAdapter = {
@@ -18,5 +20,11 @@ export const adapter: CodeHostAdapter = {
   // Packages with native code fetch a prebuilt binary from GitHub releases at install time (better-sqlite3, esbuild, sharp).
   setupDownloads: ['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com'],
   publicHost: 'github.com',
+  appLabel: GITHUB_APP_LABEL,
+  allowPrefixes: { user: 'github:', group: 'github-org:' },
+  clientEnvKeys: { clientId: 'GITHUB_OAUTH_CLIENT_ID', clientSecret: 'GITHUB_OAUTH_CLIENT_SECRET' },
+  keepsTokensWithoutApp: false,
+  storesApplication: false,
+  login: (env, clock, apps) => new HttpOAuthProvider(adapter, githubEndpoints(env), env[adapter.tokenKey], clock, apps),
   ownerFromActor: true,
 };

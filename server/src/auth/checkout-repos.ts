@@ -5,7 +5,8 @@ import { listGitProjects, resolveCheckoutPath } from '../config/checkout-path';
 import { git, GIT_LIMITS } from '../git/git';
 import { root } from '../history/run-paths';
 import { remoteProject } from '../integrations/code-host/remote-project';
-import type { ProviderName, RepoRef } from './oauth-provider';
+import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
+import type { ProviderName, RepoRef } from '../integrations/code-host/login-provider';
 
 /** How long the origins read from the checkouts are reused, so a page load or a login does not rescan them. */
 const CACHE_MS = 30_000;
@@ -30,10 +31,10 @@ export class CheckoutRepos {
 
   private async read(): Promise<RepoRef[]> {
     const { env } = this.config;
-    const hosts: [ProviderName, string][] = [
-      ['github', new URL(env.GITHUB_BASE_URL || 'https://github.com').hostname],
-      ['gitlab', new URL(env.GITLAB_BASE_URL || 'https://gitlab.com').hostname],
-    ];
+    const hosts: [ProviderName, string][] = codeHostAdapters().map((adapter) => [
+      adapter.name,
+      new URL(env[adapter.baseKey] || `https://${adapter.publicHost}`).hostname,
+    ]);
     const names = listGitProjects(root(this.config), env.CHECKOUTS_ROOT, env.SWARMLOOP_REPOS);
     const refs: RepoRef[] = [];
     for (const name of names) {

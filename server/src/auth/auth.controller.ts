@@ -23,7 +23,7 @@ import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
 import { problemOf, problemUrl, safeNext, type ProblemBase } from './login-problem';
 import type { MeView } from '../contract/api';
-import type { OAuthProvider, ProviderName } from './oauth-provider';
+import type { LoginProvider, ProviderName } from '../integrations/code-host/login-provider';
 import { Public } from './public.decorator';
 import { cookieValue, SESSION_COOKIE, SESSION_DAYS, SessionService, sessionIdOf } from './session.service';
 
@@ -310,7 +310,7 @@ export class AuthController {
     return pending;
   }
 
-  private provider(name: string): OAuthProvider {
+  private provider(name: string): LoginProvider {
     const provider = this.auth.configured().find((candidate) => candidate.name === name);
     if (!provider) {
       throw new NotFoundException(`${name} login is not configured`);
@@ -318,7 +318,7 @@ export class AuthController {
     return provider;
   }
 
-  private redirectUri(provider: OAuthProvider): string {
+  private redirectUri(provider: LoginProvider): string {
     return `${this.config.env.SWARMLOOP_PUBLIC_URL.replace(/\/$/, '')}/auth/${provider.name}/callback`;
   }
 }

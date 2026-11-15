@@ -3,7 +3,7 @@ import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { isLoopback } from './bind-check';
 import { machineToken, tokenMatches } from './machine-token';
-import type { OAuthProvider } from './oauth-provider';
+import type { LoginProvider } from '../integrations/code-host/login-provider';
 import { SessionService, sessionIdOf } from './session.service';
 
 export const OAUTH_PROVIDERS = 'OAUTH_PROVIDERS';
@@ -22,13 +22,13 @@ export class AuthService {
   constructor(
     config: AppConfig,
     private readonly sessions: SessionService,
-    @Inject(OAUTH_PROVIDERS) private readonly providers: OAuthProvider[],
+    @Inject(OAUTH_PROVIDERS) private readonly providers: LoginProvider[],
   ) {
     this.publicUrl = config.env.SWARMLOOP_PUBLIC_URL;
     this.token = machineToken(resolveRepoRoot(config.env.SWARMLOOP_ROOT, __dirname), config.env.SWARMLOOP_TOKEN);
   }
 
-  configured(): OAuthProvider[] {
+  configured(): LoginProvider[] {
     return this.providers.filter((provider) => provider.configured());
   }
 

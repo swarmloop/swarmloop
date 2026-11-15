@@ -7,6 +7,7 @@ import type { Clock } from '../../core/clock';
 import type { Connection } from '../connection';
 import type { CodeHostAdapter } from './code-host-adapter';
 import { codeHostAdapters } from './code-host-adapters';
+import type { AppSource, LoginProvider } from './login-provider';
 
 interface Entry {
   readonly adapter: CodeHostAdapter;
@@ -70,6 +71,11 @@ export class CodeHostRegistry {
     );
   }
 
+  /** The login of each host, in the order of the adapters. */
+  static loginProviders(env: CodeHostEnv, clock: Clock, apps: AppSource): LoginProvider[] {
+    return codeHostAdapters().map((adapter) => adapter.login(env, clock, apps));
+  }
+
   /** How a person connects each host; none when the store of connections is absent. */
   connections(): Connection[] {
     const store = this.connectionStore;
@@ -90,7 +96,7 @@ export class CodeHostRegistry {
       throw new SwarmloopError(`${remoteProject(origin).host.toLowerCase()} matches both code hosts`);
     }
     const found = matched[0];
-    return found ? (found.name as CodeHostName) : null;
+    return found ? found.name : null;
   }
 
   credentials(name: string): SelectedHost {

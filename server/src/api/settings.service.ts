@@ -12,6 +12,7 @@ import type { SettingsBody, StoredAgents } from '../contract/api';
 import type { SettingsView } from '../contract/settings';
 import { isEffort } from '../contract/effort';
 import { UserSettingRepository } from '../history/user-setting.repository';
+import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { RUNTIME_NAMES, runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 
 const TIERS = ['main', 'subtask'] as const;
@@ -55,8 +56,7 @@ const SERVER_NAMES = [
   'MIN_FREE_GB',
   'SWARMLOOP_TOKEN',
   'SWARMLOOP_SECRET',
-  'GITHUB_OAUTH_CLIENT_SECRET',
-  'GITLAB_OAUTH_CLIENT_SECRET',
+  ...codeHostAdapters().map((adapter) => adapter.clientEnvKeys.clientSecret),
 ] as const satisfies readonly (keyof SwarmloopEnv)[];
 
 /** What a server setting means, for the settings it is worth saying for. */

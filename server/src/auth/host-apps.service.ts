@@ -3,10 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
 import { HostAppEntity } from '../history/connection-entities';
-import type { AppCredentials, AppSource, ProviderName } from './oauth-provider';
+import type { AppCredentials, AppSource, ProviderName } from '../integrations/code-host/login-provider';
+import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { SecretBox } from './secret-box';
 
-/** A GitHub App (all fields) or a GitLab application (client id and secret). */
+/** A stored app: all fields for an app with a private key, else the client id and secret. */
 interface HostApp {
   host: ProviderName;
   appId: string;
@@ -32,7 +33,7 @@ export class HostAppsService implements AppSource, OnModuleInit {
   async onModuleInit(): Promise<void> {
     for (const row of await this.rows.find()) {
       this.apps.set(row.host, {
-        host: row.host as ProviderName,
+        host: row.host,
         appId: row.appId,
         slug: row.slug,
         clientId: row.clientId,
@@ -67,15 +68,15 @@ export class HostAppsService implements AppSource, OnModuleInit {
       return { clientId: stored.clientId, clientSecret: stored.clientSecret };
     }
     const { env } = this.config;
-    const [clientId, clientSecret] =
-      host === 'github'
-        ? [env.GITHUB_OAUTH_CLIENT_ID, env.GITHUB_OAUTH_CLIENT_SECRET]
-        : [env.GITLAB_OAUTH_CLIENT_ID, env.GITLAB_OAUTH_CLIENT_SECRET];
+    const keys = codeHostAdapters().find((adapter) => adapter.name === host)?.clientEnvKeys;
+    const clientId = keys ? env[keys.clientId] : '';
+    const clientSecret = keys ? env[keys.clientSecret] : '';
     return clientId !== '' && clientSecret !== '' ? { clientId, clientSecret } : null;
   }
 
-  /** One authorization signs in and connects for a stored GitHub App and for GitLab. A plain GitHub OAuth app keeps nothing. */
+  /** One authorization signs in and connects for a stored app and for a host that always keeps the tokens. A plain OAuth app keeps nothing. */
   connects(host: ProviderName): boolean {
-    return host === 'gitlab' || this.find(host) !== null;
+    const adapter = codeHostAdapters().find((item) => item.name === host);
+    return (adapter?.keepsTokensWithoutApp ?? false) || this.find(host) !== null;
   }
 }

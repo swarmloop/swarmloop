@@ -1,10 +1,9 @@
-import type { ConnectionsService } from '../../../auth/connections.service';
-import { githubEndpoints } from '../../../auth/oauth-provider';
+import { githubEndpoints } from './github-login';
 import type { Connection } from '../../connection';
-import { CodeHostConnection } from '../code-host-connection';
+import { CodeHostConnection, type ConnectionStore } from '../code-host-connection';
 
 /** GitHub on the Connections page. The server's own base url and token key come from the host. */
-export function githubConnection(host: { baseUrl: string; tokenKey: string }, store: ConnectionsService): Connection {
+export function githubConnection(host: { baseUrl: string; tokenKey: string }, store: ConnectionStore): Connection {
   return new CodeHostConnection(
     {
       host: 'github',
