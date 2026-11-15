@@ -245,13 +245,15 @@ export function Bubble({
             </Typography>
           </>
         ) : null}
-        <Typography
-          variant="body2"
-          noWrap
-          sx={{ flex: '1 1 auto', minWidth: 0, color: problem ? 'inherit' : 'text.secondary' }}
-        >
-          {shown}
-        </Typography>
+        <Tooltip title={shown}>
+          <Typography
+            variant="body2"
+            noWrap
+            sx={{ flex: '1 1 auto', minWidth: 0, color: problem ? 'inherit' : 'text.secondary' }}
+          >
+            {shown}
+          </Typography>
+        </Tooltip>
         {phone ? (
           <Typography variant="caption" color="text.secondary">
             {side === 'right' ? 'Input' : 'Step'}
