@@ -129,6 +129,7 @@ export async function runShell(
         command: [],
         userId,
         project: { ...launch, shell: command },
+        resultLost: true,
       },
       { onPaused },
     )

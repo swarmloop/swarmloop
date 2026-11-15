@@ -95,6 +95,12 @@ describe('sandbox launch', () => {
         ]);
       }
     });
+
+    it('labels a container whose result the server cannot read after a restart, and no other', () => {
+      const labels = (args: string[]) => args.filter((arg, index) => args[index - 1] === '--label');
+      expect(labels(sandboxArgs(launch({ resultLost: true }), home, ''))).toContain('swarmloop.result=lost');
+      expect(labels(sandboxArgs(launch(), home, ''))).not.toContain('swarmloop.result=lost');
+    });
   });
 
   describe('container runtime', () => {

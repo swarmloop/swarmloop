@@ -25,7 +25,7 @@ import {
   sandboxUserId,
 } from '../sandbox/sandbox-launch';
 import { hostName, isLocalHost, sandboxNetworkName } from './sandbox-hosts';
-import { attemptRunning, killAttempt, stopRun } from './run-containers';
+import { attemptAwaited, attemptRunning, killAttempt, stopRun } from './run-containers';
 import type { DockerRunner } from './run-containers';
 import { workRootsAt } from './allowed-path';
 import { Egress, egressMode } from './egress';
@@ -243,6 +243,11 @@ export class SandboxService {
   /** True while a container of the attempt runs, false when none does, null when docker did not answer. */
   attemptRunning(attemptId: string): Promise<boolean | null> {
     return attemptRunning(this.docker, attemptId);
+  }
+
+  /** True when a running container of the attempt can still give its result, false when none can, null when docker did not answer. */
+  attemptAwaited(attemptId: string): Promise<boolean | null> {
+    return attemptAwaited(this.docker, attemptId);
   }
 
   /** Kills and removes the containers of an attempt. False when docker did not answer or one is still listed. */

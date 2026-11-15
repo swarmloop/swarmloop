@@ -1,7 +1,9 @@
 import 'reflect-metadata';
 import { ERROR_CODES } from '../contract/error-codes';
 import { deriveState, writeRunState } from '../history/run-state';
+import { CheckCommandRepository } from '../history/check-command.repository';
 import { CommandRepository } from '../history/command.repository';
+import { VisitRepository } from '../history/visit.repository';
 import { RunRepository } from '../history/run.repository';
 import { CommandService } from '../pipeline/command.service';
 import { createFlowHarness } from './flow-harness';
@@ -101,5 +103,41 @@ describe('a passing outage or a restart heals on the reconciler ticks', () => {
     expect(stored.map((command) => [command.type, command.idempotencyKey])).toEqual([
       ['resume', `relaunch-${begun.activeAttempt}`],
     ]);
+  });
+
+  it('a restart in the middle of checks stops the check containers at once, closes their rows as interrupted and starts the checks again with no wait', async () => {
+    jest.restoreAllMocks();
+    const begun = await flow.app.app.get(RunRepository).begin(KEY, 'checks');
+    const attempt = begun.activeAttempt!;
+    const rows = flow.app.app.get(CheckCommandRepository);
+    const base = { runId: begun.id, attemptId: attempt, repo: 'demo' };
+    await rows.add({
+      ...base,
+      command: 'npm test',
+      commandIndex: 0,
+      status: 'running',
+      startedAt: flow.app.clock.iso(),
+    });
+    await rows.add({ ...base, command: 'npm run lint', commandIndex: 1 });
+    flow.sandbox.leave(attempt, { lost: true });
+
+    holdRelaunches(held);
+    await flow.restart();
+    await flow.tick();
+    await assertInvariants(flow.app);
+
+    expect(await flow.sandbox.calls.attemptRunning(attempt)).toBe(false);
+    const cut = await find();
+    expect(cut).toMatchObject({ status: 'waiting', activeAttempt: null });
+    expect(cut.state).not.toBe('recovering');
+    const [visit] = await flow.app.app.get(VisitRepository).listStats(cut.id);
+    expect(
+      (await flow.app.app.get(CheckCommandRepository).list(cut.id)).map((row) => [row.status, row.endedAt]),
+    ).toEqual([
+      ['interrupted', visit.finishedAt],
+      ['interrupted', visit.finishedAt],
+    ]);
+    const stored = await flow.app.app.get(CommandRepository).listForRun(cut.id);
+    expect(stored.map((command) => command.idempotencyKey)).toEqual([`relaunch-${attempt}`]);
   });
 });

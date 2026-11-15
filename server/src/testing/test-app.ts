@@ -179,6 +179,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
       assertReady: () => Promise.resolve(),
       kill: () => Promise.resolve(),
       attemptRunning: () => Promise.resolve(false),
+      attemptAwaited: () => Promise.resolve(true),
       killAttempt: () => Promise.resolve(true),
       ...options.sandbox,
     })

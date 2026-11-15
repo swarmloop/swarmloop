@@ -9,6 +9,7 @@ import * as delays from '../core/delay';
 import { StepEventEntity, StepStatEntity } from '../history/entities';
 import type { RunEntity } from '../history/entities';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
+import { CheckCommandRepository } from '../history/check-command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { CommandRepository } from '../history/command.repository';
 import { RunRepository } from '../history/run.repository';
@@ -160,6 +161,68 @@ describe('crash matrix', () => {
     expect(await app.app.get(RunRepository).findRun(KEY)).toMatchObject({ status: 'waiting', activeAttempt: null });
     expect(await visits(app)).toMatchObject([
       { status: 'failed', killReason: 'process died', attemptId: run.activeAttempt },
+    ]);
+  });
+
+  it('a container whose result is lost is killed at once and settled without a wait', async () => {
+    holdRelaunches(endsAtOnce);
+    const killAttempt = jest.fn().mockResolvedValue(true);
+    app = await createTestApp({
+      sandbox: {
+        attemptRunning: () => Promise.resolve(true),
+        attemptAwaited: () => Promise.resolve(false),
+        killAttempt,
+      },
+    });
+    const run = await orphan(app, 'checks');
+
+    await app.app.get(Reconciler).reconcile(run);
+
+    expect(killAttempt).toHaveBeenCalledWith(run.activeAttempt);
+    const stored = await app.app.get(RunRepository).findRun(KEY);
+    expect(stored).toMatchObject({ status: 'waiting', activeAttempt: null });
+    expect(stored?.state).not.toBe('recovering');
+    expect(await visits(app)).toMatchObject([
+      { step: 'checks', status: 'failed', killReason: 'process died', attemptId: run.activeAttempt },
+    ]);
+    expect(await relaunchKeys(app)).toEqual([`relaunch-${run.activeAttempt}`]);
+  });
+
+  it('after a settled cut attempt no check row of it is without an end', async () => {
+    holdRelaunches(endsAtOnce);
+    app = await createTestApp({
+      sandbox: { attemptRunning: () => Promise.resolve(true), attemptAwaited: () => Promise.resolve(false) },
+    });
+    const run = await orphan(app, 'checks');
+    const rows = app.app.get(CheckCommandRepository);
+    const base = { runId: run.id, attemptId: run.activeAttempt!, repo: 'demo' };
+    await rows.add({
+      ...base,
+      command: 'npm test',
+      commandIndex: 0,
+      status: 'running',
+      startedAt: '2026-01-01T00:00:00.000Z',
+    });
+    await rows.add({ ...base, command: 'npm run lint', commandIndex: 1 });
+    await rows.add({
+      ...base,
+      command: 'npm run build',
+      commandIndex: 2,
+      status: 'passed',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      endedAt: '2026-01-01T00:01:00.000Z',
+      exitCode: 0,
+    });
+    await rows.add({ ...base, command: 'npm run docs', commandIndex: 3, status: 'skipped', skipped: 1 });
+
+    await app.app.get(Reconciler).reconcile(run);
+
+    const [visit] = await visits(app);
+    expect((await rows.list(run.id)).map((row) => [row.status, row.exitCode, row.endedAt])).toEqual([
+      ['interrupted', null, visit.finishedAt],
+      ['interrupted', null, visit.finishedAt],
+      ['passed', 0, '2026-01-01T00:01:00.000Z'],
+      ['skipped', null, null],
     ]);
   });
 

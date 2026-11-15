@@ -16,9 +16,10 @@ import { HostUnavailable } from '../core/swarmloop-error';
 import { isStep } from '../core/pipeline-result';
 import { recordStepEvent, runInStepScope } from '../core/step-event-scope';
 import type { CommandEntity, RunEntity, StepStatEntity } from '../history/entities';
+import { CheckCommandRepository } from '../history/check-command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { writeRunState } from '../history/run-state';
+import { recoveringSince, writeRunState } from '../history/run-state';
 import { StepEventLog } from '../history/step-event.log';
 import type { VisitDraft } from '../history/visit';
 import { VisitRepository } from '../history/visit.repository';
@@ -63,6 +64,7 @@ export class RunSettler {
     private readonly mergeRequests: MergeRequestLookup,
     private readonly rebases: RunRebase,
     private readonly workspace: WorkspaceGuard,
+    private readonly checkCommands: CheckCommandRepository,
   ) {}
 
   /**
@@ -139,6 +141,10 @@ export class RunSettler {
    * written, so a Stop that came while the attempt was settled is seen. Its answer is applied in the same
    * transaction: a relaunch leaves the run `waiting` with the `resume` command stored, anything else leaves it
    * `failed`. Returns the decision it applied, or null when it stored no visit.
+   *
+   * The one place that decides whether to wait for a container a dead process left: the run waits `RECOVER_WAIT_MS`
+   * only while a running container of the attempt can still give its result after the restart. A container whose
+   * result is lost is stopped at once and the attempt is settled with no wait.
    */
   async settleAttempt(
     run: RunEntity,
@@ -156,7 +162,17 @@ export class RunSettler {
       await this.blocked(run);
       return null;
     }
-    if (container) {
+    const awaited = container ? await this.sandbox.attemptAwaited(attemptId!) : false;
+    if (awaited === null) {
+      await this.blocked(run);
+      return null;
+    }
+    if (container && !awaited) {
+      if (!(await this.sandbox.killAttempt(attemptId!))) {
+        await this.blocked(run);
+        return null;
+      }
+    } else if (container) {
       const since = recoveringSince(run);
       if (since === null) {
         writeRunState(run, {
@@ -299,6 +315,7 @@ export class RunSettler {
       resumed: false,
     };
     await barrier('before-finalize');
+    if (run.activeAttempt) await this.checkCommands.closeOpen(run.activeAttempt, now);
     const command = decision.relaunch
       ? { type: 'resume' as const, payload: {}, idempotencyKey: decision.idempotencyKey, now }
       : undefined;
@@ -331,13 +348,6 @@ export class RunSettler {
   private get root(): string {
     return resolveRepoRoot(this.config.env.SWARMLOOP_ROOT, __dirname);
   }
-}
-
-/** When the run started to wait for the container of a dead owner. Null when it does not wait. */
-function recoveringSince(run: RunEntity): number | null {
-  if (run.state !== 'recovering' || !run.stateReason) return null;
-  const since = Date.parse((JSON.parse(run.stateReason) as { message?: string }).message ?? '');
-  return Number.isFinite(since) ? since : null;
 }
 
 function elapsed(startedAt: string | null, now: number): number {

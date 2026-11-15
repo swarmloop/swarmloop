@@ -39,6 +39,11 @@ export interface SandboxLaunch {
   project?: ProjectLaunch;
   /** The address on the internal sandbox network. Its policy on the egress proxy decides what it reaches. */
   egress?: { ip: string };
+  /**
+   * The server cannot read this container's result after a restart, because its output reaches the server only
+   * through the process that started it.
+   */
+  resultLost?: boolean;
   /** Attach the caller's stdin. */
   stdin?: boolean;
   /** Allocate a terminal. Only the interactive vendor screen needs one. */

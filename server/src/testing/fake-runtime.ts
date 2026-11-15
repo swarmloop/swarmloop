@@ -16,6 +16,7 @@ export function holdDetachedStarts(pipeline: PipelineService, parentKey: string,
 /** A sandbox a spec switches after the app is built: it answers like a gone container, or does not answer at all. */
 export class FakeSandbox {
   private silentForMs = 0;
+  private left: { attemptId: string; lost: boolean }[] = [];
 
   get silent(): boolean {
     return this.silentForMs > 0;
@@ -31,10 +32,22 @@ export class FakeSandbox {
     this.silentForMs = Math.max(0, this.silentForMs - ms);
   }
 
+  /** A container of the attempt that a dead process left running. `lost` is one whose result the server cannot read. */
+  leave(attemptId: string, { lost }: { lost: boolean }): void {
+    this.left.push({ attemptId, lost });
+  }
+
   /** The calls for `createTestApp({ sandbox })`. Bound, so the same sandbox serves an app after a restart. */
   readonly calls = {
     stopRun: (): Promise<'gone' | 'unknown'> => Promise.resolve(this.silent ? 'unknown' : 'gone'),
-    attemptRunning: (): Promise<boolean | null> => Promise.resolve(this.silent ? null : false),
+    attemptRunning: (attemptId: string): Promise<boolean | null> =>
+      Promise.resolve(this.silent ? null : this.left.some((item) => item.attemptId === attemptId)),
+    attemptAwaited: (attemptId: string): Promise<boolean | null> =>
+      Promise.resolve(this.silent ? null : this.left.some((item) => item.attemptId === attemptId && !item.lost)),
+    killAttempt: (attemptId: string): Promise<boolean> => {
+      this.left = this.left.filter((item) => item.attemptId !== attemptId);
+      return Promise.resolve(true);
+    },
     dockerAnswers: (): Promise<boolean> => Promise.resolve(!this.silent),
     pruneDocker: (): Promise<void> => Promise.resolve(),
     dockerUsage: (): Promise<string> => Promise.resolve('nothing'),

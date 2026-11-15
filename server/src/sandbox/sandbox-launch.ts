@@ -248,6 +248,7 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
     '--name',
     containerName(launch.runKey, launch.step),
     ...runLabels(launch),
+    ...(launch.resultLost ? ['--label', 'swarmloop.result=lost'] : []),
     '--user',
     `${launch.userId}:${launch.userId}`,
     '--cap-drop',
