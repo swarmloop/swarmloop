@@ -70,6 +70,8 @@ export interface AgentRuntime {
   readonly planModeHasPlanTool: boolean;
   readonly priceSource: string;
   credential(keys: RuntimeKeys): { name: string; value: string };
+  /** The secrets of these keys that this runtime launches with. */
+  secrets(keys: RuntimeKeys): string[];
   /** The provider limit the end of a launch reports, or null when it is no limit: an auth, billing, network or context error is none. */
   classifyLimit(input: LimitInput): LimitHit | null;
   /** The rule file names the CLI loads by itself from its working directory. */

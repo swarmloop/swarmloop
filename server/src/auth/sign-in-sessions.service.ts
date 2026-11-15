@@ -9,7 +9,8 @@ import {
 } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
-import { redact, rememberSecret } from '../core/redact';
+import { redact } from '../core/redact';
+import { rememberSecret } from '../core/secret-sources';
 import type { SignInView } from '../contract/connections';
 import type { Connection, SignInFlow } from '../integrations/connection';
 import { CliSignIn, type CliSignInRun } from '../sandbox/cli-sign-in';

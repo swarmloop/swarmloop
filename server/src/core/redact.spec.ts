@@ -1,4 +1,5 @@
-import { redact, rememberSecret } from './redact';
+import { redact } from './redact';
+import { rememberSecret } from './secret-sources';
 
 const ENV = {
   JIRA_API_TOKEN: 'jira-secret-value',

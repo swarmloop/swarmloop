@@ -257,6 +257,10 @@ export abstract class AbstractCodeHost extends HostCalls implements CodeHost {
 
   abstract selected(): SelectedHost;
 
+  secrets(): string[] {
+    return [this.selected().token].filter(Boolean);
+  }
+
   /** The same host calling with another token: the OAuth token of the person a run belongs to. */
   withToken(token: string): this {
     const Host = this.constructor as new (env: CodeHostEnv, clock: Clock, connected: boolean) => this;
