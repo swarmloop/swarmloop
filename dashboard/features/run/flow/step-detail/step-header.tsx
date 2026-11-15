@@ -123,7 +123,14 @@ export function StepHeader({
         {view.visits.length > 1 || attempts > 0 ? (
           <AttemptSelector
             items={view.visits.map((item, index) => {
-              const status = shownStatus(item.status, index === view.visits.length - 1, runStatus, step, item.decision);
+              const status = shownStatus(
+                item.status,
+                index === view.visits.length - 1,
+                runStatus,
+                step,
+                item.decision,
+                item.killReason,
+              );
               return {
                 key: item.key,
                 label: String(item.attempt),

@@ -6,6 +6,8 @@ import { historyView } from '../../../test/fixtures';
 import { QueryWrapper } from '../../../test/query-wrapper';
 import { commandEvents, stepEvent } from '../../../test/step-events';
 import { overflowing, narrowViewport } from '../../../test/viewport';
+import { interruptionSentence } from '@contract/interruption';
+import { localTime } from '../../../lib/format';
 import { TranscriptFeed } from './transcript-feed';
 import { issueLinks } from './transcript-model';
 
@@ -296,5 +298,38 @@ describe('TranscriptFeed', () => {
     render(<TranscriptFeed runKey="run-1" events={events} />, { wrapper: QueryWrapper });
 
     expect(screen.getByText('Passed to implement')).toBeInTheDocument();
+  });
+
+  it('the process died card is neutral with the sentence', () => {
+    const note = { at: '2026-01-01T10:00:00.000Z', relaunched: true };
+    render(
+      <TranscriptFeed
+        runKey="run-1"
+        events={[stepEvent(1, { kind: 'attempt.interrupted', route: 'process died', summary: 'process died' })]}
+        interruptions={new Map([['attempt-1', note]])}
+      />,
+      { wrapper: QueryWrapper },
+    );
+
+    const card = screen.getByRole('article', { name: /Attempt ended/ });
+    expect(within(card).getByText(interruptionSentence(note, localTime))).toBeInTheDocument();
+    expect(screen.queryByRole('article', { name: /^Error:/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/\d+ problems?/)).not.toBeInTheDocument();
+  });
+
+  it('a stopped attempt keeps Stopped: and the warning style', () => {
+    const note = { at: '2026-01-01T10:00:00.000Z', relaunched: true };
+    render(
+      <TranscriptFeed
+        runKey="run-1"
+        events={[stepEvent(1, { kind: 'attempt.interrupted', route: 'stopped', summary: 'stopped by a person' })]}
+        interruptions={new Map([['attempt-1', note]])}
+      />,
+      { wrapper: QueryWrapper },
+    );
+
+    const card = screen.getByRole('article', { name: 'Error: stopped by a person' });
+    expect(within(card).getByText('Stopped: stopped by a person')).toBeInTheDocument();
+    expect(screen.getByText('1 problem')).toBeInTheDocument();
   });
 });

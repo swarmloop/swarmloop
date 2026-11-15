@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
+import { interruptionSentence } from '@contract/interruption';
+import { localTime } from '../../../../lib/format';
 import { useStep } from '../../use-step';
 import { issueLinks, problemSummary } from '../../transcript/transcript-model';
 import { slowestBeforeAttempt } from '../../transcript/prepared-wait';
@@ -69,7 +71,7 @@ export function StepDetail({
   }
   const visit = view.visits[attempt];
   const label = visit
-    ? shownStatus(visit.status, attempt === view.visits.length - 1, runStatus, step, visit.decision)
+    ? shownStatus(visit.status, attempt === view.visits.length - 1, runStatus, step, visit.decision, visit.killReason)
     : '';
   const shownDuration =
     visit?.status === 'running' ? Math.max(0, now - Date.parse(revision)) : (visit?.durationMs ?? 0);
@@ -114,6 +116,11 @@ export function StepDetail({
             : null
         }
       />
+      {visit?.interruption ? (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+          {interruptionSentence(visit.interruption, localTime)}
+        </Typography>
+      ) : null}
       {eventsError ? (
         <Typography color="error" sx={{ mt: 2 }}>
           {eventsError}
@@ -134,6 +141,7 @@ export function StepDetail({
           check={check}
           setCheck={setCheck}
           visit={visit}
+          visits={view.visits}
           logs={logs}
           document={document}
           role={view.descriptor.agent}

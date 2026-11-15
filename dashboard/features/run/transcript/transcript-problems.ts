@@ -57,5 +57,7 @@ export function problemOf(event: StepEvent, end: CommandEnd | null): Problem | n
   if (event.kind === 'issue.opened') {
     return { cause: event.title, action: `issue ${event.issueId}` };
   }
-  return event.kind === 'attempt.interrupted' ? { cause: event.summary, action: 'attempt' } : null;
+  return event.kind === 'attempt.interrupted' && event.route !== 'process died'
+    ? { cause: event.summary, action: 'attempt' }
+    : null;
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StepEvent, StepEventBody } from '@contract/step-events';
 import { localTime } from '../../../lib/format';
+import { interruptionSentence } from '@contract/interruption';
 import { foldActions } from './action-rows';
 import { commandEvents, stepEvent } from '../../../test/step-events';
 import { actorOf, problemSummary, groupByActor, groupByAttempt, issueLinks, sideOf } from './transcript-model';
@@ -355,5 +356,18 @@ describe('groupByActor', () => {
     );
     const marks = groupByAttempt(events).map((group) => groupByActor(group.items).map((item) => item.grouped));
     expect(marks).toEqual([[false, true], [false]]);
+  });
+
+  it('gives a process died attempt end the sentence of its visit and no problem', () => {
+    const events = [stepEvent(1, { kind: 'attempt.interrupted', route: 'process died', summary: 'process died' })];
+    const note = { at: '2026-01-01T10:00:00.000Z', relaunched: true };
+    const sentence = interruptionSentence(note, localTime);
+
+    const [group] = groupByAttempt(events, new Map([['attempt-1', note]]));
+
+    expect(group?.outcome).toBe(sentence);
+    expect(group?.items.at(-1)?.outcome).toBe(sentence);
+    expect(group?.items.at(-1)?.problem).toBeNull();
+    expect(problemSummary(events).count).toBe(0);
   });
 });

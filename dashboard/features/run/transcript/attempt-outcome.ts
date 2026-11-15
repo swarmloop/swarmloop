@@ -1,12 +1,22 @@
 import { withoutTimestamp } from '@contract/event-text';
+import { localTime } from '../../../lib/format';
+import { interruptionSentence, type InterruptionNote } from '@contract/interruption';
 import type { StepEvent } from '@contract/step-events';
 
 export type AttemptEnd = Extract<StepEvent, { kind: 'attempt.finished' | 'attempt.interrupted' }>;
 
 /** The first line of a result, as a sentence about what the attempt came to. */
-function outcomeWords(finish: AttemptEnd, target: string | null, issues: number): string {
+function outcomeWords(
+  finish: AttemptEnd,
+  target: string | null,
+  issues: number,
+  note: InterruptionNote | undefined,
+): string {
   const line = withoutTimestamp(finish.summary).split('\n')[0]?.trim() ?? '';
   if (finish.kind === 'attempt.interrupted') {
+    if (note && finish.route === 'process died') {
+      return interruptionSentence(note, localTime);
+    }
     return `Stopped: ${line}`;
   }
   switch (finish.route) {
@@ -31,11 +41,11 @@ function outcomeFacts(finish: AttemptEnd): string[] {
 }
 
 /** How an attempt ended as one line, from its own events. */
-export function attemptOutcome(own: StepEvent[], finish: AttemptEnd): string {
+export function attemptOutcome(own: StepEvent[], finish: AttemptEnd, note?: InterruptionNote): string {
   const sent = own.find((event) => event.kind === 'handoff.sent');
   const target = sent?.kind === 'handoff.sent' ? sent.targetStep : null;
   const issues = own.filter((event) => event.kind === 'issue.opened').length;
-  return [outcomeWords(finish, target, issues), ...outcomeFacts(finish)].join(' · ');
+  return [outcomeWords(finish, target, issues, note), ...outcomeFacts(finish)].join(' · ');
 }
 
 export function whyOf(own: StepEvent[], number: number): string {

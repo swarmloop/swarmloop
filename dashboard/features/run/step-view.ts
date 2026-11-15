@@ -154,7 +154,11 @@ export function shownStatus(
   runStatus?: string,
   step?: string,
   decision?: string | null,
+  killReason?: string | null,
 ): string {
+  if (killReason === 'process died') {
+    return 'interrupted';
+  }
   if (step?.startsWith('code-review') && status !== 'running') {
     if (decision === 'decision: ok') {
       return 'done';
