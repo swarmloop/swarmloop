@@ -106,7 +106,7 @@ describe('code-review step and a provider limit', () => {
     }
   });
 
-  it('launches every reviewer and the report at the epic effort for the parent of a split run', async () => {
+  it("launches every reviewer and the report at the review list's effort for the parent of a split run", async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-epic-effort-'));
     await envWith(root, 'claude:m-claude:high');
     mkdirSync(join(root, 'worktrees', 'PROJ-303', 'billing-api'), { recursive: true });
@@ -123,11 +123,13 @@ describe('code-review step and a provider limit', () => {
       const stats = await app.get(VisitRepository).listStats(parent.id);
 
       expect(calls.length).toBeGreaterThan(1);
-      expect(calls.map((call) => call.effort)).toEqual(calls.map(() => 'xhigh'));
+      expect(calls.map((call) => call.effort)).toEqual(calls.map(() => 'high'));
       expect(stats.filter((stat) => stat.step.startsWith('code-review-')).map((stat) => stat.effort)).not.toContain(
         null,
       );
-      expect(stats.find((stat) => stat.step === 'code-review')).toMatchObject({ effort: 'xhigh', effortNote: 'epic' });
+      const report = stats.find((stat) => stat.step === 'code-review');
+      expect(report).toMatchObject({ effort: 'high' });
+      expect(report?.effortNote ?? null).toBeNull();
     } finally {
       await app.close();
     }

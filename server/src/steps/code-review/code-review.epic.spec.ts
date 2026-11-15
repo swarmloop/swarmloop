@@ -31,12 +31,12 @@ async function parentReview(key: string, reviewAgent: string) {
 }
 
 describe('code review of an epic parent', () => {
-  it('launches every reviewer and the report at the epic effort', async () => {
-    const { done, calls } = await parentReview('PROJ-80', 'claude:claude-opus-5-5');
+  it("launches every reviewer and the report at the review list's effort, not the epic effort", async () => {
+    const { done, calls } = await parentReview('PROJ-80', 'claude:claude-opus-5-5:high');
     expect(done.exitCode).toBe(0);
     expect(calls.length).toBeGreaterThan(1);
     expect(calls.some((call) => call.step === 'code-review-report')).toBe(true);
-    expect(calls.map((call) => call.effort)).toEqual(calls.map(() => 'xhigh'));
+    expect(calls.map((call) => call.effort)).toEqual(calls.map(() => 'high'));
   });
 
   it('keeps an agent that is above the epic effort', async () => {

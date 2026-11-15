@@ -14,6 +14,11 @@ export function highestOf(levels: readonly Effort[], wanted: Effort): Effort | n
   return fits[fits.length - 1] ?? null;
 }
 
+/** True when `wanted` is set and `own` is unset or lower. */
+export function raisesEffort(wanted: Effort | undefined, own: Effort | undefined): boolean {
+  return wanted !== undefined && (own === undefined || EFFORTS.indexOf(wanted) > EFFORTS.indexOf(own));
+}
+
 /** The effort a launch ran with and why. Both are left out when the agent runs at its runtime's default. */
 export interface EffortFields {
   effort?: Effort;

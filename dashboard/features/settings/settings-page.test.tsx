@@ -64,6 +64,15 @@ describe('SettingsPage', () => {
     expect(await screen.findByText('Saved')).toBeInTheDocument();
   });
 
+  it('says which effort the default agents work at and what the epic effort lifts', async () => {
+    render(<SettingsPage />);
+    expect(
+      await screen.findByText(
+        "By default, subtask agents work at medium effort, and plan, implement and review work at high. When a run splits into subtasks, the epic effort setting lifts only the parent's planning.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('offers a model only the price table has, and says when the list is limited', async () => {
     const user = await openOwnPlan();
     expect(screen.queryByText("The model list is limited to the server's models for now.")).not.toBeInTheDocument();

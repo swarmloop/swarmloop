@@ -207,7 +207,7 @@ The `data/` folder holds secrets: the Codex login, the session files and the his
 
 - Each role names its agents as `runtime:model` pairs, with `runtime` one of `cursor`, `claude` or `codex`: `AGENTS_PLAN`, `AGENTS_IMPLEMENT`, and `AGENTS_REVIEW`. Change the lists and restart the server: the next step uses that agent. A step whose agent runs on another runtime than its stored chat opens a new chat with the full brief.
 - An agent can add how hard it works, `runtime:model:effort`, with `effort` one of `low`, `medium`, `high`, `xhigh` or `max`, the same words for every runtime. Without it the agent runs at its runtime's default; a level the runtime or model does not support is refused at start-up or in Settings.
-- When a plan splits into subtasks, the parent run's agents go up to `EPIC_EFFORT` by themselves (never down), and the step header says so.
+- When a plan splits into subtasks, only the parent's planning (its second plan improve pass, its answers to subtasks, its merge request text) goes up to `EPIC_EFFORT` by itself (never down), and the second pass runs only when that raises the effort. Implement and review keep their own lists' effort, and the step header says so.
 - Dollars come from the vendor's published price list, cached for a day.
 - Another agent is the same three pieces: a sandbox image under `docker/sandbox`, its API hosts and key, and the code that reads its output. The pipeline, the history, and the panel stay as they are.
 - For contributors building from a checkout, `docker/sandbox/build.sh` builds the three agent images and the `swarmloop-egress` proxy image (`compose.override.yml` builds them too). Run it again after you update swarmloop. Docker reuses its cache, so to get newer CLIs and certificates run `docker/sandbox/build.sh --fresh`, every few months is enough. Each image keeps its whole CLI under `/opt/swarmloop`, together with a CA certificate bundle (the public root list of Debian's `ca-certificates` package) and, for Codex, `rg`. swarmloop can therefore mount the CLI into another image.
@@ -385,11 +385,11 @@ When the API is on another machine, set the URL in `env`:
 
 | Variable | Values |
 | --- | --- |
-| `AGENTS_PLAN` | Agents of the `plan` role (research, plan, plan improve, the merge request text), `runtime:model[:effort]`, comma-separated. The first is used, the rest are the fallback order. The default is in `defaults.env`. Each person can override it in Settings. |
-| `AGENTS_IMPLEMENT` | Agents of the `implement` role (implement, implement improve, rebase conflicts, chat and shell). The default is in `defaults.env`. Each person can override it in Settings. |
-| `AGENTS_REVIEW` | Agents of the `review` role (every code reviewer and the review report). The default is in `defaults.env`. Each person can override it in Settings. |
-| `AGENTS_SUBTASK_PLAN`, `AGENTS_SUBTASK_IMPLEMENT`, `AGENTS_SUBTASK_REVIEW` | The same for a run with a parent. Empty: the main role. Each person can override it in Settings. |
-| `EPIC_EFFORT` | The effort the parent of a split run works at: `low`, `medium`, `high`, `xhigh` or `max`. It only raises an agent's own effort. Default `xhigh`; empty turns it off. |
+| `AGENTS_PLAN` | Agents of the `plan` role (research, plan, plan improve, the merge request text), `runtime:model[:effort]`, comma-separated. The first is used, the rest are the fallback order. The default is `high`. Each person can override it in Settings. |
+| `AGENTS_IMPLEMENT` | Agents of the `implement` role (implement, implement improve, rebase conflicts, chat and shell). The default is `high`. Each person can override it in Settings. |
+| `AGENTS_REVIEW` | Agents of the `review` role (every code reviewer and the review report). The default is `high`. Each person can override it in Settings. |
+| `AGENTS_SUBTASK_PLAN`, `AGENTS_SUBTASK_IMPLEMENT`, `AGENTS_SUBTASK_REVIEW` | The same for a run with a parent; the default is `medium`. Empty: the main role. Each person can override it in Settings. |
+| `EPIC_EFFORT` | The effort that lifts only the planning of the parent of a split run: `low`, `medium`, `high`, `xhigh` or `max`. It only raises an agent's own effort. Default `xhigh`; empty turns it off. |
 | `SPLIT` | `auto`: the planner may split a big task into subtasks, `off`: it never does; set per server, not per run in the dashboard. Default `auto`. |
 | `ISSUE_TRACKER` | `jira` |
 | `REQUIREMENTS_VIA` | `agent` or `direct`. Both build the requirements record in the server. The model does not rewrite it. |
