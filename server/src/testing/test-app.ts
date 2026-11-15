@@ -19,6 +19,7 @@ import { RunQueriesService } from '../api/run-queries.service';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { ReadinessController } from '../api/readiness.controller';
 import { RunsController } from '../api/runs.controller';
+import { ServerController } from '../api/server.controller';
 import { ReadinessModule } from '../readiness/readiness.module';
 import { ShellService } from '../api/shell.service';
 import { AGENT_RUNNER, type AgentRunInput } from '../agent/agent-runner';
@@ -149,7 +150,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
       SandboxModule,
       ReadinessModule,
     ],
-    controllers: [HealthController, RunsController, ReadinessController],
+    controllers: [HealthController, ServerController, RunsController, ReadinessController],
     providers: [
       RunQueriesService,
       RunCommandsService,

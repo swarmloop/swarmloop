@@ -15,6 +15,7 @@ import { readDefaultSettings } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
 import { allowedOrigins, originAllowed } from '../live/origins';
 import { AuthService } from '../auth/auth.service';
+import { ContainerGate } from '../sandbox/container-gate';
 import { isAllowedHost } from './allowed-hosts';
 
 const PUBLIC_URL = () => rawEnv().SWARMLOOP_PUBLIC_URL ?? readDefaultSettings().SWARMLOOP_PUBLIC_URL;
@@ -46,6 +47,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
     private readonly hub: LiveHub,
     private readonly runs: RunQueriesService,
     private readonly auth: AuthService,
+    private readonly gate: ContainerGate,
   ) {}
 
   /** A socket needs the session cookie or the machine token, like a request. */
@@ -68,6 +70,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
       }),
     );
     this.stop.push(this.hub.onEvents((entry) => this.throttle(entry)));
+    this.stop.push(this.gate.onChange((paused) => this.server.emit('server', { paused })));
   }
 
   onModuleDestroy(): void {
@@ -83,6 +86,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
   }
 
   async handleConnection(client: Socket<ClientToServerEvents, ServerToClientEvents>): Promise<void> {
+    client.emit('server', { paused: this.gate.paused() });
     client.emit('runs', await this.runs.list());
   }
 

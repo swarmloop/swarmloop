@@ -16,6 +16,7 @@ import { CheckoutsController } from './checkouts.controller';
 import { HealthController } from './health.controller';
 import { ReadinessController } from './readiness.controller';
 import { RunsController } from './runs.controller';
+import { ServerController } from './server.controller';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
 import { StatsController } from './stats.controller';
@@ -39,6 +40,7 @@ import { RunRebaseService } from './run-rebase.service';
   ],
   controllers: [
     HealthController,
+    ServerController,
     ReadinessController,
     RunsController,
     CheckoutsController,

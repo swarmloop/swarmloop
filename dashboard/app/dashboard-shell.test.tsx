@@ -47,6 +47,18 @@ beforeEach(() => {
 });
 
 describe('Shell', () => {
+  it('shows the pause notice once at the top while the server is paused', async () => {
+    renderShell();
+    const sentence = 'The server is about to restart; this step starts right after it.';
+    expect(screen.queryByText(sentence)).not.toBeInTheDocument();
+
+    act(() => receive('server', { paused: true }));
+    expect(await screen.findAllByText(sentence)).toHaveLength(1);
+
+    act(() => receive('server', { paused: false }));
+    expect(screen.queryByText(sentence)).not.toBeInTheDocument();
+  });
+
   it('shows offline until the socket connects, then live', async () => {
     renderShell();
 

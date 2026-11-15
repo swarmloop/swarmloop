@@ -27,6 +27,7 @@ import { SessionWrites } from './session-writes';
 import { AttemptMeter } from './agent-attempt';
 import { OutputTail } from './output-tail';
 import { LimitGuard } from './limit-guard';
+import { SERVER_PAUSE_NOTE } from '../contract/server-pause';
 import { AttemptLog } from './live-output';
 import { containerSampler } from '../sandbox/container-sampler';
 
@@ -79,27 +80,42 @@ export class AgentLaunch {
     const credential = await this.credentialOf(input.runKey, runtime.name);
     const launch = this.launchPrep.prepare(input, runtime, resumed);
     const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime.name, this.clock.now());
-    const started = this.clock.now();
-    const awake = new AwakeTime(this.clock, SAMPLE_MS, input.onSuspended);
+    let started = this.clock.now();
+    let awake = new AwakeTime(this.clock, SAMPLE_MS, input.onSuspended);
+    let held = false;
     const workMounts = readOnlyTree(runtime.name, input.mode)
       ? input.mounts.map((mount) => ({ ...mount, readonly: true }))
       : input.mounts;
-    const process = await AgentProcess.spawn(this.sandbox, {
-      runtime: runtime.name,
-      runKey: input.runKey,
-      step: input.step,
-      attemptId: input.attemptId,
-      mounts: [...workMounts, ...launch.mounts],
-      statePath: launch.statePath,
-      allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(runtime.name)])],
-      manifestHosts: input.manifestHosts,
-      env: [await this.launchEnv.credential(runtime.name, credential, env)],
-      command: [runtime.command, ...launch.args],
-      unsetEnv: launch.unsetEnv,
-      userId: launch.userId,
-      ...(input.project ? { project: input.project } : {}),
-    });
     const step = input.liveStep ?? input.step;
+    const onPaused = (): void => {
+      held = true;
+      this.live?.changed(input.runKey);
+      this.live?.log({ key: input.runKey, step, body: `${SERVER_PAUSE_NOTE}\n` });
+    };
+    const process = await AgentProcess.spawn(
+      this.sandbox,
+      {
+        runtime: runtime.name,
+        runKey: input.runKey,
+        step: input.step,
+        attemptId: input.attemptId,
+        mounts: [...workMounts, ...launch.mounts],
+        statePath: launch.statePath,
+        allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(runtime.name)])],
+        manifestHosts: input.manifestHosts,
+        env: [await this.launchEnv.credential(runtime.name, credential, env)],
+        command: [runtime.command, ...launch.args],
+        unsetEnv: launch.unsetEnv,
+        userId: launch.userId,
+        ...(input.project ? { project: input.project } : {}),
+      },
+      { onPaused },
+    );
+    if (held) {
+      // The wait for the pause to end is neither the visit's time nor a host suspension.
+      started = this.clock.now();
+      awake = new AwakeTime(this.clock, SAMPLE_MS, input.onSuspended);
+    }
     await recordLaunch(input.outputFile, input.runKey, step);
     const baseline =
       priorOutput.length === 0 || priorOutput.endsWith('\n')

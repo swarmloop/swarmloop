@@ -35,6 +35,7 @@ import { projectGitMount } from './project-git';
 import { collectEnvMasks } from './env-masks';
 import { parseDockerStats } from './docker-stats';
 import { containerMemoryCap } from './memory-cap';
+import { ContainerGate } from './container-gate';
 
 export type { DockerRunner };
 
@@ -52,7 +53,14 @@ export class SandboxService {
   private egressProxy: Egress | null = null;
   private memoryCap: number | undefined;
 
-  constructor(@Optional() private readonly config?: AppConfig) {}
+  readonly gate: ContainerGate;
+
+  constructor(
+    @Optional() private readonly config?: AppConfig,
+    @Optional() gate?: ContainerGate,
+  ) {
+    this.gate = gate ?? new ContainerGate();
+  }
 
   useDocker(docker: DockerRunner): void {
     this.docker = docker;
@@ -105,13 +113,20 @@ export class SandboxService {
     }
   }
 
+  /**
+   * With `held`, the container waits while the server is paused (`onPaused` says so once) and is counted until it ends.
+   * Without it, the container starts at once and is not counted.
+   */
   async spawn(
     given: Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots'> & { envMasks?: EnvMask[] },
+    held?: { onPaused: () => void },
   ): Promise<SandboxChild> {
     const egress = this.egress();
+    const admitted = held ? await this.gate.admit(held.onPaused, given.runKey) : () => undefined;
     const metadata: SandboxMount[] = [];
     let release = () => undefined as void;
     const cleanup = () => {
+      admitted();
       release();
       for (const mount of metadata) {
         rmSync(mount.hostPath, { recursive: true, force: true });
@@ -205,10 +220,11 @@ export class SandboxService {
   }
 
   /**
-   * Stops every container of the run: graceful first, then a kill, then a second listing to confirm.
+   * Takes the run's containers out of a pause's wait, then stops every container of it: graceful first, then a kill, then a second listing to confirm.
    * 'unknown' when docker did not answer or a container is still listed.
    */
   stopRun(runKey: string, step: string, graceSeconds: number): Promise<'gone' | 'unknown'> {
+    this.gate.drop(runKey);
     return stopRun(this.docker, runKey, step, graceSeconds);
   }
 

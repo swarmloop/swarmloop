@@ -34,8 +34,12 @@ export class AgentProcess {
     this.child.on('close', this.rememberClose);
   }
 
-  static async spawn(sandbox: SandboxService, launch: Parameters<SandboxService['spawn']>[0]): Promise<AgentProcess> {
-    return new AgentProcess(await sandbox.spawn(launch), sandbox);
+  static async spawn(
+    sandbox: SandboxService,
+    launch: Parameters<SandboxService['spawn']>[0],
+    held?: Parameters<SandboxService['spawn']>[1],
+  ): Promise<AgentProcess> {
+    return new AgentProcess(await sandbox.spawn(launch, held), sandbox);
   }
 
   get containerName(): string {

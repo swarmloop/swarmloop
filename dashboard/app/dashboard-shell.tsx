@@ -16,7 +16,7 @@ import type { RunSummary } from '@contract/api';
 import { NewRunDialog } from '../features/new-run';
 import { ReadinessStatus, useReadiness } from '../features/readiness';
 import { RemoveRunDialog, RunColumn, useRuns } from '../features/runs';
-import { Account, Shell, useNewRun } from '../features/shell';
+import { Account, PauseBanner, Shell, useNewRun } from '../features/shell';
 
 const DrawerWidth = 280;
 
@@ -183,6 +183,7 @@ function DashboardFrame({
       </Drawer>
       <Box component="main" sx={{ ml: `${DrawerWidth}px`, minHeight: '100vh', minWidth: 0 }}>
         <Toolbar />
+        <PauseBanner />
         <Box sx={{ px: { xs: 2, md: 4 }, py: 3, maxWidth: 1180, minWidth: 0 }}>{children}</Box>
       </Box>
       <RemoveRunDialog

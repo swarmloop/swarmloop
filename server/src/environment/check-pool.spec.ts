@@ -7,6 +7,9 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { CheckCommandEntity, RunEntity } from '../history/entities';
 import type { SampleDraft } from '../history/visit';
+import { ContainerGate } from '../sandbox/container-gate';
+import { heldSpawn } from '../sandbox/container-gate.spec-helpers';
+import { SERVER_PAUSE_NOTE } from '../contract/server-pause';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import { CheckPool, ChecksStopped } from './check-pool';
 import type { CheckedRepo, EnvironmentInput } from './environment-types';
@@ -28,6 +31,8 @@ function setup(options: {
   /** How far the fake clock moves each time a container ends. */
   tick?: number;
   samples?: SampleDraft[];
+  /** Wraps the fake spawn the way the real sandbox holds a container while the gate is paused. */
+  gate?: ContainerGate;
 }) {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-pool-'));
   const spawned: SandboxLaunch[] = [];
@@ -60,6 +65,12 @@ function setup(options: {
       return Promise.resolve(child);
     }),
   };
+  if (options.gate) {
+    const inner = sandbox.spawn;
+    sandbox.spawn = jest.fn(
+      heldSpawn(options.gate, inner as unknown as Parameters<typeof heldSpawn>[1]),
+    ) as unknown as typeof inner;
+  }
   const stored: { kind: string; body: string }[] = [];
   const documents = {
     putDocument: jest.fn((_run: RunEntity, kind: string, body: string) => {
@@ -71,18 +82,23 @@ function setup(options: {
   const clock = new FakeClock();
   const logs: { key: string; step: string; command?: number; body: string; samples?: unknown[] }[] = [];
   const limit = options.limit ?? { value: 2 };
+  const live = options.live ?? {
+    changed: () => undefined,
+    log: (entry: (typeof logs)[number]) => void logs.push(entry),
+  };
   const pool = new CheckPool({
     checksParallel: () => limit.value,
     halted: options.stopped,
     clock,
     documents,
     commands,
-    live: options.live ?? { changed: () => undefined, log: (entry) => void logs.push(entry) },
+    live,
     shell: () => ({
       root,
       clock,
       sandbox: sandbox as unknown as ReturnType<ConstructorParameters<typeof CheckPool>[0]['shell']>['sandbox'],
       halted: options.halted,
+      ...(options.gate ? { live } : {}),
     }),
   });
   const inputOf = (key: string) =>
@@ -113,6 +129,23 @@ const killedFirst = (name: string) => (command: string, _launch: SandboxLaunch, 
   command === name && attempt === 1 ? 137 : 0;
 
 describe('CheckPool', () => {
+  it('starts no check command while the server is paused, says so, and starts them in line order after', async () => {
+    const gate = new ContainerGate();
+    gate.pause();
+    const { pool, input, repoOf, spawned, logs } = setup({ exits: () => 0, gate });
+    const repo = repoOf(['a', 'b', 'c']);
+    const running = pool.runAll(input, 'a1', [repo]);
+    for (let turn = 0; turn < 5; turn += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    expect(spawned).toEqual([]);
+    expect(logs.filter((entry) => entry.body === `${SERVER_PAUSE_NOTE}\n`).length).toBeGreaterThan(0);
+    gate.resume();
+    await running;
+    expect(spawned.map((launch) => launch.project?.shell)).toEqual(['a', 'b', 'c']);
+    expect(repo.rows.map((row) => row.status)).toEqual(['passed', 'passed', 'passed']);
+  });
+
   it('runs a check killed by its memory cap once more under the same cap, and reports no kill when it passes', async () => {
     const { pool, input, repoOf, spawned } = setup({ exits: killedFirst('b') });
     await pool.runAll(input, 'a1', [repoOf(['a', 'b'])]);

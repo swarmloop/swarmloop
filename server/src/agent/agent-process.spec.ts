@@ -11,9 +11,10 @@ describe('AgentProcess', () => {
     const spawn = jest.fn().mockResolvedValue(child);
     const service = { spawn } as unknown as SandboxService;
 
-    const process = await AgentProcess.spawn(service, {} as Parameters<SandboxService['spawn']>[0]);
+    const held = { onPaused: jest.fn() };
+    const process = await AgentProcess.spawn(service, {} as Parameters<SandboxService['spawn']>[0], held);
 
-    expect(spawn).toHaveBeenCalledWith({});
+    expect(spawn).toHaveBeenCalledWith({}, held);
     expect(process.containerName).toBe('box');
   });
 

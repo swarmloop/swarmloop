@@ -5,6 +5,7 @@ import { createContext, createElement, useContext, useEffect, useState, useSyncE
 import { liveSocket } from '../../lib/live';
 import type { FlowView, RunsView, RunSummary } from '@contract/api';
 import type { LiveEvents, LiveLog } from '@contract/live';
+import type { ServerState } from '@contract/server-pause';
 
 interface LiveSnapshot {
   runs: RunSummary[];
@@ -15,6 +16,8 @@ interface LiveSnapshot {
   logs: LiveLog[];
   /** The last events message of the watched run. */
   events: LiveEvents | null;
+  /** True while the server holds new containers for a restart. */
+  paused: boolean;
 }
 
 interface LiveStore {
@@ -27,7 +30,7 @@ interface LiveStore {
 }
 
 function createStore(): LiveStore {
-  let snapshot: LiveSnapshot = { runs: [], connected: false, flow: null, logs: [], events: null };
+  let snapshot: LiveSnapshot = { runs: [], connected: false, flow: null, logs: [], events: null, paused: false };
   let watched: string | null = null;
   const listeners = new Set<() => void>();
   const update = (patch: Partial<LiveSnapshot>): void => {
@@ -83,12 +86,14 @@ function createStore(): LiveStore {
           update({ events: entry });
         }
       };
+      const onServer = (state: ServerState): void => update({ paused: state.paused });
       socket.on('connect', onConnect);
       socket.on('disconnect', onDisconnect);
       socket.on('runs', onRuns);
       socket.on('flow', onFlow);
       socket.on('log', onLog);
       socket.on('events', onEvents);
+      socket.on('server', onServer);
       if (socket.connected) {
         update({ connected: true });
       }
@@ -99,6 +104,7 @@ function createStore(): LiveStore {
         socket.off('flow', onFlow);
         socket.off('log', onLog);
         socket.off('events', onEvents);
+        socket.off('server', onServer);
       };
     },
   };

@@ -10,7 +10,7 @@ vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).f
 let watch: (key: string | null) => void = () => undefined;
 
 function Probe() {
-  const { runs, flow, logs, events, connected } = useLiveBridge((snapshot) => snapshot);
+  const { runs, flow, logs, events, connected, paused } = useLiveBridge((snapshot) => snapshot);
   const { watchRun } = useLiveActions();
   useEffect(() => {
     watch = watchRun;
@@ -18,6 +18,7 @@ function Probe() {
   return (
     <div>
       <p>{connected ? 'live' : 'offline'}</p>
+      <p>{paused ? 'paused' : 'running'}</p>
       {runs.map((run) => (
         <p key={run.key}>{run.name}</p>
       ))}
@@ -60,6 +61,17 @@ describe('useLiveBridge', () => {
     act(() => receive('connect'));
 
     expect(emitted).not.toHaveBeenCalled();
+  });
+
+  it('keeps whether the server is paused from the server event', () => {
+    render(<Probe />, { wrapper: LiveBridgeProvider });
+    expect(screen.getByText('running')).toBeInTheDocument();
+
+    act(() => receive('server', { paused: true }));
+    expect(screen.getByText('paused')).toBeInTheDocument();
+
+    act(() => receive('server', { paused: false }));
+    expect(screen.getByText('running')).toBeInTheDocument();
   });
 
   it('replaces the runs with a runs event', () => {

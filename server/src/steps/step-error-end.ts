@@ -3,6 +3,7 @@ import type { Clock } from '../core/clock';
 import { ERROR_CODES, IMAGE_ERROR_CODES } from '../contract/error-codes';
 import { GitAuthError, HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { ChecksStopped } from '../environment/check-pool';
+import { ContainerDropped } from '../sandbox/container-gate';
 import { StepStopped } from '../agent/step-stopped';
 
 /** How a step that threw ends without failing: the run is blocked or waits, as the error says. */
@@ -45,7 +46,7 @@ export function errorEnd(
   clock: Clock,
   env: Pick<SwarmloopEnv, 'RECONCILE_MS'>,
 ): ErrorEnd | null {
-  if (error instanceof StepStopped || error instanceof ChecksStopped) {
+  if (error instanceof StepStopped || error instanceof ChecksStopped || error instanceof ContainerDropped) {
     return { outcome: 'blocked', exitCode: 1, line: `${startedAt} ${error.message}` };
   }
   if (error instanceof GitAuthError) {
