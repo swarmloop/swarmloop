@@ -60,6 +60,10 @@ export class CodexRuntime extends AbstractAgentRuntime {
     return ['--add-dir', '/work/brief'];
   }
 
+  readDirArgs(dir: string): string[] {
+    return ['--add-dir', dir];
+  }
+
   override printArgs(input: AgentPrintInput): string[] {
     const args = [
       'exec',

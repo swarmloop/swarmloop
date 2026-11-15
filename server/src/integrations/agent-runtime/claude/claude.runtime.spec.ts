@@ -14,6 +14,7 @@ describe('ClaudeRuntime', () => {
 
   it('opens the brief directory', () => {
     expect(runtime.briefArgs()).toEqual(['--add-dir', '/work/brief']);
+    expect(runtime.readDirArgs('/work/logs')).toEqual(['--add-dir', '/work/logs']);
   });
 
   it('prints plan mode and agent mode with resume and mcp approval', () => {
