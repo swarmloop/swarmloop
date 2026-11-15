@@ -1,4 +1,5 @@
 import { isAbsolute, resolve, sep } from 'path';
+import { RUN_LOGS_PATH } from '../core/run-logs';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { assertInsideWork } from './allowed-path';
@@ -35,8 +36,16 @@ export function assertMount(mount: SandboxMount, home: string, workRoots: string
   if ((mount.containerPath.endsWith('/.git') || GIT_METADATA.test(mount.containerPath)) && !mount.readonly) {
     throw new SwarmloopError('sandbox git metadata must be read-only');
   }
+  if (mount.containerPath === RUN_LOGS_PATH && !mount.readonly) {
+    throw new SwarmloopError('sandbox mount is not allowed');
+  }
   assertDaemonPath(mount.hostPath, home);
-  if (!mount.volume && WORK_MOUNT.test(mount.containerPath) && mount.containerPath !== BRIEF_MOUNT) {
+  if (
+    !mount.volume &&
+    WORK_MOUNT.test(mount.containerPath) &&
+    mount.containerPath !== BRIEF_MOUNT &&
+    mount.containerPath !== RUN_LOGS_PATH
+  ) {
     try {
       assertInsideWork(mount.hostPath, workRoots);
     } catch {

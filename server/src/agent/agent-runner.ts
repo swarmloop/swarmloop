@@ -194,7 +194,7 @@ export class AgentProcessRunner {
       runKey: input.runKey,
       step: input.step,
       attemptId: input.attemptId,
-      mounts: [...workMounts, ...launch.briefs],
+      mounts: [...workMounts, ...launch.mounts],
       statePath: launch.statePath,
       allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(runtime.name)])],
       manifestHosts: input.manifestHosts,

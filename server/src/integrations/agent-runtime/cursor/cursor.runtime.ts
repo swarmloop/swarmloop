@@ -34,6 +34,10 @@ export class CursorRuntime extends AbstractAgentRuntime {
     return ['--add-dir', '/work/brief'];
   }
 
+  readDirArgs(dir: string): string[] {
+    return ['--add-dir', dir];
+  }
+
   override modelListArgs(): string[] {
     return ['--list-models'];
   }
