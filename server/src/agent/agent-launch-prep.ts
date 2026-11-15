@@ -1,3 +1,4 @@
+import { join } from 'path';
 import type { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import type { LiveHub } from '../live/live.hub';
@@ -8,6 +9,7 @@ import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
 import { syncChatMode } from './chat-mode';
 import { sessionHome } from '../history/session-group';
 import { briefMounts, spillPrompt } from './agent-args';
+import { copySkillBriefs, SKILLS_DIR } from './skill-briefs';
 
 /** What one launch needs before it is spawned. */
 interface Launch {
@@ -43,6 +45,9 @@ export class AgentLaunchPrep {
     }
     const delivered = spillPrompt(input.prompt, statePath, input.step);
     const briefs = briefMounts(statePath, input.step, delivered.mounts);
+    if (briefs.length > 0) {
+      copySkillBriefs(SKILLS_DIR, join(statePath, 'briefs'));
+    }
     let args = runtime.printArgs({ ...input, prompt: delivered.text });
     if (briefs.length > 0) {
       args.unshift(...runtime.briefArgs());
