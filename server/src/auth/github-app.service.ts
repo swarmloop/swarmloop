@@ -5,7 +5,7 @@ import { Clock } from '../core/clock';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { request } from '../integrations/http';
 import { HostAppsService } from './host-apps.service';
-import { githubEndpoints } from './oauth-provider';
+import { githubEndpoints } from '../integrations/code-host/github/github-login';
 
 /** The longest name GitHub accepts for an app. */
 const NAME_LIMIT = 34;

@@ -7,7 +7,9 @@ import { GitAuthError, SwarmloopError } from '../core/swarmloop-error';
 import { ConnectionEntity } from '../history/connection-entities';
 import { request } from '../integrations/http';
 import { HostAppsService } from './host-apps.service';
-import { endpointsOf, githubEndpoints, type Endpoints, type Grant, type ProviderName } from './oauth-provider';
+import { endpointsOf } from '../integrations/code-host/http-login-provider';
+import { githubEndpoints } from '../integrations/code-host/github/github-login';
+import type { Endpoints, Grant, ProviderName } from '../integrations/code-host/login-provider';
 import { SecretBox } from './secret-box';
 
 /** A token is refreshed this long before it ends. */
@@ -169,7 +171,7 @@ export class ConnectionsService {
   }
 
   private async refreshNow(row: ConnectionEntity): Promise<string> {
-    const host = row.host as ProviderName;
+    const host = row.host;
     const app = this.apps.credentials(host);
     if (!app || !row.refreshToken) {
       return this.broken(row);

@@ -18,7 +18,8 @@ import { startState, type CookieResponse } from './cookies';
 import { GithubAppService, type ManifestForm } from './github-app.service';
 import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
-import { endpointsOf, type ProviderName } from './oauth-provider';
+import { endpointsOf } from '../integrations/code-host/http-login-provider';
+import type { ProviderName } from '../integrations/code-host/login-provider';
 
 const HOSTS: readonly ProviderName[] = ['github', 'gitlab'];
 

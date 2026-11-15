@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { Clock } from '../core/clock';
-import type { ProviderName } from './oauth-provider';
+import type { ProviderName } from '../integrations/code-host/login-provider';
 
 const TTL_MS = 10 * 60 * 1000;
 /** Logins in flight at most: the login route is public, so the map must not grow with the calls. */
@@ -23,7 +23,7 @@ export class LoginStates {
 
   constructor(private readonly clock: Clock) {}
 
-  /** `pkce` false is for a code GitHub sends after an install, which no challenge was asked for: the verifier is empty. */
+  /** `pkce` false is for a code the host sends after an app install, which no challenge was asked for: the verifier is empty. */
   start(provider: ProviderName, pkce = true, replaceBy?: string, next?: string): { state: string; verifier: string } {
     const now = this.clock.now();
     // Entries are in start order and share one TTL, so the sweep ends at the first live one.

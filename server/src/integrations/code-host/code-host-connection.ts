@@ -1,8 +1,14 @@
-import type { ConnectionsService } from '../../auth/connections.service';
-import type { Endpoints, ProviderName } from '../../auth/oauth-provider';
+import type { Endpoints, ProviderName } from './login-provider';
 import { GitAuthError } from '../../core/swarmloop-error';
 import type { ConnectionFlow } from '../../contract/connections';
 import type { Connection, ConnectionOwnStore, ConnectionProbe, ConnectionTestResult } from '../connection';
+
+/** What a connection card needs of the store of connections. */
+export interface ConnectionStore {
+  disconnect(host: ProviderName, login: string): Promise<void>;
+  health(host: ProviderName, login: string): Promise<{ login: string; status: 'ok' | 'broken' } | null>;
+  tokenFor(host: ProviderName, login: string): Promise<string | null>;
+}
 
 interface HostDescription {
   host: ProviderName;
@@ -23,7 +29,7 @@ export class CodeHostConnection implements Connection {
   constructor(
     private readonly description: HostDescription,
     private readonly endpoints: Endpoints,
-    private readonly store: ConnectionsService,
+    private readonly store: ConnectionStore,
   ) {
     this.id = description.host;
     this.logo = description.host;

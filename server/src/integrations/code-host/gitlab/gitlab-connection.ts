@@ -1,10 +1,9 @@
-import type { ConnectionsService } from '../../../auth/connections.service';
-import { gitlabEndpoints } from '../../../auth/oauth-provider';
+import { gitlabEndpoints } from './gitlab-login';
 import type { Connection } from '../../connection';
-import { CodeHostConnection } from '../code-host-connection';
+import { CodeHostConnection, type ConnectionStore } from '../code-host-connection';
 
 /** GitLab on the Connections page. The server's own base url and token key come from the host. */
-export function gitlabConnection(host: { baseUrl: string; tokenKey: string }, store: ConnectionsService): Connection {
+export function gitlabConnection(host: { baseUrl: string; tokenKey: string }, store: ConnectionStore): Connection {
   return new CodeHostConnection(
     {
       host: 'gitlab',

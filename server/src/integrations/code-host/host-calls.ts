@@ -1,5 +1,5 @@
 import type { SwarmloopEnv } from '../../config/env';
-import type { CODE_HOST_ENV_KEYS } from '../../config/env.schema';
+import type { CODE_HOST_ENV_KEYS } from '../../config/code-host-env-keys';
 import type { Clock } from '../../core/clock';
 import { FetchFailed, HostUnavailable, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { request } from '../http';

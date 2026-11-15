@@ -14,7 +14,7 @@ import { GithubAppService } from './github-app.service';
 import { HostAppsService } from './host-apps.service';
 import { PersonalCredentials } from './personal-credentials.service';
 import { LoginStates } from './login-states';
-import { oauthProviders } from './oauth-provider';
+import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { SecretBox, secretKey } from './secret-box';
 import { SessionService } from './session.service';
 
@@ -38,7 +38,8 @@ import { SessionService } from './session.service';
     },
     {
       provide: OAUTH_PROVIDERS,
-      useFactory: (config: AppConfig, clock: Clock, apps: HostAppsService) => oauthProviders(config.env, clock, apps),
+      useFactory: (config: AppConfig, clock: Clock, apps: HostAppsService) =>
+        CodeHostRegistry.loginProviders(config.env, clock, apps),
       inject: [AppConfig, Clock, HostAppsService],
     },
     { provide: APP_GUARD, useClass: AuthGuard },

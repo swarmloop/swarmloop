@@ -1,6 +1,6 @@
 import type { AppConfig } from '../config/env';
 import type { LoginStates } from './login-states';
-import type { ProviderName } from './oauth-provider';
+import type { ProviderName } from '../integrations/code-host/login-provider';
 
 export const STATE_COOKIE = 'swarmloop_state';
 
