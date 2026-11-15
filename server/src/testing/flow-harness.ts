@@ -34,8 +34,8 @@ interface FlowHarness {
   sandbox: FakeSandbox;
   /** The keys of the subtask runs the parent asked to start, in order. */
   launched: string[];
-  /** Begins the run at `step` on the fake gitlab host, with what the real merge-request and pipeline steps read: the origin is a gitlab url, and the worktree head is the commit CI is asked about. */
-  begin(step: 'merge-request' | 'pipeline', options?: { spentUsd?: number }): Promise<RunEntity>;
+  /** Begins the run at `step` on the fake gitlab host, with what the real merge-request and pipeline steps read: the origin is a gitlab url, and the worktree head is the commit CI is asked about. At `plan` no work exists yet, so there is no implementation and no gate. */
+  begin(step: 'plan' | 'merge-request' | 'pipeline', options?: { spentUsd?: number }): Promise<RunEntity>;
   /** A new commit on the feature branch, pushed; the run's pipeline ref and review report stand for it. Returns its sha. */
   recommit(): Promise<string>;
   /** One reconciler pass: the fake clock moves by the reconcile interval, then every pass of a tick runs. */
@@ -101,6 +101,7 @@ export async function createFlowHarness(
       run.codeHost = 'gitlab';
       run.spentUsd = begun.spentUsd ?? run.spentUsd;
       await app.app.get(RunRepository).saveRun(run);
+      if (step === 'plan') return run;
       await app.app.get(DocumentRepository).putDocument(run, 'implementation', '- shipped the field\n');
       await seedGates(harness, run, feature);
       return run;

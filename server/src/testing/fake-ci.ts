@@ -14,6 +14,7 @@ export class FakeCi {
   private readonly scripts = new Map<string, Script>();
   private readonly branchScripts = new Map<string, Script>();
   private until: { log: string; present: (sha: string) => boolean } | undefined;
+  private runs: ((sha: string) => boolean) | undefined;
   private read: string | undefined;
   private readBranch: string | undefined;
   private readCount = 0;
@@ -36,6 +37,11 @@ export class FakeCi {
   /** A commit with no script of its own fails with `jobLog` until `present` says it has what the log asks for, and passes after. */
   failUntil(jobLog: string, present: (sha: string) => boolean): void {
     this.until = { log: jobLog, present };
+  }
+
+  /** A commit with no script of its own gets no run, and so no pipeline, unless `present` says it holds what a run needs; then it passes. */
+  runsWhen(present: (sha: string) => boolean): void {
+    this.runs = present;
   }
 
   /** No run starts for the commit, until the host is nudged when `startsOnNudge` is set; then the commit passes. */
@@ -78,13 +84,16 @@ export class FakeCi {
     return this.outcome(sha, branch)?.kind === 'pass';
   }
 
-  /** What the commit's pipeline is scripted to do: its own script, else the script of its branch, else the `failUntil` rule. */
+  /** What the commit's pipeline is scripted to do: its own script, else the script of its branch, else the `failUntil` rule, else the `runsWhen` rule. */
   private outcome(sha: string | undefined, branch?: string): Script | undefined {
     const scripted = (sha ? this.scripts.get(sha) : undefined) ?? (branch ? this.branchScripts.get(branch) : undefined);
-    if (scripted || !this.until || !sha) {
+    if (scripted || !sha) {
       return scripted;
     }
-    return this.until.present(sha) ? { kind: 'pass' } : { kind: 'fail', log: this.until.log };
+    if (this.until) {
+      return this.until.present(sha) ? { kind: 'pass' } : { kind: 'fail', log: this.until.log };
+    }
+    return this.runs?.(sha) ? { kind: 'pass' } : undefined;
   }
 
   snapshot(sha: string | undefined, branch?: string): PipelineSnapshot | null {

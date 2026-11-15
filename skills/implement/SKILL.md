@@ -8,6 +8,8 @@ The requirements record, the approved plan, any return notes, and what previous 
 
 Write the smallest change that does the checklist. Keep to the structure and patterns already in the tree, and keep it clean, simple, and straightforward: DRY, KISS, SOLID. Favor clear, well-factored code over clever or cramped code: each function, module, and layer has one clear responsibility. Reach for an abstraction when it makes the code clearer and matches how the tree is already organized; do not add a file, helper, or layer that does not earn its place or that the task does not need. When a change leaves a component, file, export, import, comment, or commented-out code with no remaining use, remove that leftover in the same change. Keep the behavior complete and reliable: the cases the requirement names work, and errors are handled the way the tree already handles them. Cover the change with tests in the style the tree already uses. A new responsibility goes in its own file, named for it. A file that would break a size or complexity rule of the project is split by responsibility, never squeezed: no joined lines, no shortened names, no branches moved into tables just to pass a count. Before writing a helper, search the tree for one that does the same and use it.
 
+A task that is the project base follows /work/brief/skills/implement/project-base.md.
+
 [near tests rule]
 
 Change files with the runtime's own edit and write tools, and read them with its read tool. Use the shell to run commands, not to rewrite files.
