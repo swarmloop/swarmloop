@@ -1,3 +1,4 @@
+import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach } from 'vitest';
 
 /** Sets the window to a phone width for each test of the file. */
@@ -8,6 +9,7 @@ export function narrowViewport(width = 320): void {
     window.innerWidth = width;
   });
   afterEach(() => {
+    cleanup();
     window.innerWidth = before;
   });
 }

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReadinessItem } from '@contract/readiness';
 import { ApiError } from '../../lib/api';
@@ -42,6 +42,7 @@ const CHECKED_AT = '2026-01-01T00:00:00.000Z';
 
 describe('useReadiness', () => {
   afterEach(() => {
+    cleanup();
     vi.useRealTimers();
   });
 

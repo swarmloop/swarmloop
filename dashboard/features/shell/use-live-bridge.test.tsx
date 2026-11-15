@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { useEffect } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { emitted, fakeSocket, receive, resetFakeSocket } from '../../test/fake-socket';
+import { describe, expect, it, vi } from 'vitest';
+import { emitted, fakeSocket, receive } from '../../test/fake-socket';
 import { flowView, runSummary } from '../../test/fixtures';
 import { LiveBridgeProvider, useLiveActions, useLiveBridge } from './use-live-bridge';
 
@@ -32,10 +32,6 @@ function Probe() {
     </div>
   );
 }
-
-afterEach(() => {
-  resetFakeSocket();
-});
 
 describe('useLiveBridge', () => {
   it('re-sends watch for the watched run on every connect', () => {

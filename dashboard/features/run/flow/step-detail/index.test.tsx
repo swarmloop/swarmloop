@@ -1,9 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentProps, type ReactNode, useEffect } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LiveBridgeProvider, useLiveActions } from '../../../shell';
-import { receive, resetFakeSocket } from '../../../../test/fake-socket';
+import { receive } from '../../../../test/fake-socket';
 import { QueryWrapper } from '../../../../test/query-wrapper';
 import { getRunLog, getStep, getStepEvents } from '../../../../lib/endpoints';
 import type { CheckCommandView } from '@contract/api';
@@ -52,8 +52,6 @@ beforeEach(() => {
   vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
   vi.mocked(getStep).mockResolvedValue(stepView());
 });
-
-afterEach(resetFakeSocket);
 
 describe('StepDetail', () => {
   it('shows a cut attempt as interrupted in the neutral color with its sentence', async () => {

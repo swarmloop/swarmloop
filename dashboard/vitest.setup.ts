@@ -3,9 +3,9 @@ import { cleanup } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 import { resetFakeSocket } from './test/fake-socket';
 
-afterEach(cleanup);
-
+// Unmount first, so nothing a test rendered runs against a reset mock.
 afterEach(() => {
+  cleanup();
   vi.resetAllMocks();
   resetFakeSocket();
 });
