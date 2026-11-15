@@ -14,6 +14,7 @@ import { Clock, SystemClock } from '../core/clock';
 import { testEnv } from '../config/env.spec-helpers';
 import { HistoryModule } from '../history/history.module';
 import { SandboxService } from '../sandbox/sandbox.service';
+import { seedMigratedDatabase } from '../testing/migrated-database.spec-helpers';
 
 export interface CatalogApp {
   catalog: ConnectionCatalog;
@@ -25,6 +26,7 @@ export interface CatalogApp {
 /** The real connection catalog over a fresh database, with the sandbox out of the way: Jira and Confluence tests use plain HTTP. */
 export async function startCatalog(env: Partial<SwarmloopEnv> = {}): Promise<CatalogApp> {
   const root = await mkdtemp(join(tmpdir(), 'atlassian-catalog-'));
+  seedMigratedDatabase(root);
   const providers = [
     { provide: AppConfig, useValue: new AppConfig(testEnv({ SWARMLOOP_ROOT: root, ...env })) },
     { provide: Clock, useValue: new SystemClock() },

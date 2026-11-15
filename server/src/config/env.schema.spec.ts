@@ -236,27 +236,33 @@ describe('env schema', () => {
   });
 
   it('still loads an old file with MODEL_RESEARCH and warns that it was never read', async () => {
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warnings: string[] = [];
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation((message: unknown) => {
+      warnings.push(String(message));
+    });
     try {
       await compileWith(complete);
-      expect(warn).not.toHaveBeenCalled();
+      expect(warnings).toEqual([]);
       const config = await compileWith({ ...complete, MODEL_RESEARCH: 'grok-4.7-high' });
       expect(config.env.AGENTS_PLAN).toBe('cursor:grok-4.7-high');
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('MODEL_RESEARCH is set but was never read'));
+      expect(warnings).toEqual([expect.stringContaining('MODEL_RESEARCH is set but was never read')]);
     } finally {
       warn.mockRestore();
     }
   });
 
   it('RUNTIME=cursor and MODEL_PLAN=x change nothing and produce one warning naming both', async () => {
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warnings: string[] = [];
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation((message: unknown) => {
+      warnings.push(String(message));
+    });
     try {
       const plain = await compileWith(complete);
-      expect(warn).not.toHaveBeenCalled();
+      expect(warnings).toEqual([]);
       const old = await compileWith({ ...complete, RUNTIME: 'cursor', MODEL_PLAN: 'x' });
       expect(old.env).toEqual(plain.env);
-      expect(warn).toHaveBeenCalledTimes(1);
-      const text = String(warn.mock.calls[0][0]);
+      expect(warnings).toHaveLength(1);
+      const text = warnings[0];
       expect(text).toContain(
         'RUNTIME and MODEL_PLAN are no longer read: the agents are AGENTS_PLAN, AGENTS_IMPLEMENT and AGENTS_REVIEW',
       );

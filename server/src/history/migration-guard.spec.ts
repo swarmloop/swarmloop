@@ -8,6 +8,7 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
 import { GuardedDataSource } from './guarded-data-source';
 import { historyDatabaseOptions } from './history.module';
 import { migrations } from './migrations';
+import { seedMigratedDatabase } from '../testing/migrated-database.spec-helpers';
 
 /** A newer version: `count` more migrations than the current list. */
 function release(count: number) {
@@ -84,7 +85,7 @@ describe('migration guard', () => {
   });
 
   it('backs up an existing database before a pending migration, with the session files', async () => {
-    await start(directory);
+    seedMigratedDatabase(directory);
     const db = new Database(join(directory, 'data', 'swarmloop.sqlite'));
     db.exec(`INSERT INTO checkouts (name, path) VALUES ('main', '/work/main')`);
     db.close();
@@ -104,7 +105,7 @@ describe('migration guard', () => {
   });
 
   it('does not migrate when the backup fails', async () => {
-    await start(directory);
+    seedMigratedDatabase(directory);
     writeFileSync(join(directory, 'data', 'backups'), 'a file where the directory should be');
 
     await expect(start(directory, 1)).rejects.toThrow('was not migrated');
@@ -113,7 +114,7 @@ describe('migration guard', () => {
   });
 
   it('refuses an older server on a newer database and names the backup', async () => {
-    await start(directory);
+    seedMigratedDatabase(directory);
     await start(directory, 1);
     const [file] = backups(directory);
 
@@ -134,7 +135,7 @@ describe('migration guard', () => {
   });
 
   it('keeps the last 3 backups', async () => {
-    await start(directory);
+    seedMigratedDatabase(directory);
     for (let later = 1; later <= 5; later += 1) {
       await start(directory, later);
     }
@@ -143,7 +144,7 @@ describe('migration guard', () => {
   });
 
   it('compresses an old plain backup on start, even when no migration is due', async () => {
-    await start(directory);
+    seedMigratedDatabase(directory);
     const name = oldBackup(directory, '2025-01-01T00-00-00-000Z');
 
     await start(directory);
@@ -155,7 +156,7 @@ describe('migration guard', () => {
   });
 
   it('only deletes a plain backup that has a compressed twin', async () => {
-    await start(directory);
+    seedMigratedDatabase(directory);
     const name = oldBackup(directory, '2025-01-01T00-00-00-000Z');
     writeFileSync(join(directory, 'data', 'backups', `${name}.gz`), gzipSync('already'));
 
@@ -166,7 +167,7 @@ describe('migration guard', () => {
   });
 
   it('keeps the newest 3 across plain and compressed backups, with their session folders', async () => {
-    await start(directory);
+    seedMigratedDatabase(directory);
     const old = oldBackup(directory, '2020-01-01T00-00-00-000Z');
     oldBackup(directory, '2020-01-02T00-00-00-000Z');
     mkdirSync(join(directory, 'data', 'backups', old.replace('.sqlite', '.sessions')));
@@ -179,7 +180,7 @@ describe('migration guard', () => {
   });
 
   it('names a plain legacy backup with cp when it is the newest', async () => {
-    await start(directory);
+    seedMigratedDatabase(directory);
     await start(directory, 1);
     const [file] = backups(directory);
     rmSync(join(directory, 'data', 'backups', file));

@@ -1,8 +1,8 @@
-import { execFileSync } from 'child_process';
 import { mkdirSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { AppConfig } from '../config/env';
+import { git } from '../testing/git-fixture';
 import { CheckoutRepos } from './checkout-repos';
 
 describe('CheckoutRepos', () => {
@@ -15,9 +15,9 @@ describe('CheckoutRepos', () => {
   function checkout(name: string, origin?: string): void {
     const path = join(base, 'checkouts', name);
     mkdirSync(path, { recursive: true });
-    execFileSync('git', ['init', '-q', path]);
+    git(path, ['init', '-q']);
     if (origin) {
-      execFileSync('git', ['-C', path, 'remote', 'add', 'origin', origin]);
+      git(path, ['remote', 'add', 'origin', origin]);
     }
   }
 

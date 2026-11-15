@@ -21,6 +21,7 @@ describe('service context', () => {
   const config = { env: { SWARMLOOP_ROOT: '/tmp/swarmloop' } };
   const runs = { findRun: jest.fn(async () => ({ codeHost: 'gitlab' })) };
   const documents = { latestBody: jest.fn() };
+  const lookups: string[] = [];
   const service = new ServiceContextService(
     runs as never,
     documents as never,
@@ -34,6 +35,7 @@ describe('service context', () => {
   });
 
   afterEach(() => {
+    lookups.length = 0;
     tracker.fetch.mockReset();
     tracker.ticketKeys.mockReset();
     host.findMergeRequest.mockReset();
@@ -96,9 +98,14 @@ describe('service context', () => {
       }
       return null;
     });
+    tracker.fetch.mockImplementation(async () => {
+      lookups.push('tracker');
+    });
+    host.findMergeRequest.mockImplementation(async () => {
+      lookups.push('code host');
+    });
     const block = await service.block('PROJ-1', 'ship');
-    expect(tracker.fetch).not.toHaveBeenCalled();
-    expect(host.findMergeRequest).not.toHaveBeenCalled();
+    expect(lookups).toEqual([]);
     expect(block).toContain('project: group/demo');
     expect(block).not.toContain('Ships the field');
   });
@@ -111,8 +118,11 @@ describe('service context', () => {
       }
       return null;
     });
+    host.findMergeRequest.mockImplementation(async () => {
+      lookups.push('code host');
+    });
     expect(await service.block('PROJ-1', 'ship')).toBe('');
-    expect(host.findMergeRequest).not.toHaveBeenCalled();
+    expect(lookups).toEqual([]);
   });
 
   it('leaves the prompt alone when the host cannot read the services', async () => {

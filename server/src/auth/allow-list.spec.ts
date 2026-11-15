@@ -71,9 +71,13 @@ describe('decide', () => {
       allowed: false,
       reason: "can't push to any repository this server works on",
     });
-    const first = jest.fn(async () => false);
+    const asked: string[] = [];
+    const first = async () => {
+      asked.push('first');
+      return false;
+    };
     expect(await decide([], login, noOwner, async () => true, first)).toEqual({ allowed: true });
-    expect(first).not.toHaveBeenCalled();
+    expect(asked).toEqual([]);
   });
 
   it('ignores the push check when the list is not empty', async () => {

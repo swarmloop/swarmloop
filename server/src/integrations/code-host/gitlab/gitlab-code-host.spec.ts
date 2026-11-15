@@ -379,12 +379,14 @@ describe('gitlab host', () => {
   });
 
   it('names a missing token and does not call gitlab', async () => {
-    const fetchMock = jest.fn();
-    global.fetch = fetchMock;
+    const fetched: string[] = [];
+    global.fetch = (async (url: string) => {
+      fetched.push(String(url));
+    }) as unknown as typeof fetch;
     await expect(
       service({ GITLAB_TOKEN: '' }).findMergeRequest({ project: 'group/demo', source: 'feature/x' }),
     ).rejects.toThrow(/GITLAB_TOKEN is missing/);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetched).toEqual([]);
   });
 
   it('names a rejected token and keeps the call off the secret', async () => {
