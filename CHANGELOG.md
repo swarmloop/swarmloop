@@ -6,6 +6,16 @@ This format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), an
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-15
+
+### Changed
+- `CHECKS_PARALLEL` now defaults to `3`. A `.env` that sets it keeps its value.
+
+### Fixed
+- f78: An agent run returns only after its log and session writes have finished, one after another, so the session file holds the final state and no write outlives the run.
+
+## [0.3.0] - 2026-11-15
+
 ### Added
 - Public contribution, security, and project history documentation.
 - GitHub issue forms and a pull request template.

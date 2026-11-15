@@ -38,7 +38,7 @@ describe('the defaults the server ships, in a whole flow that sets nothing', () 
       REQUIREMENTS_VIA: 'agent',
       SPLIT: 'auto',
       EPIC_EFFORT: 'xhigh',
-      CHECKS_PARALLEL: 9,
+      CHECKS_PARALLEL: 3,
       MIN_FREE_GB: 10,
     });
   });

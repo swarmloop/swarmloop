@@ -1,46 +1,30 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
-import { credentialFor, missingCredential } from '../config/agents';
 import { PersonalCredentials } from '../auth/personal-credentials.service';
 import { RunRepository } from '../history/run.repository';
-import { starterOf } from '../history/run-starter';
-import { StepStopped } from './step-stopped';
-import { resolveRepoRoot } from '../config/repo-root';
 import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
-import { AwakeTime, SAMPLE_MS } from '../core/awake-time';
-import type { AgentRuntime, AgentTools } from '../integrations/agent-runtime/agent-runtime';
+import type { AgentTools } from '../integrations/agent-runtime/agent-runtime';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
-import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
-import { modelApiHosts } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
 import { emptyResult, type AgentRunResult } from './agent-result';
 export type { AgentRunResult } from './agent-result';
-import { callsExceeded, type KillReason } from './limits';
+import { callsExceeded } from './limits';
 import { RunStop } from './run-stop';
-import { loadPriceTable } from './prices';
-import { recordLaunch } from './agent-launches';
-import { readOnlyTree } from './agent-args';
+import { AgentLaunch } from './agent-launch';
 import { AgentLaunchEnv } from './agent-launch-env';
 import { AgentLaunchPrep } from './agent-launch-prep';
-import { AgentProcess } from './agent-process';
 import {
   backgroundKilledContinue,
   foldAttempt,
   relaunchPlan,
   resendAfterOrphans,
-  writeSession,
   carriedOutput,
   chatMissingAnswer,
   dropMissingChat,
 } from './agent-session';
-import { AttemptMeter } from './agent-attempt';
-import { OutputTail } from './output-tail';
-import { LimitGuard } from './limit-guard';
-import { AttemptLog } from './live-output';
-import { containerSampler } from '../sandbox/container-sampler';
 
 export { buildAgentArgs, reviewBriefMount, spillPrompt, terminalArgs } from './agent-args';
 export { AGENT_CONTINUE, readSession } from './agent-session';
@@ -53,7 +37,7 @@ export type AgentRunInput = BaseAgentRunInput & { tools: AgentTools };
 export class AgentProcessRunner {
   private readonly logger = new Logger(AgentProcessRunner.name);
   private readonly launchPrep: AgentLaunchPrep;
-  private readonly launchEnv: AgentLaunchEnv;
+  private readonly launch: AgentLaunch;
 
   constructor(
     private readonly config: AppConfig,
@@ -65,7 +49,18 @@ export class AgentProcessRunner {
     @Optional() private readonly runs?: RunRepository,
   ) {
     this.launchPrep = new AgentLaunchPrep(config, live);
-    this.launchEnv = new AgentLaunchEnv(clock);
+    this.launch = new AgentLaunch(
+      config,
+      clock,
+      sandbox,
+      runStop,
+      this.logger,
+      this.launchPrep,
+      new AgentLaunchEnv(clock),
+      live,
+      credentials,
+      runs,
+    );
   }
 
   async run(input: AgentRunInput): Promise<AgentRunResult> {
@@ -89,7 +84,7 @@ export class AgentProcessRunner {
       let resent = false;
       let freshPrompt = input.freshPrompt;
       for (;;) {
-        const attempt = await this.once(
+        const attempt = await this.launch.once(
           { ...input, prompt, resumeChatId: chatId, groupUsd, agentCalls: input.agentCalls + calls },
           runtime,
           resumed,
@@ -150,214 +145,5 @@ export class AgentProcessRunner {
     } finally {
       this.live?.dropSpend(input.runKey, input.liveStep ?? input.step);
     }
-  }
-
-  /**
-   * The credential this launch runs with: the starter's own, else the server's env. With none the run stops, as a
-   * Stop does, and says which runtime is missing: the person may have disconnected after the run was created.
-   */
-  private async credentialOf(
-    key: string,
-    runtime: RuntimeName,
-  ): Promise<{ name: string; value: string; owner: string | null }> {
-    if (!this.credentials || !this.runs) {
-      return { ...credentialFor(this.config.env, runtime), owner: null };
-    }
-    const run = await this.runs.findRun(key);
-    const starter = run ? await starterOf(this.runs, run) : null;
-    const found = await this.credentials.runtimeCredential(runtime, starter);
-    if (!found) {
-      this.runStop.halt(key);
-      throw new StepStopped([], missingCredential(runtime));
-    }
-    return found;
-  }
-
-  /** One launch of the process: spawn it, read its stream until it exits, and return what it did. */
-  private async once(
-    input: AgentRunInput,
-    runtime: AgentRuntime,
-    resumed: boolean,
-    priorOutput: string,
-  ): Promise<AgentRunResult> {
-    const env = this.config.env;
-    const credential = await this.credentialOf(input.runKey, runtime.name);
-    const launch = this.launchPrep.prepare(input, runtime, resumed);
-    const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime.name, this.clock.now());
-    const started = this.clock.now();
-    const awake = new AwakeTime(this.clock, SAMPLE_MS, input.onSuspended);
-    const workMounts = readOnlyTree(runtime.name, input.mode)
-      ? input.mounts.map((mount) => ({ ...mount, readonly: true }))
-      : input.mounts;
-    const process = await AgentProcess.spawn(this.sandbox, {
-      runtime: runtime.name,
-      runKey: input.runKey,
-      step: input.step,
-      attemptId: input.attemptId,
-      mounts: [...workMounts, ...launch.mounts],
-      statePath: launch.statePath,
-      allowHosts: [...new Set([...(input.allowHosts ?? []), ...modelApiHosts(runtime.name)])],
-      manifestHosts: input.manifestHosts,
-      env: [await this.launchEnv.credential(runtime.name, credential, env)],
-      command: [runtime.command, ...launch.args],
-      unsetEnv: launch.unsetEnv,
-      userId: launch.userId,
-      ...(input.project ? { project: input.project } : {}),
-    });
-    const step = input.liveStep ?? input.step;
-    await recordLaunch(input.outputFile, input.runKey, step);
-    const baseline =
-      priorOutput.length === 0 || priorOutput.endsWith('\n')
-        ? `${priorOutput}process started\n`
-        : `${priorOutput}\nprocess started\n`;
-    const meter = new AttemptMeter({
-      model: input.model,
-      prices,
-      groupUsd: input.groupUsd ?? 0,
-      resumed,
-    });
-    const log = new AttemptLog(input.outputFile, input.runKey, step, baseline, () => meter.billed(), this.live);
-    await log.begin();
-    const sessionUsd = (): number => (input.groupUsd ?? 0) + meter.billed().usd;
-
-    let chatId = input.resumeChatId;
-    let killReason: KillReason | null = null;
-    let finishedByResult = false;
-    let buffer = '';
-    const tail = new OutputTail();
-    const stop = (reason: KillReason): void => {
-      killReason = reason;
-      void writeSession(input.sessionFile, runtime.name, {
-        chatId,
-        resumed,
-        completed: false,
-        killReason,
-        usd: sessionUsd(),
-        resultName: input.resultName,
-      });
-      process.kill();
-    };
-    const guard = new LimitGuard(
-      this.logger,
-      {
-        model: input.model,
-        timeLimitMs: input.timeLimitMs ?? env.REQUIREMENTS_TIMEOUT_MS,
-        idleLimitMs: env.IDLE_TIMEOUT_MS,
-        spentUsd: input.spentUsd,
-        maxRunUsd: env.MAX_RUN_USD,
-        stepUsdMax: env.STEP_USD_MAX,
-        tokensInRun: input.tokensInRun,
-        maxRunTokens: env.MAX_RUN_TOKENS,
-        stepTokenMax: env.STEP_TOKEN_MAX,
-        auto: input.auto === true,
-      },
-      {
-        awake,
-        billed: () => meter.billed(),
-        finished: () => finishedByResult,
-        killReason: () => killReason,
-        kill: stop,
-      },
-    );
-
-    const onData = (chunk: Buffer): void => {
-      awake.touch();
-      log.note(chunk.toString('utf8'));
-      input.onOutput?.(chunk.toString('utf8'));
-      buffer += chunk.toString('utf8');
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-      for (const line of lines) {
-        tail.stdout(line);
-        const piece = meter.ingest(line);
-        if (!piece) {
-          continue;
-        }
-        if (piece.chatId) {
-          chatId = piece.chatId;
-          void writeSession(input.sessionFile, runtime.name, {
-            chatId,
-            resumed,
-            completed: false,
-            killReason: null,
-            usd: sessionUsd(),
-            resultName: input.resultName,
-          });
-        }
-        meter.count(piece);
-        if (piece.stops && !finishedByResult) {
-          finishedByResult = true;
-          process.kill(false);
-        }
-      }
-      if (killReason === null && !finishedByResult && input.loop?.pending()) {
-        stop('loop');
-      }
-      guard.check();
-    };
-    const onErr = (chunk: Buffer): void => {
-      awake.touch();
-      log.note(chunk.toString('utf8'));
-      tail.error(chunk.toString('utf8'));
-    };
-    const takeSample = containerSampler(this.sandbox, this.clock, process.containerName, 'agent', (sample) => {
-      log.addSample(sample);
-      log.publish();
-    });
-    const exitCode = await process.wait(
-      {
-        data: onData,
-        error: onErr,
-        processError: (error) => log.note(`${error.code ?? 'error'}: ${error.message}\n`),
-        sample: takeSample,
-        tick: () => guard.check(),
-      },
-      () => killReason !== null || finishedByResult,
-      {
-        time: awake,
-        idleLimitMs: env.IDLE_TIMEOUT_MS,
-        wallLimitMs: input.timeLimitMs ?? env.REQUIREMENTS_TIMEOUT_MS,
-        timeout: () => guard.check(),
-      },
-    );
-    await log.close();
-    input.onLaunchEnd?.();
-    const finished = this.clock.now();
-    const priced = meter.billed();
-    await writeSession(input.sessionFile, runtime.name, {
-      chatId,
-      resumed,
-      completed: finishedByResult || (killReason === null && exitCode === 0),
-      killReason: finishedByResult ? null : killReason,
-      usd: sessionUsd(),
-      resultName: input.resultName,
-    });
-    meter.flush(buffer);
-    const limit = tail.limit(runtime, buffer, this.clock.now());
-    const ending =
-      finishedByResult || !killReason
-        ? `process exited ${finishedByResult ? 0 : exitCode}`
-        : `process killed: ${String(killReason)}`;
-    const output = log.finish(ending);
-    return {
-      responseText: meter.answer(),
-      chatId,
-      tokensIn: priced.tokensIn,
-      tokensOut: priced.tokensOut,
-      usd: priced.usd,
-      killReason: finishedByResult ? null : killReason,
-      exitCode: finishedByResult ? 0 : killReason ? 1 : exitCode,
-      output,
-      resumed,
-      decided: meter.decided(input.answered),
-      backgroundKilled: meter.backgroundKilled(input.answered),
-      orphanOnly: meter.orphanOnly(),
-      ...(limit ? { limit } : {}),
-      calls: 1,
-      samples: log.samples,
-      durationMs: finished - started,
-      startedAt: new Date(started).toISOString(),
-      finishedAt: new Date(finished).toISOString(),
-    };
   }
 }

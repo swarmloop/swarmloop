@@ -143,7 +143,7 @@ describe('env schema', () => {
 
   it('defaults the parallel check commands to 3 and rejects zero', () => {
     const { value } = validateSettings(complete, { abortEarly: false, convert: true });
-    expect(value.CHECKS_PARALLEL).toBe(9);
+    expect(value.CHECKS_PARALLEL).toBe(3);
     const bad = validateSettings({ ...complete, CHECKS_PARALLEL: 0 }, { convert: true });
     expect(bad.error?.message).toContain('CHECKS_PARALLEL');
   });
