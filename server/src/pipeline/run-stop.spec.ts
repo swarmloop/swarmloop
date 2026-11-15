@@ -103,33 +103,42 @@ function deferred<T = void>() {
   return { promise, resolve };
 }
 
-function lifecycleWith(run: Partial<RunEntity>, stopRun: jest.Mock) {
+function lifecycleWith(run: Partial<RunEntity>, stopRun: jest.Mock, onRelease: () => void = () => undefined) {
   const state = { ...run } as RunEntity;
   const released: { status: string; code?: string }[] = [];
   const runs = {
     findRun: jest.fn(async () => state),
+    held: async () => false,
     release: jest.fn(async (_run: RunEntity, change: { status: string; reason?: { code: string } }) => {
+      onRelease();
       released.push({ status: change.status, code: change.reason?.code });
       return state;
     }),
   };
   const runStop = new RunStop();
+  const driverGate = deferred();
+  const driver = { missingInput: async () => null, spendStop: async () => null, drive: () => driverGate.promise };
   const lifecycle = new RunLifecycle(
     runs as never,
     { latestBody: async () => null } as never,
-    {} as never,
+    { get: () => undefined } as never,
     { env: { STOP_GRACE_S: 10 } } as unknown as AppConfig,
     {} as never,
     runStop,
     new FakeClock(),
     { stopRun } as never,
     {} as never,
-    {} as never,
+    driver as never,
     {} as never,
     {} as never,
   );
-  const claim = () => (lifecycle as unknown as { inflight: Set<string> }).inflight.add(state.key);
-  const leave = () => (lifecycle as unknown as { release(key: string): void }).release(state.key);
+  /** The run is in flight: a started step whose driver waits until `leave`. */
+  const claim = () => lifecycle.startDetached(state.key);
+  /** The driver ends and startDetached lets the run go. */
+  const leave = async () => {
+    driverGate.resolve();
+    await new Promise<void>((done) => setImmediate(done));
+  };
   return { lifecycle, runStop, state, released, claim, leave };
 }
 
@@ -143,12 +152,7 @@ describe('RunLifecycle.stop', () => {
       listed.length = 0;
       return 'gone';
     });
-    const world = lifecycleWith(RUNNING, stopRun);
-    (world.lifecycle as never as { runs: { release: jest.Mock } }).runs.release.mockImplementation(async () => {
-      listedAtRelease.push(listed.length);
-      world.released.push({ status: 'blocked', code: 'STOPPED' });
-      return world.state;
-    });
+    const world = lifecycleWith(RUNNING, stopRun, () => listedAtRelease.push(listed.length));
 
     const result = await world.lifecycle.stop('KEY-1');
 
@@ -185,13 +189,13 @@ describe('RunLifecycle.stop', () => {
       return 'gone';
     });
     const world = lifecycleWith(RUNNING, stopRun);
-    world.claim();
+    await world.claim();
 
     const stopping = world.lifecycle.stop('KEY-1');
     await Promise.resolve();
     // The step closes as waiting and the driver leaves, then the kill returns.
     world.state.status = 'waiting';
-    world.leave();
+    await world.leave();
     gate.resolve();
     await stopping;
 
@@ -205,12 +209,12 @@ describe('RunLifecycle.stop', () => {
       RUNNING,
       jest.fn(async () => (await gate.promise, 'gone')),
     );
-    world.claim();
+    await world.claim();
 
     const stopping = world.lifecycle.stop('KEY-1');
     await Promise.resolve();
     world.state.status = 'failed';
-    world.leave();
+    await world.leave();
     gate.resolve();
     await stopping;
 
@@ -236,7 +240,7 @@ describe('RunLifecycle.stop', () => {
 });
 
 describe('RunDriver with a Stop', () => {
-  function driverWith(runStop: RunStop, execute: jest.Mock) {
+  function driverWith(runStop: RunStop, execute: () => Promise<{ exitCode: number; message: string }>) {
     return new RunDriver(
       { findRun: async () => null } as never,
       {} as never,
@@ -252,25 +256,31 @@ describe('RunDriver with a Stop', () => {
   it('starts no hop once the intent is stored', async () => {
     const runStop = new RunStop();
     runStop.halt('KEY-1');
-    const execute = jest.fn();
+    const executed: string[] = [];
+    const execute = async () => {
+      executed.push('implement');
+      return { exitCode: 0, message: 'done' };
+    };
 
     await driverWith(runStop, execute).drive('implement', 'KEY-1', {});
 
-    expect(execute).not.toHaveBeenCalled();
+    expect(executed).toEqual([]);
   });
 
   it.each(['implement', 'code-review', 'pipeline'] as const)(
     'starts no next step when a Stop arrives during %s',
     async (step) => {
       const runStop = new RunStop();
-      const execute = jest.fn(async () => {
+      const executed: string[] = [];
+      const execute = async () => {
+        executed.push(step);
         runStop.halt('KEY-1');
         return { exitCode: 1, message: 'killed' };
-      });
+      };
 
       await driverWith(runStop, execute).drive(step, 'KEY-1', {});
 
-      expect(execute).toHaveBeenCalledTimes(1);
+      expect(executed).toEqual([step]);
     },
   );
 });

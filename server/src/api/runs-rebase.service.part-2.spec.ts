@@ -31,7 +31,8 @@ import { RunRebaseService } from './run-rebase.service';
 
 import { httpStatus } from './runs.controller';
 
-import { boot, remember, featureWorktree, denyEnv, git } from '../testing/runs.spec-helpers';
+import { remember, featureWorktree, denyEnv, git } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 
 // These specs diff the temp folder, so they use a folder of their own: jest workers share the real one.
 jest.mock('os', () => {
@@ -139,7 +140,7 @@ describe('runs api', () => {
     git(tree, ['update-index', '--skip-worktree', '--', 'src/readme.ts']);
     expect(git(tree, ['status', '--porcelain'])).toBe('');
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-63 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -174,7 +175,7 @@ describe('runs api', () => {
     writeFileSync(join(tree, '.env'), 'TOKEN=2\n');
     writeFileSync(join(tree, 'src', 'extra.ts'), 'export const extra = 1;\n');
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-66 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       await denyEnv(app);
       const runs = app.get(RunRepository);

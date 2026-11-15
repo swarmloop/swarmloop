@@ -7,7 +7,8 @@ import { repositoryVisit } from '../history/repository.spec-helpers';
 import { EventRepository } from '../history/event.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
-import { boot, save } from '../testing/runs.spec-helpers';
+import { save } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 import { RunQueriesService } from './run-queries.service';
 
 const LINE = `${'x'.repeat(98)}\n`;
@@ -15,10 +16,10 @@ const TEN_MB_LOG = LINE.repeat(Math.ceil((10 * 1024 * 1024) / LINE.length));
 const MIB = 1024 * 1024;
 
 async function withBigRun(
-  test: (queries: RunQueriesService, app: Awaited<ReturnType<typeof boot>>, root: string) => Promise<void>,
+  test: (queries: RunQueriesService, app: Awaited<ReturnType<typeof seededBoot>>, root: string) => Promise<void>,
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-answer-size-'));
-  const app = await boot(root);
+  const app = await seededBoot(root);
   try {
     const run = await save(app.get(RunRepository), 'proj-big', 'implement', 'waiting');
     const stat = await app.get(VisitRepository).finishVisit(run, { ...repositoryVisit(), step: 'implement' });

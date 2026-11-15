@@ -18,12 +18,13 @@ import { LiveHub } from '../live/live.hub';
 
 import { RunQueriesService } from './run-queries.service';
 
-import { boot, save, visit } from '../testing/runs.spec-helpers';
+import { save, visit } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 
 describe('runs api', () => {
   it('does not ask old questions on a later step', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-later-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -53,7 +54,7 @@ describe('runs api', () => {
 
   it('shows a skipped pipeline when there was nowhere to push', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-skip-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -75,7 +76,7 @@ describe('runs api', () => {
 
   it('shows a returned pipeline as failed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-pipe-red-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -92,7 +93,7 @@ describe('runs api', () => {
 
   it('shows a returned code review as failed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-red-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -112,7 +113,7 @@ describe('runs api', () => {
 
   it('shows a returned checks step as returned, and a failed one as failed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-checks-red-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -133,7 +134,7 @@ describe('runs api', () => {
 
   it('keeps a step sent back by checks at one running visit while its check is rerun', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rerun-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const run = await save(app.get(RunRepository), 'proj-rerun', 'implement', 'running');
       await app.get(VisitRepository).finishVisit(run, visit('implement', 'waiting'));
@@ -153,7 +154,7 @@ describe('runs api', () => {
 
   it('shows a later green pipeline as done', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-pipe-green-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -169,7 +170,7 @@ describe('runs api', () => {
 
   it('shows a pipeline rerun as running while the previous visit is waiting', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-pipe-run-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -186,7 +187,7 @@ describe('runs api', () => {
 
   it('shows the stored failure instead of the status word', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-error-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -200,7 +201,7 @@ describe('runs api', () => {
 
   it('shows a passed reviewer with its chart the same way as any other step', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-chart-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runRepository = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -249,7 +250,7 @@ describe('runs api', () => {
 
   it('shows a later pass over an earlier return, with that round chart', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-second-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runRepository = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -279,7 +280,7 @@ describe('runs api', () => {
 
   it('shows why implement returned on the latest visit', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-return-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -298,7 +299,7 @@ describe('runs api', () => {
 
   it('shows one code reviewer running and leaves the report until the end', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-reviewers-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
       await save(app.get(RunRepository), 'proj-20', 'code-review', 'running');
@@ -343,7 +344,7 @@ describe('runs api', () => {
 
   it('leaves a starting reviewer idle while code-review is running', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-starting-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
       await save(app.get(RunRepository), 'proj-32', 'code-review', 'running');
@@ -368,7 +369,7 @@ describe('runs api', () => {
 
   it('leaves the report idle while its log is starting and angles are stored', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-report-starting-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runRepository = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -401,7 +402,7 @@ describe('runs api', () => {
 
   it('keeps a finished reviewer chart from the retained samples while code-review runs', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-live-chart-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
       await save(app.get(RunRepository), 'proj-31', 'code-review', 'running');
@@ -423,7 +424,7 @@ describe('runs api', () => {
 
   it('keeps passed reviewers green when code-review failed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-fail-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
       await writeFile(join(root, 'data', 'proj-22-code-review-quality-output.txt'), reviewLog('ok'));
@@ -445,7 +446,7 @@ describe('runs api', () => {
 
   it('does not count a recover visit on a reviewer that did not run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-attempts-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -472,7 +473,7 @@ describe('runs api', () => {
 
   it('keeps a later ok round green when the report repeats an earlier return', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-report-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -513,7 +514,7 @@ describe('runs api', () => {
 
   it('shows the checks step with its commands, one chart line per source and the return edge', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-checks-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runRepository = app.get(RunRepository);
       const run = await save(runRepository, 'proj-chk', 'implement', 'waiting');
@@ -563,7 +564,7 @@ describe('runs api', () => {
 
   it('keeps a checks visit that reruns a failed command after the agent ended as one running visit with its own rows', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-checks-rerun-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runRepository = app.get(RunRepository);
       const run = await save(runRepository, 'proj-chk-rerun', 'checks', 'running');
@@ -598,7 +599,7 @@ describe('runs api', () => {
 
   it('still shows the checks document a run stored under its implement visit before the checks step', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-old-checks-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const run = await save(app.get(RunRepository), 'proj-old', 'code-review', 'waiting');
       await app.get(VisitRepository).finishVisit(run, {

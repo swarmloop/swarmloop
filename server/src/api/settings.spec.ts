@@ -16,7 +16,7 @@ import { SecretBox } from '../auth/secret-box';
 import { IntegrationSecretRepository } from '../history/integration-secret.repository';
 import { UserSettingRepository } from '../history/user-setting.repository';
 import { fakeConnection } from '../testing/fake-connection';
-import { boot } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
 
@@ -44,7 +44,7 @@ async function cachePrices(root: string, runtime: string, models: string[]): Pro
 
 async function world(extra: Partial<SwarmloopEnv> = {}, sources = new SettingSources({})) {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-settings-'));
-  const app = await boot(root);
+  const app = await seededBoot(root);
   const env = testEnv({
     SWARMLOOP_ROOT: root,
     ...KEYS,
