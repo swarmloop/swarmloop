@@ -106,11 +106,12 @@ describe('shell open', () => {
 });
 
 describe('shell lock', () => {
-  function lockService(calls: string[]): ShellService {
+  function lockService(calls: string[], claim?: () => Promise<RunEntity>): ShellService {
     const run = { id: 1, key: 'proj-1', status: 'waiting', currentStep: 'plan', targetPath: null } as RunEntity;
     const runRepository = {
       findRun: async () => run,
       claim: async (key: string, step: string) => {
+        if (claim) return claim();
         calls.push(`claim ${key} ${step}`);
         return { ...run, status: 'running' };
       },
@@ -143,10 +144,9 @@ describe('shell lock', () => {
   });
 
   it('answers 409 when another writer took the run first', async () => {
-    const service = lockService([]);
-    jest
-      .spyOn((service as unknown as { runs: RunRepository }).runs, 'claim')
-      .mockRejectedValue(new SwarmloopError('proj-1 is already running'));
+    const service = lockService([], async () => {
+      throw new SwarmloopError('proj-1 is already running');
+    });
 
     await expect(service.lock('proj-1', 'proj-1-shell')).rejects.toBeInstanceOf(ConflictException);
   });

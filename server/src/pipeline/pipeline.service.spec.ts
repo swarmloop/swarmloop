@@ -29,23 +29,19 @@ describe('pipeline service', () => {
       const run = await runs.begin('PROJ-79', 'pipeline');
       run.status = 'waiting';
       await runs.saveRun(run);
-      const execute = jest
-        .spyOn(app.get(PipelineStep), 'execute')
-        .mockImplementationOnce(async () => ({
-          exitCode: 0,
-          message: 'rebase completed',
-          resume: true,
-        }))
-        .mockImplementationOnce(async () => {
-          const fresh = (await runs.findRun('PROJ-79'))!;
-          fresh.currentStep = 'done';
-          fresh.status = 'done';
-          await runs.saveRun(fresh);
-          return { exitCode: 0, message: 'CI passed' };
-        });
+      const executed: string[] = [];
+      jest.spyOn(app.get(PipelineStep), 'execute').mockImplementation(async () => {
+        executed.push('PROJ-79');
+        if (executed.length === 1) return { exitCode: 0, message: 'rebase completed', resume: true };
+        const fresh = (await runs.findRun('PROJ-79'))!;
+        fresh.currentStep = 'done';
+        fresh.status = 'done';
+        await runs.saveRun(fresh);
+        return { exitCode: 0, message: 'CI passed' };
+      });
       const result = await app.get(PipelineService).runThrough('PROJ-79');
       expect(result.message).toBe('CI passed');
-      expect(execute).toHaveBeenCalledTimes(2);
+      expect(executed).toEqual(['PROJ-79', 'PROJ-79']);
     } finally {
       await app.close();
     }

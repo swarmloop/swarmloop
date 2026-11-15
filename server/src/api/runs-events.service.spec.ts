@@ -6,7 +6,8 @@ import { join } from 'path';
 import type { StepEvent } from '../contract/step-events';
 import { RunRepository } from '../history/run.repository';
 import { StepEventLog } from '../history/step-event.log';
-import { boot, save } from '../testing/runs.spec-helpers';
+import { save } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 import { RunQueriesService } from './run-queries.service';
 
 function event(runId: number, seq: number, step: StepEvent['step']): StepEvent {
@@ -28,7 +29,7 @@ function event(runId: number, seq: number, step: StepEvent['step']): StepEvent {
 describe('run events api', () => {
   it('pages the events of a run, newest last, and rejects what it cannot read', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-events-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const run = await save(app.get(RunRepository), 'proj-7', 'commit', 'waiting');
       await app
@@ -51,7 +52,7 @@ describe('run events api', () => {
 
   it('gives a step view its descriptor and the last event seq of the run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-events-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const run = await save(app.get(RunRepository), 'proj-8', 'commit', 'waiting');
       const queries = app.get(RunQueriesService);

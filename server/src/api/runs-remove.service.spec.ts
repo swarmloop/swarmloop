@@ -12,12 +12,13 @@ import { EventRepository } from '../history/event.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { LiveHub } from '../live/live.hub';
 import { RunCommandsService } from './run-commands.service';
-import { boot, save, visit, denyEnv } from '../testing/runs.spec-helpers';
+import { save, visit, denyEnv } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 
 describe('runs api', () => {
   it('removes the rows and files of one run and leaves the shared store', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-remove-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -107,7 +108,7 @@ describe('runs api', () => {
 
   it('leaves a longer run id and the shared data names', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-remove-prefix-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const duration = await save(runs, 'proj-duration', 'plan', 'waiting');
@@ -149,7 +150,7 @@ describe('runs api', () => {
 
   it('keeps each run step file when the other id is that step name', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-remove-step-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const ship = await save(runs, 'ship', 'plan', 'waiting');
@@ -196,7 +197,7 @@ describe('runs api', () => {
 
   it('keeps a requirements review file when the other id is that code-review prefix', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-remove-review-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const proj = await save(runs, 'proj', 'code-review', 'waiting');
@@ -233,7 +234,7 @@ describe('runs api', () => {
       }),
     };
     const prepare = { removeWorktrees: jest.fn() };
-    const app = await boot(root, pipeline, prepare);
+    const app = await seededBoot(root, pipeline, prepare);
     try {
       const runs = app.get(RunRepository);
       await save(runs, 'proj-70', 'implement', 'running');
@@ -262,7 +263,7 @@ describe('runs api', () => {
       stop: jest.fn().mockResolvedValue({ exitCode: 1, message: 'proj-71 is still running' }),
     };
     const prepare = { removeWorktrees: jest.fn() };
-    const app = await boot(root, pipeline, prepare);
+    const app = await seededBoot(root, pipeline, prepare);
     try {
       const runs = app.get(RunRepository);
       await save(runs, 'proj-71', 'implement', 'running');
@@ -280,7 +281,7 @@ describe('runs api', () => {
   it('answers not found when the run is missing and rejects a bad key', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-delete-missing-'));
     const pipeline = { startDetached: jest.fn(), stop: jest.fn() };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunCommandsService);
       await expect(runs.remove('missing-run')).rejects.toBeInstanceOf(NotFoundException);

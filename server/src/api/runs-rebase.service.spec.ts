@@ -29,7 +29,8 @@ import { EnvironmentService } from '../environment/environment.service';
 
 import { httpStatus } from './runs.controller';
 
-import { boot, remember, featureWorktree, denyEnv, git, isAncestor, hostFetch } from '../testing/runs.spec-helpers';
+import { remember, featureWorktree, denyEnv, git, isAncestor, hostFetch } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 
 // These specs diff the temp folder, so they use a folder of their own: jest workers share the real one.
 jest.mock('os', () => {
@@ -63,7 +64,7 @@ describe('runs api', () => {
     git(clone, ['push', 'origin', 'main']);
     const base = git(clone, ['rev-parse', 'main']);
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-50 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -104,7 +105,7 @@ describe('runs api', () => {
     git(clone, ['push', 'origin', 'release']);
     const release = git(clone, ['rev-parse', 'release']);
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-51 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -150,7 +151,7 @@ describe('runs api', () => {
     git(clone, ['push', 'origin', 'main']);
     git(tree, ['push', '-u', 'origin', 'feature/proj-52-ship-the-field']);
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-52 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -191,7 +192,7 @@ describe('runs api', () => {
     git(clone, ['push', 'origin', 'main']);
     const base = git(clone, ['rev-parse', 'main']);
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-52 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       await denyEnv(app);
       const runs = app.get(RunRepository);
@@ -222,7 +223,7 @@ describe('runs api', () => {
     writeFileSync(join(tree, '.env'), 'TOKEN=2\n');
     const head = git(tree, ['rev-parse', 'HEAD']);
     const pipeline = { startDetached: jest.fn() };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       await denyEnv(app);
       const runs = app.get(RunRepository);
@@ -244,7 +245,7 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-unfinished-'));
     const { tree } = featureWorktree(root, 'proj-54');
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-54 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -267,7 +268,7 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-resume-'));
     const { tree } = featureWorktree(root, 'proj-55');
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-55 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -288,7 +289,7 @@ describe('runs api', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-waiting-'));
     const { tree } = featureWorktree(root, 'proj-58');
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-58 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -338,7 +339,7 @@ describe('runs api', () => {
     git(laterClone, ['push', 'origin', 'main']);
     const laterBase = git(laterClone, ['rev-parse', 'main']);
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-56 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -396,7 +397,7 @@ describe('runs api', () => {
     const previousSsh = process.env.GIT_SSH_COMMAND;
     process.env.GIT_SSH_COMMAND = 'false';
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-57 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -453,7 +454,7 @@ describe('runs api', () => {
       { mode: 0o755 },
     );
     const pipeline = { startDetached: jest.fn() };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -492,7 +493,7 @@ describe('runs api', () => {
     git(clone, ['push', 'origin', 'main']);
     const base = git(clone, ['rev-parse', 'main']);
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-62 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     const temps = new Set(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-')));
     try {
       const runs = app.get(RunRepository);
@@ -534,7 +535,7 @@ describe('runs api', () => {
       git(clone, ['commit', '-m', 'base']);
       git(clone, ['push', 'origin', 'main']);
       const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-60 started' }) };
-      const app = await boot(root, pipeline);
+      const app = await seededBoot(root, pipeline);
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
       const parent = await remember(runs, documents, 'proj-60', 'implement', 'waiting');

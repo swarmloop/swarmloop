@@ -22,12 +22,13 @@ import { RunQueriesService } from './run-queries.service';
 
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 
-import { boot, visit } from '../testing/runs.spec-helpers';
+import { visit } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 
 describe('runs api', () => {
   it('reports closed step time, the open step start, and live session peaks', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-clock-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -72,7 +73,7 @@ describe('runs api', () => {
 
   it('shows the tasks of a split run with their own runs, and the parent only with its own cost', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-split-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -117,7 +118,7 @@ describe('runs api', () => {
 
   it('tells a done subtask what its merge waits for, and nothing once it is merged', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-merge-wait-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -164,7 +165,7 @@ describe('runs api', () => {
 
   it('shows a resumed blocked subtask as running on the parent page and on its own page, with no skip offered', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-resumed-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -195,7 +196,7 @@ describe('runs api', () => {
 
   it('gives a task run the reason of its wait, so a limit wait is told from a wait for a person', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-task-wait-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -235,7 +236,7 @@ describe('runs api', () => {
 
   it('reads a task that waits on open questions the way the run list does, so both pages put it first', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-task-ask-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -287,7 +288,7 @@ describe('runs api', () => {
 
   it('gives the parent its epic totals and depends on each task', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-epic-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -334,7 +335,7 @@ describe('runs api', () => {
 
   it('opens the subtask of a run for the person who started the parent', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-subtask-owner-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -367,7 +368,7 @@ describe('runs api', () => {
 
   it('carries only the rows of the latest checks attempt in the flow', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-check-rows-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const commands = app.get(CheckCommandRepository);

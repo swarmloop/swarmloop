@@ -189,11 +189,16 @@ describe('ReadinessService', () => {
 
   it('measures once for a fresh report and keeps the cached one', async () => {
     const service = setup();
-    const measure = jest.spyOn(meter, 'measure');
+    const measured: string[] = [];
+    const measure = meter.measure.bind(meter);
+    jest.spyOn(meter, 'measure').mockImplementation((...args) => {
+      measured.push('measure');
+      return measure(...args);
+    });
     const first = await service.report();
     clock.advance(10 * 60_000);
     const fresh = await service.fresh();
-    expect(measure).toHaveBeenCalledTimes(1);
+    expect(measured).toEqual(['measure']);
     expect(fresh.checkedAt).not.toBe(first.checkedAt);
     expect((await service.report()).checkedAt).toBe(first.checkedAt);
   });
