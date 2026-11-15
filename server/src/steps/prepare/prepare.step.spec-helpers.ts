@@ -1,7 +1,5 @@
 import 'reflect-metadata';
 
-import { execFileSync } from 'child_process';
-
 import type { TestingModule } from '@nestjs/testing';
 
 import { Test } from '@nestjs/testing';
@@ -24,6 +22,8 @@ import { RunRepository } from '../../history/run.repository';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 
 import { PipelineModule } from '../../pipeline/pipeline.module';
+import { git, repoTemplate } from '../../testing/git-fixture';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 
 import { PASTE_READER } from '../../integrations/linked-pages/paste-page.reader';
 
@@ -52,6 +52,7 @@ export async function boot(
     ...(checkoutsRoot === undefined ? {} : { CHECKOUTS_ROOT: checkoutsRoot }),
     SWARMLOOP_REPOS: repos,
   });
+  seedMigratedDatabase(root);
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })
@@ -89,16 +90,14 @@ export function repoWithMaster(root: string, dirName: string): string {
   return publish(root, dirName, 'master');
 }
 
-export function publish(root: string, dirName: string, branch: string): string {
-  const clone = join(root, dirName);
-  const remote = join(root, `${dirName}.git`);
-  git(root, ['init', '-b', branch, clone]);
-  commitFile(clone, 'README', `${dirName}\n`, dirName);
-  git(root, ['init', '--bare', remote]);
+const publishTemplate = repoTemplate(({ clone, remote, name, branch }) => {
+  commitFile(clone, 'README', `${name}\n`, name);
   git(remote, ['symbolic-ref', 'HEAD', `refs/heads/${branch}`]);
-  git(clone, ['remote', 'add', 'origin', remote]);
-  git(clone, ['push', '-u', 'origin', branch]);
-  return clone;
+});
+
+/** A clone and its bare origin under `root`, copied from a template built once per file for each name and branch. */
+export function publish(root: string, dirName: string, branch: string): string {
+  return publishTemplate(root, dirName, branch).clone;
 }
 
 export function repoWithBranch(root: string, dirName: string): string {
@@ -111,9 +110,7 @@ export function repoWithBranch(root: string, dirName: string): string {
   return clone;
 }
 
-export function git(cwd: string, args: string[]): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-}
+export { git };
 
 export function hostFetch(rewrites: [string, string][]): () => void {
   const entries: [string, string][] = [['protocol.file.allow', 'always'], ...rewrites];
@@ -160,10 +157,6 @@ export function hostFetch(rewrites: [string, string][]): () => void {
 
 export function commitFile(cwd: string, name: string, body: string, message: string): void {
   writeFileSync(join(cwd, name), body);
-  execFileSync('git', ['add', name], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  execFileSync('git', ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '-m', message], {
-    cwd,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  git(cwd, ['add', name]);
+  git(cwd, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '-m', message]);
 }

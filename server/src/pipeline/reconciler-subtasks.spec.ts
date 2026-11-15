@@ -42,11 +42,14 @@ async function waitingParent(app: TestApp, recorded: boolean, blocked = false) {
 
 describe('reconciler and the subtasks of a parent', () => {
   let app: TestApp;
-  let resumed: jest.SpyInstance;
+  let resumed: string[];
 
   beforeEach(async () => {
     app = await createTestApp();
-    resumed = jest.spyOn(app.app.get(SubtaskPort), 'resumeParent').mockResolvedValue();
+    resumed = [];
+    jest.spyOn(app.app.get(SubtaskPort), 'resumeParent').mockImplementation(async (parent) => {
+      resumed.push(parent.key);
+    });
   });
 
   afterEach(async () => {
@@ -63,7 +66,7 @@ describe('reconciler and the subtasks of a parent', () => {
 
     await ticks(3);
 
-    expect(resumed).not.toHaveBeenCalled();
+    expect(resumed).toEqual([]);
   });
 
   it('resumes a parent once when a subtask changed without an event', async () => {
@@ -73,7 +76,7 @@ describe('reconciler and the subtasks of a parent', () => {
 
     await ticks(1);
 
-    expect(resumed).toHaveBeenCalledTimes(1);
+    expect(resumed).toEqual([KEY]);
   });
 
   it('resumes a parent with no fingerprint', async () => {
@@ -81,20 +84,20 @@ describe('reconciler and the subtasks of a parent', () => {
 
     await ticks(1);
 
-    expect(resumed).toHaveBeenCalledTimes(1);
+    expect(resumed).toEqual([KEY]);
   });
 
   it('wakes a parent blocked with SUBTASK_BLOCKED when a subtask changed, and leaves it when nothing changed', async () => {
     const { runs, child } = await waitingParent(app, true, true);
 
     await ticks(2);
-    expect(resumed).not.toHaveBeenCalled();
+    expect(resumed).toEqual([]);
 
     writeRunState(child, { status: 'done', currentStep: 'done' });
     await runs.saveRun(child);
     await ticks(1);
 
-    expect(resumed).toHaveBeenCalledTimes(1);
+    expect(resumed).toEqual([KEY]);
   });
 });
 

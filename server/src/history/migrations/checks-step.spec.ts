@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
 import { boot, save } from '../../testing/runs.spec-helpers';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { FlowEntity } from '../entities';
 import { RunRepository } from '../run.repository';
 import { ChecksStep1795000000000, renamedPhases } from './1795000000000-checks-step';
@@ -19,6 +20,7 @@ const STORED = [
 
 async function withApp(test: (app: Awaited<ReturnType<typeof boot>>) => Promise<void>): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-checks-migration-'));
+  seedMigratedDatabase(root);
   const app = await boot(root);
   try {
     await mkdir(join(root, 'data'), { recursive: true });

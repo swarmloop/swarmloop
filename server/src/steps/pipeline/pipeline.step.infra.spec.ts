@@ -110,7 +110,7 @@ describe('pipeline step on a run that did not run', () => {
       await seed(app, 'PROJ-401');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-401');
       expect(result.exitCode).toBe(0);
-      expect(rerunFailedJobs).toHaveBeenCalledTimes(1);
+      expect(rerunFailedJobs.mock.calls).toEqual([['group/demo', 9]]);
       expect(pauses()).toEqual([60_000]);
       const run = await app.get(RunRepository).findRun('PROJ-401');
       expect(run?.status).toBe('done');
@@ -153,7 +153,10 @@ describe('pipeline step on a run that did not run', () => {
     const { app, trace, rerunFailedJobs, key } = await blockedRun(['timed_out']);
     try {
       expect(trace).not.toHaveBeenCalled();
-      expect(rerunFailedJobs).toHaveBeenCalledTimes(2);
+      expect(rerunFailedJobs.mock.calls).toEqual([
+        ['group/demo', 9],
+        ['group/demo', 9],
+      ]);
       const body = await app.get(DocumentRepository).latestBody(key, 'pipeline_log');
       expect(body).toContain('CI_TIMEOUT: job-1 timed out');
       expect((await app.get(RunRepository).findRun(key))?.status).toBe('blocked');
@@ -166,7 +169,10 @@ describe('pipeline step on a run that did not run', () => {
     const { app, trace, rerunFailedJobs, key } = await blockedRun(['canceled'], 'canceled');
     try {
       expect(trace).not.toHaveBeenCalled();
-      expect(rerunFailedJobs).toHaveBeenCalledTimes(2);
+      expect(rerunFailedJobs.mock.calls).toEqual([
+        ['group/demo', 9],
+        ['group/demo', 9],
+      ]);
       expect(await app.get(DocumentRepository).latestBody(key, 'pipeline_log')).toContain(
         'CI_NOT_RUN: CI did not run job-1',
       );
@@ -190,7 +196,7 @@ describe('pipeline step on a run that did not run', () => {
     try {
       await seed(app, 'PROJ-403');
       await app.get(PipelineService).step('pipeline', 'PROJ-403');
-      expect(rerunFailedJobs).toHaveBeenCalledTimes(1);
+      expect(rerunFailedJobs.mock.calls).toEqual([['group/demo', 9]]);
       expect((await app.get(RunRepository).findRun('PROJ-403'))?.status).toBe('blocked');
       const body = await app.get(DocumentRepository).latestBody('PROJ-403', 'pipeline_log');
       expect(body).toContain('CI_NOT_RUN: CI did not run server-test, dashboard-test, autofix');

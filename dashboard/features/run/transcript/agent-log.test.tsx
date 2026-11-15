@@ -15,7 +15,7 @@ describe('AgentLogPanel', () => {
   });
 
   it('keeps a reader that closed it before the first tool event, and one that opened it after', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const closed = render(<AgentLogPanel agent={agent} tools={false} />);
     await user.click(screen.getByRole('button', { name: 'hide log' }));
     closed.rerender(<AgentLogPanel agent={agent} tools />);

@@ -1,12 +1,14 @@
-import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
-import { mkdirSync, writeFileSync } from 'fs';
+import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { writeEnvOverrides } from '../../testing/env.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { PipelineModule } from '../../pipeline/pipeline.module';
+import { git } from '../../testing/git-fixture';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
+import { featureWorktree } from '../../testing/runs.spec-helpers';
 
 export async function boot(root: string, codeHost = 'gitlab', host: { baseUrl?: string; token?: string } = {}) {
   await writeEnvOverrides(root, {
@@ -23,6 +25,7 @@ export async function boot(root: string, codeHost = 'gitlab', host: { baseUrl?: 
     AGENTS_REVIEW: 'cursor:opus-5.5-extra-high',
     SWARMLOOP_ROOT: root,
   });
+  seedMigratedDatabase(root);
   const app = await Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   }).compile();
@@ -53,29 +56,12 @@ export async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, c
 }
 
 export function featureTree(root: string, key: string): string {
-  const clone = join(root, 'demo');
-  const remote = join(root, 'demo.git');
-  const tree = join(root, 'worktrees', key, 'demo');
-  git(root, ['init', '-b', 'main', clone]);
-  git(clone, ['config', 'user.email', 'dev@example.com']);
-  git(clone, ['config', 'user.name', 'Dev']);
-  mkdirSync(join(clone, 'src'), { recursive: true });
-  writeFileSync(join(clone, 'src', 'readme.ts'), 'export const readme = 1;\n');
-  git(clone, ['add', 'src/readme.ts']);
-  git(clone, ['commit', '-m', 'init']);
-  git(root, ['init', '--bare', remote]);
-  git(clone, ['remote', 'add', 'origin', remote]);
-  git(clone, ['push', '-u', 'origin', 'main']);
-  git(clone, ['switch', '-c', 'holder']);
-  mkdirSync(join(tree, '..'), { recursive: true });
+  const { tree, clone } = featureWorktree(root, key);
   writeFileSync(join(clone, '.git', 'info', 'exclude'), '.env\n');
-  git(clone, ['worktree', 'add', '-b', `feature/${key}-ship-the-field`, tree, 'main']);
   return tree;
 }
 
-export function git(cwd: string, args: string[]): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-}
+export { git };
 
 export function hostPush(bare: string, token: string): () => void {
   const entries = [

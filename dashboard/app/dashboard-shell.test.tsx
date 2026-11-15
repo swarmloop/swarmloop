@@ -73,7 +73,7 @@ describe('Shell', () => {
     vi.mocked(getSession).mockResolvedValue({ user: 'octocat' });
     renderShell();
 
-    await userEvent.setup().click(await screen.findByRole('button', { name: /octocat/ }));
+    await userEvent.setup({ delay: null }).click(await screen.findByRole('button', { name: /octocat/ }));
 
     expect(screen.getByRole('menuitem', { name: 'Log out' })).toBeInTheDocument();
   });
@@ -94,7 +94,7 @@ describe('Shell', () => {
   });
 
   it('opens the new run dialog from the New run button', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderShell();
 
     await user.click(screen.getByRole('button', { name: 'New run' }));
@@ -104,7 +104,7 @@ describe('Shell', () => {
   });
 
   it('removes a run with DELETE, and goes to / when the open run is the one removed', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(usePathname).mockReturnValue('/runs/run-1');
     renderShell();
 
@@ -171,7 +171,7 @@ describe('Shell', () => {
     });
 
     it('writes the chosen part to the address', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       vi.mocked(listRuns).mockResolvedValue({ runs: fixture() });
       renderShell();
 
@@ -189,7 +189,7 @@ describe('Shell', () => {
           .mockReturnValue(new URLSearchParams(show) as unknown as ReturnType<typeof useSearchParams>);
 
       it('opens a run with ?show= in the address, so the run stays in the list', async () => {
-        const user = userEvent.setup();
+        const user = userEvent.setup({ delay: null });
         vi.mocked(listRuns).mockResolvedValue({ runs: [merged] });
         showing('show=done');
         renderShell();
@@ -200,7 +200,7 @@ describe('Shell', () => {
       });
 
       it('opens a run with nothing added while the address has no part', async () => {
-        const user = userEvent.setup();
+        const user = userEvent.setup({ delay: null });
         renderShell();
 
         await user.click(await screen.findByText('Run one'));
@@ -209,7 +209,7 @@ describe('Shell', () => {
       });
 
       it('goes back to the list with ?show= in the address after the open run is removed', async () => {
-        const user = userEvent.setup();
+        const user = userEvent.setup({ delay: null });
         vi.mocked(listRuns).mockResolvedValue({ runs: [merged] });
         vi.mocked(removeRun).mockResolvedValue({ key: 'm-0' });
         vi.mocked(usePathname).mockReturnValue('/runs/m-0');
@@ -224,7 +224,7 @@ describe('Shell', () => {
       });
 
       it('keeps only a known part of the address, never another query', async () => {
-        const user = userEvent.setup();
+        const user = userEvent.setup({ delay: null });
         showing('show=nope&q=secret');
         renderShell();
 
@@ -248,7 +248,7 @@ describe('Shell', () => {
     });
 
     it('finds a run by a word of its name', async () => {
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       vi.mocked(listRuns).mockResolvedValue({ runs: fixture() });
       renderShell();
 

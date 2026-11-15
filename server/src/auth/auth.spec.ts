@@ -1,4 +1,3 @@
-import { execFileSync } from 'child_process';
 import { generateKeyPairSync } from 'crypto';
 import { mkdirSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
@@ -7,6 +6,7 @@ import { ConnectionsService } from './connections.service';
 import { HostAppsService } from './host-apps.service';
 import { CommandService } from '../pipeline/command.service';
 import { FAKE_MODEL_KEY } from '../testing/env.spec-helpers';
+import { git } from '../testing/git-fixture';
 import { createTestApp, type TestApp } from '../testing/test-app';
 import { startFakeHosts, type FakeHost } from './fake-hosts.spec-helpers';
 import { startFakeGithub } from './fake-provider.spec-helpers';
@@ -257,8 +257,8 @@ describe('login with a connecting app: who may log in when SWARMLOOP_ALLOW is em
   function checkout(name: string, project: string): void {
     const path = join(checkouts, name);
     mkdirSync(path, { recursive: true });
-    execFileSync('git', ['init', '-q', path]);
-    execFileSync('git', ['-C', path, 'remote', 'add', 'origin', `${fake.url}/${project}.git`]);
+    git(path, ['init', '-q']);
+    git(path, ['remote', 'add', 'origin', `${fake.url}/${project}.git`]);
   }
 
   const machine = { authorization: `Bearer ${TOKEN}` };
@@ -397,8 +397,8 @@ describe('first run: the manifest, the owner, the install step and the install r
   function checkout(name: string, project: string): void {
     const path = join(checkouts, name);
     mkdirSync(path, { recursive: true });
-    execFileSync('git', ['init', '-q', path]);
-    execFileSync('git', ['-C', path, 'remote', 'add', 'origin', `${fake.url}/${project}.git`]);
+    git(path, ['init', '-q']);
+    git(path, ['remote', 'add', 'origin', `${fake.url}/${project}.git`]);
   }
 
   beforeEach(async () => {

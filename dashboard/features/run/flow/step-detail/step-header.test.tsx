@@ -88,7 +88,7 @@ describe('StepHeader', () => {
   });
 
   it('selects an attempt and sets follow to whether it is the latest', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const props = header();
 
     await user.click(screen.getByRole('button', { name: '1' }));
@@ -108,14 +108,14 @@ describe('StepHeader', () => {
   });
 
   it('calls onReplay and onResume from their buttons', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const props = header({ onReplay: vi.fn(), onResume: vi.fn() });
 
     await user.click(screen.getByRole('button', { name: 'Run again' }));
     await user.click(screen.getByRole('button', { name: 'Resume' }));
 
-    expect(props.onReplay).toHaveBeenCalledTimes(1);
-    expect(props.onResume).toHaveBeenCalledTimes(1);
+    expect(props.onReplay).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
+    expect(props.onResume).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
   });
 
   it('shows the kind, model and mode of an agent step', () => {
@@ -196,7 +196,7 @@ describe('StepHeader', () => {
     document.body.append(target);
 
     const link = screen.getByRole('link', { name: '2 problems' });
-    await userEvent.click(link);
+    await userEvent.setup({ delay: null }).click(link);
 
     expect(link).toHaveAttribute('href', '#problem-event-7');
     expect(link).toHaveStyle({ color: createTheme().palette.error.main });

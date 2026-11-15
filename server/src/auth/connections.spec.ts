@@ -1,4 +1,3 @@
-import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, statSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -9,6 +8,7 @@ import { Reconciler } from '../pipeline/reconciler';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { RemoteRepositories } from '../steps/prepare/remote-repositories.service';
 import { FAKE_MODEL_KEY } from '../testing/env.spec-helpers';
+import { git } from '../testing/git-fixture';
 import { createTestApp, type TestApp } from '../testing/test-app';
 import { redirectOf } from './login-problem.spec-helpers';
 import { GithubAppService } from './github-app.service';
@@ -185,8 +185,8 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     const checkouts = mkdtempSync(join(tmpdir(), 'swarmloop-connections-checkouts-'));
     const checkout = (name: string, project: string) => {
       mkdirSync(join(checkouts, name), { recursive: true });
-      execFileSync('git', ['init', '-q', join(checkouts, name)]);
-      execFileSync('git', ['-C', join(checkouts, name), 'remote', 'add', 'origin', `${fake.url}/${project}.git`]);
+      git(join(checkouts, name), ['init', '-q']);
+      git(join(checkouts, name), ['remote', 'add', 'origin', `${fake.url}/${project}.git`]);
     };
     app = await createTestApp({
       env: {

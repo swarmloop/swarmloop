@@ -7,6 +7,9 @@ module.exports = {
     '^.+\\.ts$': 'ts-jest',
   },
   testEnvironment: 'node',
+  globalSetup: '<rootDir>/jest.global-setup.js',
+  globalTeardown: '<rootDir>/jest.global-teardown.js',
   setupFiles: ['<rootDir>/jest.setup.js'],
   testTimeout: 20000,
+  reporters: ['default', '<rootDir>/../scripts/jest-slowest-files.mjs'],
 };

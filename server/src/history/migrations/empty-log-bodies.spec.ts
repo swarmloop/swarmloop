@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource, type Migration } from 'typeorm';
 import { boot, save } from '../../testing/runs.spec-helpers';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { compactAfterLogMigration } from '../compact-database';
 import { DocumentEntity } from '../entities';
 import type { GuardedDataSource } from '../guarded-data-source';
@@ -15,6 +16,7 @@ import { EmptyLogBodies1794900000000 } from './1794900000000-empty-log-bodies';
 
 async function withApp(test: (app: Awaited<ReturnType<typeof boot>>, root: string) => Promise<void>): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-empty-logs-'));
+  seedMigratedDatabase(root);
   const app = await boot(root);
   try {
     await mkdir(join(root, 'data'), { recursive: true });
@@ -74,6 +76,19 @@ describe('compactAfterLogMigration', () => {
     instance: new EmptyLogBodies1794900000000(),
   } as unknown as Migration;
 
+  /** Collects what the compaction logs and warns, instead of counting calls on the spies. */
+  function recordLogs(): { logs: string[]; warnings: string[] } {
+    const logs: string[] = [];
+    const warnings: string[] = [];
+    jest.spyOn(Logger.prototype, 'log').mockImplementation((message: unknown) => {
+      logs.push(String(message));
+    });
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation((message: unknown) => {
+      warnings.push(String(message));
+    });
+    return { logs, warnings };
+  }
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
@@ -82,9 +97,9 @@ describe('compactAfterLogMigration', () => {
     await withApp(async (app) => {
       const dataSource = app.get<GuardedDataSource>(DataSource);
       dataSource.migrated = [migrated];
-      const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+      const { logs } = recordLogs();
       await compactAfterLogMigration(dataSource);
-      expect(log).toHaveBeenCalledWith(expect.stringMatching(/^Database compacted: .* MiB to .* MiB, .* MiB freed$/));
+      expect(logs).toEqual([expect.stringMatching(/^Database compacted: .* MiB to .* MiB, .* MiB freed$/)]);
     });
   });
 
@@ -92,11 +107,10 @@ describe('compactAfterLogMigration', () => {
     await withApp(async (app) => {
       const dataSource = app.get<GuardedDataSource>(DataSource);
       dataSource.migrated = [migrated];
-      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-      const query = jest.spyOn(dataSource, 'query');
+      const { logs, warnings } = recordLogs();
       await compactAfterLogMigration(dataSource, () => 0);
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Database not compacted'));
-      expect(query).not.toHaveBeenCalled();
+      expect(warnings).toEqual([expect.stringContaining('Database not compacted')]);
+      expect(logs).toEqual([]);
     });
   });
 
@@ -106,8 +120,7 @@ describe('compactAfterLogMigration', () => {
       await withApp(async (app) => {
         const dataSource = app.get<GuardedDataSource>(DataSource);
         dataSource.migrated = [migrated];
-        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-        const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+        const { logs, warnings } = recordLogs();
         jest.spyOn(dataSource, 'query').mockImplementation(async (sql: string) => {
           if (sql === failing) {
             throw new Error('database or disk is full');
@@ -115,8 +128,8 @@ describe('compactAfterLogMigration', () => {
           return [];
         });
         await expect(compactAfterLogMigration(dataSource)).resolves.toBeUndefined();
-        expect(warn).toHaveBeenCalledWith('Database not compacted: database or disk is full');
-        expect(log).not.toHaveBeenCalled();
+        expect(warnings).toEqual(['Database not compacted: database or disk is full']);
+        expect(logs).toEqual([]);
       });
     },
   );
@@ -125,11 +138,10 @@ describe('compactAfterLogMigration', () => {
     await withApp(async (app) => {
       const dataSource = app.get<GuardedDataSource>(DataSource);
       dataSource.migrated = [migrated];
-      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-      const query = jest.spyOn(dataSource, 'query');
+      const { logs, warnings } = recordLogs();
       await compactAfterLogMigration(dataSource, async () => 0);
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Database not compacted'));
-      expect(query).not.toHaveBeenCalled();
+      expect(warnings).toEqual([expect.stringContaining('Database not compacted')]);
+      expect(logs).toEqual([]);
     });
   });
 
@@ -137,9 +149,10 @@ describe('compactAfterLogMigration', () => {
     await withApp(async (app) => {
       const dataSource = app.get<GuardedDataSource>(DataSource);
       dataSource.migrated = [];
-      const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+      const { logs, warnings } = recordLogs();
       await compactAfterLogMigration(dataSource);
-      expect(log).not.toHaveBeenCalled();
+      expect(logs).toEqual([]);
+      expect(warnings).toEqual([]);
     });
   });
 });

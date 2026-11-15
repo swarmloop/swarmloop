@@ -1,14 +1,14 @@
-import { execFileSync } from 'child_process';
 import { mkdirSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { git } from '../../testing/git-fixture';
 import { pipelineRefRepos } from './pipeline-ref-repos';
 
 function repo(root: string, name: string, origin: string): { hostPath: string; containerPath: string; mode: 'rw' } {
   const hostPath = join(root, name);
   mkdirSync(hostPath);
-  execFileSync('git', ['-C', hostPath, 'init', '-q']);
-  execFileSync('git', ['-C', hostPath, 'remote', 'add', 'origin', origin]);
+  git(hostPath, ['init', '-q']);
+  git(hostPath, ['remote', 'add', 'origin', origin]);
   return { hostPath, containerPath: `/work/${name}`, mode: 'rw' };
 }
 

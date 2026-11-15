@@ -8,7 +8,7 @@ const theme = createTheme({ cssVariables: true, colorSchemes: { light: true, dar
 
 describe('ThemeModeSwitch', () => {
   it('shows light, system, and dark toggles and presses dark after a click', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(
       <ThemeProvider theme={theme}>
         <ThemeModeSwitch />

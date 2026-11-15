@@ -17,13 +17,14 @@ import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { AppConfig } from '../config/env';
 import { RunQueriesService } from './run-queries.service';
 import { httpStatus } from './runs.controller';
-import { boot, save, visit } from '../testing/runs.spec-helpers';
+import { save, visit } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 import type { Subtask } from '../contract/subtask';
 
 describe('runs api', () => {
   it('lists runs newest first and draws a return edge', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       await save(runs, 'alpha', 'prepare', 'waiting');
@@ -44,7 +45,7 @@ describe('runs api', () => {
 
   it('asks the tracker for the keys of the person who plans a run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-actor-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const tracker = app.get<IssueTracker>(ISSUE_TRACKER);
       const keys = jest.spyOn(tracker, 'ticketKeys').mockResolvedValue(['PROJ-9']);
@@ -60,7 +61,7 @@ describe('runs api', () => {
 
   it('names a run from the first line of the prompt', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-name-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runRepository = app.get(RunRepository);
       const runs = app.get(RunQueriesService);
@@ -97,7 +98,7 @@ describe('runs api', () => {
       }),
       claimed: () => claimed,
     };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runRepository = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -122,7 +123,7 @@ describe('runs api', () => {
       startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
       claimed: () => false,
     };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       await save(app.get(RunRepository), 'proj-reviewer', 'code-review', 'waiting');
       await app.get(RunCommandsService).startStep('proj-reviewer', 'code-review-quality');
@@ -142,7 +143,7 @@ describe('runs api', () => {
       startDetached: jest.fn(),
       replay: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-11 started' }),
     };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       await save(app.get(RunRepository), 'proj-11', 'implement-improve', 'failed');
       const result = await app.get(RunCommandsService).replay('proj-11', 'implement', 'Use the other parser');
@@ -156,7 +157,7 @@ describe('runs api', () => {
 
   it('names a run from a typed key, and from a slug when the prompt only looks like a key', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-slug-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunCommandsService);
       const prompt = 'Use UTF-8, SHA-256, ISO-8601, GPT-4 and CVE-2026-1234';
@@ -177,7 +178,7 @@ describe('runs api', () => {
       startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
       replay: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
     };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunCommandsService);
       const runRepository = app.get(RunRepository);
@@ -209,7 +210,7 @@ describe('runs api', () => {
       startDetached: jest.fn(),
       stop: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-9 stopped' }),
     };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       await save(app.get(RunRepository), 'proj-9', 'implement-improve', 'running');
       const result = await app.get(RunCommandsService).stop('proj-9');
@@ -224,7 +225,7 @@ describe('runs api', () => {
 
   it('does not resume a blocked prepare', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-blocked-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       await save(app.get(RunRepository), 'proj-4', 'prepare', 'blocked');
       await expect(app.get(RunCommandsService).resume('proj-4')).rejects.toBeInstanceOf(ConflictException);
@@ -239,7 +240,7 @@ describe('runs api', () => {
       startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
       claimed: () => false,
     };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       await save(app.get(RunRepository), 'proj-loop', 'code-review', 'blocked');
       const flow = await app.get(RunQueriesService).flow('proj-loop');
@@ -257,7 +258,7 @@ describe('runs api', () => {
       startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
       claimed: () => false,
     };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -279,7 +280,7 @@ describe('runs api', () => {
       startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
       claimed: () => false,
     };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -306,7 +307,7 @@ describe('runs api', () => {
 
   it('offers only Replay on a block that Resume cannot continue', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-actions-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       await save(app.get(RunRepository), 'proj-prepare', 'prepare', 'blocked');
       const flow = await app.get(RunQueriesService).flow('proj-prepare');
@@ -320,7 +321,7 @@ describe('runs api', () => {
   it('keeps the prompt when a checkout starts code review', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-path-'));
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-7 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const path = join(root, 'worktrees', 'checkout');
       const started = await app.get(RunCommandsService).start({ key: 'proj-7', prompt: 'Look here', path });
@@ -335,7 +336,7 @@ describe('runs api', () => {
   it('refuses a path outside the repositories before it creates anything', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-outside-'));
     const pipeline = { startDetached: jest.fn() };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       await expect(
         app.get(RunCommandsService).start({ key: 'proj-8', prompt: 'Look here', path: tmpdir() }),
@@ -350,7 +351,7 @@ describe('runs api', () => {
   it('opens the next session even when an earlier one is still running', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-parked-'));
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const previous = await save(runs, 'PROJ-12', 'code-review', 'failed');
@@ -383,7 +384,7 @@ describe('runs api', () => {
   it('opens a new session when the ticket run is done', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-session-'));
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       await save(app.get(RunRepository), 'PROJ-12', 'done', 'done');
       const prompt = 'https://example.atlassian.net/browse/PROJ-12\nbranch: feature/PROJ-12-add-export';
@@ -408,7 +409,7 @@ describe('runs api', () => {
   it('uses a ticket key from the prompt when no run id is sent', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-ticket-'));
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const started = await app
         .get(RunCommandsService)
@@ -428,7 +429,7 @@ describe('runs api', () => {
   it('assigns a run id when the prompt has no ticket key', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-slug-'));
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const started = await app.get(RunCommandsService).start({ prompt: 'Ship the field', projects: ['demo'] });
       expect(started.key).toMatch(/^run-[a-z0-9]+$/);
@@ -444,7 +445,7 @@ describe('runs api', () => {
 
   it('does not ask for a clone while prepare is waiting', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-clones-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -461,7 +462,7 @@ describe('runs api', () => {
   it('starts a new run in the background', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-start-'));
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-5 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const started = await app
         .get(RunCommandsService)
@@ -483,7 +484,7 @@ describe('runs api', () => {
     async function planned(split: 'auto' | 'off', extra: { split?: boolean } = {}) {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-split-'));
       const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
-      const app = await boot(root, pipeline);
+      const app = await seededBoot(root, pipeline);
       app.get(AppConfig).env.SPLIT = split;
       try {
         const commands = app.get(RunCommandsService);
@@ -512,7 +513,7 @@ describe('runs api', () => {
     it('a subtask is always off', async () => {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-split-subtask-'));
       const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
-      const app = await boot(root, pipeline);
+      const app = await seededBoot(root, pipeline);
       app.get(AppConfig).env.SPLIT = 'auto';
       try {
         const parent = await save(app.get(RunRepository), 'PROJ-301', 'implement', 'waiting');
@@ -547,7 +548,7 @@ describe('runs api', () => {
       status: 'pending',
     };
 
-    async function parentRun(app: Awaited<ReturnType<typeof boot>>) {
+    async function parentRun(app: Awaited<ReturnType<typeof seededBoot>>) {
       const parent = await save(app.get(RunRepository), 'PROJ-300', 'implement', 'waiting');
       parent.projects = 'demo\n';
       await app.get(RunRepository).saveRun(parent);
@@ -563,8 +564,14 @@ describe('runs api', () => {
 
     it('makes one run for one task, however often it is started', async () => {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-subtask-'));
-      const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
-      const app = await boot(root, pipeline);
+      const started: string[] = [];
+      const pipeline = {
+        startDetached: jest.fn(async (key: string) => {
+          started.push(key);
+          return { exitCode: 0, message: 'started' };
+        }),
+      };
+      const app = await seededBoot(root, pipeline);
       try {
         const parent = await parentRun(app);
         const commands = app.get(RunSubtaskCommandsService);
@@ -573,7 +580,7 @@ describe('runs api', () => {
 
         expect(second).toEqual(first);
         expect(first.key).toBe('PROJ-300-t1');
-        expect(pipeline.startDetached).toHaveBeenCalledTimes(1);
+        expect(started).toEqual(['PROJ-300-t1']);
         expect(
           (await app.get(FlowRepository).listFlows((await app.get(RunRepository).findRun('PROJ-300-t1'))!.id)).length,
         ).toBe(1);
@@ -588,7 +595,7 @@ describe('runs api', () => {
     it('starts from the task, the parent brief and one branch line, without the contract', async () => {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-subtask-prompt-'));
       const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) };
-      const app = await boot(root, pipeline);
+      const app = await seededBoot(root, pipeline);
       try {
         await app.get(RunSubtaskCommandsService).startSubtask(await parentRun(app), task);
 
@@ -610,7 +617,9 @@ describe('runs api', () => {
 
     it('lists a subtask with its parent key and the parent page names its parent', async () => {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-subtask-list-'));
-      const app = await boot(root, { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }) });
+      const app = await seededBoot(root, {
+        startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
+      });
       try {
         await app.get(RunSubtaskCommandsService).startSubtask(await parentRun(app), task);
 
@@ -642,7 +651,7 @@ describe('runs api', () => {
       ['running', 'running'],
     ])('closes a %s child: it shows skipped and every command on it is refused', async (_name, status) => {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-skip-'));
-      const app = await boot(root);
+      const app = await seededBoot(root);
       try {
         const runs = app.get(RunRepository);
         const parent = await save(runs, 'proj-skip', 'implement', 'waiting');
@@ -673,7 +682,7 @@ describe('runs api', () => {
 
   it('answers a resume of a running split parent as started, and of any other running run as already running', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-pass-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const parent = await save(runs, 'proj-pass', 'implement', 'running');

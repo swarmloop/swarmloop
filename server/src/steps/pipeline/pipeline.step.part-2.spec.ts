@@ -47,6 +47,8 @@ function fakeWaitWithSleep(sleepMs: number) {
 }
 
 describe('pipeline step', () => {
+  afterEach(() => jest.restoreAllMocks());
+
   it('returns to implement when a job trace cannot be read', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-trace-'));
     const previousTick = process.env.TICK_MS;
@@ -118,6 +120,8 @@ describe('pipeline step', () => {
 
   it('waits for a run that is not registered yet', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-late-'));
+    const clock = fakeWait();
+    const started = clock.now();
     const previousTick = process.env.TICK_MS;
     const previousTimeout = process.env.PIPELINE_TIMEOUT_MS;
     let reads = 0;
@@ -129,14 +133,14 @@ describe('pipeline step', () => {
           : { snapshot: shot('success', []), httpCalls: [call('GET')] },
       );
     });
-    const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=5000\n');
+    const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=5000\n', undefined, clock);
     try {
       await seed(app, 'PROJ-310');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-310');
       expect(result.exitCode).toBe(0);
-      expect(read).toHaveBeenCalledTimes(2);
       expect((await app.get(RunRepository).findRun('PROJ-310'))?.currentStep).toBe('done');
       expect(await app.get(DocumentRepository).latestBody('PROJ-310', 'pipeline_log')).toContain('result: pass');
+      expect(clock.now() - started).toBe(1);
     } finally {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);
@@ -146,10 +150,12 @@ describe('pipeline step', () => {
 
   it('goes on green when the worktree has no workflow', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-none-'));
+    const clock = fakeWait();
+    const started = clock.now();
     const read = jest.fn(() => Promise.resolve({ snapshot: null, httpCalls: [call('GET')] }));
     const previousTick = process.env.TICK_MS;
     const previousTimeout = process.env.PIPELINE_TIMEOUT_MS;
-    const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=30\n');
+    const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=30\n', undefined, clock);
     try {
       await seed(app, 'PROJ-307');
       const run = await app.get(RunRepository).findRun('PROJ-307');
@@ -159,11 +165,11 @@ describe('pipeline step', () => {
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-307');
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('nothing started');
-      expect(read).toHaveBeenCalledTimes(1);
       const after = await app.get(RunRepository).findRun('PROJ-307');
       expect(after?.currentStep).toBe('done');
       expect(after?.status).toBe('done');
       expect(await app.get(DocumentRepository).latestBody('PROJ-307', 'pipeline_log')).toContain('result: none');
+      expect(clock.now()).toBe(started);
     } finally {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);
@@ -202,7 +208,6 @@ describe('pipeline step', () => {
       await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-311');
       expect(result.message).toContain('CI has not started for');
-      expect(read.mock.calls.length).toBeGreaterThan(1);
       const after = await app.get(RunRepository).findRun('PROJ-311');
       expect(after?.currentStep).toBe('pipeline');
       expect(after?.status).toBe('waiting');
@@ -211,7 +216,8 @@ describe('pipeline step', () => {
       expect(log).toContain('demo CI did not start');
       expect(log).toContain('PR has merge conflicts');
       expect(log).toContain('sha:');
-      expect(diagnose).toHaveBeenCalledTimes(1);
+      expect(log?.match(/PR has merge conflicts/g)).toHaveLength(1);
+      expect(clock.now() - Date.UTC(2026, 0, 1)).toBe(50);
     } finally {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);
@@ -257,6 +263,8 @@ describe('pipeline step', () => {
 
   it('follows a pipeline that appears during the start window', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-appeared-'));
+    const clock = fakeWait();
+    const started = clock.now();
     let reads = 0;
     const read = jest.fn(() => {
       reads += 1;
@@ -271,6 +279,8 @@ describe('pipeline step', () => {
       read,
       jest.fn(),
       'TICK_MS=1\nPIPELINE_START_TIMEOUT_MS=5000\nPIPELINE_TIMEOUT_MS=5000\n',
+      undefined,
+      clock,
     );
     try {
       await seed(app, 'PROJ-313');
@@ -283,9 +293,9 @@ describe('pipeline step', () => {
       await stampSettled(app, 'PROJ-313', ['demo']);
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-313');
       expect(result.exitCode).toBe(0);
-      expect(read).toHaveBeenCalledTimes(2);
       expect((await app.get(RunRepository).findRun('PROJ-313'))?.currentStep).toBe('done');
       expect(await app.get(DocumentRepository).latestBody('PROJ-313', 'pipeline_log')).toContain('result: pass');
+      expect(clock.now() - started).toBe(1);
     } finally {
       await app.close();
     }
@@ -311,7 +321,6 @@ describe('pipeline step', () => {
       await seed(app, 'PROJ-314');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-314');
       expect(result.exitCode).toBe(0);
-      expect(read).toHaveBeenCalledTimes(4);
       // The first read is light; the polls read the jobs, so the transcript can say how many of them run.
       expect(read.mock.calls.map((entry) => entry[1])).toEqual([false, true, true, true]);
       expect((await app.get(RunRepository).findRun('PROJ-314'))?.currentStep).toBe('done');
@@ -354,13 +363,13 @@ describe('pipeline step', () => {
       }
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-312');
       expect(result.message).toContain('CI has not started for');
-      expect(read.mock.calls.length).toBeGreaterThan(2);
       const after = await app.get(RunRepository).findRun('PROJ-312');
       expect(after?.currentStep).toBe('pipeline');
       expect(after?.status).toBe('waiting');
       expect(await app.get(DocumentRepository).latestBody('PROJ-312', 'pipeline_log')).toContain(
         'web CI did not start',
       );
+      expect(clock.now() - Date.UTC(2026, 0, 1)).toBe(800);
     } finally {
       restore('TICK_MS', previousTick);
       restore('PIPELINE_TIMEOUT_MS', previousTimeout);
@@ -405,9 +414,8 @@ describe('pipeline step', () => {
     it('keeps waiting for CI to start for the full start timeout after the host slept', async () => {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-sleep-start-'));
       const clock = fakeWaitWithSleep(SLEEP_MS);
-      const read = jest.fn(() => {
-        return Promise.resolve({ snapshot: null, httpCalls: [call('GET')] });
-      });
+      const started = clock.now();
+      const read = jest.fn(async () => ({ snapshot: null, httpCalls: [call('GET')] }));
       const app = await boot(
         root,
         read,
@@ -425,8 +433,8 @@ describe('pipeline step', () => {
         await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
         const result = await app.get(PipelineService).step('pipeline', 'PROJ-316');
         expect(result.message).toContain('CI has not started for');
-        // 300 s of awake time is ten polls; the sleep adds none.
-        expect(read.mock.calls.length).toBeGreaterThanOrEqual(10);
+        // The suspended gap includes the first poll interval; the full start window follows it.
+        expect(clock.now() - started).toBe(SLEEP_MS + 30_000 + 300_000);
       } finally {
         jest.restoreAllMocks();
         await app.close();
@@ -436,6 +444,7 @@ describe('pipeline step', () => {
     it('still times out when every poll is slow and the host stayed awake', async () => {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-slow-'));
       const clock = fakeWait();
+      const started = clock.now();
       let canceled = false;
       let reads = 0;
       const read = jest.fn(() => {
@@ -464,9 +473,9 @@ describe('pipeline step', () => {
       try {
         await seed(app, 'PROJ-317');
         await app.get(PipelineService).step('pipeline', 'PROJ-317');
-        // 300 s of awake time is about three polls of 130 s each.
-        expect(read.mock.calls.length).toBeLessThanOrEqual(5);
-        expect(cancel).toHaveBeenCalledTimes(1);
+        expect(clock.now() - started).toBeLessThanOrEqual(650_000);
+        expect(clock.now() - started).toBeGreaterThanOrEqual(300_000);
+        expect(cancel).toHaveBeenCalledWith('group/demo', 9);
       } finally {
         jest.restoreAllMocks();
         await app.close();

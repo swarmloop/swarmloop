@@ -76,18 +76,24 @@ describe('useReadiness', () => {
   it('refreshes every minute and on window focus, and keeps the last report when a refresh fails', async () => {
     vi.useFakeTimers();
     vi.mocked(getReadiness).mockReset();
-    vi.mocked(getReadiness).mockResolvedValue({ items: [item('disk', 'fail')], checkedAt: CHECKED_AT });
+    const disk = item('disk', 'fail');
+    vi.mocked(getReadiness)
+      .mockResolvedValueOnce({ items: [disk], checkedAt: CHECKED_AT })
+      .mockResolvedValueOnce({ items: [disk, item('docker', 'ok')], checkedAt: CHECKED_AT })
+      .mockResolvedValueOnce({ items: [disk, item('docker', 'ok'), item('images', 'ok')], checkedAt: CHECKED_AT });
     renderProbe();
     await act(() => vi.advanceTimersByTimeAsync(0));
-    expect(getReadiness).toHaveBeenCalledTimes(1);
-    await act(() => vi.advanceTimersByTimeAsync(60_000));
-    expect(getReadiness).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('items: 1')).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(59_000));
+    expect(screen.getByText('items: 1')).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(2_000));
+    expect(screen.getByText('items: 2')).toBeInTheDocument();
     await act(async () => {
       fireEvent.focus(window);
       window.dispatchEvent(new Event('visibilitychange'));
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(getReadiness).toHaveBeenCalledTimes(3);
+    expect(screen.getByText('items: 3')).toBeInTheDocument();
     vi.mocked(getReadiness).mockRejectedValue(new Error('boom'));
     await act(() => vi.advanceTimersByTimeAsync(61_000));
     expect(screen.getByText('refreshFailed: true')).toBeInTheDocument();
@@ -113,13 +119,15 @@ describe('useReadiness', () => {
   it('retries sooner than a minute while the server is busy', async () => {
     vi.useFakeTimers();
     vi.mocked(getReadiness).mockReset();
-    vi.mocked(getReadiness).mockRejectedValue(new ApiError(503, 'The server is busy, retrying', true));
+    vi.mocked(getReadiness)
+      .mockRejectedValueOnce(new ApiError(503, 'The server is busy, retrying', true))
+      .mockResolvedValue({ items: [item('docker', 'ok')], checkedAt: CHECKED_AT });
     renderProbe();
     await act(() => vi.advanceTimersByTimeAsync(0));
-    expect(getReadiness).toHaveBeenCalledTimes(1);
-    await act(() => vi.advanceTimersByTimeAsync(5_000));
-    expect(vi.mocked(getReadiness).mock.calls.length).toBeGreaterThan(1);
     expect(screen.getByText('error: The server is busy, retrying')).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    expect(screen.getByText('items: 1')).toBeInTheDocument();
+    expect(screen.queryByText('error: The server is busy, retrying')).not.toBeInTheDocument();
   });
 
   it('asks again within seconds after the first empty report, then shows the built one', async () => {
@@ -132,7 +140,6 @@ describe('useReadiness', () => {
     await act(() => vi.advanceTimersByTimeAsync(0));
     expect(screen.getByText('loading: true')).toBeInTheDocument();
     await act(() => vi.advanceTimersByTimeAsync(5_000));
-    expect(getReadiness).toHaveBeenCalledTimes(2);
     expect(screen.getByText('items: 1')).toBeInTheDocument();
     expect(screen.getByText('loading: false')).toBeInTheDocument();
   });

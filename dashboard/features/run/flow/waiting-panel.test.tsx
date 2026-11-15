@@ -20,7 +20,7 @@ function waitingFlow() {
 
 describe('WaitingPanel', () => {
   it('enables Submit once every answer is filled, then posts the answers and calls onChange', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const next = flowView({ status: 'running', resume: 'running' });
     vi.mocked(sendAnswers).mockResolvedValue(next);
     const onChange = vi.fn();
@@ -45,7 +45,7 @@ describe('WaitingPanel', () => {
   });
 
   it('shows the error when the answers are rejected', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(sendAnswers).mockRejectedValue(new Error('answers rejected'));
     render(<WaitingPanel flow={waitingFlow()} onChange={vi.fn()} />);
     await user.type(screen.getByRole('textbox', { name: 'Which database?' }), 'postgres');
@@ -57,7 +57,7 @@ describe('WaitingPanel', () => {
   });
 
   it('offers Resume without items when the run is ready, and posts it', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(resumeRun).mockResolvedValue({});
     const onChange = vi.fn();
     render(<WaitingPanel flow={flowView({ status: 'failed', resume: 'ready' })} onChange={onChange} />);
@@ -71,7 +71,7 @@ describe('WaitingPanel', () => {
   });
 
   it('shows the reason on top, the job names as a list and a Re-run CI action when CI did not run', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(resumeRun).mockResolvedValue({});
     const line = 'CI_NOT_RUN: CI did not run server-test, autofix: spending limit https://ci.example/9';
     render(

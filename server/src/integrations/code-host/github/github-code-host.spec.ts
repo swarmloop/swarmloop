@@ -491,18 +491,17 @@ describe('github host', () => {
     expect(seen).toHaveLength(1);
   });
 
-  it('never gives the token text for a response from another host', () => {
-    const host = service() as unknown as {
-      assertStatus(response: { status: number; url: string }, calls: unknown[], failure: string): void;
-    };
+  it('never gives the token text for a response from another host', async () => {
     for (const status of [401, 403]) {
-      expect(() => host.assertStatus({ status, url: 'https://blob.example/log' }, [], 'x')).toThrow(
-        `job log unavailable: HTTP ${status} from blob.example`,
+      mockLogs([status, status, status]);
+      const failure = service().readJobTrace('acme/demo', 4);
+      await expect(failure).rejects.toThrow(
+        `job log unavailable: HTTP ${status} from productionresultssa16.blob.core.windows.net`,
       );
+      await expect(failure).rejects.not.toThrow('was rejected');
     }
-    expect(() => host.assertStatus({ status: 403, url: 'https://api.github.com/x' }, [], 'x')).toThrow(
-      'GITHUB_TOKEN was rejected',
-    );
+    mockFetch([null], 403);
+    await expect(service().readJobTrace('acme/demo', 4)).rejects.toThrow('GITHUB_TOKEN was rejected');
   });
 
   it('builds a github https push url from ssh origin', () => {

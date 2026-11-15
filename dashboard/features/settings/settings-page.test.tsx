@@ -45,7 +45,7 @@ const planItems = (): string[] =>
 
 async function openOwnPlan(settings = own(['claude', 'opus'])): Promise<ReturnType<typeof userEvent.setup>> {
   vi.mocked(getSettings).mockResolvedValue(view(settings));
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   render(<SettingsPage />);
   await screen.findByRole('list', { name: 'main plan' });
   return user;
@@ -53,7 +53,7 @@ async function openOwnPlan(settings = own(['claude', 'opus'])): Promise<ReturnTy
 
 describe('SettingsPage', () => {
   it('shows the env list read-only and saves nothing for a role on the server default', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<SettingsPage />);
 
     expect(await screen.findAllByLabelText('Server default for main plan')).toHaveLength(1);
@@ -191,7 +191,7 @@ describe('SettingsPage', () => {
   });
 
   it('renders no SPLIT control and saves no split', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<SettingsPage />);
 
     await screen.findByRole('button', { name: 'Save' });
@@ -201,7 +201,7 @@ describe('SettingsPage', () => {
   });
 
   it('shows what a server setting means under its value', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const described = view();
     described.server = [
       {
@@ -222,7 +222,7 @@ describe('SettingsPage', () => {
   });
 
   it('switches sections and shows secrets as set', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<SettingsPage />);
     await screen.findByRole('button', { name: 'Save' });
 
@@ -236,7 +236,7 @@ describe('SettingsPage', () => {
   });
 
   it('shows where each server setting comes from, secrets included', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const sourced = view();
     sourced.server = [
       { name: 'MAX_RUN_USD', secret: false, source: 'default', value: '5' },

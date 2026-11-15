@@ -38,14 +38,13 @@ describe('useLiveBridge', () => {
     render(<Probe />, { wrapper: LiveBridgeProvider });
 
     act(() => watch('r1'));
-    expect(emitted).toHaveBeenCalledWith('watch', 'r1');
-    expect(emitted).toHaveBeenCalledTimes(1);
+    expect(emitted).toHaveBeenNthCalledWith(1, 'watch', 'r1');
 
     act(() => receive('connect'));
     act(() => receive('connect'));
 
-    expect(emitted).toHaveBeenCalledTimes(3);
-    expect(emitted).toHaveBeenLastCalledWith('watch', 'r1');
+    expect(emitted).toHaveBeenNthCalledWith(2, 'watch', 'r1');
+    expect(emitted).toHaveBeenNthCalledWith(3, 'watch', 'r1');
   });
 
   it('sends nothing on connect once no run is watched', () => {

@@ -69,7 +69,7 @@ describe('ReadinessStatus', () => {
 
   it('lists the failing and warning items in the tooltip, with no run key', async () => {
     renderStatus([item('docker', 'ok'), item('disk', 'fail'), item('images', 'warn')]);
-    await userEvent.hover(await screen.findByRole('link', { name: '1 setup problem' }));
+    await userEvent.setup({ delay: null }).hover(await screen.findByRole('link', { name: '1 setup problem' }));
     expect(await screen.findByText('Disk: disk line')).toBeInTheDocument();
     expect(screen.getByText('Images: images line')).toBeInTheDocument();
     expect(screen.queryByText(/Memory booked|Waiting work/)).not.toBeInTheDocument();

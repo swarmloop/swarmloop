@@ -15,11 +15,19 @@ describe('loadModelList', () => {
 
   it('reads once and reuses the cache within a day', async () => {
     const root = await mkdtemp(join(tmpdir(), 'model-list-'));
-    const list = jest.fn(() => Promise.resolve('grok-4.7 - Grok 4.7\n'));
+    const reads: string[] = [];
+    const list = () => {
+      reads.push('initial');
+      return Promise.resolve('grok-4.7 - Grok 4.7\n');
+    };
     expect(await loadModelList(root, cursor, NOW, list)).toBe('grok-4.7 - Grok 4.7\n');
-    const again = jest.fn(() => Promise.resolve('other - Other\n'));
+    expect(reads).toHaveLength(1);
+    const again = () => {
+      reads.push('cached');
+      return Promise.resolve('other - Other\n');
+    };
     expect(await loadModelList(root, cursor, NOW + DAY_MS - 1, again)).toBe('grok-4.7 - Grok 4.7\n');
-    expect(again).not.toHaveBeenCalled();
+    expect(reads).toHaveLength(1);
     const file = JSON.parse(await readFile(join(root, 'data', 'model-list-cursor.json'), 'utf8')) as { output: string };
     expect(file.output).toBe('grok-4.7 - Grok 4.7\n');
   });
@@ -47,9 +55,13 @@ describe('loadModelList', () => {
 
   it('does not read for a runtime without a model list', async () => {
     const root = await mkdtemp(join(tmpdir(), 'model-list-'));
-    const list = jest.fn(() => Promise.resolve('x'));
+    const reads: string[] = [];
+    const list = () => {
+      reads.push('read');
+      return Promise.resolve('x');
+    };
     expect(await loadModelList(root, new ClaudeRuntime(), NOW, list)).toBe('');
-    expect(list).not.toHaveBeenCalled();
+    expect(reads).toHaveLength(0);
   });
 });
 

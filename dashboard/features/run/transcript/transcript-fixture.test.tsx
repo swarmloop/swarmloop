@@ -179,7 +179,7 @@ describe('the step window for a fixture run', () => {
   });
 
   it('shows the branch as one activity card whose commands open on request, with the repo name for the path', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     feed(fixtureRun());
 
     expect(screen.getByText('Check out feature/ship-the-field')).toBeInTheDocument();
@@ -236,7 +236,7 @@ describe('the step window for a fixture run', () => {
   });
 
   it('folds the session and the context into the agent card, and shows the cost in its footer', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     feed(fixtureRun());
 
     expect(screen.getByText('claude · opus · new chat: no stored chat')).toBeInTheDocument();
@@ -285,7 +285,7 @@ describe('the step window for a fixture run', () => {
   });
 
   it('lists the tool calls in order, eight first, and the rest on `show all`', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     feed(fixtureRun());
 
     const listed = screen.getAllByText(/^shell npm run step-/).map((node) => node.textContent ?? '');
@@ -336,7 +336,7 @@ describe('the requirements input card', () => {
   });
 
   it('shows the ticket as its title, one meta line, and the structured document on request', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(getHistory).mockResolvedValue(history);
     feed(fixtureRun().slice(0, 3));
 

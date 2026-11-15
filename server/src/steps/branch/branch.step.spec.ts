@@ -1,5 +1,4 @@
 import 'reflect-metadata';
-import { execFileSync } from 'child_process';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -14,6 +13,8 @@ import { DocumentEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
+import { git } from '../../testing/git-fixture';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { PASTE_READER } from '../../integrations/linked-pages/paste-page.reader';
 
@@ -191,6 +192,7 @@ async function boot(root: string): Promise<TestingModule> {
     AGENTS_REVIEW: 'cursor:opus-5.5-extra-high',
     SWARMLOOP_ROOT: root,
   });
+  seedMigratedDatabase(root);
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })
@@ -266,8 +268,4 @@ function commitOnMain(clone: string, name: string): string {
   git(clone, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '-m', name]);
   git(clone, ['push', 'origin', 'main']);
   return git(clone, ['rev-parse', 'HEAD']);
-}
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 }

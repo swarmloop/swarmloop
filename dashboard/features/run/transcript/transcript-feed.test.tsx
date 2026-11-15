@@ -78,7 +78,7 @@ describe('TranscriptFeed', () => {
   });
 
   it('lists every check of the pipeline attempt and opens the annotations of a failed one', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const check = { durationMs: 65000, url: '', summary: '', annotations: [] };
     feed([
       stepEvent(
@@ -141,7 +141,7 @@ describe('TranscriptFeed', () => {
   });
 
   it('shows a chip for the problems that scrolls to the first one', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const scroll = vi.fn();
     Element.prototype.scrollIntoView = scroll;
     feed([
@@ -150,7 +150,7 @@ describe('TranscriptFeed', () => {
     ]);
 
     await user.click(screen.getByRole('button', { name: '2 problems' }));
-    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll).toHaveBeenCalledWith({ block: 'center' });
     expect(scroll.mock.contexts[0]).toBe(document.getElementById('problem-event-1'));
   });
 
@@ -172,7 +172,7 @@ describe('TranscriptFeed', () => {
   });
 
   it('folds seven consecutive actions into one expandable row', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const run = (count: number) =>
       Array.from({ length: count }, (_, index) =>
         commandEvents(index * 3 + 1, `s${index}`, { executable: `tool${index}` }),
@@ -201,7 +201,7 @@ describe('TranscriptFeed', () => {
   });
 
   it('stops following once the reader scrolled up, and offers the new messages instead', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const { again } = feed([input]);
     const box = scrollBox();
     box.scrollTop = 0;
@@ -216,7 +216,7 @@ describe('TranscriptFeed', () => {
   });
 
   it('wraps a long command line and a 5000-line output inside the feed', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const long = 'x'.repeat(400);
     const output = Array.from({ length: 5000 }, (_, index) => `line ${index} ${long}`).join('\n');
     const { container } = feed(commandEvents(1, 's', { executable: 'curl', args: [long], output }));
@@ -239,7 +239,7 @@ describe('TranscriptFeed', () => {
   });
 
   it('reads the history once for every card that opens its document', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(getHistory).mockResolvedValue(historyView());
     feed([
       stepEvent(1, { kind: 'artifact.produced', artifactKind: 'plan', documentId: 3, summary: 'a plan' }),
@@ -251,7 +251,7 @@ describe('TranscriptFeed', () => {
     }
     await act(async () => {});
 
-    expect(getHistory).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(getHistory).mock.calls).toEqual([['run-1']]);
   });
 
   it('links the input card of a returned issue to the source card and marks it resolved', () => {

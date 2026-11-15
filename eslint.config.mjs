@@ -6,6 +6,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import boundaries from 'eslint-plugin-boundaries';
 import tseslint from 'typescript-eslint';
+import { DATE_SYNTAX, KEY_ID_SYNTAX, RUN_STATE_WRITE, SOCKET_SYNTAX, specRuleBlocks } from './eslint.spec-rules.mjs';
 
 const sourceFiles = ['**/*.{js,mjs,ts,tsx}'];
 const dashboardFiles = ['dashboard/**/*.{js,mjs,ts,tsx}'];
@@ -82,26 +83,6 @@ const TEST_FILES = [
   'server/jest.{config,setup}.js',
 ];
 const TEST_LIBRARIES = ['vitest', 'jest', '@jest/globals', '@testing-library/*', '@nestjs/testing'];
-
-const SOCKET_SYNTAX = {
-  selector: "CallExpression[callee.object.name='socket'][callee.property.name=/^(on|off)$/]",
-  message: 'Subscribe to socket events only in features/shell/use-live-bridge.ts',
-};
-const KEY_ID_SYNTAX = {
-  selector: "JSXAttribute[name.name='key'] > JSXExpressionContainer > MemberExpression[property.name='id']",
-  message: 'An id can be -1 for a live visit: key a list by the visit `key`.',
-};
-const DATE_SYNTAX = {
-  selector: "NewExpression[callee.name='Date'][arguments.length=0]",
-  message: 'Read time through Clock.',
-};
-
-// The fields of a run that one module writes: history/run-state.ts. Every other writer calls it.
-const RUN_STATE_WRITE = {
-  selector:
-    'AssignmentExpression[left.type="MemberExpression"][left.property.name=/^(status|currentStep|ownerPid|ownerInstance|activeAttempt|state|stateReason)$/]',
-  message: 'Write the state of a run through history/run-state.ts (writeRunState, claim, release or finalize).',
-};
 
 const STEP_SYNTAX = [
   DATE_SYNTAX,
@@ -355,18 +336,6 @@ export default tseslint.config(
     rules: { 'no-restricted-syntax': ['error', DATE_SYNTAX] },
   },
   {
-    files: ['server/src/**/*.spec.ts'],
-    rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "CallExpression[callee.name='setTimeout']",
-          message: 'Use fake timers instead of sleeping in specs.',
-        },
-      ],
-    },
-  },
-  {
     files: dashboardFiles,
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     plugins: { '@next/next': nextPlugin, 'react-hooks': reactHooks },
@@ -425,6 +394,8 @@ export default tseslint.config(
     files: ['dashboard/features/shell/use-live-bridge.ts'],
     rules: { 'no-restricted-syntax': 'off' },
   },
+  // After the blocks that turn the rule off or set it for the same files: the last block wins.
+  ...specRuleBlocks,
   {
     files: ['dashboard/features/**/*.{js,mjs,ts,tsx}'],
     plugins: { boundaries },

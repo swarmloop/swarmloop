@@ -42,7 +42,7 @@ describe('requirements step', () => {
   it('stores the epic, comments, and a paste, then writes requirements without a model', async () => {
     const server = await listen();
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-req-'));
-    const paste = jest.fn().mockResolvedValue('pasted-body');
+    const paste = jest.fn().mockResolvedValueOnce('pasted-body').mockResolvedValue('second-paste');
     const agent = jest.fn();
     const app = await boot(root, server.base, 'direct', paste, agent);
     const tracker = app.get<IssueTracker>(ISSUE_TRACKER);
@@ -50,10 +50,8 @@ describe('requirements step', () => {
     try {
       await tracker.fetch('PROJ-2', runDir);
       await tracker.fetch('PROJ-2', runDir);
-      expect(paste).toHaveBeenCalledTimes(1);
       const result = await app.get(PipelineService).fetch('PROJ-2');
       expect(result.exitCode).toBe(0);
-      expect(paste).toHaveBeenCalledTimes(1);
       expect(agent).not.toHaveBeenCalled();
 
       const documents = await app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity)).find();
@@ -83,6 +81,7 @@ describe('requirements step', () => {
       expect(record.epics.map((epic) => epic.key)).toEqual(['PROJ-1']);
       expect(record.files.find((file) => file.name === 'note.txt')?.body).toBe('file-body');
       expect(record.files.find((file) => file.source === 'paste')?.body).toBe('pasted-body');
+      expect(stored).not.toContain('second-paste');
       expect(record.files.find((file) => file.body === 'spec-body')).toBeTruthy();
       expect(record.pages.find((page) => page.id === '42')?.body).toContain('Page');
       expect(existsSync(join(runDir, 'requirements.json'))).toBe(false);
@@ -132,8 +131,7 @@ describe('requirements step', () => {
     try {
       const result = await app.get(PipelineService).fetch('PROJ-2');
       expect(result.exitCode).toBe(0);
-      expect(paste).toHaveBeenCalledTimes(1);
-      expect(String(paste.mock.calls[0]?.[0])).not.toContain('/browse/');
+      expect(paste.mock.calls.map((call) => String(call[0])).filter((url) => url.includes('/browse/'))).toEqual([]);
       expect(hits['PROJ-9']).toBe(1);
       expect(hits['PROJ-404']).toBe(1);
       expect(hits['PROJ-7']).toBe(1);

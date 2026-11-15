@@ -37,7 +37,7 @@ describe('implement step and a provider limit', () => {
       expect(run.status).toBe('waiting');
       expect(run.currentStep).toBe('implement');
       expect(deriveState(run).reason?.code).toBe('RUNTIME_LIMIT');
-      expect(agent).toHaveBeenCalledTimes(1);
+      expect(run.agentCalls).toBe(1);
     } finally {
       await app.close();
     }

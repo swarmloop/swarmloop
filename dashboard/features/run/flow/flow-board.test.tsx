@@ -37,7 +37,7 @@ describe('FlowBoard', () => {
   });
 
   it('shows a returned card with the return icon, the place it went to, and neither the error nor the warning color', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const board: FlowView['phases'] = [
       { phase: 'checks', steps: [{ name: 'checks', status: 'returned', current: false, attempts: 1 }] },
     ];
@@ -79,7 +79,7 @@ describe('FlowBoard', () => {
   });
 
   it('reports the clicked step by name', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onSelect = vi.fn();
     render(<FlowBoard phases={phases} returns={[]} selected={null} onSelect={onSelect} />);
 

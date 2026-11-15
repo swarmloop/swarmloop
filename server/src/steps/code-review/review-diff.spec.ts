@@ -1,19 +1,12 @@
-import { execFileSync } from 'child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
+import { git, repoTemplate } from '../../testing/git-fixture';
 import { REVIEW_DIFF_PATH, reviewDiffSection, writeReviewDiff } from './review-diff';
 
 describe('review diff', () => {
   it('uses the branch diff when the worktree is clean', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'swarmloop-review-diff-clean-'));
-    const repo = join(root, 'app');
-    git(root, ['init', '-b', 'main', repo]);
-    writeFileSync(join(repo, 'README'), 'base\n');
-    commit(repo, 'base');
-    git(root, ['init', '--bare', join(root, 'app.git')]);
-    git(repo, ['remote', 'add', 'origin', join(root, 'app.git')]);
-    git(repo, ['push', '-u', 'origin', 'main']);
+    const repo = mainRepo('swarmloop-review-diff-clean-');
     git(repo, ['checkout', '-b', 'feature/field']);
     writeFileSync(join(repo, 'Field.php'), '<?php\n');
     commit(repo, 'field');
@@ -30,14 +23,7 @@ describe('review diff', () => {
   });
 
   it('diffs a clean worktree against the branch the prompt names, not against the default branch', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'swarmloop-review-diff-named-'));
-    const repo = join(root, 'app');
-    git(root, ['init', '-b', 'main', repo]);
-    writeFileSync(join(repo, 'README'), 'base\n');
-    commit(repo, 'base');
-    git(root, ['init', '--bare', join(root, 'app.git')]);
-    git(repo, ['remote', 'add', 'origin', join(root, 'app.git')]);
-    git(repo, ['push', '-u', 'origin', 'main']);
+    const repo = mainRepo('swarmloop-review-diff-named-');
     git(repo, ['checkout', '-b', 'feature/parent']);
     writeFileSync(join(repo, 'Sibling.php'), '<?php // other subtask\n');
     commit(repo, 'sibling');
@@ -58,14 +44,7 @@ describe('review diff', () => {
   });
 
   it('reviews the replayed commits when the only leftover file is denied', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'swarmloop-review-diff-denied-'));
-    const repo = join(root, 'app');
-    git(root, ['init', '-b', 'main', repo]);
-    writeFileSync(join(repo, 'README'), 'base\n');
-    commit(repo, 'base');
-    git(root, ['init', '--bare', join(root, 'app.git')]);
-    git(repo, ['remote', 'add', 'origin', join(root, 'app.git')]);
-    git(repo, ['push', '-u', 'origin', 'main']);
+    const repo = mainRepo('swarmloop-review-diff-denied-');
     git(repo, ['checkout', '-b', 'feature/field']);
     writeFileSync(join(repo, 'Field.php'), '<?php\n');
     commit(repo, 'field');
@@ -82,14 +61,7 @@ describe('review diff', () => {
   });
 
   it('omits a denied leftover when another file is also uncommitted', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'swarmloop-review-diff-denied-mixed-'));
-    const repo = join(root, 'app');
-    git(root, ['init', '-b', 'main', repo]);
-    writeFileSync(join(repo, 'README'), 'base\n');
-    commit(repo, 'base');
-    git(root, ['init', '--bare', join(root, 'app.git')]);
-    git(repo, ['remote', 'add', 'origin', join(root, 'app.git')]);
-    git(repo, ['push', '-u', 'origin', 'main']);
+    const repo = mainRepo('swarmloop-review-diff-denied-mixed-');
     writeFileSync(join(repo, 'README'), 'changed\n');
     writeFileSync(join(repo, '.env'), 'TOKEN=secret\n');
 
@@ -103,14 +75,7 @@ describe('review diff', () => {
   });
 
   it('uses uncommitted changes when the worktree is dirty', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'swarmloop-review-diff-dirty-'));
-    const repo = join(root, 'app');
-    git(root, ['init', '-b', 'main', repo]);
-    writeFileSync(join(repo, 'README'), 'base\n');
-    commit(repo, 'base');
-    git(root, ['init', '--bare', join(root, 'app.git')]);
-    git(repo, ['remote', 'add', 'origin', join(root, 'app.git')]);
-    git(repo, ['push', '-u', 'origin', 'main']);
+    const repo = mainRepo('swarmloop-review-diff-dirty-');
     writeFileSync(join(repo, 'README'), 'changed\n');
     writeFileSync(join(repo, 'New.php'), '<?php\n');
 
@@ -126,14 +91,7 @@ describe('review diff', () => {
   });
 
   it('keeps a large document in the diff file and names it in the prompt', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'swarmloop-review-diff-large-'));
-    const repo = join(root, 'app');
-    git(root, ['init', '-b', 'main', repo]);
-    writeFileSync(join(repo, 'README'), 'base\n');
-    commit(repo, 'base');
-    git(root, ['init', '--bare', join(root, 'app.git')]);
-    git(repo, ['remote', 'add', 'origin', join(root, 'app.git')]);
-    git(repo, ['push', '-u', 'origin', 'main']);
+    const repo = mainRepo('swarmloop-review-diff-large-');
     git(repo, ['checkout', '-b', 'feature/field']);
     mkdirSync(join(repo, 'lib'));
     mkdirSync(join(repo, 'docs'));
@@ -142,7 +100,7 @@ describe('review diff', () => {
     commit(repo, 'field');
 
     const section = await reviewDiffSection([{ hostPath: repo, containerPath: '/work/app', readonly: true }]);
-    const file = writeReviewDiff(root, 'PROJ-1', section.patch);
+    const file = writeReviewDiff(dirname(repo), 'PROJ-1', section.patch);
 
     expect(section.body).toContain('lib/Field.php');
     expect(section.body).toContain('docs/plan.md');
@@ -153,14 +111,7 @@ describe('review diff', () => {
   });
 
   it('names a test file and keeps its body in the diff file', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'swarmloop-review-diff-test-'));
-    const repo = join(root, 'app');
-    git(root, ['init', '-b', 'main', repo]);
-    writeFileSync(join(repo, 'README'), 'base\n');
-    commit(repo, 'base');
-    git(root, ['init', '--bare', join(root, 'app.git')]);
-    git(repo, ['remote', 'add', 'origin', join(root, 'app.git')]);
-    git(repo, ['push', '-u', 'origin', 'main']);
+    const repo = mainRepo('swarmloop-review-diff-test-');
     git(repo, ['checkout', '-b', 'feature/field']);
     mkdirSync(join(repo, 'lib'));
     mkdirSync(join(repo, 'tests'));
@@ -169,7 +120,7 @@ describe('review diff', () => {
     commit(repo, 'field');
 
     const section = await reviewDiffSection([{ hostPath: repo, containerPath: '/work/app', readonly: true }]);
-    const file = writeReviewDiff(root, 'PROJ-1', section.patch);
+    const file = writeReviewDiff(dirname(repo), 'PROJ-1', section.patch);
 
     expect(section.body).toContain('lib/Field.php');
     expect(section.body).toContain('tests/FieldTest.php');
@@ -179,14 +130,7 @@ describe('review diff', () => {
   });
 
   it('keeps every source file in the diff file', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'swarmloop-review-diff-cap-'));
-    const repo = join(root, 'app');
-    git(root, ['init', '-b', 'main', repo]);
-    writeFileSync(join(repo, 'README'), 'base\n');
-    commit(repo, 'base');
-    git(root, ['init', '--bare', join(root, 'app.git')]);
-    git(repo, ['remote', 'add', 'origin', join(root, 'app.git')]);
-    git(repo, ['push', '-u', 'origin', 'main']);
+    const repo = mainRepo('swarmloop-review-diff-cap-');
     git(repo, ['checkout', '-b', 'feature/field']);
     mkdirSync(join(repo, 'lib'));
     writeFileSync(join(repo, 'lib', 'a.php'), `alpha-marker\n${'A'.repeat(30_000)}`);
@@ -195,7 +139,7 @@ describe('review diff', () => {
     commit(repo, 'field');
 
     const section = await reviewDiffSection([{ hostPath: repo, containerPath: '/work/app', readonly: true }]);
-    const file = writeReviewDiff(root, 'PROJ-1', section.patch);
+    const file = writeReviewDiff(dirname(repo), 'PROJ-1', section.patch);
     const stored = readFileSync(file, 'utf8');
 
     expect(section.body).toContain('lib/a.php');
@@ -256,13 +200,13 @@ describe('review diff', () => {
     const repo = featureRepo('swarmloop-review-diff-same-');
     writeFileSync(join(repo, 'Field.php'), '<?php\n');
     commit(repo, 'field');
-    const log = execFileSync('git', ['log', '--oneline', 'origin/main...HEAD'], { cwd: repo, encoding: 'utf8' });
-    const diff = execFileSync('git', ['diff', 'origin/main...HEAD'], { cwd: repo, encoding: 'utf8' });
+    const log = git(repo, ['log', '--oneline', 'origin/main...HEAD']);
+    const diff = git(repo, ['diff', 'origin/main...HEAD']);
 
     const section = await reviewDiffSection([{ hostPath: repo, containerPath: '/work/app', readonly: true }]);
 
     expect(section.patch).toBe(
-      `## app\nClean worktree. Commits on HEAD that are not in origin/main.\n${log.trim()}\n\n${diff.trimEnd()}\n`,
+      `## app\nClean worktree. Commits on HEAD that are not in origin/main.\n${log}\n\n${diff}\n`,
     );
   });
 
@@ -286,23 +230,24 @@ describe('review diff', () => {
 
 /** A checkout on a feature branch off a pushed main. */
 function featureRepo(prefix: string, branch = 'feature/field'): string {
-  const root = mkdtempSync(join(tmpdir(), prefix));
-  const repo = join(root, 'app');
-  git(root, ['init', '-b', 'main', repo]);
-  writeFileSync(join(repo, 'README'), 'base\n');
-  commit(repo, 'base');
-  git(root, ['init', '--bare', join(root, 'app.git')]);
-  git(repo, ['remote', 'add', 'origin', join(root, 'app.git')]);
-  git(repo, ['push', '-u', 'origin', 'main']);
+  const repo = mainRepo(prefix);
   git(repo, ['checkout', '-b', branch]);
   return repo;
 }
 
-function commit(repo: string, message: string): void {
-  git(repo, ['add', '-A']);
-  git(repo, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '-m', message]);
+const AUTHOR = ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev'];
+
+const mainTemplate = repoTemplate(({ clone }) => {
+  writeFileSync(join(clone, 'README'), 'base\n');
+  commit(clone, 'base');
+});
+
+/** A checkout of a pushed main, copied from a template built once per file, with origin on its own copy of the bare repository. */
+function mainRepo(prefix: string): string {
+  return mainTemplate(mkdtempSync(join(tmpdir(), prefix)), 'app').clone;
 }
 
-function git(cwd: string, args: string[]): void {
-  execFileSync('git', args, { cwd, stdio: 'ignore' });
+function commit(repo: string, message: string): void {
+  git(repo, ['add', '-A']);
+  git(repo, [...AUTHOR, 'commit', '-m', message]);
 }

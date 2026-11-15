@@ -17,12 +17,12 @@ describe('the defaults the server ships, in a whole flow that sets nothing', () 
   let app: TestApp;
   let agent: SplitPlanAgent;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     agent = new SplitPlanAgent();
     app = await createTestApp({ envFile: false, realSteps: ['plan', 'plan-improve'], runner: agent });
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await app.close();
   });
 

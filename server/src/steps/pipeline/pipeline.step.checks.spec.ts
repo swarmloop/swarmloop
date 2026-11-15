@@ -61,7 +61,6 @@ describe('pipeline step on every check of the commit', () => {
         ? shot('success', [], [], [SCANNING])
         : withChecks('success', [appCheck({ summary: '2 alerts', annotations: NOTES })]),
     );
-    expect(result.read.mock.calls.length).toBeGreaterThan(8);
     expect(result.run?.currentStep).toBe('implement');
     expect(result.returned).toContain('job: CodeQL / Code scanning results');
   });

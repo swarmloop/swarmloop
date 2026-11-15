@@ -5,9 +5,11 @@ import { HOST_RETRY_MS, request } from './http';
 type Answer = number | Error | { status: number; retryAfter: string };
 
 /** A fetch that answers from a script, one answer per try; the last one repeats. */
-function scriptedFetch(answers: Answer[]): jest.Mock {
+function scriptedFetch(answers: Answer[]): string[] {
+  const tries: string[] = [];
   let index = 0;
-  global.fetch = jest.fn(async (url: string) => {
+  global.fetch = (async (url: string) => {
+    tries.push(url);
     const answer = answers[Math.min(index, answers.length - 1)];
     index += 1;
     if (answer instanceof Error) {
@@ -21,8 +23,8 @@ function scriptedFetch(answers: Answer[]): jest.Mock {
       headers: { get: (name: string) => (name === 'retry-after' ? retryAfter : null) },
       arrayBuffer: async () => Buffer.from('{}'),
     };
-  }) as unknown as jest.Mock;
-  return global.fetch as unknown as jest.Mock;
+  }) as unknown as typeof fetch;
+  return tries;
 }
 
 const URL_ = 'https://api.example.com/x?token=secret';
@@ -49,21 +51,21 @@ describe('request retry policy', () => {
     const fetched = scriptedFetch([status, 200]);
     const response = await call();
     expect(response.status).toBe(200);
-    expect(fetched).toHaveBeenCalledTimes(2);
+    expect(fetched).toHaveLength(2);
   });
 
   it.each([401, 403, 404, 422])('returns %i after one try', async (status) => {
     const fetched = scriptedFetch([status, 200]);
     const response = await call();
     expect(response.status).toBe(status);
-    expect(fetched).toHaveBeenCalledTimes(1);
+    expect(fetched).toHaveLength(1);
   });
 
   it('retries a network error and a timeout', async () => {
     const timeout = Object.assign(new Error('timed out'), { name: 'TimeoutError' });
     const fetched = scriptedFetch([new TypeError('fetch failed'), timeout, 200]);
     expect((await call()).status).toBe(200);
-    expect(fetched).toHaveBeenCalledTimes(3);
+    expect(fetched).toHaveLength(3);
   });
 
   it('honours Retry-After in seconds and as a date', async () => {
@@ -86,7 +88,7 @@ describe('request retry policy', () => {
       detail: 'HTTP 503',
       retryAt: new Date(clock.now() + HOST_RETRY_MS).toISOString(),
     });
-    expect(fetched).toHaveBeenCalledTimes(5);
+    expect(fetched).toHaveLength(5);
     expect(sleeps).toHaveLength(4);
   });
 

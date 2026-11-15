@@ -28,7 +28,7 @@ describe('PhasePicker', () => {
   });
 
   it('calls setPicked when another phase is toggled', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const setPicked = picker(['planning']);
 
     await user.click(screen.getByRole('checkbox', { name: 'checks' }));

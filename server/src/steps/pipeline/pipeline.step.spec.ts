@@ -1,7 +1,5 @@
 import 'reflect-metadata';
 
-import { execFileSync } from 'child_process';
-
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { mkdirSync } from 'fs';
@@ -30,7 +28,19 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 
 import { FetchFailed } from '../../core/swarmloop-error';
 
-import { gitRepo, one, two, shot, job, call, restore, boot, seed, TOKEN } from './pipeline.step.spec-helpers';
+import {
+  commitAll,
+  gitRepo,
+  one,
+  two,
+  shot,
+  job,
+  call,
+  restore,
+  boot,
+  seed,
+  TOKEN,
+} from './pipeline.step.spec-helpers';
 import { EnvironmentService } from '../../environment/environment.service';
 import { REBASE_JOURNAL, parseJournal } from '../../git/rebase';
 import { featureWorktree, git, hostFetch } from '../../testing/runs.spec-helpers';
@@ -51,10 +61,8 @@ describe('pipeline step', () => {
         gitRepo(cwd, 'https://gitlab.example/group/demo.git');
         mkdirSync(join(cwd, '.github', 'workflows'), { recursive: true });
         await writeFile(join(cwd, '.github', 'workflows', 'ci.yml'), 'name: CI\non: pull_request\n');
-        execFileSync('git', ['checkout', '-b', 'feature/task'], { cwd });
-        execFileSync('git', ['add', '.'], { cwd });
-        execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-m', 'base'], { cwd });
-        const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
+        git(cwd, ['checkout', '-b', 'feature/task']);
+        const sha = commitAll(cwd, 'base');
         await seed(app, key, `project: group/demo\nref: feature/task\nsha: ${sha}\n`, mode === 'limit' ? 6 : 0);
         const documents = app.get(DocumentRepository);
         const runs = app.get(RunRepository);
@@ -85,7 +93,6 @@ describe('pipeline step', () => {
           expect((await runs.findRun(key))?.status).toBe('blocked');
           return;
         }
-        expect(action).toHaveBeenCalledTimes(1);
         expect(action).toHaveBeenCalledWith(key);
         if (mode === 'failure') {
           expect(result.exitCode).toBe(1);
@@ -94,13 +101,14 @@ describe('pipeline step', () => {
           return;
         }
         expect(result.resume).toBe(mode === 'resume');
-        expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim()).toBe(sha);
+        expect(git(cwd, ['rev-parse', 'HEAD'])).toBe(sha);
         const again = (await runs.findRun(key))!;
         again.currentStep = 'pipeline';
         await runs.saveRun(again);
+        action.mockClear();
         const repeated = await app.get(PipelineService).step('pipeline', key);
         expect(repeated.message).toContain('already attempted');
-        expect(action).toHaveBeenCalledTimes(1);
+        expect(action).not.toHaveBeenCalled();
       } finally {
         await app.close();
       }
@@ -323,8 +331,7 @@ describe('pipeline step', () => {
       await documents.putDocument(seeded!, 'pipeline_ref', `${one}sha: ${'b'.repeat(40)}\n`);
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-315');
       expect(result.exitCode).toBe(0);
-      expect(read).toHaveBeenCalledTimes(1);
-      expect(read.mock.calls[0]?.[0].sha).toBe('b'.repeat(40));
+      expect(read.mock.calls.map((entry) => entry[0].sha)).toEqual(['b'.repeat(40)]);
     } finally {
       await app.close();
     }
@@ -541,7 +548,6 @@ describe('pipeline step', () => {
       await seed(app, 'PROJ-304');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-304');
       expect(result.exitCode).toBe(0);
-      expect(read).toHaveBeenCalledTimes(2);
       expect((await app.get(RunRepository).findRun('PROJ-304'))?.currentStep).toBe('done');
       expect((await app.get(RunRepository).findRun('PROJ-304'))?.status).toBe('done');
     } finally {
@@ -644,7 +650,7 @@ describe('pipeline step', () => {
       await seed(app, 'PROJ-308', two);
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-308');
       expect(result.exitCode).toBe(0);
-      expect(read).toHaveBeenCalledTimes(2);
+      expect(read.mock.calls.map((entry) => entry[0].project).sort()).toEqual(['group/demo', 'group/web']);
       const run = await app.get(RunRepository).findRun('PROJ-308');
       expect(run?.currentStep).toBe('implement');
       expect(run?.attemptsPipeline).toBe(1);

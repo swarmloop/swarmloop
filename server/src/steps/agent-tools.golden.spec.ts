@@ -8,6 +8,7 @@ import { expectGolden } from '../testing/step-trace.spec-helpers';
 import { boot } from './prepare/prepare.step.spec-helpers';
 import { StepRegistry } from './step.registry';
 import type { AgentTools } from '../integrations/agent-runtime/agent-runtime';
+import { seedMigratedDatabase } from '../testing/migrated-database.spec-helpers';
 
 // Beside the spec: the trace goldens in `testing/golden` all hold step traces, and this one holds a table.
 const GOLDEN_DIR = join(__dirname, 'golden');
@@ -19,6 +20,7 @@ const GOLDEN_DIR = join(__dirname, 'golden');
 describe('agent tools per step', () => {
   it('records the denied tools of every launch', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-agent-tools-'));
+    seedMigratedDatabase(root);
     const app = await boot(root);
     try {
       const described = app.get(StepRegistry).describe(app.get(AppConfig).env);

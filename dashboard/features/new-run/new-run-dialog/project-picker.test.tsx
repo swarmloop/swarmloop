@@ -38,7 +38,7 @@ describe('ProjectPicker', () => {
   });
 
   it('reports the chosen projects through onChange', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onChange = vi.fn();
     render(
       <ProjectPicker
@@ -55,7 +55,7 @@ describe('ProjectPicker', () => {
     expect(onChange).toHaveBeenCalledWith(['swarmloop', 'docs']);
   });
   it('lists local folders first and then the repositories that are not cloned, tagged', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(
       <ProjectPicker
         frozenProjects={false}
@@ -73,7 +73,7 @@ describe('ProjectPicker', () => {
   });
 
   it('searches the owner and name of remote entries and picks one by its folder name', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onChange = vi.fn();
     render(
       <ProjectPicker
@@ -93,7 +93,7 @@ describe('ProjectPicker', () => {
   });
 
   it('disables a blocked entry and shows why', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(
       <ProjectPicker
         frozenProjects={false}
@@ -111,7 +111,7 @@ describe('ProjectPicker', () => {
   });
 
   it('says why there is nothing remote, and disables New repository with that reason', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(
       <ProjectPicker
         frozenProjects={false}

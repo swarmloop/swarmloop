@@ -1,12 +1,10 @@
-import { execFileSync } from 'child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
+import { gitOutput } from '../testing/git-fixture';
 
 export function runGit(repo: string, args: string[]): string {
-  return execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
-    encoding: 'utf8',
-  });
+  return gitOutput(repo, ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args]);
 }
 
 export function writeFiles(repo: string, files: Record<string, string>): void {

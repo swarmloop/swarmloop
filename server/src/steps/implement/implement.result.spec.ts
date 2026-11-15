@@ -1,23 +1,23 @@
 import 'reflect-metadata';
 import { mkdirSync, writeFileSync } from 'fs';
-import { mkdtemp } from 'fs/promises';
-import { tmpdir } from 'os';
 import { join } from 'path';
 import type { AgentRunInput } from '../../agent/agent-runner';
+import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { RESULT_AS_BEFORE } from '../../agent-result/result-prompt';
 import { resultAnswer } from '../../testing/result-answer';
 import { handoffText } from '../shared/handoff';
-import { boot, featureTree, implAnswer, result, seed, writeEnv } from './implement.step.spec-helpers';
+import { bootOnce, implAnswer, result, seed } from './implement.step.spec-helpers';
+
+const once = bootOnce();
 
 const KINDS = ['implementation', 'implementation_result', 'implementation_improve_result', 'requirements', 'handoff'];
 
 /** Runs the implement step of a run with an approved plan, one scripted answer per launch. */
 async function implementWith(key: string, answers: string[], chat: boolean | 'legacy' | 'rebase_resolution' = false) {
-  const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-result-'));
-  await writeEnv(root);
-  featureTree(root, key, 'billing-api');
+  once.tree(key, 'billing-api');
+  const root = once.root();
   if (chat) {
     mkdirSync(join(root, 'data', 'agent-state', key, 'implement'), { recursive: true });
     writeFileSync(
@@ -25,23 +25,20 @@ async function implementWith(key: string, answers: string[], chat: boolean | 'le
       `${JSON.stringify({ runtime: 'cursor', chatId: 'implement-chat', resumed: true, completed: true, killReason: null, usd: 1, ...(chat === 'legacy' ? {} : { resultName: chat === true ? 'implementation' : chat }) })}\n`,
     );
   }
-  const agent = jest.fn();
+  const agent = once.agent.mockReset();
   for (const answer of answers) agent.mockResolvedValueOnce(result(answer));
-  const app = await boot(root, agent);
-  try {
-    await seed(app, key, 'approve');
-    const done = await app.get(PipelineService).step('implement', key);
-    const documents = app.get(DocumentRepository);
-    const stored: Record<string, string | null> = {};
-    for (const kind of KINDS) stored[kind] = await documents.latestBody(key, kind);
-    return {
-      done,
-      prompts: agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt),
-      body: (kind: string) => stored[kind] ?? null,
-    };
-  } finally {
-    await app.close();
-  }
+  const app = once.app();
+  await seed(app, key, 'approve');
+  const done = await app.get(PipelineService).step('implement', key);
+  const documents = app.get(DocumentRepository);
+  const stored: Record<string, string | null> = {};
+  for (const kind of KINDS) stored[kind] = await documents.latestBody(key, kind);
+  return {
+    done,
+    calls: (await app.get(RunRepository).findRun(key))?.agentCalls,
+    prompts: agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt),
+    body: (kind: string) => stored[kind] ?? null,
+  };
 }
 
 describe('implement step result block', () => {
@@ -72,7 +69,7 @@ describe('implement step result block', () => {
       implAnswer(['fixed it'], ['why']),
     ]);
     expect(out.done.exitCode).toBe(0);
-    expect(out.prompts).toHaveLength(2);
+    expect(out.calls).toBe(2);
     expect(out.prompts[1]).toContain('implementation');
     expect(out.prompts[1]).toContain('summary');
     expect(out.prompts[1]).toContain(RESULT_AS_BEFORE);
@@ -84,7 +81,7 @@ describe('implement step result block', () => {
     const out = await implementWith('PROJ-403', [bad, bad, bad]);
     expect(out.done.exitCode).toBe(1);
     expect(out.done.message).toContain('implementation: must list what you changed');
-    expect(out.prompts).toHaveLength(3);
+    expect(out.calls).toBe(3);
     expect(out.body('implementation')).toBeNull();
   });
 
@@ -112,7 +109,7 @@ describe('implement step result block', () => {
   });
 
   it.each(['legacy', 'rebase_resolution'] as const)('teaches the implementation result to a %s chat', async (chat) => {
-    const out = await implementWith('PROJ-407', [implAnswer(['a'], ['why'])], chat);
+    const out = await implementWith(chat === 'legacy' ? 'PROJ-407' : 'PROJ-408', [implAnswer(['a'], ['why'])], chat);
     expect(out.done.exitCode).toBe(0);
     expect(out.prompts[0]).toContain('The object has these fields, and no others:');
     expect(out.prompts[0]).toContain('- implementation (array of string, required)');
