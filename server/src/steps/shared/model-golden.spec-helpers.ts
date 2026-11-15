@@ -18,6 +18,7 @@ import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { SandboxService } from '../../sandbox/sandbox.service';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
 import { writeEnv } from '../implement/implement.step.spec-helpers';
 
@@ -33,6 +34,7 @@ export async function goldenApp(prefix: string, options: GoldenOptions = {}) {
   const root = await mkdtemp(join(tmpdir(), `swarmloop-${prefix}-`));
   await writeEnv(root, undefined, { EPIC_EFFORT: '' });
   for (const path of options.worktrees ?? []) mkdirSync(join(root, 'worktrees', path), { recursive: true });
+  seedMigratedDatabase(root);
   const builder = Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })

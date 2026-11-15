@@ -48,8 +48,8 @@ import {
   resumeArg,
   writeEnv,
   repoWithBranch,
-  git,
 } from './code-review.step.spec-helpers';
+import { git } from '../../testing/git-fixture';
 
 describe('code-review step', () => {
   it('continues when the last open reviewer passes', async () => {
@@ -179,10 +179,8 @@ describe('code-review step', () => {
       const done = await app.get(PipelineService).step('code-review', 'PROJ-86');
       expect(done.exitCode).toBe(0);
       expect(done.message).not.toContain('implementation is missing');
-      expect(agent).toHaveBeenCalledTimes(2);
+      expect(agent.mock.calls.map((entry) => entry[0].step)).toEqual(['code-review-quality', 'code-review-report']);
       const call = agent.mock.calls[0]?.[0];
-      expect(call.step).toBe('code-review-quality');
-      expect(agent.mock.calls[1]?.[0]?.step).toBe('code-review-report');
       expect(call.mounts[0]?.hostPath).toBe(realpathSync(checkout));
       const run = await app.get(RunRepository).findRun('PROJ-86');
       expect(run?.currentStep).toBe('commit');

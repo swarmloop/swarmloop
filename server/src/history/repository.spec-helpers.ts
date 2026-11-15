@@ -9,10 +9,12 @@ import { testEnv } from '../config/env.spec-helpers';
 import { Clock } from '../core/clock';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { HistoryModule } from './history.module';
+import { seedMigratedDatabase } from '../testing/migrated-database.spec-helpers';
 import type { VisitDraft } from './visit';
 
 export async function repositoryDatabase() {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-repository-'));
+  seedMigratedDatabase(root);
   const clock = new FakeClock();
   const config = new AppConfig(testEnv({ SWARMLOOP_ROOT: root }));
 

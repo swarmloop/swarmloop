@@ -119,7 +119,7 @@ describe('TaskLayers', () => {
     expect(screen.queryByText('server/src/file-0.ts')).not.toBeInTheDocument();
     expect(screen.queryByText(/passes/)).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: '16 files · proof' }));
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: '16 files · proof' }));
 
     expect(screen.getAllByText(/server\/src\/file-/)).toHaveLength(16);
     expect(screen.getByText('parse').tagName).toBe('CODE');
@@ -129,7 +129,7 @@ describe('TaskLayers', () => {
     const onSkip = vi.fn();
     render(<TaskLayers layers={layers} onSkip={onSkip} />);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Skip task' }));
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Skip task' }));
 
     expect(onSkip).toHaveBeenCalledWith('t5');
   });
@@ -172,8 +172,10 @@ describe('TaskLayers', () => {
     const third = subtask('C', 2, 'running', 'running');
     const titles = () => screen.getAllByText(/^Task [ABC]$/).map((node) => node.textContent);
     renderRunList([parent, merged, second, third]);
-    await userEvent.click(screen.getByRole('button', { name: 'Expand subtasks of Epic parent' }));
-    await userEvent.click(screen.getByRole('button', { name: /^✓ 1 merged/ }));
+    await userEvent
+      .setup({ delay: null })
+      .click(screen.getByRole('button', { name: 'Expand subtasks of Epic parent' }));
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: /^✓ 1 merged/ }));
     const inList = titles();
     cleanup();
 

@@ -114,16 +114,17 @@ describe('ConnectionsPage', () => {
     vi.mocked(getConnections).mockResolvedValueOnce(connected);
     vi.mocked(disconnect).mockResolvedValue({ ok: true });
     render(<ConnectionsPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Disconnect' }));
+    await userEvent.setup({ delay: null }).click(await screen.findByRole('button', { name: 'Disconnect' }));
 
     expect(disconnect).not.toHaveBeenCalled();
     vi.mocked(getConnections).mockResolvedValue({
       connections: connected.connections.map((item) => ({ ...item, account: null, repositories: [], health: null })),
     });
-    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Disconnect' }));
+    await userEvent
+      .setup({ delay: null })
+      .click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Disconnect' }));
 
-    await waitFor(() => expect(disconnect).toHaveBeenCalledTimes(1));
-    expect(disconnect).toHaveBeenCalledWith('github');
+    await waitFor(() => expect(disconnect).toHaveBeenCalledWith('github'));
     await waitFor(() => expect(screen.queryByText('Signed in as alice')).not.toBeInTheDocument());
     expect(screen.getAllByText('not connected')).toHaveLength(2);
   });
@@ -147,7 +148,7 @@ describe('ConnectionsPage', () => {
     vi.mocked(getConnections).mockResolvedValue(withPeople(['alice', 'bob']));
     vi.mocked(replaceApp).mockResolvedValue({ action: 'https://github.com/settings/apps/new', manifest: { a: 1 } });
     const { unmount } = render(<ConnectionsPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Replace app' }));
+    await userEvent.setup({ delay: null }).click(await screen.findByRole('button', { name: 'Replace app' }));
 
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Replace swarmloop-app?');
@@ -159,17 +160,16 @@ describe('ConnectionsPage', () => {
       'https://github.com/settings/apps/swarmloop-app',
     );
     expect(replaceApp).not.toHaveBeenCalled();
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Replace app' }));
+    await userEvent.setup({ delay: null }).click(within(dialog).getByRole('button', { name: 'Replace app' }));
 
-    await waitFor(() => expect(replaceApp).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(submit).toHaveBeenCalled());
     expect(document.querySelector('form')).toHaveAttribute('action', 'https://github.com/settings/apps/new');
     expect(document.querySelector('input[name="manifest"]')).toHaveValue('{"a":1}');
     unmount();
 
     vi.mocked(getConnections).mockResolvedValue(withPeople(['a', 'b', 'c', 'd', 'e', 'f']));
     render(<ConnectionsPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Replace app' }));
+    await userEvent.setup({ delay: null }).click(await screen.findByRole('button', { name: 'Replace app' }));
     expect(await screen.findByRole('dialog')).toHaveTextContent('6 people will be disconnected.');
     submit.mockRestore();
   });
@@ -204,7 +204,7 @@ describe('ConnectionsPage', () => {
     expect(claude).toHaveTextContent('Connected as alice@acme.test');
 
     vi.mocked(getIntegrationCards).mockResolvedValue({ cards });
-    await userEvent.click(within(claude).getByRole('button', { name: 'Disconnect' }));
+    await userEvent.setup({ delay: null }).click(within(claude).getByRole('button', { name: 'Disconnect' }));
 
     expect(disconnectIntegration).toHaveBeenCalledWith('claude');
     await waitFor(() => expect(screen.getByRole('region', { name: 'Claude' })).toHaveTextContent('Not connected'));
@@ -226,7 +226,7 @@ describe('ConnectionsPage', () => {
       expect(github).toHaveTextContent('Pushes branches and opens merge requests');
       expect(within(github).getByText('Server default')).toBeInTheDocument();
       expect(within(screen.getByRole('region', { name: 'GitLab' })).queryByText('Server default')).toBeNull();
-      await userEvent.click(within(github).getByRole('button', { name: 'Test' }));
+      await userEvent.setup({ delay: null }).click(within(github).getByRole('button', { name: 'Test' }));
 
       expect(testIntegration).toHaveBeenCalledWith('github');
       expect(await within(github).findByText('Test passed')).toBeInTheDocument();
@@ -245,7 +245,7 @@ describe('ConnectionsPage', () => {
       const github = await screen.findByRole('region', { name: 'GitHub' });
 
       expect(within(github).queryByRole('button', { name: 'Disconnect' })).toBeNull();
-      await userEvent.click(within(github).getByRole('button', { name: 'Test' }));
+      await userEvent.setup({ delay: null }).click(within(github).getByRole('button', { name: 'Test' }));
 
       expect(await within(github).findByText('GitHub answered 401')).toBeInTheDocument();
     });

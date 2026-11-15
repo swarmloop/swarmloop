@@ -9,7 +9,10 @@ const MINUTE = 60_000;
 
 async function setup() {
   const fixture = await credentialDatabase();
-  const accept = jest.fn().mockResolvedValue(undefined);
+  const accepted: unknown[][] = [];
+  const accept = async (...call: unknown[]) => {
+    accepted.push(call);
+  };
   const reconciler = new Reconciler(
     fixture.runs,
     {} as never,
@@ -38,12 +41,12 @@ async function setup() {
     });
     return fixture.runs.saveRun(run);
   };
-  return { ...fixture, accept, reconciler, waiting };
+  return { ...fixture, accepted, reconciler, waiting };
 }
 
 describe('reconciler and the limits of a credential', () => {
   it("does not resume a run while its own credential cools, even when another person's has ended", async () => {
-    const { db, cooldowns, accept, reconciler, waiting } = await setup();
+    const { db, cooldowns, accepted, reconciler, waiting } = await setup();
     try {
       const now = db.clock.now();
       await cooldowns.set({ runtime: 'claude', credential: 'ann' }, now + 60 * MINUTE, false);
@@ -52,17 +55,17 @@ describe('reconciler and the limits of a credential', () => {
       const run = await waiting('A-1', 'ann');
       db.clock.advance(30 * MINUTE);
       await reconciler.resumeLimited();
-      expect(accept).not.toHaveBeenCalled();
+      expect(accepted).toEqual([]);
       db.clock.advance(30 * MINUTE);
       await reconciler.resumeLimited();
-      expect(accept).toHaveBeenCalledWith('resume', run.key, {}, { idempotencyKey: `limit-${run.revision}` });
+      expect(accepted).toEqual([['resume', run.key, {}, { idempotencyKey: `limit-${run.revision}` }]]);
     } finally {
       await db.close();
     }
   });
 
   it("resumes a subtask by its parent's starter", async () => {
-    const { db, cooldowns, accept, reconciler, run, waiting } = await setup();
+    const { db, cooldowns, accepted, reconciler, run, waiting } = await setup();
     try {
       const now = db.clock.now();
       await cooldowns.set({ runtime: 'claude', credential: 'ann' }, now + 60 * MINUTE, false);
@@ -71,17 +74,17 @@ describe('reconciler and the limits of a credential', () => {
       const subtask = await waiting('A-1-a', null, parent.id);
       db.clock.advance(30 * MINUTE);
       await reconciler.resumeLimited();
-      expect(accept).not.toHaveBeenCalled();
+      expect(accepted).toEqual([]);
       db.clock.advance(30 * MINUTE);
       await reconciler.resumeLimited();
-      expect(accept).toHaveBeenCalledWith('resume', subtask.key, {}, expect.anything());
+      expect(accepted).toEqual([['resume', subtask.key, {}, expect.anything()]]);
     } finally {
       await db.close();
     }
   });
 
   it('resumes an env-only run at the end, or a minute after a reset the provider named', async () => {
-    const { db, cooldowns, accept, reconciler, waiting } = await setup();
+    const { db, cooldowns, accepted, reconciler, waiting } = await setup();
     try {
       const now = db.clock.now();
       await cooldowns.set({ runtime: 'claude', credential: 'env' }, now + 60 * MINUTE, true);
@@ -89,10 +92,10 @@ describe('reconciler and the limits of a credential', () => {
       await waiting('C-1', null);
       db.clock.advance(60 * MINUTE);
       await reconciler.resumeLimited();
-      expect(accept).not.toHaveBeenCalled();
+      expect(accepted).toEqual([]);
       db.clock.advance(RESUME_AFTER_RESET_MS);
       await reconciler.resumeLimited();
-      expect(accept).toHaveBeenCalledTimes(1);
+      expect(accepted).toHaveLength(1);
     } finally {
       await db.close();
     }

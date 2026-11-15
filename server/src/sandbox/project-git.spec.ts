@@ -1,8 +1,8 @@
-import { execFileSync } from 'child_process';
 import { existsSync, mkdtempSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { makeRepo, runGit } from '../git/git-repo.spec-helpers';
+import { gitOutput } from '../testing/git-fixture';
 import { projectGitMount } from './project-git';
 
 describe('portable project Git metadata', () => {
@@ -20,9 +20,7 @@ describe('portable project Git metadata', () => {
     expect(config).not.toContain('secret');
     expect(config).not.toContain(source);
     expect(existsSync(join(mount.hostPath, 'objects/info/alternates'))).toBe(false);
-    expect(
-      execFileSync('git', ['--git-dir', mount.hostPath, '--work-tree', tree, 'ls-files'], { encoding: 'utf8' }),
-    ).toBe('test.py\n');
+    expect(gitOutput(tree, ['--git-dir', mount.hostPath, '--work-tree', tree, 'ls-files'])).toBe('test.py\n');
     expect(runGit(source, ['config', 'http.extraheader']).trim()).toBe('Authorization: secret');
   });
 

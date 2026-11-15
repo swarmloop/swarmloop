@@ -1,12 +1,12 @@
-import { execFileSync } from 'child_process';
-import { mkdtempSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { SandboxMount } from '../core/sandbox-mount';
+import { gitOutput } from '../testing/git-fixture';
 import { worktreeSnapshot } from './worktree-git';
 
 function git(repo: string, args: string[]): string {
-  return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' });
+  return gitOutput(repo, ['-C', repo, ...args]);
 }
 
 function makeRepo(): { repo: string; mounts: SandboxMount[] } {
@@ -39,7 +39,7 @@ describe('worktreeSnapshot', () => {
     git(repo, ['-c', 'commit.gpgsign=false', 'commit', '-m', 'ignore']);
     const clean = await worktreeSnapshot(mounts);
 
-    execFileSync('mkdir', [join(repo, 'out')]);
+    mkdirSync(join(repo, 'out'));
     writeFileSync(join(repo, 'out', 'big.js'), 'x\n');
     expect(await worktreeSnapshot(mounts)).toBe(clean);
 

@@ -6,6 +6,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { writeEnvOverrides } from '../testing/env.spec-helpers';
+import { seedMigratedDatabase } from '../testing/migrated-database.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { EventRepository } from '../history/event.repository';
 import { RunRepository } from '../history/run.repository';
@@ -451,6 +452,7 @@ async function boot(root: string, clock?: Clock): Promise<TestingModule> {
     AGENTS_REVIEW: 'cursor:opus-5.5-extra-high',
     SWARMLOOP_ROOT: root,
   });
+  seedMigratedDatabase(root);
   const builder = Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
     providers: [StepKernel, StubStep],

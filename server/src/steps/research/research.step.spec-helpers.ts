@@ -10,6 +10,7 @@ import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { resultAnswer } from '../../testing/result-answer';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 
 export async function seed(
   app: Awaited<ReturnType<typeof boot>>,
@@ -57,6 +58,7 @@ export function result(responseText: string): AgentRunResult {
 }
 
 export async function boot(root: string, agent: jest.Mock) {
+  seedMigratedDatabase(root);
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })

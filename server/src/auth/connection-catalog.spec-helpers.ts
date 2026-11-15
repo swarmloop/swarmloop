@@ -12,6 +12,7 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { HistoryModule } from '../history/history.module';
 import type { Connection } from '../integrations/connection';
 import { SandboxService } from '../sandbox/sandbox.service';
+import { seedMigratedDatabase } from '../testing/migrated-database.spec-helpers';
 import { AuthService } from './auth.service';
 import { CONNECTIONS } from './connection-catalog';
 import { ConnectionCatalogModule } from './connection-catalog.module';
@@ -75,6 +76,7 @@ export async function start(
   cli?: object,
 ): Promise<Started> {
   const root = await mkdtemp(join(tmpdir(), 'connection-catalog-'));
+  seedMigratedDatabase(root);
   await writeFile(join(root, '.env'), envFile(root, env));
   const clock = new FakeClock();
   const sandbox = {

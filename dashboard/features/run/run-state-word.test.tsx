@@ -12,7 +12,7 @@ describe('RunStateIcon', () => {
     render(<RunStateIcon view={working} />);
 
     const icon = screen.getByRole('img', { name: 'Working' });
-    await userEvent.hover(icon);
+    await userEvent.setup({ delay: null }).hover(icon);
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Working');
   });

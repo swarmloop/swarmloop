@@ -36,7 +36,7 @@
       "name": "cycles"
     },
     {
-      "run": "node --test scripts/ci-tools.test.mjs scripts/lint-run-state.test.mjs scripts/lint-test-imports.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs docker/egress/proxy.test.mjs",
+      "run": "node --test scripts/ci-tools.test.mjs scripts/lint-run-state.test.mjs scripts/lint-test-imports.test.mjs scripts/lint-spec-rules.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs scripts/slowest-files.test.mjs docker/egress/proxy.test.mjs",
       "name": "script tests"
     },
     {

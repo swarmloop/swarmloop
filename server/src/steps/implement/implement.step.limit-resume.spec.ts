@@ -51,6 +51,8 @@ async function world(name: string, agents: string, agent: jest.Mock) {
 
 type World = Awaited<ReturnType<typeof world>>;
 
+const agentCallsOf = async (app: World) =>
+  Promise.all([FIRST, SECOND].map(async (key) => (await app.get(RunRepository).findRun(key))?.agentCalls));
 const runtimesOf = (agent: jest.Mock) => agent.mock.calls.map((call) => (call[0] as AgentRunInput).runtime);
 const codes = async (app: World) =>
   Promise.all(
@@ -82,7 +84,7 @@ describe('implement step and a person saying a usage limit is over', () => {
     try {
       await app.get(RuntimeCooldownRepository).set(CODEX, Date.now() + 3 * HOUR, true);
       await app.get(Reconciler).resumeLimited();
-      expect(agent).not.toHaveBeenCalled();
+      expect(await agentCallsOf(app)).toEqual([0, 0]);
 
       await app.get(PipelineService).runThrough(FIRST);
       agent.mockClear();
@@ -104,11 +106,11 @@ describe('implement step and a person saying a usage limit is over', () => {
       await cooldowns.set(CODEX, Date.now() + 3 * HOUR, true);
 
       await app.get(PipelineService).runThrough(FIRST);
-      agent.mockClear();
+      const before = await agentCallsOf(app);
       await app.get(Reconciler).resumeLimited();
 
       expect((await cooldowns.earliest([CODEX])).until).toBe(Date.parse(resetsAt));
-      expect(agent).not.toHaveBeenCalled();
+      expect(await agentCallsOf(app)).toEqual(before);
       expect(await codes(app)).toEqual([ERROR_CODES.RUNTIME_LIMIT, ERROR_CODES.RUNTIME_LIMIT]);
     } finally {
       await app.close();

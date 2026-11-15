@@ -9,7 +9,8 @@ import { CommandRepository } from '../history/command.repository';
 import { CommandEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { boot, save } from '../testing/runs.spec-helpers';
+import { save } from '../testing/runs.spec-helpers';
+import { seededBoot } from '../api/runs-boot.spec-helpers';
 import { CommandService } from './command.service';
 import { RunStop } from '../agent/run-stop';
 import { PersonalCredentials } from '../auth/personal-credentials.service';
@@ -20,7 +21,7 @@ import { FAKE_MODEL_KEY } from '../testing/env.spec-helpers';
 import { fakeConnection } from '../testing/fake-connection';
 
 async function app(name: string, env: Record<string, string> = {}) {
-  return boot(await mkdtemp(join(tmpdir(), `swarmloop-command-${name}-`)), undefined, undefined, env);
+  return seededBoot(await mkdtemp(join(tmpdir(), `swarmloop-command-${name}-`)), undefined, undefined, env);
 }
 
 const started = { key: 'proj-1', status: 'started' };
@@ -31,8 +32,11 @@ describe('CommandService', () => {
     try {
       await save(testApp.get(RunRepository), 'proj-1', 'implement', 'waiting');
       const commands = testApp.get(CommandService);
-      const handler = jest.fn().mockResolvedValue(started);
-      commands.register('resume', handler);
+      const ran: unknown[][] = [];
+      commands.register('resume', async (...call) => {
+        ran.push(call);
+        return started;
+      });
       const options = { idempotencyKey: 'once' };
 
       const [first, second] = await Promise.all([
@@ -41,7 +45,7 @@ describe('CommandService', () => {
       ]);
       const again = await commands.submit('resume', 'proj-1', { prompt: 'go' }, options);
 
-      expect(handler).toHaveBeenCalledTimes(1);
+      expect(ran).toHaveLength(1);
       expect(second.receipt.commandId).toBe(first.receipt.commandId);
       expect(again.receipt.commandId).toBe(first.receipt.commandId);
       expect(again.value).toEqual(started);
@@ -169,11 +173,15 @@ describe('CommandService', () => {
     const testApp = await app('cli-blocked');
     try {
       await save(testApp.get(RunRepository), 'proj-1', 'prepare', 'blocked');
-      const run = jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-1 started' });
+      const ran: string[] = [];
+      const run = async () => {
+        ran.push('proj-1');
+        return { exitCode: 0, message: 'proj-1 started' };
+      };
 
       const result = await testApp.get(CommandService).inProcess('resume', 'proj-1', {}, run);
 
-      expect(run).toHaveBeenCalledTimes(1);
+      expect(ran).toEqual(['proj-1']);
       expect(result).toEqual({ exitCode: 0, message: 'proj-1 started' });
     } finally {
       await testApp.close();
@@ -182,7 +190,7 @@ describe('CommandService', () => {
 
   it('runs a command that was accepted before a crash once after a restart on the same database', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-command-crash-'));
-    const first = await boot(root);
+    const first = await seededBoot(root);
     let acceptedId = '';
     try {
       await save(first.get(RunRepository), 'proj-1', 'implement', 'waiting');
@@ -193,19 +201,21 @@ describe('CommandService', () => {
     } finally {
       await first.close();
     }
-    const second = await boot(root);
+    const second = await seededBoot(root);
     try {
       const commands = second.get(CommandService);
-      const handler = jest.fn().mockResolvedValue(started);
-      commands.register('resume', handler);
+      const ran: unknown[][] = [];
+      commands.register('resume', async (...call) => {
+        ran.push(call);
+        return started;
+      });
 
       await commands.recover();
       await commands.idle();
       await commands.recover();
       await commands.idle();
 
-      expect(handler).toHaveBeenCalledTimes(1);
-      expect(handler).toHaveBeenCalledWith('proj-1', { prompt: 'go' }, { commandId: acceptedId, created: false });
+      expect(ran).toEqual([['proj-1', { prompt: 'go' }, { commandId: acceptedId, created: false }]]);
       expect((await second.get(CommandRepository).find(acceptedId))?.state).toBe('succeeded');
     } finally {
       await second.close();
@@ -214,7 +224,7 @@ describe('CommandService', () => {
 
   it('marks a command that was executing at a crash failed with server restarted', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-command-lost-'));
-    const first = await boot(root);
+    const first = await seededBoot(root);
     let lostId = '';
     try {
       await save(first.get(RunRepository), 'proj-1', 'implement', 'waiting');
@@ -225,7 +235,7 @@ describe('CommandService', () => {
     } finally {
       await first.close();
     }
-    const second = await boot(root);
+    const second = await seededBoot(root);
     try {
       const commands = second.get(CommandService);
       const handler = jest.fn();
@@ -245,7 +255,7 @@ describe('CommandService', () => {
 
   it('keeps a Stop that was executing at a crash: the run is halted and the Stop runs again', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-command-stop-'));
-    const first = await boot(root);
+    const first = await seededBoot(root);
     let stopId = '';
     try {
       await save(first.get(RunRepository), 'proj-1', 'implement', 'running');
@@ -256,17 +266,20 @@ describe('CommandService', () => {
     } finally {
       await first.close();
     }
-    const second = await boot(root);
+    const second = await seededBoot(root);
     try {
       const commands = second.get(CommandService);
-      const handler = jest.fn().mockResolvedValue({ key: 'proj-1', status: 'stopped' });
-      commands.register('stop', handler);
+      const ran: unknown[][] = [];
+      commands.register('stop', async (...call) => {
+        ran.push(call);
+        return { key: 'proj-1', status: 'stopped' };
+      });
 
       await commands.recover();
       expect(second.get(RunStop).halted('proj-1')).toBe(true);
       await commands.idle();
 
-      expect(handler).toHaveBeenCalledTimes(1);
+      expect(ran).toHaveLength(1);
       expect((await second.get(CommandRepository).find(stopId))?.state).toBe('succeeded');
     } finally {
       await second.close();

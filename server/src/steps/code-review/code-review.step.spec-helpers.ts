@@ -1,7 +1,5 @@
 import 'reflect-metadata';
 
-import { execFileSync } from 'child_process';
-
 import { EventEmitter } from 'events';
 
 import { Test } from '@nestjs/testing';
@@ -14,6 +12,8 @@ import { PassThrough } from 'stream';
 
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { writeEnvOverrides } from '../../testing/env.spec-helpers';
+import { git, repoTemplate } from '../../testing/git-fixture';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 
 import { RunRepository } from '../../history/run.repository';
 
@@ -71,6 +71,7 @@ export function answerFor(step: string, decision: 'ok' | 'return' = 'ok'): strin
 }
 
 export async function boot(root: string, agent: jest.Mock) {
+  seedMigratedDatabase(root);
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })
@@ -106,6 +107,7 @@ export async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeo
     join(root, 'data', 'price-cache-cursor.json'),
     `${JSON.stringify({ fetchedAt: new Date().toISOString(), prices: {} })}\n`,
   );
+  seedMigratedDatabase(root);
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })
@@ -205,16 +207,10 @@ export async function writeEnv(
   });
 }
 
-export function repoWithBranch(root: string, dirName: string): string {
-  const clone = join(root, dirName);
-  const remote = join(root, `${dirName}.git`);
-  git(root, ['init', '-b', 'main', clone]);
+const branchTemplate = repoTemplate(({ clone }) => {
   writeFileSync(join(clone, 'README'), 'base\n');
   git(clone, ['add', 'README']);
   git(clone, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '-m', 'base']);
-  git(root, ['init', '--bare', remote]);
-  git(clone, ['remote', 'add', 'origin', remote]);
-  git(clone, ['push', '-u', 'origin', 'main']);
   git(clone, ['checkout', '-b', 'feature/other']);
   writeFileSync(join(clone, 'NEXT'), 'other\n');
   git(clone, ['add', 'NEXT']);
@@ -222,9 +218,9 @@ export function repoWithBranch(root: string, dirName: string): string {
   git(clone, ['push', '-u', 'origin', 'feature/other']);
   git(clone, ['checkout', '-b', 'dirty']);
   writeFileSync(join(clone, 'local.txt'), 'noise\n');
-  return clone;
-}
+});
 
-export function git(cwd: string, args: string[]): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+/** A clone on a dirty local branch whose origin holds main and feature/other, copied from a template built once per file. */
+export function repoWithBranch(root: string, dirName: string): string {
+  return branchTemplate(root, dirName).clone;
 }

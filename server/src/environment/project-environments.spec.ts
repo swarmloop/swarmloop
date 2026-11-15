@@ -10,7 +10,8 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { CheckCommandEntity, RunEntity } from '../history/entities';
 import type { SampleDraft } from '../history/visit';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
-import { commitFiles, makeRepo, runGit, writeFiles } from '../git/git-repo.spec-helpers';
+import { commitFiles, runGit, writeFiles } from '../git/git-repo.spec-helpers';
+import { copiedRepo, sharedRepo } from './project-repo.spec-helpers';
 import type { EnvironmentRecord } from './environment-types';
 import { ENVIRONMENT, ProjectEnvironments, RequiredCheckFailed, RequiredCheckRepeated } from './project-environments';
 
@@ -24,6 +25,7 @@ const manifest = {
 
 function setup(
   options: {
+    writes?: boolean;
     probe?: string | Error;
     setupCode?: number;
     checkCode?: number;
@@ -41,7 +43,9 @@ function setup(
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-env-root-'));
-  const repo = makeRepo({ '.swarmloop.json': JSON.stringify(options.config ?? manifest) });
+  const repo = (options.writes ? copiedRepo : sharedRepo)({
+    '.swarmloop.json': JSON.stringify(options.config ?? manifest),
+  });
   const stored: { kind: string; body: string }[] = [];
   const documents = {
     putDocument: jest.fn((_run: RunEntity, kind: string, body: string) => {
@@ -167,7 +171,7 @@ function setup(
 
 describe('ProjectEnvironments', () => {
   it('requires a trusted base before rebuilding a legacy Dockerfile environment', async () => {
-    const { service, input, stored, sandbox } = setup();
+    const { service, input, stored, spawned } = setup();
     stored.push({
       kind: ENVIRONMENT,
       body: JSON.stringify({
@@ -176,12 +180,12 @@ describe('ProjectEnvironments', () => {
       }),
     });
     await expect(service.prepare(input)).rejects.toThrow('Rebase this run');
-    expect(sandbox.spawn).not.toHaveBeenCalled();
+    expect(spawned).toHaveLength(0);
   });
 
   it('freezes the initial revision and skips absent environments without hiding another repository', async () => {
-    const { service, input, stored, records } = setup();
-    const absent = makeRepo();
+    const { service, input, stored, records } = setup({ writes: true });
+    const absent = sharedRepo({ 'README.md': 'x\n' });
     const mounts = [{ hostPath: absent, containerPath: '/work/empty' }, ...input.mounts];
     const base = runGit(input.mounts[0].hostPath, ['rev-parse', 'HEAD']).trim();
     await service.prepare({ ...input, mounts });
@@ -193,10 +197,10 @@ describe('ProjectEnvironments', () => {
   });
 
   it('returns null for a repository without an environment', async () => {
-    const { service, input, sandbox } = setup();
-    const bare = { ...input, mounts: [{ hostPath: makeRepo(), containerPath: '/work' }] };
+    const { service, input, spawned } = setup();
+    const bare = { ...input, mounts: [{ hostPath: sharedRepo({ 'README.md': 'x\n' }), containerPath: '/work' }] };
     expect(await service.prepare(bare)).toBeNull();
-    expect(sandbox.spawn).not.toHaveBeenCalled();
+    expect(spawned).toHaveLength(0);
   });
 
   it('prepares the project image with the CLI volume, the image PATH, its caches and the certificates', async () => {
@@ -260,7 +264,7 @@ describe('ProjectEnvironments', () => {
   });
 
   it('gives no launch a host that only the worktree manifest names', async () => {
-    const { service, input, spawned } = setup();
+    const { service, input, spawned } = setup({ writes: true });
     writeFiles(input.mounts[0]?.hostPath ?? '', {
       '.swarmloop.json': JSON.stringify({ ...manifest, hosts: { setup: ['pub.dev'] } }),
     });
@@ -301,7 +305,7 @@ describe('ProjectEnvironments', () => {
 
   it('uses each repository image and checks instead of reusing the first environment', async () => {
     const { service, input, spawned } = setup();
-    const other = makeRepo({
+    const other = sharedRepo({
       '.swarmloop.json': JSON.stringify({ version: 1, image: 'python:3.12', checks: ['python3 -m unittest'] }),
     });
     const mounts = [...input.mounts, { hostPath: other, containerPath: '/work/other' }];
@@ -315,6 +319,7 @@ describe('ProjectEnvironments', () => {
 
   it('does not accept checks that rewrite the project after testing it', async () => {
     const { service, input, stored } = setup({
+      writes: true,
       onCheck: (repo) => writeFileSync(join(repo, 'changed.py'), 'print(2)\n'),
     });
     await expect(service.check(input)).rejects.toThrow(RequiredCheckFailed);
@@ -374,7 +379,7 @@ describe('ProjectEnvironments', () => {
         },
       ],
     ])('runs all checks when %s', async (_name, change) => {
-      const { service, input, spawned } = setup();
+      const { service, input, spawned } = setup({ writes: true });
       await service.check(input);
       change(input.mounts[0].hostPath);
       await service.check(input);
@@ -383,7 +388,7 @@ describe('ProjectEnvironments', () => {
 
     it('runs all checks when another mounted repository changes', async () => {
       const { service, input, spawned } = setup();
-      const other = makeRepo();
+      const other = copiedRepo({ 'README.md': 'x\n' });
       const mounts = [...input.mounts, { hostPath: other, containerPath: '/work/other' }];
       await service.check({ ...input, mounts });
       writeFileSync(join(other, 'edit.txt'), 'x\n');
@@ -424,7 +429,7 @@ describe('ProjectEnvironments', () => {
         { onCheck: (repo: string) => writeFileSync(join(repo, 'c.py'), `${Math.random()}\n`) },
       ],
     ])('stores no pass after %s, so the next check runs in full', async (_name, options) => {
-      const { service, input, spawned, stored } = setup(options);
+      const { service, input, spawned, stored } = setup({ ...options, writes: true });
       await expect(service.check(input)).rejects.toThrow(RequiredCheckFailed);
       expect(stored.some((item) => item.kind.startsWith('checks_pass:'))).toBe(false);
       await expect(service.check(input)).rejects.toThrow(RequiredCheckFailed);
@@ -463,7 +468,7 @@ describe('ProjectEnvironments', () => {
     });
 
     it('throws a plain RequiredCheckFailed when the files changed in between', async () => {
-      const { service, input } = setup({ checkCode: 2 });
+      const { service, input } = setup({ checkCode: 2, writes: true });
       await expect(service.check(input)).rejects.toThrow(RequiredCheckFailed);
       writeFileSync(join(input.mounts[0].hostPath, 'new.txt'), 'x\n');
       await expect(service.check(input)).rejects.not.toBeInstanceOf(RequiredCheckRepeated);
@@ -606,7 +611,10 @@ describe('ProjectEnvironments checks', () => {
     });
 
     it('skips a command whose paths the diff does not touch and counts it as passed', async () => {
-      const { service, input, rows, spawned, stored, live } = setup({ config: { ...manifest, checks: entries } });
+      const { service, input, rows, spawned, stored, live } = setup({
+        writes: true,
+        config: { ...manifest, checks: entries },
+      });
       writeFiles(input.mounts[0].hostPath, { 'dashboard/app.ts': 'x\n' });
       const done = await service.check(input);
       expect(done).toEqual({ passed: 3, total: 3 });
@@ -624,12 +632,12 @@ describe('ProjectEnvironments checks', () => {
     });
 
     it('runs a command when the diff touches its paths, tracked or untracked', async () => {
-      const untracked = setup({ config: { ...manifest, checks: entries } });
+      const untracked = setup({ writes: true, config: { ...manifest, checks: entries } });
       writeFiles(untracked.input.mounts[0].hostPath, { 'server/src/x.ts': 'x\n' });
       await untracked.service.check(untracked.input);
       expect(untracked.rows.at(-1)?.status).toBe('passed');
 
-      const tracked = setup({ config: { ...manifest, checks: entries } });
+      const tracked = setup({ writes: true, config: { ...manifest, checks: entries } });
       const repo = tracked.input.mounts[0].hostPath;
       commitFiles(repo, { 'server/a.ts': 'a\n' });
       writeFiles(repo, { 'server/a.ts': 'b\n' });
@@ -638,7 +646,7 @@ describe('ProjectEnvironments checks', () => {
     });
 
     it('runs a command that the last return named although its paths are untouched', async () => {
-      const { service, input, rows } = setup({ config: { ...manifest, checks: entries } });
+      const { service, input, rows } = setup({ writes: true, config: { ...manifest, checks: entries } });
       const repo = basename(input.mounts[0].hostPath);
       writeFiles(input.mounts[0].hostPath, { 'dashboard/app.ts': 'x\n' });
       await service.check(input, [{ repo, command: 'npm test --prefix server', tail: '' }]);
@@ -646,7 +654,7 @@ describe('ProjectEnvironments checks', () => {
     });
 
     it('replaces the stored skips when a later visit runs the command', async () => {
-      const { service, input, stored } = setup({ config: { ...manifest, checks: entries } });
+      const { service, input, stored } = setup({ writes: true, config: { ...manifest, checks: entries } });
       const kind = `checks_skipped:${basename(input.mounts[0].hostPath)}`;
       await service.check(input);
       expect(JSON.parse(stored.filter((item) => item.kind === kind).at(-1)?.body ?? '{}').names).toEqual([

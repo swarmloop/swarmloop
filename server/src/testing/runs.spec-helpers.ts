@@ -1,8 +1,8 @@
 import 'reflect-metadata';
-import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
 import { EnvironmentService } from '../environment/environment.service';
-import { mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync } from 'fs';
+import { copyMainWithOrigin, git } from './git-fixture';
 import { join } from 'path';
 import { writeEnvOverrides } from './env.spec-helpers';
 import { SwarmloopConfigModule } from '../config/config.module';
@@ -31,6 +31,8 @@ import { RunRebaseService } from '../api/run-rebase.service';
 import { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
 import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
+
+export { git };
 
 const agent = { runtime: 'claude', model: 'opus', mode: 'agent', timeLimitMs: 1000, session: 'fresh' as const };
 const descriptors = [
@@ -131,20 +133,8 @@ export async function remember(
 }
 
 export function featureWorktree(root: string, key: string, repo = 'demo'): { tree: string; clone: string } {
-  const clone = join(root, repo);
-  const remote = join(root, `${repo}.git`);
+  const { clone } = copyMainWithOrigin(root, repo);
   const tree = join(root, 'worktrees', key, repo);
-  git(root, ['init', '-b', 'main', clone]);
-  git(clone, ['config', 'user.email', 'dev@example.com']);
-  git(clone, ['config', 'user.name', 'Dev']);
-  mkdirSync(join(clone, 'src'), { recursive: true });
-  writeFileSync(join(clone, 'src', 'readme.ts'), 'export const readme = 1;\n');
-  git(clone, ['add', 'src/readme.ts']);
-  git(clone, ['commit', '-m', 'init']);
-  git(root, ['init', '--bare', remote]);
-  git(clone, ['remote', 'add', 'origin', remote]);
-  git(clone, ['push', '-u', 'origin', 'main']);
-  git(clone, ['switch', '-c', 'holder']);
   mkdirSync(join(tree, '..'), { recursive: true });
   git(clone, ['worktree', 'add', '-b', `feature/${key}-ship-the-field`, tree, 'main']);
   return { tree, clone };
@@ -157,10 +147,6 @@ export function isAncestor(cwd: string, base: string): boolean {
   } catch {
     return false;
   }
-}
-
-export function git(cwd: string, args: string[]): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 }
 
 export function hostFetch(bare: string, token: string): () => void {

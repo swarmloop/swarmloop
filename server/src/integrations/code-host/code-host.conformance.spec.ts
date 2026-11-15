@@ -46,8 +46,13 @@ function text(value: unknown, current: string): string {
   return typeof value === 'string' ? value : current;
 }
 
+/** The method and url of each request the fake host got since the last serve(). */
+const requests: string[] = [];
+
 function serve(handle: (method: string, url: string, body: Record<string, unknown>) => unknown): void {
-  global.fetch = jest.fn((url: string, init?: { method?: string; body?: string }) => {
+  requests.length = 0;
+  global.fetch = ((url: string, init?: { method?: string; body?: string }) => {
+    requests.push(`${init?.method ?? 'GET'} ${String(url)}`);
     const reply = handle(init?.method ?? 'GET', String(url), init?.body ? JSON.parse(init.body) : {});
     return Promise.resolve(reply);
   }) as unknown as typeof fetch;
@@ -176,9 +181,9 @@ describe.each([
   it('leaves a request that is already in the asked state alone', async () => {
     const fake = make(false);
     await fake.host.openMergeRequest(request(true));
-    const sent = jest.mocked(global.fetch).mock.calls.length;
+    const sent = requests.length;
     await fake.host.setDraft(PROJECT, 1, true);
-    expect(jest.mocked(global.fetch).mock.calls.length).toBe(sent + 1);
+    expect(requests).toHaveLength(sent + 1);
   });
 
   it('opens a normal merge request when the host refuses drafts', async () => {

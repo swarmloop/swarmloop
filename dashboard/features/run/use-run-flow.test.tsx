@@ -95,13 +95,11 @@ describe('useRunFlow', () => {
     render(<Probe runKey="run-1" />, { wrapper: LiveBridgeProvider });
     await screen.findByText('Run one');
 
-    expect(emitted).toHaveBeenCalledWith('watch', 'run-1');
-    expect(emitted).toHaveBeenCalledTimes(1);
+    expect(emitted).toHaveBeenNthCalledWith(1, 'watch', 'run-1');
 
     act(() => receive('connect'));
 
-    expect(emitted).toHaveBeenCalledTimes(2);
-    expect(emitted).toHaveBeenLastCalledWith('watch', 'run-1');
+    expect(emitted).toHaveBeenNthCalledWith(2, 'watch', 'run-1');
   });
 
   it('shows the message when the load is rejected', async () => {

@@ -6,7 +6,11 @@ describe('closeStep', () => {
   it('writes the visit and the run with one finalize call', async () => {
     const run = { id: 1, key: 'K-1', status: 'running', currentStep: 'research' } as RunEntity;
     const visit = repositoryVisit();
-    const finalize = jest.fn().mockResolvedValue(null);
+    const finalized: unknown[][] = [];
+    const finalize = (...args: unknown[]): Promise<null> => {
+      finalized.push(args);
+      return Promise.resolve(null);
+    };
     const finishVisit = jest.fn();
     const saveRun = jest.fn();
     const notify = jest.fn();
@@ -26,8 +30,7 @@ describe('closeStep', () => {
       line: 'research done',
       exitCode: 0,
     });
-    expect(finalize).toHaveBeenCalledTimes(1);
-    expect(finalize).toHaveBeenCalledWith('attempt-1', run, visit);
+    expect(finalized).toEqual([['attempt-1', run, visit]]);
     expect(finishVisit).not.toHaveBeenCalled();
     expect(saveRun).not.toHaveBeenCalled();
     expect(notify).toHaveBeenCalledWith('K-1');

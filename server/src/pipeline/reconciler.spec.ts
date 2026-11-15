@@ -26,24 +26,78 @@ import { DiskGuard } from './disk-guard';
 import { Reconciler } from './reconciler';
 import { PipelineService } from './pipeline.service';
 
-const KEY = 'PROJ-700';
 const GB = 1024 ** 3;
 
+type AcceptedCall = [command: string, key: string, args: unknown, options: unknown];
+
+/** What a test changes of the shared sandbox fake; the shared fake answers from it. */
+interface SandboxOverrides {
+  attemptRunning?: () => Promise<boolean | null>;
+  dockerAnswers?: () => Promise<boolean>;
+}
+
 describe('reconciler waits and automatic tries', () => {
-  let app: TestApp | null = null;
-  let accept: jest.SpyInstance;
+  let shared: TestApp;
+  let overrides: SandboxOverrides = {};
+  let accepted: AcceptedCall[] = [];
+  let timerApp: TestApp | null = null;
+  let counter = 0;
+  let KEY = '';
+  const holds: (() => void)[] = [];
+  const envBefore: { MIN_FREE_GB?: number; MAX_LAUNCHES?: number } = {};
+
+  beforeAll(async () => {
+    shared = await createTestApp({
+      sandbox: {
+        attemptRunning: () => overrides.attemptRunning?.() ?? Promise.resolve(false),
+        dockerAnswers: () => overrides.dockerAnswers?.() ?? Promise.reject(new Error('no docker answer set')),
+      },
+    });
+    envBefore.MIN_FREE_GB = shared.app.get(AppConfig).env.MIN_FREE_GB;
+    envBefore.MAX_LAUNCHES = shared.app.get(AppConfig).env.MAX_LAUNCHES;
+  });
+
+  afterAll(async () => {
+    await shared.close();
+  });
+
+  beforeEach(() => {
+    KEY = `PROJ-7${++counter}`;
+    overrides = {};
+    accepted = [];
+    jest.spyOn(shared.app.get(CommandService), 'accept').mockImplementation((...call) => {
+      accepted.push(call as unknown as AcceptedCall);
+      return Promise.resolve({} as never);
+    });
+    // A relaunch is stored with the visit and held here: the resume handler does nothing, so no step starts.
+    shared.app.get(CommandService).register('resume', () => Promise.resolve(undefined));
+  });
 
   afterEach(async () => {
     jest.restoreAllMocks();
-    await app?.close();
+    holds.splice(0).forEach((release) => release());
+    await timerApp?.close();
+    timerApp = null;
+    const env = shared.app.get(AppConfig).env;
+    env.MIN_FREE_GB = envBefore.MIN_FREE_GB as number;
+    env.MAX_LAUNCHES = envBefore.MAX_LAUNCHES as number;
+    // What the test left behind must not reach the next one: a stored command that never ran, a run that is not done.
+    const commands = shared.app.get(CommandRepository);
+    await shared.app.get(CommandService).idle();
+    for (const command of [...(await commands.listAccepted()), ...(await commands.listExecuting())]) {
+      await commands.finish(command.id, 'failed', { error: { message: 'the test ended' } });
+    }
+    const runs = shared.app.get(RunRepository);
+    for (const run of await runs.listRuns()) {
+      if (run.status === 'done') continue;
+      writeRunState(run, { status: 'done', activeAttempt: null, reason: null });
+      await runs.saveRun(run);
+    }
   });
 
-  async function boot(sandbox: NonNullable<Parameters<typeof createTestApp>[0]>['sandbox'] = {}): Promise<TestApp> {
-    app = await createTestApp({ sandbox });
-    accept = jest.spyOn(app.app.get(CommandService), 'accept').mockImplementation(() => Promise.resolve({} as never));
-    // A relaunch is stored with the visit and held here: the resume handler does nothing, so no step starts.
-    app.app.get(CommandService).register('resume', () => Promise.resolve(undefined));
-    return app;
+  async function boot(sandbox: SandboxOverrides = {}): Promise<TestApp> {
+    overrides = sandbox;
+    return shared;
   }
 
   async function park(world: TestApp, status: string, code: string, extra: { retryAt?: string } = {}) {
@@ -62,11 +116,11 @@ describe('reconciler waits and automatic tries', () => {
       await park(world, 'waiting', ERROR_CODES.HOST_UNAVAILABLE, { retryAt });
 
       await world.app.get(Reconciler).resumeHostUnavailable();
-      expect(accept).not.toHaveBeenCalled();
+      expect(accepted).toEqual([]);
 
       world.clock.advance(300_000);
       await world.app.get(Reconciler).resumeHostUnavailable();
-      expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `host-none-${retryAt}` });
+      expect(accepted).toEqual([['resume', KEY, {}, { idempotencyKey: `host-none-${retryAt}` }]]);
     });
 
     it('never resumes a stopped run', async () => {
@@ -76,7 +130,7 @@ describe('reconciler waits and automatic tries', () => {
 
       await world.app.get(Reconciler).resumeHostUnavailable();
 
-      expect(accept).not.toHaveBeenCalled();
+      expect(accepted).toEqual([]);
     });
   });
 
@@ -92,7 +146,7 @@ describe('reconciler waits and automatic tries', () => {
         await world.app.get(Reconciler).resumeHostUnavailable();
         await world.app.get(Reconciler).resumeDocker();
 
-        expect(accept).not.toHaveBeenCalled();
+        expect(accepted).toEqual([]);
         expect(await reasonOf(world)).toMatchObject({ code: 'STOPPED' });
         expect(await world.app.get(RunRepository).findRun(KEY)).toMatchObject({ status: 'blocked' });
       },
@@ -100,12 +154,26 @@ describe('reconciler waits and automatic tries', () => {
   });
 
   describe('docker that does not answer', () => {
+    beforeEach(() => {
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    /** A reconcile pass that probes a silent docker three times, with the settler's backoff between the probes. */
+    async function reconcileThroughBackoff(world: TestApp, run: Awaited<ReturnType<RunRepository['begin']>>) {
+      const pass = world.app.get(Reconciler).reconcile(run);
+      await jest.advanceTimersByTimeAsync(3_000);
+      await pass;
+    }
     it('waits with DOCKER_UNAVAILABLE, keeps the attempt and starts nothing', async () => {
       const attemptRunning = jest.fn().mockResolvedValue(null);
       const world = await boot({ attemptRunning });
       const run = await world.app.get(RunRepository).begin(KEY, 'implement');
 
-      await world.app.get(Reconciler).reconcile(run);
+      await reconcileThroughBackoff(world, run);
 
       const stored = await world.app.get(RunRepository).findRun(KEY);
       expect(stored).toMatchObject({ status: 'waiting', activeAttempt: run.activeAttempt });
@@ -114,27 +182,31 @@ describe('reconciler waits and automatic tries', () => {
     });
 
     it('probes every tick, moves the next try forward and starts nothing while silent', async () => {
-      const attemptRunning = jest.fn().mockResolvedValue(null);
+      const probes: string[] = [];
+      const attemptRunning = async () => {
+        probes.push(KEY);
+        return null;
+      };
       const world = await boot({ attemptRunning });
       const run = await world.app.get(RunRepository).begin(KEY, 'implement');
-      await world.app.get(Reconciler).reconcile(run);
+      await reconcileThroughBackoff(world, run);
       const first = (await reasonOf(world))!.retryAt!;
-      const probed = attemptRunning.mock.calls.length;
+      const probed = probes.length;
 
       world.clock.advance(60_000);
       await world.app.get(Reconciler).resumeDocker();
 
-      expect(attemptRunning.mock.calls.length).toBe(probed + 1);
+      expect(probes).toHaveLength(probed + 1);
       expect(Date.parse((await reasonOf(world))!.retryAt!)).toBeGreaterThan(Date.parse(first));
       expect(await world.app.get(RunRepository).findRun(KEY)).toMatchObject({ status: 'waiting' });
-      expect(accept).not.toHaveBeenCalled();
+      expect(accepted).toEqual([]);
     });
 
     it('settles the run as today once docker answers and the container is gone', async () => {
       const attemptRunning = jest.fn().mockResolvedValue(null);
       const world = await boot({ attemptRunning });
       const run = await world.app.get(RunRepository).begin(KEY, 'implement');
-      await world.app.get(Reconciler).reconcile(run);
+      await reconcileThroughBackoff(world, run);
       attemptRunning.mockResolvedValue(false);
 
       await world.app.get(Reconciler).resumeDocker();
@@ -149,7 +221,7 @@ describe('reconciler waits and automatic tries', () => {
       const attemptRunning = jest.fn().mockResolvedValue(null);
       const world = await boot({ attemptRunning });
       const run = await world.app.get(RunRepository).begin(KEY, 'implement');
-      await world.app.get(Reconciler).reconcile(run);
+      await reconcileThroughBackoff(world, run);
       attemptRunning.mockResolvedValue(true);
 
       await world.app.get(Reconciler).resumeDocker();
@@ -163,17 +235,14 @@ describe('reconciler waits and automatic tries', () => {
       await park(world, 'waiting', ERROR_CODES.DOCKER_UNAVAILABLE);
 
       await world.app.get(Reconciler).resumeDocker();
-      expect(accept).not.toHaveBeenCalled();
+      expect(accepted).toEqual([]);
 
       dockerAnswers.mockResolvedValue(true);
       const waiting = await world.app.get(RunRepository).findRun(KEY);
       await world.app.get(Reconciler).resumeDocker();
-      expect(accept).toHaveBeenCalledWith(
-        'resume',
-        KEY,
-        {},
-        { idempotencyKey: `docker-none-${deriveState(waiting!).reason?.retryAt}` },
-      );
+      expect(accepted).toEqual([
+        ['resume', KEY, {}, { idempotencyKey: `docker-none-${deriveState(waiting!).reason?.retryAt}` }],
+      ]);
     });
 
     it('never resumes a stopped run', async () => {
@@ -182,7 +251,7 @@ describe('reconciler waits and automatic tries', () => {
 
       await world.app.get(Reconciler).resumeDocker();
 
-      expect(accept).not.toHaveBeenCalled();
+      expect(accepted).toEqual([]);
     });
   });
 
@@ -195,7 +264,7 @@ describe('reconciler waits and automatic tries', () => {
       world.clock.advance(600_000);
       await world.app.get(Reconciler).resumeLimited();
 
-      expect(accept).not.toHaveBeenCalled();
+      expect(accepted).toEqual([]);
       expect(await reasonOf(world)).toMatchObject({ code: 'STOPPED' });
       expect(await world.app.get(RunRepository).findRun(KEY)).toMatchObject({ status: 'blocked' });
     });
@@ -210,11 +279,11 @@ describe('reconciler waits and automatic tries', () => {
 
       guard.useFreeBytes(async () => 5 * GB);
       await world.app.get(Reconciler).resumeDiskLow();
-      expect(accept).not.toHaveBeenCalled();
+      expect(accepted).toEqual([]);
 
       guard.useFreeBytes(async () => 20 * GB);
       await world.app.get(Reconciler).resumeDiskLow();
-      expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: 'disk-none-reason' });
+      expect(accepted).toEqual([['resume', KEY, {}, { idempotencyKey: 'disk-none-reason' }]]);
     });
 
     it('never resumes a stopped run', async () => {
@@ -224,7 +293,7 @@ describe('reconciler waits and automatic tries', () => {
 
       await world.app.get(Reconciler).resumeDiskLow();
 
-      expect(accept).not.toHaveBeenCalled();
+      expect(accepted).toEqual([]);
     });
   });
 
@@ -369,17 +438,22 @@ describe('reconciler waits and automatic tries', () => {
       const began = new Promise<void>((resolve) => {
         charging = resolve;
       });
-      world.app.get(StepRegistry).get('implement')!.charge = async () => {
+      const step = world.app.get(StepRegistry).get('implement')!;
+      step.charge = async () => {
         charging();
         await gate;
         return null;
       };
 
-      const settled = world.app.get(Reconciler).reconcile(run);
-      await began;
-      await world.app.get(CommandRepository).accept({ type: 'stop', key: KEY, payload: {}, admit: () => undefined });
-      release();
-      await settled;
+      try {
+        const settled = world.app.get(Reconciler).reconcile(run);
+        await began;
+        await world.app.get(CommandRepository).accept({ type: 'stop', key: KEY, payload: {}, admit: () => undefined });
+        release();
+        await settled;
+      } finally {
+        delete step.charge;
+      }
 
       const stored = (await world.app.get(RunRepository).findRun(KEY))!;
       expect(stored.status).toBe('failed');
@@ -471,12 +545,12 @@ describe('reconciler waits and automatic tries', () => {
       return visits.at(-1)?.interruption;
     }
 
-    /** A resume handler that never ends: its command stays executing and no step starts. Resolves when it began. */
+    /** A resume handler that holds its command executing, so no step starts, until the test ends. Resolves when it began. */
     function holdResume(world: TestApp): Promise<void> {
       return new Promise((began) => {
         world.app.get(CommandService).register('resume', () => {
           began();
-          return new Promise<undefined>(() => undefined);
+          return new Promise<undefined>((resolve) => holds.push(() => resolve(undefined)));
         });
       });
     }
@@ -568,14 +642,18 @@ describe('reconciler waits and automatic tries', () => {
   describe('the timer', () => {
     it('queues one pass, not one per tick, while a direct pass holds the reconciler', async () => {
       const world = await createTestApp({ env: { RECONCILE_MS: '100' } });
-      app = world;
+      timerApp = world;
       const commands = world.app.get(CommandService);
+      const recovered: string[] = [];
       const recover = jest.spyOn(commands, 'recover');
       let release: () => void = () => undefined;
       const gate = new Promise<void>((resolve) => {
         release = resolve;
       });
-      recover.mockImplementationOnce(() => gate);
+      recover.mockImplementation(async () => {
+        recovered.push('pass');
+        if (recovered.length === 1) await gate;
+      });
       const reconciler = world.app.get(Reconciler);
       const direct = reconciler.reconcileAll();
       jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
@@ -591,7 +669,7 @@ describe('reconciler waits and automatic tries', () => {
       await reconciler.reconcileRuns();
       await reconciler.reconcileRuns();
 
-      expect(recover).toHaveBeenCalledTimes(2);
+      expect(recovered).toEqual(['pass', 'pass']);
     });
   });
 });

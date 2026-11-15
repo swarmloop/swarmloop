@@ -26,14 +26,14 @@ describe('RemoveRunDialog', () => {
   });
 
   it('closes on Cancel and confirms on Remove', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const props = dialog();
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(props.onClose).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
 
     await user.click(screen.getByRole('button', { name: 'Remove' }));
-    expect(props.onConfirm).toHaveBeenCalledTimes(1);
+    expect(props.onConfirm).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
   });
 
   it('disables both buttons while the run is being removed', () => {

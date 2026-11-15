@@ -15,12 +15,13 @@ import { VisitRepository } from '../history/visit.repository';
 
 import { RunQueriesService } from './run-queries.service';
 
-import { boot, save, visit } from '../testing/runs.spec-helpers';
+import { save, visit } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 
 describe('runs api', () => {
   it('numbers a reviewer by its own visits, not the shared code-review round', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-numbers-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
       const runs = app.get(RunRepository);
@@ -51,7 +52,7 @@ describe('runs api', () => {
 
   it('keeps a first running visit at attempt 1 when the launch record is ahead', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-first-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
       const runRepository = app.get(RunRepository);
@@ -93,7 +94,7 @@ describe('runs api', () => {
 
   it('counts a reviewer that continued after the time kill', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-relaunched-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
       await save(app.get(RunRepository), 'proj-29', 'code-review', 'running');
@@ -134,7 +135,7 @@ describe('runs api', () => {
 
   it('shows each reviewer its own visit while the code-review round is running', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-round-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
       const runRepository = app.get(RunRepository);
@@ -235,7 +236,7 @@ describe('runs api', () => {
 
   it('keeps a time-kill relaunch on the same reviewer visit in the open round', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-kill-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
       const runRepository = app.get(RunRepository);
@@ -268,7 +269,7 @@ describe('runs api', () => {
 
   it('shows a return as waiting, not done', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-return-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
       await writeFile(join(root, 'data', 'proj-23-code-review-quality-output.txt'), reviewLog('return'));
@@ -284,7 +285,7 @@ describe('runs api', () => {
 
   it('does not paste the step error onto a reviewer that already decided', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-error-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -310,7 +311,7 @@ describe('runs api', () => {
 
   it('shows the same code-review wall time in the menu and the run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-duration-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const visits = app.get(VisitRepository);
@@ -377,7 +378,7 @@ describe('runs api', () => {
 
   it('keeps each code-review loop separate in the menu and the run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-loop-'));
-    const app = await boot(root);
+    const app = await seededBoot(root);
     try {
       const runs = app.get(RunRepository);
       const visits = app.get(VisitRepository);

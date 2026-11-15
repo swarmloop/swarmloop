@@ -41,14 +41,22 @@ describe('prices', () => {
 
   it('uses a cache younger than a day and refetches an older one', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-prices-'));
-    const fetchPage = jest.fn(async () => new Response(PAGE, { status: 200 }));
+    const fetches: number[] = [];
+    let failNext = false;
+    const fetchPage = async () => {
+      fetches.push(fetches.length);
+      const response = failNext ? new Response('no', { status: 500 }) : new Response(PAGE, { status: 200 });
+      failNext = false;
+      return response;
+    };
     const now = Date.parse('2026-10-16T12:00:00.000Z');
     expect(await loadPriceTable(root, 'cursor', now, fetchPage)).toEqual(table);
-    expect(fetchPage).toHaveBeenCalledTimes(1);
+    expect(fetches).toHaveLength(1);
     expect(await loadPriceTable(root, 'cursor', now + 60_000, fetchPage)).toEqual(table);
-    expect(fetchPage).toHaveBeenCalledTimes(1);
-    fetchPage.mockResolvedValueOnce(new Response('no', { status: 500 }));
+    expect(fetches).toHaveLength(1);
+    failNext = true;
     expect(await loadPriceTable(root, 'cursor', now + 25 * 60 * 60 * 1000, fetchPage)).toEqual(table);
+    expect(fetches).toHaveLength(2);
     const stored = JSON.parse(await readFile(join(root, 'data', 'price-cache-cursor.json'), 'utf8')) as {
       fetchedAt: string;
     };

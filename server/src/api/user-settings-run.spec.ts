@@ -8,7 +8,7 @@ import type { SettingsBody } from '../contract/api';
 import { RunRepository } from '../history/run.repository';
 import { UserSettingRepository } from '../history/user-setting.repository';
 import type { CommandService, SubmitOptions } from '../pipeline/command.service';
-import { boot } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
 import { RunsController } from './runs.controller';
@@ -24,7 +24,7 @@ const THEIRS: SettingsBody = { agents: { main: { plan: [{ runtime: 'codex', mode
 
 async function world() {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-user-settings-'));
-  const app = await boot(root);
+  const app = await seededBoot(root);
   const runs = app.get(RunRepository);
   const settings = app.get(UserSettingRepository);
   // The command door makes the waiting row from `create`, as `CommandRepository.accept` does.

@@ -21,10 +21,10 @@ function fakeEgress() {
 
 describe('withEgress', () => {
   it('keeps a launch without hosts off every network', async () => {
-    const { egress } = fakeEgress();
+    const { egress, policies } = fakeEgress();
     const launch = { runtime: 'claude' as const, allowHosts: [], command: ['claude'], env: [] };
     expect((await withEgress(egress, launch)).launch).toBe(launch);
-    expect(egress.lease).not.toHaveBeenCalled();
+    expect(policies).toEqual([]);
   });
 
   it('keeps a launch that names a local host on the local network', async () => {

@@ -7,6 +7,7 @@ import type { SwarmloopEnv } from '../config/env';
 import { CODE_REVIEWERS } from '../contract/steps';
 import { boot } from './prepare/prepare.step.spec-helpers';
 import { StepRegistry } from './step.registry';
+import { seedMigratedDatabase } from '../testing/migrated-database.spec-helpers';
 
 const MODELS = { plan: 'plan-model', implement: 'implement-model' };
 const LISTS = {
@@ -20,13 +21,14 @@ describe('agent profiles', () => {
   let app: Awaited<ReturnType<typeof boot>>;
   let env: SwarmloopEnv;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     root = await mkdtemp(join(tmpdir(), 'swarmloop-profile-'));
+    seedMigratedDatabase(root);
     app = await boot(root);
     env = { ...app.get(AppConfig).env, ...LISTS };
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await app.close();
     await rm(root, { recursive: true, force: true });
   });

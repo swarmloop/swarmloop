@@ -143,7 +143,7 @@ describe('RunScreen', () => {
     expect(region).toHaveTextContent('waiting for b');
     expect(within(region).getAllByRole('button', { name: 'Skip task' })).toHaveLength(1);
 
-    await userEvent.click(within(region).getByRole('button', { name: 'Skip task' }));
+    await userEvent.setup({ delay: null }).click(within(region).getByRole('button', { name: 'Skip task' }));
     expect(skipTask).toHaveBeenCalledWith('run-1', 'b');
   });
 
@@ -241,7 +241,7 @@ describe('RunScreen', () => {
   });
 
   it('opens the run dialog titled with the step on Run again', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     await user.click(await screen.findByRole('button', { name: 'Run again' }));

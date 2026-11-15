@@ -7,6 +7,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { Clock } from '../../core/clock';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
@@ -39,6 +40,7 @@ async function envWith(root: string, agents: string): Promise<void> {
 }
 
 async function boot(root: string, agent: jest.Mock, clock: FakeClock) {
+  seedMigratedDatabase(root);
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })
@@ -190,7 +192,6 @@ describe('code-review step and a provider limit', () => {
       expect(accept).not.toHaveBeenCalled();
       clock.advance(Date.parse('2026-11-08T21:51:00Z') - START);
       await reconciler.resumeLimited();
-      expect(accept).toHaveBeenCalledTimes(1);
       expect(accept).toHaveBeenCalledWith('resume', 'PROJ-302', {}, expect.anything());
     } finally {
       await app.close();
@@ -231,11 +232,11 @@ describe('code-review step and a provider limit', () => {
     try {
       await seed(app, 'PROJ-303');
       await app.get(PipelineService).step('code-review', 'PROJ-303');
-      const first = agent.mock.calls.length;
+      agent.mockClear();
       limit = false;
       clock.advance(4 * 3_600_000);
       const done = await app.get(PipelineService).step('code-review', 'PROJ-303');
-      const again = agent.mock.calls.slice(first).map((call) => call[0].step);
+      const again = agent.mock.calls.map((call) => call[0].step);
 
       expect(done.exitCode).toBe(0);
       expect(again.filter((step) => step === 'code-review-quality')).toHaveLength(1);

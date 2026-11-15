@@ -7,7 +7,8 @@ import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { RunRebase } from '../steps/run-rebase';
-import { boot, remember, featureWorktree, git } from '../testing/runs.spec-helpers';
+import { remember, featureWorktree, git } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 
 /** A done subtask on a feature branch that adds `src/field.ts`, and a base that moved on with `src/base.ts` or, when `clash`, with the same file. */
 async function rebasedSubtask(key: string, clash: boolean, status = 'done') {
@@ -21,7 +22,7 @@ async function rebasedSubtask(key: string, clash: boolean, status = 'done') {
   git(clone, ['add', '.']);
   git(clone, ['commit', '-m', 'base']);
   git(clone, ['push', 'origin', 'main']);
-  const app = await boot(root, { startDetached: jest.fn() });
+  const app = await seededBoot(root, { startDetached: jest.fn() });
   const runs = app.get(RunRepository);
   const documents = app.get(DocumentRepository);
   const run = await remember(runs, documents, key, status === 'done' ? 'done' : 'pipeline', status);

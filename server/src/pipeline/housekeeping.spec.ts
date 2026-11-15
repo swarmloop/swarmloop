@@ -143,6 +143,7 @@ describe('Housekeeping schedule', () => {
   let world: World;
 
   afterEach(async () => {
+    jest.useRealTimers();
     jest.restoreAllMocks();
     await world.app.close();
   });
@@ -152,13 +153,12 @@ describe('Housekeeping schedule', () => {
     await ageRun(world.app, 'PROJ-5', 'done', 0);
     const table = world.app.get<Repository<RunEntity>>(getRepositoryToken(RunEntity));
     await table.update({ key: 'PROJ-5' }, { state: 'merged' });
-    const intervals = jest.spyOn(global, 'setInterval');
     const apply = jest.spyOn(world.app.get(RunRetention), 'apply');
     const housekeeping = world.app.get(Housekeeping);
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
 
     housekeeping.schedule();
-    const pass = intervals.mock.calls.find(([, delay]) => delay === 5 * 60_000)?.[0] as () => void;
-    pass();
+    await jest.advanceTimersByTimeAsync(5 * 60_000);
     await apply.mock.results[0].value;
 
     expect(existsSync(world.worktree)).toBe(false);
@@ -167,19 +167,16 @@ describe('Housekeeping schedule', () => {
 
   it("measures the sizes every 10 minutes, in an unref'd timer that stop clears", async () => {
     world = await makeWorld('PROJ-7');
-    const intervals = jest.spyOn(global, 'setInterval');
-    const cleared = jest.spyOn(global, 'clearInterval');
     const measure = jest.spyOn(world.app.get(OwnUseMeter), 'measure');
     const housekeeping = world.app.get(Housekeeping);
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
 
     housekeeping.schedule();
-    const index = intervals.mock.calls.findIndex(([, delay]) => delay === 10 * 60_000);
-    expect(index).toBeGreaterThanOrEqual(0);
-    intervals.mock.calls[index][0]();
+    await jest.advanceTimersByTimeAsync(10 * 60_000);
     await measure.mock.results[0].value;
     expect(world.app.get(OwnUseMeter).last()).not.toBeNull();
 
     housekeeping.onModuleDestroy();
-    expect(cleared).toHaveBeenCalledWith(intervals.mock.results[index].value);
+    expect(jest.getTimerCount()).toBe(0);
   });
 });

@@ -9,14 +9,15 @@ import type { RunEntity } from '../history/entities';
 import { repositoryVisit } from '../history/repository.spec-helpers';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
-import { boot, save } from '../testing/runs.spec-helpers';
+import { save } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 import { RunQueriesService } from './run-queries.service';
 
 async function withApp(
-  test: (queries: RunQueriesService, app: Awaited<ReturnType<typeof boot>>, root: string) => Promise<void>,
+  test: (queries: RunQueriesService, app: Awaited<ReturnType<typeof seededBoot>>, root: string) => Promise<void>,
 ) {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-log-'));
-  const app = await boot(root);
+  const app = await seededBoot(root);
   try {
     await mkdir(join(root, 'data'), { recursive: true });
     await test(app.get(RunQueriesService), app, root);
@@ -133,7 +134,7 @@ describe('step log api', () => {
   });
 
   describe('the log of a check command', () => {
-    async function checksRun(app: Awaited<ReturnType<typeof boot>>, root: string, key: string, body: string) {
+    async function checksRun(app: Awaited<ReturnType<typeof seededBoot>>, root: string, key: string, body: string) {
       const run = await save(app.get(RunRepository), key, 'checks', 'waiting');
       await app.get(CheckCommandRepository).add({
         runId: run.id,

@@ -8,7 +8,8 @@ import { REBASE_JOURNAL, parseJournal } from '../git/rebase';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { RunRebase } from '../steps/run-rebase';
-import { boot, featureWorktree, git, remember } from '../testing/runs.spec-helpers';
+import { featureWorktree, git, remember } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 import { RunCommandsService } from './run-commands.service';
 import { RunRebaseService } from './run-rebase.service';
 
@@ -39,7 +40,7 @@ describe('rebase journal', () => {
     const tip = git(tree, ['rev-parse', 'HEAD']);
     const base = moveBase(clone, 'base.ts', 'export const base = 1;\n');
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-90 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -74,7 +75,7 @@ describe('rebase journal', () => {
     const baseA = moveBase(a.clone, 'base.ts', 'export const base = 1;\n');
     const baseB = moveBase(b.clone, 'field.ts', 'export const field = 2;\n');
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-91 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -109,7 +110,7 @@ describe('rebase journal', () => {
     commitField(tree);
     moveBase(clone, 'base.ts', 'export const base = 1;\n');
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-93 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
@@ -131,7 +132,7 @@ describe('rebase journal', () => {
       startDetached: jest.fn(),
       replay: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-92 started' }),
     };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       await remember(runs, app.get(DocumentRepository), 'proj-92', 'implement', 'failed');

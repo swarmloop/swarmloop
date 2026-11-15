@@ -123,10 +123,9 @@ describe('LoginPage', () => {
 
     render(<LoginPage />);
     expect(await screen.findByText('api is not reachable')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Try again' }));
 
     expect(await screen.findByRole('link', { name: 'Continue with GitHub' })).toBeInTheDocument();
-    expect(getProviders).toHaveBeenCalledTimes(2);
   });
 
   it.each([

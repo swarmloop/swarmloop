@@ -31,7 +31,8 @@ import { RunRebaseService } from './run-rebase.service';
 
 import { httpStatus } from './runs.controller';
 
-import { boot, remember, featureWorktree, git } from '../testing/runs.spec-helpers';
+import { remember, featureWorktree, git } from '../testing/runs.spec-helpers';
+import { seededBoot } from './runs-boot.spec-helpers';
 
 // These specs diff the temp folder, so they use a folder of their own: jest workers share the real one.
 jest.mock('os', () => {
@@ -139,7 +140,7 @@ describe('runs api', () => {
     git(tree, ['update-index', '--skip-worktree', '--', 'src/readme.ts']);
     expect(git(tree, ['status', '--porcelain'])).toBe('');
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-63 started' }) };
-    const app = await boot(root, pipeline);
+    const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);

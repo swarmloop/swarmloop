@@ -8,6 +8,7 @@ import { missingCredential } from '../config/agents';
 import { SystemClock } from '../core/clock';
 import { RunRepository } from '../history/run.repository';
 import type { SandboxService } from '../sandbox/sandbox.service';
+import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import { StepStopped } from '../agent/step-stopped';
 import { createTestApp, type TestApp } from '../testing/test-app';
 import { ClaudeConnection } from '../integrations/agent-runtime/claude/claude-connection';
@@ -78,18 +79,21 @@ function launchInput(root: string, runKey: string): AgentRunInput {
 
 describe('an agent launch uses the credential of the person who started the run', () => {
   let app: TestApp;
-  let spawn: jest.Mock;
+  let launches: SandboxLaunch[];
   let stop: RunStop;
   let runner: AgentProcessRunner;
 
   beforeEach(async () => {
     app = await createTestApp();
     priceCache(app.root);
-    spawn = jest.fn(() => Promise.resolve(fakeChild()));
+    launches = [];
     stop = new RunStop();
     const sandbox = {
       assertReady: jest.fn().mockResolvedValue(undefined),
-      spawn,
+      spawn: (launch: SandboxLaunch) => {
+        launches.push(launch);
+        return Promise.resolve(fakeChild());
+      },
       stats: jest.fn().mockResolvedValue({ cpuPercent: 0, rssBytes: 0 }),
     } as unknown as SandboxService;
     runner = new AgentProcessRunner(
@@ -116,7 +120,7 @@ describe('an agent launch uses the credential of the person who started the run'
     await connect();
     await startRun('run1', 'ann');
     await runner.run(launchInput(app.root, 'run1'));
-    const launch = spawn.mock.calls[0]?.[0] as { env: { name: string; value: string }[]; command: string[] };
+    const launch = launches[0];
     expect(launch.env).toEqual([{ name: 'ANTHROPIC_API_KEY', value: TOKEN }]);
     expect(launch.command.join(' ')).not.toContain(TOKEN);
     for (const file of filesUnder(app.root)) {
@@ -130,7 +134,7 @@ describe('an agent launch uses the credential of the person who started the run'
       .store(claude, 'ann', { CLAUDE_CODE_OAUTH_TOKEN: SIGNED_IN_TOKEN }, 'ann@example.com');
     await startRun('run1', 'ann');
     await runner.run(launchInput(app.root, 'run1'));
-    const launch = spawn.mock.calls[0]?.[0] as { env: { name: string; value: string }[] };
+    const launch = launches[0];
     expect(launch.env).toEqual([{ name: 'CLAUDE_CODE_OAUTH_TOKEN', value: SIGNED_IN_TOKEN }]);
   });
 
@@ -141,14 +145,14 @@ describe('an agent launch uses the credential of the person who started the run'
     const parent = await runs.findRun('parent');
     await runs.openSubtask('child', parent?.id ?? 0, 'task-1');
     await runner.run(launchInput(app.root, 'child'));
-    const launch = spawn.mock.calls[0]?.[0] as { env: { name: string; value: string }[] };
+    const launch = launches[0];
     expect(launch.env).toEqual([{ name: 'ANTHROPIC_API_KEY', value: TOKEN }]);
   });
 
   it('stops the run with the missing-runtime message when the person has no connection', async () => {
     await startRun('run1', 'bob');
     await expect(runner.run(launchInput(app.root, 'run1'))).rejects.toThrow(missingCredential('claude'));
-    expect(spawn).not.toHaveBeenCalled();
+    expect(launches).toHaveLength(0);
   });
 
   it('stops the run, as a Stop does, when the person disconnected after it was created', async () => {
@@ -159,6 +163,6 @@ describe('an agent launch uses the credential of the person who started the run'
     await expect(launch).rejects.toBeInstanceOf(StepStopped);
     await expect(launch).rejects.toThrow(missingCredential('claude'));
     expect(stop.halted('run1')).toBe(true);
-    expect(spawn).not.toHaveBeenCalled();
+    expect(launches).toHaveLength(0);
   });
 });

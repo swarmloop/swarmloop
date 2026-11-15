@@ -112,11 +112,19 @@ describe('DiskGuard', () => {
 
   it('logs a docker that fails and still tries the second prune', async () => {
     const guard = await setup('PROJ-10');
-    docker.mockRejectedValueOnce(new Error('daemon down'));
+    const attempted: string[][] = [];
+    world.app.get(SandboxService).useDocker(async (args: string[]) => {
+      attempted.push(args);
+      if (attempted.length === 1) throw new Error('daemon down');
+      return '';
+    });
 
     await expect(guard.pruneDocker()).resolves.toBeUndefined();
 
-    expect(docker).toHaveBeenCalledTimes(2);
+    expect(attempted).toEqual([
+      ['image', 'prune', '-f'],
+      ['builder', 'prune', '-f', '--filter', 'until=24h'],
+    ]);
   });
 });
 
