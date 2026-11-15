@@ -11,7 +11,7 @@ import type { LiveHub } from '../live/live.hub';
 import type { AgentRunInput } from './agent-runner';
 import { AGENT_CONTINUE, AgentProcessRunner, readSession } from './agent-runner';
 import { AGENT_BACKGROUND_KILLED_CONTINUE } from './agent-session';
-import { agentStateDir } from '../sandbox/sandbox-launch';
+import { agentStateDir, type SandboxLaunch } from '../sandbox/sandbox-launch';
 import { sessionHome } from '../history/session-group';
 import * as limits from './limits';
 import { RunStop } from './run-stop';
@@ -31,8 +31,8 @@ describe('AgentProcessRunner brief directory', () => {
   });
 
   it('keeps the prompt last so a variadic --add-dir cannot swallow it', async () => {
-    const { spawn } = await start('brief', [{ chunks: [chatStream('chat-9')] }], { resumeChatId: null });
-    const command = (spawn.mock.calls[0]?.[0] as { command?: string[] } | undefined)?.command ?? [];
+    const { launches } = await start('brief', [{ chunks: [chatStream('chat-9')] }], { resumeChatId: null });
+    const command = launches[0]?.command ?? [];
     expect(command.at(-1)).toBe('follow up');
     const at = command.indexOf('--add-dir');
     expect(command[at + 1]).toBe('/work/brief');
@@ -42,18 +42,13 @@ describe('AgentProcessRunner brief directory', () => {
 
 describe('AgentProcessRunner agent runtime', () => {
   it('launches the runtime of the input with its own credential and egress hosts, not the one of RUNTIME', async () => {
-    const { spawn } = await start(
+    const { launches } = await start(
       'other-runtime',
       [{ chunks: [chatStream('chat-9')] }],
       { resumeChatId: null, runtime: 'claude' },
       { CURSOR_API_KEY: 'cursor-key', ANTHROPIC_API_KEY: 'anthropic-key' },
     );
-    const launch = spawn.mock.calls[0]?.[0] as {
-      runtime: string;
-      command: string[];
-      env: { name: string; value: string }[];
-      allowHosts: string[];
-    };
+    const launch = launches[0];
     expect(launch.runtime).toBe('claude');
     expect(launch.command[0]).toBe('claude');
     expect(launch.env).toEqual([{ name: 'ANTHROPIC_API_KEY', value: 'anthropic-key' }]);
@@ -61,34 +56,34 @@ describe('AgentProcessRunner agent runtime', () => {
   });
 
   it('launches a Claude agent with an effort at that level and clears the env override', async () => {
-    const { spawn } = await start('claude-effort', [{ chunks: [chatStream('chat-9')] }], {
+    const { launches } = await start('claude-effort', [{ chunks: [chatStream('chat-9')] }], {
       resumeChatId: null,
       runtime: 'claude',
       effort: 'high',
     });
-    const launch = spawn.mock.calls[0]?.[0] as { command: string[]; unsetEnv: string[] };
+    const launch = launches[0];
     expect(launch.command.join(' ')).toContain('--effort high');
     expect(launch.unsetEnv).toEqual(['CLAUDE_CODE_EFFORT_LEVEL']);
   });
 
   it('launches a Codex agent with an effort through its config flag', async () => {
-    const { spawn } = await start(
+    const { launches } = await start(
       'codex-effort',
       [{ chunks: [chatStream('chat-9')] }],
       { resumeChatId: null, runtime: 'codex', effort: 'high' },
       { CODEX_API_KEY: 'codex-key' },
     );
-    const launch = spawn.mock.calls[0]?.[0] as { command: string[]; unsetEnv: string[] };
+    const launch = launches[0];
     expect(launch.command.join(' ')).toContain('-c model_reasoning_effort=high');
     expect(launch.unsetEnv).toEqual([]);
   });
 
   it('launches an agent without an effort with no effort flag and no env change', async () => {
-    const { spawn } = await start('no-effort', [{ chunks: [chatStream('chat-9')] }], {
+    const { launches } = await start('no-effort', [{ chunks: [chatStream('chat-9')] }], {
       resumeChatId: null,
       runtime: 'claude',
     });
-    const launch = spawn.mock.calls[0]?.[0] as { command: string[]; unsetEnv: string[] };
+    const launch = launches[0];
     expect(launch.command).not.toContain('--effort');
     expect(launch.unsetEnv).toEqual([]);
   });
@@ -119,7 +114,9 @@ describe('AgentProcessRunner resume output', () => {
       { chunks: [] as string[], code: 1 },
       { chunks: ['second-stream\n'], code: 0 },
     ];
-    const spawn = jest.fn(() => {
+    const launches: SandboxLaunch[] = [];
+    const spawn = jest.fn((launch: SandboxLaunch) => {
+      launches.push(launch);
       const next = scripts.shift();
       if (!next) {
         return Promise.reject(new Error('unexpected spawn'));
@@ -128,7 +125,7 @@ describe('AgentProcessRunner resume output', () => {
     });
     const runner = new AgentProcessRunner(config(root), new SystemClock(), sandbox(spawn), new RunStop());
     const result = await runner.run(input(root, outputFile));
-    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(launches).toHaveLength(2);
     expect(result.output).toContain('process exited 1');
     expect(result.output).toContain('second-stream');
     expect(result.output).not.toContain('previous-visit-transcript');
@@ -234,14 +231,14 @@ describe('AgentProcessRunner provider limit', () => {
   it.each(LIMIT_SAMPLES)(
     'returns the $runtime limit with its reset and launches once, because a limit is no attempt',
     async ({ runtime, stream, limit }) => {
-      const { result, spawn } = await start(
+      const { result, launches } = await start(
         `limit-${runtime}`,
         [{ chunks: [stream], code: 1 }],
         { resumeChatId: null, runtime },
         { MAX_LAUNCHES: 3, CODEX_API_KEY: 'codex-key' },
       );
       expect(result.limit).toEqual(limit);
-      expect(spawn).toHaveBeenCalledTimes(1);
+      expect(launches).toHaveLength(1);
     },
   );
 
@@ -260,7 +257,7 @@ describe('AgentProcessRunner provider limit', () => {
 
 describe('AgentProcessRunner limit continuation', () => {
   it('relaunches a time kill in the same chat and returns the folded result', async () => {
-    const { result, spawn, outputFile } = await start(
+    const { result, launches, outputFile } = await start(
       'time',
       [
         { chunks: [chatStream('chat-9', 'first-stream')] },
@@ -268,11 +265,11 @@ describe('AgentProcessRunner limit continuation', () => {
       ],
       { resumeChatId: null, timeLimitMs: 0 },
     );
-    expect(spawn).toHaveBeenCalledTimes(2);
-    expect(promptArg(spawn.mock.calls[0])).toBe('follow up');
-    expect(resumeArg(spawn.mock.calls[0])).toBeNull();
-    expect(promptArg(spawn.mock.calls[1])).toBe(AGENT_CONTINUE);
-    expect(resumeArg(spawn.mock.calls[1])).toBe('chat-9');
+    expect(launches).toHaveLength(2);
+    expect(promptArg(launches[0])).toBe('follow up');
+    expect(resumeArg(launches[0])).toBeNull();
+    expect(promptArg(launches[1])).toBe(AGENT_CONTINUE);
+    expect(resumeArg(launches[1])).toBe('chat-9');
     expect(result.killReason).toBeNull();
     expect(result.chatId).toBe('chat-9');
     expect(result.calls).toBe(2);
@@ -286,15 +283,15 @@ describe('AgentProcessRunner limit continuation', () => {
   });
 
   it('relaunches an idle kill the same way', async () => {
-    const { result, spawn } = await start(
+    const { result, launches } = await start(
       'idle',
       [{ chunks: [chatStream('chat-9', 'idle-stream')] }, { chunks: [doneStream('idle-done\n')] }],
       { resumeChatId: null },
       { IDLE_TIMEOUT_MS: 0 },
     );
-    expect(spawn).toHaveBeenCalledTimes(2);
-    expect(promptArg(spawn.mock.calls[1])).toBe(AGENT_CONTINUE);
-    expect(resumeArg(spawn.mock.calls[1])).toBe('chat-9');
+    expect(launches).toHaveLength(2);
+    expect(promptArg(launches[1])).toBe(AGENT_CONTINUE);
+    expect(resumeArg(launches[1])).toBe('chat-9');
     expect(result.killReason).toBeNull();
     expect(result.calls).toBe(2);
     expect(result.output).toContain('idle-stream');
@@ -303,20 +300,24 @@ describe('AgentProcessRunner limit continuation', () => {
   });
 
   it('uses a given continue prompt', async () => {
-    const { spawn } = await start('prompt', [{ chunks: [chatStream('chat-9')] }, { chunks: [doneStream('done\n')] }], {
-      resumeChatId: null,
-      timeLimitMs: 0,
-      continuePrompt: 'Finish the sections you already started.',
-    });
-    expect(promptArg(spawn.mock.calls[1])).toBe('Finish the sections you already started.');
-    expect(promptArg(spawn.mock.calls[1])).not.toBe(AGENT_CONTINUE);
+    const { launches } = await start(
+      'prompt',
+      [{ chunks: [chatStream('chat-9')] }, { chunks: [doneStream('done\n')] }],
+      {
+        resumeChatId: null,
+        timeLimitMs: 0,
+        continuePrompt: 'Finish the sections you already started.',
+      },
+    );
+    expect(promptArg(launches[1])).toBe('Finish the sections you already started.');
+    expect(promptArg(launches[1])).not.toBe(AGENT_CONTINUE);
   });
 
   it('does not relaunch a usd kill', async () => {
     const spy = jest.spyOn(limits, 'judgeLimits').mockReturnValue({ kill: 'usd', warn: false });
     try {
-      const { result, spawn } = await start('usd', [{ chunks: [chatStream('chat-9')] }], { resumeChatId: null });
-      expect(spawn).toHaveBeenCalledTimes(1);
+      const { result, launches } = await start('usd', [{ chunks: [chatStream('chat-9')] }], { resumeChatId: null });
+      expect(launches).toHaveLength(1);
       expect(result.killReason).toBe('usd');
     } finally {
       spy.mockRestore();
@@ -324,13 +325,13 @@ describe('AgentProcessRunner limit continuation', () => {
   });
 
   it('does not relaunch a tokens kill', async () => {
-    const { result, spawn } = await start(
+    const { result, launches } = await start(
       'tokens',
       [{ chunks: [chatStream('chat-9')] }],
       { resumeChatId: null },
       { STEP_TOKEN_MAX: 0 },
     );
-    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(launches).toHaveLength(1);
     expect(result.killReason).toBe('tokens');
   });
 
@@ -347,55 +348,55 @@ describe('AgentProcessRunner limit continuation', () => {
   });
 
   it('does not relaunch a calls kill', async () => {
-    const { result, spawn } = await start('calls', [], { auto: true, agentCalls: 20 });
-    expect(spawn).not.toHaveBeenCalled();
+    const { result, launches } = await start('calls', [], { auto: true, agentCalls: 20 });
+    expect(launches).toHaveLength(0);
     expect(result.killReason).toBe('calls');
   });
 
   it('does not relaunch a halted run', async () => {
     const stop = new RunStop();
     stop.halt('run1');
-    const { result, spawn } = await start(
+    const { result, launches } = await start(
       'halt',
       [{ chunks: [chatStream('chat-9')] }],
       { resumeChatId: null, timeLimitMs: 0 },
       {},
       stop,
     );
-    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(launches).toHaveLength(1);
     expect(result.killReason).toBe('time');
   });
 
   it('keeps the prompt on a crash retry', async () => {
-    const { spawn } = await start('crash', [{ chunks: [], code: 1 }, { chunks: [doneStream('done\n')] }], {
+    const { launches } = await start('crash', [{ chunks: [], code: 1 }, { chunks: [doneStream('done\n')] }], {
       resumeChatId: null,
     });
-    expect(spawn).toHaveBeenCalledTimes(2);
-    expect(promptArg(spawn.mock.calls[1])).toBe('follow up');
+    expect(launches).toHaveLength(2);
+    expect(promptArg(launches[1])).toBe('follow up');
   });
 
   it('does not relaunch when the attempt has no chat id', async () => {
-    const { result, spawn } = await start('noch', [{ chunks: [chatStream(null)] }], {
+    const { result, launches } = await start('noch', [{ chunks: [chatStream(null)] }], {
       resumeChatId: null,
       timeLimitMs: 0,
     });
-    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(launches).toHaveLength(1);
     expect(result.killReason).toBe('time');
     expect(result.chatId).toBeNull();
   });
 
   it('does not continue a chat that opts out', async () => {
-    const { result, spawn } = await start('opt', [{ chunks: [chatStream('chat-9')] }], {
+    const { result, launches } = await start('opt', [{ chunks: [chatStream('chat-9')] }], {
       resumeChatId: null,
       timeLimitMs: 0,
       continuePrompt: null,
     });
-    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(launches).toHaveLength(1);
     expect(result.killReason).toBe('time');
   });
 
   it('counts a time kill and a crash toward the same launch cap', async () => {
-    const { result, spawn } = await start(
+    const { result, launches } = await start(
       'cap',
       [
         { chunks: [chatStream('chat-9', 'time-1')], advance: 10_000 },
@@ -405,12 +406,12 @@ describe('AgentProcessRunner limit continuation', () => {
       ],
       { resumeChatId: null, timeLimitMs: 10_000 },
     );
-    expect(spawn).toHaveBeenCalledTimes(3);
-    expect(promptArg(spawn.mock.calls[0])).toBe('follow up');
-    expect(resumeArg(spawn.mock.calls[0])).toBeNull();
-    expect(promptArg(spawn.mock.calls[1])).toBe(AGENT_CONTINUE);
-    expect(promptArg(spawn.mock.calls[2])).toBe(AGENT_CONTINUE);
-    expect(resumeArg(spawn.mock.calls[2])).toBe('chat-9');
+    expect(launches).toHaveLength(3);
+    expect(promptArg(launches[0])).toBe('follow up');
+    expect(resumeArg(launches[0])).toBeNull();
+    expect(promptArg(launches[1])).toBe(AGENT_CONTINUE);
+    expect(promptArg(launches[2])).toBe(AGENT_CONTINUE);
+    expect(resumeArg(launches[2])).toBe('chat-9');
     expect(result.killReason).toBe('time');
     expect(result.calls).toBe(3);
     expect(result.output).toContain('time-1');
@@ -429,53 +430,53 @@ describe('AgentProcessRunner ended early', () => {
   const answered = doneStream('implementation:\n- changed it\n');
 
   it('relaunches once in the same chat with the foreground follow-up when background work was killed', async () => {
-    const { result, spawn } = await start(
+    const { result, launches } = await start(
       'early',
       [{ chunks: [killedStream('chat-9')] }, { chunks: [answered] }],
       { resumeChatId: null, answered: (text) => text.includes('implementation:') },
       claude,
     );
-    expect(spawn).toHaveBeenCalledTimes(2);
-    expect(promptArg(spawn.mock.calls[1])).toBe(AGENT_BACKGROUND_KILLED_CONTINUE);
-    expect(resumeArg(spawn.mock.calls[1])).toBe('chat-9');
+    expect(launches).toHaveLength(2);
+    expect(promptArg(launches[1])).toBe(AGENT_BACKGROUND_KILLED_CONTINUE);
+    expect(resumeArg(launches[1])).toBe('chat-9');
     expect(result.calls).toBe(2);
     expect(result.backgroundKilled).toBe(false);
     expect(result.responseText).toContain('implementation:');
   });
 
   it('relaunches only once and reports the kill when the second answer ends early too', async () => {
-    const { result, spawn } = await start(
+    const { result, launches } = await start(
       'early-twice',
       [{ chunks: [killedStream('chat-9')] }, { chunks: [killedStream('chat-9')] }, { chunks: [answered] }],
       { resumeChatId: null, answered: (text) => text.includes('implementation:') },
       claude,
     );
-    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(launches).toHaveLength(2);
     expect(result.backgroundKilled).toBe(true);
   });
 
   it('does not treat an answer as ended early when the launch names no sections', async () => {
-    const { result, spawn } = await start('early-none', [{ chunks: [killedStream('chat-9')] }], {}, claude);
-    expect(spawn).toHaveBeenCalledTimes(1);
+    const { result, launches } = await start('early-none', [{ chunks: [killedStream('chat-9')] }], {}, claude);
+    expect(launches).toHaveLength(1);
     expect(result.backgroundKilled).toBe(false);
   });
 
   it('starts one fresh chat with the full prompt when the CLI does not have the stored chat', async () => {
     const missing = { chunks: ['Error: chat chat-1 not found\n'], code: 1 };
-    const { result, spawn, root } = await start('missing-chat', [missing, { chunks: [doneStream('done')] }], {
+    const { result, launches, root } = await start('missing-chat', [missing, { chunks: [doneStream('done')] }], {
       freshPrompt: 'the full prompt',
     });
-    expect(spawn).toHaveBeenCalledTimes(2);
-    expect(resumeArg(spawn.mock.calls[0])).toBe('chat-1');
-    expect(resumeArg(spawn.mock.calls[1])).toBeNull();
-    expect(promptArg(spawn.mock.calls[1])).toContain('the full prompt');
+    expect(launches).toHaveLength(2);
+    expect(resumeArg(launches[0])).toBe('chat-1');
+    expect(resumeArg(launches[1])).toBeNull();
+    expect(promptArg(launches[1])).toContain('the full prompt');
     expect(result.exitCode).toBe(0);
     expect(storedChat(root)).not.toBe('chat-1');
   });
 
   it('does not retry a missing chat when the step gave no full prompt', async () => {
-    const { spawn, root } = await start('missing-plain', [{ chunks: ['Error: chat chat-1 not found\n'], code: 1 }]);
-    expect(spawn).toHaveBeenCalledTimes(1);
+    const { launches, root } = await start('missing-plain', [{ chunks: ['Error: chat chat-1 not found\n'], code: 1 }]);
+    expect(launches).toHaveLength(1);
     expect(existsSync(join(root, 'data', 'run1-plan-session.json'))).toBe(false);
   });
 
@@ -487,15 +488,15 @@ describe('AgentProcessRunner ended early', () => {
       status: 'stopped',
       summary: 'Orphaned by a previous Claude Code process exit',
     };
-    const { result, spawn } = await start(
+    const { result, launches } = await start(
       'orphan',
       [{ chunks: [`${JSON.stringify(orphan)}\n${doneStream('')}`] }, { chunks: [answered] }],
       { resumeChatId: 'chat-1', answered: (text) => text.includes('implementation:') },
       { ...claude, MAX_LAUNCHES: 1 },
     );
-    expect(spawn).toHaveBeenCalledTimes(2);
-    expect(promptArg(spawn.mock.calls[1])).toBe(AGENT_BACKGROUND_KILLED_CONTINUE);
-    expect(resumeArg(spawn.mock.calls[1])).toBe('chat-1');
+    expect(launches).toHaveLength(2);
+    expect(promptArg(launches[1])).toBe(AGENT_BACKGROUND_KILLED_CONTINUE);
+    expect(resumeArg(launches[1])).toBe('chat-1');
     expect(result.responseText).toContain('implementation:');
   });
 
@@ -513,27 +514,27 @@ describe('AgentProcessRunner ended early', () => {
       { type: 'system', subtype: 'background_tasks_changed', tasks: [{ id: 'b1', status: 'stopped' }] },
     ],
   ])('does not count an orphan-only resumed output as an attempt: %s', async (_label, event) => {
-    const { result, spawn } = await start(
+    const { result, launches } = await start(
       'orphan-variant',
       [{ chunks: [`${chatStream('chat-1')}${JSON.stringify(event)}\n${doneStream('')}`] }, { chunks: [answered] }],
       { resumeChatId: 'chat-1', answered: (text) => text.includes('implementation:') },
       { ...claude, MAX_LAUNCHES: 1 },
     );
-    expect(spawn).toHaveBeenCalledTimes(2);
-    expect(promptArg(spawn.mock.calls[1])).toBe(AGENT_BACKGROUND_KILLED_CONTINUE);
-    expect(resumeArg(spawn.mock.calls[1])).toBe('chat-1');
+    expect(launches).toHaveLength(2);
+    expect(promptArg(launches[1])).toBe(AGENT_BACKGROUND_KILLED_CONTINUE);
+    expect(resumeArg(launches[1])).toBe('chat-1');
     expect(result.responseText).toContain('implementation:');
   });
 
   it('does not treat a resumed output with assistant text as orphan-only', async () => {
     const talk = { type: 'assistant', message: { content: [{ type: 'text', text: 'working on it' }] } };
-    const { result, spawn } = await start(
+    const { result, launches } = await start(
       'orphan-text',
       [{ chunks: [`${JSON.stringify(note)}\n${JSON.stringify(talk)}\n${doneStream('working on it')}`] }],
       { resumeChatId: 'chat-1' },
       { ...claude, MAX_LAUNCHES: 1 },
     );
-    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(launches).toHaveLength(1);
     expect(result.orphanOnly).toBe(false);
   });
 
@@ -544,13 +545,13 @@ describe('AgentProcessRunner ended early', () => {
       { type: 'assistant', message: { content: [{ type: 'text', text: 'hi' }] } },
     ],
   ])('does not treat %s as orphan-only', async (_label, event) => {
-    const { spawn } = await start(
+    const { launches } = await start(
       'orphan-other',
       [{ chunks: [`${JSON.stringify(note)}\n${JSON.stringify(event)}\n${doneStream('')}`] }],
       { resumeChatId: 'chat-1' },
       { ...claude, MAX_LAUNCHES: 1 },
     );
-    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(launches).toHaveLength(1);
   });
 
   it.each([null, 'chat-1'])('writes the hook files into the state directory for resume %s', async (resumeChatId) => {
@@ -575,7 +576,7 @@ async function start(
   stop = new RunStop(),
 ): Promise<{
   result: Awaited<ReturnType<AgentProcessRunner['run']>>;
-  spawn: jest.Mock<Promise<EventEmitter>, unknown[]>;
+  launches: SandboxLaunch[];
   outputFile: string;
   root: string;
 }> {
@@ -586,7 +587,9 @@ async function start(
   const pending = [...steps];
   let now = Date.now();
   const clock = steps.some((step) => step.advance) ? jest.spyOn(Date, 'now').mockImplementation(() => now) : null;
-  const spawn = jest.fn<Promise<EventEmitter>, unknown[]>(() => {
+  const launches: SandboxLaunch[] = [];
+  const spawn = jest.fn<Promise<EventEmitter>, [SandboxLaunch]>((launch) => {
+    launches.push(launch);
     const next = pending.shift();
     if (!next) {
       return Promise.reject(new Error('unexpected spawn'));
@@ -600,7 +603,7 @@ async function start(
       ? parseAgentList('AGENTS_IMPLEMENT', env.AGENTS_IMPLEMENT)[0].runtime
       : 'cursor';
     const result = await runner.run(input(root, outputFile, { runtime, ...patch }));
-    return { result, spawn, outputFile, root };
+    return { result, launches, outputFile, root };
   } finally {
     clock?.mockRestore();
   }
@@ -612,13 +615,13 @@ function storedChat(root: string): string | null {
   return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as { chatId: string | null }).chatId : null;
 }
 
-function promptArg(call: unknown[] | undefined): string {
-  const command = (call?.[0] as { command?: string[] } | undefined)?.command ?? [];
+function promptArg(launch: SandboxLaunch | undefined): string {
+  const command = launch?.command ?? [];
   return command[command.length - 1] ?? '';
 }
 
-function resumeArg(call: unknown[] | undefined): string | null {
-  const command = (call?.[0] as { command?: string[] } | undefined)?.command ?? [];
+function resumeArg(launch: SandboxLaunch | undefined): string | null {
+  const command = launch?.command ?? [];
   const at = command.indexOf('--resume');
   return at < 0 ? null : (command[at + 1] ?? null);
 }

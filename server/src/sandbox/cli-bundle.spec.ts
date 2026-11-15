@@ -4,7 +4,9 @@ import { CliBundles, cliVolumeName } from './cli-bundle';
 const ID = 'sha256:0123456789abcdef0123456789abcdef';
 
 function fakeDocker(state: { complete: boolean; volumes: string[]; missing?: boolean; inUse?: string[] }) {
-  return jest.fn((args: string[]) => {
+  const calls: string[][] = [];
+  const docker = (args: string[]) => {
+    calls.push(args);
     const [first, second] = args;
     if (first === 'image') {
       return state.missing ? Promise.reject(new Error('no such image')) : Promise.resolve(`${ID}\n`);
@@ -24,7 +26,8 @@ function fakeDocker(state: { complete: boolean; volumes: string[]; missing?: boo
       return Promise.resolve('');
     }
     return Promise.resolve('');
-  });
+  };
+  return { docker, calls };
 }
 
 describe('cliVolumeName', () => {
@@ -41,7 +44,7 @@ describe('cliVolumeName', () => {
 describe('CliBundles', () => {
   it('copies the CLI once and reuses the volume', async () => {
     const state = { complete: false, volumes: [] as string[] };
-    const docker = fakeDocker(state);
+    const { docker, calls } = fakeDocker(state);
     const bundles = new CliBundles(docker);
     const [first, second] = await Promise.all([
       bundles.ensure('codex', 'agent-image'),
@@ -49,17 +52,17 @@ describe('CliBundles', () => {
     ]);
     expect(first).toBe('swarmloop-cli-codex-0123456789ab');
     expect(second).toBe(first);
-    const copies = docker.mock.calls.filter((call) => (call[0].at(-1) ?? '').includes('cp -a'));
+    const copies = calls.filter((call) => (call.at(-1) ?? '').includes('cp -a'));
     expect(copies).toHaveLength(1);
-    const copy = copies[0]?.[0] ?? [];
+    const copy = copies[0] ?? [];
     expect(copy).toEqual(expect.arrayContaining(['--network', 'none', '--rm']));
     expect(copy.join(' ')).toContain('type=volume,src=swarmloop-cli-codex-0123456789ab,dst=/out');
   });
 
   it('does not copy again into a complete volume', async () => {
-    const docker = fakeDocker({ complete: true, volumes: [] });
+    const { docker, calls } = fakeDocker({ complete: true, volumes: [] });
     await new CliBundles(docker).ensure('claude', 'agent-image');
-    expect(docker.mock.calls.some((call) => (call[0].at(-1) ?? '').includes('cp -a'))).toBe(false);
+    expect(calls.some((call) => (call.at(-1) ?? '').includes('cp -a'))).toBe(false);
   });
 
   it('removes older volumes of the same runtime and keeps one that is in use', async () => {
@@ -72,15 +75,15 @@ describe('CliBundles', () => {
       ],
       inUse: ['swarmloop-cli-claude-bbbbbbbbbbbb'],
     };
-    const docker = fakeDocker(state);
+    const { docker, calls } = fakeDocker(state);
     await new CliBundles(docker).ensure('claude', 'agent-image');
-    const removed = docker.mock.calls.filter((call) => call[0][1] === 'rm').map((call) => call[0][2]);
+    const removed = calls.filter((call) => call[1] === 'rm').map((call) => call[2]);
     expect(removed).toEqual(['swarmloop-cli-claude-aaaaaaaaaaaa', 'swarmloop-cli-claude-bbbbbbbbbbbb']);
   });
 
   it('says how to build a missing agent image and tries again next time', async () => {
     const state = { complete: false, volumes: [] as string[], missing: true };
-    const docker = fakeDocker(state);
+    const { docker } = fakeDocker(state);
     const bundles = new CliBundles(docker);
     await expect(bundles.ensure('cursor', 'agent-image')).rejects.toThrow('run docker/sandbox/build.sh');
     state.missing = false;
