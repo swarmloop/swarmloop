@@ -11,7 +11,8 @@ import { LimitFailover } from './limit-failover';
 
 const ran = { chatId: null, tokensIn: 0, tokensOut: 0, usd: 0, calls: 1, exitCode: 0, resumed: false, samples: [] };
 
-function setup(env: Record<string, string>, epic: boolean) {
+function setup(env: Record<string, string>, epic: boolean, step: 'implement' | 'plan-improve' = 'implement') {
+  const role = step === 'implement' ? 'implement' : 'plan';
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-failover-effort-'));
   const run = {
     agentCalls: 0,
@@ -19,7 +20,7 @@ function setup(env: Record<string, string>, epic: boolean) {
     epicAt: epic ? '2026-01-01T00:00:00.000Z' : null,
     agents: {
       main: {
-        implement: [
+        [role]: [
           { runtime: 'claude', model: 'm-claude', effort: 'high' },
           { runtime: 'codex', model: 'm-codex', effort: 'low' },
         ],
@@ -56,7 +57,7 @@ function setup(env: Record<string, string>, epic: boolean) {
       root,
       run,
       key: 'run',
-      step: 'implement',
+      step,
       mode: 'agent',
       tools: 'write',
       runtime: 'claude',
@@ -83,7 +84,7 @@ describe('limit failover effort', () => {
   });
 
   it('raises the next agent of an epic parent to EPIC_EFFORT, held to what its runtime supports', async () => {
-    const { runner, launch } = setup({ EPIC_EFFORT: 'max' }, true);
+    const { runner, launch } = setup({ EPIC_EFFORT: 'max' }, true, 'plan-improve');
     const result = await launch();
 
     expect(runner.run.mock.calls[1][0]).toMatchObject({ runtime: 'codex', effort: 'xhigh' });

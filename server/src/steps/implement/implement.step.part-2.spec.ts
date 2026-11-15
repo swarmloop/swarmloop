@@ -322,7 +322,7 @@ describe('implement step', () => {
     }
   });
 
-  it('launches the conflict resolution of an epic parent at the epic effort', async () => {
+  it("launches the conflict resolution of an epic parent at its implement list's effort", async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-epic-effort-'));
     await writeEnv(root, undefined, { AGENTS_IMPLEMENT: 'claude:claude-sonnet-5-5:high', EPIC_EFFORT: 'xhigh' });
     const tree = conflictedTree(root, 'PROJ-69', 'billing-api');
@@ -345,7 +345,7 @@ describe('implement step', () => {
       const conflict = agent.mock.calls
         .map((call) => call[0])
         .find((i) => i.prompt.includes('The commit being replayed is'));
-      expect(conflict?.effort).toBe('xhigh');
+      expect(conflict?.effort).toBe('high');
     } finally {
       await app.close();
     }

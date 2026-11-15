@@ -1,7 +1,7 @@
 import type { StoredAgents } from '../contract/api';
 import type { CODE_REVIEWERS, StepName } from '../contract/steps';
 import type { Effort } from '../contract/effort';
-import { EFFORTS, highestOf, isEffort } from '../contract/effort';
+import { highestOf, isEffort, raisesEffort } from '../contract/effort';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
@@ -173,21 +173,15 @@ function storedAgents(run: AgentRun | null | undefined, role: Role, tier: Tier):
 }
 
 /**
- * The level an agent runs at: its own, raised to `EPIC_EFFORT` for the parent of a split run (never lowered), then
- * held to the highest level its runtime declares for the model.
+ * The level an agent runs at: its own, raised to `EPIC_EFFORT` only for the plan role of the parent of a split run
+ * (never lowered), then held to the highest level its runtime declares for the model.
  */
-function resolveEffort(agent: Agent, run: AgentRun | null | undefined, env: AgentEnv): Agent {
+function resolveEffort(agent: Agent, run: AgentRun | null | undefined, env: AgentEnv, role: Role): Agent {
   const { effort: own, ...base } = agent;
   let wanted = own;
   let note: string | undefined;
   const epic = env.EPIC_EFFORT;
-  if (
-    isEffort(epic) &&
-    run &&
-    !run.parentRunId &&
-    run.epicAt &&
-    (!own || EFFORTS.indexOf(epic) > EFFORTS.indexOf(own))
-  ) {
+  if (isEffort(epic) && role === 'plan' && run && !run.parentRunId && run.epicAt && raisesEffort(epic, own)) {
     wanted = epic;
     note = 'epic';
   }
@@ -215,10 +209,10 @@ function listName(env: AgentEnv, role: Role, tier: Tier): keyof AgentEnv {
 function agentsOf(env: AgentEnv, role: Role, tier: Tier = 'main', run?: AgentRun | null): Agent[] {
   const stored = storedAgents(run, role, tier);
   if (stored.length > 0) {
-    return stored.map((agent) => resolveEffort(agent, run, env));
+    return stored.map((agent) => resolveEffort(agent, run, env, role));
   }
   const name = listName(env, role, tier);
-  return parseAgentList(name, env[name]).map((agent) => resolveEffort(agent, run, env));
+  return parseAgentList(name, env[name]).map((agent) => resolveEffort(agent, run, env, role));
 }
 
 /**

@@ -39,6 +39,10 @@ export function AgentsSection({
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <Typography variant="body2" color="text.secondary">
+        By default, subtask agents work at medium effort, and plan, implement and review work at high. When a run splits
+        into subtasks, the epic effort setting lifts only the parent&apos;s planning.
+      </Typography>
       {view.modelsLimited ? (
         <Typography variant="body2" color="text.secondary">
           The model list is limited to the server&apos;s models for now.

@@ -252,7 +252,9 @@ describe('AgentProcessRunner while every agent place is busy', () => {
     );
     const files = (name: string): string => join(root, 'data', `run1-${name}-output.txt`);
     const first = runner.run(input(root, files('first'), { resumeChatId: null }));
-    await new Promise((resolve) => setImmediate(resolve));
+    while (gate.running() < 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
     const second = runner.run(input(root, files('second'), { resumeChatId: null }));
     await noted;
     expect(gate.agentWait('run1').steps).toEqual(['implement']);

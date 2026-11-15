@@ -26,10 +26,16 @@ const tasksAnswer = (title: string, depends: string[] = []): string =>
 const planAnswer = resultAnswer('Done.', { summary: ['one run'], plan: ['add the field'] });
 
 /** A split run waiting at `start`, with `EPIC_EFFORT` as given. */
-async function epicApp(key: string, epicEffort: string, answers: string[], start: StepName = 'plan-improve') {
+async function epicApp(
+  key: string,
+  epicEffort: string,
+  answers: string[],
+  start: StepName = 'plan-improve',
+  planAgent = 'claude:opus-5.5-extra-high',
+) {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-improve-epic-'));
   await writeEnv(root, undefined, {
-    AGENTS_PLAN: 'claude:opus-5.5-extra-high',
+    AGENTS_PLAN: planAgent,
     AGENTS_IMPLEMENT: 'claude:grok-4.7',
     AGENTS_REVIEW: 'claude:opus-5.5-extra-high',
     EPIC_EFFORT: epicEffort,
@@ -85,6 +91,46 @@ describe('plan-improve step of an epic', () => {
       await app.close();
     }
   });
+
+  it('plans once more when the epic effort is higher than the effort that ran', async () => {
+    const { app, input, visit } = await epicApp(
+      'PROJ-75',
+      'xhigh',
+      [tasksAnswer('First graph'), tasksAnswer('Checked graph')],
+      'plan-improve',
+      'claude:claude-opus-5-5:high',
+    );
+    try {
+      await visit();
+      await visit();
+      expect(input(0).effort).toBe('high');
+      expect(input(1).effort).toBe('xhigh');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each(['claude:claude-opus-5-5:xhigh', 'claude:claude-opus-5-5:max'])(
+    'goes on with no second visit when the epic effort is equal or lower (%s)',
+    async (planAgent) => {
+      const { app, visit, state } = await epicApp(
+        'PROJ-76',
+        'xhigh',
+        [tasksAnswer('First graph')],
+        'plan-improve',
+        planAgent,
+      );
+      try {
+        await visit();
+        const after = await state();
+        expect(after.run?.epicAt).toBeTruthy();
+        expect(after.run?.currentStep).toBe('branch');
+        expect(after.subtasks.map((item) => item.title)).toEqual(['First graph']);
+      } finally {
+        await app.close();
+      }
+    },
+  );
 
   it('runs the same checks on the extra visit', async () => {
     const { app, visit, state } = await epicApp('PROJ-71', 'xhigh', [

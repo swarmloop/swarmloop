@@ -3,6 +3,7 @@ import { join } from 'path';
 import { CODE_REVIEWERS, STEPS } from '../contract/steps';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { testEnv } from './env.spec-helpers';
+import { shippedDefaults, validateSettings } from './env.schema.spec-helpers';
 import {
   agentFor,
   agentsFor,
@@ -328,6 +329,20 @@ describe('agents with an effort', () => {
     });
   });
 
+  it('raises only the plan role of an epic parent; implement and review keep their own effort', () => {
+    const env = claudeEnv({
+      AGENTS_IMPLEMENT: 'claude:claude-sonnet-5-5:high',
+      AGENTS_REVIEW: 'claude:claude-sonnet-5-5:high',
+    });
+    for (const step of ['plan-improve', 'merge-request'] as const) {
+      expect(agentFor(env, epicRun, step)).toMatchObject({ effort: 'xhigh', effortNote: 'epic' });
+    }
+    const kept = ['implement', 'rebase', 'code-review', 'code-review-report', 'code-review-quality'] as const;
+    for (const step of kept) {
+      expect(agentFor(env, epicRun, step)).toEqual({ runtime: 'claude', model: 'claude-sonnet-5-5', effort: 'high' });
+    }
+  });
+
   it('never lowers an agent that is above EPIC_EFFORT', () => {
     const env = claudeEnv({ AGENTS_PLAN: 'claude:claude-opus-5-5:max' });
     expect(agentFor(env, epicRun, 'plan')).toEqual({ runtime: 'claude', model: 'claude-opus-5-5', effort: 'max' });
@@ -361,8 +376,8 @@ describe('agents with an effort', () => {
   });
 
   it('resolves the effort of the next agent when a limit moves the work', () => {
-    const env = claudeEnv({ AGENTS_REVIEW: 'claude:a:high,codex:b:high' });
-    expect(availableAgent(env, epicRun, 'code-review', new Set(['claude']))).toEqual({
+    const env = claudeEnv({ AGENTS_PLAN: 'claude:a:high,codex:b:high' });
+    expect(availableAgent(env, epicRun, 'plan-improve', new Set(['claude']))).toEqual({
       runtime: 'codex',
       model: 'b',
       effort: 'xhigh',
@@ -384,5 +399,29 @@ describe('a level that needs a model list that is not loaded', () => {
     );
     const stored = { main: { plan: [{ runtime: 'cursor', model: 'grok-4.7', effort: 'high' }] } };
     expect(() => agentFor(testEnv(), { agents: stored }, 'plan')).toThrow(/model list of cursor is not loaded/);
+  });
+});
+
+describe('the shipped defaults', () => {
+  it("parses every shipped agent list and runs subtasks at medium, main roles at high and only an epic parent's planning at xhigh", () => {
+    const { error, value } = validateSettings({}, { convert: true });
+    expect(error).toBeUndefined();
+    assertAgents({ ...value, ...KEYS });
+    const defaults = shippedDefaults();
+    for (const name of Object.keys(defaults).filter(
+      (key) => /^AGENTS_(SUBTASK_)?(PLAN|IMPLEMENT|REVIEW)$/.test(key) && defaults[key] !== '',
+    )) {
+      expect(() => parseAgentList(name, value[name])).not.toThrow();
+    }
+    const env = value as ReturnType<typeof testEnv>;
+    const efforts = (run: object) =>
+      ['plan', 'implement', 'code-review'].map((step) => agentFor(env, run, step)?.effort);
+    expect(efforts({ parentRunId: 2 })).toEqual(['medium', 'medium', 'medium']);
+    expect(efforts({})).toEqual(['high', 'high', 'high']);
+    expect(efforts({ epicAt: '2026-11-13T10:00:00Z' })).toEqual(['xhigh', 'high', 'high']);
+    expect(agentFor(env, { epicAt: '2026-11-13T10:00:00Z' }, 'plan-improve')).toMatchObject({
+      effort: 'xhigh',
+      effortNote: 'epic',
+    });
   });
 });
