@@ -1,18 +1,15 @@
-import { execFileSync } from 'child_process';
 import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { git } from '../testing/git-fixture';
 import { captureTree } from './worktree-tree';
-
-function git(repo: string, args: string[], env: NodeJS.ProcessEnv = {}): string {
-  return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', env: { ...process.env, ...env } }).trim();
-}
 
 /** The tree git makes with an empty index: every file is hashed again. */
 function emptyIndexTree(repo: string): string {
-  const index = join(mkdtempSync(join(tmpdir(), 'swarmloop-empty-index-')), 'index');
-  git(repo, ['add', '-A'], { GIT_INDEX_FILE: index });
-  return git(repo, ['write-tree'], { GIT_INDEX_FILE: index });
+  // Called after captureTree; this drops the repository's index before rebuilding it.
+  rmSync(join(repo, '.git', 'index'), { force: true });
+  git(repo, ['add', '-A']);
+  return git(repo, ['write-tree']);
 }
 
 function bigRepo(files: number): string {

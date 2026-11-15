@@ -78,10 +78,14 @@ describe('AgentProcess', () => {
     try {
       const child = fakeChild();
       const clock = new FakeClock();
-      const suspended = jest.fn();
-      const time = new AwakeTime(clock, 5_000, suspended);
+      const suspensions: number[] = [];
+      const time = new AwakeTime(clock, 5_000, (ms) => suspensions.push(ms));
       const process = new AgentProcess(child as unknown as SandboxChild, sandbox());
-      const timeout = jest.fn(() => process.kill());
+      const timeouts: string[] = [];
+      const timeout = (reason: 'idle' | 'time') => {
+        timeouts.push(reason);
+        process.kill();
+      };
       const waiting = process.wait(handlers(), () => false, {
         time,
         idleLimitMs: 60 * 60_000,
@@ -97,13 +101,12 @@ describe('AgentProcess', () => {
       awake(10);
       clock.advance(40 * 60_000);
       jest.advanceTimersByTime(5_000);
-      expect(timeout).not.toHaveBeenCalled();
-      expect(suspended).toHaveBeenCalledTimes(1);
-      expect(suspended).toHaveBeenCalledWith(40 * 60_000);
+      expect(timeouts).toEqual([]);
+      expect(suspensions).toEqual([40 * 60_000]);
       awake(19);
-      expect(timeout).not.toHaveBeenCalled();
+      expect(timeouts).toEqual([]);
       awake(1);
-      expect(timeout).toHaveBeenCalledWith('time');
+      expect(timeouts).toEqual(['time']);
       child.emit('close', 1);
       await waiting;
     } finally {

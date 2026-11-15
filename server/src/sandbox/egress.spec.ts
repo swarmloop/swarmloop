@@ -178,15 +178,22 @@ describe('Egress', () => {
   });
 
   it('waits until the new proxy listens, and says why when it never does', async () => {
-    const state: State = { image: 'sha256:abc' };
-    const { egress, docker } = setup(state, 1_000, { uid: 501, own: 501, startMs: 300 });
-    const listen = docker.getMockImplementation();
-    docker.mockImplementation((args: string[]) =>
-      args[0] === 'logs'
-        ? Promise.resolve('Error: EACCES: permission denied\n')
-        : (listen?.(args) ?? Promise.resolve('')),
-    );
-    await expect(egress.ensure()).rejects.toThrow('does not listen: Error: EACCES');
+    jest.useFakeTimers();
+    try {
+      const state: State = { image: 'sha256:abc' };
+      const { egress, docker } = setup(state, 1_000, { uid: 501, own: 501, startMs: 300 });
+      const listen = docker.getMockImplementation();
+      docker.mockImplementation((args: string[]) =>
+        args[0] === 'logs'
+          ? Promise.resolve('Error: EACCES: permission denied\n')
+          : (listen?.(args) ?? Promise.resolve('')),
+      );
+      const failed = expect(egress.ensure()).rejects.toThrow('does not listen: Error: EACCES');
+      await jest.advanceTimersByTimeAsync(400);
+      await failed;
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('borrows a running proxy that someone else started when told to', async () => {
