@@ -18,6 +18,10 @@ export class CursorRuntime extends AbstractAgentRuntime {
   protected readonly limits = CURSOR_LIMITS;
   private modelIds: readonly string[] = [];
 
+  secrets(keys: RuntimeKeys): string[] {
+    return [keys.cursorKey].filter(Boolean);
+  }
+
   credential(keys: RuntimeKeys): { name: string; value: string } {
     if (keys.cursorKey === '') {
       throw new SwarmloopError('CURSOR_API_KEY is missing');

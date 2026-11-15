@@ -150,6 +150,8 @@ export interface CodeHost {
   matchesOrigin(origin: string): boolean;
   pushUrl(origin: string): string | null;
   selected(): SelectedHost;
+  /** The secrets this host holds: its token. */
+  secrets(): string[];
   findMergeRequest(
     query: MergeRequestQuery,
   ): Promise<{ record: MergeRequestRecord | null; httpCalls: HttpCallDraft[] }>;

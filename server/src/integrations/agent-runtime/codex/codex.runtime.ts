@@ -26,6 +26,10 @@ export class CodexRuntime extends AbstractAgentRuntime {
   readonly credentialNames = ['CODEX_AUTH', 'CODEX_API_KEY'];
   protected readonly limits = CODEX_LIMITS;
 
+  secrets(keys: RuntimeKeys): string[] {
+    return [keys.codexAuth, keys.codexApiKey].filter(Boolean);
+  }
+
   credential(keys: RuntimeKeys): { name: string; value: string } {
     if (keys.codexAuth !== '') {
       return { name: 'CODEX_AUTH', value: keys.codexAuth };

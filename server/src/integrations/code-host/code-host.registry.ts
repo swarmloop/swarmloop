@@ -3,11 +3,12 @@ import { remoteProject } from './remote-project';
 import { GitAuthError, SwarmloopError } from '../../core/swarmloop-error';
 import type { CodeHost, SelectedHost } from './code-host';
 import type { AbstractCodeHost, CodeHostEnv } from './abstract-code-host';
-import type { Type } from '@nestjs/common';
+import type { OnModuleDestroy, OnModuleInit, Type } from '@nestjs/common';
 import type { Clock } from '../../core/clock';
 import type { Connection } from '../connection';
 import type { CodeHostAdapter } from './code-host-adapter';
 import { codeHostAdapters } from './code-host-adapters';
+import { registerSecretSource } from '../../core/secret-sources';
 import type { AppFlow, AppSource, LoginProvider } from './login-provider';
 
 interface Entry {
@@ -15,13 +16,23 @@ interface Entry {
   readonly host: AbstractCodeHost;
 }
 
-export class CodeHostRegistry {
+export class CodeHostRegistry implements OnModuleInit, OnModuleDestroy {
+  private unregisterSecrets: (() => void) | undefined;
+
   readonly names: readonly CodeHostName[] = codeHostAdapters().map((adapter) => adapter.name);
 
   private constructor(
     private readonly entries: readonly Entry[],
     private readonly connectionStore?: ConnectionsService,
   ) {}
+
+  onModuleInit(): void {
+    this.unregisterSecrets = registerSecretSource(() => this.entries.flatMap(({ host }) => host.secrets()));
+  }
+
+  onModuleDestroy(): void {
+    this.unregisterSecrets?.();
+  }
 
   /**
    * The registry of one run: each host calls with the token of the person who started it. A person without a

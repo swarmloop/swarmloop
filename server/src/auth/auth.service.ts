@@ -1,6 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
+import { registerSecretSource } from '../core/secret-sources';
 import { isLoopback } from './bind-check';
 import { machineToken, tokenMatches } from './machine-token';
 import type { LoginProvider } from '../integrations/code-host/login-provider';
@@ -15,8 +16,9 @@ export interface Credentials {
 
 /** Who is acting: a session or the machine token. Nothing else is let in. */
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit, OnModuleDestroy {
   private readonly token: string;
+  private unregisterSecrets: (() => void) | undefined;
   private readonly publicUrl: string;
 
   constructor(
@@ -26,6 +28,19 @@ export class AuthService {
   ) {
     this.publicUrl = config.env.SWARMLOOP_PUBLIC_URL;
     this.token = machineToken(resolveRepoRoot(config.env.SWARMLOOP_ROOT, __dirname), config.env.SWARMLOOP_TOKEN);
+  }
+
+  onModuleInit(): void {
+    this.unregisterSecrets = registerSecretSource(() => this.secrets());
+  }
+
+  onModuleDestroy(): void {
+    this.unregisterSecrets?.();
+  }
+
+  /** The machine token this service holds. */
+  secrets(): string[] {
+    return [this.token];
   }
 
   /** Every provider, configured or not. */

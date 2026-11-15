@@ -1,7 +1,8 @@
-import { Injectable, type OnModuleInit } from '@nestjs/common';
+import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
+import { registerSecretSource } from '../core/secret-sources';
 import { HostAppEntity } from '../history/connection-entities';
 import {
   type AppCredentials,
@@ -15,8 +16,9 @@ import { SecretBox } from './secret-box';
 
 /** The app of each host: the one Connect stored, encrypted, else the OAuth app of the environment. */
 @Injectable()
-export class HostAppsService implements AppSource, HostAppStore, OnModuleInit {
+export class HostAppsService implements AppSource, HostAppStore, OnModuleInit, OnModuleDestroy {
   private readonly apps = new Map<string, StoredApp>();
+  private unregisterSecrets: (() => void) | undefined;
 
   constructor(
     private readonly config: AppConfig,
@@ -36,6 +38,18 @@ export class HostAppsService implements AppSource, HostAppStore, OnModuleInit {
         madeBy: row.madeBy,
       });
     }
+    this.unregisterSecrets = registerSecretSource(() => this.secrets());
+  }
+
+  onModuleDestroy(): void {
+    this.unregisterSecrets?.();
+  }
+
+  /** The client secrets and private keys of the stored apps, and the client secrets of the environment. */
+  secrets(): string[] {
+    const stored = [...this.apps.values()].flatMap((app) => [app.clientSecret, app.privateKey]);
+    const env = codeHostAdapters().map((adapter) => this.config.env[adapter.clientEnvKeys.clientSecret]);
+    return [...stored, ...env].filter(Boolean);
   }
 
   /** The stored app, or null. The secret leaves this service only for the login and the token refresh. */

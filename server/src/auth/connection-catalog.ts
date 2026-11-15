@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { AppConfig } from '../config/env';
-import { redact, rememberSecret } from '../core/redact';
+import { redact } from '../core/redact';
+import { rememberSecret } from '../core/secret-sources';
 import type { ConnectionCard, IntegrationCardsView } from '../contract/connections';
 import type { Connection, ConnectionTestResult } from '../integrations/connection';
 import { SandboxConnectionProbe } from './connection-probe';

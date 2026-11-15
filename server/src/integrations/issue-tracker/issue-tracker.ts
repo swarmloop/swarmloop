@@ -5,6 +5,8 @@ import type { IssueBundle } from './issue-bundle';
 export interface IssueTracker {
   /** How a person connects this tracker on the Connections page. */
   readonly connection?: Connection;
+  /** Optional so a literal tracker lists none. The secrets this tracker holds. */
+  secrets?(): string[];
   /** The ticket keys this tracker recognizes in plain text. Without a configured tracker, none. */
   ticketKeys(text: string, login?: string | null): Promise<string[]>;
   fetch(
