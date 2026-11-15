@@ -4,7 +4,7 @@ import { requirementsView } from '../../contract/requirements-view';
 import { withoutTimestamp } from '../../contract/event-text';
 import { isStopNote } from '../../contract/run-state';
 import type { AttemptFacts, StepEvent } from '../../contract/step-events';
-import { redact } from '../../core/redact';
+import { redact } from '../../config/redact';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { StepEventLog } from '../../history/step-event.log';
 import type { DocumentDraft } from '../../history/visit';
@@ -36,13 +36,13 @@ function documentSummary(kind: string, body: string, step: StepName): string {
 }
 
 /** Stores an event of a step. A failed write is logged and never thrown, so it cannot fail the step. */
-export function stepEventSink(log: StepEventLog, env: object): (event: StepEvent) => Promise<void> {
+export function stepEventSink(log: StepEventLog, extra?: object): (event: StepEvent) => Promise<void> {
   return async (event) => {
     try {
       await log.append([event]);
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
-      new Logger('StepEvents').error(`${event.kind} of ${event.step} was not recorded: ${redact(text, env)}`);
+      new Logger('StepEvents').error(`${event.kind} of ${event.step} was not recorded: ${redact(text, extra)}`);
     }
   };
 }

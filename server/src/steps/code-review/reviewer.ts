@@ -164,7 +164,7 @@ async function one(
     if (error instanceof ResultInvalid) {
       refused = refusedWrite(error.output);
     }
-    const message = withRefusal(reportFailure('code-review', error, env).message, refused);
+    const message = withRefusal(reportFailure('code-review', error).message, refused);
     return {
       reviewer: job.reviewer,
       runtime: job.runtime,

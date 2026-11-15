@@ -236,10 +236,3 @@ export async function originUrl(cwd: string, repo: string, failure: string): Pro
     throw new SwarmloopError(`${repo} ${failure}: ${gitDetail(error)}`);
   }
 }
-
-export function redact(detail: string, secret?: string): string {
-  if (!secret) {
-    return detail;
-  }
-  return detail.split(secret).join('***').split(encodeURIComponent(secret)).join('***');
-}

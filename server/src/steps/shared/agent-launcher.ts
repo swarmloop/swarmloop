@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { effortFields } from '../../contract/effort';
 import { AppConfig } from '../../config/env';
-import { redact } from '../../core/redact';
+import { redact } from '../../config/redact';
 import { AGENT_RUNNER, readSession } from '../../agent/agent-runner';
 import { chatStateRemoved } from '../../agent/agent-session';
 import { LoopDetector } from '../../agent/loop-detector';

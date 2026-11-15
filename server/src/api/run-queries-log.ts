@@ -4,7 +4,7 @@ import type { AppConfig } from '../config/env';
 import { pipelineStepOf } from '../contract/steps';
 import { attemptIdsOf, OUTPUT_STEPS, stepOutput, stepOutputPath } from '../core/attempt-output';
 import { readCheckOutput } from '../core/check-output';
-import { redact } from '../core/redact';
+import { redact } from '../config/redact';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../history/entities';
 import type { CheckCommandRepository } from '../history/check-command.repository';
 import type { RunRepository } from '../history/run.repository';
@@ -169,7 +169,7 @@ export async function readStepLog(
   if (text === null) {
     throw new NotFoundException(`${step} has no log`);
   }
-  return sliceLog(redact(text, config.env), logPaging(query));
+  return sliceLog(redact(text), logPaging(query));
 }
 
 /**
@@ -197,7 +197,7 @@ export async function readCheckLog(
   if (text === null) {
     throw new NotFoundException(`check command ${command} has no log yet`);
   }
-  return sliceLog(redact(text, config.env), logPaging(query));
+  return sliceLog(redact(text), logPaging(query));
 }
 
 /** The `log` document a visit kept when it had no file. Null when there is none. */
