@@ -1,7 +1,5 @@
 import 'reflect-metadata';
 import { mkdirSync, writeFileSync } from 'fs';
-import { mkdtemp } from 'fs/promises';
-import { tmpdir } from 'os';
 import { join } from 'path';
 import type { AgentRunInput } from '../../agent/agent-runner';
 import { DocumentRepository } from '../../history/document.repository';
@@ -11,7 +9,9 @@ import { resultAnswer } from '../../testing/result-answer';
 import { handoffText } from '../shared/handoff';
 import { RunRepository } from '../../history/run.repository';
 import { ARTIFACTS } from '../contract/artifacts';
-import { boot, featureTree, result, writeEnv } from './implement.step.spec-helpers';
+import { bootOnce, result, type boot } from './implement.step.spec-helpers';
+
+const once = bootOnce();
 
 const improved = (value: Record<string, unknown>): string => resultAnswer('Done.', value);
 
@@ -34,9 +34,8 @@ const KINDS = ['implementation', 'implementation_result', 'implementation_improv
 
 /** Runs implement-improve over a first pass, one scripted answer per launch. */
 async function improveWith(key: string, answers: string[], chat = false) {
-  const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-improve-result-'));
-  await writeEnv(root);
-  featureTree(root, key, 'billing-api');
+  once.tree(key, 'billing-api');
+  const root = once.root();
   if (chat) {
     mkdirSync(join(root, 'data', 'agent-state', key, 'implement'), { recursive: true });
     writeFileSync(
@@ -44,37 +43,30 @@ async function improveWith(key: string, answers: string[], chat = false) {
       `${JSON.stringify({ runtime: 'cursor', chatId: 'implement-chat', resumed: true, completed: true, killReason: null, usd: 1, resultName: 'implementation_improve' })}\n`,
     );
   }
-  const agent = jest.fn();
+  const agent = once.agent.mockReset();
   for (const answer of answers) agent.mockResolvedValueOnce(result(answer));
-  const app = await boot(root, agent);
-  try {
-    const documents = app.get(DocumentRepository);
-    const run = await seedFirstPass(app, key);
-    if (chat) {
-      // The chat's last answer was an implement-improve result, which is written after the implement result.
-      const first = { implementation: ['changed the field parser'], summary: [] };
-      await documents.putDocument(
-        run,
-        ARTIFACTS.implementationResult.kind,
-        ARTIFACTS.implementationResult.format(first),
-      );
-      await documents.putDocument(
-        run,
-        ARTIFACTS.implementationImproveResult.kind,
-        ARTIFACTS.implementationImproveResult.format({ summary: [] }),
-      );
-    }
-    const done = await app.get(PipelineService).step('implement-improve', key);
-    const stored: Record<string, string | null> = {};
-    for (const kind of KINDS) stored[kind] = await documents.latestBody(key, kind);
-    return {
-      done,
-      prompts: agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt),
-      body: (kind: string) => stored[kind] ?? null,
-    };
-  } finally {
-    await app.close();
+  const app = once.app();
+  const documents = app.get(DocumentRepository);
+  const run = await seedFirstPass(app, key);
+  if (chat) {
+    // The chat's last answer was an implement-improve result, which is written after the implement result.
+    const first = { implementation: ['changed the field parser'], summary: [] };
+    await documents.putDocument(run, ARTIFACTS.implementationResult.kind, ARTIFACTS.implementationResult.format(first));
+    await documents.putDocument(
+      run,
+      ARTIFACTS.implementationImproveResult.kind,
+      ARTIFACTS.implementationImproveResult.format({ summary: [] }),
+    );
   }
+  const done = await app.get(PipelineService).step('implement-improve', key);
+  const stored: Record<string, string | null> = {};
+  for (const kind of KINDS) stored[kind] = await documents.latestBody(key, kind);
+  return {
+    done,
+    calls: (await app.get(RunRepository).findRun(key))?.agentCalls,
+    prompts: agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt),
+    body: (kind: string) => stored[kind] ?? null,
+  };
 }
 
 describe('implement-improve step result block', () => {
@@ -103,7 +95,7 @@ describe('implement-improve step result block', () => {
     const out = await improveWith('PROJ-412', [bad, bad, bad]);
     expect(out.done.exitCode).toBe(1);
     expect(out.done.message).toContain('summary');
-    expect(out.prompts).toHaveLength(3);
+    expect(out.calls).toBe(3);
   });
 
   it('sends one line for the result in the second prompt of a chat that received it', async () => {
