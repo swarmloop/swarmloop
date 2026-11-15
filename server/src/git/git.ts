@@ -41,14 +41,6 @@ export function gitSync(args: string[], input?: string): string {
   });
 }
 
-const EVENT_LINES = 40;
-
-/** The last lines of what git printed for its event, and how many it printed, so the event counts the lines it left out. */
-function eventOutput(printed: string): { output: string; outputLines: number } {
-  const lines = printed.replace(/\s+$/, '').split('\n');
-  return { output: lines.slice(-EVENT_LINES).join('\n'), outputLines: lines.length };
-}
-
 function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string, options: GitOptions = {}): Promise<string> {
   const timeout = options.timeoutMs ?? GIT_LIMITS.default;
   const command = withSafeDirectory(args, checkoutRoots());
@@ -75,7 +67,7 @@ function gitText(args: string[], extra?: NodeJS.ProcessEnv, input?: string, opti
       },
       (error: unknown, stdout, stderr) => {
         const outcome = commandOutcome(error);
-        finish({ ...outcome, ...eventOutput(`${stdout}${stderr}`) });
+        finish({ ...outcome, output: `${stdout}${stderr}` });
         if (error) {
           const message =
             typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'

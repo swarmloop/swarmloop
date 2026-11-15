@@ -35,14 +35,14 @@ export class OwnUseMeter {
     return this.latest;
   }
 
-  /** What swarmloop itself takes: worktrees, logs (output files), backups and the environment cache. */
+  /** What swarmloop itself takes: worktrees, logs (output files, run log folders), backups and the environment cache. */
   private async walk(): Promise<string> {
     const base = root(this.config);
     const data = join(base, 'data');
     const logs = (await readdir(data).catch(() => [])).filter((name) => /-(output|log)\.txt$/.test(name));
     const parts = [
       ['worktrees', await treeBytes(join(base, 'worktrees'))],
-      ['logs', await total(logs.map((name) => join(data, name)))],
+      ['logs', await total([...logs.map((name) => join(data, name)), join(data, 'run-logs')])],
       ['backups', await treeBytes(join(data, 'backups'))],
       ['environment cache', await treeBytes(join(data, 'env-cache'))],
     ] as const;

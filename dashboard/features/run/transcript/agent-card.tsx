@@ -1,6 +1,7 @@
 import { type ReactElement, useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Link from '@mui/material/Link';
 import type { StepEvent } from '@contract/step-events';
 import { duration, money, tokens } from '../../../lib/format';
 import { AgentLogPanel, type AgentLog } from './agent-log';
@@ -30,7 +31,18 @@ function contextText(context: NonNullable<AgentBubble['context']>): string {
 
 function WorkLine({ work }: { work: AgentWork }): ReactElement {
   if (work.kind === 'agent.message') {
-    return <Box>{work.text}</Box>;
+    // A message recorded before events kept it whole holds only its first characters, and `chars` is its full length.
+    return (
+      <Box>
+        {work.text}
+        {work.chars > work.text.length ? (
+          <>
+            {'… '}
+            <Link href="#exchanges">full exchange</Link>
+          </>
+        ) : null}
+      </Box>
+    );
   }
   return (
     <Box
@@ -45,12 +57,6 @@ function WorkLine({ work }: { work: AgentWork }): ReactElement {
         <>
           {' → '}
           <ShortText text={work.resultLine} max={SHOWN_CHARS} />
-        </>
-      ) : null}
-      {work.errorLine ? (
-        <>
-          {' → '}
-          <ShortText text={work.errorLine} max={SHOWN_CHARS} />
         </>
       ) : null}
       {work.status === 'unfinished' ? ' → no result' : ''} · {duration(work.durationMs)}

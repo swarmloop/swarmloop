@@ -43,6 +43,16 @@ describe('OwnUseMeter', () => {
     });
   });
 
+  it('counts the logs in the run log folders with the other logs', async () => {
+    writeFileSync(join(home, 'data', 'run-1-implement-output.txt'), Buffer.alloc(1024));
+    mkdirSync(join(home, 'data', 'run-logs', 'run-1'), { recursive: true });
+    writeFileSync(join(home, 'data', 'run-logs', 'run-1', 'implement-a-command-0-log.txt'), Buffer.alloc(2048));
+
+    await meter.measure();
+
+    expect(meter.last()?.line).toContain('logs 3.0 KB');
+  });
+
   it('does nothing for a second measure during a walk', async () => {
     const first = meter.measure();
     writeFileSync(join(home, 'worktrees', 'late'), Buffer.alloc(4096));

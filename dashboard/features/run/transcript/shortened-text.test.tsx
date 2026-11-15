@@ -33,6 +33,13 @@ describe('shortened text', () => {
     expect(screen.queryByText('full exchange')).not.toBeInTheDocument();
   });
 
+  it('marks a message recorded before events kept it whole and links to the full exchange', () => {
+    feed(agentWork({ kind: 'agent.message', text: 'a'.repeat(600), chars: 5000 }));
+
+    expect(screen.getByText('full exchange')).toHaveAttribute('href', '#exchanges');
+    expect(screen.getByText(/^a{600}…$/)).toBeInTheDocument();
+  });
+
   it('cuts a 400-char tool target at 300 with a mark and opens it whole on click', async () => {
     const target = 'x'.repeat(399) + 'Y';
     feed(agentWork({ kind: 'agent.tool', tool: 'Read', target, status: 'ok', durationMs: 5, resultLine: '' }));
