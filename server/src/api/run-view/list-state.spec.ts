@@ -26,6 +26,8 @@ interface Setup {
   claimed?: string[];
   /** The run ids with a command that is accepted or executing and is not a stop. */
   queued?: number[];
+  /** The words of the runs whose agent waits for a free place, by run key. */
+  places?: Record<string, string>;
 }
 
 /** The documents repository as the list reads it: the latest document of each asked kind of each asked run. */
@@ -42,7 +44,15 @@ function storedDocuments(runs: RunEntity[], plans: Record<string, string>, docum
   };
 }
 
-async function states({ runs, plans = {}, documents = [], pasteUrls = [], claimed = [], queued = [] }: Setup) {
+async function states({
+  runs,
+  plans = {},
+  documents = [],
+  pasteUrls = [],
+  claimed = [],
+  queued = [],
+  places = {},
+}: Setup) {
   const keys = new Map(runs.map((item) => [item.id, item.key]));
   const childrenOf = childrenByParent(runs);
   const stored = storedDocuments(runs, plans, documents);
@@ -53,6 +63,7 @@ async function states({ runs, plans = {}, documents = [], pasteUrls = [], claime
     runs,
     { keys, childrenOf, plans: await listPlans(stored, runs, childrenOf) },
     (key) => claimed.includes(key),
+    (key) => places[key],
   );
 }
 
@@ -108,6 +119,17 @@ describe('listStates', () => {
   it('reads a claimed run that is not done as running', async () => {
     const result = await states({ runs: [run(1, 'A-1')], claimed: ['A-1'] });
     expect(result['A-1']?.state).toBe('running');
+  });
+
+  it('lists a running run whose agent waits for a free place with the words of the wait', async () => {
+    const place = 'Waiting for a free agent place (4 of 4 busy)';
+    const result = await states({
+      runs: [run(1, 'A-1'), run(2, 'B-1')],
+      claimed: ['A-1', 'B-1'],
+      places: { 'A-1': place },
+    });
+    expect(result['A-1']).toMatchObject({ state: 'running', stateReason: { code: 'AGENT_PLACE', message: place } });
+    expect(result['B-1']).toMatchObject({ state: 'running', stateReason: null });
   });
 
   it('a run with an accepted relaunch reads queued, and its task reads running', async () => {

@@ -13,6 +13,7 @@ import { CheckoutRepository } from '../history/checkout.repository';
 import { StepEventLog } from '../history/step-event.log';
 import { root } from '../history/run-paths';
 import { LiveHub } from '../live/live.hub';
+import { ContainerGate } from '../sandbox/container-gate';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { StepRegistry } from '../steps/step.registry';
 import { isStep } from '../core/pipeline-result';
@@ -22,6 +23,7 @@ import { renderProjects, storedProjects } from '../config/checkout-path';
 import type { StepEventPage } from '../contract/step-events';
 import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
 import type { LiveSample } from '../contract/live';
+import { runPlace, withPlaceChips } from './run-view/agent-place';
 import { mergeWaits, parentOf } from './run-view/merge-wait';
 import { listPlans, listStates } from './run-view/list-state';
 import { childrenByParent, epicTotal, listExtras } from './run-view/status';
@@ -71,6 +73,7 @@ export class RunQueriesService {
     private readonly clock: Clock,
     private readonly checkCommands: CheckCommandRepository,
     @Optional() private readonly live?: LiveHub,
+    @Optional() private readonly gate: ContainerGate = new ContainerGate(),
   ) {
     this.reviewers = new ReviewerSteps({
       runs,
@@ -101,6 +104,7 @@ export class RunQueriesService {
       runs,
       { keys, childrenOf, plans },
       (key) => this.pipeline.claimed(key),
+      (key) => runPlace(this.gate.agentWait(key)),
     );
     return {
       runs: runs.map((run) => ({
@@ -135,7 +139,7 @@ export class RunQueriesService {
       pastes.map((paste) => paste.url),
     );
     const shown = this.pipeline.claimed(run.key) && run.status !== 'done' ? { ...run, status: 'running' } : run;
-    const state = await runState(this.commands, shown, open, documents);
+    const state = await runState(this.commands, shown, open, documents, runPlace(this.gate.agentWait(run.key)));
     const maxReturns = this.config.env.MAX_RETURNS;
     const reportMs = await this.visits.codeReviewReportMs(run.id);
     const children = await this.runs.children(run);
@@ -160,6 +164,7 @@ export class RunQueriesService {
           this.pipeline,
           { documents: this.documents, checkouts: this.checkouts, commands: this.commands },
           this.live,
+          (key) => runPlace(this.gate.agentWait(key)),
         ),
       ),
       ...epicTotal(shown, children, this.usdOf, this.clock.now()),
@@ -176,7 +181,7 @@ export class RunQueriesService {
         this.live?.peaksOf(run.key) ?? { cpuPeak: 0, memPeak: 0 },
         reportMs,
       ),
-      phases: phases(shown, stats, documents, root(this.config)),
+      phases: withPlaceChips(phases(shown, stats, documents, root(this.config)), this.gate.agentWait(run.key)),
       returns: returns(shown),
       ...(checkCommands.length > 0 ? { checkCommands } : {}),
       items: open,

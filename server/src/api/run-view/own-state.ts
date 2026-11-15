@@ -47,6 +47,7 @@ async function ownState(
   claimed: (key: string) => boolean,
   docs: DocumentEntity[],
   queued: boolean,
+  agentPlace: string | undefined,
 ): Promise<OwnState> {
   const shown = shownRun(run, claimed);
   // The paste urls only matter where a run asks for a paste: at requirements, with a pending one.
@@ -57,7 +58,7 @@ async function ownState(
     docs,
     pastes.map((paste) => paste.url),
   );
-  const view = stateView(shown, open, docs, { queued });
+  const view = stateView(shown, open, docs, { queued, agentPlace });
   return { state: view.state, stateReason: view.reason };
 }
 
@@ -66,6 +67,7 @@ export async function ownStates(
   { documents, checkouts, commands }: StateSources,
   runs: RunEntity[],
   claimed: (key: string) => boolean,
+  place: (key: string) => string | undefined = () => undefined,
 ): Promise<Map<string, OwnState>> {
   const [facts, queued] = await Promise.all([
     factsOf(documents, runs, claimed),
@@ -73,7 +75,10 @@ export async function ownStates(
   ]);
   const states = new Map<string, OwnState>();
   for (const run of runs) {
-    states.set(run.key, await ownState(checkouts, run, claimed, facts.get(run.id) ?? [], queued.has(run.id)));
+    states.set(
+      run.key,
+      await ownState(checkouts, run, claimed, facts.get(run.id) ?? [], queued.has(run.id), place(run.key)),
+    );
   }
   return states;
 }

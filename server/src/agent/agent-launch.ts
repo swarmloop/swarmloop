@@ -92,6 +92,11 @@ export class AgentLaunch {
       this.live?.changed(input.runKey);
       this.live?.log({ key: input.runKey, step, body: `${SERVER_PAUSE_NOTE}\n` });
     };
+    const onWait = (text: string): void => {
+      held = true;
+      this.live?.changed(input.runKey);
+      this.live?.log({ key: input.runKey, step, body: `${text}\n` });
+    };
     const process = await AgentProcess.spawn(
       this.sandbox,
       {
@@ -109,12 +114,13 @@ export class AgentLaunch {
         userId: launch.userId,
         ...(input.project ? { project: input.project } : {}),
       },
-      { onPaused },
+      { onPaused, agent: { step, onWait } },
     );
     if (held) {
-      // The wait for the pause to end is neither the visit's time nor a host suspension.
+      // The wait for the pause to end or for an agent place is neither the visit's time nor a host suspension.
       started = this.clock.now();
       awake = new AwakeTime(this.clock, SAMPLE_MS, input.onSuspended);
+      this.live?.changed(input.runKey);
     }
     await recordLaunch(input.outputFile, input.runKey, step);
     const baseline =

@@ -148,6 +148,13 @@ describe('env schema', () => {
     expect(bad.error?.message).toContain('CHECKS_PARALLEL');
   });
 
+  it('AGENTS_PARALLEL defaults to 4 and takes a whole number from 1', () => {
+    const { value } = validateSettings(complete, { abortEarly: false, convert: true });
+    expect(value.AGENTS_PARALLEL).toBe(4);
+    const bad = validateSettings({ ...complete, AGENTS_PARALLEL: 0 }, { convert: true });
+    expect(bad.error?.message).toContain('AGENTS_PARALLEL');
+  });
+
   it('defaults the memory reserve to 2 GB and rejects negative values', () => {
     const { value } = validateSettings(complete, { abortEarly: false, convert: true });
     expect(value.RESERVE_MEMORY_GB).toBe(2);

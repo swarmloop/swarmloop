@@ -23,6 +23,7 @@ export interface SwarmloopEnv {
   MAX_PIPELINE_RETURNS: number;
   MAX_LAUNCHES: number;
   CHECKS_PARALLEL: number;
+  AGENTS_PARALLEL: number;
   RESERVE_MEMORY_GB: number;
   LIMIT_COOLDOWN_MIN: number;
   STOP_GRACE_S: number;
@@ -135,6 +136,7 @@ export function readEnv(config: ConfigService): SwarmloopEnv {
     MAX_PIPELINE_RETURNS: config.getOrThrow<number>('MAX_PIPELINE_RETURNS'),
     MAX_LAUNCHES: config.getOrThrow<number>('MAX_LAUNCHES'),
     CHECKS_PARALLEL: config.getOrThrow<number>('CHECKS_PARALLEL'),
+    AGENTS_PARALLEL: config.getOrThrow<number>('AGENTS_PARALLEL'),
     RESERVE_MEMORY_GB: config.getOrThrow<number>('RESERVE_MEMORY_GB'),
     LIMIT_COOLDOWN_MIN: config.getOrThrow<number>('LIMIT_COOLDOWN_MIN'),
     STOP_GRACE_S: config.getOrThrow<number>('STOP_GRACE_S'),

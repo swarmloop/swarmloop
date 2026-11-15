@@ -37,6 +37,7 @@ const SERVER_NAMES = [
   'MAX_PIPELINE_RETURNS',
   'MAX_LAUNCHES',
   'CHECKS_PARALLEL',
+  'AGENTS_PARALLEL',
   'SUBTASKS_PARALLEL',
   'SPLIT_MAX_TASKS',
   'REQUIREMENTS_TIMEOUT_MS',
@@ -62,6 +63,7 @@ const SERVER_NAMES = [
 /** What a server setting means, for the settings it is worth saying for. */
 const SERVER_DESCRIPTIONS: Record<string, string> = {
   CHECKS_PARALLEL: 'Check commands that run at once on the whole server',
+  AGENTS_PARALLEL: 'Agent containers that run at once on the whole server',
 };
 
 /** Server settings the sandbox reads straight from the process env; `SwarmloopEnv` does not carry them. */

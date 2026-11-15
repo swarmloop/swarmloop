@@ -60,8 +60,9 @@ export async function listStates(
   runs: RunEntity[],
   { keys, childrenOf, plans }: ListFacts,
   claimed: (key: string) => boolean,
+  place: (key: string) => string | undefined = () => undefined,
 ): Promise<Record<string, ListState>> {
-  const states = await ownStates({ documents, checkouts, commands }, runs, claimed);
+  const states = await ownStates({ documents, checkouts, commands }, runs, claimed, place);
   const result: Record<string, ListState> = {};
   for (const run of runs) {
     const own = states.get(run.key) as OwnState;

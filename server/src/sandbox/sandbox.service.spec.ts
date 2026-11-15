@@ -138,8 +138,8 @@ describe('SandboxService memory cap', () => {
   });
 
   describe('while the server is paused', () => {
-    function gated(): { sandbox: SandboxService; gate: ContainerGate; dockerCalls: string[][] } {
-      const gate = new ContainerGate();
+    function gated(agents?: number): { sandbox: SandboxService; gate: ContainerGate; dockerCalls: string[][] } {
+      const gate = new ContainerGate(agents ? new AppConfig(testEnv({ AGENTS_PARALLEL: agents })) : undefined);
       const sandbox = new SandboxService(new AppConfig(testEnv({ RESERVE_MEMORY_GB: 1 })), gate);
       const dockerCalls: string[][] = [];
       sandbox.useDocker(async (args) => {
@@ -168,6 +168,21 @@ describe('SandboxService memory cap', () => {
       gate.resume();
       await started;
       expect(runs).toHaveLength(1);
+    });
+
+    it('holds a third agent spawn until one of two ends, and starts a spawn without an agent at once', async () => {
+      const { sandbox } = gated(2);
+      const hold = { onPaused: () => undefined, agent: { step: 'plan', onWait: () => undefined } };
+      await sandbox.spawn(launch('plan'), hold);
+      await sandbox.spawn(launch('plan'), hold);
+      const third = sandbox.spawn(launch('plan'), hold);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(runs).toHaveLength(2);
+      await sandbox.spawn(launch('plan'), { onPaused: () => undefined });
+      expect(runs).toHaveLength(3);
+      children[0]?.emit('close', 0);
+      await third;
+      expect(runs).toHaveLength(4);
     });
 
     it('starts held spawns in the order they came', async () => {

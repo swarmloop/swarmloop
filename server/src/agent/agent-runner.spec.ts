@@ -1,4 +1,4 @@
-import type { EventEmitter } from 'events';
+import { EventEmitter } from 'events';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { mkdtemp, readFile } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -12,6 +12,8 @@ import type { LiveHub } from '../live/live.hub';
 import type { AgentRunInput } from './agent-runner';
 import { AGENT_CONTINUE, AgentProcessRunner, readSession } from './agent-runner';
 import { AGENT_BACKGROUND_KILLED_CONTINUE } from './agent-session';
+import { AppConfig } from '../config/env';
+import { testEnv } from '../config/env.spec-helpers';
 import { ContainerGate } from '../sandbox/container-gate';
 import { heldSpawn } from '../sandbox/container-gate.spec-helpers';
 import { SERVER_PAUSE_NOTE } from '../contract/server-pause';
@@ -219,6 +221,46 @@ describe('AgentProcessRunner while the server is paused', () => {
     const result = await running;
     expect(suspended).toEqual([]);
     expect(reached).toHaveBeenCalledTimes(1);
+    expect(result.output).toContain('agent-output');
+  });
+});
+
+describe('AgentProcessRunner while every agent place is busy', () => {
+  it('says it waits for a place, starts when one is free, and counts its time from its own start', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-agent-place-'));
+    mkdirSync(join(root, 'data'), { recursive: true });
+    writePriceCache(root);
+    const gate = new ContainerGate(new AppConfig(testEnv({ AGENTS_PARALLEL: 1 })));
+    const open = fakeChild([], 0);
+    open.on = EventEmitter.prototype.on.bind(open);
+    const children = [open, fakeChild(['agent-output\n'], 0)];
+    const spawn = jest.fn(heldSpawn(gate, () => Promise.resolve(children.shift() as EventEmitter)));
+    let said!: () => void;
+    const noted = new Promise<void>((resolve) => (said = resolve));
+    const live = {
+      log: jest.fn(({ body }: { body: string }) => body === 'Waiting for a free agent place (1 of 1 busy)\n' && said()),
+      dropSpend: jest.fn(),
+      changed: jest.fn(),
+    };
+    const clock = new FakeClock();
+    const runner = new AgentProcessRunner(
+      config(root),
+      clock,
+      sandbox(spawn),
+      new RunStop(),
+      live as unknown as LiveHub,
+    );
+    const files = (name: string): string => join(root, 'data', `run1-${name}-output.txt`);
+    const first = runner.run(input(root, files('first'), { resumeChatId: null }));
+    await new Promise((resolve) => setImmediate(resolve));
+    const second = runner.run(input(root, files('second'), { resumeChatId: null }));
+    await noted;
+    expect(gate.agentWait('run1').steps).toEqual(['implement']);
+    clock.advance(10 * 60_000);
+    open.emit('close', 0);
+    await first;
+    const result = await second;
+    expect(result.durationMs).toBe(0);
     expect(result.output).toContain('agent-output');
   });
 });

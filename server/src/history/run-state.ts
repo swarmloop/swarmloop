@@ -18,6 +18,8 @@ export interface StateFacts {
   needsAnswers?: boolean;
   /** The run went back to implementation after a review or pipeline return. */
   returned?: boolean;
+  /** The words of an agent that waits for a free place; live only, never stored. */
+  agentPlace?: string;
   /** Why a blocked run is blocked. */
   blockCode?: string;
 }
@@ -112,7 +114,11 @@ export function deriveState(run: StateRow, facts: StateFacts = {}): { state: Run
   switch (run.status) {
     case 'running':
       if (facts.recovering) return { state: 'recovering', reason: stored };
-      return { state: facts.stopping ? 'stopping' : 'running', reason: null };
+      if (facts.stopping) return { state: 'stopping', reason: null };
+      return {
+        state: 'running',
+        reason: facts.agentPlace ? { code: REASON.agentPlace, message: facts.agentPlace } : null,
+      };
     case 'done': {
       const outcome = readOutcome(run.mergeOutcome);
       return { state: outcome ? ('merged' in outcome ? 'merged' : 'closed') : 'done', reason: stored };

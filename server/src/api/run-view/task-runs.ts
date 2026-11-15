@@ -16,6 +16,7 @@ export async function taskRuns(
   pipeline: PipelineService,
   sources: StateSources,
   live?: LiveHub,
+  place: (key: string) => string | undefined = () => undefined,
 ): Promise<TaskRuns> {
   const children: TaskRuns = new Map();
   const tasks = taskLayers(documents).flatMap((layer) => layer.tasks);
@@ -24,7 +25,7 @@ export async function taskRuns(
   }
   const durations = await runs.durationByRun(rows.map((row) => row.id));
   const planned = rows.filter((child) => child.taskId && tasks.some((task) => task.id === child.taskId));
-  const states = await ownStates(sources, planned, (key) => pipeline.claimed(key));
+  const states = await ownStates(sources, planned, (key) => pipeline.claimed(key), place);
   const notes = await sources.documents.latestDocuments(
     planned.map((child) => child.id),
     ['interruption'],
