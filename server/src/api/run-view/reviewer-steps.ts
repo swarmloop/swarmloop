@@ -23,7 +23,7 @@ import { requireRun } from '../run-queries-run';
 import type { stepMeta } from '../run-queries-run';
 import { visitLogSize } from '../run-queries-log';
 import { decisionStatus, hasOutput, reviewerOutcome, roundLog } from './chips';
-import { belongsToVisit, documentView, legacyLogs } from './documents';
+import { belongsToVisit, documentView } from './documents';
 import { effortOf, exchangesOf, samplesOf } from './visit-parts';
 
 /** What the reviewer steps read of the service that builds them. */
@@ -103,8 +103,8 @@ export class ReviewerSteps {
         memPeak: stat.memPeak,
         killReason: stat.killReason,
         decision: verdict ? `decision: ${verdict}` : null,
-        ...visitLogSize(config, run, name, stat, documents),
-        documents: [...owned, ...legacyLogs(documents, stat)].map(documentView),
+        ...visitLogSize(config, run, name, stat),
+        documents: owned.map(documentView),
         exchanges: [],
         samples: samplesOf(samples, stat.id),
       };
@@ -158,14 +158,13 @@ export class ReviewerSteps {
         memPeak: stat.memPeak,
         killReason: stat.killReason,
         decision: verdict ? `decision: ${verdict}` : null,
-        ...visitLogSize(config, run, name, stat, documents, {
+        ...visitLogSize(config, run, name, stat, {
           latest: index === stats.length - 1,
           reviewRunning: parentRunning,
         }),
-        documents: [
-          ...documents.filter((document) => belongsToVisit(document, stat.id, kinds, index === stats.length - 1)),
-          ...legacyLogs(documents, stat),
-        ].map(documentView),
+        documents: documents
+          .filter((document) => belongsToVisit(document, stat.id, kinds, index === stats.length - 1))
+          .map(documentView),
         exchanges: exchangesOf(exchanges, stat.id),
         samples: samplesOf(samples, stat.id),
       };

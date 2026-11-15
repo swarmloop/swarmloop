@@ -186,7 +186,6 @@
   "run": {
     "agentCalls": 0,
     "attemptsPipeline": 0,
-    "attemptsQa": 0,
     "attemptsReview": 0,
     "currentStep": "checks",
     "runtime": "cursor",

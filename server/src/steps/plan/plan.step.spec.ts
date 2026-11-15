@@ -461,7 +461,7 @@ describe('plan step', () => {
       expect(result.exitCode).toBe(1);
       expect(run?.status).toBe('blocked');
       expect(JSON.parse(run?.stateReason ?? '{}').code).toBe('IMAGE_MISSING');
-      expect([run?.attemptsReview, run?.attemptsQa, run?.attemptsPipeline, run?.agentCalls]).toEqual([0, 0, 0, 0]);
+      expect([run?.attemptsReview, run?.attemptsPipeline, run?.agentCalls]).toEqual([0, 0, 0]);
       expect(agent).not.toHaveBeenCalled();
     } finally {
       await app.close();

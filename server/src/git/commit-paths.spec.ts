@@ -1,3 +1,7 @@
+import { execFileSync } from 'child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { allowedPaths, deniedIndexPaths, isDenied, parsePaths, renderPaths, stageSelection } from './commit-paths';
 
 describe('commit paths', () => {
@@ -51,5 +55,23 @@ describe('CI paths', () => {
     expect(allowedPaths('demo', porcelain, ['.env', '.github/workflows'])).toEqual([
       { repo: 'demo', path: '.gitlab-ci.yml' },
     ]);
+  });
+
+  it('does not stage a denied file inside a new directory', () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-commit-nested-'));
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: root });
+      mkdirSync(join(root, 'fresh'));
+      writeFileSync(join(root, 'fresh', 'keep.ts'), 'export const keep = 1;\n');
+      writeFileSync(join(root, 'fresh', '.env'), 'TOKEN=secret\n');
+      const porcelain = execFileSync('git', ['status', '--porcelain=v1', '-z', '-uall'], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+      expect(stageSelection(porcelain, ['.env']).add).toEqual(['fresh/keep.ts']);
+      expect(allowedPaths('demo', porcelain, ['.env'])).toEqual([{ repo: 'demo', path: 'fresh/keep.ts' }]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

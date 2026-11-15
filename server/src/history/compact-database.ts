@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import { dirname } from 'path';
+import type { Migration } from 'typeorm';
 import { freeBytes } from '../core/free-bytes';
 import type { GuardedDataSource } from './guarded-data-source';
 
@@ -14,9 +15,13 @@ function mib(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 }
 
+function deletesData(migration: Migration): boolean {
+  return (migration.instance as { deletesData?: boolean } | undefined)?.deletesData === true;
+}
+
 /**
- * VACUUM once after the migration that emptied the stored logs ran: the file only shrinks then. It needs room for a
- * copy of the database and its WAL, so it skips with a log line when the disk has less. A failed compaction is logged
+ * VACUUM once after a migration that deletes data ran (it says so with `deletesData = true`): the file only shrinks
+ * then. It needs room for a copy of the database and its WAL, so it skips with a log line when the disk has less. A failed compaction is logged
  * and skipped: the database stays as it was and the server starts.
  */
 export async function compactAfterLogMigration(
@@ -24,10 +29,7 @@ export async function compactAfterLogMigration(
   free: (directory: string) => number | Promise<number> = freeBytes,
 ): Promise<void> {
   const file = dataSource.options.database;
-  if (
-    typeof file !== 'string' ||
-    !dataSource.migrated.some((migration) => migration.name?.startsWith('EmptyLogBodies'))
-  ) {
+  if (typeof file !== 'string' || !dataSource.migrated.some(deletesData)) {
     return;
   }
   const before = sizeOf(file);

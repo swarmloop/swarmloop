@@ -4,7 +4,9 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
 import { repositoryVisit } from '../history/repository.spec-helpers';
+import { DocumentRepository } from '../history/document.repository';
 import { EventRepository } from '../history/event.repository';
+import { DropUnusedData1796100000000 } from '../history/migrations/1796100000000-drop-unused-data';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { boot, save } from '../testing/runs.spec-helpers';
@@ -90,19 +92,35 @@ describe('a run with a 10 MB log', () => {
     });
   });
 
-  it('keeps the stored log of a visit from before attempts in the step and history answers', async () => {
+  it('opens the run page of a merged run after its log documents are deleted', async () => {
     await withBigRun(async (queries, app) => {
-      const run = await save(app.get(RunRepository), 'proj-old', 'implement', 'waiting');
+      const run = await save(app.get(RunRepository), 'proj-merged', 'implement', 'done');
+      await app.get(DataSource).query(`UPDATE runs SET merge_outcome = ? WHERE id = ?`, ['{"merged":{}}', run.id]);
       await app.get(VisitRepository).finishVisit(run, {
         ...repositoryVisit(),
         step: 'implement',
-        documents: [{ kind: 'log', fileName: '', body: 'old one\nold two' }],
+        usd: 1.5,
+        tokensIn: 10,
+        tokensOut: 5,
+        documents: [
+          { kind: 'log', fileName: '', body: 'old one\nold two' },
+          { kind: 'report', fileName: '', body: 'the report' },
+        ],
       });
-      const step = await queries.step('proj-old', 'implement');
-      expect(step.visits[0].documents.map((item) => item.body)).toEqual(['old one\nold two']);
-      expect(step.visits[0]).toMatchObject({ logBytes: 15, logLines: 2 });
-      const history = await queries.readHistory('proj-old');
-      expect(history.documents.map((item) => item.kind)).toEqual(['log']);
+      const dataSource = app.get(DataSource);
+      const queryRunner = dataSource.createQueryRunner();
+      try {
+        await new DropUnusedData1796100000000().up(queryRunner);
+      } finally {
+        await queryRunner.release();
+      }
+      const step = await queries.step('proj-merged', 'implement');
+      expect(step.visits[0]).toMatchObject({ usd: 1.5, tokensIn: 10, tokensOut: 5 });
+      const history = await queries.readHistory('proj-merged');
+      expect(history.documents.map((item) => item.kind)).toEqual(['report']);
+      expect(await app.get(DocumentRepository).listDocuments(run.id)).toEqual([
+        expect.objectContaining({ kind: 'report' }),
+      ]);
     });
   });
 

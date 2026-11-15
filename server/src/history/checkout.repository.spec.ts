@@ -1,6 +1,4 @@
-import { DataSource } from 'typeorm';
 import { CheckoutRepository } from './checkout.repository';
-import { DenyPathEntity } from './entities';
 import { repositoryDatabase } from './repository.spec-helpers';
 
 describe('CheckoutRepository', () => {
@@ -18,9 +16,6 @@ describe('CheckoutRepository', () => {
       expect(paste.body).toBe('first');
       await checkouts.savePaste('run-1', 'https://example.test/paste', 'updated');
       expect(await checkouts.listPastes('run-1')).toEqual([{ ...paste, body: 'updated' }]);
-      const denyPaths = db.app.get(DataSource).getRepository(DenyPathEntity);
-      await denyPaths.save([{ pattern: 'z/*' }, { pattern: 'a/*' }]);
-      expect(await checkouts.listDenyPaths()).toEqual(['a/*', 'z/*']);
     } finally {
       await db.close();
     }

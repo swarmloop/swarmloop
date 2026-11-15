@@ -29,7 +29,7 @@ import { EnvironmentService } from '../environment/environment.service';
 
 import { httpStatus } from './runs.controller';
 
-import { boot, remember, featureWorktree, denyEnv, git, isAncestor, hostFetch } from '../testing/runs.spec-helpers';
+import { boot, remember, featureWorktree, git, isAncestor, hostFetch } from '../testing/runs.spec-helpers';
 
 // These specs diff the temp folder, so they use a folder of their own: jest workers share the real one.
 jest.mock('os', () => {
@@ -174,67 +174,6 @@ describe('runs api', () => {
       const body = (await documents.latestBody('proj-52', 'merge_request')) ?? '';
       expect(body).toContain('draft: true');
       expect(body).toContain('Ships it.');
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('commits allowed dirt before rebase and leaves .env unstaged', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-commit-'));
-    const { tree, clone } = featureWorktree(root, 'proj-52');
-    writeFileSync(join(tree, 'src', 'dirty.ts'), 'export const dirty = 1;\n');
-    writeFileSync(join(tree, '.env'), 'TOKEN=secret\n');
-    git(clone, ['switch', 'main']);
-    writeFileSync(join(clone, 'src', 'base.ts'), 'export const base = 1;\n');
-    git(clone, ['add', 'src/base.ts']);
-    git(clone, ['commit', '-m', 'base']);
-    git(clone, ['push', 'origin', 'main']);
-    const base = git(clone, ['rev-parse', 'main']);
-    const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-52 started' }) };
-    const app = await boot(root, pipeline);
-    try {
-      await denyEnv(app);
-      const runs = app.get(RunRepository);
-      const documents = app.get(DocumentRepository);
-      const run = await remember(runs, documents, 'proj-52', 'done', 'done');
-      await documents.putDocument(run, 'implementation', '- changed the field\n');
-      const result = await app.get(RunRebaseService).rebase('proj-52');
-      expect(result).toEqual({ key: 'proj-52', status: 'started' });
-      expect(httpStatus(result)).toBe(202);
-      const names = git(tree, ['show', '--name-only', '--format=', 'HEAD']);
-      expect(names).toContain('src/dirty.ts');
-      expect(names).not.toContain('.env');
-      expect(git(tree, ['status', '--porcelain'])).toContain('.env');
-      git(tree, ['merge-base', '--is-ancestor', base, 'HEAD']);
-      expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-52-ship-the-field');
-      expect((await runs.findRun('proj-52'))?.currentStep).toBe('code-review');
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('leaves a done run unchanged when only a denied path is dirty', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-denied-'));
-    const { tree } = featureWorktree(root, 'proj-53');
-    writeFileSync(join(tree, '.env'), 'TOKEN=1\n');
-    git(tree, ['add', '.env']);
-    git(tree, ['commit', '-m', 'env']);
-    writeFileSync(join(tree, '.env'), 'TOKEN=2\n');
-    const head = git(tree, ['rev-parse', 'HEAD']);
-    const pipeline = { startDetached: jest.fn() };
-    const app = await boot(root, pipeline);
-    try {
-      await denyEnv(app);
-      const runs = app.get(RunRepository);
-      const documents = app.get(DocumentRepository);
-      await remember(runs, documents, 'proj-53', 'done', 'done');
-      await expect(app.get(RunRebaseService).rebase('proj-53')).rejects.toThrow('demo rebase failed');
-      const fresh = await runs.findRun('proj-53');
-      expect(fresh?.status).toBe('done');
-      expect(fresh?.currentStep).toBe('done');
-      expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
-      expect(git(tree, ['status', '--porcelain'])).toContain('.env');
-      expect(pipeline.startDetached).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }

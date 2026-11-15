@@ -2,7 +2,6 @@ import { ConnectionEntity, HostAppEntity, IntegrationSecretEntity, UserSettingEn
 import { CredentialCooldownEntity } from './credential-cooldown.entity';
 import { RunEntity } from './run.entity';
 import { FlakyTestEntity } from './flaky-test.entity';
-import { RuntimeCooldownEntity } from './runtime-cooldown.entity';
 import { SessionEntity } from './session.entity';
 import { StepStatEntity } from './step-stat.entity';
 import { Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
@@ -139,15 +138,6 @@ export class CheckoutEntity {
 
   @Column({ type: 'text' })
   path!: string;
-}
-
-@Entity('deny_paths')
-export class DenyPathEntity {
-  @PrimaryGeneratedColumn()
-  id!: number;
-
-  @Column({ unique: true })
-  pattern!: string;
 }
 
 @Entity('pastes')
@@ -338,12 +328,10 @@ export const entities = [
   HttpCallEntity,
   PasteEntity,
   CheckoutEntity,
-  DenyPathEntity,
   FlowEntity,
   StepEventEntity,
   CheckCommandEntity,
   CommandEntity,
-  RuntimeCooldownEntity,
   FlakyTestEntity,
   SessionEntity,
   HostAppEntity,

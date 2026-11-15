@@ -4,7 +4,6 @@ import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
 import { SwarmloopEnv } from '../../config/env';
-import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
 import { resumableChat } from '../../agent/agent-session';
 import { isSubtask, settled, withStatuses } from '../../contract/subtask';
@@ -90,7 +89,6 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     kernel: StepKernel,
     sandbox: SandboxService,
     private readonly publisher: RebasedPublisher,
-    private readonly checkouts: CheckoutRepository,
     launcher: AgentLauncher,
     private readonly environments: EnvironmentService,
     private readonly split: SplitImplementStep,
@@ -295,7 +293,6 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       config: this.config,
       documents: this.documents,
       flows: this.flows,
-      checkouts: this.checkouts,
       publisher: this.publisher,
       environments: this.environments,
       step: this.name,

@@ -1,12 +1,9 @@
 import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import type { Repository } from 'typeorm';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { writeEnvOverrides } from '../../testing/env.spec-helpers';
-import { DenyPathEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { PipelineModule } from '../../pipeline/pipeline.module';
@@ -29,8 +26,6 @@ export async function boot(root: string, codeHost = 'gitlab', host: { baseUrl?: 
   const app = await Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   }).compile();
-  const deny = app.get<Repository<DenyPathEntity>>(getRepositoryToken(DenyPathEntity));
-  await deny.save(deny.create({ pattern: '.env' }));
   return app;
 }
 
@@ -73,6 +68,7 @@ export function featureTree(root: string, key: string): string {
   git(clone, ['push', '-u', 'origin', 'main']);
   git(clone, ['switch', '-c', 'holder']);
   mkdirSync(join(tree, '..'), { recursive: true });
+  writeFileSync(join(clone, '.git', 'info', 'exclude'), '.env\n');
   git(clone, ['worktree', 'add', '-b', `feature/${key}-ship-the-field`, tree, 'main']);
   return tree;
 }

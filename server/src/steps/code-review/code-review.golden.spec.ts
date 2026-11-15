@@ -11,7 +11,6 @@ import { AppConfig } from '../../config/env';
 import { StepEventLog } from '../../history/step-event.log';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { CheckoutRepository } from '../../history/checkout.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { EventRepository } from '../../history/event.repository';
 import { FlowRepository } from '../../history/flow.repository';
@@ -55,7 +54,6 @@ describe('code-review step golden traces', () => {
         app.get(AppConfig),
         app.get(StepEventLog),
       ),
-      app.get(CheckoutRepository),
       app.get(EventRepository),
       app.get(CheckoutService),
       app.get(SandboxService),

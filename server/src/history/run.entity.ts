@@ -19,20 +19,11 @@ export class RunEntity {
   @Column()
   runtime!: string;
 
-  @Column({ name: 'requirements_via' })
-  requirementsVia!: string;
-
-  @Column({ name: 'issue_tracker' })
-  issueTracker!: string;
-
   @Column({ name: 'code_host' })
   codeHost!: string;
 
   @Column({ name: 'attempts_review', type: 'integer', default: 0 })
   attemptsReview!: number;
-
-  @Column({ name: 'attempts_qa', type: 'integer', default: 0 })
-  attemptsQa!: number;
 
   @Column({ name: 'attempts_pipeline', type: 'integer', default: 0 })
   attemptsPipeline!: number;

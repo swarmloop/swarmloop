@@ -2,11 +2,8 @@ import 'reflect-metadata';
 import { execFileSync } from 'child_process';
 import { Test } from '@nestjs/testing';
 import { EnvironmentService } from '../environment/environment.service';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import type { Repository } from 'typeorm';
-import { DenyPathEntity } from '../history/entities';
 import { writeEnvOverrides } from './env.spec-helpers';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { AuthModule } from '../auth/auth.module';
@@ -151,11 +148,6 @@ export function featureWorktree(root: string, key: string, repo = 'demo'): { tre
   mkdirSync(join(tree, '..'), { recursive: true });
   git(clone, ['worktree', 'add', '-b', `feature/${key}-ship-the-field`, tree, 'main']);
   return { tree, clone };
-}
-
-export async function denyEnv(app: Awaited<ReturnType<typeof boot>>): Promise<void> {
-  const deny = app.get<Repository<DenyPathEntity>>(getRepositoryToken(DenyPathEntity));
-  await deny.save(deny.create({ pattern: '.env' }));
 }
 
 export function isAncestor(cwd: string, base: string): boolean {

@@ -1,7 +1,6 @@
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { FlowRepository } from '../../history/flow.repository';
-import type { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
 import type { AppConfig } from '../../config/env';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -27,7 +26,6 @@ export interface RebaseDeps {
   config: AppConfig;
   documents: DocumentRepository;
   flows: FlowRepository;
-  checkouts: CheckoutRepository;
   publisher: RebasedPublisher;
   environments: EnvironmentService;
   step: string;
@@ -55,7 +53,7 @@ export async function settleRebase(
     repos: names,
     branch,
     prompt: ctx.opened.run.prompt,
-    denied: await deps.checkouts.listDenyPaths(),
+    denied: [],
     message: commitMessage(key, summaryForBranch(requirements, key)),
     hosts: await deps.publisher.hostsFor(ctx.opened.run),
     journal: runJournal(deps.documents, ctx.opened.run),

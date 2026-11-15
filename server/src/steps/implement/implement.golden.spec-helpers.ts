@@ -11,7 +11,6 @@ import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import type { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { EnvironmentService } from '../../environment/environment.service';
 import { runGit } from '../../git/git-repo.spec-helpers';
-import { CheckoutRepository } from '../../history/checkout.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { FlowRepository } from '../../history/flow.repository';
 import { RunRepository } from '../../history/run.repository';
@@ -76,7 +75,6 @@ export async function goldenRun(input: GoldenCase): Promise<PipelineResult> {
         ? new ImplementStep(
             ...common,
             app.get(RebasedPublisher),
-            app.get(CheckoutRepository),
             app.get(AgentLauncher),
             app.get(EnvironmentService),
             app.get(SplitImplementStep),

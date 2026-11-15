@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { StepKernel } from '../step-kernel';
-import { CheckoutRepository } from '../../history/checkout.repository';
 import { StepName } from '../../contract/steps';
 import { OpenedStep } from '../../steps/step-run';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -45,7 +44,6 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
 
   constructor(
     kernel: StepKernel,
-    private readonly checkouts: CheckoutRepository,
     private readonly publisher: RebasedPublisher,
     private readonly runStop: RunStop,
   ) {
@@ -75,7 +73,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
       }
       return commitResult('waiting', `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
     }
-    const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, await this.checkouts.listDenyPaths());
+    const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, []);
     const rerun = planned.length === 0 && (await this.reader.newer(key, ARTIFACTS.ciRerun, ARTIFACTS.commit));
     if (!rerun && planned.length === 0 && !(await this.somethingToPush(trees, branch, named))) {
       if (await this.publishedHead(trees, branch)) {
@@ -154,7 +152,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
 
   /** The paths a commit would take, or null when the tree is unchanged. */
   private async preview(trees: Tree[], branch: string, named: string | null): Promise<string | null> {
-    const planned = await this.plan(trees, await this.checkouts.listDenyPaths());
+    const planned = await this.plan(trees, []);
     if (planned.length > 0) {
       return renderPaths(planned);
     }
@@ -226,10 +224,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     message: string,
     run: PublishedBy,
   ): Promise<boolean> {
-    const denied = await this.checkouts.listDenyPaths();
-    const pushed = await Promise.all(
-      trees.map((tree) => this.publishTree(tree, planned, branch, message, denied, run)),
-    );
+    const pushed = await Promise.all(trees.map((tree) => this.publishTree(tree, planned, branch, message, [], run)));
     return pushed.some(Boolean);
   }
 

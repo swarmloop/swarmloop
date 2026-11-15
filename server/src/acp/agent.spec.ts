@@ -602,7 +602,6 @@ function flowView(view: FlowFixture): FlowView {
       tokens: 0,
       usd: 0,
       attemptsReview: 0,
-      attemptsQa: 0,
       attemptsPipeline: 0,
       attemptsChecks: 0,
       cpuPeak: 0,
