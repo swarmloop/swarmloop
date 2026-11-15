@@ -31,8 +31,10 @@ interface CommandEnd {
   cancelled: boolean;
   /** Set when the call ended with an exit code that is an answer, not a failure. Events recorded before it have none. */
   answer?: true;
-  /** The last lines of the output, redacted. Null when there is none to show. */
+  /** The whole output the caller passed, redacted. Null when there is none to show. */
   output: string | null;
+  /** Lines the command printed that output does not hold; set only when positive. */
+  omittedLines?: number;
 }
 
 interface AgentProfileSummary {

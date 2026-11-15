@@ -25,6 +25,16 @@ describe('LoopDetector', () => {
     expect(detector.pending()).toBe('end');
   });
 
+  it('counts targets that share their first 300 characters as a repeat and marks the cut command', () => {
+    const detector = new LoopDetector(2);
+    detector.note(shell('a'.repeat(300) + 'b'.repeat(100)));
+    const verdict = detector.note(shell('a'.repeat(300) + 'c'.repeat(100)));
+
+    expect(verdict.state).toBe('hint');
+    expect(verdict.command).toHaveLength(301);
+    expect(verdict.command.endsWith('…')).toBe(true);
+  });
+
   it('reports the command, its error line and the count', () => {
     const detector = new LoopDetector(2);
     const [, hint] = times(2, shell('npm test')).map((event) => detector.note(event));

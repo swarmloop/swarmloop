@@ -5,8 +5,6 @@ import type { StepEvent, StepEventBody } from '../contract/step-events';
 import { isReadOnlyGit } from '../contract/git-reads';
 import type { Clock } from './clock';
 
-const OUTPUT_LINES = 40;
-
 /** Where the events of one attempt go. Writes run one after the other, in `seq` order. */
 interface Sequence {
   next: number;
@@ -119,8 +117,10 @@ interface CommandOutcome {
   signal?: string | null;
   timedOut?: boolean;
   cancelled?: boolean;
-  /** What the command printed. The event keeps its last lines, for a failure or a command that is not a read. */
+  /** What the command printed. The event keeps it whole, for a failure or a command that is not a read. */
   output?: string;
+  /** Every line the command printed; can be more than `output` holds. */
+  outputLines?: number;
 }
 
 function isAnswer(spec: CommandSpec, outcome: CommandOutcome): boolean {
@@ -138,8 +138,13 @@ function keptOutput(spec: CommandSpec, outcome: CommandOutcome): string | null {
   if (!outcome.output || (!failed && isReadOnlyGit(spec.executable, spec.args))) {
     return null;
   }
-  const lines = outcome.output.replace(/\s+$/, '').split('\n');
-  return lines.slice(-OUTPUT_LINES).join('\n') || null;
+  return outcome.output.replace(/\s+$/, '') || null;
+}
+
+function omittedLinesOf(outcome: CommandOutcome, kept: string | null): { omittedLines?: number } {
+  const omitted =
+    kept === null || outcome.outputLines === undefined ? 0 : outcome.outputLines - kept.split('\n').length;
+  return omitted > 0 ? { omittedLines: omitted } : {};
 }
 
 /** Records `command.started` and returns the function that records `command.finished`. Outside a scope both do nothing. */
@@ -159,7 +164,8 @@ export function startCommandSpan(spec: CommandSpec): (outcome: CommandOutcome) =
     executable: spec.executable,
     args: spec.args,
   });
-  return (outcome) =>
+  return (outcome) => {
+    const output = keptOutput(spec, outcome);
     recordStepEvent({
       kind: 'command.finished',
       spanId,
@@ -169,6 +175,8 @@ export function startCommandSpan(spec: CommandSpec): (outcome: CommandOutcome) =
       timedOut: outcome.timedOut ?? false,
       cancelled: outcome.cancelled ?? false,
       ...(isAnswer(spec, outcome) ? { answer: true as const } : {}),
-      output: keptOutput(spec, outcome),
+      output,
+      ...omittedLinesOf(outcome, output),
     });
+  };
 }

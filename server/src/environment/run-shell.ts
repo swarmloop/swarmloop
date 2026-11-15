@@ -175,7 +175,7 @@ export async function runShell(
   }
   add(`exit ${exitCode}`);
   show(true);
-  finish({ exitCode, timedOut, output: lines.join('\n') });
+  finish({ exitCode, timedOut, output: lines.join('\n'), outputLines: total });
   await new Promise<void>((done) => file.end(done));
   if (!check) {
     mkdirSync(dirname(outputFile), { recursive: true });

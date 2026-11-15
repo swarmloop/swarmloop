@@ -22,12 +22,10 @@ export function newChatReason(
   return hasFile ? 'runtime changed' : 'no stored chat';
 }
 
-const MESSAGE_CHARS = 600;
-
-/** Records what the agent did: a tool call, or its own text cut to 600 characters. */
+/** Records what the agent did: a tool call, or its own whole text. */
 export function recordWork(work: AgentWork): void {
   if (work.kind === 'message') {
-    recordStepEvent({ kind: 'agent.message', text: work.text.slice(0, MESSAGE_CHARS), chars: work.text.length });
+    recordStepEvent({ kind: 'agent.message', text: work.text, chars: work.text.length });
     return;
   }
   const { kind: _kind, ...tool } = work;

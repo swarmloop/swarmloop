@@ -310,12 +310,10 @@ export type AgentWork =
     }
   | { kind: 'message'; text: string };
 
-const TARGET_CHARS = 300;
-
 /** The first line of a failed command's output that says more than its exit code. */
 function errorLineOf(outcome: string): string {
   const line = outcome.split('\n').find((text) => text.trim() !== '' && !/^\s*(?:exit|exit code) \d+\s*$/i.test(text));
-  return line?.trim().slice(0, TARGET_CHARS) ?? '';
+  return line?.trim() ?? '';
 }
 
 function workOf(block: Block, roots: string[]): AgentWork | null {
@@ -330,10 +328,10 @@ function workOf(block: Block, roots: string[]): AgentWork | null {
   return {
     kind: 'tool',
     tool: block.type,
-    target: target.slice(0, TARGET_CHARS),
+    target,
     status: !call.done ? 'unfinished' : call.failed ? 'failed' : 'ok',
     durationMs: Math.round(call.closedAt - call.openedAt),
-    resultLine: shell && call.done ? `exit ${call.exit ?? (call.failed ? 1 : 0)}` : first.trim().slice(0, TARGET_CHARS),
+    resultLine: shell && call.done ? `exit ${call.exit ?? (call.failed ? 1 : 0)}` : first.trim(),
     ...(errorLine === '' ? {} : { errorLine }),
   };
 }

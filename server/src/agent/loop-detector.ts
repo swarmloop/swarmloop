@@ -1,3 +1,8 @@
+import { shortLine } from '../contract/short-text';
+
+/** Keeps the loop key and the hint at the size the events had before they held whole targets. */
+const LOOP_TEXT_CHARS = 300;
+
 /** The part of an `agent.tool` event the detector reads. */
 export interface ToolEvent {
   tool: string;
@@ -47,8 +52,8 @@ export class LoopDetector {
       this.reset();
       return this.verdict('watching');
     }
-    const command = normalizeCommand(event.target);
-    const errorLine = event.errorLine ?? '';
+    const command = normalizeCommand(shortLine(event.target, LOOP_TEXT_CHARS));
+    const errorLine = shortLine(event.errorLine ?? '', LOOP_TEXT_CHARS);
     const key = `${command}\u0000${event.resultLine}\u0000${errorLine}`;
     if (key !== this.key) {
       this.reset();
