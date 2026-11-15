@@ -1,12 +1,14 @@
 import 'reflect-metadata';
 
-import { execFileSync } from 'child_process';
-
 import { EventEmitter } from 'events';
 
 import { Test } from '@nestjs/testing';
 
-import { mkdirSync, writeFileSync } from 'fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+
+import { mkdtemp, rm } from 'fs/promises';
+
+import { tmpdir } from 'os';
 
 import { join } from 'path';
 
@@ -20,7 +22,7 @@ import { RunRepository } from '../../history/run.repository';
 
 import { DocumentRepository } from '../../history/document.repository';
 
-import type { AgentRunResult } from '../../agent/agent-runner';
+import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
 
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 
@@ -29,6 +31,12 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { SandboxService } from '../../sandbox/sandbox.service';
 
 import { resultAnswer } from '../../testing/result-answer';
+
+import { git } from '../../testing/git-fixture';
+
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
+
+export { git };
 
 /** The final message of an implement answer: prose for people, then the result block. */
 export function implAnswer(implementation: string[], summary: string[], extra: Record<string, unknown> = {}): string {
@@ -70,6 +78,7 @@ export function result(responseText: string): AgentRunResult {
 }
 
 export async function boot(root: string, agent: jest.Mock) {
+  seedMigratedDatabase(root);
   return Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   })
@@ -78,6 +87,40 @@ export async function boot(root: string, agent: jest.Mock) {
     .overrideProvider(SandboxService)
     .useValue({ assertReady: jest.fn().mockResolvedValue(undefined) })
     .compile();
+}
+
+/**
+ * One root and one application for every test of a file, with one shared agent mock that is reset after each test.
+ * Tests stay apart by run key: each test uses its own key, its own data/<key>-* files and its own clone folder.
+ */
+export function bootOnce() {
+  let app: Awaited<ReturnType<typeof boot>>;
+  let root = '';
+  const agent = jest.fn();
+  beforeAll(async () => {
+    root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-once-'));
+    await writeEnv(root);
+    app = await boot(root, agent);
+  });
+  afterEach(() => {
+    agent.mockReset();
+    jest.restoreAllMocks();
+  });
+  afterAll(async () => {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const clones = (key: string) => join(root, 'clones', key);
+  return {
+    app: () => app,
+    root: () => root,
+    agent,
+    use: (run: (input: AgentRunInput) => unknown) => agent.mockImplementation(run),
+    clone: (key: string, repo: string) => join(clones(key), repo),
+    tree: (key: string, repo: string) => featureTree(root, key, repo, clones(key)),
+    conflicted: (key: string, repo: string) => conflictedTree(root, key, repo, clones(key)),
+    detached: (key: string, repo: string) => detachedTree(root, key, repo, clones(key)),
+  };
 }
 
 export async function seed(
@@ -102,6 +145,7 @@ export async function seed(
 }
 
 export async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeof boot> {
+  seedMigratedDatabase(root);
   mkdirSync(join(root, 'data'), { recursive: true });
   writeFileSync(
     join(root, 'data', 'price-cache-cursor.json'),
@@ -191,9 +235,9 @@ export async function writeEnv(
   });
 }
 
-export function conflictedTree(root: string, key: string, repo: string): string {
-  const tree = featureTree(root, key, repo);
-  const clone = join(root, repo);
+export function conflictedTree(root: string, key: string, repo: string, clones = root): string {
+  const tree = featureTree(root, key, repo, clones);
+  const clone = join(clones, repo);
   git(clone, ['config', 'user.email', 'dev@example.com']);
   git(clone, ['config', 'user.name', 'Dev']);
   mkdirSync(join(tree, 'src'), { recursive: true });
@@ -214,35 +258,59 @@ export function conflictedTree(root: string, key: string, repo: string): string 
   return tree;
 }
 
-export function featureTree(root: string, key: string, repo: string): string {
-  const clone = repoWithMain(root, repo);
+export function featureTree(root: string, key: string, repo: string, clones = root): string {
+  const clone = repoWithMain(clones, repo);
   const worktree = join(root, 'worktrees', key, repo);
   mkdirSync(join(worktree, '..'), { recursive: true });
   git(clone, ['worktree', 'add', '-b', `feature/${key}-ship-the-field`, worktree, 'origin/main']);
   return worktree;
 }
 
-export function detachedTree(root: string, key: string, repo: string): string {
-  const clone = repoWithMain(root, repo);
+export function detachedTree(root: string, key: string, repo: string, clones = root): string {
+  const clone = repoWithMain(clones, repo);
   const worktree = join(root, 'worktrees', key, repo);
   mkdirSync(join(worktree, '..'), { recursive: true });
   git(clone, ['worktree', 'add', '--detach', worktree, 'origin/main']);
   return worktree;
 }
 
-export function repoWithMain(root: string, dirName: string): string {
-  const clone = join(root, dirName);
-  const remote = join(root, `${dirName}.git`);
-  git(root, ['init', '-b', 'main', clone]);
+const repoTemplates = new Map<string, string>();
+let templateFolder: string | undefined;
+
+afterAll(() => {
+  if (templateFolder) rmSync(templateFolder, { recursive: true, force: true });
+  templateFolder = undefined;
+  repoTemplates.clear();
+});
+
+function buildRepoTemplate(dirName: string): string {
+  templateFolder ??= mkdtempSync(join(tmpdir(), 'swarmloop-implement-repo-'));
+  const base = join(templateFolder, dirName);
+  mkdirSync(base, { recursive: true });
+  const clone = join(base, dirName);
+  const remote = join(base, `${dirName}.git`);
+  git(base, ['init', '-b', 'main', clone]);
   writeFileSync(join(clone, 'README'), `${dirName}\n`);
   git(clone, ['add', 'README']);
   git(clone, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '-m', dirName]);
-  git(root, ['init', '--bare', remote]);
+  git(base, ['init', '--bare', remote]);
   git(clone, ['remote', 'add', 'origin', remote]);
   git(clone, ['push', '-u', 'origin', 'main']);
-  return clone;
+  return base;
 }
 
-export function git(cwd: string, args: string[]): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+/** A copy of the one-commit repo of this name and its bare origin under `root`, with origin pointing at the copied bare repo. */
+export function repoWithMain(root: string, dirName: string): string {
+  let base = repoTemplates.get(dirName);
+  if (base === undefined) {
+    base = buildRepoTemplate(dirName);
+    repoTemplates.set(dirName, base);
+  }
+  const clone = join(root, dirName);
+  const remote = join(root, `${dirName}.git`);
+  mkdirSync(root, { recursive: true });
+  cpSync(join(base, dirName), clone, { recursive: true });
+  cpSync(join(base, `${dirName}.git`), remote, { recursive: true });
+  git(clone, ['remote', 'set-url', 'origin', remote]);
+  return clone;
 }
