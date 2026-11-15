@@ -1,7 +1,8 @@
 import 'reflect-metadata';
 import { PersonalCredentials } from '../auth/personal-credentials.service';
 import { HostAppsService } from '../auth/host-apps.service';
-import { redact } from '../core/redact';
+import { AppConfig } from '../config/env';
+import { redact } from '../config/redact';
 import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { runtimeConnections } from '../integrations/agent-runtime/agent-runtime.registry';
 import { createTestApp, type TestApp } from './test-app';
@@ -60,5 +61,18 @@ describe('redaction of what the owners hold', () => {
     await app.close();
 
     expect(redact(line(values))).toBe(line(values));
+  });
+
+  it('masks every secret env value of the shipped test env with no env passed', async () => {
+    await app.close();
+    app = await createTestApp({ realHost: true, env: { SWARMLOOP_TOKEN: MACHINE_TOKEN } });
+    const values = Object.entries(app.app.get(AppConfig).env)
+      .filter(
+        ([name, value]) => /TOKEN|SECRET|KEY|PASSWORD/.test(name) && typeof value === 'string' && value.length >= 4,
+      )
+      .map(([, value]) => value as string);
+
+    expect(values).toContain('token');
+    expect(redact(line(values))).toBe(masked(values));
   });
 });

@@ -11,6 +11,7 @@ export const adapter: CodeHostAdapter = {
   label: githubRules.label,
   baseKey: 'GITHUB_BASE_URL',
   tokenKey: 'GITHUB_TOKEN',
+  tokenPrefixes: ['ghp_', 'github_pat_'],
   create: (env, clock) => new GithubCodeHost(env, clock),
   rules: githubRules,
   connection: githubConnection,

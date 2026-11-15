@@ -65,7 +65,7 @@ export class RunLifecycle implements OnApplicationBootstrap {
         .catch(async (error: unknown) => {
           // A failed lookup must not hide the crash: it is reported below with the key as the step.
           const run = await this.runs.findRun(key).catch(() => null);
-          const failure = reportFailure(run?.currentStep ?? key, error, this.config.env);
+          const failure = reportFailure(run?.currentStep ?? key, error);
           if (run?.status === 'running' && run.ownerPid === process.pid) {
             const now = this.clock.iso();
             writeRunState(run, { status: 'failed', ownerPid: null });

@@ -4,7 +4,8 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { originRef, promptBase } from '../base-ref';
 import type { RebaseHosts } from './types';
-import { git, GIT_LIMITS, gitDetail, originUrl, redact } from '../git';
+import { redact } from '../../config/redact';
+import { git, GIT_LIMITS, gitDetail, originUrl } from '../git';
 import { withGitHostRetries } from '../host-retry';
 import { cloneSource } from './clone-index';
 import { resolveGitPath } from './hidden-worktree';
@@ -109,7 +110,7 @@ async function fetchLocked(
       if (error instanceof SwarmloopError) {
         throw error;
       }
-      const detail = redact(gitDetail(error), secret.trim());
+      const detail = redact(gitDetail(error), { secret: secret.trim() });
       if (detail.includes("couldn't find remote ref")) {
         return false;
       }
@@ -141,6 +142,11 @@ function sshFailure(repo: string, origin: string, registry: CodeHostRegistry, st
   return `${repo} ${step} failed: origin is not ${host.baseKey}`;
 }
 
+/** The text without the token, plain and URI-encoded. It rewrites git's own files, so it masks nothing else. */
+function withoutToken(text: string, token: string): string {
+  return text.split(token).join('***').split(encodeURIComponent(token)).join('***');
+}
+
 /** The fetch URL stays in FETCH_HEAD and the remote-tracking reflog. Drop the token from both. */
 async function clearFetchedToken(cwd: string, branch: string, secret: string): Promise<void> {
   if (!secret.trim()) {
@@ -152,7 +158,7 @@ async function clearFetchedToken(cwd: string, branch: string, secret: string): P
       continue;
     }
     const text = readFileSync(target, 'utf8');
-    const cleaned = redact(text, secret.trim());
+    const cleaned = withoutToken(text, secret.trim());
     if (cleaned !== text) {
       writeFileSync(target, cleaned);
     }

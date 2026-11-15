@@ -45,12 +45,7 @@ export class PrepareStep extends BaseStep<typeof INPUTS> {
   }
 
   protected override failureOf(error: unknown): StepFailure {
-    return reportFailure(
-      this.name,
-      error,
-      this.config.env,
-      error instanceof SwarmloopError ? undefined : gitDetail(error),
-    );
+    return reportFailure(this.name, error, undefined, error instanceof SwarmloopError ? undefined : gitDetail(error));
   }
 
   protected async work(_input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {

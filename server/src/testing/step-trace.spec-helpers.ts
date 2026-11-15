@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { DataSource } from 'typeorm';
-import { redact } from '../core/redact';
+import { redact } from '../config/redact';
 import type { DocumentRepository } from '../history/document.repository';
 import {
   AgentExchangeEntity,

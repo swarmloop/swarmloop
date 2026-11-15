@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { AppConfig } from '../config/env';
-import { redact } from '../core/redact';
+import { redact } from '../config/redact';
 import { rememberSecret } from '../core/secret-sources';
 import type { ConnectionCard, IntegrationCardsView } from '../contract/connections';
 import type { Connection, ConnectionTestResult } from '../integrations/connection';
@@ -84,10 +84,10 @@ export class ConnectionCatalog {
     connection.secrets(fields).forEach(rememberSecret);
     try {
       const result = await connection.test(fields, this.probe);
-      return result.ok ? result : { ok: false, message: redact(result.message, this.config.env) };
+      return result.ok ? result : { ok: false, message: redact(result.message) };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return { ok: false, message: redact(message, this.config.env) };
+      return { ok: false, message: redact(message) };
     }
   }
 

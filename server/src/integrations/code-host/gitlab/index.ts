@@ -10,6 +10,7 @@ export const adapter: CodeHostAdapter = {
   label: gitlabRules.label,
   baseKey: 'GITLAB_BASE_URL',
   tokenKey: 'GITLAB_TOKEN',
+  tokenPrefixes: ['glpat-'],
   create: (env, clock) => new GitlabCodeHost(env, clock),
   rules: gitlabRules,
   connection: gitlabConnection,

@@ -15,6 +15,8 @@ export interface CodeHostAdapter {
   readonly baseKey: keyof CodeHostEnv;
   /** The env key of the host's server token. */
   readonly tokenKey: keyof CodeHostEnv;
+  /** The prefixes of the tokens the host issues, masked wherever a message is redacted. */
+  readonly tokenPrefixes: readonly string[];
   create(env: CodeHostEnv, clock: Clock): AbstractCodeHost;
   readonly rules: CodeHostRules;
   /** How a person connects the host on the Connections page. */

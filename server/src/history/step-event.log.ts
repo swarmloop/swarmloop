@@ -4,7 +4,7 @@ import { FindOptionsWhere, MoreThan, Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
 import type { StepEvent, StepEventKind, StepEventPage } from '../contract/step-events';
 import { Clock } from '../core/clock';
-import { redact } from '../core/redact';
+import { redact } from '../config/redact';
 import { LiveHub } from '../live/live.hub';
 import { RunEntity, StepEventEntity } from './entities';
 
@@ -12,15 +12,15 @@ const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 
 /** Every string of a value, masked. The JSON is not masked as text: a pattern that runs to the end of a line would cut its quotes. */
-function redactStrings(value: unknown, env: object): unknown {
+function redactStrings(value: unknown): unknown {
   if (typeof value === 'string') {
-    return redact(value, env);
+    return redact(value);
   }
   if (Array.isArray(value)) {
-    return value.map((item) => redactStrings(item, env));
+    return value.map((item) => redactStrings(item));
   }
   if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactStrings(item, env)]));
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactStrings(item)]));
   }
   return value;
 }
@@ -58,7 +58,7 @@ export class StepEventLog {
           step,
           seq,
           kind,
-          payload: JSON.stringify(redactStrings(rest, this.config.env)),
+          payload: JSON.stringify(redactStrings(rest)),
           occurredAt,
           recordedAt,
         }),

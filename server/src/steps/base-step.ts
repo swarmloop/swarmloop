@@ -167,7 +167,7 @@ abstract class StepCore implements Step {
         step: this.name,
         root: root(this.config),
         clock: this.clock,
-        sink: stepEventSink(log, this.config.env),
+        sink: stepEventSink(log),
       },
       await log.lastSeq(opened.run.id),
       () => {
@@ -243,7 +243,7 @@ abstract class StepCore implements Step {
 
   /** Describes and logs a failure. A step overrides it to name a better cause. */
   protected failureOf(error: unknown): StepFailure {
-    return reportFailure(this.name, error, this.config.env);
+    return reportFailure(this.name, error);
   }
 
   protected failureText(error: unknown): string {

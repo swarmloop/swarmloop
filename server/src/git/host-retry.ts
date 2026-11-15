@@ -1,7 +1,8 @@
 import type { Clock } from '../core/clock';
 import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { HOST_RETRY_MS, withHostRetries, type HostRetryTiming } from '../integrations/http';
-import { gitDetail, redact } from './git';
+import { redact } from '../config/redact';
+import { gitDetail } from './git';
 
 const TRANSIENT_STDERR = [
   /Could not resolve host/i,
@@ -48,7 +49,7 @@ export async function withGitHostRetries<T>(
     if (!isTransientGitError(errorText(error))) {
       throw error;
     }
-    const detail = redact(errorText(error), secret?.trim()).split('\n')[0].slice(0, 200);
+    const detail = redact(errorText(error), { secret: secret?.trim() }).split('\n')[0].slice(0, 200);
     throw new HostUnavailable(hostOf(remote), detail, new Date(clock.now() + HOST_RETRY_MS).toISOString());
   }
 }

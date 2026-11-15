@@ -1,5 +1,6 @@
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { git, gitDetail, gitRaw, redact } from '../../git/git';
+import { redact } from '../../config/redact';
+import { git, gitDetail, gitRaw } from '../../git/git';
 
 export interface Tree {
   repo: string;
@@ -25,7 +26,7 @@ export async function gitAt(
     return await git(['-C', tree.path, ...args], env);
   } catch (error) {
     const detail = gitDetail(error);
-    const redacted = redact(detail, secret);
+    const redacted = redact(detail, { secret });
     throw new SwarmloopError(`${tree.repo} ${failure}: ${redacted}`);
   }
 }

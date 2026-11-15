@@ -207,7 +207,7 @@ export default tseslint.config(
           patterns: [
             {
               regex:
-                '^(?!.*integrations/(agent-runtime/agent-runtime[.]registry|issue-tracker/issue-tracker[.]registry|requirements-source/requirements-source[.]registry)$).*integrations/',
+                '^(?!.*integrations/(agent-runtime/agent-runtime[.]registry|code-host/code-host-adapters|issue-tracker/issue-tracker[.]registry|requirements-source/requirements-source[.]registry)$).*integrations/',
               message: 'Config may import only registries that list allowed names.',
             },
           ],
