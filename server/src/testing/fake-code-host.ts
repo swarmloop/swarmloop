@@ -15,6 +15,8 @@ import { git } from './runs.spec-helpers';
 type Answer<M extends keyof CodeHost> = Required<CodeHost>[M] extends (...args: never[]) => infer R ? R : never;
 
 const HOST = 'gitlab.example';
+/** The workflow file of this host, which is gitlab. */
+const WORKFLOW_FILE = '.gitlab-ci.yml';
 
 /** A code host whose merge adds one commit to the feature branch of a real origin, with a scripted CI and an outage a spec switches on. */
 export class FakeCodeHost {
@@ -54,15 +56,21 @@ export class FakeCodeHost {
 
   /** The CI of a commit with no script fails with `log` while the commit lacks `file`, and passes once it has it. */
   requireFile(file: string, log: string): void {
-    const bare = `${this.clone}.git`;
-    this.ci.failUntil(log, (sha) => {
-      try {
-        git(bare, ['cat-file', '-e', `${sha}:${file}`]);
-        return true;
-      } catch {
-        return false;
-      }
-    });
+    this.ci.failUntil(log, (sha) => this.holds(sha, file));
+  }
+
+  /** A commit with no script runs CI only when it holds the host's workflow file, and then passes. */
+  runsWithWorkflow(): void {
+    this.ci.runsWhen((sha) => this.holds(sha, WORKFLOW_FILE));
+  }
+
+  private holds(sha: string, file: string): boolean {
+    try {
+      git(`${this.clone}.git`, ['cat-file', '-e', `${sha}:${file}`]);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** The request is closed without a merge, as a person does on the host. */
