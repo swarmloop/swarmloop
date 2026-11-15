@@ -22,6 +22,7 @@ import { StepRegistry } from './step.registry';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { seedMigratedDatabase } from '../testing/migrated-database.spec-helpers';
 
 const SERVICES: [Type<unknown>, Exclude<StepName, 'done'>][] = [
   [RequirementsStep, 'requirements'],
@@ -72,6 +73,7 @@ describe('step registry', () => {
 
   it('has each artifact written by exactly the steps that list it in outputs', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-registry-writers-'));
+    seedMigratedDatabase(root);
     const app = await boot(root);
     try {
       const described = app.get(StepRegistry).describe(testEnv());

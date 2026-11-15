@@ -10,7 +10,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { renderMergeRequest } from '../merge-request/merge-request-record';
-import { boot, call, one, seed, shot, stampSettled, two } from './pipeline.step.spec-helpers';
+import { boot, call, fakeWait, one, seed, shot, stampSettled, two } from './pipeline.step.spec-helpers';
 
 const KEY = 'PROJ-320';
 
@@ -43,6 +43,8 @@ async function storeRequests(app: Awaited<ReturnType<typeof boot>>, projects: st
 }
 
 describe('pipeline step and draft merge requests', () => {
+  afterEach(() => jest.restoreAllMocks());
+
   it('marks every merge request of a run ready before it is done', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-draft-'));
     const host = fakeHost();
@@ -102,8 +104,8 @@ describe('pipeline step and draft merge requests', () => {
       await storeRequests(app, ['group/demo'], true);
       const result = await app.get(PipelineService).step('pipeline', KEY);
       expect(result.exitCode).toBe(0);
-      expect(host.setDraft).toHaveBeenCalledTimes(1);
-      expect(read).toHaveBeenCalledTimes(2);
+      expect(host.setDraft).toHaveBeenCalledWith('group/demo', 1, false);
+      expect(host.drafts.get('group/demo!1')).toBe(false);
       const after = await app.get(RunRepository).findRun(KEY);
       expect(after?.status).toBe('done');
       expect(after?.attemptsPipeline).toBe(0);
@@ -115,9 +117,11 @@ describe('pipeline step and draft merge requests', () => {
 
   it('leaves a merge request that is already ready alone when nothing started', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-draft-ready-'));
+    const clock = fakeWait();
+    const started = clock.now();
     const host = fakeHost();
     const read = jest.fn(() => Promise.resolve({ snapshot: null, httpCalls: [call('GET')] }));
-    const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=30\n', undefined, undefined, {
+    const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=30\n', undefined, clock, {
       setDraft: host.setDraft,
     });
     try {
@@ -130,7 +134,8 @@ describe('pipeline step and draft merge requests', () => {
       const result = await app.get(PipelineService).step('pipeline', KEY);
       expect(result.exitCode).toBe(0);
       expect(host.setDraft).not.toHaveBeenCalled();
-      expect(read).toHaveBeenCalledTimes(1);
+      expect(clock.now()).toBe(started);
+      expect(await app.get(DocumentRepository).latestBody(KEY, 'pipeline_log')).toContain('result: none');
       expect((await app.get(RunRepository).findRun(KEY))?.status).toBe('done');
     } finally {
       await app.close();

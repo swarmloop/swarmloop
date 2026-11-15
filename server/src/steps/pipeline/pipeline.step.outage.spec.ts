@@ -1,7 +1,5 @@
 import 'reflect-metadata';
 
-import { execFileSync } from 'child_process';
-
 import { mkdirSync } from 'fs';
 
 import { mkdtemp, writeFile } from 'fs/promises';
@@ -22,7 +20,8 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 
 import { FetchFailed, HostUnavailable } from '../../core/swarmloop-error';
 
-import { shot, job, call, boot, fakeWait, seed, gitRepo } from './pipeline.step.spec-helpers';
+import { git } from '../../testing/git-fixture';
+import { shot, job, call, boot, fakeWait, seed, gitRepo, commitAll } from './pipeline.step.spec-helpers';
 
 const RETRY_AT = '2026-11-12T15:00:00.000Z';
 const down = () => new HostUnavailable('api.github.com', 'HTTP 503', RETRY_AT, [call('GET')]);
@@ -144,10 +143,8 @@ describe('pipeline step while the host is down', () => {
       gitRepo(cwd, 'https://gitlab.example/group/demo.git');
       mkdirSync(join(cwd, '.github', 'workflows'), { recursive: true });
       await writeFile(join(cwd, '.github', 'workflows', 'ci.yml'), 'name: CI\non: pull_request\n');
-      execFileSync('git', ['checkout', '-b', 'feature/task'], { cwd });
-      execFileSync('git', ['add', '.'], { cwd });
-      execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-m', 'base'], { cwd });
-      const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
+      git(cwd, ['checkout', '-b', 'feature/task']);
+      const sha = commitAll(cwd, 'base');
       await seed(app, key, `project: group/demo\nref: feature/task\nsha: ${sha}\n`);
       const runs = app.get(RunRepository);
       await app.get(DocumentRepository).putDocument((await runs.findRun(key))!, 'repos', 'demo\n');

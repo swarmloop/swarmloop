@@ -81,7 +81,12 @@ describe('AgentLauncher relaunch', () => {
       children.push(child);
       return Promise.resolve(child);
     });
-    const stats = jest.fn().mockResolvedValue({ cpuPercent: 0, rssBytes: 0 });
+    let sampled!: () => void;
+    const firstSample = new Promise<void>((resolve) => (sampled = resolve));
+    const stats = jest.fn(async () => {
+      sampled();
+      return { cpuPercent: 0, rssBytes: 0 };
+    });
     const sandbox = {
       assertReady: jest.fn().mockResolvedValue(undefined),
       spawn,
@@ -126,7 +131,7 @@ describe('AgentLauncher relaunch', () => {
     );
     await until(() => children.length === 1);
     // The first sample comes when the runner reads the stream live, so the chunks below are not replayed in one go.
-    await until(() => stats.mock.calls.length === 1);
+    await firstSample;
     children[0].stdout.write(`${CHAT}\n${toolStarted(FIRST_COMMAND)}\n`);
     await first(children[0], clock);
     await until(() => children.length === 2);
@@ -360,7 +365,7 @@ describe('AgentLauncher runtime of the agent', () => {
       projectFor: projectFor as never,
     });
 
-    expect(runner.run).toHaveBeenCalledTimes(2);
+    expect(runner.run.mock.calls.map((call) => call[0].runtime)).toEqual(['claude', 'codex']);
     expect(runner.run.mock.calls[0][0]).toMatchObject({ runtime: 'claude', project: { cliVolume: 'cli-claude' } });
     expect(runner.run.mock.calls[1][0]).toMatchObject({
       runtime: 'codex',

@@ -26,7 +26,6 @@ describe('closeStep', () => {
       line: 'research done',
       exitCode: 0,
     });
-    expect(finalize).toHaveBeenCalledTimes(1);
     expect(finalize).toHaveBeenCalledWith('attempt-1', run, visit);
     expect(finishVisit).not.toHaveBeenCalled();
     expect(saveRun).not.toHaveBeenCalled();

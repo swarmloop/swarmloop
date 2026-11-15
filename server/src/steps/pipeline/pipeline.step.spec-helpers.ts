@@ -1,7 +1,5 @@
 import 'reflect-metadata';
 
-import { execFileSync } from 'child_process';
-
 import { Test } from '@nestjs/testing';
 
 import { mkdirSync } from 'fs';
@@ -12,6 +10,8 @@ import { join } from 'path';
 
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { writeEnvOverrides } from '../../testing/env.spec-helpers';
+import { git } from '../../testing/git-fixture';
+import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 
 import { AppConfig } from '../../config/env';
 
@@ -38,8 +38,15 @@ export const TOKEN = 'super-secret-token';
 
 export function gitRepo(dir: string, origin: string): void {
   mkdirSync(dir, { recursive: true });
-  execFileSync('git', ['init'], { cwd: dir });
-  execFileSync('git', ['remote', 'add', 'origin', origin], { cwd: dir });
+  git(dir, ['init']);
+  git(dir, ['remote', 'add', 'origin', origin]);
+}
+
+/** Stages everything in `cwd`, commits it as a test author and returns the new commit's sha. */
+export function commitAll(cwd: string, message: string): string {
+  git(cwd, ['add', '.']);
+  git(cwd, ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-m', message]);
+  return git(cwd, ['rev-parse', 'HEAD']);
 }
 
 export const one = `project: group/demo\nref: feature/PROJ-300-ship\n`;
@@ -142,6 +149,7 @@ export async function boot(
     SWARMLOOP_ROOT: root,
   });
   await appendFile(join(root, '.env'), extra);
+  seedMigratedDatabase(root);
   const builder = Test.createTestingModule({
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), PipelineModule],
   });
