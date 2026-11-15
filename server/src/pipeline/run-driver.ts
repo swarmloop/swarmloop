@@ -34,6 +34,7 @@ import type { WorkspaceGuard } from './workspace-guard';
 import { workspaceBlock } from './workspace-guard';
 import type { DiskGuard } from './disk-guard';
 import type { SubtaskPort } from './subtask-port';
+import type { LimitRelease } from '../steps/shared/limit-release';
 import { storedAnswerErrors } from '../steps/shared/stored-answer-errors';
 
 const HOP_LIMIT = STEPS.length * 3;
@@ -51,6 +52,7 @@ export class RunDriver {
     private readonly workspace?: WorkspaceGuard,
     private readonly disk?: DiskGuard,
     private readonly subtasks?: SubtaskPort,
+    private readonly limits?: LimitRelease,
   ) {}
 
   async savedStep(
@@ -73,6 +75,7 @@ export class RunDriver {
     const wake = await this.subtasks?.leavingKey(key);
     const opened = wake ? async () => this.subtasks?.notifyParent(key, wake) : undefined;
     try {
+      if (options.auto !== true) await this.limits?.release(key);
       return await this.driveSteps(name, key, opened ? { ...options, opened } : options);
     } finally {
       await this.subtasks?.notifyParent(key);

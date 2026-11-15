@@ -50,4 +50,17 @@ describe('RuntimeCooldownRepository', () => {
       await db.close();
     }
   });
+
+  it('releases the rows of the given keys and keeps the others', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const cooldowns = db.app.get(RuntimeCooldownRepository);
+      await cooldowns.set(key('claude'), NOW + 60 * MINUTE, false);
+      await cooldowns.set(key('codex'), NOW + 90 * MINUTE, false);
+      await cooldowns.release([key('codex')]);
+      expect([...(await cooldowns.cooling(NOW, [key('claude'), key('codex')]))]).toEqual(['claude']);
+    } finally {
+      await db.close();
+    }
+  });
 });

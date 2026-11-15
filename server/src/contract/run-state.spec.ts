@@ -10,6 +10,7 @@ import {
   RUN_STATES,
   STATE_WORDS,
   stateWord,
+  TIMED_RETRY_CODES,
 } from './run-state';
 
 describe('actionsFor a block that a person can fix', () => {
@@ -52,6 +53,10 @@ describe('actionsFor codes that did not change', () => {
     expect(actionsFor('blocked', ERROR_CODES.DOCKER_UNAVAILABLE)).toEqual(['resume', 'replay']);
     expect(actionsFor('blocked', ERROR_CODES.IMAGE_MISSING)).toEqual(['resume', 'replay']);
     expect(actionsFor('blocked', ERROR_CODES.RESOURCE_UNKNOWN)).toEqual(['replay']);
+  });
+
+  it('lets a person say a usage limit is over: it is a timed wait', () => {
+    expect(TIMED_RETRY_CODES).toContain(ERROR_CODES.RUNTIME_LIMIT);
   });
 
   it('keeps the runtime limit and git auth waits as they were', () => {

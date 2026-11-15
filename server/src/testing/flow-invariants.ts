@@ -37,7 +37,7 @@ function stateRules(key: string, state: RunState, reason: StateReason | null): s
   if ((state === 'failed' || state === 'blocked') && !(code && code in NEEDS_PERSON)) {
     broken.push(`${key} is ${state} with ${code ?? 'no code'}, which is not on the needs-a-person list`);
   }
-  if ((state === 'waiting' || state === 'blocked') && !saysWhatNext(code, reason?.message, reason?.retryAt)) {
+  if ((state === 'waiting' || state === 'blocked') && !saysWhatNext(code, reason)) {
     broken.push(`${key} is ${state} and its reason does not say what happens next`);
   }
   return broken;
@@ -54,8 +54,8 @@ function visitRules(key: string, state: RunState, reason: StateReason | null, st
 }
 
 /** An automatic next try names its time; a stop names the action a person takes. */
-function saysWhatNext(code: string | null, message: string | undefined, retryAt: string | undefined): boolean {
-  if (!code || !message) return false;
-  if (TIMED_RETRY_CODES.includes(code)) return Boolean(retryAt);
+function saysWhatNext(code: string | null, reason: StateReason | null): boolean {
+  if (!code || !reason?.message) return false;
+  if (TIMED_RETRY_CODES.includes(code)) return Boolean(reason.retryAt ?? reason.limit?.resumesAt);
   return AUTO_RETRY_CODES.includes(code) || code in NEEDS_PERSON;
 }
