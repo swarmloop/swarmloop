@@ -93,7 +93,7 @@ export class AttemptLog {
     await this.writing;
   }
 
-  /** Appends the ending line and returns the attempt output. The step result is already in memory, so a log flush that never calls back must not hold the step. */
+  /** Appends the ending line, queues the whole-body write and returns the attempt output. The caller awaits close() for that write. */
   finish(ending: string): string {
     this.output = appendLine(this.output, ending);
     const body = this.visible();

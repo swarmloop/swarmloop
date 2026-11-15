@@ -10,6 +10,7 @@ swarmloop runs coding agents through a fixed flow: requirements, research, plan,
 - Every failure path ends in a state the flow already handles: a return with the reason, a retry with the reason, or a stop that says what to do. Never leave a run in a state that only a person editing data can fix.
 - A delay or outage of something outside swarmloop (a code host, CI, docker, a model's usage limit) is a wait that shows its next try, never a failure. A person is asked only when such a wait runs out, and the message says what was tried.
 - A new idempotency key names the event it is for (the attempt that died, the outage, the commit), never a counter that other writes move, such as a run's revision.
+- Work a call starts (a file write, a timer, a background pass) ends before the call returns, or belongs to an owner that waits for it or stops it on close; writes to one file go one after another.
 - What the dashboard shows of a run comes from that run's own state, live; never from a copy that another run wrote.
 - Never log a secret, put it in a URL, or send it to the browser.
 - Text the dashboard shows is plain words for a person: no raw JSON, no internal ids or class names, each document shown by its kind.

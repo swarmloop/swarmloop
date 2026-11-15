@@ -120,9 +120,9 @@ export async function runShell(
       userId,
       project: { ...launch, shell: command },
     })
-    .catch((error: unknown) => {
+    .catch(async (error: unknown) => {
       finish({ exitCode: null });
-      file.end();
+      await new Promise<void>((done) => file.end(done));
       throw error;
     });
   const take = containerSampler(
