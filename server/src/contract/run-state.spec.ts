@@ -149,6 +149,14 @@ describe('stateWord', () => {
     expect(word('waiting', { code: ERROR_CODES.SUBTASKS_RUNNING }).word).toBe('Waiting for subtasks');
   });
 
+  it('reads the words of a running run whose agent waits for a free place, and offers Stop', () => {
+    const message = 'Waiting for a free agent place (4 of 4 busy)';
+    const reason = { code: REASON.agentPlace, message };
+    expect(word('running', reason)).toMatchObject({ word: message, tone: 'working' });
+    expect(needsPerson('running', reason)).toBe(false);
+    expect(actionsFor('running', reason.code)).toContain('stop');
+  });
+
   it.each([ERROR_CODES.SPEND_LIMIT, REASON.loopLimit, ERROR_CODES.PIPELINE_UNFIXED])(
     'reads Blocked with the reason in the tip for %s',
     (code) => {

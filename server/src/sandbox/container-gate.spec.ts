@@ -1,4 +1,7 @@
+import { AppConfig } from '../config/env';
+import { testEnv } from '../config/env.spec-helpers';
 import { ContainerDropped, ContainerGate } from './container-gate';
+import type { AgentHold } from './container-gate';
 
 describe('ContainerGate', () => {
   it('starts not paused with nothing running', () => {
@@ -70,5 +73,142 @@ describe('ContainerGate', () => {
     gate.resume();
     await other;
     expect(gate.running()).toBe(1);
+  });
+
+  describe('with a limit on agents', () => {
+    const limited = (limit: number): ContainerGate =>
+      new ContainerGate(new AppConfig(testEnv({ AGENTS_PARALLEL: limit })));
+    const hold = (step: string, told: string[] = []): AgentHold => ({ step, onWait: (text) => told.push(text) });
+    const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+    it('with a limit of 2, a third agent waits until one of two ends, then starts', async () => {
+      const gate = limited(2);
+      const first = await gate.admit(jest.fn(), 'run', hold('a'));
+      await gate.admit(jest.fn(), 'run', hold('b'));
+      let started = false;
+      const third = gate.admit(jest.fn(), 'run', hold('c')).then(() => (started = true));
+      await flush();
+      expect(started).toBe(false);
+      expect(gate.running()).toBe(2);
+      first();
+      await third;
+      expect(gate.running()).toBe(2);
+    });
+
+    it('starts held agents in the order they came', async () => {
+      const gate = limited(1);
+      const first = await gate.admit(jest.fn(), 'run', hold('a'));
+      const order: string[] = [];
+      const releases: (() => void)[] = [];
+      const queue = ['b', 'c', 'd'].map((step) =>
+        gate.admit(jest.fn(), 'run', hold(step)).then((release) => {
+          order.push(step);
+          releases.push(release);
+        }),
+      );
+      await flush();
+      first();
+      await flush();
+      releases[0]?.();
+      await flush();
+      releases[1]?.();
+      await Promise.all(queue);
+      expect(order).toEqual(['b', 'c', 'd']);
+    });
+
+    it('does not count check containers in the agent limit', async () => {
+      const gate = limited(2);
+      await gate.admit(jest.fn(), 'run', hold('a'));
+      await gate.admit(jest.fn(), 'run', hold('b'));
+      await gate.admit(jest.fn(), 'run');
+      await gate.admit(jest.fn(), 'run');
+      expect(gate.running()).toBe(4);
+      expect(gate.agentWait('run').running).toBe(2);
+    });
+
+    it('a Stop takes a held agent out of the line and the next one starts on a free place', async () => {
+      const gate = limited(1);
+      const first = await gate.admit(jest.fn(), 'busy', hold('a'));
+      const stopped = gate.admit(jest.fn(), 'stopped', hold('b'));
+      const next = gate.admit(jest.fn(), 'other', hold('c'));
+      await flush();
+      gate.drop('stopped');
+      await expect(stopped).rejects.toBeInstanceOf(ContainerDropped);
+      first();
+      await next;
+      expect(gate.running()).toBe(1);
+    });
+
+    it('lets agents under the limit start at once without saying anything', async () => {
+      const told: string[] = [];
+      const gate = limited(2);
+      await gate.admit(jest.fn(), 'run', hold('a', told));
+      await gate.admit(jest.fn(), 'run', hold('b', told));
+      expect(told).toEqual([]);
+    });
+
+    it('tells a held agent once that it waits, with the busy places', async () => {
+      const told: string[] = [];
+      const gate = limited(1);
+      const first = await gate.admit(jest.fn(), 'run', hold('a'));
+      const second = gate.admit(jest.fn(), 'run', hold('b', told));
+      await flush();
+      first();
+      await second;
+      expect(told).toEqual(['Waiting for a free agent place (1 of 1 busy)']);
+    });
+
+    it('after a pause, agents beyond the limit wait in the line in arrival order', async () => {
+      const gate = limited(1);
+      gate.pause();
+      const order: string[] = [];
+      const releases: (() => void)[] = [];
+      const all = ['a', 'b', 'c'].map((step) =>
+        gate.admit(jest.fn(), 'run', hold(step)).then((release) => {
+          order.push(step);
+          releases.push(release);
+        }),
+      );
+      gate.resume();
+      await flush();
+      expect(order).toEqual(['a']);
+      releases[0]?.();
+      await flush();
+      releases[1]?.();
+      await Promise.all(all);
+      expect(order).toEqual(['a', 'b', 'c']);
+    });
+
+    it('hands out no place while paused, and starts the waiting agent on resume', async () => {
+      const gate = limited(1);
+      const first = await gate.admit(jest.fn(), 'run', hold('a'));
+      const paused = jest.fn();
+      let started = false;
+      const second = gate.admit(paused, 'run', hold('b')).then(() => (started = true));
+      await flush();
+      gate.pause();
+      expect(paused).toHaveBeenCalledTimes(1);
+      first();
+      await flush();
+      expect(started).toBe(false);
+      gate.resume();
+      await second;
+      expect(gate.running()).toBe(1);
+    });
+
+    it('agentWait names the waiting steps of a run and its running agents', async () => {
+      const gate = limited(1);
+      await gate.admit(jest.fn(), 'one', hold('plan'));
+      void gate.admit(jest.fn(), 'two', hold('implement')).catch(() => undefined);
+      void gate.admit(jest.fn(), 'two', hold('code-review-a')).catch(() => undefined);
+      await flush();
+      expect(gate.agentWait('two')).toEqual({
+        steps: ['implement', 'code-review-a'],
+        running: 0,
+        text: 'Waiting for a free agent place (1 of 1 busy)',
+      });
+      expect(gate.agentWait('one').running).toBe(1);
+      gate.drop('two');
+    });
   });
 });

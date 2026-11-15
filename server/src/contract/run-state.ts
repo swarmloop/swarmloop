@@ -67,6 +67,7 @@ export const REASON = {
   mergeWatchUnavailable: 'MERGE_WATCH_UNAVAILABLE',
   mergeWatchStopped: 'MERGE_WATCH_STOPPED',
   skipped: 'SKIPPED',
+  agentPlace: 'AGENT_PLACE',
 } as const;
 
 /** What every command on a skipped task's run is refused with. */
@@ -137,6 +138,7 @@ export const AUTO_RETRY_CODES: readonly string[] = [
   ERROR_CODES.DOCKER_UNAVAILABLE,
   ERROR_CODES.SUBTASKS_RUNNING,
   ERROR_CODES.SUBTASK_WAITING,
+  REASON.agentPlace,
 ];
 
 /** The waiting codes whose next try is timed: a person may try now. */
@@ -229,7 +231,7 @@ export const STATE_WORDS: Readonly<Record<RunState, WordShape>> = {
 };
 
 /** What a reason does to the word of a waiting run: `state` leaves the state's own word. */
-type ReasonKind = 'paused' | 'retrying' | 'subtasks' | 'state';
+type ReasonKind = 'paused' | 'retrying' | 'subtasks' | 'place' | 'state';
 
 type ReasonCode =
   (typeof ERROR_CODES)[keyof typeof ERROR_CODES] | (typeof REASON)[keyof typeof REASON] | typeof NEEDS_ANSWERS;
@@ -274,6 +276,7 @@ export const REASON_WORDS: Readonly<Record<ReasonCode, ReasonKind>> = {
   [REASON.mergeWatchUnavailable]: 'state',
   [REASON.mergeWatchStopped]: 'state',
   [REASON.skipped]: 'state',
+  [REASON.agentPlace]: 'place',
   [NEEDS_ANSWERS]: 'state',
 };
 
@@ -281,6 +284,11 @@ const QUEUED: WordShape = { word: 'Queued to merge into the epic', tone: 'workin
 
 function kindOf(code: string): ReasonKind {
   return (REASON_WORDS as Readonly<Record<string, ReasonKind | undefined>>)[code] ?? 'state';
+}
+
+/** A run whose agent waits for a free place reads what the gate says: the reason carries the words. */
+function placeWord(reason: StateReason | null): WordShape {
+  return { word: reason?.message ?? '', tone: 'working', icon: 'queued' };
 }
 
 function waitingWord(reason: StateReason | null, time: (iso: string) => string): WordShape {
@@ -293,6 +301,8 @@ function waitingWord(reason: StateReason | null, time: (iso: string) => string):
       return { word: at ? `Retrying at ${time(at)}` : 'Retrying', tone: 'working', icon: 'retrying' };
     case 'subtasks':
       return { word: 'Waiting for subtasks', tone: 'working', icon: 'subtasks' };
+    case 'place':
+      return placeWord(reason);
     case 'state':
       return STATE_WORDS.waiting;
   }
@@ -331,7 +341,10 @@ export function stateWord(
   if (state === 'done' && facts.subtask) {
     return { ...QUEUED, tip: facts.mergeWait ?? '' };
   }
-  const shape = state === 'waiting' ? waitingWord(reason, time) : STATE_WORDS[state];
+  const shape =
+    state === 'waiting' || (state === 'running' && reason && kindOf(reason.code) === 'place')
+      ? waitingWord(reason, time)
+      : STATE_WORDS[state];
   const explains = shape.tone === 'error' || shape.tone === 'person' || state === 'stopped';
   return { ...shape, tip: explains ? (reason?.message ?? '') : '' };
 }

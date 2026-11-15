@@ -75,6 +75,18 @@ describe('deriveState', () => {
     expect(deriveState({ status: 'failed' }).state).toBe('failed');
   });
 
+  it('gives a running run the live words of an agent that waits for a place, and Stop wins over them', () => {
+    const agentPlace = 'Waiting for a free agent place (4 of 4 busy)';
+    expect(deriveState({ status: 'running' }, { agentPlace })).toEqual({
+      state: 'running',
+      reason: { code: REASON.agentPlace, message: agentPlace },
+    });
+    expect(deriveState({ status: 'running' }, { agentPlace, stopping: true })).toEqual({
+      state: 'stopping',
+      reason: null,
+    });
+  });
+
   it('gives a block its code', () => {
     expect(deriveState({ status: 'blocked' }, { blockCode: REASON.checkFailed }).reason?.code).toBe('CHECK_FAILED');
     expect(deriveState({ status: 'blocked' }).reason?.code).toBe('BLOCKED');

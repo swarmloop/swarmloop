@@ -17,7 +17,7 @@ import { FakeCodeHost } from './fake-code-host';
 import { FakeSandbox, holdDetachedStarts } from './fake-runtime';
 import { featureWorktree, git, remember } from './runs.spec-helpers';
 import type { BlockAgentRunner } from './result-answer';
-import { createTestApp, type TestApp } from './test-app';
+import { createTestApp, type FakeAgentRunner, type TestApp } from './test-app';
 
 const REPO = 'demo';
 const PROJECT = 'group/demo';
@@ -70,6 +70,8 @@ export async function createFlowHarness(
     taskWorktrees?: boolean;
     env?: Record<string, string>;
     blocks?: BlockAgentRunner;
+    /** The agent process of every real step's launch. */
+    runner?: FakeAgentRunner;
   } = {},
 ): Promise<FlowHarness> {
   const sandbox = new FakeSandbox();
@@ -80,6 +82,7 @@ export async function createFlowHarness(
     realHost: options.realHost,
     realReview: options.realReview,
     blocks: options.blocks,
+    runner: options.runner,
     env,
     sandbox: sandbox.calls,
   });

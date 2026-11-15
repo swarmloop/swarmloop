@@ -248,6 +248,9 @@ describe('settings', () => {
       expect(view.server.find((entry) => entry.name === 'CHECKS_PARALLEL')?.description).toBe(
         'Check commands that run at once on the whole server',
       );
+      expect(view.server.find((entry) => entry.name === 'AGENTS_PARALLEL')?.description).toBe(
+        'Agent containers that run at once on the whole server',
+      );
       expect(named.MAX_RUN_USD).toBe(String(testEnv().MAX_RUN_USD));
       expect(JSON.stringify(view)).not.toMatch(/sk-secret-anthropic|top-secret-value/);
     } finally {

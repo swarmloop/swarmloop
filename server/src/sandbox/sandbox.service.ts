@@ -36,6 +36,7 @@ import { collectEnvMasks } from './env-masks';
 import { parseDockerStats } from './docker-stats';
 import { containerMemoryCap } from './memory-cap';
 import { ContainerGate } from './container-gate';
+import type { AgentHold } from './container-gate';
 
 export type { DockerRunner };
 
@@ -59,7 +60,7 @@ export class SandboxService {
     @Optional() private readonly config?: AppConfig,
     @Optional() gate?: ContainerGate,
   ) {
-    this.gate = gate ?? new ContainerGate();
+    this.gate = gate ?? new ContainerGate(config);
   }
 
   useDocker(docker: DockerRunner): void {
@@ -115,14 +116,15 @@ export class SandboxService {
 
   /**
    * With `held`, the container waits while the server is paused (`onPaused` says so once) and is counted until it ends.
+   * With `held.agent`, it also waits while AGENTS_PARALLEL agent containers run.
    * Without it, the container starts at once and is not counted.
    */
   async spawn(
     given: Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots'> & { envMasks?: EnvMask[] },
-    held?: { onPaused: () => void },
+    held?: { onPaused: () => void; agent?: AgentHold },
   ): Promise<SandboxChild> {
     const egress = this.egress();
-    const admitted = held ? await this.gate.admit(held.onPaused, given.runKey) : () => undefined;
+    const admitted = held ? await this.gate.admit(held.onPaused, given.runKey, held.agent) : () => undefined;
     const metadata: SandboxMount[] = [];
     let release = () => undefined as void;
     const cleanup = () => {
