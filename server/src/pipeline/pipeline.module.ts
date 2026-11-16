@@ -9,6 +9,8 @@ import { CommitStep } from '../steps/commit/commit.step';
 import { BranchCheckout } from '../steps/shared/branch-checkout';
 import { CheckoutService } from '../steps/shared/checkout.service';
 import { RebasedPublisher } from '../steps/shared/rebased-publisher';
+import { RepositoryHost } from '../steps/shared/repository-host';
+import { RepositoryOrigins } from '../steps/shared/repository-origins';
 import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
 import { CodeReviewStep } from '../steps/code-review/code-review.step';
@@ -59,6 +61,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     BranchStep,
     CommitStep,
     RebasedPublisher,
+    RepositoryOrigins,
+    RepositoryHost,
     CheckoutService,
     BranchCheckout,
     WorkspaceGuard,
@@ -111,6 +115,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     RemoteRepositories,
     CommitStep,
     RebasedPublisher,
+    RepositoryHost,
     HistoryModule,
     EnvironmentService,
     AgentLauncher,
