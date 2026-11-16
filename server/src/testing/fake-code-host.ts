@@ -33,6 +33,7 @@ export class FakeCodeHost {
   private retryAfterMs = HOST_RETRY_MS;
   private readonly closed = new Set<number>();
   private conflicting = false;
+  private mainPasses = false;
   /** For each merge: the head that landed, the feature tip it landed on, and whether its CI passed on top of that tip. */
   readonly landed: { iid: number; head: string; tip: string; testedOnTop: boolean }[] = [];
 
@@ -71,6 +72,11 @@ export class FakeCodeHost {
     } catch {
       return false;
     }
+  }
+
+  /** The default branch reads green: every head `readDefaultHead` returns and every commit a merge makes has a passing pipeline. Nothing is scripted until a spec calls it. */
+  defaultBranchPasses(): void {
+    this.mainPasses = true;
   }
 
   /** The request is closed without a merge, as a person does on the host. */
@@ -174,6 +180,7 @@ export class FakeCodeHost {
     this.guard();
     git(this.clone, ['fetch', 'origin']);
     const sha = git(this.clone, ['rev-parse', `origin/${this.feature}`]);
+    if (this.mainPasses) this.ci.pass(sha);
     return Promise.resolve({ branch: this.feature, sha, httpCalls: [] });
   }
 
@@ -201,6 +208,7 @@ export class FakeCodeHost {
     const sha = git(this.clone, ['commit-tree', tree, '-p', tip, '-m', `squash !${iid}`]);
     git(this.clone, ['push', 'origin', `${sha}:refs/heads/${this.feature}`]);
     this.merged.set(iid, sha);
+    if (this.mainPasses) this.ci.pass(sha);
     this.recordLanding(iid, tip);
     return Promise.resolve({ sha, httpCalls: [] });
   }

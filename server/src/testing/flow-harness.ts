@@ -10,6 +10,12 @@ import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import type { CodeHost } from '../integrations/code-host/code-host';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
+import { UserSettingRepository } from '../history/user-setting.repository';
+import { BacklogStart } from '../api/backlog-start';
+import { RunCommandsService } from '../api/run-commands.service';
+import { BacklogActions } from '../pipeline/backlog/backlog-actions';
+import { BacklogScheduler } from '../pipeline/backlog/backlog-scheduler';
+import { BacklogStartPort } from '../pipeline/backlog/backlog-start-port';
 import type { RunEntity } from '../history/entities';
 import { putStamped } from '../steps/shared/gate.spec-helpers';
 import { SubtaskOps } from '../steps/shared/subtask-ops';
@@ -40,6 +46,8 @@ interface FlowHarness {
   recommit(): Promise<string>;
   /** One reconciler pass: the fake clock moves by the reconcile interval, then every pass of a tick runs. */
   tick(): Promise<void>;
+  /** The backlog services of the booted app, with the start of a task's run and the code host reaching the fake. */
+  backlog(): { actions: BacklogActions; scheduler: BacklogScheduler };
   /** The server stops and starts again on the same root and database. The host and sandbox stay. */
   restart(): Promise<void>;
   /** The free bytes the real disk guard reads, until the next call. */
@@ -91,6 +99,7 @@ export async function createFlowHarness(
   const host = new FakeCodeHost(clone, feature, () => harness.app.clock.now());
 
   let diskBytes: number | null = null;
+  let backlogWired = false;
   const harness: FlowHarness = {
     app: first,
     tree,
@@ -134,11 +143,17 @@ export async function createFlowHarness(
       await reconciler.watchMerges();
       await reconciler.reconcileCommands();
     },
+    backlog: () => {
+      backlogWired = true;
+      wireBacklog(harness);
+      return { actions: harness.app.app.get(BacklogActions), scheduler: harness.app.app.get(BacklogScheduler) };
+    },
     restart: async () => {
       const before = harness.app.clock.now();
       harness.app = await harness.app.restart();
       harness.app.clock.advance(before - harness.app.clock.now());
       wire(harness, key, options.taskWorktrees);
+      if (backlogWired) wireBacklog(harness);
       if (diskBytes !== null) useDisk(harness, diskBytes);
     },
     dockerSilent: (ms) => sandbox.goSilent(ms),
@@ -174,6 +189,21 @@ function wire(harness: FlowHarness, key: string, taskWorktrees = false): void {
   if (!taskWorktrees) jest.spyOn(harness.app.app.get(SubtaskOps), 'behindTip').mockResolvedValue(null);
   jest.spyOn(harness.app.app.get(CodeHostRegistry), 'byName').mockReturnValue(harness.host as unknown as CodeHost);
   holdDetachedStarts(harness.app.pipeline, key, harness.launched);
+}
+
+/** The app starts a backlog task as the API does, and every code host lookup of the backlog layer reaches the fake host. */
+function wireBacklog(harness: FlowHarness): void {
+  const { app } = harness.app;
+  new BacklogStart(
+    app.get(BacklogStartPort),
+    app.get(RunCommandsService),
+    app.get(CommandService),
+    app.get(UserSettingRepository),
+  ).onModuleInit();
+  const registry = app.get(CodeHostRegistry);
+  jest.spyOn(registry, 'forRun').mockResolvedValue(registry);
+  jest.spyOn(registry, 'forOrigin').mockReturnValue(harness.host.name);
+  jest.spyOn(registry, 'requiredCredentials').mockReturnValue(harness.host.selected());
 }
 
 /**
