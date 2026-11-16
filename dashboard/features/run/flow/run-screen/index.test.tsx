@@ -70,66 +70,47 @@ describe('RunScreen', () => {
   it('shows tasks after plan-improve', async () => {
     const tasks = [
       {
-        layer: 0,
-        tasks: [
-          {
-            id: 'a',
-            index: 0,
-            title: 'Add the column',
-            files: ['a.ts'],
-            proof: 'a.spec.ts',
-            depends: [],
-            status: 'merged' as const,
-          },
-        ],
+        id: 'a',
+        index: 0,
+        title: 'Add the column',
+        files: ['a.ts'],
+        proof: 'a.spec.ts',
+        depends: [],
+        status: 'merged' as const,
       },
       {
-        layer: 1,
-        tasks: [
-          {
-            id: 'b',
-            index: 1,
-            title: 'Send it',
-            files: ['b.ts', 'c.ts'],
-            proof: 'b.spec.ts',
-            depends: [],
-            status: 'blocked' as const,
-          },
-        ],
+        id: 'b',
+        index: 1,
+        title: 'Send it',
+        files: ['b.ts', 'c.ts'],
+        proof: 'b.spec.ts',
+        depends: [],
+        status: 'blocked' as const,
       },
     ];
     vi.mocked(getFlow).mockResolvedValue(flowView({ tasks }));
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
+    await userEvent.setup({ delay: null }).click(within(region).getByRole('button', { name: /^✓ 1 merged/ }));
     expect(region).toHaveTextContent('Add the column');
     expect(region).not.toHaveTextContent('b.spec.ts');
-    expect(region).toHaveTextContent('2 files · proof');
+    expect(within(region).getAllByRole('button', { name: 'Plan' })).toHaveLength(2);
   });
 
   it('shows the status line and each task status, and skips a blocked task', async () => {
     const tasks = [
+      { id: 'a', index: 0, title: 'Add the column', files: [], proof: 'a', depends: [], status: 'merged' as const },
+      { id: 'b', index: 1, title: 'Send it', files: [], proof: 'b', depends: [], status: 'blocked' as const },
       {
-        layer: 0,
-        tasks: [
-          { id: 'a', index: 0, title: 'Add the column', files: [], proof: 'a', depends: [], status: 'merged' as const },
-        ],
-      },
-      {
-        layer: 1,
-        tasks: [
-          { id: 'b', index: 1, title: 'Send it', files: [], proof: 'b', depends: [], status: 'blocked' as const },
-          {
-            id: 'c',
-            index: 2,
-            title: 'Show it',
-            files: [],
-            proof: 'c',
-            depends: [],
-            status: 'waiting' as const,
-            note: 'waiting for b',
-          },
-        ],
+        id: 'c',
+        index: 2,
+        title: 'Show it',
+        files: [],
+        proof: 'c',
+        depends: [],
+        status: 'waiting' as const,
+        note: 'waiting for b',
       },
     ];
     vi.mocked(getFlow).mockResolvedValue(flowView({ tasks, taskLine: '1/3 merged · 1 blocked · 1 waiting' }));
@@ -138,7 +119,7 @@ describe('RunScreen', () => {
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
     expect(region).toHaveTextContent('3 tasks · 1 merged');
-    expect(region).toHaveTextContent('merged');
+    expect(region).toHaveTextContent('✓ 1 merged');
     expect(region).toHaveTextContent('Show it');
     expect(region).toHaveTextContent('waiting for b');
     expect(within(region).getAllByRole('button', { name: 'Skip task' })).toHaveLength(1);
@@ -150,19 +131,14 @@ describe('RunScreen', () => {
   it('shows a resumed blocked subtask as running, with no Skip task on its row', async () => {
     const tasks = [
       {
-        layer: 0,
-        tasks: [
-          {
-            id: 'b',
-            index: 0,
-            title: 'Send it',
-            files: [],
-            proof: 'b',
-            depends: [],
-            status: 'running' as const,
-            run: { key: 'run-1-b', state: 'running' as const, currentStep: 'implement', usd: 0, durationMs: 0 },
-          },
-        ],
+        id: 'b',
+        index: 0,
+        title: 'Send it',
+        files: [],
+        proof: 'b',
+        depends: [],
+        status: 'running' as const,
+        run: { key: 'run-1-b', state: 'running' as const, currentStep: 'implement', usd: 0, durationMs: 0 },
       },
     ];
     vi.mocked(getFlow).mockResolvedValue(flowView({ tasks, taskLine: 'Split: 1 tasks · 0 merged · 1 running' }));
@@ -184,19 +160,14 @@ describe('RunScreen', () => {
         decisions: '- subtask a: use UTC',
         tasks: [
           {
-            layer: 0,
-            tasks: [
-              {
-                id: 'a',
-                index: 0,
-                title: 'Add the column',
-                files: [],
-                proof: 'a',
-                depends: [],
-                status: 'running',
-                run: { key: 'run-1-a', state: 'running', currentStep: 'implement', usd: 7, durationMs: 1000 },
-              },
-            ],
+            id: 'a',
+            index: 0,
+            title: 'Add the column',
+            files: [],
+            proof: 'a',
+            depends: [],
+            status: 'running',
+            run: { key: 'run-1-a', state: 'running', currentStep: 'implement', usd: 7, durationMs: 1000 },
           },
         ],
       }),
@@ -204,7 +175,7 @@ describe('RunScreen', () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
-    expect(region).toHaveTextContent('1 tasks · 0 merged · 1s · $7.00');
+    expect(region).toHaveTextContent('1 tasks · 0 merged');
     expect(region).toHaveTextContent('running · implement');
     expect(within(region).getByRole('region', { name: 'Merge queue' })).toBeInTheDocument();
     expect(within(region).getByRole('region', { name: 'Decisions' })).toBeInTheDocument();

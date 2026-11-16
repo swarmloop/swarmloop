@@ -183,8 +183,7 @@ describe('one blocked task holds only its dependents', () => {
   const queries = () => flow.app.app.get(RunQueriesService);
   const checksVisits = async (id: string) => (await queries().step(`${KEY}-${id}`, 'checks')).visits;
   const subtaskView = async (id: string) => queries().flow(`${KEY}-${id}`);
-  const layerRun = async (id: string) =>
-    (await queries().flow(KEY)).tasks?.flatMap((layer) => layer.tasks).find((item) => item.id === id)?.run;
+  const taskRun = async (id: string) => (await queries().flow(KEY)).tasks?.find((item) => item.id === id)?.run;
   const launches = (id: string) => flow.launched.filter((key) => key === `${KEY}-${id}`).length;
   const clock = (iso: string) => iso.slice(11, 16);
 
@@ -208,7 +207,7 @@ describe('one blocked task holds only its dependents', () => {
       expect(text).not.toContain('Resume, Replay or Skip');
     }
     expect(['blocked', 'failed']).not.toContain((await statuses(flow.app)).a);
-    expect(['blocked', 'failed']).not.toContain((await layerRun('a'))?.state);
+    expect(['blocked', 'failed']).not.toContain((await taskRun('a'))?.state);
     const own = await subtaskView('a');
     expect(['blocked', 'failed']).not.toContain(own.state);
     for (const action of ['resume', 'skip']) expect(own.actions as string[]).not.toContain(action);
@@ -247,7 +246,7 @@ describe('one blocked task holds only its dependents', () => {
         checks: async () => {
           // The relaunched attempt is running: the cut one is the latest stored visit.
           await expectNotBlocked();
-          seen.note = (await layerRun('a'))?.interruption;
+          seen.note = (await taskRun('a'))?.interruption;
           seen.visits = await checksVisits('a');
           return { outcome: 'ok', exitCode: 0 };
         },
@@ -261,7 +260,7 @@ describe('one blocked task holds only its dependents', () => {
       await pass();
       await expectNotBlocked();
       expect(await subtaskView('a')).toMatchObject({ state: 'queued', actions: [] });
-      expect(await layerRun('a')).toMatchObject({ state: 'queued', interruption: { relaunched: true } });
+      expect(await taskRun('a')).toMatchObject({ state: 'queued', interruption: { relaunched: true } });
     }
     expect(launches('a')).toBe(before + 1);
 

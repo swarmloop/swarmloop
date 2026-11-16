@@ -1,7 +1,7 @@
 import type { Effort } from './effort';
 import type { MergeOutcome, RunAction, RunState, StateReason } from './run-state';
 import type { InterruptionNote } from './interruption';
-import type { TaskLayer } from './task-layer';
+import type { TaskEntry } from './task-entry';
 import type { SubtaskStatus } from './subtask';
 
 export type { SettingsBody, StoredAgents } from './settings';
@@ -15,7 +15,7 @@ export type {
   StatsTotals,
   StatsView,
 } from './stats';
-export type { TaskLayer } from './task-layer';
+export type { TaskEntry } from './task-entry';
 export type {
   TicketKeysBody,
   TicketKeysView,
@@ -122,8 +122,8 @@ export interface FlowView {
   mergeWait?: string;
   /** Who started the run. Missing for a run the CLI started and for runs from before logins. */
   startedBy?: string;
-  /** The tasks of a split plan after plan-improve, by dependency layer. Missing when the run does not split. */
-  tasks?: TaskLayer[];
+  /** The tasks of a split plan after plan-improve, in plan order. Missing when the run does not split. */
+  tasks?: TaskEntry[];
   /** Set on a run with subtask runs only: its own cost plus its subtasks', and the wall clock from its start to its end. */
   epic?: { usd: number; durationMs: number };
   /** `Split: 7 tasks · 5 merged · 2 running`, once the run is at implement or past it. Missing when the run does not split. */
