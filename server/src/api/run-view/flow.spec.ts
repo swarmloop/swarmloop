@@ -3,6 +3,7 @@ import { reviewLog } from '../../testing/result-answer';
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import type { LoopEventEntity } from '../../history/entities';
 import { phases, reason, returns, sentence } from './flow';
 
 describe('failure reason', () => {
@@ -31,6 +32,49 @@ describe('return lines', () => {
   it('lists returns from checks, code-review and pipeline in board order', () => {
     const run = { attemptsReview: 1, attemptsPipeline: 2, attemptsChecks: 3 } as RunEntity;
     expect(returns(run).map((edge) => edge.from)).toEqual(['checks', 'code-review', 'pipeline']);
+  });
+});
+
+describe('return reasons', () => {
+  const loops = [
+    { counter: 'checks', reason: 'required checks failed', detail: '{"commands":["lint"]}' },
+    { counter: 'pipeline', reason: 'old\nline', detail: null },
+    { counter: 'pipeline', reason: 'job test failed\nmore', detail: null },
+  ] as LoopEventEntity[];
+
+  it('names the failed command for checks and the first line of the latest reason otherwise', () => {
+    const run = { attemptsPipeline: 2, attemptsChecks: 1 } as RunEntity;
+    expect(returns(run, loops).map((edge) => edge.why)).toEqual(['lint', 'job test failed']);
+  });
+
+  it('gives no reason without loop events', () => {
+    const run = { attemptsChecks: 1 } as RunEntity;
+    expect(returns(run)[0]).not.toHaveProperty('why');
+  });
+});
+
+describe('returned step note', () => {
+  const run = { key: 'r', currentStep: 'implement', status: 'waiting', attemptsChecks: 1 } as RunEntity;
+  const stats = [{ id: 5, step: 'checks', status: 'waiting' }] as StepStatEntity[];
+  const issues = JSON.stringify([{ id: 'a' }, { id: 'b' }]);
+  const documents = [{ stepStatId: 5, kind: 'issues', body: issues }] as DocumentEntity[];
+  const noteOf = (loops: LoopEventEntity[], docs = documents): (string | undefined)[] =>
+    phases(run, stats, docs, '/nonexistent', loops)
+      .flatMap((phase) => phase.steps)
+      .filter((step) => step.name === 'checks')
+      .map((step) => step.returnNote);
+
+  it('counts the notes of the step visit', () => {
+    expect(noteOf([])).toEqual(['2 notes']);
+  });
+
+  it('names the failed command for checks', () => {
+    const loops = [{ counter: 'checks', reason: 'x', detail: '{"commands":["lint"]}' }] as LoopEventEntity[];
+    expect(noteOf(loops)).toEqual(['lint']);
+  });
+
+  it('gives no note without an issues document', () => {
+    expect(noteOf([], [])).toEqual([undefined]);
   });
 });
 

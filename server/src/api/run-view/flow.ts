@@ -15,6 +15,10 @@ import {
   PHASE_STEPS,
   pipelineStepOf,
 } from '../../contract/steps';
+import { readLoopDetail } from '../../history/loop-detail';
+import type { LoopEventEntity } from '../../history/entities';
+import { ARTIFACTS } from '../../steps/contract/artifacts';
+import { shortLine } from '../../contract/short-text';
 import { stepOutput } from '../../core/attempt-output';
 import { chipStatus, chipAttempts, reportChip, reviewPreparing, reviewerRound } from './chips';
 import { latest } from './status';
@@ -54,6 +58,7 @@ export function phases(
   stats: StepStatEntity[],
   documents: DocumentEntity[],
   root: string,
+  loops: LoopEventEntity[] = [],
 ): FlowView['phases'] {
   const latestStats = new Map<string, StepStatEntity>();
   for (const stat of stats) {
@@ -74,6 +79,7 @@ export function phases(
         current: isReviewStep(name) ? status === 'running' || status === 'preparing' : parent === run.currentStep,
         attempts: chipAttempts(name, run, stats, documents, root, round),
         ...(status === 'skipped' && name === 'implement-improve' ? { note: IMPROVE_SKIPPED_NOTE } : {}),
+        ...(status === 'returned' ? returnNote(name, latestStats.get(parent), documents, loops) : {}),
       };
     });
     if (phase.phase !== 'code-review') {
@@ -87,16 +93,80 @@ function hasReturned(run: RunEntity): boolean {
   return run.attemptsReview > 0 || run.attemptsPipeline > 0 || run.attemptsChecks > 0;
 }
 
-export function returns(run: RunEntity): FlowView['returns'] {
+const WHY_CHARS = 60;
+const CHECKS_COUNTER = 'checks';
+
+/** The latest loop event of a counter. */
+function latestLoop(loops: LoopEventEntity[], counter: string): LoopEventEntity | undefined {
+  return [...loops].reverse().find((loop) => loop.counter === counter);
+}
+
+/** The failed command a checks return names, when its loop event has one. */
+function failedCommand(loop: LoopEventEntity | undefined): string | undefined {
+  return readLoopDetail(loop?.detail).commands?.[0];
+}
+
+function whyOf(counter: string, loops: LoopEventEntity[]): { why: string } | Record<string, never> {
+  const loop = latestLoop(loops, counter);
+  if (!loop) return {};
+  const why = counter === CHECKS_COUNTER ? failedCommand(loop) : undefined;
+  const text = why ?? shortLine(loop.reason.split('\n')[0] ?? '', WHY_CHARS);
+  return text ? { why: text } : {};
+}
+
+function issueCount(documents: DocumentEntity[], stat: StepStatEntity | undefined): number | null {
+  const own = documents.filter(
+    (document) => document.stepStatId === stat?.id && document.kind === ARTIFACTS.issues.kind,
+  );
+  const body = own[own.length - 1]?.body;
+  if (!stat || body === undefined) return null;
+  try {
+    return ARTIFACTS.issues.parse(body).length;
+  } catch {
+    return null;
+  }
+}
+
+function returnNote(
+  name: string,
+  stat: StepStatEntity | undefined,
+  documents: DocumentEntity[],
+  loops: LoopEventEntity[],
+): { returnNote: string } | Record<string, never> {
+  const command = name === CHECKS_COUNTER ? failedCommand(latestLoop(loops, CHECKS_COUNTER)) : undefined;
+  if (command) return { returnNote: command };
+  const count = issueCount(documents, stat);
+  return count === null ? {} : { returnNote: `${count} notes` };
+}
+
+export function returns(run: RunEntity, loops: LoopEventEntity[] = []): FlowView['returns'] {
   const edges: FlowView['returns'] = [];
   if (run.attemptsReview > 0) {
-    edges.push({ counter: 'review', count: run.attemptsReview, from: 'code-review', to: 'implement' });
+    edges.push({
+      counter: 'review',
+      count: run.attemptsReview,
+      from: 'code-review',
+      to: 'implement',
+      ...whyOf('review', loops),
+    });
   }
   if (run.attemptsPipeline > 0) {
-    edges.push({ counter: 'pipeline', count: run.attemptsPipeline, from: 'pipeline', to: 'implement' });
+    edges.push({
+      counter: 'pipeline',
+      count: run.attemptsPipeline,
+      from: 'pipeline',
+      to: 'implement',
+      ...whyOf('pipeline', loops),
+    });
   }
   if (run.attemptsChecks > 0) {
-    edges.push({ counter: 'checks', count: run.attemptsChecks, from: 'checks', to: 'implement' });
+    edges.push({
+      counter: CHECKS_COUNTER,
+      count: run.attemptsChecks,
+      from: 'checks',
+      to: 'implement',
+      ...whyOf(CHECKS_COUNTER, loops),
+    });
   }
   return edges.sort((a, b) => boardPlace(a.from) - boardPlace(b.from));
 }
