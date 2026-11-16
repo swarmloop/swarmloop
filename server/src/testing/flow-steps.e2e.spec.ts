@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { CODE_REVIEWERS } from '../contract/steps';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { DocumentRepository } from '../history/document.repository';
@@ -374,9 +375,12 @@ describe('the real code-review step in a whole flow', () => {
       'code-review-report': [
         {
           block: {
-            whatChanged: 'The field parser changed.',
-            codeReview: 'Quality returned the change.',
-            whatToFix: '- keep the empty segment',
+            line: 'The field parser changed.',
+            done: ['The field parser changed.'],
+            worthALook: [{ place: 'parser.ts', reason: 'keep the empty segment' }],
+            notes: Object.fromEntries(CODE_REVIEWERS.map((name) => [name, 'Quality returned the change.'])),
+            risk: 'low',
+            riskReason: 'a small change',
           },
         },
       ],
@@ -407,7 +411,7 @@ describe('the real code-review step in a whole flow', () => {
     expect(steps.slice(firstImplement, firstImplement + 2)).toEqual(['implement', 'implement-improve']);
     expect(steps.filter((step) => step === 'code-review-quality').length).toBeGreaterThanOrEqual(2);
     const implementPrompt = blocks.prompts.find((launch) => launch.step === 'implement')?.prompt ?? '';
-    expect(implementPrompt).toContain('keep the empty segment');
+    expect(implementPrompt).toContain('The parser drops an empty segment.');
     expect(JSON.parse((await documents.latestBody(REVIEW_KEY, 'review_quality_result')) ?? '{}').decision).toBe('ok');
     await assertInvariants(flow.app);
   });

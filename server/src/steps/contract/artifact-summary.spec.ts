@@ -54,6 +54,15 @@ describe('Artifact.summarize', () => {
     },
   );
 
+  it('summarizes a report from its line, and a stored legacy report from its first part', () => {
+    const notes = { requirements: 'a', quality: 'b', regressions: 'c', security: 'd', performance: 'e' };
+    const current = { line: 'The field ships.', done: ['x'], worthALook: [], notes, risk: 'low', riskReason: 'small' };
+    const result = ARTIFACTS.reviewReportResult;
+    expect(result.summarize(result.parse(JSON.stringify(current)))).toBe('The field ships.');
+    expect(result.summarize(result.parse(JSON_BODIES.review_report_result))).toBe('fixed the parser');
+    expect(() => result.parse('{"whatChanged":1}')).toThrow('review_report_result is not valid');
+  });
+
   it('subtasks summary', () => {
     const task: Subtask = {
       id: 'a',

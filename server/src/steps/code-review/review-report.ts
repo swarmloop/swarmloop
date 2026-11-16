@@ -24,22 +24,17 @@ import { REPORT_CONTINUE, reportFollowUp } from './code-review.prompts';
 import { reportDocuments, reviewDocuments, summaryNote } from './code-review-record';
 import type { Opinion } from './code-review-record';
 import type { Exchange } from './review-exchange';
+import type { Requirement } from '../../contract/requirement-list';
+import { requirementsSection } from '../shared/coverage-correction';
 import type { Finished, ReviewDeps, Usage } from './reviewer';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 import { reviewReport } from '../../agent-result/definitions/review-report';
 import type { ReviewReportResult } from '../../agent-result/definitions/review-report';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 import { storedReview } from '../../agent-result/stored-review';
+import { LABELS } from '../shared/reviewer-labels';
 import { ResultInvalid } from '../shared/answer-errors';
 import { answerErrorsDocument } from '../shared/stored-answer-errors';
-
-const LABELS: Record<string, string> = {
-  [REVIEWS.of('requirements')]: 'Requirements',
-  [REVIEWS.of('quality')]: 'Quality',
-  [REVIEWS.of('regressions')]: 'Regressions',
-  [REVIEWS.of('security')]: 'Security',
-  [REVIEWS.of('performance')]: 'Performance',
-};
 
 export function reviewBrief(
   opinions: { kind: string; decision: 'ok' | 'return'; body: string }[],
@@ -70,6 +65,7 @@ export async function writeReport(
   requirements: string,
   implementation: string | null,
   impact: string | null,
+  list: Requirement[] | null,
   continued: boolean,
   auto?: boolean,
   answerErrors?: string[],
@@ -84,6 +80,7 @@ export async function writeReport(
     [
       ...(implementation?.trim() ? [{ heading: 'Implementation', body: implementation }] : []),
       { heading: 'Reviews', body: brief },
+      ...(list ? [requirementsSection(list)] : []),
     ],
     impact,
   );
@@ -97,7 +94,9 @@ export async function writeReport(
     ].join('\n\n');
   const asked = agentFor(env, opened.run, 'code-review-report');
   const full = fullFor(asked.runtime);
-  const prompt = continued ? appendImpact(reportFollowUp(brief, implementation), impact) : full;
+  const prompt = continued
+    ? appendImpact(reportFollowUp(brief, implementation, list ? requirementsSection(list) : null), impact)
+    : full;
   const empty: Usage = { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] };
   try {
     const directory = join(deps.root, 'data');
@@ -139,7 +138,13 @@ export async function writeReport(
     if (!result.resultValue) {
       return { error: 'code-review report is empty', exchange, usage: spent, documents: [] };
     }
-    return { documents: reportDocuments(result.resultValue as ReviewReportResult), exchange, usage: spent };
+    const parts = result.resultValue as ReviewReportResult;
+    const round = opinions.map((opinion) => ({
+      name: opinion.kind.slice(REVIEWS.prefix.length),
+      result: opinion.result,
+    }));
+    const text = await deps.runReport.renderParts(opened.run, parts, round);
+    return { documents: reportDocuments(text, parts), exchange, usage: spent };
   } catch (error) {
     if (error instanceof RuntimeLimit) {
       throw error;

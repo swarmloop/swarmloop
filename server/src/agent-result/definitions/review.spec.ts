@@ -10,7 +10,14 @@ const REVIEW = {
   review: 'The parser drops a segment.\n- a: b',
   summary: ['the parser drops a segment'],
 };
-const REPORT = { whatChanged: 'Parser fixed.', codeReview: 'All ok.' };
+const REPORT = {
+  line: 'The parser keeps an empty segment.',
+  done: ['Parser fixed.'],
+  worthALook: [{ place: 'parser.ts', reason: 'the split rule changed' }],
+  notes: Object.fromEntries(CODE_REVIEWERS.map((name) => [name, 'All ok.'])),
+  risk: 'low',
+  riskReason: 'a small change',
+};
 
 describe('review result', () => {
   it.each(CODE_REVIEWERS)('defines review_%s with its own kind', (name) => {
@@ -81,23 +88,20 @@ describe('review result', () => {
 
 describe('review report result', () => {
   it('reads the required parts and the optional ones', () => {
-    const value = { ...REPORT, requirements: '1. met', whatHolds: 'the parser', whatToFix: '- one' };
+    const value = { ...REPORT, worthALook: [] };
     expect(readResult(reviewReport, block(REPORT))).toEqual({ ok: true, value: REPORT });
     expect(readResult(reviewReport, block(value))).toEqual({ ok: true, value });
   });
 
-  it('names a missing part and an empty one', () => {
-    const read = readResult(reviewReport, block({ codeReview: '' }));
-    expect(read.ok === false && read.errors.map((error) => error.split(':')[0]).sort()).toEqual([
-      'codeReview',
-      'whatChanged',
-    ]);
-  });
-
   it('lists every part in the prompt', () => {
     const prompt = resultPrompt(reviewReport);
-    for (const field of ['requirements', 'whatChanged', 'codeReview', 'whatHolds', 'whatToFix']) {
-      expect(prompt).toContain(`- ${field} (string`);
+    for (const field of ['line', 'done', 'worthALook', 'notes', 'risk', 'riskReason']) {
+      expect(prompt).toContain(`- ${field} (`);
     }
+  });
+
+  it('names a missing part and an empty one', () => {
+    const read = readResult(reviewReport, block({ ...REPORT, line: '', risk: undefined }));
+    expect(read.ok === false && read.errors.map((error) => error.split(':')[0]).sort()).toEqual(['line', 'risk']);
   });
 });

@@ -24,6 +24,7 @@ import { reviewAnswerDefinition, reviewDefinition } from '../../agent-result/def
 import type { ReviewResult } from '../../agent-result/definitions/review';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import { REVIEWS } from '../contract/artifacts';
+import type { RunReport } from '../shared/run-report';
 import { storedAnswerErrors } from '../shared/stored-answer-errors';
 
 export interface Reviewer {
@@ -71,6 +72,7 @@ export interface ReviewDeps {
   visits: VisitRepository;
   root: string;
   launcher: AgentLauncher;
+  runReport: RunReport;
 }
 
 export const REVIEWERS: Reviewer[] = [...CODE_REVIEWERS.map((name) => ({ name, kind: REVIEWS.of(name) }))];

@@ -2,6 +2,8 @@ import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import Joi from 'joi';
+import { reviewReport } from '../../agent-result/definitions/review-report';
+import { CODE_REVIEWERS } from '../../contract/steps';
 import { defineResult } from '../../agent-result/result-definition';
 import type { AgentProcessRunner, AgentRunInput } from '../../agent/agent-runner';
 import { RunStop } from '../../agent/run-stop';
@@ -24,8 +26,8 @@ const ok = (items: string[] = ['a']): ScriptedAnswer => ({ block: { items, decis
 const prose: ScriptedAnswer = { text: 'I wrote the plan.' };
 
 /** A launcher over a runner that answers from a script, and the runner that recorded the prompts. */
-function launcherOf(answers: ScriptedAnswer[]) {
-  const runner = new BlockAgentRunner({ plan: answers });
+function launcherOf(answers: ScriptedAnswer[], step = 'plan') {
+  const runner = new BlockAgentRunner({ [step]: answers });
   const agent = { run: (input: AgentRunInput) => runner.run(input) } as unknown as AgentProcessRunner;
   const visits = { tokenTotal: jest.fn().mockResolvedValue(0) } as unknown as VisitRepository;
   const prompts = (): string[] => runner.prompts.map((entry) => entry.prompt);
@@ -70,6 +72,27 @@ describe('AgentLauncher result', () => {
     expect(prompts()).toHaveLength(2);
     expect(prompts()[1]).toContain('no result block');
     expect(launched.tokensIn).toBe(20);
+  });
+
+  it('sends a follow-up naming the error of a report with six done items, and passes a fixed second answer', async () => {
+    const report = (done: string[]): ScriptedAnswer => ({
+      block: {
+        line: 'The field ships.',
+        done,
+        worthALook: [],
+        notes: Object.fromEntries(CODE_REVIEWERS.map((name) => [name, 'ok'])),
+        risk: 'low',
+        riskReason: 'small',
+      },
+    });
+    const { launcher, prompts } = launcherOf(
+      [report(['1', '2', '3', '4', '5', '6']), report(['1', '2', '3', '4', '5'])],
+      'code-review-report',
+    );
+    const launched = await launcher.launch(requestOf({ step: 'code-review-report', result: reviewReport }));
+    expect(prompts()[1]).toContain('done');
+    expect(prompts()[1]).toContain('must contain less than or equal to 5 items');
+    expect((launched.resultValue as { done: string[] }).done).toHaveLength(5);
   });
 
   it('throws ResultInvalid with every error of the last answer after two follow-ups', async () => {

@@ -212,6 +212,8 @@ export interface StepView {
   /** The commands of every checks visit. Only the `checks` step has them. */
   commands?: CheckCommandView[];
   checks: { name: string; decision: string | null; body: string }[];
+  /** The report of the run rendered now from its own state. Only the `code-review` step has it, and only for a run with the parts of the new report. */
+  report?: string;
   descriptor: StepDescriptor;
   /** The last event `seq` of the run: it changes when there are new events to read. 0 means none. */
   eventsCursor: number;

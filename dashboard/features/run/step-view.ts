@@ -225,6 +225,7 @@ export function stepText(
   visit: StepView['visits'][number] | undefined,
   selected: { body: string } | undefined,
   checks: { body: string }[],
+  liveReport?: string,
 ): { logs: string; document: string } {
   const logs = selected
     ? ''
@@ -234,7 +235,8 @@ export function stepText(
         .join('\n') ?? '');
   const storedReport =
     step === 'code-review' ? visit?.documents.find((item) => item.kind === 'review_report')?.body : undefined;
-  const report = reportAgrees(storedReport, visit?.decision) ? storedReport : undefined;
+  const stored = reportAgrees(storedReport, visit?.decision) ? storedReport : undefined;
+  const report = (step === 'code-review' ? liveReport : undefined) || stored;
   const angleNotes = checks.map((item) => item.body).filter(Boolean);
   const document = selected?.body ?? (report || (angleNotes.length > 0 ? angleNotes.join('\n\n') : '') || '');
   return { logs, document };

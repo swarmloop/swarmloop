@@ -13,7 +13,8 @@ import {
   type ImplementationImproveResult,
 } from '../../agent-result/definitions/implementation-improve';
 import { rebaseResolution, type RebaseResolutionResult } from '../../agent-result/definitions/rebase-resolution';
-import { reviewReport, type ReviewReportResult } from '../../agent-result/definitions/review-report';
+import { reviewReport, isLegacyReport } from '../../agent-result/definitions/review-report';
+import { reviewReportCodec } from '../../agent-result/review-report-codec';
 import { reviewDefinition, reviewStoredDefinition, type ReviewResult } from '../../agent-result/definitions/review';
 import { legacyReview } from '../../agent-result/legacy/review';
 import { subtaskAnswer, type SubtaskAnswerResult } from '../../agent-result/definitions/subtask-answer';
@@ -294,8 +295,8 @@ export const ARTIFACTS = {
   reviewReportResult: artifact(reviewReport.kind, {
     writers: ['code-review'],
     readers: ['merge-request'],
-    codec: resultArtifactCodec<ReviewReportResult>(reviewReport),
-    summarize: (result) => firstLine(result.whatChanged),
+    codec: reviewReportCodec,
+    summarize: (result) => firstLine(isLegacyReport(result) ? result.whatChanged : result.line),
   }),
   reviewRequirementsResult: reviewResultArtifact('requirements'),
   reviewQualityResult: reviewResultArtifact('quality'),

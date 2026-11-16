@@ -23,10 +23,14 @@ import { VisitRepository } from '../../history/visit.repository';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
+import { RunReport } from '../shared/run-report';
 import { MergeRequestStep } from './merge-request.step';
 
 const KEY = 'PROJ-200';
 const MR_URL = 'https://gitlab.example/group/demo/-/merge_requests/12';
+
+const NOTES = { requirements: 'a', quality: 'b', regressions: 'c', security: 'd', performance: 'e' };
+const PARTS = { line: 'Ships the field.', done: ['x'], worthALook: [], notes: NOTES, risk: 'low', riskReason: 'small' };
 
 function call(method: string): HttpCallDraft {
   return {
@@ -63,9 +67,9 @@ describe('merge-request step golden traces', () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  async function trace(name: string, options: { implementation?: boolean; ahead?: boolean } = {}) {
+  async function trace(name: string, options: { implementation?: boolean; ahead?: boolean; report?: boolean } = {}) {
     const tree = featureTree(root, options.ahead === true);
-    await seed(app, options.implementation !== false);
+    await seed(app, options.implementation !== false, options.report === true);
     const documents = recordingDocuments(app.get(DocumentRepository));
     const step = new MergeRequestStep(
       new StepKernel(
@@ -79,6 +83,7 @@ describe('merge-request step golden traces', () => {
       ),
       app.get(CodeHostRegistry),
       new RunStop(),
+      app.get(RunReport),
     );
     const result = await step.execute(KEY);
     expectGolden(`merge-request.${name}`, {
@@ -100,7 +105,11 @@ describe('merge-request step golden traces', () => {
   }
 
   it('creates the merge request', async () => {
-    await trace('created', { ahead: true });
+    await trace('created', { ahead: true, report: true });
+  });
+
+  it('keeps the stored report text as the body for a legacy result', async () => {
+    await trace('legacy-report', { ahead: true });
   });
 
   it('reuses an existing merge request and updates its description', async () => {
@@ -114,7 +123,7 @@ describe('merge-request step golden traces', () => {
       },
       httpCalls: [call('GET')],
     });
-    await trace('reused');
+    await trace('reused', { report: true });
   });
 
   it('fails with a SwarmloopError when the implementation is missing', async () => {
@@ -135,7 +144,7 @@ async function boot(root: string) {
   }).compile();
 }
 
-async function seed(app: Awaited<ReturnType<typeof boot>>, implementation: boolean): Promise<void> {
+async function seed(app: Awaited<ReturnType<typeof boot>>, implementation: boolean, report: boolean): Promise<void> {
   const runs = app.get(RunRepository);
   const documents = app.get(DocumentRepository);
   const seeded = await runs.begin(KEY, 'merge-request');
@@ -152,6 +161,9 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, implementation: boole
   if (implementation) {
     await documents.putDocument(seeded, 'implementation', 'changed the field\n');
     await documents.putDocument(seeded, 'review_report', 'Ships the field.\n');
+    if (report) {
+      await documents.putDocument(seeded, 'review_report_result', `${JSON.stringify(PARTS)}\n`);
+    }
     await stampStored(app, seeded, 'review_report', ['demo']);
   }
 }

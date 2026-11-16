@@ -6,12 +6,11 @@ import { ARTIFACTS } from '../contract/artifacts';
 import { withInstructions } from '../plan/plan-record';
 import { renderQuestions } from '../research/research-record';
 import { answered, openQuestions } from '../shared/answers';
+import { askedReviewer } from '../shared/reviewer-labels';
 import { issueOf, returnNotes, textDocument } from '../shared/handoff';
 import type { Exchange } from './review-exchange';
 import { closeReview } from './review-report';
 import type { Finished, Usage } from './reviewer';
-
-const ASKED = /^(\S+) still returns: /;
 
 /** One line for the person: the reviewer, its finding and the answer of implement side by side. `askedAt` makes the ask its own event. */
 function questionFor(reviewer: string, exchange: Exchange, askedAt: string): string {
@@ -97,7 +96,7 @@ async function settleAnswers(ctx: StepContext, questionsBody: string, answersBod
       `A person decided on the code review: ${question} - ${decision}`,
       false,
     );
-    const reviewer = ASKED.exec(question)?.[1] ?? 'code-review';
+    const reviewer = askedReviewer(question) ?? 'code-review';
     return issueOf(reviewer, `${reviewer} returned the change`, `${question}\nThe person decided: ${decision}`);
   });
   return closeReview(

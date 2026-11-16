@@ -1,7 +1,7 @@
 import type { DocumentRepository } from '../../history/document.repository';
 import { storedReview } from '../../agent-result/stored-review';
-import { ARTIFACTS } from '../contract/artifacts';
 import { isChecksReturn } from '../follow-up';
+import { rejectedFindings } from '../shared/rejected-findings';
 import { reviewReturn } from '../shared/handoff';
 import { REVIEWERS } from './reviewer';
 
@@ -18,15 +18,7 @@ interface StoredDocument {
 
 /** The reasons implement gave since the reviewer's last review, for the findings it rejected that name the reviewer. */
 function answerTo(name: string, documents: StoredDocument[], since: number): string | null {
-  const reasons = documents.slice(since + 1).flatMap((document) => {
-    if (document.kind === ARTIFACTS.implementationResult.kind) {
-      return ARTIFACTS.implementationResult.parse(document.body).rejected ?? [];
-    }
-    if (document.kind === ARTIFACTS.implementationImproveResult.kind) {
-      return ARTIFACTS.implementationImproveResult.parse(document.body).rejected ?? [];
-    }
-    return [];
-  });
+  const reasons = documents.slice(since + 1).flatMap((document) => rejectedFindings(document) ?? []);
   const mine = reasons.filter((item) => item.reviewer === name).map((item) => item.reason.trim());
   return mine.length > 0 ? mine.join('\n') : null;
 }

@@ -27,7 +27,8 @@ import { runPlace, withPlaceChips } from './run-view/agent-place';
 import { withRestartWait } from './run-view/restart-wait';
 import { mergeWaits, parentOf } from './run-view/merge-wait';
 import { listPlans, listStates } from './run-view/list-state';
-import { childrenByParent, epicTotal, listExtras } from './run-view/status';
+import { childrenByParent, listExtras } from './run-view/status';
+import { epicTotal } from '../steps/shared/epic-total';
 import { STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
 import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
@@ -55,6 +56,7 @@ import {
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
 import { readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
 import { openSpend } from './run-queries-spend';
+import { RunReport } from '../steps/shared/run-report';
 export { requireRun } from './run-queries-run';
 
 @Injectable()
@@ -73,6 +75,7 @@ export class RunQueriesService {
     private readonly config: AppConfig,
     private readonly clock: Clock,
     private readonly checkCommands: CheckCommandRepository,
+    private readonly runReport: RunReport,
     @Optional() private readonly live?: LiveHub,
     @Optional() private readonly gate: ContainerGate = new ContainerGate(),
   ) {
@@ -265,12 +268,14 @@ export class RunQueriesService {
     if (run.status === 'running' && run.currentStep === name) {
       visits.push(this.runningVisit(run, name, stats.at(-1)?.attempt ?? 0));
     }
+    const report = name === 'code-review' ? await this.runReport.render(run) : null;
     return {
       step: name,
       ...(await this.meta(run, name)),
       visits: withReturnNotes(name, visits, documents, this.clock.now()),
       ...(name === 'checks' ? { commands: commandViewsOf(await this.checkCommands.list(run.id)) } : {}),
       checks: name === 'code-review' ? reviewChecks(documents) : [],
+      ...(report ? { report } : {}),
     };
   }
 

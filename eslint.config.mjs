@@ -254,7 +254,10 @@ export default tseslint.config(
       'server/src/steps/code-review/review-exchange.ts', // reads the stored reviews and results an exchange is made from
       'server/src/steps/code-review/review-select.ts', // reads the stored reviews a round continues from
       'server/src/steps/code-review/review-report.ts', // reads the handoff the report is written from
+      'server/src/steps/shared/report-facts.ts', // reads the stored documents and visits a report is rendered from
+      'server/src/steps/shared/run-report.ts', // reads the stored parts of the report the merge request shows
       'server/src/steps/shared/rebase-journal.ts', // keeps the rebase journal as a document of the run
+      'server/src/steps/shared/report-refresh.ts', // a step end refreshes the merge request report of a run with no visit of its own to write through
       'server/src/steps/merge-request/merge-request-draft.ts', // a Rebase or Replay turns the merge requests back into drafts with no visit to write through
     ],
     ignores: ['**/*.spec.ts', '**/*.spec-helpers.ts'],

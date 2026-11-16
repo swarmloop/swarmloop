@@ -137,9 +137,10 @@ describe('code-review step', () => {
     expect(await documents.count({ where: { runId, kind: 'review_security' } })).toBe(1);
     expect(await documents.count({ where: { runId, kind: 'review_performance' } })).toBe(1);
     const report = await documents.findOne({ where: { runId, kind: 'review_report' } });
-    expect(report?.body).toBe(
-      '## What changed\n\nchanged the field\n\n## Code review\n\nThe parser change holds together.\n',
-    );
+    expect(report?.body).toContain('## ⏳ Waiting for CI · risk: low\n> The parser change holds together.');
+    expect(report?.body).toContain('| Requirements | Checks | CI | Review | Returns | Time |');
+    expect(report?.body).toContain('- changed the field');
+    expect(report?.body).toContain('<details><summary>Reviewer notes (5)</summary>');
     expect((await exchanges.count()) - exchangesBefore).toBe(6);
     const run = await app.get(RunRepository).findRun('PROJ-80');
     expect(run?.currentStep).toBe('commit');
@@ -226,7 +227,7 @@ describe('code-review step', () => {
       result(
         input.step.endsWith('report')
           ? reportReply('Quality found one parser bug. The other checks describe that same bug.', {
-              whatToFix: '- Keep the empty segment.',
+              worthALook: [{ place: 'parser.ts', reason: 'Keep the empty segment.' }],
             })
           : reply(input.step, input.step.endsWith('quality') ? 'return' : 'ok'),
         input.step,
@@ -247,11 +248,9 @@ describe('code-review step', () => {
     expect(events[0]?.attempt).toBe(1);
     expect(events[0]?.reason).toBe('review_quality');
     const notes = await app.get(DocumentRepository).latestBody('PROJ-200', 'return');
-    expect(notes).toContain('## What to fix');
-    expect(notes).toContain('Keep the empty segment.');
-    expect(notes).not.toContain('decision: return');
+    expect(notes).toContain('## quality\ncode-review-quality');
     const report = await app.get(DocumentRepository).latestBody('PROJ-200', 'review_report');
-    expect(report).toContain('## What to fix');
+    expect(report).toContain('## ↩ Sent back · risk: low');
     expect(report).toContain('Keep the empty segment.');
     expect(report).not.toContain('decision: return');
   });

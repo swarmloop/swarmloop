@@ -38,7 +38,14 @@ const DEFAULT_REBASE = { summary: ['resolved the rebase'] };
 const DEFAULT_REVIEW = { decision: 'ok', review: 'reviewed the change', summary: ['reviewed the change'] };
 
 /** The report of five reviews that all passed. */
-const DEFAULT_REPORT = { whatChanged: 'changed the field', codeReview: 'every check is ok' };
+const DEFAULT_REPORT = {
+  line: 'The field is changed.',
+  done: ['changed the field'],
+  worthALook: [],
+  notes: Object.fromEntries(CODE_REVIEWERS.map((name) => [name, 'every check is ok'])),
+  risk: 'low',
+  riskReason: 'a small change',
+};
 
 /** The requirements reviewer marks the one requirement the default research lists. */
 const DEFAULT_REQUIREMENTS_REVIEW = {

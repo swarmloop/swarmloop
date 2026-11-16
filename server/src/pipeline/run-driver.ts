@@ -36,6 +36,7 @@ import type { DiskGuard } from './disk-guard';
 import type { SubtaskPort } from './subtask-port';
 import type { LimitRelease } from '../steps/shared/limit-release';
 import { storedAnswerErrors } from '../steps/shared/stored-answer-errors';
+import type { ReportRefresh } from '../steps/shared/report-refresh';
 
 const HOP_LIMIT = STEPS.length * 3;
 
@@ -53,6 +54,7 @@ export class RunDriver {
     private readonly disk?: DiskGuard,
     private readonly subtasks?: SubtaskPort,
     private readonly limits?: LimitRelease,
+    private readonly reportRefresh?: ReportRefresh,
   ) {}
 
   async savedStep(
@@ -232,14 +234,15 @@ export class RunDriver {
     const step = this.registry.get(name);
     if (step) {
       const answerErrors = options.answerErrors ?? (await this.answerErrorsOf(key, name));
-      return step.execute(key, answerErrors ? { ...options, answerErrors } : options, (run, completedStep) =>
-        snapshotRun(
+      return step.execute(key, answerErrors ? { ...options, answerErrors } : options, async (run, completedStep) => {
+        await snapshotRun(
           { documents: this.documents, visits: this.visits, root: root(this.config) },
           this.clock,
           run,
           completedStep,
-        ),
-      );
+        );
+        await this.reportRefresh?.refresh(run);
+      });
     }
     // Without a service for the step, the driver runs it from here. Only a registry without that step gets this far.
     const prior = await this.runs.findRun(key);

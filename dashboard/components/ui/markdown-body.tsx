@@ -1,5 +1,7 @@
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import Box from '@mui/material/Box';
+import { splitMarkdownDetails } from './markdown-details';
 
 export function MarkdownBody({ text }: { text: string }): React.ReactElement {
   const json = prettyJson(text);
@@ -30,7 +32,18 @@ export function MarkdownBody({ text }: { text: string }): React.ReactElement {
         '& p': { my: 1 },
       }}
     >
-      <Markdown>{text}</Markdown>
+      {splitMarkdownDetails(text).map((part, index) =>
+        part.kind === 'details' ? (
+          <details key={index}>
+            <summary>{part.summary}</summary>
+            <MarkdownBody text={part.text} />
+          </details>
+        ) : (
+          <Markdown key={index} remarkPlugins={[remarkGfm]} skipHtml>
+            {part.text}
+          </Markdown>
+        ),
+      )}
     </Box>
   );
 }

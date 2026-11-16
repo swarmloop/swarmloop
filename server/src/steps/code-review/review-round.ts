@@ -168,20 +168,16 @@ export async function routeReview(
     opened.run.attemptsReview,
     returning.map((item) => item.kind).join(','),
   );
-  const report = documents.find((item) => item.kind === ARTIFACTS.reviewReport.kind)?.body.trim();
   const issues = returning.map((item) => {
     const source = item.kind.slice(REVIEWS.prefix.length);
     return issueOf(source, `${source} returned the change`, item.body);
   });
-  const leftover = report
-    ? textDocument(ARTIFACTS.return.kind, report.endsWith('\n') ? report : `${report}\n`)
-    : returnNotes(issues);
   const listed = textDocument(ARTIFACTS.issues.kind, ARTIFACTS.issues.format(issues));
   return closeReview(
     ctx,
     { to: 'return', step: 'implement', issues },
     line,
-    [...documents, leftover, listed],
+    [...documents, returnNotes(issues), listed],
     exchanges,
     usage,
   );
