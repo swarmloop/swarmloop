@@ -11,6 +11,7 @@ import { stepView, visitView } from '../../../../test/fixtures';
 import { commandEvents, stepEvent } from '../../../../test/step-events';
 import { statusColor } from '../../../../theme/theme';
 import { localTime } from '../../../../lib/format';
+import { restartWaitSentence, NO_SAMPLES_AFTER_RESTART } from '@contract/restart-wait';
 import { StepDetail } from './index';
 
 vi.mock('../../../../lib/endpoints', () => ({ getStep: vi.fn(), getStepEvents: vi.fn(), getRunLog: vi.fn() }));
@@ -84,6 +85,25 @@ describe('StepDetail', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/"relaunched"/)).not.toBeInTheDocument();
+  });
+
+  it('says the restart wait in place of running when the server restarted under a live agent', async () => {
+    const restartedAt = '2026-01-01T10:00:00.000Z';
+    vi.mocked(getStep).mockResolvedValue(stepView({ visits: [visitView({ status: 'running', samples: [] })] }));
+    detail({ runStatus: 'running', restartedAt });
+
+    expect(await screen.findByText(restartWaitSentence(restartedAt, localTime))).toBeInTheDocument();
+    expect(screen.getByText('waiting')).toBeInTheDocument();
+    expect(screen.queryByText('running')).toBeNull();
+    expect(screen.getByText(NO_SAMPLES_AFTER_RESTART)).toBeInTheDocument();
+  });
+
+  it('keeps the plain running label with no restart wait', async () => {
+    vi.mocked(getStep).mockResolvedValue(stepView({ visits: [visitView({ status: 'running' })] }));
+    detail({ runStatus: 'running' });
+
+    expect(await screen.findByText('running')).toBeInTheDocument();
+    expect(screen.queryByText(/The server restarted at/)).toBeNull();
   });
 
   it('shows the step label once the step loads', async () => {

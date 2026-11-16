@@ -7,7 +7,7 @@ import { getRunLog } from '../../lib/endpoints';
 /** The full output of a command, read from its stored file when the row is open. Null while it loads or when there is none. */
 export function useCommandLog(runKey: string, command: CheckCommandView, open: boolean): string | null {
   const [text, setText] = useState<string | null>(null);
-  const settled = command.status === 'passed' || command.status === 'failed';
+  const settled = command.status === 'passed' || command.status === 'failed' || command.status === 'interrupted';
 
   useEffect(() => {
     setText(null);

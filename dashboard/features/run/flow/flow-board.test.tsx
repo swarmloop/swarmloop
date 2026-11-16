@@ -3,6 +3,8 @@ import { createTheme } from '@mui/material/styles';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { CheckCommandView, FlowView } from '@contract/api';
+import { restartWaitSentence } from '@contract/restart-wait';
+import { localTime } from '../../../lib/format';
 import { FlowBoard } from './flow-board';
 
 const phases: FlowView['phases'] = [
@@ -16,6 +18,23 @@ const phases: FlowView['phases'] = [
 ];
 
 describe('FlowBoard', () => {
+  it('says the restart wait in the chip note in place of running, and keeps a note that is set', () => {
+    const at = '2026-01-01T10:00:00.000Z';
+    const board: FlowView['phases'] = [
+      {
+        phase: 'implementation',
+        steps: [
+          { name: 'implement', status: 'waiting', current: true, attempts: 1, restartedAt: at },
+          { name: 'implement-improve', status: 'waiting', current: false, attempts: 1, note: 'Waiting for a place' },
+        ],
+      },
+    ];
+    render(<FlowBoard phases={board} returns={[]} selected={null} onSelect={vi.fn()} />);
+
+    expect(screen.getByText(restartWaitSentence(at, localTime))).toBeInTheDocument();
+    expect(screen.getByText('Waiting for a place')).toBeInTheDocument();
+  });
+
   it('shows the phase headings', () => {
     render(<FlowBoard phases={phases} returns={[]} selected={null} onSelect={vi.fn()} />);
 
