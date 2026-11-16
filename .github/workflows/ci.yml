@@ -115,6 +115,11 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - run: npm ci
         working-directory: server
+      - uses: actions/cache@v4
+        with:
+          path: server/.jest-cache
+          key: server-jest-${{ github.job }}-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}-${{ github.sha }}
+          restore-keys: server-jest-${{ github.job }}-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}-
       - run: npm test
         working-directory: server
 
@@ -129,6 +134,11 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - run: npm ci
         working-directory: server
+      - uses: actions/cache@v4
+        with:
+          path: server/.jest-cache
+          key: server-jest-${{ github.job }}-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}-${{ github.sha }}
+          restore-keys: server-jest-${{ github.job }}-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}-
       - run: |
           for seed in 1 20260101 987654321; do
             npm test -- --seed=$seed
