@@ -115,7 +115,15 @@ export interface FlowView {
   };
   phases: {
     phase: string;
-    steps: { name: string; status: string; current: boolean; attempts: number; note?: string }[];
+    steps: {
+      name: string;
+      status: string;
+      current: boolean;
+      attempts: number;
+      note?: string;
+      /** When the server restarted while this step's agent kept running, as an ISO time. Set only during that wait. */
+      restartedAt?: string;
+    }[];
   }[];
   returns: { counter: string; count: number; from: string; to: 'implement' }[];
   /** The commands of the latest checks attempt. Missing when the run has none. */
@@ -192,7 +200,7 @@ export interface CheckCommandView {
   command: string;
   /** The short name of the command; null for a row from before names. */
   name: string | null;
-  status: 'waiting' | 'running' | 'passed' | 'failed' | 'skipped';
+  status: 'waiting' | 'running' | 'passed' | 'failed' | 'skipped' | 'interrupted';
   startedAt: string | null;
   endedAt: string | null;
   exitCode: number | null;

@@ -2,7 +2,8 @@ import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { SeriesChart, type SeriesLine } from '../../series';
-import type { StepView } from '@contract/api';
+import type { CheckCommandView, StepView } from '@contract/api';
+import { NO_SAMPLES_AFTER_RESTART } from '@contract/restart-wait';
 
 type Sample = StepView['visits'][number]['samples'][number];
 
@@ -42,19 +43,33 @@ function sourceLines(samples: Sample[]): SeriesLine[] | undefined {
   ];
 }
 
+function NoSamplesLine(): ReactElement {
+  return (
+    <Typography color="text.secondary" sx={{ mt: 2, fontSize: 13 }}>
+      {NO_SAMPLES_AFTER_RESTART}
+    </Typography>
+  );
+}
+
 /** The chart of the containers the visit started. The server process itself is not a container. */
 export function StepChart({
   visit,
   total = false,
+  restarted = false,
 }: {
   visit: StepView['visits'][number] | undefined;
   /** Draw the step total only, not a line for each source. */
   total?: boolean;
+  /** The server restarted while the visit's agent kept running. */
+  restarted?: boolean;
 }): ReactElement | null {
   if (!visit) {
     return null;
   }
   const samples = visit.samples.filter((sample) => sample.source !== 'server');
+  if (samples.length === 0 && (visit.killReason === 'process died' || restarted)) {
+    return <NoSamplesLine />;
+  }
   if (samples.length === 0 && visit.status !== 'running') {
     return (
       <Typography color="text.secondary" sx={{ mt: 2, fontSize: 13 }}>
@@ -72,11 +87,14 @@ export function StepChart({
 /** The chart of one check command: the samples of its container. */
 export function CommandChart({
   visit,
-  index,
+  command,
 }: {
   visit: StepView['visits'][number] | undefined;
-  index: number;
+  command: CheckCommandView;
 }): ReactElement {
-  const samples = (visit?.samples ?? []).filter((sample) => sample.source === String(index));
+  const samples = (visit?.samples ?? []).filter((sample) => sample.source === String(command.index));
+  if (samples.length === 0 && command.status === 'interrupted') {
+    return <NoSamplesLine />;
+  }
   return <SeriesChart samples={samples} />;
 }

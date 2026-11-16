@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { CheckCommandEntity } from './entities';
 
 type CheckCommandDraft = Pick<CheckCommandEntity, 'runId' | 'attemptId' | 'repo' | 'command' | 'commandIndex'> &
@@ -27,6 +27,14 @@ export class CheckCommandRepository {
 
   save(row: CheckCommandEntity): Promise<CheckCommandEntity> {
     return this.rows.save(row);
+  }
+
+  /** Ends the rows of an attempt that never finished, as interrupted. A row that has an end is left as it is. */
+  async closeOpen(attemptId: string, endedAt: string): Promise<void> {
+    await this.rows.update(
+      { attemptId, status: In(['waiting', 'running']), endedAt: IsNull() },
+      { status: 'interrupted', exitCode: null, endedAt },
+    );
   }
 
   list(runId: number): Promise<CheckCommandEntity[]> {

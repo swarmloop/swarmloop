@@ -63,6 +63,21 @@ export async function attemptRunning(docker: DockerRunner, attemptId: string): P
   }
 }
 
+/**
+ * Whether the attempt has a running container whose result the server can still read afterwards. False when every
+ * running container carries the lost label, null when docker did not answer.
+ */
+export async function attemptAwaited(docker: DockerRunner, attemptId: string): Promise<boolean | null> {
+  try {
+    const filter = ['--filter', `label=swarmloop.attempt=${attemptId}`];
+    const running = await listed(docker, ['ps', '-q', ...filter]);
+    const lost = new Set(await listed(docker, ['ps', '-q', ...filter, '--filter', 'label=swarmloop.result=lost']));
+    return running.some((id) => !lost.has(id));
+  } catch {
+    return null;
+  }
+}
+
 /** Kills and removes the containers of an attempt. False when docker did not answer or one is still listed. */
 export async function killAttempt(docker: DockerRunner, attemptId: string): Promise<boolean> {
   try {

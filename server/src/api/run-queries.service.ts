@@ -24,6 +24,7 @@ import type { StepEventPage } from '../contract/step-events';
 import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
 import type { LiveSample } from '../contract/live';
 import { runPlace, withPlaceChips } from './run-view/agent-place';
+import { withRestartWait } from './run-view/restart-wait';
 import { mergeWaits, parentOf } from './run-view/merge-wait';
 import { listPlans, listStates } from './run-view/list-state';
 import { childrenByParent, epicTotal, listExtras } from './run-view/status';
@@ -181,7 +182,10 @@ export class RunQueriesService {
         this.live?.peaksOf(run.key) ?? { cpuPeak: 0, memPeak: 0 },
         reportMs,
       ),
-      phases: withPlaceChips(phases(shown, stats, documents, root(this.config)), this.gate.agentWait(run.key)),
+      phases: withRestartWait(
+        withPlaceChips(phases(shown, stats, documents, root(this.config)), this.gate.agentWait(run.key)),
+        run,
+      ),
       returns: returns(shown),
       ...(checkCommands.length > 0 ? { checkCommands } : {}),
       items: open,

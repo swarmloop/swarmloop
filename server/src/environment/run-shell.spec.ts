@@ -60,6 +60,21 @@ describe('runShell', () => {
     expect(rest).toEqual(all.slice(-80));
   });
 
+  it('marks the container of a setup and of a check as one whose result the server cannot read later', async () => {
+    const w = world(1);
+    const file = checkOutputPath(w.root, 'r1', 'implement', 'attempt-1', 0);
+
+    await runShell(w.deps, w.input, w.launch, COMMAND, w.mount, 'setup');
+    await runShell(w.deps, w.input, w.launch, COMMAND, w.mount, 'checks', { index: 0, file });
+
+    const launches = (w.deps.sandbox.spawn as jest.Mock).mock.calls.map(([given]) => given);
+    expect(launches).toHaveLength(2);
+    expect(launches).toEqual([
+      expect.objectContaining({ resultLost: true }),
+      expect.objectContaining({ resultLost: true }),
+    ]);
+  });
+
   it('gives a setup the same tail, mark and whole file', async () => {
     const w = world(498);
 

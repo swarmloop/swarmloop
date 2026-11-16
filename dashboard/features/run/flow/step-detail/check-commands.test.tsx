@@ -9,6 +9,8 @@ import { receive } from '../../../../test/fake-socket';
 import { visitView } from '../../../../test/fixtures';
 import { QueryWrapper } from '../../../../test/query-wrapper';
 import { LiveBridgeProvider, useLiveActions } from '../../../shell';
+import { NO_SAMPLES_AFTER_RESTART } from '@contract/restart-wait';
+import { statusColor } from '../../../../theme/theme';
 import { CheckCommands } from './check-commands';
 
 vi.mock('../../../../lib/endpoints', () => ({ getRunLog: vi.fn() }));
@@ -57,6 +59,35 @@ beforeEach(() => {
 });
 
 describe('CheckCommands', () => {
+  it('reads an interrupted row in words, in the neutral color, with its stored log and a fixed duration', async () => {
+    list([
+      row({ index: 2, status: 'interrupted', endedAt: '2026-01-01T00:01:05.000Z', exitCode: null }),
+      row({ index: 1, name: 'lint' }),
+    ]);
+
+    const word = screen.getByText('interrupted by a server restart');
+    expect(word).toHaveStyle({ color: statusColor('interrupted') });
+    expect(screen.getByText('1m 5s')).toBeInTheDocument();
+    expect(screen.getByText('passed')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Show unit tests/ }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Output of npm run test:unit -- --coverage')).toHaveTextContent('all green'),
+    );
+    expect(screen.getByText(NO_SAMPLES_AFTER_RESTART)).toBeInTheDocument();
+  });
+
+  it('says an interrupted row with no stored output did not run, and does not keep loading', async () => {
+    vi.mocked(getRunLog).mockResolvedValue(null);
+    list([row({ status: 'interrupted', startedAt: null, endedAt: '2026-01-01T00:01:05.000Z', exitCode: null })]);
+
+    await userEvent.click(screen.getByRole('button', { name: /Show unit tests/ }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Output of npm run test:unit -- --coverage')).toHaveTextContent(
+        'no output: it did not run',
+      ),
+    );
+  });
+
   it('shows no repository column or heading for one repository', () => {
     list([row({}), row({ index: 1, name: 'lint' })]);
 

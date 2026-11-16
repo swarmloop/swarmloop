@@ -64,6 +64,7 @@ export function StepDocuments({
   role,
   commands,
   now = 0,
+  restarted = false,
 }: {
   runKey: string;
   /** What the step recorded: null while it is read, empty for a visit from before events were kept. */
@@ -83,6 +84,8 @@ export function StepDocuments({
   /** The check commands of the visit, for the checks step. */
   commands?: CheckCommandView[];
   now?: number;
+  /** The server restarted while the visit's agent kept running: nothing samples its container. */
+  restarted?: boolean;
 }): ReactElement {
   const interruptions = useStableNotes(visits);
   const recorded = events !== null && events.length > 0;
@@ -116,7 +119,7 @@ export function StepDocuments({
           })}
         </Box>
       ) : null}
-      <StepChart visit={visit} total={commands !== undefined} />
+      <StepChart visit={visit} total={commands !== undefined} restarted={restarted} />
       {commands ? <CheckCommands runKey={runKey} commands={commands} visit={visit} now={now} /> : null}
       {events === null || recorded ? (
         <TranscriptFeed

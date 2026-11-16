@@ -5,6 +5,7 @@ import type { ReactElement } from 'react';
 import CheckCircleOutline from '@mui/icons-material/CheckCircleOutline';
 import ErrorOutline from '@mui/icons-material/ErrorOutline';
 import PlayCircleOutline from '@mui/icons-material/PlayCircleOutline';
+import RestartAlt from '@mui/icons-material/RestartAlt';
 import Schedule from '@mui/icons-material/Schedule';
 import SkipNext from '@mui/icons-material/SkipNext';
 import Box from '@mui/material/Box';
@@ -23,6 +24,7 @@ const STATUS: Record<CheckCommandView['status'], { word: string; color: string; 
   passed: { word: 'passed', color: statusColor('done'), Icon: CheckCircleOutline },
   failed: { word: 'failed', color: statusColor('failed'), Icon: ErrorOutline },
   skipped: { word: 'skipped', color: statusColor('skipped'), Icon: SkipNext },
+  interrupted: { word: 'interrupted by a server restart', color: statusColor('interrupted'), Icon: RestartAlt },
 };
 
 function CommandOutput({ runKey, command }: { runKey: string; command: CheckCommandView }): ReactElement {
@@ -31,6 +33,7 @@ function CommandOutput({ runKey, command }: { runKey: string; command: CheckComm
   );
   const stored = useCommandLog(runKey, command, true);
   const text = command.status === 'running' || command.status === 'waiting' ? (live?.body ?? stored) : stored;
+  const neverRan = command.status === 'waiting' || command.status === 'skipped';
   return (
     <Box
       component="pre"
@@ -45,7 +48,7 @@ function CommandOutput({ runKey, command }: { runKey: string; command: CheckComm
         whiteSpace: 'pre-wrap',
       }}
     >
-      {text ?? (command.status === 'waiting' || command.status === 'skipped' ? 'no output: it did not run' : 'loading')}
+      {text ?? (text === null || neverRan ? 'no output: it did not run' : 'loading')}
     </Box>
   );
 }
@@ -96,7 +99,7 @@ export function CheckCommandLine({
             {command.command}
           </Box>
           <CommandOutput runKey={runKey} command={command} />
-          <CommandChart visit={visit} index={command.index} />
+          <CommandChart visit={visit} command={command} />
         </Box>
       ) : null}
     </Box>
