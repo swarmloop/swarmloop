@@ -116,6 +116,20 @@ describe('gitlab host', () => {
     expect(result.record).toBeNull();
   });
 
+  it('fails a merge request the host refuses with 422 with its message', async () => {
+    mockFetch([{ message: 'Source branch is invalid' }], [422]);
+    await expect(
+      service().openMergeRequest({
+        project: 'group/demo',
+        source: 'feature/PROJ-1-ship',
+        target: 'main',
+        title: 'Ship the field',
+        summary: 'Ships the field.',
+        draft: false,
+      }),
+    ).rejects.toThrow('Source branch is invalid');
+  });
+
   it('reuses the merge request when create reports a conflict', async () => {
     const seen = mockFetch([{ message: 'conflict' }, opened()], [409, 200]);
     const result = await service().openMergeRequest({

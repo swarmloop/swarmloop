@@ -1,7 +1,7 @@
 import { instantBackoff } from '../instant-backoff.spec-helpers';
 import { testEnv } from '../../config/env.spec-helpers';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
-import { FetchFailed, HostUnavailable } from '../../core/swarmloop-error';
+import { FetchFailed, HostUnavailable, NothingToMerge } from '../../core/swarmloop-error';
 import { GithubCodeHost } from './github/github-code-host';
 
 interface Answer {
@@ -83,7 +83,41 @@ describe('code host retries', () => {
         : { status: 200, body: [] },
     );
     await expect(github().openMergeRequest(draft)).rejects.toThrow(
-      new FetchFailed('github pull request failed: HTTP 422'),
+      new FetchFailed('Validation Failed: head is invalid'),
+    );
+  });
+
+  it('refuses a pull request with no commits between with NothingToMerge after one POST', async () => {
+    const seen = fakeFetch((method) =>
+      method === 'POST'
+        ? {
+            status: 422,
+            body: { message: 'Validation Failed', errors: [{ message: 'No commits between main and feature/x' }] },
+          }
+        : { status: 200, body: [] },
+    );
+    const refused = await github()
+      .openMergeRequest({ ...draft, draft: true })
+      .catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(NothingToMerge);
+    expect((refused as Error).message).toBe('Validation Failed: No commits between main and feature/x');
+    expect(seen.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+  });
+
+  it('fails a 422 with the errors GitHub lists', async () => {
+    fakeFetch((method) =>
+      method === 'POST'
+        ? {
+            status: 422,
+            body: {
+              message: 'Validation Failed',
+              errors: [{ message: 'head is invalid' }, { message: 'base is gone' }],
+            },
+          }
+        : { status: 200, body: [] },
+    );
+    await expect(github().openMergeRequest(draft)).rejects.toThrow(
+      new FetchFailed('Validation Failed: head is invalid; base is gone'),
     );
   });
 

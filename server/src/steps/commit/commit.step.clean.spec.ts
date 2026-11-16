@@ -179,6 +179,40 @@ describe('commit step on a clean tree', () => {
     }
   });
 
+  it('ends done with no merge request when the pushed branch is at its target and the review says where the behavior is', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-pushed-target-'));
+    const tree = featureTree(root, 'PROJ-136');
+    git(tree, ['push', '-u', 'origin', 'feature/PROJ-136-ship-the-field']);
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-136');
+      await putReviews(app, 'PROJ-136', 'decision: ok\n- met: 1. Ship the field (src/readme.ts)\n', 'decision: ok\n');
+      const done = await app.get(PipelineService).step('commit', 'PROJ-136');
+      expect(done.exitCode).toBe(0);
+      expect(done.message).toContain('already delivered: src/readme.ts');
+      expect((await app.get(RunRepository).findRun('PROJ-136'))?.status).toBe('done');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-136', 'merge_request')).toBeNull();
+      expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('1');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('returns to implement when the pushed branch is at its target and no review found the behavior', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-pushed-undelivered-'));
+    const tree = featureTree(root, 'PROJ-137');
+    git(tree, ['push', '-u', 'origin', 'feature/PROJ-137-ship-the-field']);
+    const app = await boot(root);
+    try {
+      await seed(app, 'PROJ-137');
+      await app.get(PipelineService).step('commit', 'PROJ-137');
+      expect((await app.get(RunRepository).findRun('PROJ-137'))?.currentStep).toBe('implement');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-137', 'issues')).toContain(NOT_DELIVERED);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('ends done when the met lines are only in the stored review result', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-delivered-result-'));
     featureTree(root, 'PROJ-137');

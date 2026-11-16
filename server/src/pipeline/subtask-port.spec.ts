@@ -9,6 +9,8 @@ import { sessionFileName, sessionHome } from '../history/session-group';
 import type { VisitDraft } from '../history/visit';
 import { agentStateDir } from '../sandbox/sandbox-launch';
 import { ARTIFACTS } from '../steps/contract/artifacts';
+import { git } from '../testing/git-fixture';
+import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { renderQuestions } from '../steps/research/research-record';
 import { SubtaskPort } from './subtask-port';
 
@@ -205,5 +207,65 @@ describe('SubtaskPort asking', () => {
   it('asks while a multi-line question has no answer, and stops once it is answered whole', async () => {
     expect(await port(questions).asking(run)).toBe(true);
     expect(await port({ ...questions, answers: `question: ${question}\nanswer: yes\n` }).asking(run)).toBe(false);
+  });
+});
+
+describe('SubtaskPort merge requests', () => {
+  function portWith(dir: string, bodies: Record<string, string>): SubtaskPort {
+    return new SubtaskPort(
+      {} as never,
+      { latestBody: async (_key: string, kind: string) => bodies[kind] ?? null } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      new AppConfig(testEnv({ SWARMLOOP_ROOT: dir })),
+      new FakeClock(),
+    );
+  }
+
+  it('names each merge request by the repository whose origin is its project when a repository has none', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'swarmloop-subtask-mrs-'));
+    for (const repo of ['demo', 'web']) {
+      const path = join(dir, 'worktrees', 'child', repo);
+      mkdirSync(path, { recursive: true });
+      git(path, ['init', '-q']);
+      git(path, ['remote', 'add', 'origin', `git@gitlab.example:group/${repo}.git`]);
+    }
+    const port = portWith(dir, {
+      [ARTIFACTS.mergeRequest.kind]: renderMergeRequest([
+        {
+          project: 'group/web',
+          iid: 4,
+          url: 'https://gitlab.example/group/web/-/merge_requests/4',
+          draft: true,
+          summary: '',
+        },
+      ]),
+      [ARTIFACTS.repos.kind]: 'demo\nweb\n',
+    });
+
+    expect(await port.mergeRequests({ key: 'child' } as RunEntity)).toEqual([
+      { repo: 'web', project: 'group/web', iid: 4 },
+    ]);
+  });
+
+  it('names merge requests by position when every repository has one', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'swarmloop-subtask-mrs-'));
+    const port = portWith(dir, {
+      [ARTIFACTS.mergeRequest.kind]: renderMergeRequest([
+        {
+          project: 'group/one',
+          iid: 1,
+          url: 'https://gitlab.example/group/one/-/merge_requests/1',
+          draft: true,
+          summary: '',
+        },
+      ]),
+      [ARTIFACTS.repos.kind]: 'demo\n',
+    });
+
+    expect(await port.mergeRequests({ key: 'child' } as RunEntity)).toEqual([
+      { repo: 'demo', project: 'group/one', iid: 1 },
+    ]);
   });
 });

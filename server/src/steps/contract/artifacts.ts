@@ -266,7 +266,7 @@ export const ARTIFACTS = {
   /** The files a merged task changed, one path per line, read from its merge into the feature branch. */
   mergedFiles: artifact('merged_files', { writers: [], readers: [], external: true, summarize: firstLine }),
   pendingRebase: artifact('pending_rebase', { writers: [], readers: [], external: true, summarize: firstLine }),
-  commit: artifact('commit', { writers: ['commit'], readers: ['commit'], summarize: firstLine }),
+  commit: artifact('commit', { writers: ['commit', 'merge-request'], readers: ['commit'], summarize: firstLine }),
   mergeRequest: artifact('merge_request', {
     writers: ['merge-request', 'pipeline'],
     readers: ['pipeline'],

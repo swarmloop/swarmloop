@@ -155,7 +155,11 @@ export interface CodeHost {
   findMergeRequest(
     query: MergeRequestQuery,
   ): Promise<{ record: MergeRequestRecord | null; httpCalls: HttpCallDraft[] }>;
-  /** `draftsUnavailable` is true when the host refused a draft and the request was opened as a normal one. */
+  /**
+   * `draftsUnavailable` is true when the host refused a draft and the request was opened as a normal one.
+   * A refusal for a branch with no commit ahead of its target is a `NothingToMerge`; any other refusal is a
+   * `FetchFailed` with the host's own message.
+   */
   openMergeRequest(
     draft: MergeRequestDraft,
   ): Promise<{ record: MergeRequestRecord; draftsUnavailable: boolean; httpCalls: HttpCallDraft[] }>;

@@ -63,8 +63,8 @@ describe('merge-request step golden traces', () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  async function trace(name: string, options: { implementation?: boolean } = {}) {
-    const tree = featureTree(root);
+  async function trace(name: string, options: { implementation?: boolean; ahead?: boolean } = {}) {
+    const tree = featureTree(root, options.ahead === true);
     await seed(app, options.implementation !== false);
     const documents = recordingDocuments(app.get(DocumentRepository));
     const step = new MergeRequestStep(
@@ -100,7 +100,7 @@ describe('merge-request step golden traces', () => {
   }
 
   it('creates the merge request', async () => {
-    await trace('created');
+    await trace('created', { ahead: true });
   });
 
   it('reuses an existing merge request and updates its description', async () => {
@@ -156,8 +156,8 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, implementation: boole
   }
 }
 
-/** A pushed feature branch whose origin url points at the gitlab host. */
-function featureTree(root: string): string {
+/** A pushed feature branch whose origin url points at the gitlab host, with one commit ahead of main when `ahead`. */
+function featureTree(root: string, ahead: boolean): string {
   const clone = join(root, 'demo');
   const remote = join(root, 'demo.git');
   const tree = join(root, 'worktrees', KEY, 'demo');
@@ -174,6 +174,11 @@ function featureTree(root: string): string {
   runGit(clone, ['switch', '-q', '-c', 'holder']);
   mkdirSync(join(tree, '..'), { recursive: true });
   runGit(clone, ['worktree', 'add', '-q', '-b', branch, tree, 'main']);
+  if (ahead) {
+    writeFileSync(join(tree, 'src', 'feature.ts'), 'export const feature = 1;\n');
+    runGit(tree, ['add', 'src/feature.ts']);
+    runGit(tree, ['-c', 'user.name=Dev', '-c', 'user.email=dev@example.com', 'commit', '-q', '-m', 'Ship the field']);
+  }
   runGit(tree, ['push', '-q', '-u', 'origin', branch]);
   runGit(tree, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/demo.git']);
   return tree;

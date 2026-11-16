@@ -24,7 +24,8 @@ import type { MergeRequestDraft } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
-import { FetchFailed } from '../../core/swarmloop-error';
+import { FetchFailed, NothingToMerge } from '../../core/swarmloop-error';
+import { NOTHING_TO_MERGE } from './nothing-to-merge';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const TOKEN = 'super-secret-token';
@@ -232,6 +233,95 @@ describe('merge-request step', () => {
       expect(body).toContain('iid: 4');
       expect(body).toContain('iid: 12');
       expect(body).toContain('Ships the field.');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('ends done with nothing to merge and opens no request when the branch is at its target', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-nothing-'));
+    featureTree(root, 'PROJ-220', 'demo', true, false);
+    const find = jest.fn(async () => ({ record: null, httpCalls: [call('GET')] }));
+    const open = jest.fn();
+    const app = await boot(root, { find, open }, jest.fn());
+    try {
+      await seed(app, 'PROJ-220');
+      const opened = await app.get(PipelineService).step('merge-request', 'PROJ-220');
+      expect(opened.exitCode).toBe(0);
+      expect(opened.message).toContain(NOTHING_TO_MERGE);
+      expect(opened.message).toContain('changed the field');
+      expect(open).not.toHaveBeenCalled();
+      expect(await app.get(DocumentRepository).latestBody('PROJ-220', 'merge_request')).toBeFalsy();
+      const posts = (await app.get<Repository<HttpCallEntity>>(getRepositoryToken(HttpCallEntity)).find()).filter(
+        (entry) => entry.method === 'POST',
+      );
+      expect(posts).toHaveLength(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('ends done when the host says there are no commits between', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-nocommits-'));
+    featureTree(root, 'PROJ-221');
+    const find = jest.fn(async () => ({ record: null, httpCalls: [call('GET')] }));
+    const open = jest.fn(async () => {
+      throw new NothingToMerge('Validation Failed: No commits between main and the branch', [call('POST', 422)]);
+    });
+    const app = await boot(root, { find, open }, jest.fn());
+    try {
+      await seed(app, 'PROJ-221');
+      const opened = await app.get(PipelineService).step('merge-request', 'PROJ-221');
+      expect(opened.exitCode).toBe(0);
+      expect(opened.message).toContain(NOTHING_TO_MERGE);
+      expect(await app.get(DocumentRepository).latestBody('PROJ-221', 'merge_request')).toBeFalsy();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('opens a request only for the repository with work', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-onework-'));
+    featureTree(root, 'PROJ-222', 'demo');
+    featureTree(root, 'PROJ-222', 'web', true, false);
+    const find = jest.fn(async () => ({ record: null, httpCalls: [call('GET')] }));
+    const open = jest.fn(async (draft: MergeRequestDraft) => ({
+      record: {
+        project: draft.project,
+        iid: 12,
+        url: `https://gitlab.example/${draft.project}/-/merge_requests/12`,
+        summary: '',
+        draft: true,
+      },
+      httpCalls: [call('POST')],
+    }));
+    const app = await boot(root, { find, open }, jest.fn());
+    try {
+      await seed(app, 'PROJ-222', { repos: 'demo\nweb\n' });
+      const opened = await app.get(PipelineService).step('merge-request', 'PROJ-222');
+      expect(opened.exitCode).toBe(0);
+      expect(open.mock.calls.map((entry) => entry[0].project)).toEqual(['group/demo']);
+      const body = await app.get(DocumentRepository).latestBody('PROJ-222', 'merge_request');
+      expect(body).toContain('group/demo');
+      expect(body).not.toContain('group/web');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('fails with the host message when the host refuses the request', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-refused-'));
+    featureTree(root, 'PROJ-223');
+    const find = jest.fn(async () => ({ record: null, httpCalls: [call('GET')] }));
+    const open = jest.fn(async () => {
+      throw new FetchFailed('Validation Failed: head is invalid', [call('POST', 422)]);
+    });
+    const app = await boot(root, { find, open }, jest.fn());
+    try {
+      await seed(app, 'PROJ-223');
+      const opened = await app.get(PipelineService).step('merge-request', 'PROJ-223');
+      expect(opened.exitCode).toBe(1);
+      expect(opened.message).toContain('Validation Failed: head is invalid');
     } finally {
       await app.close();
     }
@@ -534,13 +624,19 @@ async function seed(
   }
 }
 
-function featureTree(root: string, key: string, repo = 'demo', pushed = true): string {
+/** A pushed feature branch with one commit its target does not have, or with none when `ahead` is false. */
+function featureTree(root: string, key: string, repo = 'demo', pushed = true, ahead = true): string {
   const { clone } = copyMainWithOrigin(root, repo);
   const tree = join(root, 'worktrees', key, repo);
   const branch = `feature/${key}-ship-the-field`;
   git(clone, ['remote', 'set-head', 'origin', 'main']);
   mkdirSync(join(tree, '..'), { recursive: true });
   git(clone, ['worktree', 'add', '-b', branch, tree, 'main']);
+  if (ahead) {
+    writeFileSync(join(tree, 'src', 'feature.ts'), 'export const feature = 1;\n');
+    git(tree, ['add', 'src/feature.ts']);
+    git(tree, ['commit', '-m', 'Ship the field']);
+  }
   if (pushed) {
     git(tree, ['push', '-u', 'origin', branch]);
   }

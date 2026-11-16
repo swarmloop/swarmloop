@@ -93,8 +93,9 @@ describe('an unchanged tree is delivered or returned, never failed', () => {
   describe('the commit step on a tree nothing changed', () => {
     /** The branch is on the base and not on origin: nothing to push, and nothing to commit. */
     async function unchangedRun(): Promise<void> {
-      git(flow.tree, ['push', 'origin', `:${FEATURE}`]);
       await flow.begin('merge-request');
+      git(flow.tree, ['reset', '--hard', 'main']);
+      git(flow.tree, ['push', 'origin', `:${FEATURE}`]);
       const run = (await runs().findRun(KEY))!;
       writeRunState(run, { status: 'waiting', currentStep: 'commit' });
       await runs().saveRun(run);
@@ -132,5 +133,73 @@ describe('an unchanged tree is delivered or returned, never failed', () => {
       expect(await documents().latestBody(KEY, 'commit')).toBe('already delivered: src/readme.ts\n');
       expect(await documents().latestBody(KEY, 'merge_request')).toBeNull();
     });
+  });
+});
+
+describe('a run on the real merge request step opens a request only for work', () => {
+  let flow: Awaited<ReturnType<typeof createFlowHarness>>;
+
+  beforeEach(async () => {
+    flow = await createFlowHarness(KEY, { realHost: true });
+  });
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await flow.close();
+  });
+
+  const runs = () => flow.app.app.get(RunRepository);
+  const documents = () => flow.app.app.get(DocumentRepository);
+
+  /** The run waits at commit with the reviews of a requirements review that agrees and a quality review that passed. */
+  async function atCommit(): Promise<void> {
+    await flow.begin('merge-request');
+    const run = (await runs().findRun(KEY))!;
+    writeRunState(run, { status: 'waiting', currentStep: 'commit' });
+    await runs().saveRun(run);
+    await documents().putDocument(
+      run,
+      'review_requirements',
+      'decision: ok\n- met: 1. Ship the field (src/readme.ts)\n',
+    );
+    await documents().putDocument(run, 'review_quality', 'decision: ok\n');
+  }
+
+  it('ends done with no merge request when implement reverted its change and the review agrees', async () => {
+    await atCommit();
+    git(flow.tree, ['reset', '--hard', 'main']);
+    git(flow.tree, ['push', '--force', 'origin', FEATURE]);
+
+    await flow.app.app.get(CommitStep).execute(KEY);
+    await flow.tick();
+    await flow.app.pipeline.whenIdle(KEY);
+
+    expect((await runs().findRun(KEY))?.status).toBe('done');
+    expect(await documents().latestBody(KEY, 'commit')).toBe('already delivered: src/readme.ts\n');
+    expect(await documents().latestBody(KEY, 'merge_request')).toBeNull();
+    expect(flow.host.openAsks).toBe(0);
+  });
+
+  it('opens the request of a run with one commit ahead', async () => {
+    await atCommit();
+
+    await flow.app.app.get(CommitStep).execute(KEY);
+    await flow.app.pipeline.step('merge-request', KEY);
+
+    expect(flow.host.opened).toBe(1);
+    expect(await documents().latestBody(KEY, 'merge_request')).toContain('https://gitlab.example/');
+  });
+
+  it('fails with the host message when the host refuses the request', async () => {
+    await atCommit();
+    flow.host.refuseOpen('Validation Failed: head is invalid');
+
+    await flow.app.app.get(CommitStep).execute(KEY);
+    const refused = await flow.app.pipeline.step('merge-request', KEY);
+
+    expect(refused.exitCode).toBe(1);
+    expect(refused.message).toContain('Validation Failed: head is invalid');
+    expect((await runs().findRun(KEY))?.status).toBe('failed');
+    expect(await documents().latestBody(KEY, 'merge_request')).toBeNull();
   });
 });

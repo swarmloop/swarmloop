@@ -167,8 +167,11 @@ export class SubtaskPort extends SubtaskOps {
     const body = await this.documents.latestBody(run.key, ARTIFACTS.mergeRequest.kind);
     if (!body?.trim()) return [];
     const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
-    return parseMergeRequests(body).map((record, index) => ({
-      repo: names[index] ?? record.project,
+    const records = parseMergeRequests(body);
+    const positional = records.length === names.length;
+    const projects = positional ? [] : await Promise.all(names.map((name) => this.worktrees.projectOf(run, name)));
+    return records.map((record, index) => ({
+      repo: (positional ? names[index] : names[projects.indexOf(record.project)]) ?? record.project,
       project: record.project,
       iid: record.iid,
     }));

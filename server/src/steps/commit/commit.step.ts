@@ -12,6 +12,7 @@ import { gitAt, status, Tree } from './commit-git';
 import { checkedRepoNames } from '../../git/repo-names';
 import { RunStop } from '../../agent/run-stop';
 import { assertNotStopped } from '../../agent/step-stopped';
+import { hasWorkToMerge } from '../shared/branch-work';
 import { RebasedPublisher, type PublishedBy } from '../shared/rebased-publisher';
 import { BaseStep, StepContext } from '../base-step';
 import {
@@ -75,12 +76,17 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     }
     const planned = again ? parsePaths(stored ?? '') : await this.plan(trees, []);
     const rerun = planned.length === 0 && (await this.reader.newer(key, ARTIFACTS.ciRerun, ARTIFACTS.commit));
-    if (!rerun && planned.length === 0 && !(await this.somethingToPush(trees, branch, named))) {
-      if (await this.publishedHead(trees, branch)) {
-        await this.publisher.stampRefs(opened.run, trees);
-        return commitResult('ok', `${opened.startedAt} commit done\n${branch}`);
+    if (!rerun && planned.length === 0) {
+      if (!(await this.hasWork(trees, named))) {
+        return this.unchanged(opened);
       }
-      return this.unchanged(opened);
+      if (!(await this.somethingToPush(trees, branch, named))) {
+        if (await this.publishedHead(trees, branch)) {
+          await this.publisher.stampRefs(opened.run, trees);
+          return commitResult('ok', `${opened.startedAt} commit done\n${branch}`);
+        }
+        return this.unchanged(opened);
+      }
     }
     assertNotStopped(this.runStop, key);
     const heads: string[] = [];
@@ -182,11 +188,24 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     if (remote) {
       return remote !== head;
     }
-    const base = named
+    return (await this.baseRev(tree, named)) !== head;
+  }
+
+  private async baseRev(tree: Tree, named: string | null): Promise<string | null> {
+    return named
       ? await this.publisher.optionalRev(tree, `refs/remotes/${originRef(named)}`)
       : ((await this.publisher.optionalRev(tree, 'refs/remotes/origin/main')) ??
-        (await this.publisher.optionalRev(tree, 'refs/remotes/origin/master')));
-    return base !== head;
+          (await this.publisher.optionalRev(tree, 'refs/remotes/origin/master')));
+  }
+
+  /** A branch is work only when it has a commit its target does not have. */
+  private async hasWork(trees: Tree[], named: string | null): Promise<boolean> {
+    for (const tree of trees) {
+      if (await hasWorkToMerge(tree, await this.baseRev(tree, named))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private async publishedHead(trees: Tree[], branch: string): Promise<boolean> {

@@ -85,7 +85,7 @@ describe('step descriptors', () => {
       'flaky',
       'merge_request',
     ]);
-    expect(kinds('merge-request')).toEqual(['merge_request', 'rebase_merge_skip']);
+    expect(kinds('merge-request')).toEqual(['merge_request', 'rebase_merge_skip', 'commit']);
     expect(kinds('branch')).toEqual([]);
   });
 });

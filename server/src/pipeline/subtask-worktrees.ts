@@ -8,6 +8,7 @@ import { originRef } from '../git/base-ref';
 import { git } from '../git/git';
 import { worktreePath } from '../git/repo-names';
 import { root } from '../history/run-paths';
+import { originProject } from '../steps/pipeline/pipeline-report';
 import type { RunEntity } from '../history/entities';
 import type { RebasedPublisher } from '../steps/shared/rebased-publisher';
 
@@ -101,6 +102,11 @@ export class SubtaskWorktrees {
       );
     }
     return files;
+  }
+
+  /** The project the origin of a repository's worktree names, or null when the worktree or its origin cannot be read. */
+  projectOf(run: RunEntity, repo: string): Promise<string | null> {
+    return originProject(worktreePath(root(this.config), run.key, repo));
   }
 
   /** The files git cannot merge between the feature branch and the heads of the run. */
