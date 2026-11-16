@@ -11,6 +11,7 @@ import { RepositoryOrigins } from '../../steps/shared/repository-origins';
 import { parseMergeRequests, type MergeRequestLine } from '../../steps/merge-request/merge-request-record';
 import { parsePipelineRefs } from '../../steps/pipeline/pipeline-report';
 import { CommandService } from '../command.service';
+import { BacklogEvents } from './backlog-events';
 import { readMains } from './main-readings';
 import { CLOSED_NOTE, decideMerge, stillBehind, type MergeFacts } from './merge-rules';
 import type { MainReading } from './task-readiness';
@@ -42,6 +43,7 @@ export class BacklogMerge {
     private readonly origins: RepositoryOrigins,
     private readonly host: RepositoryHost,
     private readonly commands: CommandService,
+    private readonly events: BacklogEvents,
   ) {}
 
   /** One pass over every task with a run key of the backlogs that are not paused. `mains` is the tick's cache of repository mains. */
@@ -79,6 +81,7 @@ export class BacklogMerge {
       if (fact) merged[repo] = fact.sha ?? '';
     }
     await this.save(task, { status: 'merged', merged, note: '' });
+    await this.events.taskMerged(task.backlogId, task.slug);
   }
 
   private async merge(
@@ -114,12 +117,12 @@ export class BacklogMerge {
         notes.push(error instanceof HostUnavailable ? error.message : `${reasonOf(error)}; next try on the next tick`);
       }
     }
-    await this.save(
-      current,
-      task.repositories.every((repo) => repo in current.merged)
-        ? { status: 'merged', note: '' }
-        : { note: notes.join('; ') },
-    );
+    if (!task.repositories.every((repo) => repo in current.merged)) {
+      await this.save(current, { note: notes.join('; ') });
+      return;
+    }
+    await this.save(current, { status: 'merged', note: '' });
+    await this.events.taskMerged(task.backlogId, task.slug);
   }
 
   /** Reads one request's gate and acts on the rules' outcome. The task comes back as stored, with the note that says what holds it. */
@@ -174,16 +177,12 @@ export class BacklogMerge {
         return { task, note: sent ?? stillBehind(branch) };
       }
       if (!(error instanceof FetchFailed)) throw error;
-      await this.backlogs.recordEvent(
-        backlog.id as number,
-        `merge-refused:${task.slug}:${repository}:${head}`,
-        'merge-refused',
-        {
-          task: task.slug,
-          repository,
-          message: error.message,
-        },
-      );
+      await this.events.mergeRefused(backlog.id as number, {
+        task: task.slug,
+        repository,
+        head,
+        message: error.message,
+      });
       return { task, note: `merge refused by the host: ${error.message}` };
     }
   }
@@ -205,10 +204,7 @@ export class BacklogMerge {
       );
       return replayed ? null : `rebased onto ${branch}; waits for its new head`;
     } catch (error) {
-      await this.backlogs.recordEvent(backlog.id as number, `rebase-refused:${task.slug}:${head}`, 'rebase-refused', {
-        task: task.slug,
-        message: reasonOf(error),
-      });
+      await this.events.rebaseRefused(backlog.id as number, { task: task.slug, head, message: reasonOf(error) });
       return `rebase refused: ${reasonOf(error)}`;
     }
   }

@@ -44,6 +44,7 @@ import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { Reconciler } from './reconciler';
+import { BacklogEvents } from './backlog/backlog-events';
 import { BacklogMerge } from './backlog/backlog-merge';
 import { BacklogScheduler } from './backlog/backlog-scheduler';
 import { BacklogStartPort } from './backlog/backlog-start-port';
@@ -96,6 +97,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     CommandService,
     MergeWatch,
     Reconciler,
+    BacklogEvents,
     BacklogMerge,
     BacklogScheduler,
     BacklogStartPort,

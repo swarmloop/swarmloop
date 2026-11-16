@@ -17,7 +17,9 @@ export interface BacklogTask extends Subtask {
 }
 
 /** What a repository's main reads as; `unreadable` carries the words for why it could not be read. */
-export type MainReading = Pick<RepositoryMainView, 'state'> | { state: 'unreadable'; note: string };
+export type MainReading =
+  | (Pick<RepositoryMainView, 'state'> & Partial<Pick<RepositoryMainView, 'head'>>)
+  | { state: 'unreadable'; note: string };
 
 /** The state of a task's own run, as far as its shown status needs it. */
 export interface RunFacts {
