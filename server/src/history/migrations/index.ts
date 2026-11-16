@@ -1,6 +1,7 @@
 import { IntegrationSecrets1796000000000 } from './1796000000000-integration-secrets';
 import { CredentialCooldowns1796000000001 } from './1796000000001-credential-cooldowns';
 import { DropUnusedData1796100000000 } from './1796100000000-drop-unused-data';
+import { Backlogs1796200000000 } from './1796200000000-backlogs';
 import { AgentEffort1795900000000 } from './1795900000000-agent-effort';
 import { InterruptedCheckRows1795900000000 } from './1795900000000-interrupted-check-rows';
 import { InitialSchema1793664000000 } from './1793664000000-initial-schema';
@@ -69,4 +70,5 @@ export const migrations = [
   IntegrationSecrets1796000000000,
   CredentialCooldowns1796000000001,
   DropUnusedData1796100000000,
+  Backlogs1796200000000,
 ];

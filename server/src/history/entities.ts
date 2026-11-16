@@ -1,4 +1,12 @@
 import { ConnectionEntity, HostAppEntity, IntegrationSecretEntity, UserSettingEntity } from './connection-entities';
+import {
+  BacklogEntity,
+  BacklogEventEntity,
+  BacklogTaskEntity,
+  DecisionEntity,
+  MilestoneEntity,
+  RequirementEntity,
+} from './backlog.entities';
 import { CredentialCooldownEntity } from './credential-cooldown.entity';
 import { RunEntity } from './run.entity';
 import { FlakyTestEntity } from './flaky-test.entity';
@@ -339,4 +347,10 @@ export const entities = [
   UserSettingEntity,
   IntegrationSecretEntity,
   CredentialCooldownEntity,
+  BacklogEntity,
+  MilestoneEntity,
+  RequirementEntity,
+  BacklogTaskEntity,
+  DecisionEntity,
+  BacklogEventEntity,
 ];
