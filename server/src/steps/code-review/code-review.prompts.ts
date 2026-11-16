@@ -1,6 +1,6 @@
 import { reviewAnswerDefinition, reviewDefinition } from '../../agent-result/definitions/review';
 import { reviewReport } from '../../agent-result/definitions/review-report';
-import type { CoveredRequirement, Requirement } from '../../contract/requirement-list';
+import type { CoveredRequirement } from '../../contract/requirement-list';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 
 /** The merge request summary prompt for a new chat: the decisions to copy, and the full result text. */
@@ -96,11 +96,6 @@ export const REPORT_CONTINUE = [
   'Use these parts, in this order: What changed, Code review, What holds when a check is ok, and What to fix only when a latest decision is return.',
   resultPromptFor(reviewReport, reviewReport.name),
 ].join('\n');
-
-/** The body of the Requirements list section: one `R1: <text>` line for each requirement. */
-export function requirementsBody(list: readonly Requirement[]): string {
-  return list.map((requirement) => `${requirement.id}: ${requirement.text}`).join('\n');
-}
 
 /** A plan item with the ids it covers, when the coverage holds it. */
 function withCovers(item: string, coverage: readonly CoveredRequirement[] | null): string {

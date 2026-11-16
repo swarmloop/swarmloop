@@ -25,7 +25,8 @@ import { skillPrompt } from '../shared/skill-prompt';
 import type { Requirement } from '../../contract/requirement-list';
 import type { Subtask } from '../../contract/subtask';
 import type { KeepLine } from '../shared/keep-lines';
-import { SUBTASK_PROOF_CHECK, exchangeSection, requirementsBody } from './code-review.prompts';
+import { SUBTASK_PROOF_CHECK, exchangeSection } from './code-review.prompts';
+import { requirementsSection } from '../shared/coverage-correction';
 import { opinionSummary } from './code-review-round-result';
 import { reviewDocuments } from './code-review-record';
 import type { Opinion } from './code-review-record';
@@ -189,7 +190,7 @@ export async function routeReview(
 function reviewJob(reviewer: Reviewer, input: RoundInput) {
   const names = input.mounts.map((mount) => basename(mount.hostPath));
   const notesSection = input.notes?.trim() ? [{ heading: 'Implementation', body: input.notes }] : [];
-  const listSection = input.list ? [{ heading: 'Requirements list', body: requirementsBody(input.list) }] : [];
+  const listSection = input.list ? [requirementsSection(input.list)] : [];
   const planSection = input.coveredPlan.trim() ? [{ heading: 'Plan', body: input.coveredPlan }] : [];
   const listed = withSubtasks(
     withContract(

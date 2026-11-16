@@ -65,11 +65,12 @@ export const research = defineResult('research', Joi.object({ ...keys, requireme
 
 /**
  * The research result a run is asked for: a run that is not a subtask must list its requirements, a subtask is not told
- * about them (the server builds its list) and an answer that sends them anyway is read without error. The kind is the same.
+ * about them (the server builds its list), so the prompt does not describe the field; an answer that sends them anyway is
+ * read without error, and every other unknown key is an error. Whatever it accepts the stored kind reads. The kind is the same.
  */
 export function researchFor(subtask: boolean): ResultDefinition {
   const schema = subtask
-    ? Joi.object(keys).unknown(true)
+    ? Joi.object(keys).pattern('requirements', requirementsKey)
     : Joi.object({
         ...keys,
         requirements: requirementsKey

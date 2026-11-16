@@ -1,4 +1,5 @@
 import { readResult } from '../read-result';
+import { resultPrompt } from '../result-prompt';
 import { block } from '../result.spec-helpers';
 import { research, researchFor } from './research';
 
@@ -32,8 +33,13 @@ describe('research result', () => {
   it('does not ask a subtask for requirements and reads an answer that sends them', () => {
     expect(readResult(researchFor(true), block(VALID)).ok).toBe(true);
     expect(readResult(researchFor(true), block({ ...VALID, requirements: [{ id: 'R1', text: 'a' }] })).ok).toBe(true);
-    expect(JSON.stringify(researchFor(true).schema.describe())).not.toContain('requirements');
-    expect(JSON.stringify(researchFor(false).schema.describe())).toContain('requirements');
+    expect(resultPrompt(researchFor(true))).not.toContain('requirements');
+    expect(resultPrompt(researchFor(false))).toContain('requirements');
+  });
+
+  it('rejects any other unknown key of a subtask answer, so no stored result fails the stored kind', () => {
+    expect(readResult(researchFor(true), block({ ...VALID, stray: 1 })).ok).toBe(false);
+    expect(readResult(researchFor(true), block({ ...VALID, requirements: 'x' })).ok).toBe(false);
   });
 
   it('names a status that is not one of the four', () => {

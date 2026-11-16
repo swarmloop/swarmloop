@@ -133,7 +133,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     const asked = planFor({ split: limits.maySplit, subtask });
     const fullFor = (target: string, chatReceived: string | null, resumed = false): string =>
       [
-        skillPrompt('plan', input.requirements, names, listed(sections, list, resumed), mounts, {
+        skillPrompt('plan', input.requirements, names, listed(sections, list, resumed && !subtask), mounts, {
           split: limits.maySplit,
           rules: projectRules(names, mounts, target, resumed),
         }),
@@ -236,7 +236,10 @@ function decidedErrors(value: PlanResult): string[] {
     : ['plan: give the checklist now, with no questions'];
 }
 
-/** The sections with the requirements list, unless the prompt resumes a chat that already holds it. */
+/**
+ * The sections with the requirements list, unless the prompt resumes a chat that already holds it. Research answers the
+ * list of a run in the chat the plan resumes; a subtask's list is built by the server, so that chat never held it.
+ */
 function listed(
   sections: { heading: string; body: string }[],
   list: Requirement[] | null | undefined,

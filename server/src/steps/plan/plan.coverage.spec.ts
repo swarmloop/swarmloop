@@ -1,5 +1,5 @@
 import { mkdirSync } from 'fs';
-import { mkdtemp } from 'fs/promises';
+import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { AgentRunInput } from '../../agent/agent-runner';
@@ -30,6 +30,7 @@ interface Options {
   list?: boolean;
   chat?: boolean;
   split?: boolean;
+  subtask?: boolean;
 }
 
 async function planWith(answers: string[], options: Options = {}) {
@@ -37,7 +38,8 @@ async function planWith(answers: string[], options: Options = {}) {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-coverage-'));
   await writeEnv(root);
   mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
-  if (options.chat) writeChat(root, key);
+  await writeFile(join(root, 'worktrees', key, 'billing-api', 'AGENTS.md'), 'Keep it small.\n');
+  if (options.chat) writeChat(root, key, options.subtask ? 'claude' : undefined);
   const agent = jest.fn();
   for (const answer of answers) agent.mockResolvedValueOnce(result(answer));
   const app = await boot(root, agent);
@@ -45,7 +47,18 @@ async function planWith(answers: string[], options: Options = {}) {
     await seed(app, key, '');
     const runs = app.get(RunRepository);
     const run = (await runs.findRun(key))!;
-    await runs.saveRun({ ...run, split: options.split ?? false });
+    const parent = options.subtask ? await runs.openWaiting(`${key}-parent`, '/target') : null;
+    await runs.saveRun({
+      ...run,
+      split: options.split ?? false,
+      ...(parent
+        ? {
+            parentRunId: parent.id,
+            taskId: 't1',
+            agents: { subtask: { plan: [{ runtime: 'claude', model: 'm-claude' }] } },
+          }
+        : {}),
+    });
     const documents = app.get(DocumentRepository);
     if (options.list ?? true) await documents.putDocument(run, 'requirement_list', `${JSON.stringify(LIST)}\n`);
     const done = await app.get(PipelineService).step('plan', key);
@@ -53,6 +66,7 @@ async function planWith(answers: string[], options: Options = {}) {
       JSON.parse((await documents.latestBody(key, kind)) ?? 'null');
     return {
       done,
+      resumed: agent.mock.calls.map((call) => (call[0] as AgentRunInput).resumeChatId),
       prompts: agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt),
       coverage: (await body('requirement_coverage')) as { id: string; items: string[] }[] | null,
       subtasks: (await body('subtasks')) as { covers?: string[] }[] | null,
@@ -118,5 +132,14 @@ describe('plan coverage', () => {
     const fresh = await planWith([covering(9)]);
     expect(fresh.prompts[0].split('R9: requirement 9')).toHaveLength(2);
     expect(fresh.prompts[0]).toContain('R9: requirement 9');
+  });
+
+  it('holds the list once in a subtask plan that resumes a chat, because its research never held it', async () => {
+    const run = await planWith([covering(9)], { chat: true, subtask: true });
+    expect(run.prompts[0].split('R9: requirement 9')).toHaveLength(2);
+    expect(run.prompts[0]).toContain('R9: requirement 9');
+    expect(run.resumed).toEqual(['chat-1']);
+    expect(run.prompts[0]).not.toContain('Keep it small.');
+    expect(run.prompts).toHaveLength(1);
   });
 });

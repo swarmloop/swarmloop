@@ -65,14 +65,12 @@ describe('Housekeeping startup', () => {
 
   it('measures the sizes at startup, also when the catch-up already ran', async () => {
     world = await makeWorld('PROJ-6');
+    await world.app.get(Housekeeping).startup();
     const meter = world.app.get(OwnUseMeter);
     const measure = jest.spyOn(meter, 'measure');
-    await world.app.get(Housekeeping).startup();
-    // A walk that is still running makes the next measure a no-op, so the first walk ends before the second start.
-    await measure.mock.results[0].value;
 
     await world.app.get(Housekeeping).startup();
-    await measure.mock.results[1].value;
+    await measure.mock.results[0].value;
 
     expect(meter.last()?.line).toContain('swarmloop uses worktrees');
   });
