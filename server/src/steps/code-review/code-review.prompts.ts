@@ -1,5 +1,6 @@
 import { reviewAnswerDefinition, reviewDefinition } from '../../agent-result/definitions/review';
 import { reviewReport } from '../../agent-result/definitions/review-report';
+import type { CoveredRequirement, Requirement } from '../../contract/requirement-list';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 
 /** The merge request summary prompt for a new chat: the decisions to copy, and the full result text. */
@@ -64,7 +65,9 @@ export function reviewResume(
     'The checklist may have been corrected to fix a failed pipeline or to follow later instructions. The list below is the current one.',
     'A change that makes the failed job pass, or that the latest pipeline note requires, is required and is never returned.',
     'Do not return a finding that brings back what the failing pipeline log shows as the cause.',
-    'On `decision: return`, name one broken behavior. Do not ask for a new subsystem.',
+    name === 'requirements'
+      ? 'On `decision: return`, name every requirement id that is not met. Do not ask for a new subsystem.'
+      : 'On `decision: return`, name one broken behavior. Do not ask for a new subsystem.',
     ...(exchange ? ['', `${exchange.heading}:`, exchange.body, ''] : []),
     resultPromptFor(exchange ? reviewAnswerDefinition(name) : reviewDefinition(name), exchange ? null : received),
   ];
@@ -94,14 +97,25 @@ export const REPORT_CONTINUE = [
   resultPromptFor(reviewReport, reviewReport.name),
 ].join('\n');
 
-export function approvedChecklist(items: string[]): string {
+/** The body of the Requirements list section: one `R1: <text>` line for each requirement. */
+export function requirementsBody(list: readonly Requirement[]): string {
+  return list.map((requirement) => `${requirement.id}: ${requirement.text}`).join('\n');
+}
+
+/** A plan item with the ids it covers, when the coverage holds it. */
+function withCovers(item: string, coverage: readonly CoveredRequirement[] | null): string {
+  const ids = (coverage ?? []).filter((entry) => entry.items.includes(item)).map((entry) => entry.id);
+  return ids.length > 0 ? `${item} - covers: ${ids.join(', ')}` : item;
+}
+
+export function approvedChecklist(items: string[], coverage: readonly CoveredRequirement[] | null = null): string {
   return [
     'This is the approved checklist. A behavior it removes is not a missing requirement.',
     'On a later pass, decision: ok when the last return is already what this checklist asks, even when the files were left unchanged. Do not return that behavior again.',
     'The checklist may have been corrected to fix a failed pipeline or to follow later instructions. The list below is the current one.',
     'A change that makes the failed job pass, or that the latest pipeline note requires, is required and is never returned.',
     'Do not return a finding that brings back what the failing pipeline log shows as the cause.',
-    ...items.map((item) => `- ${item}`),
+    ...items.map((item) => `- ${withCovers(item, coverage)}`),
   ].join('\n');
 }
 

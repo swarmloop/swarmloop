@@ -40,8 +40,15 @@ const DEFAULT_REVIEW = { decision: 'ok', review: 'reviewed the change', summary:
 /** The report of five reviews that all passed. */
 const DEFAULT_REPORT = { whatChanged: 'changed the field', codeReview: 'every check is ok' };
 
+/** The requirements reviewer marks the one requirement the default research lists. */
+const DEFAULT_REQUIREMENTS_REVIEW = {
+  ...DEFAULT_REVIEW,
+  requirements: [{ id: 'R1', status: 'met', note: 'the change does it' }],
+};
+
 const DEFAULT_ANSWERS: Record<string, unknown> = {
   ...Object.fromEntries(CODE_REVIEWERS.map((name) => [`code-review-${name}`, DEFAULT_REVIEW])),
+  'code-review-requirements': DEFAULT_REQUIREMENTS_REVIEW,
   'code-review-report': DEFAULT_REPORT,
   research: DEFAULT_RESEARCH,
   plan: DEFAULT_PLAN,
