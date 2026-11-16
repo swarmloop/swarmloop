@@ -33,6 +33,7 @@ function CommandOutput({ runKey, command }: { runKey: string; command: CheckComm
   );
   const stored = useCommandLog(runKey, command, true);
   const text = command.status === 'running' || command.status === 'waiting' ? (live?.body ?? stored) : stored;
+  const neverRan = command.status === 'waiting' || command.status === 'skipped';
   return (
     <Box
       component="pre"
@@ -47,7 +48,7 @@ function CommandOutput({ runKey, command }: { runKey: string; command: CheckComm
         whiteSpace: 'pre-wrap',
       }}
     >
-      {text ?? (command.status === 'waiting' || command.status === 'skipped' ? 'no output: it did not run' : 'loading')}
+      {text ?? (text === null || neverRan ? 'no output: it did not run' : 'loading')}
     </Box>
   );
 }
