@@ -7,6 +7,7 @@ import { restartWaitSentence } from '@contract/restart-wait';
 import { localTime } from '../../../lib/format';
 import { FlowBoard } from './flow-board';
 
+const errorColor = createTheme().palette.error.main;
 const phases: FlowView['phases'] = [
   {
     phase: 'implementation',
@@ -58,19 +59,73 @@ describe('FlowBoard', () => {
   it('shows a returned card with the return icon, the place it went to, and neither the error nor the warning color', async () => {
     const user = userEvent.setup({ delay: null });
     const board: FlowView['phases'] = [
-      { phase: 'checks', steps: [{ name: 'checks', status: 'returned', current: false, attempts: 1 }] },
+      {
+        phase: 'checks',
+        steps: [{ name: 'checks', status: 'returned', current: false, attempts: 2, returnNote: '2 notes' }],
+      },
     ];
-    const returns: FlowView['returns'] = [{ counter: 'checks', count: 1, from: 'checks', to: 'implement' }];
+    const returns: FlowView['returns'] = [{ counter: 'checks', count: 2, from: 'checks', to: 'implement' }];
     render(<FlowBoard phases={board} returns={returns} selected={null} onSelect={vi.fn()} />);
 
     const card = screen.getByRole('button', { name: /checks/ });
     expect(within(card).getByTestId('UndoIcon')).toBeInTheDocument();
-    expect(within(card).getByText('1')).toHaveStyle({ backgroundColor: 'var(--chart-returns)' });
-    const { palette } = createTheme();
-    expect(card).not.toHaveStyle({ borderColor: palette.error.main });
-    expect(within(card).getByText('1')).not.toHaveStyle({ backgroundColor: palette.warning.main });
+    expect(within(card).getByText('2')).toHaveStyle({ backgroundColor: errorColor });
+    expect(card).toHaveStyle({ borderColor: errorColor });
     await user.hover(card);
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('returned to implement');
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('returned: 2 notes');
+  });
+
+  it('shows a failed card in the error color with its own icon', () => {
+    const board: FlowView['phases'] = [
+      { phase: 'checks', steps: [{ name: 'checks', status: 'failed', current: false, attempts: 1 }] },
+    ];
+    render(<FlowBoard phases={board} returns={[]} selected={null} onSelect={vi.fn()} />);
+
+    const card = screen.getByRole('button', { name: /checks/ });
+    expect(within(card).getByTestId('ErrorOutlineIcon')).toBeInTheDocument();
+    expect(within(card).queryByTestId('UndoIcon')).toBeNull();
+    expect(card).toHaveStyle({ borderColor: errorColor });
+  });
+
+  it('does not use the error color for a step that was not returned, and tells the run count on the badge', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<FlowBoard phases={phases} returns={[]} selected={null} onSelect={vi.fn()} />);
+
+    const card = screen.getByRole('button', { name: /^implement\s*2$/ });
+    expect(card).not.toHaveStyle({ borderColor: errorColor });
+    await user.hover(within(card).getByText('2'));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('ran 2 times');
+  });
+
+  it('keeps the done card in its column as a marker that is not a button', () => {
+    const board: FlowView['phases'] = [
+      { phase: 'implementation', steps: [{ name: 'implement', status: 'done', current: false, attempts: 1 }] },
+      { phase: 'finish', steps: [{ name: 'done', status: 'done', current: false, attempts: 0 }] },
+    ];
+    render(<FlowBoard phases={board} returns={[]} selected={null} onSelect={vi.fn()} />);
+
+    expect(screen.getByText('done')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^done$/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /implement/ })).toBeInTheDocument();
+  });
+
+  it('says the run state word in the tooltip of a waiting current step', async () => {
+    const user = userEvent.setup({ delay: null });
+    const board: FlowView['phases'] = [
+      { phase: 'implementation', steps: [{ name: 'implement', status: 'waiting', current: true, attempts: 1 }] },
+    ];
+    render(
+      <FlowBoard
+        phases={board}
+        returns={[]}
+        selected={null}
+        onSelect={vi.fn()}
+        stateReason={{ code: 'NEEDS_ANSWERS', message: 'question' }}
+      />,
+    );
+
+    await user.hover(screen.getByRole('button', { name: /implement/ }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Waiting for you');
   });
 
   it('shows why a skipped card is skipped', () => {
@@ -128,15 +183,15 @@ describe('FlowBoard', () => {
         phases={board}
         returns={[
           { counter: 'review', count: 1, from: 'code-review', to: 'implement' },
-          { counter: 'checks', count: 2, from: 'checks', to: 'implement' },
+          { counter: 'checks', count: 2, from: 'checks', to: 'implement', why: 'lint' },
         ]}
         selected={null}
         onSelect={vi.fn()}
       />,
     );
 
-    expect(screen.getByText('checks → implement · checks × 2')).toBeInTheDocument();
-    expect(screen.getByText('code-review → implement · review × 1')).toBeInTheDocument();
+    expect(screen.getByText('checks → implement · 2 times (lint)')).toHaveStyle({ fontSize: '0.875rem' });
+    expect(screen.getByText('code-review → implement · 1 times')).toBeInTheDocument();
     expect(screen.getByText('code review')).toBeInTheDocument();
   });
 
