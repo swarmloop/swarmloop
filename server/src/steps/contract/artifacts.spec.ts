@@ -150,7 +150,15 @@ describe('artifact catalog', () => {
     expect(ARTIFACTS.planResult.writers).toEqual(['plan']);
     expect(ARTIFACTS.planImproveResult.writers).toEqual(['plan-improve']);
     expect(ARTIFACTS.subtaskAnswerResult.external).toBe(true);
-    const value = { summary: ['why'], plan: ['a - files: b: c'], questions: [], contract: [], tasks: [], keep: [] };
+    const value = {
+      summary: ['why'],
+      plan: ['a - files: b: c'],
+      covers: [],
+      questions: [],
+      contract: [],
+      tasks: [],
+      keep: [],
+    };
     expect(ARTIFACTS.planResult.parse(ARTIFACTS.planResult.format(value))).toEqual(value);
     expect(() => ARTIFACTS.planResult.parse('{"summary":[],"plan":[],"questions":["a?"]}')).not.toThrow();
     expect(() => ARTIFACTS.planResult.parse('{"summary":[]}')).toThrow('plan_result is not valid');

@@ -1,7 +1,7 @@
 import { agentFor } from '../../config/agents';
 import type { RunEntity } from '../../history/entities';
 import { Injectable } from '@nestjs/common';
-import type { AgentProfile, InputSpec, Route, StepInput, StepResult } from '../contract/step-contract';
+import type { AgentProfile, ArtifactValue, InputSpec, Route, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
 import { SwarmloopEnv } from '../../config/env';
 import { isEffort, raisesEffort, type Effort } from '../../contract/effort';
@@ -41,6 +41,10 @@ import { currentPlan } from '../shared/current-plan';
 import { renderKeep } from '../shared/keep-lines';
 import { storedImpact } from '../shared/research-reads';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { Requirement } from '../../contract/requirement-list';
+import { correctCoverage, gapLines, requirementsSection } from '../shared/coverage-correction';
+import { coverageOf, mergeRequirements, type CoverageUnit } from '../shared/requirement-coverage';
+import { improveUnits, mergedList } from './plan-improve-coverage';
 
 const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
@@ -55,6 +59,8 @@ const INPUTS = {
   implementationResult: lateInput(ARTIFACTS.implementationResult),
   implementationImproveResult: lateInput(ARTIFACTS.implementationImproveResult),
   keep: lateInput(ARTIFACTS.keep),
+  requirementList: lateInput(ARTIFACTS.requirementList),
+  requirementCoverage: lateInput(ARTIFACTS.requirementCoverage),
   instructions: instructionsInput('plan-improve'),
 } as const satisfies InputSpec;
 
@@ -120,6 +126,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
           ]
         : [];
     const asked = planImproveFor(maySplit);
+    const list = await ctx.reread(ARTIFACTS.requirementList);
     const fullFor = (target: string, received: string | null, resumed = false): string =>
       [
         skillPrompt(
@@ -127,7 +134,14 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
           input.requirements,
           names,
           withImpact(
-            withHandoff([{ heading: 'Plan', body: JSON.stringify(plan, null, 2) }, ...splitSections], prior),
+            withHandoff(
+              [
+                { heading: 'Plan', body: JSON.stringify(plan, null, 2) },
+                ...splitSections,
+                ...(list && !resumed ? [requirementsSection(list)] : []),
+              ],
+              prior,
+            ),
             impact,
           ),
           mounts,
@@ -142,15 +156,34 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
       continued?.chatId && !maySplit
         ? appendImpact(planImproveFollowUp(resultPromptFor(asked, received)), impact)
         : fullFor(runtime, received, Boolean(continued?.chatId));
+    const check = (raw: unknown): string[] =>
+      improveErrors(completePlanImprove(raw as Partial<PlanImproveResult>), limits, list);
     const agentResult = await ctx.launch({
       prompt: finish(chosen),
       briefFor: (other) => finish(fullFor(other, null)),
       mounts,
       continuePrompt: planImproveContinue(),
       result: asked,
-      check: (value) => improveErrors(completePlanImprove(value as Partial<PlanImproveResult>), limits),
+      check,
     });
-    const value = completePlanImprove(agentResult.resultValue as Partial<PlanImproveResult>);
+    const answered = completePlanImprove(agentResult.resultValue as Partial<PlanImproveResult>);
+    const stored = (await ctx.reread(ARTIFACTS.requirementCoverage)) ?? [];
+    const coverage = list
+      ? await correctCoverage(
+          ctx,
+          {
+            mounts,
+            result: asked,
+            check,
+            continuePrompt: planImproveContinue(),
+            read: (raw) => completePlanImprove(raw as Partial<PlanImproveResult>),
+            listOf: (result) => mergedList(mergedList(list, answered), result),
+            unitsOf: (result) => improveUnits(result, stored),
+          },
+          answered,
+        )
+      : null;
+    const value = coverage?.value ?? answered;
     // A split answer is written back as tasks. A plan answer turns a split back into one plan, and an empty one keeps it.
     const graph = isSplit(value) ? buildGraph(value) : null;
     const items = graph ? planItemsFromTasks(graph.tasks) : value.plan;
@@ -166,8 +199,10 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
         { artifact: ARTIFACTS.requirements, value: withPlan(requirements, next) },
         { artifact: ARTIFACTS.planImproveResult, value },
         ...(tasks.length > 0 || graph ? splitOutputs(graph) : []),
+        ...(coverage ? coverageOutputs(coverage.list, coverage.units, list ?? []) : []),
       ],
-      handoff: renderSummary(value.summary, next.items),
+      handoff:
+        [renderSummary(value.summary, next.items).trimEnd(), ...gapLines(coverage?.problems ?? [])].join('\n') + '\n',
     };
   }
 
@@ -191,6 +226,17 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
 }
 
 /** What the server checks on a plan-improve answer after its schema: the split. */
-function improveErrors(value: PlanImproveResult, limits: TaskLimits): string[] {
-  return isSplit(value) ? taskErrors(value, limits) : [];
+function improveErrors(value: PlanImproveResult, limits: TaskLimits, list: Requirement[] | null | undefined): string[] {
+  return [
+    ...(isSplit(value) ? taskErrors(value, limits) : []),
+    ...(list ? mergeRequirements(list, value.requirements ?? []).problems : []),
+  ];
+}
+
+/** The merged list when the answer changed it, and the coverage of every requirement. */
+function coverageOutputs(list: Requirement[], units: CoverageUnit[], stored: Requirement[]): ArtifactValue[] {
+  return [
+    ...(JSON.stringify(list) === JSON.stringify(stored) ? [] : [{ artifact: ARTIFACTS.requirementList, value: list }]),
+    { artifact: ARTIFACTS.requirementCoverage, value: coverageOf(list, units) },
+  ];
 }

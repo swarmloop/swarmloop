@@ -115,7 +115,7 @@ describe('review against the input', () => {
 describe('plan-improve and implement answer to the input', () => {
   it('plan-improve checks the coverage of the input before anything else', () => {
     const text = skill('plan-improve');
-    expect(text).toContain('Before anything else, list every item the input asks for');
+    expect(text).toContain('Before anything else, check the `Requirements list` in the prompt against the input');
     expect(text).toContain('`added: <item> - <why>`');
     expect(text.indexOf('Before anything else')).toBeLessThan(text.indexOf('The plan is already in the prompt'));
   });

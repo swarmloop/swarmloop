@@ -12,6 +12,8 @@ A checklist never has an item like "stop and report if X is missing". A result t
 
 Each checklist item is one entry of the plan and ends with `files:` (the paths it changes) and `proof:` (the test or check that shows it is done), for example `add X to Y - files: src/billing/invoice - proof: the invoice total test`.
 
+The prompt may hold a `Requirements list` section: one `<id>: <text>` line per requirement. Every item, and in a split every task, names in `covers` the ids of that list it serves. In a plan, `covers` has one list of ids per item, in the order of the items. Every id of the list is covered by at least one item or task, and an id that is not in the list is never named.
+
 The prompt may hold an `Impact` section: the capabilities the task touches, one `- <capability> | <file> | <status>` line each. Every `kept` capability that the checklist touches gets an item `keep: <capability> - files: <paths> - proof: <test>`.
 
 A capability marked `removed` or `unreachable` that the requirements do not name in a `Removes` or `Behavior change` section, and that no answer confirmed, is not planned around silently. Stop and send `questions` in place of the plan, one entry `This change makes <capability> <unreachable|go away>. Is that intended?` per capability. Dead code that nothing relies on is not a capability and raises no question.
