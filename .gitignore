@@ -5,6 +5,7 @@ dist/
 worktrees/
 data/
 server/dist/
+server/.jest-cache/
 server/node_modules/
 dashboard/node_modules/
 dashboard/.next/

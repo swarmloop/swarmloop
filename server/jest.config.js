@@ -4,8 +4,9 @@ module.exports = {
   rootDir: '.',
   testRegex: '(src|test)/.*\\.(spec|e2e\\.spec)\\.ts$',
   transform: {
-    '^.+\\.ts$': 'ts-jest',
+    '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.jest.json' }],
   },
+  cacheDirectory: '<rootDir>/.jest-cache',
   testEnvironment: 'node',
   globalSetup: '<rootDir>/jest.global-setup.js',
   globalTeardown: '<rootDir>/jest.global-teardown.js',
