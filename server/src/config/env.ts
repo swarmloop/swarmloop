@@ -64,6 +64,7 @@ export interface SwarmloopEnv extends CodeHostServerEnv, CodeHostLoginEnv {
   SPLIT: 'auto' | 'off';
   SPLIT_MAX_TASKS: number;
   SUBTASKS_PARALLEL: number;
+  BACKLOG_PARALLEL: number;
   SWARMLOOP_ROOT: string | undefined;
   CHECKOUTS_ROOT: string | undefined;
   SWARMLOOP_API_PORT: number;
@@ -180,6 +181,7 @@ export function readEnv(config: ConfigService, hostKeys: HostEnvKeys): Swarmloop
     SPLIT: config.getOrThrow<'auto' | 'off'>('SPLIT'),
     SPLIT_MAX_TASKS: config.getOrThrow<number>('SPLIT_MAX_TASKS'),
     SUBTASKS_PARALLEL: config.getOrThrow<number>('SUBTASKS_PARALLEL'),
+    BACKLOG_PARALLEL: config.getOrThrow<number>('BACKLOG_PARALLEL'),
     SWARMLOOP_ROOT: root ? root : undefined,
     CHECKOUTS_ROOT: checkoutsRoot ? checkoutsRoot : undefined,
     SWARMLOOP_API_PORT: config.getOrThrow<number>('SWARMLOOP_API_PORT'),

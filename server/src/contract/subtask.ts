@@ -58,7 +58,7 @@ export function settled(task: Subtask): boolean {
 }
 
 /** The ids a task still waits for. */
-export function unmetDepends(task: Subtask, tasks: Subtask[]): string[] {
+export function unmetDepends<T extends Subtask>(task: T, tasks: T[]): string[] {
   return task.depends.filter((id) => {
     const found = tasks.find((item) => item.id === id);
     return !found || !settled(found);
@@ -81,7 +81,7 @@ function blockedAncestors(task: Subtask, tasks: Subtask[]): string[] {
 }
 
 /** The waiting tasks that may start now: every dependency is settled and none is behind a blocked task, up to `parallel` tasks at a time. */
-export function readyTasks(tasks: Subtask[], parallel: number): Subtask[] {
+export function readyTasks<T extends Subtask>(tasks: T[], parallel: number): T[] {
   const free = Math.max(0, parallel - tasks.filter((task) => task.status === 'running').length);
   return tasks
     .filter(
@@ -94,7 +94,7 @@ export function readyTasks(tasks: Subtask[], parallel: number): Subtask[] {
 }
 
 /** What a waiting task waits for: a blocked task, the tasks it depends on, or a free slot. Never a settled task. */
-export function waitNote(task: Subtask, tasks: Subtask[]): string {
+export function waitNote<T extends Subtask>(task: T, tasks: T[]): string {
   const blocked = blockedAncestors(task, tasks);
   if (blocked.length > 0) return `waiting for ${blocked.join(', ')}, which is blocked`;
   const unmet = unmetDepends(task, tasks);
@@ -134,13 +134,13 @@ export function runTaskStatus(run: TaskRunState): SubtaskStatus {
 }
 
 /** The state every page shows for a task. A task the parent closed keeps its stored status; any other task with a run shows that run's own state; one without a run waits. */
-export function shownTaskState(task: Subtask, run?: TaskRunState): SubtaskStatus {
+export function shownTaskState<T extends Subtask>(task: T, run?: TaskRunState): SubtaskStatus {
   if (settled(task)) return task.status;
   return run ? runTaskStatus(run) : 'waiting';
 }
 
 /** `4/7 merged · 2 running · 1 waiting`. A count of zero is left out. */
-export function statusLine(tasks: Subtask[]): string {
+export function statusLine<T extends Subtask>(tasks: T[]): string {
   const count = (status: SubtaskStatus): number => tasks.filter((task) => task.status === status).length;
   const parts = [`${count('merged')}/${tasks.length} merged`];
   for (const status of ['running', 'green', 'waiting', 'blocked', 'skipped'] as const) {

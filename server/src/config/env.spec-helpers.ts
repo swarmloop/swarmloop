@@ -60,6 +60,7 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     SPLIT: 'off',
     SPLIT_MAX_TASKS: 12,
     SUBTASKS_PARALLEL: 3,
+    BACKLOG_PARALLEL: 3,
     SWARMLOOP_ROOT: undefined,
     CHECKOUTS_ROOT: undefined,
     SWARMLOOP_API_PORT: 3920,

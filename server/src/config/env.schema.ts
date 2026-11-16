@@ -90,6 +90,7 @@ export const envSchema = Joi.object({
   SPLIT: Joi.string().valid('auto', 'off'),
   SPLIT_MAX_TASKS: Joi.number().integer().min(1),
   SUBTASKS_PARALLEL: Joi.number().integer().min(1),
+  BACKLOG_PARALLEL: Joi.number().integer().min(1),
   SWARMLOOP_ENV_FILE: Joi.string().allow(''),
   SWARMLOOP_REGISTRY: Joi.string().allow(''),
   SWARMLOOP_VERSION: Joi.string().allow(''),

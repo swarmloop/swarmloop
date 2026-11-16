@@ -328,4 +328,12 @@ describe('split settings', () => {
       'SUBTASKS_PARALLEL',
     );
   });
+
+  it('BACKLOG_PARALLEL defaults to 3 and takes a whole number from 1', () => {
+    expect(validateSettings(complete, { convert: true }).value.BACKLOG_PARALLEL).toBe(3);
+    expect(validateSettings({ ...complete, BACKLOG_PARALLEL: '5' }, { convert: true }).value.BACKLOG_PARALLEL).toBe(5);
+    expect(validateSettings({ ...complete, BACKLOG_PARALLEL: '0' }, { convert: true }).error?.message).toContain(
+      'BACKLOG_PARALLEL',
+    );
+  });
 });
