@@ -31,6 +31,10 @@
       "step": "implement"
     },
     {
+      "kind": "input.received",
+      "step": "implement"
+    },
+    {
       "kind": "command.started",
       "step": "implement"
     },
@@ -342,6 +346,7 @@
   "reads": {
     "implement": [
       "requirements",
+      "requirement_coverage",
       "plan_improve_result",
       "plan_result",
       "implementation_result",
