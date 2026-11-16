@@ -30,6 +30,7 @@ import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { ResearchStep } from '../steps/research/research.step';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { RunReport } from '../steps/shared/run-report';
+import { ReportRefresh } from '../steps/shared/report-refresh';
 import { LimitFailover } from '../steps/shared/limit-failover';
 import { LimitRelease } from '../steps/shared/limit-release';
 import { StepKernel } from '../steps/step-kernel';
@@ -85,6 +86,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     LimitFailover,
     LimitRelease,
     RunReport,
+    ReportRefresh,
     StepKernel,
     StepRegistry,
     PipelineService,
@@ -117,6 +119,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     EnvironmentService,
     AgentLauncher,
     RunReport,
+    ReportRefresh,
     StepRegistry,
   ],
 })

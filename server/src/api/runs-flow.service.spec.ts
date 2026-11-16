@@ -612,4 +612,24 @@ describe('runs api', () => {
       await app.close();
     }
   });
+  it('carries the report of the code-review step rendered live, and none without the parts of the new report', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-report-'));
+    const app = await seededBoot(root);
+    try {
+      const run = await save(app.get(RunRepository), 'proj-report', 'code-review', 'waiting');
+      const queries = app.get(RunQueriesService);
+      expect((await queries.step('proj-report', 'code-review')).report).toBeUndefined();
+      const documents = app.get(DocumentRepository);
+      await documents.putDocument(run, 'review_report_result', '{"whatChanged":"a","codeReview":"b"}');
+      expect((await queries.step('proj-report', 'code-review')).report).toBeUndefined();
+      const notes = { requirements: 'a', quality: 'b', regressions: 'c', security: 'd', performance: 'e' };
+      const parts = { line: 'The field ships.', done: ['x'], worthALook: [], notes, risk: 'low', riskReason: 'small' };
+      await documents.putDocument(run, 'review_report_result', JSON.stringify(parts));
+      const detail = await queries.step('proj-report', 'code-review');
+      expect(detail.report).toContain('> The field ships.');
+      expect((await queries.step('proj-report', 'implement')).report).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
 });

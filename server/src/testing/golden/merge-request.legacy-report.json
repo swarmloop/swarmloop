@@ -1,0 +1,248 @@
+{
+  "documentsOutsideVisits": [
+    {
+      "body": "{\"prompt\":\"Ship the field\\n\",\"tickets\":[{\"key\":\"PROJ-200\",\"summary\":\"Ship the field\"}]}\n",
+      "kind": "requirements"
+    },
+    {
+      "body": "demo\n",
+      "kind": "repos"
+    },
+    {
+      "body": "changed the field\n",
+      "kind": "implementation"
+    },
+    {
+      "body": "Ships the field.\n",
+      "kind": "review_report"
+    }
+  ],
+  "events": [
+    {
+      "kind": "attempt.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "input.received",
+      "step": "merge-request"
+    },
+    {
+      "kind": "input.received",
+      "step": "merge-request"
+    },
+    {
+      "kind": "input.received",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "command.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "activity.started",
+      "step": "merge-request"
+    },
+    {
+      "kind": "activity.finished",
+      "step": "merge-request"
+    },
+    {
+      "kind": "artifact.produced",
+      "step": "merge-request"
+    },
+    {
+      "kind": "handoff.sent",
+      "step": "merge-request"
+    },
+    {
+      "kind": "attempt.finished",
+      "step": "merge-request"
+    }
+  ],
+  "flows": [],
+  "git": {
+    "demo": {
+      "branch": "feature/PROJ-200-ship-the-field",
+      "log": ["Ship the field", "init"],
+      "refs": [
+        "refs/heads/feature/PROJ-200-ship-the-field <sha:1>",
+        "refs/heads/holder <sha:2>",
+        "refs/heads/main <sha:2>",
+        "refs/remotes/origin/HEAD <sha:2>",
+        "refs/remotes/origin/feature/PROJ-200-ship-the-field <sha:1>",
+        "refs/remotes/origin/main <sha:2>"
+      ]
+    }
+  },
+  "hostCalls": {
+    "find": [
+      [
+        {
+          "project": "group/demo",
+          "source": "feature/PROJ-200-ship-the-field"
+        }
+      ]
+    ],
+    "open": [
+      [
+        {
+          "draft": true,
+          "project": "group/demo",
+          "source": "feature/PROJ-200-ship-the-field",
+          "summary": "Ships the field.",
+          "target": "main",
+          "title": "Ship the field"
+        }
+      ]
+    ],
+    "update": []
+  },
+  "loopEvents": [],
+  "reads": {
+    "merge-request": [
+      "ci_skip",
+      "requirements",
+      "repos",
+      "implementation_result",
+      "implementation",
+      "review_report_result",
+      "review_report",
+      "rebase_merge_skip",
+      "handoff"
+    ]
+  },
+  "result": {
+    "exitCode": 0,
+    "message": "<t> merge-request done\nhttps://gitlab.example/group/demo/-/merge_requests/12"
+  },
+  "run": {
+    "agentCalls": 0,
+    "attemptsPipeline": 0,
+    "attemptsReview": 0,
+    "currentStep": "pipeline",
+    "runtime": "cursor",
+    "spentUsd": 0,
+    "status": "waiting"
+  },
+  "visits": [
+    {
+      "documents": [
+        {
+          "body": "project: group/demo\niid: 12\nurl: https://gitlab.example/group/demo/-/merge_requests/12\ndraft: true\n\nShips the field.\n",
+          "kind": "merge_request"
+        },
+        {
+          "body": "[{\"step\":\"merge-request\",\"body\":\"- opened the merge request\"}]",
+          "kind": "handoff"
+        }
+      ],
+      "exchanges": [],
+      "exitCode": 0,
+      "httpCalls": [
+        {
+          "method": "GET",
+          "statusCode": 200,
+          "url": "https://gitlab.example/api/v4/projects/group%2Fdemo/merge_requests"
+        },
+        {
+          "method": "POST",
+          "statusCode": 200,
+          "url": "https://gitlab.example/api/v4/projects/group%2Fdemo/merge_requests"
+        }
+      ],
+      "killReason": null,
+      "mode": null,
+      "model": null,
+      "resumed": false,
+      "status": "done",
+      "step": "merge-request",
+      "tokensIn": 0,
+      "tokensOut": 0,
+      "usd": 0
+    }
+  ]
+}

@@ -21,8 +21,15 @@ import { renderImplementation } from '../implement/implement-record';
 import { hasWorkToMerge } from '../shared/branch-work';
 import { worktreesFingerprint } from '../shared/gate';
 import { RunReport } from '../shared/run-report';
+import { spliceReport } from '../shared/report-markers';
 import type { AttemptFacts } from '../../contract/step-events';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
+
+/** The text of the body, and whether it is the rendered report, which goes between the markers. */
+interface Summary {
+  text: string;
+  report: boolean;
+}
 
 interface Tree {
   repo: string;
@@ -45,6 +52,11 @@ const INPUTS = {
   reviewReport: lateInput(ARTIFACTS.reviewReport),
   rebaseMergeSkip: { artifact: ARTIFACTS.rebaseMergeSkip, need: 'optional', late: true },
 } as const satisfies InputSpec;
+
+/** A rendered report goes between the markers of the host's body, so text outside them stays; any other text is the body. */
+function bodyOf(tree: Tree, built: Summary): string {
+  return built.report ? spliceReport(tree.existing?.summary ?? '', built.text) : built.text;
+}
 
 @Injectable()
 export class MergeRequestStep extends BaseStep<typeof INPUTS> {
@@ -85,7 +97,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
       opened.run.codeHost,
       client,
     );
-    const summary = await this.summary(ctx, phases, trees);
+    const built = await this.summary(ctx, phases, trees);
     const skip = ((await ctx.reread(ARTIFACTS.rebaseMergeSkip)) ?? '').trim() === 'skip';
     const withWork = await this.withWork(trees);
     if (withWork.length === 0) {
@@ -96,7 +108,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
       'Open merge request',
       () =>
         this.ensure(
-          withWork.map((tree) => ({ ...tree, summary })),
+          withWork.map((tree) => ({ ...tree, summary: bodyOf(tree, built) })),
           title,
           ctx.calls,
           skip,
@@ -168,13 +180,13 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     return trees;
   }
 
-  private async summary(ctx: StepContext, phases: readonly PhaseName[], trees: Tree[]): Promise<string> {
+  private async summary(ctx: StepContext, phases: readonly PhaseName[], trees: Tree[]): Promise<Summary> {
     const implementation = await this.implementation(ctx);
     if (!implementation) {
       throw new SwarmloopError('implementation is missing');
     }
     if (!phases.includes('code-review')) {
-      return implementation;
+      return { text: implementation, report: false };
     }
     const fingerprint = await worktreesFingerprint(trees.map((tree) => tree.path));
     const counted = await ctx.gate(ARTIFACTS.reviewReport, fingerprint);
@@ -185,7 +197,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     if (!summary) {
       throw new SwarmloopError('review report is missing');
     }
-    return summary;
+    return { text: summary, report: report !== null };
   }
 
   /** What implement said it did: the lines of its stored result, else its document. Empty when it said nothing. */

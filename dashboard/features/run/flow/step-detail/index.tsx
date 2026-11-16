@@ -93,7 +93,7 @@ export function StepDetail({
     recorded && visit
       ? { ...visit, documents: visit.documents.filter((item) => item.kind !== 'error' && item.kind !== 'return') }
       : visit;
-  const text = stepText(step, shownVisit, selected, checks);
+  const text = stepText(step, shownVisit, selected, checks, latest ? view.report : undefined);
   const logs = selected ? '' : text.logs || (stored.text ?? '');
   const { document } = text;
   const commands = view.commands ? visitCommands(withLive(view.commands, liveCommands), visit) : undefined;

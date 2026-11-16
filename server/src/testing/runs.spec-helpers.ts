@@ -27,6 +27,7 @@ import { SubtaskClose } from '../api/subtask-close';
 import { RunCommandsService } from '../api/run-commands.service';
 import { RunSubtaskCommandsService } from '../api/run-subtask-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
+import { RunReport } from '../steps/shared/run-report';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
@@ -59,6 +60,7 @@ export async function boot(
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), HistoryModule, LiveModule, AuthModule],
     providers: [
       RunQueriesService,
+      RunReport,
       RunCommandsService,
       RunSubtaskCommandsService,
       SubtaskClose,
