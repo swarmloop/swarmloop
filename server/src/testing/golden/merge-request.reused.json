@@ -15,6 +15,10 @@
     {
       "body": "Ships the field.\n",
       "kind": "review_report"
+    },
+    {
+      "body": "{\"line\":\"Ships the field.\",\"done\":[\"x\"],\"worthALook\":[],\"notes\":{\"requirements\":\"a\",\"quality\":\"b\",\"regressions\":\"c\",\"security\":\"d\",\"performance\":\"e\"},\"risk\":\"low\",\"riskReason\":\"small\"}\n",
+      "kind": "review_report_result"
     }
   ],
   "events": [
@@ -152,7 +156,13 @@
       ]
     ],
     "open": [],
-    "update": [["group/demo", 9, "Ships the field."]]
+    "update": [
+      [
+        "group/demo",
+        9,
+        "<!-- swarmloop:report -->\n## ⏳ Waiting for CI · risk: low\n> Ships the field.\n\n| Requirements | Checks | CI | Review | Returns | Time |\n|---|---|---|---|---|---|\n| — | — | ⏳ | — | 0 | 0 min |\n\n**Done**\n- x\n\n**🧭 How it got here**\n—\n\n<details><summary>Reviewer notes (5)</summary>\n\n- **Requirements —** a\n- **Quality —** b\n- **Regressions —** c\n- **Security —** d\n- **Performance —** e\n</details>\n<!-- /swarmloop:report -->"
+      ]
+    ]
   },
   "loopEvents": [],
   "reads": {
@@ -163,7 +173,6 @@
       "implementation_result",
       "implementation",
       "review_report_result",
-      "review_report",
       "rebase_merge_skip",
       "handoff"
     ]
@@ -185,7 +194,7 @@
     {
       "documents": [
         {
-          "body": "project: group/demo\niid: 9\nurl: https://gitlab.example/group/demo/-/merge_requests/9\ndraft: true\n\nShips the field.\n",
+          "body": "project: group/demo\niid: 9\nurl: https://gitlab.example/group/demo/-/merge_requests/9\ndraft: true\n\n<!-- swarmloop:report -->\n## ⏳ Waiting for CI · risk: low\n> Ships the field.\n\n| Requirements | Checks | CI | Review | Returns | Time |\n|---|---|---|---|---|---|\n| — | — | ⏳ | — | 0 | 0 min |\n\n**Done**\n- x\n\n**🧭 How it got here**\n—\n\n<details><summary>Reviewer notes (5)</summary>\n\n- **Requirements —** a\n- **Quality —** b\n- **Regressions —** c\n- **Security —** d\n- **Performance —** e\n</details>\n<!-- /swarmloop:report -->\n",
           "kind": "merge_request"
         },
         {

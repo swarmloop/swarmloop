@@ -163,6 +163,23 @@ describe('stepText', () => {
   });
 });
 
+describe('stepText report', () => {
+  const old = visit({
+    decision: 'decision: ok',
+    documents: [{ kind: 'review_report', attempt: 1, body: 'stored report\ndecision: ok', createdAt: 't' }],
+  });
+
+  it('shows the live report of the latest visit, and the stored document for an older visit or an old run', () => {
+    assert.equal(stepText('code-review', old, undefined, [], '## live report').document, '## live report');
+    assert.equal(stepText('code-review', old, undefined, [], undefined).document, 'stored report\ndecision: ok');
+    assert.equal(stepText('implement', old, undefined, [], '## live report').document, '');
+  });
+
+  it('lets a picked check win over the live report', () => {
+    assert.equal(stepText('code-review', old, { body: 'picked' }, [], '## live report').document, 'picked');
+  });
+});
+
 describe('tokenUsage', () => {
   it('prefers a positive reported count and otherwise the log', () => {
     assert.deepEqual(tokenUsage('plain'), {});
