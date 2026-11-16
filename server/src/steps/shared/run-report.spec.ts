@@ -17,7 +17,14 @@ function reportOf(stored: string | null): RunReport {
     list: () => Promise.resolve([]),
   };
   const clock = { now: () => Date.parse('2026-11-16T10:05:00.000Z') } as Clock;
-  return new RunReport(documents as never, none as never, none as never, none as never, clock);
+  return new RunReport(
+    documents as never,
+    none as never,
+    none as never,
+    none as never,
+    { children: () => Promise.resolve([]) } as never,
+    clock,
+  );
 }
 
 describe('RunReport', () => {

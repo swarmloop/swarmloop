@@ -6,6 +6,7 @@ import { CheckCommandRepository } from '../../history/check-command.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
 import { FlowRepository } from '../../history/flow.repository';
+import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { ARTIFACTS } from '../contract/artifacts';
 import { readReportFacts, type ReportFactsDeps, type RoundReview } from './report-facts';
@@ -20,6 +21,7 @@ export class RunReport {
     private readonly visits: VisitRepository,
     private readonly flows: FlowRepository,
     private readonly checkCommands: CheckCommandRepository,
+    private readonly runs: RunRepository,
     private readonly clock: Clock,
   ) {}
 
@@ -29,6 +31,7 @@ export class RunReport {
       visits: this.visits,
       flows: this.flows,
       checkCommands: this.checkCommands,
+      runs: this.runs,
       clock: this.clock,
     };
   }
