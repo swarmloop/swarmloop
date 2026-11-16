@@ -68,6 +68,8 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.keep,
     ARTIFACTS.contract,
     ARTIFACTS.planImproveResult,
+    ARTIFACTS.requirementList,
+    ARTIFACTS.requirementCoverage,
   ];
 
   constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {

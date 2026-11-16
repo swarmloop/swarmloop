@@ -18,6 +18,8 @@ A capability marked `removed` or `unreachable` that the requirements do not name
 
 A repository with no CI config starts with its base (read /work/brief/skills/implement/project-base.md); its other tasks depend on it.
 
+A limit never decides which requirement goes. When a required change does not fit a limit (a prompt budget, a size or complexity limit, a time limit), do not drop it and do not cut another rule or requirement to make room. The plan names the conflict as a question to whoever started the run, before implement. A limit that restructuring meets (file size, complexity, folder size: split by responsibility) is not such a conflict, and restructuring is the normal answer; the question is only for a limit that no change within the rules can meet.
+
 The checklist goes in the result block, and only there. A later pass replaces the plan with its own. Do not edit source files. Do not run git. Do not implement the items. `summary` says why this checklist.
 
 ## Split

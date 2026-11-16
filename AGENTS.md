@@ -31,6 +31,7 @@ swarmloop runs coding agents through a fixed flow: requirements, research, plan,
 - A product file has at most 400 counted lines (blank lines and comments do not count); a spec file 800. A function has complexity 20 at most.
 - Before adding code to a file, look at its size. When the change would take it past about 340 counted lines, first split the file by responsibility in a move-only change (no logic change), then add the new code to the file that now owns it. Plan that split as its own checklist item.
 - Never squeeze code under a limit: no deleted comments, joined lines, shortened names, or branches moved into tables just to pass a count.
+- A limit never decides which requirement goes. When a required change does not fit a limit (a prompt budget, a size or complexity limit, a time limit), do not drop it and do not cut another rule or requirement to make room. The plan names the conflict as a question to whoever started the run, before implement; found later, it is a `needs:` with the limit, the numbers and the change that does not fit. A limit that restructuring meets (file size, complexity, folder size: split by responsibility) is not such a conflict, and restructuring is the normal answer; the question is only for a limit that no change within the rules can meet.
 - A new responsibility goes in its own file, named for it. Before writing a helper, search the tree for one that does the same.
 - When a change leaves a file, export, import, comment or commented-out code with no remaining use, remove it in the same change.
 
