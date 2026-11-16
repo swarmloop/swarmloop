@@ -39,31 +39,23 @@ interface TaskFieldsBody {
   milestone: number | null;
 }
 
-/** @public Used by the task actions, which land after this file. */
 export interface AddTaskBody extends Partial<TaskFieldsBody> {
   id: string;
   title: string;
   description: string;
 }
 
-/**
- * A change of a task that has not started: only the fields that are given.
- * @public Used by the task actions, which land after this file.
- */
+/** A change of a task that has not started: only the fields that are given. */
 export type ChangeTaskBody = Partial<Omit<TaskFieldsBody, 'manual' | 'fixesMain'>>;
 
-/**
- * A backlog item: only a title and a description until it is planned.
- * @public Used by the task actions, which land after this file.
- */
+/** A backlog item: only a title and a description until it is planned. */
 export interface AddItemBody {
   id: string;
   title: string;
   description: string;
 }
 
-/** @public Used by the task actions, which land after this file. */
 export interface MoveItemBody {
-  /** The place in the backlog's plan order, from 1. */
-  position: number;
+  /** The number of the milestone the item goes to. */
+  milestone: number;
 }

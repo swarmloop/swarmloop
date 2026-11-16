@@ -107,6 +107,7 @@ interface BacklogWriters {
   saveRequirement(record: RequirementRecord): Promise<RequirementRecord>;
   saveTask(record: BacklogTaskRecord): Promise<BacklogTaskRecord>;
   addDecision(record: DecisionRecord): Promise<DecisionRecord>;
+  deleteTask(id: number): Promise<void>;
   /** Writes the event once per key; false when the key was written before. */
   recordEvent(backlogId: number, key: string, kind: BacklogEventKind, facts: Facts): Promise<boolean>;
 }
@@ -196,6 +197,9 @@ function writersOn(manager: EntityManager, clock: Clock): BacklogWriters {
     },
     async addDecision(record) {
       return saveRow(manager, DecisionEntity, { ...record, id: record.id as number });
+    },
+    async deleteTask(id) {
+      await manager.delete(BacklogTaskEntity, id);
     },
     async recordEvent(backlogId, key, kind, facts) {
       try {
@@ -341,6 +345,10 @@ export class BacklogRepository implements BacklogWriters {
 
   addDecision(record: DecisionRecord): Promise<DecisionRecord> {
     return this.writers.addDecision(record);
+  }
+
+  deleteTask(id: number): Promise<void> {
+    return this.writers.deleteTask(id);
   }
 
   recordEvent(backlogId: number, key: string, kind: BacklogEventKind, facts: Facts): Promise<boolean> {

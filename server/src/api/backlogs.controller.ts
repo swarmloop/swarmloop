@@ -1,10 +1,14 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
 import { Actor } from '../auth/actor.decorator';
 import type { BacklogView } from '../contract/backlog';
 import type {
+  AddItemBody,
   AddRepositoryBody,
   AddRequirementsBody,
+  AddTaskBody,
+  ChangeTaskBody,
   CreateBacklogBody,
+  MoveItemBody,
   ProposeMilestoneBody,
   RecordDecisionBody,
 } from '../contract/backlog-actions';
@@ -101,5 +105,84 @@ export class BacklogsController {
     @Body() body: AddRequirementsBody,
   ): Promise<BacklogView> {
     return this.actions.addRequirements(actor, name, number, body);
+  }
+
+  @Post(':name/tasks')
+  addTasks(
+    @Actor() actor: string | null,
+    @Param('name') name: string,
+    @Body() body: AddTaskBody[],
+  ): Promise<BacklogView> {
+    return this.actions.addTasks(actor, name, body);
+  }
+
+  @Patch(':name/tasks/:slug')
+  changeTask(
+    @Actor() actor: string | null,
+    @Param('name') name: string,
+    @Param('slug') slug: string,
+    @Body() body: ChangeTaskBody,
+  ): Promise<BacklogView> {
+    return this.actions.changeTask(actor, name, slug, body);
+  }
+
+  @Delete(':name/tasks/:slug')
+  deleteTask(
+    @Actor() actor: string | null,
+    @Param('name') name: string,
+    @Param('slug') slug: string,
+  ): Promise<BacklogView> {
+    return this.actions.deleteTask(actor, name, slug);
+  }
+
+  @Post(':name/tasks/:slug/skip')
+  skipTask(
+    @Actor() actor: string | null,
+    @Param('name') name: string,
+    @Param('slug') slug: string,
+  ): Promise<BacklogView> {
+    return this.actions.skipTask(actor, name, slug);
+  }
+
+  @Post(':name/tasks/:slug/merge')
+  mergeTask(
+    @Actor() actor: string | null,
+    @Param('name') name: string,
+    @Param('slug') slug: string,
+  ): Promise<BacklogView> {
+    return this.actions.mergeTask(actor, name, slug);
+  }
+
+  @Post(':name/tasks/:slug/run')
+  runTaskNow(
+    @Actor() actor: string | null,
+    @Param('name') name: string,
+    @Param('slug') slug: string,
+  ): Promise<BacklogView> {
+    return this.actions.runTaskNow(actor, name, slug);
+  }
+
+  @Post(':name/items')
+  addItem(@Actor() actor: string | null, @Param('name') name: string, @Body() body: AddItemBody): Promise<BacklogView> {
+    return this.actions.addItem(actor, name, body);
+  }
+
+  @Patch(':name/items/:slug')
+  moveItem(
+    @Actor() actor: string | null,
+    @Param('name') name: string,
+    @Param('slug') slug: string,
+    @Body() body: MoveItemBody,
+  ): Promise<BacklogView> {
+    return this.actions.moveItem(actor, name, slug, body);
+  }
+
+  @Delete(':name/items/:slug')
+  dropItem(
+    @Actor() actor: string | null,
+    @Param('name') name: string,
+    @Param('slug') slug: string,
+  ): Promise<BacklogView> {
+    return this.actions.dropItem(actor, name, slug);
   }
 }

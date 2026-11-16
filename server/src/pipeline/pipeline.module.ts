@@ -45,6 +45,8 @@ import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { Reconciler } from './reconciler';
 import { BacklogActions } from './backlog/backlog-actions';
+import { BacklogActionSupport } from './backlog/backlog-action-support';
+import { BacklogTaskActions } from './backlog/backlog-task-actions';
 import { BacklogQueries } from './backlog/backlog-queries';
 import { BacklogEvents } from './backlog/backlog-events';
 import { BacklogMerge } from './backlog/backlog-merge';
@@ -99,6 +101,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     CommandService,
     MergeWatch,
     Reconciler,
+    BacklogActionSupport,
+    BacklogTaskActions,
     BacklogActions,
     BacklogQueries,
     BacklogEvents,

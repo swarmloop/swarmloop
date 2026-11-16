@@ -188,6 +188,24 @@ describe('BacklogRepository', () => {
       expect(await backlogs.events(id, 10)).toHaveLength(1);
     }));
 
+  it('deletes a task, and keeps it when the transaction that deletes it fails', () =>
+    withBacklogs(async (backlogs) => {
+      const id = (await seedBacklog(backlogs)).id as number;
+      const gone = await backlogs.saveTask(task(id, 'gone'));
+      await backlogs.saveTask(task(id, 'stays'));
+
+      await expect(
+        backlogs.transaction(async (writers) => {
+          await writers.deleteTask(gone.id as number);
+          throw new Error('stop');
+        }),
+      ).rejects.toThrow('stop');
+      expect((await backlogs.tasks(id)).map((record) => record.slug)).toEqual(['gone', 'stays']);
+
+      await backlogs.deleteTask(gone.id as number);
+      expect((await backlogs.tasks(id)).map((record) => record.slug)).toEqual(['stays']);
+    }));
+
   it('counts started tasks that are not merged or skipped', () =>
     withBacklogs(async (backlogs) => {
       const backlog = await seedBacklog(backlogs);
