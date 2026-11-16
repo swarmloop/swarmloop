@@ -24,7 +24,7 @@ const COVERAGE = [
   { ...LIST[3], items: [] },
 ];
 
-const KINDS = ['issues', 'review_requirements', 'review_requirements_result'];
+const KINDS = ['issues', 'review_requirements', 'review_requirements_result', 'review_report'];
 
 type Status = 'met' | 'partial' | 'missing';
 
@@ -128,6 +128,14 @@ describe('code review with the requirements list', () => {
     expect(requirements.prompt).toContain('by its id');
   });
 
+  it('gives the report the list once, and shows how many requirements the review marked met', async () => {
+    const { calls, body } = await round('PROJ-509', [marked({ R3: 'partial', R4: 'missing' })]);
+    const report = calls.find((call) => call.step === 'code-review-report')!;
+    expect(occurrences(report.prompt, 'Requirements list:\nR1: Parse the field')).toBe(1);
+    expect(report.prompt).toContain('R4: Log the rejection');
+    expect(body('review_report')).toContain('| 2/4 met |');
+  });
+
   it('gives a resumed reviewer neither the list nor covers', async () => {
     const { calls } = await round('PROJ-502', [marked()], { resumed: true });
     const quality = calls.find((call) => call.step === 'code-review-quality')!;
@@ -189,5 +197,6 @@ describe('code review without a requirements list', () => {
       expect(call.prompt).not.toContain('covers:');
     }
     expect(body('review_requirements')).toBe('code-review-requirements\ndecision: ok\n');
+    expect(body('review_report')).toContain('| — | — | ⏳ |');
   });
 });

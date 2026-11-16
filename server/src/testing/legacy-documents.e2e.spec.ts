@@ -158,6 +158,6 @@ describe('a run stored before review results', () => {
     expect(JSON.parse((await documents.latestBody(REVIEW_KEY, 'review_quality_result')) ?? '{}')).toMatchObject({
       decision: 'ok',
     });
-    expect(await documents.latestBody(REVIEW_KEY, 'review_report_result')).toContain('"whatChanged"');
+    expect(await documents.latestBody(REVIEW_KEY, 'review_report_result')).toContain('"line"');
   });
 });

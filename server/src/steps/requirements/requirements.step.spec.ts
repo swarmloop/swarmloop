@@ -520,7 +520,14 @@ describe('requirements step', () => {
     const now = new Date().toISOString();
     const answer = (step: string): string =>
       step.endsWith('report')
-        ? resultAnswer('Holds.', { whatChanged: 'x', codeReview: 'ok' })
+        ? resultAnswer('Holds.', {
+            line: 'Holds.',
+            done: ['x'],
+            worthALook: [],
+            notes: { requirements: 'ok', quality: 'ok', regressions: 'ok', security: 'ok', performance: 'ok' },
+            risk: 'low',
+            riskReason: 'small',
+          })
         : resultAnswer('Fine.', { decision: 'ok', review: 'Fine.', summary: [] });
     const agent = jest.fn().mockImplementation(async (input: { step: string }) => ({
       responseText: answer(input.step),

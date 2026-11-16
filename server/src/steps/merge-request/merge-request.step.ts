@@ -20,7 +20,7 @@ import { lateInput } from '../agent-step';
 import { renderImplementation } from '../implement/implement-record';
 import { hasWorkToMerge } from '../shared/branch-work';
 import { worktreesFingerprint } from '../shared/gate';
-import { renderReport } from '../shared/report-text';
+import { RunReport } from '../shared/run-report';
 import type { AttemptFacts } from '../../contract/step-events';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
@@ -56,6 +56,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     kernel: StepKernel,
     private readonly registry: CodeHostRegistry,
     private readonly runStop: RunStop,
+    private readonly runReport: RunReport,
   ) {
     super(kernel);
   }
@@ -177,8 +178,9 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     }
     const fingerprint = await worktreesFingerprint(trees.map((tree) => tree.path));
     const counted = await ctx.gate(ARTIFACTS.reviewReport, fingerprint);
-    const report = counted ? await ctx.reread(ARTIFACTS.reviewReportResult) : null;
-    const rendered = report ? renderReport(report) : counted ? await ctx.reread(ARTIFACTS.reviewReport) : null;
+    const parts = counted ? await ctx.reread(ARTIFACTS.reviewReportResult) : null;
+    const report = parts ? await this.runReport.render(ctx.opened.run) : null;
+    const rendered = report ?? (counted ? await ctx.reread(ARTIFACTS.reviewReport) : null);
     const summary = rendered?.trim() ?? '';
     if (!summary) {
       throw new SwarmloopError('review report is missing');

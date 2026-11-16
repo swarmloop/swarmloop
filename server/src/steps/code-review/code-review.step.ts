@@ -26,6 +26,7 @@ import { RuntimeLimit } from '../../core/swarmloop-error';
 import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import { lateInput } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
+import { RunReport } from '../shared/run-report';
 import { textDocument } from '../shared/handoff';
 import { stampGate } from '../shared/gate';
 import type { RunEntity } from '../../history/entities';
@@ -84,6 +85,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     private readonly worktrees: CheckoutService,
     private readonly sandbox: SandboxService,
     private readonly launcher: AgentLauncher,
+    private readonly runReport: RunReport,
   ) {
     super(kernel);
   }
@@ -177,6 +179,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       visits: this.visits,
       root: root(this.config),
       launcher: this.launcher,
+      runReport: this.runReport,
     };
     const {
       requirements,
@@ -281,6 +284,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
         requirements,
         notes,
         impact,
+        list,
         reportContinued,
         options.auto,
         options.answerErrors,

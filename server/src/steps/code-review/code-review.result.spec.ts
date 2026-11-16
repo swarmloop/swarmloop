@@ -86,12 +86,10 @@ describe('code-review step result blocks', () => {
         resultAnswer('p', { decision: 'ok', review: 'Checked queries.', summary: ['queries are parameterized'] }),
       ],
     });
-    expect(body('review_report')).toBe(
-      '## What changed\n\nchanged the field\n\n## Code review\n\nEvery check is ok.\n',
-    );
-    expect(JSON.parse(body('review_report_result') ?? '{}')).toEqual({
-      whatChanged: 'changed the field',
-      codeReview: 'Every check is ok.',
+    expect(body('review_report')).toContain('## ⏳ Waiting for CI · risk: low\n> Every check is ok.');
+    expect(JSON.parse(body('review_report_result') ?? '{}')).toMatchObject({
+      line: 'Every check is ok.',
+      done: ['changed the field'],
     });
     expect(body('handoff')).toContain('queries are parameterized');
   });
@@ -127,7 +125,7 @@ describe('code-review step result blocks', () => {
     expect(next?.prompt).toContain(RESULT_AS_BEFORE);
     expect(next?.prompt).not.toContain('- decision (one of');
     const report = continued.calls.find((call) => call.step === 'code-review-report');
-    expect(report?.prompt).toContain('- whatChanged (string, required)');
+    expect(report?.prompt).toContain('- line (string, required)');
   });
 });
 

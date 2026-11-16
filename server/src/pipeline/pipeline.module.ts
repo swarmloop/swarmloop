@@ -29,6 +29,7 @@ import { RemoteRepositories } from '../steps/prepare/remote-repositories.service
 import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { ResearchStep } from '../steps/research/research.step';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { RunReport } from '../steps/shared/run-report';
 import { LimitFailover } from '../steps/shared/limit-failover';
 import { LimitRelease } from '../steps/shared/limit-release';
 import { StepKernel } from '../steps/step-kernel';
@@ -83,6 +84,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     AgentLauncher,
     LimitFailover,
     LimitRelease,
+    RunReport,
     StepKernel,
     StepRegistry,
     PipelineService,
@@ -114,6 +116,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     HistoryModule,
     EnvironmentService,
     AgentLauncher,
+    RunReport,
     StepRegistry,
   ],
 })
