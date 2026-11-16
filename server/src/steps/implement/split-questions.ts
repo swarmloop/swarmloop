@@ -2,6 +2,7 @@ import type { RunEntity } from '../../history/entities';
 import { renderQuestions } from '../research/research-record';
 import { answered, openQuestions } from '../shared/answers';
 import { withDecision } from '../shared/handoff';
+import { askedParts, type StoredQuestion } from '../shared/question-parts';
 import type { SubtaskOps } from '../shared/subtask-ops';
 
 const PREFIX = /^Subtask (\S+) asks: /;
@@ -13,6 +14,11 @@ const PREFIX = /^Subtask (\S+) asks: /;
 export function questionFor(taskId: string, question: string, askedAt: string): string {
   const text = question.trim().replace(/\s*\n\s*/g, ' ');
   return `Subtask ${taskId} asks: ${text} The planner gave no answer. (asked ${askedAt})`;
+}
+
+/** The question of a subtask with its parts, stored next to the text. */
+export function askedQuestion(taskId: string, question: string, askedAt: string): StoredQuestion {
+  return { question: questionFor(taskId, question, askedAt), parts: askedParts(question, askedAt) };
 }
 
 /** What the parent run does with the questions it holds for whoever started it: it sends each answer down to its subtask. */

@@ -5,7 +5,8 @@ import { withDecision } from '../shared/handoff';
 import type { Need } from '../shared/needs';
 import type { SubtaskOps } from '../shared/subtask-ops';
 import type { OpenedStep } from '../step-run';
-import { questionFor } from './split-questions';
+import type { StoredQuestion } from '../shared/question-parts';
+import { askedQuestion } from './split-questions';
 
 /** What a pass does for the needs of one task. */
 type Action = 'wait' | 'ask' | 'edge' | 'rerun';
@@ -34,7 +35,7 @@ interface NeedsPass {
   /** The contract with the decisions this pass added, or the contract it was given. */
   contract: string;
   /** The questions this pass puts to the person who started the run. */
-  asks: string[];
+  asks: StoredQuestion[];
 }
 
 /**
@@ -106,7 +107,7 @@ export class SplitNeeds {
       pass.contract.includes(`- subtask ${task.id}: ${need.id} cannot go first:`),
     );
     if (before && answer === null)
-      return { ...pass, asks: [...pass.asks, questionFor(task.id, question, opened.startedAt)] };
+      return { ...pass, asks: [...pass.asks, askedQuestion(task.id, question, opened.startedAt)] };
     const lines = [...(before ? [] : refused.map(({ line }) => line)), ...(answer === null ? [] : [answer])];
     await this.subtasks.rerun(child, lines);
     return { ...pass, contract: lines.reduce((text, line) => withDecision(text, task.id, line), pass.contract) };

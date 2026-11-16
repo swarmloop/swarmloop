@@ -111,6 +111,18 @@ describe('artifact catalog', () => {
     },
   );
 
+  it('registers the question parts for the two steps that ask a person', () => {
+    expect(ARTIFACTS.questionParts).toMatchObject({
+      kind: 'question_parts',
+      writers: ['code-review', 'implement'],
+      readers: ['implement'],
+    });
+    const parts = { decide: 'Is it?', sides: [], full: '', askedAt: '2026-11-15T07:11:43.444Z' };
+    const stored = [{ question: 'Q', parts }];
+    expect(ARTIFACTS.questionParts.parse(ARTIFACTS.questionParts.format(stored))).toEqual(stored);
+    expect(ARTIFACTS.questionParts.summarize(stored)).toBe('1 questions: Is it?');
+  });
+
   it('subtasks and contract are registered', () => {
     expect(ARTIFACTS.subtasks.kind).toBe('subtasks');
     expect(ARTIFACTS.subtasks.writers).toEqual(['plan', 'plan-improve', 'implement']);
