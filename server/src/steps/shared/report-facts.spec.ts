@@ -30,6 +30,7 @@ function depsOf(
     stats?: StepStatEntity[];
     rows?: CheckCommandEntity[];
     phases?: string[];
+    children?: RunEntity[];
   } = {},
 ): ReportFactsDeps {
   return {
@@ -37,6 +38,7 @@ function depsOf(
     visits: { listStats: () => Promise.resolve(input.stats ?? []) },
     flows: { activePhases: () => Promise.resolve(input.phases ?? ['checks', 'code-review', 'ci']) },
     checkCommands: { list: () => Promise.resolve(input.rows ?? []) },
+    runs: { children: () => Promise.resolve(input.children ?? []) },
     clock: { now: () => NOW },
   } as unknown as ReportFactsDeps;
 }
@@ -51,7 +53,7 @@ describe('readReportFacts', () => {
       ci: 'waiting',
       review: null,
       returns: { count: 0, fixed: false },
-      minutes: 38,
+      durationMs: 38 * 60_000,
       path: [],
     });
     expect(facts.reviewers.map((reviewer) => reviewer.decision)).toEqual(CODE_REVIEWERS.map(() => null));
@@ -162,7 +164,43 @@ describe('readReportFacts', () => {
 
   it('reads the time to the day the run was done', async () => {
     const done = { ...RUN, doneAt: '2026-11-16T11:30:00.000Z' } as RunEntity;
-    expect((await readReportFacts(depsOf(), done)).minutes).toBe(90);
+    expect((await readReportFacts(depsOf(), done)).durationMs).toBe(90 * 60_000);
+  });
+
+  it('reads Tasks from the children and the time from the epic total', async () => {
+    const child = (id: number, taskId: string, status: string, merge: object | null): RunEntity =>
+      ({
+        id,
+        key: `K-${id}`,
+        taskId,
+        status,
+        updatedAt: '2026-11-16T11:00:00.000Z',
+        spentUsd: 0,
+        mergeOutcome: merge && JSON.stringify(merge),
+      }) as unknown as RunEntity;
+    const documents = [
+      doc('subtasks', [
+        { id: 'a', title: 'Add the field', status: 'merged' },
+        { id: 'b', title: 'Wire the route', status: 'running' },
+      ]),
+    ];
+    const children = [child(2, 'a', 'done', { merged: { demo: {} } }), child(3, 'b', 'waiting', null)];
+    const facts = await readReportFacts(depsOf({ documents, children }), {
+      ...RUN,
+      status: 'waiting',
+      spentUsd: 0,
+      updatedAt: '2026-11-16T10:10:00.000Z',
+    });
+    expect(facts.tasks).toEqual({
+      merged: 1,
+      total: 2,
+      lines: ['Add the field: merged, 0', 'Wire the route: idle, 0'],
+    });
+    expect(facts.durationMs).toBe(Date.parse('2026-11-16T11:00:00.000Z') - Date.parse(RUN.createdAt));
+  });
+
+  it('leaves Tasks out for a run without subtask runs', async () => {
+    expect((await readReportFacts(depsOf(), RUN)).tasks).toBeUndefined();
   });
 
   it("reads the exchange: the finding implement rejected, its reason, the answer and the person's decision", async () => {

@@ -21,6 +21,7 @@ import { mergeHandoff } from '../steps/shared/handoff';
 import { mergeSummaryOf } from './merge-summary';
 import type { OpenedStep } from '../steps/step-run';
 import { DELIVERED_PREFIX } from '../steps/commit/commit-result';
+import { ReportRefresh } from '../steps/shared/report-refresh';
 import { RunRebase } from '../steps/run-rebase';
 import { CommandService } from './command.service';
 import { SubtaskWorktrees } from './subtask-worktrees';
@@ -52,6 +53,7 @@ export class SubtaskPort extends SubtaskOps {
     private readonly clock: Clock,
     @Optional() publisher?: RebasedPublisher,
     @Optional() private readonly rebaser?: RunRebase,
+    @Optional() private readonly reportRefresh?: ReportRefresh,
   ) {
     super();
     this.worktrees = new SubtaskWorktrees(config, clock, publisher);
@@ -195,6 +197,18 @@ export class SubtaskPort extends SubtaskOps {
     } catch (error) {
       this.logger.warn(
         `The merge of ${run.key} was not recorded on its run: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    await this.refreshReport(parent);
+  }
+
+  /** Makes the parent's report current at a task merge. No step scope is open, so a failure is a warning; the next step end tries again. */
+  private async refreshReport(parent: RunEntity): Promise<void> {
+    try {
+      await this.reportRefresh?.refresh(parent);
+    } catch (error) {
+      this.logger.warn(
+        `the report of ${parent.key} was not refreshed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

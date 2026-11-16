@@ -12,6 +12,8 @@ import { ARTIFACTS } from '../steps/contract/artifacts';
 import { git } from '../testing/git-fixture';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { renderQuestions } from '../steps/research/research-record';
+import { ReportRefresh } from '../steps/shared/report-refresh';
+import { RunReport } from '../steps/shared/run-report';
 import { SubtaskPort } from './subtask-port';
 
 const answered = {
@@ -267,5 +269,119 @@ describe('SubtaskPort merge requests', () => {
     expect(await port.mergeRequests({ key: 'child' } as RunEntity)).toEqual([
       { repo: 'demo', project: 'group/one', iid: 1 },
     ]);
+  });
+
+  describe('recordMerged', () => {
+    const PARTS = {
+      line: 'The field ships.',
+      done: ['x'],
+      worthALook: [],
+      notes: { requirements: 'a', quality: 'b', regressions: 'c', security: 'd', performance: 'e' },
+      risk: 'low',
+      riskReason: 'small',
+    };
+    const MR_URL = 'https://gitlab.example/mr/9';
+
+    function mergeSetup(refreshThrows = false) {
+      const dir = mkdtempSync(join(tmpdir(), 'swarmloop-subtask-merged-'));
+      const parent = {
+        id: 1,
+        key: 'parent',
+        createdAt: '2026-11-16T10:00:00.000Z',
+        updatedAt: '2026-11-16T10:30:00.000Z',
+        doneAt: null,
+        status: 'waiting',
+        spentUsd: 0,
+        targetPath: dir,
+        codeHost: 'gitlab',
+      } as unknown as RunEntity;
+      const child = {
+        id: 2,
+        key: 'child',
+        parentRunId: 1,
+        taskId: 't1',
+        status: 'done',
+        doneAt: '2026-11-16T10:20:00.000Z',
+        updatedAt: '2026-11-16T10:20:00.000Z',
+        spentUsd: 0,
+        mergeOutcome: null,
+      } as unknown as RunEntity;
+      const documents: Record<string, string> = {
+        requirements: JSON.stringify({ prompt: 'Ship the field\n', tickets: [] }),
+        subtasks: JSON.stringify([{ id: 't1', title: 'Add the field', status: 'running' }]),
+        review_report_result: JSON.stringify(PARTS),
+        merge_request: renderMergeRequest([
+          {
+            project: 'group/demo',
+            iid: 9,
+            url: MR_URL,
+            draft: true,
+            summary: '<!-- swarmloop:report -->\nold\n<!-- /swarmloop:report -->',
+          },
+        ]),
+      };
+      const runs = {
+        findById: async () => child,
+        findRun: async () => parent,
+        children: async () => [child],
+        release: async (_run: RunEntity, change: { merge: unknown }) => {
+          child.mergeOutcome = JSON.stringify(change.merge);
+        },
+      };
+      const docs = {
+        latestBody: async (_key: string, kind: string) => documents[kind] ?? null,
+        listDocuments: async () => [{ stepStatId: 0, kind: 'subtasks', body: documents.subtasks }],
+        putDocument: async (_run: RunEntity, kind: string, body: string) => {
+          documents[kind] = body;
+        },
+      };
+      const none = { listStats: async () => [], activePhases: async () => ['ci'], list: async () => [] };
+      const clock = new FakeClock();
+      const report = new RunReport(docs as never, none as never, none as never, none as never, runs as never, clock);
+      const update = jest.fn(async () => ({ httpCalls: [] }));
+      const host = {
+        findMergeRequest: async () => ({
+          record: {
+            project: 'group/demo',
+            iid: 9,
+            url: MR_URL,
+            summary: '<!-- swarmloop:report -->\nold\n<!-- /swarmloop:report -->',
+            draft: true,
+          },
+          httpCalls: [],
+        }),
+        updateMergeRequest: update,
+      };
+      const refresh = refreshThrows
+        ? ({ refresh: () => Promise.reject(new Error('host down')) } as unknown as ReportRefresh)
+        : new ReportRefresh(runs as never, docs as never, report, { hostFor: async () => host } as never);
+      const port = new SubtaskPort(
+        runs as never,
+        docs as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        new AppConfig(testEnv({ SWARMLOOP_ROOT: dir })),
+        clock,
+        undefined,
+        undefined,
+        refresh,
+      );
+      return { port, parent, child, update };
+    }
+
+    it("re-renders the parent's merge request body with the new Tasks count when a task merges", async () => {
+      const { port, parent, child, update } = mergeSetup();
+      await port.recordMerged(parent, child, { demo: 'abc123' });
+      const body = (update.mock.calls[0] as unknown as [string, number, string])[2];
+      expect(body).toContain('| Tasks |');
+      expect(body).toContain('1/1 merged');
+      expect(body).toContain('- Add the field: merged, 0');
+    });
+
+    it('finishes when the refresh fails', async () => {
+      const { port, parent, child } = mergeSetup(true);
+      await expect(port.recordMerged(parent, child, { demo: 'abc123' })).resolves.toBeUndefined();
+    });
   });
 });

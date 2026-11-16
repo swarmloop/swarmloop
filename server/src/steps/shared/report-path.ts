@@ -90,3 +90,11 @@ export function returnCount(path: PathStep[]): { count: number; fixed: boolean }
   const returns = path.filter((step) => step.returned);
   return { count: returns.length, fixed: returns.length > 0 && returns.every((step) => step.fix !== null) };
 }
+
+/** The Returns cell: how many returns, and whether the run went on after each. */
+export function returnsText(returns: { count: number; fixed: boolean }): string {
+  if (returns.count === 0 || !returns.fixed) {
+    return String(returns.count);
+  }
+  return `${returns.count}, ${returns.count === 1 ? 'fixed' : returns.count === 2 ? 'both fixed' : 'all fixed'}`;
+}

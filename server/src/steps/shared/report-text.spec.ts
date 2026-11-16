@@ -17,7 +17,7 @@ const FACTS: ReportFacts = {
   ci: 'passed',
   review: { ok: 5, total: 5 },
   returns: { count: 2, fixed: true },
-  minutes: 38,
+  durationMs: 38 * 60_000,
   path: [
     { step: 'implement', mark: '', returned: false, reason: null, fix: null },
     { step: 'checks', mark: '❌', returned: true, reason: 'lint (`import type`)', fix: 'fixed' },
@@ -137,7 +137,7 @@ describe('renderRunReport', () => {
       checks: null,
       ci: null,
       review: null,
-      minutes: null,
+      durationMs: null,
       path: [],
       returns: { count: 0, fixed: false },
     };
@@ -153,9 +153,20 @@ describe('renderRunReport', () => {
   });
 
   it('writes hours and minutes for a long run, and a Tasks column before Time for a split parent', () => {
-    const text = renderRunReport({ ...FACTS, minutes: 135, tasks: { merged: 2, total: 3 } }, PARTS);
+    const text = renderRunReport(
+      { ...FACTS, durationMs: 135 * 60_000, tasks: { merged: 2, total: 3, lines: [] } },
+      PARTS,
+    );
     expect(text).toContain('| Returns | Tasks | Time |');
     expect(text).toContain('| 2, both fixed | 2/3 merged | 2 h 15 min |');
+  });
+
+  it('shows one How it got here line per task for a split parent', () => {
+    const lines = ['Add the field: merged, 0', 'Wire the route: running, 1'];
+    const text = renderRunReport({ ...FACTS, tasks: { merged: 1, total: 2, lines } }, PARTS);
+    expect(text).toContain('| 1/2 merged |');
+    expect(text).toContain('**🧭 How it got here**\n- Add the field: merged, 0\n- Wire the route: running, 1\n');
+    expect(text).not.toContain('implement → checks');
   });
 
   it("shows the exchange under the reviewer: finding, implement's reason, the answer and the person's decision", () => {

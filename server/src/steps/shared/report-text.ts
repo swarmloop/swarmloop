@@ -1,6 +1,6 @@
 import type { ReviewReportResult } from '../../agent-result/definitions/review-report';
 import type { ReportFacts, ReviewerFact, Verdict } from './report-facts';
-import type { PathStep } from './report-path';
+import { returnsText, type PathStep } from './report-path';
 
 const HEADINGS: Record<Verdict, string> = {
   ready: '✅ Ready to merge',
@@ -17,20 +17,16 @@ const MISSING = '—';
 
 const MINUTES_PER_HOUR = 60;
 
-function minutesText(minutes: number | null): string {
-  if (minutes === null) {
+const MINUTE_MS = 60_000;
+
+function durationText(durationMs: number | null): string {
+  if (durationMs === null) {
     return MISSING;
   }
+  const minutes = Math.round(durationMs / MINUTE_MS);
   return minutes < MINUTES_PER_HOUR
     ? `${minutes} min`
     : `${Math.floor(minutes / MINUTES_PER_HOUR)} h ${minutes % MINUTES_PER_HOUR} min`;
-}
-
-function returnsText(returns: ReportFacts['returns']): string {
-  if (returns.count === 0 || !returns.fixed) {
-    return String(returns.count);
-  }
-  return `${returns.count}, ${returns.count === 1 ? 'fixed' : returns.count === 2 ? 'both fixed' : 'all fixed'}`;
 }
 
 /** The header and the one row of the table, in the order a person reads them. */
@@ -45,7 +41,7 @@ function tableOf(facts: ReportFacts): string[] {
     ...(tasks === undefined
       ? []
       : [['Tasks', tasks ? `${tasks.merged}/${tasks.total} merged` : MISSING] as [string, string]]),
-    ['Time', minutesText(facts.minutes)],
+    ['Time', durationText(facts.durationMs)],
   ];
   return [
     `| ${cells.map(([title]) => title).join(' | ')} |`,
@@ -57,6 +53,14 @@ function tableOf(facts: ReportFacts): string[] {
 function pathText(step: PathStep): string {
   const marked = [step.step, step.mark, step.reason].filter(Boolean).join(' ');
   return step.fix ? `${marked} → ${step.fix}` : marked;
+}
+
+/** The path of a run as one line; a split parent has one line per task. */
+function pathLines(facts: ReportFacts): string {
+  if (facts.tasks) {
+    return facts.tasks.lines.length > 0 ? facts.tasks.lines.map((line) => `- ${line}`).join('\n') : MISSING;
+  }
+  return facts.path.length > 0 ? facts.path.map(pathText).join(' → ') : MISSING;
 }
 
 const oneLine = (text: string): string => text.trim().replace(/\s*\n\s*/g, ' ');
@@ -90,7 +94,7 @@ export function renderRunReport(facts: ReportFacts, parts: ReviewReportResult): 
     [...tableOf(facts), ...(parts.risk === 'low' ? [] : ['', `**Risk:** ${oneLine(parts.riskReason)}`])].join('\n'),
     ['**Done**', ...parts.done.map((item) => `- ${oneLine(item)}`)].join('\n'),
     ...(looks.length > 0 ? [['**🔍 Worth a look**', ...looks].join('\n')] : []),
-    `**🧭 How it got here**\n${facts.path.length > 0 ? facts.path.map(pathText).join(' → ') : MISSING}`,
+    `**🧭 How it got here**\n${pathLines(facts)}`,
     [
       `<details><summary>Reviewer notes (${facts.reviewers.length})</summary>`,
       '',
