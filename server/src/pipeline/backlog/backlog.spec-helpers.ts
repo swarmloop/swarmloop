@@ -1,15 +1,19 @@
-import type { MilestoneStatus } from '../../contract/backlog';
+import type { MergeMode, MilestoneStatus } from '../../contract/backlog';
 import type { PipelineCheck } from '../../integrations/code-host/code-host';
 import type { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { AppConfig } from '../../config/env';
 import { testEnv } from '../../config/env.spec-helpers';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
+import { DocumentRepository } from '../../history/document.repository';
 import { repositoryDatabase } from '../../history/repository.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
 import { writeRunState, type RunStateChange } from '../../history/run-state';
+import type { MergeOutcome } from '../../contract/run-state';
 import { RepositoryHost } from '../../steps/shared/repository-host';
 import type { RepositoryOrigins } from '../../steps/shared/repository-origins';
 import { FakeBacklogHost, pipelineOf } from '../../testing/fake-backlog-host';
+import type { CommandService } from '../command.service';
+import { BacklogMerge } from './backlog-merge';
 import { BacklogScheduler } from './backlog-scheduler';
 import { BacklogStartPort, type BacklogStart } from './backlog-start-port';
 
@@ -44,13 +48,24 @@ export async function backlogHarness(parallel = 3) {
   const origins = new Map<string, { origin: string; project: string }>();
   const registry = {
     forRun: async () => registry,
+    hostFor: async () => fake,
     forOrigin: (origin: string) => (fake.matchesOrigin(origin) ? fake.name : null),
     byName: () => fake,
   } as unknown as CodeHostRegistry;
-  const host = new RepositoryHost(
-    { of: async (repo: string) => origins.get(repo) } as unknown as RepositoryOrigins,
-    registry,
-  );
+  const repositoryOrigins = { of: async (repo: string) => origins.get(repo) } as unknown as RepositoryOrigins;
+  const host = new RepositoryHost(repositoryOrigins, registry);
+  const documents = db.app.get(DocumentRepository);
+  const accepts: { type: string; key: string; idempotencyKey?: string }[] = [];
+  const rebase = { refusal: null as string | null };
+  const commands = {
+    accept: async (type: string, key: string, _payload: unknown, options: { idempotencyKey?: string }) => {
+      if (rebase.refusal !== null) throw new Error(rebase.refusal);
+      const replayed = accepts.some((seen) => seen.idempotencyKey === options.idempotencyKey);
+      if (!replayed) accepts.push({ type, key, idempotencyKey: options.idempotencyKey });
+      return { replayed };
+    },
+  } as unknown as CommandService;
+  const merge = new BacklogMerge(backlogs, runs, documents, repositoryOrigins, host, commands);
   const starts: BacklogStart[] = [];
   const mode = { current: 'ok' as StartMode };
   const port = new BacklogStartPort();
@@ -62,7 +77,7 @@ export async function backlogHarness(parallel = 3) {
   });
   let position = 0;
 
-  const make = () => new BacklogScheduler(backlogs, runs, host, port, config, db.clock);
+  const make = () => new BacklogScheduler(backlogs, runs, host, merge, port, config, db.clock);
   let current = make();
 
   const harness = {
@@ -71,6 +86,8 @@ export async function backlogHarness(parallel = 3) {
     runs,
     fake,
     starts,
+    /** The commands the merge asked for, in order. */
+    accepts,
     /** The scheduler that tick() drives. */
     scheduler: () => current,
     /** A new scheduler over the same database, like a server that restarted. */
@@ -95,15 +112,38 @@ export async function backlogHarness(parallel = 3) {
       };
       fake.setPipeline(project, snapshots[style]);
     },
+    /** Every command the merge sends from now on is refused with this message. */
+    refuseRebase(message: string | null) {
+      rebase.refusal = message;
+    },
+    /** A run for a task: done with a merge request in each of `requests`, or done by what MergeWatch saw. */
+    async seedDoneRun(key: string, requests: { repo: string; iid: number; branch?: string }[], outcome?: MergeOutcome) {
+      const run = runs.newWaitingRun(key, null, 'ada');
+      run.codeHost = fake.name;
+      await runs.saveRun(run);
+      const saved = (await runs.findRun(key)) as NonNullable<Awaited<ReturnType<RunRepository['findRun']>>>;
+      writeRunState(saved, { status: 'done', merge: outcome });
+      await runs.saveRun(saved);
+      const refs = requests.map(
+        ({ repo, branch }) => `project: acme/${repo}\nref: ${branch ?? `swarmloop/${repo}`}\nsha: s1\n`,
+      );
+      const lines = requests.map(
+        ({ repo, iid }) =>
+          `project: acme/${repo}\niid: ${iid}\nurl: https://backlog.example/acme/${repo}/${iid}\ndraft: false\n`,
+      );
+      if (lines.length > 0) await documents.putDocument(saved, 'merge_request', lines.join('\n'));
+      if (refs.length > 0) await documents.putDocument(saved, 'pipeline_ref', refs.join('\n'));
+      return saved;
+    },
     seedBacklog(
       name: string,
-      options: { owner?: string; repositories?: string[]; paused?: boolean } = {},
+      options: { owner?: string; repositories?: string[]; paused?: boolean; mergeMode?: MergeMode } = {},
     ): ReturnType<BacklogRepository['saveBacklog']> {
       return backlogs.saveBacklog({
         name,
         owner: options.owner ?? 'ada',
         repositories: options.repositories ?? ['web'],
-        mergeMode: 'green',
+        mergeMode: options.mergeMode ?? 'green',
         paused: options.paused ?? false,
         createdAt: NOW,
       });
@@ -134,6 +174,7 @@ export async function backlogHarness(parallel = 3) {
         runKey: null,
         note: '',
         runNow: false,
+        mergeOk: false,
         merged: {},
         madeBy: 'person',
         position,

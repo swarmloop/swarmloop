@@ -72,6 +72,8 @@ export interface BacklogTaskRecord {
   note: string;
   /** The owner asked to run the task now: it joins the scheduler whatever its milestone. */
   runNow: boolean;
+  /** The owner said this task may merge, for a `manual` task or a backlog in mode `ok`. */
+  mergeOk: boolean;
   merged: Record<string, string>;
   madeBy: TaskMadeBy;
   position: number;

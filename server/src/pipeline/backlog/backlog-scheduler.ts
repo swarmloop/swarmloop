@@ -6,6 +6,7 @@ import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog
 import { RunRepository } from '../../history/run.repository';
 import { deriveState } from '../../history/run-state';
 import { RepositoryHost } from '../../steps/shared/repository-host';
+import { BacklogMerge } from './backlog-merge';
 import { BacklogStartPort } from './backlog-start-port';
 import { readMains } from './main-readings';
 import { handPlaces } from './place-turns';
@@ -35,7 +36,7 @@ interface BacklogPass {
 }
 
 /**
- * Starts the tasks of the backlogs on the server's tick: the epic's rules for what is ready, a green main of every
+ * On the server's tick, merges the done tasks of the backlogs, then starts the ready ones: the epic's rules for what is ready, a green main of every
  * repository a task touches, and at most `BACKLOG_PARALLEL` tasks started and not merged on the whole server.
  * One pass at a time; a call that comes while a pass works joins it.
  */
@@ -51,6 +52,7 @@ export class BacklogScheduler implements OnModuleDestroy {
     private readonly backlogs: BacklogRepository,
     private readonly runs: RunRepository,
     private readonly host: RepositoryHost,
+    private readonly merge: BacklogMerge,
     private readonly port: BacklogStartPort,
     private readonly config: AppConfig,
     private readonly clock: Clock,
@@ -89,10 +91,11 @@ export class BacklogScheduler implements OnModuleDestroy {
   private async run(): Promise<void> {
     const backlogs = await this.backlogs.listBacklogs();
     if (backlogs.length === 0) return;
+    const mains = new Map<string, MainReading>();
+    await this.merge.run(backlogs, mains);
     const passes: BacklogPass[] = [];
     for (const backlog of backlogs) passes.push(await this.read(backlog));
     const open = passes.filter((pass) => !pass.paused);
-    const mains = new Map<string, MainReading>();
     for (const pass of open) {
       pass.queue = candidates(pass.tasks);
       await readMains(this.host, repositoriesOf(pass.queue), pass.owner, mains);
@@ -155,7 +158,7 @@ export class BacklogScheduler implements OnModuleDestroy {
     pass.records.set(slug, await this.backlogs.saveTask({ ...record, ...patch }));
   }
 
-  /** What each waiting task of the backlog waits for. A ready task that took no place waits for one. */
+  /** What each waiting task of the backlog waits for. A ready task that took no place waits for one. A task whose run is known keeps the note the merge wrote. */
   private async say(
     pass: BacklogPass,
     mains: Map<string, MainReading>,
@@ -164,6 +167,7 @@ export class BacklogScheduler implements OnModuleDestroy {
   ): Promise<void> {
     const taken = new Set(chosen.map((task) => task.id));
     for (const task of pass.tasks) {
+      if (task.runKey !== null && !pass.restarts.includes(task)) continue;
       const waiting = task.mayStart && task.runKey === null && task.status === 'waiting';
       const note = !waiting
         ? ''

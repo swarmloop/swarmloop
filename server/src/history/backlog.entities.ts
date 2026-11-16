@@ -127,6 +127,9 @@ export class BacklogTaskEntity {
   @Column({ name: 'run_now', type: 'boolean', default: false })
   runNow!: boolean;
 
+  @Column({ name: 'merge_ok', type: 'boolean', default: false })
+  mergeOk!: boolean;
+
   @Column({ type: 'text' })
   merged!: string;
 
