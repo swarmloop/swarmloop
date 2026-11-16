@@ -5,6 +5,8 @@ import Box from '@mui/material/Box';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import Undo from '@mui/icons-material/Undo';
+import { restartWaitSentence } from '@contract/restart-wait';
+import { localTime } from '../../../lib/format';
 import { phaseLabel } from '../../../lib/phase-label';
 import { stepLabel, withReport } from '../phases';
 import type { CheckCommandView, FlowView } from '@contract/api';
@@ -109,12 +111,13 @@ export function FlowBoard({
                           preparing
                         </Box>
                       ) : null}
-                      {step.note ? (
+                      {step.note || step.restartedAt ? (
                         <Box
                           component="span"
                           sx={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'text.secondary' }}
                         >
-                          {step.note}
+                          {step.note ??
+                            (step.restartedAt ? restartWaitSentence(step.restartedAt, localTime) : undefined)}
                         </Box>
                       ) : null}
                       {step.attempts > 0 ? (

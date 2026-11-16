@@ -5,6 +5,7 @@ import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import { interruptionSentence } from '@contract/interruption';
+import { restartWaitSentence } from '@contract/restart-wait';
 import { localTime } from '../../../../lib/format';
 import { useStep } from '../../use-step';
 import { issueLinks, problemSummary } from '../../transcript/transcript-model';
@@ -29,6 +30,7 @@ export function StepDetail({
   resumeLabel,
   attempts,
   liveCommands,
+  restartedAt,
 }: {
   runKey: string;
   step: string;
@@ -42,6 +44,8 @@ export function StepDetail({
   attempts: number;
   /** The rows of the latest checks attempt from the live flow: they replace the step view's rows of that attempt. */
   liveCommands?: CheckCommandView[];
+  /** When the server restarted while this step's agent kept running; set only during that wait. */
+  restartedAt?: string;
 }): React.ReactElement | null {
   const { view, attempt, setAttempt, error, follow } = useStep(runKey, step, live, revision, attempts);
   const [check, setCheck] = useState<string | null>(null);
@@ -70,9 +74,13 @@ export function StepDetail({
     return null;
   }
   const visit = view.visits[attempt];
-  const label = visit
-    ? shownStatus(visit.status, attempt === view.visits.length - 1, runStatus, step, visit.decision, visit.killReason)
-    : '';
+  const latest = attempt === view.visits.length - 1;
+  const restartWait = Boolean(restartedAt) && latest && visit?.status === 'running';
+  const label = restartWait
+    ? 'waiting'
+    : visit
+      ? shownStatus(visit.status, latest, runStatus, step, visit.decision, visit.killReason)
+      : '';
   const shownDuration =
     visit?.status === 'running' ? Math.max(0, now - Date.parse(revision)) : (visit?.durationMs ?? 0);
   const shownAttempt = visit?.attempt ?? 0;
@@ -116,7 +124,11 @@ export function StepDetail({
             : null
         }
       />
-      {visit?.interruption ? (
+      {restartWait && restartedAt ? (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+          {restartWaitSentence(restartedAt, localTime)}
+        </Typography>
+      ) : visit?.interruption ? (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
           {interruptionSentence(visit.interruption, localTime)}
         </Typography>
@@ -147,6 +159,7 @@ export function StepDetail({
           role={view.descriptor.agent}
           commands={commands}
           now={now}
+          restarted={restartWait}
         />
       </Box>
     </Paper>

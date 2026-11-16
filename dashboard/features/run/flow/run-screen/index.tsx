@@ -52,6 +52,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
   }
 
   const phases = expandReviewPhases(flow.phases);
+  const chip = phases.flatMap((phase) => phase.steps).find((step) => step.name === selected);
   const runningElsewhere =
     flow.status === 'running' && replay !== null && pipelineStepOf(flow.currentStep) !== pipelineStepOf(replay);
   const launches = flow.launches ?? [];
@@ -105,7 +106,8 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
           step={selected}
           live={flow.status === 'running' && pipelineStepOf(selected) === flow.currentStep}
           revision={flow.updatedAt}
-          attempts={phases.flatMap((phase) => phase.steps).find((step) => step.name === selected)?.attempts ?? 0}
+          attempts={chip?.attempts ?? 0}
+          restartedAt={chip?.restartedAt}
           now={now}
           liveCommands={flow.checkCommands}
           onReplay={

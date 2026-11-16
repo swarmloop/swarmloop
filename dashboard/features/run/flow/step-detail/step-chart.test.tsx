@@ -1,7 +1,22 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { visitView } from '../../../../test/fixtures';
+import type { CheckCommandView } from '@contract/api';
+import { NO_SAMPLES_AFTER_RESTART } from '@contract/restart-wait';
 import { CommandChart, StepChart } from './step-chart';
+
+const row = (overrides: Partial<CheckCommandView>): CheckCommandView => ({
+  attempt: 'att-1',
+  index: 0,
+  repo: 'api',
+  command: 'npm test',
+  name: 'unit tests',
+  status: 'passed',
+  startedAt: '2026-01-01T00:00:00.000Z',
+  endedAt: '2026-01-01T00:00:05.000Z',
+  exitCode: 0,
+  ...overrides,
+});
 
 describe('StepChart', () => {
   it('shows nothing when there is no visit', () => {
@@ -84,6 +99,20 @@ describe('StepChart', () => {
     expect(screen.getByText(/^total 30%/)).toBeInTheDocument();
     expect(screen.queryByText(/command 0/)).toBeNull();
   });
+
+  it('says no samples were taken for a visit cut by a restart', () => {
+    render(<StepChart visit={visitView({ status: 'failed', killReason: 'process died', samples: [] })} />);
+
+    expect(screen.getByText(NO_SAMPLES_AFTER_RESTART)).toBeInTheDocument();
+    expect(screen.queryByText('This step started no container.')).toBeNull();
+  });
+
+  it('says no samples were taken for a live visit in the restart wait', () => {
+    render(<StepChart restarted visit={visitView({ status: 'running', samples: [] })} />);
+
+    expect(screen.getByText(NO_SAMPLES_AFTER_RESTART)).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'CPU and memory' })).toBeNull();
+  });
 });
 
 describe('CommandChart', () => {
@@ -93,8 +122,22 @@ describe('CommandChart', () => {
       { at: at(0), cpu: 10, memory: 100, source: '0' },
       { at: at(1), cpu: 55, memory: 200, source: '1' },
     ];
-    render(<CommandChart index={1} visit={visitView({ status: 'done', samples })} />);
+    render(<CommandChart command={row({ index: 1 })} visit={visitView({ status: 'done', samples })} />);
 
     expect(screen.getByText('CPU 55%')).toBeInTheDocument();
+  });
+
+  it('says no samples were taken for an interrupted command', () => {
+    render(
+      <CommandChart command={row({ status: 'interrupted' })} visit={visitView({ status: 'failed', samples: [] })} />,
+    );
+
+    expect(screen.getByText(NO_SAMPLES_AFTER_RESTART)).toBeInTheDocument();
+  });
+
+  it('draws the empty chart for a command that has not finished', () => {
+    render(<CommandChart command={row({ status: 'running' })} visit={visitView({ status: 'running', samples: [] })} />);
+
+    expect(screen.queryByText(NO_SAMPLES_AFTER_RESTART)).toBeNull();
   });
 });
