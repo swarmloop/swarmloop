@@ -4,6 +4,7 @@ import type { MergeOutcome, RunAction, RunState, StateReason } from './run-state
 import type { InterruptionNote } from './interruption';
 import type { TaskLayer } from './task-layer';
 import type { SubtaskStatus } from './subtask';
+import type { RunBacklog } from './backlog';
 
 export type { SettingsBody, StoredAgents } from './settings';
 export type {
@@ -33,6 +34,8 @@ export interface RunSummary {
   /** Set on a subtask only: the key of its parent run and its task id. */
   parentKey?: string;
   taskId?: string;
+  /** Set on a run a backlog task holds: the backlog and its milestone. */
+  backlog?: RunBacklog;
   /** Set on a done subtask the parent has not merged yet: what the merge waits for, when it waits for something. */
   mergeWait?: string;
   /** Set on a run with subtask runs only: its own cost plus its subtasks', and the wall clock from its start to its end. */
@@ -78,6 +81,8 @@ export interface FlowView {
   stepStartedAt: string | null;
   /** Set on a subtask only: the key of its parent run. */
   parentKey?: string;
+  /** Set on a run a backlog task holds: the backlog and its milestone. */
+  backlog?: RunBacklog;
   /** Set on a done subtask the parent has not merged yet: what the merge waits for, when it waits for something. */
   mergeWait?: string;
   /** Who started the run. Missing for a run the CLI started and for runs from before logins. */
