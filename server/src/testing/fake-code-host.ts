@@ -155,6 +155,28 @@ export class FakeCodeHost {
     });
   }
 
+  readMergeGate(_project: string, iid: number): Answer<'readMergeGate'> {
+    this.guard();
+    const sha = this.merged.get(iid) ?? null;
+    const source = this.requests.get(iid)?.source;
+    return Promise.resolve({
+      state: sha ? 'merged' : this.closed.has(iid) ? 'closed' : 'open',
+      sha,
+      draft: this.requests.get(iid)?.draft ?? false,
+      head: source && this.onOrigin(source) ? git(this.clone, ['rev-parse', `origin/${source}`]) : '',
+      mergeability: this.conflicting || this.mergeTree(iid) === null ? 'conflicting' : 'clean',
+      blockedBy: null,
+      httpCalls: [],
+    });
+  }
+
+  readDefaultHead(): Answer<'readDefaultHead'> {
+    this.guard();
+    git(this.clone, ['fetch', 'origin']);
+    const sha = git(this.clone, ['rev-parse', `origin/${this.feature}`]);
+    return Promise.resolve({ branch: this.feature, sha, httpCalls: [] });
+  }
+
   mergeRequestState(_project: string, iid: number): Answer<'mergeRequestState'> {
     this.guard();
     const sha = this.merged.get(iid);
@@ -171,7 +193,7 @@ export class FakeCodeHost {
    * The merge adds one commit to the feature branch. It has the tree of the request's branch merged onto the feature
    * tip, as a squash merge has; a request whose branch is not on origin merges the tip's own tree.
    */
-  mergeMergeRequest(_project: string, iid: number): Answer<'mergeMergeRequest'> {
+  mergeMergeRequest(_project: string, iid: number, _head?: string): Answer<'mergeMergeRequest'> {
     this.guard();
     git(this.clone, ['fetch', 'origin']);
     const tip = git(this.clone, ['rev-parse', `origin/${this.feature}`]);

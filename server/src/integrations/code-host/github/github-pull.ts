@@ -1,4 +1,4 @@
-import type { MergeRequestState, MergeRequestView, RequestStateApi } from '../code-host';
+import type { MergeGate, MergeRequestState, MergeRequestView, RequestStateApi } from '../code-host';
 
 export interface GithubPull {
   number?: number;
@@ -27,6 +27,28 @@ export function pullView(body: unknown): MergeRequestView {
     conflicts: pull.mergeable === false || pull.mergeable_state === 'dirty',
     draft: pull.draft === true,
   };
+}
+
+/** How far a pull request is from a merge, by GitHub's `mergeable_state`. */
+export function pullMergeability(body: unknown): Pick<MergeGate, 'mergeability' | 'blockedBy'> {
+  const pull = (body ?? {}) as GithubPull;
+  if (pull.mergeable === null || pull.mergeable === undefined) {
+    return { mergeability: 'unknown', blockedBy: null };
+  }
+  switch (pull.mergeable_state ?? '') {
+    case 'clean':
+    case 'has_hooks':
+    case 'unstable':
+      return { mergeability: 'clean', blockedBy: null };
+    case 'behind':
+      return { mergeability: 'behind', blockedBy: null };
+    case 'dirty':
+      return { mergeability: 'conflicting', blockedBy: null };
+    case 'blocked':
+      return { mergeability: 'blocked', blockedBy: 'required reviews or checks' };
+    default:
+      return { mergeability: 'unknown', blockedBy: null };
+  }
 }
 
 /** GitHub.com serves GraphQL beside the REST root; an Enterprise server serves `/api/graphql` beside `/api/v3`. */

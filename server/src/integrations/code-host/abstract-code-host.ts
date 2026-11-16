@@ -7,6 +7,7 @@ import { requestState } from './request-state';
 import type {
   CodeHost,
   CreateRepositoryDraft,
+  MergeGate,
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
@@ -111,6 +112,19 @@ export abstract class AbstractCodeHost extends HostCalls implements CodeHost {
     }
   }
 
+  async readMergeGate(project: string, iid: number): Promise<MergeGate & { httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const body = await this.readJson(this.mergeRequestUrl(root, project, iid), headers, calls);
+      return { ...this.gate(body), httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  abstract readDefaultHead(project: string): Promise<{ branch: string; sha: string; httpCalls: HttpCallDraft[] }>;
+
   async mergeRequestState(project: string, iid: number): Promise<MergeRequestState & { httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];
     try {
@@ -123,11 +137,15 @@ export abstract class AbstractCodeHost extends HostCalls implements CodeHost {
     }
   }
 
-  async mergeMergeRequest(project: string, iid: number): Promise<{ sha: string; httpCalls: HttpCallDraft[] }> {
+  async mergeMergeRequest(
+    project: string,
+    iid: number,
+    head?: string,
+  ): Promise<{ sha: string; httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];
     try {
       const { root, headers } = this.credentials();
-      const response = await this.send(this.mergeCall(root, project, iid), headers, calls);
+      const response = await this.send(this.mergeCall(root, project, iid, head), headers, calls);
       if (response.status < 200 || response.status >= 300) {
         throw this.refusal(response, calls);
       }
@@ -279,14 +297,16 @@ export abstract class AbstractCodeHost extends HostCalls implements CodeHost {
 
   protected abstract mergeRequestUrl(root: string, project: string, iid: number): string;
 
-  /** The squash merge of a request, into the target branch the request already has. */
-  protected abstract mergeCall(root: string, project: string, iid: number): HostCall;
+  /** The squash merge of a request, into the target branch the request already has. A given `head` is sent as `sha`, the merge guard. */
+  protected abstract mergeCall(root: string, project: string, iid: number, head?: string): HostCall;
 
   protected abstract closeCall(root: string, project: string, iid: number): HostCall;
 
   protected abstract deleteCall(root: string, project: string, branch: string): HostCall;
 
   protected abstract view(body: unknown): MergeRequestView;
+
+  protected abstract gate(body: unknown): MergeGate;
 
   protected abstract readonly states: RequestStateApi;
 
