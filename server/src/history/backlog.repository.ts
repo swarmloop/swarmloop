@@ -68,6 +68,10 @@ export interface BacklogTaskRecord {
   fixesMain: string | null;
   status: SubtaskStatus;
   runKey: string | null;
+  /** What the scheduler says about the task, in words. */
+  note: string;
+  /** The owner asked to run the task now: it joins the scheduler whatever its milestone. */
+  runNow: boolean;
   merged: Record<string, string>;
   madeBy: TaskMadeBy;
   position: number;

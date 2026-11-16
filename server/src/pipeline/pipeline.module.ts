@@ -44,6 +44,8 @@ import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { Reconciler } from './reconciler';
+import { BacklogScheduler } from './backlog/backlog-scheduler';
+import { BacklogStartPort } from './backlog/backlog-start-port';
 import { RunSettler } from './run-settler';
 import { PipelineService } from './pipeline.service';
 import { AuthModule } from '../auth/auth.module';
@@ -93,6 +95,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     CommandService,
     MergeWatch,
     Reconciler,
+    BacklogScheduler,
+    BacklogStartPort,
     RunSettler,
     RunRebase,
     MergeRequestDrafts,
@@ -104,6 +108,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     PipelineService,
     CommandService,
     Reconciler,
+    BacklogScheduler,
+    BacklogStartPort,
     SubtaskPort,
     Housekeeping,
     WorkspaceGuard,

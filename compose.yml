@@ -111,6 +111,7 @@ services:
       - SPLIT
       - SPLIT_MAX_TASKS
       - SUBTASKS_PARALLEL
+      - BACKLOG_PARALLEL
       - SWARMLOOP_REPOS
       - SWARMLOOP_API_URL
       - GIT_AUTHOR_NAME
