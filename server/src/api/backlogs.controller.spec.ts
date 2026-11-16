@@ -18,6 +18,15 @@ function controller() {
     runMilestone: answer,
     acceptMilestone: answer,
     addRequirements: answer,
+    addTasks: answer,
+    changeTask: answer,
+    deleteTask: answer,
+    skipTask: answer,
+    mergeTask: answer,
+    runTaskNow: answer,
+    addItem: answer,
+    moveItem: answer,
+    dropItem: answer,
   };
   const queries = { list: jest.fn().mockResolvedValue([VIEW]), view: answer };
   return {
@@ -42,6 +51,15 @@ describe('BacklogsController', () => {
       [() => routes.runMilestone('ada', 'shop', 2), ['ada', 'shop', 2]],
       [() => routes.acceptMilestone('ada', 'shop', 2), ['ada', 'shop', 2]],
       [() => routes.addRequirements('ada', 'shop', 2, body), ['ada', 'shop', 2, body]],
+      [() => routes.addTasks('ada', 'shop', body), ['ada', 'shop', body]],
+      [() => routes.changeTask('ada', 'shop', 'one', body), ['ada', 'shop', 'one', body]],
+      [() => routes.deleteTask('ada', 'shop', 'one'), ['ada', 'shop', 'one']],
+      [() => routes.skipTask('ada', 'shop', 'one'), ['ada', 'shop', 'one']],
+      [() => routes.mergeTask('ada', 'shop', 'one'), ['ada', 'shop', 'one']],
+      [() => routes.runTaskNow('ada', 'shop', 'one'), ['ada', 'shop', 'one']],
+      [() => routes.addItem('ada', 'shop', body), ['ada', 'shop', body]],
+      [() => routes.moveItem('ada', 'shop', 'one', body), ['ada', 'shop', 'one', body]],
+      [() => routes.dropItem('ada', 'shop', 'one'), ['ada', 'shop', 'one']],
     ];
     for (const [call, args] of calls) {
       answer.mockClear();

@@ -17,9 +17,11 @@ import { RepositoryHost } from '../../steps/shared/repository-host';
 import type { RepositoryOrigins } from '../../steps/shared/repository-origins';
 import { FakeBacklogHost, pipelineOf } from '../../testing/fake-backlog-host';
 import type { CommandService } from '../command.service';
+import { BacklogActionSupport } from './backlog-action-support';
 import { BacklogActions } from './backlog-actions';
 import { BacklogEvents } from './backlog-events';
 import { BacklogQueries } from './backlog-queries';
+import { BacklogTaskActions } from './backlog-task-actions';
 import { BacklogMerge } from './backlog-merge';
 import { BacklogScheduler } from './backlog-scheduler';
 import { BacklogStartPort, type BacklogStart } from './backlog-start-port';
@@ -44,6 +46,22 @@ function check(status: PipelineCheck['status']): PipelineCheck {
 export type StartMode = 'ok' | 'timeout' | 'lost';
 
 export type MainStyle = 'green' | 'red' | 'pending' | 'no-pipeline';
+
+/** The action service over a database, with a command door that only records the stops it is asked for. */
+function actionParts(db: Awaited<ReturnType<typeof repositoryDatabase>>, config: AppConfig) {
+  const backlogs = db.app.get(BacklogRepository);
+  const queries = new BacklogQueries(backlogs);
+  const support = new BacklogActionSupport(backlogs, db.clock);
+  const stops: string[] = [];
+  const commands = {
+    submit: async (type: string, key: string) => {
+      stops.push(`${type} ${key}`);
+      return { value: undefined, receipt: {} };
+    },
+  } as unknown as CommandService;
+  const taskActions = new BacklogTaskActions(backlogs, queries, db.app.get(RunRepository), commands, db.clock, support);
+  return { queries, stops, actions: new BacklogActions(backlogs, queries, db.clock, config, support, taskActions) };
+}
 
 /** A real database with the backlog tables, the fake backlog host and a recording start port; tick() drives the scheduler under the db's fake clock. */
 export async function backlogHarness(parallel = 3) {
@@ -84,6 +102,7 @@ export async function backlogHarness(parallel = 3) {
     if (mode.current === 'timeout') throw new Error('start request timed out');
   });
   let position = 0;
+  const { actions, stops } = actionParts(db, config);
 
   const make = () => new BacklogScheduler(backlogs, runs, host, merge, events, port, config, db.clock);
   let current = make();
@@ -94,6 +113,10 @@ export async function backlogHarness(parallel = 3) {
     runs,
     fake,
     starts,
+    /** The action service over the same database. */
+    actions,
+    /** The stop commands the actions asked for, as `stop <run key>`. */
+    stops,
     /** The commands the merge asked for, in order. */
     accepts,
     /** The scheduler that tick() drives. */
@@ -222,11 +245,14 @@ export async function actionsHarness(projects: string[] = ['web', 'server']) {
   for (const project of projects) mkdirSync(join(checkouts, project, '.git'), { recursive: true });
   const config = new AppConfig(testEnv({ SWARMLOOP_ROOT: db.root, CHECKOUTS_ROOT: checkouts }));
   const backlogs = db.app.get(BacklogRepository);
-  const queries = new BacklogQueries(backlogs);
+  const { queries, actions, stops } = actionParts(db, config);
   return {
     backlogs,
     queries,
-    actions: new BacklogActions(backlogs, queries, db.clock, config),
+    actions,
+    /** The stop commands the actions asked for, as `stop <run key>`. */
+    stops,
+    runs: db.app.get(RunRepository),
     /** The recorded actions of a backlog, oldest first. */
     async actionEvents(name: string): Promise<{ facts: Record<string, string>; createdAt: string }[]> {
       const backlog = (await backlogs.findBacklog(name)) as NonNullable<
