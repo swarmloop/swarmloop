@@ -3,6 +3,7 @@ import { CredentialCooldowns1796000000001 } from './1796000000001-credential-coo
 import { DropUnusedData1796100000000 } from './1796100000000-drop-unused-data';
 import { Backlogs1796200000000 } from './1796200000000-backlogs';
 import { BacklogTaskNote1796300000000 } from './1796300000000-backlog-task-note';
+import { BacklogTaskMergeOk1796400000000 } from './1796400000000-backlog-task-merge-ok';
 import { AgentEffort1795900000000 } from './1795900000000-agent-effort';
 import { InterruptedCheckRows1795900000000 } from './1795900000000-interrupted-check-rows';
 import { InitialSchema1793664000000 } from './1793664000000-initial-schema';
@@ -73,4 +74,5 @@ export const migrations = [
   DropUnusedData1796100000000,
   Backlogs1796200000000,
   BacklogTaskNote1796300000000,
+  BacklogTaskMergeOk1796400000000,
 ];

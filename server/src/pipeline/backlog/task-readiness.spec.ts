@@ -28,6 +28,7 @@ function record(slug: string, overrides: Partial<BacklogTaskRecord> = {}): Backl
     runKey: null,
     note: '',
     runNow: false,
+    mergeOk: false,
     merged: {},
     madeBy: 'person',
     position: 1,

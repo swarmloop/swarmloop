@@ -34,6 +34,7 @@ function task(backlogId: number, slug: string, overrides: Partial<BacklogTaskRec
     runKey: null,
     note: '',
     runNow: false,
+    mergeOk: false,
     merged: { web: 'abc123' },
     madeBy: 'planner',
     position: 1,
