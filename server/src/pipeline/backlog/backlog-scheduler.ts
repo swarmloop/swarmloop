@@ -6,6 +6,7 @@ import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog
 import { RunRepository } from '../../history/run.repository';
 import { deriveState } from '../../history/run-state';
 import { RepositoryHost } from '../../steps/shared/repository-host';
+import { BacklogEvents } from './backlog-events';
 import { BacklogMerge } from './backlog-merge';
 import { BacklogStartPort } from './backlog-start-port';
 import { readMains } from './main-readings';
@@ -53,6 +54,7 @@ export class BacklogScheduler implements OnModuleDestroy {
     private readonly runs: RunRepository,
     private readonly host: RepositoryHost,
     private readonly merge: BacklogMerge,
+    private readonly events: BacklogEvents,
     private readonly port: BacklogStartPort,
     private readonly config: AppConfig,
     private readonly clock: Clock,
@@ -93,6 +95,7 @@ export class BacklogScheduler implements OnModuleDestroy {
     if (backlogs.length === 0) return;
     const mains = new Map<string, MainReading>();
     await this.merge.run(backlogs, mains);
+    await this.events.observe(backlogs, mains);
     const passes: BacklogPass[] = [];
     for (const backlog of backlogs) passes.push(await this.read(backlog));
     const open = passes.filter((pass) => !pass.paused);

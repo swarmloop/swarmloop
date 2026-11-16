@@ -182,4 +182,27 @@ describe('BacklogRepository', () => {
 
       expect(await backlogs.startedUnmergedCount()).toBe(2);
     }));
+
+  it('reads the newest main event of a repository and nothing for another', () =>
+    withBacklogs(async (backlogs) => {
+      const id = (await seedBacklog(backlogs)).id as number;
+      expect(await backlogs.latestMainEvent(id, 'web')).toBeNull();
+
+      await backlogs.recordEvent(id, 'main-red:web:a1', 'main-red', {});
+      await backlogs.recordEvent(id, 'main-red:server:b1', 'main-red', {});
+      expect(await backlogs.latestMainEvent(id, 'web')).toBe('main-red');
+
+      await backlogs.recordEvent(id, 'main-green:web:a2', 'main-green', {});
+      expect(await backlogs.latestMainEvent(id, 'web')).toBe('main-green');
+      expect(await backlogs.latestMainEvent(id, 'server')).toBe('main-red');
+    }));
+
+  it('does not let a wildcard character in a repository name match another repository', () =>
+    withBacklogs(async (backlogs) => {
+      const id = (await seedBacklog(backlogs)).id as number;
+      await backlogs.recordEvent(id, 'main-red:web-1:a1', 'main-red', {});
+
+      expect(await backlogs.latestMainEvent(id, 'web_1')).toBeNull();
+      expect(await backlogs.latestMainEvent(id, '%')).toBeNull();
+    }));
 });

@@ -53,7 +53,7 @@ export function isSubtask(run: { parentRunId?: number | null }): boolean {
 }
 
 /** A task whose work no longer holds up the tasks that depend on it. */
-export function settled(task: Subtask): boolean {
+export function settled(task: Pick<Subtask, 'status'>): boolean {
   return task.status === 'merged' || task.status === 'skipped';
 }
 

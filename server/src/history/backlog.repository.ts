@@ -294,6 +294,18 @@ export class BacklogRepository implements BacklogWriters {
     return rows.map(toEvent);
   }
 
+  /** The kind of the newest main event (`main-red` or `main-green`) of a repository in a backlog, or null when there is none. */
+  async latestMainEvent(backlogId: number, repository: string): Promise<'main-red' | 'main-green' | null> {
+    const escaped = repository.replace(/[\\%_]/g, (char) => `\\${char}`);
+    const row = await this.dataSource.manager
+      .createQueryBuilder(BacklogEventEntity, 'event')
+      .where('event.backlog_id = :backlogId', { backlogId })
+      .andWhere("event.event_key LIKE :pattern ESCAPE '\\'", { pattern: `main-%:${escaped}:%` })
+      .orderBy('event.id', 'DESC')
+      .getOne();
+    return row === null ? null : (row.kind as 'main-red' | 'main-green');
+  }
+
   /** Tasks on the whole server that have a run and are not merged or skipped. */
   startedUnmergedCount(): Promise<number> {
     return this.dataSource.manager

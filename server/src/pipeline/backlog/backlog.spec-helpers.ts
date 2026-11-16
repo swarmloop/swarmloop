@@ -1,4 +1,4 @@
-import type { MergeMode, MilestoneStatus } from '../../contract/backlog';
+import type { MergeMode, MilestoneStatus, RequirementStatus } from '../../contract/backlog';
 import type { PipelineCheck } from '../../integrations/code-host/code-host';
 import type { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { AppConfig } from '../../config/env';
@@ -7,12 +7,14 @@ import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog
 import { DocumentRepository } from '../../history/document.repository';
 import { repositoryDatabase } from '../../history/repository.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
+import { VisitRepository } from '../../history/visit.repository';
 import { writeRunState, type RunStateChange } from '../../history/run-state';
 import type { MergeOutcome } from '../../contract/run-state';
 import { RepositoryHost } from '../../steps/shared/repository-host';
 import type { RepositoryOrigins } from '../../steps/shared/repository-origins';
 import { FakeBacklogHost, pipelineOf } from '../../testing/fake-backlog-host';
 import type { CommandService } from '../command.service';
+import { BacklogEvents } from './backlog-events';
 import { BacklogMerge } from './backlog-merge';
 import { BacklogScheduler } from './backlog-scheduler';
 import { BacklogStartPort, type BacklogStart } from './backlog-start-port';
@@ -65,7 +67,8 @@ export async function backlogHarness(parallel = 3) {
       return { replayed };
     },
   } as unknown as CommandService;
-  const merge = new BacklogMerge(backlogs, runs, documents, repositoryOrigins, host, commands);
+  const events = new BacklogEvents(backlogs, runs, db.app.get(VisitRepository), documents, host);
+  const merge = new BacklogMerge(backlogs, runs, documents, repositoryOrigins, host, commands, events);
   const starts: BacklogStart[] = [];
   const mode = { current: 'ok' as StartMode };
   const port = new BacklogStartPort();
@@ -77,7 +80,7 @@ export async function backlogHarness(parallel = 3) {
   });
   let position = 0;
 
-  const make = () => new BacklogScheduler(backlogs, runs, host, merge, port, config, db.clock);
+  const make = () => new BacklogScheduler(backlogs, runs, host, merge, events, port, config, db.clock);
   let current = make();
 
   const harness = {
@@ -154,6 +157,13 @@ export async function backlogHarness(parallel = 3) {
       status: MilestoneStatus = 'active',
     ): ReturnType<BacklogRepository['saveMilestone']> {
       return backlogs.saveMilestone({ backlogId, number, title: `M${number}`, goal: '', status, createdAt: NOW });
+    },
+    seedRequirement(
+      milestoneId: number,
+      ref: string,
+      status: RequirementStatus = 'open',
+    ): ReturnType<BacklogRepository['saveRequirement']> {
+      return backlogs.saveRequirement({ milestoneId, ref, text: ref, status });
     },
     seedTask(backlogId: number, slug: string, overrides: Partial<BacklogTaskRecord> = {}) {
       position += 1;
