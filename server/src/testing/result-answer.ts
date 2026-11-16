@@ -8,12 +8,18 @@ import { sessionHome } from '../history/session-group';
 const FENCE = '```';
 
 /** The research result of a run with nothing to ask, nothing at stake and no sibling to wait for. */
-export const DEFAULT_RESEARCH = { summary: ['researched the change'], questions: [], impact: [] };
+export const DEFAULT_RESEARCH = {
+  summary: ['researched the change'],
+  questions: [],
+  impact: [],
+  requirements: [{ id: 'R1', text: 'make the change' }],
+};
 
 /** The plan of a run that does not split and asks no one. */
 const DEFAULT_PLAN = {
   summary: ['planned the change'],
   plan: ['do the change - files: a.ts - proof: a.spec.ts'],
+  covers: [['R1']],
 };
 
 /** The review of that plan: it keeps the plan. */
@@ -34,8 +40,15 @@ const DEFAULT_REVIEW = { decision: 'ok', review: 'reviewed the change', summary:
 /** The report of five reviews that all passed. */
 const DEFAULT_REPORT = { whatChanged: 'changed the field', codeReview: 'every check is ok' };
 
+/** The requirements reviewer marks the one requirement the default research lists. */
+const DEFAULT_REQUIREMENTS_REVIEW = {
+  ...DEFAULT_REVIEW,
+  requirements: [{ id: 'R1', status: 'met', note: 'the change does it' }],
+};
+
 const DEFAULT_ANSWERS: Record<string, unknown> = {
   ...Object.fromEntries(CODE_REVIEWERS.map((name) => [`code-review-${name}`, DEFAULT_REVIEW])),
+  'code-review-requirements': DEFAULT_REQUIREMENTS_REVIEW,
   'code-review-report': DEFAULT_REPORT,
   research: DEFAULT_RESEARCH,
   plan: DEFAULT_PLAN,

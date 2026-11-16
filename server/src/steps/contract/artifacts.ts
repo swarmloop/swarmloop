@@ -2,6 +2,7 @@ import { CODE_REVIEWERS, STEPS, type StepName } from '../../contract/steps';
 import { REBASE_CONFLICT, REBASE_JOURNAL } from '../../git/rebase';
 import type { Issue } from './step-contract';
 import { CONTRACT_KIND, SUBTASKS_KIND, type Subtask } from '../../contract/subtask';
+import type { CoveredRequirement, Requirement } from '../../contract/requirement-list';
 import type { KeepLine } from '../shared/keep-lines';
 import { research, type ResearchResult } from '../../agent-result/definitions/research';
 import { plan, type PlanResult } from '../../agent-result/definitions/plan';
@@ -221,6 +222,18 @@ export const ARTIFACTS = {
     readers: ['plan-improve', 'branch', 'implement', 'implement-improve'],
     codec: jsonArrayCodec<Subtask>(),
     summarize: (tasks) => listSummary(tasks.length, 'tasks', tasks[0]?.title),
+  }),
+  requirementList: artifact('requirement_list', {
+    writers: ['research', 'plan-improve'],
+    readers: ['research', 'plan', 'plan-improve', 'code-review'],
+    codec: jsonArrayCodec<Requirement>(),
+    summarize: (list) => listSummary(list.length, 'requirements', list[0]?.text),
+  }),
+  requirementCoverage: artifact('requirement_coverage', {
+    writers: ['plan', 'plan-improve'],
+    readers: ['plan-improve', 'implement', 'code-review'],
+    codec: jsonArrayCodec<CoveredRequirement>(),
+    summarize: (list) => listSummary(list.length, 'requirements', list[0]?.text),
   }),
   keep: artifact('keep', {
     writers: ['plan', 'plan-improve'],

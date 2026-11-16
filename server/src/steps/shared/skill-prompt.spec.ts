@@ -43,7 +43,7 @@ describe('impact skill rules', () => {
     expect(text).toContain('The approved checklist alone does not authorize a removal.');
     expect(text).toContain('Dead code that nothing relies on');
     expect(text).not.toContain('A behavior that checklist removes is not a missing requirement');
-    expect(text).toContain('the return names every one of them, not only the first');
+    expect(text).toContain('One return names every id that is not met, not only the first');
     expect(text).toContain('decision: return');
   });
 
@@ -75,14 +75,14 @@ describe('review against the input', () => {
 
   it('requirements lists the input, checks each item and returns every unmet one at once', () => {
     const text = skill('code-review/requirements');
-    expect(text).toContain("list what the input asks for, numbered in the input's order");
-    expect(text).toContain('Then check each one against the code.');
-    expect(text).toContain('`met: <item>`, `partial: <item> - <what is missing>` or `missing: <item>`');
-    expect(text).toContain('the return names every one of them, not only the first');
+    expect(text).toContain('Check each requirement by its id against the diff: the list, not the plan');
+    expect(text).toContain('`status` (`met`, `partial` or `missing`)');
+    expect(text).toContain('One return names every id that is not met, not only the first');
+    expect(text).toContain('`coverage gap:`');
     expect(text).toContain("check each plan item's `proof:` against the diff");
     expect(text).toContain('Do not ask for a new subsystem the input does not ask for.');
     expect(text).toContain('Do not return that behavior again');
-    expect(text.indexOf('list what the input asks for')).toBeLessThan(text.indexOf("plan item's `proof:`"));
+    expect(text.indexOf('Check each requirement by its id')).toBeLessThan(text.indexOf("plan item's `proof:`"));
   });
 
   it.each(reviewers)('%s holds the authority line and never passes on the plan alone', (name) => {
@@ -115,7 +115,7 @@ describe('review against the input', () => {
 describe('plan-improve and implement answer to the input', () => {
   it('plan-improve checks the coverage of the input before anything else', () => {
     const text = skill('plan-improve');
-    expect(text).toContain('Before anything else, list every item the input asks for');
+    expect(text).toContain('Before anything else, check the `Requirements list` in the prompt against the input');
     expect(text).toContain('`added: <item> - <why>`');
     expect(text.indexOf('Before anything else')).toBeLessThan(text.indexOf('The plan is already in the prompt'));
   });
@@ -125,6 +125,14 @@ describe('plan-improve and implement answer to the input', () => {
     expect(text).toContain('`not built: <item> - <why>`');
     expect(text).toContain('`not built: nothing`');
     expect(text).toContain('Stopping part way without that line is never allowed.');
+  });
+
+  it.each(['plan', 'implement'])('%s holds the limit rule', (name) => {
+    const text = skill(name);
+    expect(text).toContain('A limit never decides which requirement goes.');
+    expect(text).toContain('do not cut another rule or requirement to make room');
+    expect(text).toContain('a question to whoever started the run, before implement');
+    expect(text).toContain('restructuring is the normal answer');
   });
 
   it('implement changes a test only when the test is wrong and says why', () => {

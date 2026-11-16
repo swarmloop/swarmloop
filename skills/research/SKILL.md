@@ -18,6 +18,8 @@ When a capability would change, go away or become unreachable and the task does 
 
 A subtask of a split run may need a sibling task before it can go on: something it must use is made by a sibling task that is not merged yet (the task map in the prompt says who makes what). Then send `needs` and nothing else: do not do that task's work, do not write `assumed:` for it, and send empty lists for the other fields. The server makes the task wait, and runs this step again when that sibling is merged. A run that is not a subtask sends no `needs`.
 
+`requirements` lists what the input asks for. One requirement is one thing the input asks for: a numbered item, a sentence with must, an acceptance criterion, or an answered question. Write one entry each, with ids R1, R2 ... in the order of the input, and the requirement's own words as its text. A later pass keeps every id and only adds the next id or corrects a text. A subtask sends no requirements: the server gives it its list.
+
 `summary` also says what is still open when `questions` is not empty.
 
 `questions` lists a decision the requirement leaves open only when two choices would build different things, and neither the requirement nor the tree decides it. A detail a later step can settle from the requirement or from ordinary practice is not a question.

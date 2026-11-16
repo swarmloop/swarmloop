@@ -26,6 +26,22 @@ describe('review documents', () => {
     expect(renderReview(RETURN)).toBe('summary:\n- The parser drops an empty segment\ndecision: return\n');
   });
 
+  it('writes one line for each requirement mark in id order before the decision line', () => {
+    const requirements = [
+      { id: 'R10', status: 'met' as const, note: 'in a.ts' },
+      { id: 'R2', status: 'missing' as const, note: 'no case' },
+    ];
+    expect(renderReview({ ...RETURN, requirements })).toBe(
+      'summary:\n- The parser drops an empty segment\nR2 missing: no case\nR10 met: in a.ts\ndecision: return\n',
+    );
+  });
+
+  it('keeps the marks through the stored result', () => {
+    const requirements = [{ id: 'R1', status: 'partial' as const, note: 'half' }];
+    const documents = reviewDocuments(opinionOf('review_requirements', { ...RETURN, requirements }));
+    expect(storedReview('requirements', documents)?.requirements).toEqual(requirements);
+  });
+
   it('stores the rendered review next to the result it was rendered from', () => {
     const documents = reviewDocuments(opinionOf('review_quality', RETURN));
     expect(documents.map((document) => document.kind)).toEqual(['review_quality', 'review_quality_result']);

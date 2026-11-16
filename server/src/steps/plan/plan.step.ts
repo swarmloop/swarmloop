@@ -36,6 +36,10 @@ import { resultPromptFor } from '../../agent-result/result-prompt';
 import { needsWait } from '../shared/needs';
 import { planContinue, planFollowUp, subtaskDecides } from './plan.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { Requirement } from '../../contract/requirement-list';
+import { correctCoverage, gapLines, requirementsSection } from '../shared/coverage-correction';
+import { coverageOf } from '../shared/requirement-coverage';
+import { coverageUnits } from './plan-coverage';
 
 const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
@@ -44,6 +48,7 @@ const INPUTS = {
   impact: lateInput(ARTIFACTS.impact),
   researchResult: lateInput(ARTIFACTS.researchResult),
   planResult: lateInput(ARTIFACTS.planResult),
+  requirementList: lateInput(ARTIFACTS.requirementList),
   repos: { ...lateInput(ARTIFACTS.repos), need: 'start' },
   addedRepos: lateInput(ARTIFACTS.addedRepos),
   instructions: instructionsInput('plan'),
@@ -63,6 +68,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.contract,
     ARTIFACTS.needs,
     ARTIFACTS.planResult,
+    ARTIFACTS.requirementCoverage,
   ];
 
   constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
@@ -122,11 +128,12 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     const received = chat?.chatId ? (chat.resultName ?? null) : null;
     const limits = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);
     const added = await ctx.reread(ARTIFACTS.addedRepos);
+    const list = await ctx.reread(ARTIFACTS.requirementList);
     const subtask = isSubtask(ctx.opened.run);
     const asked = planFor({ split: limits.maySplit, subtask });
     const fullFor = (target: string, chatReceived: string | null, resumed = false): string =>
       [
-        skillPrompt('plan', input.requirements, names, sections, mounts, {
+        skillPrompt('plan', input.requirements, names, listed(sections, list, resumed && !subtask), mounts, {
           split: limits.maySplit,
           rules: projectRules(names, mounts, target, resumed),
         }),
@@ -136,13 +143,14 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     const chosen = continued?.chatId
       ? appendImpact(planFollowUp(answers, resultPromptFor(asked, received)), impact)
       : fullFor(runtime, received, Boolean(chat?.chatId));
+    const check = (value: unknown): string[] => planErrors(completePlan(value as Partial<PlanResult>), limits, subtask);
     const first = await ctx.launch({
       prompt: finish(chosen),
       briefFor: (other) => finish(fullFor(other, null)),
       mounts,
       continuePrompt: planContinue(),
       result: asked,
-      check: (value) => planErrors(completePlan(value as Partial<PlanResult>), limits, subtask),
+      check,
     });
     let result = completePlan(first.resultValue as Partial<PlanResult>);
     const needs = subtask ? (result.needs ?? []) : [];
@@ -172,21 +180,42 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
         ],
       };
     }
+    const coverage = list
+      ? await correctCoverage(
+          ctx,
+          {
+            mounts,
+            result: asked,
+            check,
+            continuePrompt: planContinue(),
+            read: (value) => completePlan(value as Partial<PlanResult>),
+            listOf: () => list,
+            unitsOf: coverageUnits,
+          },
+          result,
+        )
+      : null;
+    if (coverage) result = coverage.value;
+    const gaps = gapLines(coverage?.problems ?? []);
     const graph = isSplit(result) ? buildGraph(result) : null;
     const fields = graph
       ? planFields(planItemsFromTasks(graph.tasks))
       : planFields(result.plan, result.name, result.overview);
     const summary = renderSummary(result.summary, fields.items);
     const assumed = questionText && subtask ? assumptions(questionText) : '';
+    const notes = [...gaps, ...(assumed ? [assumed] : [])];
     return {
       route: { to: 'next' },
-      summary: `${ctx.opened.startedAt} plan done\n${fields.items.join('\n')}`,
+      summary: [`${ctx.opened.startedAt} plan done`, ...fields.items, ...gaps].join('\n'),
       outputs: [
         { artifact: ARTIFACTS.requirements, value: withPlan(requirements, fields) },
         { artifact: ARTIFACTS.planResult, value: result },
         ...(limits.maySplit ? splitOutputs(graph) : []),
+        ...(coverage
+          ? [{ artifact: ARTIFACTS.requirementCoverage, value: coverageOf(coverage.list, coverage.units) }]
+          : []),
       ],
-      handoff: assumed ? `${summary.trimEnd()}\n${assumed}` : summary,
+      handoff: notes.length > 0 ? [summary.trimEnd(), ...notes].join('\n') : summary,
     };
   }
 }
@@ -205,4 +234,16 @@ function decidedErrors(value: PlanResult): string[] {
   return value.plan.length > 0 && value.questions.length === 0
     ? []
     : ['plan: give the checklist now, with no questions'];
+}
+
+/**
+ * The sections with the requirements list, unless the prompt resumes a chat that already holds it. Research answers the
+ * list of a run in the chat the plan resumes; a subtask's list is built by the server, so that chat never held it.
+ */
+function listed(
+  sections: { heading: string; body: string }[],
+  list: Requirement[] | null | undefined,
+  resumed: boolean,
+): { heading: string; body: string }[] {
+  return list && !resumed ? [...sections, requirementsSection(list)] : sections;
 }

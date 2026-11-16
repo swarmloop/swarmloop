@@ -32,6 +32,17 @@ describe('review result', () => {
     expect(readResult(reviewDefinition('quality'), block({ ...REVIEW, reason: 'It holds.' })).ok).toBe(false);
   });
 
+  it('reads a requirements result with or without its marks', () => {
+    const marks = [{ id: 'R1', status: 'partial', note: 'the empty case is missing' }];
+    expect(readResult(reviewDefinition('requirements'), block(REVIEW)).ok).toBe(true);
+    expect(readResult(reviewDefinition('requirements'), block({ ...REVIEW, requirements: marks })).ok).toBe(true);
+    const bad = readResult(
+      reviewDefinition('requirements'),
+      block({ ...REVIEW, requirements: [{ ...marks[0], status: 'half' }] }),
+    );
+    expect(bad.ok === false && bad.errors[0]).toContain('status');
+  });
+
   it('names a decision that is neither ok nor return', () => {
     const read = readResult(reviewDefinition('quality'), block({ ...REVIEW, decision: 'approve' }));
     expect(read.ok === false && read.errors[0]).toContain('decision');

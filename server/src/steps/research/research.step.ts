@@ -13,7 +13,7 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { renderProjects, storedProjects } from '../../config/checkout-path';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
-import { isSubtask } from '../../contract/subtask';
+import { isSubtask, parseSubtasks, SUBTASKS_KIND } from '../../contract/subtask';
 import { assumptions, withContract, withHandoff } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
 import { resumableChat } from '../../agent/agent-session';
@@ -22,7 +22,8 @@ import { mountsForStep } from '../../git/repo-names';
 import { renderImpact, renderQuestions } from './research-record';
 import { needsWait } from '../shared/needs';
 import { researchContinue } from './research.prompts';
-import { research, type ResearchResult } from '../../agent-result/definitions/research';
+import { researchFor, type ResearchResult } from '../../agent-result/definitions/research';
+import { requirementErrors, requirementsToWrite } from './research-requirements';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 import { ARTIFACTS } from '../contract/artifacts';
 
@@ -30,6 +31,7 @@ const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
   answers: lateInput(ARTIFACTS.answers),
   repos: lateInput(ARTIFACTS.repos),
+  requirementList: lateInput(ARTIFACTS.requirementList),
   instructions: instructionsInput('research'),
 } as const satisfies InputSpec;
 
@@ -45,6 +47,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.impact,
     ARTIFACTS.needs,
     ARTIFACTS.researchResult,
+    ARTIFACTS.requirementList,
   ];
 
   constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
@@ -78,24 +81,27 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       await this.parentContract(ctx.opened.run),
     );
     const mounts = mountsForStep(root(this.config), ctx.opened.run.key, names, null);
+    const subtask = isSubtask(ctx.opened.run);
+    const asked = researchFor(subtask);
+    const storedList = await ctx.reread(ARTIFACTS.requirementList);
     // Research shares a chat with plan; its session records which definition was actually sent last.
     const promptFor = (runtime: string, received: string | null, resumed = false): string =>
       [
         skillPrompt('research', input.requirements, names, sections, mounts, {
           rules: projectRules(names, mounts, runtime, resumed),
         }),
-        resultPromptFor(research, received),
+        resultPromptFor(asked, received),
       ].join('\n\n');
     const { runtime } = this.profile(this.config.env, ctx.opened.run);
     const chat = await resumableChat(root(this.config), ctx.opened.run.key, 'research', runtime);
     const received = chat?.chatId ? (chat.resultName ?? null) : null;
-    const subtask = isSubtask(ctx.opened.run);
     const agentResult = await ctx.launch({
       prompt: promptFor(runtime, received, Boolean(chat?.chatId)),
       briefFor: (other) => promptFor(other, null),
       mounts,
-      continuePrompt: researchContinue(research.name),
-      result: research,
+      continuePrompt: researchContinue(asked),
+      result: asked,
+      check: (raw) => (subtask ? [] : requirementErrors(storedList, (raw as ResearchResult).requirements)),
     });
     const result = agentResult.resultValue as ResearchResult;
     const needs = subtask ? (result.needs ?? []) : [];
@@ -119,6 +125,15 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     const { run } = ctx.opened;
     const parent = isSubtask(run) ? await this.runs.findById(run.parentRunId as number) : null;
     const paused = questions !== '' && (!subtask || (parent?.split === true && !answers.trim()));
+    const parentList = await this.parentDocument(run, ARTIFACTS.requirementList.kind);
+    const list = requirementsToWrite({
+      stored: storedList,
+      answered: result.requirements,
+      parentList: parentList === null ? null : ARTIFACTS.requirementList.parse(parentList),
+      parentTasks: parseSubtasks(await this.parentDocument(run, SUBTASKS_KIND)),
+      taskId: run.taskId,
+      subtask,
+    });
     const assumed = subtask && !paused ? assumptions(questions) : '';
     await ctx.write(ARTIFACTS.repos, ARTIFACTS.repos.parse(repos));
     const detail = (paused ? questions : repos).trimEnd();
@@ -138,6 +153,9 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
         { artifact: ARTIFACTS.questions, value: subtask && !paused ? '' : questions },
         { artifact: ARTIFACTS.impact, value: renderImpact(result.impact) },
         { artifact: ARTIFACTS.researchResult, value: result },
+        ...(list && JSON.stringify(list) !== JSON.stringify(storedList)
+          ? [{ artifact: ARTIFACTS.requirementList, value: list }]
+          : []),
       ],
       handoff: summary,
     };

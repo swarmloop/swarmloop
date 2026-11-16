@@ -67,6 +67,7 @@ export function buildGraph(value: SplitFields): TaskGraph {
     depends: [...task.depends],
     files: [...task.files],
     proof: task.proof,
+    covers: [...(task.covers ?? [])],
     status: 'pending',
   }));
   return { contract: renderContract(value.contract), tasks, decisions: chainSharedFiles(tasks), keep: value.keep };

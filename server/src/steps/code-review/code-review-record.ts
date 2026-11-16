@@ -13,10 +13,19 @@ export interface Opinion {
   result: ReviewResult;
 }
 
-/** The `review_<name>` document: the review, then the decision line. */
+/** One `<id> <status>: <note>` line for each requirement mark, in id order. */
+function markLines(result: ReviewResult): string {
+  const number = (id: string): number => Number(id.replace(/\D/g, ''));
+  const marks = [...(result.requirements ?? [])].sort(
+    (a, b) => number(a.id) - number(b.id) || a.id.localeCompare(b.id),
+  );
+  return marks.map((mark) => `${mark.id} ${mark.status}: ${mark.note}\n`).join('');
+}
+
+/** The `review_<name>` document: the review, the requirement marks, then the decision line. */
 export function renderReview(result: ReviewResult): string {
   const reason = result.reason ? `reason: ${result.reason}\n` : '';
-  return `${result.review.trimEnd()}\ndecision: ${result.decision}\n${reason}`;
+  return `${result.review.trimEnd()}\n${markLines(result)}decision: ${result.decision}\n${reason}`;
 }
 
 export function opinionOf(kind: string, result: ReviewResult): Opinion {

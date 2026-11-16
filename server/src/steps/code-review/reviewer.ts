@@ -55,6 +55,8 @@ interface ReviewLaunch extends EffortFields {
   /** The reviewer saw implement's answer to its last finding, so its result carries a `reason`. */
   answering: boolean;
   answerErrors?: string[];
+  /** The server's check of the answer, made before it is accepted. */
+  check?: (value: unknown) => string[];
 }
 
 export interface Usage {
@@ -121,6 +123,7 @@ export async function runJob(
       briefFor: job.promptFor,
       answering: job.exchange !== null,
       answerErrors: await storedAnswerErrors(deps, opened.run.id, step),
+      check: job.check,
     },
     auto,
     fresh,
@@ -212,5 +215,6 @@ async function launchReview(
     briefFor: job.briefFor,
     result: job.answering ? reviewAnswerDefinition(job.reviewer.name) : reviewDefinition(job.reviewer.name),
     answerErrors: job.answerErrors,
+    check: job.check,
   });
 }

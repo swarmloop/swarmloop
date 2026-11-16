@@ -52,6 +52,8 @@ const INPUTS = {
   implementationImproveResult: lateInput(ARTIFACTS.implementationImproveResult),
   // Without requirements the review falls back to the run prompt, and a third-party review has none.
   requirements: lateInput(ARTIFACTS.requirements),
+  requirementList: lateInput(ARTIFACTS.requirementList),
+  requirementCoverage: lateInput(ARTIFACTS.requirementCoverage),
   repos: lateInput(ARTIFACTS.repos),
   impact: lateInput(ARTIFACTS.impact),
   researchResult: lateInput(ARTIFACTS.researchResult),
@@ -208,7 +210,11 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     }
     writeReviewDiff(root(this.config), key, diff.patch);
     const handoff = await ctx.reread(ARTIFACTS.handoff);
+    const requirementList = await ctx.reread(ARTIFACTS.requirementList);
+    const list = requirementList?.length ? requirementList : null;
+    const coverage = await ctx.reread(ARTIFACTS.requirementCoverage);
     const plan = await approvedPlan(this.documents, key);
+    const coveredPlan = coverage ? await approvedPlan(this.documents, key, coverage) : plan;
     const impact = storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact));
     const split = opened.run.split;
     const contract = split ? await ctx.reread(ARTIFACTS.contract) : null;
@@ -226,6 +232,8 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       returned,
       diff,
       plan,
+      coveredPlan,
+      list,
       impact,
       contract,
       subtasks,

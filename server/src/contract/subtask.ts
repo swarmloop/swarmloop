@@ -9,6 +9,8 @@ export interface Subtask {
   depends: string[];
   files: string[];
   proof: string;
+  /** The ids of the requirements the task serves. */
+  covers?: string[];
   status: SubtaskStatus;
   /** What the pass says about the task, such as the tasks it waits for. */
   note?: string;

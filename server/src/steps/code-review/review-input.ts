@@ -15,6 +15,7 @@ import type { CheckoutService } from '../shared/checkout.service';
 import { handoffSection } from '../shared/handoff';
 import { mountsForStep, repoNames } from '../../git/repo-names';
 import { approvedChecklist } from './code-review.prompts';
+import type { CoveredRequirement } from '../../contract/requirement-list';
 import { ARTIFACTS } from '../contract/artifacts';
 import { renderKeep, type KeepLine } from '../shared/keep-lines';
 
@@ -91,12 +92,16 @@ export async function interruptedAttempt(visits: VisitRepository, opened: Opened
   return last?.attemptId ?? null;
 }
 
-export async function approvedPlan(documents: DocumentRepository, key: string): Promise<string> {
+export async function approvedPlan(
+  documents: DocumentRepository,
+  key: string,
+  coverage: readonly CoveredRequirement[] | null = null,
+): Promise<string> {
   const plan = await currentPlan(documents, key);
   if (!plan || plan.decision !== 'approve' || plan.items.length === 0) {
     return '';
   }
-  return approvedChecklist(plan.items);
+  return approvedChecklist(plan.items, coverage);
 }
 
 /** What each implement pass did, oldest first: from its stored result, or for a run from before results its `implementation` document. */

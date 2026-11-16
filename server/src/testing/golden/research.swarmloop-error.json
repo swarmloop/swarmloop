@@ -38,7 +38,7 @@
   "flows": [],
   "loopEvents": [],
   "reads": {
-    "research": ["requirements", "answers", "handoff", "instructions:research"]
+    "research": ["requirements", "answers", "handoff", "requirement_list", "instructions:research"]
   },
   "run": {
     "agentCalls": 0,

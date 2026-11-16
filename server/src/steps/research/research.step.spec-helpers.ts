@@ -31,7 +31,13 @@ export async function seed(
 
 /** The research block a finished step ends with; `over` replaces fields. */
 export function research(over: Record<string, unknown> = {}): Record<string, unknown> {
-  return { summary: ['looking'], questions: [], impact: [], ...over };
+  return {
+    summary: ['looking'],
+    questions: [],
+    impact: [],
+    requirements: [{ id: 'R1', text: 'ship the field' }],
+    ...over,
+  };
 }
 
 export function answer(over: Record<string, unknown> = {}): AgentRunResult {
