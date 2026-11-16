@@ -1,7 +1,7 @@
 import type { CoveredRequirement, Requirement } from '../../contract/requirement-list';
 
 /** A plan item or a task, with the requirement ids it covers. */
-interface CoverageUnit {
+export interface CoverageUnit {
   item: string;
   covers: readonly string[];
 }

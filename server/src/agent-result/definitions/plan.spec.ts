@@ -21,7 +21,7 @@ describe('plan result', () => {
   it('reads a valid plan block and fills in the fields that were left out', () => {
     expect(readResult(plan, block(PLAN))).toEqual({
       ok: true,
-      value: { ...PLAN, questions: [], contract: [], tasks: [], keep: [] },
+      value: { ...PLAN, covers: [], questions: [], contract: [], tasks: [], keep: [] },
     });
   });
 
@@ -104,6 +104,25 @@ describe('plan result', () => {
   });
 });
 
+describe('stored results without covers', () => {
+  it('parse with covers and requirements empty', () => {
+    const split = readResult(plan, block({ summary: [], contract: ['rule'], tasks: [TASK] }));
+    expect(split.ok && (split.value as PlanResult).tasks[0].covers).toEqual([]);
+    expect(completePlan(PLAN)).toMatchObject({ covers: [] });
+    const improved = readResult(planImprove, block(PLAN));
+    expect(improved).toMatchObject({ ok: true, value: { covers: [], requirements: [] } });
+    expect(completePlanImprove(PLAN)).toMatchObject({ covers: [], requirements: [] });
+  });
+
+  it('keep the covers and requirements they hold', () => {
+    const read = readResult(
+      planImprove,
+      block({ ...PLAN, covers: [['R1']], requirements: [{ id: 'R2', text: 'two' }] }),
+    );
+    expect(read).toMatchObject({ ok: true, value: { covers: [['R1']], requirements: [{ id: 'R2', text: 'two' }] } });
+  });
+});
+
 describe('plan-improve result', () => {
   it('reads a plan, a split and an empty plan', () => {
     expect(readResult(planImprove, block(PLAN)).ok).toBe(true);
@@ -128,14 +147,22 @@ describe('an answer read through the result a run was asked for', () => {
   it('keeps no name that is not a field of the plan result, an inherited one included', () => {
     const read = readResult(planFor({ split: false, subtask: false }), block({ ...PLAN, ...STRANGERS }));
     const stored = completePlan(read.ok ? (read.value as Partial<PlanResult>) : {});
-    expect(Object.keys(stored).sort()).toEqual(['contract', 'keep', 'plan', 'questions', 'summary', 'tasks']);
+    expect(Object.keys(stored).sort()).toEqual(['contract', 'covers', 'keep', 'plan', 'questions', 'summary', 'tasks']);
     expect(readResult(plan, block(stored)).ok).toBe(true);
   });
 
   it('keeps no name that is not a field of the plan-improve result, an inherited one included', () => {
     const read = readResult(planImproveFor(false), block({ ...PLAN, ...STRANGERS }));
     const stored = completePlanImprove(read.ok ? (read.value as Partial<PlanImproveResult>) : {});
-    expect(Object.keys(stored).sort()).toEqual(['contract', 'keep', 'plan', 'summary', 'tasks']);
+    expect(Object.keys(stored).sort()).toEqual([
+      'contract',
+      'covers',
+      'keep',
+      'plan',
+      'requirements',
+      'summary',
+      'tasks',
+    ]);
     expect(readResult(planImprove, block(stored)).ok).toBe(true);
   });
 });

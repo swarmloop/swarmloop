@@ -1,6 +1,8 @@
 # Plan improve
 
-Before anything else, list every item the input asks for (numbered `Do` items, `Check` and `Pipeline` items, sentences with "must", acceptance criteria, answered questions) and check that each is covered by a plan item or, in a split run, a task. Add an item or a task for each one that is missing, and list each one in `summary` as `added: <item> - <why>`. A plan never drops a requirement of the input.
+Before anything else, check the `Requirements list` in the prompt against the input (numbered `Do` items, `Check` and `Pipeline` items, sentences with "must", acceptance criteria, answered questions). When the list misses a requirement of the input, send it in `requirements` under the next id of the list's series. When a text is wrong, send the same id with the corrected text. Give the reason for each change in `summary`. Never renumber an id and never remove one. Send in `requirements` only the entries you add or correct.
+
+Then check that every requirement is covered by a plan item or, in a split run, a task. Add an item or a task for each one that is missing, and list each one in `summary` as `added: <item> - <why>`. Keep `covers` complete: every item, and in a split every task, names the ids of the list it serves, and every id is covered. A plan never drops a requirement of the input.
 
 The plan is already in the prompt. Check it for correctness, logical gaps, and inconsistencies. Fix those in the checklist. Return the full checklist implementation should follow.
 

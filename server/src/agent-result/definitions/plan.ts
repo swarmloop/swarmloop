@@ -1,12 +1,14 @@
 import Joi from 'joi';
 import { defineResult, type ResultDefinition } from '../result-definition';
 import type { Need } from './research';
-import { keysFor, splitKeys, type SplitFields } from './split-fields';
+import { coversKey, keysFor, splitKeys, type SplitFields } from './split-fields';
 
 /** What the plan step hands to the server: one checklist, the questions a person must answer, or a split into tasks. */
 export interface PlanResult extends SplitFields {
   summary: string[];
   plan: string[];
+  /** One list of requirement ids per plan item, in the order of the plan. */
+  covers?: string[][];
   questions: string[];
   name?: string;
   overview?: string;
@@ -42,6 +44,7 @@ const keys = {
       }),
     )
     .description('Sibling tasks this task waits for; leave out when none'),
+  covers: coversKey(),
   ...splitKeys(),
 };
 
@@ -72,5 +75,5 @@ export function planFor(shape: { split: boolean; subtask: boolean }): ResultDefi
 /** An answer read through `planFor`, with the fields it was not asked for as empty as the stored result has them. */
 export function completePlan(value: Partial<PlanResult>): PlanResult {
   const known = Object.fromEntries(Object.entries(value).filter(([name]) => Object.hasOwn(keys, name)));
-  return { summary: [], plan: [], questions: [], contract: [], tasks: [], keep: [], ...known };
+  return { summary: [], plan: [], covers: [], questions: [], contract: [], tasks: [], keep: [], ...known };
 }

@@ -21,6 +21,7 @@ const limits = { maySplit: true, maxTasks: 12 };
 const column: SplitTask = {
   id: 'column',
   title: 'Add the column',
+  covers: ['R1'],
   depends: [],
   files: ['a.ts', 'b.ts'],
   proof: 'a.spec.ts "reads it"',
@@ -46,7 +47,7 @@ describe('taskErrors', () => {
     expect(graph.contract).toBe('- the field is called `split`');
     expect(graph.tasks).toEqual([
       { ...column, status: 'pending' },
-      { ...api, status: 'pending' },
+      { ...api, covers: [], status: 'pending' },
     ]);
     expect(planItemsFromTasks(graph.tasks)).toEqual([
       'Add the column - files: a.ts, b.ts - proof: a.spec.ts "reads it"',

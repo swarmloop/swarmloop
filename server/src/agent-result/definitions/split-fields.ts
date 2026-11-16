@@ -8,6 +8,8 @@ export interface SplitTask {
   files: string[];
   proof: string;
   description: string;
+  /** The ids of the requirements the task serves. */
+  covers?: string[];
 }
 
 /** One capability of a split plan that must keep working, and the tasks that touch it. */
@@ -26,6 +28,14 @@ export interface SplitFields {
 
 const list = (): Joi.ArraySchema => Joi.array().items(Joi.string());
 
+/** The `covers` key of a plan answer: the requirement ids each plan item serves. */
+export function coversKey(): Joi.ArraySchema {
+  return Joi.array()
+    .items(list())
+    .default([])
+    .description('One list of requirement ids per plan item, same order; [] when the plan has no list');
+}
+
 /** The schema keys of a split answer, shared by `plan` and `plan_improve`. */
 export function splitKeys(): Record<string, Joi.Schema> {
   return {
@@ -41,6 +51,7 @@ export function splitKeys(): Record<string, Joi.Schema> {
           files: list().required().description('Every file it changes'),
           proof: Joi.string().required().description('The test or check that proves it'),
           description: Joi.string().required().description('What the task does, kept whole'),
+          covers: list().default([]).description('Ids of the requirements the task serves'),
         }),
       )
       .default([])
