@@ -102,7 +102,7 @@
         "server/src/steps/code-review/review-select.ts",
         "server/src/api/run-view/live.ts",
         "server/src/api/run-queries-log.ts",
-        "server/src/api/run-queries.service.ts",
+        "server/src/api/run-queries-history.ts",
         "server/src/api/run-view/visit-parts.ts",
         "server/src/api/run-view/flow.ts",
         "server/src/api/run-view/chips.ts",
