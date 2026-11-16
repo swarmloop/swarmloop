@@ -45,6 +45,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.impact,
     ARTIFACTS.needs,
     ARTIFACTS.researchResult,
+    ARTIFACTS.requirementList,
   ];
 
   constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {

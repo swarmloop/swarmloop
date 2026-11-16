@@ -127,6 +127,14 @@ describe('plan-improve and implement answer to the input', () => {
     expect(text).toContain('Stopping part way without that line is never allowed.');
   });
 
+  it.each(['plan', 'implement'])('%s holds the limit rule', (name) => {
+    const text = skill(name);
+    expect(text).toContain('A limit never decides which requirement goes.');
+    expect(text).toContain('do not cut another rule or requirement to make room');
+    expect(text).toContain('a question to whoever started the run, before implement');
+    expect(text).toContain('restructuring is the normal answer');
+  });
+
   it('implement changes a test only when the test is wrong and says why', () => {
     expect(skill('implement')).toContain(
       'Change a test only when the test is wrong, and say in `summary` why the old assertion was wrong',

@@ -41,6 +41,28 @@ describe('artifact catalog', () => {
     expect(new Set(kinds).size).toBe(kinds.length);
   });
 
+  it('registers the requirement list and its coverage with their writers and readers', () => {
+    expect(ARTIFACTS.requirementList).toMatchObject({
+      kind: 'requirement_list',
+      writers: ['research', 'plan-improve'],
+      readers: ['plan', 'plan-improve', 'code-review'],
+    });
+    expect(ARTIFACTS.requirementCoverage).toMatchObject({
+      kind: 'requirement_coverage',
+      writers: ['plan', 'plan-improve'],
+      readers: ['plan-improve', 'implement', 'code-review'],
+    });
+  });
+
+  it('round-trips the requirement list and its coverage through their codecs', () => {
+    const list = [{ id: 'R1', text: 'first' }];
+    const covered = [{ id: 'R1', text: 'first', items: ['item'] }];
+    expect(ARTIFACTS.requirementList.parse(ARTIFACTS.requirementList.format(list))).toEqual(list);
+    expect(ARTIFACTS.requirementCoverage.parse(ARTIFACTS.requirementCoverage.format(covered))).toEqual(covered);
+    expect(ARTIFACTS.requirementList.summarize(list)).toBe('1 requirements: first');
+    expect(ARTIFACTS.requirementCoverage.summarize([])).toBe('0 requirements');
+  });
+
   it.each(entries.map((entry) => [entry.kind, entry] as const))('%s has a writer or is external', (_kind, entry) => {
     expect(entry.writers.length > 0 || entry.external === true).toBe(true);
   });

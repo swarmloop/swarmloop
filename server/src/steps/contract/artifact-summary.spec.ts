@@ -33,6 +33,8 @@ const JSON_BODIES: Record<string, string> = {
   implementation_improve_result: '{"implementation":["fixed the case"],"summary":["why"]}\n',
   review_report_result: '{"whatChanged":"fixed the parser","codeReview":"every check is ok"}\n',
   rebase_resolution_result: '{"summary":["kept both sides"]}\n',
+  requirement_list: '[{"id":"R1","text":"first"}]\n',
+  requirement_coverage: '[{"id":"R1","text":"first","items":["item"]}]\n',
   subtask_answer_result: '{"answer":"use the shared helper"}\n',
 };
 
