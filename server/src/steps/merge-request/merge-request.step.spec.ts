@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { mkdtemp } from 'fs/promises';
+import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { Repository } from 'typeorm';
@@ -105,6 +105,31 @@ describe('merge-request step', () => {
       expect(await app.get(DocumentRepository).latestBody('PROJ-200', 'merge_request')).toContain('draft: false');
     } finally {
       await app.close();
+    }
+  });
+
+  it('puts the rendered report into the description when the run has the parts of the new report', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-report-'));
+    featureTree(root, 'PROJ-230');
+    const find = jest.fn(async () => ({
+      record: { project: 'group/demo', iid: 9, url: 'https://gitlab.example/mr/9', summary: 'Open.', draft: true },
+      httpCalls: [call('GET')],
+    }));
+    const update = jest.fn(async () => ({ httpCalls: [call('PUT')] }));
+    const app = await boot(root, { find, open: jest.fn(), update }, jest.fn());
+    try {
+      await seed(app, 'PROJ-230');
+      const run = (await app.get(RunRepository).findRun('PROJ-230'))!;
+      const notes = { requirements: 'a', quality: 'b', regressions: 'c', security: 'd', performance: 'e' };
+      const parts = { line: 'The field ships.', done: ['x'], worthALook: [], notes, risk: 'low', riskReason: 'small' };
+      await app.get(DocumentRepository).putDocument(run, 'review_report_result', JSON.stringify(parts));
+      await app.get(PipelineService).step('merge-request', 'PROJ-230');
+      const sent = (update.mock.calls[0] as unknown as [string, number, string])[2];
+      expect(sent).toContain('## ⏳ Waiting for CI · risk: low\n> The field ships.');
+      expect(sent).not.toContain('Ships the field.');
+    } finally {
+      await app.close();
+      await rm(root, { recursive: true, force: true });
     }
   });
 

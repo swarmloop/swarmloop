@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { CODE_REVIEWERS } from '../contract/steps';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { DocumentRepository } from '../history/document.repository';
@@ -374,9 +375,12 @@ describe('the real code-review step in a whole flow', () => {
       'code-review-report': [
         {
           block: {
-            whatChanged: 'The field parser changed.',
-            codeReview: 'Quality returned the change.',
-            whatToFix: '- keep the empty segment',
+            line: 'The field parser changed.',
+            done: ['The field parser changed.'],
+            worthALook: [{ place: 'parser.ts', reason: 'keep the empty segment' }],
+            notes: Object.fromEntries(CODE_REVIEWERS.map((name) => [name, 'Quality returned the change.'])),
+            risk: 'low',
+            riskReason: 'a small change',
           },
         },
       ],

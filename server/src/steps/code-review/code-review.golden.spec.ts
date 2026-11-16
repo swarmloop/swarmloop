@@ -6,6 +6,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
 import type { AgentRunInput } from '../../agent/agent-runner';
+import { RunReport } from '../shared/run-report';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { AppConfig } from '../../config/env';
 import { StepEventLog } from '../../history/step-event.log';
@@ -58,6 +59,7 @@ describe('code-review step golden traces', () => {
       app.get(CheckoutService),
       app.get(SandboxService),
       app.get(AgentLauncher),
+      app.get(RunReport),
     );
     const done = await step.execute(KEY);
     // The reviewers run inside the step: each of their visits shares the kinds the step read.

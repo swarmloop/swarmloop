@@ -1,27 +1,27 @@
 # Review report
 
-Write the merge request summary. The Implementation section is what was done. The Reviews section is the evidence. Do not open the checkout. Do not run commands. Do not call Jira or GitLab. Do not review the code again.
+Write the prose of the merge request report. The Implementation section is what was done. The Reviews section is the evidence. The Requirements list, when given, is what the change had to do. Do not open the checkout. Do not run commands. Do not call Jira or GitLab. Do not review the code again.
 
-Give these parts, one field of the result each, in this order. Write the text of a part, not its heading. Keep each one short. The checks often say the same problem in different words. Merge that into one explanation. Name a check only when the checks disagree.
+The server writes the verdict, the numbers, CI, returns, time and the decisions. You write only these parts, one field of the result each. Write plain words. Do not write a verdict, numbers, CI or returns. Do not write step ids, document kinds or field names.
 
-### Requirements
+### The line
 
-The requirements reviewer's numbered list with its marks, one line each: `met`, `partial` or `missing`. Copy it as that reviewer wrote it.
+One line, quoted in the report: what the change gives, in plain words.
 
-### What changed
+### Done
 
-What was done, from the implementation notes.
+At most 5 bullets, one line each: what was built. For a split parent, the whole change.
 
-### Code review
+### Worth a look
 
-The status of the checks. When every decision is ok, say what holds.
+At most 3 places a person should read, each a file or an area and the reason to read there. Leave it empty when nothing needs a look.
 
-### What holds
+### Notes
 
-When a check is ok, the behavior that must stay. A later fix must not undo it. Omit this part when every decision is return.
+One line for each reviewer: what that review found. Do not give its decision: the server adds it. The checks often say the same problem in different words; name a check only when the checks disagree.
 
-### What to fix
+### Risk
 
-Only when a check returned. One bullet per distinct change that must be fixed. Each bullet still has to leave What holds true. Omit this part when every decision is ok.
+`low`, `medium` or `high`, with a reason of one line.
 
 Do not add a finding none of the five wrote. Do not change their decisions. Do not end with a decision line.

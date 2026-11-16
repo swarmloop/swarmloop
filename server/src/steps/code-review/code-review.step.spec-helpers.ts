@@ -23,6 +23,8 @@ import type { AgentRunResult } from '../../agent/agent-runner';
 
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 
+import type { ReviewReportResult } from '../../agent-result/definitions/review-report';
+import { CODE_REVIEWERS } from '../../contract/steps';
 import { resultAnswer } from '../../testing/result-answer';
 
 import { PipelineModule } from '../../pipeline/pipeline.module';
@@ -42,8 +44,16 @@ export function reply(step: string, decision: 'ok' | 'return', reason?: string):
 }
 
 /** The report's final text: prose, then its result block. */
-export function reportReply(text = 'The checks are in.', parts: { whatToFix?: string } = {}): string {
-  return resultAnswer(text, { whatChanged: 'changed the field', codeReview: text, ...parts });
+export function reportReply(text = 'The checks are in.', parts: Partial<ReviewReportResult> = {}): string {
+  return resultAnswer(text, {
+    line: text,
+    done: ['changed the field'],
+    worthALook: [],
+    notes: Object.fromEntries(CODE_REVIEWERS.map((name) => [name, text])),
+    risk: 'low',
+    riskReason: 'a small change',
+    ...parts,
+  });
 }
 
 export function result(responseText: string, step = 'code-review'): AgentRunResult {

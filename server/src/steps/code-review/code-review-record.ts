@@ -3,7 +3,6 @@ import type { ReviewReportResult } from '../../agent-result/definitions/review-r
 import type { DocumentDraft } from '../../history/visit';
 import { ARTIFACTS, REVIEWS, reviewResultOf } from '../contract/artifacts';
 import { textDocument } from '../shared/handoff';
-import { renderReport } from '../shared/report-text';
 
 /** What one reviewer decided: its stored result, and the document text a person and the next prompts read. */
 export interface Opinion {
@@ -38,10 +37,10 @@ export function reviewDocuments(opinion: Opinion): DocumentDraft[] {
   return [textDocument(opinion.kind, opinion.body), textDocument(stored.kind, stored.format(opinion.result))];
 }
 
-/** The documents the report stores: the rendered report and the result it was rendered from. */
-export function reportDocuments(result: ReviewReportResult): DocumentDraft[] {
+/** The documents the report stores: the report text and the model's parts it was rendered from. */
+export function reportDocuments(text: string, result: ReviewReportResult): DocumentDraft[] {
   return [
-    textDocument(ARTIFACTS.reviewReport.kind, renderReport(result)),
+    textDocument(ARTIFACTS.reviewReport.kind, text),
     textDocument(ARTIFACTS.reviewReportResult.kind, ARTIFACTS.reviewReportResult.format(result)),
   ];
 }

@@ -23,6 +23,7 @@ import { VisitRepository } from '../../history/visit.repository';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
+import { RunReport } from '../shared/run-report';
 import { MergeRequestStep } from './merge-request.step';
 
 const KEY = 'PROJ-200';
@@ -79,6 +80,7 @@ describe('merge-request step golden traces', () => {
       ),
       app.get(CodeHostRegistry),
       new RunStop(),
+      app.get(RunReport),
     );
     const result = await step.execute(KEY);
     expectGolden(`merge-request.${name}`, {

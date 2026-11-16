@@ -1,3 +1,4 @@
+import type { ReviewReportResult } from '../../agent-result/definitions/review-report';
 import { opinionOf, renderReview, reportDocuments, reviewDocuments, summaryNote } from './code-review-record';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import { storedReview } from '../../agent-result/stored-review';
@@ -62,20 +63,18 @@ describe('review documents', () => {
 });
 
 describe('report documents', () => {
-  it('renders the parts the report gave as sections and stores its result', () => {
-    const documents = reportDocuments({
-      whatChanged: 'Parser fixed.',
-      codeReview: 'All ok.',
-      whatToFix: '- one thing',
-    });
+  it('stores the report text it is given and the parts it was rendered from', () => {
+    const parts: ReviewReportResult = {
+      line: 'Parser fixed.',
+      done: ['one thing'],
+      worthALook: [],
+      notes: { requirements: 'a', quality: 'b', regressions: 'c', security: 'd', performance: 'e' },
+      risk: 'low',
+      riskReason: 'small',
+    };
+    const documents = reportDocuments('the report\n', parts);
     expect(documents.map((document) => document.kind)).toEqual(['review_report', 'review_report_result']);
-    expect(documents[0].body).toBe(
-      '## What changed\n\nParser fixed.\n\n## Code review\n\nAll ok.\n\n## What to fix\n\n- one thing\n',
-    );
-    expect(JSON.parse(documents[1].body)).toEqual({
-      whatChanged: 'Parser fixed.',
-      codeReview: 'All ok.',
-      whatToFix: '- one thing',
-    });
+    expect(documents[0].body).toBe('the report\n');
+    expect(JSON.parse(documents[1].body)).toEqual(parts);
   });
 });

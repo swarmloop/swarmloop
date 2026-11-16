@@ -105,10 +105,13 @@ describe('review against the input', () => {
     },
   );
 
-  it('the report opens with the requirements list', () => {
+  it('the report skill asks for the line first, then Done, Worth a look, the notes and the risk', () => {
     const text = skill('code-review/report');
-    expect(text.indexOf('## Requirements')).toBeGreaterThan(-1);
-    expect(text.indexOf('## Requirements')).toBeLessThan(text.indexOf('## What changed'));
+    const order = ['### The line', '### Done', '### Worth a look', '### Notes', '### Risk'].map((title) =>
+      text.indexOf(title),
+    );
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(order[0]).toBeGreaterThan(-1);
   });
 });
 

@@ -4,18 +4,24 @@ import type { CoveredRequirement } from '../../contract/requirement-list';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 
 /** The merge request summary prompt for a new chat: the decisions to copy, and the full result text. */
-export function reportFollowUp(brief: string, implementation?: string | null): string {
+export function reportFollowUp(
+  brief: string,
+  implementation?: string | null,
+  requirements?: { heading: string; body: string } | null,
+): string {
   const lines = [
     'Write the merge request summary from the implementation and the five decisions copied below.',
     'Those decisions are the only reviews. Ignore an earlier draft in this chat.',
     'Do not search again. Do not add a finding none of them wrote. Do not end with a decision line.',
-    'Use these parts, in this order: What changed, Code review, What holds when a check is ok, and What to fix only when a latest decision is return.',
-    'What holds is behavior an ok check accepted. What to fix must not undo it.',
+    'Write only the parts of the result: the line, what was done, where to look, one note for each reviewer, and the risk. Do not give a verdict, numbers, CI or returns.',
     resultPromptFor(reviewReport, null),
     '',
   ];
   if (implementation?.trim()) {
     lines.push('Implementation:', implementation.trim(), '');
+  }
+  if (requirements) {
+    lines.push(`${requirements.heading}:`, requirements.body, '');
   }
   lines.push(brief.trim());
   return lines.join('\n');
@@ -93,7 +99,7 @@ export const REPORT_CONTINUE = [
   'Continue this review report.',
   'You were interrupted before it was finished. Finish this report. Do not start over.',
   'Do not add a finding none of the five wrote. Do not change their decisions. Do not end with a decision line.',
-  'Use these parts, in this order: What changed, Code review, What holds when a check is ok, and What to fix only when a latest decision is return.',
+  'Write only the parts of the result: the line, what was done, where to look, one note for each reviewer, and the risk. Do not give a verdict, numbers, CI or returns.',
   resultPromptFor(reviewReport, reviewReport.name),
 ].join('\n');
 
