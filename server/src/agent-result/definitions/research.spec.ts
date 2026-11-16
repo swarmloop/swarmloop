@@ -1,6 +1,6 @@
 import { readResult } from '../read-result';
 import { block } from '../result.spec-helpers';
-import { research } from './research';
+import { research, researchFor } from './research';
 
 const VALID = {
   summary: ['chose catalog-api'],
@@ -17,6 +17,23 @@ describe('research result', () => {
   it('leaves needs out', () => {
     const { needs: _needs, ...without } = VALID;
     expect(readResult(research, block(without))).toEqual({ ok: true, value: without });
+  });
+
+  it('reads a stored result that has no requirements', () => {
+    expect(readResult(research, block(VALID))).toMatchObject({ ok: true });
+  });
+
+  it('requires at least one requirement of a run that is not a subtask', () => {
+    expect(readResult(researchFor(false), block(VALID)).ok).toBe(false);
+    expect(readResult(researchFor(false), block({ ...VALID, requirements: [] })).ok).toBe(false);
+    expect(readResult(researchFor(false), block({ ...VALID, requirements: [{ id: 'R1', text: 'a' }] })).ok).toBe(true);
+  });
+
+  it('does not ask a subtask for requirements and reads an answer that sends them', () => {
+    expect(readResult(researchFor(true), block(VALID)).ok).toBe(true);
+    expect(readResult(researchFor(true), block({ ...VALID, requirements: [{ id: 'R1', text: 'a' }] })).ok).toBe(true);
+    expect(JSON.stringify(researchFor(true).schema.describe())).not.toContain('requirements');
+    expect(JSON.stringify(researchFor(false).schema.describe())).toContain('requirements');
   });
 
   it('names a status that is not one of the four', () => {

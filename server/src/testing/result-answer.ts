@@ -8,12 +8,18 @@ import { sessionHome } from '../history/session-group';
 const FENCE = '```';
 
 /** The research result of a run with nothing to ask, nothing at stake and no sibling to wait for. */
-export const DEFAULT_RESEARCH = { summary: ['researched the change'], questions: [], impact: [] };
+export const DEFAULT_RESEARCH = {
+  summary: ['researched the change'],
+  questions: [],
+  impact: [],
+  requirements: [{ id: 'R1', text: 'make the change' }],
+};
 
 /** The plan of a run that does not split and asks no one. */
 const DEFAULT_PLAN = {
   summary: ['planned the change'],
   plan: ['do the change - files: a.ts - proof: a.spec.ts'],
+  covers: [['R1']],
 };
 
 /** The review of that plan: it keeps the plan. */
