@@ -3,6 +3,13 @@ import { CODE_REVIEWERS } from '../../contract/steps';
 import { defineResult } from '../result-definition';
 import type { ResultDefinition } from '../result-definition';
 
+/** The mark of one requirement of the Requirements list. */
+export interface RequirementMark {
+  id: string;
+  status: 'met' | 'partial' | 'missing';
+  note: string;
+}
+
 /** What one code reviewer hands to the server. */
 export interface ReviewResult {
   decision: 'ok' | 'return';
@@ -10,11 +17,20 @@ export interface ReviewResult {
   summary: string[];
   /** Only the requirements review has it: where each required behavior already is in the tree. */
   met?: string[];
+  /** Only the requirements review has it: one mark for each id of the Requirements list. */
+  requirements?: RequirementMark[];
   /** Only a reviewer that saw implement's answer to its last finding gives it. */
   reason?: string;
 }
 
+const REQUIREMENT_MARK = Joi.object({
+  id: Joi.string().required(),
+  status: Joi.string().valid('met', 'partial', 'missing').required(),
+  note: Joi.string().required().description('What the diff does for it, or what is missing'),
+});
+
 function reviewSchema(name: string): Joi.ObjectSchema {
+  const requirements = name === 'requirements';
   const fields: Joi.SchemaMap = {
     decision: Joi.string()
       .valid('ok', 'return')
@@ -22,15 +38,29 @@ function reviewSchema(name: string): Joi.ObjectSchema {
       .description('ok when this angle passes; return when a broken behavior must be fixed first'),
     review: Joi.string()
       .required()
-      .description('Your review in Markdown, ending with the summary list; on return it names one broken behavior'),
+      .description(
+        requirements
+          ? 'Your review in Markdown, ending with the summary list; on return it names every requirement that is not met'
+          : 'Your review in Markdown, ending with the summary list; on return it names one broken behavior',
+      ),
     summary: Joi.array()
       .items(Joi.string())
       .required()
-      .description('The summary list, one line per entry; what you checked, or the marks of the input list'),
+      .description(
+        requirements
+          ? 'The summary list, one line per entry; what you checked'
+          : 'The summary list, one line per entry; what you checked, or the marks of the input list',
+      ),
   };
   return Joi.object(
-    name === 'requirements'
-      ? { ...fields, met: Joi.array().items(Joi.string()).description('where each required behavior already is') }
+    requirements
+      ? {
+          ...fields,
+          met: Joi.array().items(Joi.string()).description('where each required behavior already is'),
+          requirements: Joi.array()
+            .items(REQUIREMENT_MARK)
+            .description('One entry for each id of the Requirements list, with its mark'),
+        }
       : fields,
   );
 }

@@ -22,14 +22,16 @@ import {
 import { reviewAnswerDefinition, reviewDefinition } from '../../agent-result/definitions/review';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 import { skillPrompt } from '../shared/skill-prompt';
+import type { Requirement } from '../../contract/requirement-list';
 import type { Subtask } from '../../contract/subtask';
 import type { KeepLine } from '../shared/keep-lines';
-import { SUBTASK_PROOF_CHECK, exchangeSection } from './code-review.prompts';
+import { SUBTASK_PROOF_CHECK, exchangeSection, requirementsBody } from './code-review.prompts';
 import { opinionSummary } from './code-review-round-result';
 import { reviewDocuments } from './code-review-record';
 import type { Opinion } from './code-review-record';
 import type { Exchange } from './review-exchange';
 import { fixNotes, withKeep } from './review-input';
+import { requirementsCheck } from './requirements-check';
 import { closeReview, recordAngle } from './review-report';
 import type { Finished, Reviewer, ReviewDeps, Usage } from './reviewer';
 import { projectRules } from '../shared/project-rules';
@@ -47,7 +49,10 @@ interface RoundInput {
   handoff: string | null;
   returned: string | null;
   diff: { heading: string; body: string };
+  /** The plan as a resumed chat gets it; `coveredPlan` is the one a first prompt gets, with each item's covers. */
   plan: string;
+  coveredPlan: string;
+  list: Requirement[] | null;
   impact: string | null;
   contract: string | null;
   subtasks: Subtask[] | null;
@@ -184,11 +189,15 @@ export async function routeReview(
 function reviewJob(reviewer: Reviewer, input: RoundInput) {
   const names = input.mounts.map((mount) => basename(mount.hostPath));
   const notesSection = input.notes?.trim() ? [{ heading: 'Implementation', body: input.notes }] : [];
-  const planSection = input.plan.trim() ? [{ heading: 'Plan', body: input.plan }] : [];
+  const listSection = input.list ? [{ heading: 'Requirements list', body: requirementsBody(input.list) }] : [];
+  const planSection = input.coveredPlan.trim() ? [{ heading: 'Plan', body: input.coveredPlan }] : [];
   const listed = withSubtasks(
     withContract(
       withImpact(
-        withHandoff(withReturnNotes([input.diff, ...notesSection, ...planSection], input.returned), input.handoff),
+        withHandoff(
+          withReturnNotes([input.diff, ...notesSection, ...listSection, ...planSection], input.returned),
+          input.handoff,
+        ),
         input.impact,
       ),
       input.contract,
@@ -209,5 +218,14 @@ function reviewJob(reviewer: Reviewer, input: RoundInput) {
       resultPromptFor(answered ? reviewAnswerDefinition(reviewer.name) : reviewDefinition(reviewer.name), null),
     ].join('\n\n');
   const agent = agentFor(input.env, input.opened.run, 'code-review');
-  return { reviewer, ...agent, prompt: promptFor(agent.runtime), promptFor, mounts: input.mounts, exchange: answered };
+  const check = input.list && reviewer.name === 'requirements' ? requirementsCheck(input.list) : undefined;
+  return {
+    reviewer,
+    ...agent,
+    prompt: promptFor(agent.runtime),
+    promptFor,
+    mounts: input.mounts,
+    exchange: answered,
+    check,
+  };
 }

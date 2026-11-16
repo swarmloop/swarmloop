@@ -110,7 +110,6 @@ const REVIEW_SCAFFOLD = [
   'The Diff section names the complete diff.',
   'Do not infer the change from file modification times.',
   'Do not edit files. Do not run git.',
-  'On `decision: return`, name one broken behavior in this diff.',
 ];
 
 describe('code review reviewers', () => {
@@ -120,6 +119,12 @@ describe('code review reviewers', () => {
       for (const line of REVIEW_SCAFFOLD) {
         expect(body).toContain(line);
       }
+      // The requirements reviewer returns every unmet id; the others name one broken behavior.
+      expect(body).toContain(
+        name === 'requirements'
+          ? 'One return names every id that is not met'
+          : 'On `decision: return`, name one broken behavior in this diff.',
+      );
     }
   });
 });
