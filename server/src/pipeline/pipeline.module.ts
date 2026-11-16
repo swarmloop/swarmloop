@@ -9,6 +9,8 @@ import { CommitStep } from '../steps/commit/commit.step';
 import { BranchCheckout } from '../steps/shared/branch-checkout';
 import { CheckoutService } from '../steps/shared/checkout.service';
 import { RebasedPublisher } from '../steps/shared/rebased-publisher';
+import { RepositoryHost } from '../steps/shared/repository-host';
+import { RepositoryOrigins } from '../steps/shared/repository-origins';
 import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
 import { CodeReviewStep } from '../steps/code-review/code-review.step';
@@ -44,6 +46,14 @@ import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { Reconciler } from './reconciler';
+import { BacklogActions } from './backlog/backlog-actions';
+import { BacklogActionSupport } from './backlog/backlog-action-support';
+import { BacklogTaskActions } from './backlog/backlog-task-actions';
+import { BacklogQueries } from './backlog/backlog-queries';
+import { BacklogEvents } from './backlog/backlog-events';
+import { BacklogMerge } from './backlog/backlog-merge';
+import { BacklogScheduler } from './backlog/backlog-scheduler';
+import { BacklogStartPort } from './backlog/backlog-start-port';
 import { RunSettler } from './run-settler';
 import { PipelineService } from './pipeline.service';
 import { AuthModule } from '../auth/auth.module';
@@ -61,6 +71,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     BranchStep,
     CommitStep,
     RebasedPublisher,
+    RepositoryOrigins,
+    RepositoryHost,
     CheckoutService,
     BranchCheckout,
     WorkspaceGuard,
@@ -93,6 +105,14 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     CommandService,
     MergeWatch,
     Reconciler,
+    BacklogActionSupport,
+    BacklogTaskActions,
+    BacklogActions,
+    BacklogQueries,
+    BacklogEvents,
+    BacklogMerge,
+    BacklogScheduler,
+    BacklogStartPort,
     RunSettler,
     RunRebase,
     MergeRequestDrafts,
@@ -104,6 +124,10 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     PipelineService,
     CommandService,
     Reconciler,
+    BacklogActions,
+    BacklogQueries,
+    BacklogScheduler,
+    BacklogStartPort,
     SubtaskPort,
     Housekeeping,
     WorkspaceGuard,
@@ -115,6 +139,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     RemoteRepositories,
     CommitStep,
     RebasedPublisher,
+    RepositoryHost,
     HistoryModule,
     EnvironmentService,
     AgentLauncher,

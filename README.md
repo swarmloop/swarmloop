@@ -295,6 +295,7 @@ When CI does not start and GitHub or GitLab confirms a merge conflict for the pu
 | `MAX_PIPELINE_RETURNS` | Red pipelines sent back | `6` |
 | `CHECKS_PARALLEL` | Check commands that run at once on the whole server | `3` |
 | `AGENTS_PARALLEL` | Agent containers that run at once on the whole server | `4` |
+| `BACKLOG_PARALLEL` | Backlog tasks started and not merged at once on the whole server | `3` |
 | `RESERVE_MEMORY_GB` | Memory in GB of the Docker host kept free for the server and the dashboard; every sandbox container may take at most the memory Docker has minus this reserve | `2` |
 | `MAX_LAUNCHES` | Launches of one agent visit before it fails | `3` |
 | `LIMIT_COOLDOWN_MIN` | Minutes a runtime stays out of use after a provider usage limit whose text names no reset time | `60` |

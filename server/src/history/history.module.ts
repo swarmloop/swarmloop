@@ -23,6 +23,7 @@ import { StepEventLog } from './step-event.log';
 import { FlakyTestRepository } from './flaky-test.repository';
 import { RuntimeCooldownRepository } from './runtime-cooldown.repository';
 import { IntegrationSecretRepository } from './integration-secret.repository';
+import { BacklogRepository } from './backlog.repository';
 import { UserSettingRepository } from './user-setting.repository';
 
 /** A commit is copied into the database file. The default waits for 1000 pages, so a finished status stays only in the WAL. */
@@ -78,6 +79,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     FlakyTestRepository,
     UserSettingRepository,
     IntegrationSecretRepository,
+    BacklogRepository,
   ],
   exports: [
     RunRepository,
@@ -94,6 +96,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     FlakyTestRepository,
     UserSettingRepository,
     IntegrationSecretRepository,
+    BacklogRepository,
     TypeOrmModule,
   ],
 })

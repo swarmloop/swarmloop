@@ -116,6 +116,9 @@ class FakeThirdCodeHost extends AbstractCodeHost {
   rerunFailedJobs(): never {
     return unsupported();
   }
+  readDefaultHead(): never {
+    return unsupported();
+  }
   readRunNotes(): never {
     return unsupported();
   }
@@ -150,6 +153,9 @@ class FakeThirdCodeHost extends AbstractCodeHost {
     return unsupported();
   }
   protected view(): never {
+    return unsupported();
+  }
+  protected gate(): never {
     return unsupported();
   }
   protected mergedSha(): never {

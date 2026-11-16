@@ -1,4 +1,4 @@
-import type { RequestStateApi } from '../code-host';
+import type { MergeGate, RequestStateApi } from '../code-host';
 
 export interface GitlabMergeRequest {
   iid?: number;
@@ -17,6 +17,28 @@ export interface GitlabMergeRequest {
   detailed_merge_status?: string;
   title?: string;
   draft?: boolean;
+  work_in_progress?: boolean;
+}
+
+const BLOCKED_STATUSES = ['not_approved', 'discussions_not_resolved', 'requested_changes', 'blocked_status'];
+
+/** How far a merge request is from a merge, by GitLab's `detailed_merge_status`. */
+export function mergeRequestMergeability(status: string | undefined): Pick<MergeGate, 'mergeability' | 'blockedBy'> {
+  switch (status ?? '') {
+    case 'mergeable':
+    case 'ci_must_pass':
+    case 'ci_still_running':
+      return { mergeability: 'clean', blockedBy: null };
+    case 'need_rebase':
+      return { mergeability: 'behind', blockedBy: null };
+    case 'conflict':
+    case 'broken_status':
+      return { mergeability: 'conflicting', blockedBy: null };
+    default:
+      return status && BLOCKED_STATUSES.includes(status)
+        ? { mergeability: 'blocked', blockedBy: status }
+        : { mergeability: 'unknown', blockedBy: null };
+  }
 }
 
 export const gitlabStates: RequestStateApi = {

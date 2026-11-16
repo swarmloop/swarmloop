@@ -30,6 +30,17 @@ export interface MergeRequestView {
   draft: boolean;
 }
 
+/** What decides whether a merge request may merge now. `head` is the commit a guarded merge names; '' when the host gives none. */
+export interface MergeGate {
+  state: 'open' | 'merged' | 'closed';
+  sha: string | null;
+  draft: boolean;
+  head: string;
+  mergeability: 'clean' | 'unknown' | 'behind' | 'conflicting' | 'blocked';
+  /** What blocks the merge, when `mergeability` is `blocked`. */
+  blockedBy: string | null;
+}
+
 /** How a merge request stands now, with who ended it and when. `by` is null when the host does not say. */
 export type MergeRequestState =
   | { state: 'open' }
@@ -169,8 +180,15 @@ export interface CodeHost {
   readMergeRequest(project: string, iid: number): Promise<MergeRequestView & { httpCalls: HttpCallDraft[] }>;
   /** Whether the request is open, merged (by anyone, on the host or elsewhere) or closed without a merge. */
   mergeRequestState(project: string, iid: number): Promise<MergeRequestState & { httpCalls: HttpCallDraft[] }>;
-  /** Squash-merges the request into the target branch it already has. A refusal for a conflict is a `MergeConflict`; any other refusal is a `FetchFailed` with the host's message. */
-  mergeMergeRequest(project: string, iid: number): Promise<{ sha: string; httpCalls: HttpCallDraft[] }>;
+  /** The request's state, draft flag, head commit and mergeability, as the host reports them now. */
+  readMergeGate(project: string, iid: number): Promise<MergeGate & { httpCalls: HttpCallDraft[] }>;
+  /** The default branch of a project and its tip commit. */
+  readDefaultHead(project: string): Promise<{ branch: string; sha: string; httpCalls: HttpCallDraft[] }>;
+  /**
+   * Squash-merges the request into the target branch it already has. `head` is the merge guard: the host refuses the
+   * merge when the request's head is another commit. A refusal for a conflict is a `MergeConflict`; any other refusal is a `FetchFailed` with the host's message.
+   */
+  mergeMergeRequest(project: string, iid: number, head?: string): Promise<{ sha: string; httpCalls: HttpCallDraft[] }>;
   /** Closes an open request. One that is already merged or closed stays as it is. */
   closeMergeRequest(project: string, iid: number): Promise<{ httpCalls: HttpCallDraft[] }>;
   /** Deletes a branch on origin. A branch that is already gone is not an error. */

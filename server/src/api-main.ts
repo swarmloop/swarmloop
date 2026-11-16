@@ -9,6 +9,7 @@ import { secureHttp } from './api/request-guard';
 import { Clock } from './core/clock';
 import { warmRuntimeModelLists } from './pipeline/model-lists.bootstrap';
 import { Housekeeping } from './pipeline/housekeeping';
+import { BacklogScheduler } from './pipeline/backlog/backlog-scheduler';
 import { Reconciler } from './pipeline/reconciler';
 import { bindRefusal } from './auth/bind-check';
 import { HostAppsService } from './auth/host-apps.service';
@@ -52,6 +53,7 @@ async function bootstrap(): Promise<void> {
     await housekeeping.startup();
     housekeeping.schedule();
     app.get(Reconciler).schedule();
+    app.get(BacklogScheduler).schedule();
   } catch (error) {
     fail(error);
   }
