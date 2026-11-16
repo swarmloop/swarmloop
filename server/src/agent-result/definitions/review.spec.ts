@@ -93,6 +93,13 @@ describe('review report result', () => {
     expect(readResult(reviewReport, block(value))).toEqual({ ok: true, value });
   });
 
+  it('lists every part in the prompt', () => {
+    const prompt = resultPrompt(reviewReport);
+    for (const field of ['line', 'done', 'worthALook', 'notes', 'risk', 'riskReason']) {
+      expect(prompt).toContain(`- ${field} (`);
+    }
+  });
+
   it('names a missing part and an empty one', () => {
     const read = readResult(reviewReport, block({ ...REPORT, line: '', risk: undefined }));
     expect(read.ok === false && read.errors.map((error) => error.split(':')[0]).sort()).toEqual(['line', 'risk']);

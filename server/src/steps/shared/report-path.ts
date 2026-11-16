@@ -60,29 +60,36 @@ function reasonOf(stat: StepStatEntity, documents: StoredDocument[]): string | n
   return reviewer ? `${reviewer}: ${firstLine(issue.body)}` : issue.title;
 }
 
-/** The run's visits from step to step, a return with its reason and `fix` once a later visit of the step went on. */
+/** The run's way in one line: implement, each return in order with its reason and `fix` once the run went on, the last review, then CI. */
 export function reportPath(stats: StepStatEntity[], documents: StoredDocument[]): PathStep[] {
-  const path: PathStep[] = [];
-  stats.forEach((stat, index) => {
-    const label = labelOf(stat.step);
-    if (!label) {
-      return;
-    }
-    const next = stats.slice(index + 1).find((item) => labelOf(item.step) !== null);
-    const returned = stat.status === 'waiting' && next !== undefined && labelOf(next.step) === LABELS.implement;
-    if (label === LABELS.implement && path.some((item) => item.step === label)) {
-      return;
-    }
-    const later = stats.slice(index + 1).some((item) => item.step === stat.step && item.status === 'done');
-    path.push({
+  const shown = stats.filter((stat) => labelOf(stat.step) !== null);
+  const entries = shown.map((stat, index) => {
+    const label = labelOf(stat.step) ?? stat.step;
+    const next = shown[index + 1];
+    const returned =
+      label !== LABELS.implement &&
+      stat.status === 'waiting' &&
+      next !== undefined &&
+      labelOf(next.step) === LABELS.implement;
+    const later = shown.slice(index + 1).some((item) => item.step === stat.step && item.status === 'done');
+    const step: PathStep = {
       step: label,
       mark: markOf(stat.step, stat.status, returned),
       returned,
       reason: returned ? reasonOf(stat, documents) : null,
       fix: returned && later ? 'fixed' : null,
-    });
+    };
+    return step;
   });
-  return path;
+  const last = (label: string): PathStep | undefined => entries.filter((item) => item.step === label).pop();
+  const closing = [last(LABELS['code-review']), last(LABELS.pipeline)].filter(
+    (item): item is PathStep => item !== undefined && !item.returned,
+  );
+  return [
+    ...entries.filter((item) => item.step === LABELS.implement).slice(0, 1),
+    ...entries.filter((item) => item.returned),
+    ...closing,
+  ];
 }
 
 /** How many of the path's returns the run went on after, and how many there were. */

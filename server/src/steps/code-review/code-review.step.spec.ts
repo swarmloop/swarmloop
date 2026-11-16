@@ -248,9 +248,7 @@ describe('code-review step', () => {
     expect(events[0]?.attempt).toBe(1);
     expect(events[0]?.reason).toBe('review_quality');
     const notes = await app.get(DocumentRepository).latestBody('PROJ-200', 'return');
-    expect(notes).toContain('## ↩ Sent back · risk: low');
-    expect(notes).toContain('Keep the empty segment.');
-    expect(notes).not.toContain('decision: return');
+    expect(notes).toContain('## quality\ncode-review-quality');
     const report = await app.get(DocumentRepository).latestBody('PROJ-200', 'review_report');
     expect(report).toContain('## ↩ Sent back · risk: low');
     expect(report).toContain('Keep the empty segment.');

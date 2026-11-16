@@ -1,6 +1,8 @@
 import { CODE_REVIEWERS } from '../../contract/steps';
 import { ARTIFACTS, reviewResultOf } from '../contract/artifacts';
 import { answered, openQuestions } from './answers';
+import { rejectedFindings } from './rejected-findings';
+import { askedReviewer } from './reviewer-labels';
 import { readStored } from './report-stored';
 
 /** One finding implement did not fix: its reason, what the reviewer answered, and what the person decided. */
@@ -16,18 +18,11 @@ interface StoredDocument {
   body: string;
 }
 
-const ASKED = /^(\S+) still returns: /;
-
 /** The unfixed findings still open at the end of the run's documents, keyed by reviewer name. */
 export function reportExchanges(documents: StoredDocument[]): Map<string, ReportExchange> {
   const open = new Map<string, ReportExchange>();
   for (const document of documents) {
-    const rejected =
-      document.kind === ARTIFACTS.implementationResult.kind
-        ? readStored(() => ARTIFACTS.implementationResult.parse(document.body))?.rejected
-        : document.kind === ARTIFACTS.implementationImproveResult.kind
-          ? readStored(() => ARTIFACTS.implementationImproveResult.parse(document.body))?.rejected
-          : undefined;
+    const rejected = readStored(() => rejectedFindings(document) ?? null);
     if (rejected) {
       open.clear();
       for (const item of rejected) {
@@ -61,7 +56,7 @@ function withDecisions(open: Map<string, ReportExchange>, documents: StoredDocum
   }
   for (const document of documents.filter((item) => item.kind === ARTIFACTS.reviewQuestions.kind)) {
     for (const question of openQuestions(document.body, [])) {
-      const reviewer = ASKED.exec(question)?.[1];
+      const reviewer = askedReviewer(question);
       const decision = decisions.get(question)?.trim();
       const exchange = reviewer ? open.get(reviewer) : undefined;
       if (exchange && decision) {

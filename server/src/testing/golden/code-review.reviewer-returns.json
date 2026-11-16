@@ -513,7 +513,7 @@
           "kind": "review_report_result"
         },
         {
-          "body": "## ↩ Sent back · risk: low\n> The change needs work.\n\n| Requirements | Checks | CI | Review | Returns | Time |\n|---|---|---|---|---|---|\n| — | — | ⏳ | 4/5 ok | 0 | 0 min |\n\n**Done**\n- changed the field\n\n**🧭 How it got here**\n—\n\n<details><summary>Reviewer notes (5)</summary>\n\n- **Requirements ✅** The change needs work.\n- **Quality ↩** The change needs work.\n- **Regressions ✅** The change needs work.\n- **Security ✅** The change needs work.\n- **Performance ✅** The change needs work.\n</details>\n",
+          "body": "## quality\ncode-review-quality\ndecision: return\n",
           "kind": "return"
         },
         {

@@ -150,7 +150,6 @@ describe('readReportFacts', () => {
     expect(facts.path).toEqual([
       { step: 'implement', mark: '', returned: false, reason: null, fix: null },
       { step: 'checks', mark: '❌', returned: true, reason: '`npm run lint`', fix: 'fixed' },
-      { step: 'checks', mark: '✅', returned: false, reason: null, fix: null },
       { step: 'review', mark: '↩', returned: true, reason: 'security: A symlink could pull a host file.', fix: null },
       { step: 'review', mark: '⏳', returned: false, reason: null, fix: null },
     ]);

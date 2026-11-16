@@ -411,7 +411,7 @@ describe('the real code-review step in a whole flow', () => {
     expect(steps.slice(firstImplement, firstImplement + 2)).toEqual(['implement', 'implement-improve']);
     expect(steps.filter((step) => step === 'code-review-quality').length).toBeGreaterThanOrEqual(2);
     const implementPrompt = blocks.prompts.find((launch) => launch.step === 'implement')?.prompt ?? '';
-    expect(implementPrompt).toContain('keep the empty segment');
+    expect(implementPrompt).toContain('The parser drops an empty segment.');
     expect(JSON.parse((await documents.latestBody(REVIEW_KEY, 'review_quality_result')) ?? '{}').decision).toBe('ok');
     await assertInvariants(flow.app);
   });

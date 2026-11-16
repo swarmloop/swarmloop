@@ -1,6 +1,7 @@
 import type { ReviewReportResult } from '../../agent-result/definitions/review-report';
 import type { ReportFacts, ReviewerFact, Verdict } from './report-facts';
 import { returnsText, type PathStep } from './report-path';
+import { reviewerLabel } from './reviewer-labels';
 
 const HEADINGS: Record<Verdict, string> = {
   ready: '✅ Ready to merge',
@@ -65,21 +66,17 @@ function pathLines(facts: ReportFacts): string {
 
 const oneLine = (text: string): string => text.trim().replace(/\s*\n\s*/g, ' ');
 
-function labelOf(name: string): string {
-  return `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
-}
-
 /** One line of a reviewer: its mark and note, and under it the finding implement did not fix with the answers to it. */
 function reviewerLines(reviewer: ReviewerFact, note: string): string[] {
   const mark = reviewer.decision ? DECISION_MARKS[reviewer.decision] : MISSING;
   const { exchange } = reviewer;
   return [
-    `- **${labelOf(reviewer.name)} ${mark}** ${oneLine(note)}`,
+    `- **${reviewerLabel(reviewer.name)} ${mark}** ${oneLine(note)}`,
     ...(exchange
       ? [
           `  - Finding not fixed: ${oneLine(exchange.finding)}`,
           `  - Implement's reason: ${oneLine(exchange.reason)}`,
-          ...(exchange.answer ? [`  - ${labelOf(reviewer.name)} answered: ${oneLine(exchange.answer)}`] : []),
+          ...(exchange.answer ? [`  - ${reviewerLabel(reviewer.name)} answered: ${oneLine(exchange.answer)}`] : []),
           ...(exchange.decision ? [`  - The person decided: ${oneLine(exchange.decision)}`] : []),
         ]
       : []),

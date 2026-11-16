@@ -32,16 +32,9 @@ import { reviewReport } from '../../agent-result/definitions/review-report';
 import type { ReviewReportResult } from '../../agent-result/definitions/review-report';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 import { storedReview } from '../../agent-result/stored-review';
+import { LABELS } from '../shared/reviewer-labels';
 import { ResultInvalid } from '../shared/answer-errors';
 import { answerErrorsDocument } from '../shared/stored-answer-errors';
-
-const LABELS: Record<string, string> = {
-  [REVIEWS.of('requirements')]: 'Requirements',
-  [REVIEWS.of('quality')]: 'Quality',
-  [REVIEWS.of('regressions')]: 'Regressions',
-  [REVIEWS.of('security')]: 'Security',
-  [REVIEWS.of('performance')]: 'Performance',
-};
 
 export function reviewBrief(
   opinions: { kind: string; decision: 'ok' | 'return'; body: string }[],
