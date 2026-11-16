@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { RunEntity } from '../history/entities';
+import { BacklogRepository } from '../history/backlog.repository';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -73,6 +74,7 @@ export class RunQueriesService {
     private readonly config: AppConfig,
     private readonly clock: Clock,
     private readonly checkCommands: CheckCommandRepository,
+    private readonly backlogs: BacklogRepository,
     @Optional() private readonly live?: LiveHub,
     @Optional() private readonly gate: ContainerGate = new ContainerGate(),
   ) {
@@ -107,6 +109,7 @@ export class RunQueriesService {
       (key) => this.pipeline.claimed(key),
       (key) => runPlace(this.gate.agentWait(key)),
     );
+    const labels = await this.backlogs.labelsFor(runs.map((run) => run.key));
     return {
       runs: runs.map((run) => ({
         key: run.key,
@@ -119,6 +122,7 @@ export class RunQueriesService {
         durationMs: durations.get(run.id) ?? 0,
         usd: this.usdOf(run),
         ...listExtras(run, keys),
+        ...(labels.has(run.key) ? { backlog: labels.get(run.key) } : {}),
         ...waits.get(run.key),
         ...states[run.key],
         ...epicTotal(run, childrenOf.get(run.id) ?? [], this.usdOf, this.clock.now()),
@@ -145,6 +149,7 @@ export class RunQueriesService {
     const reportMs = await this.visits.codeReviewReportMs(run.id);
     const children = await this.runs.children(run);
     const checkCommands = latestCommandViews(await this.checkCommands.list(run.id));
+    const label = (await this.backlogs.labelsFor([run.key])).get(run.key);
     return {
       key: run.key,
       name: runName(run.key, run.prompt),
@@ -153,6 +158,7 @@ export class RunQueriesService {
       updatedAt: run.updatedAt,
       stepStartedAt: run.stepStartedAt,
       ...(await parentOf(this.runs, this.documents, run)),
+      ...(label ? { backlog: label } : {}),
       ...(run.startedBy ? { startedBy: run.startedBy } : {}),
       ...taskView(
         documents,
