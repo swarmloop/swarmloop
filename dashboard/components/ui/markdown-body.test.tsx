@@ -15,4 +15,57 @@ describe('MarkdownBody', () => {
 
     expect(screen.getByText(/"a": 1/).textContent).toBe(JSON.stringify({ a: 1, b: [2] }, null, 2));
   });
+
+  const report = [
+    '<!-- swarmloop:report -->',
+    '## ✅ Ready to merge · risk: low',
+    '',
+    '| Requirements | Checks | CI | Review | Returns | Time |',
+    '|---|---|---|---|---|---|',
+    '| 9/9 met | 12/12 | 🟢 | 5/5 ok | 2, both fixed | 38 min |',
+    '',
+    '<details><summary>Reviewer notes (5)</summary>',
+    '',
+    '- **Requirements ✅** Both fixed.',
+    '- **Quality ✅** Nothing new.',
+    '</details>',
+    '',
+    'After the notes.',
+    '<!-- /swarmloop:report -->',
+  ].join('\n');
+
+  it('renders GFM tables, strikethrough and autolinks', () => {
+    render(<MarkdownBody text={`${report}\n\n~~old~~ https://example.com/a`} />);
+
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader')).toHaveLength(6);
+    expect(screen.getByText('old').tagName).toBe('DEL');
+    expect(screen.getByRole('link', { name: 'https://example.com/a' })).toBeInTheDocument();
+  });
+
+  it('folds reviewer notes into a closed details block with markdown inside', () => {
+    const { container } = render(<MarkdownBody text={report} />);
+
+    const details = container.querySelector('details');
+    expect(details).not.toBeNull();
+    expect(details?.hasAttribute('open')).toBe(false);
+    expect(details?.querySelector('summary')?.textContent).toBe('Reviewer notes (5)');
+    expect(details?.querySelectorAll('li')).toHaveLength(2);
+    expect(screen.getByText('After the notes.')).toBeInTheDocument();
+  });
+
+  it('shows no marker text', () => {
+    const { container } = render(<MarkdownBody text={report} />);
+
+    expect(container.textContent).not.toContain('swarmloop:report');
+  });
+
+  it('does not render raw HTML from the text', () => {
+    const { container } = render(<MarkdownBody text={'Hi <b>x</b> and <script>alert(1)</script>'} />);
+
+    expect(container.querySelector('b')).toBeNull();
+    expect(container.querySelector('script')).toBeNull();
+    expect(container.textContent).not.toContain('<b>');
+    expect(container.textContent).not.toContain('<script>');
+  });
 });
