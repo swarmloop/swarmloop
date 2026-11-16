@@ -33,6 +33,8 @@ import { STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
 import { latest, metrics, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
 import { belongsToVisit, documentView, interruptionOf, taskView, withReturnNotes } from './run-view/documents';
+import { mergeRequestViews } from './run-view/merge-requests';
+import { ARTIFACTS } from '../steps/contract/artifacts';
 import { taskRuns } from './run-view/task-runs';
 import { ReviewerSteps } from './run-view/reviewer-steps';
 import { visitKey } from '../contract/visit-key';
@@ -147,12 +149,17 @@ export class RunQueriesService {
     const maxReturns = this.config.env.MAX_RETURNS;
     const reportMs = await this.visits.codeReviewReportMs(run.id);
     const children = await this.runs.children(run);
+    const loops = await this.events.listLoops(run.id);
     const checkCommands = latestCommandViews(await this.checkCommands.list(run.id));
     return {
       key: run.key,
       name: runName(run.key, run.prompt),
       title: viewTitle(run, latest(documents, 'requirements')),
-      mergeRequests: [],
+      mergeRequests: mergeRequestViews(
+        run.mergeOutcome,
+        latest(documents, ARTIFACTS.mergeRequest.kind),
+        latest(documents, ARTIFACTS.repos.kind),
+      ),
       status: shown.status,
       currentStep: run.currentStep,
       updatedAt: run.updatedAt,
@@ -188,10 +195,10 @@ export class RunQueriesService {
         reportMs,
       ),
       phases: withRestartWait(
-        withPlaceChips(phases(shown, stats, documents, root(this.config)), this.gate.agentWait(run.key)),
+        withPlaceChips(phases(shown, stats, documents, root(this.config), loops), this.gate.agentWait(run.key)),
         run,
       ),
-      returns: returns(shown),
+      returns: returns(shown, loops),
       ...(checkCommands.length > 0 ? { checkCommands } : {}),
       items: open,
       paths: run.currentStep === 'commit' ? parsePaths(latest(documents, 'commit') ?? '') : [],
