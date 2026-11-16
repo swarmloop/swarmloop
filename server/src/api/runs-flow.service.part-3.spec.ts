@@ -107,10 +107,61 @@ describe('runs api', () => {
       expect(flow.taskLine).toBe('Split: 2 tasks · 1 merged');
       expect(flow.mergeQueue).toEqual([{ id: 'a', title: 'A' }]);
       expect(flow.decisions).toBe('- subtask a: store UTC');
-      const [a, b] = flow.tasks?.[0]?.tasks ?? [];
+      const [a, b] = flow.tasks ?? [];
       expect(a?.run).toMatchObject({ key: 'proj-split-a', currentStep: 'ci', usd: 2.5 });
       expect(b?.run).toBeUndefined();
       expect(flow.metrics.usd).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('gives a task with a merge request its result: merged files, else commit paths, and whether its proof held', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-result-'));
+    const app = await seededBoot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const parent = await runs.begin('proj-result', 'implement');
+      await runs.saveRun(parent);
+      await documents.putDocument(
+        parent,
+        'requirements',
+        JSON.stringify({ prompt: 'x', plan: { items: ['x'], decision: 'approve' } }),
+      );
+      const task = (id: string) => ({
+        id,
+        title: id.toUpperCase(),
+        description: '',
+        depends: [],
+        files: [],
+        proof: '',
+        status: 'waiting',
+      });
+      await documents.putDocument(parent, 'subtasks', JSON.stringify(['a', 'b', 'c', 'd'].map(task)));
+      const open = async (id: string, status: 'done' | 'merged' | 'failed' | 'running', withRequest: boolean) => {
+        const child = await runs.openSubtask(`proj-result-${id}`, parent.id, id);
+        child.status = status === 'merged' ? 'done' : status;
+        child.state = status;
+        await runs.saveRun(child);
+        if (withRequest) {
+          await documents.putDocument(child, 'merge_request', 'https://host/mr/1');
+        }
+        return child;
+      };
+      await documents.putDocument(await open('a', 'merged', true), 'merged_files', 'src/a.ts\nsrc/b.ts\n');
+      await documents.putDocument(await open('b', 'done', true), 'commit', 'repo\tsrc/c.ts\n');
+      await open('c', 'failed', true);
+      await open('d', 'running', false);
+
+      const results = Object.fromEntries(
+        ((await app.get(RunQueriesService).flow('proj-result')).tasks ?? []).map((t) => [t.id, t.run?.result]),
+      );
+
+      expect(results['a']).toEqual({ files: ['src/a.ts', 'src/b.ts'], proofMet: true });
+      expect(results['b']).toEqual({ files: ['src/c.ts'], proofMet: true });
+      expect(results['c']).toEqual({ files: [], proofMet: false });
+      expect(results['d']).toBeUndefined();
     } finally {
       await app.close();
     }
@@ -185,7 +236,7 @@ describe('runs api', () => {
 
       const queries = app.get(RunQueriesService);
 
-      const shown = (await queries.flow('proj-resumed')).tasks?.[0]?.tasks[0];
+      const shown = (await queries.flow('proj-resumed')).tasks?.[0];
       expect(shown?.status).toBe('running');
       expect(shown?.run?.state).toBe('running');
       expect((await queries.flow('proj-resumed-b')).state).toBe('running');
@@ -226,7 +277,7 @@ describe('runs api', () => {
       });
       await runs.saveRun(child);
 
-      const shown = (await app.get(RunQueriesService).flow('proj-wait-task')).tasks?.[0]?.tasks[0];
+      const shown = (await app.get(RunQueriesService).flow('proj-wait-task')).tasks?.[0];
 
       expect(shown?.run).toMatchObject({ state: 'waiting', stateReason: { code: 'RUNTIME_LIMIT' } });
     } finally {
@@ -267,7 +318,7 @@ describe('runs api', () => {
       await documents.putDocument(asking, 'questions', '- Which branch?\n');
 
       const queries = app.get(RunQueriesService);
-      const shown = (await queries.flow('proj-ask')).tasks?.[0]?.tasks ?? [];
+      const shown = (await queries.flow('proj-ask')).tasks ?? [];
       const listed = (await queries.list()).runs;
 
       const reading = (state: string | undefined, code: string | undefined) => [state, code];
@@ -323,7 +374,7 @@ describe('runs api', () => {
 
       expect(flow.epic?.usd).toBe(3.5);
       expect(flow.epic?.durationMs).toBeGreaterThanOrEqual(0);
-      expect(flow.tasks?.flatMap((layer) => layer.tasks.map((t) => t.depends))).toEqual([[], ['a']]);
+      expect(flow.tasks?.map((t) => t.depends)).toEqual([[], ['a']]);
       expect(listed.find((run) => run.key === 'proj-epic')?.epic?.usd).toBe(3.5);
       expect(listed.find((run) => run.key === 'proj-epic-a')?.epic).toBeUndefined();
       expect(listed.find((run) => run.key === 'proj-alone')?.epic).toBeUndefined();

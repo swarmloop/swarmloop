@@ -3,7 +3,7 @@ import {
   belongsToVisit,
   decisionsOf,
   interruptionOf,
-  taskLayers,
+  taskEntries,
   taskLine,
   taskView,
   documentView,
@@ -23,7 +23,7 @@ describe('belongsToVisit', () => {
   });
 });
 
-describe('taskLayers', () => {
+describe('taskEntries', () => {
   const doc = (kind: string, body: string) => ({ kind, body }) as DocumentEntity;
   const task = (id: string, depends: string[]) => ({
     id,
@@ -36,48 +36,40 @@ describe('taskLayers', () => {
   });
   const approved = doc('requirements', JSON.stringify({ plan: { items: ['x'], decision: 'approve' } }));
 
-  it('layers by dependency', () => {
+  it('lists the tasks flat in plan order, each waiting task with the titles it waits for', () => {
     const tasks = doc(
       'subtasks',
-      JSON.stringify([task('a', []), task('b', ['a']), task('c', []), task('d', ['b', 'c'])]),
+      JSON.stringify([
+        task('a', []),
+        task('b', ['a']),
+        task('c', []),
+        task('d', ['b', 'c', 'gone']),
+        { ...task('e', ['a']), status: 'merged' },
+      ]),
     );
-    expect(taskLayers([approved, tasks])).toEqual([
-      {
-        layer: 0,
-        tasks: [
-          { id: 'a', index: 0, title: 'A', files: ['a.ts'], proof: 'a.spec.ts', depends: [], status: 'waiting' },
-          { id: 'c', index: 2, title: 'C', files: ['c.ts'], proof: 'c.spec.ts', depends: [], status: 'waiting' },
-        ],
-      },
-      {
-        layer: 1,
-        tasks: [
-          { id: 'b', index: 1, title: 'B', files: ['b.ts'], proof: 'b.spec.ts', depends: ['a'], status: 'waiting' },
-        ],
-      },
-      {
-        layer: 2,
-        tasks: [
-          {
-            id: 'd',
-            index: 3,
-            title: 'D',
-            files: ['d.ts'],
-            proof: 'd.spec.ts',
-            depends: ['b', 'c'],
-            status: 'waiting',
-          },
-        ],
-      },
-    ]);
+    const entries = taskEntries([approved, tasks]);
+    expect(entries.map((entry) => entry.id)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(entries.map((entry) => entry.index)).toEqual([0, 1, 2, 3, 4]);
+    expect(entries.map((entry) => entry.waitsFor)).toEqual([[], ['A'], [], ['B', 'C', 'gone'], undefined]);
+    expect(entries[0]).not.toHaveProperty('layer');
+  });
+
+  it('gives a running task no waitsFor, and a task whose dependencies merged an empty one', () => {
+    const tasks = doc(
+      'subtasks',
+      JSON.stringify([{ ...task('a', []), status: 'merged' }, task('b', ['a']), task('c', [])]),
+    );
+    const run = { key: 'p-1-c', state: 'running' as const, currentStep: 'implement', usd: 0, durationMs: 0 };
+    const entries = taskEntries([approved, tasks], new Map([['c', run]]));
+    expect(entries.map((entry) => entry.waitsFor)).toEqual([undefined, [], undefined]);
   });
 
   it('shows nothing before plan-improve approved the plan, or without tasks', () => {
     const tasks = doc('subtasks', JSON.stringify([task('a', [])]));
     const unapproved = doc('requirements', JSON.stringify({ plan: { items: ['x'], decision: null } }));
-    expect(taskLayers([unapproved, tasks])).toEqual([]);
-    expect(taskLayers([approved, doc('subtasks', '[]\n')])).toEqual([]);
-    expect(taskLayers([approved])).toEqual([]);
+    expect(taskEntries([unapproved, tasks])).toEqual([]);
+    expect(taskEntries([approved, doc('subtasks', '[]\n')])).toEqual([]);
+    expect(taskEntries([approved])).toEqual([]);
   });
 });
 
@@ -155,7 +147,7 @@ describe('taskView', () => {
       ]),
     );
 
-    expect(view.tasks?.[0]?.tasks.map((item) => item.run)).toEqual([green('p-1-a'), run, green('p-1-c')]);
+    expect(view.tasks?.map((item) => item.run)).toEqual([green('p-1-a'), run, green('p-1-c')]);
     expect(view.mergeQueue).toEqual([
       { id: 'a', title: 'A' },
       { id: 'c', title: 'C' },
@@ -176,7 +168,7 @@ describe('taskView', () => {
 
     const view = taskView([approved, subtasks], 'implement', new Map([['a', run]]));
 
-    expect(view.tasks?.[0]?.tasks.map((item) => item.status)).toEqual(['running', 'merged', 'waiting']);
+    expect(view.tasks?.map((item) => item.status)).toEqual(['running', 'merged', 'waiting']);
   });
 
   it('reads a task the parent merged as merged, and lists a done run with no outcome in the merge queue', () => {
@@ -193,10 +185,10 @@ describe('taskView', () => {
     );
 
     expect(view.mergeQueue).toEqual([{ id: 'a', title: 'A' }]);
-    expect(view.tasks?.[0]?.tasks.map((item) => item.status)).toEqual(['green', 'merged']);
+    expect(view.tasks?.map((item) => item.status)).toEqual(['green', 'merged']);
   });
 
-  it('lists the merge queue in plan order, not layer order', () => {
+  it('lists the merge queue in plan order, not dependency order', () => {
     const plan = [{ ...task('c', 'green'), depends: ['a'] }, task('d', 'green'), task('a', 'merged')];
     const run = { key: 'p-1-x', currentStep: 'done', usd: 0, durationMs: 0 };
     const runs: TaskRuns = new Map([

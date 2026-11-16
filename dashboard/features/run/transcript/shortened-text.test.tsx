@@ -84,6 +84,7 @@ describe('shortened text', () => {
       <>
         <TaskRow
           task={{ id: 't1', index: 0, title, files: [], proof: '', depends: [], status: 'pending' }}
+          dependents={[]}
           onSkip={vi.fn()}
         />
         <Bubble side="left" title={summary} type="agent">

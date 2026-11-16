@@ -148,7 +148,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     const flow = await app.app.get(RunQueriesService).flow(KEY);
     expect(flow.currentStep).toBe('implement');
     expect(flow.taskLine).toBe('Split: 3 tasks · 2 merged · 1 running');
-    const byId = Object.fromEntries((flow.tasks ?? []).flatMap((layer) => layer.tasks).map((item) => [item.id, item]));
+    const byId = Object.fromEntries((flow.tasks ?? []).map((item) => [item.id, item]));
     expect(byId.c?.run?.key).toBe(`${KEY}-c`);
     expect(byId.a?.run?.currentStep).toBe('done');
   });
@@ -168,7 +168,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
       expect(child.mergeOutcome).toContain('"sha"');
     }
     const flow = await app.app.get(RunQueriesService).flow(KEY);
-    const byId = Object.fromEntries((flow.tasks ?? []).flatMap((layer) => layer.tasks).map((item) => [item.id, item]));
+    const byId = Object.fromEntries((flow.tasks ?? []).map((item) => [item.id, item]));
     expect(byId.a?.run?.state).toBe('merged');
   });
 

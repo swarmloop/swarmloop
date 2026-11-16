@@ -1,50 +1,69 @@
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import LinearProgress from '@mui/material/LinearProgress';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import type { TaskLayer } from '@contract/api';
+import type { TaskEntry } from '@contract/api';
+import { epicFigures } from '@contract/epic-figures';
 import { needsPerson } from '@contract/run-state';
 import { orderTasks, taskGroup } from '@contract/task-order';
 import { duration, money } from '../../../../lib/format';
 import { TaskDecisions } from './task-decisions';
 import { TaskRow } from './task-row';
 
-/** `7 tasks · 7 merged · 4h 25m · $14.68`: the sums cover the tasks that have started. */
-function summaryLine(tasks: TaskLayer['tasks']): string {
-  const runs = tasks.flatMap((task) => (task.run ? [task.run] : []));
-  const merged = tasks.filter((task) => task.status === 'merged').length;
-  const totals =
-    runs.length > 0
-      ? [
-          duration(runs.reduce((sum, run) => sum + run.durationMs, 0)),
-          money(runs.reduce((sum, run) => sum + run.usd, 0)),
-        ]
-      : [];
-  return [`${tasks.length} tasks`, `${merged} merged`, ...totals].join(' · ');
+/** The titles of the tasks that depend on `task`. */
+function dependentsOf(task: TaskEntry, tasks: TaskEntry[]): string[] {
+  return tasks.filter((other) => other.depends.includes(task.id)).map((other) => other.title);
 }
 
-/** The tasks of a split plan: one row per task in the shared task order, with the merge queue and the decisions below. */
+/** The tasks of a split plan: the open ones in the shared task order, the merged and skipped ones folded into one line, then the merge queue and the decisions. `epic` is set once a task has started, with the parent's own cost in `ownUsd`. */
 export function TaskLayers({
-  layers,
+  tasks: planned,
+  epic,
+  ownUsd = 0,
   mergeQueue,
   decisions,
   onSkip,
 }: {
-  layers: TaskLayer[];
+  tasks: TaskEntry[];
+  epic?: { usd: number; durationMs: number };
+  ownUsd?: number;
   mergeQueue?: { id: string; title: string }[];
   decisions?: string;
-  onSkip: (taskId: string) => void;
+  onSkip: (taskId: string, dependents: string[]) => void;
 }): ReactElement {
-  // Plan order, as the run list gives them to `orderTasks`, not the order of the layers.
-  const tasks = layers.flatMap((layer) => layer.tasks).sort((a, b) => a.index - b.index);
-  const merged = tasks.filter((task) => task.status === 'merged').length;
+  const [settledOpen, setSettledOpen] = useState(false);
+  const tasks = [...planned].sort((a, b) => a.index - b.index);
   const { open, settled } = orderTasks(tasks, (task) =>
     taskGroup(task.status, task.run !== undefined && needsPerson(task.run.state, task.run.stateReason)),
+  );
+  const skipped = settled.filter((task) => task.status === 'skipped').length;
+  const merged = settled.length - skipped;
+  const started = tasks.flatMap((task) => (task.run ? [task.run] : []));
+  const figures = epic
+    ? epicFigures(
+        {
+          epicUsd: epic.usd,
+          ownUsd,
+          epicMs: epic.durationMs,
+          taskCount: tasks.length,
+          workedMs: started.length > 0 ? started.reduce((sum, run) => sum + run.durationMs, 0) : null,
+        },
+        { money, duration },
+      )
+    : null;
+  const row = (task: TaskEntry): ReactElement => (
+    <TaskRow key={`${task.title} ${task.proof}`} task={task} dependents={dependentsOf(task, tasks)} onSkip={onSkip} />
   );
   return (
     <Box component="section" aria-label="Tasks" sx={{ my: 2, display: 'grid', gap: 1, minWidth: 0 }}>
       <Typography variant="subtitle2">Tasks</Typography>
-      <Typography variant="body2">{summaryLine(tasks)}</Typography>
+      <Tooltip title={figures?.workedTip ?? ''}>
+        <Typography variant="body2">
+          {[`${tasks.length} tasks`, `${merged} merged`, ...(figures ? [figures.tasksMoney] : [])].join(' · ')}
+        </Typography>
+      </Tooltip>
       <LinearProgress
         variant="determinate"
         value={tasks.length > 0 ? (merged / tasks.length) * 100 : 0}
@@ -52,10 +71,20 @@ export function TaskLayers({
         sx={{ height: 4, borderRadius: 2 }}
       />
       <Box component="ul" sx={{ m: 0, p: 0, display: 'grid', gap: 0.5 }}>
-        {[...open, ...settled].map((task) => (
-          <TaskRow key={`${task.title} ${task.proof}`} task={task} onSkip={onSkip} />
-        ))}
+        {open.map(row)}
       </Box>
+      {settled.length > 0 ? (
+        <Box>
+          <Button size="small" aria-expanded={settledOpen} onClick={() => setSettledOpen(!settledOpen)}>
+            {`✓ ${merged} merged${skipped > 0 ? ` · ${skipped} skipped` : ''}`}
+          </Button>
+          {settledOpen ? (
+            <Box component="ul" sx={{ m: 0, p: 0, display: 'grid', gap: 0.5 }}>
+              {settled.map(row)}
+            </Box>
+          ) : null}
+        </Box>
+      ) : null}
       {mergeQueue?.length ? (
         <Box component="section" aria-label="Merge queue">
           <Typography variant="caption" color="text.secondary">
