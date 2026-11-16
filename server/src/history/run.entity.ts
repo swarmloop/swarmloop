@@ -118,4 +118,8 @@ export class RunEntity {
   /** ISO time the plan became a split, from when the parent's agents run at the epic effort. Null for any other run. */
   @Column({ name: 'epic_at', type: 'text', nullable: true })
   epicAt!: string | null;
+
+  /** A short title for the run, from research. Null until research stores one and for old rows. */
+  @Column({ type: 'text', nullable: true })
+  title!: string | null;
 }

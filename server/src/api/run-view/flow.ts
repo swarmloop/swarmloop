@@ -16,13 +16,6 @@ import {
   pipelineStepOf,
 } from '../../contract/steps';
 import { stepOutput } from '../../core/attempt-output';
-import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
-import { answered } from '../../steps/shared/answers';
-import { research } from '../../agent-result/definitions/research';
-import { storedResult } from '../../agent-result/stored-result';
-import type { ResearchResult } from '../../agent-result/definitions/research';
-import { plan, type PlanResult } from '../../agent-result/definitions/plan';
-import { openQuestions } from '../../steps/shared/answers';
 import { chipStatus, chipAttempts, reportChip, reviewPreparing, reviewerRound } from './chips';
 import { latest } from './status';
 export { latest } from './status';
@@ -111,38 +104,6 @@ export function returns(run: RunEntity): FlowView['returns'] {
 /** Where the phase that holds a step sits on the board; the lines nearest to implement come first. */
 function boardPlace(step: string): number {
   return CONTRACT_PHASES.findIndex((phase) => PHASE_STEPS[phase].includes(step));
-}
-
-export function openItems(run: RunEntity, documents: DocumentEntity[], pasteUrls: string[]): FlowItem[] {
-  const itemsOut: FlowItem[] = [];
-  if (run.currentStep === 'research' || run.currentStep === 'plan') {
-    const stored = answered(latest(documents, 'answers') ?? '');
-    for (const question of openQuestions(latest(documents, 'questions') ?? '', [
-      storedResult<ResearchResult>(research, documents),
-      storedResult<PlanResult>(plan, documents),
-    ])) {
-      itemsOut.push({ kind: 'question', id: question, label: question, answer: stored.get(question) ?? '' });
-    }
-  }
-  if (run.split && run.currentStep === 'implement') {
-    const stored = answered(latest(documents, 'answers') ?? '');
-    for (const question of openQuestions(latest(documents, 'subtask_questions') ?? '', [])) {
-      itemsOut.push({ kind: 'question', id: question, label: question, answer: stored.get(question) ?? '' });
-    }
-  }
-  if (run.currentStep === 'code-review') {
-    const stored = answered(latest(documents, 'answers') ?? '');
-    for (const question of openQuestions(latest(documents, 'review_questions') ?? '', [])) {
-      itemsOut.push({ kind: 'question', id: question, label: question, answer: stored.get(question) ?? '' });
-    }
-  }
-  if (run.currentStep === 'requirements') {
-    const pending = pendingUrl(latest(documents, 'pending'));
-    if (pending && !pasteUrls.includes(pending) && !jiraIssueKey(pending)) {
-      itemsOut.push({ kind: 'paste', id: pending, label: pending, answer: '' });
-    }
-  }
-  return itemsOut;
 }
 
 /** The honest state of the run and what the server allows in it. */
@@ -321,18 +282,6 @@ export function reason(run: RunEntity, documents: DocumentEntity[], stats: StepS
 
 function didNotFit(documents: DocumentEntity[]): boolean {
   return (latest(documents, 'error') ?? '').includes('does not fit');
-}
-
-function pendingUrl(body: string | null): string | null {
-  if (!body?.trim()) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(body) as { url?: unknown };
-    return typeof parsed.url === 'string' && parsed.url ? parsed.url : null;
-  } catch {
-    return null;
-  }
 }
 
 export function runName(key: string, prompt: string | null): string {

@@ -206,6 +206,11 @@ export function clearEpic(run: Pick<RunEntity, 'epicAt'>): void {
   run.epicAt = null;
 }
 
+/** The column that holds the run's title. Persist it with `RunRepository.recordTitle`. */
+export function titleColumns(title: string): Pick<RunEntity, 'title'> {
+  return { title };
+}
+
 /** The columns of a run that a step takes. */
 export function claimedColumns(step: string, activeAttempt: string): StateColumns {
   return stateColumns(

@@ -20,6 +20,16 @@ describe('research result', () => {
     expect(readResult(research, block(without))).toEqual({ ok: true, value: without });
   });
 
+  it('reads a title, and a result without one', () => {
+    expect(readResult(research, block({ ...VALID, title: 'Fix the list' }))).toEqual({
+      ok: true,
+      value: { ...VALID, title: 'Fix the list' },
+    });
+    expect(readResult(researchFor(true), block({ ...VALID, title: 'Fix the list' })).ok).toBe(true);
+    expect(readResult(researchFor(false), block({ ...VALID, requirements: [{ id: 'R1', text: 'a' }] })).ok).toBe(true);
+    expect(resultPrompt(researchFor(false))).toContain('A short title for the run');
+  });
+
   it('reads a stored result that has no requirements', () => {
     expect(readResult(research, block(VALID))).toMatchObject({ ok: true });
   });

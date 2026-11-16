@@ -1,0 +1,65 @@
+import type { DocumentEntity, RunEntity } from '../../history/entities';
+import type { FlowItem } from '../../contract/api';
+import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
+import { answered, openQuestions } from '../../steps/shared/answers';
+import { research } from '../../agent-result/definitions/research';
+import { storedResult } from '../../agent-result/stored-result';
+import type { ResearchResult } from '../../agent-result/definitions/research';
+import { plan, type PlanResult } from '../../agent-result/definitions/plan';
+import { latest } from './status';
+
+/** The open questions of one kind of document, each with the answer the person already gave. */
+function questionItems(
+  documents: DocumentEntity[],
+  kind: string,
+  results: Parameters<typeof openQuestions>[1],
+): FlowItem[] {
+  const stored = answered(latest(documents, 'answers') ?? '');
+  return openQuestions(latest(documents, kind) ?? '', results).map((question) => ({
+    kind: 'question',
+    id: question,
+    label: question,
+    answer: stored.get(question) ?? '',
+  }));
+}
+
+function pasteItems(documents: DocumentEntity[], pasteUrls: string[]): FlowItem[] {
+  const pending = pendingUrl(latest(documents, 'pending'));
+  return pending && !pasteUrls.includes(pending) && !jiraIssueKey(pending)
+    ? [{ kind: 'paste', id: pending, label: pending, answer: '' }]
+    : [];
+}
+
+export function openItems(run: RunEntity, documents: DocumentEntity[], pasteUrls: string[]): FlowItem[] {
+  const itemsOut: FlowItem[] = [];
+  if (run.currentStep === 'research' || run.currentStep === 'plan') {
+    itemsOut.push(
+      ...questionItems(documents, 'questions', [
+        storedResult<ResearchResult>(research, documents),
+        storedResult<PlanResult>(plan, documents),
+      ]),
+    );
+  }
+  if (run.split && run.currentStep === 'implement') {
+    itemsOut.push(...questionItems(documents, 'subtask_questions', []));
+  }
+  if (run.currentStep === 'code-review') {
+    itemsOut.push(...questionItems(documents, 'review_questions', []));
+  }
+  if (run.currentStep === 'requirements') {
+    itemsOut.push(...pasteItems(documents, pasteUrls));
+  }
+  return itemsOut;
+}
+
+function pendingUrl(body: string | null): string | null {
+  if (!body?.trim()) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(body) as { url?: unknown };
+    return typeof parsed.url === 'string' && parsed.url ? parsed.url : null;
+  } catch {
+    return null;
+  }
+}
