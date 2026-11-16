@@ -31,20 +31,12 @@ import { childrenByParent, listExtras } from './run-view/status';
 import { epicTotal } from '../steps/shared/epic-total';
 import { STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
-import { latest, metrics, openItems, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
-import {
-  belongsToVisit,
-  documentView,
-  filesOf,
-  interruptionOf,
-  taskView,
-  withReturnNotes,
-  withoutServerRecords,
-} from './run-view/documents';
+import { latest, metrics, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
+import { belongsToVisit, documentView, interruptionOf, taskView, withReturnNotes } from './run-view/documents';
 import { taskRuns } from './run-view/task-runs';
 import { ReviewerSteps } from './run-view/reviewer-steps';
 import { visitKey } from '../contract/visit-key';
-import { launchView, liveVisit, loopView } from './run-view/live';
+import { launchView, liveVisit } from './run-view/live';
 import {
   commandViewsOf,
   effortOf,
@@ -55,6 +47,9 @@ import {
 } from './run-view/visit-parts';
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
 import { readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
+import { openItems } from './run-view/open-items';
+import { requirementBodies, viewTitle } from './run-view/run-title';
+import { readHistory } from './run-queries-history';
 import { openSpend } from './run-queries-spend';
 import { RunReport } from '../steps/shared/run-report';
 export { requireRun } from './run-queries-run';
@@ -100,6 +95,10 @@ export class RunQueriesService {
     const keys = new Map(runs.map((run) => [run.id, run.key]));
     const childrenOf = childrenByParent(runs);
     const plans = await listPlans(this.documents, runs, childrenOf);
+    const requirements = await requirementBodies(
+      this.documents,
+      runs.map((run) => run.id),
+    );
     const waits = mergeWaits(plans, runs, keys);
     const states = await listStates(
       this.documents,
@@ -114,6 +113,7 @@ export class RunQueriesService {
       runs: runs.map((run) => ({
         key: run.key,
         name: runName(run.key, run.prompt),
+        title: viewTitle(run, requirements.get(run.id) ?? null),
         status: run.status,
         currentStep: run.currentStep,
         createdAt: run.createdAt,
@@ -151,6 +151,8 @@ export class RunQueriesService {
     return {
       key: run.key,
       name: runName(run.key, run.prompt),
+      title: viewTitle(run, latest(documents, 'requirements')),
+      mergeRequests: [],
       status: shown.status,
       currentStep: run.currentStep,
       updatedAt: run.updatedAt,
@@ -280,58 +282,18 @@ export class RunQueriesService {
   }
 
   async readHistory(key: string): Promise<HistoryView> {
-    const run = await requireRun(this.runs, key);
-    const documents = withoutServerRecords(await this.documents.listDocuments(run.id));
-    const stats = await this.visits.listStats(run.id);
-    const exchanges = await this.visits.listExchanges(stats.map((stat) => stat.id));
-    const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
-    const loops = await this.events.listLoops(run.id);
-    const calls = await this.events.listHttpCalls(run.id);
-    const launches = await this.flows.listFlows(run.id);
-    const reviewRunning = this.reviewRunning(run);
-    return {
-      launches: launches.map(launchView),
-      documents: documents.filter((document) => document.kind !== 'log').map(documentView),
-      files: filesOf(documents),
-      exchanges: exchanges.map((exchange) => ({
-        stepStatId: exchange.stepStatId,
-        model: exchange.model,
-        durationMs: exchange.durationMs,
-        request: exchange.requestText,
-        response: exchange.responseText,
-      })),
-      loops: loops.map(loopView),
-      calls: calls.map((call) => ({
-        method: call.method,
-        url: call.url,
-        statusCode: call.statusCode,
-        durationMs: call.durationMs,
-        error: call.error,
-      })),
-      samples: samples.map((sample) => ({
-        stepStatId: sample.stepStatId,
-        at: sample.sampledAt,
-        cpu: sample.cpuPercent,
-        memory: sample.rssBytes,
-        source: sample.source ?? 'agent',
-      })),
-      stats: stats.map((stat) => ({
-        ...visitLogSize(this.config, run, stat.step, stat, {
-          latest: stats.filter((item) => item.step === stat.step).at(-1) === stat,
-          reviewRunning,
-        }),
-        id: stat.id,
-        step: stat.step,
-        attempt: stat.attempt,
-        model: stat.model,
-        durationMs: stat.durationMs,
-        usd: stat.usd,
-        tokensIn: stat.tokensIn,
-        tokensOut: stat.tokensOut,
-        cpuPeak: stat.cpuPeak,
-        memPeak: stat.memPeak,
-      })),
-    };
+    return readHistory(
+      {
+        runs: this.runs,
+        documents: this.documents,
+        visits: this.visits,
+        events: this.events,
+        flows: this.flows,
+        config: this.config,
+      },
+      key,
+      (run) => this.reviewRunning(run),
+    );
   }
 
   /** True while the code-review step runs, so its reviewers write the run's active attempt. */

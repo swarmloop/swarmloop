@@ -12,6 +12,7 @@ import { agentStep, limited, round, RUNTIME_DEFAULT, share, sortedShares } from 
 import { CI_WAIT_COUNTER, MERGE_WATCH_COUNTER, readLoopDetail } from '../history/loop-detail';
 import { readOutcome } from '../history/run-state';
 import { runName } from './run-view/flow';
+import { viewTitle } from './run-view/run-title';
 import { countedRunsOf, sumOver } from './stats-units';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -231,7 +232,13 @@ function tasksOf(runs: StatsRunRow[], spent: Map<number, { usd: number }>, backs
 }
 
 /** The statistics of the runs in `rows`. `durations` is the working time of each run by id. */
-export function buildStats(rows: StatsRows, durations: Map<number, number>, now: number, range: StatsRange): StatsView {
+export function buildStats(
+  rows: StatsRows,
+  durations: Map<number, number>,
+  now: number,
+  range: StatsRange,
+  requirements: Map<number, string> = new Map(),
+): StatsView {
   const to = localDay(now, range.tzOffset);
   const firstDay = rows.firstRunAt === null ? to : [localDay(rows.firstRunAt, range.tzOffset), to].sort()[0];
   const from = range.days > 0 ? [shiftDay(to, 1 - range.days), firstDay].sort()[1] : firstDay;
@@ -288,6 +295,7 @@ export function buildStats(rows: StatsRows, durations: Map<number, number>, now:
     return {
       key: run.key,
       name,
+      title: viewTitle(run, requirements.get(run.id) ?? null),
       status: run.status,
       outcome,
       usd: round(usd),

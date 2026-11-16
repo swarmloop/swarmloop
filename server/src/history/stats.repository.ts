@@ -4,7 +4,7 @@ import { In, MoreThanOrEqual, Repository } from 'typeorm';
 import { LoopEventEntity, RunEntity, StepStatEntity } from './entities';
 
 export type StatsRunRow = Pick<RunEntity, 'id' | 'key' | 'prompt' | 'status' | 'runtime' | 'createdAt'> &
-  Partial<Pick<RunEntity, 'parentRunId' | 'state' | 'mergeOutcome' | 'doneAt'>>;
+  Partial<Pick<RunEntity, 'title' | 'parentRunId' | 'state' | 'mergeOutcome' | 'doneAt'>>;
 export type StatsStepRow = Pick<
   StepStatEntity,
   | 'runId'
@@ -48,6 +48,7 @@ export class StatsRepository {
         id: true,
         key: true,
         prompt: true,
+        title: true,
         parentRunId: true,
         status: true,
         runtime: true,

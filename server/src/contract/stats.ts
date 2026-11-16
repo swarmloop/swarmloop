@@ -27,6 +27,8 @@ export interface StatsShare {
 export interface StatsRun {
   key: string;
   name: string;
+  /** A short title for a person: at most 70 characters, no markdown. */
+  title: string;
   status: string;
   outcome: RunOutcome;
   usd: number;

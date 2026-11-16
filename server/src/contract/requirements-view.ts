@@ -34,6 +34,7 @@ interface RequirementsView {
 }
 
 const TITLE_CHARS = 160;
+const RUN_TITLE_CHARS = 70;
 
 function list<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value.filter((item) => item && typeof item === 'object') as T[]) : [];
@@ -52,6 +53,21 @@ function plainFirstLine(markdown: string): string {
     .replace(/[*`_]/g, '')
     .trim();
   return shortLine(plain, TITLE_CHARS);
+}
+
+/** A short title for a run: the first line of a text without markdown marks, at most 70 characters in all, cut at a word boundary with `…`. */
+export function runTitle(markdown: string): string {
+  const line = plainFirstLine(markdown);
+  if (line.length <= RUN_TITLE_CHARS) {
+    return line;
+  }
+  const body = line.endsWith('…') ? line.slice(0, -1) : line;
+  const room = RUN_TITLE_CHARS - 1;
+  let head = body.slice(0, room);
+  if (!/\s/.test(body[room] ?? '') && head.includes(' ')) {
+    head = head.slice(0, head.lastIndexOf(' '));
+  }
+  return `${head.trimEnd()}…`;
 }
 
 function ticketTitle(ticket: Linked): string {

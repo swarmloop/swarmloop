@@ -1,5 +1,4 @@
 import type { Effort } from './effort';
-import type { CommandInput } from './command';
 import type { MergeOutcome, RunAction, RunState, StateReason } from './run-state';
 import type { InterruptionNote } from './interruption';
 import type { TaskLayer } from './task-layer';
@@ -17,10 +16,31 @@ export type {
   StatsView,
 } from './stats';
 export type { TaskLayer } from './task-layer';
+export type {
+  TicketKeysBody,
+  TicketKeysView,
+  CreateRunBody,
+  StartStepBody,
+  ReplayBody,
+  ResumeBody,
+  AnswersBody,
+  AddProjectBody,
+  ChatBody,
+  OpenShellBody,
+  LockShellBody,
+  RewindBody,
+  SkipTaskBody,
+  RemovedRunView,
+  ShellStatusView,
+  SnapshotsView,
+  RewindView,
+} from './api-bodies';
 
 export interface RunSummary {
   key: string;
   name: string;
+  /** A short title for a person: at most 70 characters, no markdown. */
+  title: string;
   status: string;
   currentStep: string;
   createdAt: string;
@@ -56,11 +76,27 @@ export interface RunRef {
   status: string;
 }
 
+/** A question that waits for a person, in parts: what is decided, each side on the point in dispute, and the whole text. */
+export interface QuestionParts {
+  decided: string;
+  sides: { who: string; text: string }[];
+  full: string;
+}
+
 export interface FlowItem {
   kind: 'question' | 'paste';
   id: string;
   label: string;
   answer: string;
+  /** Set on a question that carries its parts next to its text. */
+  parts?: QuestionParts;
+}
+
+/** The merge request of a run in one repository. */
+export interface MergeRequestView {
+  repo: string;
+  url: string;
+  state: 'draft' | 'open' | 'merged' | 'closed';
 }
 
 export interface LaunchView {
@@ -72,6 +108,10 @@ export interface LaunchView {
 export interface FlowView {
   key: string;
   name: string;
+  /** A short title for a person: at most 70 characters, no markdown. */
+  title: string;
+  /** One merge request per repository, from the run's stored merge requests. */
+  mergeRequests: MergeRequestView[];
   status: string;
   currentStep: string;
   updatedAt: string;
@@ -121,11 +161,13 @@ export interface FlowView {
       current: boolean;
       attempts: number;
       note?: string;
+      /** Why the step was sent back, as `2 notes` or the check that failed. Set on a returned step only. */
+      returnNote?: string;
       /** When the server restarted while this step's agent kept running, as an ISO time. Set only during that wait. */
       restartedAt?: string;
     }[];
   }[];
-  returns: { counter: string; count: number; from: string; to: 'implement' }[];
+  returns: { counter: string; count: number; from: string; to: 'implement'; why?: string }[];
   /** The commands of the latest checks attempt. Missing when the run has none. */
   checkCommands?: CheckCommandView[];
   items: FlowItem[];
@@ -265,86 +307,6 @@ export interface ShellMatch {
   key: string;
   status: string;
   currentStep: string;
-}
-
-export interface TicketKeysBody {
-  prompt: string;
-  key?: string;
-}
-
-export interface TicketKeysView {
-  keys: string[];
-}
-
-export interface CreateRunBody extends CommandInput {
-  key?: string;
-  prompt?: string;
-  path?: string;
-  projects?: string[];
-  phases?: string[];
-  /** May the planner split the run into subtasks. The server's `SPLIT` decides when it is missing. */
-  split?: boolean;
-}
-
-export interface StartStepBody extends CommandInput {
-  prompt?: string;
-  path?: string;
-}
-
-export interface ReplayBody extends CommandInput {
-  prompt?: string;
-  phases?: string[];
-}
-
-export interface ResumeBody extends CommandInput {
-  prompt?: string;
-}
-
-export interface AnswersBody extends CommandInput {
-  answers?: { kind?: string; id?: string; body?: string }[];
-}
-
-export interface AddProjectBody extends CommandInput {
-  name?: string;
-}
-
-export interface ChatBody extends CommandInput {
-  prompt?: string;
-  skill?: string;
-  cwd?: string;
-  mcpServers?: unknown;
-}
-
-export interface OpenShellBody extends CommandInput {
-  path?: string;
-}
-
-export interface LockShellBody extends CommandInput {
-  container?: string;
-}
-
-export interface RewindBody extends CommandInput {
-  id?: number;
-}
-
-export interface SkipTaskBody extends CommandInput {
-  taskId?: string;
-}
-
-export interface RemovedRunView {
-  key: string;
-}
-
-export interface ShellStatusView {
-  status: string;
-}
-
-export interface SnapshotsView {
-  snapshots: { id: number; step: string; at: string }[];
-}
-
-export interface RewindView {
-  step: string;
 }
 
 /** The projects a new run can use. */
