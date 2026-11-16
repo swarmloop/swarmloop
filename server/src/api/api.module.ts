@@ -12,6 +12,7 @@ import { SandboxModule } from '../sandbox/sandbox.module';
 import { CommandHandlers } from './command-handlers';
 import { ChatService } from './chat.service';
 import { ShellService } from './shell.service';
+import { BacklogsController } from './backlogs.controller';
 import { CheckoutsController } from './checkouts.controller';
 import { HealthController } from './health.controller';
 import { ReadinessController } from './readiness.controller';
@@ -44,6 +45,7 @@ import { RunRebaseService } from './run-rebase.service';
     ServerController,
     ReadinessController,
     RunsController,
+    BacklogsController,
     CheckoutsController,
     StatsController,
     SettingsController,

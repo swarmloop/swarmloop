@@ -41,6 +41,8 @@ interface MilestoneRecord {
   title: string;
   goal: string;
   status: MilestoneStatus;
+  /** The milestone whose acceptance starts this queued one. */
+  queuedAfterId?: number | null;
   createdAt: string;
 }
 
@@ -178,7 +180,13 @@ function writersOn(manager: EntityManager, clock: Clock): BacklogWriters {
       return toBacklog(await saveRow(manager, BacklogEntity, fromBacklog(record)));
     },
     async saveMilestone(record) {
-      return toMilestone(await saveRow(manager, MilestoneEntity, { ...record, id: record.id as number }));
+      return toMilestone(
+        await saveRow(manager, MilestoneEntity, {
+          ...record,
+          queuedAfterId: record.queuedAfterId ?? null,
+          id: record.id as number,
+        }),
+      );
     },
     async saveRequirement(record) {
       return toRequirement(await saveRow(manager, RequirementEntity, { ...record, id: record.id as number }));
