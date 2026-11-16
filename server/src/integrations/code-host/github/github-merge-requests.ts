@@ -1,6 +1,7 @@
 import type { HttpCallDraft } from '../../../core/swarmloop-error';
-import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
+import { FetchFailed, NothingToMerge, SwarmloopError } from '../../../core/swarmloop-error';
 import { AbstractCodeHost, type HostCall } from '../abstract-code-host';
+import { providerMessage } from '../provider-message';
 import { githubStates, graphqlUrl, pullView, type GithubPull } from './github-pull';
 import type {
   MergeRequestDraft,
@@ -164,9 +165,36 @@ export abstract class GithubMergeRequests extends AbstractCodeHost {
     return { project, iid: pull.number, url: pull.html_url, summary: text, draft: pull.draft === true };
   }
 
+  /** GitHub puts the reason of a 422 in `errors[].message`, so the text joins it to the message. */
+  protected override openRefusal(response: { status: number; body: Buffer }, calls: HttpCallDraft[]): FetchFailed {
+    const text = response.status === 422 ? validationText(response.body) : '';
+    if (/no commits between/i.test(text)) {
+      return new NothingToMerge(text, calls);
+    }
+    return text ? new FetchFailed(text, calls) : super.openRefusal(response, calls);
+  }
+
   protected conflict(error: unknown, calls: HttpCallDraft[]): boolean {
     return error instanceof FetchFailed && calls.some((call) => call.statusCode === 422 || call.statusCode === 409);
   }
+}
+
+function validationText(body: Buffer): string {
+  const message = providerMessage(body);
+  let listed: string[] = [];
+  try {
+    const parsed = JSON.parse(body.toString('utf8')) as { errors?: unknown } | null;
+    listed = Array.isArray(parsed?.errors)
+      ? (parsed.errors as unknown[]).flatMap((item) => {
+          const text = (item as { message?: unknown } | null)?.message;
+          return typeof text === 'string' && text.trim() ? [text.trim()] : [];
+        })
+      : [];
+  } catch {
+    listed = [];
+  }
+  const details = listed.join('; ');
+  return message && details ? `${message}: ${details}` : message || details;
 }
 
 export function repoPath(project: string): string {

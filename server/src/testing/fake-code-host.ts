@@ -1,4 +1,4 @@
-import { HostUnavailable } from '../core/swarmloop-error';
+import { FetchFailed, HostUnavailable } from '../core/swarmloop-error';
 import { HOST_RETRY_MS } from '../integrations/http';
 import type {
   CodeHost,
@@ -33,6 +33,9 @@ export class FakeCodeHost {
   private retryAfterMs = HOST_RETRY_MS;
   private readonly closed = new Set<number>();
   private conflicting = false;
+  private refusal: string | null = null;
+  /** How many times the server asked the host to open a request, refused or not. */
+  openAsks = 0;
   /** For each merge: the head that landed, the feature tip it landed on, and whether its CI passed on top of that tip. */
   readonly landed: { iid: number; head: string; tip: string; testedOnTop: boolean }[] = [];
 
@@ -47,6 +50,11 @@ export class FakeCodeHost {
     this.downUntil = this.now() + ms;
     this.downStatus = status;
     this.retryAfterMs = retryAfterMs;
+  }
+
+  /** From now on the host refuses to open a request with `message`, and opens nothing. */
+  refuseOpen(message: string): void {
+    this.refusal = message;
   }
 
   /** How many merge requests were opened. */
@@ -109,6 +117,10 @@ export class FakeCodeHost {
 
   openMergeRequest(draft: MergeRequestDraft): Answer<'openMergeRequest'> {
     this.guard();
+    this.openAsks += 1;
+    if (this.refusal) {
+      return Promise.reject(new FetchFailed(this.refusal));
+    }
     const iid = this.requests.size + 1;
     const record = {
       project: draft.project,

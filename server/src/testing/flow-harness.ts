@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { writeFileSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { readDefaultSettings } from '../config/load-env';
 import { DiskGuard } from '../pipeline/disk-guard';
@@ -105,6 +105,13 @@ export async function createFlowHarness(
       run.spentUsd = begun.spentUsd ?? run.spentUsd;
       await app.app.get(RunRepository).saveRun(run);
       if (step === 'plan') return run;
+      if (step === 'merge-request') {
+        mkdirSync(join(tree, 'src'), { recursive: true });
+        writeFileSync(join(tree, 'src', 'feature.ts'), 'export const feature = 1;\n');
+        git(tree, ['add', 'src/feature.ts']);
+        git(tree, ['commit', '--allow-empty', '-m', 'feat: ship the field']);
+        git(tree, ['push', 'origin', feature]);
+      }
       await app.app.get(DocumentRepository).putDocument(run, 'implementation', '- shipped the field\n');
       await seedGates(harness, run, feature);
       return run;

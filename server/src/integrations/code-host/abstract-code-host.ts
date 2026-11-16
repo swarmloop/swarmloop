@@ -1,6 +1,6 @@
 import type { RemoteRepository, RepositoryOwner } from '../../contract/api';
 import type { Clock } from '../../core/clock';
-import { FetchFailed, MergeConflict, type HttpCallDraft } from '../../core/swarmloop-error';
+import { FetchFailed, MergeConflict, NothingToMerge, type HttpCallDraft } from '../../core/swarmloop-error';
 import { HostCalls, type CodeHostEnv, type HostCall } from './host-calls';
 import { providerMessage } from './provider-message';
 import { requestState } from './request-state';
@@ -52,15 +52,28 @@ export abstract class AbstractCodeHost extends HostCalls implements CodeHost {
     const calls: HttpCallDraft[] = [];
     try {
       const { root, headers } = this.credentials();
-      const create = (asked: MergeRequestDraft): Promise<unknown> => {
+      const create = async (asked: MergeRequestDraft): Promise<unknown> => {
         const { url, payload } = this.openRequest(root, asked);
-        return this.readJson(url, { ...headers, 'Content-Type': 'application/json' }, calls, payload);
+        const response = await this.hostRequest(url, { ...headers, 'Content-Type': 'application/json' }, calls, {
+          method: 'POST',
+          body: payload,
+        });
+        if (response.status === 401 || response.status === 403) {
+          this.assertStatus(response, calls, this.failure);
+        }
+        if (response.status < 200 || response.status >= 300) {
+          throw this.openRefusal(response, calls);
+        }
+        return this.parse(response.body, calls);
       };
       let body: unknown;
       let refused = false;
       try {
         body = await create(draft);
       } catch (error) {
+        if (error instanceof NothingToMerge) {
+          throw error;
+        }
         const reused = await this.reuse(draft, error, calls);
         if (reused) {
           return { ...reused, draftsUnavailable: false };
@@ -323,6 +336,12 @@ export abstract class AbstractCodeHost extends HostCalls implements CodeHost {
     return this.mergeConflicts(response.status, message)
       ? new MergeConflict(message, calls)
       : new FetchFailed(message, calls);
+  }
+
+  /** The refusal of an open request: a 422 with a message from the host says it in the host's words. */
+  protected openRefusal(response: { status: number; body: Buffer }, calls: HttpCallDraft[]): FetchFailed {
+    const message = response.status === 422 ? providerMessage(response.body) : '';
+    return new FetchFailed(message || `${this.failure}: HTTP ${response.status}`, calls);
   }
 
   private async reuse(

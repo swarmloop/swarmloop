@@ -7,16 +7,18 @@ import { root } from '../../history/run-paths';
 import { PhaseName, StepName } from '../../contract/steps';
 import { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
-import { HttpCallDraft, SwarmloopError } from '../../core/swarmloop-error';
+import { HttpCallDraft, NothingToMerge, SwarmloopError } from '../../core/swarmloop-error';
 import { branchName, summaryForBranch } from '../branch/branch-name';
 import { baseBranch } from '../../git/base-ref';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
+import { nothingToMergeResult } from './nothing-to-merge';
 import { mergeRequestDetails, remoteProject, renderMergeRequest } from './merge-request-record';
 import { ARTIFACTS } from '../contract/artifacts';
 import { lateInput } from '../agent-step';
 import { renderImplementation } from '../implement/implement-record';
+import { hasWorkToMerge } from '../shared/branch-work';
 import { worktreesFingerprint } from '../shared/gate';
 import { renderReport } from '../shared/report-text';
 import type { AttemptFacts } from '../../contract/step-events';
@@ -48,7 +50,7 @@ const INPUTS = {
 export class MergeRequestStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'merge-request';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.mergeRequest, ARTIFACTS.rebaseMergeSkip];
+  readonly outputs = [ARTIFACTS.mergeRequest, ARTIFACTS.rebaseMergeSkip, ARTIFACTS.commit];
 
   constructor(
     kernel: StepKernel,
@@ -84,23 +86,31 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     );
     const summary = await this.summary(ctx, phases, trees);
     const skip = ((await ctx.reread(ARTIFACTS.rebaseMergeSkip)) ?? '').trim() === 'skip';
+    const withWork = await this.withWork(trees);
+    if (withWork.length === 0) {
+      return nothingToMergeResult(opened.startedAt, await this.implementation(ctx));
+    }
     assertNotStopped(this.runStop, key);
-    const { records, unavailable } = await ctx.activity(
+    const { opened: done, unavailable } = await ctx.activity(
       'Open merge request',
       () =>
         this.ensure(
-          trees.map((tree) => ({ ...tree, summary })),
+          withWork.map((tree) => ({ ...tree, summary })),
           title,
           ctx.calls,
           skip,
           client,
         ),
-      ({ records: done }) =>
-        done.map((record, index) => `!${record.iid} ${trees[index].existing ? 'reused' : 'created'}`).join(', '),
+      ({ opened: items }) =>
+        items.map(({ tree, record }) => `!${record.iid} ${tree.existing ? 'reused' : 'created'}`).join(', '),
     );
+    if (done.length === 0) {
+      return nothingToMergeResult(opened.startedAt, await this.implementation(ctx));
+    }
     if (skip) {
       await ctx.write(ARTIFACTS.rebaseMergeSkip, 'clear\n');
     }
+    const records = done.map((item) => item.record);
     const urls = records.map((record) => record.url).join('\n');
     const note = unavailable ? '\ndrafts not available here' : '';
     return this.finish(
@@ -158,10 +168,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
   }
 
   private async summary(ctx: StepContext, phases: readonly PhaseName[], trees: Tree[]): Promise<string> {
-    const result = await ctx.reread(ARTIFACTS.implementationResult);
-    const implementation = result
-      ? renderImplementation(result.implementation).trim()
-      : ((await ctx.reread(ARTIFACTS.implementation))?.trim() ?? '');
+    const implementation = await this.implementation(ctx);
     if (!implementation) {
       throw new SwarmloopError('implementation is missing');
     }
@@ -179,41 +186,75 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     return summary;
   }
 
+  /** What implement said it did: the lines of its stored result, else its document. Empty when it said nothing. */
+  private async implementation(ctx: StepContext): Promise<string> {
+    const result = await ctx.reread(ARTIFACTS.implementationResult);
+    return result
+      ? renderImplementation(result.implementation).trim()
+      : ((await ctx.reread(ARTIFACTS.implementation))?.trim() ?? '');
+  }
+
+  /** The trees whose branch has a request already, or a commit its target does not have. */
+  private async withWork(trees: Tree[]): Promise<Tree[]> {
+    const kept: Tree[] = [];
+    for (const tree of trees) {
+      const target = tree.existing ? null : await this.ref(tree.repo, tree.path, `refs/remotes/origin/${tree.target}`);
+      if (tree.existing || (await hasWorkToMerge(tree, target))) {
+        kept.push(tree);
+      }
+    }
+    return kept;
+  }
+
   private async ensure(
     trees: Tree[],
     title: string,
     calls: HttpCallDraft[],
     skip: boolean,
     client: CodeHost,
-  ): Promise<{ records: MergeRequestRecord[]; unavailable: boolean }> {
-    const opened = await Promise.all(
+  ): Promise<{ opened: { tree: Tree; record: MergeRequestRecord }[]; unavailable: boolean }> {
+    const results = await Promise.all(
       trees.map(async (tree) => {
         if (tree.existing && skip) {
-          return { record: tree.existing, calls: [], unavailable: false };
+          return { tree, record: tree.existing, calls: [], unavailable: false };
         }
         if (tree.existing) {
           const updated = await client.updateMergeRequest(tree.project, tree.existing.iid, tree.summary);
-          return { record: { ...tree.existing, summary: tree.summary }, calls: updated.httpCalls, unavailable: false };
+          return {
+            tree,
+            record: { ...tree.existing, summary: tree.summary },
+            calls: updated.httpCalls,
+            unavailable: false,
+          };
         }
-        const created = await client.openMergeRequest({
-          project: tree.project,
-          source: tree.branch,
-          target: tree.target,
-          title,
-          summary: tree.summary,
-          draft: true,
-        });
-        return {
-          record: { ...created.record, summary: tree.summary },
-          calls: created.httpCalls,
-          unavailable: created.draftsUnavailable,
-        };
+        try {
+          const created = await client.openMergeRequest({
+            project: tree.project,
+            source: tree.branch,
+            target: tree.target,
+            title,
+            summary: tree.summary,
+            draft: true,
+          });
+          return {
+            tree,
+            record: { ...created.record, summary: tree.summary },
+            calls: created.httpCalls,
+            unavailable: created.draftsUnavailable,
+          };
+        } catch (error) {
+          if (error instanceof NothingToMerge) {
+            return { tree, record: null, calls: error.httpCalls, unavailable: false };
+          }
+          throw error;
+        }
       }),
     );
-    for (const item of opened) {
+    for (const item of results) {
       calls.push(...item.calls);
     }
-    return { records: opened.map((item) => item.record), unavailable: opened.some((item) => item.unavailable) };
+    const opened = results.flatMap(({ tree, record }) => (record ? [{ tree, record }] : []));
+    return { opened, unavailable: results.some((item) => item.unavailable) };
   }
 
   private async target(repo: string, path: string): Promise<string> {

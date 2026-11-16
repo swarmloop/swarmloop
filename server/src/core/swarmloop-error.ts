@@ -74,6 +74,14 @@ export class MergeConflict extends FetchFailed {
   }
 }
 
+/** The code host refused to open a request because the branch has no commit its target does not have. */
+export class NothingToMerge extends FetchFailed {
+  constructor(message: string, httpCalls: HttpCallDraft[] = []) {
+    super(message, httpCalls);
+    this.name = 'NothingToMerge';
+  }
+}
+
 export class IssueNotFound extends FetchFailed {
   constructor(message: string, httpCalls: HttpCallDraft[] = []) {
     super(message, httpCalls);
