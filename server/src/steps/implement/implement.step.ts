@@ -55,6 +55,8 @@ const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
   planResult: lateInput(ARTIFACTS.planResult),
   planImproveResult: lateInput(ARTIFACTS.planImproveResult),
+  // Shown as an input card of the window; the prompt does not carry the coverage.
+  requirementCoverage: { artifact: ARTIFACTS.requirementCoverage, need: 'optional' },
   implementationResult: lateInput(ARTIFACTS.implementationResult),
   implementationImproveResult: lateInput(ARTIFACTS.implementationImproveResult),
   returns: lateInput(ARTIFACTS.issues),
