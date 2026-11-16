@@ -84,9 +84,14 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
 
   /** The `contract` the parent run holds right now, read when the step runs. Null for a run without a parent. */
   protected async parentContract(run: RunEntity): Promise<string | null> {
+    return this.parentDocument(run, CONTRACT_KIND);
+  }
+
+  /** The newest body of a kind in the parent of a subtask, or null when the run has no parent or the parent has none. */
+  protected async parentDocument(run: RunEntity, kind: string): Promise<string | null> {
     const parentId = run.parentRunId;
     const parent = typeof parentId === 'number' ? await this.runs.findById(parentId) : null;
-    return parent ? this.documents.latestBody(parent.key, CONTRACT_KIND) : null;
+    return parent ? this.documents.latestBody(parent.key, kind) : null;
   }
 
   /** The runtime, model, mode, time limit and session policy of this step, known before it runs. */

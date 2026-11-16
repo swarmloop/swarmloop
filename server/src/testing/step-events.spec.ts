@@ -136,7 +136,16 @@ describe('step events', () => {
 
   beforeEach(async () => {
     golden = await goldenApp('step-events', {
-      agent: jest.fn().mockResolvedValue(result(resultAnswer('Done.', { summary: ['ok'], questions: [], impact: [] }))),
+      agent: jest.fn().mockResolvedValue(
+        result(
+          resultAnswer('Done.', {
+            summary: ['ok'],
+            questions: [],
+            impact: [],
+            requirements: [{ id: 'R1', text: 'ship it' }],
+          }),
+        ),
+      ),
       worktrees: ['E-1/demo'],
     });
     repo = join(golden.root, 'worktrees', 'E-1', 'demo');
@@ -283,7 +292,16 @@ describe('step events', () => {
       .get<{ run: jest.Mock }>(AGENT_RUNNER)
       .run.mockImplementationOnce((input: { onOutput: (chunk: string) => void }) => {
         input.onOutput(`${stream}\n`);
-        return Promise.resolve(result(resultAnswer('Done.', { summary: ['ok'], questions: [], impact: [] })));
+        return Promise.resolve(
+          result(
+            resultAnswer('Done.', {
+              summary: ['ok'],
+              questions: [],
+              impact: [],
+              requirements: [{ id: 'R1', text: 'ship it' }],
+            }),
+          ),
+        );
       });
     const step = new ResearchStep(
       new StepKernel(

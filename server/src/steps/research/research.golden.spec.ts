@@ -35,15 +35,29 @@ describe('research step golden traces', () => {
   const scenarios: [string, jest.Mock][] = [
     [
       'ok',
-      jest.fn().mockResolvedValue(result(resultAnswer('Done.', { summary: ['looked'], questions: [], impact: [] }))),
+      jest.fn().mockResolvedValue(
+        result(
+          resultAnswer('Done.', {
+            summary: ['looked'],
+            questions: [],
+            impact: [],
+            requirements: [{ id: 'R1', text: 'ship the field' }],
+          }),
+        ),
+      ),
     ],
     [
       'questions-open',
-      jest
-        .fn()
-        .mockResolvedValue(
-          result(resultAnswer('Done.', { summary: ['looking'], questions: ['which field is optional?'], impact: [] })),
+      jest.fn().mockResolvedValue(
+        result(
+          resultAnswer('Done.', {
+            summary: ['looking'],
+            questions: ['which field is optional?'],
+            impact: [],
+            requirements: [{ id: 'R1', text: 'ship the field' }],
+          }),
         ),
+      ),
     ],
     ['swarmloop-error', jest.fn().mockRejectedValue(new SwarmloopError('agent refused the task'))],
     ['plain-error', jest.fn().mockRejectedValue(new Error('agent crashed'))],
