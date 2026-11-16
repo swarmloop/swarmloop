@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import type { MergeMode, MilestoneStatus, RequirementStatus } from '../../contract/backlog';
 import type { PipelineCheck } from '../../integrations/code-host/code-host';
 import type { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
@@ -14,7 +17,9 @@ import { RepositoryHost } from '../../steps/shared/repository-host';
 import type { RepositoryOrigins } from '../../steps/shared/repository-origins';
 import { FakeBacklogHost, pipelineOf } from '../../testing/fake-backlog-host';
 import type { CommandService } from '../command.service';
+import { BacklogActions } from './backlog-actions';
 import { BacklogEvents } from './backlog-events';
+import { BacklogQueries } from './backlog-queries';
 import { BacklogMerge } from './backlog-merge';
 import { BacklogScheduler } from './backlog-scheduler';
 import { BacklogStartPort, type BacklogStart } from './backlog-start-port';
@@ -208,4 +213,30 @@ export async function backlogHarness(parallel = 3) {
     tick: () => current.tick(),
   };
   return harness;
+}
+
+/** The action service and the queries over a real database whose checkouts root holds the given projects. */
+export async function actionsHarness(projects: string[] = ['web', 'server']) {
+  const db = await repositoryDatabase();
+  const checkouts = mkdtempSync(join(tmpdir(), 'swarmloop-checkouts-'));
+  for (const project of projects) mkdirSync(join(checkouts, project, '.git'), { recursive: true });
+  const config = new AppConfig(testEnv({ SWARMLOOP_ROOT: db.root, CHECKOUTS_ROOT: checkouts }));
+  const backlogs = db.app.get(BacklogRepository);
+  const queries = new BacklogQueries(backlogs);
+  return {
+    backlogs,
+    queries,
+    actions: new BacklogActions(backlogs, queries, db.clock, config),
+    /** The recorded actions of a backlog, oldest first. */
+    async actionEvents(name: string): Promise<{ facts: Record<string, string>; createdAt: string }[]> {
+      const backlog = (await backlogs.findBacklog(name)) as NonNullable<
+        Awaited<ReturnType<typeof backlogs.findBacklog>>
+      >;
+      return (await backlogs.events(backlog.id as number, 100)).filter((event) => event.kind === 'action').reverse();
+    },
+    async close() {
+      rmSync(checkouts, { recursive: true, force: true });
+      await db.close();
+    },
+  };
 }

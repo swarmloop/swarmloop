@@ -47,6 +47,9 @@ export class MilestoneEntity {
   @Column({ type: 'text' })
   status!: string;
 
+  @Column({ name: 'queued_after_id', type: 'integer', nullable: true })
+  queuedAfterId!: number | null;
+
   @Column({ name: 'created_at', type: 'text' })
   createdAt!: string;
 }

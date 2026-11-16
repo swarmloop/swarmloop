@@ -1,0 +1,69 @@
+import type { MergeMode } from './backlog';
+
+/** The bodies of the backlog actions, shared by the routes and the services that run them. */
+export interface CreateBacklogBody {
+  name: string;
+  repositories: string[];
+  mergeMode: MergeMode;
+}
+
+export interface ProposeMilestoneBody {
+  title: string;
+  goal: string;
+}
+
+export interface AddRequirementsBody {
+  texts: string[];
+}
+
+export interface AddRepositoryBody {
+  repository: string;
+}
+
+export interface RecordDecisionBody {
+  text: string;
+}
+
+/** The fields of a task that a person or the planner writes. */
+interface TaskFieldsBody {
+  title: string;
+  description: string;
+  repositories: string[];
+  covers: string[];
+  depends: string[];
+  files: string[];
+  proof: string[];
+  manual: boolean;
+  fixesMain: string | null;
+  /** The milestone number, or none for a backlog item. */
+  milestone: number | null;
+}
+
+/** @public Used by the task actions, which land after this file. */
+export interface AddTaskBody extends Partial<TaskFieldsBody> {
+  id: string;
+  title: string;
+  description: string;
+}
+
+/**
+ * A change of a task that has not started: only the fields that are given.
+ * @public Used by the task actions, which land after this file.
+ */
+export type ChangeTaskBody = Partial<Omit<TaskFieldsBody, 'manual' | 'fixesMain'>>;
+
+/**
+ * A backlog item: only a title and a description until it is planned.
+ * @public Used by the task actions, which land after this file.
+ */
+export interface AddItemBody {
+  id: string;
+  title: string;
+  description: string;
+}
+
+/** @public Used by the task actions, which land after this file. */
+export interface MoveItemBody {
+  /** The place in the backlog's plan order, from 1. */
+  position: number;
+}

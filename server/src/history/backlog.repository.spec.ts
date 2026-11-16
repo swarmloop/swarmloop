@@ -89,6 +89,24 @@ describe('BacklogRepository', () => {
       ]);
     }));
 
+  it('keeps the milestone a queued milestone waits for', () =>
+    withBacklogs(async (backlogs) => {
+      const backlog = await seedBacklog(backlogs);
+      const base = { backlogId: backlog.id as number, title: 'M', goal: '', createdAt: NOW };
+      const first = await backlogs.saveMilestone({ ...base, number: 1, status: 'active' });
+      const second = await backlogs.saveMilestone({
+        ...base,
+        number: 2,
+        status: 'queued',
+        queuedAfterId: first.id,
+      });
+
+      expect(await backlogs.milestones(backlog.id as number)).toEqual([
+        { ...first, queuedAfterId: null },
+        { ...second, queuedAfterId: first.id },
+      ]);
+    }));
+
   it('updates a saved task and keeps plan order', () =>
     withBacklogs(async (backlogs) => {
       const backlog = await seedBacklog(backlogs);
