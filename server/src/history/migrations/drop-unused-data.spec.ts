@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 import { compactAfterLogMigration } from '../compact-database';
 import { GuardedDataSource } from '../guarded-data-source';
 import { historyDatabaseOptions } from '../history.module';
+import { DropUnusedData1796100000000 } from './1796100000000-drop-unused-data';
 import { migrations } from './index';
 
 interface Column {
@@ -44,7 +45,10 @@ async function tablesOf(dataSource: DataSource): Promise<string[]> {
 }
 
 async function seedOldDatabase(directory: string, deleteLogsByHand: boolean): Promise<void> {
-  const old = new DataSource({ ...historyDatabaseOptions(directory), migrations: migrations.slice(0, -1) });
+  const old = new DataSource({
+    ...historyDatabaseOptions(directory),
+    migrations: migrations.slice(0, migrations.indexOf(DropUnusedData1796100000000)),
+  });
   await old.initialize();
   try {
     await insert(old, 'runtime_cooldowns', { runtime: 'claude', until: 'later', reset_known: 1 });

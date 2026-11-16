@@ -1,8 +1,9 @@
 import type { HttpCallDraft } from '../../../core/swarmloop-error';
 import { FetchFailed, SwarmloopError } from '../../../core/swarmloop-error';
 import { AbstractCodeHost, type HostCall } from '../abstract-code-host';
-import { gitlabStates, type GitlabMergeRequest } from './gitlab-merge-request';
+import { gitlabStates, mergeRequestMergeability, type GitlabMergeRequest } from './gitlab-merge-request';
 import type {
+  MergeGate,
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
@@ -102,12 +103,33 @@ export abstract class GitlabMergeRequests extends AbstractCodeHost {
     return `${root}/api/v4/projects/${encodeURIComponent(project)}/merge_requests/${iid}`;
   }
 
-  protected mergeCall(root: string, project: string, iid: number): HostCall {
+  protected mergeCall(root: string, project: string, iid: number, head?: string): HostCall {
     return {
       url: `${this.mergeRequestUrl(root, project, iid)}/merge`,
       method: 'PUT',
-      payload: JSON.stringify({ squash: true }),
+      payload: JSON.stringify({ squash: true, ...(head ? { sha: head } : {}) }),
     };
+  }
+
+  async readDefaultHead(project: string): Promise<{ branch: string; sha: string; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const base = `${root}/api/v4/projects/${encodeURIComponent(project)}`;
+      const repository = (await this.readJson(base, headers, calls)) as { default_branch?: string } | null;
+      const branch = repository?.default_branch;
+      if (!branch) {
+        throw new FetchFailed(this.failure, calls);
+      }
+      const url = `${base}/repository/branches/${encodeURIComponent(branch)}`;
+      const tip = (await this.readJson(url, headers, calls)) as { commit?: { id?: string } } | null;
+      if (!tip?.commit?.id) {
+        throw new FetchFailed(this.failure, calls);
+      }
+      return { branch, sha: tip.commit.id, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
   }
 
   protected closeCall(root: string, project: string, iid: number): HostCall {
@@ -133,6 +155,18 @@ export abstract class GitlabMergeRequests extends AbstractCodeHost {
       sha: merged ? this.mergedSha(merge) : null,
       conflicts: merge.has_conflicts === true || merge.detailed_merge_status === 'conflict',
       draft: isDraft(merge),
+    };
+  }
+
+  protected gate(body: unknown): MergeGate {
+    const { state, sha, draft } = this.view(body);
+    const merge = (body ?? {}) as GitlabMergeRequest;
+    return {
+      state,
+      sha,
+      draft: draft || merge.work_in_progress === true,
+      head: merge.sha ?? '',
+      ...mergeRequestMergeability(merge.detailed_merge_status),
     };
   }
 

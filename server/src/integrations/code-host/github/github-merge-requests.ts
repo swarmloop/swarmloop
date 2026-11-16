@@ -2,8 +2,9 @@ import type { HttpCallDraft } from '../../../core/swarmloop-error';
 import { FetchFailed, NothingToMerge, SwarmloopError } from '../../../core/swarmloop-error';
 import { AbstractCodeHost, type HostCall } from '../abstract-code-host';
 import { providerMessage } from '../provider-message';
-import { githubStates, graphqlUrl, pullView, type GithubPull } from './github-pull';
+import { githubStates, graphqlUrl, pullMergeability, pullView, type GithubPull } from './github-pull';
 import type {
+  MergeGate,
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
@@ -113,12 +114,34 @@ export abstract class GithubMergeRequests extends AbstractCodeHost {
     return `${root}/repos/${repoPath(project)}/pulls/${iid}`;
   }
 
-  protected mergeCall(root: string, project: string, iid: number): HostCall {
+  protected mergeCall(root: string, project: string, iid: number, head?: string): HostCall {
     return {
       url: `${this.mergeRequestUrl(root, project, iid)}/merge`,
       method: 'PUT',
-      payload: JSON.stringify({ merge_method: 'squash' }),
+      payload: JSON.stringify({ merge_method: 'squash', ...(head ? { sha: head } : {}) }),
     };
+  }
+
+  async readDefaultHead(project: string): Promise<{ branch: string; sha: string; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const base = `${root}/repos/${repoPath(project)}`;
+      const repository = (await this.readJson(base, headers, calls)) as { default_branch?: string } | null;
+      const branch = repository?.default_branch;
+      if (!branch) {
+        throw new FetchFailed('github pull request failed', calls);
+      }
+      const tip = (await this.readJson(`${base}/branches/${encodeURIComponent(branch)}`, headers, calls)) as {
+        commit?: { sha?: string };
+      } | null;
+      if (!tip?.commit?.sha) {
+        throw new FetchFailed('github pull request failed', calls);
+      }
+      return { branch, sha: tip.commit.sha, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
   }
 
   protected closeCall(root: string, project: string, iid: number): HostCall {
@@ -136,6 +159,12 @@ export abstract class GithubMergeRequests extends AbstractCodeHost {
 
   protected view(body: unknown): MergeRequestView {
     return pullView(body);
+  }
+
+  protected gate(body: unknown): MergeGate {
+    const { state, sha, draft } = pullView(body);
+    const head = (body as GithubPull | null)?.head?.sha ?? '';
+    return { state, sha, draft, head, ...pullMergeability(body) };
   }
 
   protected readonly states = githubStates;

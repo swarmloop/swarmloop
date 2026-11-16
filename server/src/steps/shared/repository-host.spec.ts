@@ -1,0 +1,119 @@
+import { HostUnavailable } from '../../core/swarmloop-error';
+import type { PipelineCheck } from '../../integrations/code-host/code-host';
+import type { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { FakeBacklogHost, pipelineOf } from '../../testing/fake-backlog-host';
+import { RepositoryHost } from './repository-host';
+import type { RepositoryOrigins } from './repository-origins';
+
+function check(name: string, status: PipelineCheck['status'], durationMs = 1000): PipelineCheck {
+  return { id: 1, name, app: '', status, durationMs, url: '', summary: '', annotations: [], workflow: true };
+}
+
+const run = { codeHost: 'backlog-fake', startedBy: 'ada' };
+const request = { project: 'acme/web', iid: 7 };
+
+function setup() {
+  const fake = new FakeBacklogHost();
+  fake.addProject('acme/web', 'main', 'web-head');
+  const origins = new Map([['web', { origin: FakeBacklogHost.originOf('acme/web'), project: 'acme/web' }]]);
+  const registry = {
+    forRun: async () => registry,
+    forOrigin: (origin: string) => (fake.matchesOrigin(origin) ? fake.name : null),
+    byName: () => fake,
+    hostFor: async () => fake,
+  } as unknown as CodeHostRegistry;
+  const originsOf = { of: async (repo: string) => origins.get(repo) } as unknown as RepositoryOrigins;
+  return { fake, host: new RepositoryHost(originsOf, registry) };
+}
+
+describe('RepositoryHost', () => {
+  it('reads a green main', async () => {
+    const { fake, host } = setup();
+    fake.setPipeline('acme/web', pipelineOf('success', [check('test', 'success', 4000)], 'https://ci/1'));
+
+    await expect(host.main('web', 'ada')).resolves.toEqual({
+      repository: 'web',
+      branch: 'main',
+      state: 'green',
+      head: 'web-head',
+      failingJobs: [],
+      durationMs: 4000,
+      url: 'https://ci/1',
+    });
+  });
+
+  it('reads a main with a running pipeline as pending', async () => {
+    const { fake, host } = setup();
+    fake.setPipeline('acme/web', pipelineOf('running', [check('test', 'running')]));
+
+    expect((await host.main('web', 'ada')).state).toBe('pending');
+  });
+
+  it('reads a main with no pipeline for its head as pending', async () => {
+    const { host } = setup();
+
+    await expect(host.main('web', 'ada')).resolves.toMatchObject({ state: 'pending', durationMs: null, url: null });
+  });
+
+  it('reads a snapshot with no runs and no checks as pending', async () => {
+    const { fake, host } = setup();
+    fake.setPipeline('acme/web', pipelineOf('success'));
+
+    expect((await host.main('web', 'ada')).state).toBe('pending');
+  });
+
+  it('reads a red main with its failing jobs and the duration', async () => {
+    const { fake, host } = setup();
+    fake.setPipeline(
+      'acme/web',
+      pipelineOf('failed', [check('lint', 'failed', 2000), check('test', 'canceled', 9000), check('build', 'success')]),
+    );
+
+    await expect(host.main('web', 'ada')).resolves.toMatchObject({
+      state: 'red',
+      failingJobs: ['lint', 'test'],
+      durationMs: 9000,
+    });
+  });
+
+  it('names the failing and pending checks of a gate', async () => {
+    const { fake, host } = setup();
+    fake.setGate('acme/web', 7, { mergeability: 'blocked', blockedBy: 'checks' });
+    fake.setChecks('acme/web', 7, [
+      check('lint', 'failed'),
+      check('test', 'running'),
+      check('deploy', 'manual'),
+      check('build', 'success'),
+    ]);
+
+    await expect(host.gate(run, request, 'feature')).resolves.toMatchObject({
+      mergeability: 'blocked',
+      head: 'acme/web-pr-7',
+      failing: ['lint'],
+      pending: ['test', 'deploy'],
+    });
+  });
+
+  it('merges with the head as a guard and moves main to a commit with no pipeline', async () => {
+    const { fake, host } = setup();
+    fake.setPipeline('acme/web', pipelineOf('success', [check('test', 'success')]));
+
+    const sha = await host.merge(run, request, 'acme/web-pr-7');
+
+    expect(sha).toBe('acme/web-merge-1');
+    expect(fake.calls.find((call) => call.name === 'mergeMergeRequest')?.args).toEqual([
+      'acme/web',
+      7,
+      'acme/web-pr-7',
+    ]);
+    expect((await host.main('web', 'ada')).state).toBe('pending');
+  });
+
+  it('passes an outage through', async () => {
+    const { fake, host } = setup();
+    fake.hostDown('2026-11-16T10:00:00.000Z');
+
+    await expect(host.main('web', 'ada')).rejects.toBeInstanceOf(HostUnavailable);
+    await expect(host.merge(run, request, 'x')).rejects.toBeInstanceOf(HostUnavailable);
+  });
+});

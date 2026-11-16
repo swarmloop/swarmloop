@@ -36,6 +36,7 @@ export class FakeCodeHost {
   private refusal: string | null = null;
   /** How many times the server asked the host to open a request, refused or not. */
   openAsks = 0;
+  private mainPasses = false;
   /** For each merge: the head that landed, the feature tip it landed on, and whether its CI passed on top of that tip. */
   readonly landed: { iid: number; head: string; tip: string; testedOnTop: boolean }[] = [];
 
@@ -79,6 +80,11 @@ export class FakeCodeHost {
     } catch {
       return false;
     }
+  }
+
+  /** The default branch reads green: every head `readDefaultHead` returns and every commit a merge makes has a passing pipeline. Nothing is scripted until a spec calls it. */
+  defaultBranchPasses(): void {
+    this.mainPasses = true;
   }
 
   /** The request is closed without a merge, as a person does on the host. */
@@ -167,6 +173,29 @@ export class FakeCodeHost {
     });
   }
 
+  readMergeGate(_project: string, iid: number): Answer<'readMergeGate'> {
+    this.guard();
+    const sha = this.merged.get(iid) ?? null;
+    const source = this.requests.get(iid)?.source;
+    return Promise.resolve({
+      state: sha ? 'merged' : this.closed.has(iid) ? 'closed' : 'open',
+      sha,
+      draft: this.requests.get(iid)?.draft ?? false,
+      head: source && this.onOrigin(source) ? git(this.clone, ['rev-parse', `origin/${source}`]) : '',
+      mergeability: this.conflicting || this.mergeTree(iid) === null ? 'conflicting' : 'clean',
+      blockedBy: null,
+      httpCalls: [],
+    });
+  }
+
+  readDefaultHead(): Answer<'readDefaultHead'> {
+    this.guard();
+    git(this.clone, ['fetch', 'origin']);
+    const sha = git(this.clone, ['rev-parse', `origin/${this.feature}`]);
+    if (this.mainPasses) this.ci.pass(sha);
+    return Promise.resolve({ branch: this.feature, sha, httpCalls: [] });
+  }
+
   mergeRequestState(_project: string, iid: number): Answer<'mergeRequestState'> {
     this.guard();
     const sha = this.merged.get(iid);
@@ -183,7 +212,7 @@ export class FakeCodeHost {
    * The merge adds one commit to the feature branch. It has the tree of the request's branch merged onto the feature
    * tip, as a squash merge has; a request whose branch is not on origin merges the tip's own tree.
    */
-  mergeMergeRequest(_project: string, iid: number): Answer<'mergeMergeRequest'> {
+  mergeMergeRequest(_project: string, iid: number, _head?: string): Answer<'mergeMergeRequest'> {
     this.guard();
     git(this.clone, ['fetch', 'origin']);
     const tip = git(this.clone, ['rev-parse', `origin/${this.feature}`]);
@@ -191,6 +220,7 @@ export class FakeCodeHost {
     const sha = git(this.clone, ['commit-tree', tree, '-p', tip, '-m', `squash !${iid}`]);
     git(this.clone, ['push', 'origin', `${sha}:refs/heads/${this.feature}`]);
     this.merged.set(iid, sha);
+    if (this.mainPasses) this.ci.pass(sha);
     this.recordLanding(iid, tip);
     return Promise.resolve({ sha, httpCalls: [] });
   }

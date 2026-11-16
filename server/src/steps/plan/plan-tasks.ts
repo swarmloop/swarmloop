@@ -178,7 +178,7 @@ function topologicalOrder(tasks: Subtask[]): Subtask[] {
  * Chains tasks that name one file with no dependency path between them: the later task in a topological order
  * depends on the earlier one, so no cycle can appear. Returns one decisions line per added edge.
  */
-function chainSharedFiles(tasks: Subtask[]): string[] {
+export function chainSharedFiles(tasks: Subtask[]): string[] {
   const ordered = topologicalOrder(tasks);
   const decisions: string[] = [];
   ordered.forEach((later, position) => {
