@@ -20,7 +20,6 @@ import {
   listProjects,
   listRemote,
   listRuns,
-  ticketKeys,
   rebaseRun,
   removeRun,
   replaceApp,
@@ -29,6 +28,7 @@ import {
   startReviewer,
   skipTask,
   stopRun,
+  ticketKeys,
 } from '../../lib/endpoints';
 import { receive } from '../../test/fake-socket';
 import { QueryWrapper } from '../../test/query-wrapper';
@@ -101,6 +101,7 @@ const host: ConnectionsView = {
       installs: true,
       app: { name: 'swarmloop-app', clientId: 'Iv.fake', madeBy: 'alice', settingsUrl: null },
       missingOwners: [],
+      mayReplace: true,
       account: 'alice',
       repositories: ['alice/site'],
       selection: 'selected',

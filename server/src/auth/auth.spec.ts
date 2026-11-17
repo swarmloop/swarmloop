@@ -1,7 +1,8 @@
 import { generateKeyPairSync } from 'crypto';
-import { mkdirSync, mkdtempSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { LiveGateway } from '../api/live.gateway';
 import { ConnectionsService } from './connections.service';
 import { HostAppsService } from './host-apps.service';
 import { CommandService } from '../pipeline/command.service';
@@ -90,6 +91,7 @@ describe('login and the auth guard', () => {
       avatarUrl: 'https://avatars.test/ann.png',
       version: 'dev',
       sourceUrl: null,
+      role: 'member',
     });
   });
 
@@ -225,9 +227,43 @@ describe('login and the auth guard', () => {
 
   it('takes the machine token as a bearer, and nothing else', async () => {
     await start('github:ann');
+    // The env token is the first admin's personal token; a token of a member is let in as well.
     expect((await fetch(`${app.url}/runs`, { headers: { authorization: `Bearer ${TOKEN}` } })).status).toBe(200);
+    expect((await fetch(`${app.url}/runs`, { headers: await app.personToken('ann') })).status).toBe(200);
     expect((await fetch(`${app.url}/runs`, { headers: { authorization: 'Bearer wrong' } })).status).toBe(401);
     expect((await fetch(`${app.url}/runs`, { headers: { cookie: 'swarmloop_session=nope' } })).status).toBe(401);
+  });
+
+  it('does not read or write data/token, which held the machine token before personal tokens', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-old-token-'));
+    mkdirSync(join(root, 'data'), { recursive: true });
+    writeFileSync(join(root, 'data', 'token'), 'old-machine-token-0123456789');
+    try {
+      app = await createTestApp({ root, env: { SWARMLOOP_TOKEN: '' } });
+      const old = { authorization: 'Bearer old-machine-token-0123456789' };
+      expect((await fetch(`${app.url}/runs`, { headers: old })).status).toBe(401);
+      await app.close();
+      rmSync(join(root, 'data', 'token'));
+      app = await createTestApp({ root, env: { SWARMLOOP_TOKEN: '' } });
+      expect(existsSync(join(root, 'data', 'token'))).toBe(false);
+    } finally {
+      await app.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('lets the live socket in with a session or a personal token and refuses a handshake with neither', async () => {
+    await start('github:ann');
+    let middleware!: (socket: unknown, next: (error?: Error) => void) => void;
+    app.app.get(LiveGateway).afterInit({ use: (fn: typeof middleware) => (middleware = fn) } as never);
+    const refused = async (headers: Record<string, string | undefined>) =>
+      new Promise<boolean>((resolve) =>
+        middleware({ handshake: { headers } }, (error) => resolve(error !== undefined)),
+      );
+    expect(await refused({ authorization: (await app.personToken('ann')).authorization })).toBe(false);
+    expect(await refused({ cookie: (await app.sessionCookie('ann')).cookie })).toBe(false);
+    expect(await refused({})).toBe(true);
+    expect(await refused({ authorization: 'Bearer wrong' })).toBe(true);
   });
 
   it('records who started a run', async () => {
@@ -257,7 +293,7 @@ describe('without a login provider', () => {
       env: { GITHUB_OAUTH_CLIENT_ID: '', GITHUB_OAUTH_CLIENT_SECRET: '', SWARMLOOP_ALLOW: '', SWARMLOOP_TOKEN: TOKEN },
     });
     try {
-      // The no-login mode is gone: a browser needs a session even before a login exists, the machine token still opens the API.
+      // The no-login mode is gone: a browser needs a session even before a login exists, the first admin's token still opens the API.
       expect((await fetch(`${app.url}/runs`)).status).toBe(401);
       expect((await fetch(`${app.url}/runs`, { headers: { authorization: `Bearer ${TOKEN}` } })).status).toBe(200);
       expect(await (await fetch(`${app.url}/auth/providers`)).json()).toEqual({ providers: [] });
@@ -280,8 +316,6 @@ describe('login with a connecting app: who may log in when SWARMLOOP_ALLOW is em
     git(path, ['remote', 'add', 'origin', `${fake.url}/${project}.git`]);
   }
 
-  const machine = { authorization: `Bearer ${TOKEN}` };
-
   async function start(host: 'github' | 'gitlab', allow = ''): Promise<void> {
     fake = await startFakeHosts();
     app = await createTestApp({
@@ -298,18 +332,18 @@ describe('login with a connecting app: who may log in when SWARMLOOP_ALLOW is em
       },
     });
     if (host === 'github') {
-      const manifest = await fetch(`${app.url}/auth/github/manifest`, { headers: machine });
+      const manifest = await fetch(`${app.url}/auth/github/manifest`);
       expect(manifest.status).toBe(200);
       const state = new URL(((await manifest.json()) as { action: string }).action).searchParams.get('state') ?? '';
       const created = await fetch(`${app.url}/auth/github/created?code=manifest-code&state=${state}`, {
         redirect: 'manual',
-        headers: { ...machine, cookie: `swarmloop_state=${state}` },
+        headers: { cookie: `swarmloop_state=${state}` },
       });
       expect(created.status).toBe(302);
     } else {
       const saved = await fetch(`${app.url}/auth/gitlab/application`, {
         method: 'POST',
-        headers: { ...machine, 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ clientId: 'gl-id', clientSecret: 'gl-secret' }),
       });
       expect(saved.status).toBe(201);
@@ -493,7 +527,7 @@ describe('first run: the manifest, the owner, the install step and the install r
       clientId: 'Iv.fake',
       clientSecret: 'secret',
       privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
-      madeBy: 'machine',
+      madeBy: 'first-run',
     });
     const installed = await callback('installation_id=7&setup_action=install');
     expect(installed.status).toBe(302);

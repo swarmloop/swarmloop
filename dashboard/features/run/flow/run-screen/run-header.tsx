@@ -14,11 +14,12 @@ import MuiLink from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { ConfirmDialog } from '../../../shell';
-import { duration, money, tokens } from '../../../../lib/format';
+import { duration, money, tokens, when } from '../../../../lib/format';
 import { runWord } from '../../run-word';
 import { RunStateIcon, toneColor } from '../../run-state-word';
 import type { FlowView } from '@contract/api';
 import { epicFigures } from '@contract/epic-figures';
+import { personLabel } from '@contract/people';
 
 export function RunHeader({
   flow,
@@ -124,7 +125,12 @@ export function RunHeader({
             </Typography>
             {flow.startedBy ? (
               <Typography variant="body2" color="text.secondary">
-                Started by {flow.startedBy}
+                Started by {personLabel(flow.startedBy)}
+              </Typography>
+            ) : null}
+            {flow.startedBy && flow.ownerSince ? (
+              <Typography variant="body2" color="text.secondary">
+                Owned by {flow.startedBy} since {when(flow.ownerSince)}, before personal tokens it ran as machine
               </Typography>
             ) : null}
             {flow.projects.map((project) => (

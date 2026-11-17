@@ -9,7 +9,8 @@ import { CommandEntity, RunEntity } from './entities';
 import { RunRepository } from './run.repository';
 import { transaction } from './transaction';
 import type { StoredAgents } from '../contract/api';
-import { deriveState } from './run-state';
+import { deriveState, ownerColumns } from './run-state';
+import { LEGACY_MACHINE } from '../contract/people';
 
 interface AcceptInput {
   type: CommandType;
@@ -19,6 +20,8 @@ interface AcceptInput {
   expectedRevision?: number;
   /** Creates the run in the same transaction when it does not exist. */
   create?: { targetPath: string | null; startedBy?: string | null; agents?: StoredAgents | null };
+  /** A person who takes over a run still recorded as `machine`, with the run's subtasks that are too. */
+  takeOver?: { login: string; agents: StoredAgents | null };
   /** The pure policy. It throws to refuse the command. */
   admit: (run: RunEntity | null) => void;
 }
@@ -62,6 +65,11 @@ export class CommandRepository {
       input.admit(run);
       if (run && input.expectedRevision !== undefined && run.revision !== input.expectedRevision) {
         throw conflict('REVISION_CONFLICT', `${input.key} changed since revision ${input.expectedRevision}`, run);
+      }
+      if (run && input.takeOver && run.startedBy === LEGACY_MACHINE) {
+        const columns = ownerColumns(input.takeOver.login, input.takeOver.agents, this.clock.iso());
+        await runTable.update({ id: run.id }, columns);
+        await runTable.update({ parentRunId: run.id, startedBy: LEGACY_MACHINE }, columns);
       }
       const created = !run;
       if (!run) {

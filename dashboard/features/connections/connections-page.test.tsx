@@ -9,7 +9,6 @@ import {
   getConnections,
   getIntegrationCards,
   getOwner,
-  getSession,
   replaceApp,
   testIntegration,
 } from '../../lib/endpoints';
@@ -19,7 +18,6 @@ import { ConnectionsPage } from './connections-page';
 vi.mock('../../lib/endpoints', () => ({
   getConnections: vi.fn(),
   disconnect: vi.fn(),
-  getSession: vi.fn(),
   replaceApp: vi.fn(),
   getOwner: vi.fn(),
   getIntegrationCards: vi.fn(),
@@ -46,6 +44,7 @@ const connected: ConnectionsView = {
         settingsUrl: 'https://github.com/settings/apps/swarmloop-app',
       },
       missingOwners: [],
+      mayReplace: true,
       account: 'alice',
       repositories: ['alice/site', 'acme/api'],
       selection: 'selected',
@@ -56,6 +55,7 @@ const connected: ConnectionsView = {
       appLabel: 'Application',
       installs: false,
       app: null,
+      mayReplace: false,
       account: null,
       repositories: [],
       selection: null,
@@ -90,7 +90,6 @@ beforeEach(() => {
   vi.mocked(disconnect).mockReset();
   vi.mocked(replaceApp).mockReset();
   vi.mocked(getOwner).mockReset().mockResolvedValue({ owner: 'acme', others: [] });
-  vi.mocked(getSession).mockReset().mockResolvedValue({ user: 'alice' });
 });
 
 describe('ConnectionsPage', () => {
@@ -129,13 +128,39 @@ describe('ConnectionsPage', () => {
     expect(screen.getAllByText('not connected')).toHaveLength(2);
   });
 
-  it('disables Replace app for a person who did not make the app, and says who can', async () => {
-    vi.mocked(getConnections).mockResolvedValue(connected);
-    vi.mocked(getSession).mockResolvedValue({ user: 'bob' });
+  const withReplace = (mayReplace: boolean, madeBy: string | null): ConnectionsView => ({
+    connections: connected.connections.map((item) =>
+      item.host === 'github' && item.app ? { ...item, mayReplace, app: { ...item.app, madeBy } } : item,
+    ),
+  });
+
+  it('shows Replace app to an admin who did not make the app', async () => {
+    vi.mocked(getConnections).mockResolvedValue(withReplace(true, 'alice'));
     render(<ConnectionsPage />);
 
-    expect(await screen.findByRole('button', { name: 'Replace app' })).toBeDisabled();
-    expect(screen.getByText('Only alice can replace this app')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Replace app' })).toBeEnabled();
+    expect(screen.queryByText(/can replace this app/)).not.toBeInTheDocument();
+  });
+
+  it('tells a member who can replace the app', async () => {
+    vi.mocked(getConnections).mockResolvedValue(withReplace(false, 'alice'));
+    render(<ConnectionsPage />);
+
+    expect(await screen.findByText('Only alice or an admin can replace this app')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Replace app' })).not.toBeInTheDocument();
+  });
+
+  it('says only an admin can replace an app with no maker, and names a legacy maker', async () => {
+    vi.mocked(getConnections).mockResolvedValue(withReplace(false, null));
+    const { unmount } = render(<ConnectionsPage />);
+    expect(await screen.findByText('Only an admin can replace this app')).toBeInTheDocument();
+    unmount();
+
+    vi.mocked(getConnections).mockResolvedValue(withReplace(false, 'machine'));
+    render(<ConnectionsPage />);
+    expect(
+      await screen.findByText('Only machine (before personal tokens) or an admin can replace this app'),
+    ).toBeInTheDocument();
   });
 
   it('confirms with the app name and its GitHub settings, then shows the first-run form', async () => {

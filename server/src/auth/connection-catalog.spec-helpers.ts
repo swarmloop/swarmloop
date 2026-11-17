@@ -53,7 +53,7 @@ function envFile(root: string, overrides: Record<string, string>): string {
     SWARMLOOP_API_PORT: '0',
     SWARMLOOP_API_HOST: '127.0.0.1',
     SWARMLOOP_ROOT: root,
-    SWARMLOOP_TOKEN: 'test-machine-token',
+    SWARMLOOP_TOKEN: 'test-admin-token',
   };
   return `${Object.entries({ ...defaults, ...overrides })
     .map(([name, value]) => `${name}=${value}`)
@@ -98,7 +98,11 @@ export async function start(
     .useValue(cli ?? sandbox)
     .overrideProvider(AuthService)
     .useValue({
-      check: (headers: Record<string, string>) => ({ allowed: true, actor: headers['x-actor'] ?? null }),
+      check: (headers: Record<string, string>) => ({
+        allowed: true,
+        actor: headers['x-actor'] ?? null,
+        via: 'session',
+      }),
     });
   if (connections) {
     builder = builder.overrideProvider(CONNECTIONS).useValue(connections);

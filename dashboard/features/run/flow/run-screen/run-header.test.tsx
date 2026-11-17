@@ -180,6 +180,25 @@ describe('RunHeader', () => {
     expect(screen.queryByText(/Started by/)).not.toBeInTheDocument();
   });
 
+  it('names a run from before personal tokens and its owner after a takeover', () => {
+    const { unmount } = render(
+      <RunHeader {...headerProps()} flow={flowView({ status: 'done', startedBy: 'machine' })} />,
+    );
+    expect(screen.getByText('Started by machine (before personal tokens)')).toBeInTheDocument();
+    expect(screen.queryByText(/Owned by/)).not.toBeInTheDocument();
+    unmount();
+    render(
+      <RunHeader
+        {...headerProps()}
+        flow={flowView({ status: 'done', startedBy: 'octocat', ownerSince: '2026-11-12T10:30:00.000Z' })}
+      />,
+    );
+    expect(screen.getByText('Started by octocat')).toBeInTheDocument();
+    expect(
+      screen.getByText(/^Owned by octocat since Nov 12, .+, before personal tokens it ran as machine$/),
+    ).toBeInTheDocument();
+  });
+
   it('does not mention the workspace of a run that still has it', () => {
     header('done');
 

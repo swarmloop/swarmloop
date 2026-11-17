@@ -1,9 +1,8 @@
 import { join, resolve } from 'path';
 import { applySettings, envFilePath, readSettings } from '../config/load-env';
-import { rawEnv } from '../config/process-env';
-import { machineToken } from '../auth/machine-token';
 import { SystemClock } from '../core/clock';
 import { Sloop, serve } from './agent';
+import { NOT_SIGNED_IN, tokenSource } from './cli-token';
 import { HttpServerApi } from './server-api';
 import { runShell } from './shell';
 import { readApiUrl } from './shell-env';
@@ -19,8 +18,14 @@ async function main(): Promise<void> {
   }
   if (process.argv[2] === 'acp') {
     const root = resolve(__dirname, '../../..');
+    const token = tokenSource();
+    if (!token) {
+      process.stderr.write(`${NOT_SIGNED_IN}\n`);
+      process.exitCode = 1;
+      return;
+    }
     const agent = new Sloop({
-      api: new HttpServerApi(readApiUrl(envFilePath(root)), machineToken(root, rawEnv().SWARMLOOP_TOKEN)),
+      api: new HttpServerApi(readApiUrl(envFilePath(root)), token),
       skills: loadSkills(join(root, 'skills')),
       repoRoot: root,
       checkoutsRoot: readCheckoutsRoot(envFilePath(root)),

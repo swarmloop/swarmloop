@@ -4,6 +4,7 @@ import type { InterruptionNote } from './interruption';
 import type { TaskEntry } from './task-entry';
 import type { SubtaskStatus } from './subtask';
 import type { RunBacklog } from './backlog';
+import type { Role } from './people';
 
 export type { SettingsBody, StoredAgents } from './settings';
 export type {
@@ -129,6 +130,8 @@ export interface FlowView {
   mergeWait?: string;
   /** Who started the run. Missing for a run the CLI started and for runs from before logins. */
   startedBy?: string;
+  /** When a person took the run over from machine; absent for a run nobody took over. */
+  ownerSince?: string;
   /** The tasks of a split plan after plan-improve, in plan order. Missing when the run does not split. */
   tasks?: TaskEntry[];
   /** Set on a run with subtask runs only: its own cost plus its subtasks', and the wall clock from its start to its end. */
@@ -376,6 +379,8 @@ export interface ConnectionView {
   missingOwners?: string[];
   /** People connected through the app; only for who may replace it. */
   connected?: string[];
+  /** True when the viewer may replace the app: its maker, or an admin. */
+  mayReplace: boolean;
 }
 
 export interface ConnectionsView {
@@ -408,4 +413,5 @@ export interface MeView {
   version?: string;
   /** Source repository URL of the server image; null when it is not an http(s) address. */
   sourceUrl?: string | null;
+  role?: Role;
 }

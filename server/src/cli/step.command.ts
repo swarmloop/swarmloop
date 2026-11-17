@@ -2,6 +2,7 @@ import { Command, CommandRunner, Option } from 'nest-commander';
 import { CommandService } from '../pipeline/command.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { isStep, StepOptions } from '../core/pipeline-result';
+import { CliPersons, isRefusal } from './cli-person';
 import { report } from './run.command';
 
 @Command({
@@ -13,6 +14,7 @@ export class StepCommand extends CommandRunner {
   constructor(
     private readonly pipeline: PipelineService,
     private readonly commands: CommandService,
+    private readonly persons: CliPersons,
   ) {
     super();
   }
@@ -24,9 +26,18 @@ export class StepCommand extends CommandRunner {
       await report({ exitCode: 1, message: `${name} is unknown` });
       return;
     }
+    const person = await this.persons.resolve();
+    if (isRefusal(person)) {
+      await report(person);
+      return;
+    }
     await report(
-      await this.commands.inProcess('step', key, { step: name, ...options }, () =>
-        this.pipeline.step(name, key, options),
+      await this.commands.inProcess(
+        'step',
+        key,
+        { step: name, ...options },
+        () => this.pipeline.step(name, key, options),
+        person,
       ),
     );
   }
