@@ -16,12 +16,13 @@ import type { StepName } from '../../contract/steps';
 import { sampleSelf } from '../../history/visit';
 import { withDecision } from '../shared/handoff';
 import { openQuestions } from '../shared/answers';
+import { keepOpen, type StoredQuestion } from '../shared/question-parts';
 import { renderQuestions } from '../research/research-record';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { SplitMerge } from './split-merge';
 import { REBASED_PREFIX } from './split-rebase';
 import { SplitNeeds } from './split-needs';
-import { questionFor, SplitQuestions } from './split-questions';
+import { askedQuestion, SplitQuestions } from './split-questions';
 import { earliestRetry } from './subtask-retry';
 import { BaseStep, StepContext } from '../base-step';
 import { renderImplementation } from './implement-record';
@@ -59,6 +60,7 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     ARTIFACTS.implementationResult,
     ARTIFACTS.contract,
     ARTIFACTS.subtaskQuestions,
+    ARTIFACTS.questionParts,
   ];
 
   private readonly needs: SplitNeeds;
@@ -117,8 +119,12 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     const held = this.questions.pending(delivered.body, answers);
     const answered = await this.answer(ctx, withStatuses(input.subtasks), delivered.contract, held);
     const needed = await this.needs.run(ctx.opened, withStatuses(input.subtasks), answered.contract, held);
-    const open = [...openQuestions(delivered.body, []), ...answered.asks, ...needed.asks];
+    const carried = openQuestions(delivered.body, []);
+    const asks = [...answered.asks, ...needed.asks];
+    const open = [...carried, ...asks.map((ask) => ask.question)];
     const questions = renderQuestions(open);
+    const storedParts = (await ctx.reread(ARTIFACTS.questionParts)) ?? [];
+    const parts = keepOpen(storedParts, carried, asks);
     const followed = await this.refresh(run, needed.tasks);
     const { tasks: merged, refusal, unfetched } = await this.merges.run(run, followed);
     const tasks = await this.explain(run, await this.start(run, merged));
@@ -126,6 +132,9 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       ...(JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }]),
       ...(needed.contract === read ? [] : [{ artifact: ARTIFACTS.contract, value: needed.contract }]),
       ...(questions === asked ? [] : [{ artifact: ARTIFACTS.subtaskQuestions, value: questions }]),
+      ...(JSON.stringify(parts) === JSON.stringify(storedParts)
+        ? []
+        : [{ artifact: ARTIFACTS.questionParts, value: parts }]),
     ];
     const line = statusLine(tasks);
     const blocked = tasks.filter((task) => task.status === 'blocked');
@@ -190,7 +199,7 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     tasks: Subtask[],
     contract: string,
     waiting: string[],
-  ): Promise<{ contract: string; asks: string[] }> {
+  ): Promise<{ contract: string; asks: StoredQuestion[] }> {
     const { run, startedAt } = ctx.opened;
     for (const task of tasks.filter((item) => !settled(item) && !waiting.includes(item.id))) {
       const child = await this.subtasks.find(run, task.id);
@@ -200,7 +209,7 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       if (this.subtasks.replyPending(child)) return { contract, asks: [] };
       const asked = child.currentStep === 'code-review' ? ARTIFACTS.reviewQuestions : ARTIFACTS.questions;
       const questions = (await this.reader.reread(child.key, asked)) ?? '';
-      return { contract, asks: [questionFor(task.id, questions, startedAt)] };
+      return { contract, asks: [askedQuestion(task.id, questions, startedAt)] };
     }
     return { contract, asks: [] };
   }

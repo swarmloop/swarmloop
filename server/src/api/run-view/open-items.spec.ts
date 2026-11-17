@@ -54,4 +54,20 @@ describe('open questions of the run view', () => {
     expect(resumeState(waiting, answered, [asked, answers])).toBe('ready');
     expect(openItems(waiting, [asked, doc('review_questions', '')], [])).toEqual([]);
   });
+
+  it('attaches the stored parts to the question they belong to, and none to an unmatched one', () => {
+    const waiting = { currentStep: 'code-review', status: 'waiting' } as RunEntity;
+    const parts = { decide: 'Is it?', sides: [{ who: 'implement', text: 'No answer' }], full: 'all', askedAt: 't' };
+    const kept = [{ question: 'review ask (asked t)', parts }];
+    const asked = doc('review_questions', '- review ask (asked t)\n- old ask (asked s)\n');
+
+    const items = openItems(waiting, [asked, doc('question_parts', JSON.stringify(kept))], []);
+    expect(items.map((item) => item.parts)).toEqual([parts, undefined]);
+
+    const split = { currentStep: 'implement', split: true } as RunEntity;
+    const subtask = doc('subtask_questions', '- Subtask a asks: which? (asked t)\n');
+    const own = [{ question: 'Subtask a asks: which? (asked t)', parts }];
+    expect(openItems(split, [subtask, doc('question_parts', JSON.stringify(own))], [])[0].parts).toEqual(parts);
+    expect(openItems(split, [subtask, doc('question_parts', 'not json')], [])[0].parts).toBeUndefined();
+  });
 });

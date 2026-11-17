@@ -105,4 +105,63 @@ describe('WaitingPanel', () => {
     expect(screen.queryByRole('button', { name: 'Resume' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument();
   });
+
+  describe('a question in parts', () => {
+    const asked = '2026-11-15T07:11:43.444Z';
+    const points = Array.from({ length: 50 }, (_, index) => `${index + 1}. Do ${index + 1} is met`);
+    const parts = {
+      decide: 'Is the requirements review right that Do 4 is missing?',
+      sides: [
+        { who: 'requirements', text: 'Do 4 is missing: the skill does not point to project-base.md' },
+        { who: 'implement', text: 'Implement did not answer this point' },
+      ],
+      full: points.join('\n'),
+      askedAt: asked,
+    };
+    const question = 'requirements still returns: ... Which holds? (asked 2026-11-15T07:11:43.444Z)';
+    const partsFlow = () =>
+      flowView({
+        status: 'waiting',
+        resume: 'need-answers',
+        actions: ['answer'],
+        items: [{ kind: 'question', id: question, label: question, answer: '', parts }],
+      });
+
+    it('reads as a question: what is decided, the two sides, the whole review folded as a list, local time', async () => {
+      const user = userEvent.setup({ delay: null });
+      vi.mocked(sendAnswers).mockResolvedValue(flowView());
+      const { container } = render(<WaitingPanel flow={partsFlow()} onChange={vi.fn()} />);
+
+      expect(screen.getByText(parts.decide)).toBeInTheDocument();
+      expect(screen.getByText(/Do 4 is missing: the skill/)).toBeInTheDocument();
+      expect(screen.getByText('Implement did not answer this point')).toBeInTheDocument();
+      expect(screen.queryByText(/Do 5 is met/)).not.toBeVisible();
+      const details = container.querySelector('details') as HTMLDetailsElement;
+      expect(details.querySelector('summary')?.textContent).toBe('Show the whole review');
+      expect(details.querySelectorAll('li')).toHaveLength(50);
+      expect(container.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+
+      await user.type(screen.getByRole('textbox', { name: question }), 'keep it');
+      await user.click(screen.getByRole('button', { name: 'Submit' }));
+      expect(sendAnswers).toHaveBeenCalledWith('run-1', {
+        answers: [{ kind: 'question', id: question, body: 'keep it' }],
+      });
+    });
+
+    it('renders the label of a question without parts, and a list in the reason as a list', () => {
+      render(
+        <WaitingPanel
+          flow={flowView({
+            status: 'waiting',
+            reason: '- first\n- second',
+            items: [{ kind: 'question', id: 'q', label: 'Which **database**?', answer: '' }],
+          })}
+          onChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('database').tagName).toBe('STRONG');
+      expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual(['first', 'second']);
+    });
+  });
 });

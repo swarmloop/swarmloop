@@ -78,9 +78,11 @@ export interface RunRef {
 
 /** A question that waits for a person, in parts: what is decided, each side on the point in dispute, and the whole text. */
 export interface QuestionParts {
-  decided: string;
+  decide: string;
   sides: { who: string; text: string }[];
   full: string;
+  /** When the question was asked, as an ISO time; the dashboard shows it in local time. */
+  askedAt: string;
 }
 
 export interface FlowItem {

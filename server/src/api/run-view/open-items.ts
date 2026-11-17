@@ -2,6 +2,7 @@ import type { DocumentEntity, RunEntity } from '../../history/entities';
 import type { FlowItem } from '../../contract/api';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered, openQuestions } from '../../steps/shared/answers';
+import { readStoredQuestions } from '../../steps/shared/question-parts';
 import { research } from '../../agent-result/definitions/research';
 import { storedResult } from '../../agent-result/stored-result';
 import type { ResearchResult } from '../../agent-result/definitions/research';
@@ -15,12 +16,17 @@ function questionItems(
   results: Parameters<typeof openQuestions>[1],
 ): FlowItem[] {
   const stored = answered(latest(documents, 'answers') ?? '');
-  return openQuestions(latest(documents, kind) ?? '', results).map((question) => ({
-    kind: 'question',
-    id: question,
-    label: question,
-    answer: stored.get(question) ?? '',
-  }));
+  const parts = readStoredQuestions(latest(documents, 'question_parts') ?? '');
+  return openQuestions(latest(documents, kind) ?? '', results).map((question) => {
+    const found = parts.find((item) => item.question === question);
+    return {
+      kind: 'question',
+      id: question,
+      label: question,
+      answer: stored.get(question) ?? '',
+      ...(found ? { parts: found.parts } : {}),
+    };
+  });
 }
 
 function pasteItems(documents: DocumentEntity[], pasteUrls: string[]): FlowItem[] {
