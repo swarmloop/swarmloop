@@ -130,6 +130,8 @@ export interface FlowView {
   mergeWait?: string;
   /** Who started the run. Missing for a run the CLI started and for runs from before logins. */
   startedBy?: string;
+  /** When a person took the run over from machine; absent for a run nobody took over. */
+  ownerSince?: string;
   /** The tasks of a split plan after plan-improve, in plan order. Missing when the run does not split. */
   tasks?: TaskEntry[];
   /** Set on a run with subtask runs only: its own cost plus its subtasks', and the wall clock from its start to its end. */

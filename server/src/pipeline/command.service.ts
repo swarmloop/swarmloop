@@ -5,6 +5,7 @@ import { missingCredential, runAgents } from '../config/agents';
 import type { StoredAgents } from '../contract/api';
 import type { CommandEntity, RunEntity } from '../history/entities';
 import { CommandRepository, conflict } from '../history/command.repository';
+import { UserSettingRepository } from '../history/user-setting.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { blockCode, deriveState } from '../history/run-state';
@@ -33,9 +34,14 @@ export interface SubmitOptions {
   idempotencyKey?: string;
   expectedRevision?: number;
   create?: { targetPath: string | null; startedBy?: string | null; agents?: StoredAgents | null };
+  /** The person who asks. Resume, replay and rebase by a person take over a run recorded as machine. */
+  actor?: string | null;
   /** Runs this command in this process instead of the registered handler. The CLI uses it. */
   run?: CommandHandler;
 }
+
+/** The commands that make their person the owner of a run that was recorded as machine. */
+const TAKEOVER_TYPES: readonly CommandType[] = ['resume', 'replay', 'rebase'];
 
 type Outcome = { ok: true; value: unknown } | { ok: false; error: unknown };
 
@@ -63,6 +69,7 @@ export class CommandService {
     private readonly runStop: RunStop,
     private readonly config: AppConfig,
     private readonly credentials: PersonalCredentials,
+    private readonly userSettings: UserSettingRepository,
   ) {}
 
   register(type: CommandType, handler: CommandHandler): void {
@@ -89,6 +96,7 @@ export class CommandService {
       idempotencyKey: options.idempotencyKey,
       expectedRevision: options.expectedRevision,
       create: options.create,
+      takeOver: await this.takeOverOf(type, options.actor),
       admit: (run) => this.admit(type, key, run, options.run ? null : code),
     });
     await barrier('after-accept');
@@ -97,6 +105,11 @@ export class CommandService {
       this.schedule(accepted.command, key);
     }
     return accepted;
+  }
+
+  private async takeOverOf(type: CommandType, actor: string | null | undefined) {
+    if (!actor || !TAKEOVER_TYPES.includes(type)) return undefined;
+    return { login: actor, agents: (await this.userSettings.read(actor))?.agents ?? null };
   }
 
   /** A new run starts only when every agent it can use has a credential for its starter: theirs, else the server's. */
@@ -133,6 +146,7 @@ export class CommandService {
     key: string,
     payload: Record<string, unknown>,
     run: () => Promise<PipelineResult>,
+    person?: { login: string; agents: StoredAgents | null },
   ): Promise<PipelineResult> {
     try {
       assertKey(key);
@@ -140,7 +154,11 @@ export class CommandService {
       return { exitCode: 1, message: error instanceof Error ? error.message : 'key is invalid' };
     }
     try {
-      const { value } = await this.submit<PipelineResult>(type, key, payload, { create: { targetPath: null }, run });
+      const { value } = await this.submit<PipelineResult>(type, key, payload, {
+        create: { targetPath: null, ...(person ? { startedBy: person.login, agents: person.agents } : {}) },
+        actor: person?.login,
+        run,
+      });
       return value;
     } catch (error) {
       if (error instanceof HttpException) {
