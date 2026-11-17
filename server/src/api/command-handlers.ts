@@ -4,6 +4,7 @@ import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { ChatService } from './chat.service';
+import { RunAnswersService } from './run-answers.service';
 import { RunCommandsService, StartPlan } from './run-commands.service';
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { RunRebaseService } from './run-rebase.service';
@@ -30,6 +31,7 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     private readonly executor: CommandService,
     private readonly reconciler: Reconciler,
     private readonly runs: RunCommandsService,
+    private readonly answering: RunAnswersService,
     private readonly taskCommands: RunSubtaskCommandsService,
     private readonly rebases: RunRebaseService,
     private readonly chat: ChatService,
@@ -45,7 +47,7 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     const on = this.executor.register.bind(this.executor);
     on('start', (_key, payload) => this.runs.startPlanned(payload as unknown as StartPlan));
     on('resume', (key, payload) => this.runs.resume(key, payload.prompt as string | undefined));
-    on('answer', (key, payload) => this.runs.answers(key, payload));
+    on('answer', (key, payload) => this.answering.answers(key, payload));
     on('step', (key, payload) => {
       const { step, body } = payload as unknown as StepPayload;
       return this.runs.startStep(key, step, body);

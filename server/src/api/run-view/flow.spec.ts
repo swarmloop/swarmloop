@@ -4,7 +4,8 @@ import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { LoopEventEntity } from '../../history/entities';
-import { phases, reason, returns, sentence } from './flow';
+import { phases, returns } from './flow';
+import { reason, sentence } from './flow-waiting';
 
 describe('failure reason', () => {
   it('shows the current pipeline error instead of an older failing test', () => {

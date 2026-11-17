@@ -1,6 +1,6 @@
 import type { DocumentEntity, RunEntity } from '../../history/entities';
 import { renderQuestions } from '../../steps/research/research-record';
-import { resumeState, stateView } from './flow';
+import { resumeState, stateView } from './flow-waiting';
 import { openItems } from './open-items';
 
 describe('open questions of the run view', () => {

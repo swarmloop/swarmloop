@@ -24,6 +24,7 @@ import { SettingsService } from './settings.service';
 import { StatsController } from './stats.controller';
 import { SubtaskClose } from './subtask-close';
 import { BacklogStart } from './backlog-start';
+import { RunAnswersService } from './run-answers.service';
 import { RunCommandsService } from './run-commands.service';
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { RunQueriesService } from './run-queries.service';
@@ -55,6 +56,7 @@ import { RunRebaseService } from './run-rebase.service';
   providers: [
     RunQueriesService,
     RunCommandsService,
+    RunAnswersService,
     BacklogStart,
     RunSubtaskCommandsService,
     SubtaskClose,
