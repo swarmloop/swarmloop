@@ -5,6 +5,7 @@ import AccordionSummary from '@mui/material/AccordionSummary';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
+import { DisclosureIcon } from '../../../components/ui/disclosure-icon';
 import { duration } from '../../../lib/format';
 import { LogTranscript } from '../log-transcript';
 import { DETAIL } from './tokens';
@@ -33,7 +34,7 @@ export function Exchanges({ exchanges }: { exchanges: Exchange[] }): ReactElemen
           elevation={0}
           sx={{ borderTop: 1, borderColor: 'divider', bgcolor: 'transparent' }}
         >
-          <AccordionSummary>
+          <AccordionSummary expandIcon={<DisclosureIcon />}>
             <Typography variant="body2">
               {exchange.model} · {duration(exchange.durationMs)}
             </Typography>
