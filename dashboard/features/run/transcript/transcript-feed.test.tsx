@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { getHistory } from '../../../lib/endpoints';
-import { createTheme } from '@mui/material/styles';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { theme } from '../../../theme/theme';
 import { stripeColor } from '../../../test/card-stripe';
 import { historyView } from '../../../test/fixtures';
 import { QueryWrapper } from '../../../test/query-wrapper';
@@ -187,6 +188,29 @@ describe('TranscriptFeed', () => {
     feed(run(5));
     expect(screen.queryByRole('button', { name: /actions$/ })).not.toBeInTheDocument();
     expect(screen.getByText(/tool4/)).toBeInTheDocument();
+  });
+
+  it('turns the actions arrow 90 degrees when the group opens', async () => {
+    const user = userEvent.setup({ delay: null });
+    const events = Array.from({ length: 7 }, (_, index) =>
+      commandEvents(index * 3 + 1, `s${index}`, { executable: `tool${index}` }),
+    ).flat();
+    render(
+      <ThemeProvider theme={theme}>
+        <TranscriptFeed runKey="run-1" events={events} />
+      </ThemeProvider>,
+      { wrapper: QueryWrapper },
+    );
+
+    const toggle = screen.getByRole('button', { name: '7 actions' });
+    const wrapper = () => toggle.querySelector('.MuiAccordionSummary-expandIconWrapper')!;
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(getComputedStyle(wrapper()).transform).not.toBe('rotate(90deg)');
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(getComputedStyle(wrapper()).transform).toBe('rotate(90deg)');
   });
 
   it('follows new events while the reader is at the bottom', () => {

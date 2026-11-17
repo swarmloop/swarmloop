@@ -1,10 +1,9 @@
 import type { ReactElement } from 'react';
 import { useState } from 'react';
-import ExpandLess from '@mui/icons-material/ExpandLess';
-import ExpandMore from '@mui/icons-material/ExpandMore';
 import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
 import Typography from '@mui/material/Typography';
+import { DisclosureIcon } from '../../../../components/ui/disclosure-icon';
 import { SeriesChart, type SeriesLine } from '../../series';
 import { cores, memory } from '../../../../lib/format';
 import type { CheckCommandView, StepView } from '@contract/api';
@@ -71,7 +70,6 @@ function visitSpanMs(visit: StepView['visits'][number], samples: Sample[]): numb
 /** The collapsed `Resources` line of a visit; it opens the CPU and memory charts. */
 function Resources({ visit, lines }: { visit: StepView['visits'][number]; lines: SeriesLine[] }): ReactElement {
   const [open, setOpen] = useState(false);
-  const Chevron = open ? ExpandLess : ExpandMore;
   return (
     <Box sx={{ mt: 2 }}>
       <ButtonBase
@@ -79,7 +77,7 @@ function Resources({ visit, lines }: { visit: StepView['visits'][number]; lines:
         onClick={() => setOpen((value) => !value)}
         sx={{ gap: 0.5, fontSize: 13, color: 'text.secondary' }}
       >
-        <Chevron sx={{ fontSize: 18 }} />
+        <DisclosureIcon open={open} />
         {`Resources: ${cores(visit.cpuAvg)} cores avg · ${cores(visit.cpuPeak)} peak · ${memory(visit.memPeak)} peak`}
       </ButtonBase>
       {open ? (

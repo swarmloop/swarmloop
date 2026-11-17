@@ -49,6 +49,20 @@ export const theme = createTheme({
           from: { opacity: 0 },
           to: { opacity: 1 },
         },
+        // The one link style. :where() has zero specificity, so a component that styles its own anchor keeps its look.
+        ':where(a)': {
+          color: 'var(--mui-palette-primary-main)',
+          textDecoration: 'none',
+          textUnderlineOffset: '0.2em',
+          textDecorationThickness: '1px',
+        },
+        ':where(a):visited': { color: 'var(--mui-palette-primary-main)' },
+        ':where(a):hover': { textDecoration: 'underline' },
+        ':where(a):focus-visible': {
+          outline: '2px solid var(--mui-palette-primary-main)',
+          outlineOffset: '2px',
+          borderRadius: '2px',
+        },
         // Chart colors, checked for colour-blind separation and contrast against each mode's paper.
         '[data-light]': {
           '--swarmloop-skipped': '#8a847a',
@@ -70,6 +84,16 @@ export const theme = createTheme({
           '--chart-grid': '#353028',
           '--chart-axis': '#8f877a',
         },
+      },
+    },
+    MuiLink: { defaultProps: { underline: 'hover' } },
+    MuiAccordionSummary: {
+      styleOverrides: {
+        expandIconWrapper: ({ theme: t }) => ({
+          transition: t.transitions.create('transform', { duration: t.transitions.duration.shortest }),
+          '&.Mui-expanded': { transform: 'rotate(90deg)' },
+          '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
+        }),
       },
     },
     MuiButton: { defaultProps: { disableElevation: true } },

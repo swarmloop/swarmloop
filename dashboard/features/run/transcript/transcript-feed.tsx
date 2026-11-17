@@ -1,7 +1,7 @@
 'use client';
 
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { DisclosureIcon } from '../../../components/ui/disclosure-icon';
 import Accordion from '@mui/material/Accordion';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import AccordionSummary from '@mui/material/AccordionSummary';
@@ -289,7 +289,7 @@ export function TranscriptFeed({
                   'run' in row ? (
                     <Accordion key={row.run.key} disableGutters elevation={0} sx={{ bgcolor: 'transparent' }}>
                       <AccordionSummary
-                        expandIcon={<ExpandMoreIcon />}
+                        expandIcon={<DisclosureIcon />}
                       >{`${row.run.items.length} actions`}</AccordionSummary>
                       <AccordionDetails sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                         {row.run.items.map(cardOf)}

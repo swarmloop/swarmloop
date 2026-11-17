@@ -20,6 +20,7 @@ import {
   listProjects,
   listRemote,
   listRuns,
+  ticketKeys,
   rebaseRun,
   removeRun,
   replaceApp,
@@ -260,6 +261,7 @@ beforeEach(() => {
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
   vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
   vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
+  vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
   vi.mocked(getSession).mockResolvedValue({ user: 'alice' });
   vi.mocked(getOwner).mockResolvedValue({ owner: 'acme', others: [] });
   vi.mocked(getConnections).mockResolvedValue(host);
