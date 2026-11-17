@@ -4,6 +4,10 @@ import type { PipelineService } from '../pipeline/pipeline.service';
 import { RunCommand } from './run.command';
 
 describe('RunCommand', () => {
+  afterEach(() => {
+    process.exitCode = undefined;
+  });
+
   it("sends its Resume marked as a person's", async () => {
     const inProcess = jest.fn().mockResolvedValue({ exitCode: 0, message: 'ok' });
     const command = new RunCommand(
