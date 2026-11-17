@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, Optional } from '@nestjs/common';
 import { Clock } from '../core/clock';
 import type { CommandReceipt } from '../contract/command';
 import type { FlowView } from '../contract/api';
@@ -8,8 +8,10 @@ import { AttachmentStore } from '../history/attachment-store';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { RunRepository } from '../history/run.repository';
 import { CommandService } from '../pipeline/command.service';
+import { PipelineService } from '../pipeline/pipeline.service';
 import { PlannerTurns } from '../pipeline/planner-turns';
 import { messageTurn } from '../pipeline/plan-chat-route';
+import { RunCommandsService } from './run-commands.service';
 import { requireRun, RunQueriesService } from './run-queries.service';
 
 /** What a message of a person is stored as: its text, the login that sent it and the files it came with. */
@@ -30,7 +32,11 @@ export class PlanChatService {
     private readonly turns: PlannerTurns,
     private readonly files: AttachmentStore,
     private readonly clock: Clock,
+    @Optional() private readonly pipeline?: PipelineService,
+    @Optional() private readonly runCommands?: RunCommandsService,
   ) {}
+
+  private readonly logger = new Logger(PlanChatService.name);
 
   /** Checks the message against the run, then sends it as the command for its place. */
   async send(
@@ -75,7 +81,35 @@ export class PlanChatService {
     const entry = this.entry(commandId, payload as MessagePayload, 'pending');
     await this.store.appendEntry(key, entry);
     this.turns.offer(key, { id: entry.key, at: entry.at, text: entry.text });
-    return this.queries.flow(key);
+    const view = await this.queries.flow(key);
+    const run = await this.runs.findRun(key);
+    // A split run's messages are for the add-tasks turn, which this pass does not run.
+    if (
+      run &&
+      !run.split &&
+      messageTurn(run, { state: view.state, parentKey: view.parentKey, openItems: view.items.length }) === 'reopen'
+    ) {
+      await this.reopen(key, view.state);
+    }
+    return view;
+  }
+
+  /**
+   * A done run takes the message in a pass of its own. A stopped, failed or blocked run does what Resume does, and the
+   * driver takes the message before the resumed step. When Resume is refused the message stays pending and the run as it is.
+   */
+  private async reopen(key: string, state: string): Promise<void> {
+    if (state === 'done') {
+      this.pipeline?.amendDone(key);
+      return;
+    }
+    try {
+      await this.runCommands?.resume(key);
+    } catch (error) {
+      this.logger.warn(
+        `${key}: Resume was refused, the message waits: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   private entry(commandId: string, payload: MessagePayload, state: PlanChatEntry['state']): PlanChatEntry {

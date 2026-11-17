@@ -45,6 +45,15 @@ export function planChatFollowUp(messages: readonly { text: string }[], resultTe
   return planFollowUp(words, [guidance, resultText].join('\n\n'), PERSON_WORDS);
 }
 
+/** The rules of an amendment: the run already implemented, so the plan is changed and not made again. */
+const AMEND_RULES =
+  'The run already implemented part of this plan. Items already done stay done. In `plan`, give the whole checklist: keep every done item as it is, and add or change items only for what the message asks. Do not split the run into tasks.';
+
+/** What the planner is told in its own chat when a person wrote to a run that already implemented. */
+export function planChatAmends(messages: readonly { text: string }[], resultText: string): string {
+  return planChatFollowUp(messages, [AMEND_RULES, resultText].join('\n\n'));
+}
+
 /** What the parent's planner is asked in its own chat when a subtask has questions. */
 export function subtaskAsks(task: Subtask, questions: string, contract: string, received: string | null): string {
   return [

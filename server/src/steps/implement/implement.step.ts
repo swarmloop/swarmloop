@@ -39,7 +39,8 @@ import { settleRebase, type RebaseDeps } from './implement-rebase';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { unchangedSincePipeline } from '../pipeline/pipeline-report';
 import { rerunFailed } from './failed-commands';
-import { checksStillRed, implementAsk, implementFollowUp } from './implement.prompts';
+import { checksStillRed, implementAsk, implementFollowUp, planAmendment } from './implement.prompts';
+import { amendmentOf } from '../shared/amendment';
 import { implementNeedsWait } from './implement-needs';
 import { renderCause, renderImplementation, withReturnNotes } from './implement-record';
 import { retryUnchangedPipeline } from './implement-pipeline-return';
@@ -150,9 +151,12 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       };
     }
     const notes = await returnedNotes(this.documents, ctx.opened.run.id);
-    const merged = ctx.opened.run.split
-      ? withSubtasks(withContract([], await ctx.reread(ARTIFACTS.contract)), await ctx.reread(ARTIFACTS.subtasks))
-      : [];
+    const merged = [
+      ...(ctx.opened.run.split
+        ? withSubtasks(withContract([], await ctx.reread(ARTIFACTS.contract)), await ctx.reread(ARTIFACTS.subtasks))
+        : []),
+      ...planAmendment(await amendmentOf(this.documents, this.visits, ctx.opened.run)),
+    ];
     const sections = [
       ...withHandoff(withReturnNotes([{ heading: 'Plan', body: plan }], notes), await ctx.reread(ARTIFACTS.handoff)),
       ...merged,

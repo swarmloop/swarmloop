@@ -47,6 +47,7 @@ import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { Reconciler } from './reconciler';
 import { PlannerTurns } from './planner-turns';
+import { RunReopen } from './run-reopen';
 import { BacklogActions } from './backlog/backlog-actions';
 import { BacklogActionSupport } from './backlog/backlog-action-support';
 import { BacklogTaskActions } from './backlog/backlog-task-actions';
@@ -120,6 +121,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     RunSettler,
     RunRebase,
     MergeRequestDrafts,
+    RunReopen,
     { provide: RunRebaseEnvironment, useExisting: EnvironmentService },
     EnvironmentService,
     { provide: HaltedRuns, useExisting: RunStop },

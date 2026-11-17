@@ -1,4 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
+import type { PipelineResult } from '../core/pipeline-result';
+import type { RunEntity } from '../history/entities';
+import { DocumentRepository } from '../history/document.repository';
+import { PlanChatStore } from '../history/plan-chat.store';
+import { isSubtask } from '../contract/subtask';
+import { ARTIFACTS } from '../steps/contract/artifacts';
+import { readPlan } from '../steps/plan/plan-record';
+import { messageTurn } from './plan-chat-route';
 
 /** One thing the planner is asked: a person's message now, other kinds later. */
 export interface PlannerTurn {
@@ -9,14 +17,81 @@ export interface PlannerTurn {
   text: string;
 }
 
+/** What a taken turn left: nothing to do, a reply that keeps the plan, or a plan that plan-improve has to check. */
+type TurnOutcome = 'none' | 'kept' | 'changed';
+
 /**
  * The planner's turns of each run, one at a time, in the order the entries came.
- * It holds and orders turns. Whoever runs a turn asks for the next one and ends it.
+ * It holds and orders turns, takes the turn of a run that does not split, and owns the background passes it starts.
  */
 @Injectable()
-export class PlannerTurns {
+export class PlannerTurns implements OnModuleDestroy {
+  private readonly logger = new Logger(PlannerTurns.name);
   private readonly waiting = new Map<string, PlannerTurn[]>();
   private readonly running = new Map<string, PlannerTurn>();
+  private readonly passes = new Set<Promise<void>>();
+
+  constructor(
+    @Optional() private readonly chat?: PlanChatStore,
+    @Optional() private readonly documents?: DocumentRepository,
+  ) {}
+
+  /** True when a message to this run amends its plan: it is no subtask, does not split and reached implement. */
+  amends(run: RunEntity): boolean {
+    return !isSubtask(run) && messageTurn(run, { state: 'running', openItems: 0 }) === 'amend';
+  }
+
+  /**
+   * Takes the person's messages of the run that wait, in one turn: `visit` runs the planner's reply and applies it.
+   * Messages that stay pending after the visit are added to `declined`, so the caller does not ask for them again
+   * in the same drive, and the reason is logged.
+   */
+  async take(key: string, visit: () => Promise<PipelineResult>, declined: Set<string>): Promise<TurnOutcome> {
+    const waiting = ((await this.chat?.pending(key)) ?? []).filter((entry) => !declined.has(entry.key));
+    if (waiting.length === 0) return 'none';
+    for (const entry of waiting) this.offer(key, { id: entry.key, at: entry.at, text: entry.text });
+    if (!this.begin(key)) return 'none';
+    try {
+      const result = await visit();
+      const left = new Set(((await this.chat?.pending(key)) ?? []).map((entry) => entry.key));
+      this.drop(key, left);
+      const stayed = waiting.filter((entry) => left.has(entry.key));
+      if (result.exitCode !== 0 || stayed.length > 0) {
+        for (const entry of stayed) declined.add(entry.key);
+        this.logger.warn(`${key}: the planner took no message yet: ${result.message}`);
+        return 'none';
+      }
+      const requirements = await this.documents?.latestBody(key, ARTIFACTS.requirements.kind);
+      return readPlan(requirements ?? null)?.decision === 'approve' ? 'kept' : 'changed';
+    } finally {
+      this.end(key);
+    }
+  }
+
+  /** Runs `work` as a pass of its own. It ends before the module closes. */
+  background(work: () => Promise<void>): void {
+    const pass = work().catch((error: unknown) => {
+      this.logger.warn(`planner pass failed: ${error instanceof Error ? error.message : String(error)}`);
+    });
+    this.passes.add(pass);
+    void pass.then(() => this.passes.delete(pass));
+  }
+
+  /** Resolves once every background pass that started has ended. */
+  async idle(): Promise<void> {
+    await Promise.all([...this.passes]);
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.idle();
+  }
+
+  /** Drops the held turns whose messages are no longer pending. */
+  private drop(key: string, pending: ReadonlySet<string>): void {
+    const kept = (this.waiting.get(key) ?? []).filter((turn) => pending.has(turn.id));
+    if (kept.length > 0) this.waiting.set(key, kept);
+    else this.waiting.delete(key);
+  }
 
   /** Holds the turn after every held turn that is not later. A turn that is held or running is held once. */
   offer(runKey: string, turn: PlannerTurn): void {
