@@ -4,7 +4,7 @@ import type { ReactElement } from 'react';
 import { useState } from 'react';
 import Box from '@mui/material/Box';
 import type { StatsDay, StatsTotals } from '@contract/api';
-import { CHART, ChartCard, ChartTip, MONO, TipRow, roundedTop, useWidth } from './chart-parts';
+import { CHART, ChartCard, ChartTip, TipRow, roundedTop, useWidth } from './chart-parts';
 import { dayLabel, hours, longDayLabel, percent, ticks } from './stats-format';
 
 const HEIGHT = 180;
@@ -43,15 +43,7 @@ function DayBars({
         {axis.map((at) => (
           <g key={at}>
             <line x1={PAD.left} x2={width - PAD.right} y1={y(at)} y2={y(at)} stroke={CHART.grid} />
-            <text
-              x={PAD.left - 8}
-              y={y(at)}
-              textAnchor="end"
-              dominantBaseline="middle"
-              fontSize={11}
-              fontFamily={MONO}
-              fill={CHART.axis}
-            >
+            <text x={PAD.left - 8} y={y(at)} textAnchor="end" dominantBaseline="middle" fontSize={11} fill={CHART.axis}>
               {axisText(at)}
             </text>
           </g>
@@ -70,7 +62,6 @@ function DayBars({
                   y={HEIGHT - 8}
                   textAnchor="middle"
                   fontSize={11}
-                  fontFamily={MONO}
                   fill={CHART.axis}
                 >
                   {dayLabel(day.day)}

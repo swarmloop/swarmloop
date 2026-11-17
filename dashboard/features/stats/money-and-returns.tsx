@@ -197,9 +197,7 @@ export function Returns({ stats }: { stats: StatsView }): ReactElement {
                       borderRadius: '4px 4px 0 0',
                     }}
                   />
-                  <Typography sx={{ fontSize: 11, fontFamily: MONO, color: 'text.secondary' }}>
-                    {bucket.returns}
-                  </Typography>
+                  <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>{bucket.returns}</Typography>
                 </Box>
               </Tooltip>
             ))}

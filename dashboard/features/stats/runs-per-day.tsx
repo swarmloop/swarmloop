@@ -4,18 +4,7 @@ import type { ReactElement } from 'react';
 import { useState } from 'react';
 import Box from '@mui/material/Box';
 import type { StatsDay } from '@contract/api';
-import {
-  CHART,
-  ChartCard,
-  ChartTip,
-  Legend,
-  LegendItem,
-  MONO,
-  OUTCOMES,
-  TipRow,
-  roundedTop,
-  useWidth,
-} from './chart-parts';
+import { CHART, ChartCard, ChartTip, Legend, LegendItem, OUTCOMES, TipRow, roundedTop, useWidth } from './chart-parts';
 import { dayLabel, longDayLabel, ticks } from './stats-format';
 
 const HEIGHT = 220;
@@ -83,7 +72,6 @@ export function RunsPerDay({
                 textAnchor="end"
                 dominantBaseline="middle"
                 fontSize={11}
-                fontFamily={MONO}
                 fill={CHART.axis}
               >
                 {value}
@@ -127,7 +115,6 @@ export function RunsPerDay({
                     y={HEIGHT - 8}
                     textAnchor="middle"
                     fontSize={11}
-                    fontFamily={MONO}
                     fill={CHART.axis}
                   >
                     {dayLabel(day.day)}

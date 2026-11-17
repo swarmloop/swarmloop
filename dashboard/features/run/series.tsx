@@ -30,8 +30,6 @@ function legendValue(sample: Point | undefined, metric: 'cpu' | 'memory' | undef
   return metric === 'memory' ? memory(mem) : `${cpu.toFixed(0)}% · ${memory(mem)}`;
 }
 
-const FONT = 'var(--font-mono), ui-monospace, monospace';
-
 /** The grid lines and the value labels of the axes: one axis for a single metric, else CPU left and memory right. */
 function GridRows({
   metric,
@@ -63,7 +61,6 @@ function GridRows({
               dominantBaseline="middle"
               fill={metric === 'memory' ? memoryAxis : cpuAxis}
               fontSize="11"
-              fontFamily={FONT}
             >
               {metric === 'memory' ? memory(maxMemory * (1 - row)) : cpuLabel((1 - row) * maxCpu, metric)}
             </text>
@@ -75,7 +72,6 @@ function GridRows({
                 dominantBaseline="middle"
                 fill={memoryAxis}
                 fontSize="11"
-                fontFamily={FONT}
               >
                 {memory(maxMemory * (1 - row))}
               </text>
@@ -136,7 +132,6 @@ export function SeriesChart({
           flexWrap: 'wrap',
           gap: 16,
           marginBottom: 6,
-          fontFamily: FONT,
           fontSize: 12,
           color: legend,
         }}
