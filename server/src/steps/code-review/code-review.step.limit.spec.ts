@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 
+import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
 import { Test } from '@nestjs/testing';
-import { mkdirSync } from 'fs';
 import { mkdtemp, readFile, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -69,7 +69,7 @@ describe('code-review step and a provider limit', () => {
   it('relaunches the limited reviewers on the next agent at once, keeps the other answers and counts no attempt', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-limit-switch-'));
     await envWith(root, 'claude:m-claude,codex:m-codex');
-    mkdirSync(join(root, 'worktrees', 'PROJ-301', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-301', 'billing-api'));
     const agent = answers(
       (input) => input.runtime === 'claude' && /quality|regressions/.test(input.step) && !input.step.endsWith('report'),
     );
@@ -111,7 +111,7 @@ describe('code-review step and a provider limit', () => {
   it("launches every reviewer and the report at the review list's effort for the parent of a split run", async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-epic-effort-'));
     await envWith(root, 'claude:m-claude:high');
-    mkdirSync(join(root, 'worktrees', 'PROJ-303', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-303', 'billing-api'));
     const agent = answers(() => false);
     const app = await boot(root, agent, new FakeClock(START));
     try {
@@ -140,7 +140,7 @@ describe('code-review step and a provider limit', () => {
   it('records the effort of the agent a limited reviewer moved to', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-limit-effort-'));
     await envWith(root, 'claude:m-claude:high,codex:m-codex:low');
-    mkdirSync(join(root, 'worktrees', 'PROJ-304', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-304', 'billing-api'));
     const agent = answers((input) => input.runtime === 'claude' && input.step === 'code-review-quality');
     const app = await boot(root, agent, new FakeClock(START));
     try {
@@ -168,7 +168,7 @@ describe('code-review step and a provider limit', () => {
   it('waits with RUNTIME_LIMIT when no other agent is left and goes on once, by itself, after the reset', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-limit-wait-'));
     await envWith(root, 'claude:m-claude');
-    mkdirSync(join(root, 'worktrees', 'PROJ-302', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-302', 'billing-api'));
     const clock = new FakeClock(START);
     const agent = answers((input) => /quality|regressions/.test(input.step) && !input.step.endsWith('report'));
     const app = await boot(root, agent, clock);
@@ -201,7 +201,7 @@ describe('code-review step and a provider limit', () => {
   it('ignores a reset far in the future and uses the default cooldown', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-limit-far-'));
     await envWith(root, 'claude:m-claude');
-    mkdirSync(join(root, 'worktrees', 'PROJ-306', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-306', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => ({
       ...result(LIMIT_TEXT, input.step),
       limit: { window: '5-hour', resetsAt: '2099-01-01T09:00:00.000Z' },
@@ -224,7 +224,7 @@ describe('code-review step and a provider limit', () => {
   it('keeps the answers of the reviewers that finished when the run goes on after the wait', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-limit-resume-'));
     await envWith(root, 'claude:m-claude');
-    mkdirSync(join(root, 'worktrees', 'PROJ-303', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-303', 'billing-api'));
     const clock = new FakeClock(START);
     let limit = true;
     const agent = answers((input) => limit && input.step === 'code-review-quality');
@@ -249,7 +249,7 @@ describe('code-review step and a provider limit', () => {
   it('starts a new reviewer on the next agent while a runtime cools down, and on the first again after it', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-limit-cooldown-'));
     await envWith(root, 'claude:m-claude,codex:m-codex');
-    mkdirSync(join(root, 'worktrees', 'PROJ-304', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-304', 'billing-api'));
     const clock = new FakeClock(START);
     const agent = answers(() => false);
     const app = await boot(root, agent, clock);
@@ -271,7 +271,7 @@ describe('code-review step and a provider limit', () => {
   it('does not take an auth error for a limit', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-limit-auth-'));
     await envWith(root, 'claude:m-claude,codex:m-codex');
-    mkdirSync(join(root, 'worktrees', 'PROJ-305', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-305', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) =>
       input.step === 'code-review-quality'
         ? { ...result('Invalid API key · Please run /login', input.step), exitCode: 1 }

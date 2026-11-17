@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -21,7 +22,7 @@ const KINDS = ['review_quality', 'review_quality_result', 'review_report', 'revi
 async function round(key: string, scripts: Record<string, string[]> = {}, chat = false) {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-result-'));
   await writeEnv(root);
-  mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
+  gitWorktree(join(root, 'worktrees', key, 'billing-api'));
   if (chat) {
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(

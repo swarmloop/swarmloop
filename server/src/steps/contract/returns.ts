@@ -14,7 +14,7 @@ export const RETURNS: Partial<Record<StepName, readonly StepName[]>> = {
 export const JUMPS: Partial<Record<StepName, readonly StepName[]>> = {
   commit: ['done'],
   implement: ['commit', 'checks', 'code-review'],
-  'merge-request': ['done'],
+  'merge-request': ['done', 'code-review'],
   pipeline: ['code-review'],
   'plan-improve': ['plan-improve'],
 };

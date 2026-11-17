@@ -1,4 +1,5 @@
 import { handoffText } from '../shared/handoff';
+import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
 import 'reflect-metadata';
 
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -55,7 +56,7 @@ describe('code-review step', () => {
   it('continues when the last open reviewer passes', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-last-ok-'));
     await writeEnv(root);
-    mkdirSync(join(root, 'worktrees', 'PROJ-90', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-90', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step)));
     const app = await boot(root, agent);
     try {
@@ -76,7 +77,7 @@ describe('code-review step', () => {
   it('returns to implement when the last open reviewer fails', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-last-return-'));
     await writeEnv(root);
-    mkdirSync(join(root, 'worktrees', 'PROJ-91', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-91', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step, 'return')));
     const app = await boot(root, agent);
     try {
@@ -99,7 +100,7 @@ describe('code-review step', () => {
   it('stores one issue per returning reviewer next to the return document', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-issues-'));
     await writeEnv(root);
-    mkdirSync(join(root, 'worktrees', 'PROJ-92', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-92', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step, 'return')));
     const app = await boot(root, agent);
     try {
@@ -193,7 +194,7 @@ describe('code-review step', () => {
   it('passes the previous handoff and return to every reviewer', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-handoff-'));
     await writeEnv(root);
-    mkdirSync(join(root, 'worktrees', 'PROJ-87', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-87', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step), input.step));
     const app = await boot(root, agent);
     try {
@@ -238,7 +239,7 @@ describe('code-review step', () => {
   it('gives the reviewers of a split run the contract and the subtasks, and asks only the requirements reviewer for the proof', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-split-'));
     await writeEnv(root);
-    mkdirSync(join(root, 'worktrees', 'PROJ-91', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-91', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step), input.step));
     const app = await boot(root, agent);
     try {
@@ -288,7 +289,7 @@ describe('code-review step', () => {
   it('adds no contract or subtasks section to the reviewers of a run that does not split', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-single-'));
     await writeEnv(root);
-    mkdirSync(join(root, 'worktrees', 'PROJ-92', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-92', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step), input.step));
     const app = await boot(root, agent);
     try {
@@ -306,7 +307,7 @@ describe('code-review step', () => {
   it('resumes the review chat with the full assignment', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-session-'));
     await writeEnv(root);
-    mkdirSync(join(root, 'worktrees', 'PROJ-86', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-86', 'billing-api'));
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-86-code-review-quality-session.json'),
@@ -348,7 +349,7 @@ describe('code-review step', () => {
   it('starts a fresh review after a conflict rebase', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-fresh-'));
     await writeEnv(root);
-    mkdirSync(join(root, 'worktrees', 'PROJ-97', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-97', 'billing-api'));
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-97-code-review-quality-session.json'),
@@ -471,7 +472,7 @@ describe('code-review step', () => {
   it('tries a timed-out reviewer three times and then continues', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-time-'));
     await writeEnv(root, undefined, 3, 0);
-    mkdirSync(join(root, 'worktrees', 'PROJ-95', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-95', 'billing-api'));
     const spawn = reviewSpawn(3);
     const app = await bootLive(root, spawn);
     try {
@@ -500,7 +501,7 @@ describe('code-review step', () => {
   it('stops a reviewer after the third time kill', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-time-stop-'));
     await writeEnv(root, undefined, 3, 0);
-    mkdirSync(join(root, 'worktrees', 'PROJ-96', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-96', 'billing-api'));
     const spawn = reviewSpawn(0);
     const app = await bootLive(root, spawn);
     try {
@@ -521,7 +522,7 @@ describe('code-review step', () => {
   it('stops a reviewer after one time kill when the launch cap is 1', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-time-cap-'));
     await writeEnv(root, undefined, 1, 0);
-    mkdirSync(join(root, 'worktrees', 'PROJ-101', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-101', 'billing-api'));
     const spawn = reviewSpawn(0);
     const app = await bootLive(root, spawn);
     try {
@@ -539,7 +540,7 @@ describe('code-review step', () => {
   it('accepts a reviewer whose write was refused when its decision is ok', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-refused-'));
     await writeEnv(root);
-    mkdirSync(join(root, 'worktrees', 'PROJ-82', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-82', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => ({
       ...result(
         input.step.endsWith('report') ? reportReply('The parser change holds together.') : reply('notes', 'ok'),
@@ -563,7 +564,7 @@ describe('code-review step', () => {
   it('names the refused write when a reviewer whose write was refused has no decision', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-no-decision-'));
     await writeEnv(root);
-    mkdirSync(join(root, 'worktrees', 'PROJ-83', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-83', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => ({
       ...result(input.step.endsWith('quality') ? 'notes only\n' : reply(input.step, 'ok'), input.step),
       output: input.step.endsWith('quality') ? REFUSED_WRITE : undefined,

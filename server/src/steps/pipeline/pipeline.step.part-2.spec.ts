@@ -19,6 +19,7 @@ import { PipelineService } from '../../pipeline/pipeline.service';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 
 import * as delays from '../../core/delay';
+import { clearGitFaults, failGit } from '../../testing/git-fault.spec-helpers';
 import { FetchFailed } from '../../core/swarmloop-error';
 
 import {
@@ -45,6 +46,12 @@ function fakeWaitWithSleep(sleepMs: number) {
   });
   return clock;
 }
+
+import type * as GitFault from '../../testing/git-fault.spec-helpers';
+
+jest.mock('child_process', () =>
+  jest.requireActual<typeof GitFault>('../../testing/git-fault.spec-helpers').faultyChildProcess(),
+);
 
 describe('pipeline step', () => {
   afterEach(() => jest.restoreAllMocks());
@@ -160,7 +167,7 @@ describe('pipeline step', () => {
       await seed(app, 'PROJ-307');
       const run = await app.get(RunRepository).findRun('PROJ-307');
       await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
-      mkdirSync(join(root, 'worktrees', 'PROJ-307', 'demo'), { recursive: true });
+      gitRepo(join(root, 'worktrees', 'PROJ-307', 'demo'), 'https://gitlab.example/group/demo.git');
       await stampSettled(app, 'PROJ-307', ['demo']);
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-307');
       expect(result.exitCode).toBe(0);
@@ -252,7 +259,7 @@ describe('pipeline step', () => {
         if (stale === 'files') await writeFile(join(tree, 'late.txt'), 'edited after the review\n');
         const result = await app.get(PipelineService).step('pipeline', key);
         expect(result.exitCode).toBe(0);
-        expect(result.message).toContain('stale');
+        expect(result.message).toContain('pipeline result is stale: back to code-review');
         expect((await runs.findRun(key))?.currentStep).toBe('code-review');
         expect(await documents.latestBody(key, 'pipeline_log')).toBeNull();
       } finally {
@@ -260,6 +267,32 @@ describe('pipeline step', () => {
       }
     },
   );
+
+  it("fails with git's text and stamps nothing when the probe of a stamped worktree fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-probe-'));
+    const read = jest.fn(() => Promise.resolve({ snapshot: null, httpCalls: [call('GET')] }));
+    const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=30\n');
+    jest.spyOn(delays, 'delay').mockResolvedValue(undefined);
+    try {
+      const key = 'PROJ-331';
+      await seed(app, key);
+      const documents = app.get(DocumentRepository);
+      await documents.putDocument((await app.get(RunRepository).findRun(key))!, 'repos', 'demo\n');
+      gitRepo(join(root, 'worktrees', key, 'demo'), 'git@gitlab.example:group/demo.git');
+      await stampSettled(app, key, ['demo']);
+      failGit(['rev-parse', '--show-toplevel'], { stderr: 'fatal: detected dubious ownership in repository' }, 2);
+
+      const result = await app.get(PipelineService).step('pipeline', key);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.message).toContain('dubious ownership');
+      expect(await documents.latestBody(key, 'pipeline_log')).toBeNull();
+    } finally {
+      clearGitFaults();
+      jest.restoreAllMocks();
+      await app.close();
+    }
+  });
 
   it('follows a pipeline that appears during the start window', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-appeared-'));

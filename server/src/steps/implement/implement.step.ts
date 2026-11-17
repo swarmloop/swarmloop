@@ -36,7 +36,13 @@ import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { storedPlan } from '../step';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import { settleRebase, type RebaseDeps } from './implement-rebase';
-import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
+import {
+  assertUncommitted,
+  checkoutSnapshot,
+  featureHeads,
+  worktreeSnapshot,
+  worktreeStatus,
+} from '../../git/worktree-git';
 import { unchangedSincePipeline } from '../pipeline/pipeline-report';
 import { rerunFailed } from './failed-commands';
 import { checksStillRed, implementAsk, implementFollowUp } from './implement.prompts';
@@ -200,7 +206,8 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       place,
       basePrompt,
     );
-    const before = await worktreeSnapshot(mounts);
+    const snapshot = ctx.opened.run.targetPath ? checkoutSnapshot : worktreeSnapshot;
+    const before = await snapshot(mounts);
     const asked = (value: unknown): string[] => implementErrors(ctx.opened.run, value as ImplementationResult);
     const first = await ctx.launch({
       prompt,
@@ -225,7 +232,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     let corrected = value.plan?.length ? value.plan : undefined;
     const unchanged = async (): Promise<boolean> =>
       (await unchangedSincePipeline(await ctx.reread(ARTIFACTS.pipelineRef), mounts)) ??
-      (await worktreeSnapshot(mounts)) === before;
+      (await snapshot(mounts)) === before;
     const sameWorkplace = { mounts, allowHosts, manifestHosts, project, projectFor: reproject };
     const pipelineReturn = isPipelineReturn(notes);
     const { issues, unfixed } = pipelineReturn

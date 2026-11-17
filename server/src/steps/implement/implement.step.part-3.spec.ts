@@ -22,7 +22,15 @@ import { handoffText, issueOf } from '../shared/handoff';
 import { DataSource } from 'typeorm';
 import { StepStatEntity } from '../../history/entities';
 import type { FailedCommand } from '../../environment/environment-types';
+import * as delays from '../../core/delay';
+import { clearGitFaults, failGit } from '../../testing/git-fault.spec-helpers';
 import { implAnswer, reply, result, bootOnce, seed, git } from './implement.step.spec-helpers';
+
+import type * as GitFault from '../../testing/git-fault.spec-helpers';
+
+jest.mock('child_process', () =>
+  jest.requireActual<typeof GitFault>('../../testing/git-fault.spec-helpers').faultyChildProcess(),
+);
 
 const once = bootOnce();
 
@@ -307,6 +315,7 @@ describe('implement step', () => {
       refSha: (head: string) => string | null,
       earlierVisit = false,
       answer = reply,
+      onFirstAnswer?: () => void,
     ) {
       const worktree = once.tree(key, 'billing-api');
       git(worktree, ['remote', 'set-url', 'origin', 'https://gitlab.example/group/billing-api.git']);
@@ -314,7 +323,12 @@ describe('implement step', () => {
       if (earlierVisit) {
         writeFileSync(join(worktree, 'fixed-earlier.ts'), 'export const fixed = true;\n');
       }
-      const agent = jest.fn(async (_input: AgentRunInput) => result(answer));
+      let answers = 0;
+      const agent = jest.fn(async (_input: AgentRunInput) => {
+        answers += 1;
+        if (answers === 1) onFirstAnswer?.();
+        return result(answer);
+      });
       const app = once.app();
       once.use(agent);
       await seed(app, key, 'approve');
@@ -378,6 +392,28 @@ describe('implement step', () => {
       expect(done.message).toContain('CI rerun: the agent gave no explanation');
       const second = await app.get(PipelineService).step('implement', 'PROJ-165');
       expect(second.message).toContain('the agent changed nothing: the agent gave no explanation');
+    });
+
+    it('tries a failed probe of the worktree again and still finds the files unchanged', async () => {
+      jest.spyOn(delays, 'delay').mockResolvedValue(undefined);
+      try {
+        const { runs, documents, done } = await unchanged(
+          'PROJ-166',
+          (head) => head,
+          false,
+          reply,
+          () =>
+            failGit(['rev-parse', '--show-toplevel'], { stderr: 'fatal: detected dubious ownership in repository' }),
+        );
+        expect(done.exitCode).toBe(0);
+        expect(await documents.latestBody('PROJ-166', 'ci_rerun')).toBe('billing-api\n');
+        const after = await runs.findRun('PROJ-166');
+        expect(after?.currentStep).toBe('commit');
+        expect(after?.status).not.toBe('failed');
+      } finally {
+        clearGitFaults();
+        jest.restoreAllMocks();
+      }
     });
 
     it('still fails when the pipeline reference has no sha', async () => {

@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 
+import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
 import { mkdirSync, rmSync } from 'fs';
 
 import { mkdtemp } from 'fs/promises';
@@ -16,7 +17,18 @@ import type { AgentRunInput } from '../../agent/agent-runner';
 
 import { PipelineService } from '../../pipeline/pipeline.service';
 
+import * as delays from '../../core/delay';
+import { clearGitFaults, failGit } from '../../testing/git-fault.spec-helpers';
+import { git } from '../../testing/git-fixture';
+import { checkoutFingerprint } from '../shared/gate';
+
 import { answerFor, reply, reportReply, result, boot, seed, writeEnv } from './code-review.step.spec-helpers';
+
+import type * as GitFault from '../../testing/git-fault.spec-helpers';
+
+jest.mock('child_process', () =>
+  jest.requireActual<typeof GitFault>('../../testing/git-fault.spec-helpers').faultyChildProcess(),
+);
 
 describe('code-review step', () => {
   let root: string;
@@ -44,7 +56,7 @@ describe('code-review step', () => {
     decision: 'ok' | 'return',
     reason = 'The answer holds.',
   ) {
-    mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', key, 'billing-api'));
     let again: 'ok' | 'return' = 'return';
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(
@@ -153,7 +165,7 @@ describe('code-review step', () => {
   });
 
   it('shows the plan again when resume keeps a return of the same diff', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-99', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-99', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(
         input.step.endsWith('report')
@@ -192,7 +204,7 @@ describe('code-review step', () => {
   });
 
   it('gives the regressions reviewer of a split run the keep lines and makes no run from them', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-97', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-97', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step), input.step));
     current = agent;
     await seed(app, 'PROJ-97');
@@ -214,5 +226,43 @@ describe('code-review step', () => {
     expect(holding.map((call) => call.step)).toEqual(['code-review-regressions']);
     expect(holding[0].prompt).toContain('Check each line against the merged diff');
     expect(await runs.children(run!)).toEqual([]);
+  });
+
+  describe('the fingerprint the review stamps', () => {
+    afterEach(() => {
+      clearGitFaults();
+      jest.restoreAllMocks();
+    });
+
+    it('is the name-only one for a checkout that is a subdirectory of a repository, which is reviewed as before', async () => {
+      const repo = join(root, 'worktrees', 'checkout-repo');
+      mkdirSync(join(repo, 'sub'), { recursive: true });
+      git(repo, ['init', '-q']);
+      const checkout = join(repo, 'sub');
+      current = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step), input.step));
+
+      const done = await app.get(PipelineService).step('code-review', 'PROJ-198', { path: checkout });
+
+      expect(done.exitCode).toBe(0);
+      const stamp = await app.get(DocumentRepository).latestStamp('PROJ-198', 'review_quality');
+      expect(stamp?.fingerprint).toBe(await checkoutFingerprint([checkout]));
+    });
+
+    it("stamps nothing and fails the step with git's text when the probe of the worktree fails", async () => {
+      jest.spyOn(delays, 'delay').mockResolvedValue(undefined);
+      gitWorktree(join(root, 'worktrees', 'PROJ-199', 'billing-api'));
+      const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step), input.step));
+      current = agent;
+      await seed(app, 'PROJ-199');
+      failGit(['rev-parse', '--show-toplevel'], { stderr: 'fatal: detected dubious ownership in repository' }, 2);
+
+      const done = await app.get(PipelineService).step('code-review', 'PROJ-199');
+
+      expect(done.exitCode).toBe(1);
+      expect(done.message).toContain('dubious ownership');
+      expect(agent).not.toHaveBeenCalled();
+      expect(await app.get(DocumentRepository).latestStamp('PROJ-199', 'review_quality')).toBeNull();
+      expect((await app.get(RunRepository).findRun('PROJ-199'))?.status).toBe('failed');
+    });
   });
 });

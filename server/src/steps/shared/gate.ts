@@ -1,11 +1,21 @@
 import type { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
-import { worktreeFingerprint } from '../../git/worktree-git';
+import type { SandboxMount } from '../../core/sandbox-mount';
+import { requiredTreeFingerprint, worktreeFingerprint } from '../../git/worktree-git';
 import { countsFor } from '../../history/gate-stamp';
 
-/** The fingerprint of the worktrees at these paths, in one order whoever asks. */
+function mountsOf(hostPaths: string[]): SandboxMount[] {
+  return [...hostPaths].sort().map((hostPath) => ({ hostPath, containerPath: '/work' }));
+}
+
+/** The fingerprint of the run's own worktrees at these paths, in one order whoever asks. A worktree with no tree fails. */
 export function worktreesFingerprint(hostPaths: string[]): Promise<string> {
-  return worktreeFingerprint([...hostPaths].sort().map((hostPath) => ({ hostPath, containerPath: '/work' })));
+  return requiredTreeFingerprint(mountsOf(hostPaths));
+}
+
+/** The fingerprint of a person's checkout: a folder that is not a repository of its own adds only its name. */
+export function checkoutFingerprint(hostPaths: string[]): Promise<string> {
+  return worktreeFingerprint(mountsOf(hostPaths));
 }
 
 /** Stamps the latest document of `kind` for the generation of the run and the files it judged. */

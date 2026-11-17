@@ -1,6 +1,5 @@
 import 'reflect-metadata';
 
-import { mkdirSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -10,7 +9,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { renderMergeRequest } from '../merge-request/merge-request-record';
-import { boot, call, fakeWait, one, seed, shot, stampSettled, two } from './pipeline.step.spec-helpers';
+import { boot, call, fakeWait, gitRepo, one, seed, shot, stampSettled, two } from './pipeline.step.spec-helpers';
 
 const KEY = 'PROJ-320';
 
@@ -99,7 +98,7 @@ describe('pipeline step and draft merge requests', () => {
       await seed(app, KEY, one);
       const run = await app.get(RunRepository).findRun(KEY);
       await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
-      mkdirSync(join(root, 'worktrees', KEY, 'demo'), { recursive: true });
+      gitRepo(join(root, 'worktrees', KEY, 'demo'), 'https://gitlab.example/group/demo.git');
       await stampSettled(app, KEY, ['demo']);
       await storeRequests(app, ['group/demo'], true);
       const result = await app.get(PipelineService).step('pipeline', KEY);
@@ -128,7 +127,7 @@ describe('pipeline step and draft merge requests', () => {
       await seed(app, KEY, one);
       const run = await app.get(RunRepository).findRun(KEY);
       await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
-      mkdirSync(join(root, 'worktrees', KEY, 'demo'), { recursive: true });
+      gitRepo(join(root, 'worktrees', KEY, 'demo'), 'https://gitlab.example/group/demo.git');
       await stampSettled(app, KEY, ['demo']);
       await storeRequests(app, ['group/demo'], false);
       const result = await app.get(PipelineService).step('pipeline', KEY);

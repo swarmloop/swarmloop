@@ -32,6 +32,7 @@ import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { ResearchStep } from '../steps/research/research.step';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { RunReport } from '../steps/shared/run-report';
+import { StaleReview } from '../steps/shared/stale-review';
 import { ReportRefresh } from '../steps/shared/report-refresh';
 import { LimitFailover } from '../steps/shared/limit-failover';
 import { LimitRelease } from '../steps/shared/limit-release';
@@ -99,6 +100,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     LimitFailover,
     LimitRelease,
     RunReport,
+    StaleReview,
     ReportRefresh,
     StepKernel,
     StepRegistry,

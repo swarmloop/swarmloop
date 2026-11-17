@@ -1,8 +1,18 @@
 import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { basename, join } from 'path';
+import * as delays from '../core/delay';
+import { clearGitFaults, failGit } from '../testing/git-fault.spec-helpers';
 import { git } from '../testing/git-fixture';
-import { captureTree } from './worktree-tree';
+import { captureTree, ownsRepo, requireTree } from './worktree-tree';
+
+import type * as GitFault from '../testing/git-fault.spec-helpers';
+
+jest.mock('child_process', () =>
+  jest.requireActual<typeof GitFault>('../testing/git-fault.spec-helpers').faultyChildProcess(),
+);
+
+const DUBIOUS = "fatal: detected dubious ownership in repository at '/work/x'";
 
 /** The tree git makes with an empty index: every file is hashed again. */
 function emptyIndexTree(repo: string): string {
@@ -89,5 +99,94 @@ describe('captureTree', () => {
 
     expect(captured?.tree).toBe(emptyIndexTree(repo));
     rmSync(repo, { recursive: true, force: true });
+  });
+});
+
+describe('the git probe', () => {
+  let waits: number[];
+
+  beforeEach(() => {
+    waits = [];
+    jest.spyOn(delays, 'delay').mockImplementation(async (ms) => {
+      waits.push(ms);
+    });
+  });
+
+  afterEach(() => {
+    clearGitFaults();
+    jest.restoreAllMocks();
+  });
+
+  function plainRepo(): string {
+    const repo = mkdtempSync(join(tmpdir(), 'swarmloop-probe-'));
+    git(repo, ['init', '-q']);
+    writeFileSync(join(repo, 'a.txt'), 'a\n');
+    return repo;
+  }
+
+  it("fails with git's text when the probe fails on both tries", async () => {
+    const repo = plainRepo();
+    failGit(['rev-parse', '--show-toplevel'], { stderr: DUBIOUS }, 2);
+
+    await expect(captureTree(repo)).rejects.toThrow('dubious ownership');
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('tries a failed probe once more after a second', async () => {
+    const repo = plainRepo();
+    failGit(['rev-parse', '--show-toplevel'], { stderr: DUBIOUS });
+
+    const captured = await captureTree(repo);
+
+    expect(captured?.tree).toBe(emptyIndexTree(repo));
+    expect(waits).toEqual([1000]);
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('answers false and null when git says the path is not in a repository', async () => {
+    const repo = plainRepo();
+    failGit(['rev-parse', '--is-inside-work-tree'], {
+      stderr: 'fatal: not a git repository (or any of the parent directories): .git',
+    });
+
+    expect(await ownsRepo(repo)).toBe(false);
+    failGit(['rev-parse', '--is-inside-work-tree'], { stderr: 'fatal: not a git repository' });
+    expect(await captureTree(repo)).toBeNull();
+    expect(waits).toEqual([]);
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('answers false and null when git prints false for the work tree check', async () => {
+    const repo = plainRepo();
+    failGit(['rev-parse', '--is-inside-work-tree'], { stdout: 'false\n' }, 2);
+
+    expect(await ownsRepo(repo)).toBe(false);
+    expect(await captureTree(repo)).toBeNull();
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('answers false and null for a path that does not exist, with no git call', async () => {
+    failGit(['rev-parse'], { stderr: DUBIOUS }, 5);
+    const missing = join(tmpdir(), 'swarmloop-probe-missing');
+
+    expect(await ownsRepo(missing)).toBe(false);
+    expect(await captureTree(missing)).toBeNull();
+  });
+
+  it('answers false and null for a subdirectory of a repository', async () => {
+    const repo = plainRepo();
+    mkdirSync(join(repo, 'sub'));
+
+    expect(await ownsRepo(join(repo, 'sub'))).toBe(false);
+    expect(await captureTree(join(repo, 'sub'))).toBeNull();
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('requireTree fails with the name and the path for a folder that is not a repository', async () => {
+    const folder = mkdtempSync(join(tmpdir(), 'swarmloop-plain-'));
+    failGit(['rev-parse', '--is-inside-work-tree'], { stderr: 'fatal: not a git repository' });
+
+    await expect(requireTree(folder)).rejects.toThrow(`${basename(folder)}: no git tree at ${folder}`);
+    rmSync(folder, { recursive: true, force: true });
   });
 });
