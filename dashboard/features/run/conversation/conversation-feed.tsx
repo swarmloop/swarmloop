@@ -1,10 +1,10 @@
 'use client';
 
-import type { ReactElement } from 'react';
+import { Fragment, type ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import type { FlowView } from '@contract/api';
-import type { PlanChatEntry } from '@contract/plan-chat';
+import type { PlanChatEntry, PlanRevision } from '@contract/plan-chat';
 import { MarkdownBody } from '../../../components/ui/markdown-body';
 import { Bubble, BubbleLayoutProvider, BubbleProvider } from '../transcript/bubble';
 import { useMotionMs } from '../transcript/tokens';
@@ -21,6 +21,7 @@ import {
 import { InfoLine } from './info-line';
 import { hasProblem, ProblemEntry } from './problem-entry';
 import { QuestionEntry } from './question-entry';
+import { RevisionCard } from './revision-card';
 
 /** The height kept for a reply that streams, so the entries below it do not move while it grows. */
 const STREAM_HEIGHT = 160;
@@ -75,7 +76,11 @@ function StreamingReply({ runKey, cursor }: { runKey: string; cursor: number }):
 function Talk({ talk }: { talk: AgentTalk }): ReactElement {
   return (
     <InfoLine
-      sentence={talkSentence(talk)}
+      sentence={talkSentence({
+        ...talk,
+        asked: plainText(talk.asked),
+        answered: talk.answered && plainText(talk.answered),
+      })}
       label="Show the whole talk"
       detail={
         <>
@@ -108,12 +113,27 @@ export function ConversationFeed({
 }): ReactElement {
   const ms = useMotionMs();
   const limit = limitWaitSentence(flow);
+  const revisions = flow.conversation?.revisions ?? [];
+  const lastReply = (version: number): number =>
+    entries.findLastIndex((entry) => entry.role === 'planner' && entry.version === version);
+  const cardsAfter = (index: number): PlanRevision[] =>
+    revisions.filter((revision) =>
+      lastReply(revision.version) >= 0 ? lastReply(revision.version) === index : index === entries.length - 1,
+    );
   return (
     <BubbleLayoutProvider value={{ width: '92%', ms }}>
       <Box role="log" aria-label="Conversation" sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-        {entries.map((entry) =>
-          isTalk(entry) ? <Talk key={entry.key} talk={entry} /> : <Message key={entry.key} entry={entry} />,
-        )}
+        {entries.length === 0
+          ? revisions.map((revision) => <RevisionCard key={revision.version} revision={revision} />)
+          : null}
+        {entries.map((entry, index) => (
+          <Fragment key={entry.key}>
+            {isTalk(entry) ? <Talk talk={entry} /> : <Message entry={entry} />}
+            {cardsAfter(index).map((revision) => (
+              <RevisionCard key={revision.version} revision={revision} />
+            ))}
+          </Fragment>
+        ))}
         {flow.conversation?.replying ? <StreamingReply runKey={flow.key} cursor={flow.revision} /> : null}
         {flow.items.map((item) => (
           <QuestionEntry key={`${item.kind}:${item.id}`} item={item} />

@@ -130,6 +130,19 @@ describe('RunScreen', () => {
     expect(within(region).getAllByRole('button', { name: 'Plan' })).toHaveLength(2);
   });
 
+  it('keeps the Tasks section drawn once while the plan step is open, also while its window loads', async () => {
+    const tasks = [
+      { id: 'a', index: 0, title: 'Add the column', files: [], proof: 'a', depends: [], status: 'blocked' as const },
+    ];
+    vi.mocked(getStep).mockReturnValue(new Promise(() => {}));
+    vi.mocked(getFlow).mockResolvedValue(flowView({ status: 'running', currentStep: 'plan', tasks }));
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    expect(await screen.findByRole('region', { name: 'Tasks' })).toBeInTheDocument();
+    expect(await screen.findByLabelText('Loading the step')).toBeInTheDocument();
+    expect(screen.getAllByRole('region', { name: 'Tasks' })).toHaveLength(1);
+  });
+
   it('shows the status line and each task status, and skips a blocked task', async () => {
     const tasks = [
       { id: 'a', index: 0, title: 'Add the column', files: [], proof: 'a', depends: [], status: 'merged' as const },

@@ -18,7 +18,9 @@ import { skipTask } from '../../../../lib/endpoints';
 import { StepDetail } from '../step-detail';
 import { GitAuthBanner } from '../git-auth-banner';
 import { LimitBanner } from '../limit-banner';
+import type { PlanRevision } from '@contract/plan-chat';
 import { ConversationColumn } from '../../conversation/conversation-column';
+import { latestRevision } from '../../conversation/revision-marks';
 import { FinishedSummary } from './finished-summary';
 import { RunDialogs } from './run-dialogs';
 import { RunHeader } from './run-header';
@@ -75,16 +77,21 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
   const original = launches.find((launch) => launch.fromStep === null)?.phases ?? [...PHASES];
   const latest = launches.at(-1)?.phases ?? original;
   const choice = replay ? replaySelection(original, latest, replay) : null;
-  const tasks = flow.tasks?.length ? (
-    <TaskLayers
-      tasks={flow.tasks}
-      epic={flow.epic}
-      ownUsd={flow.metrics.usd}
-      mergeQueue={flow.mergeQueue}
-      decisions={flow.decisions}
-      onSkip={(taskId) => skipTask(flow.key, taskId)}
-    />
-  ) : null;
+  const revision = latestRevision(flow.conversation?.revisions);
+  const layers = (planRevision: PlanRevision | null): ReactElement | null =>
+    flow.tasks?.length ? (
+      <TaskLayers
+        tasks={flow.tasks}
+        revision={planRevision}
+        epic={flow.epic}
+        ownUsd={flow.metrics.usd}
+        mergeQueue={flow.mergeQueue}
+        decisions={flow.decisions}
+        onSkip={(taskId) => skipTask(flow.key, taskId)}
+      />
+    ) : null;
+  const planWindow = selected === 'plan';
+  const tasks = layers(planWindow ? revision : null);
   const summary = flow.status === 'done' && selected === null;
   return (
     <Box sx={{ minWidth: 0 }}>
@@ -126,6 +133,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
               step={selected}
               live={flow.status === 'running' && pipelineStepOf(selected) === flow.currentStep}
               revision={flow.updatedAt}
+              planRevision={planWindow ? revision : undefined}
               attempts={chip?.attempts ?? 0}
               restartedAt={chip?.restartedAt}
               now={now}

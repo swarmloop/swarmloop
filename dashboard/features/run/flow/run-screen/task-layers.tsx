@@ -8,6 +8,8 @@ import type { TaskEntry } from '@contract/api';
 import { epicFigures } from '@contract/epic-figures';
 import { needsPerson } from '@contract/run-state';
 import { orderTasks, taskGroup } from '@contract/task-order';
+import type { PlanRevision } from '@contract/plan-chat';
+import { markOf } from '../../conversation/revision-marks';
 import { duration, money } from '../../../../lib/format';
 import { TaskDecisions } from './task-decisions';
 import { TaskRow } from './task-row';
@@ -25,6 +27,7 @@ export function TaskLayers({
   mergeQueue,
   decisions,
   onSkip,
+  revision = null,
 }: {
   tasks: TaskEntry[];
   epic?: { usd: number; durationMs: number };
@@ -32,6 +35,8 @@ export function TaskLayers({
   mergeQueue?: { id: string; title: string }[];
   decisions?: string;
   onSkip: (taskId: string) => Promise<unknown>;
+  /** The latest plan change: the tasks it added or changed are marked. */
+  revision?: PlanRevision | null;
 }): ReactElement {
   const [settledOpen, setSettledOpen] = useState(false);
   const tasks = [...planned].sort((a, b) => a.index - b.index);
@@ -54,7 +59,13 @@ export function TaskLayers({
       )
     : null;
   const row = (task: TaskEntry): ReactElement => (
-    <TaskRow key={`${task.title} ${task.proof}`} task={task} dependents={dependentsOf(task, tasks)} onSkip={onSkip} />
+    <TaskRow
+      key={`${task.title} ${task.proof}`}
+      task={task}
+      dependents={dependentsOf(task, tasks)}
+      onSkip={onSkip}
+      mark={markOf(revision, task.title)}
+    />
   );
   return (
     <Box component="section" aria-label="Tasks" sx={{ my: 2, display: 'grid', gap: 1, minWidth: 0 }}>

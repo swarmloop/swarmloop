@@ -206,4 +206,40 @@ describe('StepDocuments', () => {
       expect(screen.queryByText('Server checks')).toBeNull();
     });
   });
+
+  describe('the plan window', () => {
+    const revision = {
+      version: 2,
+      reason: 'You asked for logging',
+      summary: 'Logging added',
+      added: ['Add request logging'],
+      changed: ['Send the mail'],
+      dropped: [],
+      at: '2026-11-15T07:11:43.444Z',
+    };
+    const requirements = JSON.stringify({
+      prompt: 'Do it',
+      plan: { name: 'P', overview: '', items: ['Create the table', 'Add request logging', 'Send the mail'] },
+    });
+    const planVisit = visitView({
+      documents: [{ kind: 'requirements', attempt: 1, body: requirements, createdAt: '2026-11-15T07:11:43.444Z' }],
+    });
+
+    it('marks the checklist items the latest revision added and changed', () => {
+      documents({ visit: planVisit, planRevision: revision });
+
+      const checklist = screen.getByRole('list', { name: 'Plan checklist' });
+      const [table, logging, mail] = within(checklist).getAllByRole('listitem');
+      expect(logging).toHaveTextContent('New in this plan');
+      expect(mail).toHaveTextContent('Changed in this plan');
+      expect(table).not.toHaveTextContent('in this plan');
+    });
+
+    it('shows no mark for a run whose plan never changed', () => {
+      documents({ visit: planVisit, planRevision: null });
+
+      expect(screen.getByText(/Add request logging/)).toBeInTheDocument();
+      expect(screen.queryByText(/in this plan/)).toBeNull();
+    });
+  });
 });
