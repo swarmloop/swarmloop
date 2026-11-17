@@ -190,12 +190,15 @@ describe('TaskLayers', () => {
   });
 
   it('skips a blocked task', async () => {
-    const onSkip = vi.fn();
+    const onSkip = vi.fn().mockResolvedValue(undefined);
     render(<TaskLayers tasks={tasks} onSkip={onSkip} />);
+    const user = userEvent.setup({ delay: null });
 
-    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Skip task' }));
+    await user.click(screen.getByRole('button', { name: 'Skip task' }));
+    expect(onSkip).not.toHaveBeenCalled();
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Skip task' }));
 
-    expect(onSkip).toHaveBeenCalledWith('t5', []);
+    expect(onSkip).toHaveBeenCalledWith('t5');
   });
 
   it('shows the merge queue and the decisions, and hides them when empty', () => {

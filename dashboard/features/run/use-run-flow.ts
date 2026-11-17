@@ -17,9 +17,6 @@ export function useRunFlow(runKey: string): {
   setFlow: Dispatch<SetStateAction<FlowView | null>>;
   error: string | null;
   setError: Dispatch<SetStateAction<string | null>>;
-  stopping: boolean;
-  rebasing: boolean;
-  rebaseError: string | null;
   confirmStop: boolean;
   setConfirmStop: Dispatch<SetStateAction<boolean>>;
   replay: string | null;
@@ -33,10 +30,10 @@ export function useRunFlow(runKey: string): {
   /** Fetch the run again, for the Retry of a failed load. */
   reload: () => void;
   applyWaiting: (next: FlowView) => void;
-  stopRun: () => void;
-  rebaseRun: () => void;
+  stopRun: () => Promise<void>;
+  rebaseRun: () => Promise<void>;
   startReplay: (step: string, prompt: string, phases: PhaseName[]) => Promise<void>;
-  startReviewer: (step: string) => void;
+  startReviewer: (step: string) => Promise<void>;
   resumeRun: () => void;
 } {
   const [flow, setFlow] = useState<FlowView | null>(null);
@@ -186,7 +183,6 @@ export function useRunFlow(runKey: string): {
     setError,
     setNow,
     setSelected,
-    setConfirmStop,
     setReplay,
     setPending,
     memory,

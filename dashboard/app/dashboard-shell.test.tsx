@@ -111,9 +111,9 @@ describe('Shell', () => {
     fireEvent.mouseEnter(await screen.findByText('Run one'));
     await user.click(await screen.findByRole('button', { name: 'Remove Run one' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('heading', { name: 'Remove Run one?' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { name: 'Remove run Run one?' })).toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Remove run' }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith('/'));
     expect(removeRun).toHaveBeenCalledWith('run-1');
@@ -235,7 +235,7 @@ describe('Shell', () => {
 
         fireEvent.mouseEnter(await screen.findByText('Merged 0'));
         await user.click(await screen.findByRole('button', { name: 'Remove Merged 0' }));
-        await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remove' }));
+        await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remove run' }));
 
         await waitFor(() => expect(push).toHaveBeenCalledWith('/?show=done'));
       });

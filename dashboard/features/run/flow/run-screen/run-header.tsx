@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import DataUsage from '@mui/icons-material/DataUsage';
@@ -13,6 +13,7 @@ import Chip from '@mui/material/Chip';
 import MuiLink from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import { ConfirmDialog } from '../../../shell';
 import { duration, money, tokens } from '../../../../lib/format';
 import { runWord } from '../../run-word';
 import { RunStateIcon, toneColor } from '../../run-state-word';
@@ -22,22 +23,17 @@ import { epicFigures } from '@contract/epic-figures';
 export function RunHeader({
   flow,
   openMs,
-  rebasing,
-  stopping,
-  rebaseError,
   onRebase,
   onStop,
   onOpenRequirements,
 }: {
   flow: FlowView;
   openMs: number;
-  rebasing: boolean;
-  stopping: boolean;
-  rebaseError: string | null;
-  onRebase: () => void;
+  onRebase: () => Promise<void>;
   onStop: () => void;
   onOpenRequirements: () => void;
 }): ReactElement {
+  const [rebaseOpen, setRebaseOpen] = useState(false);
   const metric = flow.metrics;
   const figures = flow.epic
     ? epicFigures(
@@ -130,12 +126,12 @@ export function RunHeader({
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
           {flow.actions.includes('rebase') ? (
-            <Button variant="outlined" disabled={rebasing} onClick={onRebase}>
+            <Button variant="outlined" onClick={() => setRebaseOpen(true)}>
               Rebase
             </Button>
           ) : null}
           {flow.actions.includes('stop') ? (
-            <Button color="error" variant="outlined" disabled={stopping} onClick={onStop}>
+            <Button color="error" variant="outlined" onClick={onStop}>
               Stop
             </Button>
           ) : null}
@@ -144,11 +140,15 @@ export function RunHeader({
           </Button>
         </Box>
       </Box>
-      {rebaseError ? (
-        <Typography color="error" variant="body2" sx={{ mt: 1 }}>
-          {rebaseError}
-        </Typography>
-      ) : null}
+      <ConfirmDialog
+        open={rebaseOpen}
+        title={`Rebase ${flow.key} onto its base branch?`}
+        body="The branch moves onto the newest base and the merge request goes back to draft. Checks, code review and CI run again. A conflict goes to the agent."
+        verb="Rebase"
+        tone="danger"
+        onConfirm={onRebase}
+        onClose={() => setRebaseOpen(false)}
+      />
       <Box
         sx={{
           mt: 1.5,

@@ -1,14 +1,14 @@
 import { act, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../lib/api';
-import { getFlow, getRunLog } from '../../lib/endpoints';
+import { getFlow, getRunLog, stopRun } from '../../lib/endpoints';
 import { emitted, receive } from '../../test/fake-socket';
 import { flowView } from '../../test/fixtures';
 import { reviewLog } from '../../test/review-log';
 import { LiveBridgeProvider } from '../shell';
 import { useRunFlow } from './use-run-flow';
 
-vi.mock('../../lib/endpoints', () => ({ getFlow: vi.fn(), getRunLog: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({ getFlow: vi.fn(), getRunLog: vi.fn(), stopRun: vi.fn() }));
 vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
 
 function Probe({ runKey }: { runKey: string }) {
@@ -155,5 +155,40 @@ describe('useRunFlow', () => {
 
     expect(await screen.findByText('Run one')).toBeInTheDocument();
     expect(screen.queryByText('run is gone')).not.toBeInTheDocument();
+  });
+
+  it('rejects a stop that failed and leaves the run as it was, and marks it stopped when the stop worked', async () => {
+    vi.mocked(getFlow).mockResolvedValue(flowView({ status: 'running' }));
+    vi.mocked(stopRun).mockRejectedValueOnce(new Error('stop refused')).mockResolvedValue({});
+    const outcomes: string[] = [];
+    function StopProbe() {
+      const { flow, stopRun: stop } = useRunFlow('run-1');
+      return (
+        <div>
+          {flow ? <p>{`status: ${flow.status}`}</p> : null}
+          <button
+            onClick={() =>
+              void stop().then(
+                () => outcomes.push('stopped'),
+                (cause: Error) => outcomes.push(cause.message),
+              )
+            }
+          >
+            stop
+          </button>
+        </div>
+      );
+    }
+
+    render(<StopProbe />, { wrapper: LiveBridgeProvider });
+    await screen.findByText('status: running');
+    await act(async () => screen.getByRole('button', { name: 'stop' }).click());
+    expect(outcomes).toEqual(['stop refused']);
+    expect(screen.getByText('status: running')).toBeInTheDocument();
+
+    await act(async () => screen.getByRole('button', { name: 'stop' }).click());
+
+    expect(outcomes).toEqual(['stop refused', 'stopped']);
+    expect(await screen.findByText('status: failed')).toBeInTheDocument();
   });
 });

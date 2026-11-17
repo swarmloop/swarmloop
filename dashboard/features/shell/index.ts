@@ -1,3 +1,4 @@
+export { ConfirmDialog } from './confirm-dialog';
 export { Account } from './account';
 export { PauseBanner } from './pause-banner';
 export { Shell, useNewRun } from './shell';

@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import DataUsage from '@mui/icons-material/DataUsage';
 import ErrorOutline from '@mui/icons-material/ErrorOutline';
 import MemoryIcon from '@mui/icons-material/Memory';
@@ -13,6 +13,7 @@ import Button from '@mui/material/Button';
 import Link from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import { ConfirmDialog } from '../../../shell';
 import { duration } from '../../../../lib/format';
 import { statusColor } from '../../../../theme/theme';
 import { AttemptSelector } from '../../attempt-selector';
@@ -88,7 +89,7 @@ export function StepHeader({
 }: {
   step: string;
   runStatus?: string;
-  onReplay?: () => void;
+  onReplay?: () => void | Promise<void>;
   onResume?: () => void;
   resumeLabel?: string;
   view: StepView;
@@ -112,6 +113,7 @@ export function StepHeader({
   slowestPrepared?: { command: string; ms: number } | null;
 }): ReactElement {
   const server = view.descriptor.kind === 'server';
+  const [asking, setAsking] = useState(false);
   return (
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, minWidth: 0 }}>
@@ -121,9 +123,20 @@ export function StepHeader({
             <Typography sx={{ fontSize: 12, color: statusColor(runStatus) }}>{runStatus}</Typography>
           ) : null}
           {onReplay && step !== 'done' && label !== 'returned' ? (
-            <Button size="small" variant="contained" onClick={onReplay}>
+            <Button size="small" variant="contained" onClick={() => setAsking(true)}>
               {label === 'failed' ? 'Retry' : 'Run again'}
             </Button>
+          ) : null}
+          {onReplay ? (
+            <ConfirmDialog
+              open={asking}
+              title={`Run ${stepLabel(step)} again?`}
+              body={`${stepLabel(step)} runs again from the start.`}
+              verb="Run again"
+              tone="danger"
+              onConfirm={async () => onReplay()}
+              onClose={() => setAsking(false)}
+            />
           ) : null}
           {onResume ? (
             <Button size="small" variant="contained" onClick={onResume}>

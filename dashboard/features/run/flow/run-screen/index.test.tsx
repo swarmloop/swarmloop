@@ -124,7 +124,10 @@ describe('RunScreen', () => {
     expect(region).toHaveTextContent('waiting for b');
     expect(within(region).getAllByRole('button', { name: 'Skip task' })).toHaveLength(1);
 
-    await userEvent.setup({ delay: null }).click(within(region).getByRole('button', { name: 'Skip task' }));
+    const user = userEvent.setup({ delay: null });
+    await user.click(within(region).getByRole('button', { name: 'Skip task' }));
+    expect(skipTask).not.toHaveBeenCalled();
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Skip task' }));
     expect(skipTask).toHaveBeenCalledWith('run-1', 'b');
   });
 
@@ -217,6 +220,7 @@ describe('RunScreen', () => {
 
     await user.click(await screen.findByRole('button', { name: /^implement/ }));
     await user.click(await screen.findByRole('button', { name: 'Run again' }));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Run again' }));
 
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('heading', { name: 'implement' })).toBeInTheDocument();

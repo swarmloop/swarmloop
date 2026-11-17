@@ -31,7 +31,7 @@ export function TaskLayers({
   ownUsd?: number;
   mergeQueue?: { id: string; title: string }[];
   decisions?: string;
-  onSkip: (taskId: string, dependents: string[]) => void;
+  onSkip: (taskId: string) => Promise<unknown>;
 }): ReactElement {
   const [settledOpen, setSettledOpen] = useState(false);
   const tasks = [...planned].sort((a, b) => a.index - b.index);

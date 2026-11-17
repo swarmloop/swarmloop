@@ -10,7 +10,7 @@ interface ActionResult {
   text: string;
 }
 
-/** Test and Disconnect of one card, with the answer to show beside them. */
+/** Test and Disconnect of one card, with the answer of Test to show beside them. */
 export function useCardActions(
   card: ConnectionCard,
   onChanged: () => void,
@@ -37,11 +37,12 @@ export function useCardActions(
       onChanged();
     }, 'the test could not run');
 
-  const remove = (): Promise<void> =>
-    run(async () => {
-      await disconnectIntegration(card.id);
-      onChanged();
-    }, 'the disconnect failed');
+  /** Rejects on failure: the confirm that asked for it shows the error. */
+  const remove = async (): Promise<void> => {
+    setResult(null);
+    await disconnectIntegration(card.id);
+    onChanged();
+  };
 
   return { result, test, remove };
 }

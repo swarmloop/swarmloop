@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -12,10 +12,7 @@ function headerProps(status = 'done', overrides: Partial<ComponentProps<typeof R
   return {
     flow: flowView({ status }),
     openMs: 0,
-    rebasing: false,
-    stopping: false,
-    rebaseError: null,
-    onRebase: vi.fn(),
+    onRebase: vi.fn().mockResolvedValue(undefined),
     onStop: vi.fn(),
     onOpenRequirements: vi.fn(),
     ...overrides,
@@ -34,8 +31,10 @@ describe('RunHeader', () => {
     const props = header(status);
 
     await user.click(screen.getByRole('button', { name: 'Rebase' }));
+    expect(props.onRebase).not.toHaveBeenCalled();
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Rebase' }));
 
-    expect(props.onRebase).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
+    expect(props.onRebase).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
   });
 

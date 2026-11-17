@@ -29,10 +29,6 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
     flow,
     setFlow,
     error,
-    setError,
-    stopping,
-    rebasing,
-    rebaseError,
     confirmStop,
     setConfirmStop,
     replay,
@@ -85,11 +81,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
       ownUsd={flow.metrics.usd}
       mergeQueue={flow.mergeQueue}
       decisions={flow.decisions}
-      onSkip={(taskId) =>
-        void skipTask(flow.key, taskId).catch((reason: unknown) =>
-          setError(reason instanceof Error ? reason.message : 'Skip task failed.'),
-        )
-      }
+      onSkip={(taskId) => skipTask(flow.key, taskId)}
     />
   ) : null;
   const summary = flow.status === 'done' && selected === null;
@@ -105,13 +97,15 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
       <RunHeader
         flow={flow}
         openMs={openMs}
-        rebasing={rebasing}
-        stopping={stopping}
-        rebaseError={rebaseError}
         onRebase={rebaseRun}
         onStop={() => setConfirmStop(true)}
         onOpenRequirements={() => selectStep('requirements')}
       />
+      {error ? (
+        <Typography color="error" variant="body2" sx={{ mt: 1 }}>
+          {error}
+        </Typography>
+      ) : null}
       <FlowBoard
         phases={phases}
         returns={flow.returns}
@@ -163,29 +157,23 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         runKey={flow.key}
         onProjects={(projects) => setFlow((current) => (current ? { ...current, projects } : current))}
         onClose={() => setReplay(null)}
-        onSubmit={async (prompt, phases) => {
-          if (!replay) {
-            return;
-          }
-          if (runningElsewhere) {
+        onSubmit={(prompt, phases) => {
+          if (replay) {
             setPending({ prompt, phases });
-            return 'hold';
           }
-          await startReplay(replay, prompt, phases);
+          return Promise.resolve(replay ? 'hold' : undefined);
         }}
       />
       <RunDialogs
         flow={flow}
-        error={error}
-        stopping={stopping}
         confirmStop={confirmStop}
         setConfirmStop={setConfirmStop}
         pending={pending}
         setPending={setPending}
         replay={replay}
+        runningElsewhere={runningElsewhere}
         stopRun={stopRun}
         startReplay={startReplay}
-        setError={setError}
       />
     </Box>
   );

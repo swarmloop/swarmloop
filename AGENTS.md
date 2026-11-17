@@ -25,6 +25,7 @@ swarmloop runs coding agents through a fixed flow: requirements, research, plan,
 - Time through `Clock`, config through `AppConfig`, logs through a Nest `Logger`. Named exports in the server.
 - Dashboard: the API only through `dashboard/lib/api.ts`; socket events only in `dashboard/features/shell/use-live-bridge.ts`; list keys by the visit `key`, never by an id.
 - Prefer interfaces and small classes with one job (SOLID, KISS, DRY). Add an abstraction when it makes the code clearer and matches the tree, not before.
+- Every dangerous action (stops work, throws work away, rewrites a branch or cannot be undone) asks through ConfirmDialog; never a confirm of its own.
 
 ## Size and shape
 

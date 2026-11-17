@@ -147,8 +147,10 @@ describe('StepDetail', () => {
     detail({ onReplay });
 
     await user.click(await screen.findByRole('button', { name: 'Run again' }));
+    expect(onReplay).not.toHaveBeenCalled();
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Run again' }));
 
-    expect(onReplay).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
+    expect(onReplay).toHaveBeenCalledTimes(1);
   });
 
   it('shows Resume only when onResume is passed', async () => {

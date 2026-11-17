@@ -11,10 +11,7 @@ function header(flow: ReturnType<typeof flowView>) {
     <RunHeader
       flow={flow}
       openMs={0}
-      rebasing={false}
-      stopping={false}
-      rebaseError={null}
-      onRebase={vi.fn()}
+      onRebase={vi.fn().mockResolvedValue(undefined)}
       onStop={vi.fn()}
       onOpenRequirements={vi.fn()}
     />,
