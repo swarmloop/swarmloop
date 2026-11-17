@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRepository, createRun, listProjects, listRemote, ticketKeys } from '../../../lib/endpoints';
+import { createRepository, createRun, listProjects, listRemote, ticketKeys, uploadFile } from '../../../lib/endpoints';
 import { NewRunDialog } from './index';
 
 vi.mock('../../../lib/endpoints', () => ({
@@ -11,6 +11,7 @@ vi.mock('../../../lib/endpoints', () => ({
   createRun: vi.fn(),
   setRunProjects: vi.fn(),
   ticketKeys: vi.fn(),
+  uploadFile: vi.fn(),
 }));
 
 const allPhases = ['planning', 'implementation', 'checks', 'code-review', 'ci'];
@@ -110,6 +111,35 @@ describe('NewRunDialog', () => {
 
     await waitFor(() => expect(onClose).toHaveBeenCalledWith());
     expect(onSubmit).toHaveBeenCalledWith('Ship it', allPhases);
+  });
+
+  it('sends the upload ids with a new run and with onSubmit', async () => {
+    const user = userEvent.setup({ delay: null });
+    vi.mocked(uploadFile).mockResolvedValue({ id: 'u1', name: 'shot.png', size: 3 });
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = render(<NewRunDialog open onClose={vi.fn()} />);
+    await pastePrompt(user, 'Ship it');
+    await pickProject(user, 'swarmloop');
+    await user.upload(screen.getByTestId('composer-file-input'), new File(['abc'], 'shot.png', { type: 'image/png' }));
+    await screen.findByText('shot.png');
+    await user.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(createRun).toHaveBeenCalled());
+    expect(vi.mocked(createRun).mock.lastCall![0]).toMatchObject({ attachments: ['u1'] });
+    unmount();
+
+    render(<NewRunDialog open onClose={vi.fn()} onSubmit={onSubmit} />);
+    await pastePrompt(user, 'Again');
+    await pickProject(user, 'swarmloop');
+    await user.upload(screen.getByTestId('composer-file-input'), new File(['abc'], 'shot.png', { type: 'image/png' }));
+    await screen.findByText('shot.png');
+    await user.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('Again', allPhases, ['u1']));
+  });
+
+  it('fills the prompt from initialPrompt', () => {
+    render(<NewRunDialog open onClose={vi.fn()} initialPrompt="Follow up on run-3" />);
+
+    expect(screen.getByRole('textbox', { name: /Prompt/ })).toHaveValue('Follow up on run-3');
   });
 
   it('shows the error when the POST to /runs fails', async () => {

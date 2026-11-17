@@ -29,6 +29,7 @@ import {
   setRunProjects,
   startReviewer,
   stopRun,
+  uploadFile,
 } from './endpoints';
 
 vi.mock('./api', () => ({ api: vi.fn(), runLog: vi.fn() }));
@@ -38,6 +39,26 @@ beforeEach(() => {
 });
 
 describe('endpoints', () => {
+  it('uploads a file as a raw body with its encoded name', async () => {
+    const file = new Blob(['bytes']);
+    vi.mocked(api).mockResolvedValue({ id: 'u1', name: 'a b.png', size: 5 });
+
+    await expect(uploadFile(file, 'a b.png')).resolves.toEqual({ id: 'u1', name: 'a b.png', size: 5 });
+
+    expect(vi.mocked(api).mock.calls).toEqual([
+      [
+        '/uploads?name=a%20b.png',
+        { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' } },
+      ],
+    ]);
+  });
+
+  it('throws the reason of a refused upload', async () => {
+    vi.mocked(api).mockRejectedValue(new Error('The file is larger than 25 MB'));
+
+    await expect(uploadFile(new Blob(['x']), 'big.bin')).rejects.toThrow('The file is larger than 25 MB');
+  });
+
   it('reads with GET paths and encodes the key once', async () => {
     await listRuns();
     await getFlow('a/b');

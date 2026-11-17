@@ -6,12 +6,13 @@ import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import { Composer } from '../../../components/composer/composer';
 import { createRun, listProjects, listRemote, setRunProjects, ticketKeys } from '../../../lib/endpoints';
 import { mergeNames } from '../../../lib/names';
 import type { PhaseName } from '@contract/steps';
 import { PHASES } from '@contract/steps';
+import type { AttachmentRef } from '@contract/attachments';
 import type { CreateRunBody, RemoteEntry, RemoteListView } from '@contract/api';
 import { PhasePicker } from './phase-picker';
 import { ProjectPicker } from './project-picker';
@@ -31,6 +32,7 @@ export function NewRunDialog({
   runKey,
   onProjects,
   onSubmit,
+  initialPrompt = '',
 }: {
   open: boolean;
   onClose: () => void;
@@ -42,9 +44,12 @@ export function NewRunDialog({
   lockedProjects?: string[];
   runKey?: string;
   onProjects?: (projects: string[]) => void;
-  onSubmit?: (prompt: string, phases: PhaseName[]) => Promise<'hold' | void>;
+  onSubmit?: (prompt: string, phases: PhaseName[], attachments?: string[]) => Promise<'hold' | void>;
+  /** Text the prompt starts with, for a follow-up run. */
+  initialPrompt?: string;
 }): ReactElement {
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState(initialPrompt);
+  const [sent, setSent] = useState(0);
   const [picked, setPicked] = useState<PhaseName[]>(selected ?? DEFAULT_PHASES);
   const [available, setAvailable] = useState<string[]>(lockedProjects ?? []);
   const [pickedProjects, setPickedProjects] = useState<string[]>(lockedProjects ?? []);
@@ -154,8 +159,9 @@ export function NewRunDialog({
     changeProjects(mergeNames(frozenProjects ? kept.current : pickedProjects, [entry.name]));
   };
 
-  const submit = (): void => {
-    const text = prompt.trim();
+  const submit = (typed: string, files: AttachmentRef[]): void => {
+    const text = typed.trim();
+    const attachments = files.map((file) => file.id);
     if (!text || needProjects || busy) {
       return;
     }
@@ -163,6 +169,7 @@ export function NewRunDialog({
     setError(null);
     const done = (created?: string): void => {
       setPrompt('');
+      setSent((count) => count + 1);
       setPicked(selected ?? DEFAULT_PHASES);
       setPickedProjects(lockedProjects ?? []);
       if (created && onCreated) {
@@ -170,15 +177,18 @@ export function NewRunDialog({
       }
     };
     const request = onSubmit
-      ? onSubmit(text, chosen).then((held) => {
+      ? (attachments.length > 0 ? onSubmit(text, chosen, attachments) : onSubmit(text, chosen)).then((held) => {
           if (held !== 'hold') {
             done();
             onClose();
           }
         })
-      : createRun({ prompt: text, phases: chosen, projects: pickedProjects } satisfies CreateRunBody).then((body) =>
-          done(body.key),
-        );
+      : createRun({
+          prompt: text,
+          phases: chosen,
+          projects: pickedProjects,
+          ...(attachments.length > 0 ? { attachments } : {}),
+        } satisfies CreateRunBody).then((body) => done(body.key));
     request
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'run failed'))
       .finally(() => setBusy(false));
@@ -188,16 +198,15 @@ export function NewRunDialog({
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>{title}</DialogTitle>
       <DialogContent sx={{ display: 'grid', gap: 2, '&&': { pt: 2.5 } }}>
-        <TextField
-          // eslint-disable-next-line jsx-a11y/no-autofocus -- the prompt is the dialog's first field, so it takes focus when the dialog opens
-          autoFocus
+        <Composer
+          key={sent}
           label="Prompt"
           value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          required
-          multiline
+          onChange={setPrompt}
+          onSend={submit}
+          sendLabel={action}
+          disabled={busy || needProjects}
           minRows={6}
-          slotProps={{ inputLabel: { shrink: true } }}
         />
         {prompt.trim() ? (
           <Typography variant="body2" color="text.secondary">
@@ -222,9 +231,6 @@ export function NewRunDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" disabled={busy || prompt.trim() === '' || needProjects} onClick={submit}>
-          {action}
-        </Button>
       </DialogActions>
     </Dialog>
   );

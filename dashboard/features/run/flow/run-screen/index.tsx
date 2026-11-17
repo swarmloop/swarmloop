@@ -159,9 +159,9 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         runKey={flow.key}
         onProjects={(projects) => setFlow((current) => (current ? { ...current, projects } : current))}
         onClose={() => setReplay(null)}
-        onSubmit={(prompt, phases) => {
+        onSubmit={(prompt, phases, attachments) => {
           if (replay) {
-            setPending({ prompt, phases });
+            setPending({ prompt, phases, attachments });
           }
           return Promise.resolve(replay ? 'hold' : undefined);
         }}
