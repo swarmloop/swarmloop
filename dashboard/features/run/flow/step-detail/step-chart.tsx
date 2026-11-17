@@ -55,6 +55,9 @@ function NoSamplesLine(): ReactElement {
   );
 }
 
+/** The sentence of a step that started no container. */
+export const NO_CONTAINER = 'This step started no container.';
+
 /** A visit shorter than this has no resource charts. */
 const MIN_CHART_MS = 60_000;
 
@@ -90,17 +93,29 @@ function Resources({ visit, lines }: { visit: StepView['visits'][number]; lines:
   );
 }
 
+/** The step ran, started no container and is not the restart case: it has nothing to draw. */
+export function startedNoContainer(visit: StepView['visits'][number] | undefined, restarted: boolean): boolean {
+  if (!visit) {
+    return false;
+  }
+  const samples = visit.samples.filter((sample) => sample.source !== 'server');
+  return samples.length === 0 && visit.killReason !== 'process died' && !restarted && visit.status !== 'running';
+}
+
 /** The resources of the containers the visit started. The server process itself is not a container. */
 export function StepChart({
   visit,
   total = false,
   restarted = false,
+  feed = false,
 }: {
   visit: StepView['visits'][number] | undefined;
   /** Draw the step total only, not a line for each source. */
   total?: boolean;
   /** The server restarted while the visit's agent kept running. */
   restarted?: boolean;
+  /** The transcript is shown: it carries the no-container sentence in its top line. */
+  feed?: boolean;
 }): ReactElement | null {
   if (!visit) {
     return null;
@@ -109,10 +124,10 @@ export function StepChart({
   if (samples.length === 0 && (visit.killReason === 'process died' || restarted)) {
     return <NoSamplesLine />;
   }
-  if (samples.length === 0 && visit.status !== 'running') {
-    return (
+  if (startedNoContainer(visit, restarted)) {
+    return feed ? null : (
       <Typography color="text.secondary" sx={{ mt: 2, fontSize: 13 }}>
-        This step started no container.
+        {NO_CONTAINER}
       </Typography>
     );
   }

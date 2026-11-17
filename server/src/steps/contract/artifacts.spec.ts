@@ -179,4 +179,14 @@ describe('artifact catalog', () => {
     );
     expect(ARTIFACTS.subtaskAnswerResult.parse('{"answer":"use it"}')).toEqual({ answer: 'use it' });
   });
+
+  it('summarizes a pipeline ref by the branch or commit it watches', () => {
+    const summarize = (body: string): string => ARTIFACTS.pipelineRef.summarize(body);
+    expect(summarize('project: a\nref: feature/PROJ-300-ship')).toBe('feature/PROJ-300-ship');
+    expect(summarize('project: a\nref: feature/a\nsha: abc1234def')).toBe('feature/a at abc1234');
+    expect(summarize('project: a\nref: feature/a\nproject: b\nref: feature/b\nsha: 1234567890')).toBe(
+      'feature/a, feature/b at 1234567',
+    );
+    expect(summarize('nothing here\nsecond')).toBe('nothing here');
+  });
 });
