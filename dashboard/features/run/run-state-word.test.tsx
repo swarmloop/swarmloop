@@ -7,7 +7,15 @@ import { RunStateIcon } from './run-state-word';
 const working: StateWord = { word: 'Working', tone: 'working', icon: 'working', tip: '' };
 const person: StateWord = { word: 'Waiting for you', tone: 'person', icon: 'person', tip: 'Answer the questions' };
 
+const pending: StateWord = { word: 'Waiting to start', tone: 'working', icon: 'pending', tip: '' };
+
 describe('RunStateIcon', () => {
+  it('renders the pending icon labelled with its word', () => {
+    render(<RunStateIcon view={pending} />);
+
+    expect(screen.getByRole('img', { name: 'Waiting to start' })).toBeInTheDocument();
+  });
+
   it('carries the word in the label and the tooltip', async () => {
     render(<RunStateIcon view={working} />);
 

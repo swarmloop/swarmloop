@@ -437,3 +437,18 @@ test('the dashboard rule reports a decision read out of a log and lets a stored 
   assert.deepEqual(check({ 'dashboard/features/run/chip.ts': "const ok = visit.decision === 'decision: ok';\n" }), []);
   assert.deepEqual(check({ 'dashboard/features/run/chip.test.ts': 'const line = log.match(/^decision: ok/m);\n' }), []);
 });
+
+test('forbidOutside reports a second state-to-icon table in the dashboard and lets run-state-word keep its own', () => {
+  const table = ['const LOOK: Record<Subtask', 'Status, typeof Play', 'Icon> = {};\n'].join('');
+  const files = {
+    'dashboard/features/run/flow/run-screen/task-look.ts': table,
+    'dashboard/features/run/run-state-word.tsx': table,
+    'dashboard/features/run/flow/run-screen/counts.ts': 'const n: Partial<Record<SubtaskStatus, number>> = {};\n',
+  };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], /^dashboard\/features\/run\/flow\/run-screen\/task-look\.ts:1:/);
+});

@@ -169,7 +169,7 @@ describe('RunScreen', () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
-    expect(region).toHaveTextContent('running');
+    expect(region).toHaveTextContent('Working');
     expect(region).not.toHaveTextContent('blocked');
     expect(within(region).queryByRole('button', { name: 'Skip task' })).not.toBeInTheDocument();
   });
@@ -200,7 +200,7 @@ describe('RunScreen', () => {
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
     expect(region).toHaveTextContent('1 tasks · 0 merged');
-    expect(region).toHaveTextContent('running · implement');
+    expect(region).toHaveTextContent('Working · implement');
     expect(within(region).getByRole('region', { name: 'Merge queue' })).toBeInTheDocument();
     expect(within(region).getByRole('region', { name: 'Decisions' })).toBeInTheDocument();
     expect(screen.getByText('$0.50')).toBeInTheDocument();
