@@ -69,11 +69,6 @@ const SERVER_DESCRIPTIONS: Record<string, string> = {
 /** Server settings the sandbox reads straight from the process env; `SwarmloopEnv` does not carry them. */
 const PROCESS_ENV_NAMES = ['PROJECT_HOSTS_ALLOW'] as const;
 
-/** The login of a signed-in person; no actor and the machine token have none. */
-function personOf(actor: string | null): string | null {
-  return actor && actor !== 'machine' ? actor : null;
-}
-
 const SECRET = /TOKEN$|SECRET$|API_KEY$/;
 
 function refuse(reason: string): never {
@@ -92,7 +87,7 @@ export class SettingsService {
 
   async view(actor: string | null): Promise<SettingsView> {
     const env = this.config.env;
-    const login = personOf(actor);
+    const login = actor;
     const { runtimes, limited } = await this.models(login);
     const settings = login ? ((await this.stored.read(login)) ?? {}) : {};
     return {

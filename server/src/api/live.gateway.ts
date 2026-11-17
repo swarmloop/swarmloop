@@ -50,7 +50,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
     private readonly gate: ContainerGate,
   ) {}
 
-  /** A socket needs the session cookie or the machine token, like a request. */
+  /** A socket needs the session cookie or a personal token, like a request. */
   afterInit(server: Server): void {
     server.use((socket, next) => {
       const { cookie, authorization } = socket.handshake.headers;

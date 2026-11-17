@@ -46,7 +46,7 @@ export interface StoredApp {
   clientId: string;
   clientSecret: string;
   privateKey: string;
-  /** The login of the person who made the app, or `machine`. Null for an app made earlier. */
+  /** The login of the person who made the app, or `first-run` until the first person signs in. Null for an app made earlier. */
   madeBy: string | null;
 }
 

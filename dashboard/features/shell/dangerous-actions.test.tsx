@@ -101,6 +101,7 @@ const host: ConnectionsView = {
       installs: true,
       app: { name: 'swarmloop-app', clientId: 'Iv.fake', madeBy: 'alice', settingsUrl: null },
       missingOwners: [],
+      mayReplace: true,
       account: 'alice',
       repositories: ['alice/site'],
       selection: 'selected',

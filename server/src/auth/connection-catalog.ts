@@ -22,7 +22,7 @@ export class ConnectionCatalog {
 
   /** The cards for a person. Without a person there is no stored status, only the server's own defaults. */
   async list(actor: string | null): Promise<IntegrationCardsView> {
-    const login = personOf(actor);
+    const login = actor;
     return { cards: await Promise.all(this.connections.map((connection) => this.card(connection, login))) };
   }
 
@@ -104,15 +104,10 @@ export class ConnectionCatalog {
   }
 }
 
-/** The login of a person, or a 403 for the machine and for nobody. */
+/** The login of a person, or a 403 for nobody. */
 export function requirePerson(actor: string | null): string {
-  const login = personOf(actor);
-  if (login === null) {
+  if (actor === null) {
     throw new ForbiddenException('Sign in as a person to change a connection');
   }
-  return login;
-}
-
-function personOf(actor: string | null): string | null {
-  return actor && actor !== 'machine' ? actor : null;
+  return actor;
 }

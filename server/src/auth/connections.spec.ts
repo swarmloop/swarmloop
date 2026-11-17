@@ -102,7 +102,8 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     expect(
       (await fetch(`${app.url}/auth/github/manifest`, { headers: { ...authed, 'x-forwarded-host': 'panel.example' } }))
         .status,
-    ).toBe(200);
+    ).toBe(403);
+    expect((await fetch(`${app.url}/auth/github/manifest`, { headers: authed })).status).toBe(200);
     expect((await fetch(`${app.url}/runs`)).status).toBe(401);
   });
 
@@ -221,19 +222,23 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
       headers: { ...headers, cookie: `swarmloop_state=${state}` },
     });
 
-  it('lets only the maker or the machine token replace the app, and then shows the first-run form', async () => {
+  it('lets only the maker or an admin replace the app, and then shows the first-run form', async () => {
     await makeApp();
+    // Until the first person signs in through the app it has no maker, and only an admin may replace it.
+    const admin = (await app.sessionCookie('test-admin')).cookie;
+    expect((await github(admin))?.app.madeBy).toBeNull();
     const alice = await signIn('alice');
     const bob = await signIn('bob');
     // The first person to sign in through the new app is its maker; the second one is not.
     expect((await github(alice))?.app.madeBy).toBe('alice');
     const refused = await replace({ cookie: bob });
     expect(refused.status).toBe(403);
-    expect(((await refused.json()) as { message: string }).message).toBe('Only alice can replace this app');
+    expect(((await refused.json()) as { message: string }).message).toBe('Only alice or an admin can replace this app');
     expect(await app.app.get(DataSource).query(`SELECT * FROM host_apps`)).toHaveLength(1);
     const started = await replace({ cookie: alice, ...away });
     expect(started.status).toBe(201);
     expect(((await started.json()) as { manifest: { public: boolean } }).manifest.public).toBe(false);
+    expect((await replace(authed)).status).toBe(201);
     expect((await github(alice))?.connected).toEqual(['alice', 'bob']);
     expect((await github(bob))?.connected).toEqual([]);
     // The first-run routes stay shut while the old app exists.
@@ -316,14 +321,14 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     expect(install.headers.getSetCookie().join(';')).toContain('swarmloop_state=');
   });
 
-  it('lets the machine token replace the app, stored as made by machine, and the first-run form returns', async () => {
+  it("lets an admin's token replace the app, stored as made by first-run, and the first-run form returns", async () => {
     await makeApp();
     const [row] = await app.app.get(DataSource).query<Record<string, string>[]>(`SELECT made_by FROM host_apps`);
-    expect(row.made_by).toBe('machine');
+    expect(row.made_by).toBe('first-run');
     const started = await replace(authed);
     expect(started.status).toBe(201);
     expect((await created(await stateOf(started))).status).toBe(302);
-    expect(app.app.get(HostAppsService).find('github')?.madeBy).toBe('machine');
+    expect(app.app.get(HostAppsService).find('github')?.madeBy).toBe('test-admin');
   });
 
   it('runs of person A call the host with the token of A, those of B with B, and a CLI run with the env token', async () => {

@@ -1,7 +1,6 @@
 import { join, resolve } from 'path';
 import { applySettings, envFilePath, readSettings } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
-import { machineToken } from '../auth/machine-token';
 import { SystemClock } from '../core/clock';
 import { Sloop, serve } from './agent';
 import { HttpServerApi } from './server-api';
@@ -20,7 +19,7 @@ async function main(): Promise<void> {
   if (process.argv[2] === 'acp') {
     const root = resolve(__dirname, '../../..');
     const agent = new Sloop({
-      api: new HttpServerApi(readApiUrl(envFilePath(root)), machineToken(root, rawEnv().SWARMLOOP_TOKEN)),
+      api: new HttpServerApi(readApiUrl(envFilePath(root)), rawEnv().SWARMLOOP_TOKEN ?? ''),
       skills: loadSkills(join(root, 'skills')),
       repoRoot: root,
       checkoutsRoot: readCheckoutsRoot(envFilePath(root)),
