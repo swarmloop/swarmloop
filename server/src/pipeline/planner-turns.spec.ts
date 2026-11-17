@@ -40,6 +40,31 @@ describe('PlannerTurns', () => {
     expect(turns.pending('run-1')).toEqual([]);
   });
 
+  it('runs a turn started through exclusive only after the turn that runs, in the order they asked', async () => {
+    const turns = new PlannerTurns();
+    const order: string[] = [];
+    turns.offer('run-1', turn('a', '2026-01-01T00:00:00.000Z'));
+    turns.begin('run-1');
+    const first = turns.exclusive('run-1', turn('b', '2026-01-01T00:00:01.000Z'), () => {
+      order.push('b');
+      return Promise.resolve('first');
+    });
+    const second = turns.exclusive('run-1', turn('c', '2026-01-01T00:00:02.000Z'), () => {
+      order.push('c');
+      return Promise.resolve('second');
+    });
+    const other = await turns.exclusive('run-2', turn('d', '2026-01-01T00:00:00.000Z'), () => Promise.resolve('free'));
+    expect(other).toBe('free');
+    expect(order).toEqual([]);
+    expect(turns.replying('run-1')).toBe(true);
+
+    turns.end('run-1');
+
+    expect([await first, await second]).toEqual(['first', 'second']);
+    expect(order).toEqual(['b', 'c']);
+    expect(turns.replying('run-1')).toBe(false);
+  });
+
   it('keeps the runs apart', () => {
     const turns = new PlannerTurns();
     turns.offer('run-1', turn('a', '2026-01-01T00:00:00.000Z'));
@@ -171,13 +196,24 @@ const question = (key: string, at: string): PlanChatEntry => ({
 });
 
 /** A plan chat held in memory, and a planner that gives `reply` to the prompts it is asked. */
-function asked(entries: PlanChatEntry[], reply: unknown) {
+function asked(entries: PlanChatEntry[], reply: unknown, stored: Record<string, string> = {}) {
   const held = [...entries];
   const prompts: string[] = [];
+  const documents = {
+    latestBody: (_key: string, kind: string) => Promise.resolve(stored[kind] ?? null),
+    putDocument: (_run: unknown, kind: string, body: string) => {
+      stored[kind] = body;
+      return Promise.resolve();
+    },
+  } as unknown as DocumentRepository;
+  const released: unknown[] = [];
   const chat = {
     pending: () => Promise.resolve(held.filter((entry) => entry.role === 'person' && entry.state === 'pending')),
     pendingQuestions: () =>
       Promise.resolve(held.filter((entry) => entry.kind === 'question' && entry.state === 'pending')),
+    pendingEscalations: () =>
+      Promise.resolve(held.filter((entry) => entry.kind === 'escalation' && entry.state === 'pending')),
+    read: () => Promise.resolve({ entries: held, revisions: [] }),
     appendEntry: (_key: string, entry: PlanChatEntry) => {
       if (!held.some((known) => known.key === entry.key)) held.push(entry);
       return Promise.resolve();
@@ -193,10 +229,16 @@ function asked(entries: PlanChatEntry[], reply: unknown) {
       return Promise.resolve(reply === null ? null : { value: reply });
     },
   } as unknown as PlanConversation;
-  const runs = { findRun: () => Promise.resolve({ key: 'run-1', currentStep: 'implement', status: 'waiting' }) };
+  const runs = {
+    findRun: () => Promise.resolve({ key: 'run-1', currentStep: 'implement', status: 'waiting' }),
+    release: (_run: unknown, change: unknown) => {
+      released.push(change);
+      return Promise.resolve();
+    },
+  };
   const clock = { now: () => 0, iso: () => '2026-01-01T00:01:00.000Z' };
-  const turns = new PlannerTurns(chat, undefined, conversation, runs as unknown as RunRepository, clock);
-  return { turns, held, prompts };
+  const turns = new PlannerTurns(chat, documents, conversation, runs as unknown as RunRepository, clock);
+  return { turns, held, prompts, stored, released };
 }
 
 describe('PlannerTurns answering a step question', () => {
@@ -240,8 +282,8 @@ describe('PlannerTurns answering a step question', () => {
     expect(turns.replying('run-1')).toBe(false);
   });
 
-  it('keeps the question waiting when the planner escalates, and does not ask again in the same drive', async () => {
-    const { turns, held } = asked([question('ask-1', '2026-01-01T00:00:05.000Z')], {
+  it('writes an escalated question for the person and leaves the run waiting for the answer', async () => {
+    const { turns, held, stored, released } = asked([question('ask-1', '2026-01-01T00:00:05.000Z')], {
       reply: 'This is a product decision.',
       escalate: 'Which pagination do you want?',
     });
@@ -249,15 +291,80 @@ describe('PlannerTurns answering a step question', () => {
 
     expect(await turns.answer('run-1', declined)).toBe(false);
 
+    const line = 'implement asks: Which pagination do you want? (asked 2026-01-01T00:01:00.000Z)';
     expect(held.some((entry) => entry.kind === 'answer')).toBe(false);
-    expect(held.find((entry) => entry.key === 'ask-1')?.state).toBe('pending');
+    expect(held.find((entry) => entry.key === 'ask-1')?.state).toBe('taken');
     expect(held.find((entry) => entry.key === 'escalate-ask-1')).toMatchObject({
-      role: 'planner',
-      text: 'This is a product decision.',
+      kind: 'escalation',
+      from: 'implement',
+      text: 'Which pagination do you want?',
+      state: 'pending',
     });
-    expect([...declined]).toEqual(['ask-1']);
+    expect(stored.questions).toBe(`- ${line}\n`);
+    expect(JSON.parse(stored.question_parts)[0].parts.decide).toBe('Which pagination do you want?');
+    expect(released).toEqual([{ status: 'waiting', facts: { needsAnswers: true } }]);
     expect(await turns.hasQuestion('run-1')).toBe(true);
-    expect(await turns.answer('run-1', declined)).toBe(false);
+    expect(await turns.next(implementing, new Set())).toBeNull();
+  });
+
+  describe('the answer of the person to an escalated question', () => {
+    const escalate = (): PlanChatEntry => ({
+      key: 'escalate-ask-1',
+      role: 'planner',
+      kind: 'escalation',
+      from: 'implement',
+      text: 'Which pagination do you want?',
+      at: '2026-01-01T00:01:00.000Z',
+      state: 'pending',
+    });
+    const line = 'implement asks: Which pagination do you want? (asked 2026-01-01T00:01:00.000Z)';
+    const open = (answer: string): Record<string, string> => ({
+      questions: `- ${line}\n`,
+      answers: `question: ${line}\nanswer: ${answer}\n`,
+    });
+
+    it('is a turn once the line is answered, in the order of the entries, and not before', async () => {
+      const waiting = asked([escalate()], null, { questions: `- ${line}\n` });
+      expect(await waiting.turns.next(implementing, new Set())).toBeNull();
+      const given = asked([escalate(), message('message-1', '2026-01-01T00:02:00.000Z')], null, open('Cursor'));
+      expect(await given.turns.next(implementing, new Set())).toBe('answer');
+      expect(await given.turns.next(implementing, new Set(['escalate-ask-1']))).toBe('message');
+    });
+
+    it('is read by the planner, handed to the step that asked, and closes the question', async () => {
+      const { turns, held, prompts, stored } = asked(
+        [{ ...question('ask-1', '2026-01-01T00:00:05.000Z'), state: 'taken' }, escalate()],
+        { reply: 'Use the cursor, the person decided.' },
+        open('Cursor'),
+      );
+      const declined = new Set<string>();
+
+      expect(await turns.settle('run-1', declined)).toBe(true);
+
+      expect(prompts[0]).toContain('The implement step had asked:\nKeep the cursor or the page number?');
+      expect(prompts[0]).toContain('The person answered:\nCursor');
+      expect(held.find((entry) => entry.kind === 'answer')).toMatchObject({
+        key: 'answer-ask-1',
+        from: 'implement',
+        text: 'Use the cursor, the person decided.',
+        state: 'pending',
+      });
+      expect(held.find((entry) => entry.key === 'escalate-ask-1')?.state).toBe('taken');
+      expect(stored.questions).toBe('');
+      expect(await turns.hasQuestion('run-1')).toBe(false);
+      expect([...declined]).toEqual([]);
+    });
+
+    it('stays when the planner gave no usable reply, and is not asked again in the same drive', async () => {
+      const { turns, held } = asked([escalate()], null, open('Cursor'));
+      const declined = new Set<string>();
+
+      expect(await turns.settle('run-1', declined)).toBe(false);
+
+      expect(held.find((entry) => entry.key === 'escalate-ask-1')?.state).toBe('pending');
+      expect(await turns.hasQuestion('run-1')).toBe(true);
+      expect(await turns.next(implementing, declined)).toBeNull();
+    });
   });
 
   it('keeps the question when the planner gave no usable answer', async () => {

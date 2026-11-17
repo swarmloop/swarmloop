@@ -12,9 +12,12 @@ const ANSWER_HEADING = 'Answer from the planner';
 const DECIDE_LINE =
   'This answers the question you asked. Decide any further open choice yourself, and do not ask again: name the choice in `summary` as an assumption.';
 
-/** True when the run has a planner of its own to ask: a subtask has none, its questions stay with its parent. */
+/** The steps of a subtask that ask the planner of its parent: a subtask has no planner of its own. */
+export const SUBTASK_ASKING_STEPS: readonly string[] = ['implement', 'implement-improve'];
+
+/** True when the run has someone to ask: its own planner, or for a subtask at one of these steps the planner of its parent. */
 export function mayAsk(run: RunEntity, chat: PlanChatStore | undefined): boolean {
-  return chat !== undefined && !isSubtask(run);
+  return chat !== undefined && (!isSubtask(run) || SUBTASK_ASKING_STEPS.includes(run.currentStep));
 }
 
 /** The planner's answer to this step's question that the step did not read yet, or null. */
@@ -81,6 +84,15 @@ export async function waitForPlanner(run: RunEntity, ask: QuestionAsk): Promise<
     at: ask.clock.iso(),
     state: 'pending',
   });
+  if (isSubtask(run)) {
+    // The planner of the parent takes the question from this chat, and the run goes on when it answered.
+    const reason = `${ask.step} asks the planner of the parent`;
+    return {
+      route: { to: 'wait', reason },
+      summary: `${ask.startedAt} ${reason}\n${ask.question.trim()}`,
+      outputs: [],
+    };
+  }
   const reason = `${ask.step} ${ASKS_PLANNER_WORDS}`;
   return {
     route: { to: 'wait', code: REASON.asksPlanner, reason },

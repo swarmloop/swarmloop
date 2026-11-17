@@ -168,7 +168,7 @@ describe('a step asks the planner', () => {
     expect((await runOf())?.currentStep).toBe('done');
   });
 
-  it('leaves the step waiting for the planner when its reply escalates', async () => {
+  it('leaves the step waiting for the person when the planner escalates, and does not run it again', async () => {
     await start({
       implement: [asks(QUESTION), done],
       plan: [block({ reply: 'That is a product decision.', escalate: 'Which pagination do you want?' })],
@@ -178,12 +178,8 @@ describe('a step asks the planner', () => {
 
     expect(launches('implement')).toHaveLength(1);
     const run = (await runOf())!;
-    expect(deriveState(run)).toMatchObject({ state: 'waiting', reason: { code: 'ASKS_PLANNER' } });
-    expect(await store().pendingQuestions(KEY)).toHaveLength(1);
-    expect((await store().read(KEY)).entries.at(-1)).toMatchObject({
-      role: 'planner',
-      text: 'That is a product decision.',
-    });
-    await assertInvariants(flow.app);
+    expect(run).toMatchObject({ status: 'waiting', state: 'waiting', currentStep: 'implement' });
+    expect(await store().pendingQuestions(KEY)).toEqual([]);
+    expect(await store().pendingEscalations(KEY)).toHaveLength(1);
   });
 });

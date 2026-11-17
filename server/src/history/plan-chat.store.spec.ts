@@ -121,6 +121,15 @@ describe('PlanChatStore', () => {
       ]);
       expect(await store.answerFor('run-1', 'implement')).toBeNull();
       await store.appendEntry('run-1', {
+        ...entry('escalate-ask-implement-1', '2026-01-01T00:00:05.000Z'),
+        role: 'planner',
+        kind: 'escalation',
+        from: 'implement',
+      });
+      expect((await store.pendingEscalations('run-1')).map((item) => item.key)).toEqual(['escalate-ask-implement-1']);
+      await store.markTaken('run-1', ['escalate-ask-implement-1']);
+      expect(await store.pendingEscalations('run-1')).toEqual([]);
+      await store.appendEntry('run-1', {
         ...entry('answer-1', '2026-01-01T00:00:04.000Z'),
         role: 'planner',
         kind: 'answer',

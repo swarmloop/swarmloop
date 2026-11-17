@@ -5,12 +5,15 @@ import { DocumentRepository } from '../history/document.repository';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { RunRepository } from '../history/run.repository';
 import { Clock } from '../core/clock';
+import type { PlanChatEntry } from '../contract/plan-chat';
 import { PlanConversation } from '../steps/shared/plan-conversation';
 import { isSubtask } from '../contract/subtask';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { readPlan } from '../steps/plan/plan-record';
 import { messageTurn } from './plan-chat-route';
-import { askPlanner } from './planner-question';
+import { closeEscalation, escalateToPerson, escalationLine } from './escalation';
+import { answered } from '../steps/shared/answers';
+import { askPlanner, readPersonAnswer } from './planner-question';
 
 /** One thing the planner is asked: a person's message now, other kinds later. */
 export interface PlannerTurn {
@@ -34,6 +37,7 @@ export class PlannerTurns implements OnModuleDestroy {
   private readonly waiting = new Map<string, PlannerTurn[]>();
   private readonly running = new Map<string, PlannerTurn>();
   private readonly passes = new Set<Promise<void>>();
+  private readonly released: (() => void)[] = [];
 
   constructor(
     @Optional() private readonly chat?: PlanChatStore,
@@ -41,7 +45,10 @@ export class PlannerTurns implements OnModuleDestroy {
     @Optional() private readonly conversation?: PlanConversation,
     @Optional() private readonly runs?: RunRepository,
     @Optional() private readonly clock?: Clock,
-  ) {}
+  ) {
+    // Every planner turn of the run, a subtask's question to its parent included, goes through this one queue.
+    if (conversation) conversation.gate = this;
+  }
 
   /** True when the planner takes a message to this run between steps: it is no subtask and reached implement, so its plan is amended or gains tasks. */
   takesMessages(run: RunEntity): boolean {
@@ -77,15 +84,17 @@ export class PlannerTurns implements OnModuleDestroy {
   }
 
   /**
-   * What comes first for the planner of the run: a person's message it takes between steps, or the question of a
-   * step that waits for it, by the time of their entries. Turns in `declined` are not asked for again in this drive.
+   * What comes first for the planner of the run: a person's message it takes between steps, the question of a
+   * step that waits for it, or the person's answer to a question it escalated, by the time of their entries. Turns in `declined` are not asked for again in this drive.
    */
-  async next(run: RunEntity, declined: ReadonlySet<string>): Promise<'message' | 'question' | null> {
+  async next(run: RunEntity, declined: ReadonlySet<string>): Promise<'message' | 'question' | 'answer' | null> {
     const messages = this.takesMessages(run) ? ((await this.chat?.pending(run.key)) ?? []) : [];
-    const questions = (await this.chat?.pendingQuestions(run.key)) ?? [];
+    // A subtask has no planner of its own: its questions go to the planner of its parent.
+    const questions = isSubtask(run) ? [] : ((await this.chat?.pendingQuestions(run.key)) ?? []);
     const first = [
       ...messages.map((entry) => ({ kind: 'message' as const, entry })),
       ...questions.map((entry) => ({ kind: 'question' as const, entry })),
+      ...(await this.answeredEscalations(run)).map((entry) => ({ kind: 'answer' as const, entry })),
     ]
       .filter(({ entry }) => !declined.has(entry.key))
       .sort((a, b) => a.entry.at.localeCompare(b.entry.at))[0];
@@ -101,24 +110,87 @@ export class PlannerTurns implements OnModuleDestroy {
     if (!question) return false;
     declined.add(question.key);
     const run = await this.runs?.findRun(key);
-    if (!run || !this.chat || !this.conversation || !this.clock) return false;
+    if (!run || !this.chat || !this.conversation || !this.clock || !this.documents) return false;
     this.offer(key, { id: question.key, at: question.at, text: question.text });
     if (!this.begin(key)) return false;
     try {
       const deps = { chat: this.chat, conversation: this.conversation, clock: this.clock };
       const outcome = await askPlanner(deps, run, question);
-      if (outcome === 'answered') declined.delete(question.key);
-      else
-        this.logger.warn(`${key}: the planner did not answer the question of ${question.from ?? 'a step'}: ${outcome}`);
-      return outcome === 'answered';
+      if (outcome.kind === 'answered') declined.delete(question.key);
+      else if (outcome.kind === 'escalated') await this.escalate(this.documents, run, outcome.escalation);
+      else this.logger.warn(`${key}: the planner did not answer the question of ${question.from ?? 'a step'}`);
+      return outcome.kind === 'answered';
     } finally {
       this.end(key);
     }
   }
 
-  /** True while a step's question waits for the planner. */
+  /** The question goes to the person: it waits in the run's questions, and the run waits for the answer without the step. */
+  private async escalate(documents: DocumentRepository, run: RunEntity, escalation: PlanChatEntry): Promise<void> {
+    await escalateToPerson(documents, run, escalation);
+    const fresh = await this.runs?.findRun(run.key);
+    if (fresh?.status === 'waiting')
+      await this.runs?.release(fresh, { status: 'waiting', facts: { needsAnswers: true } });
+  }
+
+  /** The escalations that wait whose question the person answered, oldest first. */
+  private async answeredEscalations(run: RunEntity): Promise<PlanChatEntry[]> {
+    const pending = (await this.chat?.pendingEscalations(run.key)) ?? [];
+    if (pending.length === 0) return [];
+    const given = answered((await this.documents?.latestBody(run.key, ARTIFACTS.answers.kind)) ?? '');
+    return pending.filter((entry) => (given.get(escalationLine(entry)) ?? '').trim() !== '');
+  }
+
+  /** Holds a turn for each escalation the person answered, so it is ordered with the other turns of the run. */
+  async offerAnswers(key: string): Promise<void> {
+    const run = await this.runs?.findRun(key);
+    for (const entry of run ? await this.answeredEscalations(run) : [])
+      this.offer(key, { id: entry.key, at: entry.at, text: entry.text });
+  }
+
+  /**
+   * The planner reads the person's answer to the oldest escalation that was answered, one turn at a time with the
+   * others, and gives the step that asked its decision. True when it did. Otherwise the escalation stays, is added to
+   * `declined`, and the reason is logged: the next drive or the next answer tries again.
+   */
+  async settle(key: string, declined: Set<string>): Promise<boolean> {
+    const run = await this.runs?.findRun(key);
+    const escalation = run
+      ? (await this.answeredEscalations(run)).find((entry) => !declined.has(entry.key))
+      : undefined;
+    if (!run || !escalation || !this.chat || !this.conversation || !this.clock || !this.documents) return false;
+    declined.add(escalation.key);
+    this.offer(key, { id: escalation.key, at: escalation.at, text: escalation.text });
+    if (!this.begin(key)) return false;
+    try {
+      const line = escalationLine(escalation);
+      const person = answered((await this.documents.latestBody(key, ARTIFACTS.answers.kind)) ?? '').get(line) ?? '';
+      const asked = escalation.key.slice('escalate-'.length);
+      const { entries } = await this.chat.read(key);
+      const question = entries.find((entry) => entry.key === asked) ?? { ...escalation, key: asked, text: '' };
+      const deps = { chat: this.chat, conversation: this.conversation, clock: this.clock };
+      const outcome = await readPersonAnswer(deps, run, escalation, question, person);
+      if (outcome.kind !== 'answered') {
+        this.logger.warn(
+          `${key}: the planner did not read the answer to the question of ${escalation.from ?? 'a step'}`,
+        );
+        return false;
+      }
+      await closeEscalation(this.documents, run, escalation);
+      await this.chat.markTaken(key, [escalation.key]);
+      declined.delete(escalation.key);
+      return true;
+    } finally {
+      this.end(key);
+    }
+  }
+
+  /** True while a step's question waits for the planner, or an escalated question for the person's answer. */
   async hasQuestion(key: string): Promise<boolean> {
-    return ((await this.chat?.pendingQuestions(key)) ?? []).length > 0;
+    return (
+      ((await this.chat?.pendingQuestions(key)) ?? []).length > 0 ||
+      ((await this.chat?.pendingEscalations(key)) ?? []).length > 0
+    );
   }
 
   /** Runs `work` as a pass of its own. It ends before the module closes. */
@@ -177,6 +249,18 @@ export class PlannerTurns implements OnModuleDestroy {
   /** Ends the running turn, so the next one can begin. */
   end(runKey: string): void {
     this.running.delete(runKey);
+    for (const wake of this.released.splice(0)) wake();
+  }
+
+  /** Runs `work` as a turn of the run once no other turn of it runs; turns that wait go in the order they asked. */
+  async exclusive<T>(runKey: string, turn: PlannerTurn, work: () => Promise<T>): Promise<T> {
+    while (this.running.has(runKey)) await new Promise<void>((wake) => this.released.push(wake));
+    this.running.set(runKey, turn);
+    try {
+      return await work();
+    } finally {
+      this.end(runKey);
+    }
   }
 
   /** True while a turn of the run runs. */

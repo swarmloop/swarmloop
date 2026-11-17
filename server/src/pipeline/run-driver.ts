@@ -107,7 +107,7 @@ export class RunDriver {
         step = amended;
         stepOptions = { auto: true };
       } else if (await this.turns?.hasQuestion(key)) {
-        // The planner could not settle the question: the step keeps waiting and nothing runs.
+        // The question waits for the planner, or for the person it was escalated to: nothing runs.
         return result;
       }
       result = await this.execute(step, key, stepOptions);
@@ -173,6 +173,10 @@ export class RunDriver {
     for (let next = await this.turns.next(run, declined); next; next = await this.turns.next(run, declined)) {
       if (next === 'question') {
         await this.turns.answer(key, declined);
+        continue;
+      }
+      if (next === 'answer') {
+        await this.turns.settle(key, declined);
         continue;
       }
       const outcome = await this.turns.take(key, () => this.execute('plan', key, { auto: true }), declined);

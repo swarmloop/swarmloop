@@ -46,6 +46,11 @@ import { buildRevision } from './plan-revision';
 import { withAdditions } from './requirement-additions';
 import { coverageOf } from './requirement-coverage';
 
+/** Orders the turns of the planner of one run, so only one runs at a time. */
+interface TurnGate {
+  exclusive<T>(key: string, turn: { id: string; at: string; text: string }, work: () => Promise<T>): Promise<T>;
+}
+
 /** What a reply leaves for the step that asked: the documents it writes and the handoff of a changed plan. */
 interface AppliedReply {
   outputs: ArtifactValue[];
@@ -55,14 +60,22 @@ interface AppliedReply {
 /** The planner's own chat: the one way to run a planner turn outside the plan step, and the one way to apply its reply. */
 @Injectable()
 export class PlanConversation {
+  /** Set by the server's planner turns, so a turn started here waits for the one that runs. */
+  gate?: TurnGate;
+
   constructor(
     private readonly launcher: AgentLauncher,
     private readonly visits: VisitRepository,
     private readonly documents: DocumentRepository,
     private readonly config: AppConfig,
-    private readonly clock: Clock,
-    private readonly chat: PlanChatStore,
+    readonly clock: Clock,
+    readonly chat: PlanChatStore,
   ) {}
+
+  /** Runs `work` as a turn of the planner of the run: after the turn that runs, when the server orders them. */
+  ordered<T>(key: string, turn: { id: string; at: string; text: string }, work: () => Promise<T>): Promise<T> {
+    return this.gate ? this.gate.exclusive(key, turn, work) : work();
+  }
 
   /**
    * A follow-up visit of the plan step in the plan chat of the run, in plan mode with the read-only plan tools and the
