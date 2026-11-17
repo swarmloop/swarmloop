@@ -9,14 +9,7 @@ import Link from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
 import type { ConnectionView } from '@contract/api';
 import type { ConnectionCard as Card } from '@contract/connections';
-import {
-  disconnect,
-  getConnections,
-  getIntegrationCards,
-  getSession,
-  installMore,
-  replaceApp,
-} from '../../lib/endpoints';
+import { disconnect, getConnections, getIntegrationCards, installMore, replaceApp } from '../../lib/endpoints';
 import { ConfirmDialog } from '../shell';
 import { ConnectionCard } from './connection-card';
 import { FirstRun, ManifestPost, type ManifestForm } from './first-run';
@@ -42,14 +35,12 @@ export function ConnectionsPage(): ReactElement {
   const [replacing, setReplacing] = useState<ConnectionView | null>(null);
   const words = replacing ? hostTexts(replacing.host)?.replace : undefined;
   const [form, setForm] = useState<ManifestForm | null>(null);
-  const [login, setLogin] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    Promise.all([getConnections(), getIntegrationCards(), getSession()]).then(
-      ([view, integrations, me]) => {
+    Promise.all([getConnections(), getIntegrationCards()]).then(
+      ([view, integrations]) => {
         setConnections(view.connections);
         setCards(integrations.cards);
-        setLogin(me.user);
       },
       (cause: unknown) => setError(cause instanceof Error ? cause.message : 'connections could not be read'),
     );
@@ -104,7 +95,6 @@ export function ConnectionsPage(): ReactElement {
                 <HostCard
                   card={card}
                   connection={connection}
-                  login={login}
                   onChanged={load}
                   onReplace={() => setReplacing(connection)}
                   onInstall={() => void addRepositories(connection.host)}
