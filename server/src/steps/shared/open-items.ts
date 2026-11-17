@@ -1,13 +1,13 @@
 import type { DocumentEntity, RunEntity } from '../../history/entities';
 import type { FlowItem } from '../../contract/api';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
-import { answered, openQuestions } from '../../steps/shared/answers';
-import { readStoredQuestions } from '../../steps/shared/question-parts';
+import { answered, openQuestions } from './answers';
+import { readStoredQuestions } from './question-parts';
 import { research } from '../../agent-result/definitions/research';
 import { storedResult } from '../../agent-result/stored-result';
 import type { ResearchResult } from '../../agent-result/definitions/research';
 import { plan, type PlanResult } from '../../agent-result/definitions/plan';
-import { latest } from './status';
+import { latest } from '../../history/latest-document';
 
 /** The open questions of one kind of document, each with the answer the person already gave. */
 function questionItems(
@@ -35,6 +35,18 @@ function pasteItems(documents: DocumentEntity[], pasteUrls: string[]): FlowItem[
     ? [{ kind: 'paste', id: pending, label: pending, answer: '' }]
     : [];
 }
+
+/** The kinds of document `openItems` reads: its latest of each is all it needs. */
+export const OPEN_ITEM_KINDS = [
+  'questions',
+  'answers',
+  'question_parts',
+  'subtask_questions',
+  'review_questions',
+  'pending',
+  research.kind,
+  plan.kind,
+];
 
 export function openItems(run: RunEntity, documents: DocumentEntity[], pasteUrls: string[]): FlowItem[] {
   const itemsOut: FlowItem[] = [];

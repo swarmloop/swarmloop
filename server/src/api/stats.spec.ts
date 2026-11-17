@@ -368,6 +368,19 @@ describe('stats range', () => {
       ]);
     });
 
+    it('does not count a stall line as a return', () => {
+      const stats = view([
+        {
+          runId: 1,
+          counter: 'stall',
+          reason: 'Stalled for 15 min with no reason; resumed (try 1 of 3)',
+          createdAt: at,
+        },
+      ]);
+
+      expect(stats.totals.returnsByKind).toEqual([]);
+    });
+
     it('opens the checks bar to the commands that failed most', () => {
       const detail = (...commands: string[]) => JSON.stringify({ commands });
       const stats = view([

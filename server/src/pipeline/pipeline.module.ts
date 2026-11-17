@@ -54,6 +54,7 @@ import { BacklogEvents } from './backlog/backlog-events';
 import { BacklogMerge } from './backlog/backlog-merge';
 import { BacklogScheduler } from './backlog/backlog-scheduler';
 import { BacklogStartPort } from './backlog/backlog-start-port';
+import { StallWatch } from './stall-watch';
 import { RunSettler } from './run-settler';
 import { PipelineService } from './pipeline.service';
 import { AuthModule } from '../auth/auth.module';
@@ -105,6 +106,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     CommandService,
     MergeWatch,
     Reconciler,
+    StallWatch,
     BacklogActionSupport,
     BacklogTaskActions,
     BacklogActions,

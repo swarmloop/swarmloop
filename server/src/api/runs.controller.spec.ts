@@ -118,4 +118,17 @@ describe('RunsController', () => {
     expect(result).toEqual({ key: 'proj-2', status: 'done', commandId: 'c-1', revision: 4, state: 'idle' });
     expect(response.status).toHaveBeenCalledWith(200);
   });
+
+  it("marks the Resume of the route as a person's and keeps the answer", async () => {
+    const commands = answering({ key: 'proj-3', status: 'started' });
+    const response = { status: jest.fn() };
+    const result = await controllerWith({}, commands).resume('proj-3', { prompt: 'go' }, response);
+    expect(result).toEqual({ key: 'proj-3', status: 'started', commandId: 'c-1', revision: 4, state: 'idle' });
+    expect(commands.submit).toHaveBeenCalledWith(
+      'resume',
+      'proj-3',
+      { prompt: 'go', by: 'person' },
+      expect.any(Object),
+    );
+  });
 });

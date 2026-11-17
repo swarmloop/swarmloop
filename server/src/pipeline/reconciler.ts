@@ -25,6 +25,7 @@ import { CHAT_LOCK, chatResume, readChatLock } from './chat-lock';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { RunSettler, relaunchKey, type RelaunchDecision } from './run-settler';
+import { StallWatch } from './stall-watch';
 import { SubtaskPort } from './subtask-port';
 import { settleShell } from './shell-lock';
 
@@ -64,6 +65,7 @@ export class Reconciler implements OnModuleDestroy {
     private readonly commandLog: CommandRepository,
     private readonly visits: VisitRepository,
     private readonly runStop: RunStop,
+    private readonly stalls: StallWatch,
     @Optional() private readonly connections?: ConnectionsService,
     @Optional() private readonly credentials?: PersonalCredentials,
   ) {}
@@ -133,6 +135,7 @@ export class Reconciler implements OnModuleDestroy {
       await this.resumeDiskLow();
       await this.resumeGitAuth();
       await this.resumeSubtaskParents();
+      await this.resumeStalled();
       await this.watchMerges();
       await this.reconcileCommands();
     });
@@ -235,13 +238,42 @@ export class Reconciler implements OnModuleDestroy {
     );
   }
 
-  /** Accepts one resume under `key` when `ready` says so. A stopped run is `blocked` with `STOPPED`, so it never gets here. */
-  private async resumeOnce(run: RunEntity, key: string, ready: () => Promise<boolean>): Promise<void> {
+  /**
+   * Accepts one resume under `key` when `ready` says so. A stopped run is `blocked` with `STOPPED`, so it never gets here.
+   * Answers whether a new command was stored: false when not ready, replayed, or failed.
+   */
+  private async resumeOnce(
+    run: RunEntity,
+    key: string,
+    ready: () => Promise<boolean>,
+    payload: Record<string, unknown> = {},
+  ): Promise<boolean> {
     try {
-      if (!(await ready())) return;
-      await this.commands.accept('resume', run.key, {}, { idempotencyKey: key });
+      if (!(await ready())) return false;
+      return !(await this.commands.accept('resume', run.key, payload, { idempotencyKey: key })).replayed;
     } catch (error) {
       this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  }
+
+  /**
+   * A run idle with no reason is resumed after 15, 30 and 60 minutes, then handed to a person. The try is the
+   * Resume a person gives; its key names the run, its attempt and the try, so a restart never sends one twice.
+   */
+  async resumeStalled(): Promise<void> {
+    for (const { run, decision } of await this.stalls.decisions(this.claimed)) {
+      try {
+        if (decision.kind === 'person') {
+          await this.stalls.askPerson(run, decision.reason);
+        } else if (await this.resumeOnce(run, decision.key, () => Promise.resolve(true), decision.payload)) {
+          await this.stalls.noteTry(run, decision);
+        }
+      } catch (error) {
+        this.logger.warn(
+          `stall of ${run.key} was not handled: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
   }
 

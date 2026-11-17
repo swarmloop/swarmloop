@@ -1,3 +1,4 @@
+import type { RunEntity } from './entities';
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
@@ -58,6 +59,13 @@ describe('deriveState', () => {
   it('keeps waiting after ok idle, and a person needed waiting', () => {
     expect(deriveState({ status: 'waiting' })).toEqual({ state: 'idle', reason: null });
     expect(deriveState({ status: 'waiting' }, { needsAnswers: true }).state).toBe('waiting');
+  });
+
+  it('keeps the stored STALLED reason on a waiting run, not idle', () => {
+    const run = { status: 'waiting', currentStep: 'implement', stateReason: null } as RunEntity;
+    writeRunState(run, { status: 'waiting', reason: { code: REASON.stalled, message: 'Stalled' } });
+    expect(run.state).toBe('waiting');
+    expect(deriveState(run).reason).toEqual({ code: 'STALLED', message: 'Stalled' });
   });
 
   it('calls a return to implement idle with the reason RETURNED', () => {

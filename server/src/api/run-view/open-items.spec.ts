@@ -1,7 +1,7 @@
 import type { DocumentEntity, RunEntity } from '../../history/entities';
 import { renderQuestions } from '../../steps/research/research-record';
 import { resumeState, stateView } from './flow';
-import { openItems } from './open-items';
+import { openItems } from '../../steps/shared/open-items';
 
 describe('open questions of the run view', () => {
   const run = { currentStep: 'research' } as RunEntity;

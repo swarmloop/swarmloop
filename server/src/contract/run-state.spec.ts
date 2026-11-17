@@ -63,6 +63,7 @@ describe('actionsFor codes that did not change', () => {
   it('keeps the runtime limit and git auth waits as they were', () => {
     expect(actionsFor('waiting', ERROR_CODES.RUNTIME_LIMIT)).toEqual(['resume', 'replay', 'rebase']);
     expect(actionsFor('waiting', ERROR_CODES.GIT_AUTH)).toEqual(['resume', 'replay', 'rebase']);
+    expect(actionsFor('waiting', REASON.stalled)).toEqual(['resume', 'replay', 'rebase']);
     expect(actionsFor('waiting', 'NEEDS_ANSWERS')).toEqual(['answer', 'replay', 'rebase']);
     expect(actionsFor('failed', ERROR_CODES.STEP_FAILED)).toEqual(['resume', 'replay', 'rebase']);
   });
@@ -108,6 +109,10 @@ describe('stateWord', () => {
     reason: { code: string; message?: string; [k: string]: unknown } | null = null,
     facts = {},
   ) => stateWord(state, reason ? { message: 'why', ...reason } : null, facts, time);
+
+  it('reads a stalled run as waiting for a person', () => {
+    expect(word('waiting', { code: REASON.stalled })).toMatchObject({ word: 'Waiting for you', tone: 'person' });
+  });
 
   it.each(RUN_STATES)('has a word for the state %s', (state) => {
     expect(STATE_WORDS[state].word).not.toBe('');
@@ -259,6 +264,7 @@ describe('needsPerson', () => {
     expect(needsPerson('waiting', undefined)).toBe(true);
     expect(needsPerson('waiting', reason(NEEDS_ANSWERS))).toBe(true);
     expect(needsPerson('waiting', reason(ERROR_CODES.GIT_AUTH))).toBe(true);
+    expect(needsPerson('waiting', reason(REASON.stalled))).toBe(true);
   });
 
   it('is false for a wait the server ends by itself', () => {
