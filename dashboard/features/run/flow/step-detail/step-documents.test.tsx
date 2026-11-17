@@ -161,6 +161,7 @@ describe('StepDocuments', () => {
     const finished = visitView({
       attemptId: 'att-1',
       status: 'done',
+      durationMs: 180_000,
       samples: [
         { at: at(0), cpu: 10, memory: 100, source: '0' },
         { at: at(1), cpu: 20, memory: 200, source: '1' },
@@ -183,10 +184,10 @@ describe('StepDocuments', () => {
     it('draws one total chart, then the commands, then the transcript', () => {
       documents({ shownChecks: [], visit: finished, commands: rows, events: [serverChecks] });
 
-      const chart = screen.getByRole('img', { name: 'CPU and memory' });
+      const chart = screen.getByRole('button', { name: /^Resources:/ });
       const list = screen.getByRole('list', { name: 'Check commands' });
       const transcript = screen.getByTestId('transcript-feed');
-      expect(screen.getAllByRole('img', { name: 'CPU and memory' })).toHaveLength(1);
+      expect(screen.getAllByRole('button', { name: /^Resources:/ })).toHaveLength(1);
       expect(screen.queryByText(/^command 0/)).toBeNull();
       expect(chart.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(list.compareDocumentPosition(transcript) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

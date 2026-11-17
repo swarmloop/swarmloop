@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
+import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
 import { interruptionSentence } from '@contract/interruption';
 import { restartWaitSentence } from '@contract/restart-wait';
@@ -47,7 +49,7 @@ export function StepDetail({
   /** When the server restarted while this step's agent kept running; set only during that wait. */
   restartedAt?: string;
 }): React.ReactElement | null {
-  const { view, attempt, setAttempt, error, follow } = useStep(runKey, step, live, revision, attempts);
+  const { view, attempt, setAttempt, error, loading, retry, follow } = useStep(runKey, step, live, revision, attempts);
   const [check, setCheck] = useState<string | null>(null);
   const running = view?.visits[attempt]?.status === 'running';
   const stored = useVisitLog(runKey, step, view?.visits[attempt]);
@@ -65,13 +67,16 @@ export function StepDetail({
 
   if (error) {
     return (
-      <Typography color="error" sx={{ mt: 3 }}>
-        {error}
-      </Typography>
+      <Box sx={{ mt: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Typography color="error">{error}</Typography>
+        <Button size="small" variant="outlined" onClick={retry}>
+          Retry
+        </Button>
+      </Box>
     );
   }
-  if (!view) {
-    return null;
+  if (loading || !view) {
+    return <Skeleton variant="rounded" height={240} aria-label="Loading the step" sx={{ mt: 3 }} />;
   }
   const visit = view.visits[attempt];
   const latest = attempt === view.visits.length - 1;

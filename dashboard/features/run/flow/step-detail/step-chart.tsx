@@ -1,7 +1,12 @@
 import type { ReactElement } from 'react';
+import { useState } from 'react';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
 import Box from '@mui/material/Box';
+import ButtonBase from '@mui/material/ButtonBase';
 import Typography from '@mui/material/Typography';
 import { SeriesChart, type SeriesLine } from '../../series';
+import { cores, memory } from '../../../../lib/format';
 import type { CheckCommandView, StepView } from '@contract/api';
 import { NO_SAMPLES_AFTER_RESTART } from '@contract/restart-wait';
 
@@ -28,11 +33,11 @@ function totalLine(samples: Sample[]): SeriesLine {
   return { label: 'total', samples: total };
 }
 
-/** One line per source and the step total, or the line itself when the step sampled one source. */
-function sourceLines(samples: Sample[]): SeriesLine[] | undefined {
+/** One line per source and the step total, or the one source's own line when the step sampled one source. */
+function sourceLines(samples: Sample[]): SeriesLine[] {
   const sources = [...new Set(samples.map((sample) => sample.source))];
   if (sources.length < 2) {
-    return undefined;
+    return [{ label: sourceLabel(sources[0]), samples }];
   }
   return [
     ...sources.map((source) => ({
@@ -51,7 +56,43 @@ function NoSamplesLine(): ReactElement {
   );
 }
 
-/** The chart of the containers the visit started. The server process itself is not a container. */
+/** A visit shorter than this has no resource charts. */
+const MIN_CHART_MS = 60_000;
+
+/** How long the visit ran: its duration, or the span of its samples while it runs. */
+function visitSpanMs(visit: StepView['visits'][number], samples: Sample[]): number {
+  if (visit.status !== 'running') {
+    return visit.durationMs;
+  }
+  const times = samples.map((sample) => Date.parse(sample.at));
+  return times.length > 0 ? Math.max(...times) - Math.min(...times) : 0;
+}
+
+/** The collapsed `Resources` line of a visit; it opens the CPU and memory charts. */
+function Resources({ visit, lines }: { visit: StepView['visits'][number]; lines: SeriesLine[] }): ReactElement {
+  const [open, setOpen] = useState(false);
+  const Chevron = open ? ExpandLess : ExpandMore;
+  return (
+    <Box sx={{ mt: 2 }}>
+      <ButtonBase
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        sx={{ gap: 0.5, fontSize: 13, color: 'text.secondary' }}
+      >
+        <Chevron sx={{ fontSize: 18 }} />
+        {`Resources: ${cores(visit.cpuAvg)} cores avg · ${cores(visit.cpuPeak)} peak · ${memory(visit.memPeak)} peak`}
+      </ButtonBase>
+      {open ? (
+        <>
+          <SeriesChart samples={[]} lines={lines} metric="cpu" />
+          <SeriesChart samples={[]} lines={lines} metric="memory" />
+        </>
+      ) : null}
+    </Box>
+  );
+}
+
+/** The resources of the containers the visit started. The server process itself is not a container. */
 export function StepChart({
   visit,
   total = false,
@@ -77,11 +118,10 @@ export function StepChart({
       </Typography>
     );
   }
-  return (
-    <Box sx={{ mt: 2 }}>
-      <SeriesChart samples={samples} lines={total ? [totalLine(samples)] : sourceLines(samples)} />
-    </Box>
-  );
+  if (visitSpanMs(visit, samples) < MIN_CHART_MS) {
+    return null;
+  }
+  return <Resources visit={visit} lines={total ? [totalLine(samples)] : sourceLines(samples)} />;
 }
 
 /** The chart of one check command: the samples of its container. */
