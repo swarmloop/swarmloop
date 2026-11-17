@@ -8,6 +8,7 @@ import { RunAnswersService } from './run-answers.service';
 import { RunCommandsService, StartPlan } from './run-commands.service';
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { RunRebaseService } from './run-rebase.service';
+import { PlanChatService } from './plan-chat.service';
 import { ShellService } from './shell.service';
 
 /** What the shell command carries: one of the three shell actions. */
@@ -37,6 +38,7 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     private readonly chat: ChatService,
     private readonly shell: ShellService,
     private readonly subtasks: SubtaskPort,
+    private readonly planChat: PlanChatService,
   ) {}
 
   onModuleInit(): void {
@@ -47,7 +49,12 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     const on = this.executor.register.bind(this.executor);
     on('start', (_key, payload) => this.runs.startPlanned(payload as unknown as StartPlan));
     on('resume', (key, payload) => this.runs.resume(key, payload.prompt as string | undefined));
-    on('answer', (key, payload) => this.answering.answers(key, payload));
+    on('answer', (key, payload) =>
+      typeof payload.message === 'string'
+        ? this.answering.fromMessage(key, payload.message)
+        : this.answering.answers(key, payload),
+    );
+    on('plan-chat', (key, payload, context) => this.planChat.record(key, payload, context.commandId));
     on('step', (key, payload) => {
       const { step, body } = payload as unknown as StepPayload;
       return this.runs.startStep(key, step, body);

@@ -4,6 +4,7 @@ import type { InterruptionNote } from './interruption';
 import type { TaskEntry } from './task-entry';
 import type { SubtaskStatus } from './subtask';
 import type { RunBacklog } from './backlog';
+import type { ConversationView } from './plan-chat';
 
 export type { SettingsBody, StoredAgents } from './settings';
 export type {
@@ -139,6 +140,8 @@ export interface FlowView {
   mergeQueue?: { id: string; title: string }[];
   /** The `decisions:` the planner gave in the contract. Missing when there are none. */
   decisions?: string;
+  /** The plan chat, always filled by the server. */
+  conversation?: ConversationView;
   resume: 'ready' | 'need-answers' | 'running' | 'blocked' | 'done';
   state: RunState;
   stateReason: StateReason | null;
