@@ -54,6 +54,15 @@ export function planChatAmends(messages: readonly { text: string }[], resultText
   return planChatFollowUp(messages, [AMEND_RULES, resultText].join('\n\n'));
 }
 
+/** The rules of a split run that already started its tasks: the planner adds tasks and changes none. */
+const ADD_TASKS_RULES =
+  'The tasks of this run already started or merged. Started and merged tasks and the decisions of the contract stay as they are. In `tasks`, give only the tasks to add, with their `contract` entries and `keep` lines, and no `plan`. A task you add may depend on a task that is already there.';
+
+/** What the planner is told in its own chat when a person wrote to a split run whose tasks started. */
+export function planChatAddsTasks(messages: readonly { text: string }[], resultText: string): string {
+  return planChatFollowUp(messages, [ADD_TASKS_RULES, resultText].join('\n\n'));
+}
+
 /** What the parent's planner is asked in its own chat when a subtask has questions. */
 export function subtaskAsks(task: Subtask, questions: string, contract: string, received: string | null): string {
   return [

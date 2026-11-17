@@ -5,14 +5,17 @@ import { plan } from '../../agent-result/definitions/plan';
 import type { SplitFields, SplitTask } from '../../agent-result/definitions/split-fields';
 import { readResult } from '../../agent-result/read-result';
 import {
+  addTasksCheck,
   buildGraph,
   isSplit,
   planItemsFromTasks,
   reaches,
   renderContract,
   splitOutputs,
+  startedTasks,
   taskErrors,
   unbounded,
+  withAddedTasks,
   withDecisions,
 } from './plan-tasks';
 
@@ -270,5 +273,81 @@ describe('keep lines', () => {
     expect(taskErrors(answer(tasks, { keep: [{ ...line, tasks: ['zed'] }] }), limits)).toEqual([
       'keep line names unknown task zed: login works',
     ]);
+  });
+});
+
+describe('withAddedTasks', () => {
+  const stored = () => {
+    const graph = buildGraph(answer([column, api]));
+    return {
+      contract: graph.contract,
+      tasks: graph.tasks.map((task) => ({ ...task, status: 'running' as const })),
+      keep: [],
+    };
+  };
+  const added = (tasks: SplitTask[], extra: Partial<SplitFields> = {}) =>
+    answer(tasks, { contract: ['it is sent as JSON'], ...extra });
+  const test: SplitTask = {
+    id: 'docs',
+    title: 'Docs',
+    depends: [],
+    files: ['d.md'],
+    proof: 'd.spec.ts',
+    description: 'Docs.',
+  };
+
+  it('appends the tasks, contract entries and keep lines and leaves the stored tasks as they are', () => {
+    const { graph, errors } = withAddedTasks(
+      stored(),
+      added([test], { keep: [{ capability: 'old', proof: 'o.spec.ts', tasks: ['docs'] }] }),
+      limits,
+    );
+
+    expect(errors).toEqual([]);
+    expect(graph?.tasks.map((task) => [task.id, task.status])).toEqual([
+      ['column', 'running'],
+      ['api', 'running'],
+      ['docs', 'pending'],
+    ]);
+    expect(graph?.tasks.slice(0, 2)).toEqual(stored().tasks);
+    expect(graph?.contract).toBe('- the field is called `split`\n\n- it is sent as JSON');
+    expect(graph?.keep).toHaveLength(1);
+  });
+
+  it('chains an added task that shares a file with a stored one, and changes the stored task in no way', () => {
+    const sharing = { ...test, files: ['c.ts'] };
+
+    const { graph } = withAddedTasks(stored(), added([sharing]), limits);
+
+    expect(graph?.tasks.find((task) => task.id === 'docs')?.depends).toEqual(['api']);
+    expect(graph?.tasks.find((task) => task.id === 'api')).toEqual(stored().tasks[1]);
+    expect(graph?.decisions).toEqual(['docs depends on api: both change c.ts']);
+  });
+
+  it('lets an added task depend on a stored task', () => {
+    expect(withAddedTasks(stored(), added([{ ...test, depends: ['api'] }]), limits).errors).toEqual([]);
+  });
+
+  it('refuses an existing id, an unknown dependency, a cycle and a missing proof, and builds no graph', () => {
+    const refused = (task: SplitTask) => withAddedTasks(stored(), added([task]), limits);
+    expect(refused({ ...test, id: 'api' }).errors).toContain('duplicate task id api');
+    expect(refused({ ...test, depends: ['nope'] }).errors).toContain('task docs depends on unknown task nope');
+    expect(refused({ ...test, depends: ['docs'] }).errors.join()).toContain('dependency cycle');
+    expect(refused({ ...test, proof: ' ' }).errors).toContain('task docs has no proof');
+    expect(refused(test).graph).not.toBeNull();
+    expect(refused({ ...test, id: 'api' }).graph).toBeNull();
+  });
+
+  it('gives the errors as the check of a reply and refuses a plan next to the tasks', () => {
+    const check = addTasksCheck(stored(), limits);
+    expect(check({ reply: 'x', tasks: [test], contract: ['c'] })).toEqual([]);
+    expect(check({ reply: 'x', tasks: [{ ...test, id: 'api' }], contract: ['c'] })).toEqual(['duplicate task id api']);
+    expect(check({ reply: 'x', plan: ['one'] })).toEqual([expect.stringContaining('plan is not allowed')]);
+  });
+
+  it('counts a task as started once its status is not the pending of a plan', () => {
+    const tasks = stored().tasks;
+    expect(startedTasks(tasks)).toHaveLength(2);
+    expect(startedTasks(buildGraph(answer([column])).tasks)).toEqual([]);
   });
 });

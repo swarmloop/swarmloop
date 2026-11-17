@@ -22,7 +22,7 @@ type TurnOutcome = 'none' | 'kept' | 'changed';
 
 /**
  * The planner's turns of each run, one at a time, in the order the entries came.
- * It holds and orders turns, takes the turn of a run that does not split, and owns the background passes it starts.
+ * It holds and orders turns, takes the turn of a run after implement started, and owns the background passes it starts.
  */
 @Injectable()
 export class PlannerTurns implements OnModuleDestroy {
@@ -36,9 +36,10 @@ export class PlannerTurns implements OnModuleDestroy {
     @Optional() private readonly documents?: DocumentRepository,
   ) {}
 
-  /** True when a message to this run amends its plan: it is no subtask, does not split and reached implement. */
-  amends(run: RunEntity): boolean {
-    return !isSubtask(run) && messageTurn(run, { state: 'running', openItems: 0 }) === 'amend';
+  /** True when the planner takes a message to this run between steps: it is no subtask and reached implement, so its plan is amended or gains tasks. */
+  takesMessages(run: RunEntity): boolean {
+    const turn = messageTurn(run, { state: 'running', openItems: 0 });
+    return !isSubtask(run) && (turn === 'amend' || turn === 'add-tasks');
   }
 
   /**

@@ -202,6 +202,61 @@ describe('plan step with a person message', () => {
   });
 });
 
+describe('plan step with a person message on a split run', () => {
+  const task = (id: string, status: string, depends: string[] = []) => ({
+    id,
+    title: `Task ${id}`,
+    description: `Do ${id}.`,
+    depends,
+    files: [`${id}.ts`],
+    proof: `${id}.spec.ts`,
+    covers: ['R1'],
+    status,
+  });
+  const added = { ...task('b', 'pending', ['a']), status: undefined };
+
+  async function splitRun(status: string) {
+    const flow = await planned([
+      reply({ reply: 'Added b.', summary: ['b'], contract: ['b uses a'], tasks: [added], keep: [], covers: [['R1']] }),
+    ]);
+    const run = (await flow.runs.findRun(KEY))!;
+    run.split = true;
+    await flow.runs.saveRun(run);
+    await flow.documents.putDocument(run, 'subtasks', `${JSON.stringify([task('a', status)])}\n`);
+    await flow.documents.putDocument(run, 'contract', '- store UTC\n');
+    await flow.store.appendEntry(KEY, message('Also add b'));
+    return flow;
+  }
+
+  it('asks for added tasks only once a task started, and takes a reply that depends on a stored task', async () => {
+    const flow = await splitRun('running');
+    try {
+      await flow.step();
+      const prompt = flow.launched(0).prompt;
+      expect(prompt).toContain('give only the tasks to add');
+      expect(prompt).toContain('Only the tasks to add');
+      expect(await flow.store.pending(KEY)).toEqual([]);
+      const tasks = JSON.parse((await flow.documents.latestBody(KEY, 'subtasks')) ?? '[]') as { id: string }[];
+      expect(tasks.map((item) => item.id)).toEqual(['a', 'b']);
+    } finally {
+      await flow.app.close();
+    }
+  });
+
+  it("keeps today's follow-up and definition while every task is only planned", async () => {
+    const flow = await splitRun('pending');
+    try {
+      await flow.step();
+      const prompt = flow.launched(0).prompt;
+      expect(prompt).not.toContain('give only the tasks to add');
+      expect(prompt).not.toContain('Only the tasks to add');
+      expect(prompt).toContain('- tasks (array of object, optional)');
+    } finally {
+      await flow.app.close();
+    }
+  });
+});
+
 describe('plan-improve with a person message', () => {
   const approved = async (pending: boolean) => {
     const flow = await planned([result(resultAnswer('Done.', { summary: ['checked'], plan: [] }))]);

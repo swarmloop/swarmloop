@@ -91,7 +91,7 @@ function setup(options: { chat?: boolean; split?: boolean } = {}) {
     reread: async (artifact: { kind: string }) => stored[artifact.kind] ?? null,
     launch: relaunch,
   } as unknown as ModelStepContext;
-  return { conversation, launch, finished, log, ctx, relaunch, run };
+  return { conversation, launch, finished, log, ctx, relaunch, run, stored };
 }
 
 describe('PlanConversation.visit', () => {
@@ -218,5 +218,62 @@ describe('PlanConversation.applyReply', () => {
     });
     expect(written[ARTIFACTS.planResult.kind]).toMatchObject({ plan: NEW });
     expect(applied.handoff).toContain('why');
+  });
+});
+
+describe('PlanConversation.applyReply for a split run whose tasks started', () => {
+  const task = (id: string, status: string, depends: string[] = []) => ({
+    id,
+    title: `Task ${id}`,
+    description: `Do ${id}.`,
+    depends,
+    files: [`${id}.ts`],
+    proof: `${id}.spec.ts`,
+    covers: ['R1'],
+    status,
+  });
+  const reply = {
+    reply: 'Added.',
+    summary: ['d'],
+    contract: ['d uses c'],
+    tasks: [{ ...task('d', 'pending', ['c']), covers: ['R1'] }],
+    keep: [],
+  };
+
+  function started() {
+    const made = setup({ split: true });
+    made.stored[ARTIFACTS.subtasks.kind] = [task('a', 'merged'), task('c', 'running', ['a'])];
+    made.stored[ARTIFACTS.contract.kind] = '- store UTC';
+    made.stored[ARTIFACTS.keep.kind] = [];
+    made.stored[ARTIFACTS.requirements.kind] = withPlan('{"prompt":"x"}\n', {
+      name: '',
+      overview: '',
+      items: ['Task a - files: a.ts - proof: a.spec.ts', 'Task c - files: c.ts - proof: c.spec.ts'],
+      decision: 'approve',
+    });
+    return made;
+  }
+
+  it('appends the added tasks to the stored ones, and the revision lists only the added item', async () => {
+    const { conversation, ctx, log } = started();
+
+    const applied = await conversation.applyReply(ctx, reply, 'also d');
+
+    const written = Object.fromEntries(applied.outputs.map((output) => [output.artifact.kind, output.value]));
+    const tasks = written[ARTIFACTS.subtasks.kind] as { id: string; status: string }[];
+    expect(tasks.map((item) => [item.id, item.status])).toEqual([
+      ['a', 'merged'],
+      ['c', 'running'],
+      ['d', 'pending'],
+    ]);
+    expect(written[ARTIFACTS.contract.kind]).toBe('- store UTC\n\n- d uses c');
+    expect((written[ARTIFACTS.planResult.kind] as { tasks: unknown[] }).tasks).toHaveLength(3);
+    expect(log.revisions).toMatchObject([{ added: ['Task d - files: d.ts - proof: d.spec.ts'] }]);
+  });
+
+  it('changes nothing for a reply without tasks', async () => {
+    const { conversation, ctx } = started();
+
+    expect(await conversation.applyReply(ctx, { reply: 'It does.' }, 'a question')).toEqual({ outputs: [] });
   });
 });
