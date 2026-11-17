@@ -18,7 +18,7 @@ describe('login and the auth guard', () => {
   let github: Awaited<ReturnType<typeof startFakeGithub>>;
   let app: TestApp;
 
-  async function start(allow: string): Promise<void> {
+  async function start(allow: string, build: Record<string, string> = {}): Promise<void> {
     app = await createTestApp({
       env: {
         ...FAKE_MODEL_KEY,
@@ -27,6 +27,7 @@ describe('login and the auth guard', () => {
         GITHUB_OAUTH_CLIENT_SECRET: 'secret',
         SWARMLOOP_ALLOW: allow,
         SWARMLOOP_TOKEN: TOKEN,
+        ...build,
       },
     });
   }
@@ -87,7 +88,25 @@ describe('login and the auth guard', () => {
       user: 'ann',
       provider: 'github',
       avatarUrl: 'https://avatars.test/ann.png',
+      version: 'dev',
+      sourceUrl: null,
     });
+  });
+
+  it('reports the server version and source URL to a signed-in and a signed-out caller', async () => {
+    await start('github:ann', {
+      SWARMLOOP_BUILD_VERSION: '1.4.0',
+      SWARMLOOP_SOURCE_URL: 'https://example.test/swarmloop',
+    });
+    const cookie = sessionCookie(await login('ann'));
+    const build = { version: '1.4.0', sourceUrl: 'https://example.test/swarmloop' };
+    expect(await (await fetch(`${app.url}/auth/me`, { headers: { cookie } })).json()).toMatchObject(build);
+    expect(await (await fetch(`${app.url}/auth/me`)).json()).toEqual({ user: null, ...build });
+  });
+
+  it('gives no source URL when the image value is not an http address', async () => {
+    await start('github:ann', { SWARMLOOP_BUILD_VERSION: '2.0.0', SWARMLOOP_SOURCE_URL: 'unknown' });
+    expect(await (await fetch(`${app.url}/auth/me`)).json()).toEqual({ user: null, version: '2.0.0', sourceUrl: null });
   });
 
   it('refuses a user outside SWARMLOOP_ALLOW and says which account and why', async () => {
